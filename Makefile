@@ -43,7 +43,7 @@ build:
 	go build -o bin/api ./cmd/api
 
 run: build
-	NULLUS_DB_HOST=localhost NULLUS_DB_PORT=5432 NULLUS_DB_NAME=nullus \
+	NULLUS_DB_HOST=localhost NULLUS_DB_PORT=5433 NULLUS_DB_NAME=nullus \
 	NULLUS_DB_USER=nullus NULLUS_DB_PASSWORD=nullus_dev NULLUS_DB_SSLMODE=disable \
 	./bin/api
 
@@ -60,15 +60,17 @@ lint:
 	golangci-lint run ./...
 
 # ─── DB ───
+MIGRATE := $(shell which migrate 2>/dev/null || echo $(HOME)/go/bin/migrate)
+
 migrate-up:
 	@which migrate > /dev/null 2>&1 || (echo "Installing golang-migrate..." && go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest)
-	migrate -path db/migrations -database "$(DB_URL)" up
+	$(MIGRATE) -path db/migrations -database "$(DB_URL)" up
 
 migrate-down:
-	migrate -path db/migrations -database "$(DB_URL)" down 1
+	$(MIGRATE) -path db/migrations -database "$(DB_URL)" down 1
 
 migrate-status:
-	migrate -path db/migrations -database "$(DB_URL)" version
+	$(MIGRATE) -path db/migrations -database "$(DB_URL)" version
 
 db-shell:
 	docker compose -f docker-compose.dev.yaml exec postgres psql -U nullus -d nullus
