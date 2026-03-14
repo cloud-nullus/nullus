@@ -65,3 +65,26 @@ CREATE INDEX idx_clusters_connection_status ON clusters(connection_status);
 ALTER TABLE organizations
     ADD CONSTRAINT fk_organizations_default_admin
     FOREIGN KEY (default_admin_id) REFERENCES users(id);
+
+-- Stacks
+CREATE TYPE deployment_state AS ENUM (
+    'pending', 'validating', 'installing', 'configuring',
+    'healthcheck', 'completed', 'failed', 'rolling_back', 'rolled_back'
+);
+
+CREATE TABLE stacks (
+    id VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    template_id VARCHAR(100) NOT NULL,
+    org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    cluster_id UUID NOT NULL REFERENCES clusters(id),
+    state deployment_state NOT NULL DEFAULT 'pending',
+    config JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_stacks_org_id ON stacks(org_id);
+CREATE INDEX idx_stacks_cluster_id ON stacks(cluster_id);
+CREATE INDEX idx_stacks_state ON stacks(state);
+CREATE INDEX idx_stacks_template_id ON stacks(template_id);
