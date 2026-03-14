@@ -45,10 +45,14 @@ func (r *PostgresOrgRepository) GetByID(ctx context.Context, id string) (*domain
 		FROM organizations WHERE id = $1`
 
 	org := &domain.Organization{}
+	var adminID *string
 	err := r.pool.QueryRow(ctx, q, id).Scan(
 		&org.ID, &org.Name, &org.Slug, &org.Domain, &org.Status,
-		&org.DefaultAdminID, &org.CreatedAt, &org.UpdatedAt,
+		&adminID, &org.CreatedAt, &org.UpdatedAt,
 	)
+	if adminID != nil {
+		org.DefaultAdminID = *adminID
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -76,10 +80,14 @@ func (r *PostgresOrgRepository) GetBySlug(ctx context.Context, slug string) (*do
 		FROM organizations WHERE slug = $1`
 
 	org := &domain.Organization{}
+	var slugAdminID *string
 	err := r.pool.QueryRow(ctx, q, slug).Scan(
 		&org.ID, &org.Name, &org.Slug, &org.Domain, &org.Status,
-		&org.DefaultAdminID, &org.CreatedAt, &org.UpdatedAt,
+		&slugAdminID, &org.CreatedAt, &org.UpdatedAt,
 	)
+	if slugAdminID != nil {
+		org.DefaultAdminID = *slugAdminID
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
