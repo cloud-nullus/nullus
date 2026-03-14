@@ -190,6 +190,35 @@ go test ./internal/stack/... -v
 make test-cover
 ```
 
+#### DB 연동 테스트 (E2E)
+
+`make dev`로 Docker 인프라가 기동 중이어야 합니다.
+
+```bash
+# 전체 E2E 시나리오 실행
+go test ./e2e/ -v -count=1
+
+# DB 연동 테스트만 실행
+go test ./e2e/ -run TestDBIntegration -v
+```
+
+#### 벤치마크
+
+```bash
+go test -bench=. -benchmem ./...
+
+# 특정 패키지 벤치마크
+go test -bench=. -benchmem ./internal/stack/...
+```
+
+#### 커버리지
+
+```bash
+make test-cover
+```
+
+`coverage.html`이 생성됩니다. 브라우저에서 열어 라인별 커버리지를 확인하세요. 목표: **>70%**.
+
 #### 예시: Stack 설치 테스트
 
 ```go
@@ -257,6 +286,32 @@ npm run test -- src/features/stack/hooks/useInstallStack.test.ts
 npm run test -- --watch
 ```
 
+#### 커버리지
+
+```bash
+cd web
+npx vitest run --coverage
+```
+
+`coverage/` 디렉토리에 HTML 리포트가 생성됩니다.
+
+### Playwright E2E 테스트
+
+`web/` 디렉토리에서 실행합니다. 프론트엔드 개발 서버(`make web-dev`)와 백엔드 서버(`make run`)가 모두 실행 중이어야 합니다.
+
+```bash
+cd web
+
+# headless 실행
+npm run e2e
+
+# 브라우저 표시하며 실행
+npm run e2e:headed
+
+# 결과 리포트 열기
+npm run e2e:report
+```
+
 #### 예시: Stack 설치 훅 테스트
 
 ```typescript
@@ -286,6 +341,38 @@ describe('useInstallStack', () => {
     })
   })
 })
+```
+
+## 인프라 관련 주의사항
+
+### 포트 충돌 해결
+
+`make dev` 실행 시 로컬 서비스와 포트가 충돌할 수 있습니다.
+
+| 서비스 | 호스트 포트 | 충돌 시 확인 명령 |
+|--------|------------|-----------------|
+| PostgreSQL | 5433 | `lsof -i :5433` |
+| MinIO API | 9000 | `lsof -i :9000` |
+| MinIO 콘솔 | 9001 | `lsof -i :9001` |
+| Redis | 6380 | `lsof -i :6380` |
+
+포트를 점유한 프로세스가 있으면 종료하거나, `docker-compose.dev.yaml`의 ports 항목을 수정합니다.
+
+```yaml
+# 예: PostgreSQL 포트를 5434로 변경
+ports:
+  - "5434:5432"
+```
+
+포트를 변경한 경우 `Makefile`의 `DB_URL`도 함께 수정해야 합니다.
+
+### 개발 환경 초기화
+
+볼륨 데이터를 포함하여 완전히 초기화하려면:
+
+```bash
+make dev-clean   # Docker 볼륨 포함 삭제
+make dev         # 재기동 + 마이그레이션 재실행
 ```
 
 ## 코드 스타일

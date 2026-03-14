@@ -51,7 +51,13 @@ make dev
 make run
 ```
 
-API 서버가 실행됩니다. 환경 변수는 Makefile에서 자동으로 설정됩니다.
+API 서버가 기본 포트 **8080**으로 실행됩니다 (`configs/config.dev.yaml` 기준).
+
+포트를 변경하려면 환경 변수를 오버라이드합니다:
+
+```bash
+NULLUS_SERVER_PORT=9090 make run
+```
 
 ### 3. 프론트엔드 개발 서버
 
@@ -69,6 +75,24 @@ React 개발 서버가 실행됩니다 (Vite 사용).
 make test
 ```
 
+### Go E2E 테스트 (DB 연동)
+
+실행 전 `make dev`로 Docker 인프라가 기동 중이어야 합니다.
+
+```bash
+# 전체 E2E 시나리오
+go test ./e2e/ -v -count=1
+
+# DB 연동 테스트만 실행
+go test ./e2e/ -run TestDBIntegration -v
+```
+
+### Go 벤치마크
+
+```bash
+go test -bench=. -benchmem ./...
+```
+
 ### 커버리지 리포트 생성
 
 ```bash
@@ -83,12 +107,68 @@ make test-cover
 make web-test
 ```
 
+vitest를 직접 실행할 경우:
+
+```bash
+cd web
+npx vitest run              # 단일 실행
+npx vitest run --coverage   # 커버리지 포함
+```
+
 ### E2E 테스트 (Playwright)
 
 ```bash
-cd e2e
-npm run test
+cd web
+npm run e2e             # headless 실행
+npm run e2e:headed      # 브라우저 표시
+npm run e2e:report      # 결과 리포트 열기
 ```
+
+## 주요 API 엔드포인트
+
+API 서버 기동 후 `http://localhost:8080`으로 접근합니다.
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/health` | 서버 및 DB 상태 확인 |
+| GET/POST | `/api/v1/orgs` | Organization 목록 조회 / 생성 |
+| GET/PUT | `/api/v1/orgs/:id` | Organization 상세 조회 / 수정 |
+| GET/POST | `/api/v1/clusters` | 클러스터 목록 조회 / 등록 |
+| GET | `/api/v1/clusters/:id` | 클러스터 상세 조회 |
+| POST | `/api/v1/clusters/:id/verify` | 클러스터 연결 검증 |
+| GET | `/api/v1/templates` | Golden Path 템플릿 목록 (3개) |
+| GET | `/api/v1/templates/:id` | 템플릿 상세 조회 |
+| GET/POST | `/api/v1/stacks` | Stack 목록 조회 / 생성 |
+| GET | `/api/v1/stacks/:id` | Stack 상세 조회 |
+| POST | `/api/v1/stacks/:id/deploy` | Stack 배포 시작 |
+| GET | `/api/v1/stacks/:id/status` | Stack 배포 상태 조회 |
+| GET | `/api/v1/cicd/templates` | CI/CD 파이프라인 템플릿 목록 |
+| GET/POST | `/api/v1/pipelines` | 파이프라인 목록 조회 / 생성 |
+| POST | `/api/v1/pipelines/:id/deploy` | 파이프라인 배포 |
+| GET | `/api/v1/pipelines/:id/deployments` | 배포 이력 조회 |
+| GET | `/api/v1/compatibility/matrix` | 도구 호환성 매트릭스 |
+| POST | `/api/v1/compatibility/validate` | 도구 조합 호환성 검증 |
+| GET | `/api/v1/monitoring/dashboard` | 모니터링 대시보드 |
+| GET/POST | `/api/v1/alerts/rules` | 알림 규칙 목록 조회 / 생성 |
+| GET | `/api/v1/alerts/history` | 알림 이력 조회 |
+
+## 기능 구현 현황 (PRD v1.3 Phase 1)
+
+| 기능 | 설명 | 상태 |
+|------|------|------|
+| F0 | Organization 설정 등록 | - [ ] 미구현 |
+| F1 | K8S Cluster Configurations 등록 | - [ ] 미구현 |
+| F2 | 노코드 기반 DevSecOps Stack 설정 UI | - [ ] 미구현 |
+| F3 | DevSecOps Stack Golden Path 템플릿 제공 | - [ ] 미구현 |
+| F4 | DevSecOps Stack 자동 설치/배포/이력 관리 | - [ ] 미구현 |
+| F5 | CI/CD Pipeline 템플릿 제공 | - [ ] 미구현 |
+| F6 | CI/CD Pipeline 배포/이력 관리 | - [ ] 미구현 |
+| F7 | 모니터링/알림 관리 | - [ ] 미구현 |
+| F8 | DevSecOps Stack OSS 버전 호환성 관리 | - [ ] 미구현 |
+| F9 | UI 권한 체계 (Admin / DevOps / Developer) | - [ ] 미구현 |
+| F10 | DevSecOps Stack 필요 Resource 예상량 계산 | - [ ] 미구현 |
+
+전체 기능 명세는 [PRD v1.3](./docs/10_제품기획/nullus_PRD_1.3.md)을 참조하세요.
 
 ## 코드 품질
 
@@ -246,3 +326,4 @@ Apache License 2.0
 - [개발 가이드](./CONTRIBUTING.md) 읽기
 - [CLAUDE.md](./CLAUDE.md)에서 아키텍처 원칙 확인
 - 문서 읽기: `docs/` 디렉토리 참조
+- 로컬 테스트 가이드: `docs/50_운영/Nullus 로컬 개발환경 세팅 가이드.md`
