@@ -41,7 +41,7 @@ function UsageBar({ value, color }: { value: number; color: string }) {
 
 export function MonitoringPage() {
   const { data: apiData } = useDashboard(5000)
-  const dashboard = apiData ?? MOCK_DASHBOARD
+  const dashboard = (apiData && typeof apiData === 'object' && 'kpi' in apiData) ? apiData : MOCK_DASHBOARD
   const { kpi, pipeline, tools } = dashboard
 
   const kpiCards = [

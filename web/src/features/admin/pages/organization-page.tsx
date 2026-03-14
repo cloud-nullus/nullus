@@ -53,7 +53,7 @@ export function OrganizationPage() {
     slug: org.slug,
     domain: org.domain,
     status: org.status,
-    clusterAccessScope: [...org.clusterAccessScope],
+    clusterAccessScope: [...(org.clusterAccessScope ?? [])],
   })
 
   const [inviteModal, setInviteModal] = useState(false)

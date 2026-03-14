@@ -39,7 +39,7 @@ export function StackTemplatePage() {
   const { setTemplate, loadFromTemplate } = useStackConfigStore()
   const [search, setSearch] = useState('')
 
-  const templates = apiTemplates ?? MOCK_TEMPLATES
+  const templates = Array.isArray(apiTemplates) ? apiTemplates : MOCK_TEMPLATES
 
   const filtered = templates.filter(
     (t) =>

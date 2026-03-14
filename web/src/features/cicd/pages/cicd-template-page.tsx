@@ -37,7 +37,7 @@ const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 
 export function CicdTemplatePage() {
   const { data: apiTemplates } = useCicdTemplates()
-  const templates = apiTemplates ?? MOCK_TEMPLATES
+  const templates = Array.isArray(apiTemplates) ? apiTemplates : MOCK_TEMPLATES
   const [search, setSearch] = useState('')
 
   const filtered = templates.filter(
