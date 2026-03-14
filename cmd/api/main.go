@@ -13,12 +13,12 @@ import (
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	"github.com/cloud-nullus/draft/internal/shared/config"
+	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	stackuc "github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/cloud-nullus/draft/internal/shared/config"
-	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
@@ -58,9 +58,20 @@ func main() {
 
 	// Stack: in-memory repos + log streamer
 	memStackRepo := stackrepo.NewMemoryStackRepository()
+	memTemplateRepo := stackrepo.NewMemoryTemplateRepository()
 	memStreamer := logadapter.NewMemoryStreamer()
+
 	installStackUC := stackuc.NewInstallStack(memStackRepo, memStreamer)
+	createStackUC := stackuc.NewCreateStack(memStackRepo, memTemplateRepo)
+	listStacksUC := stackuc.NewListStacks(memStackRepo)
+	getTemplateUC := stackuc.NewGetTemplate(memTemplateRepo)
+	listTemplatesUC := stackuc.NewListTemplates(memTemplateRepo)
+	exportConfigUC := stackuc.NewExportConfig(memStackRepo)
+
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, memStackRepo)
+	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC)
+	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 
 	// Compatibility
 	memCompatRepo := stackrepo.NewMemoryCompatibilityRepository()
@@ -87,13 +98,23 @@ func main() {
 	orgHandler.RegisterRoutes(v1)
 	clusterHandler.RegisterRoutes(v1)
 	deployHandler.RegisterRoutes(v1, e)
+	stackHandler.RegisterRoutes(v1)
+	templateHandler.RegisterRoutes(v1)
+	exportHandler.RegisterRoutes(v1)
 	compatHandler.RegisterRoutes(v1)
 	historyHandler.RegisterRoutes(v1)
 
-	// Health check
+	// Health check with DB ping
 	e.GET("/health", func(c echo.Context) error {
+		dbStatus := "connected"
+		if err := pool.Ping(c.Request().Context()); err != nil {
+			slog.Warn("health check db ping failed", "error", err)
+			dbStatus = "unavailable"
+		}
 		return c.JSON(http.StatusOK, map[string]string{
-			"status": "ok",
+			"status":  "healthy",
+			"db":      dbStatus,
+			"version": "0.1.0-alpha",
 		})
 	})
 

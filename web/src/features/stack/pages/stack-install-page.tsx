@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Download, Save, Rocket } from 'lucide-react'
 import { useStackConfigStore } from '../stores/stack-config-store'
-import type { InstallTab, ToolSelection } from '../stores/stack-config-store'
+import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
 import { useCreateStack, useSaveDraft, useEstimateResources } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
+import { YamlEditor } from '../../../components/shared/yaml-editor'
 
 // --- Tool option types ---
 
@@ -142,6 +143,42 @@ function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
   )
 }
 
+// --- YAML conversion ---
+
+function draftToYaml(draft: StackConfigDraft): string {
+  const lines: string[] = [
+    `stackName: ${draft.stackName || '""'}`,
+    `templateId: ${draft.selectedTemplateId ?? 'null'}`,
+    `clusterId: ${draft.clusterId ?? 'null'}`,
+    '',
+    'artifacts:',
+    `  packageRegistry: ${draft.artifacts.packageRegistry.tool}`,
+    `  sourceRepository: ${draft.artifacts.sourceRepository.tool}`,
+    `  containerRegistry: ${draft.artifacts.containerRegistry.tool}`,
+    `  storageBackend: ${draft.artifacts.storageBackend.tool}`,
+    '',
+    'pipeline:',
+    `  cicdPlatform: ${draft.pipeline.cicdPlatform.tool}`,
+    `  cdTool: ${draft.pipeline.cdTool.tool}`,
+    '',
+    'monitoring:',
+    `  collection: ${draft.monitoring.collection.tool}`,
+    `  visualization: ${draft.monitoring.visualization.tool}`,
+    '',
+    'logging:',
+    `  collection: ${draft.logging.collection.tool}`,
+    `  search: ${draft.logging.search.tool}`,
+    '',
+    'resources:',
+    `  developerCount: ${draft.resources.developerCount}`,
+    `  concurrentRunners: ${draft.resources.concurrentRunners}`,
+    `  commitsPerDay: ${draft.resources.commitsPerDay}`,
+    `  buildFrequency: ${draft.resources.buildFrequency}`,
+    `  currency: ${draft.resources.currency}`,
+  ]
+  return lines.join('\n')
+}
+
 // --- Tab definitions ---
 
 const TABS: { id: InstallTab; label: string }[] = [
@@ -150,6 +187,7 @@ const TABS: { id: InstallTab; label: string }[] = [
   { id: 'monitoring', label: 'Monitoring' },
   { id: 'logging', label: 'Logging' },
   { id: 'resources', label: 'Resources' },
+  { id: 'yaml', label: 'YAML View' },
 ]
 
 // --- Main page ---
@@ -376,6 +414,19 @@ export function StackInstallPage() {
                   onChange={(v) => setTool('logging', 'search', v)}
                 />
               </>
+            )}
+
+            {activeTab === 'yaml' && (
+              <div>
+                <p style={{ margin: '0 0 14px 0', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                  현재 스택 설정의 YAML 표현입니다. (읽기 전용)
+                </p>
+                <YamlEditor
+                  value={draftToYaml(draft)}
+                  readOnly
+                  height="360px"
+                />
+              </div>
             )}
 
             {activeTab === 'resources' && (

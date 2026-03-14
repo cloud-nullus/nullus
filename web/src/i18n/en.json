@@ -25,7 +25,18 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "search": "Search",
-    "filter": "Filter"
+    "filter": "Filter",
+    "loading": "Loading...",
+    "goHome": "Go to Home",
+    "notFound": "Page not found",
+    "notFoundDesc": "The page you are looking for does not exist or has been moved."
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "invalidCredentials": "Invalid email or password.",
+    "testAccounts": "Test Accounts"
   },
   "home": {
     "welcome": "Welcome to Nullus Platform",

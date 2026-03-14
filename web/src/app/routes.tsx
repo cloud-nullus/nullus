@@ -1,6 +1,8 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter } from 'react-router-dom'
 import { type ReactNode, lazy, Suspense } from 'react'
 import { AppLayout } from './layout'
+import { LoginPage } from '../features/auth/pages/login-page'
+import { NotFoundPage } from '../features/common/pages/not-found-page'
 
 const HomePage = lazy(() =>
   import('../features/home/pages/home-page').then((m) => ({ default: m.HomePage }))
@@ -91,6 +93,7 @@ function withSuspense(element: ReactNode) {
 }
 
 export const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
   {
     path: '/',
     element: <AppLayout />,
@@ -114,7 +117,7 @@ export const router = createBrowserRouter([
       { path: 'admin/organization', element: withSuspense(<OrganizationPage />) },
       { path: 'admin/users', element: withSuspense(<UserManagementPage />) },
       { path: 'admin/clusters', element: withSuspense(<ClusterPage />) },
-      { path: '*', element: <Navigate to="/" replace /> },
+      { path: '*', element: withSuspense(<NotFoundPage />) },
     ],
   },
 ])

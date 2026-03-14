@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
-export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'logging' | 'resources'
+export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'logging' | 'resources' | 'yaml'
 
 export interface ToolSelection {
   tool: string
