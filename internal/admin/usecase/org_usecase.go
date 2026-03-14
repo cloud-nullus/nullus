@@ -66,7 +66,7 @@ func (uc *OrgUseCase) CreateOrg(ctx context.Context, input CreateOrgInput) (*dom
 
 	now := time.Now().UTC()
 	org = &domain.Organization{
-		ID:        "org_" + uuid.New().String()[:8],
+		ID:        uuid.New().String(),
 		Name:      input.Name,
 		Slug:      input.Slug,
 		Domain:    input.Domain,

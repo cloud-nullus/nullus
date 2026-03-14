@@ -52,14 +52,22 @@ func (r *PostgresClusterRepository) GetByID(ctx context.Context, id string) (*do
 	return cluster, nil
 }
 
-// List retrieves all clusters for a given organization.
+// List retrieves clusters. If orgID is empty, returns all clusters.
 func (r *PostgresClusterRepository) List(ctx context.Context, orgID string) ([]*domain.Cluster, error) {
-	const q = `
-		SELECT id, name, type, endpoint, connection_status, org_id, created_at, updated_at
-		FROM clusters WHERE org_id = $1
-		ORDER BY created_at DESC`
+	var rows pgx.Rows
+	var err error
 
-	rows, err := r.pool.Query(ctx, q, orgID)
+	if orgID == "" {
+		const q = `
+			SELECT id, name, type, endpoint, connection_status, org_id, created_at, updated_at
+			FROM clusters ORDER BY created_at DESC`
+		rows, err = r.pool.Query(ctx, q)
+	} else {
+		const q = `
+			SELECT id, name, type, endpoint, connection_status, org_id, created_at, updated_at
+			FROM clusters WHERE org_id = $1 ORDER BY created_at DESC`
+		rows, err = r.pool.Query(ctx, q, orgID)
+	}
 	if err != nil {
 		return nil, err
 	}

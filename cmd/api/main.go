@@ -13,6 +13,12 @@ import (
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
+	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
+	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
+	obsrepo "github.com/cloud-nullus/draft/internal/observability/adapter/repository"
+	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
@@ -83,6 +89,26 @@ func main() {
 	manageHistoryUC := stackuc.NewManageHistory(memHistoryRepo)
 	historyHandler := stackhandler.NewHistoryHandler(memHistoryRepo, memStackRepo, manageHistoryUC)
 
+	// CI/CD: in-memory repos
+	memCICDTemplateRepo := cicdrepo.NewMemoryCICDTemplateRepository()
+	memPipelineRepo := cicdrepo.NewMemoryPipelineRepository()
+	memDeploymentRepo := cicdrepo.NewMemoryDeploymentRepository()
+	createPipelineUC := cicduc.NewCreatePipeline(memPipelineRepo, memCICDTemplateRepo)
+	listPipelinesUC := cicduc.NewListPipelines(memPipelineRepo)
+	deployPipelineUC := cicduc.NewDeployPipeline(memPipelineRepo, memDeploymentRepo)
+	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(memCICDTemplateRepo)
+	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, memPipelineRepo, memDeploymentRepo)
+
+	// Observability: in-memory repos
+	memDashboardRepo := obsrepo.NewMemoryDashboardRepository()
+	memAlertRuleRepo := obsrepo.NewMemoryAlertRuleRepository()
+	memAlertRepo := obsrepo.NewMemoryAlertRepository()
+	getDashboardUC := obsuc.NewGetDashboard(memDashboardRepo)
+	createAlertRuleUC := obsuc.NewCreateAlertRule(memAlertRuleRepo)
+	listAlertsUC := obsuc.NewListAlerts(memAlertRepo)
+	dashboardHandler := obshandler.NewDashboardHandler(getDashboardUC)
+	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, memAlertRuleRepo)
+
 	// Initialize Echo
 	e := echo.New()
 	e.HideBanner = true
@@ -103,6 +129,10 @@ func main() {
 	exportHandler.RegisterRoutes(v1)
 	compatHandler.RegisterRoutes(v1)
 	historyHandler.RegisterRoutes(v1)
+	cicdTemplateHandler.RegisterRoutes(v1)
+	pipelineHandler.RegisterRoutes(v1)
+	dashboardHandler.RegisterRoutes(v1)
+	alertHandler.RegisterRoutes(v1)
 
 	// Health check with DB ping
 	e.GET("/health", func(c echo.Context) error {

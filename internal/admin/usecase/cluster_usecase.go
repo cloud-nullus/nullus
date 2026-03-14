@@ -40,7 +40,7 @@ type UpdateClusterInput struct {
 func (uc *ClusterUseCase) RegisterCluster(ctx context.Context, input RegisterClusterInput) (*domain.Cluster, error) {
 	now := time.Now().UTC()
 	cluster := &domain.Cluster{
-		ID:               "cls_" + uuid.New().String()[:8],
+		ID:               uuid.New().String(),
 		Name:             input.Name,
 		Type:             input.Type,
 		Endpoint:         input.Endpoint,

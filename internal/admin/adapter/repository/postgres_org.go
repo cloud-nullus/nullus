@@ -25,9 +25,15 @@ func (r *PostgresOrgRepository) Create(ctx context.Context, org *domain.Organiza
 		INSERT INTO organizations (id, name, slug, domain, status, default_admin_id, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
+	// Convert empty DefaultAdminID to nil for nullable UUID column
+	var adminID interface{} = org.DefaultAdminID
+	if org.DefaultAdminID == "" {
+		adminID = nil
+	}
+
 	_, err := r.pool.Exec(ctx, q,
 		org.ID, org.Name, org.Slug, org.Domain, org.Status,
-		org.DefaultAdminID, org.CreatedAt, org.UpdatedAt,
+		adminID, org.CreatedAt, org.UpdatedAt,
 	)
 	return err
 }
