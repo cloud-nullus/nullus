@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Nullus Platform — Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼 (github.com/cloud-nullus/draft)
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui
-- **Backend**: Go 1.24+ (Gin/Echo) + PostgreSQL 18+
+- **Backend**: Go 1.24+ (Echo v4) + PostgreSQL 18+
 - **Infra**: Helm, Kubernetes 1.26+, Keycloak OIDC
 
 ## Repository State

@@ -391,7 +391,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-w -s -X main.version=${VERSION}" \
-    -o /app/nullus-server ./cmd/nullus-server
+    -o /app/nullus-server ./cmd/api
 
 # ── Stage 2: 프로덕션 이미지 ────────────────────────────────
 FROM gcr.io/distroless/static-debian12:nonroot

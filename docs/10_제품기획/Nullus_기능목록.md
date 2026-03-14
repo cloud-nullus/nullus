@@ -81,7 +81,7 @@
 
 - [ ] Organization 이름/슬러그/도메인 등록
 - [ ] 기본 관리자 계정 지정 및 변경
-- [ ] 멤버 초대(초대 링크) 및 기본 역할 부여 (admin/operator/viewer)
+- [ ] 멤버 초대(초대 링크) 및 기본 역할 부여 (admin/devops/developer)
   - 초대 링크 생성 → 공유 → 수락 플로우
   - 만료 기간 설정 가능 (기본 7일)
 - [ ] Organization 활성/비활성 상태 관리
@@ -497,14 +497,14 @@ matrices:
 
 #### 수용 기준
 
-- [ ] Role 기반 접근 제어 (Admin / Operator / Viewer)
+- [ ] Role 기반 접근 제어 (Admin / DevOps Engineer / Developer)
 - [ ] 대메뉴 단위 접근 권한 설정 (사용자 관리 포함)
 - [ ] 사용자 관리 화면 제공 (역할 부여, 비활성화)
 - [ ] OSS별 권한 매핑 지원 (Keycloak 활용)
 
 #### RBAC 매핑
 
-| 기능 영역 | Admin | Operator | Viewer |
+| 기능 영역 | Admin | DevOps Engineer | Developer |
 |---|---|---|---|
 | Organization 관리 | ✅ | ❌ | ❌ |
 | 사용자 관리 | ✅ | ❌ | ❌ |
@@ -522,8 +522,8 @@ matrices:
 
 ```
 Keycloak Role "admin"    → GitLab Admin + Argo CD Admin + Grafana Admin
-Keycloak Role "operator" → GitLab Maintainer + Argo CD Read-only + Grafana Editor
-Keycloak Role "viewer"   → GitLab Reporter + Argo CD Read-only + Grafana Viewer
+Keycloak Role "devops"   → GitLab Maintainer + Argo CD Read-only + Grafana Editor
+Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana Viewer
 ```
 
 #### Narwhal Keycloak OIDC 통합 레퍼런스
@@ -633,12 +633,12 @@ Keycloak Role "viewer"   → GitLab Reporter + Argo CD Read-only + Grafana Viewe
 
 | 계층 | 기술 | 선택 이유 |
 |---|---|---|
-| Frontend | React 18 + TypeScript | 생태계 최대, Backstage 전환 가능 |
+| Frontend | React 19 + TypeScript | 생태계 최대, Backstage 전환 가능 |
 | 상태 관리 | Zustand | 경량, 보일러플레이트 최소 |
 | 스타일링 | Tailwind CSS + shadcn/ui | 다크 테마, 빠른 UI 개발 |
 | YAML 에디터 | Monaco Editor (v1) | VS Code 동일 엔진, YAML 스키마 검증 |
 | Backend | Go 1.24+ | K8s 클라이언트 네이티브, 단일 바이너리 |
-| 웹 프레임워크 | Gin 또는 Echo | 경량, 고성능 |
+| 웹 프레임워크 | Echo v4 | 경량, 고성능 |
 | 실시간 통신 | WebSocket (gorilla/websocket) | 설치 로그 양방향 스트리밍 |
 | Database | PostgreSQL 18+ | 확장성, JSONB 지원, pgvector 활용 가능 |
 | 인증 (Alpha~Beta) | 세션 기반 (gorilla/sessions) | 빠른 구현, 단순 |

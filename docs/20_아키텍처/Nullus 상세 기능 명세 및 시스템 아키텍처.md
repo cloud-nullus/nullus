@@ -108,12 +108,12 @@ Nullus는 크게 **3개의 런타임 환경**에 걸쳐 동작합니다.
 
 | 계층 | 기술 | 선택 이유 |
 |---|---|---|
-| **Frontend** | React 18 + TypeScript | 생태계 최대, 채용 용이, Backstage 플러그인 전환 가능 |
+| **Frontend** | React 19 + TypeScript | 생태계 최대, 채용 용이, Backstage 플러그인 전환 가능 |
 | **상태 관리** | Zustand | 경량, 보일러플레이트 최소 |
 | **스타일링** | Tailwind CSS + shadcn/ui | 다크 테마 기본, 빠른 UI 개발 |
 | **YAML 에디터** | Monaco Editor (v1) | VS Code와 동일 엔진, YAML 스키마 검증 |
 | **Backend** | Go 1.24+ | K8s 클라이언트 라이브러리 네이티브, 단일 바이너리 배포 |
-| **웹 프레임워크** | Gin 또는 Echo | 경량, 고성능 |
+| **웹 프레임워크** | Echo v4 | 경량, 고성능 |
 | **실시간 통신** | WebSocket (gorilla/websocket) | 설치 로그 스트리밍, 양방향 |
 | **Database** | PostgreSQL 18+ | 확장성, JSON 지원, 향후 pgvector 활용 가능 |
 | **마이그레이션** | golang-migrate | Go 표준, SQL 기반 마이그레이션 |
@@ -596,13 +596,13 @@ Nullus 컨트롤 플레인 자체도 Kubernetes에 배포됩니다 (또는 Docke
 │  ├── 스택 설정/배포 (전체)                                   │
 │  └── 사용자 관리                                            │
 │                                                             │
-│  Operator                                                   │
+│  DevOps Engineer                                            │
 │  ├── 클러스터 조회                                           │
 │  ├── 스택 설정/배포 (생성, 수정)                             │
 │  ├── 파이프라인 배포                                         │
 │  └── 모니터링 조회                                           │
 │                                                             │
-│  Viewer                                                     │
+│  Developer                                                  │
 │  ├── 클러스터 조회 (읽기 전용)                               │
 │  ├── 스택 설정 조회 (읽기 전용)                              │
 │  ├── 배포 이력 조회                                          │
@@ -677,7 +677,7 @@ org_members
 ├── id             UUID, PK
 ├── org_id         UUID, FK → organizations.id
 ├── user_id        UUID, FK → users.id
-├── role           ENUM('admin', 'operator', 'viewer')
+├── role           ENUM('admin', 'devops', 'developer')
 ├── invited_at     TIMESTAMP
 ├── accepted_at    TIMESTAMP, NULLABLE
 └── UNIQUE(org_id, user_id)
@@ -688,7 +688,7 @@ org_members
 | 릴리스 | 구현 범위 | 수용 기준 (Acceptance Criteria) |
 |---|---|---|
 | **Alpha** | Org 생성 (name, slug), 단일 Admin 자동 지정, 세션 인증 | **Given** 유효한 이름과 슬러그, **When** 조직 생성 요청, **Then** DB에 저장되고 생성자가 Admin으로 지정됨 |
-| **Beta** | 멤버 초대 (이메일 전송 없이 링크 생성), 기본 역할 부여 (admin/operator/viewer) | **Given** 생성된 초대 링크, **When** 다른 사용자가 링크 접속, **Then** 해당 조직의 멤버로 등록됨 |
+| **Beta** | 멤버 초대 (이메일 전송 없이 링크 생성), 기본 역할 부여 (admin/devops/developer) | **Given** 생성된 초대 링크, **When** 다른 사용자가 링크 접속, **Then** 해당 조직의 멤버로 등록됨 |
 | **v1** | 활성/비활성 상태 전환, 클러스터 접근 범위 설정, 멤버 관리 UI 전체 | **Given** 비활성화된 조직, **When** 멤버가 API 요청, **Then** 403 Forbidden 반환 |
 
 ---
@@ -1270,7 +1270,7 @@ Response:
 
 #### RBAC 매핑
 
-| 기능 영역 | Admin | Operator | Viewer |
+| 기능 영역 | Admin | DevOps Engineer | Developer |
 |---|---|---|---|
 | Organization 관리 | ✅ 전체 | ❌ | ❌ |
 | 사용자 관리 | ✅ 전체 | ❌ | ❌ |
@@ -1295,8 +1295,8 @@ Browser → Nullus Web → Keycloak OIDC → ID Token 발급
 
 OSS별 권한 매핑:
 Keycloak Role "admin" → GitLab Admin + Argo CD Admin + Grafana Admin
-Keycloak Role "operator" → GitLab Maintainer + Argo CD Read-only + Grafana Editor
-Keycloak Role "viewer" → GitLab Reporter + Argo CD Read-only + Grafana Viewer
+Keycloak Role "devops" → GitLab Maintainer + Argo CD Read-only + Grafana Editor
+Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana Viewer
 ```
 
 #### Narwhal Keycloak OIDC 자동 설정 레퍼런스

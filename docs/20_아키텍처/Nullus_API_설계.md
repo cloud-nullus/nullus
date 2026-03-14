@@ -298,9 +298,9 @@ Nullus 스택 설치 시 Keycloak이 자동 구성됩니다.
 #### OSS별 권한 매핑
 
 ```
-Keycloak Role "admin"    → GitLab Admin + Argo CD Admin + Grafana Admin
-Keycloak Role "operator" → GitLab Maintainer + Argo CD Read-only + Grafana Editor
-Keycloak Role "viewer"   → GitLab Reporter + Argo CD Read-only + Grafana Viewer
+Keycloak Role "admin"     → GitLab Admin + Argo CD Admin + Grafana Admin
+Keycloak Role "devops"    → GitLab Maintainer + Argo CD Read-only + Grafana Editor
+Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana Viewer
 ```
 
 ### 3.3 RBAC 권한 매트릭스
@@ -677,14 +677,14 @@ Organization 활성/비활성 전환
 **요청**:
 ```json
 {
-  "role": "operator",
+  "role": "devops",
   "expires_in_days": 7
 }
 ```
 
 | 필드 | 타입 | 필수 | 검증 규칙 |
 |------|------|------|-----------|
-| `role` | `string` | O | `admin`, `operator`, `viewer` 중 하나 |
+| `role` | `string` | O | `admin`, `devops`, `developer` 중 하나 |
 | `expires_in_days` | `integer` | X | 1-30 (기본값: 7) |
 
 **응답** (`201 Created`):
@@ -693,7 +693,7 @@ Organization 활성/비활성 전환
   "data": {
     "invite_token": "inv_abc123def456",
     "invite_url": "https://nullus.example.com/invite/inv_abc123def456",
-    "role": "operator",
+    "role": "devops",
     "expires_at": "2026-03-21T09:00:00Z",
     "created_by": "usr_a1b2c3"
   }
@@ -716,7 +716,7 @@ Organization 활성/비활성 전환
   "data": {
     "org_id": "org_x1y2z3",
     "user_id": "usr_d4e5f6",
-    "role": "operator",
+    "role": "devops",
     "accepted_at": "2026-03-15T10:00:00Z"
   }
 }
@@ -738,7 +738,7 @@ Organization 활성/비활성 전환
 - **인증**: 필요
 - **권한**: 해당 Organization 멤버
 - **페이지네이션**: 지원
-- **필터**: `role` (`admin`, `operator`, `viewer`)
+- **필터**: `role` (`admin`, `devops`, `developer`)
 - **정렬**: `display_name`, `role`, `accepted_at`
 
 **응답** (`200 OK`):
@@ -756,7 +756,7 @@ Organization 활성/비활성 전환
       "user_id": "usr_d4e5f6",
       "email": "devops@nullus.io",
       "display_name": "김민수",
-      "role": "operator",
+      "role": "devops",
       "accepted_at": "2026-03-15T10:00:00Z"
     }
   ],
@@ -2462,7 +2462,7 @@ DevSecOps Stack 리소스 예상량 계산을 담당합니다.
 - **인증**: 필요
 - **권한**: Admin
 - **페이지네이션**: 지원
-- **필터**: `role` (`admin`, `operator`, `viewer`), `status` (`active`, `inactive`)
+- **필터**: `role` (`admin`, `devops`, `developer`), `status` (`active`, `inactive`)
 - **정렬**: `display_name`, `email`, `role`, `created_at`
 
 **응답** (`200 OK`):
@@ -2496,13 +2496,13 @@ DevSecOps Stack 리소스 예상량 계산을 담당합니다.
 **요청**:
 ```json
 {
-  "role": "operator"
+  "role": "devops"
 }
 ```
 
 | 필드 | 타입 | 필수 | 검증 규칙 |
 |------|------|------|-----------|
-| `role` | `string` | O | `admin`, `operator`, `viewer` |
+| `role` | `string` | O | `admin`, `devops`, `developer` |
 
 **응답** (`200 OK`): 변경된 사용자 객체 반환
 
@@ -2956,7 +2956,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, operator, viewer]
+          enum: [admin, devops, developer]
         org:
           $ref: '#/components/schemas/Organization'
         permissions:

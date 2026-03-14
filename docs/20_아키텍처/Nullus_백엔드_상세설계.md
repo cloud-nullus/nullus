@@ -4353,7 +4353,7 @@ func NewModule(deps Dependencies) *Module {
 ### 6.2 애플리케이션 전체 조립
 
 ```go
-// cmd/server/main.go
+// cmd/api/main.go
 
 package main
 
@@ -5198,7 +5198,7 @@ func (d *DeployPipelineMetricsDecorator) Execute(ctx context.Context, in DeployP
 ## 부록: 모듈 의존 관계 다이어그램
 
 ```
-cmd/server
+cmd/api
     └── internal/app
             ├── internal/auth
             │       ├── domain/
