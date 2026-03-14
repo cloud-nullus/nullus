@@ -51,7 +51,7 @@ func (r *MemoryStackRepository) GetByID(_ context.Context, id string) (*domain.S
 func (r *MemoryStackRepository) List(_ context.Context, orgID string) ([]*domain.Stack, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	var result []*domain.Stack
+	result := make([]*domain.Stack, 0, len(r.stacks))
 	for _, s := range r.stacks {
 		if s.OrgID == orgID {
 			cp := *s

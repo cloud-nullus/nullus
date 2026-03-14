@@ -1,8 +1,14 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { type ReactNode, lazy, Suspense } from 'react'
 import { AppLayout } from './layout'
-import { LoginPage } from '../features/auth/pages/login-page'
-import { NotFoundPage } from '../features/common/pages/not-found-page'
+
+const LoginPage = lazy(() =>
+  import('../features/auth/pages/login-page').then((m) => ({ default: m.LoginPage }))
+)
+
+const NotFoundPage = lazy(() =>
+  import('../features/common/pages/not-found-page').then((m) => ({ default: m.NotFoundPage }))
+)
 
 const HomePage = lazy(() =>
   import('../features/home/pages/home-page').then((m) => ({ default: m.HomePage }))
@@ -93,7 +99,7 @@ function withSuspense(element: ReactNode) {
 }
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: withSuspense(<LoginPage />) },
   {
     path: '/',
     element: <AppLayout />,

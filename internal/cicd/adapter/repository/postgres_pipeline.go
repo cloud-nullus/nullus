@@ -49,7 +49,7 @@ func (r *PostgresPipelineRepository) GetByID(ctx context.Context, id string) (*d
 func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]*domain.Pipeline, error) {
 	const q = `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at
-		FROM pipelines WHERE org_id = $1 ORDER BY created_at DESC`
+		FROM pipelines WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, orgID)
 	if err != nil {

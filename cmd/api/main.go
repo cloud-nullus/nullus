@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -43,7 +44,16 @@ func main() {
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.Name,
 		cfg.Database.User, cfg.Database.Password, cfg.Database.SSLMode,
 	)
-	pool, err := pgxpool.New(context.Background(), dsn)
+	poolCfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		slog.Error("failed to parse database config", "error", err)
+		os.Exit(1)
+	}
+	poolCfg.MaxConns = int32(cfg.Database.MaxOpenConns)
+	poolCfg.MinConns = int32(cfg.Database.MaxIdleConns)
+	poolCfg.MaxConnLifetime = cfg.Database.ConnMaxLifetime
+	poolCfg.MaxConnIdleTime = cfg.Database.ConnMaxIdleTime
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
@@ -133,6 +143,11 @@ func main() {
 	pipelineHandler.RegisterRoutes(v1)
 	dashboardHandler.RegisterRoutes(v1)
 	alertHandler.RegisterRoutes(v1)
+
+	// Development-only profiling endpoints
+	if cfg.Server.Mode == "development" {
+		e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
+	}
 
 	// Health check with DB ping
 	e.GET("/health", func(c echo.Context) error {

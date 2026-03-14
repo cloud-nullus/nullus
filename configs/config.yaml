@@ -10,8 +10,9 @@ database:
   password: nullus_dev
   sslmode: disable
   max_open_conns: 25
-  max_idle_conns: 5
+  max_idle_conns: 10
   conn_max_lifetime: 5m
+  conn_max_idle_time: 1m
 
 auth:
   mode: session  # session | oidc

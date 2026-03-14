@@ -5,6 +5,27 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id: string) => {
+          if (id.includes('react-dom') || id.includes('react-router-dom') || (id.includes('node_modules/react/') && !id.includes('react-'))) {
+            return 'vendor-react'
+          }
+          if (id.includes('@tanstack/react-query')) {
+            return 'vendor-query'
+          }
+          if (id.includes('zustand') || id.includes('lucide-react')) {
+            return 'vendor-ui'
+          }
+          if (id.includes('react-i18next') || id.includes('i18next')) {
+            return 'vendor-i18n'
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 500,
+  },
   test: {
     globals: true,
     environment: 'jsdom',

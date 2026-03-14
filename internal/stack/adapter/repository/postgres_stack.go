@@ -63,7 +63,7 @@ func (r *PostgresStackRepository) GetByID(ctx context.Context, id string) (*doma
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string) ([]*domain.Stack, error) {
 	const q = `
 		SELECT id, name, template_id, org_id, cluster_id, state, config, created_at, updated_at
-		FROM stacks WHERE org_id = $1 ORDER BY created_at DESC`
+		FROM stacks WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.db.QueryContext(ctx, q, orgID)
 	if err != nil {

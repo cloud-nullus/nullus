@@ -50,7 +50,7 @@ func (r *MemoryClusterRepository) GetByID(_ context.Context, id string) (*domain
 func (r *MemoryClusterRepository) List(_ context.Context, orgID string) ([]*domain.Cluster, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	var result []*domain.Cluster
+	result := make([]*domain.Cluster, 0, len(r.clusters))
 	for _, c := range r.clusters {
 		if orgID == "" || c.OrgID == orgID {
 			cp := *c
