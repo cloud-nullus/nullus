@@ -7,6 +7,9 @@ coverage.html
 # Node/React
 web/node_modules/
 web/dist/
+web/coverage/
+web/test-results/
+web/playwright-report/
 
 # IDE
 .idea/
