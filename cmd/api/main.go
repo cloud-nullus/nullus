@@ -11,8 +11,12 @@ import (
 	"time"
 
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
-	"github.com/cloud-nullus/draft/internal/admin/adapter/repository"
+	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
+	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
+	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
+	stackuc "github.com/cloud-nullus/draft/internal/stack/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,8 +45,8 @@ func main() {
 	defer pool.Close()
 
 	// Initialize repositories
-	orgRepo := repository.NewPostgresOrgRepository(pool)
-	clusterRepo := repository.NewPostgresClusterRepository(pool)
+	orgRepo := adminrepo.NewPostgresOrgRepository(pool)
+	clusterRepo := adminrepo.NewPostgresClusterRepository(pool)
 
 	// Initialize use cases
 	orgUC := usecase.NewOrgUseCase(orgRepo)
@@ -51,6 +55,12 @@ func main() {
 	// Initialize handlers
 	orgHandler := adminhandler.NewOrgHandler(orgUC)
 	clusterHandler := adminhandler.NewClusterHandler(clusterUC)
+
+	// Stack: in-memory repos + log streamer
+	memStackRepo := stackrepo.NewMemoryStackRepository()
+	memStreamer := logadapter.NewMemoryStreamer()
+	installStackUC := stackuc.NewInstallStack(memStackRepo, memStreamer)
+	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
 
 	// Initialize Echo
 	e := echo.New()
@@ -66,6 +76,7 @@ func main() {
 	v1 := e.Group("/api/v1")
 	orgHandler.RegisterRoutes(v1)
 	clusterHandler.RegisterRoutes(v1)
+	deployHandler.RegisterRoutes(v1, e)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

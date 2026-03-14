@@ -35,5 +35,54 @@
     "getStarted": "Get Started",
     "viewStacks": "View Stacks",
     "viewPipelines": "View Pipelines"
+  },
+  "cicd": {
+    "templates": "CI/CD Templates",
+    "templatesDesc": "Select a pipeline template to get started.",
+    "list": "CI/CD Pipelines",
+    "listDesc": "CI/CD pipeline list",
+    "history": "Deployment History",
+    "historyDesc": "CI/CD deployment history",
+    "newPipeline": "New Pipeline",
+    "useTemplate": "Use Template",
+    "deploy": "Deploy",
+    "status": {
+      "running": "Running",
+      "success": "Success",
+      "failed": "Failed",
+      "pending": "Pending",
+      "cancelled": "Cancelled"
+    }
+  },
+  "observability": {
+    "monitoring": "Monitoring Dashboard",
+    "monitoringDesc": "Real-time cluster and tool monitoring (auto-refresh every 5s)",
+    "alertRules": "Alert Rules",
+    "alertRulesDesc": "Alert rule list and management",
+    "alertHistory": "Alert History",
+    "alertHistoryDesc": "Alert occurrence history",
+    "newRule": "New Rule",
+    "severity": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "info": "Info"
+    }
+  },
+  "deploy": {
+    "title": "Deployment Log",
+    "phases": {
+      "initializing": "Initializing",
+      "building": "Building",
+      "deploying": "Deploying"
+    },
+    "status": {
+      "connecting": "Connecting...",
+      "connected": "Connected",
+      "running": "Running",
+      "success": "Deployment Complete",
+      "failed": "Deployment Failed"
+    },
+    "successMessage": "All phases completed successfully.",
+    "failedMessage": "An error occurred during deployment. Check the logs."
   }
 }

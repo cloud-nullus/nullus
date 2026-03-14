@@ -1,0 +1,121 @@
+package repository
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
+)
+
+// MemoryPipelineRepository is an in-memory implementation of port.PipelineRepository.
+type MemoryPipelineRepository struct {
+	mu        sync.RWMutex
+	pipelines map[string]*domain.Pipeline
+}
+
+// NewMemoryPipelineRepository constructs an empty MemoryPipelineRepository.
+func NewMemoryPipelineRepository() *MemoryPipelineRepository {
+	return &MemoryPipelineRepository{
+		pipelines: make(map[string]*domain.Pipeline),
+	}
+}
+
+// Create stores a new pipeline.
+func (r *MemoryPipelineRepository) Create(_ context.Context, p *domain.Pipeline) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pipelines[p.ID] = p
+	return nil
+}
+
+// GetByID retrieves a pipeline by its ID.
+func (r *MemoryPipelineRepository) GetByID(_ context.Context, id string) (*domain.Pipeline, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.pipelines[id]
+	if !ok {
+		return nil, fmt.Errorf("pipeline %q not found", id)
+	}
+	return p, nil
+}
+
+// List returns all pipelines for an organization.
+func (r *MemoryPipelineRepository) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*domain.Pipeline
+	for _, p := range r.pipelines {
+		if p.OrgID == orgID {
+			result = append(result, p)
+		}
+	}
+	return result, nil
+}
+
+// Update persists changes to an existing pipeline.
+func (r *MemoryPipelineRepository) Update(_ context.Context, p *domain.Pipeline) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.pipelines[p.ID]; !ok {
+		return fmt.Errorf("pipeline %q not found", p.ID)
+	}
+	r.pipelines[p.ID] = p
+	return nil
+}
+
+// MemoryDeploymentRepository is an in-memory implementation of port.DeploymentRepository.
+type MemoryDeploymentRepository struct {
+	mu          sync.RWMutex
+	deployments map[string]*domain.Deployment
+}
+
+// NewMemoryDeploymentRepository constructs an empty MemoryDeploymentRepository.
+func NewMemoryDeploymentRepository() *MemoryDeploymentRepository {
+	return &MemoryDeploymentRepository{
+		deployments: make(map[string]*domain.Deployment),
+	}
+}
+
+// Create stores a new deployment.
+func (r *MemoryDeploymentRepository) Create(_ context.Context, d *domain.Deployment) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.deployments[d.ID] = d
+	return nil
+}
+
+// GetByID retrieves a deployment by its ID.
+func (r *MemoryDeploymentRepository) GetByID(_ context.Context, id string) (*domain.Deployment, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	d, ok := r.deployments[id]
+	if !ok {
+		return nil, fmt.Errorf("deployment %q not found", id)
+	}
+	return d, nil
+}
+
+// ListByPipelineID returns all deployments for a given pipeline.
+func (r *MemoryDeploymentRepository) ListByPipelineID(_ context.Context, pipelineID string) ([]*domain.Deployment, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*domain.Deployment
+	for _, d := range r.deployments {
+		if d.PipelineID == pipelineID {
+			result = append(result, d)
+		}
+	}
+	return result, nil
+}
+
+// Update persists changes to an existing deployment.
+func (r *MemoryDeploymentRepository) Update(_ context.Context, d *domain.Deployment) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.deployments[d.ID]; !ok {
+		return fmt.Errorf("deployment %q not found", d.ID)
+	}
+	r.deployments[d.ID] = d
+	return nil
+}
