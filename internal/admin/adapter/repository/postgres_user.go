@@ -1,0 +1,100 @@
+package repository
+
+import (
+	"context"
+	"errors"
+
+	"github.com/cloud-nullus/draft/internal/admin/domain"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// PostgresUserRepository implements port.UserRepository using pgx.
+type PostgresUserRepository struct {
+	pool *pgxpool.Pool
+}
+
+// NewPostgresUserRepository creates a new PostgresUserRepository.
+func NewPostgresUserRepository(pool *pgxpool.Pool) *PostgresUserRepository {
+	return &PostgresUserRepository{pool: pool}
+}
+
+// Create inserts a new user into the database.
+func (r *PostgresUserRepository) Create(ctx context.Context, user *domain.User) error {
+	const q = `
+		INSERT INTO users (id, email, name, role, org_id, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+
+	_, err := r.pool.Exec(ctx, q,
+		user.ID, user.Email, user.Name, user.Role,
+		user.OrgID, user.IsActive, user.CreatedAt, user.UpdatedAt,
+	)
+	return err
+}
+
+// GetByID retrieves a user by their ID. Returns nil if not found.
+func (r *PostgresUserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
+	const q = `
+		SELECT id, email, name, role, org_id, is_active, created_at, updated_at
+		FROM users WHERE id = $1`
+
+	user := &domain.User{}
+	err := r.pool.QueryRow(ctx, q, id).Scan(
+		&user.ID, &user.Email, &user.Name, &user.Role,
+		&user.OrgID, &user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+// GetByEmail retrieves a user by their email. Returns nil if not found.
+func (r *PostgresUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	const q = `
+		SELECT id, email, name, role, org_id, is_active, created_at, updated_at
+		FROM users WHERE email = $1`
+
+	user := &domain.User{}
+	err := r.pool.QueryRow(ctx, q, email).Scan(
+		&user.ID, &user.Email, &user.Name, &user.Role,
+		&user.OrgID, &user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+// ListByOrg retrieves all users belonging to a given organization.
+func (r *PostgresUserRepository) ListByOrg(ctx context.Context, orgID string) ([]*domain.User, error) {
+	const q = `
+		SELECT id, email, name, role, org_id, is_active, created_at, updated_at
+		FROM users WHERE org_id = $1
+		ORDER BY created_at ASC`
+
+	rows, err := r.pool.Query(ctx, q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*domain.User
+	for rows.Next() {
+		user := &domain.User{}
+		if err := rows.Scan(
+			&user.ID, &user.Email, &user.Name, &user.Role,
+			&user.OrgID, &user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}

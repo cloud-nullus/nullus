@@ -10,7 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
+	"github.com/cloud-nullus/draft/internal/admin/adapter/repository"
+	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/config"
+	"github.com/cloud-nullus/draft/internal/shared/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
 )
@@ -23,18 +28,44 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize database pool
+	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.Name,
+		cfg.Database.User, cfg.Database.Password, cfg.Database.SSLMode,
+	)
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	// Initialize repositories
+	orgRepo := repository.NewPostgresOrgRepository(pool)
+	clusterRepo := repository.NewPostgresClusterRepository(pool)
+
+	// Initialize use cases
+	orgUC := usecase.NewOrgUseCase(orgRepo)
+	clusterUC := usecase.NewClusterUseCase(clusterRepo)
+
+	// Initialize handlers
+	orgHandler := adminhandler.NewOrgHandler(orgUC)
+	clusterHandler := adminhandler.NewClusterHandler(clusterUC)
+
 	// Initialize Echo
 	e := echo.New()
 	e.HideBanner = true
+	e.HTTPErrorHandler = middleware.AppErrorHandler
 
 	// Global middleware
 	e.Use(echomw.Recover())
 	e.Use(echomw.RequestID())
-	e.Use(echomw.Logger())
+	e.Use(middleware.SlogLogger())
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
-	_ = v1 // routes will be registered here
+	orgHandler.RegisterRoutes(v1)
+	clusterHandler.RegisterRoutes(v1)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
