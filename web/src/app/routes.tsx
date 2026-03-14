@@ -22,6 +22,18 @@ const StackDeployPage = lazy(() =>
   import('../features/stack/pages/stack-deploy-page').then((m) => ({ default: m.StackDeployPage }))
 )
 
+const StackHistoryPage = lazy(() =>
+  import('../features/stack/pages/stack-history-page').then((m) => ({ default: m.StackHistoryPage }))
+)
+
+const StackVersionPage = lazy(() =>
+  import('../features/stack/pages/stack-version-page').then((m) => ({ default: m.StackVersionPage }))
+)
+
+const DeveloperDeployPage = lazy(() =>
+  import('../features/cicd/pages/developer-deploy-page').then((m) => ({ default: m.DeveloperDeployPage }))
+)
+
 const CicdTemplatePage = lazy(() =>
   import('../features/cicd/pages/cicd-template-page').then((m) => ({ default: m.CicdTemplatePage }))
 )
@@ -87,9 +99,11 @@ export const router = createBrowserRouter([
       { path: 'stack/templates', element: withSuspense(<StackTemplatePage />) },
       { path: 'stack/install', element: withSuspense(<StackInstallPage />) },
       { path: 'stack/list', element: withSuspense(<StackListPage />) },
-      { path: 'stack/history', element: withSuspense(<HomePage />) },
-      { path: 'stack/version', element: withSuspense(<HomePage />) },
+      { path: 'stack/history', element: withSuspense(<StackHistoryPage />) },
+      { path: 'stack/versions', element: withSuspense(<StackVersionPage />) },
+      { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
       { path: 'stack/deploy/:id', element: withSuspense(<StackDeployPage />) },
+      { path: 'cicd/developer-deploy', element: withSuspense(<DeveloperDeployPage />) },
       { path: 'cicd/templates', element: withSuspense(<CicdTemplatePage />) },
       { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
       { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },

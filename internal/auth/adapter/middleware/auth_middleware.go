@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/labstack/echo/v4"
@@ -56,6 +57,67 @@ func RequireRole(roles ...admindomain.Role) echo.MiddlewareFunc {
 			}
 
 			return next(c)
+		}
+	}
+}
+
+// roleAPIMatrix defines which URL path prefixes each role may access.
+// Admin has full access; DevOps may access stacks, CI/CD, observability, and clusters;
+// Developer may only access CI/CD and observability (read-only).
+var roleAPIMatrix = map[admindomain.Role][]string{
+	admindomain.RoleAdmin: {
+		"/api/v1/",
+	},
+	admindomain.RoleDevOps: {
+		"/api/v1/stacks",
+		"/api/v1/compatibility",
+		"/api/v1/pipelines",
+		"/api/v1/templates",
+		"/api/v1/dashboards",
+		"/api/v1/alerts",
+		"/api/v1/clusters",
+	},
+	admindomain.RoleDeveloper: {
+		"/api/v1/pipelines",
+		"/api/v1/dashboards",
+		"/api/v1/alerts",
+	},
+}
+
+// RBACMiddleware enforces the role-based API access matrix.
+// Admin bypasses all checks. DevOps and Developer are limited to their allowed prefixes.
+func RBACMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			user, ok := c.Get(userContextKey).(*admindomain.User)
+			if !ok || user == nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{
+					"error": "authentication required",
+				})
+			}
+
+			// Admin has unrestricted access.
+			if user.Role == admindomain.RoleAdmin {
+				return next(c)
+			}
+
+			path := c.Request().URL.Path
+			allowedPrefixes, known := roleAPIMatrix[user.Role]
+			if !known {
+				return c.JSON(http.StatusForbidden, map[string]string{
+					"error": "insufficient permissions",
+				})
+			}
+
+			for _, prefix := range allowedPrefixes {
+				if strings.HasPrefix(path, prefix) {
+					return next(c)
+				}
+			}
+
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": "insufficient permissions",
+			})
 		}
 	}
 }

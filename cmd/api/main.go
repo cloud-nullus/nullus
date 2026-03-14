@@ -62,6 +62,16 @@ func main() {
 	installStackUC := stackuc.NewInstallStack(memStackRepo, memStreamer)
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
 
+	// Compatibility
+	memCompatRepo := stackrepo.NewMemoryCompatibilityRepository()
+	validateCompatUC := stackuc.NewValidateCompatibility(memCompatRepo)
+	compatHandler := stackhandler.NewCompatibilityHandler(memCompatRepo, validateCompatUC)
+
+	// History
+	memHistoryRepo := stackrepo.NewMemoryHistoryRepository()
+	manageHistoryUC := stackuc.NewManageHistory(memHistoryRepo)
+	historyHandler := stackhandler.NewHistoryHandler(memHistoryRepo, memStackRepo, manageHistoryUC)
+
 	// Initialize Echo
 	e := echo.New()
 	e.HideBanner = true
@@ -77,6 +87,8 @@ func main() {
 	orgHandler.RegisterRoutes(v1)
 	clusterHandler.RegisterRoutes(v1)
 	deployHandler.RegisterRoutes(v1, e)
+	compatHandler.RegisterRoutes(v1)
+	historyHandler.RegisterRoutes(v1)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

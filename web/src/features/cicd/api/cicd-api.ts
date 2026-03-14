@@ -5,6 +5,7 @@ import { api } from '../../../lib/api'
 
 export type PipelineStatus = 'running' | 'success' | 'failed' | 'pending' | 'cancelled'
 export type AppType = 'web-backend' | 'web-frontend' | 'batch-job'
+export type AppTemplate = 'react-spa' | 'next-app' | 'express-api' | 'spring-boot' | 'python-fastapi'
 
 export interface CicdTemplate {
   id: string
@@ -43,12 +44,41 @@ export interface CreatePipelineRequest {
   templateId?: string
 }
 
+export interface AppTemplateInfo {
+  id: AppTemplate
+  name: string
+  description: string
+  language: string
+}
+
+export interface DeployAppRequest {
+  appName: string
+  gitUrl: string
+  clusterId: string
+  namespace: string
+  template: AppTemplate
+  resources: {
+    cpuRequest: string
+    cpuLimit: string
+    memoryRequest: string
+    memoryLimit: string
+  }
+  envVars: { key: string; value: string }[]
+}
+
+export interface DeployAppResult {
+  deploymentId: string
+  appName: string
+  status: PipelineStatus
+}
+
 // --- Query keys ---
 
 const queryKeys = {
   templates: () => ['cicd', 'templates'] as const,
   pipelines: (filters?: Record<string, unknown>) => ['cicd', 'pipelines', filters] as const,
   deployments: (filters?: Record<string, unknown>) => ['cicd', 'deployments', filters] as const,
+  appTemplates: () => ['cicd', 'appTemplates'] as const,
 }
 
 // --- API functions ---
@@ -68,6 +98,12 @@ const cicdApiCalls = {
 
   getDeployments: (filters?: { pipelineId?: string; status?: string }) =>
     api.get<{ items: Deployment[]; total: number }>('/cicd/deployments', { params: filters }).then((r) => r.data),
+
+  getAppTemplates: () =>
+    api.get<AppTemplateInfo[]>('/cicd/app-templates').then((r) => r.data),
+
+  deployApp: (request: DeployAppRequest) =>
+    api.post<DeployAppResult>('/cicd/deploy-app', request).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -111,5 +147,18 @@ export function useDeployments(filters?: { pipelineId?: string; status?: string 
   return useQuery({
     queryKey: queryKeys.deployments(filters),
     queryFn: () => cicdApiCalls.getDeployments(filters),
+  })
+}
+
+export function useAppTemplates() {
+  return useQuery({
+    queryKey: queryKeys.appTemplates(),
+    queryFn: cicdApiCalls.getAppTemplates,
+  })
+}
+
+export function useDeployApp() {
+  return useMutation({
+    mutationFn: cicdApiCalls.deployApp,
   })
 }
