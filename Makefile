@@ -51,8 +51,9 @@ test:
 	go test ./... -v -count=1
 
 test-cover:
-	go test ./... -coverprofile=coverage.out
+	go test ./... -coverprofile=coverage.out -covermode=atomic
 	go tool cover -html=coverage.out -o coverage.html
+	go tool cover -func=coverage.out | tail -1
 	@echo "Coverage report: coverage.html"
 
 lint:
