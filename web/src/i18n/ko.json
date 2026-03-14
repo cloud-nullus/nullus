@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "devsecopsStack": "데브섹옵스 스택",
+    "stackTemplate": "스택 템플릿",
+    "stackInstall": "스택 설치",
+    "stackList": "스택 목록",
+    "stackHistory": "스택 이력",
+    "stackVersion": "스택 버전 관리",
+    "cicd": "CI/CD",
+    "cicdTemplate": "CI/CD 템플릿",
+    "cicdList": "CI/CD 목록",
+    "cicdHistory": "CI/CD 이력",
+    "observability": "관측성",
+    "monitoringDashboard": "모니터링 대시보드",
+    "alertRules": "알림 규칙",
+    "alertHistory": "알림 이력",
+    "admin": "관리",
+    "organization": "조직",
+    "userManagement": "사용자 관리",
+    "clusterManagement": "클러스터 관리",
+    "logout": "로그아웃"
+  },
+  "common": {
+    "save": "저장",
+    "cancel": "취소",
+    "delete": "삭제",
+    "search": "검색",
+    "filter": "필터"
+  },
+  "home": {
+    "welcome": "Nullus 플랫폼에 오신 것을 환영합니다",
+    "adminGreeting": "관리자로서 플랫폼을 관리하고 있습니다.",
+    "devopsGreeting": "DevOps 엔지니어로서 데브섹옵스 스택을 관리하고 있습니다.",
+    "developerGreeting": "개발자로서 애플리케이션을 배포하고 있습니다.",
+    "getStarted": "시작하기",
+    "viewStacks": "스택 보기",
+    "viewPipelines": "파이프라인 보기"
+  }
+}

@@ -1,0 +1,28 @@
+server:
+  port: 8080
+  mode: development
+
+database:
+  host: localhost
+  port: 5432
+  name: nullus_dev
+  user: nullus
+  password: nullus_dev
+  sslmode: disable
+  max_open_conns: 10
+  max_idle_conns: 3
+  conn_max_lifetime: 5m
+
+auth:
+  mode: session
+  session:
+    secret: dev-secret-do-not-use-in-production
+    max_age: 86400
+
+helm:
+  timeout: 300s
+  namespace_prefix: nullus-dev-
+
+log:
+  level: debug
+  format: text

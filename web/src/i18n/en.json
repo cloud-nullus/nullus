@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "devsecopsStack": "DevSecOps Stack",
+    "stackTemplate": "Stack Template",
+    "stackInstall": "Stack Install",
+    "stackList": "Stack List",
+    "stackHistory": "Stack History",
+    "stackVersion": "Stack Version Management",
+    "cicd": "CI/CD",
+    "cicdTemplate": "CI/CD Template",
+    "cicdList": "CI/CD List",
+    "cicdHistory": "CI/CD History",
+    "observability": "Observability",
+    "monitoringDashboard": "Monitoring Dashboard",
+    "alertRules": "Alert Rules",
+    "alertHistory": "Alert History",
+    "admin": "Admin",
+    "organization": "Organization",
+    "userManagement": "User Management",
+    "clusterManagement": "Cluster Management",
+    "logout": "Logout"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "search": "Search",
+    "filter": "Filter"
+  },
+  "home": {
+    "welcome": "Welcome to Nullus Platform",
+    "adminGreeting": "You are managing the platform as Administrator.",
+    "devopsGreeting": "You are managing DevSecOps stacks as DevOps Engineer.",
+    "developerGreeting": "You are deploying applications as Developer.",
+    "getStarted": "Get Started",
+    "viewStacks": "View Stacks",
+    "viewPipelines": "View Pipelines"
+  }
+}

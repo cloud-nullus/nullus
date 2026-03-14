@@ -1,0 +1,29 @@
+# Go
+bin/
+*.exe
+coverage.out
+coverage.html
+
+# Node/React
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OMC (local state)
+.omc/
+
+# Database
+postgres_data/
