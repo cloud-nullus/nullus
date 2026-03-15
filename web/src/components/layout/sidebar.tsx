@@ -150,7 +150,7 @@ export function Sidebar() {
               type="button"
               onClick={() => toggleGroup(group.key)}
               className={cn(
-                'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[#a5b4fc] uppercase',
+                'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[#c4b5fd] uppercase',
                 collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-4 py-2.5'
               )}
               aria-label={t(group.label)}
@@ -180,7 +180,7 @@ export function Sidebar() {
                           collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2 pl-8',
                           isActive
                             ? 'border-r-[#6366f1] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
-                            : 'border-r-transparent bg-transparent text-[#cbd5e1]'
+                            : 'border-r-transparent bg-transparent text-[#e2e8f0]'
                         )
                       }
                     >
