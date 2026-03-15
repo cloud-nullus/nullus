@@ -26,7 +26,8 @@ func newClusterEcho() (*echo.Echo, *adminhandler.ClusterHandler) {
 	h := adminhandler.NewClusterHandler(clusterUC)
 
 	v1 := e.Group("/api/v1")
-	h.RegisterRoutes(v1)
+	admin := v1.Group("/admin")
+	h.RegisterRoutes(admin)
 
 	return e, h
 }
@@ -35,7 +36,7 @@ func TestClusterHandler_RegisterCluster_201(t *testing.T) {
 	e, _ := newClusterEcho()
 
 	body := `{"name":"prod-cluster","type":"target","endpoint":"https://k8s.example.com","org_id":"org-1"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/clusters", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/clusters", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -45,9 +46,8 @@ func TestClusterHandler_RegisterCluster_201(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	data := resp["data"].(map[string]any)
-	assert.Equal(t, "prod-cluster", data["name"])
-	assert.Equal(t, "pending", data["connection_status"])
+	assert.Equal(t, "prod-cluster", resp["name"])
+	assert.Equal(t, "pending", resp["connection_status"])
 }
 
 func TestClusterHandler_ListClusters_200(t *testing.T) {
@@ -56,7 +56,7 @@ func TestClusterHandler_ListClusters_200(t *testing.T) {
 	// Register two clusters
 	for _, name := range []string{"cluster-a", "cluster-b"} {
 		body := `{"name":"` + name + `","type":"target","endpoint":"https://k8s.example.com","org_id":"org-1"}`
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/clusters", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/clusters", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -64,7 +64,7 @@ func TestClusterHandler_ListClusters_200(t *testing.T) {
 	}
 
 	// List
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/clusters", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clusters", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -72,9 +72,10 @@ func TestClusterHandler_ListClusters_200(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	items, ok := resp["data"].([]any)
+	items, ok := resp["items"].([]any)
 	require.True(t, ok)
 	assert.Len(t, items, 2)
+	assert.EqualValues(t, 2, resp["total"])
 }
 
 func TestClusterHandler_DeleteCluster_204(t *testing.T) {
@@ -82,7 +83,7 @@ func TestClusterHandler_DeleteCluster_204(t *testing.T) {
 
 	// Create cluster
 	body := `{"name":"to-delete","type":"pipeline","endpoint":"https://k8s.example.com","org_id":"org-1"}`
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/clusters", strings.NewReader(body))
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/clusters", strings.NewReader(body))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
 	e.ServeHTTP(createRec, createReq)
@@ -90,10 +91,10 @@ func TestClusterHandler_DeleteCluster_204(t *testing.T) {
 
 	var createResp map[string]any
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
-	id := createResp["data"].(map[string]any)["id"].(string)
+	id := createResp["id"].(string)
 
 	// Delete
-	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/clusters/"+id, nil)
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/clusters/"+id, nil)
 	delRec := httptest.NewRecorder()
 	e.ServeHTTP(delRec, delReq)
 

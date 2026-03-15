@@ -40,10 +40,21 @@ func doRequest(t *testing.T, method, path string, body any) (int, map[string]any
 		t.Fatalf("read response body: %v", err)
 	}
 
-	var parsed map[string]any
+	parsed := map[string]any{}
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &parsed); err != nil {
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
 			t.Logf("response body (not JSON): %s", string(raw))
+		} else {
+			switch v := value.(type) {
+			case map[string]any:
+				parsed = v
+			case []any:
+				parsed["items"] = v
+				parsed["total"] = len(v)
+			default:
+				parsed["value"] = v
+			}
 		}
 	}
 
@@ -58,24 +69,27 @@ func assertStatus(t *testing.T, got, want int) {
 	}
 }
 
-// parseData extracts the "data" field from a response map.
 func parseData(t *testing.T, resp map[string]any) map[string]any {
 	t.Helper()
-	data, ok := resp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("response missing 'data' field, got: %v", resp)
+	if data, ok := resp["data"].(map[string]any); ok {
+		return data
 	}
-	return data
+	if len(resp) == 0 {
+		t.Fatalf("response body is empty")
+	}
+	return resp
 }
 
-// parseDataSlice extracts "data" as a slice from a response map.
 func parseDataSlice(t *testing.T, resp map[string]any) []any {
 	t.Helper()
-	data, ok := resp["data"].([]any)
-	if !ok {
-		t.Fatalf("response 'data' is not a slice, got: %v", resp)
+	if items, ok := resp["items"].([]any); ok {
+		return items
 	}
-	return data
+	if data, ok := resp["data"].([]any); ok {
+		return data
+	}
+	t.Fatalf("response has no list payload, got: %v", resp)
+	return nil
 }
 
 // getString extracts a string field from a map.

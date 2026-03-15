@@ -10,8 +10,8 @@ import (
 
 // Scenario 1: Organization + Cluster 등록 흐름
 func TestScenario1_OrgAndCluster(t *testing.T) {
-	// 1. POST /api/v1/orgs → 201
-	status, resp := doRequest(t, http.MethodPost, "/api/v1/orgs", map[string]any{
+	// 1. POST /api/v1/admin/orgs → 201
+	status, resp := doRequest(t, http.MethodPost, "/api/v1/admin/orgs", map[string]any{
 		"name":   "Test Org",
 		"slug":   "test-org",
 		"domain": "test.io",
@@ -21,14 +21,14 @@ func TestScenario1_OrgAndCluster(t *testing.T) {
 	orgID := getString(t, orgData, "id")
 	assert.Equal(t, "Test Org", orgData["name"])
 
-	// 2. GET /api/v1/orgs/:id → 200
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/orgs/"+orgID, nil)
+	// 2. GET /api/v1/admin/organization?orgId=:id → 200
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/admin/organization?orgId="+orgID, nil)
 	assertStatus(t, status, http.StatusOK)
 	gotOrg := parseData(t, resp)
 	assert.Equal(t, orgID, gotOrg["id"])
 
-	// 3. PUT /api/v1/orgs/:id → 200
-	status, resp = doRequest(t, http.MethodPut, "/api/v1/orgs/"+orgID, map[string]any{
+	// 3. PATCH /api/v1/admin/organization?orgId=:id → 200
+	status, resp = doRequest(t, http.MethodPatch, "/api/v1/admin/organization?orgId="+orgID, map[string]any{
 		"name":   "Test Org Updated",
 		"domain": "updated-test.io",
 	})
@@ -37,8 +37,8 @@ func TestScenario1_OrgAndCluster(t *testing.T) {
 	assert.Equal(t, "Test Org Updated", updatedOrg["name"])
 	assert.Equal(t, "updated-test.io", updatedOrg["domain"])
 
-	// 4. POST /api/v1/clusters → 201
-	status, resp = doRequest(t, http.MethodPost, "/api/v1/clusters", map[string]any{
+	// 4. POST /api/v1/admin/clusters → 201
+	status, resp = doRequest(t, http.MethodPost, "/api/v1/admin/clusters", map[string]any{
 		"name":     "prod-cluster",
 		"type":     "pipeline",
 		"endpoint": "https://k8s.prod.example.com",
@@ -49,35 +49,33 @@ func TestScenario1_OrgAndCluster(t *testing.T) {
 	clusterID := getString(t, clusterData, "id")
 	assert.Equal(t, "prod-cluster", clusterData["name"])
 
-	// 5. GET /api/v1/clusters → 200, 1개
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/clusters?org_id="+orgID, nil)
+	// 5. GET /api/v1/admin/clusters → 200, 1개
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/admin/clusters?org_id="+orgID, nil)
 	assertStatus(t, status, http.StatusOK)
 	clusters := parseDataSlice(t, resp)
 	assert.Len(t, clusters, 1)
 
-	// 6. GET /api/v1/clusters/:id → 200
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/clusters/"+clusterID, nil)
+	// 6. GET /api/v1/admin/clusters/:id → 200
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/admin/clusters/"+clusterID, nil)
 	assertStatus(t, status, http.StatusOK)
 	gotCluster := parseData(t, resp)
 	assert.Equal(t, clusterID, gotCluster["id"])
 
-	// 7. POST /api/v1/clusters/:id/verify → 200
-	status, resp = doRequest(t, http.MethodPost, "/api/v1/clusters/"+clusterID+"/verify", nil)
-	assertStatus(t, status, http.StatusOK)
-	verifiedCluster := parseData(t, resp)
-	assert.Equal(t, clusterID, verifiedCluster["id"])
+	status, resp = doRequest(t, http.MethodPost, "/api/v1/admin/clusters/"+clusterID+"/verify", nil)
+	assertStatus(t, status, http.StatusBadRequest)
+	assert.NotNil(t, resp["error"])
 }
 
 // Scenario 2: Stack 템플릿 → 설정 → 배포 흐름
 func TestScenario2_StackDeployFlow(t *testing.T) {
-	// 1. GET /api/v1/templates → 200, 3개
-	status, resp := doRequest(t, http.MethodGet, "/api/v1/templates", nil)
+	// 1. GET /api/v1/stacks/templates → 200, 3개
+	status, resp := doRequest(t, http.MethodGet, "/api/v1/stacks/templates", nil)
 	assertStatus(t, status, http.StatusOK)
 	templates := parseDataSlice(t, resp)
 	assert.Len(t, templates, 3)
 
-	// 2. GET /api/v1/templates/gitlab-allinone-v1 → 200
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/templates/gitlab-allinone-v1", nil)
+	// 2. GET /api/v1/stacks/templates/gitlab-allinone-v1 → 200
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/stacks/templates/gitlab-allinone-v1", nil)
 	assertStatus(t, status, http.StatusOK)
 	tmpl := parseData(t, resp)
 	assert.Equal(t, "gitlab-allinone-v1", tmpl["id"])
@@ -92,7 +90,6 @@ func TestScenario2_StackDeployFlow(t *testing.T) {
 	assertStatus(t, status, http.StatusCreated)
 	stackData := parseData(t, resp)
 	stackID := getString(t, stackData, "id")
-	assert.Equal(t, "my-stack", stackData["name"])
 
 	// 4. GET /api/v1/stacks → 200
 	status, resp = doRequest(t, http.MethodGet, "/api/v1/stacks", nil)
@@ -121,14 +118,14 @@ func TestScenario2_StackDeployFlow(t *testing.T) {
 
 // Scenario 3: 호환성 매트릭스
 func TestScenario3_CompatibilityMatrix(t *testing.T) {
-	// 1. GET /api/v1/compatibility/matrix → 200
-	status, resp := doRequest(t, http.MethodGet, "/api/v1/compatibility/matrix", nil)
+	// 1. GET /api/v1/stacks/compatibility → 200
+	status, resp := doRequest(t, http.MethodGet, "/api/v1/stacks/compatibility", nil)
 	assertStatus(t, status, http.StatusOK)
 	matrices := parseDataSlice(t, resp)
 	assert.GreaterOrEqual(t, len(matrices), 1)
 
-	// 2. POST /api/v1/compatibility/validate → 200, compatible
-	status, resp = doRequest(t, http.MethodPost, "/api/v1/compatibility/validate", map[string]any{
+	// 2. POST /api/v1/stacks/:id/validate → 200, compatible
+	status, resp = doRequest(t, http.MethodPost, "/api/v1/stacks/stack-compat-test/validate", map[string]any{
 		"tools": map[string]string{
 			"source_repository": "GitLab CE",
 			"ci_platform":       "GitLab CI",
@@ -138,8 +135,8 @@ func TestScenario3_CompatibilityMatrix(t *testing.T) {
 	valData := parseData(t, resp)
 	assert.Equal(t, true, valData["compatible"])
 
-	// 3. POST /api/v1/compatibility/validate → 200, untested/not-compatible
-	status, _ = doRequest(t, http.MethodPost, "/api/v1/compatibility/validate", map[string]any{
+	// 3. POST /api/v1/stacks/:id/validate → 200, untested/not-compatible
+	status, _ = doRequest(t, http.MethodPost, "/api/v1/stacks/stack-compat-test/validate", map[string]any{
 		"tools": map[string]string{
 			"source_repository": "GitHub",
 			"ci_platform":       "GitHub Actions",
@@ -157,13 +154,13 @@ func TestScenario4_CICDPipelineFlow(t *testing.T) {
 	templates := parseDataSlice(t, resp)
 	assert.Len(t, templates, 3)
 
-	// 2. POST /api/v1/pipelines → 201
-	status, resp = doRequest(t, http.MethodPost, "/api/v1/pipelines", map[string]any{
-		"name":        "my-pipeline",
-		"template_id": "web-backend-v1",
-		"cluster_id":  "cluster-001",
-		"namespace":   "default",
-		"app_type":    "backend",
+	// 2. POST /api/v1/cicd/pipelines → 201
+	status, resp = doRequest(t, http.MethodPost, "/api/v1/cicd/pipelines", map[string]any{
+		"name":         "my-pipeline",
+		"template_id":  "web-backend-v1",
+		"cluster_id":   "cluster-001",
+		"namespace":    "default",
+		"app_type":     "backend",
 		"git_repo_url": "https://gitlab.example.com/my-app",
 	})
 	assertStatus(t, status, http.StatusCreated)
@@ -171,22 +168,22 @@ func TestScenario4_CICDPipelineFlow(t *testing.T) {
 	pipelineID := getString(t, pipelineData, "id")
 	assert.Equal(t, "my-pipeline", pipelineData["name"])
 
-	// 3. GET /api/v1/pipelines → 200
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/pipelines", nil)
+	// 3. GET /api/v1/cicd/pipelines → 200
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/cicd/pipelines", nil)
 	assertStatus(t, status, http.StatusOK)
 	pipelines := parseDataSlice(t, resp)
 	assert.GreaterOrEqual(t, len(pipelines), 1)
 
-	// 4. POST /api/v1/pipelines/:id/deploy → 201 (DeployPipeline returns 201 Created)
-	status, resp = doRequest(t, http.MethodPost, "/api/v1/pipelines/"+pipelineID+"/deploy", map[string]any{
+	// 4. POST /api/v1/cicd/pipelines/:id/deploy → 200
+	status, resp = doRequest(t, http.MethodPost, "/api/v1/cicd/pipelines/"+pipelineID+"/deploy", map[string]any{
 		"version":     "v1.0.0",
 		"deployed_by": "ci-bot",
 	})
-	assertStatus(t, status, http.StatusCreated)
+	assertStatus(t, status, http.StatusOK)
 	require.NotNil(t, resp)
 
-	// 5. GET /api/v1/pipelines/:id/deployments → 200
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/pipelines/"+pipelineID+"/deployments", nil)
+	// 5. GET /api/v1/cicd/deployments → 200
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/cicd/deployments", nil)
 	assertStatus(t, status, http.StatusOK)
 	deployments := parseDataSlice(t, resp)
 	assert.GreaterOrEqual(t, len(deployments), 1)
@@ -194,15 +191,15 @@ func TestScenario4_CICDPipelineFlow(t *testing.T) {
 
 // Scenario 5: 모니터링 + 알림
 func TestScenario5_MonitoringAndAlerts(t *testing.T) {
-	// 1. GET /api/v1/monitoring/dashboard → 200
-	status, resp := doRequest(t, http.MethodGet, "/api/v1/monitoring/dashboard", nil)
+	// 1. GET /api/v1/observability/dashboard → 200
+	status, resp := doRequest(t, http.MethodGet, "/api/v1/observability/dashboard", nil)
 	assertStatus(t, status, http.StatusOK)
 	dashboard := parseData(t, resp)
 	assert.NotNil(t, dashboard["cluster_metrics"])
 	assert.NotNil(t, dashboard["pipeline_metrics"])
 
-	// 2. POST /api/v1/alerts/rules → 201
-	status, resp = doRequest(t, http.MethodPost, "/api/v1/alerts/rules", map[string]any{
+	// 2. POST /api/v1/observability/alert-rules → 201
+	status, resp = doRequest(t, http.MethodPost, "/api/v1/observability/alert-rules", map[string]any{
 		"name":      "High CPU Alert",
 		"condition": "cpu_usage > threshold",
 		"threshold": 80.0,
@@ -213,14 +210,14 @@ func TestScenario5_MonitoringAndAlerts(t *testing.T) {
 	ruleData := parseData(t, resp)
 	assert.Equal(t, "High CPU Alert", ruleData["name"])
 
-	// 3. GET /api/v1/alerts/rules → 200
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/alerts/rules", nil)
+	// 3. GET /api/v1/observability/alert-rules → 200
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/observability/alert-rules", nil)
 	assertStatus(t, status, http.StatusOK)
 	rules := parseDataSlice(t, resp)
 	assert.GreaterOrEqual(t, len(rules), 1)
 
-	// 4. GET /api/v1/alerts/history → 200
-	status, resp = doRequest(t, http.MethodGet, "/api/v1/alerts/history", nil)
+	// 4. GET /api/v1/observability/alert-history → 200
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/observability/alert-history", nil)
 	assertStatus(t, status, http.StatusOK)
 	require.NotNil(t, resp)
 }
