@@ -11,6 +11,7 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 type AlertRuleWithSeverity = AlertRule & { severity: AlertSeverity }
@@ -53,9 +54,18 @@ const ALERT_RULE_DEFAULTS: AlertRuleForm = {
   channels: ['slack'],
 }
 
+type ObsTab = 'stack' | 'cicd'
+
+const CICD_MOCK_RULES: AlertRuleWithSeverity[] = [
+  { id: 'cicd-1', name: 'Build Failure Rate', severity: 'critical', condition: 'build_failure_rate > 10%', threshold: '10', channel: 'slack', enabled: true, createdAt: '2026-01-15T10:00:00Z' },
+  { id: 'cicd-2', name: 'Deployment Rollback', severity: 'warning', condition: 'deployment_rollback > 2', threshold: '2', channel: 'email', enabled: true, createdAt: '2026-01-20T10:00:00Z' },
+  { id: 'cicd-3', name: 'Pipeline Duration', severity: 'info', condition: 'pipeline_duration > 300s', threshold: '300', channel: 'slack', enabled: false, createdAt: '2026-02-01T10:00:00Z' },
+]
+
 const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 export function AlertRulesPage() {
+  const [activeTab, setActiveTab] = useState<ObsTab>('stack')
   const { data: apiData } = useAlertRules()
   const [localRules, setLocalRules] = useState<AlertRuleWithSeverity[]>([])
   const rules = useMemo<AlertRuleWithSeverity[]>(() => {
@@ -250,6 +260,8 @@ export function AlertRulesPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Alert Rules' }]} />
+
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
@@ -271,7 +283,29 @@ export function AlertRulesPage() {
         </Button>
       </div>
 
-      <DataTable columns={columns} data={rules} getRowKey={(row) => row.id} emptyMessage="알림 규칙이 없습니다." />
+      {/* Stack / CI/CD Tab Toggle */}
+      <div className="mb-5 flex gap-1.5">
+        {(['stack', 'cicd'] as const).map((tab) => {
+          const active = activeTab === tab
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'cursor-pointer rounded-[7px] border px-3 py-[5px] text-xs font-bold',
+                active
+                  ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
+                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
+              )}
+            >
+              {tab === 'stack' ? 'Stack' : 'CI/CD'}
+            </button>
+          )
+        })}
+      </div>
+
+      <DataTable columns={columns} data={activeTab === 'cicd' ? CICD_MOCK_RULES : rules} getRowKey={(row) => row.id} emptyMessage="알림 규칙이 없습니다." />
 
       <Modal
         open={ruleModalOpen}
