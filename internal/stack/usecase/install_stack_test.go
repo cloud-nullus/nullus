@@ -102,6 +102,62 @@ func (s *fakeStreamer) steps() []string {
 	return steps
 }
 
+type fakeKubeconfigProvider struct {
+	mu         sync.Mutex
+	configs    map[string][]byte
+	requested  []string
+	requestErr error
+}
+
+func (p *fakeKubeconfigProvider) GetKubeconfig(_ context.Context, clusterID string) ([]byte, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.requested = append(p.requested, clusterID)
+	if p.requestErr != nil {
+		return nil, p.requestErr
+	}
+	cfg, ok := p.configs[clusterID]
+	if !ok {
+		return nil, nil
+	}
+	copyCfg := make([]byte, len(cfg))
+	copy(copyCfg, cfg)
+	return copyCfg, nil
+}
+
+func (p *fakeKubeconfigProvider) requestedClusterIDs() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]string, len(p.requested))
+	copy(out, p.requested)
+	return out
+}
+
+type fakeStepExecutor struct {
+	mu      sync.Mutex
+	steps   []string
+	failAt  string
+	errText string
+}
+
+func (e *fakeStepExecutor) ExecuteStep(_ context.Context, _ string, step, _ string) error {
+	e.mu.Lock()
+	e.steps = append(e.steps, step)
+	e.mu.Unlock()
+	if e.failAt != "" && e.failAt == step {
+		return fmt.Errorf("%s", e.errText)
+	}
+	return nil
+}
+
+func (e *fakeStepExecutor) calledSteps() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]string, len(e.steps))
+	copy(out, e.steps)
+	return out
+}
+
 // --- tests ---
 
 func TestInstallStack_SuccessfulInstallation(t *testing.T) {
@@ -192,4 +248,42 @@ func TestInstallStack_ContextCancellation_TriggersRollback(t *testing.T) {
 			finalState == domain.StateRollingBack,
 		"expected a valid post-cancel state, got %s", finalState,
 	)
+}
+
+func TestInstallStack_UsesKubeconfigProviderExecutor(t *testing.T) {
+	stack := &domain.Stack{
+		ID:        "stk_with_exec",
+		ClusterID: "cluster-01",
+		State:     domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeStepExecutor{}
+	provider := &fakeKubeconfigProvider{
+		configs: map[string][]byte{
+			"cluster-01": []byte("apiVersion: v1\nkind: Config\n"),
+		},
+	}
+
+	uc := NewInstallStack(
+		repo,
+		streamer,
+		WithKubeconfigProvider(provider),
+		WithExecutorFactory(func(_ []byte) port.StepExecutor { return exec }),
+	)
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: "stk_with_exec"})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState("stk_with_exec") == domain.StateCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	assert.Equal(t, []string{"cluster-01"}, provider.requestedClusterIDs())
+	assert.NotEmpty(t, exec.calledSteps())
+	assert.Equal(t, domain.StateCompleted, repo.getState("stk_with_exec"))
 }

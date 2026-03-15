@@ -27,8 +27,10 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
+	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
+	stackport "github.com/cloud-nullus/draft/internal/stack/port"
 	stackuc "github.com/cloud-nullus/draft/internal/stack/usecase"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -80,8 +82,17 @@ func main() {
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
 	memStreamer := logadapter.NewMemoryStreamer()
+	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
-	installStackUC := stackuc.NewInstallStack(pgStackRepo, memStreamer)
+	installStackUC := stackuc.NewInstallStack(
+		pgStackRepo,
+		memStreamer,
+		stackuc.WithKubeconfigProvider(kubeconfigProvider),
+		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
+			installer := stackhelm.NewHelmInstaller(kubeconfig)
+			return stackhelm.NewOrchestrator(installer, kubeconfig, "nullus")
+		}),
+	)
 	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)
 	listStacksUC := stackuc.NewListStacks(pgStackRepo)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)

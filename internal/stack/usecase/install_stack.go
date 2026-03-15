@@ -39,9 +39,11 @@ var installPhases = [][]installStep{
 }
 
 type InstallStack struct {
-	stackRepo port.StackRepository
-	streamer  port.LogStreamer
-	executor  port.StepExecutor
+	stackRepo           port.StackRepository
+	streamer            port.LogStreamer
+	executor            port.StepExecutor
+	kubeconfigProvider  port.KubeconfigProvider
+	dynamicExecutorFunc func(kubeconfig []byte) port.StepExecutor
 }
 
 type InstallStackOption func(*InstallStack)
@@ -49,6 +51,18 @@ type InstallStackOption func(*InstallStack)
 func WithExecutor(executor port.StepExecutor) InstallStackOption {
 	return func(uc *InstallStack) {
 		uc.executor = executor
+	}
+}
+
+func WithKubeconfigProvider(provider port.KubeconfigProvider) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.kubeconfigProvider = provider
+	}
+}
+
+func WithExecutorFactory(factory func(kubeconfig []byte) port.StepExecutor) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.dynamicExecutorFunc = factory
 	}
 }
 
@@ -76,6 +90,8 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 		return fmt.Errorf("get stack: %w", err)
 	}
 
+	executor := uc.resolveExecutor(ctx, stack)
+
 	if err := stack.TransitionTo(domain.StateValidating); err != nil {
 		return fmt.Errorf("transition to validating: %w", err)
 	}
@@ -84,14 +100,14 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 	}
 
 	// Run the full installation pipeline asynchronously.
-	go uc.run(context.WithoutCancel(ctx), stack)
+	go uc.run(context.WithoutCancel(ctx), stack, executor)
 
 	return nil
 }
 
 // run executes the full installation pipeline, performing state transitions and
 // emitting log entries. On any failure it initiates rollback.
-func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack) {
+func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) {
 	deploymentID := stack.ID
 
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
@@ -103,7 +119,7 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack) {
 	}
 
 	// Execute installation phases A, B, C.
-	if err := uc.runPhases(ctx, stack); err != nil {
+	if err := uc.runPhases(ctx, stack, executor); err != nil {
 		uc.handleFailure(ctx, stack, err)
 		return
 	}
@@ -130,7 +146,7 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack) {
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
 }
 
-func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack) error {
+func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {
 	for _, phase := range installPhases {
 		for _, step := range phase {
 			if ctx.Err() != nil {
@@ -140,7 +156,7 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack) erro
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
 				fmt.Sprintf("starting %s", step.name))
 
-			if err := uc.executeStep(ctx, stack.ID, step); err != nil {
+			if err := uc.executeStep(ctx, stack.ID, step, executor); err != nil {
 				return fmt.Errorf("step %s: %w", step.name, err)
 			}
 
@@ -151,9 +167,9 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack) erro
 	return nil
 }
 
-func (uc *InstallStack) executeStep(ctx context.Context, stackID string, step installStep) error {
-	if uc.executor != nil {
-		return uc.executor.ExecuteStep(ctx, stackID, step.name, step.phase)
+func (uc *InstallStack) executeStep(ctx context.Context, stackID string, step installStep, executor port.StepExecutor) error {
+	if executor != nil {
+		return executor.ExecuteStep(ctx, stackID, step.name, step.phase)
 	}
 	select {
 	case <-ctx.Done():
@@ -161,6 +177,27 @@ func (uc *InstallStack) executeStep(ctx context.Context, stackID string, step in
 	case <-time.After(step.duration):
 		return nil
 	}
+}
+
+func (uc *InstallStack) resolveExecutor(ctx context.Context, stack *domain.Stack) port.StepExecutor {
+	if uc.kubeconfigProvider == nil || uc.dynamicExecutorFunc == nil {
+		return uc.executor
+	}
+
+	kubeconfig, err := uc.kubeconfigProvider.GetKubeconfig(ctx, stack.ClusterID)
+	if err != nil {
+		slog.Warn("failed to load kubeconfig for stack deployment", "stack_id", stack.ID, "cluster_id", stack.ClusterID, "error", err)
+		return uc.executor
+	}
+	if len(kubeconfig) == 0 {
+		return uc.executor
+	}
+
+	dynamic := uc.dynamicExecutorFunc(kubeconfig)
+	if dynamic != nil {
+		return dynamic
+	}
+	return uc.executor
 }
 
 // handleFailure transitions to Failed and attempts rollback.

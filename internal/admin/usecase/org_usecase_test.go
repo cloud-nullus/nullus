@@ -161,6 +161,7 @@ func TestOrgUseCase_GetFirstOrg_Success(t *testing.T) {
 
 	first, err := uc.CreateOrg(context.Background(), CreateOrgInput{Name: "First", Slug: "first", Domain: "first.io"})
 	require.NoError(t, err)
+	time.Sleep(time.Millisecond)
 
 	_, err = uc.CreateOrg(context.Background(), CreateOrgInput{Name: "Second", Slug: "second", Domain: "second.io"})
 	require.NoError(t, err)

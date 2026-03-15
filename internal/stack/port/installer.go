@@ -32,3 +32,7 @@ type HelmInstaller interface {
 type StepExecutor interface {
 	ExecuteStep(ctx context.Context, stackID, step, phase string) error
 }
+
+type KubeconfigProvider interface {
+	GetKubeconfig(ctx context.Context, clusterID string) ([]byte, error)
+}
