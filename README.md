@@ -156,17 +156,17 @@ API 서버 기동 후 `http://localhost:8080`으로 접근합니다.
 
 | 기능 | 설명 | 상태 |
 |------|------|------|
-| F0 | Organization 설정 등록 | - [ ] 미구현 |
-| F1 | K8S Cluster Configurations 등록 | - [ ] 미구현 |
-| F2 | 노코드 기반 DevSecOps Stack 설정 UI | - [ ] 미구현 |
-| F3 | DevSecOps Stack Golden Path 템플릿 제공 | - [ ] 미구현 |
-| F4 | DevSecOps Stack 자동 설치/배포/이력 관리 | - [ ] 미구현 |
-| F5 | CI/CD Pipeline 템플릿 제공 | - [ ] 미구현 |
-| F6 | CI/CD Pipeline 배포/이력 관리 | - [ ] 미구현 |
-| F7 | 모니터링/알림 관리 | - [ ] 미구현 |
-| F8 | DevSecOps Stack OSS 버전 호환성 관리 | - [ ] 미구현 |
-| F9 | UI 권한 체계 (Admin / DevOps / Developer) | - [ ] 미구현 |
-| F10 | DevSecOps Stack 필요 Resource 예상량 계산 | - [ ] 미구현 |
+| F0 | Organization 설정 등록 | - [x] 구현완료 (Postgres Repository, CRUD API) |
+| F1 | K8S Cluster Configurations 등록 | - [x] 구현완료 (Postgres Repository, client-go 검증) |
+| F2 | 노코드 기반 DevSecOps Stack 설정 UI | - [x] 구현완료 (React UI, 5단계 Wizard, RHF+Zod) |
+| F3 | DevSecOps Stack Golden Path 템플릿 제공 | - [x] 구현완료 (3개 템플릿, Postgres Repository, Seed 데이터) |
+| F4 | DevSecOps Stack 자동 설치/배포/이력 관리 | - [x] 구현완료 (Helm SDK Adapter, 3단계 DAG, Rollback, WebSocket 로그) |
+| F5 | CI/CD Pipeline 템플릿 제공 | - [x] 구현완료 (Pipeline 템플릿, K8s Manifest Generator) |
+| F6 | CI/CD Pipeline 배포/이력 관리 | - [x] 구현완료 (Manifest Applier, 배포 추적) |
+| F7 | 모니터링/알림 관리 | - [x] 구현완료 (Prometheus HTTP Client, Dashboard, Alert CRUD) |
+| F8 | DevSecOps Stack OSS 버전 호환성 관리 | - [x] 구현완료 (호환성 매트릭스, 검증 API) |
+| F9 | UI 권한 체계 (Admin / DevOps / Developer) | - [x] 구현완료 (Keycloak OIDC, JWT 미들웨어, 라우트별 RBAC) |
+| F10 | DevSecOps Stack 필요 Resource 예상량 계산 | - [x] 구현완료 (리소스 계산기, 비용 추정) |
 
 전체 기능 명세는 [PRD v1.3](./docs/10_제품기획/nullus_PRD_1.3.md)을 참조하세요.
 
