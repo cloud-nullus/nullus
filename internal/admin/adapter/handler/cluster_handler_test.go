@@ -23,7 +23,7 @@ func newClusterEcho() (*echo.Echo, *adminhandler.ClusterHandler) {
 
 	clusterRepo := adminrepo.NewMemoryClusterRepository()
 	clusterUC := usecase.NewClusterUseCase(clusterRepo)
-	h := adminhandler.NewClusterHandler(clusterUC)
+	h := adminhandler.NewClusterHandler(clusterUC, nil)
 
 	v1 := e.Group("/api/v1")
 	admin := v1.Group("/admin")

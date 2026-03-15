@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
@@ -15,6 +16,7 @@ type StackHandler struct {
 	createStack *usecase.CreateStack
 	listStacks  *usecase.ListStacks
 	stackRepo   port.StackRepository
+	audit       *audit.AuditLogger
 }
 
 // NewStackHandler constructs a StackHandler.
@@ -22,11 +24,17 @@ func NewStackHandler(
 	createStack *usecase.CreateStack,
 	listStacks *usecase.ListStacks,
 	stackRepo port.StackRepository,
+	auditLogger ...*audit.AuditLogger,
 ) *StackHandler {
+	var logger *audit.AuditLogger
+	if len(auditLogger) > 0 {
+		logger = auditLogger[0]
+	}
 	return &StackHandler{
 		createStack: createStack,
 		listStacks:  listStacks,
 		stackRepo:   stackRepo,
+		audit:       logger,
 	}
 }
 
@@ -69,6 +77,21 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 	})
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONFIG_INVALID", err.Error())
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "create",
+			ResourceType: "stack",
+			ResourceID:   out.Stack.ID,
+			Details: map[string]any{
+				"name":        req.Name,
+				"org_id":      orgID,
+				"cluster_id":  req.ClusterID,
+				"template_id": req.TemplateID,
+			},
+			IPAddress: c.RealIP(),
+		})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]any{"id": out.Stack.ID})

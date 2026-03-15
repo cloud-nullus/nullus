@@ -70,10 +70,11 @@ func main() {
 	orgUC := usecase.NewOrgUseCase(orgRepo)
 	clusterUC := usecase.NewClusterUseCase(clusterRepo)
 	userUC := usecase.NewUserUseCase(userRepo)
+	auditLogger := audit.NewAuditLogger(pool)
 
-	orgHandler := adminhandler.NewOrgHandler(orgUC)
-	clusterHandler := adminhandler.NewClusterHandler(clusterUC)
-	memberHandler := adminhandler.NewMemberHandler(userUC)
+	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
+	clusterHandler := adminhandler.NewClusterHandler(clusterUC, auditLogger)
+	memberHandler := adminhandler.NewMemberHandler(userUC, auditLogger)
 
 	// Stack: postgres repos + log streamer
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
@@ -88,8 +89,8 @@ func main() {
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
 
-	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, pgStackRepo)
+	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, pgStackRepo, auditLogger)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
@@ -174,8 +175,8 @@ func main() {
 		observability = v1.Group("/observability", authMW)
 	}
 
-	knownIssuesHandler := &adminhandler.KnownIssuesHandler{}
-	auditLogger := audit.NewAuditLogger(pool)
+	knownIssuesRepo := adminrepo.NewPostgresKnownIssuesRepository(pool)
+	knownIssuesHandler := adminhandler.NewKnownIssuesHandler(knownIssuesRepo)
 	auditHandler := adminhandler.NewAuditHandler(auditLogger)
 	notificationHandler := adminhandler.NewNotificationHandler(pool)
 

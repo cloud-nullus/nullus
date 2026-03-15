@@ -8,6 +8,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/labstack/echo/v4"
 )
@@ -15,15 +16,21 @@ import (
 // ClusterHandler handles HTTP requests for clusters.
 type ClusterHandler struct {
 	clusterUC         *usecase.ClusterUseCase
+	audit             *audit.AuditLogger
 	encryptionKey     []byte
 	encryptedKubeconf map[string]string
 	mu                sync.RWMutex
 }
 
 // NewClusterHandler creates a new ClusterHandler.
-func NewClusterHandler(clusterUC *usecase.ClusterUseCase) *ClusterHandler {
+func NewClusterHandler(clusterUC *usecase.ClusterUseCase, auditLogger ...*audit.AuditLogger) *ClusterHandler {
+	var logger *audit.AuditLogger
+	if len(auditLogger) > 0 {
+		logger = auditLogger[0]
+	}
 	return &ClusterHandler{
 		clusterUC:         clusterUC,
+		audit:             logger,
 		encryptionKey:     []byte(os.Getenv("ENCRYPTION_KEY")),
 		encryptedKubeconf: make(map[string]string),
 	}
@@ -94,6 +101,21 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 		h.encryptedKubeconf[cluster.ID] = encrypted
 		h.mu.Unlock()
 	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "create",
+			ResourceType: "cluster",
+			ResourceID:   cluster.ID,
+			Details: map[string]any{
+				"name":     req.Name,
+				"type":     req.Type,
+				"endpoint": req.Endpoint,
+				"org_id":   req.OrgID,
+			},
+			IPAddress: c.RealIP(),
+		})
+	}
 
 	return c.JSON(http.StatusCreated, toClusterResponse(cluster, req.Kubeconfig))
 }
@@ -142,6 +164,19 @@ func (h *ClusterHandler) UpdateCluster(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "update",
+			ResourceType: "cluster",
+			ResourceID:   cluster.ID,
+			Details: map[string]any{
+				"name":     req.Name,
+				"endpoint": req.Endpoint,
+			},
+			IPAddress: c.RealIP(),
+		})
+	}
 
 	return c.JSON(http.StatusOK, toClusterResponse(cluster, ""))
 }
@@ -156,6 +191,16 @@ func (h *ClusterHandler) DeleteCluster(c echo.Context) error {
 	h.mu.Lock()
 	delete(h.encryptedKubeconf, id)
 	h.mu.Unlock()
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "delete",
+			ResourceType: "cluster",
+			ResourceID:   id,
+			Details:      map[string]any{},
+			IPAddress:    c.RealIP(),
+		})
+	}
 
 	return c.NoContent(http.StatusNoContent)
 }
@@ -185,6 +230,19 @@ func (h *ClusterHandler) VerifyCluster(c echo.Context) error {
 
 	if _, err := h.clusterUC.VerifyCluster(c.Request().Context(), id); err != nil {
 		return err
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "verify",
+			ResourceType: "cluster",
+			ResourceID:   id,
+			Details: map[string]any{
+				"status":  result.Status,
+				"version": result.Version,
+			},
+			IPAddress: c.RealIP(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, result)

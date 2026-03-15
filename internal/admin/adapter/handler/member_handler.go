@@ -5,11 +5,13 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/labstack/echo/v4"
 )
 
 type MemberHandler struct {
 	userUC *usecase.UserUseCase
+	audit  *audit.AuditLogger
 }
 
 type createMemberRequest struct {
@@ -22,12 +24,12 @@ type updateMemberRequest struct {
 	Role domain.Role `json:"role"`
 }
 
-func NewMemberHandler(userUC ...*usecase.UserUseCase) *MemberHandler {
-	h := &MemberHandler{}
-	if len(userUC) > 0 {
-		h.userUC = userUC[0]
+func NewMemberHandler(userUC *usecase.UserUseCase, auditLogger ...*audit.AuditLogger) *MemberHandler {
+	var logger *audit.AuditLogger
+	if len(auditLogger) > 0 {
+		logger = auditLogger[0]
 	}
-	return h
+	return &MemberHandler{userUC: userUC, audit: logger}
 }
 
 func (h *MemberHandler) RegisterRoutes(g *echo.Group) {
@@ -71,6 +73,20 @@ func (h *MemberHandler) CreateMember(c echo.Context) error {
 		return err
 	}
 	member.Name = req.Name
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "invite",
+			ResourceType: "member",
+			ResourceID:   member.ID,
+			Details: map[string]any{
+				"org_id": orgID,
+				"email":  req.Email,
+				"role":   req.Role,
+			},
+			IPAddress: c.RealIP(),
+		})
+	}
 
 	return c.JSON(http.StatusCreated, member)
 }
@@ -85,6 +101,18 @@ func (h *MemberHandler) DeleteMember(c echo.Context) error {
 	_ = orgID
 	if err := h.userUC.RemoveMember(c.Request().Context(), memberID); err != nil {
 		return err
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "remove",
+			ResourceType: "member",
+			ResourceID:   memberID,
+			Details: map[string]any{
+				"org_id": orgID,
+			},
+			IPAddress: c.RealIP(),
+		})
 	}
 
 	return c.NoContent(http.StatusNoContent)

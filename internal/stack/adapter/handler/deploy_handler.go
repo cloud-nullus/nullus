@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
 	"github.com/gorilla/websocket"
@@ -16,6 +17,7 @@ type DeployHandler struct {
 	installStack *usecase.InstallStack
 	stackRepo    port.StackRepository
 	streamer     port.LogStreamer
+	audit        *audit.AuditLogger
 }
 
 // NewDeployHandler constructs a DeployHandler.
@@ -23,11 +25,17 @@ func NewDeployHandler(
 	installStack *usecase.InstallStack,
 	stackRepo port.StackRepository,
 	streamer port.LogStreamer,
+	auditLogger ...*audit.AuditLogger,
 ) *DeployHandler {
+	var logger *audit.AuditLogger
+	if len(auditLogger) > 0 {
+		logger = auditLogger[0]
+	}
 	return &DeployHandler{
 		installStack: installStack,
 		stackRepo:    stackRepo,
 		streamer:     streamer,
+		audit:        logger,
 	}
 }
 
@@ -53,6 +61,16 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 
 	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{StackID: id}); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_FAILED", err.Error())
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "deploy",
+			ResourceType: "stack",
+			ResourceID:   id,
+			Details:      map[string]any{},
+			IPAddress:    c.RealIP(),
+		})
 	}
 
 	return c.JSON(http.StatusAccepted, deployResponse{
