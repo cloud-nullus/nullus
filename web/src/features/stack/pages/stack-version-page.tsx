@@ -1,53 +1,10 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { Layers, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react'
+import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import type { CompatibilityMatrix, CompatibilityValidationResult } from '../api/stack-api'
 import { cn } from '../../../lib/utils'
-
-const MOCK_MATRIX: CompatibilityMatrix[] = [
-  {
-    id: 'm1',
-    name: 'GitLab All-in-One v2.0',
-    status: 'verified',
-    k8sRange: '1.27 – 1.30',
-    tools: [
-      { name: 'GitLab', helmVersion: '7.9.0', appVersion: '16.9.0' },
-      { name: 'ArgoCD', helmVersion: '6.7.0', appVersion: '2.10.0' },
-      { name: 'Harbor', helmVersion: '1.14.0', appVersion: '2.10.0' },
-      { name: 'Prometheus', helmVersion: '25.8.0', appVersion: '2.50.0' },
-    ],
-  },
-  {
-    id: 'm2',
-    name: 'GitHub + ArgoCD v1.5',
-    status: 'verified',
-    k8sRange: '1.26 – 1.30',
-    tools: [
-      { name: 'ArgoCD', helmVersion: '6.5.0', appVersion: '2.9.0' },
-      { name: 'Harbor', helmVersion: '1.13.0', appVersion: '2.9.0' },
-      { name: 'Grafana', helmVersion: '7.3.0', appVersion: '10.3.0' },
-    ],
-  },
-  {
-    id: 'm3',
-    name: 'Minimal Stack v0.9',
-    status: 'untested',
-    k8sRange: '1.28 – 1.30',
-    tools: [
-      { name: 'ArgoCD', helmVersion: '6.6.0', appVersion: '2.9.5' },
-      { name: 'Loki', helmVersion: '5.42.0', appVersion: '2.9.0' },
-    ],
-  },
-]
-
-const MOCK_VALIDATION: CompatibilityValidationResult = {
-  compatible: true,
-  issues: [
-    { tool: 'ArgoCD', message: 'Minor version mismatch with K8s 1.30 — upgrade recommended', severity: 'warning' },
-  ],
-  checkedAt: '2026-03-14T10:00:00Z',
-}
 
 const STATUS_BADGE: Record<string, { className: string; label: string }> = {
   verified: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Verified' },
@@ -59,14 +16,20 @@ export function StackVersionPage() {
   const [validationOpen, setValidationOpen] = useState(false)
   const [validating, setValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<CompatibilityValidationResult | null>(null)
+  const { data: matrixData } = useCompatibilityMatrix()
+  const matrix: CompatibilityMatrix[] = Array.isArray(matrixData) ? matrixData : []
+  const validateMutation = useValidateCompatibility('current')
 
   const handleValidate = () => {
-    setValidating(true)
     setValidationOpen(true)
-    setTimeout(() => {
-      setValidationResult(MOCK_VALIDATION)
-      setValidating(false)
-    }, 1200)
+    setValidating(true)
+    validateMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        setValidationResult(result)
+        setValidating(false)
+      },
+      onError: () => setValidating(false),
+    })
   }
 
   return (
@@ -111,13 +74,12 @@ export function StackVersionPage() {
             </tr>
           </thead>
           <tbody>
-            {MOCK_MATRIX.map((matrix) => {
+            {matrix.map((matrix) => {
               const isExpanded = expandedId === matrix.id
               const badge = STATUS_BADGE[matrix.status] ?? STATUS_BADGE.untested
               return (
-                <>
+                <Fragment key={matrix.id}>
                   <tr
-                    key={matrix.id}
                     className="cursor-pointer transition-colors duration-150 hover:bg-[rgba(255,255,255,0.02)]"
                     onClick={() => setExpandedId(isExpanded ? null : matrix.id)}
                   >
@@ -139,7 +101,7 @@ export function StackVersionPage() {
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr key={`${matrix.id}-detail`}>
+                    <tr>
                       <td colSpan={4} className="border-t border-[var(--color-border-default)] p-0">
                         <div className="bg-[rgba(0,0,0,0.2)] px-5 py-4">
                           <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
@@ -171,7 +133,7 @@ export function StackVersionPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               )
             })}
           </tbody>

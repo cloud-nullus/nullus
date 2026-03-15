@@ -1,61 +1,13 @@
 import { useState } from 'react'
 import { History, GitCompare, RotateCcw } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useStackVersionDiff } from '../api/stack-api'
+import { useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
-
-const MOCK_HISTORY: StackHistoryEntry[] = [
-  {
-    id: 'h1',
-    stackId: 's1',
-    version: 5,
-    changedBy: 'alice@nullus.io',
-    changedAt: '2026-03-14T09:30:00Z',
-    reason: 'ArgoCD 버전 업그레이드 (2.9 → 2.10)',
-    snapshot: { argocd: '2.10.0', gitlab: '16.9.0', harbor: '2.10.0' },
-  },
-  {
-    id: 'h2',
-    stackId: 's1',
-    version: 4,
-    changedBy: 'bob@nullus.io',
-    changedAt: '2026-03-12T14:00:00Z',
-    reason: 'Harbor 스토리지 용량 증설',
-    snapshot: { argocd: '2.9.0', gitlab: '16.9.0', harbor: '2.10.0' },
-  },
-  {
-    id: 'h3',
-    stackId: 's1',
-    version: 3,
-    changedBy: 'alice@nullus.io',
-    changedAt: '2026-03-10T11:20:00Z',
-    reason: 'GitLab 보안 패치 적용',
-    snapshot: { argocd: '2.9.0', gitlab: '16.9.0', harbor: '2.9.0' },
-  },
-  {
-    id: 'h4',
-    stackId: 's1',
-    version: 2,
-    changedBy: 'carol@nullus.io',
-    changedAt: '2026-03-05T08:00:00Z',
-    reason: '리소스 할당 조정',
-    snapshot: { argocd: '2.9.0', gitlab: '16.8.0', harbor: '2.9.0' },
-  },
-  {
-    id: 'h5',
-    stackId: 's1',
-    version: 1,
-    changedBy: 'alice@nullus.io',
-    changedAt: '2026-03-01T10:00:00Z',
-    reason: '초기 스택 설치',
-    snapshot: { argocd: '2.8.0', gitlab: '16.8.0', harbor: '2.9.0' },
-  },
-]
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('ko-KR', {
@@ -68,29 +20,30 @@ function formatDate(iso: string) {
 }
 
 export function StackHistoryPage() {
+  const stackId = 's1'
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [compareOpen, setCompareOpen] = useState(false)
   const [versionA, setVersionA] = useState(4)
   const [versionB, setVersionB] = useState(5)
   const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
-  const [rollbackLoading, setRollbackLoading] = useState(false)
+  const { data: historyData } = useStackHistory(stackId)
+  const entries = Array.isArray(historyData) ? historyData : []
+  const rollbackMutation = useRollbackStack()
 
-  const versionOptions = MOCK_HISTORY.map((entry) => entry.version).sort((a, b) => b - a)
-  const compareEntryA = MOCK_HISTORY.find((entry) => entry.version === versionA) ?? null
-  const compareEntryB = MOCK_HISTORY.find((entry) => entry.version === versionB) ?? null
-  const stackID = compareEntryA?.stackId ?? compareEntryB?.stackId ?? 's1'
+  const versionOptions = entries.map((entry) => entry.version).sort((a, b) => b - a)
+  const compareEntryA = entries.find((entry) => entry.version === versionA) ?? null
+  const compareEntryB = entries.find((entry) => entry.version === versionB) ?? null
 
-  const { data: apiDiff } = useStackVersionDiff(stackID, versionA, versionB)
+  const { data: apiDiff } = useStackVersionDiff(stackId, versionA, versionB)
   const fallbackDiff = buildSnapshotDiff(compareEntryA?.snapshot ?? {}, compareEntryB?.snapshot ?? {})
   const diff = apiDiff ?? fallbackDiff
 
   const handleRollbackConfirm = () => {
     if (!rollbackEntry) return
-    setRollbackLoading(true)
-    setTimeout(() => {
-      setRollbackLoading(false)
-      setRollbackEntry(null)
-    }, 1500)
+    rollbackMutation.mutate(
+      { stackId, version: rollbackEntry.version },
+      { onSuccess: () => setRollbackEntry(null) }
+    )
   }
 
   const columns: ColumnDef<StackHistoryEntry, unknown>[] = [
@@ -99,7 +52,7 @@ export function StackHistoryPage() {
       header: '버전',
       cell: ({ row }) => {
         const entry = row.original
-        const isCurrent = entry.id === MOCK_HISTORY[0]?.id
+        const isCurrent = entry.id === entries[0]?.id
         return (
           <span className="inline-flex items-center gap-1.5 font-mono text-[13px] font-semibold text-[#a5b4fc]">
             v{entry.version}
@@ -132,7 +85,7 @@ export function StackHistoryPage() {
         enableSorting: false,
         cell: ({ row }) => {
           const entry = row.original
-          const index = MOCK_HISTORY.findIndex((item) => item.id === entry.id)
+          const index = entries.findIndex((item) => item.id === entry.id)
           return (
             <div className="flex gap-1.5">
               {index !== 0 && (
@@ -155,7 +108,7 @@ export function StackHistoryPage() {
     },
   ]
 
-  const expandedEntry = MOCK_HISTORY.find((entry) => entry.id === expandedId) ?? null
+  const expandedEntry = entries.find((entry) => entry.id === expandedId) ?? null
 
   return (
     <div>
@@ -184,7 +137,7 @@ export function StackHistoryPage() {
 
       <DataTable
         columns={columns}
-        data={MOCK_HISTORY}
+        data={entries}
         getRowKey={(row) => row.id}
         onRowClick={(row) => setExpandedId((prev) => (prev === row.id ? null : row.id))}
       />
@@ -263,7 +216,7 @@ export function StackHistoryPage() {
         description={`스택을 v${rollbackEntry?.version ?? ''}으로 롤백합니다. 현재 설정이 변경되며 이 작업은 되돌릴 수 없습니다.`}
         confirmLabel="Rollback"
         confirmText={`v${rollbackEntry?.version ?? ''}`}
-        loading={rollbackLoading}
+        loading={rollbackMutation.isPending}
       />
     </div>
   )

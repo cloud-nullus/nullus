@@ -16,42 +16,6 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
   cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Cancelled' },
 }
 
-const MOCK_STACKS: Stack[] = [
-  {
-    id: 's1',
-    name: 'prod-gitlab-stack',
-    templateId: 'gitlab-all-in-one',
-    templateName: 'GitLab All-in-One',
-    clusterId: 'c1',
-    clusterName: 'prod-cluster',
-    status: 'success',
-    createdAt: '2026-03-10T09:00:00Z',
-    updatedAt: '2026-03-10T09:25:00Z',
-  },
-  {
-    id: 's2',
-    name: 'staging-argocd',
-    templateId: 'gitlab-argocd',
-    templateName: 'GitLab + ArgoCD',
-    clusterId: 'c2',
-    clusterName: 'staging-cluster',
-    status: 'running',
-    createdAt: '2026-03-12T14:00:00Z',
-    updatedAt: '2026-03-12T14:05:00Z',
-  },
-  {
-    id: 's3',
-    name: 'dev-github-stack',
-    templateId: 'github-argocd',
-    templateName: 'GitHub + ArgoCD',
-    clusterId: 'c3',
-    clusterName: 'dev-cluster',
-    status: 'pending',
-    createdAt: '2026-03-14T08:00:00Z',
-    updatedAt: '2026-03-14T08:01:00Z',
-  },
-]
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
@@ -61,8 +25,8 @@ export function StackListPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
 
-  const { data: apiData } = useStacks({ search, status: statusFilter || undefined })
-  const stacks = apiData?.items ?? MOCK_STACKS
+  const { data: apiData, isLoading } = useStacks({ search, status: statusFilter || undefined })
+  const stacks = apiData?.items ?? []
 
   const filtered = stacks.filter((s) => {
     const q = search.toLowerCase()
@@ -183,7 +147,12 @@ export function StackListPage() {
         </select>
       </div>
 
-      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="스택이 없습니다." />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        getRowKey={(row) => row.id}
+        emptyMessage={isLoading ? '스택을 불러오는 중...' : '스택이 없습니다.'}
+      />
     </div>
   )
 }
