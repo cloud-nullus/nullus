@@ -26,8 +26,8 @@ const ROLE_BADGE: Record<MemberRole, { className: string }> = {
 const domainRegex = /^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
 
 const orgSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9]+$/, 'Slug must be lowercase alphanumeric'),
+  name: z.string().min(1, 'Name is required'),
+  slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Slug must be lowercase alphanumeric with optional hyphens'),
   domain: z
     .string()
     .optional()
