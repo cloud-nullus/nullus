@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { type ReactNode, lazy, Suspense } from 'react'
 import { AppLayout } from './layout'
+import { ProtectedRoute } from '../components/shared/protected-route'
 
 const LoginPage = lazy(() =>
   import('../features/auth/pages/login-page').then((m) => ({ default: m.LoginPage }))
@@ -80,15 +81,7 @@ const UserManagementPage = lazy(() =>
 
 function Loading() {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '200px',
-        color: 'var(--color-text-secondary)',
-      }}
-    >
+    <div className="flex h-[200px] items-center justify-center text-[var(--color-text-secondary)]">
       Loading...
     </div>
   )
@@ -104,25 +97,46 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: withSuspense(<HomePage />) },
-      { path: 'stack/templates', element: withSuspense(<StackTemplatePage />) },
-      { path: 'stack/install', element: withSuspense(<StackInstallPage />) },
-      { path: 'stack/list', element: withSuspense(<StackListPage />) },
-      { path: 'stack/history', element: withSuspense(<StackHistoryPage />) },
-      { path: 'stack/versions', element: withSuspense(<StackVersionPage />) },
-      { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
-      { path: 'stack/deploy/:id', element: withSuspense(<StackDeployPage />) },
-      { path: 'cicd/developer-deploy', element: withSuspense(<DeveloperDeployPage />) },
-      { path: 'cicd/templates', element: withSuspense(<CicdTemplatePage />) },
-      { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
-      { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },
-      { path: 'observability/monitoring', element: withSuspense(<MonitoringPage />) },
-      { path: 'observability/alerts', element: withSuspense(<AlertRulesPage />) },
-      { path: 'observability/alert-rules', element: withSuspense(<AlertRulesPage />) },
-      { path: 'observability/alert-history', element: withSuspense(<AlertHistoryPage />) },
-      { path: 'admin/organization', element: withSuspense(<OrganizationPage />) },
-      { path: 'admin/users', element: withSuspense(<UserManagementPage />) },
-      { path: 'admin/clusters', element: withSuspense(<ClusterPage />) },
+      {
+        element: <ProtectedRoute />,
+        children: [
+          { index: true, element: withSuspense(<HomePage />) },
+          { path: 'stack/templates', element: withSuspense(<StackTemplatePage />) },
+          { path: 'stack/list', element: withSuspense(<StackListPage />) },
+          { path: 'stack/history', element: withSuspense(<StackHistoryPage />) },
+          { path: 'stack/versions', element: withSuspense(<StackVersionPage />) },
+          { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
+          { path: 'observability/monitoring', element: withSuspense(<MonitoringPage />) },
+          { path: 'observability/alerts', element: withSuspense(<AlertRulesPage />) },
+          { path: 'observability/alert-rules', element: withSuspense(<AlertRulesPage />) },
+          { path: 'observability/alert-history', element: withSuspense(<AlertHistoryPage />) },
+        ],
+      },
+      {
+        element: <ProtectedRoute allowedRoles={['admin', 'devops']} />,
+        children: [
+          { path: 'stack/install', element: withSuspense(<StackInstallPage />) },
+          { path: 'stack/deploy/:id', element: withSuspense(<StackDeployPage />) },
+        ],
+      },
+      {
+        element: <ProtectedRoute allowedRoles={['admin', 'devops', 'developer']} />,
+        children: [
+          { path: 'cicd/developer-deploy', element: withSuspense(<DeveloperDeployPage />) },
+          { path: 'cicd/templates', element: withSuspense(<CicdTemplatePage />) },
+          { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
+          { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },
+        ],
+      },
+      {
+        element: <ProtectedRoute allowedRoles={['admin']} />,
+        children: [
+          { path: 'admin/organization', element: withSuspense(<OrganizationPage />) },
+          { path: 'admin/organizations', element: withSuspense(<OrganizationPage />) },
+          { path: 'admin/users', element: withSuspense(<UserManagementPage />) },
+          { path: 'admin/clusters', element: withSuspense(<ClusterPage />) },
+        ],
+      },
       { path: '*', element: withSuspense(<NotFoundPage />) },
     ],
   },
