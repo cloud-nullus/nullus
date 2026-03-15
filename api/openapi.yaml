@@ -1,0 +1,1586 @@
+openapi: 3.0.3
+info:
+  title: Nullus Platform API
+  version: 1.0.0
+  description: Frontend-backend integration contract for Nullus web client.
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - BearerAuth: []
+tags:
+  - name: stacks
+  - name: cicd
+  - name: admin
+  - name: observability
+paths:
+  /stacks/templates:
+    get:
+      tags: [stacks]
+      summary: List stack templates
+      operationId: listStackTemplates
+      responses:
+        '200':
+          description: Stack templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StackTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/templates/{id}:
+    get:
+      tags: [stacks]
+      summary: Get stack template by id
+      operationId: getStackTemplate
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Stack template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StackTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/Error'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks:
+    get:
+      tags: [stacks]
+      summary: List stacks
+      operationId: listStacks
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/StackStatus'
+        - in: query
+          name: search
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stack list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StackListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [stacks]
+      summary: Create stack
+      operationId: createStack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStackRequest'
+      responses:
+        '200':
+          description: Created stack id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/draft:
+    post:
+      tags: [stacks]
+      summary: Save stack draft
+      operationId: saveStackDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStackRequest'
+      responses:
+        '200':
+          description: Draft id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftIdResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/estimate:
+    post:
+      tags: [stacks]
+      summary: Estimate stack resources
+      operationId: estimateStackResources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StackResourcesInput'
+      responses:
+        '200':
+          description: Resource estimate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceEstimate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/{stackId}/history:
+    get:
+      tags: [stacks]
+      summary: Get stack history
+      operationId: getStackHistory
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+      responses:
+        '200':
+          description: Stack history entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StackHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/Error'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/{stackId}/diff:
+    get:
+      tags: [stacks]
+      summary: Get stack version diff
+      operationId: getStackVersionDiff
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Version diff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StackVersionDiff'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/Error'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/{stackId}/rollback:
+    post:
+      tags: [stacks]
+      summary: Rollback stack to version
+      operationId: rollbackStack
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackStackRequest'
+      responses:
+        '200':
+          description: Rolled back stack id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/compatibility:
+    get:
+      tags: [stacks]
+      summary: Get compatibility matrix
+      operationId: getCompatibilityMatrix
+      responses:
+        '200':
+          description: Compatibility matrix entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompatibilityMatrix'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/{stackId}/validate:
+    post:
+      tags: [stacks]
+      summary: Validate stack compatibility
+      operationId: validateStackCompatibility
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+      responses:
+        '200':
+          description: Compatibility validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompatibilityValidationResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/templates:
+    get:
+      tags: [cicd]
+      summary: List CI/CD templates
+      operationId: listCicdTemplates
+      responses:
+        '200':
+          description: CI/CD templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CicdTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/pipelines:
+    get:
+      tags: [cicd]
+      summary: List pipelines
+      operationId: listPipelines
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/PipelineStatus'
+        - in: query
+          name: search
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pipeline list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [cicd]
+      summary: Create pipeline
+      operationId: createPipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePipelineRequest'
+      responses:
+        '200':
+          description: Created pipeline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pipeline'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/pipelines/{id}/deploy:
+    post:
+      tags: [cicd]
+      summary: Deploy pipeline
+      operationId: deployPipeline
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Deployment queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentIdResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/deployments:
+    get:
+      tags: [cicd]
+      summary: List deployments
+      operationId: listDeployments
+      parameters:
+        - in: query
+          name: pipelineId
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/PipelineStatus'
+      responses:
+        '200':
+          description: Deployment list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/app-templates:
+    get:
+      tags: [cicd]
+      summary: List application templates
+      operationId: listAppTemplates
+      responses:
+        '200':
+          description: App templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AppTemplateInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/deploy-app:
+    post:
+      tags: [cicd]
+      summary: Deploy application from template
+      operationId: deployApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployAppRequest'
+      responses:
+        '200':
+          description: Application deployment result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeployAppResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /admin/organization:
+    get:
+      tags: [admin]
+      summary: Get organization
+      operationId: getOrganization
+      responses:
+        '200':
+          description: Organization detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [admin]
+      summary: Update organization
+      operationId: updateOrganization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrgRequest'
+      responses:
+        '200':
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /admin/organizations/{orgId}/members:
+    get:
+      tags: [admin]
+      summary: List organization members
+      operationId: listMembers
+      parameters:
+        - $ref: '#/components/parameters/OrgIdPathParam'
+      responses:
+        '200':
+          description: Member list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [admin]
+      summary: Invite organization member
+      operationId: inviteMember
+      parameters:
+        - $ref: '#/components/parameters/OrgIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteMemberRequest'
+      responses:
+        '200':
+          description: Invited member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /admin/organizations/{orgId}/members/{memberId}:
+    delete:
+      tags: [admin]
+      summary: Remove member
+      operationId: removeMember
+      parameters:
+        - $ref: '#/components/parameters/OrgIdPathParam'
+        - $ref: '#/components/parameters/MemberIdPathParam'
+      responses:
+        '204':
+          description: Member removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [admin]
+      summary: Update member role
+      operationId: updateMemberRole
+      parameters:
+        - $ref: '#/components/parameters/OrgIdPathParam'
+        - $ref: '#/components/parameters/MemberIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRoleRequest'
+      responses:
+        '200':
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /admin/organizations/{orgId}/members/{memberId}/deactivate:
+    post:
+      tags: [admin]
+      summary: Deactivate member
+      operationId: deactivateMember
+      parameters:
+        - $ref: '#/components/parameters/OrgIdPathParam'
+        - $ref: '#/components/parameters/MemberIdPathParam'
+      responses:
+        '200':
+          description: Deactivated member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /admin/clusters:
+    get:
+      tags: [admin]
+      summary: List clusters
+      operationId: listClusters
+      responses:
+        '200':
+          description: Cluster list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [admin]
+      summary: Create cluster
+      operationId: createCluster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClusterRequest'
+      responses:
+        '200':
+          description: Created cluster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /admin/clusters/{id}:
+    get:
+      tags: [admin]
+      summary: Get cluster
+      operationId: getCluster
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Cluster detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/Error'
+        'default':
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [admin]
+      summary: Update cluster
+      operationId: updateCluster
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateClusterRequest'
+      responses:
+        '200':
+          description: Updated cluster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [admin]
+      summary: Delete cluster
+      operationId: deleteCluster
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '204':
+          description: Cluster deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /observability/dashboard:
+    get:
+      tags: [observability]
+      summary: Get observability dashboard
+      operationId: getDashboard
+      responses:
+        '200':
+          description: Monitoring dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringDashboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /observability/alert-rules:
+    get:
+      tags: [observability]
+      summary: List alert rules
+      operationId: listAlertRules
+      responses:
+        '200':
+          description: Alert rule list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRuleListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [observability]
+      summary: Create alert rule
+      operationId: createAlertRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAlertRuleRequest'
+      responses:
+        '200':
+          description: Created alert rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /observability/alert-rules/{id}:
+    patch:
+      tags: [observability]
+      summary: Update alert rule
+      operationId: updateAlertRule
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAlertRuleRequest'
+      responses:
+        '200':
+          description: Updated alert rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [observability]
+      summary: Delete alert rule
+      operationId: deleteAlertRule
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '204':
+          description: Alert rule deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /observability/alert-history:
+    get:
+      tags: [observability]
+      summary: List alert history
+      operationId: listAlertHistory
+      parameters:
+        - in: query
+          name: severity
+          schema:
+            $ref: '#/components/schemas/AlertSeverity'
+      responses:
+        '200':
+          description: Alert history list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertHistoryListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPathParam:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+    StackIdPathParam:
+      in: path
+      name: stackId
+      required: true
+      schema:
+        type: string
+    OrgIdPathParam:
+      in: path
+      name: orgId
+      required: true
+      schema:
+        type: string
+    MemberIdPathParam:
+      in: path
+      name: memberId
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+
+    Role:
+      type: string
+      enum: [admin, devops, developer]
+    OrgStatus:
+      type: string
+      enum: [active, inactive, suspended]
+    MemberStatus:
+      type: string
+      enum: [active, pending, inactive]
+    ClusterType:
+      type: string
+      enum: [kubernetes, eks, gke, aks, k3s]
+    ClusterStatus:
+      type: string
+      enum: [connected, pending, error, inactive]
+    DeploymentState:
+      type: string
+      enum: [running, success, failed, pending, cancelled]
+    StackStatus:
+      $ref: '#/components/schemas/DeploymentState'
+    PipelineStatus:
+      $ref: '#/components/schemas/DeploymentState'
+    AppType:
+      type: string
+      enum: [web-backend, web-frontend, batch-job]
+    AppTemplate:
+      type: string
+      enum: [react-spa, next-app, express-api, spring-boot, python-fastapi]
+    AlertSeverity:
+      type: string
+      enum: [critical, warning, info]
+    AlertChannel:
+      type: string
+      enum: [slack, email]
+    ToolHealthStatus:
+      type: string
+      enum: [running, warning, error]
+
+    Organization:
+      type: object
+      required: [id, name, slug, domain, status, clusterAccessScope, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        domain:
+          type: string
+        status:
+          $ref: '#/components/schemas/OrgStatus'
+        clusterAccessScope:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Member:
+      type: object
+      required: [id, name, email, role, status, joinedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/MemberStatus'
+        joinedAt:
+          type: string
+          format: date-time
+
+    Cluster:
+      type: object
+      required: [id, name, type, endpoint, status, organizationIds, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/ClusterType'
+        endpoint:
+          type: string
+        status:
+          $ref: '#/components/schemas/ClusterStatus'
+        organizationIds:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ToolSelection:
+      type: object
+      required: [tool, version]
+      properties:
+        tool:
+          type: string
+        version:
+          type: string
+
+    StackResourcesInput:
+      type: object
+      required: [developerCount, concurrentRunners, commitsPerDay, buildFrequency, currency]
+      properties:
+        developerCount:
+          type: integer
+        concurrentRunners:
+          type: integer
+        commitsPerDay:
+          type: integer
+        buildFrequency:
+          type: string
+        currency:
+          type: string
+
+    StackConfig:
+      type: object
+      required:
+        [templateId, clusterId, stackName, artifacts, pipeline, monitoring, logging, resources]
+      properties:
+        templateId:
+          type: string
+          nullable: true
+        clusterId:
+          type: string
+          nullable: true
+        stackName:
+          type: string
+        artifacts:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolSelection'
+        pipeline:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolSelection'
+        monitoring:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolSelection'
+        logging:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolSelection'
+        resources:
+          $ref: '#/components/schemas/StackResourcesInput'
+
+    CreateStackRequest:
+      $ref: '#/components/schemas/StackConfig'
+
+    Stack:
+      type: object
+      required:
+        [id, name, templateId, templateName, clusterId, clusterName, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        templateId:
+          type: string
+        templateName:
+          type: string
+        clusterId:
+          type: string
+        clusterName:
+          type: string
+        status:
+          $ref: '#/components/schemas/StackStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StackTemplate:
+      type: object
+      required: [id, name, description, tools, estimatedMinutes, category]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        estimatedMinutes:
+          type: integer
+        category:
+          type: string
+
+    StackHistoryEntry:
+      type: object
+      required: [id, stackId, version, changedBy, changedAt, reason, snapshot]
+      properties:
+        id:
+          type: string
+        stackId:
+          type: string
+        version:
+          type: integer
+        changedBy:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        snapshot:
+          type: object
+          additionalProperties: true
+
+    StackVersionDiffEntry:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+
+    StackVersionDiffChangedEntry:
+      type: object
+      required: [key, from, to]
+      properties:
+        key:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+
+    StackVersionDiff:
+      type: object
+      required: [fromVersion, toVersion, added, removed, changed]
+      properties:
+        fromVersion:
+          type: integer
+        toVersion:
+          type: integer
+        added:
+          type: array
+          items:
+            $ref: '#/components/schemas/StackVersionDiffEntry'
+        removed:
+          type: array
+          items:
+            $ref: '#/components/schemas/StackVersionDiffEntry'
+        changed:
+          type: array
+          items:
+            $ref: '#/components/schemas/StackVersionDiffChangedEntry'
+
+    CompatibilityTool:
+      type: object
+      required: [name, helmVersion, appVersion]
+      properties:
+        name:
+          type: string
+        helmVersion:
+          type: string
+        appVersion:
+          type: string
+
+    CompatibilityMatrix:
+      type: object
+      required: [id, name, status, k8sRange, tools]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [verified, untested]
+        k8sRange:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompatibilityTool'
+
+    CompatibilityIssue:
+      type: object
+      required: [tool, message, severity]
+      properties:
+        tool:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [error, warning]
+
+    CompatibilityValidationResult:
+      type: object
+      required: [compatible, issues, checkedAt]
+      properties:
+        compatible:
+          type: boolean
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompatibilityIssue'
+        checkedAt:
+          type: string
+          format: date-time
+
+    ResourceEstimate:
+      type: object
+      required: [cpu, memory, storage, estimatedCostMonthly, currency]
+      properties:
+        cpu:
+          type: string
+        memory:
+          type: string
+        storage:
+          type: string
+        estimatedCostMonthly:
+          type: number
+        currency:
+          type: string
+
+    Pipeline:
+      type: object
+      required: [id, name, appType, clusterId, clusterName, status, lastDeployedAt, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        appType:
+          $ref: '#/components/schemas/AppType'
+        clusterId:
+          type: string
+        clusterName:
+          type: string
+        status:
+          $ref: '#/components/schemas/PipelineStatus'
+        lastDeployedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Deployment:
+      type: object
+      required:
+        [id, pipelineId, pipelineName, version, status, triggeredBy, startedAt, completedAt]
+      properties:
+        id:
+          type: string
+        pipelineId:
+          type: string
+        pipelineName:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: '#/components/schemas/PipelineStatus'
+        triggeredBy:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CicdTemplate:
+      type: object
+      required: [id, name, description, appType, stages]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        appType:
+          $ref: '#/components/schemas/AppType'
+        stages:
+          type: array
+          items:
+            type: string
+
+    AppTemplateInfo:
+      type: object
+      required: [id, name, description, language]
+      properties:
+        id:
+          $ref: '#/components/schemas/AppTemplate'
+        name:
+          type: string
+        description:
+          type: string
+        language:
+          type: string
+
+    DashboardMetrics:
+      type: object
+      required: [cpuUsage, memoryUsage, storageUsage, podCount, podRunning]
+      properties:
+        cpuUsage:
+          type: number
+        memoryUsage:
+          type: number
+        storageUsage:
+          type: number
+        podCount:
+          type: integer
+        podRunning:
+          type: integer
+
+    PipelineMetrics:
+      type: object
+      required: [successRate, totalRuns, avgBuildSeconds]
+      properties:
+        successRate:
+          type: number
+        totalRuns:
+          type: integer
+        avgBuildSeconds:
+          type: number
+
+    ToolHealth:
+      type: object
+      required: [name, version, status]
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: '#/components/schemas/ToolHealthStatus'
+
+    MonitoringDashboard:
+      type: object
+      required: [kpi, pipeline, tools]
+      properties:
+        kpi:
+          $ref: '#/components/schemas/DashboardMetrics'
+        pipeline:
+          $ref: '#/components/schemas/PipelineMetrics'
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolHealth'
+
+    AlertRule:
+      type: object
+      required: [id, name, condition, threshold, channel, enabled, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        condition:
+          type: string
+        threshold:
+          type: string
+        channel:
+          $ref: '#/components/schemas/AlertChannel'
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    AlertHistoryEntry:
+      type: object
+      required: [id, ruleName, severity, message, firedAt, resolvedAt]
+      properties:
+        id:
+          type: string
+        ruleName:
+          type: string
+        severity:
+          $ref: '#/components/schemas/AlertSeverity'
+        message:
+          type: string
+        firedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    UpdateOrgRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        domain:
+          type: string
+        status:
+          $ref: '#/components/schemas/OrgStatus'
+        clusterAccessScope:
+          type: array
+          items:
+            type: string
+
+    InviteMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+
+    CreateClusterRequest:
+      type: object
+      required: [name, type, kubeconfig]
+      properties:
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/ClusterType'
+        kubeconfig:
+          type: string
+
+    UpdateClusterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/ClusterType'
+        kubeconfig:
+          type: string
+
+    CreatePipelineRequest:
+      type: object
+      required: [name, appType, clusterId]
+      properties:
+        name:
+          type: string
+        appType:
+          $ref: '#/components/schemas/AppType'
+        clusterId:
+          type: string
+        templateId:
+          type: string
+
+    DeployAppResourceConfig:
+      type: object
+      required: [cpuRequest, cpuLimit, memoryRequest, memoryLimit]
+      properties:
+        cpuRequest:
+          type: string
+        cpuLimit:
+          type: string
+        memoryRequest:
+          type: string
+        memoryLimit:
+          type: string
+
+    DeployAppEnvVar:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+
+    DeployAppRequest:
+      type: object
+      required: [appName, gitUrl, clusterId, namespace, template, resources, envVars]
+      properties:
+        appName:
+          type: string
+        gitUrl:
+          type: string
+        clusterId:
+          type: string
+        namespace:
+          type: string
+        template:
+          $ref: '#/components/schemas/AppTemplate'
+        resources:
+          $ref: '#/components/schemas/DeployAppResourceConfig'
+        envVars:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeployAppEnvVar'
+
+    DeployAppResult:
+      type: object
+      required: [deploymentId, appName, status]
+      properties:
+        deploymentId:
+          type: string
+        appName:
+          type: string
+        status:
+          $ref: '#/components/schemas/PipelineStatus'
+
+    CreateAlertRuleRequest:
+      type: object
+      required: [name, condition, threshold, channel]
+      properties:
+        name:
+          type: string
+        condition:
+          type: string
+        threshold:
+          type: string
+        channel:
+          $ref: '#/components/schemas/AlertChannel'
+
+    UpdateAlertRuleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        condition:
+          type: string
+        threshold:
+          type: string
+        channel:
+          $ref: '#/components/schemas/AlertChannel'
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    RollbackStackRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+
+    IdResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+
+    DraftIdResponse:
+      type: object
+      required: [draftId]
+      properties:
+        draftId:
+          type: string
+
+    DeploymentIdResponse:
+      type: object
+      required: [deploymentId]
+      properties:
+        deploymentId:
+          type: string
+
+    UpdateMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+
+    StackListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stack'
+        total:
+          type: integer
+
+    PipelineListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pipeline'
+        total:
+          type: integer
+
+    DeploymentListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Deployment'
+        total:
+          type: integer
+
+    MemberListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Member'
+        total:
+          type: integer
+
+    ClusterListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cluster'
+        total:
+          type: integer
+
+    AlertRuleListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertRule'
+        total:
+          type: integer
+
+    AlertHistoryListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertHistoryEntry'
+        total:
+          type: integer
