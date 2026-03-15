@@ -1,19 +1,29 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../../stores/auth-store'
 import type { User } from '../../../types'
 
+const loginSchema = z.object({
+  email: z.string().min(1, 'Email is required').email('Invalid email format'),
+  password: z.string().min(1, 'Password is required').min(6, 'Password must be at least 6 characters'),
+})
+
+type LoginFormData = z.infer<typeof loginSchema>
+
 const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   'admin@nullus.dev': {
-    password: 'admin',
+    password: 'admin123',
     user: { id: '1', name: 'Admin User', email: 'admin@nullus.dev', role: 'admin' },
   },
   'devops@nullus.dev': {
-    password: 'devops',
+    password: 'devops123',
     user: { id: '2', name: 'DevOps Engineer', email: 'devops@nullus.dev', role: 'devops' },
   },
   'developer@nullus.dev': {
-    password: 'developer',
+    password: 'developer123',
     user: { id: '3', name: 'Developer', email: 'developer@nullus.dev', role: 'developer' },
   },
 }
@@ -27,16 +37,22 @@ const ROLE_HOME: Record<string, string> = {
 export function LoginPage() {
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isValid, isSubmitting },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+    mode: 'onChange',
+  })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const onSubmit = (data: LoginFormData) => {
     setError(null)
 
-    const account = TEST_ACCOUNTS[email]
-    if (!account || account.password !== password) {
+    const account = TEST_ACCOUNTS[data.email]
+    if (!account || account.password !== data.password) {
       setError('Invalid email or password.')
       return
     }
@@ -46,170 +62,72 @@ export function LoginPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--color-surface-base)',
-        padding: '24px',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '400px',
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: '16px',
-          padding: '40px',
-        }}
-      >
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-base)] p-6">
+      <div className="w-full max-w-[400px] rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-10">
         {/* Logo / Title */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div
-            style={{
-              width: '48px',
-              height: '48px',
-              background: 'linear-gradient(135deg, #ffd700, #f59e0b)',
-              borderRadius: '12px',
-              margin: '0 auto 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '22px',
-              fontWeight: 800,
-              color: '#1a1d29',
-            }}
-          >
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-[14px] flex h-12 w-12 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#ffd700,#f59e0b)] text-[22px] font-extrabold text-[#1a1d29]">
             N
           </div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: '22px',
-              fontWeight: 800,
-              color: 'var(--color-text-primary)',
-            }}
-          >
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
             Nullus Platform
           </h1>
-          <p
-            style={{
-              margin: '6px 0 0',
-              fontSize: '13px',
-              color: 'var(--color-text-secondary)',
-            }}
-          >
+          <p className="mb-0 mt-1.5 text-[13px] text-[var(--color-text-secondary)]">
             Sign in to your account
           </p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label
-              htmlFor="email"
-              style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-secondary)' }}
-            >
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="email" className="text-xs font-medium text-[var(--color-text-secondary)]">
               Email
             </label>
             <input
               id="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              {...register('email')}
               placeholder="you@nullus.dev"
-              required
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: '8px',
-                padding: '10px 12px',
-                fontSize: '14px',
-                color: 'var(--color-text-primary)',
-                outline: 'none',
-              }}
+              className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
             />
+            {errors.email && <span className="text-xs text-[#ef4444]">{errors.email.message}</span>}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label
-              htmlFor="password"
-              style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-secondary)' }}
-            >
+          <div className="flex flex-col gap-1">
+            <label htmlFor="password" className="text-xs font-medium text-[var(--color-text-secondary)]">
               Password
             </label>
             <input
               id="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register('password')}
               placeholder="••••••••"
-              required
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: '8px',
-                padding: '10px 12px',
-                fontSize: '14px',
-                color: 'var(--color-text-primary)',
-                outline: 'none',
-              }}
+              className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
             />
+            {errors.password && <span className="text-xs text-[#ef4444]">{errors.password.message}</span>}
           </div>
 
           {error && (
-            <div
-              style={{
-                background: 'rgba(239,68,68,0.1)',
-                border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: '8px',
-                padding: '10px 12px',
-                fontSize: '13px',
-                color: '#f87171',
-              }}
-            >
+            <div className="rounded-lg border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.1)] px-3 py-2.5 text-[13px] text-[#f87171]">
               {error}
             </div>
           )}
 
           <button
             type="submit"
-            style={{
-              background: 'linear-gradient(135deg, #ffd700, #f59e0b)',
-              color: '#1a1d29',
-              border: 'none',
-              borderRadius: '10px',
-              padding: '12px',
-              fontSize: '14px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              marginTop: '4px',
-            }}
+            disabled={!isValid || isSubmitting}
+            className="mt-1 rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] p-3 text-sm font-bold text-[#1a1d29] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Sign in
           </button>
         </form>
 
         {/* Hint */}
-        <div
-          style={{
-            marginTop: '24px',
-            padding: '14px',
-            background: 'rgba(99,102,241,0.06)',
-            border: '1px solid rgba(99,102,241,0.2)',
-            borderRadius: '8px',
-            fontSize: '12px',
-            color: 'var(--color-text-secondary)',
-            lineHeight: '1.6',
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: '6px', color: '#a5b4fc' }}>Test Accounts</div>
-          <div>admin@nullus.dev / admin</div>
-          <div>devops@nullus.dev / devops</div>
-          <div>developer@nullus.dev / developer</div>
+        <div className="mt-6 rounded-lg border border-[rgba(99,102,241,0.2)] bg-[rgba(99,102,241,0.06)] p-[14px] text-xs leading-[1.6] text-[var(--color-text-secondary)]">
+          <div className="mb-1.5 font-semibold text-[#a5b4fc]">Test Accounts</div>
+          <div>admin@nullus.dev / admin123</div>
+          <div>devops@nullus.dev / devops123</div>
+          <div>developer@nullus.dev / developer123</div>
         </div>
       </div>
     </div>

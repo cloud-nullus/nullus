@@ -4,59 +4,21 @@ export function NotFoundPage() {
   const navigate = useNavigate()
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--color-surface-base)',
-        padding: '24px',
-      }}
-    >
-      <div style={{ textAlign: 'center' }}>
-        <div
-          style={{
-            fontSize: '80px',
-            fontWeight: 800,
-            color: 'rgba(99,102,241,0.3)',
-            lineHeight: 1,
-            marginBottom: '16px',
-          }}
-        >
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-base)] p-6">
+      <div className="text-center">
+        <div className="mb-4 text-[80px] leading-none font-extrabold text-[rgba(99,102,241,0.3)]">
           404
         </div>
-        <h1
-          style={{
-            margin: '0 0 8px',
-            fontSize: '24px',
-            fontWeight: 700,
-            color: 'var(--color-text-primary)',
-          }}
-        >
+        <h1 className="mb-2 mt-0 text-2xl font-bold text-[var(--color-text-primary)]">
           Page not found
         </h1>
-        <p
-          style={{
-            margin: '0 0 28px',
-            fontSize: '14px',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
+        <p className="mb-7 mt-0 text-sm text-[var(--color-text-secondary)]">
           The page you are looking for does not exist or has been moved.
         </p>
         <button
+          type="button"
           onClick={() => navigate('/')}
-          style={{
-            background: 'linear-gradient(135deg, #ffd700, #f59e0b)',
-            color: '#1a1d29',
-            border: 'none',
-            borderRadius: '10px',
-            padding: '10px 24px',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
+          className="cursor-pointer rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] px-6 py-2.5 text-sm font-bold text-[#1a1d29]"
         >
           Go to Home
         </button>
