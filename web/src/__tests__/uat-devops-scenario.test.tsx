@@ -16,6 +16,9 @@ import { useSidebarStore } from '../stores/sidebar-store'
 vi.mock('../features/stack/api/stack-api', () => ({
   useTemplates: () => ({ data: undefined }),
   useCreateStack: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateTemplate: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateTemplate: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteTemplate: () => ({ mutate: vi.fn(), isPending: false }),
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
 }))

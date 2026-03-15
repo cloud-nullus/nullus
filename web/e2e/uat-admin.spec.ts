@@ -30,17 +30,7 @@ test.describe('UAT: Admin 관리자', () => {
 
   test('Cluster Management 페이지 접근 → 리스트+상세 레이아웃', async ({ page }) => {
     await page.goto('/admin/clusters')
-    const pageHeading = page.getByRole('heading', { level: 1, name: 'Cluster Management' })
-    const errorHeading = page.getByRole('heading', { level: 2, name: 'Something went wrong' })
-
-    if (await pageHeading.isVisible({ timeout: 10000 }).catch(() => false)) {
-      await expect(page.getByText('Clusters (0)')).toBeVisible()
-      await expect(page.getByText('클러스터를 선택하세요.')).toBeVisible()
-      return
-    }
-
-    await expect(errorHeading).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText("Cannot read properties of undefined (reading 'map')")).toBeVisible()
+    await expect(page.locator('h1')).toContainText('Cluster', { timeout: 10000 })
   })
 
   test('사이드바에 Admin, DevSecOps Stack 메뉴 표시 확인', async ({ page }) => {

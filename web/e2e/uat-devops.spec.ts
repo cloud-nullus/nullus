@@ -58,6 +58,6 @@ test.describe('UAT: DevOps Engineer 미정', () => {
     await loginAsDevOps(page)
 
     await page.goto('/observability/monitoring')
-    await expect(page.getByText('Loading dashboard...')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('h1')).toContainText('Monitoring', { timeout: 10000 })
   })
 })

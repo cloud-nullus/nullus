@@ -56,12 +56,23 @@ func TestDashboardHandler_Get_Success(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var resp domain.Dashboard
+	var resp struct {
+		KPI struct {
+			CPUUsage float64 `json:"cpuUsage"`
+			PodCount int     `json:"podCount"`
+		} `json:"kpi"`
+		Pipeline struct {
+			TotalRuns int `json:"totalRuns"`
+		} `json:"pipeline"`
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Equal(t, 42.5, resp.ClusterMetrics.CPUUsage)
-	assert.Equal(t, 120, resp.PipelineMetrics.TotalRuns)
-	require.Len(t, resp.ToolHealthList, 1)
-	assert.Equal(t, "ArgoCD", resp.ToolHealthList[0].Name)
+	assert.Equal(t, 42.5, resp.KPI.CPUUsage)
+	assert.Equal(t, 120, resp.Pipeline.TotalRuns)
+	require.Len(t, resp.Tools, 1)
+	assert.Equal(t, "ArgoCD", resp.Tools[0].Name)
 }
 
 func TestDashboardHandler_Get_RepoError(t *testing.T) {

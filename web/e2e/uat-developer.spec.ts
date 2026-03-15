@@ -35,6 +35,6 @@ test.describe('UAT: Developer 지은', () => {
 
   test('Monitoring Dashboard 접근 가능 확인', async ({ page }) => {
     await page.goto('/observability/monitoring')
-    await expect(page.getByText('Loading dashboard...')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('h1')).toContainText('Monitoring', { timeout: 10000 })
   })
 })

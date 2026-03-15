@@ -44,7 +44,7 @@ test.describe('Navigation E2E', () => {
   test('Monitoring 페이지 이동 (/observability/monitoring)', async ({ page }) => {
     await loginAs(page, 'developer@nullus.dev', 'developer123', '/cicd/developer-deploy')
     await page.goto('/observability/monitoring')
-    await expect(page.getByText('Loading dashboard...')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('h1')).toContainText('Monitoring', { timeout: 10000 })
   })
 
   test('Organization 페이지 이동 (/admin/organization)', async ({ page }) => {
