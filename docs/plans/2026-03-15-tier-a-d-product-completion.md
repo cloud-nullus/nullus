@@ -128,7 +128,7 @@ knownIssuesHandler := adminhandler.NewKnownIssuesHandler(knownIssuesRepo)
 make migrate-up
 go test ./internal/admin/... -v -count=1
 go build ./...
-curl http://localhost:8080/api/v1/admin/known-issues | jq '.items | length'
+curl http://localhost:8090/api/v1/admin/known-issues | jq '.items | length'
 # 기대값: 3
 ```
 
@@ -193,7 +193,7 @@ deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memS
 go build ./...
 go test ./internal/admin/... ./internal/stack/... -v -count=1
 # API 호출 후 audit_logs 테이블 확인
-curl -X POST http://localhost:8080/api/v1/admin/orgs -H 'Content-Type: application/json' -d '{"name":"test","slug":"test"}'
+curl -X POST http://localhost:8090/api/v1/admin/orgs -H 'Content-Type: application/json' -d '{"name":"test","slug":"test"}'
 psql -h localhost -p 5433 -U nullus -d nullus_dev -c "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 5;"
 ```
 
@@ -243,8 +243,8 @@ const allClusters = (clustersData?.items ?? []).map(c => c.name)
 ```bash
 go build ./...
 # 백엔드 기동 후 프론트엔드에서 Organization 페이지 접근
-curl http://localhost:8080/api/v1/admin/organization | jq
-curl http://localhost:8080/api/v1/admin/organizations/org-1/members | jq
+curl http://localhost:8090/api/v1/admin/organization | jq
+curl http://localhost:8090/api/v1/admin/organizations/org-1/members | jq
 cd web && npx vitest run && npx vite build
 ```
 
@@ -662,6 +662,6 @@ cd web && npx vitest run && npx vite build
 - [ ] `cd web && npx vitest run` — 전체 PASS
 - [ ] `cd web && npx vite build` — 빌드 성공
 - [ ] 프론트엔드에서 MOCK_ 상수 grep 결과 0건
-- [ ] `curl http://localhost:8080/api/v1/admin/organization` — 200 OK
-- [ ] `curl http://localhost:8080/api/v1/admin/known-issues` — DB 기반 데이터 반환
+- [ ] `curl http://localhost:8090/api/v1/admin/organization` — 200 OK
+- [ ] `curl http://localhost:8090/api/v1/admin/known-issues` — DB 기반 데이터 반환
 - [ ] 브라우저 Console 경고 0건

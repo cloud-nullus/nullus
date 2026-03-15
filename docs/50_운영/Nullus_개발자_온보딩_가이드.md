@@ -129,7 +129,7 @@ NULLUS_SERVER_PORT=9090 make run
 서버 기동 확인:
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8090/health
 # {"status":"healthy","db":"connected","version":"0.1.0-alpha"}
 ```
 

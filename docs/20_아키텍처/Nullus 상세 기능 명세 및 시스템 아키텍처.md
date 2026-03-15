@@ -523,7 +523,7 @@ Nullus 컨트롤 플레인 자체도 Kubernetes에 배포됩니다 (또는 Docke
 ┌─────────────────────────────────────────────┐
 │  docker-compose.yaml                        │
 │                                             │
-│  nullus-api:    localhost:8080               │
+│  nullus-api:    localhost:8090               │
 │  nullus-web:    localhost:3000               │
 │  postgresql:    localhost:5432               │
 └─────────────────────────────────────────────┘

@@ -6,7 +6,7 @@ LOG_DIR="$PROJECT_ROOT/.runbook-logs"
 PID_FILE="$LOG_DIR/pids.txt"
 DB_URL="postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable"
 
-API_PORT=8080
+API_PORT=8090
 WEB_PORT=5173
 POSTGRES_PORT=5433
 MINIO_PORT=9000

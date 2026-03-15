@@ -159,7 +159,7 @@ You are connecting the WebSocket deployment log streaming between the Go backend
 - Frontend:
   - `web/src/lib/websocket.ts` — WebSocket client with auto-reconnect
   - `web/src/features/stack/hooks/use-deploy-log.ts` — React hook for deploy logs
-  - `web/vite.config.ts` — Vite proxy for /ws → ws://localhost:8080
+  - `web/vite.config.ts` — Vite proxy for /ws → ws://localhost:8090
 
 ## WHAT TO BUILD
 
@@ -171,7 +171,7 @@ Message format (JSON):
 {"type":"status","status":"installing","progress":45,"currentPhase":"B","currentStep":"GitLab CE"}
 
 ### 2. Update frontend use-deploy-log.ts hook
-Connect to: ws://localhost:8080/api/v1/stacks/${stackId}/deploy/logs
+Connect to: ws://localhost:8090/api/v1/stacks/${stackId}/deploy/logs
 
 ### 3. Register WebSocket route in main.go
 

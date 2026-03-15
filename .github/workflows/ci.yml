@@ -88,4 +88,4 @@ jobs:
       - name: Run E2E tests
         run: cd web && npx playwright test --reporter=list
         env:
-          VITE_API_URL: http://localhost:8080
+          VITE_API_URL: http://localhost:8090

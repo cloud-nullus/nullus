@@ -922,7 +922,7 @@ export function RoleGuard({ allowed, children }: RoleGuardProps) {
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/stores/auth';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8090/api/v1';
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
@@ -1143,7 +1143,7 @@ class NullusWebSocket {
   private statusListeners = new Set<(status: WsStatus) => void>();
 
   constructor() {
-    this.url = import.meta.env.VITE_WS_BASE_URL ?? 'ws://localhost:8080/ws';
+    this.url = import.meta.env.VITE_WS_BASE_URL ?? 'ws://localhost:8090/ws';
   }
 
   connect(): void {
@@ -2462,7 +2462,7 @@ afterAll(() => server.close());
 // src/test/mocks/handlers/stack.handlers.ts
 import { http, HttpResponse } from 'msw';
 
-const BASE_URL = 'http://localhost:8080/api/v1';
+const BASE_URL = 'http://localhost:8090/api/v1';
 
 export const stackHandlers = [
   http.get(`${BASE_URL}/stacks/templates`, () => {
@@ -2740,11 +2740,11 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/api': {
-          target: env.VITE_API_BASE_URL ?? 'http://localhost:8080',
+          target: env.VITE_API_BASE_URL ?? 'http://localhost:8090',
           changeOrigin: true,
         },
         '/ws': {
-          target: env.VITE_WS_BASE_URL ?? 'ws://localhost:8080',
+          target: env.VITE_WS_BASE_URL ?? 'ws://localhost:8090',
           ws: true,
         },
       },
@@ -2760,8 +2760,8 @@ export default defineConfig(({ mode }) => {
 
 ```bash
 # .env.development
-VITE_API_BASE_URL=http://localhost:8080/api/v1
-VITE_WS_BASE_URL=ws://localhost:8080/ws
+VITE_API_BASE_URL=http://localhost:8090/api/v1
+VITE_WS_BASE_URL=ws://localhost:8090/ws
 VITE_APP_ENV=development
 
 # .env.production

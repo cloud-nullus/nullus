@@ -28,7 +28,7 @@
 - api/openapi.yaml 생성
 
 ### Phase 4: Frontend API Integration (진행중)
-- Vite 프록시 설정 (localhost:8080)
+- Vite 프록시 설정 (localhost:8090)
 - 4개 API 파일의 모든 TanStack Query 훅을 실제 Axios 호출로 교체
 - Mock 데이터 완전 제거
 

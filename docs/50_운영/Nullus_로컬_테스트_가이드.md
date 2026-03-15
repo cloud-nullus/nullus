@@ -52,9 +52,9 @@ NULLUS_SERVER_PORT=9090 make run
 
 | 항목 | 값 |
 |------|-----|
-| API 서버 | `http://localhost:8080` |
+| API 서버 | `http://localhost:8090` |
 | Health 엔드포인트 | `GET /health` |
-| pprof (개발 모드) | `http://localhost:8080/debug/pprof/` |
+| pprof (개발 모드) | `http://localhost:8090/debug/pprof/` |
 
 Health 응답 예시:
 
@@ -326,7 +326,7 @@ make web-test
 
 ### 7.5 Playwright E2E
 
-프론트엔드(`http://localhost:5173`)와 API(`http://localhost:8080`)가 실행 중이어야 합니다.
+프론트엔드(`http://localhost:5173`)와 API(`http://localhost:8090`)가 실행 중이어야 합니다.
 
 ```bash
 cd web && npx playwright test --reporter=list

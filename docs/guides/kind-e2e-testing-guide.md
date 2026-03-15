@@ -47,13 +47,13 @@ cd web && npm run dev
 ```bash
 # API로 kind 클러스터 등록
 KUBECONFIG_B64=$(kind get kubeconfig --name nullus-test | base64 | tr -d '\n')
-curl -s -X POST http://localhost:8080/api/v1/admin/clusters \
+curl -s -X POST http://localhost:8090/api/v1/admin/clusters \
   -H 'Content-Type: application/json' \
   -d "{
     \"name\": \"kind-nullus-test\",
     \"type\": \"target\",
     \"endpoint\": \"https://127.0.0.1:$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context kind-nullus-test | grep -oP ':\K\d+')\",
-    \"org_id\": \"$(curl -s http://localhost:8080/api/v1/admin/organization | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"id\"])')\",
+    \"org_id\": \"$(curl -s http://localhost:8090/api/v1/admin/organization | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"id\"])')\",
     \"kubeconfig\": \"$KUBECONFIG_B64\"
   }" | python3 -m json.tool
 ```
@@ -66,7 +66,7 @@ curl -s -X POST http://localhost:8080/api/v1/admin/clusters \
 ```bash
 # API 검증
 CLUSTER_ID="<등록된 클러스터 ID>"
-curl -s -X POST "http://localhost:8080/api/v1/admin/clusters/${CLUSTER_ID}/verify"
+curl -s -X POST "http://localhost:8090/api/v1/admin/clusters/${CLUSTER_ID}/verify"
 # 예상: {"status":"connected","version":"v1.35.0"}
 ```
 
@@ -82,7 +82,7 @@ curl -s -X POST "http://localhost:8080/api/v1/admin/clusters/${CLUSTER_ID}/verif
 ### 1.6 감사 로그 확인
 ```bash
 # 클러스터 등록 후 감사 로그에 기록되었는지 확인
-curl -s http://localhost:8080/api/v1/admin/audit-logs | python3 -m json.tool | head -20
+curl -s http://localhost:8090/api/v1/admin/audit-logs | python3 -m json.tool | head -20
 ```
 
 ---
@@ -107,11 +107,11 @@ curl -s http://localhost:8080/api/v1/admin/audit-logs | python3 -m json.tool | h
 ### 2.3 스택 설치 (API 테스트)
 ```bash
 # 스택 생성
-STACK_RESP=$(curl -s -X POST http://localhost:8080/api/v1/stacks \
+STACK_RESP=$(curl -s -X POST http://localhost:8090/api/v1/stacks \
   -H 'Content-Type: application/json' \
   -d "{
     \"name\": \"test-devops-stack\",
-    \"template_id\": \"$(curl -s http://localhost:8080/api/v1/stacks/templates | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"items\"][0][\"id\"])')\",
+    \"template_id\": \"$(curl -s http://localhost:8090/api/v1/stacks/templates | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"items\"][0][\"id\"])')\",
     \"cluster_id\": \"<CLUSTER_ID>\",
     \"config\": {\"tools\": [\"gitlab\", \"argocd\", \"prometheus\"]}
   }")
@@ -119,7 +119,7 @@ echo "$STACK_RESP" | python3 -m json.tool
 
 # 스택 배포 트리거
 STACK_ID=$(echo "$STACK_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-curl -s -X POST "http://localhost:8080/api/v1/stacks/${STACK_ID}/deploy"
+curl -s -X POST "http://localhost:8090/api/v1/stacks/${STACK_ID}/deploy"
 # Helm executor가 연결된 경우: 실제 Helm 차트 설치 시작
 # 미연결 시: 시뮬레이션 (상태 전환만 진행)
 ```
@@ -176,7 +176,7 @@ curl -s -X POST "http://localhost:8080/api/v1/stacks/${STACK_ID}/deploy"
 ```bash
 # Developer는 admin API에 접근 불가 (프로덕션 모드에서)
 # Dev 모드에서는 인증 미들웨어 비활성화 상태
-curl -s http://localhost:8080/api/v1/admin/organization
+curl -s http://localhost:8090/api/v1/admin/organization
 # Dev mode: 200 (인증 우회)
 # Prod mode: 403 Forbidden
 ```
@@ -190,7 +190,7 @@ curl -s http://localhost:8080/api/v1/admin/organization
 ## API 엔드포인트 전체 Smoke Test
 
 ```bash
-BASE="http://localhost:8080"
+BASE="http://localhost:8090"
 ENDPOINTS=(
   "GET /health"
   "GET /api/v1/stacks"

@@ -249,7 +249,7 @@ cp .env.example .env
 | `POSTGRES_USER` | `nullus` | DB 관리자 계정. |
 | `POSTGRES_PASSWORD` | `nullus_dev` | 개발용 비밀번호 (보안 주의). |
 | `API_PORT` | `8080` | 백엔드 서버가 리스닝할 포트. |
-| `VITE_API_URL` | `http://localhost:8080` | 프론트엔드 API 호출 기본 URL. |
+| `VITE_API_URL` | `http://localhost:8090` | 프론트엔드 API 호출 기본 URL. |
 | `ENCRYPTION_KEY` | `nullus-dev-key-32bytes-padding!!` | kubeconfig 암호화 키. 반드시 32바이트. |
 | `KUBECONFIG` | `~/.kube/config` | Kind 또는 OrbStack K8s 접속 설정. |
 | `LOG_LEVEL` | `debug` | 개발 시에는 `debug`, 운영 시에는 `info`. |
@@ -496,7 +496,7 @@ func (h *ClusterHandler) Create(c echo.Context) error { ... }
 #### 문서 갱신 및 확인
 1. 코드 수정 후 `make swagger` 실행.
 2. 서버 실행 (`make dev`).
-3. 브라우저에서 `http://localhost:8080/swagger/index.html` 접속하여 확인.
+3. 브라우저에서 `http://localhost:8090/swagger/index.html` 접속하여 확인.
 
 ### 5.7 테스트 전략 및 작성법
 

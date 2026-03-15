@@ -343,7 +343,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      VITE_API_URL: http://localhost:8080
+      VITE_API_URL: http://localhost:8090
     volumes:
       - ./web:/app
       - /app/node_modules

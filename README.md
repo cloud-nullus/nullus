@@ -47,7 +47,7 @@ NULLUS_SERVER_MODE=development \
 go run ./cmd/api
 ```
 
-API 서버가 `http://localhost:8080`에서 실행됩니다. `ENCRYPTION_KEY`는 kubeconfig 암호화에 사용되며 반드시 32바이트여야 합니다.
+API 서버가 `http://localhost:8090`에서 실행됩니다. `ENCRYPTION_KEY`는 kubeconfig 암호화에 사용되며 반드시 32바이트여야 합니다.
 
 설정 파일: `configs/config.yaml`
 
@@ -110,7 +110,7 @@ cd web && npx vitest run
 
 ### E2E 테스트 (Playwright)
 
-프론트엔드 개발 서버(`localhost:5173`)와 API 서버(`localhost:8080`)가 실행 중이어야 합니다.
+프론트엔드 개발 서버(`localhost:5173`)와 API 서버(`localhost:8090`)가 실행 중이어야 합니다.
 
 ```bash
 cd web && npx playwright test --reporter=list
@@ -124,7 +124,7 @@ cd web && npx playwright test --reporter=list
 
 ## API 엔드포인트
 
-API 서버: `http://localhost:8080`
+API 서버: `http://localhost:8090`
 
 ### Admin (`/api/v1/admin`)
 

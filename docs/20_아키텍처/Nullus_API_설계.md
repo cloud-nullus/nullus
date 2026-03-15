@@ -64,7 +64,7 @@ info:
 servers:
   - url: https://nullus.example.com/api/v1
     description: Production
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:8090/api/v1
     description: Local Development
 ```
 

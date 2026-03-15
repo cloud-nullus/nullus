@@ -266,8 +266,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      VITE_API_URL: http://localhost:8080
-      VITE_WS_URL: ws://localhost:8080
+      VITE_API_URL: http://localhost:8090
+      VITE_WS_URL: ws://localhost:8090
     volumes:
       - ./web:/app
       - /app/node_modules   # node_modules 마운트 제외 (성능)
@@ -357,8 +357,8 @@ KEYCLOAK_CLIENT_ID=nullus-web
 KEYCLOAK_CLIENT_SECRET=
 
 # ── 프론트엔드 ────────────────────────────────────────────────
-VITE_API_URL=http://localhost:8080
-VITE_WS_URL=ws://localhost:8080
+VITE_API_URL=http://localhost:8090
+VITE_WS_URL=ws://localhost:8090
 
 # ── MinIO ────────────────────────────────────────────────────
 MINIO_ENDPOINT=localhost:9000
