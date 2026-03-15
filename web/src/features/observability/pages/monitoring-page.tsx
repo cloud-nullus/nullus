@@ -1,6 +1,23 @@
+import { useMemo, useState } from 'react'
 import { Cpu, HardDrive, MemoryStick, Box, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
 import { useDashboard } from '../api/observability-api'
 import type { MonitoringDashboard, ToolHealthStatus } from '../api/observability-api'
+import { cn } from '../../../lib/utils'
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts'
 
 const MOCK_DASHBOARD: MonitoringDashboard = {
   kpi: {
@@ -25,104 +42,134 @@ const MOCK_DASHBOARD: MonitoringDashboard = {
   ],
 }
 
-const TOOL_STATUS_CONFIG: Record<ToolHealthStatus, { icon: React.ReactNode; bg: string; color: string; label: string }> = {
-  running: { icon: <CheckCircle size={13} />, bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Running' },
-  warning: { icon: <AlertCircle size={13} />, bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Warning' },
-  error: { icon: <XCircle size={13} />, bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Error' },
+const TOOL_STATUS_CONFIG: Record<ToolHealthStatus, { icon: React.ReactNode; badgeClassName: string; label: string }> = {
+  running: { icon: <CheckCircle size={13} />, badgeClassName: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Running' },
+  warning: { icon: <AlertCircle size={13} />, badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Warning' },
+  error: { icon: <XCircle size={13} />, badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Error' },
 }
 
 function UsageBar({ value, color }: { value: number; color: string }) {
+  const normalized = Math.max(0, Math.min(100, value))
+
   return (
-    <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden', marginTop: '8px' }}>
-      <div style={{ width: `${value}%`, height: '100%', background: color, borderRadius: '3px', transition: 'width 0.4s ease' }} />
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[rgba(255,255,255,0.08)]">
+      <svg className="h-full w-full" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
+        <rect width={normalized} height="6" rx="3" fill={color} />
+      </svg>
     </div>
   )
 }
 
+type TimeRange = '1h' | '6h' | '24h' | '7d'
+
+function generateTimeSeries(range: TimeRange) {
+  const pointsByRange: Record<TimeRange, number> = {
+    '1h': 6,
+    '6h': 12,
+    '24h': 24,
+    '7d': 28,
+  }
+
+  const hoursByRange: Record<TimeRange, number> = {
+    '1h': 1,
+    '6h': 6,
+    '24h': 24,
+    '7d': 24 * 7,
+  }
+
+  const now = Date.now()
+  const points = pointsByRange[range]
+  const totalHours = hoursByRange[range]
+  const hourStep = totalHours / points
+
+  return Array.from({ length: points }, (_, index) => {
+    const ageHours = totalHours - hourStep * (index + 1)
+    const ts = new Date(now - ageHours * 60 * 60 * 1000)
+    const label = range === '7d'
+      ? ts.toLocaleDateString('en-US', { weekday: 'short' })
+      : ts.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+    const cpuWave = 56 + Math.sin(index / 2.5) * 16 + (index % 3) * 2.1
+    const memoryWave = 63 + Math.cos(index / 3.2) * 10 + (index % 4) * 1.8
+
+    return {
+      time: label,
+      cpu: Math.max(12, Math.min(96, Math.round(cpuWave))),
+      memory: Math.max(24, Math.min(97, Math.round(memoryWave))),
+    }
+  })
+}
+
 export function MonitoringPage() {
+  const [range, setRange] = useState<TimeRange>('24h')
   const { data: apiData } = useDashboard(5000)
   const dashboard = (apiData && typeof apiData === 'object' && 'kpi' in apiData) ? apiData : MOCK_DASHBOARD
   const { kpi, pipeline, tools } = dashboard
 
+  const usageData = useMemo(() => generateTimeSeries(range), [range])
+
+  const pipelineBars = useMemo(
+    () => [
+      { day: 'Mon', success: 16, failed: 2 },
+      { day: 'Tue', success: 19, failed: 3 },
+      { day: 'Wed', success: 15, failed: 4 },
+      { day: 'Thu', success: 21, failed: 2 },
+      { day: 'Fri', success: 24, failed: 3 },
+      { day: 'Sat', success: 11, failed: 2 },
+      { day: 'Sun', success: 9, failed: 1 },
+    ],
+    []
+  )
+
+  const podStatusData = useMemo(
+    () => [
+      { name: 'Running', value: kpi.podRunning, color: '#22c55e' },
+      { name: 'Pending', value: Math.max(1, kpi.podCount - kpi.podRunning - 1), color: '#f59e0b' },
+      { name: 'Failed', value: 1, color: '#ef4444' },
+    ],
+    [kpi.podCount, kpi.podRunning]
+  )
+
   const kpiCards = [
-    { label: 'CPU 사용률', value: `${kpi.cpuUsage}%`, icon: <Cpu size={18} />, color: '#60a5fa', bg: 'rgba(59,130,246,0.15)', bar: kpi.cpuUsage },
-    { label: '메모리 사용률', value: `${kpi.memoryUsage}%`, icon: <MemoryStick size={18} />, color: '#a78bfa', bg: 'rgba(139,92,246,0.15)', bar: kpi.memoryUsage },
-    { label: '스토리지', value: `${kpi.storageUsage}%`, icon: <HardDrive size={18} />, color: '#34d399', bg: 'rgba(16,185,129,0.15)', bar: kpi.storageUsage },
-    { label: 'Pod 수', value: `${kpi.podRunning} / ${kpi.podCount}`, icon: <Box size={18} />, color: '#fbbf24', bg: 'rgba(245,158,11,0.15)', bar: Math.round((kpi.podRunning / kpi.podCount) * 100) },
+    { label: 'CPU 사용률', value: `${kpi.cpuUsage}%`, icon: <Cpu size={18} />, color: '#60a5fa', iconWrapClassName: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', bar: kpi.cpuUsage },
+    { label: '메모리 사용률', value: `${kpi.memoryUsage}%`, icon: <MemoryStick size={18} />, color: '#a78bfa', iconWrapClassName: 'bg-[rgba(139,92,246,0.15)] text-[#a78bfa]', bar: kpi.memoryUsage },
+    { label: '스토리지', value: `${kpi.storageUsage}%`, icon: <HardDrive size={18} />, color: '#34d399', iconWrapClassName: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]', bar: kpi.storageUsage },
+    { label: 'Pod 수', value: `${kpi.podRunning} / ${kpi.podCount}`, icon: <Box size={18} />, color: '#fbbf24', iconWrapClassName: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', bar: Math.round((kpi.podRunning / kpi.podCount) * 100) },
   ]
 
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--color-surface-card)',
-    border: '1px solid var(--color-border-default)',
-    borderRadius: 'var(--card-radius)',
-    padding: 'var(--card-padding)',
-  }
-
-  const sectionTitle: React.CSSProperties = {
-    margin: '0 0 16px 0',
-    fontSize: '15px',
-    fontWeight: 700,
-    color: 'var(--color-text-primary)',
-  }
+  const cardClassName = 'rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]'
+  const sectionTitleClassName = 'm-0 text-[15px] font-bold text-[var(--color-text-primary)]'
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
-        <div
-          style={{
-            width: 'var(--icon-size)',
-            height: 'var(--icon-size)',
-            background: 'rgba(59,130,246,0.15)',
-            borderRadius: 'var(--icon-radius)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#60a5fa',
-          }}
-        >
+      <div className="mb-7 flex items-center gap-2.5">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">
           <Cpu size={18} />
         </div>
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
             Monitoring Dashboard
           </h1>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
             클러스터 및 도구 상태 실시간 모니터링 (5초 자동 갱신)
           </p>
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: '16px',
-          marginBottom: '24px',
-        }}
-      >
+      <div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
         {kpiCards.map((card) => (
-          <div key={card.label} style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+          <div key={card.label} className={cardClassName}>
+            <div className="mb-2.5 flex items-center gap-2.5">
               <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  background: card.bg,
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: card.color,
-                  flexShrink: 0,
-                }}
+                className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', card.iconWrapClassName)}
               >
                 {card.icon}
               </div>
-              <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>{card.label}</span>
+              <span className="text-xs font-medium text-[var(--color-text-secondary)]">{card.label}</span>
             </div>
-            <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1 }}>
+            <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">
               {card.value}
             </div>
             <UsageBar value={card.bar} color={card.color} />
@@ -130,74 +177,124 @@ export function MonitoringPage() {
         ))}
       </div>
 
-      {/* Pipeline Status */}
-      <div style={{ ...cardStyle, marginBottom: '24px' }}>
-        <h2 style={sectionTitle}>Pipeline Status</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
-          <div>
-            <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', fontWeight: 500 }}>성공률</div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#22c55e', marginBottom: '8px' }}>
-              {pipeline.successRate}%
-            </div>
-            <UsageBar value={pipeline.successRate} color="#22c55e" />
+      <div className={cn(cardClassName, 'mb-6')}>
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+          <h2 className={sectionTitleClassName}>Monitoring Charts</h2>
+          <div className="flex gap-1.5">
+            {(['1h', '6h', '24h', '7d'] as const).map((item) => {
+              const active = range === item
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setRange(item)}
+                  className={cn(
+                    'cursor-pointer rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
+                    active
+                      ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
+                      : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
+                  )}
+                >
+                  {item}
+                </button>
+              )
+            })}
           </div>
-          <div>
-            <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', fontWeight: 500 }}>총 실행 수</div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
-              {pipeline.totalRuns}
-            </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3.5">
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">CPU Usage</div>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={usageData}>
+                <defs>
+                  <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.58} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.06} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
+                <XAxis dataKey="time" stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
+                <YAxis domain={[0, 100]} stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', color: '#e5e7eb' }} />
+                <Legend wrapperStyle={{ color: '#e5e7eb' }} />
+                <Area type="monotone" dataKey="cpu" stroke="#f59e0b" strokeWidth={2} fill="url(#cpuGradient)" name="CPU %" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-          <div>
-            <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', fontWeight: 500 }}>평균 빌드 시간</div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
-              {Math.floor(pipeline.avgBuildSeconds / 60)}m {pipeline.avgBuildSeconds % 60}s
-            </div>
+
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">Memory Usage</div>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={usageData}>
+                <defs>
+                  <linearGradient id="memoryGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.54} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.08} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
+                <XAxis dataKey="time" stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
+                <YAxis domain={[0, 100]} stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', color: '#e5e7eb' }} />
+                <Legend wrapperStyle={{ color: '#e5e7eb' }} />
+                <Area type="monotone" dataKey="memory" stroke="#3b82f6" strokeWidth={2} fill="url(#memoryGradient)" name="Memory %" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
+
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">Pipeline Success Rate</div>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={pipelineBars}>
+                <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
+                <XAxis dataKey="day" stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
+                <YAxis stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', color: '#e5e7eb' }} />
+                <Legend wrapperStyle={{ color: '#e5e7eb' }} />
+                <Bar dataKey="success" fill="#22c55e" radius={[5, 5, 0, 0]} />
+                <Bar dataKey="failed" fill="#ef4444" radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">Pod Status</div>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie data={podStatusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={86} label>
+                  {podStatusData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', color: '#e5e7eb' }} />
+                <Legend wrapperStyle={{ color: '#e5e7eb' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="mt-3 text-xs text-[var(--color-text-secondary)]">
+          Pipeline summary: {pipeline.successRate}% success, {pipeline.totalRuns} total runs, average build {Math.floor(pipeline.avgBuildSeconds / 60)}m {pipeline.avgBuildSeconds % 60}s.
         </div>
       </div>
 
       {/* Tool Health */}
-      <div style={cardStyle}>
-        <h2 style={sectionTitle}>Tool Health</h2>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-            gap: '12px',
-          }}
-        >
+      <div className={cardClassName}>
+        <h2 className={cn(sectionTitleClassName, 'mb-4')}>Tool Health</h2>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
           {tools.map((tool) => {
             const cfg = TOOL_STATUS_CONFIG[tool.status]
             return (
-              <div
-                key={tool.name}
-                style={{
-                  padding: '14px',
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid var(--color-border-default)',
-                  borderRadius: '10px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text-primary)' }}>{tool.name}</span>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '2px 8px',
-                      borderRadius: '5px',
-                      background: cfg.bg,
-                      color: cfg.color,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                    }}
-                  >
+              <div key={tool.name} className="rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3.5">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-sm font-bold text-[var(--color-text-primary)]">{tool.name}</span>
+                  <span className={cn('inline-flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', cfg.badgeClassName)}>
                     {cfg.icon}
                     {cfg.label}
                   </span>
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>v{tool.version}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">v{tool.version}</div>
               </div>
             )
           })}

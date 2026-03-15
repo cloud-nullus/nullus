@@ -1,241 +1,396 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useForm, Controller } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Bell, Plus } from 'lucide-react'
-import { useAlertRules, useCreateAlertRule, useUpdateAlertRule } from '../api/observability-api'
-import type { AlertRule, AlertChannel, CreateAlertRuleRequest } from '../api/observability-api'
+import type { ColumnDef } from '@tanstack/react-table'
+import { useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
+import type { AlertRule, AlertChannel, AlertSeverity, CreateAlertRuleRequest } from '../api/observability-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
+import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { DataTable } from '../../../components/shared/data-table'
+import { cn } from '../../../lib/utils'
 
-const MOCK_ALERT_RULES: AlertRule[] = [
-  { id: 'r1', name: 'High CPU', condition: 'cpu_usage > threshold', threshold: '80%', channel: 'slack', enabled: true, createdAt: '2026-02-01T00:00:00Z' },
-  { id: 'r2', name: 'Memory Warning', condition: 'memory_usage > threshold', threshold: '90%', channel: 'email', enabled: true, createdAt: '2026-02-05T00:00:00Z' },
-  { id: 'r3', name: 'Pod CrashLoop', condition: 'pod_restart_count > threshold', threshold: '5', channel: 'slack', enabled: false, createdAt: '2026-03-01T00:00:00Z' },
+type AlertRuleWithSeverity = AlertRule & { severity: AlertSeverity }
+
+const MOCK_ALERT_RULES: AlertRuleWithSeverity[] = [
+  { id: 'r1', name: 'High CPU', severity: 'critical', condition: 'cpu_usage > threshold', threshold: '80%', channel: 'slack', enabled: true, createdAt: '2026-02-01T00:00:00Z' },
+  { id: 'r2', name: 'Memory Warning', severity: 'warning', condition: 'memory_usage > threshold', threshold: '90%', channel: 'email', enabled: true, createdAt: '2026-02-05T00:00:00Z' },
+  { id: 'r3', name: 'Pod CrashLoop', severity: 'info', condition: 'pod_restart_count > threshold', threshold: '5', channel: 'slack', enabled: false, createdAt: '2026-03-01T00:00:00Z' },
 ]
 
-const CHANNEL_BADGE: Record<AlertChannel, { bg: string; color: string }> = {
-  slack: { bg: 'rgba(99,102,241,0.12)', color: '#a5b4fc' },
-  email: { bg: 'rgba(16,185,129,0.12)', color: '#34d399' },
+const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
+  slack: { className: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' },
+  email: { className: 'bg-[rgba(16,185,129,0.12)] text-[#34d399]' },
 }
 
-const selectStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid var(--color-border-default)',
-  borderRadius: '8px',
-  padding: '9px 12px',
-  fontSize: '14px',
-  color: 'var(--color-text-primary)',
-  cursor: 'pointer',
+const SEVERITY_BADGE: Record<AlertSeverity, { className: string; label: string }> = {
+  critical: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]', label: 'Critical' },
+  warning: { className: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', label: 'Warning' },
+  info: { className: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', label: 'Info' },
 }
+
+interface AlertRuleForm {
+  name: string
+  metric: string
+  condition: string
+  threshold: number
+  channels: AlertChannel[]
+  severity: AlertSeverity
+}
+
+const alertRuleSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  metric: z.string().min(1, 'Metric is required'),
+  condition: z.string().min(1, 'Condition is required'),
+  threshold: z.number().gt(0, 'Threshold must be greater than 0'),
+  channels: z.array(z.enum(['slack', 'email'])).min(1, 'At least one channel is required'),
+  severity: z.enum(['critical', 'warning', 'info']),
+})
+
+const ALERT_RULE_DEFAULTS: AlertRuleForm = {
+  name: '',
+  metric: '',
+  severity: 'warning',
+  condition: '',
+  threshold: 1,
+  channels: ['slack'],
+}
+
+const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 export function AlertRulesPage() {
   const { data: apiData } = useAlertRules()
-  const rules = apiData?.items ?? MOCK_ALERT_RULES
+  const [localRules, setLocalRules] = useState<AlertRuleWithSeverity[]>(MOCK_ALERT_RULES)
+  const rules = useMemo<AlertRuleWithSeverity[]>(() => {
+    if (!apiData?.items) return localRules
+    return apiData.items.map((rule) => ({ ...rule, severity: 'warning' }))
+  }, [apiData?.items, localRules])
+
   const createRule = useCreateAlertRule()
   const updateRule = useUpdateAlertRule()
+  const deleteRule = useDeleteAlertRule()
 
-  const [createModal, setCreateModal] = useState(false)
-  const [form, setForm] = useState<CreateAlertRuleRequest>({ name: '', condition: '', threshold: '', channel: 'slack' })
+  const [ruleModalOpen, setRuleModalOpen] = useState(false)
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors, isValid, isSubmitting },
+  } = useForm<AlertRuleForm>({
+    resolver: zodResolver(alertRuleSchema),
+    defaultValues: ALERT_RULE_DEFAULTS,
+    mode: 'onChange',
+  })
 
-  const handleCreate = () => {
-    createRule.mutate(form, {
+  const resetForm = () => {
+    reset(ALERT_RULE_DEFAULTS)
+    setEditingRuleId(null)
+  }
+
+  const openCreateModal = () => {
+    resetForm()
+    setRuleModalOpen(true)
+  }
+
+  const openEditModal = (rule: AlertRuleWithSeverity) => {
+    const [metric, ...conditionTokens] = rule.condition.split(' ')
+    setEditingRuleId(rule.id)
+    reset({
+      name: rule.name,
+      metric,
+      severity: rule.severity,
+      condition: conditionTokens.join(' ') || rule.condition,
+      threshold: Number(rule.threshold.replace('%', '')) || 1,
+      channels: [rule.channel],
+    })
+    setRuleModalOpen(true)
+  }
+
+  const submitRule = (form: AlertRuleForm) => {
+    const payload: CreateAlertRuleRequest = {
+      name: form.name,
+      condition: `${form.metric} ${form.condition}`,
+      threshold: String(form.threshold),
+      channel: form.channels[0],
+    }
+
+    if (editingRuleId) {
+      updateRule.mutate(
+        { id: editingRuleId, data: payload },
+        {
+          onSuccess: () => {
+            setRuleModalOpen(false)
+            resetForm()
+          },
+        }
+      )
+      setLocalRules((prev) =>
+        prev.map((rule) => (rule.id === editingRuleId ? { ...rule, ...payload, severity: form.severity } : rule))
+      )
+      return
+    }
+
+    createRule.mutate(payload, {
       onSuccess: () => {
-        setCreateModal(false)
-        setForm({ name: '', condition: '', threshold: '', channel: 'slack' })
+        setRuleModalOpen(false)
+        resetForm()
       },
     })
+    setLocalRules((prev) => [
+      {
+        id: `local-${Date.now()}`,
+        name: form.name,
+        severity: form.severity,
+        condition: payload.condition,
+        threshold: payload.threshold,
+        channel: payload.channel,
+        enabled: true,
+        createdAt: new Date().toISOString(),
+      },
+      ...prev,
+    ])
+  }
+
+  const handleDelete = () => {
+    if (!deleteRuleId) return
+    deleteRule.mutate(deleteRuleId, {
+      onSuccess: () => {
+        setDeleteRuleId(null)
+      },
+    })
+    setLocalRules((prev) => prev.filter((rule) => rule.id !== deleteRuleId))
+    setDeleteRuleId(null)
   }
 
   const handleToggle = (rule: AlertRule) => {
     updateRule.mutate({ id: rule.id, data: { enabled: !rule.enabled } })
   }
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    whiteSpace: 'nowrap',
-  }
-
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
-  }
+  const columns: ColumnDef<AlertRuleWithSeverity, unknown>[] = [
+    {
+      accessorKey: 'name',
+      header: '이름',
+      cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
+    },
+    {
+      accessorKey: 'severity',
+      header: '심각도',
+      cell: ({ row }) => (
+        <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-bold', SEVERITY_BADGE[row.original.severity].className)}>
+          {SEVERITY_BADGE[row.original.severity].label}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'condition',
+      header: '조건',
+      cell: ({ row }) => <span className="font-mono text-xs text-[var(--color-text-secondary)]">{row.original.condition}</span>,
+    },
+    {
+      accessorKey: 'threshold',
+      header: '임계값',
+      cell: ({ row }) => <span className="text-[13px] [font-family:'Fira_Code',monospace]">{row.original.threshold}</span>,
+    },
+    {
+      accessorKey: 'channel',
+      header: '채널',
+      cell: ({ row }) => {
+        const ch = CHANNEL_BADGE[row.original.channel]
+        return (
+          <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ch.className)}>
+            {row.original.channel}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: 'enabled',
+      header: '활성',
+      cell: ({ row }) => {
+        const rule = row.original
+        return (
+          <div className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                handleToggle(rule)
+              }}
+              className={cn(
+                'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
+                rule.enabled ? 'bg-[#6366f1]' : 'bg-[rgba(255,255,255,0.12)]'
+              )}
+            >
+              <div
+                className={cn(
+                  'absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-150',
+                  rule.enabled && 'translate-x-4'
+                )}
+              />
+            </button>
+            <span className={cn('text-xs', rule.enabled ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
+              {rule.enabled ? 'On' : 'Off'}
+            </span>
+          </div>
+        )
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className="flex gap-1.5">
+          <Button variant="ghost" size="sm" type="button" onClick={() => openEditModal(row.original)}>Edit</Button>
+          <Button variant="danger" size="sm" type="button" onClick={() => setDeleteRuleId(row.original.id)}>Delete</Button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(239,68,68,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#f87171',
-            }}
-          >
+      <div className="mb-6 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(239,68,68,0.15)] text-[#f87171]">
             <Bell size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               Alert Rules
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
               알림 규칙 목록 및 관리
             </p>
           </div>
         </div>
-        <Button variant="primary" size="md" onClick={() => setCreateModal(true)}>
+        <Button variant="primary" size="md" onClick={openCreateModal} type="button">
           <Plus size={15} />
           New Rule
         </Button>
       </div>
 
-      {/* Table */}
-      <div
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-              {['이름', '조건', '임계값', '채널', '활성', 'Actions'].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rules.map((rule) => {
-              const ch = CHANNEL_BADGE[rule.channel]
-              return (
-                <tr
-                  key={rule.id}
-                  style={{ transition: 'background var(--transition-fast)' }}
-                  onMouseEnter={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)' }}
-                  onMouseLeave={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
-                >
-                  <td style={tdStyle}><span style={{ fontWeight: 600 }}>{rule.name}</span></td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontFamily: 'Fira Code, monospace', fontSize: '12px' }}>{rule.condition}</td>
-                  <td style={{ ...tdStyle, fontFamily: 'Fira Code, monospace', fontSize: '13px' }}>{rule.threshold}</td>
-                  <td style={tdStyle}>
-                    <span style={{ padding: '2px 8px', borderRadius: '5px', background: ch.bg, color: ch.color, fontSize: '12px', fontWeight: 600 }}>
-                      {rule.channel}
-                    </span>
-                  </td>
-                  <td style={tdStyle}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
-                      <div
-                        onClick={() => handleToggle(rule)}
-                        style={{
-                          width: '36px',
-                          height: '20px',
-                          background: rule.enabled ? '#6366f1' : 'rgba(255,255,255,0.12)',
-                          borderRadius: '10px',
-                          position: 'relative',
-                          cursor: 'pointer',
-                          transition: 'background var(--transition-fast)',
-                        }}
-                      >
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: '2px',
-                            left: rule.enabled ? '18px' : '2px',
-                            width: '16px',
-                            height: '16px',
-                            background: '#fff',
-                            borderRadius: '50%',
-                            transition: 'left var(--transition-fast)',
-                          }}
-                        />
-                      </div>
-                      <span style={{ fontSize: '12px', color: rule.enabled ? '#a5b4fc' : 'var(--color-text-secondary)' }}>
-                        {rule.enabled ? 'On' : 'Off'}
-                      </span>
-                    </label>
-                  </td>
-                  <td style={tdStyle}>
-                    <Button variant="ghost" size="sm">Edit</Button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <DataTable columns={columns} data={rules} getRowKey={(row) => row.id} emptyMessage="알림 규칙이 없습니다." />
 
-        {rules.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--color-text-secondary)', fontSize: '14px' }}>
-            알림 규칙이 없습니다.
-          </div>
-        )}
-      </div>
-
-      {/* Create Rule Modal */}
       <Modal
-        open={createModal}
-        onClose={() => setCreateModal(false)}
-        title="New Alert Rule"
+        open={ruleModalOpen}
+        onClose={() => {
+          setRuleModalOpen(false)
+          resetForm()
+        }}
+        title={editingRuleId ? 'Edit Alert Rule' : 'New Alert Rule'}
         footer={
           <>
-            <Button variant="outline" size="sm" onClick={() => setCreateModal(false)}>Cancel</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRuleModalOpen(false)
+                resetForm()
+              }}
+              type="button"
+            >
+              Cancel
+            </Button>
             <Button
               variant="primary"
               size="sm"
-              loading={createRule.isPending}
-              onClick={handleCreate}
-              disabled={!form.name || !form.condition || !form.threshold}
+              loading={createRule.isPending || updateRule.isPending || isSubmitting}
+              onClick={handleSubmit(submitRule)}
+              disabled={!isValid || isSubmitting}
+              type="button"
             >
-              Create
+              {editingRuleId ? 'Save' : 'Create'}
             </Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="flex flex-col gap-3.5">
           <Input
             label="규칙 이름"
             placeholder="예: High CPU"
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+            {...register('name')}
           />
+          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
           <Input
-            label="조건"
-            placeholder="예: cpu_usage > threshold"
-            value={form.condition}
-            onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value }))}
+            label="메트릭"
+            placeholder="예: cpu_usage"
+            {...register('metric')}
           />
-          <Input
-            label="임계값"
-            placeholder="예: 80%"
-            value={form.threshold}
-            onChange={(e) => setForm((p) => ({ ...p, threshold: e.target.value }))}
-          />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>채널</label>
+          {errors.metric && <span className="text-xs text-[#ef4444]">{errors.metric.message}</span>}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="alert-rule-severity" className="text-xs font-medium text-[var(--color-text-secondary)]">심각도</label>
             <select
-              value={form.channel}
-              onChange={(e) => setForm((p) => ({ ...p, channel: e.target.value as AlertChannel }))}
-              style={selectStyle}
+              id="alert-rule-severity"
+              {...register('severity')}
+              className={selectClassName}
             >
-              <option value="slack">Slack</option>
-              <option value="email">Email</option>
+              <option value="critical">Critical</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
             </select>
           </div>
+          <Input
+            label="조건"
+            placeholder="예: > threshold"
+            {...register('condition')}
+          />
+          {errors.condition && <span className="text-xs text-[#ef4444]">{errors.condition.message}</span>}
+          <Input
+            label="임계값"
+            type="number"
+            placeholder="예: 80"
+            {...register('threshold', { valueAsNumber: true })}
+          />
+          {errors.threshold && <span className="text-xs text-[#ef4444]">{errors.threshold.message}</span>}
+          <Controller
+            control={control}
+            name="channels"
+            render={({ field }) => (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-[var(--color-text-secondary)]">채널</span>
+                {(['slack', 'email'] as AlertChannel[]).map((channel) => {
+                  const checked = field.value.includes(channel)
+                  return (
+                    <label key={channel} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            field.onChange([...field.value, channel])
+                            return
+                          }
+                          field.onChange(field.value.filter((value) => value !== channel))
+                        }}
+                      />
+                      {channel}
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          />
+          {errors.channels && <span className="text-xs text-[#ef4444]">{errors.channels.message}</span>}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteRuleId !== null}
+        onClose={() => setDeleteRuleId(null)}
+        onConfirm={handleDelete}
+        title="Delete Alert Rule"
+        description="이 알림 규칙을 삭제하면 더 이상 알림이 발생하지 않습니다. 계속하시겠습니까?"
+        confirmLabel="Delete"
+        loading={deleteRule.isPending}
+      />
     </div>
   )
 }
