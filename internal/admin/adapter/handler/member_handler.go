@@ -2,17 +2,14 @@ package handler
 
 import (
 	"net/http"
-	"sync"
-	"time"
 
 	"github.com/cloud-nullus/draft/internal/admin/domain"
-	"github.com/google/uuid"
+	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	"github.com/labstack/echo/v4"
 )
 
 type MemberHandler struct {
-	mu      sync.RWMutex
-	members map[string]map[string]*domain.User
+	userUC *usecase.UserUseCase
 }
 
 type createMemberRequest struct {
@@ -25,8 +22,12 @@ type updateMemberRequest struct {
 	Role domain.Role `json:"role"`
 }
 
-func NewMemberHandler() *MemberHandler {
-	return &MemberHandler{members: make(map[string]map[string]*domain.User)}
+func NewMemberHandler(userUC ...*usecase.UserUseCase) *MemberHandler {
+	h := &MemberHandler{}
+	if len(userUC) > 0 {
+		h.userUC = userUC[0]
+	}
+	return h
 }
 
 func (h *MemberHandler) RegisterRoutes(g *echo.Group) {
@@ -37,24 +38,16 @@ func (h *MemberHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/organizations/:orgId/members/:memberId/deactivate", h.DeactivateMember)
 }
 
-func (h *MemberHandler) ensureOrg(orgID string) map[string]*domain.User {
-	if _, ok := h.members[orgID]; !ok {
-		h.members[orgID] = make(map[string]*domain.User)
-	}
-	return h.members[orgID]
-}
-
 func (h *MemberHandler) ListMembers(c echo.Context) error {
 	orgID := c.Param("orgId")
-
-	h.mu.RLock()
-	orgMembers := h.members[orgID]
-	items := make([]*domain.User, 0, len(orgMembers))
-	for _, m := range orgMembers {
-		cp := *m
-		items = append(items, &cp)
+	if h.userUC == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
 	}
-	h.mu.RUnlock()
+
+	items, err := h.userUC.ListMembers(c.Request().Context(), orgID)
+	if err != nil {
+		return err
+	}
 
 	return c.JSON(http.StatusOK, map[string]any{"items": items, "total": len(items)})
 }
@@ -69,23 +62,15 @@ func (h *MemberHandler) CreateMember(c echo.Context) error {
 	if req.Role == "" {
 		req.Role = domain.RoleDeveloper
 	}
-
-	now := time.Now().UTC()
-	member := &domain.User{
-		ID:        uuid.NewString(),
-		Email:     req.Email,
-		Name:      req.Name,
-		Role:      req.Role,
-		OrgID:     orgID,
-		IsActive:  true,
-		CreatedAt: now,
-		UpdatedAt: now,
+	if h.userUC == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
 	}
 
-	h.mu.Lock()
-	orgMembers := h.ensureOrg(orgID)
-	orgMembers[member.ID] = member
-	h.mu.Unlock()
+	member, err := h.userUC.InviteMember(c.Request().Context(), orgID, req.Email, req.Role)
+	if err != nil {
+		return err
+	}
+	member.Name = req.Name
 
 	return c.JSON(http.StatusCreated, member)
 }
@@ -93,11 +78,14 @@ func (h *MemberHandler) CreateMember(c echo.Context) error {
 func (h *MemberHandler) DeleteMember(c echo.Context) error {
 	orgID := c.Param("orgId")
 	memberID := c.Param("memberId")
+	if h.userUC == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
+	}
 
-	h.mu.Lock()
-	orgMembers := h.ensureOrg(orgID)
-	delete(orgMembers, memberID)
-	h.mu.Unlock()
+	_ = orgID
+	if err := h.userUC.RemoveMember(c.Request().Context(), memberID); err != nil {
+		return err
+	}
 
 	return c.NoContent(http.StatusNoContent)
 }
@@ -110,33 +98,29 @@ func (h *MemberHandler) UpdateMemberRole(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	orgMembers := h.ensureOrg(orgID)
-	member, ok := orgMembers[memberID]
-	if !ok {
-		return echo.NewHTTPError(http.StatusNotFound, "member not found")
+	if h.userUC == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
 	}
-	member.Role = req.Role
-	member.UpdatedAt = time.Now().UTC()
 
-	return c.JSON(http.StatusOK, member)
+	_ = orgID
+	if err := h.userUC.UpdateRole(c.Request().Context(), memberID, req.Role); err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "updated"})
 }
 
 func (h *MemberHandler) DeactivateMember(c echo.Context) error {
 	orgID := c.Param("orgId")
 	memberID := c.Param("memberId")
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	orgMembers := h.ensureOrg(orgID)
-	member, ok := orgMembers[memberID]
-	if !ok {
-		return echo.NewHTTPError(http.StatusNotFound, "member not found")
+	if h.userUC == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
 	}
-	member.IsActive = false
-	member.UpdatedAt = time.Now().UTC()
 
-	return c.JSON(http.StatusOK, member)
+	_ = orgID
+	if err := h.userUC.DeactivateUser(c.Request().Context(), memberID); err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "deactivated"})
 }
