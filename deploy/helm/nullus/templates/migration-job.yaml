@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "nullus.fullname" . }}-migration
+  labels:
+    {{- include "nullus.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "nullus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      serviceAccountName: {{ include "nullus.fullname" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      restartPolicy: Never
+      containers:
+      - name: migration
+        image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+        command:
+        - /app/api
+        - migrate
+        - up
+        env:
+        - name: NULLUS_DATABASE_HOST
+          value: {{ include "nullus.database.host" . }}
+        - name: NULLUS_DATABASE_PORT
+          value: {{ include "nullus.database.port" . | quote }}
+        - name: NULLUS_DATABASE_NAME
+          value: {{ include "nullus.database.name" . }}
+        - name: NULLUS_DATABASE_USER
+          value: {{ include "nullus.database.username" . }}
+        - name: NULLUS_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "nullus.fullname" . }}
+              key: db-password
+        - name: NULLUS_DATABASE_SSLMODE
+          value: {{ .Values.config.database.sslmode | quote }}
+        - name: NULLUS_LOG_LEVEL
+          value: {{ .Values.config.log.level | quote }}
+        - name: NULLUS_LOG_FORMAT
+          value: {{ .Values.config.log.format | quote }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
