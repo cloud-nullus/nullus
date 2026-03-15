@@ -38,7 +38,7 @@ Commands:
   status        Show health of all services (including kind cluster)
   smoke         Run API smoke tests (13 endpoints)
   logs [svc]    Tail logs for a service (api, web) or all
-  down          Stop API, frontend, docker infra, and kind cluster
+  down [--kind] Stop API, frontend, docker infra (add --kind to also delete kind cluster)
   all           Full lifecycle: up -> smoke -> keep running
   kind-up       Create kind K8s cluster only
   kind-down     Delete kind K8s cluster only
@@ -120,11 +120,13 @@ remove_pid_entry() {
 run_bg() {
   local name="$1" workdir="$2" cmd="$3" port="$4"
   local logfile="$LOG_DIR/${name}.log"
+  : >"$logfile"
   nohup bash -lc "cd '$workdir' && exec $cmd" >"$logfile" 2>&1 &
   local pid=$!
-  sleep 1
+  sleep 3
   if ! kill -0 "$pid" >/dev/null 2>&1; then
     echo "[nullus] $name exited immediately; check $logfile"
+    tail -5 "$logfile" 2>/dev/null
     exit 1
   fi
   local tmp="$PID_FILE.tmp"
@@ -195,26 +197,44 @@ do_kind_down() {
 
 do_preflight() {
   echo "[nullus] checking prerequisites..."
+  echo ""
+
   require_cmd go
   require_cmd node
   require_cmd npm
   require_cmd docker
   require_cmd lsof
   require_cmd curl
+
+  echo "[nullus] toolchain:"
   echo "[nullus]   go      $(go version | awk '{print $3}')"
   echo "[nullus]   node    $(node --version)"
   echo "[nullus]   docker  $(docker --version | awk '{print $3}' | tr -d ',')"
   if command -v kind >/dev/null 2>&1; then
-    echo "[nullus]   kind    $(kind version)"
+    echo "[nullus]   kind    $(kind version)  (optional)"
   else
-    echo "[nullus]   kind    not installed (optional)"
+    echo "[nullus]   kind    not installed  (optional — brew install kind)"
   fi
   if command -v kubectl >/dev/null 2>&1; then
-    echo "[nullus]   kubectl $(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    echo "[nullus]   kubectl $(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*"' | head -1 | cut -d'"' -f4)  (optional)"
   fi
   if command -v helm >/dev/null 2>&1; then
-    echo "[nullus]   helm    $(helm version --short 2>/dev/null)"
+    echo "[nullus]   helm    $(helm version --short 2>/dev/null)  (optional)"
   fi
+  echo ""
+
+  if ! docker info >/dev/null 2>&1; then
+    echo "[nullus] ERROR: Docker daemon is not running."
+    echo "[nullus]   Start Docker Desktop or run 'sudo systemctl start docker'"
+    exit 1
+  fi
+  echo "[nullus] docker daemon: running"
+
+  echo ""
+  echo "[nullus] resource requirements:"
+  echo "[nullus]   base (postgres+redis+minio+keycloak): ~2GB RAM, 4GB disk"
+  echo "[nullus]   with --kind (K8s cluster):            +2GB RAM, +2GB disk"
+  echo ""
   echo "[nullus] preflight OK"
 }
 
@@ -247,7 +267,7 @@ do_up() {
   sleep 2
 
   echo "[nullus] waiting for keycloak..."
-  if wait_for_http "http://127.0.0.1:${KEYCLOAK_PORT}" 60 2; then
+  if wait_for_http "http://localhost:${KEYCLOAK_PORT}" 60 2; then
     echo "[nullus] keycloak is ready"
   else
     echo "[nullus] keycloak did not start (non-blocking, continuing...)"
@@ -274,27 +294,28 @@ do_up() {
   export NULLUS_SERVER_MODE=development
   run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
 
-  echo "[nullus] waiting for API health..."
-  if wait_for_http "http://127.0.0.1:${API_PORT}/health" 30 1; then
+  echo "[nullus] waiting for API health (up to 60s)..."
+  if wait_for_http "http://localhost:${API_PORT}/health" 60 2; then
     echo "[nullus] API is healthy"
   else
-    echo "[nullus] API health check failed; check $LOG_DIR/api.log"
+    echo "[nullus] API health check failed after 60s; check $LOG_DIR/api.log"
+    tail -10 "$LOG_DIR/api.log" 2>/dev/null
     exit 1
   fi
 
-  # 4. Frontend
   echo ""
   echo "[nullus] installing frontend dependencies..."
-  (cd "$PROJECT_ROOT/web" && npm install --silent)
+  (cd "$PROJECT_ROOT/web" && npm install --legacy-peer-deps --silent 2>/dev/null || npm install --legacy-peer-deps)
 
   echo "[nullus] starting frontend dev server on :$WEB_PORT..."
   run_bg "web" "$PROJECT_ROOT/web" "npx vite --port $WEB_PORT" "$WEB_PORT"
 
-  echo "[nullus] waiting for frontend..."
+  echo "[nullus] waiting for frontend (up to 30s)..."
   if wait_for_port_listen "$WEB_PORT" 30; then
     echo "[nullus] frontend is ready"
   else
     echo "[nullus] frontend did not start; check $LOG_DIR/web.log"
+    tail -10 "$LOG_DIR/web.log" 2>/dev/null
     exit 1
   fi
 
@@ -333,7 +354,7 @@ do_status() {
   echo ""
 
   echo "[nullus] service health"
-  if curl -fsS "http://127.0.0.1:${API_PORT}/health" 2>/dev/null; then
+  if curl -fsS "http://localhost:${API_PORT}/health" 2>/dev/null; then
     echo ""
   else
     echo "  api: unavailable"
@@ -345,7 +366,7 @@ do_status() {
     echo "  web: not running"
   fi
 
-  if wait_for_http "http://127.0.0.1:${KEYCLOAK_PORT}" 3 1 2>/dev/null; then
+  if wait_for_http "http://localhost:${KEYCLOAK_PORT}" 3 1 2>/dev/null; then
     echo "  keycloak: listening on :$KEYCLOAK_PORT"
   else
     echo "  keycloak: not running"
@@ -397,19 +418,19 @@ do_smoke() {
     fi
   }
 
-  smoke_get "GET /health"                              "http://127.0.0.1:${API_PORT}/health"
-  smoke_get "GET /api/v1/admin/organization"           "http://127.0.0.1:${API_PORT}/api/v1/admin/organization"
-  smoke_get "GET /api/v1/admin/clusters"               "http://127.0.0.1:${API_PORT}/api/v1/admin/clusters"
-  smoke_get "GET /api/v1/admin/known-issues"           "http://127.0.0.1:${API_PORT}/api/v1/admin/known-issues"
-  smoke_get "GET /api/v1/admin/audit-logs"             "http://127.0.0.1:${API_PORT}/api/v1/admin/audit-logs"
-  smoke_get "GET /api/v1/admin/notifications/configs"  "http://127.0.0.1:${API_PORT}/api/v1/admin/notifications/configs"
-  smoke_get "GET /api/v1/stacks"                       "http://127.0.0.1:${API_PORT}/api/v1/stacks"
-  smoke_get "GET /api/v1/stacks/templates"             "http://127.0.0.1:${API_PORT}/api/v1/stacks/templates"
-  smoke_get "GET /api/v1/stacks/compatibility"         "http://127.0.0.1:${API_PORT}/api/v1/stacks/compatibility"
-  smoke_get "GET /api/v1/cicd/templates"               "http://127.0.0.1:${API_PORT}/api/v1/cicd/templates"
-  smoke_get "GET /api/v1/cicd/pipelines"               "http://127.0.0.1:${API_PORT}/api/v1/cicd/pipelines"
-  smoke_get "GET /api/v1/observability/dashboard"      "http://127.0.0.1:${API_PORT}/api/v1/observability/dashboard"
-  smoke_get "GET /api/v1/observability/alert-rules"    "http://127.0.0.1:${API_PORT}/api/v1/observability/alert-rules"
+  smoke_get "GET /health"                              "http://localhost:${API_PORT}/health"
+  smoke_get "GET /api/v1/admin/organization"           "http://localhost:${API_PORT}/api/v1/admin/organization"
+  smoke_get "GET /api/v1/admin/clusters"               "http://localhost:${API_PORT}/api/v1/admin/clusters"
+  smoke_get "GET /api/v1/admin/known-issues"           "http://localhost:${API_PORT}/api/v1/admin/known-issues"
+  smoke_get "GET /api/v1/admin/audit-logs"             "http://localhost:${API_PORT}/api/v1/admin/audit-logs"
+  smoke_get "GET /api/v1/admin/notifications/configs"  "http://localhost:${API_PORT}/api/v1/admin/notifications/configs"
+  smoke_get "GET /api/v1/stacks"                       "http://localhost:${API_PORT}/api/v1/stacks"
+  smoke_get "GET /api/v1/stacks/templates"             "http://localhost:${API_PORT}/api/v1/stacks/templates"
+  smoke_get "GET /api/v1/stacks/compatibility"         "http://localhost:${API_PORT}/api/v1/stacks/compatibility"
+  smoke_get "GET /api/v1/cicd/templates"               "http://localhost:${API_PORT}/api/v1/cicd/templates"
+  smoke_get "GET /api/v1/cicd/pipelines"               "http://localhost:${API_PORT}/api/v1/cicd/pipelines"
+  smoke_get "GET /api/v1/observability/dashboard"      "http://localhost:${API_PORT}/api/v1/observability/dashboard"
+  smoke_get "GET /api/v1/observability/alert-rules"    "http://localhost:${API_PORT}/api/v1/observability/alert-rules"
   smoke_get "Frontend reachable"                       "http://localhost:${WEB_PORT}"
 
   echo ""
@@ -434,6 +455,11 @@ do_logs() {
 }
 
 do_down() {
+  local with_kind="false"
+  for arg in "$@"; do
+    case "$arg" in --kind) with_kind="true" ;; esac
+  done
+
   echo "[nullus] stopping services..."
   if [[ -f "$PID_FILE" ]]; then
     stop_service "web" "$WEB_PORT"
@@ -443,9 +469,14 @@ do_down() {
   echo "[nullus] stopping docker infra..."
   docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" down 2>/dev/null || true
 
-  do_kind_down 2>/dev/null || true
+  if [[ "$with_kind" == "true" ]]; then
+    do_kind_down 2>/dev/null || true
+  fi
 
   echo "[nullus] all stopped"
+  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    echo "[nullus] note: kind cluster '$KIND_CLUSTER_NAME' is still running (use 'kind-down' or 'down --kind' to remove)"
+  fi
 }
 
 do_all() {
@@ -474,7 +505,7 @@ main() {
     status) do_status ;;
     smoke) do_smoke ;;
     logs) do_logs "${1:-all}" ;;
-    down) do_down ;;
+    down) do_down "$@" ;;
     all) do_all "$@" ;;
     kind-up) do_kind_up ;;
     kind-down) do_kind_down ;;
