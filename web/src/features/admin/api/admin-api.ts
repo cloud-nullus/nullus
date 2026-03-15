@@ -161,13 +161,6 @@ export function useClusters() {
   })
 }
 
-export function useCluster(id: string) {
-  return useQuery({
-    queryKey: queryKeys.cluster(id),
-    queryFn: () => adminApiCalls.getCluster(id),
-    enabled: !!id,
-  })
-}
 
 export function useCreateCluster() {
   const qc = useQueryClient()

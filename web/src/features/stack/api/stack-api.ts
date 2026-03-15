@@ -87,13 +87,6 @@ export function useTemplates() {
   })
 }
 
-export function useTemplate(id: string) {
-  return useQuery({
-    queryKey: queryKeys.template(id),
-    queryFn: () => stackApiCalls.getTemplate(id),
-    enabled: !!id,
-  })
-}
 
 export function useStacks(filters?: { status?: string; search?: string }) {
   return useQuery({
