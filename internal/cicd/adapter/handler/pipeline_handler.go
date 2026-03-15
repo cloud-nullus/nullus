@@ -37,11 +37,12 @@ func NewPipelineHandler(
 
 // RegisterRoutes registers pipeline routes on the given Echo group.
 func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
-	g.POST("/pipelines", h.CreatePipeline)
 	g.GET("/pipelines", h.ListPipelines)
-	g.GET("/pipelines/:id", h.GetPipeline)
+	g.POST("/pipelines", h.CreatePipeline)
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
-	g.GET("/pipelines/:id/deployments", h.ListDeployments)
+	g.GET("/deployments", h.ListDeployments)
+	g.GET("/app-templates", h.ListAppTemplates)
+	g.POST("/deploy-app", h.DeployApp)
 }
 
 // createPipelineRequest is the request body for POST /pipelines.
@@ -79,7 +80,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_CONFIG_INVALID", err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, map[string]any{"data": out.Pipeline})
+	return c.JSON(http.StatusCreated, out.Pipeline)
 }
 
 // ListPipelines handles GET /api/v1/pipelines.
@@ -94,19 +95,7 @@ func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": out.Pipelines})
-}
-
-// GetPipeline handles GET /api/v1/pipelines/:id.
-func (h *PipelineHandler) GetPipeline(c echo.Context) error {
-	id := c.Param("id")
-
-	pipeline, err := h.pipelineRepo.GetByID(c.Request().Context(), id)
-	if err != nil {
-		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
-	}
-
-	return c.JSON(http.StatusOK, map[string]any{"data": pipeline})
+	return c.JSON(http.StatusOK, map[string]any{"items": out.Pipelines, "total": len(out.Pipelines)})
 }
 
 // deployRequest is the request body for POST /pipelines/:id/deploy.
@@ -133,17 +122,59 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_DEPLOY_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, map[string]any{"data": out.Deployment})
+	return c.JSON(http.StatusOK, map[string]any{"deploymentId": out.Deployment.ID})
 }
 
-// ListDeployments handles GET /api/v1/pipelines/:id/deployments.
 func (h *PipelineHandler) ListDeployments(c echo.Context) error {
-	id := c.Param("id")
-
-	deployments, err := h.deploymentRepo.ListByPipelineID(c.Request().Context(), id)
-	if err != nil {
-		return errorResponse(c, http.StatusInternalServerError, "DEPLOYMENT_LIST_FAILED", err.Error())
+	orgID := c.Request().Header.Get("X-Org-ID")
+	if orgID == "" {
+		orgID = "org_default"
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": deployments})
+	pipelines, err := h.pipelineRepo.List(c.Request().Context(), orgID)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
+	}
+
+	deployments := make([]*domain.Deployment, 0)
+	for _, pipeline := range pipelines {
+		items, err := h.deploymentRepo.ListByPipelineID(c.Request().Context(), pipeline.ID)
+		if err != nil {
+			return errorResponse(c, http.StatusInternalServerError, "DEPLOYMENT_LIST_FAILED", err.Error())
+		}
+		deployments = append(deployments, items...)
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{"items": deployments, "total": len(deployments)})
+}
+
+func (h *PipelineHandler) ListAppTemplates(c echo.Context) error {
+	appTemplates := []map[string]any{
+		{"id": "go-web-api", "name": "Go Web API", "runtime": "go1.24", "port": 8080},
+		{"id": "react-vite", "name": "React Vite App", "runtime": "node22", "port": 5173},
+		{"id": "spring-boot", "name": "Spring Boot Service", "runtime": "java21", "port": 8080},
+	}
+	return c.JSON(http.StatusOK, appTemplates)
+}
+
+type deployAppRequest struct {
+	TemplateID string `json:"templateId"`
+	AppName    string `json:"appName"`
+	ClusterID  string `json:"clusterId"`
+	Namespace  string `json:"namespace"`
+}
+
+func (h *PipelineHandler) DeployApp(c echo.Context) error {
+	var req deployAppRequest
+	if err := c.Bind(&req); err != nil {
+		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"deploymentId": "dep_app_" + req.AppName,
+		"status":       "accepted",
+		"templateId":   req.TemplateID,
+		"namespace":    req.Namespace,
+		"clusterId":    req.ClusterID,
+	})
 }

@@ -19,8 +19,8 @@ func NewCICDTemplateHandler(templateRepo port.PipelineTemplateRepository) *CICDT
 
 // RegisterRoutes registers CI/CD template routes on the given Echo group.
 func (h *CICDTemplateHandler) RegisterRoutes(g *echo.Group) {
-	g.GET("/cicd/templates", h.ListTemplates)
-	g.GET("/cicd/templates/:id", h.GetTemplate)
+	g.GET("/templates", h.ListTemplates)
+	g.GET("/templates/:id", h.GetTemplate)
 }
 
 // ListTemplates handles GET /api/v1/cicd/templates.
@@ -29,7 +29,7 @@ func (h *CICDTemplateHandler) ListTemplates(c echo.Context) error {
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "CICD_TEMPLATE_LIST_FAILED", err.Error())
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": templates})
+	return c.JSON(http.StatusOK, templates)
 }
 
 // GetTemplate handles GET /api/v1/cicd/templates/:id.
@@ -41,5 +41,5 @@ func (h *CICDTemplateHandler) GetTemplate(c echo.Context) error {
 		return errorResponse(c, http.StatusNotFound, "CICD_TEMPLATE_NOT_FOUND", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": tmpl})
+	return c.JSON(http.StatusOK, tmpl)
 }
