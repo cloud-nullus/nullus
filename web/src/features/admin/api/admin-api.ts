@@ -4,6 +4,7 @@ import type {
   Cluster,
   CreateClusterRequest,
   InviteMemberRequest,
+  KnownIssue,
   Member,
   MemberRole,
   Organization,
@@ -16,6 +17,9 @@ export type {
   ClusterType,
   CreateClusterRequest,
   InviteMemberRequest,
+  KnownIssue,
+  KnownIssueSeverity,
+  KnownIssueStatus,
   MemberRole,
   MemberStatus,
   Organization,
@@ -30,6 +34,7 @@ const queryKeys = {
   members: (orgId: string) => ['admin', 'members', orgId] as const,
   clusters: () => ['admin', 'clusters'] as const,
   cluster: (id: string) => ['admin', 'clusters', id] as const,
+  knownIssues: () => ['admin', 'known-issues'] as const,
 }
 
 // --- API functions ---
@@ -57,7 +62,13 @@ const adminApiCalls = {
     api.post<Member>(`/admin/organizations/${orgId}/members/${memberId}/deactivate`).then((r) => r.data),
 
   getClusters: () =>
-    api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => r.data),
+    api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => ({
+      ...r.data,
+      items: (r.data.items ?? []).map((c: Record<string, unknown>) => ({
+        ...c,
+        status: c.status ?? c.connection_status ?? 'pending',
+      })) as Cluster[],
+    })),
 
   getCluster: (id: string) =>
     api.get<Cluster>(`/admin/clusters/${id}`).then((r) => r.data),
@@ -70,6 +81,9 @@ const adminApiCalls = {
 
   deleteCluster: (id: string) =>
     api.delete(`/admin/clusters/${id}`).then((r) => r.data),
+
+  getKnownIssues: () =>
+    api.get<{ items: KnownIssue[] }>('/admin/known-issues').then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -185,5 +199,12 @@ export function useDeleteCluster() {
       void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
       void qc.invalidateQueries({ queryKey: queryKeys.cluster(id) })
     },
+  })
+}
+
+export function useKnownIssues() {
+  return useQuery({
+    queryKey: queryKeys.knownIssues(),
+    queryFn: adminApiCalls.getKnownIssues,
   })
 }

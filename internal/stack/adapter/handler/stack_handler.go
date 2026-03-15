@@ -57,7 +57,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 	// orgID would come from auth middleware in production; use header as placeholder
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "org_default"
+		orgID = "00000000-0000-0000-0000-000000000001"
 	}
 
 	out, err := h.createStack.Execute(c.Request().Context(), usecase.CreateStackInput{
@@ -78,7 +78,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 func (h *StackHandler) ListStacks(c echo.Context) error {
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "org_default"
+		orgID = "00000000-0000-0000-0000-000000000001"
 	}
 
 	out, err := h.listStacks.Execute(c.Request().Context(), usecase.ListStacksInput{OrgID: orgID})

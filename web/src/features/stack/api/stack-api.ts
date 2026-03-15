@@ -37,7 +37,15 @@ const queryKeys = {
 
 const stackApiCalls = {
   getTemplates: () =>
-    api.get<StackTemplate[]>('/stacks/templates').then((r) => r.data),
+    api.get<StackTemplate[]>('/stacks/templates').then((r) =>
+      (r.data ?? []).map((t: Record<string, unknown>) => ({
+        ...t,
+        tools: Array.isArray(t.tools)
+          ? t.tools.map((tool: unknown) => (typeof tool === 'string' ? tool : (tool as Record<string, string>).name ?? ''))
+          : [],
+        estimatedMinutes: t.estimatedMinutes ?? (typeof t.estimated_install_time === 'number' ? Math.round(Number(t.estimated_install_time) / 60000000000) : 30),
+      }))
+    ),
 
   getTemplate: (id: string) =>
     api.get<StackTemplate>(`/stacks/templates/${id}`).then((r) => r.data),
@@ -58,7 +66,7 @@ const stackApiCalls = {
     api.get<StackHistoryEntry[]>(`/stacks/${stackId}/history`).then((r) => r.data),
 
   getVersionDiff: (stackId: string, from: number, to: number) =>
-    api.get<StackVersionDiff>(`/stacks/${stackId}/diff`, { params: { from, to } }).then((r) => r.data),
+    api.get<StackVersionDiff>(`/stacks/${stackId}/history/diff`, { params: { versionA: from, versionB: to } }).then((r) => r.data),
 
   rollbackStack: (stackId: string, version: number) =>
     api.post<{ id: string }>(`/stacks/${stackId}/rollback`, { version }).then((r) => r.data),

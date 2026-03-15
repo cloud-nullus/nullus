@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/manifests"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 	"github.com/cloud-nullus/draft/internal/cicd/usecase"
@@ -64,7 +65,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "org_default"
+		orgID = "00000000-0000-0000-0000-000000000001"
 	}
 
 	out, err := h.createPipeline.Execute(c.Request().Context(), usecase.CreatePipelineInput{
@@ -87,7 +88,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "org_default"
+		orgID = "00000000-0000-0000-0000-000000000001"
 	}
 
 	out, err := h.listPipelines.Execute(c.Request().Context(), usecase.ListPipelinesInput{OrgID: orgID})
@@ -128,7 +129,7 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 func (h *PipelineHandler) ListDeployments(c echo.Context) error {
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "org_default"
+		orgID = "00000000-0000-0000-0000-000000000001"
 	}
 
 	pipelines, err := h.pipelineRepo.List(c.Request().Context(), orgID)
@@ -162,6 +163,16 @@ type deployAppRequest struct {
 	AppName    string `json:"appName"`
 	ClusterID  string `json:"clusterId"`
 	Namespace  string `json:"namespace"`
+	GitURL     string `json:"gitUrl"`
+	Replicas   int32  `json:"replicas"`
+	Port       int32  `json:"port"`
+	Resources  struct {
+		CPULimit   string `json:"cpuLimit"`
+		MemLimit   string `json:"memLimit"`
+		CPURequest string `json:"cpuRequest"`
+		MemRequest string `json:"memRequest"`
+	} `json:"resources"`
+	EnvVars map[string]string `json:"envVars"`
 }
 
 func (h *PipelineHandler) DeployApp(c echo.Context) error {
@@ -170,11 +181,35 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())
 	}
 
+	generated, err := manifests.Generate(manifests.DeployAppRequest{
+		AppName:   req.AppName,
+		GitURL:    req.GitURL,
+		Namespace: req.Namespace,
+		Template:  req.TemplateID,
+		Replicas:  req.Replicas,
+		Port:      req.Port,
+		Resources: manifests.ResourceSpec{
+			CPULimit:   req.Resources.CPULimit,
+			MemLimit:   req.Resources.MemLimit,
+			CPURequest: req.Resources.CPURequest,
+			MemRequest: req.Resources.MemRequest,
+		},
+		EnvVars: req.EnvVars,
+	})
+	if err != nil {
+		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())
+	}
+
 	return c.JSON(http.StatusOK, map[string]any{
 		"deploymentId": "dep_app_" + req.AppName,
-		"status":       "accepted",
 		"templateId":   req.TemplateID,
 		"namespace":    req.Namespace,
 		"clusterId":    req.ClusterID,
+		"manifests": map[string]string{
+			"namespace":  generated.Namespace,
+			"deployment": generated.Deployment,
+			"service":    generated.Service,
+			"ingress":    generated.Ingress,
+		},
 	})
 }
