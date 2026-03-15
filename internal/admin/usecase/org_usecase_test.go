@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -27,6 +28,34 @@ func (m *mockOrgRepo) Create(_ context.Context, org *domain.Organization) error 
 
 func (m *mockOrgRepo) GetByID(_ context.Context, id string) (*domain.Organization, error) {
 	return m.orgs[id], nil
+}
+
+func (m *mockOrgRepo) List(_ context.Context, limit, offset int) ([]*domain.Organization, error) {
+	items := make([]*domain.Organization, 0, len(m.orgs))
+	for _, org := range m.orgs {
+		items = append(items, org)
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ID < items[j].ID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(items) {
+		return []*domain.Organization{}, nil
+	}
+
+	items = items[offset:]
+	if limit > 0 && limit < len(items) {
+		items = items[:limit]
+	}
+
+	return items, nil
 }
 
 func (m *mockOrgRepo) Update(_ context.Context, org *domain.Organization) error {
@@ -124,4 +153,31 @@ func TestOrgUseCase_UpdateOrg_Success(t *testing.T) {
 	assert.Equal(t, "updated.io", updated.Domain)
 	assert.True(t, updated.UpdatedAt.After(created.UpdatedAt) || updated.UpdatedAt.Equal(created.UpdatedAt))
 	_ = time.Now() // ensure time package is used
+}
+
+func TestOrgUseCase_GetFirstOrg_Success(t *testing.T) {
+	repo := newMockOrgRepo()
+	uc := NewOrgUseCase(repo)
+
+	first, err := uc.CreateOrg(context.Background(), CreateOrgInput{Name: "First", Slug: "first", Domain: "first.io"})
+	require.NoError(t, err)
+
+	_, err = uc.CreateOrg(context.Background(), CreateOrgInput{Name: "Second", Slug: "second", Domain: "second.io"})
+	require.NoError(t, err)
+
+	org, err := uc.GetFirstOrg(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, org.ID)
+}
+
+func TestOrgUseCase_GetFirstOrg_NotFound(t *testing.T) {
+	repo := newMockOrgRepo()
+	uc := NewOrgUseCase(repo)
+
+	_, err := uc.GetFirstOrg(context.Background())
+	require.Error(t, err)
+
+	var appErr *shareddomain.AppError
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, "ORG_NOT_FOUND", appErr.Code)
 }

@@ -100,6 +100,24 @@ func (uc *OrgUseCase) GetOrg(ctx context.Context, id string) (*domain.Organizati
 	return org, nil
 }
 
+func (uc *OrgUseCase) GetFirstOrg(ctx context.Context) (*domain.Organization, error) {
+	orgs, err := uc.orgRepo.List(ctx, 1, 0)
+	if err != nil {
+		return nil, fmt.Errorf("listing organizations: %w", err)
+	}
+	if len(orgs) == 0 {
+		return nil, &shareddomain.AppError{
+			Code:       "ORG_NOT_FOUND",
+			HTTPStatus: http.StatusNotFound,
+			Message:    "Organization not found",
+			Detail:     "no organization exists",
+			Retryable:  false,
+		}
+	}
+
+	return orgs[0], nil
+}
+
 // UpdateOrg updates an organization's mutable fields.
 func (uc *OrgUseCase) UpdateOrg(ctx context.Context, id string, input UpdateOrgInput) (*domain.Organization, error) {
 	org, err := uc.GetOrg(ctx, id)
@@ -116,4 +134,13 @@ func (uc *OrgUseCase) UpdateOrg(ctx context.Context, id string, input UpdateOrgI
 	}
 
 	return org, nil
+}
+
+func (uc *OrgUseCase) UpdateFirstOrg(ctx context.Context, input UpdateOrgInput) (*domain.Organization, error) {
+	org, err := uc.GetFirstOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return uc.UpdateOrg(ctx, org.ID, input)
 }

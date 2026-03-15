@@ -10,6 +10,7 @@ import (
 type OrgRepository interface {
 	Create(ctx context.Context, org *domain.Organization) error
 	GetByID(ctx context.Context, id string) (*domain.Organization, error)
+	List(ctx context.Context, limit, offset int) ([]*domain.Organization, error)
 	Update(ctx context.Context, org *domain.Organization) error
 	GetBySlug(ctx context.Context, slug string) (*domain.Organization, error)
 }

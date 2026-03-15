@@ -23,7 +23,7 @@ func newOrgEcho() (*echo.Echo, *adminhandler.OrgHandler) {
 
 	orgRepo := adminrepo.NewMemoryOrgRepository()
 	orgUC := usecase.NewOrgUseCase(orgRepo)
-	h := adminhandler.NewOrgHandler(orgUC)
+	h := adminhandler.NewOrgHandler(orgUC, nil)
 
 	v1 := e.Group("/api/v1")
 	admin := v1.Group("/admin")
@@ -66,7 +66,7 @@ func TestOrgHandler_GetOrg_200(t *testing.T) {
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
 	id := createResp["id"].(string)
 
-	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/organization?orgId="+id, nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/organization", nil)
 	getRec := httptest.NewRecorder()
 	e.ServeHTTP(getRec, getReq)
 
@@ -77,14 +77,45 @@ func TestOrgHandler_GetOrg_200(t *testing.T) {
 	assert.Equal(t, id, getResp["id"])
 }
 
-func TestOrgHandler_GetOrg_404(t *testing.T) {
+func TestOrgHandler_GetOrg_404WhenNoOrganizationExists(t *testing.T) {
 	e, _ := newOrgEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/organization?orgId=nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/organization", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestOrgHandler_GetOrg_ReturnsFirstOrganization(t *testing.T) {
+	e, _ := newOrgEcho()
+
+	createBodyA := `{"name":"First","slug":"first","domain":"first.io"}`
+	createReqA := httptest.NewRequest(http.MethodPost, "/api/v1/admin/orgs", strings.NewReader(createBodyA))
+	createReqA.Header.Set("Content-Type", "application/json")
+	createRecA := httptest.NewRecorder()
+	e.ServeHTTP(createRecA, createReqA)
+	require.Equal(t, http.StatusCreated, createRecA.Code)
+
+	var createRespA map[string]any
+	require.NoError(t, json.Unmarshal(createRecA.Body.Bytes(), &createRespA))
+	firstID := createRespA["id"].(string)
+
+	createBodyB := `{"name":"Second","slug":"second","domain":"second.io"}`
+	createReqB := httptest.NewRequest(http.MethodPost, "/api/v1/admin/orgs", strings.NewReader(createBodyB))
+	createReqB.Header.Set("Content-Type", "application/json")
+	createRecB := httptest.NewRecorder()
+	e.ServeHTTP(createRecB, createReqB)
+	require.Equal(t, http.StatusCreated, createRecB.Code)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/organization", nil)
+	getRec := httptest.NewRecorder()
+	e.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var getResp map[string]any
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &getResp))
+	assert.Equal(t, firstID, getResp["id"])
 }
 
 func TestOrgHandler_UpdateOrg_200(t *testing.T) {
@@ -100,11 +131,10 @@ func TestOrgHandler_UpdateOrg_200(t *testing.T) {
 
 	var createResp map[string]any
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
-	id := createResp["id"].(string)
 
 	// Update
 	updateBody := `{"name":"Updated Name","domain":"updated.io"}`
-	updateReq := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/organization?orgId="+id, strings.NewReader(updateBody))
+	updateReq := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/organization", strings.NewReader(updateBody))
 	updateReq.Header.Set("Content-Type", "application/json")
 	updateRec := httptest.NewRecorder()
 	e.ServeHTTP(updateRec, updateReq)
@@ -115,4 +145,44 @@ func TestOrgHandler_UpdateOrg_200(t *testing.T) {
 	require.NoError(t, json.Unmarshal(updateRec.Body.Bytes(), &updateResp))
 	assert.Equal(t, "Updated Name", updateResp["name"])
 	assert.Equal(t, "updated.io", updateResp["domain"])
+}
+
+func TestOrgHandler_UpdateOrg_UpdatesFirstOrganization(t *testing.T) {
+	e, _ := newOrgEcho()
+
+	createBodyA := `{"name":"First","slug":"first-updatable","domain":"first.io"}`
+	createReqA := httptest.NewRequest(http.MethodPost, "/api/v1/admin/orgs", strings.NewReader(createBodyA))
+	createReqA.Header.Set("Content-Type", "application/json")
+	createRecA := httptest.NewRecorder()
+	e.ServeHTTP(createRecA, createReqA)
+	require.Equal(t, http.StatusCreated, createRecA.Code)
+
+	var createRespA map[string]any
+	require.NoError(t, json.Unmarshal(createRecA.Body.Bytes(), &createRespA))
+	firstID := createRespA["id"].(string)
+
+	createBodyB := `{"name":"Second","slug":"second-updatable","domain":"second.io"}`
+	createReqB := httptest.NewRequest(http.MethodPost, "/api/v1/admin/orgs", strings.NewReader(createBodyB))
+	createReqB.Header.Set("Content-Type", "application/json")
+	createRecB := httptest.NewRecorder()
+	e.ServeHTTP(createRecB, createReqB)
+	require.Equal(t, http.StatusCreated, createRecB.Code)
+
+	updateBody := `{"name":"Updated First","domain":"updated-first.io"}`
+	updateReq := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/organization", strings.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	e.ServeHTTP(updateRec, updateReq)
+	require.Equal(t, http.StatusOK, updateRec.Code)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/organization", nil)
+	getRec := httptest.NewRecorder()
+	e.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var getResp map[string]any
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &getResp))
+	assert.Equal(t, firstID, getResp["id"])
+	assert.Equal(t, "Updated First", getResp["name"])
+	assert.Equal(t, "updated-first.io", getResp["domain"])
 }

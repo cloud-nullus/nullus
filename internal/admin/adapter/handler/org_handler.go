@@ -3,18 +3,25 @@ package handler
 import (
 	"net/http"
 
+	"github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/labstack/echo/v4"
 )
 
 // OrgHandler handles HTTP requests for organizations.
 type OrgHandler struct {
 	orgUC *usecase.OrgUseCase
+	audit *audit.AuditLogger
 }
 
 // NewOrgHandler creates a new OrgHandler.
-func NewOrgHandler(orgUC *usecase.OrgUseCase) *OrgHandler {
-	return &OrgHandler{orgUC: orgUC}
+func NewOrgHandler(orgUC *usecase.OrgUseCase, auditLogger ...*audit.AuditLogger) *OrgHandler {
+	var logger *audit.AuditLogger
+	if len(auditLogger) > 0 {
+		logger = auditLogger[0]
+	}
+	return &OrgHandler{orgUC: orgUC, audit: logger}
 }
 
 type createOrgRequest struct {
@@ -39,11 +46,13 @@ func (h *OrgHandler) resolveOrgID(c echo.Context) string {
 // GetOrganization handles GET /api/v1/admin/organization.
 func (h *OrgHandler) GetOrganization(c echo.Context) error {
 	orgID := h.resolveOrgID(c)
+	var org *domain.Organization
+	var err error
 	if orgID == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "org id is required")
+		org, err = h.orgUC.GetFirstOrg(c.Request().Context())
+	} else {
+		org, err = h.orgUC.GetOrg(c.Request().Context(), orgID)
 	}
-
-	org, err := h.orgUC.GetOrg(c.Request().Context(), orgID)
 	if err != nil {
 		return err
 	}
@@ -54,21 +63,38 @@ func (h *OrgHandler) GetOrganization(c echo.Context) error {
 // PatchOrganization handles PATCH /api/v1/admin/organization.
 func (h *OrgHandler) PatchOrganization(c echo.Context) error {
 	orgID := h.resolveOrgID(c)
-	if orgID == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "org id is required")
-	}
 
 	var req updateOrgRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
-	org, err := h.orgUC.UpdateOrg(c.Request().Context(), orgID, usecase.UpdateOrgInput{
+	input := usecase.UpdateOrgInput{
 		Name:   req.Name,
 		Domain: req.Domain,
-	})
+	}
+	var org *domain.Organization
+	var err error
+	if orgID == "" {
+		org, err = h.orgUC.UpdateFirstOrg(c.Request().Context(), input)
+	} else {
+		org, err = h.orgUC.UpdateOrg(c.Request().Context(), orgID, input)
+	}
 	if err != nil {
 		return err
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "update",
+			ResourceType: "organization",
+			ResourceID:   org.ID,
+			Details: map[string]any{
+				"name":   req.Name,
+				"domain": req.Domain,
+			},
+			IPAddress: c.RealIP(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, org)
@@ -92,6 +118,20 @@ func (h *OrgHandler) RegisterRoutes(g *echo.Group) {
 		})
 		if err != nil {
 			return err
+		}
+		if h.audit != nil {
+			_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+				UserID:       c.Request().Header.Get("X-User-ID"),
+				Action:       "create",
+				ResourceType: "organization",
+				ResourceID:   org.ID,
+				Details: map[string]any{
+					"name":   req.Name,
+					"slug":   req.Slug,
+					"domain": req.Domain,
+				},
+				IPAddress: c.RealIP(),
+			})
 		}
 
 		return c.JSON(http.StatusCreated, org)

@@ -62,6 +62,49 @@ func (r *PostgresOrgRepository) GetByID(ctx context.Context, id string) (*domain
 	return org, nil
 }
 
+func (r *PostgresOrgRepository) List(ctx context.Context, limit, offset int) ([]*domain.Organization, error) {
+	const q = `
+		SELECT id, name, slug, domain, status, default_admin_id, created_at, updated_at
+		FROM organizations
+		ORDER BY created_at ASC
+		LIMIT $1 OFFSET $2`
+
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := r.pool.Query(ctx, q, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	orgs := make([]*domain.Organization, 0)
+	for rows.Next() {
+		org := &domain.Organization{}
+		var adminID *string
+		if err := rows.Scan(
+			&org.ID, &org.Name, &org.Slug, &org.Domain, &org.Status,
+			&adminID, &org.CreatedAt, &org.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if adminID != nil {
+			org.DefaultAdminID = *adminID
+		}
+		orgs = append(orgs, org)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return orgs, nil
+}
+
 // Update persists changes to an existing organization.
 func (r *PostgresOrgRepository) Update(ctx context.Context, org *domain.Organization) error {
 	const q = `
