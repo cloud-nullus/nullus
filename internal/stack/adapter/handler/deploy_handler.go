@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -150,6 +151,7 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 
 	conn, err := wsUpgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
+		log.Printf("websocket upgrade error: %v", err)
 		return nil
 	}
 	defer conn.Close()
@@ -168,6 +170,7 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 		})
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
+				log.Printf("websocket read error: %v", err)
 				return
 			}
 		}
@@ -181,8 +184,12 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 		case entry, ok := <-ch:
 			if !ok {
 				conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-				conn.WriteMessage(websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				if err := conn.WriteMessage(
+					websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+				); err != nil {
+					log.Printf("websocket close message error: %v", err)
+				}
 				return nil
 			}
 
@@ -209,14 +216,17 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 			conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
 			data, err := json.Marshal(msg)
 			if err != nil {
+				log.Printf("websocket message marshal error: %v", err)
 				continue
 			}
 			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				log.Printf("websocket write error: %v", err)
 				return nil
 			}
 		case <-pingTicker.C:
 			conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("websocket ping error: %v", err)
 				return nil
 			}
 		case <-done:

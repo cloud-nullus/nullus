@@ -79,7 +79,10 @@ func (n *SlackNotifier) Send(ctx context.Context, msg Message) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("slack webhook failed: status=%d read body: %w", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("slack webhook failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
@@ -122,6 +125,9 @@ func (n *MultiNotifier) Send(ctx context.Context, msg Message) error {
 	notifier, ok := n.notifiers[msg.Channel]
 	if !ok {
 		return fmt.Errorf("unsupported notification channel: %s", msg.Channel)
+	}
+	if notifier == nil {
+		return fmt.Errorf("notifier for channel %s is nil", msg.Channel)
 	}
 
 	if err := notifier.Send(ctx, msg); err != nil {

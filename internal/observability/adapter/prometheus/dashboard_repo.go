@@ -2,6 +2,7 @@ package prometheus
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sync"
 	"time"
@@ -41,7 +42,7 @@ func (r *DashboardRepository) GetDashboard(ctx context.Context) (*domain.Dashboa
 	}
 	r.mu.RUnlock()
 
-	fresh := r.fetchDashboard(ctx)
+	fresh, fetchErr := r.fetchDashboard(ctx)
 
 	r.mu.Lock()
 	r.cache = cloneDashboard(fresh)
@@ -49,28 +50,45 @@ func (r *DashboardRepository) GetDashboard(ctx context.Context) (*domain.Dashboa
 	result := cloneDashboard(r.cache)
 	r.mu.Unlock()
 
-	return result, nil
+	return result, fetchErr
 }
 
 func (r *DashboardRepository) isCacheFreshLocked() bool {
 	return r.cache != nil && time.Since(r.cacheTime) < r.cacheTTL
 }
 
-func (r *DashboardRepository) fetchDashboard(ctx context.Context) *domain.Dashboard {
+func (r *DashboardRepository) fetchDashboard(ctx context.Context) (*domain.Dashboard, error) {
 	dashboard := &domain.Dashboard{}
+	var fetchErr error
 
-	dashboard.ClusterMetrics.CPUUsage = r.queryFloat(ctx, queryCPUUsage)
-	dashboard.ClusterMetrics.MemoryUsage = r.queryFloat(ctx, queryMemoryUsage)
-	dashboard.ClusterMetrics.StorageUsage = r.queryFloat(ctx, queryStorageUsage)
+	if value, err := r.queryFloat(ctx, queryCPUUsage); err == nil {
+		dashboard.ClusterMetrics.CPUUsage = value
+	} else {
+		fetchErr = errors.Join(fetchErr, err)
+	}
+
+	if value, err := r.queryFloat(ctx, queryMemoryUsage); err == nil {
+		dashboard.ClusterMetrics.MemoryUsage = value
+	} else {
+		fetchErr = errors.Join(fetchErr, err)
+	}
+
+	if value, err := r.queryFloat(ctx, queryStorageUsage); err == nil {
+		dashboard.ClusterMetrics.StorageUsage = value
+	} else {
+		fetchErr = errors.Join(fetchErr, err)
+	}
 
 	totalPods, totalPodsErr := r.client.Query(ctx, queryPodCount)
 	if totalPodsErr != nil {
-		log.Printf("prometheus query failed: query=%q err=%v", queryPodCount, totalPodsErr)
+		log.Printf("WARN prometheus query failed: query=%q err=%v", queryPodCount, totalPodsErr)
+		fetchErr = errors.Join(fetchErr, totalPodsErr)
 	}
 
 	runningPods, runningPodsErr := r.client.Query(ctx, queryRunningPods)
 	if runningPodsErr != nil {
-		log.Printf("prometheus query failed: query=%q err=%v", queryRunningPods, runningPodsErr)
+		log.Printf("WARN prometheus query failed: query=%q err=%v", queryRunningPods, runningPodsErr)
+		fetchErr = errors.Join(fetchErr, runningPodsErr)
 	}
 
 	if runningPodsErr == nil {
@@ -79,16 +97,16 @@ func (r *DashboardRepository) fetchDashboard(ctx context.Context) *domain.Dashbo
 		dashboard.ClusterMetrics.PodCount = int(totalPods)
 	}
 
-	return dashboard
+	return dashboard, fetchErr
 }
 
-func (r *DashboardRepository) queryFloat(ctx context.Context, query string) float64 {
+func (r *DashboardRepository) queryFloat(ctx context.Context, query string) (float64, error) {
 	value, err := r.client.Query(ctx, query)
 	if err != nil {
-		log.Printf("prometheus query failed: query=%q err=%v", query, err)
-		return 0
+		log.Printf("WARN prometheus query failed: query=%q err=%v", query, err)
+		return 0, err
 	}
-	return value
+	return value, nil
 }
 
 func cloneDashboard(d *domain.Dashboard) *domain.Dashboard {

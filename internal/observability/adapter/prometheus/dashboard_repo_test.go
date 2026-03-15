@@ -86,7 +86,7 @@ func TestDashboardRepository_GracefulFallbackWhenPrometheusDown(t *testing.T) {
 	repo := NewDashboardRepository(NewClient("http://127.0.0.1:1"))
 
 	dashboard, err := repo.GetDashboard(context.Background())
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.NotNil(t, dashboard)
 	assert.Equal(t, 0.0, dashboard.ClusterMetrics.CPUUsage)
 	assert.Equal(t, 0.0, dashboard.ClusterMetrics.MemoryUsage)
