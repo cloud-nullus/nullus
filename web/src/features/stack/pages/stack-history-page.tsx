@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { History, GitCompare, RotateCcw } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
+import { useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
+import { VersionDiff } from '../components/version-diff'
 
 const MOCK_HISTORY: StackHistoryEntry[] = [
   {
@@ -55,14 +57,6 @@ const MOCK_HISTORY: StackHistoryEntry[] = [
   },
 ]
 
-const MOCK_DIFF: StackVersionDiff = {
-  fromVersion: 4,
-  toVersion: 5,
-  added: [{ key: 'argocd.notifications', value: 'enabled' }],
-  removed: [],
-  changed: [{ key: 'argocd.version', from: '2.9.0', to: '2.10.0' }],
-}
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('ko-KR', {
     year: 'numeric',
@@ -75,9 +69,20 @@ function formatDate(iso: string) {
 
 export function StackHistoryPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [diffEntry, setDiffEntry] = useState<StackHistoryEntry | null>(null)
+  const [compareOpen, setCompareOpen] = useState(false)
+  const [versionA, setVersionA] = useState(4)
+  const [versionB, setVersionB] = useState(5)
   const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
   const [rollbackLoading, setRollbackLoading] = useState(false)
+
+  const versionOptions = MOCK_HISTORY.map((entry) => entry.version).sort((a, b) => b - a)
+  const compareEntryA = MOCK_HISTORY.find((entry) => entry.version === versionA) ?? null
+  const compareEntryB = MOCK_HISTORY.find((entry) => entry.version === versionB) ?? null
+  const stackID = compareEntryA?.stackId ?? compareEntryB?.stackId ?? 's1'
+
+  const { data: apiDiff } = useStackVersionDiff(stackID, versionA, versionB)
+  const fallbackDiff = buildSnapshotDiff(compareEntryA?.snapshot ?? {}, compareEntryB?.snapshot ?? {})
+  const diff = apiDiff ?? fallbackDiff
 
   const handleRollbackConfirm = () => {
     if (!rollbackEntry) return
@@ -121,32 +126,17 @@ export function StackHistoryPage() {
       accessorKey: 'reason',
       header: '변경 사유',
     },
-    {
-      id: 'actions',
-      header: 'Actions',
-      enableSorting: false,
-      cell: ({ row }) => {
-        const entry = row.original
-        const index = MOCK_HISTORY.findIndex((item) => item.id === entry.id)
-        const hasPrev = index < MOCK_HISTORY.length - 1
-        return (
-          <div className="flex gap-1.5">
-            {hasPrev && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setDiffEntry(entry)
-                }}
-                type="button"
-              >
-                <GitCompare size={13} />
-                Diff
-              </Button>
-            )}
-            {index !== 0 && (
-              <Button
+      {
+        id: 'actions',
+        header: 'Actions',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const entry = row.original
+          const index = MOCK_HISTORY.findIndex((item) => item.id === entry.id)
+          return (
+            <div className="flex gap-1.5">
+              {index !== 0 && (
+                <Button
                 variant="danger"
                 size="sm"
                 onClick={(event) => {
@@ -170,20 +160,26 @@ export function StackHistoryPage() {
   return (
     <div>
       {/* Page header */}
-      <div className="mb-7 flex items-center gap-2.5">
-        <div
-          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
-        >
-          <History size={18} />
+      <div className="mb-7 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
+          >
+            <History size={18} />
+          </div>
+          <div>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
+              Stack History
+            </h1>
+            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
+              스택 변경 이력 및 버전 관리
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            Stack History
-          </h1>
-          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-            스택 변경 이력 및 버전 관리
-          </p>
-        </div>
+        <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
+          <GitCompare size={15} />
+          Compare Versions
+        </Button>
       </div>
 
       <DataTable
@@ -212,53 +208,50 @@ export function StackHistoryPage() {
         </div>
       )}
 
-      {/* Diff Modal */}
       <Modal
-        open={!!diffEntry}
-        onClose={() => setDiffEntry(null)}
-        title={diffEntry ? `Diff: v${diffEntry.version - 1} → v${diffEntry.version}` : ''}
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        title={`Compare Versions (v${versionA} ↔ v${versionB})`}
         wide
       >
-        {diffEntry && (
-          <div className="flex flex-col gap-3">
-            {MOCK_DIFF.changed.map((item) => (
-              <div key={item.key} className="font-mono text-[13px]">
-                <span className="mr-2 text-[var(--color-text-secondary)]">{item.key}:</span>
-                <span
-                  className="mr-1.5 rounded bg-[rgba(239,68,68,0.12)] px-2 py-0.5 text-[#f87171] line-through"
-                >
-                  - {item.from}
-                </span>
-                <span
-                  className="rounded bg-[rgba(34,197,94,0.12)] px-2 py-0.5 text-[#4ade80]"
-                >
-                  + {item.to}
-                </span>
-              </div>
-            ))}
-            {MOCK_DIFF.added.map((item) => (
-              <div key={item.key} className="font-mono text-[13px]">
-                <span
-                  className="rounded bg-[rgba(34,197,94,0.12)] px-2 py-0.5 text-[#4ade80]"
-                >
-                  + {item.key}: {item.value}
-                </span>
-              </div>
-            ))}
-            {MOCK_DIFF.removed.map((item) => (
-              <div key={item.key} className="font-mono text-[13px]">
-                <span
-                  className="rounded bg-[rgba(239,68,68,0.12)] px-2 py-0.5 text-[#f87171] line-through"
-                >
-                  - {item.key}: {item.value}
-                </span>
-              </div>
-            ))}
-            {MOCK_DIFF.added.length === 0 && MOCK_DIFF.removed.length === 0 && MOCK_DIFF.changed.length === 0 && (
-              <p className="m-0 text-sm text-[var(--color-text-secondary)]">변경 사항이 없습니다.</p>
-            )}
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
+              Version A
+              <select
+                value={versionA}
+                onChange={(event) => setVersionA(Number(event.target.value))}
+                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+              >
+                {versionOptions.map((version) => (
+                  <option key={`a-${version}`} value={version}>{`v${version}`}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
+              Version B
+              <select
+                value={versionB}
+                onChange={(event) => setVersionB(Number(event.target.value))}
+                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+              >
+                {versionOptions.map((version) => (
+                  <option key={`b-${version}`} value={version}>{`v${version}`}</option>
+                ))}
+              </select>
+            </label>
           </div>
-        )}
+
+          {compareEntryA && compareEntryB && (
+            <VersionDiff
+              versionA={versionA}
+              versionB={versionB}
+              configA={compareEntryA.snapshot}
+              configB={compareEntryB.snapshot}
+              diff={diff}
+            />
+          )}
+        </div>
       </Modal>
 
       {/* Rollback confirm */}
@@ -274,4 +267,56 @@ export function StackHistoryPage() {
       />
     </div>
   )
+}
+
+function buildSnapshotDiff(
+  snapshotA: Record<string, unknown>,
+  snapshotB: Record<string, unknown>
+): StackVersionDiff {
+  const flatA = flattenObject(snapshotA)
+  const flatB = flattenObject(snapshotB)
+  const keys = new Set([...Object.keys(flatA), ...Object.keys(flatB)])
+
+  const added: Record<string, unknown> = {}
+  const removed: Record<string, unknown> = {}
+  const changed: Record<string, [unknown, unknown]> = {}
+
+  keys.forEach((key) => {
+    const hasA = Object.hasOwn(flatA, key)
+    const hasB = Object.hasOwn(flatB, key)
+
+    if (!hasA && hasB) {
+      added[key] = flatB[key]
+      return
+    }
+    if (hasA && !hasB) {
+      removed[key] = flatA[key]
+      return
+    }
+
+    if (flatA[key] !== flatB[key]) {
+      changed[key] = [flatA[key], flatB[key]]
+    }
+  })
+
+  return { added, removed, changed }
+}
+
+function flattenObject(source: Record<string, unknown>, prefix = ''): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+
+  Object.entries(source).forEach(([key, value]) => {
+    const path = prefix ? `${prefix}.${key}` : key
+    if (isPlainObject(value)) {
+      Object.assign(out, flattenObject(value, path))
+      return
+    }
+    out[path] = value
+  })
+
+  return out
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

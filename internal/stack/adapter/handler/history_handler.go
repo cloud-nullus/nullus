@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
@@ -13,6 +14,7 @@ type HistoryHandler struct {
 	historyRepo   port.HistoryRepository
 	stackRepo     port.StackRepository
 	manageHistory *usecase.ManageHistory
+	diffVersions  *usecase.DiffVersions
 }
 
 // NewHistoryHandler constructs a HistoryHandler.
@@ -25,14 +27,43 @@ func NewHistoryHandler(
 		historyRepo:   historyRepo,
 		stackRepo:     stackRepo,
 		manageHistory: manageHistory,
+		diffVersions:  usecase.NewDiffVersions(historyRepo),
 	}
 }
 
 // RegisterRoutes registers history routes on the given Echo group.
 func (h *HistoryHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/:stackId/history", h.ListHistory)
+	g.GET("/:id/history/diff", h.GetVersionsDiff)
 	g.GET("/:stackId/diff", h.GetDiff)
 	g.POST("/:stackId/rollback", h.Rollback)
+}
+
+func (h *HistoryHandler) GetVersionsDiff(c echo.Context) error {
+	stackID := c.Param("id")
+	if stackID == "" {
+		stackID = c.Param("stackId")
+	}
+
+	versionA, err := strconv.Atoi(c.QueryParam("versionA"))
+	if err != nil || versionA <= 0 {
+		return errorResponse(c, http.StatusBadRequest, "VERSION_DIFF_REQUEST_INVALID", "versionA must be a positive integer")
+	}
+	versionB, err := strconv.Atoi(c.QueryParam("versionB"))
+	if err != nil || versionB <= 0 {
+		return errorResponse(c, http.StatusBadRequest, "VERSION_DIFF_REQUEST_INVALID", "versionB must be a positive integer")
+	}
+
+	result, err := h.diffVersions.Execute(c.Request().Context(), usecase.DiffVersionsInput{
+		StackID:  stackID,
+		VersionA: versionA,
+		VersionB: versionB,
+	})
+	if err != nil {
+		return errorResponse(c, http.StatusNotFound, "VERSION_NOT_FOUND", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, result)
 }
 
 // ListHistory handles GET /api/v1/stacks/:id/history.
