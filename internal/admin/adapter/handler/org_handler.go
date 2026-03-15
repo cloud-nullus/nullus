@@ -31,8 +31,9 @@ type createOrgRequest struct {
 }
 
 type updateOrgRequest struct {
-	Name   string `json:"name"`
-	Domain string `json:"domain"`
+	Name               string   `json:"name"`
+	Domain             string   `json:"domain"`
+	ClusterAccessScope []string `json:"clusterAccessScope"`
 }
 
 func (h *OrgHandler) resolveOrgID(c echo.Context) string {
@@ -70,8 +71,9 @@ func (h *OrgHandler) PatchOrganization(c echo.Context) error {
 	}
 
 	input := usecase.UpdateOrgInput{
-		Name:   req.Name,
-		Domain: req.Domain,
+		Name:               req.Name,
+		Domain:             req.Domain,
+		ClusterAccessScope: req.ClusterAccessScope,
 	}
 	var org *domain.Organization
 	var err error

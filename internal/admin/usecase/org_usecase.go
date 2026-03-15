@@ -31,8 +31,9 @@ type CreateOrgInput struct {
 
 // UpdateOrgInput holds the input for updating an organization.
 type UpdateOrgInput struct {
-	Name   string
-	Domain string
+	Name               string
+	Domain             string
+	ClusterAccessScope []string
 }
 
 // CreateOrg creates a new organization after validating the slug.
@@ -125,8 +126,15 @@ func (uc *OrgUseCase) UpdateOrg(ctx context.Context, id string, input UpdateOrgI
 		return nil, err
 	}
 
-	org.Name = input.Name
-	org.Domain = input.Domain
+	if input.Name != "" {
+		org.Name = input.Name
+	}
+	if input.Domain != "" {
+		org.Domain = input.Domain
+	}
+	if input.ClusterAccessScope != nil {
+		org.ClusterAccessScope = input.ClusterAccessScope
+	}
 	org.UpdatedAt = time.Now().UTC()
 
 	if err := uc.orgRepo.Update(ctx, org); err != nil {

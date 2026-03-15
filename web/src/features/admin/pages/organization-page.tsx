@@ -234,6 +234,17 @@ export function OrganizationPage() {
               )
             })}
           </div>
+          <div className="mt-4 flex justify-end">
+            <Button
+              variant="primary"
+              size="sm"
+              loading={updateOrg.isPending}
+              onClick={handleSubmit(handleSave)}
+              type="button"
+            >
+              클러스터 접근 범위 저장
+            </Button>
+          </div>
         </div>
       </div>
 
