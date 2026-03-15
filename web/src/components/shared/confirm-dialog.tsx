@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Modal } from '../ui/modal'
 import { Button } from '../ui/button'
+import { cn } from '../../lib/utils'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -55,52 +56,28 @@ export function ConfirmDialog({
             onClick={handleConfirm}
             disabled={!canConfirm || loading}
             loading={loading}
-            style={{
-              background: canConfirm ? 'linear-gradient(135deg, #ef4444, #dc2626)' : undefined,
-              color: canConfirm ? '#fff' : undefined,
-            }}
+            className={cn(canConfirm && 'bg-[linear-gradient(135deg,#ef4444,#dc2626)] text-white')}
           >
             {confirmLabel}
           </Button>
         </>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'rgba(239,68,68,0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              color: '#f87171',
-            }}
-          >
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[rgba(239,68,68,0.15)] text-[#f87171]">
             <AlertTriangle size={20} />
           </div>
-          <p style={{ margin: 0, fontSize: '14px', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+          <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
             {description}
           </p>
         </div>
 
         {confirmText && (
           <div>
-            <p style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+            <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
               확인하려면{' '}
-              <code
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontFamily: 'Fira Code, monospace',
-                  fontSize: '12px',
-                  color: '#f87171',
-                }}
-              >
+              <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
                 {confirmText}
               </code>
               을(를) 입력하세요.
@@ -110,18 +87,12 @@ export function ConfirmDialog({
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder={confirmText}
-              style={{
-                width: '100%',
-                background: 'rgba(255,255,255,0.04)',
-                border: `1px solid ${typed === confirmText ? 'rgba(239,68,68,0.5)' : 'var(--color-border-default)'}`,
-                borderRadius: '8px',
-                padding: '9px 12px',
-                fontSize: '14px',
-                color: 'var(--color-text-primary)',
-                outline: 'none',
-                boxSizing: 'border-box',
-                fontFamily: 'Fira Code, monospace',
-              }}
+              className={cn(
+                'box-border w-full rounded-lg border bg-[rgba(255,255,255,0.04)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none',
+                typed === confirmText
+                  ? 'border-[rgba(239,68,68,0.5)]'
+                  : 'border-[var(--color-border-default)]'
+              )}
             />
           </div>
         )}

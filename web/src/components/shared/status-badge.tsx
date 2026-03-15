@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { CheckCircle, Clock, AlertCircle, MinusCircle } from 'lucide-react'
 import type { ClusterStatus } from '../../types'
+import { cn } from '../../lib/utils'
 
 interface StatusBadgeProps {
   status: ClusterStatus
@@ -8,32 +9,32 @@ interface StatusBadgeProps {
 }
 
 const statusConfig: Record<ClusterStatus, {
-  bg: string
-  text: string
+  bgClass: string
+  textClass: string
   icon: ReactNode
   defaultLabel: string
 }> = {
   connected: {
-    bg: 'rgba(34,197,94,0.15)',
-    text: '#22c55e',
+    bgClass: 'bg-[rgba(34,197,94,0.15)]',
+    textClass: 'text-[#22c55e]',
     icon: <CheckCircle size={12} />,
     defaultLabel: 'Connected',
   },
   pending: {
-    bg: 'rgba(245,158,11,0.15)',
-    text: '#f59e0b',
+    bgClass: 'bg-[rgba(245,158,11,0.15)]',
+    textClass: 'text-[#f59e0b]',
     icon: <Clock size={12} />,
     defaultLabel: 'Pending',
   },
   error: {
-    bg: 'rgba(239,68,68,0.15)',
-    text: '#ef4444',
+    bgClass: 'bg-[rgba(239,68,68,0.15)]',
+    textClass: 'text-[#ef4444]',
     icon: <AlertCircle size={12} />,
     defaultLabel: 'Error',
   },
   inactive: {
-    bg: 'rgba(100,116,139,0.15)',
-    text: '#64748b',
+    bgClass: 'bg-[rgba(100,116,139,0.15)]',
+    textClass: 'text-[#64748b]',
     icon: <MinusCircle size={12} />,
     defaultLabel: 'Inactive',
   },
@@ -45,17 +46,11 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
 
   return (
     <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '4px',
-        padding: '2px 8px',
-        borderRadius: '9999px',
-        fontSize: '12px',
-        fontWeight: 600,
-        backgroundColor: config.bg,
-        color: config.text,
-      }}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold',
+        config.bgClass,
+        config.textClass
+      )}
     >
       {config.icon}
       {displayLabel}

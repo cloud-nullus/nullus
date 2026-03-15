@@ -1,113 +1,129 @@
-import { type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  flexRender,
+  type ColumnDef,
+  type SortingState,
+  type PaginationState,
+} from '@tanstack/react-table'
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '../ui/button'
-
-export interface Column<T> {
-  key: keyof T | string
-  label: string
-  sortable?: boolean
-  render?: (row: T) => ReactNode
-  width?: string
-}
+import { cn } from '../../lib/utils'
 
 interface DataTableProps<T> {
-  columns: Column<T>[]
+  columns: ColumnDef<T, unknown>[]
   data: T[]
-  sortField?: string
-  sortDir?: 'asc' | 'desc'
-  onSort?: (field: string) => void
+  getRowKey: (row: T) => string
+  onSort?: (field: string, dir: 'asc' | 'desc') => void
   onRowClick?: (row: T) => void
   emptyMessage?: string
-  page?: number
   pageSize?: number
-  total?: number
-  onPageChange?: (page: number) => void
-  getRowKey: (row: T) => string
 }
 
 export function DataTable<T>({
   columns,
   data,
-  sortField,
-  sortDir,
+  getRowKey,
   onSort,
   onRowClick,
   emptyMessage = '데이터가 없습니다.',
-  page = 1,
   pageSize = 20,
-  total,
-  onPageChange,
-  getRowKey,
 }: DataTableProps<T>) {
-  const totalPages = total !== undefined ? Math.ceil(total / pageSize) : undefined
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    whiteSpace: 'nowrap',
-    userSelect: 'none',
-  }
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      sorting,
+      globalFilter,
+      pagination,
+    },
+    onSortingChange: (updater) => {
+      setSorting((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater
+        const firstSort = next[0]
+        if (firstSort) {
+          onSort?.(firstSort.id, firstSort.desc ? 'desc' : 'asc')
+        }
+        return next
+      })
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    onPaginationChange: setPagination,
+    getRowId: (row) => getRowKey(row),
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  })
 
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
-  }
+  const pageCount = table.getPageCount()
+  const canPrevious = table.getCanPreviousPage()
+  const canNext = table.getCanNextPage()
+  const pageIndex = table.getState().pagination.pageIndex
+  const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, index) => index), [pageCount])
 
   return (
-    <div
-      style={{
-        background: 'var(--color-surface-card)',
-        border: '1px solid var(--color-border-default)',
-        borderRadius: 'var(--card-radius)',
-        overflow: 'hidden',
-      }}
-    >
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
+      <div className="border-b border-[var(--color-border-default)] px-[14px] py-3">
+        <input
+          value={globalFilter}
+          onChange={(event) => setGlobalFilter(event.target.value)}
+          placeholder="Search..."
+          className="w-full max-w-[280px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+        />
+      </div>
+
+      <table className="w-full border-collapse">
         <thead>
-          <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-            {columns.map((col) => (
-              <th
-                key={String(col.key)}
-                style={{
-                  ...thStyle,
-                  cursor: col.sortable ? 'pointer' : 'default',
-                  width: col.width,
-                }}
-                onClick={() => col.sortable && onSort?.(String(col.key))}
-              >
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  {col.label}
-                  {col.sortable && sortField === String(col.key) && (
-                    sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-                  )}
-                </span>
-              </th>
-            ))}
-          </tr>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id} className="bg-[rgba(255,255,255,0.02)]">
+              {headerGroup.headers.map((header) => {
+                const canSort = header.column.getCanSort()
+                const sortedState = header.column.getIsSorted()
+                return (
+                  <th
+                    key={header.id}
+                    className={cn(
+                      'select-none whitespace-nowrap px-[14px] py-2.5 text-left text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] uppercase',
+                      canSort ? 'cursor-pointer' : 'cursor-default'
+                    )}
+                    onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      {sortedState === 'asc' && <ChevronUp size={12} />}
+                      {sortedState === 'desc' && <ChevronDown size={12} />}
+                    </span>
+                  </th>
+                )
+              })}
+            </tr>
+          ))}
         </thead>
         <tbody>
-          {data.map((row) => (
+          {table.getRowModel().rows.map((row) => (
             <tr
-              key={getRowKey(row)}
-              style={{ transition: 'background var(--transition-fast)', cursor: onRowClick ? 'pointer' : 'default' }}
-              onClick={() => onRowClick?.(row)}
-              onMouseEnter={(e) => {
-                ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)'
-              }}
-              onMouseLeave={(e) => {
-                ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent'
-              }}
+              key={row.id}
+              className={cn(
+                'transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.02)]',
+                onRowClick ? 'cursor-pointer' : 'cursor-default'
+              )}
+              onClick={() => onRowClick?.(row.original)}
             >
-              {columns.map((col) => (
-                <td key={String(col.key)} style={tdStyle}>
-                  {col.render ? col.render(row) : String((row as Record<string, unknown>)[String(col.key)] ?? '')}
+              {row.getVisibleCells().map((cell) => (
+                <td
+                  key={cell.id}
+                  className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]"
+                >
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}
             </tr>
@@ -115,65 +131,44 @@ export function DataTable<T>({
         </tbody>
       </table>
 
-      {data.length === 0 && (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '48px 0',
-            color: 'var(--color-text-secondary)',
-            fontSize: '14px',
-          }}
-        >
+      {table.getRowModel().rows.length === 0 && (
+        <div className="py-12 text-center text-sm text-[var(--color-text-secondary)]">
           {emptyMessage}
         </div>
       )}
 
-      {totalPages !== undefined && totalPages > 1 && onPageChange && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: '6px',
-            padding: '12px 16px',
-            borderTop: '1px solid var(--color-border-default)',
-          }}
-        >
+      {pageCount > 1 && (
+        <div className="flex items-center justify-end gap-1.5 border-t border-[var(--color-border-default)] px-4 py-3">
           <Button
             variant="ghost"
             size="sm"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
-            style={{ padding: '6px 8px' }}
+            disabled={!canPrevious}
+            onClick={() => table.previousPage()}
+            className="px-2 py-1.5"
           >
             <ChevronLeft size={14} />
           </Button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+          {pageNumbers.map((number) => (
             <button
-              key={p}
-              onClick={() => onPageChange(p)}
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '6px',
-                border: p === page ? '1px solid rgba(99,102,241,0.5)' : '1px solid transparent',
-                background: p === page ? 'rgba(99,102,241,0.15)' : 'transparent',
-                color: p === page ? '#a5b4fc' : 'var(--color-text-secondary)',
-                fontSize: '13px',
-                fontWeight: p === page ? 600 : 400,
-                cursor: 'pointer',
-                transition: 'all var(--transition-fast)',
-              }}
+              key={number}
+              type="button"
+              onClick={() => table.setPageIndex(number)}
+              className={cn(
+                'h-8 w-8 cursor-pointer rounded-md border text-[13px] transition-all duration-150 ease-in-out',
+                number === pageIndex
+                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.15)] font-semibold text-[#a5b4fc]'
+                  : 'border-transparent bg-transparent font-normal text-[var(--color-text-secondary)]'
+              )}
             >
-              {p}
+              {number + 1}
             </button>
           ))}
           <Button
             variant="ghost"
             size="sm"
-            disabled={page >= totalPages}
-            onClick={() => onPageChange(page + 1)}
-            style={{ padding: '6px 8px' }}
+            disabled={!canNext}
+            onClick={() => table.nextPage()}
+            className="px-2 py-1.5"
           >
             <ChevronRight size={14} />
           </Button>

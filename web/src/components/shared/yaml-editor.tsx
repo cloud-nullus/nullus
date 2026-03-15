@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Copy, Check, AlignLeft } from 'lucide-react'
+import { cn } from '../../lib/utils'
 
 interface YamlEditorProps {
   value: string
@@ -9,35 +10,11 @@ interface YamlEditorProps {
 }
 
 function parseYaml(text: string): string | null {
-  // Basic YAML validation: detect common issues
   const lines = text.split('\n')
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i]
-    // Detect tab characters (YAML requires spaces)
     if (/^\t/.test(line)) {
       return `Line ${i + 1}: YAML does not allow tab indentation`
-    }
-    // Detect unmatched quotes
-    const singleQuotes = (line.match(/'/g) ?? []).length
-    if (singleQuotes % 2 !== 0 && !line.trimStart().startsWith('#')) {
-      // Allow false positives to avoid over-blocking; only flag obvious issues
-    }
-  }
-
-  // Attempt structural parse: check colon-key balance
-  let inMultiline = false
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim()
-    if (trimmed === '' || trimmed.startsWith('#')) continue
-    if (trimmed.endsWith('|') || trimmed.endsWith('>')) {
-      inMultiline = true
-      continue
-    }
-    if (inMultiline && lines[i].startsWith(' ')) continue
-    inMultiline = false
-    // Detect duplicate colons in key (likely syntax error)
-    if (/^[^:]+:[^:]*:[^:]*$/.test(trimmed) && !trimmed.startsWith('-')) {
-      // Might be a URL value — skip
     }
   }
 
@@ -45,11 +22,9 @@ function parseYaml(text: string): string | null {
 }
 
 function formatYaml(text: string): string {
-  // Simple formatter: normalize indentation to 2 spaces
   const lines = text.split('\n')
   const result: string[] = []
   for (const line of lines) {
-    // Replace leading tabs with 2 spaces each
     const withoutTabs = line.replace(/^\t+/, (tabs) => '  '.repeat(tabs.length))
     result.push(withoutTabs)
   }
@@ -57,11 +32,12 @@ function formatYaml(text: string): string {
 }
 
 export function YamlEditor({ value, onChange, readOnly = false, height = '400px' }: YamlEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const lineNumbersRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const lineCount = value.split('\n').length
+  const heightClass = height === '360px' ? 'h-[360px]' : 'h-[400px]'
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value
@@ -84,86 +60,41 @@ export function YamlEditor({ value, onChange, readOnly = false, height = '400px'
     onChange?.(formatted)
   }
 
-  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
-    const lineNumbers = document.getElementById('yaml-editor-line-numbers')
-    if (lineNumbers) {
-      lineNumbers.scrollTop = (e.target as HTMLTextAreaElement).scrollTop
+  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement | HTMLDivElement>) => {
+    if (lineNumbersRef.current) {
+      lineNumbersRef.current.scrollTop = e.currentTarget.scrollTop
     }
   }
 
   return (
     <div
-      style={{
-        background: '#0d1117',
-        border: `1px solid ${error ? 'rgba(239,68,68,0.5)' : 'var(--color-border-default)'}`,
-        borderRadius: 'var(--card-radius)',
-        overflow: 'hidden',
-        fontFamily: "'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      className={cn(
+        'flex flex-col overflow-hidden rounded-[var(--card-radius)] border bg-[#0d1117] font-mono',
+        error ? 'border-[rgba(239,68,68,0.5)]' : 'border-[var(--color-border-default)]'
+      )}
     >
-      {/* Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 14px',
-          background: 'rgba(255,255,255,0.04)',
-          borderBottom: '1px solid var(--color-border-default)',
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--color-text-secondary)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            fontFamily: 'inherit',
-          }}
-        >
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-2">
+        <span className="text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] uppercase">
           yaml
         </span>
-        <div style={{ display: 'flex', gap: '6px' }}>
+        <div className="flex gap-1.5">
           {!readOnly && (
             <button
+              type="button"
               onClick={handleFormat}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                background: 'none',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                fontSize: '12px',
-                color: 'var(--color-text-secondary)',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
+              className="flex cursor-pointer items-center gap-[5px] rounded-md border border-[var(--color-border-default)] bg-none px-2.5 py-1 text-xs text-[var(--color-text-secondary)]"
             >
               <AlignLeft size={12} />
               Format
             </button>
           )}
           <button
+            type="button"
             onClick={handleCopy}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              background: 'none',
-              border: '1px solid var(--color-border-default)',
-              borderRadius: '6px',
-              padding: '4px 10px',
-              fontSize: '12px',
-              color: copied ? '#22c55e' : 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
+            className={cn(
+              'flex cursor-pointer items-center gap-[5px] rounded-md border border-[var(--color-border-default)] bg-none px-2.5 py-1 text-xs',
+              copied ? 'text-[#22c55e]' : 'text-[var(--color-text-secondary)]'
+            )}
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
             {copied ? 'Copied!' : 'Copy'}
@@ -171,78 +102,42 @@ export function YamlEditor({ value, onChange, readOnly = false, height = '400px'
         </div>
       </div>
 
-      {/* Editor area */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', height }}>
-        {/* Line numbers */}
+      <div className={cn('flex flex-1 overflow-hidden', heightClass)}>
         <div
-          id="yaml-editor-line-numbers"
-          style={{
-            width: '48px',
-            background: 'transparent',
-            borderRight: '1px solid rgba(255,255,255,0.06)',
-            overflowY: 'hidden',
-            flexShrink: 0,
-            paddingTop: '10px',
-            userSelect: 'none',
-          }}
+          ref={lineNumbersRef}
+          className="w-12 shrink-0 overflow-y-hidden border-r border-r-[rgba(255,255,255,0.06)] pt-2.5 select-none"
         >
-          {Array.from({ length: lineCount }, (_, i) => (
+          {Array.from({ length: lineCount }, (_, i) => i + 1).map((lineNo) => (
             <div
-              key={i}
-              style={{
-                height: '22px',
-                lineHeight: '22px',
-                textAlign: 'right',
-                paddingRight: '10px',
-                fontSize: '13px',
-                color: '#4a5568',
-                fontFamily: 'inherit',
-              }}
+              key={`yaml-line-${lineNo}`}
+              className="h-[22px] pr-2.5 text-right text-[13px] leading-[22px] text-[#4a5568]"
             >
-              {i + 1}
+              {lineNo}
             </div>
           ))}
         </div>
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={handleChange}
-          onScroll={handleScroll}
-          readOnly={readOnly}
-          spellCheck={false}
-          style={{
-            flex: 1,
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
-            padding: '10px 16px',
-            fontSize: '13px',
-            lineHeight: '22px',
-            color: '#e2e8f0',
-            fontFamily: 'inherit',
-            overflowY: 'auto',
-            whiteSpace: 'pre',
-            cursor: readOnly ? 'default' : 'text',
-          }}
-        />
+        {readOnly ? (
+          <div
+            onScroll={handleScroll}
+            className="flex-1 overflow-auto px-4 py-2.5 text-[13px] leading-[22px] whitespace-pre text-[#e2e8f0]"
+          >
+            {value || ' '}
+          </div>
+        ) : (
+          <textarea
+            value={value}
+            onChange={handleChange}
+            onScroll={handleScroll}
+            readOnly={readOnly}
+            spellCheck={false}
+            className="h-full w-full flex-1 resize-none overflow-auto border-none bg-transparent px-4 py-2.5 font-mono text-[13px] leading-[22px] text-[#e2e8f0] outline-none"
+          />
+        )}
       </div>
 
-      {/* Error bar */}
       {error && (
-        <div
-          style={{
-            padding: '6px 14px',
-            background: 'rgba(239,68,68,0.1)',
-            borderTop: '1px solid rgba(239,68,68,0.3)',
-            fontSize: '12px',
-            color: '#f87171',
-            flexShrink: 0,
-            fontFamily: 'inherit',
-          }}
-        >
+        <div className="shrink-0 border-t border-t-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.1)] px-[14px] py-1.5 text-xs text-[#f87171]">
           {error}
         </div>
       )}
