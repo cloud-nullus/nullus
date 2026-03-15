@@ -41,3 +41,51 @@ jobs:
       - run: npm ci
       - run: npx vite build
       - run: npx vitest run
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: nullus_test
+          POSTGRES_USER: nullus
+          POSTGRES_PASSWORD: nullus_test
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - name: Build API
+        run: go build -o bin/api ./cmd/api
+      - name: Run migrations
+        run: |
+          for f in db/migrations/*.up.sql; do
+            PGPASSWORD=nullus_test psql -h localhost -p 5433 -U nullus -d nullus_test -f "$f" || true
+          done
+      - name: Start API
+        run: |
+          NULLUS_DATABASE_HOST=localhost NULLUS_DATABASE_PORT=5433 NULLUS_SERVER_MODE=development bin/api &
+          sleep 3
+      - name: Install frontend deps
+        run: cd web && npm ci
+      - name: Install Playwright browsers
+        run: cd web && npx playwright install --with-deps chromium
+      - name: Build frontend
+        run: cd web && npx vite build
+      - name: Run E2E tests
+        run: cd web && npx playwright test --reporter=list
+        env:
+          VITE_API_URL: http://localhost:8080
