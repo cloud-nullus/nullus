@@ -14,12 +14,16 @@ import (
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
+	obsprom "github.com/cloud-nullus/draft/internal/observability/adapter/prometheus"
 	obsrepo "github.com/cloud-nullus/draft/internal/observability/adapter/repository"
+	obsport "github.com/cloud-nullus/draft/internal/observability/port"
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
@@ -32,14 +36,12 @@ import (
 )
 
 func main() {
-	// Load configuration
 	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	// Initialize database pool
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.Name,
 		cfg.Database.User, cfg.Database.Password, cfg.Database.SSLMode,
@@ -60,69 +62,75 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Initialize repositories
+	// Admin: postgres repos
 	orgRepo := adminrepo.NewPostgresOrgRepository(pool)
 	clusterRepo := adminrepo.NewPostgresClusterRepository(pool)
+	userRepo := adminrepo.NewPostgresUserRepository(pool)
 
-	// Initialize use cases
 	orgUC := usecase.NewOrgUseCase(orgRepo)
 	clusterUC := usecase.NewClusterUseCase(clusterRepo)
+	userUC := usecase.NewUserUseCase(userRepo)
 
-	// Initialize handlers
 	orgHandler := adminhandler.NewOrgHandler(orgUC)
 	clusterHandler := adminhandler.NewClusterHandler(clusterUC)
-	memberHandler := adminhandler.NewMemberHandler()
+	memberHandler := adminhandler.NewMemberHandler(userUC)
 
-	// Stack: in-memory repos + log streamer
-	memStackRepo := stackrepo.NewMemoryStackRepository()
-	memTemplateRepo := stackrepo.NewMemoryTemplateRepository()
+	// Stack: postgres repos + log streamer
+	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
+	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
 	memStreamer := logadapter.NewMemoryStreamer()
 
-	installStackUC := stackuc.NewInstallStack(memStackRepo, memStreamer)
-	createStackUC := stackuc.NewCreateStack(memStackRepo, memTemplateRepo)
-	listStacksUC := stackuc.NewListStacks(memStackRepo)
-	getTemplateUC := stackuc.NewGetTemplate(memTemplateRepo)
-	listTemplatesUC := stackuc.NewListTemplates(memTemplateRepo)
-	exportConfigUC := stackuc.NewExportConfig(memStackRepo)
+	installStackUC := stackuc.NewInstallStack(pgStackRepo, memStreamer)
+	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)
+	listStacksUC := stackuc.NewListStacks(pgStackRepo)
+	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)
+	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
+	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
 
-	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, memStackRepo)
+	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, pgStackRepo)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
 
-	// Compatibility
-	memCompatRepo := stackrepo.NewMemoryCompatibilityRepository()
-	validateCompatUC := stackuc.NewValidateCompatibility(memCompatRepo)
-	compatHandler := stackhandler.NewCompatibilityHandler(memCompatRepo, validateCompatUC)
+	pgCompatRepo := stackrepo.NewPostgresCompatibilityRepository(pool)
+	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
+	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
 
-	// History
-	memHistoryRepo := stackrepo.NewMemoryHistoryRepository()
-	manageHistoryUC := stackuc.NewManageHistory(memHistoryRepo)
-	historyHandler := stackhandler.NewHistoryHandler(memHistoryRepo, memStackRepo, manageHistoryUC)
+	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
+	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
+	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
 
-	// CI/CD: in-memory repos
-	memCICDTemplateRepo := cicdrepo.NewMemoryCICDTemplateRepository()
-	memPipelineRepo := cicdrepo.NewMemoryPipelineRepository()
-	memDeploymentRepo := cicdrepo.NewMemoryDeploymentRepository()
-	createPipelineUC := cicduc.NewCreatePipeline(memPipelineRepo, memCICDTemplateRepo)
-	listPipelinesUC := cicduc.NewListPipelines(memPipelineRepo)
-	deployPipelineUC := cicduc.NewDeployPipeline(memPipelineRepo, memDeploymentRepo)
-	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(memCICDTemplateRepo)
-	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, memPipelineRepo, memDeploymentRepo)
+	// CI/CD: postgres repos
+	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
+	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
+	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
+	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
+	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
+	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo)
+	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
+	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo)
 
-	// Observability: in-memory repos
-	memDashboardRepo := obsrepo.NewMemoryDashboardRepository()
-	memAlertRuleRepo := obsrepo.NewMemoryAlertRuleRepository()
-	memAlertRepo := obsrepo.NewMemoryAlertRepository()
-	getDashboardUC := obsuc.NewGetDashboard(memDashboardRepo)
-	createAlertRuleUC := obsuc.NewCreateAlertRule(memAlertRuleRepo)
-	listAlertsUC := obsuc.NewListAlerts(memAlertRepo)
+	// Observability: Prometheus with in-memory fallback
+	var dashboardRepo obsport.DashboardRepository
+	if cfg.Prometheus.URL != "" {
+		promClient := obsprom.NewClient(cfg.Prometheus.URL)
+		dashboardRepo = obsprom.NewDashboardRepository(promClient)
+		slog.Info("using prometheus dashboard", "url", cfg.Prometheus.URL)
+	} else {
+		dashboardRepo = obsrepo.NewMemoryDashboardRepository()
+		slog.Info("using in-memory dashboard (prometheus not configured)")
+	}
+	pgAlertRuleRepo := obsrepo.NewPostgresAlertRuleRepository(pool)
+	pgAlertRepo := obsrepo.NewPostgresAlertRepository(pool)
+	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
+	createAlertRuleUC := obsuc.NewCreateAlertRule(pgAlertRuleRepo)
+	listAlertsUC := obsuc.NewListAlerts(pgAlertRepo)
 	dashboardHandler := obshandler.NewDashboardHandler(getDashboardUC)
-	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, memAlertRuleRepo)
+	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, pgAlertRuleRepo)
 
-	// Initialize Echo
+	// Echo
 	e := echo.New()
 	e.HideBanner = true
 	e.HTTPErrorHandler = middleware.AppErrorHandler
@@ -138,17 +146,45 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           7200,
 	}))
+	e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
+		Authenticated:   300,
+		Unauthenticated: 30,
+	}))
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
-	admin := v1.Group("/admin")
-	stacks := v1.Group("/stacks")
-	cicd := v1.Group("/cicd")
-	observability := v1.Group("/observability")
+
+	var admin, stacks, cicd, observability *echo.Group
+	if cfg.Server.Mode == "development" {
+		slog.Info("development mode: auth middleware disabled")
+		admin = v1.Group("/admin")
+		stacks = v1.Group("/stacks")
+		cicd = v1.Group("/cicd")
+		observability = v1.Group("/observability")
+	} else {
+		sessionMW := authmw.AuthMiddleware()
+		oidcMW := authmw.JWTAuthMiddleware(authmw.JWTConfig{
+			IssuerURL: cfg.Auth.OIDC.IssuerURL,
+			Audience:  cfg.Auth.OIDC.Audience,
+		})
+		authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW)
+		admin = v1.Group("/admin", authMW, authmw.RequireRole("admin"))
+		stacks = v1.Group("/stacks", authMW, authmw.RequireRole("admin", "devops"))
+		cicd = v1.Group("/cicd", authMW, authmw.RequireRole("admin", "devops", "developer"))
+		observability = v1.Group("/observability", authMW)
+	}
+
+	knownIssuesHandler := &adminhandler.KnownIssuesHandler{}
+	auditLogger := audit.NewAuditLogger(pool)
+	auditHandler := adminhandler.NewAuditHandler(auditLogger)
+	notificationHandler := adminhandler.NewNotificationHandler(pool)
 
 	orgHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
 	memberHandler.RegisterRoutes(admin)
+	knownIssuesHandler.RegisterRoutes(admin)
+	auditHandler.RegisterRoutes(admin)
+	notificationHandler.RegisterRoutes(admin)
 	deployHandler.RegisterRoutes(v1, e)
 	stackHandler.RegisterRoutes(stacks)
 	templateHandler.RegisterRoutes(stacks)
@@ -161,12 +197,10 @@ func main() {
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
 
-	// Development-only profiling endpoints
 	if cfg.Server.Mode == "development" {
 		e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 	}
 
-	// Health check with DB ping
 	e.GET("/health", func(c echo.Context) error {
 		dbStatus := "connected"
 		if err := pool.Ping(c.Request().Context()); err != nil {
@@ -180,7 +214,6 @@ func main() {
 		})
 	})
 
-	// Start server
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
 		slog.Info("starting server", "addr", addr)
@@ -190,7 +223,6 @@ func main() {
 		}
 	}()
 
-	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

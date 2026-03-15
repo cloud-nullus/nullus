@@ -19,10 +19,22 @@ auth:
   session:
     secret: dev-secret-change-in-production
     max_age: 86400
+  oidc:
+    issuer_url: http://localhost:8180/realms/nullus
+    audience: nullus-app
+
+keycloak:
+  admin_url: http://localhost:8180
+  realm: nullus
+  admin_user: admin
+  admin_password: admin
 
 helm:
   timeout: 600s
   namespace_prefix: nullus-
+
+prometheus:
+  url: ""
 
 log:
   level: debug
