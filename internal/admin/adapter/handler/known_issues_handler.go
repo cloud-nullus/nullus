@@ -3,10 +3,17 @@ package handler
 import (
 	"net/http"
 
+	"github.com/cloud-nullus/draft/internal/admin/port"
 	"github.com/labstack/echo/v4"
 )
 
-type KnownIssuesHandler struct{}
+type KnownIssuesHandler struct {
+	repo port.KnownIssuesRepository
+}
+
+func NewKnownIssuesHandler(repo port.KnownIssuesRepository) *KnownIssuesHandler {
+	return &KnownIssuesHandler{repo: repo}
+}
 
 type knownIssueItem struct {
 	ID          string `json:"id"`
@@ -22,31 +29,25 @@ func (h *KnownIssuesHandler) RegisterRoutes(g *echo.Group) {
 }
 
 func (h *KnownIssuesHandler) ListKnownIssues(c echo.Context) error {
-	items := []knownIssueItem{
-		{
-			ID:          "KI-001",
-			Severity:    "medium",
-			Title:       "Helm install requires cluster admin",
-			Description: "Helm-based stack installation currently requires cluster-admin role to create CRDs and cluster-scoped resources.",
-			Workaround:  "Use a temporary cluster-admin service account during installation, then rotate to least-privilege RBAC.",
-			Status:      "open",
-		},
-		{
-			ID:          "KI-002",
-			Severity:    "low",
-			Title:       "Dashboard metrics delay",
-			Description: "Prometheus cache TTL is 10s",
-			Workaround:  "Refresh page",
-			Status:      "acknowledged",
-		},
-		{
-			ID:          "KI-003",
-			Severity:    "high",
-			Title:       "No automatic certificate renewal",
-			Description: "Automatic certificate rotation is not wired into the current stack lifecycle jobs.",
-			Workaround:  "Manual cert-manager renewal",
-			Status:      "planned",
-		},
+	if h.repo == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "known issues service is not configured")
+	}
+
+	repoItems, err := h.repo.List(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	items := make([]knownIssueItem, 0, len(repoItems))
+	for _, item := range repoItems {
+		items = append(items, knownIssueItem{
+			ID:          item.ID,
+			Severity:    item.Severity,
+			Title:       item.Title,
+			Description: item.Description,
+			Workaround:  item.Workaround,
+			Status:      item.Status,
+		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"items": items})
