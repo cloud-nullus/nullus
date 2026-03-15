@@ -15,11 +15,33 @@ import (
 // ClusterUseCase handles Cluster business logic.
 type ClusterUseCase struct {
 	clusterRepo port.ClusterRepository
+	orgRepo     port.OrgRepository
 }
 
-// NewClusterUseCase creates a new ClusterUseCase.
-func NewClusterUseCase(clusterRepo port.ClusterRepository) *ClusterUseCase {
-	return &ClusterUseCase{clusterRepo: clusterRepo}
+func NewClusterUseCase(clusterRepo port.ClusterRepository, opts ...func(*ClusterUseCase)) *ClusterUseCase {
+	uc := &ClusterUseCase{clusterRepo: clusterRepo}
+	for _, o := range opts {
+		o(uc)
+	}
+	return uc
+}
+
+func WithOrgRepo(r port.OrgRepository) func(*ClusterUseCase) {
+	return func(uc *ClusterUseCase) { uc.orgRepo = r }
+}
+
+func (uc *ClusterUseCase) GetFirstOrgID(ctx context.Context) (string, error) {
+	if uc.orgRepo == nil {
+		return "", fmt.Errorf("org repository not configured")
+	}
+	orgs, err := uc.orgRepo.List(ctx, 1, 0)
+	if err != nil {
+		return "", err
+	}
+	if len(orgs) == 0 {
+		return "", fmt.Errorf("no organizations found")
+	}
+	return orgs[0].ID, nil
 }
 
 // RegisterClusterInput holds the input for registering a cluster.

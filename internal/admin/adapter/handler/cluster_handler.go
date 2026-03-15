@@ -79,11 +79,19 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
+	orgID := req.OrgID
+	if orgID == "" {
+		firstOrg, err := h.clusterUC.GetFirstOrgID(c.Request().Context())
+		if err == nil && firstOrg != "" {
+			orgID = firstOrg
+		}
+	}
+
 	cluster, err := h.clusterUC.RegisterCluster(c.Request().Context(), usecase.RegisterClusterInput{
 		Name:     req.Name,
 		Type:     req.Type,
 		Endpoint: req.Endpoint,
-		OrgID:    req.OrgID,
+		OrgID:    orgID,
 	})
 	if err != nil {
 		return err

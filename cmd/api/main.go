@@ -70,7 +70,7 @@ func main() {
 	userRepo := adminrepo.NewPostgresUserRepository(pool)
 
 	orgUC := usecase.NewOrgUseCase(orgRepo)
-	clusterUC := usecase.NewClusterUseCase(clusterRepo)
+	clusterUC := usecase.NewClusterUseCase(clusterRepo, usecase.WithOrgRepo(orgRepo))
 	userUC := usecase.NewUserUseCase(userRepo)
 	auditLogger := audit.NewAuditLogger(pool)
 
@@ -102,7 +102,7 @@ func main() {
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, pgStackRepo, auditLogger)
-	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC)
+	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
 
