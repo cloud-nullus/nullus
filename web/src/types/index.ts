@@ -107,6 +107,7 @@ export interface Template {
   tools: string[]
   estimatedMinutes: number
   category: string
+  createdBy?: string
 }
 
 export interface StackHistoryEntry {
@@ -187,6 +188,7 @@ export interface CICDTemplate {
   description: string
   appType: AppType
   stages: string[]
+  createdBy?: string
 }
 
 export interface AppTemplateInfo {
@@ -283,6 +285,14 @@ export interface CreatePipelineRequest {
   appType: AppType
   clusterId: string
   templateId?: string
+}
+
+export interface CreateCicdTemplateRequest {
+  id: string
+  name: string
+  description: string
+  appType: AppType
+  stages: string[]
 }
 
 export interface DeployAppRequest {

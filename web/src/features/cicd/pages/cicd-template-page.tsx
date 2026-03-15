@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { GitBranch, Search } from 'lucide-react'
-import { useCicdTemplates } from '../api/cicd-api'
+import { GitBranch, Plus, Search, User } from 'lucide-react'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
+import { useCicdTemplates, useCreateCicdTemplate } from '../api/cicd-api'
 import type { CicdTemplate } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
+import { Modal } from '../../../components/ui/modal'
+import { useAuthStore } from '../../../stores/auth-store'
 
 const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   'web-backend': { bg: 'rgba(99,102,241,0.12)', color: '#a5b4fc' },
@@ -12,11 +15,41 @@ const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   'batch-job': { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24' },
 }
 
+interface TemplateFormState {
+  id: string
+  name: string
+  description: string
+  appType: string
+  stages: string
+}
+
+const EMPTY_FORM: TemplateFormState = {
+  id: '',
+  name: '',
+  description: '',
+  appType: 'web-backend',
+  stages: '',
+}
+
+const MOCK_CICD_TEMPLATES: CicdTemplate[] = [
+  { id: 'web-frontend', name: 'Web Frontend', description: 'React/Next.js 웹 프론트엔드 앱을 위한 표준 CI/CD 파이프라인. Docker 빌드 후 ArgoCD로 배포.', appType: 'web-frontend', stages: ['Build', 'Test', 'Docker Build', 'ArgoCD Deploy'], createdBy: 'admin' },
+  { id: 'web-backend', name: 'Backend API', description: 'REST API 백엔드 서비스를 위한 파이프라인. Security Scan(Trivy) 포함, Kubernetes Deployment 배포.', appType: 'web-backend', stages: ['Build', 'Test', 'Security', 'Docker Build', 'ArgoCD Deploy'], createdBy: 'admin' },
+  { id: 'batch-job', name: 'Batch Job', description: '정기 실행 배치 잡을 위한 파이프라인. Kubernetes CronJob으로 배포, 실행 결과 자동 기록.', appType: 'batch-job', stages: ['Build', 'Test', 'Docker Build', 'CronJob Deploy'], createdBy: 'admin' },
+]
+
 export function CicdTemplatePage() {
   const navigate = useNavigate()
+  const role = useAuthStore((state) => state.role)
+  const isAdmin = role === 'admin'
+
   const { data: apiTemplates } = useCicdTemplates()
-  const templates = Array.isArray(apiTemplates) ? apiTemplates : []
+  const createTemplate = useCreateCicdTemplate()
+  const templates = Array.isArray(apiTemplates) && apiTemplates.length > 0 ? apiTemplates : MOCK_CICD_TEMPLATES
+
   const [search, setSearch] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
+  const [form, setForm] = useState<TemplateFormState>(EMPTY_FORM)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const filtered = templates.filter(
     (t) =>
@@ -24,10 +57,65 @@ export function CicdTemplatePage() {
       t.description.toLowerCase().includes(search.toLowerCase())
   )
 
+  const resetForm = () => {
+    setForm(EMPTY_FORM)
+    setFormError(null)
+  }
+
+  const openCreateModal = () => {
+    resetForm()
+    setFormOpen(true)
+  }
+
+  const closeFormModal = () => {
+    setFormOpen(false)
+    resetForm()
+  }
+
+  const handleFormChange = (key: keyof TemplateFormState, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const submitTemplate = () => {
+    if (!form.name.trim()) {
+      setFormError('Name is required.')
+      return
+    }
+
+    const stages = form.stages
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    if (stages.length === 0) {
+      setFormError('At least one stage is required.')
+      return
+    }
+
+    createTemplate.mutate(
+      {
+        id: form.id.trim() || form.name.toLowerCase().replace(/\s+/g, '-'),
+        name: form.name,
+        description: form.description,
+        appType: form.appType as CicdTemplate['appType'],
+        stages,
+      },
+      {
+        onSuccess: () => closeFormModal(),
+        onError: () => setFormError('Failed to create template.'),
+      }
+    )
+  }
+
   return (
     <div>
+      <Breadcrumb items={[
+        { label: 'CI/CD List', path: '/cicd/list' },
+        { label: 'CI/CD Template' },
+      ]} />
+
       {/* Page header */}
-      <div className="mb-7">
+      <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
           <div
             className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
@@ -36,13 +124,19 @@ export function CicdTemplatePage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              CI/CD Templates
+              CI/CD Template
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               파이프라인 템플릿을 선택하여 빠르게 시작하세요.
             </p>
           </div>
         </div>
+        {isAdmin && (
+          <Button variant="primary" size="md" type="button" onClick={openCreateModal}>
+            <Plus size={15} />
+            Create Template
+          </Button>
+        )}
       </div>
 
       {/* Search */}
@@ -105,15 +199,23 @@ export function CicdTemplatePage() {
               </div>
 
               {/* Footer */}
-              <div className="flex justify-end border-t border-[var(--color-border-default)] pt-2.5">
+              <div className="flex items-center justify-between border-t border-[var(--color-border-default)] pt-2.5">
+                {template.createdBy ? (
+                  <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
+                    <User size={12} />
+                    <span>{template.createdBy}</span>
+                  </div>
+                ) : (
+                  <span />
+                )}
                 <Button
-                   variant="primary"
-                   size="sm"
-                   type="button"
-                   onClick={() => navigate('/cicd/list?template=' + template.id)}
-                 >
-                   Use Template
-                 </Button>
+                  variant="primary"
+                  size="sm"
+                  type="button"
+                  onClick={() => navigate(`/cicd/list?template=${template.id}`)}
+                >
+                  Base Template
+                </Button>
               </div>
             </div>
           )
@@ -125,6 +227,74 @@ export function CicdTemplatePage() {
           검색 결과가 없습니다.
         </div>
       )}
+
+      {/* Create Template Modal */}
+      <Modal
+        open={formOpen}
+        onClose={closeFormModal}
+        title="Create Template"
+        footer={
+          <>
+            <Button variant="outline" size="sm" onClick={closeFormModal} type="button">
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              onClick={submitTemplate}
+              loading={createTemplate.isPending}
+            >
+              Create
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Input
+            label="Template ID (optional)"
+            placeholder="예: web-backend-standard"
+            value={form.id}
+            onChange={(e) => handleFormChange('id', e.target.value)}
+          />
+          <Input
+            label="Name"
+            placeholder="예: Standard Web Backend"
+            value={form.name}
+            onChange={(e) => handleFormChange('name', e.target.value)}
+          />
+          <Input
+            label="Description"
+            value={form.description}
+            onChange={(e) => handleFormChange('description', e.target.value)}
+          />
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="cicd-template-app-type"
+              className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]"
+            >
+              App Type
+            </label>
+            <select
+              id="cicd-template-app-type"
+              value={form.appType}
+              onChange={(e) => handleFormChange('appType', e.target.value)}
+              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+            >
+              <option value="web-backend">Web Backend</option>
+              <option value="web-frontend">Web Frontend</option>
+              <option value="batch-job">Batch Job</option>
+            </select>
+          </div>
+          <Input
+            label="Stages (comma-separated)"
+            placeholder="예: Build, Test, Push, Deploy"
+            value={form.stages}
+            onChange={(e) => handleFormChange('stages', e.target.value)}
+          />
+          {formError && <div className="text-xs text-[#f87171]">{formError}</div>}
+        </div>
+      </Modal>
     </div>
   )
 }

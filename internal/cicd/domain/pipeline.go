@@ -51,6 +51,7 @@ type PipelineTemplate struct {
 	Description string   `json:"description"`
 	AppType     AppType  `json:"app_type"`
 	Stages      []string `json:"stages"`
+	CreatedBy   string   `json:"created_by,omitempty"`
 }
 
 // Deployment represents a single deployment run of a pipeline.

@@ -60,6 +60,30 @@ func (r *PostgresCICDTemplateRepository) List(ctx context.Context) ([]*domain.Pi
 	return templates, rows.Err()
 }
 
+// Create inserts a new pipeline template into the database.
+// TODO: implement when pipeline_templates table supports mutations.
+func (r *PostgresCICDTemplateRepository) Create(_ context.Context, tmpl *domain.PipelineTemplate) error {
+	// TODO: INSERT INTO pipeline_templates (id, name, description, app_type, stages, created_by) VALUES (...)
+	_ = tmpl
+	return nil
+}
+
+// Update modifies an existing pipeline template in the database.
+// TODO: implement when pipeline_templates table supports mutations.
+func (r *PostgresCICDTemplateRepository) Update(_ context.Context, tmpl *domain.PipelineTemplate) error {
+	// TODO: UPDATE pipeline_templates SET ... WHERE id = $1
+	_ = tmpl
+	return nil
+}
+
+// Delete removes a pipeline template from the database.
+// TODO: implement when pipeline_templates table supports mutations.
+func (r *PostgresCICDTemplateRepository) Delete(_ context.Context, id string) error {
+	// TODO: DELETE FROM pipeline_templates WHERE id = $1
+	_ = id
+	return nil
+}
+
 type pipelineTemplateScanner interface {
 	Scan(dest ...any) error
 }
