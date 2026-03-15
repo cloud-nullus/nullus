@@ -16,6 +16,8 @@ type AlertRuleRepository interface {
 	Create(ctx context.Context, rule *domain.AlertRule) error
 	GetByID(ctx context.Context, id string) (*domain.AlertRule, error)
 	List(ctx context.Context) ([]*domain.AlertRule, error)
+	Update(ctx context.Context, rule *domain.AlertRule) error
+	Delete(ctx context.Context, id string) error
 }
 
 // AlertRepository defines the interface for alert history persistence.

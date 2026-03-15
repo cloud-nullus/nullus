@@ -101,6 +101,44 @@ func (r *PostgresAlertRuleRepository) List(ctx context.Context) ([]*domain.Alert
 	return rules, rows.Err()
 }
 
+func (r *PostgresAlertRuleRepository) Update(ctx context.Context, rule *domain.AlertRule) error {
+	const q = `
+		UPDATE alert_rules
+		SET name = $1, condition = $2, threshold = $3, channel = $4, enabled = $5, updated_at = NOW()
+		WHERE id = $6`
+
+	result, err := r.pool.Exec(ctx, q,
+		rule.Name,
+		rule.Condition,
+		rule.Threshold,
+		string(rule.Channel),
+		rule.Enabled,
+		rule.ID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return domain.ErrAlertRuleNotFound
+	}
+
+	return nil
+}
+
+func (r *PostgresAlertRuleRepository) Delete(ctx context.Context, id string) error {
+	const q = `DELETE FROM alert_rules WHERE id = $1`
+
+	result, err := r.pool.Exec(ctx, q, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return domain.ErrAlertRuleNotFound
+	}
+
+	return nil
+}
+
 type PostgresAlertRepository struct {
 	pool *pgxpool.Pool
 }

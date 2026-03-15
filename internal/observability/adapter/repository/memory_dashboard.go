@@ -83,6 +83,26 @@ func (r *MemoryAlertRuleRepository) List(_ context.Context) ([]*domain.AlertRule
 	return result, nil
 }
 
+func (r *MemoryAlertRuleRepository) Update(_ context.Context, rule *domain.AlertRule) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.rules[rule.ID]; !ok {
+		return domain.ErrAlertRuleNotFound
+	}
+	r.rules[rule.ID] = rule
+	return nil
+}
+
+func (r *MemoryAlertRuleRepository) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.rules[id]; !ok {
+		return domain.ErrAlertRuleNotFound
+	}
+	delete(r.rules, id)
+	return nil
+}
+
 // MemoryAlertRepository is an in-memory implementation of port.AlertRepository.
 type MemoryAlertRepository struct {
 	mu     sync.RWMutex

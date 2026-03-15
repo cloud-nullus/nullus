@@ -1,8 +1,8 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
-	"sync"
 
 	"github.com/cloud-nullus/draft/internal/observability/domain"
 	"github.com/cloud-nullus/draft/internal/observability/port"
@@ -15,9 +15,6 @@ type AlertHandler struct {
 	createAlertRule *usecase.CreateAlertRule
 	listAlerts      *usecase.ListAlerts
 	alertRuleRepo   port.AlertRuleRepository
-	mu              sync.RWMutex
-	patchedRules    map[string]*domain.AlertRule
-	deletedRules    map[string]bool
 }
 
 // NewAlertHandler constructs an AlertHandler.
@@ -30,8 +27,6 @@ func NewAlertHandler(
 		createAlertRule: createAlertRule,
 		listAlerts:      listAlerts,
 		alertRuleRepo:   alertRuleRepo,
-		patchedRules:    make(map[string]*domain.AlertRule),
-		deletedRules:    make(map[string]bool),
 	}
 }
 
@@ -60,21 +55,7 @@ func (h *AlertHandler) ListRules(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_LIST_FAILED", err.Error())
 	}
 
-	h.mu.RLock()
-	items := make([]*domain.AlertRule, 0, len(rules))
-	for _, rule := range rules {
-		if h.deletedRules[rule.ID] {
-			continue
-		}
-		if patched, ok := h.patchedRules[rule.ID]; ok {
-			items = append(items, patched)
-			continue
-		}
-		items = append(items, rule)
-	}
-	h.mu.RUnlock()
-
-	return c.JSON(http.StatusOK, map[string]any{"items": items, "total": len(items)})
+	return c.JSON(http.StatusOK, map[string]any{"items": rules, "total": len(rules)})
 }
 
 // CreateRule handles POST /api/v1/alerts/rules.
@@ -116,7 +97,10 @@ func (h *AlertHandler) UpdateRule(c echo.Context) error {
 
 	rule, err := h.alertRuleRepo.GetByID(c.Request().Context(), id)
 	if err != nil {
-		return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
+		if errors.Is(err, domain.ErrAlertRuleNotFound) {
+			return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
+		}
+		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_FETCH_FAILED", err.Error())
 	}
 
 	updated := *rule
@@ -136,10 +120,12 @@ func (h *AlertHandler) UpdateRule(c echo.Context) error {
 		updated.Enabled = *req.Enabled
 	}
 
-	h.mu.Lock()
-	h.patchedRules[id] = &updated
-	h.deletedRules[id] = false
-	h.mu.Unlock()
+	if err := h.alertRuleRepo.Update(c.Request().Context(), &updated); err != nil {
+		if errors.Is(err, domain.ErrAlertRuleNotFound) {
+			return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
+		}
+		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_UPDATE_FAILED", err.Error())
+	}
 
 	return c.JSON(http.StatusOK, &updated)
 }
@@ -147,10 +133,12 @@ func (h *AlertHandler) UpdateRule(c echo.Context) error {
 func (h *AlertHandler) DeleteRule(c echo.Context) error {
 	id := c.Param("id")
 
-	h.mu.Lock()
-	h.deletedRules[id] = true
-	delete(h.patchedRules, id)
-	h.mu.Unlock()
+	if err := h.alertRuleRepo.Delete(c.Request().Context(), id); err != nil {
+		if errors.Is(err, domain.ErrAlertRuleNotFound) {
+			return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
+		}
+		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_DELETE_FAILED", err.Error())
+	}
 
 	return c.NoContent(http.StatusNoContent)
 }
