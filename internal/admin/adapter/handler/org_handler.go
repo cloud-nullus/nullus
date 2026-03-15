@@ -28,47 +28,42 @@ type updateOrgRequest struct {
 	Domain string `json:"domain"`
 }
 
-// CreateOrg handles POST /api/v1/orgs.
-func (h *OrgHandler) CreateOrg(c echo.Context) error {
-	var req createOrgRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+func (h *OrgHandler) resolveOrgID(c echo.Context) string {
+	orgID := c.Request().Header.Get("X-Org-ID")
+	if orgID == "" {
+		orgID = c.QueryParam("orgId")
+	}
+	return orgID
+}
+
+// GetOrganization handles GET /api/v1/admin/organization.
+func (h *OrgHandler) GetOrganization(c echo.Context) error {
+	orgID := h.resolveOrgID(c)
+	if orgID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "org id is required")
 	}
 
-	org, err := h.orgUC.CreateOrg(c.Request().Context(), usecase.CreateOrgInput{
-		Name:   req.Name,
-		Slug:   req.Slug,
-		Domain: req.Domain,
-	})
+	org, err := h.orgUC.GetOrg(c.Request().Context(), orgID)
 	if err != nil {
 		return err
 	}
 
-	return c.JSON(http.StatusCreated, map[string]any{"data": org})
+	return c.JSON(http.StatusOK, org)
 }
 
-// GetOrg handles GET /api/v1/orgs/:orgId.
-func (h *OrgHandler) GetOrg(c echo.Context) error {
-	id := c.Param("orgId")
-
-	org, err := h.orgUC.GetOrg(c.Request().Context(), id)
-	if err != nil {
-		return err
+// PatchOrganization handles PATCH /api/v1/admin/organization.
+func (h *OrgHandler) PatchOrganization(c echo.Context) error {
+	orgID := h.resolveOrgID(c)
+	if orgID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "org id is required")
 	}
-
-	return c.JSON(http.StatusOK, map[string]any{"data": org})
-}
-
-// UpdateOrg handles PUT /api/v1/orgs/:orgId.
-func (h *OrgHandler) UpdateOrg(c echo.Context) error {
-	id := c.Param("orgId")
 
 	var req updateOrgRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
-	org, err := h.orgUC.UpdateOrg(c.Request().Context(), id, usecase.UpdateOrgInput{
+	org, err := h.orgUC.UpdateOrg(c.Request().Context(), orgID, usecase.UpdateOrgInput{
 		Name:   req.Name,
 		Domain: req.Domain,
 	})
@@ -76,12 +71,29 @@ func (h *OrgHandler) UpdateOrg(c echo.Context) error {
 		return err
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": org})
+	return c.JSON(http.StatusOK, org)
 }
 
 // RegisterRoutes registers organization routes on the given group.
 func (h *OrgHandler) RegisterRoutes(g *echo.Group) {
-	g.POST("/orgs", h.CreateOrg)
-	g.GET("/orgs/:orgId", h.GetOrg)
-	g.PUT("/orgs/:orgId", h.UpdateOrg)
+	g.GET("/organization", h.GetOrganization)
+	g.PATCH("/organization", h.PatchOrganization)
+
+	g.POST("/orgs", func(c echo.Context) error {
+		var req createOrgRequest
+		if err := c.Bind(&req); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+		}
+
+		org, err := h.orgUC.CreateOrg(c.Request().Context(), usecase.CreateOrgInput{
+			Name:   req.Name,
+			Slug:   req.Slug,
+			Domain: req.Domain,
+		})
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(http.StatusCreated, org)
+	})
 }
