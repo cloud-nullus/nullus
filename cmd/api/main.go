@@ -22,8 +22,8 @@ import (
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
-	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
+	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	stackuc "github.com/cloud-nullus/draft/internal/stack/usecase"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -71,6 +71,7 @@ func main() {
 	// Initialize handlers
 	orgHandler := adminhandler.NewOrgHandler(orgUC)
 	clusterHandler := adminhandler.NewClusterHandler(clusterUC)
+	memberHandler := adminhandler.NewMemberHandler()
 
 	// Stack: in-memory repos + log streamer
 	memStackRepo := stackrepo.NewMemoryStackRepository()
@@ -83,11 +84,13 @@ func main() {
 	getTemplateUC := stackuc.NewGetTemplate(memTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(memTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(memStackRepo)
+	calculateResourcesUC := stackuc.NewCalculateResources()
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, memStackRepo)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
+	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
 
 	// Compatibility
 	memCompatRepo := stackrepo.NewMemoryCompatibilityRepository()
@@ -128,21 +131,35 @@ func main() {
 	e.Use(echomw.Recover())
 	e.Use(echomw.RequestID())
 	e.Use(middleware.SlogLogger())
+	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowCredentials: true,
+		MaxAge:           7200,
+	}))
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
-	orgHandler.RegisterRoutes(v1)
-	clusterHandler.RegisterRoutes(v1)
+	admin := v1.Group("/admin")
+	stacks := v1.Group("/stacks")
+	cicd := v1.Group("/cicd")
+	observability := v1.Group("/observability")
+
+	orgHandler.RegisterRoutes(admin)
+	clusterHandler.RegisterRoutes(admin)
+	memberHandler.RegisterRoutes(admin)
 	deployHandler.RegisterRoutes(v1, e)
-	stackHandler.RegisterRoutes(v1)
-	templateHandler.RegisterRoutes(v1)
+	stackHandler.RegisterRoutes(stacks)
+	templateHandler.RegisterRoutes(stacks)
 	exportHandler.RegisterRoutes(v1)
-	compatHandler.RegisterRoutes(v1)
-	historyHandler.RegisterRoutes(v1)
-	cicdTemplateHandler.RegisterRoutes(v1)
-	pipelineHandler.RegisterRoutes(v1)
-	dashboardHandler.RegisterRoutes(v1)
-	alertHandler.RegisterRoutes(v1)
+	compatHandler.RegisterRoutes(stacks)
+	historyHandler.RegisterRoutes(stacks)
+	resourceHandler.RegisterRoutes(stacks)
+	cicdTemplateHandler.RegisterRoutes(cicd)
+	pipelineHandler.RegisterRoutes(cicd)
+	dashboardHandler.RegisterRoutes(observability)
+	alertHandler.RegisterRoutes(observability)
 
 	// Development-only profiling endpoints
 	if cfg.Server.Mode == "development" {
