@@ -64,10 +64,13 @@ const adminApiCalls = {
   getClusters: () =>
     api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => ({
       ...r.data,
-      items: (r.data.items ?? []).map((c: Record<string, unknown>) => ({
-        ...c,
-        status: c.status ?? c.connection_status ?? 'pending',
-      })) as Cluster[],
+      items: (r.data.items ?? []).map((c) => {
+        const statusCarrier = c as Cluster & { connection_status?: Cluster['status'] }
+        return {
+          ...c,
+          status: statusCarrier.status ?? statusCarrier.connection_status ?? 'pending',
+        }
+      }),
     })),
 
   getCluster: (id: string) =>
@@ -81,6 +84,9 @@ const adminApiCalls = {
 
   deleteCluster: (id: string) =>
     api.delete(`/admin/clusters/${id}`).then((r) => r.data),
+
+  verifyCluster: (id: string) =>
+    api.post<{ status: string; version?: string }>(`/admin/clusters/${id}/verify`).then((r) => r.data),
 
   getKnownIssues: () =>
     api.get<{ items: KnownIssue[] }>('/admin/known-issues').then((r) => r.data),
@@ -188,6 +194,17 @@ export function useDeleteCluster() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => adminApiCalls.deleteCluster(id),
+    onSuccess: (_, id) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
+      void qc.invalidateQueries({ queryKey: queryKeys.cluster(id) })
+    },
+  })
+}
+
+export function useVerifyCluster() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => adminApiCalls.verifyCluster(id),
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
       void qc.invalidateQueries({ queryKey: queryKeys.cluster(id) })

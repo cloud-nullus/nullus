@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle } from 'lucide-react'
-import { useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster } from '../api/admin-api'
+import { useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster } from '../api/admin-api'
 import type { Cluster, ClusterStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -53,14 +53,14 @@ const clusterSchema = z
     const kubeconfigLength = data.kubeconfig.trim().length
     if (!data.isEdit && kubeconfigLength < 10) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['kubeconfig'],
         message: 'Kubeconfig is required and must be at least 10 characters',
       })
     }
     if (data.isEdit && kubeconfigLength > 0 && kubeconfigLength < 10) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['kubeconfig'],
         message: 'Kubeconfig must be at least 10 characters',
       })
@@ -83,6 +83,7 @@ export function ClusterPage() {
   const createCluster = useCreateCluster()
   const updateCluster = useUpdateCluster()
   const deleteCluster = useDeleteCluster()
+  const verifyCluster = useVerifyCluster()
 
   const [selected, setSelected] = useState<Cluster | null>(clusters[0] ?? null)
   const [registerModal, setRegisterModal] = useState(false)
@@ -174,11 +175,16 @@ export function ClusterPage() {
     if (!selected || isVerifyingConnection) return
     setIsVerifyingConnection(true)
     setVerifyConnectionResult(null)
-    setTimeout(() => {
-      const success = selected.name.length % 2 === 0 || selected.status === 'connected'
-      setVerifyConnectionResult(success ? 'success' : 'error')
-      setIsVerifyingConnection(false)
-    }, 1200)
+    verifyCluster.mutate(selected.id, {
+      onSuccess: () => {
+        setVerifyConnectionResult('success')
+        setIsVerifyingConnection(false)
+      },
+      onError: () => {
+        setVerifyConnectionResult('error')
+        setIsVerifyingConnection(false)
+      },
+    })
   }
 
   return (

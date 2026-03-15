@@ -4,6 +4,8 @@ import { screen, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { ClusterPage } from './cluster-page'
 
+const verifyMutate = vi.fn()
+
 const MOCK_CLUSTERS = [
   {
     id: 'c1',
@@ -40,6 +42,7 @@ vi.mock('../api/admin-api', () => ({
   useCreateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
+  useVerifyCluster: () => ({ mutate: verifyMutate }),
 }))
 
 beforeEach(() => {
@@ -116,5 +119,11 @@ describe('ClusterPage', () => {
     fireEvent.click(screen.getByText('Register Cluster'))
     fireEvent.click(screen.getByText('Cancel'))
     expect(screen.queryByPlaceholderText('예: prod-cluster')).not.toBeInTheDocument()
+  })
+
+  it('calls verify cluster API for selected cluster', () => {
+    renderWithProviders(<ClusterPage />)
+    fireEvent.click(screen.getByText('Verify Connection'))
+    expect(verifyMutate).toHaveBeenCalledWith('c1', expect.any(Object))
   })
 })
