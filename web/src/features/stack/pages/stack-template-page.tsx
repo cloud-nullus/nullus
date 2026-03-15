@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, Pencil, Plus, Search, Trash2, Wrench } from 'lucide-react'
+import { BookOpen, Clock, Pencil, Plus, Search, Trash2, User, Wrench } from 'lucide-react'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../api/stack-api'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import { Button } from '../../../components/ui/button'
@@ -17,6 +18,7 @@ const MOCK_TEMPLATES = [
     tools: ['GitLab', 'GitLab CI', 'GitLab Registry', 'Prometheus', 'Grafana', 'OpenSearch'],
     estimatedMinutes: 25,
     category: 'gitlab',
+    createdBy: 'admin',
   },
   {
     id: 'gitlab-argocd',
@@ -25,6 +27,7 @@ const MOCK_TEMPLATES = [
     tools: ['GitLab', 'GitLab CI', 'ArgoCD', 'Prometheus', 'Grafana', 'OpenTelemetry'],
     estimatedMinutes: 30,
     category: 'hybrid',
+    createdBy: 'admin',
   },
   {
     id: 'github-argocd',
@@ -33,6 +36,7 @@ const MOCK_TEMPLATES = [
     tools: ['GitHub', 'GitHub Actions', 'ArgoCD', 'Prometheus', 'Grafana', 'OpenTelemetry', 'OpenSearch'],
     estimatedMinutes: 20,
     category: 'github',
+    createdBy: 'admin',
   },
 ]
 
@@ -107,10 +111,10 @@ export function StackTemplatePage() {
 
   const selectedDetail = selectedTemplate
     ? TEMPLATE_DETAILS[selectedTemplate.id] ?? {
-        fullDescription: selectedTemplate.description,
-        resource: '4 vCPU / 8Gi Memory / 64Gi Storage',
-        compatibility: 'Kubernetes 1.27+ (검증 필요)',
-      }
+      fullDescription: selectedTemplate.description,
+      resource: '4 vCPU / 8Gi Memory / 64Gi Storage',
+      compatibility: 'Kubernetes 1.27+ (검증 필요)',
+    }
     : null
 
   const handleUseTemplate = (templateId: string) => {
@@ -224,6 +228,8 @@ export function StackTemplatePage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Stack Template' }]} />
+
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
@@ -232,7 +238,7 @@ export function StackTemplatePage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Golden Path Templates
+              Stack Template
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               검증된 DevSecOps 스택 템플릿을 선택하여 빠르게 시작하세요.
@@ -264,7 +270,7 @@ export function StackTemplatePage() {
       </div>
 
       {/* Template cards */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-[var(--grid-gap)]">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,460px),1fr))] gap-[var(--grid-gap)]">
         {filtered.map((template) => (
           <button
             key={template.id}
@@ -296,9 +302,17 @@ export function StackTemplatePage() {
 
             {/* Footer */}
             <div className="flex items-center justify-between border-t border-[var(--color-border-default)] pt-2.5">
-              <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-secondary)]">
-                <Clock size={13} />
-                <span>약 {template.estimatedMinutes}분</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-secondary)]">
+                  <Clock size={13} />
+                  <span>약 {template.estimatedMinutes}분</span>
+                </div>
+                {template.createdBy && (
+                  <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
+                    <User size={12} />
+                    <span>{template.createdBy}</span>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 {isAdmin && (
@@ -329,16 +343,18 @@ export function StackTemplatePage() {
                     </Button>
                   </>
                 )}
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   type="button"
+                  className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
                   onClick={(event) => {
                     event.stopPropagation()
                     handleUseTemplate(template.id)
                   }}
-                  className="cursor-pointer rounded-lg border-none bg-[linear-gradient(135deg,#facc15,#eab308)] px-3 py-2 text-xs font-bold text-[#111827]"
                 >
-                  Use Template
-                </button>
+                  Use Base Template
+                </Button>
               </div>
             </div>
           </button>
@@ -371,7 +387,7 @@ export function StackTemplatePage() {
                   handleUseTemplate(selectedTemplate.id)
                 }}
               >
-                Use This Template
+                Base Template
               </Button>
             )}
           </>
