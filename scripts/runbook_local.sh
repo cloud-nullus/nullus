@@ -269,7 +269,10 @@ do_up() {
 
   echo "[nullus] starting API server on :$API_PORT..."
   export ENCRYPTION_KEY
-  run_bg "api" "$PROJECT_ROOT" "ENCRYPTION_KEY='$ENCRYPTION_KEY' NULLUS_DATABASE_HOST=localhost NULLUS_DATABASE_PORT=$POSTGRES_PORT NULLUS_SERVER_MODE=development ./bin/api" "$API_PORT"
+  export NULLUS_DATABASE_HOST=localhost
+  export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
+  export NULLUS_SERVER_MODE=development
+  run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
 
   echo "[nullus] waiting for API health..."
   if wait_for_http "http://127.0.0.1:${API_PORT}/health" 30 1; then
@@ -407,7 +410,7 @@ do_smoke() {
   smoke_get "GET /api/v1/cicd/pipelines"               "http://127.0.0.1:${API_PORT}/api/v1/cicd/pipelines"
   smoke_get "GET /api/v1/observability/dashboard"      "http://127.0.0.1:${API_PORT}/api/v1/observability/dashboard"
   smoke_get "GET /api/v1/observability/alert-rules"    "http://127.0.0.1:${API_PORT}/api/v1/observability/alert-rules"
-  smoke_get "Frontend reachable"                       "http://127.0.0.1:${WEB_PORT}"
+  smoke_get "Frontend reachable"                       "http://localhost:${WEB_PORT}"
 
   echo ""
   echo "[nullus] smoke: $passed passed, $failed failed"

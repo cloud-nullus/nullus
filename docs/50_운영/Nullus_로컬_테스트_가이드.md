@@ -5,385 +5,378 @@
 | 도구 | 버전 | 비고 |
 |------|------|------|
 | Docker + Docker Compose | 최신 | 인프라 기동 |
-| Go | 1.24+ | `/opt/homebrew/bin/go` |
+| Go | 1.24+ | 백엔드 빌드/테스트 |
 | Node.js | 22+ | npm 포함 |
-| golang-migrate CLI | 최신 | `make dev` 시 자동 설치 |
+| golang-migrate CLI | 최신 | `runbook_local.sh up` 시 자동 설치 |
 | Playwright Chromium | 최신 | `npx playwright install chromium` |
+| kind | 0.20+ | K8s 로컬 테스트 (선택) |
 
 ---
 
 ## 2. 인프라 기동
 
 ```bash
-make dev
+./scripts/runbook_local.sh up
 ```
 
-`make dev`는 다음을 순서대로 실행합니다.
+이 명령은 다음을 순서대로 실행합니다:
 
-1. Docker Compose로 PostgreSQL, MinIO, Redis 컨테이너 기동
-2. `golang-migrate`로 DB 마이그레이션 실행 (마이그레이션 파일 6개)
+1. Docker Compose로 PostgreSQL, Redis, MinIO, Keycloak 컨테이너 기동
+2. `golang-migrate`로 DB 마이그레이션 실행 (13개 파일)
+3. Go API 서버 빌드 + 실행 (`:8090`, `ENCRYPTION_KEY` 자동 설정)
+4. React 프론트엔드 개발 서버 실행 (`:5173`)
 
 기동 완료 후 접근 가능한 서비스:
 
-| 서비스 | 주소 |
-|--------|------|
-| PostgreSQL 17 | `localhost:5433` |
-| MinIO API | `localhost:9000` |
-| MinIO 콘솔 | `localhost:9001` |
-| Redis 7 | `localhost:6380` |
+| 서비스 | 주소 | 계정 |
+|--------|------|------|
+| API 서버 | `http://localhost:8090` | - |
+| 프론트엔드 | `http://localhost:5173` | 아래 테스트 계정 참조 |
+| PostgreSQL 17 | `localhost:5433` | nullus / nullus_dev |
+| Keycloak | `http://localhost:8180` | admin / admin |
+| MinIO 콘솔 | `http://localhost:9001` | nullus / nullus_dev |
+| Redis 7 | `localhost:6380` | - |
 
-> **참고**: 호스트 포트가 기본값(5432, 6379)과 다르게 설정된 이유는 기존 로컬 서비스와의 충돌을 피하기 위해서입니다.
-
----
-
-## 3. 백엔드 API 서버 실행
+kind 클러스터도 함께 시작하려면:
 
 ```bash
-make run
+./scripts/runbook_local.sh up --kind
 ```
 
-`make run`은 빌드 후 환경 변수를 자동으로 주입하여 서버를 실행합니다. 기본 포트가 이미 사용 중이라면 포트를 변경할 수 있습니다.
+수동으로 각 서비스를 개별 실행하려면:
 
 ```bash
-NULLUS_SERVER_PORT=9090 make run
-```
-
-서버 기동 후 확인:
-
-| 항목 | 값 |
-|------|-----|
-| API 서버 | `http://localhost:8090` |
-| Health 엔드포인트 | `GET /health` |
-| pprof (개발 모드) | `http://localhost:8090/debug/pprof/` |
-
-Health 응답 예시:
-
-```json
-{"status":"healthy","db":"connected","version":"0.1.0-alpha"}
+make dev                   # Docker 인프라만 기동 + 마이그레이션
+make run                   # API 서버만 실행
+make web-dev               # 프론트엔드만 실행
+./scripts/runbook_local.sh kind-up   # kind 클러스터만 생성
 ```
 
 ---
 
-## 4. 프론트엔드 개발 서버 실행
+## 3. 테스트 계정
 
-```bash
-make web-dev
-```
+### 프론트엔드 (Mock Auth, development 모드)
 
-- URL: `http://localhost:5173`
-- Hot Module Replacement(HMR) 지원
-- API 프록시 미설정 — mock 데이터로 fallback 동작
+| 이메일 | 비밀번호 | 역할 | 홈 페이지 | 접근 범위 |
+|--------|----------|------|-----------|-----------|
+| `admin@nullus.dev` | `admin123` | Admin | `/admin/organization` | 전체 |
+| `devops@nullus.dev` | `devops123` | DevOps | `/stack/templates` | 스택 + CI/CD + 모니터링 |
+| `developer@nullus.dev` | `developer123` | Developer | `/cicd/developer-deploy` | CI/CD + 모니터링(읽기) |
+
+### Keycloak OIDC (production 모드)
+
+| 이메일 | 비밀번호 | 역할 |
+|--------|----------|------|
+| `admin@nullus.io` | `nullus123!` | admin |
+| `devops@nullus.io` | `nullus123!` | devops |
+| `dev@nullus.io` | `nullus123!` | developer |
 
 ---
 
-## 5. API 엔드포인트 테스트 가이드
+## 4. API 엔드포인트 테스트
 
-아래 예시에서 포트는 `9090`을 사용합니다. 기본 포트(`8080`)로 실행한 경우 해당 포트로 변경하세요.
+API 서버: `http://localhost:8090`
 
-### 5.1 Health Check
+### 4.1 Health Check
 
 ```bash
-curl http://localhost:9090/health
+curl http://localhost:8090/health
+# {"status":"healthy","db":"connected","version":"0.1.0-alpha"}
 ```
 
-### 5.2 Organization 관리
+### 4.2 Admin — Organization
 
 ```bash
-# 조직 생성
-curl -X POST http://localhost:9090/api/v1/orgs \
+# 현재 Organization 조회 (single-org 모드)
+curl http://localhost:8090/api/v1/admin/organization
+
+# Organization 생성
+curl -X POST http://localhost:8090/api/v1/admin/orgs \
   -H "Content-Type: application/json" \
   -d '{"name":"My Team","slug":"my-team","domain":"myteam.io"}'
 
-# 조직 조회
-curl http://localhost:9090/api/v1/orgs/{orgId}
-
-# 조직 수정
-curl -X PUT http://localhost:9090/api/v1/orgs/{orgId} \
+# Organization 수정
+curl -X PATCH http://localhost:8090/api/v1/admin/organization \
   -H "Content-Type: application/json" \
-  -d '{"name":"My Team Updated","domain":"updated.io"}'
+  -d '{"name":"My Team Updated"}'
 ```
 
-### 5.3 클러스터 관리
-
-클러스터 타입은 `pipeline` 또는 `target`입니다.
+### 4.3 Admin — Cluster
 
 ```bash
-# 클러스터 등록
-curl -X POST http://localhost:9090/api/v1/clusters \
+# 클러스터 등록 (kubeconfig은 base64 인코딩)
+curl -X POST http://localhost:8090/api/v1/admin/clusters \
   -H "Content-Type: application/json" \
-  -d '{"name":"prod-k8s","type":"pipeline","endpoint":"https://k8s.example.com","org_id":"{orgId}"}'
+  -d '{"name":"prod-k8s","type":"target","endpoint":"https://k8s.example.com","org_id":"{orgId}","kubeconfig":"<base64-encoded-kubeconfig>"}'
 
-# 클러스터 목록 (조직 필터)
-curl "http://localhost:9090/api/v1/clusters?org_id={orgId}"
+# 클러스터 목록
+curl http://localhost:8090/api/v1/admin/clusters
 
-# 클러스터 상세 조회
-curl http://localhost:9090/api/v1/clusters/{clusterId}
+# 클러스터 연결 검증 (실제 K8s API 서버에 접속)
+curl -X POST http://localhost:8090/api/v1/admin/clusters/{clusterId}/verify
+# {"status":"connected","version":"v1.35.0"}
 
-# 클러스터 연결 검증
-curl -X POST http://localhost:9090/api/v1/clusters/{clusterId}/verify
+# 클러스터 수정
+curl -X PATCH http://localhost:8090/api/v1/admin/clusters/{clusterId} \
+  -H "Content-Type: application/json" \
+  -d '{"name":"prod-k8s-updated"}'
+
+# 클러스터 삭제
+curl -X DELETE http://localhost:8090/api/v1/admin/clusters/{clusterId}
 ```
 
-### 5.4 스택 템플릿
+kind 클러스터 등록 예시:
 
 ```bash
-# 템플릿 목록 (3개 Golden Path)
-curl http://localhost:9090/api/v1/templates
+KUBECONFIG_B64=$(kind get kubeconfig --name nullus-test | base64 | tr -d '\n')
+ORG_ID=$(curl -s http://localhost:8090/api/v1/admin/organization | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-# 특정 템플릿 조회
-curl http://localhost:9090/api/v1/templates/gitlab-allinone-v1
+curl -X POST http://localhost:8090/api/v1/admin/clusters \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"kind-nullus-test\",\"type\":\"target\",\"endpoint\":\"https://127.0.0.1:PORT\",\"org_id\":\"$ORG_ID\",\"kubeconfig\":\"$KUBECONFIG_B64\"}"
 ```
 
-### 5.5 스택 배포
+### 4.4 Admin — Members
 
 ```bash
+# 멤버 목록
+curl http://localhost:8090/api/v1/admin/organizations/{orgId}/members
+
+# 멤버 초대
+curl -X POST http://localhost:8090/api/v1/admin/organizations/{orgId}/members \
+  -H "Content-Type: application/json" \
+  -d '{"email":"new@nullus.dev","role":"developer"}'
+
+# 멤버 역할 변경
+curl -X PATCH http://localhost:8090/api/v1/admin/organizations/{orgId}/members/{memberId} \
+  -H "Content-Type: application/json" \
+  -d '{"role":"devops"}'
+```
+
+### 4.5 Admin — 기타
+
+```bash
+# Known Issues
+curl http://localhost:8090/api/v1/admin/known-issues
+
+# 감사 로그
+curl http://localhost:8090/api/v1/admin/audit-logs
+
+# 알림 설정
+curl http://localhost:8090/api/v1/admin/notifications/configs
+
+# 알림 이력
+curl http://localhost:8090/api/v1/admin/notifications/history
+```
+
+### 4.6 Stack
+
+```bash
+# Golden Path 템플릿 (3개)
+curl http://localhost:8090/api/v1/stacks/templates
+
+# 스택 목록
+curl http://localhost:8090/api/v1/stacks
+
+# 호환성 매트릭스
+curl http://localhost:8090/api/v1/stacks/compatibility
+
 # 스택 생성
-curl -X POST http://localhost:9090/api/v1/stacks \
+curl -X POST http://localhost:8090/api/v1/stacks \
   -H "Content-Type: application/json" \
-  -d '{"name":"my-stack","cluster_id":"{clusterId}","golden_path_id":"gitlab-allinone-v1","config":{}}'
+  -d '{"name":"my-stack","template_id":"tpl_standard","cluster_id":"{clusterId}","config":{"tools":["gitlab","argocd","prometheus"]}}'
 
-# 스택 배포 (202 Accepted)
-curl -X POST http://localhost:9090/api/v1/stacks/{stackId}/deploy
+# 스택 배포
+curl -X POST http://localhost:8090/api/v1/stacks/{stackId}/deploy
 
 # 배포 상태 확인
-curl http://localhost:9090/api/v1/stacks/{stackId}/status
+curl http://localhost:8090/api/v1/stacks/{stackId}/status
 ```
 
-### 5.6 호환성 매트릭스
+### 4.7 CI/CD
 
 ```bash
-# 매트릭스 전체 조회
-curl http://localhost:9090/api/v1/compatibility/matrix
+# CI/CD 파이프라인 템플릿
+curl http://localhost:8090/api/v1/cicd/templates
 
-# 도구 조합 호환성 검증
-curl -X POST http://localhost:9090/api/v1/compatibility/validate \
-  -H "Content-Type: application/json" \
-  -d '{"tools":{"source_repository":"GitLab CE","ci_platform":"GitLab CI"}}'
-```
-
-### 5.7 CI/CD 파이프라인
-
-```bash
-# 템플릿 목록 (3개)
-curl http://localhost:9090/api/v1/cicd/templates
+# 앱 템플릿 (Developer Self-Service)
+curl http://localhost:8090/api/v1/cicd/app-templates
 
 # 파이프라인 생성
-curl -X POST http://localhost:9090/api/v1/pipelines \
+curl -X POST http://localhost:8090/api/v1/cicd/pipelines \
   -H "Content-Type: application/json" \
   -d '{"name":"my-pipeline","template_id":"web-backend-v1","cluster_id":"{clusterId}","namespace":"default","app_type":"backend","git_repo_url":"https://gitlab.example.com/my-app"}'
 
-# 파이프라인 배포 (201 Created)
-curl -X POST http://localhost:9090/api/v1/pipelines/{pipelineId}/deploy \
+# 파이프라인 배포
+curl -X POST http://localhost:8090/api/v1/cicd/pipelines/{pipelineId}/deploy \
   -H "Content-Type: application/json" \
   -d '{"version":"v1.0.0","deployed_by":"devops@nullus.dev"}'
 
-# 배포 이력 조회
-curl http://localhost:9090/api/v1/pipelines/{pipelineId}/deployments
+# 배포 이력
+curl http://localhost:8090/api/v1/cicd/deployments
 ```
 
-### 5.8 모니터링 대시보드
+### 4.8 Observability
 
 ```bash
-curl http://localhost:9090/api/v1/monitoring/dashboard
-```
+# 모니터링 대시보드
+curl http://localhost:8090/api/v1/observability/dashboard
 
-### 5.9 알림 규칙
-
-```bash
 # 알림 규칙 목록
-curl http://localhost:9090/api/v1/alerts/rules
+curl http://localhost:8090/api/v1/observability/alert-rules
 
 # 알림 규칙 생성
-curl -X POST http://localhost:9090/api/v1/alerts/rules \
+curl -X POST http://localhost:8090/api/v1/observability/alert-rules \
   -H "Content-Type: application/json" \
   -d '{"name":"High CPU Alert","condition":"cpu_usage > threshold","threshold":80.0,"channel":"slack","enabled":true}'
 
+# 알림 규칙 수정
+curl -X PATCH http://localhost:8090/api/v1/observability/alert-rules/{ruleId} \
+  -H "Content-Type: application/json" \
+  -d '{"threshold":90.0}'
+
+# 알림 규칙 삭제
+curl -X DELETE http://localhost:8090/api/v1/observability/alert-rules/{ruleId}
+
 # 알림 이력
-curl http://localhost:9090/api/v1/alerts/history
+curl http://localhost:8090/api/v1/observability/alert-history
 ```
 
 ---
 
-## 6. 프론트엔드 UI 테스트 가이드
+## 5. 프론트엔드 UI 테스트
 
-### 6.1 로그인
+### 5.1 로그인
 
 URL: `http://localhost:5173/login`
 
-테스트 계정:
+위 테스트 계정으로 로그인 후 역할별 홈 페이지로 리다이렉트되는지 확인합니다.
 
-| 이메일 | 비밀번호 | 역할 | 접근 범위 |
-|--------|----------|------|-----------|
-| `admin@nullus.dev` | `admin123` | Admin | 조직·사용자·클러스터 관리 전체 |
-| `devops@nullus.dev` | `devops123` | DevOps Engineer | 전체 메뉴 |
-| `developer@nullus.dev` | `developer123` | Developer | CI/CD + 관측성 |
+### 5.2 역할별 워크플로우 확인
 
-### 6.2 역할별 화면 확인
+**Admin** (admin@nullus.dev / admin123):
+1. `/admin/organization` — 조직 정보 폼 필드 확인
+2. `/admin/users` — 사용자 목록 테이블
+3. `/admin/clusters` — 클러스터 목록 + "Verify Connection" 버튼
+4. `/admin/known-issues` — Known Issues 목록
 
-각 계정으로 로그인 후 다음 워크플로우를 확인합니다.
+**DevOps** (devops@nullus.dev / devops123):
+1. `/stack/templates` — 3개 Golden Path 카드
+2. `/stack/install` — 5개 탭 (Artifacts ~ Resources)
+3. `/stack/list` — 스택 목록 테이블
+4. `/observability/monitoring` — KPI 카드 4개 + 차트
 
-- **Admin**: 조직 → 사용자 → 클러스터 관리 페이지 접근 여부
-- **DevOps**: 스택 템플릿 선택 → 설치 설정 → 배포 전체 워크플로우
-- **Developer**: CI/CD 템플릿 선택 → 파이프라인 생성 → 앱 배포 5단계 위자드
+**Developer** (developer@nullus.dev / developer123):
+1. `/cicd/developer-deploy` — 앱 배포 위자드
+2. `/observability/monitoring` — 대시보드 (읽기 전용)
+3. 사이드바에서 DevSecOps Stack, Admin 메뉴 숨김 확인
 
-### 6.3 주요 페이지 체크리스트
+### 5.3 주요 페이지 체크리스트
 
 | 페이지 | URL | 확인 사항 |
 |--------|-----|-----------|
 | 홈 | `/` | 역할별 CTA 버튼 표시 |
 | 스택 템플릿 | `/stack/templates` | 3개 Golden Path 카드 |
-| 스택 설치 | `/stack/install` | 6탭 (Artifacts ~ YAML View) |
+| 스택 설치 | `/stack/install` | 5탭 (Artifacts ~ Resources) |
 | 스택 목록 | `/stack/list` | 테이블 렌더링 |
 | 스택 이력 | `/stack/history` | 버전 테이블 |
 | 호환성 | `/stack/versions` | 매트릭스 표 |
 | CI/CD 템플릿 | `/cicd/templates` | 3개 파이프라인 카드 |
 | CI/CD 목록 | `/cicd/list` | 파이프라인 테이블 |
-| CI/CD 이력 | `/cicd/history` | 배포 이력 |
 | 모니터링 | `/observability/monitoring` | KPI 카드 4개 |
-| 알림 규칙 | `/observability/alert-rules` | 규칙 테이블 |
-| 알림 이력 | `/observability/alert-history` | 이력 테이블 |
+| 알림 규칙 | `/observability/alert-rules` | 규칙 테이블 + CRUD |
 | 조직 관리 | `/admin/organization` | 정보 폼 + 멤버 목록 |
 | 사용자 관리 | `/admin/users` | 사용자 테이블 |
-| 클러스터 관리 | `/admin/clusters` | 리스트 + 상세 |
-| Developer 배포 | `/cicd/developer-deploy` | 5단계 위자드 |
+| 클러스터 관리 | `/admin/clusters` | 리스트 + Verify 버튼 |
+| Known Issues | `/admin/known-issues` | 이슈 목록 |
+| Developer 배포 | `/cicd/developer-deploy` | 앱 배포 위자드 |
 
-### 6.4 다크/라이트 테마
+### 5.4 다크/라이트 테마
 
 1. 헤더 우측 테마 토글 버튼 클릭
 2. 페이지 새로고침 후 테마 유지 여부 확인
 
-### 6.5 다국어 (en/ko)
+### 5.5 다국어 (en/ko)
 
-1. 헤더 우측 언어 드롭다운에서 `en` ↔ `ko` 전환
+1. 헤더 우측 언어 드롭다운에서 `en` / `ko` 전환
 2. 사이드바 메뉴명이 변경되는지 확인
-
-### 6.6 사이드바 접기/펼치기
-
-- 사이드바 상단 메뉴 아이콘 클릭
-- 접힘: 64px / 펼침: 240px
 
 ---
 
-## 7. 자동화 테스트 실행
+## 6. 자동화 테스트
 
-### 7.1 Go 단위 + 통합 테스트
+### 6.1 Go 단위/통합 테스트
+
+```bash
+go test ./... -count=1
+```
 
 인프라 없이 인메모리 저장소로 실행됩니다.
 
-```bash
-make test
-```
-
-특정 패키지만 실행:
+### 6.2 React 단위 테스트 (Vitest)
 
 ```bash
-go test github.com/cloud-nullus/draft/internal/stack/domain/... -v
+cd web && npx vitest run
 ```
 
-### 7.2 Go DB 연동 테스트
+14개 파일, 125개 테스트 기준.
 
-`make dev`로 인프라가 실행 중이어야 합니다. DB에 접근할 수 없으면 테스트가 자동으로 skip됩니다.
+### 6.3 Playwright E2E
 
-```bash
-go test github.com/cloud-nullus/draft/e2e -v -run TestDBIntegration
-```
-
-개별 테스트:
-
-```bash
-go test github.com/cloud-nullus/draft/e2e -v -run TestDBIntegration_Organizations
-go test github.com/cloud-nullus/draft/e2e -v -run TestDBIntegration_Clusters
-go test github.com/cloud-nullus/draft/e2e -v -run TestDBIntegration_Stacks
-go test github.com/cloud-nullus/draft/e2e -v -run TestDBIntegration_Pipelines
-go test github.com/cloud-nullus/draft/e2e -v -run TestDBIntegration_Alerts
-```
-
-### 7.3 Go E2E + UAT
-
-인메모리 서버로 실행되므로 인프라 불필요합니다.
-
-```bash
-go test github.com/cloud-nullus/draft/e2e -v
-```
-
-포함된 시나리오:
-
-| 테스트 함수 | 시나리오 |
-|-------------|----------|
-| `TestScenario1_OrgAndCluster` | 조직 생성 → 수정 → 클러스터 등록 → 검증 |
-| `TestScenario2_StackDeployFlow` | 템플릿 조회 → 스택 생성 → 배포 → 상태 확인 |
-| `TestScenario3_CompatibilityMatrix` | 매트릭스 조회 → 호환성 검증 |
-| `TestScenario4_CICDPipelineFlow` | 파이프라인 생성 → 배포 → 이력 조회 |
-| `TestScenario5_MonitoringAndAlerts` | 대시보드 조회 → 알림 규칙 생성 → 이력 조회 |
-| `TestScenario6_HealthCheck` | Health 엔드포인트 확인 |
-
-### 7.4 React 단위/통합 테스트
-
-```bash
-make web-test
-```
-
-내부적으로 `npx vitest run`을 실행합니다.
-
-### 7.5 Playwright E2E
-
-프론트엔드(`http://localhost:5173`)와 API(`http://localhost:8090`)가 실행 중이어야 합니다.
+프론트엔드(`:5173`)와 API(`:8090`)가 실행 중이어야 합니다.
 
 ```bash
 cd web && npx playwright test --reporter=list
 ```
 
-- 총 41개 테스트, 7개 spec 파일 기준으로 실행됩니다.
-- spec 파일: `navigation`, `sidebar`, `stack-workflow`, `theme-i18n`, `uat-admin`, `uat-devops`, `uat-developer`
+41개 테스트, 7개 spec 파일:
+- `navigation.spec.ts` — 페이지 이동 11개
+- `sidebar.spec.ts` — 사이드바 접기/펼치기 4개
+- `stack-workflow.spec.ts` — 스택 설치 워크플로우 5개
+- `theme-i18n.spec.ts` — 테마/언어 전환 5개
+- `uat-admin.spec.ts` — Admin 역할 시나리오 5개
+- `uat-devops.spec.ts` — DevOps 역할 시나리오 7개
+- `uat-developer.spec.ts` — Developer 역할 시나리오 5개
 
-Kind 클러스터 대상 시나리오는 `docs/guides/kind-e2e-testing-guide.md`를 함께 참고하세요.
-
-### 7.6 API Smoke Test
+### 6.4 API Smoke Test
 
 ```bash
 ./scripts/runbook_local.sh smoke
 ```
 
-- 로컬 API 기준 13개 엔드포인트를 스모크 검증합니다.
+14개 API 엔드포인트를 자동 검증합니다.
 
-### 7.7 Go 벤치마크
-
-```bash
-go test github.com/cloud-nullus/draft/internal/stack/domain/ -bench=. -benchmem
-```
-
-### 7.8 테스트 커버리지
+### 6.5 kind 클러스터 E2E
 
 ```bash
-# Go 커버리지 (coverage.html 생성)
-make test-cover
-
-# 프론트엔드 커버리지
-cd /Users/qmin/lifework/cloudbro/draft/web && npm run test:coverage
+./scripts/runbook_local.sh kind-up
 ```
+
+상세 시나리오: [kind E2E 테스트 가이드](../guides/kind-e2e-testing-guide.md)
 
 ---
 
-## 8. 트러블슈팅
+## 7. 트러블슈팅
 
 | 문제 | 원인 | 해결 |
 |------|------|------|
-| 포트 5432 또는 6379 충돌 | 로컬에 PostgreSQL/Redis 실행 중 | `docker-compose.dev.yaml`에서 5433/6380으로 이미 매핑됨. 별도 조치 불필요 |
-| API 서버 8080 포트 충돌 | 다른 프로세스가 8080 사용 중 | `NULLUS_SERVER_PORT=9090 make run` |
-| `go: command not found` | Go가 PATH에 없음 | `export PATH="/opt/homebrew/bin:$PATH"` |
+| 포트 5433/6380 충돌 | 로컬 PostgreSQL/Redis 실행 중 | docker-compose에서 이미 비표준 포트 사용. 충돌 시 기존 서비스 중지 |
+| API 서버 포트 충돌 | 다른 프로세스가 8090 사용 | `lsof -tiTCP:8090` 로 확인 후 `kill` |
+| kubeconfig 암호화 실패 | ENCRYPTION_KEY 미설정 또는 길이 부정확 | `runbook_local.sh`는 기본값 자동 설정. 수동 실행 시 `export ENCRYPTION_KEY="nullus-dev-key-32bytes-padding!!"` (32바이트) |
+| Cluster Verify 실패 | kubeconfig이 DB에 없음 | 클러스터 등록 시 `ENCRYPTION_KEY`가 32바이트인지 확인 |
 | DB 마이그레이션 실패 | 볼륨 데이터 충돌 | `make dev-clean && make dev` (볼륨 초기화) |
 | Playwright 브라우저 없음 | Chromium 미설치 | `npx playwright install chromium` |
-| `golang-migrate` 없음 | PATH에 Go bin 미포함 | `make dev` 실행 시 자동 설치됨. 수동 설치: `go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest` |
+| kind 클러스터 안 됨 | kind 미설치 | `brew install kind` |
 
 ---
 
-## 9. 인프라 정리
+## 8. 인프라 정리
 
 ```bash
-# 컨테이너 중지 (볼륨 유지)
-make dev-down
+# 전체 정리 (API, 프론트엔드, Docker, kind 클러스터)
+./scripts/runbook_local.sh down
 
-# 컨테이너 + 볼륨 삭제 (데이터 초기화)
+# Docker 볼륨까지 삭제 (데이터 초기화)
 make dev-clean
 ```
-
-> `make dev-clean` 실행 시 PostgreSQL 데이터가 모두 삭제됩니다. 이후 `make dev`를 다시 실행하면 마이그레이션이 처음부터 적용됩니다.
