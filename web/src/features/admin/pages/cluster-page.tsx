@@ -10,6 +10,7 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string; label: string }> = {
@@ -189,6 +190,8 @@ export function ClusterPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Cluster Management' }]} />
+
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
           <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">

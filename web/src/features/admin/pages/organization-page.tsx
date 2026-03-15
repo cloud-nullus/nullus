@@ -9,6 +9,7 @@ import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
@@ -139,6 +140,8 @@ export function OrganizationPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Organization' }]} />
+
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
         <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">

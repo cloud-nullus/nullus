@@ -6,6 +6,7 @@ import { Rocket, Plus, Trash2, ChevronRight } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
 import { useAppTemplates, useDeployApp } from '../api/cicd-api'
 import { useClusters } from '../../admin/api/admin-api'
@@ -243,6 +244,8 @@ export function DeveloperDeployPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'CI/CD List', path: '/cicd/list' }, { label: 'Developer Deploy' }]} />
+
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
         <div

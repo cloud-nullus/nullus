@@ -11,6 +11,7 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> = {
@@ -150,6 +151,8 @@ export function UserManagementPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'User Management' }]} />
+
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
