@@ -30,3 +30,5 @@ Thumbs.db
 
 # Database
 postgres_data/
+.runbook-logs/
+.sisyphus/

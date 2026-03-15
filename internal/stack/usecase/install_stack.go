@@ -38,18 +38,29 @@ var installPhases = [][]installStep{
 	},
 }
 
-// InstallStack orchestrates the asynchronous installation of a stack.
 type InstallStack struct {
 	stackRepo port.StackRepository
 	streamer  port.LogStreamer
+	executor  port.StepExecutor
 }
 
-// NewInstallStack constructs an InstallStack use case.
-func NewInstallStack(stackRepo port.StackRepository, streamer port.LogStreamer) *InstallStack {
-	return &InstallStack{
+type InstallStackOption func(*InstallStack)
+
+func WithExecutor(executor port.StepExecutor) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.executor = executor
+	}
+}
+
+func NewInstallStack(stackRepo port.StackRepository, streamer port.LogStreamer, opts ...InstallStackOption) *InstallStack {
+	uc := &InstallStack{
 		stackRepo: stackRepo,
 		streamer:  streamer,
 	}
+	for _, opt := range opts {
+		opt(uc)
+	}
+	return uc
 }
 
 // InstallStackInput holds the parameters for starting an installation.
@@ -119,7 +130,6 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack) {
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
 }
 
-// runPhases simulates each install step, sleeping for the configured duration.
 func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack) error {
 	for _, phase := range installPhases {
 		for _, step := range phase {
@@ -130,10 +140,8 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack) erro
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
 				fmt.Sprintf("starting %s", step.name))
 
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(step.duration):
+			if err := uc.executeStep(ctx, stack.ID, step); err != nil {
+				return fmt.Errorf("step %s: %w", step.name, err)
 			}
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
@@ -141,6 +149,18 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack) erro
 		}
 	}
 	return nil
+}
+
+func (uc *InstallStack) executeStep(ctx context.Context, stackID string, step installStep) error {
+	if uc.executor != nil {
+		return uc.executor.ExecuteStep(ctx, stackID, step.name, step.phase)
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(step.duration):
+		return nil
+	}
 }
 
 // handleFailure transitions to Failed and attempts rollback.
