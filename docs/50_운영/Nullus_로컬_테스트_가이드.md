@@ -1,5 +1,7 @@
 # Nullus 로컬 테스트 가이드
 
+> **Windows 사용자**: [Windows 전용 가이드](./Nullus_로컬_테스트_가이드_Windows.md)를 참고하세요. WSL2 + Docker Desktop 환경이 필요합니다.
+
 ## 1. 사전 요구사항
 
 | 도구 | 버전 | 비고 |
