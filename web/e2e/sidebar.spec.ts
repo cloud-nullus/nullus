@@ -2,7 +2,12 @@ import { test, expect } from '@playwright/test'
 
 test.describe('Sidebar E2E', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/login')
+    await page.fill('#email', 'devops@nullus.dev')
+    await page.fill('#password', 'devops123')
+    await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 5000 })
+    await page.click('button[type="submit"]')
+    await page.waitForURL('**/stack/templates')
     await page.evaluate(() => localStorage.removeItem('nullus-sidebar-collapsed'))
     await page.reload()
   })
