@@ -202,7 +202,7 @@ func TestUAT3_Admin_PlatformSetup(t *testing.T) {
 	status, resp = doRequest(t, http.MethodGet, "/api/v1/observability/dashboard", nil)
 	require.Equal(t, http.StatusOK, status, "대시보드 조회 실패")
 	dashboard := parseData(t, resp)
-	assert.NotNil(t, dashboard["cluster_metrics"], "cluster_metrics가 있어야 함")
-	assert.NotNil(t, dashboard["pipeline_metrics"], "pipeline_metrics가 있어야 함")
-	assert.NotNil(t, dashboard["tool_health"], "tool_health가 있어야 함")
+	assert.NotNil(t, dashboard["kpi"], "kpi가 있어야 함")
+	assert.NotNil(t, dashboard["pipeline"], "pipeline가 있어야 함")
+	assert.NotNil(t, dashboard["tools"], "tools가 있어야 함")
 }

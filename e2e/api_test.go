@@ -195,8 +195,8 @@ func TestScenario5_MonitoringAndAlerts(t *testing.T) {
 	status, resp := doRequest(t, http.MethodGet, "/api/v1/observability/dashboard", nil)
 	assertStatus(t, status, http.StatusOK)
 	dashboard := parseData(t, resp)
-	assert.NotNil(t, dashboard["cluster_metrics"])
-	assert.NotNil(t, dashboard["pipeline_metrics"])
+	assert.NotNil(t, dashboard["kpi"])
+	assert.NotNil(t, dashboard["pipeline"])
 
 	// 2. POST /api/v1/observability/alert-rules → 201
 	status, resp = doRequest(t, http.MethodPost, "/api/v1/observability/alert-rules", map[string]any{

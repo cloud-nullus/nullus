@@ -7,13 +7,6 @@ import { Input } from '../../../components/ui/input'
 import { DataTable } from '../../../components/shared/data-table'
 import { cn } from '../../../lib/utils'
 
-const MOCK_ALERT_HISTORY: AlertHistoryEntry[] = [
-  { id: 'ah1', ruleName: 'High CPU', severity: 'critical', message: 'CPU usage exceeded 80% on prod-cluster', firedAt: '2026-03-14T07:30:00Z', resolvedAt: '2026-03-14T07:45:00Z' },
-  { id: 'ah2', ruleName: 'Memory Warning', severity: 'warning', message: 'Memory usage at 85% on staging-cluster', firedAt: '2026-03-13T15:00:00Z', resolvedAt: '2026-03-13T15:20:00Z' },
-  { id: 'ah3', ruleName: 'Pod CrashLoop', severity: 'critical', message: 'Pod api-server-xyz in CrashLoopBackOff', firedAt: '2026-03-12T11:00:00Z', resolvedAt: null },
-  { id: 'ah4', ruleName: 'High CPU', severity: 'info', message: 'CPU usage returned to normal', firedAt: '2026-03-11T09:00:00Z', resolvedAt: '2026-03-11T09:01:00Z' },
-]
-
 const SEVERITY_BADGE: Record<AlertSeverity, { className: string; label: string }> = {
   critical: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]', label: 'Critical' },
   warning: { className: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', label: 'Warning' },
@@ -33,7 +26,7 @@ export function AlertHistoryPage() {
   const [dateRange, setDateRange] = useState<'24h' | '7d' | '30d' | 'all'>('7d')
 
   const { data: apiData } = useAlertHistory(severityFilter ? { severity: severityFilter } : undefined)
-  const history = apiData?.items ?? MOCK_ALERT_HISTORY
+  const history = apiData?.items ?? []
 
   const filtered = history.filter((entry) => {
     if (severityFilter && entry.severity !== severityFilter) return false

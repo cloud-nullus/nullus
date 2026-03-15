@@ -15,12 +15,6 @@ import { cn } from '../../../lib/utils'
 
 type AlertRuleWithSeverity = AlertRule & { severity: AlertSeverity }
 
-const MOCK_ALERT_RULES: AlertRuleWithSeverity[] = [
-  { id: 'r1', name: 'High CPU', severity: 'critical', condition: 'cpu_usage > threshold', threshold: '80%', channel: 'slack', enabled: true, createdAt: '2026-02-01T00:00:00Z' },
-  { id: 'r2', name: 'Memory Warning', severity: 'warning', condition: 'memory_usage > threshold', threshold: '90%', channel: 'email', enabled: true, createdAt: '2026-02-05T00:00:00Z' },
-  { id: 'r3', name: 'Pod CrashLoop', severity: 'info', condition: 'pod_restart_count > threshold', threshold: '5', channel: 'slack', enabled: false, createdAt: '2026-03-01T00:00:00Z' },
-]
-
 const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
   slack: { className: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' },
   email: { className: 'bg-[rgba(16,185,129,0.12)] text-[#34d399]' },
@@ -63,10 +57,10 @@ const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-bo
 
 export function AlertRulesPage() {
   const { data: apiData } = useAlertRules()
-  const [localRules, setLocalRules] = useState<AlertRuleWithSeverity[]>(MOCK_ALERT_RULES)
+  const [localRules, setLocalRules] = useState<AlertRuleWithSeverity[]>([])
   const rules = useMemo<AlertRuleWithSeverity[]>(() => {
     if (!apiData?.items) return localRules
-    return apiData.items.map((rule) => ({ ...rule, severity: 'warning' }))
+    return apiData.items.map((rule) => ({ ...rule, severity: (rule as AlertRuleWithSeverity).severity ?? 'warning' }))
   }, [apiData?.items, localRules])
 
   const createRule = useCreateAlertRule()

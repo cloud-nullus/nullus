@@ -5,49 +5,6 @@ import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
 import { DataTable } from '../../../components/shared/data-table'
 
-const MOCK_DEPLOYMENTS: Deployment[] = [
-  {
-    id: 'd1',
-    pipelineId: 'p1',
-    pipelineName: 'api-server-pipeline',
-    version: 'v1.2.3',
-    status: 'success',
-    triggeredBy: 'alice@nullus.io',
-    startedAt: '2026-03-13T10:00:00Z',
-    completedAt: '2026-03-13T10:05:00Z',
-  },
-  {
-    id: 'd2',
-    pipelineId: 'p2',
-    pipelineName: 'frontend-pipeline',
-    version: 'v2.0.1',
-    status: 'running',
-    triggeredBy: 'bob@nullus.io',
-    startedAt: '2026-03-14T08:30:00Z',
-    completedAt: null,
-  },
-  {
-    id: 'd3',
-    pipelineId: 'p3',
-    pipelineName: 'data-batch-pipeline',
-    version: 'v0.9.0',
-    status: 'failed',
-    triggeredBy: 'carol@nullus.io',
-    startedAt: '2026-03-12T14:00:00Z',
-    completedAt: '2026-03-12T14:02:00Z',
-  },
-  {
-    id: 'd4',
-    pipelineId: 'p1',
-    pipelineName: 'api-server-pipeline',
-    version: 'v1.2.2',
-    status: 'success',
-    triggeredBy: 'alice@nullus.io',
-    startedAt: '2026-03-10T09:00:00Z',
-    completedAt: '2026-03-10T09:04:00Z',
-  },
-]
-
 const STATUS_STYLES: Record<PipelineStatus, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
   success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Success' },
@@ -66,7 +23,7 @@ export function CicdHistoryPage() {
   const [typeFilter, setTypeFilter] = useState('')
 
   const { data: apiData } = useDeployments({ status: statusFilter as PipelineStatus || undefined })
-  const deployments = apiData?.items ?? MOCK_DEPLOYMENTS
+  const deployments = apiData?.items ?? []
 
   const filtered = deployments.filter((d) => {
     const matchesStatus = !statusFilter || d.status === statusFilter

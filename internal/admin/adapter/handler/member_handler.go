@@ -68,11 +68,10 @@ func (h *MemberHandler) CreateMember(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
 	}
 
-	member, err := h.userUC.InviteMember(c.Request().Context(), orgID, req.Email, req.Role)
+	member, err := h.userUC.InviteMember(c.Request().Context(), orgID, req.Email, req.Name, req.Role)
 	if err != nil {
 		return err
 	}
-	member.Name = req.Name
 	if h.audit != nil {
 		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
 			UserID:       c.Request().Header.Get("X-User-ID"),

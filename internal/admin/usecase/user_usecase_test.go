@@ -72,10 +72,11 @@ func TestUserUseCase_InviteMember_CreatesPendingUserDefaults(t *testing.T) {
 	repo := newMockUserRepo()
 	uc := NewUserUseCase(repo)
 
-	user, err := uc.InviteMember(context.Background(), "org_1", "new@nullus.io", domain.RoleDeveloper)
+	user, err := uc.InviteMember(context.Background(), "org_1", "new@nullus.io", "New Member", domain.RoleDeveloper)
 	require.NoError(t, err)
 	assert.NotEmpty(t, user.ID)
 	assert.Equal(t, "new@nullus.io", user.Email)
+	assert.Equal(t, "New Member", user.Name)
 	assert.Equal(t, "org_1", user.OrgID)
 	assert.Equal(t, domain.RoleDeveloper, user.Role)
 	assert.False(t, user.IsActive)

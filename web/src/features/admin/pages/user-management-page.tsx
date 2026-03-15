@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Users, Plus, Mail } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser } from '../api/admin-api'
+import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization } from '../api/admin-api'
 import type { MemberRole, MemberStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -12,8 +12,6 @@ import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import { cn } from '../../../lib/utils'
-
-const ORG_ID = 'org-1'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> = {
   active: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Active' },
@@ -44,6 +42,8 @@ const INVITE_USER_DEFAULTS: InviteUserFormData = {
 }
 
 export function UserManagementPage() {
+  const { data: orgData } = useOrganization()
+  const ORG_ID = orgData?.id ?? ''
   const { data: membersData, isLoading } = useMembers(ORG_ID)
   const users = membersData?.items ?? []
   const inviteMember = useInviteMember(ORG_ID)

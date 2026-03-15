@@ -25,7 +25,6 @@ test.describe('UAT: Admin 관리자', () => {
     await page.goto('/admin/users')
     await expect(page.locator('h1')).toContainText('User Management', { timeout: 10000 })
     await expect(page.locator('table')).toBeVisible()
-    await expect(page.getByText('사용자가 없습니다.')).toBeVisible()
   })
 
   test('Cluster Management 페이지 접근 → 리스트+상세 레이아웃', async ({ page }) => {

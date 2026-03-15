@@ -28,7 +28,7 @@ func (uc *UserUseCase) ListMembers(ctx context.Context, orgID string) ([]*domain
 	return users, nil
 }
 
-func (uc *UserUseCase) InviteMember(ctx context.Context, orgID, email string, role domain.Role) (*domain.User, error) {
+func (uc *UserUseCase) InviteMember(ctx context.Context, orgID, email, name string, role domain.Role) (*domain.User, error) {
 	if role == "" {
 		role = domain.RoleDeveloper
 	}
@@ -37,6 +37,7 @@ func (uc *UserUseCase) InviteMember(ctx context.Context, orgID, email string, ro
 	user := &domain.User{
 		ID:        uuid.NewString(),
 		Email:     email,
+		Name:      name,
 		Role:      role,
 		OrgID:     orgID,
 		IsActive:  false,

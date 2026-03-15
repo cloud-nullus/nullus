@@ -11,39 +11,6 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
 
-const MOCK_PIPELINES: Pipeline[] = [
-  {
-    id: 'p1',
-    name: 'api-server-pipeline',
-    appType: 'web-backend',
-    clusterId: 'c1',
-    clusterName: 'prod-cluster',
-    status: 'success',
-    lastDeployedAt: '2026-03-13T10:00:00Z',
-    createdAt: '2026-02-01T00:00:00Z',
-  },
-  {
-    id: 'p2',
-    name: 'frontend-pipeline',
-    appType: 'web-frontend',
-    clusterId: 'c2',
-    clusterName: 'staging-cluster',
-    status: 'running',
-    lastDeployedAt: '2026-03-14T08:30:00Z',
-    createdAt: '2026-02-10T00:00:00Z',
-  },
-  {
-    id: 'p3',
-    name: 'data-batch-pipeline',
-    appType: 'batch-job',
-    clusterId: 'c3',
-    clusterName: 'dev-cluster',
-    status: 'failed',
-    lastDeployedAt: '2026-03-12T14:00:00Z',
-    createdAt: '2026-03-01T00:00:00Z',
-  },
-]
-
 const STATUS_STYLES: Record<PipelineStatus, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
   success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Success' },
@@ -91,7 +58,7 @@ export function CicdListPage() {
   })
 
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
-  const pipelines = apiData?.items ?? MOCK_PIPELINES
+  const pipelines = apiData?.items ?? []
   const createPipeline = useCreatePipeline()
   const deployPipeline = useDeployPipeline()
 

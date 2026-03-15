@@ -6,7 +6,7 @@ import { Rocket, Plus, Trash2, ChevronRight } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
-import { useAuthStore } from '../../../stores/auth-store'
+
 import { useAppTemplates, useDeployApp } from '../api/cicd-api'
 import { useClusters } from '../../admin/api/admin-api'
 import type { AppTemplate, DeployAppRequest } from '../api/cicd-api'
@@ -131,15 +131,14 @@ const DEFAULT_FORM: FormState = {
 }
 
 export function DeveloperDeployPage() {
-  const role = useAuthStore((s) => s.role)
   const [step, setStep] = useState<Step>(1)
   const [deployed, setDeployed] = useState(false)
   const { data: appTemplatesRaw } = useAppTemplates()
   const appTemplates = (appTemplatesRaw ?? []).map((t) => ({
     id: t.id,
     name: t.name,
-    description: t.description ?? '',
-    language: t.language ?? '',
+    description: t.description ?? t.runtime ?? '',
+    language: t.language ?? t.runtime ?? '',
     color: '#6366f1',
   }))
   const { data: clustersData } = useClusters()
@@ -170,15 +169,6 @@ export function DeveloperDeployPage() {
   const form = watch()
 
   const deployMutation = useDeployApp()
-
-  if (role !== 'developer') {
-    return (
-      <div className="flex h-[300px] flex-col items-center justify-center gap-3 text-[var(--color-text-secondary)]">
-        <Rocket size={40} className="opacity-30" />
-        <p className="m-0 text-[15px]">이 페이지는 Developer 역할 전용입니다.</p>
-      </div>
-    )
-  }
 
   const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
     setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })

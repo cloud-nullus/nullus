@@ -36,6 +36,7 @@ const orgSchema = z.object({
 })
 
 const inviteSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
   email: z.string().min(1, 'Email is required').email('Invalid email format'),
   role: z.enum(['admin', 'devops', 'developer']),
 })
@@ -78,7 +79,7 @@ export function OrganizationPage() {
     formState: { errors: inviteErrors, isValid: isInviteValid, isSubmitting: isInviteSubmitting },
   } = useForm<InviteFormData>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: '', role: 'developer' },
+    defaultValues: { name: '', email: '', role: 'developer' },
     mode: 'onChange',
   })
   const [clusterAccessScope, setClusterAccessScope] = useState<string[]>([...(org.clusterAccessScope ?? [])])
@@ -107,7 +108,7 @@ export function OrganizationPage() {
     inviteMember.mutate(data as InviteMemberRequest, {
       onSuccess: () => {
         setInviteModal(false)
-        resetInvite({ email: '', role: 'developer' })
+        resetInvite({ name: '', email: '', role: 'developer' })
       },
     })
   }
@@ -258,7 +259,7 @@ export function OrganizationPage() {
             variant="secondary"
             size="sm"
             onClick={() => {
-              resetInvite({ email: '', role: 'developer' })
+              resetInvite({ name: '', email: '', role: 'developer' })
               setInviteModal(true)
             }}
             type="button"
@@ -320,7 +321,7 @@ export function OrganizationPage() {
         open={inviteModal}
         onClose={() => {
           setInviteModal(false)
-          resetInvite({ email: '', role: 'developer' })
+          resetInvite({ name: '', email: '', role: 'developer' })
         }}
         title="Invite Member"
         footer={
@@ -330,7 +331,7 @@ export function OrganizationPage() {
               size="sm"
               onClick={() => {
                 setInviteModal(false)
-                resetInvite({ email: '', role: 'developer' })
+                resetInvite({ name: '', email: '', role: 'developer' })
               }}
               type="button"
             >
@@ -351,6 +352,12 @@ export function OrganizationPage() {
         }
       >
         <div className="flex flex-col gap-3.5">
+            <Input
+              label="이름"
+              placeholder="홍길동"
+              {...registerInvite('name')}
+            />
+            {inviteErrors.name && <span className="text-xs text-[#ef4444]">{inviteErrors.name.message}</span>}
             <Input
               label="이메일"
               type="email"

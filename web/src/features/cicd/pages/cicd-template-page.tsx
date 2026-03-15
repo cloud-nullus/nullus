@@ -6,30 +6,6 @@ import type { CicdTemplate } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 
-const MOCK_TEMPLATES: CicdTemplate[] = [
-  {
-    id: 'web-backend',
-    name: 'Web Backend Pipeline',
-    description: 'Node.js / Java / Python 백엔드 서비스를 위한 CI/CD 파이프라인. 유닛 테스트, 도커 빌드, 스테이징 배포를 자동화합니다.',
-    appType: 'web-backend',
-    stages: ['Build', 'Test', 'Deploy'],
-  },
-  {
-    id: 'web-frontend',
-    name: 'Web Frontend Pipeline',
-    description: 'React / Vue / Angular 프론트엔드 앱을 위한 CI/CD 파이프라인. 빌드 최적화, E2E 테스트, CDN 배포를 포함합니다.',
-    appType: 'web-frontend',
-    stages: ['Build', 'Test', 'Deploy'],
-  },
-  {
-    id: 'batch-job',
-    name: 'Batch Job Pipeline',
-    description: '배치 처리 작업을 위한 CI/CD 파이프라인. 스케줄 기반 실행, 결과 검증, 알림 통합을 지원합니다.',
-    appType: 'batch-job',
-    stages: ['Build', 'Test', 'Deploy'],
-  },
-]
-
 const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   'web-backend': { bg: 'rgba(99,102,241,0.12)', color: '#a5b4fc' },
   'web-frontend': { bg: 'rgba(16,185,129,0.12)', color: '#34d399' },
@@ -39,7 +15,7 @@ const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 export function CicdTemplatePage() {
   const navigate = useNavigate()
   const { data: apiTemplates } = useCicdTemplates()
-  const templates = Array.isArray(apiTemplates) ? apiTemplates : MOCK_TEMPLATES
+  const templates = Array.isArray(apiTemplates) ? apiTemplates : []
   const [search, setSearch] = useState('')
 
   const filtered = templates.filter(
@@ -131,13 +107,13 @@ export function CicdTemplatePage() {
               {/* Footer */}
               <div className="flex justify-end border-t border-[var(--color-border-default)] pt-2.5">
                 <Button
-                  variant="primary"
-                  size="sm"
-                  type="button"
-                  onClick={() => navigate(`/cicd/pipelines/new?template=${template.id}`)}
-                >
-                  Use Template
-                </Button>
+                   variant="primary"
+                   size="sm"
+                   type="button"
+                   onClick={() => navigate('/cicd/list?template=' + template.id)}
+                 >
+                   Use Template
+                 </Button>
               </div>
             </div>
           )

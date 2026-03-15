@@ -192,8 +192,10 @@ export interface CICDTemplate {
 export interface AppTemplateInfo {
   id: AppTemplate
   name: string
-  description: string
-  language: string
+  description?: string
+  language?: string
+  port?: number
+  runtime?: string
 }
 
 export interface DashboardMetrics {
@@ -250,6 +252,7 @@ export interface UpdateOrgRequest {
 }
 
 export interface InviteMemberRequest {
+  name: string
   email: string
   role: MemberRole
 }

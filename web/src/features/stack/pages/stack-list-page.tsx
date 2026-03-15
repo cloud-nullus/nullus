@@ -7,6 +7,7 @@ import type { Stack } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { DataTable } from '../../../components/shared/data-table'
+import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
@@ -24,6 +25,7 @@ export function StackListPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [deleteStackId, setDeleteStackId] = useState<string | null>(null)
 
   const { data: apiData, isLoading } = useStacks({ search, status: statusFilter || undefined })
   const stacks = apiData?.items ?? []
@@ -38,6 +40,11 @@ export function StackListPage() {
     const matchesStatus = !statusFilter || s.status === statusFilter
     return matchesSearch && matchesStatus
   })
+
+  const handleDeleteStack = () => {
+    // TODO: wire useDeleteStack when API is available
+    setDeleteStackId(null)
+  }
 
   const columns: ColumnDef<Stack, unknown>[] = [
     {
@@ -77,21 +84,31 @@ export function StackListPage() {
         <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.createdAt)}</span>
       ),
     },
-    {
-      id: 'actions',
-      header: 'Actions',
-      enableSorting: false,
-      cell: () => (
-        <div className="flex gap-1.5">
-          <Button variant="ghost" size="sm" type="button">
-            View
-          </Button>
-          <Button variant="danger" size="sm" type="button">
-            Delete
-          </Button>
-        </div>
-      ),
-    },
+     {
+       id: 'actions',
+       header: 'Actions',
+       enableSorting: false,
+       cell: ({ row }) => (
+         <div className="flex gap-1.5">
+           <Button
+             variant="ghost"
+             size="sm"
+             type="button"
+             onClick={() => navigate(`/stack/deploy/${row.original.id}`)}
+           >
+             View
+           </Button>
+           <Button
+             variant="danger"
+             size="sm"
+             type="button"
+             onClick={() => setDeleteStackId(row.original.id)}
+           >
+             Delete
+           </Button>
+         </div>
+       ),
+     },
   ]
 
   return (
@@ -148,11 +165,20 @@ export function StackListPage() {
       </div>
 
       <DataTable
-        columns={columns}
-        data={filtered}
-        getRowKey={(row) => row.id}
-        emptyMessage={isLoading ? '스택을 불러오는 중...' : '스택이 없습니다.'}
-      />
-    </div>
-  )
-}
+         columns={columns}
+         data={filtered}
+         getRowKey={(row) => row.id}
+         emptyMessage={isLoading ? '스택을 불러오는 중...' : '스택이 없습니다.'}
+       />
+
+       <ConfirmDialog
+         open={deleteStackId !== null}
+         onClose={() => setDeleteStackId(null)}
+         onConfirm={handleDeleteStack}
+         title="Delete Stack"
+         description="이 스택을 삭제하면 관련 배포 정보가 영향을 받을 수 있습니다. 계속하시겠습니까?"
+         confirmLabel="Delete"
+       />
+     </div>
+   )
+ }

@@ -47,7 +47,17 @@ const adminApiCalls = {
     api.patch<Organization>('/admin/organization', data).then((r) => r.data),
 
   getMembers: (orgId: string) =>
-    api.get<{ items: Member[]; total: number }>(`/admin/organizations/${orgId}/members`).then((r) => r.data),
+    api.get<{ items: Member[]; total: number }>(`/admin/organizations/${orgId}/members`).then((r) => ({
+      ...r.data,
+      items: (r.data.items ?? []).map((m) => {
+        const raw = m as Member & { is_active?: boolean }
+        return {
+          ...m,
+          status: m.status ?? (raw.is_active ? 'active' : 'pending'),
+          joinedAt: m.joinedAt ?? (raw as Record<string, unknown>).created_at as string ?? '',
+        }
+      }),
+    })),
 
   inviteMember: (orgId: string, data: InviteMemberRequest) =>
     api.post<Member>(`/admin/organizations/${orgId}/members`, data).then((r) => r.data),

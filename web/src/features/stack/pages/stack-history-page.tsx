@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { History, GitCompare, RotateCcw } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
+import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
@@ -20,12 +20,21 @@ function formatDate(iso: string) {
 }
 
 export function StackHistoryPage() {
-  const stackId = 's1'
+  const { data: stacksData } = useStacks()
+  const stacks = stacksData?.items ?? []
+  const [stackId, setStackId] = useState(stacks[0]?.id ?? '')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [compareOpen, setCompareOpen] = useState(false)
   const [versionA, setVersionA] = useState(4)
   const [versionB, setVersionB] = useState(5)
   const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
+
+  useEffect(() => {
+    if (stacks.length > 0 && !stackId) {
+      setStackId(stacks[0].id)
+    }
+  }, [stacks, stackId])
+
   const { data: historyData } = useStackHistory(stackId)
   const entries = Array.isArray(historyData) ? historyData : []
   const rollbackMutation = useRollbackStack()
