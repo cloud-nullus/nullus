@@ -37,7 +37,7 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
   useEffect(() => {
     if (!deploymentId) return
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/deployments/${deploymentId}/logs`
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/v1/stacks/${deploymentId}/deploy/logs`
 
     const client = connect(wsUrl, {
       onMessage: (data) => {
