@@ -73,6 +73,7 @@ export function useCreateAlertRule() {
     mutationFn: observabilityApiCalls.createAlertRule,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.alertRules() })
+      void qc.invalidateQueries({ queryKey: ['observability', 'alert-history'] })
     },
   })
 }
@@ -84,6 +85,7 @@ export function useUpdateAlertRule() {
       observabilityApiCalls.updateAlertRule(id, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.alertRules() })
+      void qc.invalidateQueries({ queryKey: ['observability', 'alert-history'] })
     },
   })
 }
@@ -94,6 +96,7 @@ export function useDeleteAlertRule() {
     mutationFn: (id: string) => observabilityApiCalls.deleteAlertRule(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.alertRules() })
+      void qc.invalidateQueries({ queryKey: ['observability', 'alert-history'] })
     },
   })
 }

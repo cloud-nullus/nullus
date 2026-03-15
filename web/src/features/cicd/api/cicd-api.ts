@@ -109,7 +109,12 @@ export function useAppTemplates() {
 }
 
 export function useDeployApp() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: cicdApiCalls.deployApp,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cicd', 'pipelines'] })
+      void qc.invalidateQueries({ queryKey: ['cicd', 'deployments'] })
+    },
   })
 }

@@ -170,8 +170,9 @@ export function useUpdateCluster() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateClusterRequest> }) =>
       adminApiCalls.updateCluster(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
+      void qc.invalidateQueries({ queryKey: queryKeys.cluster(variables.id) })
     },
   })
 }
@@ -179,9 +180,10 @@ export function useUpdateCluster() {
 export function useDeleteCluster() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: adminApiCalls.deleteCluster,
-    onSuccess: () => {
+    mutationFn: (id: string) => adminApiCalls.deleteCluster(id),
+    onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
+      void qc.invalidateQueries({ queryKey: queryKeys.cluster(id) })
     },
   })
 }

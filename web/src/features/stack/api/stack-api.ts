@@ -28,11 +28,9 @@ const queryKeys = {
   templates: () => ['stacks', 'templates'] as const,
   template: (id: string) => ['stacks', 'templates', id] as const,
   list: (filters?: Record<string, unknown>) => ['stacks', 'list', filters] as const,
-  estimate: (input: Record<string, unknown>) => ['stacks', 'estimate', input] as const,
   history: (stackId: string) => ['stacks', 'history', stackId] as const,
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
-  validateCompatibility: (stackId: string) => ['stacks', 'validate', stackId] as const,
 }
 
 // --- API functions ---
@@ -107,8 +105,12 @@ export function useCreateStack() {
 }
 
 export function useSaveDraft() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: stackApiCalls.saveDraft,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
   })
 }
 
@@ -139,8 +141,9 @@ export function useRollbackStack() {
   return useMutation({
     mutationFn: ({ stackId, version }: { stackId: string; version: number }) =>
       stackApiCalls.rollbackStack(stackId, version),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['stacks'] })
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+      void qc.invalidateQueries({ queryKey: queryKeys.history(variables.stackId) })
     },
   })
 }
@@ -152,8 +155,12 @@ export function useCompatibilityMatrix() {
   })
 }
 
-export function useValidateCompatibility() {
+export function useValidateCompatibility(stackId: string) {
+  const qc = useQueryClient()
   return useMutation({
-    mutationFn: (stackId: string) => stackApiCalls.validateCompatibility(stackId),
+    mutationFn: () => stackApiCalls.validateCompatibility(stackId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
+    },
   })
 }
