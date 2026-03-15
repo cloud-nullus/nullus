@@ -7,6 +7,8 @@ import { ClusterPage } from './cluster-page'
 vi.mock('../api/admin-api', () => ({
   useClusters: () => ({ data: undefined }),
   useCreateCluster: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 beforeEach(() => {

@@ -1,10 +1,16 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle } from 'lucide-react'
-import { useClusters, useCreateCluster } from '../api/admin-api'
-import type { Cluster, ClusterType, ClusterStatus, CreateClusterRequest } from '../api/admin-api'
+import { useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster } from '../api/admin-api'
+import type { Cluster, ClusterStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
+import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
+import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { cn } from '../../../lib/utils'
 
 const MOCK_CLUSTERS: Cluster[] = [
   {
@@ -36,299 +42,386 @@ const MOCK_CLUSTERS: Cluster[] = [
   },
 ]
 
-const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; bg: string; color: string; label: string }> = {
-  connected: { icon: <CheckCircle size={14} />, bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Connected' },
-  pending: { icon: <Clock size={14} />, bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Pending' },
-  error: { icon: <AlertCircle size={14} />, bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Error' },
-  inactive: { icon: <MinusCircle size={14} />, bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Inactive' },
+const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string; label: string }> = {
+  connected: {
+    icon: <CheckCircle size={14} />,
+    badgeClassName: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
+    panelClassName: 'border-[#22c55e40] bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
+    label: 'Connected',
+  },
+  pending: {
+    icon: <Clock size={14} />,
+    badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
+    panelClassName: 'border-[#f59e0b40] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
+    label: 'Pending',
+  },
+  error: {
+    icon: <AlertCircle size={14} />,
+    badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+    panelClassName: 'border-[#ef444440] bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+    label: 'Error',
+  },
+  inactive: {
+    icon: <MinusCircle size={14} />,
+    badgeClassName: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]',
+    panelClassName: 'border-[#64748b40] bg-[rgba(100,116,139,0.15)] text-[#64748b]',
+    label: 'Inactive',
+  },
+}
+
+const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
+
+const clusterSchema = z
+  .object({
+    name: z.string().min(2, 'Name must be at least 2 characters'),
+    type: z.enum(['kubernetes', 'eks', 'gke', 'aks', 'k3s']),
+    endpoint: z.string().optional().refine((value) => !value || z.url().safeParse(value).success, 'Invalid URL'),
+    kubeconfig: z.string(),
+    isEdit: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    const kubeconfigLength = data.kubeconfig.trim().length
+    if (!data.isEdit && kubeconfigLength < 10) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['kubeconfig'],
+        message: 'Kubeconfig is required and must be at least 10 characters',
+      })
+    }
+    if (data.isEdit && kubeconfigLength > 0 && kubeconfigLength < 10) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['kubeconfig'],
+        message: 'Kubeconfig must be at least 10 characters',
+      })
+    }
+  })
+
+type ClusterFormData = z.infer<typeof clusterSchema>
+
+const CLUSTER_DEFAULTS: ClusterFormData = {
+  name: '',
+  type: 'kubernetes',
+  endpoint: '',
+  kubeconfig: '',
+  isEdit: false,
 }
 
 export function ClusterPage() {
   const { data: clustersData } = useClusters()
-  const clusters = clustersData?.items ?? MOCK_CLUSTERS
+  const [localClusters, setLocalClusters] = useState<Cluster[]>(MOCK_CLUSTERS)
+  const clusters = useMemo(() => clustersData?.items ?? localClusters, [clustersData?.items, localClusters])
   const createCluster = useCreateCluster()
+  const updateCluster = useUpdateCluster()
+  const deleteCluster = useDeleteCluster()
 
   const [selected, setSelected] = useState<Cluster | null>(clusters[0] ?? null)
   const [registerModal, setRegisterModal] = useState(false)
-  const [form, setForm] = useState<CreateClusterRequest>({ name: '', type: 'kubernetes', kubeconfig: '' })
+  const [editingClusterId, setEditingClusterId] = useState<string | null>(null)
+  const [deleteClusterId, setDeleteClusterId] = useState<string | null>(null)
+  const [isVerifyingConnection, setIsVerifyingConnection] = useState(false)
+  const [verifyConnectionResult, setVerifyConnectionResult] = useState<'success' | 'error' | null>(null)
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isValid, isSubmitting },
+  } = useForm<ClusterFormData>({
+    resolver: zodResolver(clusterSchema),
+    defaultValues: CLUSTER_DEFAULTS,
+    mode: 'onChange',
+  })
 
-  const handleRegister = () => {
-    createCluster.mutate(form, {
+  const handleRegister = (form: ClusterFormData) => {
+    if (editingClusterId) {
+      const updatePayload = form.kubeconfig.trim()
+        ? { name: form.name, type: form.type, kubeconfig: form.kubeconfig }
+        : { name: form.name, type: form.type }
+
+      updateCluster.mutate(
+        { id: editingClusterId, data: updatePayload },
+        {
+          onSuccess: () => {
+            setRegisterModal(false)
+            setEditingClusterId(null)
+            reset(CLUSTER_DEFAULTS)
+          },
+        }
+      )
+      setLocalClusters((prev) =>
+        prev.map((cluster) =>
+          cluster.id === editingClusterId
+            ? { ...cluster, name: form.name, type: form.type }
+            : cluster
+        )
+      )
+      if (selected?.id === editingClusterId) {
+        setSelected((prev) => (prev ? { ...prev, name: form.name, type: form.type } : prev))
+      }
+      return
+    }
+
+    createCluster.mutate({ name: form.name, type: form.type, kubeconfig: form.kubeconfig }, {
       onSuccess: () => {
         setRegisterModal(false)
-        setForm({ name: '', type: 'kubernetes', kubeconfig: '' })
+        reset(CLUSTER_DEFAULTS)
       },
     })
+
+    setLocalClusters((prev) => [
+      {
+        id: `local-${Date.now()}`,
+        name: form.name,
+        type: form.type,
+        endpoint: form.endpoint || `https://${form.name}.k8s.local`,
+        status: 'pending',
+        organizationIds: ['org-1'],
+        createdAt: new Date().toISOString(),
+      },
+      ...prev,
+    ])
+  }
+
+  const openCreateModal = () => {
+    setEditingClusterId(null)
+    reset(CLUSTER_DEFAULTS)
+    setRegisterModal(true)
+  }
+
+  const openEditModal = () => {
+    if (!selected) return
+    setEditingClusterId(selected.id)
+    reset({
+      name: selected.name,
+      type: selected.type,
+      endpoint: selected.endpoint,
+      kubeconfig: '',
+      isEdit: true,
+    })
+    setRegisterModal(true)
+  }
+
+  const handleDeleteCluster = () => {
+    if (!deleteClusterId) return
+
+    deleteCluster.mutate(deleteClusterId, {
+      onSuccess: () => {
+        setDeleteClusterId(null)
+      },
+    })
+
+    setLocalClusters((prev) => prev.filter((cluster) => cluster.id !== deleteClusterId))
+    if (selected?.id === deleteClusterId) {
+      setSelected(clusters.find((cluster) => cluster.id !== deleteClusterId) ?? null)
+    }
+    setDeleteClusterId(null)
+  }
+
+  const handleVerifyConnection = () => {
+    if (!selected || isVerifyingConnection) return
+    setIsVerifyingConnection(true)
+    setVerifyConnectionResult(null)
+    setTimeout(() => {
+      const success = selected.name.length % 2 === 0 || selected.status === 'connected'
+      setVerifyConnectionResult(success ? 'success' : 'error')
+      setIsVerifyingConnection(false)
+    }, 1200)
   }
 
   return (
     <div>
-      {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(59,130,246,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#60a5fa',
-            }}
-          >
+      <div className="mb-6 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">
             <Network size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               Cluster Management
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
               쿠버네티스 클러스터를 등록하고 관리합니다.
             </p>
           </div>
         </div>
-        <Button variant="primary" size="md" onClick={() => setRegisterModal(true)}>
+        <Button variant="primary" size="md" onClick={openCreateModal} type="button">
           <Plus size={15} />
           Register Cluster
         </Button>
       </div>
 
-      {/* Split layout */}
-      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-        {/* Left: Cluster list */}
-        <div
-          style={{
-            width: '280px',
-            flexShrink: 0,
-            background: 'var(--color-surface-card)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--card-radius)',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--color-border-default)',
-              fontSize: '12px',
-              fontWeight: 600,
-              color: 'var(--color-text-secondary)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-            }}
-          >
-            Clusters ({clusters.length})
-          </div>
-          {clusters.map((cluster) => {
-            const st = STATUS_CONFIG[cluster.status]
-            const isSelected = selected?.id === cluster.id
-            return (
-              <div
-                key={cluster.id}
-                onClick={() => setSelected(cluster)}
-                style={{
-                  padding: '14px 16px',
-                  borderBottom: '1px solid var(--color-border-default)',
-                  cursor: 'pointer',
-                  background: isSelected ? 'rgba(99,102,241,0.1)' : 'transparent',
-                  borderLeft: `3px solid ${isSelected ? '#6366f1' : 'transparent'}`,
-                  transition: 'all var(--transition-fast)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 600, color: isSelected ? '#a5b4fc' : 'var(--color-text-primary)' }}>
-                    {cluster.name}
-                  </span>
-                  <span
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '2px 7px',
-                      borderRadius: '5px',
-                      background: st.bg,
-                      color: st.color,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {st.icon}
-                    {st.label}
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                  {cluster.type.toUpperCase()}
-                </div>
+      <div className="h-[640px]">
+        <ListDetailPanel
+          listWidth={280}
+          listContent={
+            <>
+              <div className="border-b border-[var(--color-border-default)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                Clusters ({clusters.length})
               </div>
-            )
-          })}
-        </div>
-
-        {/* Right: Cluster detail */}
-        {selected ? (
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                background: 'var(--color-surface-card)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: 'var(--card-radius)',
-                padding: '20px',
-                marginBottom: '16px',
-              }}
-            >
-              <h2 style={{ margin: '0 0 18px 0', fontSize: '16px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                {selected.name}
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                {[
-                  ['클러스터 이름', selected.name],
-                  ['타입', selected.type.toUpperCase()],
-                  ['엔드포인트', selected.endpoint],
-                  ['등록일', new Date(selected.createdAt).toLocaleDateString('ko-KR')],
-                ].map(([label, val]) => (
-                  <div key={label}>
-                    <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {label}
-                    </div>
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)', wordBreak: 'break-all' }}>
-                      {val}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Connection status card */}
-            <div
-              style={{
-                background: 'var(--color-surface-card)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: 'var(--card-radius)',
-                padding: '20px',
-                marginBottom: '16px',
-              }}
-            >
-              <h3 style={{ margin: '0 0 14px 0', fontSize: '14px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                연결 상태
-              </h3>
-              {(() => {
-                const st = STATUS_CONFIG[selected.status]
+              {clusters.map((cluster) => {
+                const st = STATUS_CONFIG[cluster.status]
+                const isSelected = selected?.id === cluster.id
                 return (
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '10px 16px',
-                      background: st.bg,
-                      border: `1px solid ${st.color}40`,
-                      borderRadius: '8px',
-                      color: st.color,
-                      fontSize: '14px',
-                      fontWeight: 600,
-                    }}
+                  <button
+                    key={cluster.id}
+                    type="button"
+                    onClick={() => setSelected(cluster)}
+                    className={cn(
+                      'w-full cursor-pointer border-0 border-b border-l-[3px] border-b-[var(--color-border-default)] px-4 py-3.5 text-left transition-all duration-150',
+                      isSelected
+                        ? 'border-l-[#6366f1] bg-[rgba(99,102,241,0.1)]'
+                        : 'border-l-transparent bg-transparent'
+                    )}
                   >
-                    {st.icon}
-                    {st.label}
-                  </div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className={cn('text-sm font-semibold', isSelected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                        {cluster.name}
+                      </span>
+                      <span className={cn('flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold', st.badgeClassName)}>
+                        {st.icon}
+                        {st.label}
+                      </span>
+                    </div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">
+                      {cluster.type.toUpperCase()}
+                    </div>
+                  </button>
                 )
-              })()}
-            </div>
+              })}
+            </>
+          }
+          detailContent={
+            selected ? (
+              <div className="min-w-0 p-4">
+                <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
+                  <div className="mb-[18px] flex flex-wrap items-center justify-between gap-2.5">
+                    <h2 className="m-0 text-base font-bold text-[var(--color-text-primary)]">
+                      {selected.name}
+                    </h2>
+                    <div className="flex gap-2">
+                      <Button variant="secondary" size="sm" onClick={openEditModal} type="button">Edit</Button>
+                      <Button variant="danger" size="sm" onClick={() => setDeleteClusterId(selected.id)} type="button">Delete</Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {[
+                      ['클러스터 이름', selected.name],
+                      ['타입', selected.type.toUpperCase()],
+                      ['엔드포인트', selected.endpoint],
+                      ['등록일', new Date(selected.createdAt).toLocaleDateString('ko-KR')],
+                    ].map(([label, val]) => (
+                      <div key={label}>
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+                          {label}
+                        </div>
+                        <div className="break-all text-sm font-semibold text-[var(--color-text-primary)]">
+                          {val}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Organization access */}
-            <div
-              style={{
-                background: 'var(--color-surface-card)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: 'var(--card-radius)',
-                padding: '20px',
-              }}
-            >
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                Organization Access
-              </h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {selected.organizationIds.map((oid) => (
-                  <span
-                    key={oid}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      background: 'rgba(139,92,246,0.12)',
-                      color: '#c4b5fd',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {oid}
-                  </span>
-                ))}
+                <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
+                  <h3 className="mb-3.5 mt-0 text-sm font-bold text-[var(--color-text-primary)]">
+                    연결 상태
+                  </h3>
+                  {(() => {
+                    const st = STATUS_CONFIG[selected.status]
+                    return (
+                      <div className="flex flex-wrap items-center justify-between gap-2.5">
+                        <div className={cn('inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold', st.panelClassName)}>
+                          {st.icon}
+                          {st.label}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          loading={isVerifyingConnection}
+                          onClick={handleVerifyConnection}
+                        >
+                          Verify Connection
+                        </Button>
+                        {verifyConnectionResult && (
+                          <span className={cn('text-xs', verifyConnectionResult === 'success' ? 'text-[#22c55e]' : 'text-[#ef4444]')}>
+                            {verifyConnectionResult === 'success' ? 'Connection verified successfully.' : 'Connection failed. Check endpoint/kubeconfig.'}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
+                  <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">
+                    Organization Access
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selected.organizationIds.map((oid) => (
+                      <span key={oid} className="rounded-md bg-[rgba(139,92,246,0.12)] px-2.5 py-1 text-xs font-medium text-[#c4b5fd]">
+                        {oid}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '200px',
-              color: 'var(--color-text-secondary)',
-              fontSize: '14px',
-            }}
-          >
-            클러스터를 선택하세요.
-          </div>
-        )}
+            ) : null
+          }
+          emptyDetailMessage="클러스터를 선택하세요."
+        />
       </div>
 
-      {/* Register Cluster modal */}
       <Modal
         open={registerModal}
-        onClose={() => setRegisterModal(false)}
-        title="Register Cluster"
+        onClose={() => {
+          setRegisterModal(false)
+          setEditingClusterId(null)
+          reset(CLUSTER_DEFAULTS)
+        }}
+        title={editingClusterId ? 'Edit Cluster' : 'Register Cluster'}
         footer={
           <>
-            <Button variant="outline" size="sm" onClick={() => setRegisterModal(false)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRegisterModal(false)
+                setEditingClusterId(null)
+                reset(CLUSTER_DEFAULTS)
+              }}
+              type="button"
+            >
               Cancel
             </Button>
             <Button
               variant="primary"
               size="sm"
-              loading={createCluster.isPending}
-              onClick={handleRegister}
-              disabled={!form.name || !form.kubeconfig}
+              loading={createCluster.isPending || updateCluster.isPending || isSubmitting}
+              onClick={handleSubmit(handleRegister)}
+              disabled={!isValid || isSubmitting}
+              type="button"
             >
-              Register
+              {editingClusterId ? 'Save' : 'Register'}
             </Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="flex flex-col gap-3.5">
           <Input
             label="클러스터 이름"
             placeholder="예: prod-cluster"
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+            {...register('name')}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="cluster-type-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
               클러스터 타입
             </label>
             <select
-              value={form.type}
-              onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as ClusterType }))}
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: '8px',
-                padding: '9px 12px',
-                fontSize: '14px',
-                color: 'var(--color-text-primary)',
-              }}
+              id="cluster-type-select"
+              {...register('type')}
+              className={selectClassName}
             >
               <option value="kubernetes">Kubernetes</option>
               <option value="eks">AWS EKS</option>
@@ -337,30 +430,37 @@ export function ClusterPage() {
               <option value="k3s">K3s</option>
             </select>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+          <Input
+            label="엔드포인트"
+            placeholder="예: https://prod.k8s.nullus.io"
+            {...register('endpoint')}
+          />
+          {errors.endpoint && <span className="text-xs text-[#ef4444]">{errors.endpoint.message}</span>}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="cluster-kubeconfig" className="text-xs font-medium text-[var(--color-text-secondary)]">
               kubeconfig (YAML)
             </label>
             <textarea
-              value={form.kubeconfig}
-              onChange={(e) => setForm((p) => ({ ...p, kubeconfig: e.target.value }))}
+              id="cluster-kubeconfig"
+              {...register('kubeconfig')}
               placeholder="kubeconfig 내용을 붙여넣으세요..."
               rows={8}
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: '8px',
-                padding: '10px 12px',
-                fontSize: '12px',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'Fira Code, monospace',
-                resize: 'vertical',
-                outline: 'none',
-              }}
+              className="resize-y rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs text-[var(--color-text-primary)] outline-none [font-family:'Fira_Code',monospace]"
             />
           </div>
+          {errors.kubeconfig && <span className="text-xs text-[#ef4444]">{errors.kubeconfig.message}</span>}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteClusterId !== null}
+        onClose={() => setDeleteClusterId(null)}
+        onConfirm={handleDeleteCluster}
+        title="Delete Cluster"
+        description="선택한 클러스터를 삭제하면 연결된 파이프라인과 배포 정보가 영향을 받을 수 있습니다. 계속하시겠습니까?"
+        confirmLabel="Delete"
+        loading={deleteCluster.isPending}
+      />
     </div>
   )
 }

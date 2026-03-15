@@ -1,10 +1,17 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Users, Plus, Mail } from 'lucide-react'
-import { useMembers, useInviteMember } from '../api/admin-api'
-import type { MemberRole, MemberStatus, InviteMemberRequest } from '../api/admin-api'
+import type { ColumnDef } from '@tanstack/react-table'
+import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser } from '../api/admin-api'
+import type { MemberRole, MemberStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
+import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { DataTable } from '../../../components/shared/data-table'
+import { cn } from '../../../lib/utils'
 
 const ORG_ID = 'org-1'
 
@@ -15,182 +22,207 @@ const MOCK_USERS = [
   { id: 'u4', name: 'David Choi', email: 'david@nullus.io', role: 'developer' as MemberRole, status: 'inactive' as MemberStatus, joinedAt: '2026-02-15T00:00:00Z' },
 ]
 
-const STATUS_BADGE: Record<MemberStatus, { bg: string; color: string; label: string }> = {
-  active: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Active' },
-  pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Pending' },
-  inactive: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Inactive' },
+const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> = {
+  active: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Active' },
+  pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Pending' },
+  inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]', label: 'Inactive' },
 }
 
-const ROLE_BADGE: Record<MemberRole, { bg: string; color: string }> = {
-  admin: { bg: 'rgba(239,68,68,0.15)', color: '#f87171' },
-  devops: { bg: 'rgba(99,102,241,0.15)', color: '#a5b4fc' },
-  developer: { bg: 'rgba(34,197,94,0.15)', color: '#34d399' },
+const ROLE_BADGE: Record<MemberRole, { className: string }> = {
+  admin: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
+  devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
+  developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
 }
 
-const selectStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid var(--color-border-default)',
-  borderRadius: '8px',
-  padding: '9px 12px',
-  fontSize: '14px',
-  color: 'var(--color-text-primary)',
-  cursor: 'pointer',
+const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
+
+const inviteUserSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().min(1, 'Email is required').email('Invalid email format'),
+  role: z.enum(['admin', 'devops', 'developer']),
+})
+
+type InviteUserFormData = z.infer<typeof inviteUserSchema>
+
+const INVITE_USER_DEFAULTS: InviteUserFormData = {
+  name: '',
+  email: '',
+  role: 'developer',
 }
 
 export function UserManagementPage() {
   const { data: membersData } = useMembers(ORG_ID)
   const users = membersData?.items ?? MOCK_USERS
   const inviteMember = useInviteMember(ORG_ID)
+  const updateUserRole = useUpdateUserRole(ORG_ID)
+  const deactivateUser = useDeactivateUser(ORG_ID)
 
   const [inviteModal, setInviteModal] = useState(false)
-  const [inviteForm, setInviteForm] = useState<InviteMemberRequest>({ email: '', role: 'developer' })
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isValid, isSubmitting },
+  } = useForm<InviteUserFormData>({
+    resolver: zodResolver(inviteUserSchema),
+    defaultValues: INVITE_USER_DEFAULTS,
+    mode: 'onChange',
+  })
+  const [search, setSearch] = useState('')
+  const [deactivateUserId, setDeactivateUserId] = useState<string | null>(null)
+  const [roleOverrides, setRoleOverrides] = useState<Record<string, MemberRole>>({})
 
-  const handleInvite = () => {
-    inviteMember.mutate(inviteForm, {
+  const filteredUsers = users.filter((user) => {
+    const query = search.trim().toLowerCase()
+    if (!query) return true
+    return user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query)
+  })
+
+  const handleInvite = (data: InviteUserFormData) => {
+    inviteMember.mutate({ email: data.email, role: data.role }, {
       onSuccess: () => {
         setInviteModal(false)
-        setInviteForm({ email: '', role: 'developer' })
+        reset(INVITE_USER_DEFAULTS)
       },
     })
   }
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    whiteSpace: 'nowrap',
+  const handleRoleChange = (memberId: string, role: MemberRole) => {
+    setRoleOverrides((prev) => ({ ...prev, [memberId]: role }))
+    updateUserRole.mutate({ memberId, role })
   }
 
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
+  const handleDeactivate = () => {
+    if (!deactivateUserId) return
+    deactivateUser.mutate(deactivateUserId, {
+      onSuccess: () => {
+        setDeactivateUserId(null)
+      },
+    })
   }
+
+  const columns: ColumnDef<(typeof filteredUsers)[number], unknown>[] = [
+    {
+      accessorKey: 'name',
+      header: '이름',
+      cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
+    },
+    {
+      accessorKey: 'email',
+      header: '이메일',
+      cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.email}</span>,
+    },
+    {
+      accessorKey: 'role',
+      header: '역할',
+      cell: ({ row }) => {
+        const selectedRole = roleOverrides[row.original.id] ?? row.original.role
+        const role = ROLE_BADGE[selectedRole]
+        return (
+          <select
+            value={selectedRole}
+            onChange={(event) => handleRoleChange(row.original.id, event.target.value as MemberRole)}
+            className={cn('cursor-pointer rounded-[5px] border-0 px-2.5 py-1 text-xs font-semibold', role.className)}
+          >
+            <option value="admin">Admin</option>
+            <option value="devops">DevOps</option>
+            <option value="developer">Developer</option>
+          </select>
+        )
+      },
+    },
+    {
+      accessorKey: 'status',
+      header: '상태',
+      cell: ({ row }) => {
+        const st = STATUS_BADGE[row.original.status]
+        return (
+          <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', st.className)}>
+            {st.label}
+          </span>
+        )
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row }) => (
+        <Button variant="danger" size="sm" type="button" onClick={() => setDeactivateUserId(row.original.id)}>
+          비활성화
+        </Button>
+      ),
+    },
+  ]
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(139,92,246,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#c4b5fd',
-            }}
-          >
+      <div className="mb-6 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">
             <Users size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               User Management
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
               사용자 목록 및 역할 관리
             </p>
           </div>
         </div>
-        <Button variant="primary" size="md" onClick={() => setInviteModal(true)}>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => {
+            reset(INVITE_USER_DEFAULTS)
+            setInviteModal(true)
+          }}
+          type="button"
+        >
           <Plus size={15} />
           Invite User
         </Button>
       </div>
 
-      {/* Table */}
-      <div
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-              {['이름', '이메일', '역할', '상태', 'Actions'].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => {
-              const st = STATUS_BADGE[user.status]
-              const role = ROLE_BADGE[user.role]
-              return (
-                <tr
-                  key={user.id}
-                  style={{ transition: 'background var(--transition-fast)' }}
-                  onMouseEnter={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)' }}
-                  onMouseLeave={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
-                >
-                  <td style={tdStyle}><span style={{ fontWeight: 600 }}>{user.name}</span></td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)' }}>{user.email}</td>
-                  <td style={tdStyle}>
-                    <select
-                      defaultValue={user.role}
-                      style={{
-                        ...selectStyle,
-                        padding: '4px 10px',
-                        background: role.bg,
-                        color: role.color,
-                        border: 'none',
-                        fontWeight: 600,
-                        fontSize: '12px',
-                      }}
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="devops">DevOps</option>
-                      <option value="developer">Developer</option>
-                    </select>
-                  </td>
-                  <td style={tdStyle}>
-                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: st.bg, color: st.color, fontSize: '12px', fontWeight: 600 }}>
-                      {st.label}
-                    </span>
-                  </td>
-                  <td style={tdStyle}>
-                    <Button variant="danger" size="sm">
-                      비활성화
-                    </Button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-
-        {users.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--color-text-secondary)', fontSize: '14px' }}>
-            사용자가 없습니다.
-          </div>
-        )}
+      <div className="mb-4 max-w-[320px]">
+        <Input
+          placeholder="이름/이메일 검색..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
       </div>
+
+      <DataTable columns={columns} data={filteredUsers} getRowKey={(row) => row.id} emptyMessage="사용자가 없습니다." />
 
       {/* Invite modal */}
       <Modal
         open={inviteModal}
-        onClose={() => setInviteModal(false)}
+        onClose={() => {
+          setInviteModal(false)
+          reset(INVITE_USER_DEFAULTS)
+        }}
         title="Invite User"
         footer={
           <>
-            <Button variant="outline" size="sm" onClick={() => setInviteModal(false)}>Cancel</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setInviteModal(false)
+                reset(INVITE_USER_DEFAULTS)
+              }}
+            >
+              Cancel
+            </Button>
             <Button
               variant="primary"
               size="sm"
-              loading={inviteMember.isPending}
-              onClick={handleInvite}
-              disabled={!inviteForm.email}
+              loading={inviteMember.isPending || isSubmitting}
+              onClick={handleSubmit(handleInvite)}
+              disabled={!isValid || isSubmitting}
+              type="button"
             >
               <Mail size={13} />
               Send Invite
@@ -198,28 +230,45 @@ export function UserManagementPage() {
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="flex flex-col gap-3.5">
+          <Input
+            label="이름"
+            placeholder="User name"
+            {...register('name')}
+          />
+          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
           <Input
             label="이메일"
             type="email"
             placeholder="user@example.com"
-            value={inviteForm.email}
-            onChange={(e) => setInviteForm((p) => ({ ...p, email: e.target.value }))}
+            {...register('email')}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>역할</label>
+          {errors.email && <span className="text-xs text-[#ef4444]">{errors.email.message}</span>}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="invite-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
             <select
-              value={inviteForm.role}
-              onChange={(e) => setInviteForm((p) => ({ ...p, role: e.target.value as MemberRole }))}
-              style={selectStyle}
+              id="invite-role"
+              {...register('role')}
+              className={selectClassName}
             >
               <option value="developer">Developer</option>
               <option value="devops">DevOps</option>
               <option value="admin">Admin</option>
             </select>
           </div>
+          {errors.role && <span className="text-xs text-[#ef4444]">{errors.role.message}</span>}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={deactivateUserId !== null}
+        onClose={() => setDeactivateUserId(null)}
+        onConfirm={handleDeactivate}
+        title="Deactivate User"
+        description="선택한 사용자를 비활성화하면 로그인 및 배포 작업이 제한됩니다. 계속하시겠습니까?"
+        confirmLabel="Deactivate"
+        loading={deactivateUser.isPending}
+      />
     </div>
   )
 }
