@@ -6,6 +6,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -31,17 +32,18 @@ func NewStackHandler(
 
 // RegisterRoutes registers stack routes on the given Echo group.
 func (h *StackHandler) RegisterRoutes(g *echo.Group) {
-	g.POST("/stacks", h.CreateStack)
-	g.GET("/stacks", h.ListStacks)
-	g.GET("/stacks/:id", h.GetStack)
-	g.POST("/stacks/:id/config", h.SaveConfig)
+	g.POST("", h.CreateStack)
+	g.GET("", h.ListStacks)
+	g.GET("/:stackId", h.GetStack)
+	g.POST("/:stackId/config", h.SaveConfig)
+	g.POST("/draft", h.SaveDraft)
 }
 
 // createStackRequest is the request body for POST /stacks.
 type createStackRequest struct {
-	Name       string            `json:"name"`
-	ClusterID  string            `json:"cluster_id"`
-	TemplateID string            `json:"golden_path_id"`
+	Name       string             `json:"name"`
+	ClusterID  string             `json:"cluster_id"`
+	TemplateID string             `json:"golden_path_id"`
 	Config     domain.StackConfig `json:"config"`
 }
 
@@ -69,7 +71,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONFIG_INVALID", err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, map[string]any{"data": out.Stack})
+	return c.JSON(http.StatusCreated, map[string]any{"id": out.Stack.ID})
 }
 
 // ListStacks handles GET /api/v1/stacks.
@@ -84,19 +86,19 @@ func (h *StackHandler) ListStacks(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": out.Stacks})
+	return c.JSON(http.StatusOK, map[string]any{"items": out.Stacks, "total": len(out.Stacks)})
 }
 
 // GetStack handles GET /api/v1/stacks/:id.
 func (h *StackHandler) GetStack(c echo.Context) error {
-	id := c.Param("id")
+	id := c.Param("stackId")
 
 	stack, err := h.stackRepo.GetByID(c.Request().Context(), id)
 	if err != nil {
 		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": stack})
+	return c.JSON(http.StatusOK, stack)
 }
 
 // saveConfigRequest is the request body for POST /stacks/:id/config.
@@ -106,7 +108,7 @@ type saveConfigRequest struct {
 
 // SaveConfig handles POST /api/v1/stacks/:id/config.
 func (h *StackHandler) SaveConfig(c echo.Context) error {
-	id := c.Param("id")
+	id := c.Param("stackId")
 
 	var req saveConfigRequest
 	if err := c.Bind(&req); err != nil {
@@ -124,5 +126,9 @@ func (h *StackHandler) SaveConfig(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": stack})
+	return c.JSON(http.StatusOK, stack)
+}
+
+func (h *StackHandler) SaveDraft(c echo.Context) error {
+	return c.JSON(http.StatusCreated, map[string]any{"draftId": "drf_" + uuid.NewString()})
 }

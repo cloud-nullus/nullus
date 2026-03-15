@@ -30,15 +30,14 @@ func NewHistoryHandler(
 
 // RegisterRoutes registers history routes on the given Echo group.
 func (h *HistoryHandler) RegisterRoutes(g *echo.Group) {
-	g.GET("/stacks/:id/history", h.ListHistory)
-	g.GET("/stacks/:id/history/:versionId", h.GetVersion)
-	g.GET("/stacks/:id/history/:versionId/diff", h.GetDiff)
-	g.POST("/stacks/:id/rollback/:versionId", h.Rollback)
+	g.GET("/:stackId/history", h.ListHistory)
+	g.GET("/:stackId/diff", h.GetDiff)
+	g.POST("/:stackId/rollback", h.Rollback)
 }
 
 // ListHistory handles GET /api/v1/stacks/:id/history.
 func (h *HistoryHandler) ListHistory(c echo.Context) error {
-	stackID := c.Param("id")
+	stackID := c.Param("stackId")
 
 	out, err := h.manageHistory.ListVersions(c.Request().Context(), usecase.ListVersionsInput{
 		StackID: stackID,
@@ -47,26 +46,22 @@ func (h *HistoryHandler) ListHistory(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "HISTORY_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": out.Versions})
+	return c.JSON(http.StatusOK, out.Versions)
 }
 
-// GetVersion handles GET /api/v1/stacks/:id/history/:versionId.
-func (h *HistoryHandler) GetVersion(c echo.Context) error {
-	stackID := c.Param("id")
-	versionID := c.Param("versionId")
-
-	version, err := h.historyRepo.GetVersion(c.Request().Context(), stackID, versionID)
-	if err != nil {
-		return errorResponse(c, http.StatusNotFound, "VERSION_NOT_FOUND", err.Error())
-	}
-
-	return c.JSON(http.StatusOK, map[string]any{"data": version})
-}
-
-// GetDiff handles GET /api/v1/stacks/:id/history/:versionId/diff.
 func (h *HistoryHandler) GetDiff(c echo.Context) error {
-	stackID := c.Param("id")
-	versionID := c.Param("versionId")
+	stackID := c.Param("stackId")
+	versionID := c.QueryParam("versionId")
+	if versionID == "" {
+		versions, err := h.historyRepo.ListVersions(c.Request().Context(), stackID)
+		if err != nil {
+			return errorResponse(c, http.StatusInternalServerError, "HISTORY_LIST_FAILED", err.Error())
+		}
+		if len(versions) == 0 {
+			return c.JSON(http.StatusOK, map[string]any{"stackId": stackID, "versionId": "", "diffs": []any{}})
+		}
+		versionID = versions[len(versions)-1].ID
+	}
 
 	out, err := h.manageHistory.GetDiff(c.Request().Context(), usecase.GetDiffInput{
 		StackID:   stackID,
@@ -76,27 +71,27 @@ func (h *HistoryHandler) GetDiff(c echo.Context) error {
 		return errorResponse(c, http.StatusNotFound, "VERSION_NOT_FOUND", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": out.Diffs})
+	return c.JSON(http.StatusOK, map[string]any{"stackId": stackID, "versionId": versionID, "diffs": out.Diffs})
 }
 
-// rollbackRequest is the request body for POST /stacks/:id/rollback/:versionId.
 type rollbackRequest struct {
-	Reason string `json:"reason"`
+	VersionID string `json:"versionId"`
+	Reason    string `json:"reason"`
 }
 
-// Rollback handles POST /api/v1/stacks/:id/rollback/:versionId.
-// It loads the target version's config, applies it to the stack, and saves a new history entry.
 func (h *HistoryHandler) Rollback(c echo.Context) error {
-	stackID := c.Param("id")
-	versionID := c.Param("versionId")
+	stackID := c.Param("stackId")
 
 	var req rollbackRequest
 	if err := c.Bind(&req); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "ROLLBACK_REQUEST_INVALID", err.Error())
 	}
+	if req.VersionID == "" {
+		return errorResponse(c, http.StatusBadRequest, "ROLLBACK_REQUEST_INVALID", "versionId is required")
+	}
 
 	// Load the target version
-	targetVersion, err := h.historyRepo.GetVersion(c.Request().Context(), stackID, versionID)
+	targetVersion, err := h.historyRepo.GetVersion(c.Request().Context(), stackID, req.VersionID)
 	if err != nil {
 		return errorResponse(c, http.StatusNotFound, "VERSION_NOT_FOUND", err.Error())
 	}
@@ -114,7 +109,7 @@ func (h *HistoryHandler) Rollback(c echo.Context) error {
 	// Record the rollback as a new history version
 	reason := req.Reason
 	if reason == "" {
-		reason = "rollback to version " + versionID
+		reason = "rollback to version " + req.VersionID
 	}
 
 	userID := c.Request().Header.Get("X-User-ID")
@@ -132,5 +127,5 @@ func (h *HistoryHandler) Rollback(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": out.Version})
+	return c.JSON(http.StatusOK, map[string]any{"id": out.Version.ID})
 }

@@ -34,7 +34,7 @@ func (h *TemplateHandler) ListTemplates(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "TEMPLATE_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": out.Templates})
+	return c.JSON(http.StatusOK, out.Templates)
 }
 
 // GetTemplate handles GET /api/v1/templates/:id.
@@ -46,5 +46,5 @@ func (h *TemplateHandler) GetTemplate(c echo.Context) error {
 		return errorResponse(c, http.StatusNotFound, "TEMPLATE_NOT_FOUND", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"data": out.Template})
+	return c.JSON(http.StatusOK, out.Template)
 }

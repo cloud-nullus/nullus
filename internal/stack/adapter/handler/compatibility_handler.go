@@ -10,7 +10,7 @@ import (
 
 // CompatibilityHandler handles HTTP requests for compatibility matrix operations.
 type CompatibilityHandler struct {
-	compatRepo          port.CompatibilityRepository
+	compatRepo            port.CompatibilityRepository
 	validateCompatibility *usecase.ValidateCompatibility
 }
 
@@ -20,15 +20,15 @@ func NewCompatibilityHandler(
 	validateCompatibility *usecase.ValidateCompatibility,
 ) *CompatibilityHandler {
 	return &CompatibilityHandler{
-		compatRepo:          compatRepo,
+		compatRepo:            compatRepo,
 		validateCompatibility: validateCompatibility,
 	}
 }
 
 // RegisterRoutes registers compatibility routes on the given Echo group.
 func (h *CompatibilityHandler) RegisterRoutes(g *echo.Group) {
-	g.GET("/compatibility/matrix", h.GetMatrix)
-	g.POST("/compatibility/validate", h.Validate)
+	g.GET("/compatibility", h.GetMatrix)
+	g.POST("/:stackId/validate", h.Validate)
 }
 
 // GetMatrix handles GET /api/v1/compatibility/matrix.
@@ -37,7 +37,7 @@ func (h *CompatibilityHandler) GetMatrix(c echo.Context) error {
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "COMPATIBILITY_LIST_FAILED", err.Error())
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": matrices})
+	return c.JSON(http.StatusOK, matrices)
 }
 
 // validateRequest is the request body for POST /compatibility/validate.
@@ -60,16 +60,9 @@ func (h *CompatibilityHandler) Validate(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "COMPATIBILITY_REQUEST_INVALID", err.Error())
 	}
 
-	status := http.StatusOK
-	if !out.Compatible {
-		status = http.StatusUnprocessableEntity
-	}
-
-	return c.JSON(status, map[string]any{
-		"data": map[string]any{
-			"compatible": out.Compatible,
-			"matrix":     out.Matrix,
-			"message":    out.Message,
-		},
+	return c.JSON(http.StatusOK, map[string]any{
+		"compatible": out.Compatible,
+		"matrix":     out.Matrix,
+		"message":    out.Message,
 	})
 }
