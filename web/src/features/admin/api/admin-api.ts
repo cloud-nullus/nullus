@@ -65,10 +65,11 @@ const adminApiCalls = {
     api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => ({
       ...r.data,
       items: (r.data.items ?? []).map((c) => {
-        const statusCarrier = c as Cluster & { connection_status?: Cluster['status'] }
+        const raw = c as Cluster & { connection_status?: Cluster['status']; org_id?: string }
         return {
           ...c,
-          status: statusCarrier.status ?? statusCarrier.connection_status ?? 'pending',
+          status: raw.status ?? raw.connection_status ?? 'pending',
+          organizationIds: c.organizationIds ?? (raw.org_id ? [raw.org_id] : []),
         }
       }),
     })),
