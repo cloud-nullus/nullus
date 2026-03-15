@@ -188,7 +188,7 @@ servers:
 | `page_size` | `integer` | `20` | 페이지당 항목 수 (최대 100) |
 
 ```
-GET /api/v1/clusters?page=2&page_size=10
+GET /api/v1/admin/clusters?page=2&page_size=10
 ```
 
 ### 2.5 필터링
@@ -196,9 +196,9 @@ GET /api/v1/clusters?page=2&page_size=10
 쿼리 파라미터로 필터링합니다. 리소스별로 지원하는 필터가 다릅니다.
 
 ```
-GET /api/v1/clusters?status=connected&type=pipeline
-GET /api/v1/pipelines?status=running&template_id=web-backend-v1
-GET /api/v1/pipelines/pipe_001/deployments?status=success
+GET /api/v1/admin/clusters?status=connected&type=pipeline
+GET /api/v1/cicd/pipelines?status=running&template_id=web-backend-v1
+GET /api/v1/cicd/deployments?status=success
 ```
 
 ### 2.6 정렬
@@ -206,9 +206,9 @@ GET /api/v1/pipelines/pipe_001/deployments?status=success
 `sort` 파라미터로 정렬합니다. `-` 접두사는 내림차순을 의미합니다.
 
 ```
-GET /api/v1/clusters?sort=-created_at
+GET /api/v1/admin/clusters?sort=-created_at
 GET /api/v1/stacks?sort=name
-GET /api/v1/pipelines/pipe_001/deployments?sort=-deployed_at
+GET /api/v1/cicd/deployments?sort=-deployed_at
 ```
 
 ### 2.7 공통 요청 헤더
@@ -556,253 +556,21 @@ Keycloak 리프레시 토큰으로 액세스 토큰 갱신 (v1)
 
 Organization (조직) 관리를 담당합니다.
 
-#### POST /api/v1/orgs
-
-Organization 생성
-
-- **릴리스**: Alpha
-- **인증**: 필요
-- **권한**: 인증된 사용자 (최초 생성 시)
-
-**요청**:
-```json
-{
-  "name": "Nullus 팀",
-  "slug": "nullus-team",
-  "domain": "nullus.io"
-}
-```
-
-| 필드 | 타입 | 필수 | 검증 규칙 |
-|------|------|------|-----------|
-| `name` | `string` | O | 1-100자 |
-| `slug` | `string` | O | 1-50자, URL-safe (`^[a-z0-9-]+$`), UNIQUE |
-| `domain` | `string` | X | 유효한 도메인 형식 |
-
-**응답** (`201 Created`):
-```json
-{
-  "data": {
-    "id": "org_x1y2z3",
-    "name": "Nullus 팀",
-    "slug": "nullus-team",
-    "domain": "nullus.io",
-    "status": "active",
-    "created_by": "usr_a1b2c3",
-    "created_at": "2026-03-14T09:00:00Z",
-    "updated_at": "2026-03-14T09:00:00Z"
-  }
-}
-```
-
----
-
-#### GET /api/v1/orgs/:orgId
-
-Organization 상세 조회
-
-- **릴리스**: Alpha
-- **인증**: 필요
-- **권한**: 해당 Organization 멤버
-
-**응답** (`200 OK`):
-```json
-{
-  "data": {
-    "id": "org_x1y2z3",
-    "name": "Nullus 팀",
-    "slug": "nullus-team",
-    "domain": "nullus.io",
-    "status": "active",
-    "member_count": 5,
-    "cluster_count": 2,
-    "created_by": "usr_a1b2c3",
-    "created_at": "2026-03-14T09:00:00Z",
-    "updated_at": "2026-03-14T09:00:00Z"
-  }
-}
-```
-
----
-
-#### PUT /api/v1/orgs/:orgId
-
-Organization 정보 수정
-
-- **릴리스**: Beta
-- **인증**: 필요
-- **권한**: Admin
-
-**요청**:
-```json
-{
-  "name": "Nullus Platform 팀",
-  "domain": "platform.nullus.io"
-}
-```
-
-**응답** (`200 OK`): 수정된 Organization 객체 반환
-
----
-
-#### PUT /api/v1/orgs/:orgId/status
-
-Organization 활성/비활성 전환
-
-- **릴리스**: v1
-- **인증**: 필요
-- **권한**: Admin
-
-**요청**:
-```json
-{
-  "status": "inactive"
-}
-```
-
-**응답** (`200 OK`): 상태 변경된 Organization 객체 반환
-
-> 비활성 Organization의 멤버가 API 요청 시 `403 Forbidden` (`ORG_STATUS_INACTIVE`) 반환
-
----
-
-#### POST /api/v1/orgs/:orgId/invites
-
-멤버 초대 링크 생성
-
-- **릴리스**: Beta
-- **인증**: 필요
-- **권한**: Admin
-
-**요청**:
-```json
-{
-  "role": "devops",
-  "expires_in_days": 7
-}
-```
-
-| 필드 | 타입 | 필수 | 검증 규칙 |
-|------|------|------|-----------|
-| `role` | `string` | O | `admin`, `devops`, `developer` 중 하나 |
-| `expires_in_days` | `integer` | X | 1-30 (기본값: 7) |
-
-**응답** (`201 Created`):
-```json
-{
-  "data": {
-    "invite_token": "inv_abc123def456",
-    "invite_url": "https://nullus.example.com/invite/inv_abc123def456",
-    "role": "devops",
-    "expires_at": "2026-03-21T09:00:00Z",
-    "created_by": "usr_a1b2c3"
-  }
-}
-```
-
----
-
-#### POST /api/v1/orgs/:orgId/invites/:token/accept
-
-초대 링크 수락
-
-- **릴리스**: Beta
-- **인증**: 필요 (로그인 상태)
-- **권한**: 인증된 사용자
-
-**응답** (`200 OK`):
-```json
-{
-  "data": {
-    "org_id": "org_x1y2z3",
-    "user_id": "usr_d4e5f6",
-    "role": "devops",
-    "accepted_at": "2026-03-15T10:00:00Z"
-  }
-}
-```
-
-**에러**:
-| 코드 | 상황 |
-|------|------|
-| `ORG_INVITE_EXPIRED` (410) | 초대 링크 만료 |
-| `ORG_INVITE_ALREADY_MEMBER` (409) | 이미 해당 Organization 멤버 |
-
----
-
-#### GET /api/v1/orgs/:orgId/members
-
-멤버 목록 조회
-
-- **릴리스**: Beta
-- **인증**: 필요
-- **권한**: 해당 Organization 멤버
-- **페이지네이션**: 지원
-- **필터**: `role` (`admin`, `devops`, `developer`)
-- **정렬**: `display_name`, `role`, `accepted_at`
-
-**응답** (`200 OK`):
-```json
-{
-  "data": [
-    {
-      "user_id": "usr_a1b2c3",
-      "email": "admin@nullus.io",
-      "display_name": "관리자",
-      "role": "admin",
-      "accepted_at": "2026-03-14T09:00:00Z"
-    },
-    {
-      "user_id": "usr_d4e5f6",
-      "email": "devops@nullus.io",
-      "display_name": "김민수",
-      "role": "devops",
-      "accepted_at": "2026-03-15T10:00:00Z"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "page_size": 20,
-    "total_items": 5,
-    "total_pages": 1,
-    "has_next": false,
-    "has_prev": false
-  }
-}
-```
-
----
-
-#### PUT /api/v1/orgs/:orgId/members/:userId
-
-멤버 역할 변경
-
-- **릴리스**: v1
-- **인증**: 필요
-- **권한**: Admin
-
-**요청**:
-```json
-{
-  "role": "admin"
-}
-```
-
-**응답** (`200 OK`): 변경된 멤버 객체 반환
-
----
-
-#### DELETE /api/v1/orgs/:orgId/members/:userId
-
-멤버 제거
-
-- **릴리스**: v1
-- **인증**: 필요
-- **권한**: Admin
-
-**응답** (`204 No Content`)
-
-> 마지막 Admin은 제거 불가 (`ORG_MEMBER_LAST_ADMIN`, 422)
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/v1/admin/organization` | 현재 Organization 조회 |
+| PATCH | `/api/v1/admin/organization` | Organization 수정 |
+| POST | `/api/v1/admin/orgs` | Organization 생성 |
+| GET | `/api/v1/admin/known-issues` | Known Issues 목록 조회 |
+| GET | `/api/v1/admin/audit-logs` | 감사 로그 조회 |
+| GET | `/api/v1/admin/notifications/configs` | 알림 설정 목록 조회 |
+| POST | `/api/v1/admin/notifications/configs` | 알림 설정 생성 |
+| DELETE | `/api/v1/admin/notifications/configs/:id` | 알림 설정 삭제 |
+| GET | `/api/v1/admin/notifications/history` | 알림 이력 조회 |
+| GET | `/api/v1/admin/organizations/:orgId/members` | 멤버 목록 조회 |
+| POST | `/api/v1/admin/organizations/:orgId/members` | 멤버 초대 |
+| DELETE | `/api/v1/admin/organizations/:orgId/members/:id` | 멤버 제거 |
+| PATCH | `/api/v1/admin/organizations/:orgId/members/:id` | 멤버 역할 변경 |
 
 ---
 
@@ -810,7 +578,7 @@ Organization 활성/비활성 전환
 
 Kubernetes 클러스터 등록 및 관리를 담당합니다.
 
-#### POST /api/v1/clusters
+#### POST /api/v1/admin/clusters
 
 클러스터 등록 (kubeconfig 업로드)
 
@@ -860,7 +628,7 @@ context: gke_project_zone_cluster
 
 ---
 
-#### GET /api/v1/clusters
+#### GET /api/v1/admin/clusters
 
 클러스터 목록 조회
 
@@ -900,7 +668,7 @@ context: gke_project_zone_cluster
 
 ---
 
-#### GET /api/v1/clusters/:id
+#### GET /api/v1/admin/clusters/:id
 
 클러스터 상세 조회
 
@@ -931,7 +699,7 @@ context: gke_project_zone_cluster
 
 ---
 
-#### PUT /api/v1/clusters/:id
+#### PATCH /api/v1/admin/clusters/:id
 
 클러스터 정보 수정
 
@@ -953,7 +721,7 @@ context: gke_project_zone_cluster
 
 ---
 
-#### DELETE /api/v1/clusters/:id
+#### DELETE /api/v1/admin/clusters/:id
 
 클러스터 삭제
 
@@ -970,7 +738,7 @@ context: gke_project_zone_cluster
 
 ---
 
-#### POST /api/v1/clusters/:id/verify
+#### POST /api/v1/admin/clusters/:id/verify
 
 클러스터 연결 검증
 
@@ -1008,7 +776,7 @@ context: gke_project_zone_cluster
 
 ---
 
-#### GET /api/v1/clusters/:id/namespaces
+#### GET /api/v1/admin/clusters/:id/namespaces
 
 클러스터 네임스페이스 목록 조회
 
@@ -1273,7 +1041,7 @@ DevSecOps Stack 설정(노코드 UI 5단계 워크플로우) 관리를 담당합
 
 Golden Path 템플릿 및 CI/CD 파이프라인 템플릿을 조회합니다.
 
-#### GET /api/v1/templates/golden-paths
+#### GET /api/v1/stacks/templates
 
 Golden Path 목록 조회
 
@@ -1360,7 +1128,7 @@ Golden Path 목록 조회
 
 ---
 
-#### GET /api/v1/templates/golden-paths/:id
+#### GET /api/v1/stacks/templates/:id
 
 Golden Path 상세 조회
 
@@ -1402,7 +1170,7 @@ Golden Path 상세 조회
 
 ---
 
-#### GET /api/v1/templates/pipelines
+#### GET /api/v1/cicd/templates
 
 CI/CD 파이프라인 템플릿 목록 조회
 
@@ -1465,7 +1233,7 @@ CI/CD 파이프라인 템플릿 목록 조회
 
 ---
 
-#### GET /api/v1/templates/pipelines/:id
+#### GET /api/v1/cicd/templates/:id
 
 CI/CD 파이프라인 템플릿 상세 조회
 
@@ -1734,7 +1502,7 @@ Step 9: Integration (모든 Phase 완료 후)
 
 CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
-#### POST /api/v1/pipelines
+#### POST /api/v1/cicd/pipelines
 
 파이프라인 생성
 
@@ -1790,7 +1558,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 ---
 
-#### GET /api/v1/pipelines
+#### GET /api/v1/cicd/pipelines
 
 파이프라인 목록 조회
 
@@ -1805,7 +1573,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 ---
 
-#### GET /api/v1/pipelines/:id
+#### GET /api/v1/cicd/pipelines/:id
 
 파이프라인 상세 조회
 
@@ -1817,7 +1585,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 ---
 
-#### POST /api/v1/pipelines/:id/deploy
+#### POST /api/v1/cicd/pipelines/:id/deploy
 
 파이프라인 배포 실행
 
@@ -1861,7 +1629,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 ---
 
-#### GET /api/v1/pipelines/:id/deployments
+#### GET /api/v1/cicd/deployments
 
 파이프라인 배포 이력 조회
 
@@ -1895,7 +1663,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 ---
 
-#### GET /api/v1/pipelines/:id/deployments/:did
+#### GET /api/v1/cicd/deployments/:did
 
 배포 상세 조회 (생성된 K8s 오브젝트 포함)
 
@@ -1941,7 +1709,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 ---
 
-#### POST /api/v1/pipelines/:id/rollback/:did
+#### POST /api/v1/cicd/pipelines/:id/rollback/:did
 
 특정 배포 버전으로 롤백
 
@@ -1960,7 +1728,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 ---
 
-#### GET /api/v1/pipelines/:id/deployments/:did/diff
+#### GET /api/v1/cicd/deployments/:did/diff
 
 이전 버전과의 diff 조회
 
@@ -1997,176 +1765,14 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 클러스터, 도구, 파이프라인 모니터링 및 알림 설정을 담당합니다.
 
-#### GET /api/v1/monitoring/dashboards
-
-대시보드 데이터 조회
-
-- **릴리스**: Beta
-- **인증**: 필요
-- **권한**: Admin, DevOps Engineer, Developer
-
-**쿼리 파라미터**:
-| 파라미터 | 타입 | 필수 | 설명 |
-|----------|------|------|------|
-| `stack_id` | `string` | O | 대상 스택 ID |
-| `time_range` | `string` | X | `1h`, `6h`, `24h`, `7d` (기본: `24h`) |
-
-**응답** (`200 OK`):
-```json
-{
-  "data": {
-    "cluster_health": {
-      "cpu_usage_percent": 78.2,
-      "memory_usage_percent": 62.5,
-      "storage_usage_percent": 41.0,
-      "node_count": 3,
-      "pod_count": 47
-    },
-    "pipeline_status": {
-      "total_runs": 145,
-      "success_count": 142,
-      "failure_count": 3,
-      "success_rate_percent": 97.9,
-      "average_build_time_seconds": 272
-    },
-    "tool_health": [
-      {
-        "name": "GitLab CE",
-        "status": "running",
-        "cpu_usage": { "current": 2.1, "limit": 4.0 },
-        "memory_usage": { "current_gi": 6.2, "limit_gi": 8.0 },
-        "pod_count": { "ready": 1, "total": 1 }
-      },
-      {
-        "name": "Argo CD",
-        "status": "running",
-        "cpu_usage": { "current": 0.5, "limit": 2.0 },
-        "memory_usage": { "current_gi": 1.1, "limit_gi": 4.0 },
-        "pod_count": { "ready": 3, "total": 3 }
-      },
-      {
-        "name": "GitLab Runner",
-        "status": "warning",
-        "cpu_usage": { "current": 3.8, "limit": 4.0 },
-        "memory_usage": { "current_gi": 7.5, "limit_gi": 8.0 },
-        "pod_count": { "ready": 2, "total": 2 },
-        "warning_reason": "CPU 사용률 95% 초과"
-      }
-    ],
-    "grafana_url": "https://grafana.nullus.example.com/d/nullus-overview"
-  }
-}
-```
-
----
-
-#### GET /api/v1/monitoring/metrics/summary
-
-핵심 지표 요약 조회
-
-- **릴리스**: Beta
-- **인증**: 필요
-- **권한**: Admin, DevOps Engineer, Developer
-
-**쿼리 파라미터**:
-| 파라미터 | 타입 | 필수 | 설명 |
-|----------|------|------|------|
-| `stack_id` | `string` | O | 대상 스택 ID |
-
-**응답** (`200 OK`):
-```json
-{
-  "data": {
-    "cluster": {
-      "cpu_cores_total": 24,
-      "cpu_cores_used": 18.7,
-      "memory_gi_total": 64,
-      "memory_gi_used": 40.0,
-      "storage_gi_total": 500,
-      "storage_gi_used": 205
-    },
-    "pipelines": {
-      "total_pipelines": 5,
-      "active_deployments": 3,
-      "total_builds_24h": 42,
-      "success_rate_24h_percent": 95.2
-    },
-    "tools": {
-      "total_installed": 8,
-      "healthy": 7,
-      "warning": 1,
-      "error": 0
-    }
-  }
-}
-```
-
----
-
-#### POST /api/v1/monitoring/alerts/config
-
-알림 설정 저장
-
-- **릴리스**: Beta
-- **인증**: 필요
-- **권한**: Admin, DevOps Engineer
-
-**요청**:
-```json
-{
-  "stack_id": "stk_m1n2o3",
-  "channel": "slack",
-  "webhook_url": "https://hooks.slack.com/services/T00/B00/xxxx",
-  "events": [
-    "tool_down",
-    "high_cpu",
-    "high_memory",
-    "storage_warning",
-    "pipeline_failure"
-  ],
-  "thresholds": {
-    "high_cpu_percent": 90,
-    "high_cpu_duration_minutes": 5,
-    "high_memory_percent": 90,
-    "high_memory_duration_minutes": 5,
-    "storage_warning_percent": 80,
-    "pipeline_consecutive_failures": 3
-  },
-  "enabled": true
-}
-```
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `stack_id` | `string` | O | 대상 스택 ID |
-| `channel` | `string` | O | `slack` (Beta), `email` (v1) |
-| `webhook_url` | `string` | O (Slack) | Slack Incoming Webhook URL |
-| `events` | `string[]` | O | 알림 이벤트 목록 |
-| `thresholds` | `object` | X | 이벤트별 임계값 설정 |
-| `enabled` | `boolean` | O | 알림 활성화 여부 |
-
-**이벤트 종류**:
-| 이벤트 | 설명 | 기본 임계값 |
-|--------|------|-------------|
-| `tool_down` | 도구 비정상 종료 | 즉시 |
-| `high_cpu` | CPU 사용률 초과 | 90%, 5분 지속 |
-| `high_memory` | Memory 사용률 초과 | 90%, 5분 지속 |
-| `storage_warning` | Storage 사용률 초과 | 80% |
-| `pipeline_failure` | 파이프라인 연속 실패 | 3회 연속 |
-
-**응답** (`201 Created`):
-```json
-{
-  "data": {
-    "id": "alert_y1z2a3",
-    "stack_id": "stk_m1n2o3",
-    "channel": "slack",
-    "events": ["tool_down", "high_cpu", "high_memory", "storage_warning", "pipeline_failure"],
-    "enabled": true,
-    "created_at": "2026-04-01T11:00:00Z"
-  }
-}
-```
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/v1/observability/dashboard` | 모니터링 대시보드 조회 |
+| GET | `/api/v1/observability/alert-rules` | 알림 규칙 목록 조회 |
+| POST | `/api/v1/observability/alert-rules` | 알림 규칙 생성 |
+| PATCH | `/api/v1/observability/alert-rules/:id` | 알림 규칙 수정 |
+| DELETE | `/api/v1/observability/alert-rules/:id` | 알림 규칙 삭제 |
+| GET | `/api/v1/observability/alert-history` | 알림 이력 조회 |
 
 ---
 
@@ -2174,7 +1780,7 @@ CI/CD 파이프라인 생성, 배포, 이력 관리를 담당합니다.
 
 DevSecOps Stack OSS 버전 호환성 검증을 담당합니다.
 
-#### GET /api/v1/compatibility/matrix
+#### GET /api/v1/stacks/compatibility
 
 호환성 매트릭스 전체 조회
 
@@ -2247,7 +1853,7 @@ DevSecOps Stack OSS 버전 호환성 검증을 담당합니다.
 
 ---
 
-#### POST /api/v1/compatibility/validate
+#### POST /api/v1/stacks/:stackId/validate
 
 도구 조합 호환성 검증
 
@@ -2528,7 +2134,7 @@ DevSecOps Stack 리소스 예상량 계산을 담당합니다.
 
 ## 7. WebSocket 엔드포인트
 
-### WSS /ws/deployments/:deploymentId/logs
+### WSS /ws/deployments/:id/logs
 
 설치 로그 실시간 스트리밍
 
@@ -3019,54 +2625,56 @@ components:
 | 2 | POST | `/api/v1/auth/logout` | 세션 로그아웃 | Alpha |
 | 3 | GET | `/api/v1/auth/me` | 내 정보 조회 | Alpha |
 | 4 | POST | `/api/v1/auth/token/refresh` | 토큰 갱신 (OIDC) | v1 |
-| 5 | POST | `/api/v1/orgs` | Organization 생성 | Alpha |
-| 6 | GET | `/api/v1/orgs/:orgId` | Organization 조회 | Alpha |
-| 7 | PUT | `/api/v1/orgs/:orgId` | Organization 수정 | Beta |
-| 8 | PUT | `/api/v1/orgs/:orgId/status` | 활성/비활성 전환 | v1 |
-| 9 | POST | `/api/v1/orgs/:orgId/invites` | 초대 링크 생성 | Beta |
-| 10 | POST | `/api/v1/orgs/:orgId/invites/:token/accept` | 초대 수락 | Beta |
-| 11 | GET | `/api/v1/orgs/:orgId/members` | 멤버 목록 조회 | Beta |
-| 12 | PUT | `/api/v1/orgs/:orgId/members/:userId` | 멤버 역할 변경 | v1 |
-| 13 | DELETE | `/api/v1/orgs/:orgId/members/:userId` | 멤버 제거 | v1 |
-| 14 | POST | `/api/v1/clusters` | 클러스터 등록 | Alpha |
-| 15 | GET | `/api/v1/clusters` | 클러스터 목록 | Alpha |
-| 16 | GET | `/api/v1/clusters/:id` | 클러스터 상세 | Alpha |
-| 17 | PUT | `/api/v1/clusters/:id` | 클러스터 수정 | Alpha |
-| 18 | DELETE | `/api/v1/clusters/:id` | 클러스터 삭제 | Alpha |
-| 19 | POST | `/api/v1/clusters/:id/verify` | 연결 검증 | Alpha |
-| 20 | GET | `/api/v1/clusters/:id/namespaces` | 네임스페이스 목록 | Alpha |
-| 21 | POST | `/api/v1/stacks` | 스택 설정 생성 | Alpha |
-| 22 | GET | `/api/v1/stacks` | 스택 목록 | Alpha |
-| 23 | GET | `/api/v1/stacks/:id` | 스택 상세 | Alpha |
-| 24 | PUT | `/api/v1/stacks/:id` | 스택 수정 | Alpha |
-| 25 | GET | `/api/v1/stacks/:id/history` | 변경 이력 | v1 |
-| 26 | GET | `/api/v1/stacks/:id/history/:versionId/diff` | 버전 diff | v1 |
-| 27 | POST | `/api/v1/stacks/:id/rollback/:versionId` | 버전 롤백 | v1 |
-| 28 | GET | `/api/v1/templates/golden-paths` | Golden Path 목록 | Alpha |
-| 29 | GET | `/api/v1/templates/golden-paths/:id` | Golden Path 상세 | Alpha |
-| 30 | GET | `/api/v1/templates/pipelines` | CI/CD 템플릿 목록 | Beta |
-| 31 | GET | `/api/v1/templates/pipelines/:id` | CI/CD 템플릿 상세 | Beta |
-| 32 | POST | `/api/v1/installations` | 스택 설치 시작 | Alpha |
-| 33 | GET | `/api/v1/installations/:id/status` | 설치 상태 조회 | Alpha |
-| 34 | DELETE | `/api/v1/installations/:id` | 설치 취소 | Beta |
-| 35 | POST | `/api/v1/installations/:id/retry` | 실패 재시도 | Beta |
-| 36 | POST | `/api/v1/installations/:id/rollback` | 설치 롤백 | Beta |
-| 37 | GET | `/api/v1/installations/:id/logs` | 설치 로그 (HTTP) | Alpha |
-| 38 | POST | `/api/v1/pipelines` | 파이프라인 생성 | Beta |
-| 39 | GET | `/api/v1/pipelines` | 파이프라인 목록 | Beta |
-| 40 | GET | `/api/v1/pipelines/:id` | 파이프라인 상세 | Beta |
-| 41 | POST | `/api/v1/pipelines/:id/deploy` | 파이프라인 배포 | Beta |
-| 42 | GET | `/api/v1/pipelines/:id/deployments` | 배포 이력 | Beta |
-| 43 | GET | `/api/v1/pipelines/:id/deployments/:did` | 배포 상세 | v1 |
-| 44 | POST | `/api/v1/pipelines/:id/rollback/:did` | 배포 롤백 | v1 |
-| 45 | GET | `/api/v1/pipelines/:id/deployments/:did/diff` | 배포 diff | v1 |
-| 46 | GET | `/api/v1/monitoring/dashboards` | 대시보드 데이터 | Beta |
-| 47 | GET | `/api/v1/monitoring/metrics/summary` | 메트릭 요약 | Beta |
-| 48 | POST | `/api/v1/monitoring/alerts/config` | 알림 설정 | Beta |
-| 49 | GET | `/api/v1/compatibility/matrix` | 호환성 매트릭스 | Alpha |
-| 50 | POST | `/api/v1/compatibility/validate` | 조합 검증 | Alpha |
-| 51 | POST | `/api/v1/resources/estimate` | 리소스 예상량 | Alpha |
-| 52 | GET | `/api/v1/users` | 사용자 목록 | v1 |
-| 53 | PUT | `/api/v1/users/:userId/role` | 역할 변경 | v1 |
-| 54 | DELETE | `/api/v1/users/:userId` | 사용자 비활성화 | v1 |
-| 55 | WSS | `/ws/deployments/:deploymentId/logs` | 설치 로그 스트리밍 | Alpha |
+| 5 | GET | `/api/v1/admin/organization` | Organization 조회 | Alpha |
+| 6 | PATCH | `/api/v1/admin/organization` | Organization 수정 | Alpha |
+| 7 | POST | `/api/v1/admin/orgs` | Organization 생성 | Alpha |
+| 8 | POST | `/api/v1/admin/clusters` | 클러스터 등록 | Alpha |
+| 9 | GET | `/api/v1/admin/clusters` | 클러스터 목록 | Alpha |
+| 10 | GET | `/api/v1/admin/clusters/:id` | 클러스터 상세 | Alpha |
+| 11 | PATCH | `/api/v1/admin/clusters/:id` | 클러스터 수정 | Alpha |
+| 12 | DELETE | `/api/v1/admin/clusters/:id` | 클러스터 삭제 | Alpha |
+| 13 | POST | `/api/v1/admin/clusters/:id/verify` | 연결 검증 | Alpha |
+| 14 | GET | `/api/v1/admin/known-issues` | Known Issues 목록 | Alpha |
+| 15 | GET | `/api/v1/admin/audit-logs` | 감사 로그 조회 | Alpha |
+| 16 | GET | `/api/v1/admin/notifications/configs` | 알림 설정 목록 | Alpha |
+| 17 | POST | `/api/v1/admin/notifications/configs` | 알림 설정 생성 | Alpha |
+| 18 | GET | `/api/v1/admin/notifications/history` | 알림 전송 이력 | Alpha |
+| 19 | GET | `/api/v1/admin/organizations/:orgId/members` | 조직 멤버 목록 | Beta |
+| 20 | POST | `/api/v1/admin/organizations/:orgId/members` | 조직 멤버 초대 | Beta |
+| 21 | DELETE | `/api/v1/admin/organizations/:orgId/members/:id` | 조직 멤버 제거 | v1 |
+| 22 | POST | `/api/v1/stacks` | 스택 설정 생성 | Alpha |
+| 23 | GET | `/api/v1/stacks` | 스택 목록 | Alpha |
+| 24 | GET | `/api/v1/stacks/:id` | 스택 상세 | Alpha |
+| 25 | PUT | `/api/v1/stacks/:id` | 스택 수정 | Alpha |
+| 26 | GET | `/api/v1/stacks/:id/history` | 변경 이력 | v1 |
+| 27 | GET | `/api/v1/stacks/:id/history/:versionId/diff` | 버전 diff | v1 |
+| 28 | POST | `/api/v1/stacks/:id/rollback/:versionId` | 버전 롤백 | v1 |
+| 29 | GET | `/api/v1/stacks/templates` | Golden Path 목록 | Alpha |
+| 30 | GET | `/api/v1/stacks/templates/:id` | Golden Path 상세 | Alpha |
+| 31 | GET | `/api/v1/stacks/compatibility` | 호환성 매트릭스 | Alpha |
+| 32 | POST | `/api/v1/stacks/:stackId/validate` | 호환성 검증 | Alpha |
+| 33 | POST | `/api/v1/installations` | 스택 설치 시작 | Alpha |
+| 34 | GET | `/api/v1/installations/:id/status` | 설치 상태 조회 | Alpha |
+| 35 | DELETE | `/api/v1/installations/:id` | 설치 취소 | Beta |
+| 36 | POST | `/api/v1/installations/:id/retry` | 실패 재시도 | Beta |
+| 37 | POST | `/api/v1/installations/:id/rollback` | 설치 롤백 | Beta |
+| 38 | GET | `/api/v1/installations/:id/logs` | 설치 로그 (HTTP) | Alpha |
+| 39 | GET | `/api/v1/cicd/templates` | CI/CD 템플릿 목록 | Beta |
+| 40 | GET | `/api/v1/cicd/templates/:id` | CI/CD 템플릿 상세 | Beta |
+| 41 | POST | `/api/v1/cicd/pipelines` | 파이프라인 생성 | Beta |
+| 42 | GET | `/api/v1/cicd/pipelines` | 파이프라인 목록 | Beta |
+| 43 | POST | `/api/v1/cicd/pipelines/:id/deploy` | 파이프라인 배포 | Beta |
+| 44 | GET | `/api/v1/cicd/deployments/:did` | 배포 상세 | v1 |
+| 45 | POST | `/api/v1/cicd/pipelines/:id/rollback/:did` | 배포 롤백 | v1 |
+| 46 | GET | `/api/v1/cicd/deployments/:did/diff` | 배포 diff | v1 |
+| 47 | GET | `/api/v1/observability/dashboard` | 대시보드 데이터 | Beta |
+| 48 | GET | `/api/v1/observability/alert-rules` | 알림 규칙 목록 | Beta |
+| 49 | POST | `/api/v1/observability/alert-rules` | 알림 규칙 생성 | Beta |
+| 50 | GET | `/api/v1/observability/alert-history` | 알림 이력 | Beta |
+| 51 | GET | `/api/v1/cicd/app-templates` | 앱 템플릿 목록 | Beta |
+| 52 | POST | `/api/v1/cicd/deploy-app` | 앱 배포 | Beta |
+| 53 | POST | `/api/v1/resources/estimate` | 리소스 예상량 | Alpha |
+| 54 | GET | `/api/v1/users` | 사용자 목록 | v1 |
+| 55 | PUT | `/api/v1/users/:userId/role` | 역할 변경 | v1 |
+| 56 | DELETE | `/api/v1/users/:userId` | 사용자 비활성화 | v1 |
+| 57 | WSS | `/ws/deployments/:id/logs` | 설치 로그 스트리밍 | Alpha |

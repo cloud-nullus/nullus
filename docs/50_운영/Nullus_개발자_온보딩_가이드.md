@@ -87,7 +87,11 @@ cd draft
 ```bash
 cp .env.example .env
 # .env 파일을 열어 필요한 값을 확인한다 (기본값으로 로컬 개발 가능)
+# kubeconfig 암호화 키(필수, 32바이트)
+export ENCRYPTION_KEY="nullus-dev-key-32bytes-padding!!"
 ```
+
+`ENCRYPTION_KEY`는 클러스터 kubeconfig 암호화/복호화에 사용되며 길이가 정확히 32바이트여야 한다.
 
 ### 2.4 인프라 기동
 
@@ -147,6 +151,8 @@ make test              # Go 단위 + 통합 테스트 전체
 make web-test          # React vitest (npx vitest run)
 cd web && npm run e2e  # Playwright E2E (dev 서버 자동 기동)
 ```
+
+로컬 로그인 테스트 계정은 `docs/50_운영/Nullus_로컬_테스트_가이드.md`의 계정 표를 사용한다.
 
 ---
 
@@ -360,6 +366,15 @@ git add internal/admin/domain/organization.go \
         db/migrations/000007_org_description.down.sql
 git commit -m "feat(admin): Organization에 description 필드 추가"
 git push -u origin feat/admin/add-org-description
+```
+
+커밋 메시지는 한국어 설명 + Semantic prefix를 사용한다.
+
+```text
+feat(admin): 조직 기본 정보 수정 API 검증 로직 추가
+fix(stack): 배포 상태 전이 조건 오류 수정
+test(cicd): 파이프라인 배포 실패 케이스 회귀 테스트 추가
+docs: 온보딩 가이드 환경변수 섹션 갱신
 ```
 
 ### 5.3 PR 전 자기 검증 체크리스트

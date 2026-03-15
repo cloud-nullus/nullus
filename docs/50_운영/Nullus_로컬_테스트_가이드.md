@@ -211,11 +211,11 @@ URL: `http://localhost:5173/login`
 
 테스트 계정:
 
-| 이메일 | 역할 | 접근 범위 |
-|--------|------|-----------|
-| `admin@nullus.dev` | Admin | 조직·사용자·클러스터 관리 전체 |
-| `devops@nullus.dev` | DevOps Engineer | 전체 메뉴 |
-| `developer@nullus.dev` | Developer | CI/CD + 관측성 |
+| 이메일 | 비밀번호 | 역할 | 접근 범위 |
+|--------|----------|------|-----------|
+| `admin@nullus.dev` | `admin123` | Admin | 조직·사용자·클러스터 관리 전체 |
+| `devops@nullus.dev` | `devops123` | DevOps Engineer | 전체 메뉴 |
+| `developer@nullus.dev` | `developer123` | Developer | CI/CD + 관측성 |
 
 ### 6.2 역할별 화면 확인
 
@@ -324,29 +324,34 @@ make web-test
 
 내부적으로 `npx vitest run`을 실행합니다.
 
-### 7.5 Playwright E2E (dev 서버 자동 기동)
+### 7.5 Playwright E2E
 
-`playwright.config.ts`에 `webServer` 설정이 되어 있어 dev 서버를 자동으로 기동합니다.
-
-```bash
-cd /Users/qmin/lifework/cloudbro/draft/web && npm run e2e
-```
-
-브라우저를 직접 보면서 실행:
+프론트엔드(`http://localhost:5173`)와 API(`http://localhost:8080`)가 실행 중이어야 합니다.
 
 ```bash
-cd /Users/qmin/lifework/cloudbro/draft/web && npm run e2e:headed
+cd web && npx playwright test --reporter=list
 ```
 
-실패 시 스크린샷은 `web/test-results/`에 저장됩니다.
+- 총 41개 테스트, 7개 spec 파일 기준으로 실행됩니다.
+- spec 파일: `navigation`, `sidebar`, `stack-workflow`, `theme-i18n`, `uat-admin`, `uat-devops`, `uat-developer`
 
-### 7.6 Go 벤치마크
+Kind 클러스터 대상 시나리오는 `docs/guides/kind-e2e-testing-guide.md`를 함께 참고하세요.
+
+### 7.6 API Smoke Test
+
+```bash
+./scripts/runbook_local.sh smoke
+```
+
+- 로컬 API 기준 13개 엔드포인트를 스모크 검증합니다.
+
+### 7.7 Go 벤치마크
 
 ```bash
 go test github.com/cloud-nullus/draft/internal/stack/domain/ -bench=. -benchmem
 ```
 
-### 7.7 테스트 커버리지
+### 7.8 테스트 커버리지
 
 ```bash
 # Go 커버리지 (coverage.html 생성)
