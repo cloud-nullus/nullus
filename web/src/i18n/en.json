@@ -18,6 +18,7 @@
     "organization": "Organization",
     "userManagement": "User Management",
     "clusterManagement": "Cluster Management",
+    "knownIssues": "Known Issues",
     "logout": "Logout"
   },
   "common": {
