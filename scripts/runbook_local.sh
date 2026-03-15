@@ -10,35 +10,45 @@ API_PORT=8080
 WEB_PORT=5173
 POSTGRES_PORT=5433
 MINIO_PORT=9000
+MINIO_CONSOLE_PORT=9001
 REDIS_PORT=6380
 KEYCLOAK_PORT=8180
+
+ENCRYPTION_KEY="${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!}"
+KIND_CLUSTER_NAME="nullus-test"
+KIND_CONFIG="$PROJECT_ROOT/scripts/kind-cluster.yaml"
 
 usage() {
   cat <<'EOF'
 Usage:
   ./scripts/runbook_local.sh preflight
-  ./scripts/runbook_local.sh up [--seed]
+  ./scripts/runbook_local.sh up [--seed] [--kind]
   ./scripts/runbook_local.sh status
   ./scripts/runbook_local.sh smoke
   ./scripts/runbook_local.sh logs [api|web|all]
   ./scripts/runbook_local.sh down
-  ./scripts/runbook_local.sh all [--seed]
+  ./scripts/runbook_local.sh all [--seed] [--kind]
+  ./scripts/runbook_local.sh kind-up
+  ./scripts/runbook_local.sh kind-down
 
 Commands:
   preflight     Validate toolchain prerequisites
-  up [--seed]   Start infra + migrate + API + frontend
-  status        Show health of all services
-  smoke         Run API smoke tests (health, orgs, stacks, templates)
+  up [--seed]   Start infra (PostgreSQL, Redis, MinIO, Keycloak) + migrate + API + frontend
+     [--kind]   Also create a kind K8s cluster
+  status        Show health of all services (including kind cluster)
+  smoke         Run API smoke tests (13 endpoints)
   logs [svc]    Tail logs for a service (api, web) or all
-  down          Stop API, frontend, and docker infra
-  all [--seed]  Full lifecycle: up -> smoke -> keep running
+  down          Stop API, frontend, docker infra, and kind cluster
+  all           Full lifecycle: up -> smoke -> keep running
+  kind-up       Create kind K8s cluster only
+  kind-down     Delete kind K8s cluster only
 
-Test Accounts (Frontend):
-  admin@nullus.dev     / admin123       (admin - full access)
-  devops@nullus.dev    / devops123      (devops - stack + cicd)
-  developer@nullus.dev / developer123   (developer - cicd only)
+Test Accounts (Frontend mock auth, development mode):
+  admin@nullus.dev     / admin123       (admin)
+  devops@nullus.dev    / devops123      (devops)
+  developer@nullus.dev / developer123   (developer)
 
-Test Accounts (Keycloak OIDC - when auth.mode=oidc):
+Test Accounts (Keycloak OIDC, production mode):
   admin@nullus.io      / nullus123!     (admin)
   devops@nullus.io     / nullus123!     (devops)
   dev@nullus.io        / nullus123!     (developer)
@@ -46,7 +56,8 @@ Test Accounts (Keycloak OIDC - when auth.mode=oidc):
 Infrastructure:
   PostgreSQL  nullus / nullus_dev       (localhost:5433)
   Keycloak    admin / admin             (localhost:8180)
-  MinIO       nullus / nullus_dev       (localhost:9000)
+  MinIO       nullus / nullus_dev       (localhost:9000, console :9001)
+  Redis       -                         (localhost:6380)
 EOF
 }
 
@@ -153,6 +164,35 @@ install_migrate() {
   fi
 }
 
+do_kind_up() {
+  if ! command -v kind >/dev/null 2>&1; then
+    echo "[nullus] kind not found, skipping K8s cluster"
+    return 1
+  fi
+  if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    echo "[nullus] kind cluster '$KIND_CLUSTER_NAME' already exists"
+    return 0
+  fi
+  echo "[nullus] creating kind cluster '$KIND_CLUSTER_NAME'..."
+  if [[ -f "$KIND_CONFIG" ]]; then
+    kind create cluster --config "$KIND_CONFIG"
+  else
+    kind create cluster --name "$KIND_CLUSTER_NAME"
+  fi
+  echo "[nullus] kind cluster ready"
+}
+
+do_kind_down() {
+  if ! command -v kind >/dev/null 2>&1; then
+    return 0
+  fi
+  if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    echo "[nullus] deleting kind cluster '$KIND_CLUSTER_NAME'..."
+    kind delete cluster --name "$KIND_CLUSTER_NAME"
+    echo "[nullus] kind cluster deleted"
+  fi
+}
+
 do_preflight() {
   echo "[nullus] checking prerequisites..."
   require_cmd go
@@ -164,14 +204,26 @@ do_preflight() {
   echo "[nullus]   go      $(go version | awk '{print $3}')"
   echo "[nullus]   node    $(node --version)"
   echo "[nullus]   docker  $(docker --version | awk '{print $3}' | tr -d ',')"
+  if command -v kind >/dev/null 2>&1; then
+    echo "[nullus]   kind    $(kind version)"
+  else
+    echo "[nullus]   kind    not installed (optional)"
+  fi
+  if command -v kubectl >/dev/null 2>&1; then
+    echo "[nullus]   kubectl $(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*"' | head -1 | cut -d'"' -f4)"
+  fi
+  if command -v helm >/dev/null 2>&1; then
+    echo "[nullus]   helm    $(helm version --short 2>/dev/null)"
+  fi
   echo "[nullus] preflight OK"
 }
 
 do_up() {
-  local seed="false"
+  local seed="false" with_kind="false"
   for arg in "$@"; do
     case "$arg" in
       --seed) seed="true" ;;
+      --kind) with_kind="true" ;;
       *) echo "[nullus] unknown option: $arg"; exit 1 ;;
     esac
   done
@@ -184,15 +236,22 @@ do_up() {
 
   : >"$PID_FILE"
 
-  # 1. Docker infra
+  # 1. Docker infra (PostgreSQL, Redis, MinIO, Keycloak)
   echo ""
-  echo "[nullus] starting docker infra..."
-  docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" up -d postgres redis
+  echo "[nullus] starting docker infra (postgres, redis, minio, keycloak)..."
+  docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" up -d
   echo "[nullus] waiting for postgres..."
   wait_for_port_listen "$POSTGRES_PORT" 30 || {
     echo "[nullus] postgres did not start"; exit 1
   }
   sleep 2
+
+  echo "[nullus] waiting for keycloak..."
+  if wait_for_http "http://127.0.0.1:${KEYCLOAK_PORT}" 60 2; then
+    echo "[nullus] keycloak is ready"
+  else
+    echo "[nullus] keycloak did not start (non-blocking, continuing...)"
+  fi
 
   # 2. Database migrations
   echo "[nullus] running database migrations..."
@@ -203,13 +262,14 @@ do_up() {
     echo "[nullus] migration failed (may already be applied, continuing...)"
   }
 
-  # 3. Build + start API
+  # 3. Build + start API (with ENCRYPTION_KEY)
   echo ""
   echo "[nullus] building API server..."
   (cd "$PROJECT_ROOT" && go build -o bin/api ./cmd/api)
 
   echo "[nullus] starting API server on :$API_PORT..."
-  run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
+  export ENCRYPTION_KEY
+  run_bg "api" "$PROJECT_ROOT" "ENCRYPTION_KEY='$ENCRYPTION_KEY' NULLUS_DATABASE_HOST=localhost NULLUS_DATABASE_PORT=$POSTGRES_PORT NULLUS_SERVER_MODE=development ./bin/api" "$API_PORT"
 
   echo "[nullus] waiting for API health..."
   if wait_for_http "http://127.0.0.1:${API_PORT}/health" 30 1; then
@@ -235,21 +295,32 @@ do_up() {
     exit 1
   fi
 
+  # 5. kind cluster (optional)
+  if [[ "$with_kind" == "true" ]]; then
+    echo ""
+    do_kind_up || true
+  fi
+
   echo ""
   echo "══════════════════════════════════════════════════"
   echo "  Nullus Local Environment Ready"
   echo "══════════════════════════════════════════════════"
   echo ""
-  echo "  Frontend   http://localhost:$WEB_PORT"
-  echo "  API        http://localhost:$API_PORT"
-  echo "  Health     http://localhost:$API_PORT/health"
-  echo "  API Docs   http://localhost:$API_PORT/api/v1/"
+  echo "  Frontend      http://localhost:$WEB_PORT"
+  echo "  API           http://localhost:$API_PORT"
+  echo "  Health        http://localhost:$API_PORT/health"
   echo ""
-  echo "  PostgreSQL localhost:$POSTGRES_PORT  (nullus/nullus_dev)"
-  echo "  Redis      localhost:$REDIS_PORT"
+  echo "  PostgreSQL    localhost:$POSTGRES_PORT  (nullus/nullus_dev)"
+  echo "  Keycloak      http://localhost:$KEYCLOAK_PORT  (admin/admin)"
+  echo "  MinIO         http://localhost:$MINIO_CONSOLE_PORT  (nullus/nullus_dev)"
+  echo "  Redis         localhost:$REDIS_PORT"
   echo ""
-  echo "  Logs:      ./scripts/runbook_local.sh logs"
-  echo "  Stop:      ./scripts/runbook_local.sh down"
+  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    echo "  K8s Cluster   kind-$KIND_CLUSTER_NAME ($(kubectl get nodes --context "kind-$KIND_CLUSTER_NAME" -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo 'unknown'))"
+    echo ""
+  fi
+  echo "  Logs:         ./scripts/runbook_local.sh logs"
+  echo "  Stop:         ./scripts/runbook_local.sh down"
   echo "══════════════════════════════════════════════════"
 }
 
@@ -270,7 +341,25 @@ do_status() {
   else
     echo "  web: not running"
   fi
+
+  if wait_for_http "http://127.0.0.1:${KEYCLOAK_PORT}" 3 1 2>/dev/null; then
+    echo "  keycloak: listening on :$KEYCLOAK_PORT"
+  else
+    echo "  keycloak: not running"
+  fi
+
+  if lsof -tiTCP:"$MINIO_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "  minio: listening on :$MINIO_PORT (console :$MINIO_CONSOLE_PORT)"
+  else
+    echo "  minio: not running"
+  fi
   echo ""
+
+  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    echo "[nullus] kind cluster"
+    kubectl get nodes --context "kind-$KIND_CLUSTER_NAME" 2>/dev/null || echo "  kind cluster not reachable"
+    echo ""
+  fi
 
   if [[ -f "$PID_FILE" ]]; then
     echo "[nullus] managed processes"
@@ -297,20 +386,23 @@ do_smoke() {
     local code
     code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000")"
     if [[ "$code" == "$expect" ]]; then
-      printf '  %-40s %s\n' "$label" "OK ($code)"
+      printf '  %-45s %s\n' "$label" "OK ($code)"
       ((passed++)) || true
     else
-      printf '  %-40s %s\n' "$label" "FAIL (got $code, expected $expect)"
+      printf '  %-45s %s\n' "$label" "FAIL (got $code, expected $expect)"
       ((failed++)) || true
     fi
   }
 
   smoke_get "GET /health"                              "http://127.0.0.1:${API_PORT}/health"
+  smoke_get "GET /api/v1/admin/organization"           "http://127.0.0.1:${API_PORT}/api/v1/admin/organization"
   smoke_get "GET /api/v1/admin/clusters"               "http://127.0.0.1:${API_PORT}/api/v1/admin/clusters"
   smoke_get "GET /api/v1/admin/known-issues"           "http://127.0.0.1:${API_PORT}/api/v1/admin/known-issues"
   smoke_get "GET /api/v1/admin/audit-logs"             "http://127.0.0.1:${API_PORT}/api/v1/admin/audit-logs"
-  smoke_get "GET /api/v1/stacks/templates"             "http://127.0.0.1:${API_PORT}/api/v1/stacks/templates"
+  smoke_get "GET /api/v1/admin/notifications/configs"  "http://127.0.0.1:${API_PORT}/api/v1/admin/notifications/configs"
   smoke_get "GET /api/v1/stacks"                       "http://127.0.0.1:${API_PORT}/api/v1/stacks"
+  smoke_get "GET /api/v1/stacks/templates"             "http://127.0.0.1:${API_PORT}/api/v1/stacks/templates"
+  smoke_get "GET /api/v1/stacks/compatibility"         "http://127.0.0.1:${API_PORT}/api/v1/stacks/compatibility"
   smoke_get "GET /api/v1/cicd/templates"               "http://127.0.0.1:${API_PORT}/api/v1/cicd/templates"
   smoke_get "GET /api/v1/cicd/pipelines"               "http://127.0.0.1:${API_PORT}/api/v1/cicd/pipelines"
   smoke_get "GET /api/v1/observability/dashboard"      "http://127.0.0.1:${API_PORT}/api/v1/observability/dashboard"
@@ -347,19 +439,22 @@ do_down() {
   fi
   echo "[nullus] stopping docker infra..."
   docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" down 2>/dev/null || true
+
+  do_kind_down 2>/dev/null || true
+
   echo "[nullus] all stopped"
 }
 
 do_all() {
-  local seed_args=()
+  local extra_args=()
   for arg in "$@"; do
     case "$arg" in
-      --seed) seed_args+=("--seed") ;;
+      --seed|--kind) extra_args+=("$arg") ;;
     esac
   done
 
   trap 'do_down || true' EXIT INT TERM
-  do_up "${seed_args[@]}"
+  do_up "${extra_args[@]}"
   do_smoke
   trap - EXIT INT TERM
   echo ""
@@ -378,6 +473,8 @@ main() {
     logs) do_logs "${1:-all}" ;;
     down) do_down ;;
     all) do_all "$@" ;;
+    kind-up) do_kind_up ;;
+    kind-down) do_kind_down ;;
     *) usage; exit 1 ;;
   esac
 }
