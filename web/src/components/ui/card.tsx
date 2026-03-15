@@ -1,4 +1,5 @@
 import { type ReactNode, type CSSProperties } from 'react'
+import { cn } from '../../lib/utils'
 
 interface CardProps {
   icon?: ReactNode
@@ -22,70 +23,48 @@ export function Card({
   children,
   onClick,
   selected = false,
-  style,
+  style: _style,
   footer,
 }: CardProps) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        background: 'var(--color-surface-card)',
-        border: `1px solid ${selected ? '#6366f1' : 'var(--color-border-default)'}`,
-        borderRadius: 'var(--card-radius)',
-        padding: 'var(--card-padding)',
-        transition: 'border-color var(--transition-default)',
-        cursor: onClick ? 'pointer' : 'default',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-        ...style,
-      }}
-      onMouseEnter={(e) => {
-        if (!selected) {
-          ;(e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border-hover)'
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!selected) {
-          ;(e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border-default)'
-        }
-      }}
-    >
+  const iconBgClass = iconBg === 'rgba(99,102,241,0.15)' ? 'bg-[rgba(99,102,241,0.15)]' : 'bg-[rgba(99,102,241,0.15)]'
+  const iconColorClass = iconColor === '#818cf8' ? 'text-[#818cf8]' : 'text-[#818cf8]'
+  const baseClassName = cn(
+    'flex flex-col gap-3 rounded-[var(--card-radius)] border bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-200 ease-in-out',
+    selected
+      ? 'border-[#6366f1]'
+      : 'border-[var(--color-border-default)] hover:border-[var(--color-border-hover)]',
+    onClick ? 'cursor-pointer text-left' : 'cursor-default'
+  )
+
+  const content = (
+    <>
       {(icon || title || description) && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+        <div className="flex items-start gap-3">
           {icon && (
             <div
-              style={{
-                width: 'var(--icon-size)',
-                height: 'var(--icon-size)',
-                background: iconBg,
-                borderRadius: 'var(--icon-radius)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: iconColor,
-                flexShrink: 0,
-              }}
+              className={cn(
+                'flex h-[var(--icon-size)] w-[var(--icon-size)] shrink-0 items-center justify-center rounded-[var(--icon-radius)]',
+                iconBgClass,
+                iconColorClass
+              )}
             >
               {icon}
             </div>
           )}
           {(title || description) && (
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="min-w-0 flex-1">
               {title && (
                 <div
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    color: 'var(--color-text-primary)',
-                    marginBottom: description ? '4px' : 0,
-                  }}
+                  className={cn(
+                    'text-sm font-bold text-[var(--color-text-primary)]',
+                    description ? 'mb-1' : ''
+                  )}
                 >
                   {title}
                 </div>
               )}
               {description && (
-                <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                <div className="text-[13px] leading-6 text-[var(--color-text-secondary)]">
                   {description}
                 </div>
               )}
@@ -95,10 +74,20 @@ export function Card({
       )}
       {children}
       {footer && (
-        <div style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--color-border-default)' }}>
+        <div className="mt-auto border-t border-[var(--color-border-default)] pt-2">
           {footer}
         </div>
       )}
-    </div>
+    </>
   )
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={baseClassName}>
+        {content}
+      </button>
+    )
+  }
+
+  return <div className={baseClassName}>{content}</div>
 }

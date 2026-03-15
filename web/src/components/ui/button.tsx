@@ -1,4 +1,5 @@
 import { type ButtonHTMLAttributes, forwardRef } from 'react'
+import { cn } from '../../lib/utils'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost'
 export type ButtonSize = 'sm' | 'md' | 'lg'
@@ -9,80 +10,54 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean
 }
 
-const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
-  primary: {
-    background: 'linear-gradient(135deg, #ffd700, #f59e0b)',
-    color: '#1a1d29',
-    border: 'none',
-    fontWeight: 700,
-  },
-  secondary: {
-    background: 'rgba(99,102,241,0.15)',
-    color: '#a5b4fc',
-    border: '1px solid rgba(99,102,241,0.3)',
-    fontWeight: 600,
-  },
-  outline: {
-    background: 'transparent',
-    color: 'var(--color-text-primary)',
-    border: '1px solid var(--color-border-default)',
-    fontWeight: 600,
-  },
-  danger: {
-    background: 'rgba(239,68,68,0.15)',
-    color: '#f87171',
-    border: '1px solid rgba(239,68,68,0.3)',
-    fontWeight: 600,
-  },
-  ghost: {
-    background: 'transparent',
-    color: 'var(--color-text-secondary)',
-    border: 'none',
-    fontWeight: 500,
-  },
+const variantStyles: Record<ButtonVariant, string> = {
+  primary:
+    'border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] font-bold text-[#1a1d29]',
+  secondary:
+    'border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.15)] font-semibold text-[#a5b4fc]',
+  outline:
+    'border border-[var(--color-border-default)] bg-transparent font-semibold text-[var(--color-text-primary)]',
+  danger:
+    'border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.15)] font-semibold text-[#f87171]',
+  ghost: 'border-none bg-transparent font-medium text-[var(--color-text-secondary)]',
 }
 
-const sizeStyles: Record<ButtonSize, React.CSSProperties> = {
-  sm: { padding: '6px 14px', fontSize: '12px', borderRadius: '8px' },
-  md: { padding: '10px 20px', fontSize: '14px', borderRadius: '10px' },
-  lg: { padding: '12px 28px', fontSize: '15px', borderRadius: '10px' },
+const sizeStyles: Record<ButtonSize, string> = {
+  sm: 'rounded-lg px-3.5 py-1.5 text-xs',
+  md: 'rounded-[10px] px-5 py-2.5 text-sm',
+  lg: 'rounded-[10px] px-7 py-3 text-[15px]',
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'outline', size = 'md', loading = false, disabled, children, style, ...props }, ref) => {
+  (
+    {
+      variant = 'outline',
+      size = 'md',
+      loading = false,
+      disabled,
+      children,
+      className,
+      style: _style,
+      ...props
+    },
+    ref
+  ) => {
     const isDisabled = disabled || loading
 
     return (
       <button
         ref={ref}
         disabled={isDisabled}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-          cursor: isDisabled ? 'not-allowed' : 'pointer',
-          opacity: isDisabled ? 0.5 : 1,
-          transition: 'all var(--transition-fast)',
-          ...variantStyles[variant],
-          ...sizeStyles[size],
-          ...style,
-        }}
+        className={cn(
+          'inline-flex items-center justify-center gap-2 transition-all duration-150 ease-in-out',
+          isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+          variantStyles[variant],
+          sizeStyles[size],
+          className
+        )}
         {...props}
       >
-        {loading && (
-          <span
-            style={{
-              width: '14px',
-              height: '14px',
-              border: '2px solid currentColor',
-              borderTopColor: 'transparent',
-              borderRadius: '50%',
-              display: 'inline-block',
-              animation: 'spin 0.6s linear infinite',
-            }}
-          />
-        )}
+        {loading && <span className="inline-block size-[14px] animate-spin rounded-full border-2 border-current border-t-transparent [animation-duration:0.6s]" />}
         {children}
       </button>
     )
