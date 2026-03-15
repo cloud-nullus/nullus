@@ -15,13 +15,6 @@ import { cn } from '../../../lib/utils'
 
 const ORG_ID = 'org-1'
 
-const MOCK_USERS = [
-  { id: 'u1', name: 'Alice Kim', email: 'alice@nullus.io', role: 'admin' as MemberRole, status: 'active' as MemberStatus, joinedAt: '2026-01-05T00:00:00Z' },
-  { id: 'u2', name: 'Bob Lee', email: 'bob@nullus.io', role: 'devops' as MemberRole, status: 'active' as MemberStatus, joinedAt: '2026-01-10T00:00:00Z' },
-  { id: 'u3', name: 'Carol Park', email: 'carol@nullus.io', role: 'developer' as MemberRole, status: 'pending' as MemberStatus, joinedAt: '2026-03-01T00:00:00Z' },
-  { id: 'u4', name: 'David Choi', email: 'david@nullus.io', role: 'developer' as MemberRole, status: 'inactive' as MemberStatus, joinedAt: '2026-02-15T00:00:00Z' },
-]
-
 const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> = {
   active: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Active' },
   pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Pending' },
@@ -51,8 +44,8 @@ const INVITE_USER_DEFAULTS: InviteUserFormData = {
 }
 
 export function UserManagementPage() {
-  const { data: membersData } = useMembers(ORG_ID)
-  const users = membersData?.items ?? MOCK_USERS
+  const { data: membersData, isLoading } = useMembers(ORG_ID)
+  const users = membersData?.items ?? []
   const inviteMember = useInviteMember(ORG_ID)
   const updateUserRole = useUpdateUserRole(ORG_ID)
   const deactivateUser = useDeactivateUser(ORG_ID)
@@ -194,7 +187,13 @@ export function UserManagementPage() {
         />
       </div>
 
-      <DataTable columns={columns} data={filteredUsers} getRowKey={(row) => row.id} emptyMessage="사용자가 없습니다." />
+      {isLoading ? (
+        <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">
+          Loading users...
+        </div>
+      ) : (
+        <DataTable columns={columns} data={filteredUsers} getRowKey={(row) => row.id} emptyMessage="사용자가 없습니다." />
+      )}
 
       {/* Invite modal */}
       <Modal

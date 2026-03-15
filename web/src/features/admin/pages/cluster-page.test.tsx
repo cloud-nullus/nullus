@@ -1,11 +1,42 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import '@testing-library/jest-dom/vitest'
 import { screen, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { ClusterPage } from './cluster-page'
 
+const MOCK_CLUSTERS = [
+  {
+    id: 'c1',
+    name: 'prod-cluster',
+    type: 'eks' as const,
+    endpoint: 'https://prod.k8s.nullus.io',
+    status: 'connected' as const,
+    organizationIds: ['org-1'],
+    createdAt: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'c2',
+    name: 'staging-cluster',
+    type: 'kubernetes' as const,
+    endpoint: 'https://staging.k8s.nullus.io',
+    status: 'connected' as const,
+    organizationIds: ['org-1'],
+    createdAt: '2026-01-15T00:00:00Z',
+  },
+  {
+    id: 'c3',
+    name: 'dev-cluster',
+    type: 'k3s' as const,
+    endpoint: 'https://dev.k8s.nullus.io',
+    status: 'pending' as const,
+    organizationIds: ['org-1'],
+    createdAt: '2026-03-01T00:00:00Z',
+  },
+]
+
 // Mock API hooks
 vi.mock('../api/admin-api', () => ({
-  useClusters: () => ({ data: undefined }),
+  useClusters: () => ({ data: { items: MOCK_CLUSTERS, total: MOCK_CLUSTERS.length }, isLoading: false }),
   useCreateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),

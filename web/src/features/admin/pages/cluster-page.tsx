@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -11,36 +11,6 @@ import { Modal } from '../../../components/ui/modal'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { cn } from '../../../lib/utils'
-
-const MOCK_CLUSTERS: Cluster[] = [
-  {
-    id: 'c1',
-    name: 'prod-cluster',
-    type: 'eks',
-    endpoint: 'https://prod.k8s.nullus.io',
-    status: 'connected',
-    organizationIds: ['org-1'],
-    createdAt: '2026-01-01T00:00:00Z',
-  },
-  {
-    id: 'c2',
-    name: 'staging-cluster',
-    type: 'kubernetes',
-    endpoint: 'https://staging.k8s.nullus.io',
-    status: 'connected',
-    organizationIds: ['org-1'],
-    createdAt: '2026-01-15T00:00:00Z',
-  },
-  {
-    id: 'c3',
-    name: 'dev-cluster',
-    type: 'k3s',
-    endpoint: 'https://dev.k8s.nullus.io',
-    status: 'pending',
-    organizationIds: ['org-1'],
-    createdAt: '2026-03-01T00:00:00Z',
-  },
-]
 
 const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string; label: string }> = {
   connected: {
@@ -108,9 +78,8 @@ const CLUSTER_DEFAULTS: ClusterFormData = {
 }
 
 export function ClusterPage() {
-  const { data: clustersData } = useClusters()
-  const [localClusters, setLocalClusters] = useState<Cluster[]>(MOCK_CLUSTERS)
-  const clusters = useMemo(() => clustersData?.items ?? localClusters, [clustersData?.items, localClusters])
+  const { data: clustersData, isLoading } = useClusters()
+  const clusters = clustersData?.items ?? []
   const createCluster = useCreateCluster()
   const updateCluster = useUpdateCluster()
   const deleteCluster = useDeleteCluster()
@@ -121,6 +90,18 @@ export function ClusterPage() {
   const [deleteClusterId, setDeleteClusterId] = useState<string | null>(null)
   const [isVerifyingConnection, setIsVerifyingConnection] = useState(false)
   const [verifyConnectionResult, setVerifyConnectionResult] = useState<'success' | 'error' | null>(null)
+
+  useEffect(() => {
+    if (clusters.length === 0) {
+      setSelected(null)
+      return
+    }
+
+    if (!selected || !clusters.some((cluster) => cluster.id === selected.id)) {
+      setSelected(clusters[0])
+    }
+  }, [clusters, selected])
+
   const {
     register,
     handleSubmit,
@@ -148,16 +129,6 @@ export function ClusterPage() {
           },
         }
       )
-      setLocalClusters((prev) =>
-        prev.map((cluster) =>
-          cluster.id === editingClusterId
-            ? { ...cluster, name: form.name, type: form.type }
-            : cluster
-        )
-      )
-      if (selected?.id === editingClusterId) {
-        setSelected((prev) => (prev ? { ...prev, name: form.name, type: form.type } : prev))
-      }
       return
     }
 
@@ -167,19 +138,6 @@ export function ClusterPage() {
         reset(CLUSTER_DEFAULTS)
       },
     })
-
-    setLocalClusters((prev) => [
-      {
-        id: `local-${Date.now()}`,
-        name: form.name,
-        type: form.type,
-        endpoint: form.endpoint || `https://${form.name}.k8s.local`,
-        status: 'pending',
-        organizationIds: ['org-1'],
-        createdAt: new Date().toISOString(),
-      },
-      ...prev,
-    ])
   }
 
   const openCreateModal = () => {
@@ -209,11 +167,6 @@ export function ClusterPage() {
         setDeleteClusterId(null)
       },
     })
-
-    setLocalClusters((prev) => prev.filter((cluster) => cluster.id !== deleteClusterId))
-    if (selected?.id === deleteClusterId) {
-      setSelected(clusters.find((cluster) => cluster.id !== deleteClusterId) ?? null)
-    }
     setDeleteClusterId(null)
   }
 
@@ -258,7 +211,12 @@ export function ClusterPage() {
               <div className="border-b border-[var(--color-border-default)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
                 Clusters ({clusters.length})
               </div>
-              {clusters.map((cluster) => {
+              {isLoading && (
+                <div className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">
+                  Loading clusters...
+                </div>
+              )}
+              {!isLoading && clusters.map((cluster) => {
                 const st = STATUS_CONFIG[cluster.status]
                 const isSelected = selected?.id === cluster.id
                 return (
