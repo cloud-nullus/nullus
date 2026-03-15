@@ -1,6 +1,9 @@
 package keycloak
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type SSOProvisioner struct {
 	kc        *KeycloakClient
@@ -44,7 +47,7 @@ func NewSSOProvisioner(kc *KeycloakClient) *SSOProvisioner {
 func (p *SSOProvisioner) ProvisionSSO(ctx context.Context, stepName string) error {
 	spec, ok := p.toolSpecs[stepName]
 	if !ok {
-		return nil
+		return fmt.Errorf("unknown SSO tool: %s", stepName)
 	}
 	return p.kc.RegisterOIDCClient(ctx, spec.ClientID, spec.RedirectURIs, spec.DisplayName)
 }

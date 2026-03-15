@@ -113,3 +113,25 @@ func TestRBACByRouteGroup_RejectsDeveloperOnAlertConfig(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.JSONEq(t, `{"error":"insufficient permissions"}`, rec.Body.String())
 }
+
+func TestRequiredRolesForRoute_UnknownRouteRequiresAdmin(t *testing.T) {
+	requiredRoles := RequiredRolesForRoute("/api/v1/unknown/resource", http.MethodGet)
+	require.Equal(t, []admindomain.Role{admindomain.RoleAdmin}, requiredRoles)
+}
+
+func TestRBACByRouteGroup_RejectsDeveloperOnUnknownRoute(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/unknown/resource", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set(userContextKey, &admindomain.User{ID: "u1", Role: admindomain.RoleDeveloper})
+
+	h := RBACByRouteGroup()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := h(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.JSONEq(t, `{"error":"insufficient permissions"}`, rec.Body.String())
+}

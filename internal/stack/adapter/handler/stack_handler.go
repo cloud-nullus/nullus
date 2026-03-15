@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"reflect"
 
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -62,11 +63,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONFIG_INVALID", err.Error())
 	}
 
-	// orgID would come from auth middleware in production; use header as placeholder
-	orgID := c.Request().Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "00000000-0000-0000-0000-000000000001"
-	}
+	orgID := resolveOrgID(c)
 
 	out, err := h.createStack.Execute(c.Request().Context(), usecase.CreateStackInput{
 		Name:       req.Name,
@@ -99,10 +96,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 
 // ListStacks handles GET /api/v1/stacks.
 func (h *StackHandler) ListStacks(c echo.Context) error {
-	orgID := c.Request().Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "00000000-0000-0000-0000-000000000001"
-	}
+	orgID := resolveOrgID(c)
 
 	out, err := h.listStacks.Execute(c.Request().Context(), usecase.ListStacksInput{OrgID: orgID})
 	if err != nil {
@@ -154,4 +148,51 @@ func (h *StackHandler) SaveConfig(c echo.Context) error {
 
 func (h *StackHandler) SaveDraft(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]any{"draftId": "drf_" + uuid.NewString()})
+}
+
+func resolveOrgID(c echo.Context) string {
+	if claims, ok := c.Get("user_claims").(map[string]any); ok {
+		if orgID, ok := claims["org_id"].(string); ok && orgID != "" {
+			return orgID
+		}
+	}
+
+	if orgID := orgIDFromPrincipal(c.Get("current_user")); orgID != "" {
+		return orgID
+	}
+
+	if orgID := c.Request().Header.Get("X-Org-ID"); orgID != "" {
+		return orgID
+	}
+
+	if orgID := c.QueryParam("orgId"); orgID != "" {
+		return orgID
+	}
+
+	return "default-org"
+}
+
+func orgIDFromPrincipal(principal any) string {
+	if principal == nil {
+		return ""
+	}
+
+	v := reflect.ValueOf(principal)
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return ""
+		}
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+
+	orgField := v.FieldByName("OrgID")
+	if orgField.IsValid() && orgField.Kind() == reflect.String {
+		return orgField.String()
+	}
+
+	return ""
 }

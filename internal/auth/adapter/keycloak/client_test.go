@@ -222,12 +222,14 @@ func TestSSOProvisioner_DeprovisionSSO_DeletesMappedClient(t *testing.T) {
 	require.Equal(t, "/admin/realms/nullus/clients/minio-id", deletedPath)
 }
 
-func TestSSOProvisioner_UnknownStep_SkipsWithoutError(t *testing.T) {
+func TestSSOProvisioner_UnknownStep_ReturnsErrorOnProvision(t *testing.T) {
 	t.Parallel()
 
 	kc := NewKeycloakClient("http://127.0.0.1:1", "nullus", "admin", "admin")
 	p := NewSSOProvisioner(kc)
 
-	require.NoError(t, p.ProvisionSSO(context.Background(), "installing_unknown_tool"))
+	err := p.ProvisionSSO(context.Background(), "installing_unknown_tool")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown SSO tool")
 	require.NoError(t, p.DeprovisionSSO(context.Background(), "installing_unknown_tool"))
 }

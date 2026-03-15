@@ -38,7 +38,7 @@ func RequiredRolesForRoute(path, method string) []admindomain.Role {
 		}
 		return observabilityRouteRoles
 	}
-	return nil
+	return adminRouteRoles
 }
 
 func RBACByRouteGroup() echo.MiddlewareFunc {
@@ -52,6 +52,9 @@ func RBACByRouteGroup() echo.MiddlewareFunc {
 			}
 
 			requiredRoles := RequiredRolesForRoute(c.Request().URL.Path, c.Request().Method)
+			if requiredRoles == nil {
+				requiredRoles = adminRouteRoles
+			}
 			if len(requiredRoles) == 0 {
 				return next(c)
 			}
