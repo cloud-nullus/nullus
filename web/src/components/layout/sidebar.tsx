@@ -5,7 +5,6 @@ import {
   Box,
   Boxes,
   BookOpen,
-  Download,
   List,
   History,
   Shield,
@@ -51,7 +50,6 @@ const navGroups: NavGroup[] = [
     roles: ['admin', 'devops'],
     items: [
       { key: 'stackTemplate', label: 'sidebar.stackTemplate', path: '/stack/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackInstall', label: 'sidebar.stackInstall', path: '/stack/install', icon: <Download size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackList', label: 'sidebar.stackList', path: '/stack/list', icon: <List size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackHistory', label: 'sidebar.stackHistory', path: '/stack/history', icon: <History size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Shield size={16} />, roles: ['admin', 'devops'] },
@@ -152,7 +150,7 @@ export function Sidebar() {
               type="button"
               onClick={() => toggleGroup(group.key)}
               className={cn(
-                'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[#818cf8] uppercase',
+                'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[#a5b4fc] uppercase',
                 collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-4 py-2.5'
               )}
               aria-label={t(group.label)}
@@ -182,7 +180,7 @@ export function Sidebar() {
                           collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2 pl-8',
                           isActive
                             ? 'border-r-[#6366f1] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
-                            : 'border-r-transparent bg-transparent text-[var(--color-text-secondary)]'
+                            : 'border-r-transparent bg-transparent text-[#cbd5e1]'
                         )
                       }
                     >
