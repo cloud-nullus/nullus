@@ -21,6 +21,15 @@ export default defineConfig({
           if (id.includes('react-i18next') || id.includes('i18next')) {
             return 'vendor-i18n'
           }
+          if (id.includes('recharts')) {
+            return 'vendor-charts'
+          }
+          if (id.includes('react-hook-form') || id.includes('zod') || id.includes('@hookform')) {
+            return 'vendor-form'
+          }
+          if (id.includes('@tanstack/react-table')) {
+            return 'vendor-table'
+          }
         },
       },
     },
