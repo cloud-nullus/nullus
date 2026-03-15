@@ -25,7 +25,10 @@ func NewMemoryPipelineRepository() *MemoryPipelineRepository {
 func (r *MemoryPipelineRepository) Create(_ context.Context, p *domain.Pipeline) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pipelines[p.ID] = p
+	if _, ok := r.pipelines[p.ID]; ok {
+		return fmt.Errorf("pipeline %q already exists", p.ID)
+	}
+	r.pipelines[p.ID] = clonePipeline(p)
 	return nil
 }
 
@@ -37,7 +40,7 @@ func (r *MemoryPipelineRepository) GetByID(_ context.Context, id string) (*domai
 	if !ok {
 		return nil, fmt.Errorf("pipeline %q not found", id)
 	}
-	return p, nil
+	return clonePipeline(p), nil
 }
 
 // List returns all pipelines for an organization.
@@ -47,7 +50,7 @@ func (r *MemoryPipelineRepository) List(_ context.Context, orgID string) ([]*dom
 	var result []*domain.Pipeline
 	for _, p := range r.pipelines {
 		if p.OrgID == orgID {
-			result = append(result, p)
+			result = append(result, clonePipeline(p))
 		}
 	}
 	return result, nil
@@ -60,7 +63,7 @@ func (r *MemoryPipelineRepository) Update(_ context.Context, p *domain.Pipeline)
 	if _, ok := r.pipelines[p.ID]; !ok {
 		return fmt.Errorf("pipeline %q not found", p.ID)
 	}
-	r.pipelines[p.ID] = p
+	r.pipelines[p.ID] = clonePipeline(p)
 	return nil
 }
 
@@ -81,7 +84,10 @@ func NewMemoryDeploymentRepository() *MemoryDeploymentRepository {
 func (r *MemoryDeploymentRepository) Create(_ context.Context, d *domain.Deployment) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.deployments[d.ID] = d
+	if _, ok := r.deployments[d.ID]; ok {
+		return fmt.Errorf("deployment %q already exists", d.ID)
+	}
+	r.deployments[d.ID] = cloneDeployment(d)
 	return nil
 }
 
@@ -93,7 +99,7 @@ func (r *MemoryDeploymentRepository) GetByID(_ context.Context, id string) (*dom
 	if !ok {
 		return nil, fmt.Errorf("deployment %q not found", id)
 	}
-	return d, nil
+	return cloneDeployment(d), nil
 }
 
 // ListByPipelineID returns all deployments for a given pipeline.
@@ -103,7 +109,7 @@ func (r *MemoryDeploymentRepository) ListByPipelineID(_ context.Context, pipelin
 	var result []*domain.Deployment
 	for _, d := range r.deployments {
 		if d.PipelineID == pipelineID {
-			result = append(result, d)
+			result = append(result, cloneDeployment(d))
 		}
 	}
 	return result, nil
@@ -116,6 +122,26 @@ func (r *MemoryDeploymentRepository) Update(_ context.Context, d *domain.Deploym
 	if _, ok := r.deployments[d.ID]; !ok {
 		return fmt.Errorf("deployment %q not found", d.ID)
 	}
-	r.deployments[d.ID] = d
+	r.deployments[d.ID] = cloneDeployment(d)
 	return nil
+}
+
+func clonePipeline(p *domain.Pipeline) *domain.Pipeline {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	return &cp
+}
+
+func cloneDeployment(d *domain.Deployment) *domain.Deployment {
+	if d == nil {
+		return nil
+	}
+	cp := *d
+	if d.CompletedAt != nil {
+		completedAt := *d.CompletedAt
+		cp.CompletedAt = &completedAt
+	}
+	return &cp
 }
