@@ -5,7 +5,7 @@
     "stackInstall": "Stack Install",
     "stackList": "Stack List",
     "stackHistory": "Stack History",
-    "stackVersion": "Stack Version Management",
+    "stackVersion": "Stack Version",
     "cicd": "CI/CD",
     "cicdTemplate": "CI/CD Template",
     "cicdList": "CI/CD List",

@@ -1,5 +1,6 @@
 import { useState, Fragment } from 'react'
 import { Layers, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
@@ -34,6 +35,8 @@ export function StackVersionPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Stack Version' }]} />
+
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
@@ -44,7 +47,7 @@ export function StackVersionPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Compatibility Matrix
+              Stack Version
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               스택 버전 호환성 매트릭스
