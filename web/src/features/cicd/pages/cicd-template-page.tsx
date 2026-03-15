@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { GitBranch, Search } from 'lucide-react'
 import { useCicdTemplates } from '../api/cicd-api'
 import type { CicdTemplate } from '../api/cicd-api'
@@ -36,6 +37,7 @@ const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 }
 
 export function CicdTemplatePage() {
+  const navigate = useNavigate()
   const { data: apiTemplates } = useCicdTemplates()
   const templates = Array.isArray(apiTemplates) ? apiTemplates : MOCK_TEMPLATES
   const [search, setSearch] = useState('')
@@ -49,27 +51,18 @@ export function CicdTemplatePage() {
   return (
     <div>
       {/* Page header */}
-      <div style={{ marginBottom: '28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+      <div className="mb-7">
+        <div className="mb-2 flex items-center gap-2.5">
           <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(99,102,241,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#818cf8',
-            }}
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
           >
             <GitBranch size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               CI/CD Templates
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               파이프라인 템플릿을 선택하여 빠르게 시작하세요.
             </p>
           </div>
@@ -77,122 +70,72 @@ export function CicdTemplatePage() {
       </div>
 
       {/* Search */}
-      <div style={{ marginBottom: '20px', maxWidth: '360px' }}>
-        <div style={{ position: 'relative' }}>
+      <div className="mb-5 max-w-[360px]">
+        <div className="relative">
           <Search
             size={14}
-            style={{
-              position: 'absolute',
-              left: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--color-text-secondary)',
-              pointerEvents: 'none',
-            }}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
           <Input
             placeholder="템플릿 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '32px' }}
+            className="pl-8"
           />
         </div>
       </div>
 
       {/* Template cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: '16px',
-        }}
-      >
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
         {filtered.map((template) => {
           const typeColor = APP_TYPE_COLOR[template.appType] ?? APP_TYPE_COLOR['web-backend']
           return (
             <div
               key={template.id}
-              style={{
-                background: 'var(--color-surface-card)',
-                border: '1px solid var(--color-border-default)',
-                borderRadius: 'var(--card-radius)',
-                padding: 'var(--card-padding)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
-                transition: 'border-color var(--transition-default)',
-              }}
-              onMouseEnter={(e) => {
-                ;(e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border-hover)'
-              }}
-              onMouseLeave={(e) => {
-                ;(e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border-default)'
-              }}
+              className="flex flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-150"
             >
               {/* Card header */}
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: '15px',
-                      fontWeight: 700,
-                      color: 'var(--color-text-primary)',
-                    }}
-                  >
+                <div className="mb-2 flex items-center gap-2">
+                  <h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
                     {template.name}
                   </h3>
                   <span
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: '5px',
-                      background: typeColor.bg,
-                      color: typeColor.color,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                    }}
+                    className="rounded-[5px] px-2 py-0.5 text-[11px] font-semibold"
+                    style={{ backgroundColor: typeColor.bg, color: typeColor.color }}
                   >
                     {template.appType}
                   </span>
                 </div>
-                <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                <p className="m-0 text-[13px] leading-[1.5] text-[var(--color-text-secondary)]">
                   {template.description}
                 </p>
               </div>
 
               {/* Stages */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+              <div className="flex flex-wrap items-center gap-1">
                 {template.stages.map((stage, idx) => (
-                  <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div key={stage} className="flex items-center gap-1">
                     <span
-                      style={{
-                        padding: '3px 10px',
-                        borderRadius: '6px',
-                        background: 'rgba(99,102,241,0.12)',
-                        color: '#a5b4fc',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                      }}
+                      className="rounded-md bg-[rgba(99,102,241,0.12)] px-2.5 py-[3px] text-[11px] font-semibold text-[#a5b4fc]"
                     >
                       {stage}
                     </span>
                     {idx < template.stages.length - 1 && (
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>→</span>
+                      <span className="text-[11px] text-[var(--color-text-muted)]">→</span>
                     )}
                   </div>
                 ))}
               </div>
 
               {/* Footer */}
-              <div
-                style={{
-                  paddingTop: '10px',
-                  borderTop: '1px solid var(--color-border-default)',
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                }}
-              >
-                <Button variant="primary" size="sm">
+              <div className="flex justify-end border-t border-[var(--color-border-default)] pt-2.5">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="button"
+                  onClick={() => navigate(`/cicd/pipelines/new?template=${template.id}`)}
+                >
                   Use Template
                 </Button>
               </div>
@@ -202,14 +145,7 @@ export function CicdTemplatePage() {
       </div>
 
       {filtered.length === 0 && (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '60px 0',
-            color: 'var(--color-text-secondary)',
-            fontSize: '14px',
-          }}
-        >
+        <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
           검색 결과가 없습니다.
         </div>
       )}

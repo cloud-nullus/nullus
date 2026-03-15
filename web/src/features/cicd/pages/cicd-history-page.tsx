@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { History } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
+import { DataTable } from '../../../components/shared/data-table'
 
 const MOCK_DEPLOYMENTS: Deployment[] = [
   {
@@ -72,71 +74,77 @@ export function CicdHistoryPage() {
     return matchesStatus && matchesType
   })
 
-  const selectStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid var(--color-border-default)',
-    borderRadius: '8px',
-    padding: '9px 12px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    cursor: 'pointer',
-  }
+  const selectClassName =
+    'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    whiteSpace: 'nowrap',
-  }
-
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
-  }
+  const columns: ColumnDef<Deployment, unknown>[] = [
+    {
+      accessorKey: 'pipelineName',
+      header: '파이프라인',
+      cell: ({ row }) => <span className="font-semibold">{row.original.pipelineName}</span>,
+    },
+    {
+      accessorKey: 'version',
+      header: '버전',
+      cell: ({ row }) => <span className="font-mono text-[13px]">{row.original.version}</span>,
+    },
+    {
+      accessorKey: 'status',
+      header: '상태',
+      cell: ({ row }) => {
+        const st = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending
+        return (
+          <span className="rounded-md px-[9px] py-[3px] text-xs font-semibold" style={{ backgroundColor: st.bg, color: st.color }}>
+            {st.label}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: 'triggeredBy',
+      header: '배포자',
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{row.original.triggeredBy}</span>,
+    },
+    {
+      accessorKey: 'startedAt',
+      header: '시작 시간',
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.startedAt)}</span>,
+    },
+    {
+      accessorKey: 'completedAt',
+      header: '완료 시간',
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.completedAt)}</span>,
+    },
+  ]
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
+      <div className="mb-7 flex items-center gap-2.5">
         <div
-          style={{
-            width: 'var(--icon-size)',
-            height: 'var(--icon-size)',
-            background: 'rgba(245,158,11,0.15)',
-            borderRadius: 'var(--icon-radius)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fbbf24',
-          }}
+          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(245,158,11,0.15)] text-[#fbbf24]"
         >
           <History size={18} />
         </div>
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
             Deployment History
           </h1>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
             CI/CD 배포 이력
           </p>
         </div>
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={selectStyle}>
+      <div className="mb-4 flex flex-wrap gap-2.5">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={selectClassName}>
           <option value="">All Types</option>
           <option value="api">API</option>
           <option value="frontend">Frontend</option>
           <option value="batch">Batch</option>
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectStyle}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClassName}>
           <option value="">All Status</option>
           <option value="success">Success</option>
           <option value="running">Running</option>
@@ -146,55 +154,7 @@ export function CicdHistoryPage() {
         </select>
       </div>
 
-      {/* Table */}
-      <div
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-              {['파이프라인', '버전', '상태', '배포자', '시작 시간', '완료 시간'].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((d) => {
-              const st = STATUS_STYLES[d.status] ?? STATUS_STYLES.pending
-              return (
-                <tr
-                  key={d.id}
-                  style={{ transition: 'background var(--transition-fast)' }}
-                  onMouseEnter={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)' }}
-                  onMouseLeave={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
-                >
-                  <td style={tdStyle}><span style={{ fontWeight: 600 }}>{d.pipelineName}</span></td>
-                  <td style={{ ...tdStyle, fontFamily: 'Fira Code, monospace', fontSize: '13px' }}>{d.version}</td>
-                  <td style={tdStyle}>
-                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: st.bg, color: st.color, fontSize: '12px', fontWeight: 600 }}>
-                      {st.label}
-                    </span>
-                  </td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontSize: '13px' }}>{d.triggeredBy}</td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontSize: '13px' }}>{formatDate(d.startedAt)}</td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontSize: '13px' }}>{formatDate(d.completedAt)}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-
-        {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--color-text-secondary)', fontSize: '14px' }}>
-            배포 이력이 없습니다.
-          </div>
-        )}
-      </div>
+      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="배포 이력이 없습니다." />
     </div>
   )
 }

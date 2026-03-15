@@ -1,10 +1,15 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { GitBranch, Plus, Search, Play } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import { usePipelines, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
-import type { Pipeline, PipelineStatus, AppType, CreatePipelineRequest } from '../api/cicd-api'
+import type { Pipeline, PipelineStatus, AppType } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
+import { DataTable } from '../../../components/shared/data-table'
 
 const MOCK_PIPELINES: Pipeline[] = [
   {
@@ -52,21 +57,38 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-const selectStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid var(--color-border-default)',
-  borderRadius: '8px',
-  padding: '9px 12px',
-  fontSize: '14px',
-  color: 'var(--color-text-primary)',
-  cursor: 'pointer',
+const selectClassName =
+  'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
+
+const createPipelineSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  template: z.enum(['web-backend', 'web-frontend', 'batch-job'], { message: 'Template is required' }),
+  clusterId: z.string().min(1, 'Cluster is required'),
+})
+
+type CreatePipelineFormData = z.infer<typeof createPipelineSchema>
+
+const CREATE_PIPELINE_DEFAULTS: CreatePipelineFormData = {
+  name: '',
+  template: 'web-backend',
+  clusterId: '',
 }
 
 export function CicdListPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
   const [createModal, setCreateModal] = useState(false)
-  const [form, setForm] = useState<CreatePipelineRequest>({ name: '', appType: 'web-backend', clusterId: '' })
+  const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null)
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isValid, isSubmitting },
+  } = useForm<CreatePipelineFormData>({
+    resolver: zodResolver(createPipelineSchema),
+    defaultValues: CREATE_PIPELINE_DEFAULTS,
+    mode: 'onChange',
+  })
 
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
   const pipelines = apiData?.items ?? MOCK_PIPELINES
@@ -80,89 +102,136 @@ export function CicdListPage() {
     return matchesSearch && matchesStatus
   })
 
-  const handleCreate = () => {
-    createPipeline.mutate(form, {
+  const handleCreate = (data: CreatePipelineFormData) => {
+    createPipeline.mutate({ name: data.name, appType: data.template as AppType, clusterId: data.clusterId }, {
       onSuccess: () => {
         setCreateModal(false)
-        setForm({ name: '', appType: 'web-backend', clusterId: '' })
+        reset(CREATE_PIPELINE_DEFAULTS)
       },
     })
   }
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    whiteSpace: 'nowrap',
-  }
+  const columns: ColumnDef<Pipeline, unknown>[] = [
+    {
+      accessorKey: 'name',
+      header: '이름',
+      cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
+    },
+    {
+      accessorKey: 'appType',
+      header: '앱 타입',
+      cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.appType}</span>,
+    },
+    {
+      accessorKey: 'clusterName',
+      header: '클러스터',
+      cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.clusterName}</span>,
+    },
+    {
+      accessorKey: 'status',
+      header: '상태',
+      cell: ({ row }) => {
+        const st = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending
+        return (
+          <span className="rounded-md px-[9px] py-[3px] text-xs font-semibold" style={{ backgroundColor: st.bg, color: st.color }}>
+            {st.label}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: 'lastDeployedAt',
+      header: '최근 배포',
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.lastDeployedAt)}</span>,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const expanded = expandedPipelineId === row.original.id
+        return (
+          <div className="flex gap-1.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={deployPipeline.isPending}
+              onClick={(event) => {
+                event.stopPropagation()
+                deployPipeline.mutate(row.original.id)
+              }}
+              type="button"
+            >
+              <Play size={11} />
+              Deploy
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setExpandedPipelineId((prev) => (prev === row.original.id ? null : row.original.id))
+              }}
+            >
+              {expanded ? 'Hide' : 'View'}
+            </Button>
+          </div>
+        )
+      },
+    },
+  ]
 
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
-  }
+  const expandedPipeline = filtered.find((pipeline) => pipeline.id === expandedPipelineId) ?? null
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="mb-6 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
           <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(99,102,241,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#818cf8',
-            }}
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
           >
             <GitBranch size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               CI/CD Pipelines
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               CI/CD 파이프라인 목록
             </p>
           </div>
         </div>
-        <Button variant="primary" size="md" onClick={() => setCreateModal(true)}>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => {
+            reset(CREATE_PIPELINE_DEFAULTS)
+            setCreateModal(true)
+          }}
+          type="button"
+        >
           <Plus size={15} />
           New Pipeline
         </Button>
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: '320px' }}>
+      <div className="mb-4 flex flex-wrap gap-2.5">
+        <div className="relative max-w-[320px] flex-[1_1_240px]">
           <Search
             size={13}
-            style={{
-              position: 'absolute',
-              left: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--color-text-secondary)',
-              pointerEvents: 'none',
-            }}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
           <Input
             placeholder="파이프라인 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '30px' }}
+            className="pl-[30px]"
           />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectStyle}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClassName}>
           <option value="">All Status</option>
           <option value="success">Success</option>
           <option value="running">Running</option>
@@ -172,116 +241,87 @@ export function CicdListPage() {
         </select>
       </div>
 
-      {/* Table */}
-      <div
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-              {['이름', '앱 타입', '클러스터', '상태', '최근 배포', 'Actions'].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p) => {
-              const st = STATUS_STYLES[p.status] ?? STATUS_STYLES.pending
-              return (
-                <tr
-                  key={p.id}
-                  style={{ transition: 'background var(--transition-fast)' }}
-                  onMouseEnter={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)' }}
-                  onMouseLeave={(e) => { ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
-                >
-                  <td style={tdStyle}><span style={{ fontWeight: 600 }}>{p.name}</span></td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)' }}>{p.appType}</td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)' }}>{p.clusterName}</td>
-                  <td style={tdStyle}>
-                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: st.bg, color: st.color, fontSize: '12px', fontWeight: 600 }}>
-                      {st.label}
-                    </span>
-                  </td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-                    {formatDate(p.lastDeployedAt)}
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        loading={deployPipeline.isPending}
-                        onClick={() => deployPipeline.mutate(p.id)}
-                      >
-                        <Play size={11} />
-                        Deploy
-                      </Button>
-                      <Button variant="ghost" size="sm">View</Button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="파이프라인이 없습니다." />
 
-        {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--color-text-secondary)', fontSize: '14px' }}>
-            파이프라인이 없습니다.
+      {expandedPipeline && (
+        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-[14px]">
+          <div className="grid grid-cols-[repeat(3,minmax(120px,1fr))] gap-3">
+            <div>
+              <div className="mb-1 text-[11px] text-[var(--color-text-secondary)]">Pipeline ID</div>
+              <div className="font-mono text-[13px] text-[var(--color-text-primary)]">{expandedPipeline.id}</div>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] text-[var(--color-text-secondary)]">Cluster ID</div>
+              <div className="font-mono text-[13px] text-[var(--color-text-primary)]">{expandedPipeline.clusterId}</div>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] text-[var(--color-text-secondary)]">Created At</div>
+              <div className="text-[13px] text-[var(--color-text-primary)]">{formatDate(expandedPipeline.createdAt)}</div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Create Pipeline Modal */}
       <Modal
         open={createModal}
-        onClose={() => setCreateModal(false)}
+        onClose={() => {
+          setCreateModal(false)
+          reset(CREATE_PIPELINE_DEFAULTS)
+        }}
         title="New Pipeline"
         footer={
           <>
-            <Button variant="outline" size="sm" onClick={() => setCreateModal(false)}>Cancel</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setCreateModal(false)
+                reset(CREATE_PIPELINE_DEFAULTS)
+              }}
+              type="button"
+            >
+              Cancel
+            </Button>
             <Button
               variant="primary"
               size="sm"
-              loading={createPipeline.isPending}
-              onClick={handleCreate}
-              disabled={!form.name || !form.clusterId}
+              loading={createPipeline.isPending || isSubmitting}
+              onClick={handleSubmit(handleCreate)}
+              disabled={!isValid || isSubmitting}
+              type="button"
             >
               Create
             </Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="flex flex-col gap-[14px]">
           <Input
             label="파이프라인 이름"
             placeholder="예: api-server-pipeline"
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+            {...register('name')}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>앱 타입</label>
+          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="pipeline-app-type" className="text-xs font-medium text-[var(--color-text-secondary)]">앱 타입</label>
             <select
-              value={form.appType}
-              onChange={(e) => setForm((p) => ({ ...p, appType: e.target.value as AppType }))}
-              style={selectStyle}
+              id="pipeline-app-type"
+              {...register('template')}
+              className={selectClassName}
             >
               <option value="web-backend">Web Backend</option>
               <option value="web-frontend">Web Frontend</option>
               <option value="batch-job">Batch Job</option>
             </select>
           </div>
+          {errors.template && <span className="text-xs text-[#ef4444]">{errors.template.message}</span>}
           <Input
             label="클러스터 ID"
             placeholder="예: c1"
-            value={form.clusterId}
-            onChange={(e) => setForm((p) => ({ ...p, clusterId: e.target.value }))}
+            {...register('clusterId')}
           />
+          {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
         </div>
       </Modal>
     </div>

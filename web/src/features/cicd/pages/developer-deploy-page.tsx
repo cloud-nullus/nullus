@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { useForm, useFieldArray } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Rocket, Plus, Trash2, ChevronRight } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -6,6 +9,7 @@ import { CodePreview } from '../../../components/shared/code-preview'
 import { useAuthStore } from '../../../stores/auth-store'
 import { useDeployApp } from '../api/cicd-api'
 import type { AppTemplate, DeployAppRequest } from '../api/cicd-api'
+import { cn } from '../../../lib/utils'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -95,6 +99,36 @@ interface FormState {
   envVars: EnvVar[]
 }
 
+const deploySchema = z.object({
+  template: z.enum(['react-spa', 'next-app', 'express-api', 'spring-boot', 'python-fastapi']),
+  appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
+  gitUrl: z.string().min(1, 'Git URL is required').url('Invalid Git URL'),
+  clusterId: z.string().min(1, 'Cluster is required'),
+  namespace: z.string().min(1, 'Namespace is required'),
+  cpuRequest: z.string().min(1, 'CPU request is required'),
+  cpuLimit: z.string().min(1, 'CPU limit is required'),
+  memoryRequest: z.string().min(1, 'Memory request is required'),
+  memoryLimit: z.string().min(1, 'Memory limit is required'),
+  envVars: z
+    .array(
+      z.object({
+        key: z.string(),
+        value: z.string(),
+      })
+    )
+    .superRefine((envVars, ctx) => {
+      envVars.forEach((env, index) => {
+        if (env.value.trim() && !env.key.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Key is required when value exists',
+            path: [index, 'key'],
+          })
+        }
+      })
+    }),
+})
+
 const DEFAULT_FORM: FormState = {
   template: 'react-spa',
   appName: '',
@@ -111,50 +145,59 @@ const DEFAULT_FORM: FormState = {
 export function DeveloperDeployPage() {
   const role = useAuthStore((s) => s.role)
   const [step, setStep] = useState<Step>(1)
-  const [form, setForm] = useState<FormState>(DEFAULT_FORM)
   const [deployed, setDeployed] = useState(false)
+  const {
+    register,
+    control,
+    watch,
+    setValue,
+    trigger,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormState>({
+    resolver: zodResolver(deploySchema),
+    defaultValues: DEFAULT_FORM,
+    mode: 'onChange',
+  })
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'envVars',
+  })
+
+  const form = watch()
 
   const deployMutation = useDeployApp()
 
   if (role !== 'developer') {
     return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '300px',
-          flexDirection: 'column',
-          gap: '12px',
-          color: 'var(--color-text-secondary)',
-        }}
-      >
-        <Rocket size={40} style={{ opacity: 0.3 }} />
-        <p style={{ margin: 0, fontSize: '15px' }}>이 페이지는 Developer 역할 전용입니다.</p>
+      <div className="flex h-[300px] flex-col items-center justify-center gap-3 text-[var(--color-text-secondary)]">
+        <Rocket size={40} className="opacity-30" />
+        <p className="m-0 text-[15px]">이 페이지는 Developer 역할 전용입니다.</p>
       </div>
     )
   }
 
-  const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
+  const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
+    setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
   }
 
   const selectedCluster = CLUSTERS.find((c) => c.id === form.clusterId) ?? CLUSTERS[0]
 
-  const handleDeploy = () => {
+  const onSubmit = (data: FormState) => {
     const request: DeployAppRequest = {
-      appName: form.appName,
-      gitUrl: form.gitUrl,
-      clusterId: form.clusterId,
-      namespace: form.namespace,
-      template: form.template,
+      appName: data.appName,
+      gitUrl: data.gitUrl,
+      clusterId: data.clusterId,
+      namespace: data.namespace,
+      template: data.template,
       resources: {
-        cpuRequest: form.cpuRequest,
-        cpuLimit: form.cpuLimit,
-        memoryRequest: form.memoryRequest,
-        memoryLimit: form.memoryLimit,
+        cpuRequest: data.cpuRequest,
+        cpuLimit: data.cpuLimit,
+        memoryRequest: data.memoryRequest,
+        memoryLimit: data.memoryLimit,
       },
-      envVars: form.envVars.filter((e) => e.key),
+      envVars: data.envVars.filter((e) => e.key),
     }
     deployMutation.mutate(request, {
       onSuccess: () => setDeployed(true),
@@ -162,35 +205,34 @@ export function DeveloperDeployPage() {
     })
   }
 
+  const validateCurrentStep = async () => {
+    if (step === 1) return trigger('appName')
+    if (step === 2) return trigger('gitUrl')
+    if (step === 3) return trigger(['clusterId', 'namespace'])
+    if (step === 4) return trigger(['cpuLimit', 'memoryLimit'])
+    return trigger('envVars')
+  }
+
   const canNext: Record<Step, boolean> = {
     1: form.appName.trim().length >= 2,
-    2: form.gitUrl.trim().startsWith('http'),
+    2: form.gitUrl.trim().length > 0 && !errors.gitUrl,
     3: !!form.clusterId && !!form.namespace,
     4: !!form.cpuLimit && !!form.memoryLimit,
-    5: true,
+    5: !errors.envVars,
   }
 
   if (deployed) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '360px', gap: '16px' }}>
+      <div className="flex h-[360px] flex-col items-center justify-center gap-4">
         <div
-          style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            background: 'rgba(34,197,94,0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#22c55e',
-          }}
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(34,197,94,0.15)] text-[#22c55e]"
         >
           <Rocket size={28} />
         </div>
-        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+        <h2 className="m-0 text-xl font-extrabold text-[var(--color-text-primary)]">
           배포 요청 완료!
         </h2>
-        <p style={{ margin: 0, fontSize: '14px', color: 'var(--color-text-secondary)' }}>
+        <p className="m-0 text-sm text-[var(--color-text-secondary)]">
           {form.appName} 앱이 {form.namespace} 네임스페이스에 배포 요청되었습니다.
         </p>
         <Button
@@ -198,7 +240,7 @@ export function DeveloperDeployPage() {
           size="md"
           onClick={() => {
             setDeployed(false)
-            setForm(DEFAULT_FORM)
+            reset(DEFAULT_FORM)
             setStep(1)
           }}
         >
@@ -211,64 +253,48 @@ export function DeveloperDeployPage() {
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
+      <div className="mb-7 flex items-center gap-2.5">
         <div
-          style={{
-            width: 'var(--icon-size)',
-            height: 'var(--icon-size)',
-            background: 'rgba(99,102,241,0.15)',
-            borderRadius: 'var(--icon-radius)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#818cf8',
-          }}
+          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
         >
           <Rocket size={18} />
         </div>
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
             Developer Self-Service 배포
           </h1>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
             앱 템플릿을 선택하고 배포 위자드를 따라 배포하세요.
           </p>
         </div>
       </div>
 
       {/* Template selection */}
-      <div style={{ marginBottom: '28px' }}>
-        <p style={{ margin: '0 0 12px', fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div className="mb-7">
+        <p className="mb-3 mt-0 text-[13px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
           앱 템플릿
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5">
           {APP_TEMPLATES.map((t) => (
             <button
               key={t.id}
+              type="button"
               onClick={() => setField('template', t.id)}
-              style={{
-                background: form.template === t.id ? 'rgba(99,102,241,0.15)' : 'var(--color-surface-card)',
-                border: `1px solid ${form.template === t.id ? 'rgba(99,102,241,0.5)' : 'var(--color-border-default)'}`,
-                borderRadius: '10px',
-                padding: '14px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all var(--transition-fast)',
-              }}
+              className={cn(
+                'cursor-pointer rounded-[10px] border p-[14px] text-left transition-all duration-150',
+                form.template === t.id
+                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.15)]'
+                  : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)]'
+              )}
             >
               <div
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: t.color,
-                  marginBottom: '8px',
-                }}
+                className="mb-2 h-2 w-2 rounded-full"
+                style={{ backgroundColor: t.color }}
               />
-              <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+              <p className="mb-1 mt-0 text-[13px] font-bold text-[var(--color-text-primary)]">
                 {t.name}
               </p>
-              <p style={{ margin: 0, fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+              <p className="m-0 text-[11px] text-[var(--color-text-secondary)]">
                 {t.language}
               </p>
             </button>
@@ -277,63 +303,44 @@ export function DeveloperDeployPage() {
       </div>
 
       {/* Step indicator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '24px', flexWrap: 'wrap' }}>
+      <div className="mb-6 flex flex-wrap items-center gap-1">
         {([1, 2, 3, 4, 5] as Step[]).map((s, i) => (
-          <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div key={s} className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => s < step && setStep(s)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'none',
-                border: 'none',
-                cursor: s < step ? 'pointer' : 'default',
-                padding: '4px 6px',
-                borderRadius: '6px',
-              }}
+              className={cn('flex items-center gap-1.5 rounded-md border-none bg-none px-1.5 py-1', s < step ? 'cursor-pointer' : 'cursor-default')}
             >
               <div
-                style={{
-                  width: '22px',
-                  height: '22px',
-                  borderRadius: '50%',
-                  background: s === step ? '#6366f1' : s < step ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)',
-                  color: s === step ? '#fff' : s < step ? '#22c55e' : 'var(--color-text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
+                className={cn(
+                  'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
+                  s === step
+                    ? 'bg-[#6366f1] text-white'
+                    : s < step
+                      ? 'bg-[rgba(34,197,94,0.3)] text-[#22c55e]'
+                      : 'bg-[rgba(255,255,255,0.08)] text-[var(--color-text-secondary)]'
+                )}
               >
                 {s}
               </div>
               <span
-                style={{
-                  fontSize: '13px',
-                  color: s === step ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                  fontWeight: s === step ? 600 : 400,
-                }}
+                className={cn(
+                  'text-[13px]',
+                  s === step ? 'font-semibold text-[var(--color-text-primary)]' : 'font-normal text-[var(--color-text-secondary)]'
+                )}
               >
                 {STEP_LABELS[s]}
               </span>
             </button>
-            {i < 4 && <ChevronRight size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />}
+            {i < 4 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
           </div>
         ))}
       </div>
 
       {/* Step content */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'start' }}>
+      <div className="grid grid-cols-2 items-start gap-6">
         <div
-          style={{
-            background: 'var(--color-surface-card)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--card-radius)',
-            padding: '24px',
-          }}
+          className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6"
         >
           {step === 1 && (
             <StepSection title="앱 이름 입력">
@@ -342,7 +349,8 @@ export function DeveloperDeployPage() {
                 value={form.appName}
                 onChange={(e) => setField('appName', e.target.value)}
               />
-              <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+              {errors.appName && <span className="text-xs text-[#ef4444]">{errors.appName.message}</span>}
+              <p className="mb-0 mt-1.5 text-xs text-[var(--color-text-secondary)]">
                 소문자, 숫자, 하이픈만 사용 가능합니다.
               </p>
             </StepSection>
@@ -355,39 +363,44 @@ export function DeveloperDeployPage() {
                 value={form.gitUrl}
                 onChange={(e) => setField('gitUrl', e.target.value)}
               />
+              {errors.gitUrl && <span className="text-xs text-[#ef4444]">{errors.gitUrl.message}</span>}
             </StepSection>
           )}
 
           {step === 3 && (
             <StepSection title="클러스터 & 네임스페이스">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="flex flex-col gap-3">
                 <div>
-                  <label style={labelStyle}>클러스터</label>
+                  <label htmlFor="deploy-cluster" className={labelStyleClass}>클러스터</label>
                   <select
+                    id="deploy-cluster"
                     value={form.clusterId}
                     onChange={(e) => {
                       setField('clusterId', e.target.value)
                       const cl = CLUSTERS.find((c) => c.id === e.target.value)
                       if (cl) setField('namespace', cl.namespaces[0])
                     }}
-                    style={selectStyle}
+                    className={selectStyleClass}
                   >
                     {CLUSTERS.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                  {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
                 </div>
                 <div>
-                  <label style={labelStyle}>네임스페이스</label>
+                  <label htmlFor="deploy-namespace" className={labelStyleClass}>네임스페이스</label>
                   <select
+                    id="deploy-namespace"
                     value={form.namespace}
                     onChange={(e) => setField('namespace', e.target.value)}
-                    style={selectStyle}
+                    className={selectStyleClass}
                   >
                     {selectedCluster.namespaces.map((ns) => (
                       <option key={ns} value={ns}>{ns}</option>
                     ))}
                   </select>
+                  {errors.namespace && <span className="text-xs text-[#ef4444]">{errors.namespace.message}</span>}
                 </div>
               </div>
             </StepSection>
@@ -395,7 +408,7 @@ export function DeveloperDeployPage() {
 
           {step === 4 && (
             <StepSection title="리소스 설정">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="flex flex-col gap-4">
                 <ResourceSlider
                   label="CPU Request"
                   value={form.cpuRequest}
@@ -426,42 +439,41 @@ export function DeveloperDeployPage() {
 
           {step === 5 && (
             <StepSection title="환경 변수">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {form.envVars.map((env, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <Input
-                      placeholder="KEY"
-                      value={env.key}
-                      onChange={(e) => {
-                        const next = [...form.envVars]
-                        next[i] = { ...next[i], key: e.target.value }
-                        setField('envVars', next)
-                      }}
-                      style={{ fontFamily: 'Fira Code, monospace', fontSize: '13px', flex: 1 }}
-                    />
-                    <Input
-                      placeholder="value"
-                      value={env.value}
-                      onChange={(e) => {
-                        const next = [...form.envVars]
-                        next[i] = { ...next[i], value: e.target.value }
-                        setField('envVars', next)
-                      }}
-                      style={{ fontFamily: 'Fira Code, monospace', fontSize: '13px', flex: 2 }}
-                    />
-                    <button
-                      onClick={() => setField('envVars', form.envVars.filter((_, j) => j !== i))}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f87171', padding: '4px', flexShrink: 0 }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+              <div className="flex flex-col gap-2">
+                {fields.map((field, i) => (
+                  <div key={field.id}>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="KEY"
+                        {...register(`envVars.${i}.key`)}
+                        className="flex-1 font-mono text-[13px]"
+                      />
+                      <Input
+                        placeholder="value"
+                        {...register(`envVars.${i}.value`)}
+                        className="flex-[2] font-mono text-[13px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => remove(i)}
+                        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[#f87171]"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    {errors.envVars?.[i]?.key?.message && (
+                      <span className="text-xs text-[#ef4444]">
+                        {errors.envVars[i]?.key?.message}
+                      </span>
+                    )}
                   </div>
                 ))}
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setField('envVars', [...form.envVars, { key: '', value: '' }])}
-                  style={{ alignSelf: 'flex-start', marginTop: '4px' }}
+                  onClick={() => append({ key: '', value: '' })}
+                  className="mt-1 self-start"
+                  type="button"
                 >
                   <Plus size={13} />
                   변수 추가
@@ -471,7 +483,7 @@ export function DeveloperDeployPage() {
           )}
 
           {/* Navigation */}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
+          <div className="mt-6 flex justify-end gap-2.5">
             {step > 1 && (
               <Button variant="outline" size="md" onClick={() => setStep((s) => (s - 1) as Step)}>
                 이전
@@ -482,7 +494,11 @@ export function DeveloperDeployPage() {
                 variant="primary"
                 size="md"
                 disabled={!canNext[step]}
-                onClick={() => setStep((s) => (s + 1) as Step)}
+                onClick={async () => {
+                  const isStepValid = await validateCurrentStep()
+                  if (!isStepValid) return
+                  setStep((s) => (s + 1) as Step)
+                }}
               >
                 다음
               </Button>
@@ -491,7 +507,8 @@ export function DeveloperDeployPage() {
                 variant="primary"
                 size="md"
                 loading={deployMutation.isPending}
-                onClick={handleDeploy}
+                disabled={isSubmitting || !!errors.envVars}
+                onClick={handleSubmit(onSubmit)}
               >
                 <Rocket size={14} />
                 Deploy
@@ -502,7 +519,7 @@ export function DeveloperDeployPage() {
 
         {/* YAML preview */}
         <div>
-          <p style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
             YAML 매니페스트 미리보기
           </p>
           <CodePreview
@@ -520,7 +537,7 @@ export function DeveloperDeployPage() {
 function StepSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p style={{ margin: '0 0 16px', fontSize: '15px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+      <p className="mb-4 mt-0 text-[15px] font-bold text-[var(--color-text-primary)]">
         {title}
       </p>
       {children}
@@ -540,32 +557,29 @@ function ResourceSlider({
   onChange: (v: string) => void
 }) {
   const idx = options.indexOf(value)
+  const sliderId = `resource-${label.toLowerCase().replace(/\s+/g, '-')}`
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-        <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+      <div className="mb-1.5 flex justify-between">
+        <label htmlFor={sliderId} className={cn(labelStyleClass, 'mb-0')}>{label}</label>
         <span
-          style={{
-            fontSize: '13px',
-            fontFamily: 'Fira Code, monospace',
-            color: '#a5b4fc',
-            fontWeight: 600,
-          }}
+          className="font-mono text-[13px] font-semibold text-[#a5b4fc]"
         >
           {value}
         </span>
       </div>
       <input
+        id={sliderId}
         type="range"
         min={0}
         max={options.length - 1}
         value={idx >= 0 ? idx : 0}
         onChange={(e) => onChange(options[Number(e.target.value)])}
-        style={{ width: '100%', accentColor: '#6366f1' }}
+        className="w-full accent-[#6366f1]"
       />
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+      <div className="mt-1 flex justify-between">
         {options.map((o) => (
-          <span key={o} style={{ fontSize: '10px', color: 'var(--color-text-secondary)', fontFamily: 'Fira Code, monospace' }}>
+          <span key={o} className="font-mono text-[10px] text-[var(--color-text-secondary)]">
             {o}
           </span>
         ))}
@@ -574,23 +588,7 @@ function ResourceSlider({
   )
 }
 
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '12px',
-  fontWeight: 600,
-  color: 'var(--color-text-secondary)',
-  marginBottom: '6px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-}
+const labelStyleClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]'
 
-const selectStyle: React.CSSProperties = {
-  width: '100%',
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid var(--color-border-default)',
-  borderRadius: '8px',
-  padding: '9px 12px',
-  fontSize: '14px',
-  color: 'var(--color-text-primary)',
-  cursor: 'pointer',
-}
+const selectStyleClass =
+  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
