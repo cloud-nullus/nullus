@@ -130,17 +130,17 @@ urlencode() {
 }
 
 ensure_user_with_role() {
-  local username="$1"
-  local role="$2"
+   local username="$1"
+   local role="$2"
 
-  local users_json
-  users_json=$(auth_get "/admin/realms/${REALM}/users?username=$(urlencode "$username")")
-  local user_id
-  user_id=$(lookup_first_id "$users_json")
+   local users_json
+   users_json=$(auth_get "/admin/realms/${REALM}/users?username=$(urlencode "$username")")
+   local user_id
+   user_id=$(lookup_first_id "$users_json")
 
-  if [[ -z "$user_id" ]]; then
-    local user_payload
-    user_payload=$(cat <<EOF
+   if [[ -z "$user_id" ]]; then
+     local user_payload
+     user_payload=$(cat <<EOF
 {
   "username": "${username}",
   "email": "${username}",
@@ -156,19 +156,26 @@ ensure_user_with_role() {
 }
 EOF
 )
-    auth_post "/admin/realms/${REALM}/users" "$user_payload" >/dev/null
-    users_json=$(auth_get "/admin/realms/${REALM}/users?username=$(urlencode "$username")")
-    user_id=$(lookup_first_id "$users_json")
-  fi
+     auth_post "/admin/realms/${REALM}/users" "$user_payload" >/dev/null
+     users_json=$(auth_get "/admin/realms/${REALM}/users?username=$(urlencode "$username")")
+     user_id=$(lookup_first_id "$users_json")
+   fi
 
-  local role_json
-  role_json=$(auth_get "/admin/realms/${REALM}/roles/${role}")
-  local mapping_status
-  mapping_status=$(auth_post "/admin/realms/${REALM}/users/${user_id}/role-mappings/realm" "[$role_json]")
-  if [[ "$mapping_status" != "204" ]]; then
-    echo "failed to assign role ${role} to ${username}" >&2
-    exit 1
-  fi
+   # Check if role is already assigned
+   local user_roles_json
+   user_roles_json=$(auth_get "/admin/realms/${REALM}/users/${user_id}/role-mappings/realm")
+   if echo "$user_roles_json" | grep -q "\"name\":\"${role}\""; then
+     return
+   fi
+
+   local role_json
+   role_json=$(auth_get "/admin/realms/${REALM}/roles/${role}")
+   local mapping_status
+   mapping_status=$(auth_post "/admin/realms/${REALM}/users/${user_id}/role-mappings/realm" "[$role_json]")
+   if [[ "$mapping_status" != "204" ]]; then
+     echo "failed to assign role ${role} to ${username}" >&2
+     exit 1
+   fi
 }
 
 ADMIN_TOKEN=$(get_admin_token)
