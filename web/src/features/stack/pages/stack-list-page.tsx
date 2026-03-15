@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { List, Plus, Search, ChevronUp, ChevronDown } from 'lucide-react'
+import { List, Plus, Search } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks } from '../api/stack-api'
 import type { Stack } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
-
-type SortField = 'name' | 'templateName' | 'clusterName' | 'status' | 'createdAt'
-type SortDir = 'asc' | 'desc'
+import { DataTable } from '../../../components/shared/data-table'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
@@ -61,84 +60,91 @@ export function StackListPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [sort, setSort] = useState<{ field: SortField; dir: SortDir }>({ field: 'createdAt', dir: 'desc' })
 
   const { data: apiData } = useStacks({ search, status: statusFilter || undefined })
   const stacks = apiData?.items ?? MOCK_STACKS
 
-  const filtered = stacks
-    .filter((s) => {
-      const q = search.toLowerCase()
-      const matchesSearch =
-        !search ||
-        s.name.toLowerCase().includes(q) ||
-        s.templateName.toLowerCase().includes(q) ||
-        s.clusterName.toLowerCase().includes(q)
-      const matchesStatus = !statusFilter || s.status === statusFilter
-      return matchesSearch && matchesStatus
-    })
-    .sort((a, b) => {
-      const mul = sort.dir === 'asc' ? 1 : -1
-      const av = a[sort.field] ?? ''
-      const bv = b[sort.field] ?? ''
-      return av < bv ? -mul : av > bv ? mul : 0
-    })
+  const filtered = stacks.filter((s) => {
+    const q = search.toLowerCase()
+    const matchesSearch =
+      !search ||
+      s.name.toLowerCase().includes(q) ||
+      s.templateName.toLowerCase().includes(q) ||
+      s.clusterName.toLowerCase().includes(q)
+    const matchesStatus = !statusFilter || s.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
-  const handleSort = (field: SortField) => {
-    setSort((prev) =>
-      prev.field === field ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { field, dir: 'asc' }
-    )
-  }
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sort.field !== field) return null
-    return sort.dir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-  }
-
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    cursor: 'pointer',
-    userSelect: 'none',
-    whiteSpace: 'nowrap',
-  }
-
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
-  }
+  const columns: ColumnDef<Stack, unknown>[] = [
+    {
+      accessorKey: 'name',
+      header: '스택 이름',
+      cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
+    },
+    {
+      accessorKey: 'templateName',
+      header: '템플릿',
+      cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.templateName}</span>,
+    },
+    {
+      accessorKey: 'clusterName',
+      header: '클러스터',
+      cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.clusterName}</span>,
+    },
+    {
+      accessorKey: 'status',
+      header: '상태',
+      cell: ({ row }) => {
+        const statusStyle = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending
+        return (
+          <span
+            className="rounded-md px-[9px] py-[3px] text-xs font-semibold"
+            style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}
+          >
+            {statusStyle.label}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: 'createdAt',
+      header: '생성일',
+      cell: ({ row }) => (
+        <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.createdAt)}</span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: () => (
+        <div className="flex gap-1.5">
+          <Button variant="ghost" size="sm" type="button">
+            View
+          </Button>
+          <Button variant="danger" size="sm" type="button">
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="mb-6 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
           <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(99,102,241,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#818cf8',
-            }}
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
           >
             <List size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               Stack List
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               배포된 DevSecOps 스택 목록
             </p>
           </div>
@@ -150,38 +156,23 @@ export function StackListPage() {
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: '320px' }}>
+      <div className="mb-4 flex flex-wrap gap-2.5">
+        <div className="relative max-w-[320px] flex-[1_1_240px]">
           <Search
             size={13}
-            style={{
-              position: 'absolute',
-              left: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--color-text-secondary)',
-              pointerEvents: 'none',
-            }}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
           <Input
             placeholder="스택 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '30px' }}
+            className="pl-[30px]"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: '8px',
-            padding: '9px 12px',
-            fontSize: '14px',
-            color: 'var(--color-text-primary)',
-            cursor: 'pointer',
-          }}
+          className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
         >
           <option value="">All Status</option>
           <option value="success">Success</option>
@@ -192,115 +183,7 @@ export function StackListPage() {
         </select>
       </div>
 
-      {/* Table */}
-      <div
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-              {(
-                [
-                  ['name', '스택 이름'],
-                  ['templateName', '템플릿'],
-                  ['clusterName', '클러스터'],
-                  ['status', '상태'],
-                  ['createdAt', '생성일'],
-                ] as [SortField, string][]
-              ).map(([field, label]) => (
-                <th key={field} style={thStyle} onClick={() => handleSort(field)}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    {label}
-                    <SortIcon field={field} />
-                  </span>
-                </th>
-              ))}
-              <th style={{ ...thStyle, cursor: 'default' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((stack) => {
-              const statusStyle = STATUS_STYLES[stack.status] ?? STATUS_STYLES.pending
-              return (
-                <tr
-                  key={stack.id}
-                  style={{ transition: 'background var(--transition-fast)' }}
-                  onMouseEnter={(e) => {
-                    ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)'
-                  }}
-                  onMouseLeave={(e) => {
-                    ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent'
-                  }}
-                >
-                  <td style={tdStyle}>
-                    <span style={{ fontWeight: 600 }}>{stack.name}</span>
-                  </td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)' }}>{stack.templateName}</td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)' }}>{stack.clusterName}</td>
-                  <td style={tdStyle}>
-                    <span
-                      style={{
-                        padding: '3px 9px',
-                        borderRadius: '6px',
-                        background: statusStyle.bg,
-                        color: statusStyle.color,
-                        fontSize: '12px',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {statusStyle.label}
-                    </span>
-                  </td>
-                  <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-                    {formatDate(stack.createdAt)}
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <Button variant="ghost" size="sm">
-                        View
-                      </Button>
-                      <Button variant="danger" size="sm">
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-
-        {filtered.length === 0 && (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '48px 0',
-              color: 'var(--color-text-secondary)',
-              fontSize: '14px',
-            }}
-          >
-            스택이 없습니다.{' '}
-            <button
-              onClick={() => navigate('/stack/install')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#a5b4fc',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontSize: '14px',
-              }}
-            >
-              새 스택 만들기
-            </button>
-          </div>
-        )}
-      </div>
+      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="스택이 없습니다." />
     </div>
   )
 }

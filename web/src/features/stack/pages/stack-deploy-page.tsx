@@ -3,14 +3,16 @@ import { useParams } from 'react-router-dom'
 import { CheckCircle, XCircle, Loader, Terminal } from 'lucide-react'
 import { useDeployLog } from '../hooks/use-deploy-log'
 import type { LogLevel, DeployStatus } from '../hooks/use-deploy-log'
+import { cn } from '../../../lib/utils'
 
 const PHASES = ['Initializing', 'Building', 'Deploying']
+const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
 
-const LOG_LEVEL_STYLE: Record<LogLevel, { bg: string; color: string }> = {
-  info: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa' },
-  warn: { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24' },
-  error: { bg: 'rgba(239,68,68,0.15)', color: '#f87171' },
-  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
+const LOG_LEVEL_STYLE: Record<LogLevel, string> = {
+  info: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
+  warn: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',
+  error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
+  success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
 }
 
 function PhaseStep({ label, index, progress }: { label: string; index: number; progress: number }) {
@@ -20,51 +22,39 @@ function PhaseStep({ label, index, progress }: { label: string; index: number; p
   const isActive = progress >= phaseStart && !isDone
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <div className="flex items-center gap-2">
       <div
-        style={{
-          width: '28px',
-          height: '28px',
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: isDone
-            ? 'rgba(34,197,94,0.15)'
+        className={cn(
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300',
+          isDone
+            ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
             : isActive
-            ? 'rgba(99,102,241,0.15)'
-            : 'rgba(255,255,255,0.05)',
-          color: isDone ? '#22c55e' : isActive ? '#818cf8' : 'var(--color-text-secondary)',
-          flexShrink: 0,
-          transition: 'all 0.3s ease',
-        }}
+              ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]'
+              : 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
+        )}
       >
         {isDone ? (
           <CheckCircle size={15} />
         ) : isActive ? (
-          <Loader size={15} style={{ animation: 'spin 1s linear infinite' }} />
+          <Loader size={15} className="animate-spin" />
         ) : (
-          <span style={{ fontSize: '12px', fontWeight: 700 }}>{index + 1}</span>
+          <span className="text-xs font-bold">{index + 1}</span>
         )}
       </div>
       <span
-        style={{
-          fontSize: '13px',
-          fontWeight: 600,
-          color: isDone ? '#22c55e' : isActive ? '#a5b4fc' : 'var(--color-text-secondary)',
-        }}
+        className={cn(
+          'text-[13px] font-semibold',
+          isDone ? 'text-[#22c55e]' : isActive ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
+        )}
       >
         {label}
       </span>
       {index < PHASES.length - 1 && (
         <div
-          style={{
-            flex: 1,
-            height: '1px',
-            background: isDone ? 'rgba(34,197,94,0.4)' : 'var(--color-border-default)',
-            margin: '0 4px',
-            transition: 'background 0.3s ease',
-          }}
+          className={cn(
+            'mx-1 h-px flex-1 transition-colors duration-300',
+            isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
+          )}
         />
       )}
     </div>
@@ -77,23 +67,19 @@ function StatusSummary({ status }: { status: DeployStatus }) {
   const isSuccess = status === 'success'
   return (
     <div
-      style={{
-        background: isSuccess ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-        border: `1px solid ${isSuccess ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-        borderRadius: 'var(--card-radius)',
-        padding: '20px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        marginTop: '20px',
-      }}
+      className={cn(
+        'mt-5 flex items-center gap-3 rounded-[var(--card-radius)] border p-5',
+        isSuccess
+          ? 'border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)]'
+          : 'border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.08)]'
+      )}
     >
       {isSuccess ? <CheckCircle size={24} color="#22c55e" /> : <XCircle size={24} color="#f87171" />}
       <div>
-        <div style={{ fontSize: '15px', fontWeight: 700, color: isSuccess ? '#22c55e' : '#f87171', marginBottom: '2px' }}>
+        <div className={cn('mb-0.5 text-[15px] font-bold', isSuccess ? 'text-[#22c55e]' : 'text-[#f87171]')}>
           {isSuccess ? '배포 완료' : '배포 실패'}
         </div>
-        <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+        <div className="text-[13px] text-[var(--color-text-secondary)]">
           {isSuccess ? '모든 단계가 성공적으로 완료되었습니다.' : '배포 중 오류가 발생했습니다. 로그를 확인하세요.'}
         </div>
       </div>
@@ -108,41 +94,25 @@ export function StackDeployPage() {
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
-
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--color-surface-card)',
-    border: '1px solid var(--color-border-default)',
-    borderRadius: 'var(--card-radius)',
-    padding: 'var(--card-padding)',
-  }
+  })
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+      <div className="mb-6 flex items-center gap-2.5">
         <div
-          style={{
-            width: 'var(--icon-size)',
-            height: 'var(--icon-size)',
-            background: 'rgba(99,102,241,0.15)',
-            borderRadius: 'var(--icon-radius)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#818cf8',
-          }}
+          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
         >
           <Terminal size={18} />
         </div>
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
             Deployment Log
           </h1>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
             Deployment ID: {id}
             {' · '}
-            <span style={{ color: isConnected ? '#22c55e' : '#f59e0b' }}>
+            <span className={cn(isConnected ? 'text-[#22c55e]' : 'text-[#f59e0b]')}>
               {isConnected ? 'Connected' : 'Connecting...'}
             </span>
           </p>
@@ -150,8 +120,8 @@ export function StackDeployPage() {
       </div>
 
       {/* Phase steps */}
-      <div style={{ ...cardStyle, marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0', marginBottom: '16px', flexWrap: 'wrap' }}>
+      <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]">
+        <div className="mb-4 flex flex-wrap items-center gap-0">
           {PHASES.map((phase, idx) => (
             <PhaseStep key={phase} label={phase} index={idx} progress={progress} />
           ))}
@@ -159,86 +129,57 @@ export function StackDeployPage() {
 
         {/* Progress bar */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>전체 진행률</span>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-primary)' }}>{progress}%</span>
+          <div className="mb-1.5 flex justify-between">
+            <span className="text-xs text-[var(--color-text-secondary)]">전체 진행률</span>
+            <span className="text-xs font-bold text-[var(--color-text-primary)]">{progress}%</span>
           </div>
-          <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden' }}>
-            <div
-              style={{
-                width: `${progress}%`,
-                height: '100%',
-                background: status === 'failed' ? '#ef4444' : 'linear-gradient(90deg, #6366f1, #8b5cf6)',
-                borderRadius: '4px',
-                transition: 'width 0.4s ease',
-              }}
-            />
+          <div className="flex h-2 w-full overflow-hidden rounded bg-[rgba(255,255,255,0.08)]">
+            {PROGRESS_SEGMENTS.map((segment) => (
+              <div
+                key={segment}
+                className={cn(
+                  'h-full w-[1%] transition-colors duration-300',
+                  segment <= progress
+                    ? status === 'failed'
+                      ? 'bg-[#ef4444]'
+                      : 'bg-[linear-gradient(90deg,#6366f1,#8b5cf6)]'
+                    : 'bg-transparent'
+                )}
+              />
+            ))}
           </div>
         </div>
       </div>
 
       {/* Log console */}
-      <div
-        style={{
-          background: '#0d1117',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            padding: '10px 16px',
-            borderBottom: '1px solid var(--color-border-default)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: 'rgba(255,255,255,0.02)',
-          }}
-        >
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
+        <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
           <Terminal size={14} color="var(--color-text-secondary)" />
-          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
             Logs ({logs.length})
           </span>
         </div>
         <div
-          style={{
-            padding: '12px',
-            height: '400px',
-            overflowY: 'auto',
-            fontFamily: 'Fira Code, Cascadia Code, monospace',
-            fontSize: '12px',
-            lineHeight: 1.7,
-          }}
+          className="h-[400px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
         >
           {logs.length === 0 && (
-            <div style={{ color: 'var(--color-text-secondary)', padding: '8px 4px' }}>
+            <div className="px-1 py-2 text-[var(--color-text-secondary)]">
               {isConnected ? '로그를 기다리는 중...' : 'WebSocket에 연결 중...'}
             </div>
           )}
           {logs.map((log) => {
             const lvl = LOG_LEVEL_STYLE[log.level]
             return (
-              <div key={log.id} style={{ display: 'flex', gap: '10px', padding: '2px 4px', alignItems: 'flex-start' }}>
-                <span style={{ color: '#475569', whiteSpace: 'nowrap', flexShrink: 0 }}>
+              <div key={log.id} className="flex items-start gap-2.5 px-1 py-0.5">
+                <span className="shrink-0 whitespace-nowrap text-[#475569]">
                   {new Date(log.timestamp).toISOString().slice(11, 19)}
                 </span>
                 <span
-                  style={{
-                    padding: '0px 6px',
-                    borderRadius: '4px',
-                    background: lvl.bg,
-                    color: lvl.color,
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                    lineHeight: '20px',
-                  }}
+                  className={cn('shrink-0 whitespace-nowrap rounded px-1.5 text-[10px] font-bold leading-5', lvl)}
                 >
                   {log.level.toUpperCase()}
                 </span>
-                <span style={{ color: '#e2e8f0', wordBreak: 'break-word' }}>{log.message}</span>
+                <span className="break-words text-[#e2e8f0]">{log.message}</span>
               </div>
             )
           })}

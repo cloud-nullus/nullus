@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, Search } from 'lucide-react'
+import { BookOpen, Clock, Search, Wrench } from 'lucide-react'
 import { useTemplates } from '../api/stack-api'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
+import { Modal } from '../../../components/ui/modal'
 
 const MOCK_TEMPLATES = [
   {
@@ -33,11 +34,33 @@ const MOCK_TEMPLATES = [
   },
 ]
 
+const TEMPLATE_DETAILS: Record<string, { fullDescription: string; resource: string; compatibility: string }> = {
+  'gitlab-all-in-one': {
+    fullDescription:
+      'GitLab 중심의 통합형 템플릿으로 소스 관리, 패키지/이미지 저장소, CI/CD, 관측성을 하나의 운영 흐름으로 묶습니다. 플랫폼 팀이 빠르게 표준 환경을 구축할 때 적합합니다.',
+    resource: '4 vCPU / 8Gi Memory / 80Gi Storage',
+    compatibility: 'Kubernetes 1.27-1.30, Helm 3.14+, Containerd 1.7+',
+  },
+  'gitlab-argocd': {
+    fullDescription:
+      'GitLab의 소스/CI 기능과 ArgoCD GitOps 배포를 결합한 하이브리드 템플릿입니다. 변경 이력 추적성과 배포 안정성을 동시에 확보할 수 있습니다.',
+    resource: '6 vCPU / 12Gi Memory / 100Gi Storage',
+    compatibility: 'Kubernetes 1.26-1.30, Helm 3.13+, Ingress Controller 필요',
+  },
+  'github-argocd': {
+    fullDescription:
+      'GitHub Actions 기반 CI와 ArgoCD 기반 CD를 조합한 클라우드 네이티브 템플릿입니다. SaaS 중심 팀에서 최소 운영 부담으로 시작하기 좋습니다.',
+    resource: '4 vCPU / 8Gi Memory / 60Gi Storage',
+    compatibility: 'Kubernetes 1.27-1.31, Helm 3.14+, OIDC 연동 권장',
+  },
+}
+
 export function StackTemplatePage() {
   const navigate = useNavigate()
   const { data: apiTemplates } = useTemplates()
   const { setTemplate, loadFromTemplate } = useStackConfigStore()
   const [search, setSearch] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
 
   const templates = Array.isArray(apiTemplates) ? apiTemplates : MOCK_TEMPLATES
 
@@ -48,36 +71,37 @@ export function StackTemplatePage() {
       t.tools.some((tool) => tool.toLowerCase().includes(search.toLowerCase()))
   )
 
+  const selectedTemplate = selectedTemplateId ? templates.find((template) => template.id === selectedTemplateId) ?? null : null
+
+  const selectedDetail = selectedTemplate
+    ? TEMPLATE_DETAILS[selectedTemplate.id] ?? {
+        fullDescription: selectedTemplate.description,
+        resource: '4 vCPU / 8Gi Memory / 64Gi Storage',
+        compatibility: 'Kubernetes 1.27+ (검증 필요)',
+      }
+    : null
+
   const handleUseTemplate = (templateId: string) => {
     setTemplate(templateId)
     loadFromTemplate(templateId)
-    navigate('/stack/install')
+    navigate(`/stack/install?template=${templateId}`)
   }
 
   return (
     <div>
       {/* Page header */}
-      <div style={{ marginBottom: '28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+      <div className="mb-7">
+        <div className="mb-2 flex items-center gap-2.5">
           <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(16,185,129,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#34d399',
-            }}
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.15)] text-[#34d399]"
           >
             <BookOpen size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               Golden Path Templates
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               검증된 DevSecOps 스택 템플릿을 선택하여 빠르게 시작하세요.
             </p>
           </div>
@@ -85,86 +109,46 @@ export function StackTemplatePage() {
       </div>
 
       {/* Search */}
-      <div style={{ marginBottom: '20px', maxWidth: '360px' }}>
-        <div style={{ position: 'relative' }}>
+      <div className="mb-5 max-w-[360px]">
+        <div className="relative">
           <Search
             size={14}
-            style={{
-              position: 'absolute',
-              left: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--color-text-secondary)',
-              pointerEvents: 'none',
-            }}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
           <Input
             placeholder="템플릿 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '32px' }}
+            className="pl-8"
           />
         </div>
       </div>
 
       {/* Template cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: 'var(--grid-gap)',
-        }}
-      >
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-[var(--grid-gap)]">
         {filtered.map((template) => (
-          <div
+          <button
             key={template.id}
-            style={{
-              background: 'var(--color-surface-card)',
-              border: '1px solid var(--color-border-default)',
-              borderRadius: 'var(--card-radius)',
-              padding: 'var(--card-padding)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '14px',
-              transition: 'border-color var(--transition-default)',
-            }}
-            onMouseEnter={(e) => {
-              ;(e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border-hover)'
-            }}
-            onMouseLeave={(e) => {
-              ;(e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border-default)'
-            }}
+            type="button"
+            onClick={() => setSelectedTemplateId(template.id)}
+            className="flex cursor-pointer flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] text-left transition-colors duration-150 hover:border-[var(--color-border-hover)]"
           >
             {/* Card header */}
             <div>
-              <h3
-                style={{
-                  margin: '0 0 6px 0',
-                  fontSize: '15px',
-                  fontWeight: 700,
-                  color: 'var(--color-text-primary)',
-                }}
-              >
+              <h3 className="mb-1.5 mt-0 text-[15px] font-bold text-[var(--color-text-primary)]">
                 {template.name}
               </h3>
-              <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+              <p className="m-0 text-[13px] leading-[1.5] text-[var(--color-text-secondary)]">
                 {template.description}
               </p>
             </div>
 
             {/* Tools */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            <div className="flex flex-wrap gap-1.5">
               {template.tools.map((tool) => (
                 <span
                   key={tool}
-                  style={{
-                    padding: '3px 8px',
-                    borderRadius: '6px',
-                    background: 'rgba(99,102,241,0.12)',
-                    color: '#a5b4fc',
-                    fontSize: '11px',
-                    fontWeight: 500,
-                  }}
+                  className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-[3px] text-[11px] font-medium text-[#a5b4fc]"
                 >
                   {tool}
                 </span>
@@ -172,51 +156,100 @@ export function StackTemplatePage() {
             </div>
 
             {/* Footer */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingTop: '10px',
-                borderTop: '1px solid var(--color-border-default)',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '12px',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
+            <div className="flex items-center justify-between border-t border-[var(--color-border-default)] pt-2.5">
+              <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-secondary)]">
                 <Clock size={13} />
                 <span>약 {template.estimatedMinutes}분</span>
               </div>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => handleUseTemplate(template.id)}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleUseTemplate(template.id)
+                }}
+                className="cursor-pointer rounded-lg border-none bg-[linear-gradient(135deg,#facc15,#eab308)] px-3 py-2 text-xs font-bold text-[#111827]"
               >
                 Use Template
-              </Button>
+              </button>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
       {filtered.length === 0 && (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '60px 0',
-            color: 'var(--color-text-secondary)',
-            fontSize: '14px',
-          }}
-        >
+        <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
           검색 결과가 없습니다.
         </div>
       )}
+
+      <Modal
+        open={selectedTemplate !== null}
+        onClose={() => setSelectedTemplateId(null)}
+        title={selectedTemplate?.name ?? 'Template Detail'}
+        wide
+        footer={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setSelectedTemplateId(null)} type="button">
+              Close
+            </Button>
+            {selectedTemplate && (
+              <Button
+                variant="primary"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  setSelectedTemplateId(null)
+                  handleUseTemplate(selectedTemplate.id)
+                }}
+              >
+                Use This Template
+              </Button>
+            )}
+          </>
+        }
+      >
+        {selectedTemplate && selectedDetail && (
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className="mb-1.5 text-[13px] text-[var(--color-text-secondary)]">Description</div>
+              <p className="m-0 text-sm leading-[1.7] text-[var(--color-text-primary)]">
+                {selectedDetail.fullDescription}
+              </p>
+            </div>
+
+            <div>
+              <div className="mb-2 text-[13px] text-[var(--color-text-secondary)]">Included Tools</div>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+                {selectedTemplate.tools.map((tool) => (
+                  <div
+                    key={tool}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2"
+                  >
+                    <Wrench size={13} color="#fbbf24" />
+                    <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{tool}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-[var(--color-border-default)] p-3">
+                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">Estimated Deploy Time</div>
+                <div className="text-base font-bold text-[#fcd34d]">{selectedTemplate.estimatedMinutes} minutes</div>
+              </div>
+              <div className="rounded-lg border border-[var(--color-border-default)] p-3">
+                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">Resource Requirements</div>
+                <div className="text-sm font-semibold text-[var(--color-text-primary)]">{selectedDetail.resource}</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] p-3">
+              <div className="mb-1.5 text-xs font-bold text-[#86efac]">Compatibility</div>
+              <div className="text-[13px] text-[var(--color-text-primary)]">{selectedDetail.compatibility}</div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { History, GitCompare, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
+import { History, GitCompare, RotateCcw } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { DataTable } from '../../../components/shared/data-table'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 
 const MOCK_HISTORY: StackHistoryEntry[] = [
@@ -77,24 +79,6 @@ export function StackHistoryPage() {
   const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
   const [rollbackLoading, setRollbackLoading] = useState(false)
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    whiteSpace: 'nowrap',
-  }
-
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
-  }
-
   const handleRollbackConfirm = () => {
     if (!rollbackEntry) return
     setRollbackLoading(true)
@@ -104,174 +88,129 @@ export function StackHistoryPage() {
     }, 1500)
   }
 
+  const columns: ColumnDef<StackHistoryEntry, unknown>[] = [
+    {
+      accessorKey: 'version',
+      header: '버전',
+      cell: ({ row }) => {
+        const entry = row.original
+        const isCurrent = entry.id === MOCK_HISTORY[0]?.id
+        return (
+          <span className="inline-flex items-center gap-1.5 font-mono text-[13px] font-semibold text-[#a5b4fc]">
+            v{entry.version}
+            {isCurrent && (
+              <span className="rounded bg-[rgba(34,197,94,0.15)] px-1.5 py-[1px] font-inherit text-[10px] text-[#22c55e]">
+                CURRENT
+              </span>
+            )}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: 'changedBy',
+      header: '변경자',
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{row.original.changedBy}</span>,
+    },
+    {
+      accessorKey: 'changedAt',
+      header: '변경 시간',
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.changedAt)}</span>,
+    },
+    {
+      accessorKey: 'reason',
+      header: '변경 사유',
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const entry = row.original
+        const index = MOCK_HISTORY.findIndex((item) => item.id === entry.id)
+        const hasPrev = index < MOCK_HISTORY.length - 1
+        return (
+          <div className="flex gap-1.5">
+            {hasPrev && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setDiffEntry(entry)
+                }}
+                type="button"
+              >
+                <GitCompare size={13} />
+                Diff
+              </Button>
+            )}
+            {index !== 0 && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setRollbackEntry(entry)
+                }}
+                type="button"
+              >
+                <RotateCcw size={13} />
+                Rollback
+              </Button>
+            )}
+          </div>
+        )
+      },
+    },
+  ]
+
+  const expandedEntry = MOCK_HISTORY.find((entry) => entry.id === expandedId) ?? null
+
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
+      <div className="mb-7 flex items-center gap-2.5">
         <div
-          style={{
-            width: 'var(--icon-size)',
-            height: 'var(--icon-size)',
-            background: 'rgba(99,102,241,0.15)',
-            borderRadius: 'var(--icon-radius)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#818cf8',
-          }}
+          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
         >
           <History size={18} />
         </div>
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
             Stack History
           </h1>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
             스택 변경 이력 및 버전 관리
           </p>
         </div>
       </div>
 
-      {/* Table */}
-      <div
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <th style={{ ...thStyle, width: '32px' }} />
-              {['버전', '변경자', '변경 시간', '변경 사유'].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-              <th style={{ ...thStyle, cursor: 'default' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_HISTORY.map((entry, idx) => {
-              const isExpanded = expandedId === entry.id
-              const hasPrev = idx < MOCK_HISTORY.length - 1
-              return (
-                <>
-                  <tr
-                    key={entry.id}
-                    style={{ transition: 'background var(--transition-fast)', cursor: 'pointer' }}
-                    onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                    onMouseEnter={(e) => {
-                      ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)'
-                    }}
-                    onMouseLeave={(e) => {
-                      ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent'
-                    }}
-                  >
-                    <td style={{ ...tdStyle, padding: '12px 14px 12px 16px', color: 'var(--color-text-secondary)' }}>
-                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </td>
-                    <td style={tdStyle}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontFamily: 'Fira Code, monospace',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          color: '#a5b4fc',
-                        }}
-                      >
-                        v{entry.version}
-                        {idx === 0 && (
-                          <span
-                            style={{
-                              fontSize: '10px',
-                              background: 'rgba(34,197,94,0.15)',
-                              color: '#22c55e',
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              fontFamily: 'inherit',
-                            }}
-                          >
-                            CURRENT
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-                      {entry.changedBy}
-                    </td>
-                    <td style={{ ...tdStyle, color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-                      {formatDate(entry.changedAt)}
-                    </td>
-                    <td style={tdStyle}>{entry.reason}</td>
-                    <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        {hasPrev && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => setDiffEntry(entry)}
-                          >
-                            <GitCompare size={13} />
-                            Diff
-                          </Button>
-                        )}
-                        {idx !== 0 && (
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => setRollbackEntry(entry)}
-                          >
-                            <RotateCcw size={13} />
-                            Rollback
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr key={`${entry.id}-detail`}>
-                      <td colSpan={6} style={{ borderTop: '1px solid var(--color-border-default)', padding: 0 }}>
-                        <div
-                          style={{
-                            background: 'rgba(0,0,0,0.2)',
-                            padding: '16px 20px',
-                          }}
-                        >
-                          <p style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                            설정 스냅샷 (v{entry.version})
-                          </p>
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                            {Object.entries(entry.snapshot).map(([k, v]) => (
-                              <div
-                                key={k}
-                                style={{
-                                  background: 'rgba(255,255,255,0.04)',
-                                  border: '1px solid var(--color-border-default)',
-                                  borderRadius: '8px',
-                                  padding: '8px 14px',
-                                  fontFamily: 'Fira Code, monospace',
-                                  fontSize: '12px',
-                                }}
-                              >
-                                <span style={{ color: 'var(--color-text-secondary)' }}>{k}: </span>
-                                <span style={{ color: '#a5b4fc' }}>{String(v)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={MOCK_HISTORY}
+        getRowKey={(row) => row.id}
+        onRowClick={(row) => setExpandedId((prev) => (prev === row.id ? null : row.id))}
+      />
+
+      {expandedEntry && (
+        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-5 py-4">
+          <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+            설정 스냅샷 (v{expandedEntry.version})
+          </p>
+          <div className="flex flex-wrap gap-2.5">
+            {Object.entries(expandedEntry.snapshot).map(([k, v]) => (
+              <div
+                key={k}
+                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-2 font-mono text-xs"
+              >
+                <span className="text-[var(--color-text-secondary)]">{k}: </span>
+                <span className="text-[#a5b4fc]">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Diff Modal */}
       <Modal
@@ -281,65 +220,42 @@ export function StackHistoryPage() {
         wide
       >
         {diffEntry && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="flex flex-col gap-3">
             {MOCK_DIFF.changed.map((item) => (
-              <div key={item.key} style={{ fontFamily: 'Fira Code, monospace', fontSize: '13px' }}>
-                <span style={{ color: 'var(--color-text-secondary)', marginRight: '8px' }}>{item.key}:</span>
+              <div key={item.key} className="font-mono text-[13px]">
+                <span className="mr-2 text-[var(--color-text-secondary)]">{item.key}:</span>
                 <span
-                  style={{
-                    background: 'rgba(239,68,68,0.12)',
-                    color: '#f87171',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    textDecoration: 'line-through',
-                    marginRight: '6px',
-                  }}
+                  className="mr-1.5 rounded bg-[rgba(239,68,68,0.12)] px-2 py-0.5 text-[#f87171] line-through"
                 >
                   - {item.from}
                 </span>
                 <span
-                  style={{
-                    background: 'rgba(34,197,94,0.12)',
-                    color: '#4ade80',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                  }}
+                  className="rounded bg-[rgba(34,197,94,0.12)] px-2 py-0.5 text-[#4ade80]"
                 >
                   + {item.to}
                 </span>
               </div>
             ))}
             {MOCK_DIFF.added.map((item) => (
-              <div key={item.key} style={{ fontFamily: 'Fira Code, monospace', fontSize: '13px' }}>
+              <div key={item.key} className="font-mono text-[13px]">
                 <span
-                  style={{
-                    background: 'rgba(34,197,94,0.12)',
-                    color: '#4ade80',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                  }}
+                  className="rounded bg-[rgba(34,197,94,0.12)] px-2 py-0.5 text-[#4ade80]"
                 >
                   + {item.key}: {item.value}
                 </span>
               </div>
             ))}
             {MOCK_DIFF.removed.map((item) => (
-              <div key={item.key} style={{ fontFamily: 'Fira Code, monospace', fontSize: '13px' }}>
+              <div key={item.key} className="font-mono text-[13px]">
                 <span
-                  style={{
-                    background: 'rgba(239,68,68,0.12)',
-                    color: '#f87171',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    textDecoration: 'line-through',
-                  }}
+                  className="rounded bg-[rgba(239,68,68,0.12)] px-2 py-0.5 text-[#f87171] line-through"
                 >
                   - {item.key}: {item.value}
                 </span>
               </div>
             ))}
             {MOCK_DIFF.added.length === 0 && MOCK_DIFF.removed.length === 0 && MOCK_DIFF.changed.length === 0 && (
-              <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', margin: 0 }}>변경 사항이 없습니다.</p>
+              <p className="m-0 text-sm text-[var(--color-text-secondary)]">변경 사항이 없습니다.</p>
             )}
           </div>
         )}

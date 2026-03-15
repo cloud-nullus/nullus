@@ -3,6 +3,7 @@ import { Layers, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import type { CompatibilityMatrix, CompatibilityValidationResult } from '../api/stack-api'
+import { cn } from '../../../lib/utils'
 
 const MOCK_MATRIX: CompatibilityMatrix[] = [
   {
@@ -48,9 +49,9 @@ const MOCK_VALIDATION: CompatibilityValidationResult = {
   checkedAt: '2026-03-14T10:00:00Z',
 }
 
-const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  verified: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Verified' },
-  untested: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Untested' },
+const STATUS_BADGE: Record<string, { className: string; label: string }> = {
+  verified: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Verified' },
+  untested: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Untested' },
 }
 
 export function StackVersionPage() {
@@ -68,48 +69,21 @@ export function StackVersionPage() {
     }, 1200)
   }
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    textAlign: 'left',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--color-text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    whiteSpace: 'nowrap',
-  }
-
-  const tdStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    fontSize: '14px',
-    color: 'var(--color-text-primary)',
-    borderTop: '1px solid var(--color-border-default)',
-  }
-
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="mb-7 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
           <div
-            style={{
-              width: 'var(--icon-size)',
-              height: 'var(--icon-size)',
-              background: 'rgba(34,197,94,0.15)',
-              borderRadius: 'var(--icon-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#4ade80',
-            }}
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(34,197,94,0.15)] text-[#4ade80]"
           >
             <Layers size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
               Compatibility Matrix
             </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               스택 버전 호환성 매트릭스
             </p>
           </div>
@@ -121,20 +95,18 @@ export function StackVersionPage() {
       </div>
 
       {/* Table */}
-      <div
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--card-radius)',
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
+        <table className="w-full border-collapse">
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <th style={{ ...thStyle, width: '32px' }} />
+            <tr className="bg-[rgba(255,255,255,0.02)]">
+              <th className="w-8 whitespace-nowrap px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]" />
               {['매트릭스 이름', '상태', 'K8s 호환 범위'].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>
+                <th
+                  key={h}
+                  className="whitespace-nowrap px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]"
+                >
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>
@@ -146,77 +118,50 @@ export function StackVersionPage() {
                 <>
                   <tr
                     key={matrix.id}
-                    style={{ transition: 'background var(--transition-fast)', cursor: 'pointer' }}
+                    className="cursor-pointer transition-colors duration-150 hover:bg-[rgba(255,255,255,0.02)]"
                     onClick={() => setExpandedId(isExpanded ? null : matrix.id)}
-                    onMouseEnter={(e) => {
-                      ;(e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.02)'
-                    }}
-                    onMouseLeave={(e) => {
-                      ;(e.currentTarget as HTMLTableRowElement).style.background = 'transparent'
-                    }}
                   >
-                    <td style={{ ...tdStyle, color: 'var(--color-text-secondary)' }}>
+                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-secondary)]">
                       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </td>
-                    <td style={tdStyle}>
-                      <span style={{ fontWeight: 600 }}>{matrix.name}</span>
+                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]">
+                      <span className="font-semibold">{matrix.name}</span>
                     </td>
-                    <td style={tdStyle}>
+                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]">
                       <span
-                        style={{
-                          padding: '3px 9px',
-                          borderRadius: '6px',
-                          background: badge.bg,
-                          color: badge.color,
-                          fontSize: '12px',
-                          fontWeight: 600,
-                        }}
+                        className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', badge.className)}
                       >
                         {badge.label}
                       </span>
                     </td>
-                    <td style={{ ...tdStyle, fontFamily: 'Fira Code, monospace', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 font-mono text-[13px] text-[var(--color-text-secondary)]">
                       {matrix.k8sRange}
                     </td>
                   </tr>
                   {isExpanded && (
                     <tr key={`${matrix.id}-detail`}>
-                      <td colSpan={4} style={{ borderTop: '1px solid var(--color-border-default)', padding: 0 }}>
-                        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px 20px' }}>
-                          <p
-                            style={{
-                              margin: '0 0 12px',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              color: 'var(--color-text-secondary)',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.06em',
-                            }}
-                          >
+                      <td colSpan={4} className="border-t border-[var(--color-border-default)] p-0">
+                        <div className="bg-[rgba(0,0,0,0.2)] px-5 py-4">
+                          <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
                             도구별 버전
                           </p>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
                             {matrix.tools.map((tool) => (
                               <div
                                 key={tool.name}
-                                style={{
-                                  background: 'rgba(255,255,255,0.04)',
-                                  border: '1px solid var(--color-border-default)',
-                                  borderRadius: '8px',
-                                  padding: '12px 14px',
-                                }}
+                                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-3"
                               >
-                                <p style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                                <p className="mb-1.5 mt-0 text-[13px] font-bold text-[var(--color-text-primary)]">
                                   {tool.name}
                                 </p>
-                                <div style={{ display: 'flex', gap: '14px', fontSize: '12px', fontFamily: 'Fira Code, monospace' }}>
+                                <div className="flex gap-[14px] font-mono text-xs">
                                   <span>
-                                    <span style={{ color: 'var(--color-text-secondary)' }}>helm: </span>
-                                    <span style={{ color: '#a5b4fc' }}>{tool.helmVersion}</span>
+                                    <span className="text-[var(--color-text-secondary)]">helm: </span>
+                                    <span className="text-[#a5b4fc]">{tool.helmVersion}</span>
                                   </span>
                                   <span>
-                                    <span style={{ color: 'var(--color-text-secondary)' }}>app: </span>
-                                    <span style={{ color: '#4ade80' }}>{tool.appVersion}</span>
+                                    <span className="text-[var(--color-text-secondary)]">app: </span>
+                                    <span className="text-[#4ade80]">{tool.appVersion}</span>
                                   </span>
                                 </div>
                               </div>
@@ -243,41 +188,29 @@ export function StackVersionPage() {
         title="호환성 검증 결과"
       >
         {validating && (
-          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-secondary)' }}>
+          <div className="py-8 text-center text-[var(--color-text-secondary)]">
             <div
-              style={{
-                width: '32px',
-                height: '32px',
-                border: '3px solid rgba(255,255,255,0.1)',
-                borderTopColor: '#a5b4fc',
-                borderRadius: '50%',
-                animation: 'spin 0.6s linear infinite',
-                margin: '0 auto 12px',
-              }}
+              className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-[rgba(255,255,255,0.1)] border-t-[#a5b4fc]"
             />
             검증 중...
           </div>
         )}
         {!validating && validationResult && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="flex flex-col gap-4">
             <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                background: validationResult.compatible ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                border: `1px solid ${validationResult.compatible ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-              }}
+              className={cn(
+                'flex items-center gap-2.5 rounded-lg border px-4 py-3',
+                validationResult.compatible
+                  ? 'border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.1)]'
+                  : 'border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.1)]'
+              )}
             >
               <ShieldCheck size={20} color={validationResult.compatible ? '#22c55e' : '#ef4444'} />
               <span
-                style={{
-                  fontSize: '14px',
-                  fontWeight: 700,
-                  color: validationResult.compatible ? '#22c55e' : '#ef4444',
-                }}
+                className={cn(
+                  'text-sm font-bold',
+                  validationResult.compatible ? 'text-[#22c55e]' : 'text-[#ef4444]'
+                )}
               >
                 {validationResult.compatible ? '호환성 검증 통과' : '호환성 문제 발견'}
               </span>
@@ -285,38 +218,36 @@ export function StackVersionPage() {
 
             {validationResult.issues.length > 0 && (
               <div>
-                <p style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
                   이슈
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {validationResult.issues.map((issue, i) => (
+                <div className="flex flex-col gap-2">
+                  {validationResult.issues.map((issue) => (
                     <div
-                      key={i}
-                      style={{
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        background: issue.severity === 'error' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
-                        border: `1px solid ${issue.severity === 'error' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
-                      }}
+                      key={`${issue.tool}-${issue.message}`}
+                      className={cn(
+                        'rounded-lg border px-[14px] py-2.5',
+                        issue.severity === 'error'
+                          ? 'border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)]'
+                          : 'border-[rgba(245,158,11,0.25)] bg-[rgba(245,158,11,0.08)]'
+                      )}
                     >
                       <span
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: issue.severity === 'error' ? '#f87171' : '#fbbf24',
-                          marginRight: '8px',
-                        }}
+                        className={cn(
+                          'mr-2 text-xs font-bold',
+                          issue.severity === 'error' ? 'text-[#f87171]' : 'text-[#fbbf24]'
+                        )}
                       >
                         [{issue.tool}]
                       </span>
-                      <span style={{ fontSize: '13px', color: 'var(--color-text-primary)' }}>{issue.message}</span>
+                      <span className="text-[13px] text-[var(--color-text-primary)]">{issue.message}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+            <p className="m-0 text-xs text-[var(--color-text-secondary)]">
               검증 시각: {new Date(validationResult.checkedAt).toLocaleString('ko-KR')}
             </p>
           </div>

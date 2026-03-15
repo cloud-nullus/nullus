@@ -80,7 +80,7 @@ describe('StackTemplatePage', () => {
     renderWithProviders(<StackTemplatePage />)
     const buttons = screen.getAllByText('Use Template')
     fireEvent.click(buttons[0])
-    expect(mockNavigate).toHaveBeenCalledWith('/stack/install')
+    expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-all-in-one')
   })
 
   it('clicking Use Template sets template in store', () => {
