@@ -19,6 +19,8 @@ vi.mock('../features/admin/api/admin-api', () => ({
   useRemoveMember: () => ({ mutate: vi.fn(), isPending: false }),
   useClusters: () => ({ data: undefined }),
   useCreateCluster: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 const mockNavigate = vi.fn()
@@ -34,15 +36,16 @@ beforeEach(() => {
 })
 
 describe('UAT-3: Admin scenario', () => {
-  it('step 1: admin can log in with admin@nullus.dev', () => {
+  it('step 1: admin can log in with admin@nullus.dev', async () => {
     renderWithProviders(<LoginPage />)
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'admin@nullus.dev' } })
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'admin' } })
-    fireEvent.click(screen.getByText('Sign in'))
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'admin123' } })
+    fireEvent.submit(screen.getByText('Sign in').closest('form')!)
 
-    const state = useAuthStore.getState()
-    expect(state.isAuthenticated).toBe(true)
-    expect(state.role).toBe('admin')
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    })
+    expect(useAuthStore.getState().role).toBe('admin')
     expect(mockNavigate).toHaveBeenCalledWith('/admin/organization')
   })
 

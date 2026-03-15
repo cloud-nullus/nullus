@@ -38,17 +38,18 @@ beforeEach(() => {
 })
 
 describe('UAT-1: DevOps Engineer scenario', () => {
-  it('step 1: login page renders and devops can log in', () => {
+  it('step 1: login page renders and devops can log in', async () => {
     renderWithProviders(<LoginPage />)
     expect(screen.getByText('Nullus Platform')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'devops@nullus.dev' } })
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'devops' } })
-    fireEvent.click(screen.getByText('Sign in'))
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'devops123' } })
+    fireEvent.submit(screen.getByText('Sign in').closest('form')!)
 
-    const state = useAuthStore.getState()
-    expect(state.isAuthenticated).toBe(true)
-    expect(state.role).toBe('devops')
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    })
+    expect(useAuthStore.getState().role).toBe('devops')
     expect(mockNavigate).toHaveBeenCalledWith('/stack/templates')
   })
 
@@ -74,7 +75,7 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     const buttons = screen.getAllByText('Use Template')
     fireEvent.click(buttons[0]) // GitLab All-in-One is first
 
-    expect(mockNavigate).toHaveBeenCalledWith('/stack/install')
+    expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-all-in-one')
     expect(useStackConfigStore.getState().draft.selectedTemplateId).toBe('gitlab-all-in-one')
   })
 

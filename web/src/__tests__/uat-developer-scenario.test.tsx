@@ -22,15 +22,16 @@ beforeEach(() => {
 })
 
 describe('UAT-2: Developer scenario', () => {
-  it('step 1: developer can log in with developer@nullus.dev', () => {
+  it('step 1: developer can log in with developer@nullus.dev', async () => {
     renderWithProviders(<LoginPage />)
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'developer@nullus.dev' } })
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'developer' } })
-    fireEvent.click(screen.getByText('Sign in'))
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'developer123' } })
+    fireEvent.submit(screen.getByText('Sign in').closest('form')!)
 
-    const state = useAuthStore.getState()
-    expect(state.isAuthenticated).toBe(true)
-    expect(state.role).toBe('developer')
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    })
+    expect(useAuthStore.getState().role).toBe('developer')
     expect(mockNavigate).toHaveBeenCalledWith('/cicd/developer-deploy')
   })
 
@@ -84,11 +85,14 @@ describe('UAT-2: Developer scenario', () => {
     expect(screen.queryByText('Cluster Management')).not.toBeInTheDocument()
   })
 
-  it('invalid credentials show error message', () => {
+  it('invalid credentials show error message', async () => {
     renderWithProviders(<LoginPage />)
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'wrong@nullus.dev' } })
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } })
-    fireEvent.click(screen.getByText('Sign in'))
-    expect(screen.getByText('Invalid email or password.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrongpassword' } })
+    fireEvent.submit(screen.getByText('Sign in').closest('form')!)
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Invalid email or password.')).toBeInTheDocument()
+    })
   })
 })

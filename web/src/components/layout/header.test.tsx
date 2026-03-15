@@ -18,15 +18,14 @@ describe('Header', () => {
 
   it('renders language selector', () => {
     renderWithProviders(<Header />)
-    expect(screen.getByLabelText('Select language')).toBeInTheDocument()
+    expect(screen.getByText('EN')).toBeInTheDocument()
+    expect(screen.getByText('KO')).toBeInTheDocument()
   })
 
   it('language selector has EN and Korean options', () => {
     renderWithProviders(<Header />)
-    const select = screen.getByLabelText('Select language')
-    expect(select).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'EN' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '한국어' })).toBeInTheDocument()
+    expect(screen.getByText('EN')).toBeInTheDocument()
+    expect(screen.getByText('KO')).toBeInTheDocument()
   })
 
   it('renders theme toggle button', () => {
@@ -74,9 +73,9 @@ describe('Header', () => {
 
   it('language change calls i18n changeLanguage', () => {
     renderWithProviders(<Header />)
-    const select = screen.getByLabelText('Select language')
-    fireEvent.change(select, { target: { value: 'ko' } })
-    // The select value should update (i18n may or may not reflect in jsdom but no error)
-    expect(select).toBeInTheDocument()
+    const koButton = screen.getByText('KO')
+    fireEvent.click(koButton)
+    // The button click should trigger language change
+    expect(koButton).toBeInTheDocument()
   })
 })
