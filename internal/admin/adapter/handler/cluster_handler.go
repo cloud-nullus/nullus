@@ -1,9 +1,9 @@
 package handler
 
 import (
+	"encoding/base64"
 	"net/http"
 	"os"
-	"sync"
 
 	"github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/admin/domain"
@@ -15,11 +15,9 @@ import (
 
 // ClusterHandler handles HTTP requests for clusters.
 type ClusterHandler struct {
-	clusterUC         *usecase.ClusterUseCase
-	audit             *audit.AuditLogger
-	encryptionKey     []byte
-	encryptedKubeconf map[string]string
-	mu                sync.RWMutex
+	clusterUC     *usecase.ClusterUseCase
+	audit         *audit.AuditLogger
+	encryptionKey []byte
 }
 
 // NewClusterHandler creates a new ClusterHandler.
@@ -29,10 +27,9 @@ func NewClusterHandler(clusterUC *usecase.ClusterUseCase, auditLogger ...*audit.
 		logger = auditLogger[0]
 	}
 	return &ClusterHandler{
-		clusterUC:         clusterUC,
-		audit:             logger,
-		encryptionKey:     []byte(os.Getenv("ENCRYPTION_KEY")),
-		encryptedKubeconf: make(map[string]string),
+		clusterUC:     clusterUC,
+		audit:         logger,
+		encryptionKey: []byte(os.Getenv("ENCRYPTION_KEY")),
 	}
 }
 
@@ -93,13 +90,18 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 	}
 
 	if req.Kubeconfig != "" && len(h.encryptionKey) == 32 {
-		encrypted, err := crypto.Encrypt(h.encryptionKey, []byte(req.Kubeconfig))
+		// Try base64 decode first; if it fails, treat as raw YAML
+		kubeconfigBytes := []byte(req.Kubeconfig)
+		if decoded, err := base64.StdEncoding.DecodeString(req.Kubeconfig); err == nil {
+			kubeconfigBytes = decoded
+		}
+		encrypted, err := crypto.Encrypt(h.encryptionKey, kubeconfigBytes)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to encrypt kubeconfig")
 		}
-		h.mu.Lock()
-		h.encryptedKubeconf[cluster.ID] = encrypted
-		h.mu.Unlock()
+		if err := h.clusterUC.SaveKubeconfig(c.Request().Context(), cluster.ID, []byte(encrypted)); err != nil {
+			return err
+		}
 	}
 	if h.audit != nil {
 		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
@@ -188,9 +190,6 @@ func (h *ClusterHandler) DeleteCluster(c echo.Context) error {
 	if err := h.clusterUC.DeleteCluster(c.Request().Context(), id); err != nil {
 		return err
 	}
-	h.mu.Lock()
-	delete(h.encryptedKubeconf, id)
-	h.mu.Unlock()
 	if h.audit != nil {
 		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
 			UserID:       c.Request().Header.Get("X-User-ID"),
@@ -208,17 +207,18 @@ func (h *ClusterHandler) DeleteCluster(c echo.Context) error {
 func (h *ClusterHandler) VerifyCluster(c echo.Context) error {
 	id := c.Param("id")
 
-	h.mu.RLock()
-	encryptedConfig, ok := h.encryptedKubeconf[id]
-	h.mu.RUnlock()
-	if !ok {
+	encryptedConfig, err := h.clusterUC.GetKubeconfig(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if len(encryptedConfig) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "kubeconfig is not registered for this cluster")
 	}
 	if len(h.encryptionKey) != 32 {
 		return echo.NewHTTPError(http.StatusInternalServerError, "ENCRYPTION_KEY must be 32 bytes")
 	}
 
-	decrypted, err := crypto.Decrypt(h.encryptionKey, encryptedConfig)
+	decrypted, err := crypto.Decrypt(h.encryptionKey, string(encryptedConfig))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to decrypt kubeconfig")
 	}

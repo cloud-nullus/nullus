@@ -132,3 +132,24 @@ func (uc *ClusterUseCase) VerifyCluster(ctx context.Context, id string) (*domain
 
 	return cluster, nil
 }
+
+func (uc *ClusterUseCase) SaveKubeconfig(ctx context.Context, id string, kubeconfig []byte) error {
+	if _, err := uc.GetCluster(ctx, id); err != nil {
+		return err
+	}
+	if err := uc.clusterRepo.SaveKubeconfig(ctx, id, kubeconfig); err != nil {
+		return fmt.Errorf("saving kubeconfig: %w", err)
+	}
+	return nil
+}
+
+func (uc *ClusterUseCase) GetKubeconfig(ctx context.Context, id string) ([]byte, error) {
+	if _, err := uc.GetCluster(ctx, id); err != nil {
+		return nil, err
+	}
+	kubeconfig, err := uc.clusterRepo.GetKubeconfig(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("getting kubeconfig: %w", err)
+	}
+	return kubeconfig, nil
+}

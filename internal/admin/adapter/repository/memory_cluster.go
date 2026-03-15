@@ -13,12 +13,14 @@ import (
 type MemoryClusterRepository struct {
 	mu       sync.RWMutex
 	clusters map[string]*domain.Cluster
+	kubeconf map[string][]byte
 }
 
 // NewMemoryClusterRepository constructs an empty MemoryClusterRepository.
 func NewMemoryClusterRepository() *MemoryClusterRepository {
 	return &MemoryClusterRepository{
 		clusters: make(map[string]*domain.Cluster),
+		kubeconf: make(map[string][]byte),
 	}
 }
 
@@ -80,5 +82,30 @@ func (r *MemoryClusterRepository) Delete(_ context.Context, id string) error {
 		return fmt.Errorf("cluster %q not found", id)
 	}
 	delete(r.clusters, id)
+	delete(r.kubeconf, id)
 	return nil
+}
+
+func (r *MemoryClusterRepository) SaveKubeconfig(_ context.Context, id string, kubeconfig []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.clusters[id]; !ok {
+		return fmt.Errorf("cluster %q not found", id)
+	}
+	cp := make([]byte, len(kubeconfig))
+	copy(cp, kubeconfig)
+	r.kubeconf[id] = cp
+	return nil
+}
+
+func (r *MemoryClusterRepository) GetKubeconfig(_ context.Context, id string) ([]byte, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cfg, ok := r.kubeconf[id]
+	if !ok {
+		return nil, nil
+	}
+	cp := make([]byte, len(cfg))
+	copy(cp, cfg)
+	return cp, nil
 }

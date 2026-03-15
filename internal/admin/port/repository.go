@@ -22,6 +22,8 @@ type ClusterRepository interface {
 	List(ctx context.Context, orgID string) ([]*domain.Cluster, error)
 	Update(ctx context.Context, cluster *domain.Cluster) error
 	Delete(ctx context.Context, id string) error
+	SaveKubeconfig(ctx context.Context, id string, kubeconfig []byte) error
+	GetKubeconfig(ctx context.Context, id string) ([]byte, error)
 }
 
 // UserRepository defines the interface for user persistence.

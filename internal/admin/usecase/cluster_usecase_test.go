@@ -13,10 +13,14 @@ import (
 // mockClusterRepo is an in-memory mock of port.ClusterRepository.
 type mockClusterRepo struct {
 	clusters map[string]*domain.Cluster
+	kubeconf map[string][]byte
 }
 
 func newMockClusterRepo() *mockClusterRepo {
-	return &mockClusterRepo{clusters: make(map[string]*domain.Cluster)}
+	return &mockClusterRepo{
+		clusters: make(map[string]*domain.Cluster),
+		kubeconf: make(map[string][]byte),
+	}
 }
 
 func (m *mockClusterRepo) Create(_ context.Context, cluster *domain.Cluster) error {
@@ -46,6 +50,22 @@ func (m *mockClusterRepo) Update(_ context.Context, cluster *domain.Cluster) err
 func (m *mockClusterRepo) Delete(_ context.Context, id string) error {
 	delete(m.clusters, id)
 	return nil
+}
+
+func (m *mockClusterRepo) SaveKubeconfig(_ context.Context, id string, kubeconfig []byte) error {
+	cp := make([]byte, len(kubeconfig))
+	copy(cp, kubeconfig)
+	m.kubeconf[id] = cp
+	return nil
+}
+
+func (m *mockClusterRepo) GetKubeconfig(_ context.Context, id string) ([]byte, error) {
+	if cfg, ok := m.kubeconf[id]; ok {
+		cp := make([]byte, len(cfg))
+		copy(cp, cfg)
+		return cp, nil
+	}
+	return nil, nil
 }
 
 func TestClusterUseCase_RegisterCluster_Success(t *testing.T) {
@@ -149,4 +169,21 @@ func TestClusterUseCase_VerifyCluster_Success(t *testing.T) {
 	verified, err := uc.VerifyCluster(context.Background(), created.ID)
 	require.NoError(t, err)
 	assert.Equal(t, domain.ConnectionStatusConnected, verified.ConnectionStatus)
+}
+
+func TestClusterUseCase_SaveAndGetKubeconfig(t *testing.T) {
+	repo := newMockClusterRepo()
+	uc := NewClusterUseCase(repo)
+
+	created, err := uc.RegisterCluster(context.Background(), RegisterClusterInput{
+		Name: "kube-cluster", Type: domain.ClusterTypePipeline, OrgID: "org_001",
+	})
+	require.NoError(t, err)
+
+	plain := []byte("apiVersion: v1\nkind: Config\n")
+	require.NoError(t, uc.SaveKubeconfig(context.Background(), created.ID, plain))
+
+	stored, err := uc.GetKubeconfig(context.Background(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, plain, stored)
 }

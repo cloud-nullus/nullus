@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/jackc/pgx/v5"
@@ -105,4 +106,30 @@ func (r *PostgresClusterRepository) Delete(ctx context.Context, id string) error
 	const q = `DELETE FROM clusters WHERE id = $1`
 	_, err := r.pool.Exec(ctx, q, id)
 	return err
+}
+
+func (r *PostgresClusterRepository) SaveKubeconfig(ctx context.Context, id string, kubeconfig []byte) error {
+	const q = `UPDATE clusters SET kubeconfig = $1, updated_at = NOW() WHERE id = $2`
+	ct, err := r.pool.Exec(ctx, q, kubeconfig, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("cluster %q not found", id)
+	}
+	return nil
+}
+
+func (r *PostgresClusterRepository) GetKubeconfig(ctx context.Context, id string) ([]byte, error) {
+	const q = `SELECT kubeconfig FROM clusters WHERE id = $1`
+
+	var kubeconfig []byte
+	err := r.pool.QueryRow(ctx, q, id).Scan(&kubeconfig)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return kubeconfig, nil
 }
