@@ -79,6 +79,10 @@ const UserManagementPage = lazy(() =>
   import('../features/admin/pages/user-management-page').then((m) => ({ default: m.UserManagementPage }))
 )
 
+const KnownIssuesPage = lazy(() =>
+  import('../features/admin/pages/known-issues-page').then((m) => ({ default: m.KnownIssuesPage }))
+)
+
 function Loading() {
   return (
     <div className="flex h-[200px] items-center justify-center text-[var(--color-text-secondary)]">
@@ -135,6 +139,7 @@ export const router = createBrowserRouter([
           { path: 'admin/organizations', element: withSuspense(<OrganizationPage />) },
           { path: 'admin/users', element: withSuspense(<UserManagementPage />) },
           { path: 'admin/clusters', element: withSuspense(<ClusterPage />) },
+          { path: 'admin/known-issues', element: withSuspense(<KnownIssuesPage />) },
         ],
       },
       { path: '*', element: withSuspense(<NotFoundPage />) },

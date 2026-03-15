@@ -119,17 +119,10 @@ export interface StackHistoryEntry {
   snapshot: Record<string, unknown>
 }
 
-export interface StackVersionDiffEntry {
-  key: string
-  value: string
-}
-
 export interface StackVersionDiff {
-  fromVersion: number
-  toVersion: number
-  added: StackVersionDiffEntry[]
-  removed: StackVersionDiffEntry[]
-  changed: { key: string; from: string; to: string }[]
+  added: Record<string, unknown>
+  removed: Record<string, unknown>
+  changed: Record<string, [unknown, unknown]>
 }
 
 export interface CompatibilityTool {
@@ -265,6 +258,19 @@ export interface CreateClusterRequest {
   name: string
   type: ClusterType
   kubeconfig: string
+}
+
+export type KnownIssueSeverity = 'high' | 'medium' | 'low'
+
+export type KnownIssueStatus = 'open' | 'acknowledged' | 'planned'
+
+export interface KnownIssue {
+  id: string
+  severity: KnownIssueSeverity
+  title: string
+  description: string
+  workaround: string
+  status: KnownIssueStatus
 }
 
 export type CreateStackRequest = StackConfig
