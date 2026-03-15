@@ -1,85 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import type {
+  CompatibilityMatrix,
+  CompatibilityValidationResult,
+  CreateStackRequest,
+  ResourceEstimate,
+  Stack,
+  StackHistoryEntry,
+  StackTemplate,
+  StackVersionDiff,
+} from '../../../types'
 
-// --- Types ---
-
-export interface StackHistoryEntry {
-  id: string
-  stackId: string
-  version: number
-  changedBy: string
-  changedAt: string
-  reason: string
-  snapshot: Record<string, unknown>
-}
-
-export interface StackVersionDiff {
-  fromVersion: number
-  toVersion: number
-  added: { key: string; value: string }[]
-  removed: { key: string; value: string }[]
-  changed: { key: string; from: string; to: string }[]
-}
-
-export interface CompatibilityMatrix {
-  id: string
-  name: string
-  status: 'verified' | 'untested'
-  k8sRange: string
-  tools: { name: string; helmVersion: string; appVersion: string }[]
-}
-
-export interface CompatibilityValidationResult {
-  compatible: boolean
-  issues: { tool: string; message: string; severity: 'error' | 'warning' }[]
-  checkedAt: string
-}
-
-export interface StackTemplate {
-  id: string
-  name: string
-  description: string
-  tools: string[]
-  estimatedMinutes: number
-  category: string
-}
-
-export interface Stack {
-  id: string
-  name: string
-  templateId: string
-  templateName: string
-  clusterId: string
-  clusterName: string
-  status: 'running' | 'success' | 'failed' | 'pending' | 'cancelled'
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CreateStackRequest {
-  templateId: string | null
-  clusterId: string | null
-  stackName: string
-  artifacts: Record<string, { tool: string; version: string }>
-  pipeline: Record<string, { tool: string; version: string }>
-  monitoring: Record<string, { tool: string; version: string }>
-  logging: Record<string, { tool: string; version: string }>
-  resources: {
-    developerCount: number
-    concurrentRunners: number
-    commitsPerDay: number
-    buildFrequency: string
-    currency: string
-  }
-}
-
-export interface ResourceEstimate {
-  cpu: string
-  memory: string
-  storage: string
-  estimatedCostMonthly: number
-  currency: string
-}
+export type {
+  CompatibilityMatrix,
+  CompatibilityValidationResult,
+  CreateStackRequest,
+  ResourceEstimate,
+  Stack,
+  StackHistoryEntry,
+  StackTemplate,
+  StackVersionDiff,
+} from '../../../types'
 
 // --- Query keys ---
 

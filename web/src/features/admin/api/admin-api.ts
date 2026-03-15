@@ -1,61 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import type {
+  Cluster,
+  CreateClusterRequest,
+  InviteMemberRequest,
+  Member,
+  MemberRole,
+  Organization,
+  UpdateOrgRequest,
+} from '../../../types'
 
-// --- Types ---
-
-export type OrgStatus = 'active' | 'inactive' | 'suspended'
-export type MemberRole = 'admin' | 'devops' | 'developer'
-export type MemberStatus = 'active' | 'pending' | 'inactive'
-export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s'
-export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive'
-
-export interface Organization {
-  id: string
-  name: string
-  slug: string
-  domain: string
-  status: OrgStatus
-  clusterAccessScope: string[]
-  createdAt: string
-}
-
-export interface OrgMember {
-  id: string
-  name: string
-  email: string
-  role: MemberRole
-  status: MemberStatus
-  joinedAt: string
-}
-
-export interface Cluster {
-  id: string
-  name: string
-  type: ClusterType
-  endpoint: string
-  status: ClusterStatus
-  organizationIds: string[]
-  createdAt: string
-}
-
-export interface UpdateOrgRequest {
-  name?: string
-  slug?: string
-  domain?: string
-  status?: OrgStatus
-  clusterAccessScope?: string[]
-}
-
-export interface InviteMemberRequest {
-  email: string
-  role: MemberRole
-}
-
-export interface CreateClusterRequest {
-  name: string
-  type: ClusterType
-  kubeconfig: string
-}
+export type {
+  Cluster,
+  ClusterStatus,
+  ClusterType,
+  CreateClusterRequest,
+  InviteMemberRequest,
+  MemberRole,
+  MemberStatus,
+  Organization,
+  OrgStatus,
+  UpdateOrgRequest,
+} from '../../../types'
 
 // --- Query keys ---
 
@@ -76,13 +42,19 @@ const adminApiCalls = {
     api.patch<Organization>('/admin/organization', data).then((r) => r.data),
 
   getMembers: (orgId: string) =>
-    api.get<{ items: OrgMember[]; total: number }>(`/admin/organizations/${orgId}/members`).then((r) => r.data),
+    api.get<{ items: Member[]; total: number }>(`/admin/organizations/${orgId}/members`).then((r) => r.data),
 
   inviteMember: (orgId: string, data: InviteMemberRequest) =>
-    api.post<OrgMember>(`/admin/organizations/${orgId}/members`, data).then((r) => r.data),
+    api.post<Member>(`/admin/organizations/${orgId}/members`, data).then((r) => r.data),
 
   removeMember: (orgId: string, memberId: string) =>
     api.delete(`/admin/organizations/${orgId}/members/${memberId}`).then((r) => r.data),
+
+  updateMemberRole: (orgId: string, memberId: string, role: MemberRole) =>
+    api.patch<Member>(`/admin/organizations/${orgId}/members/${memberId}`, { role }).then((r) => r.data),
+
+  deactivateMember: (orgId: string, memberId: string) =>
+    api.post<Member>(`/admin/organizations/${orgId}/members/${memberId}/deactivate`).then((r) => r.data),
 
   getClusters: () =>
     api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => r.data),
@@ -92,6 +64,9 @@ const adminApiCalls = {
 
   createCluster: (data: CreateClusterRequest) =>
     api.post<Cluster>('/admin/clusters', data).then((r) => r.data),
+
+  updateCluster: (id: string, data: Partial<CreateClusterRequest>) =>
+    api.patch<Cluster>(`/admin/clusters/${id}`, data).then((r) => r.data),
 
   deleteCluster: (id: string) =>
     api.delete(`/admin/clusters/${id}`).then((r) => r.data),
@@ -144,6 +119,27 @@ export function useRemoveMember(orgId: string) {
   })
 }
 
+export function useUpdateUserRole(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: MemberRole }) =>
+      adminApiCalls.updateMemberRole(orgId, memberId, role),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.members(orgId) })
+    },
+  })
+}
+
+export function useDeactivateUser(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (memberId: string) => adminApiCalls.deactivateMember(orgId, memberId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.members(orgId) })
+    },
+  })
+}
+
 export function useClusters() {
   return useQuery({
     queryKey: queryKeys.clusters(),
@@ -163,6 +159,17 @@ export function useCreateCluster() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: adminApiCalls.createCluster,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
+    },
+  })
+}
+
+export function useUpdateCluster() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<CreateClusterRequest> }) =>
+      adminApiCalls.updateCluster(id, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
     },

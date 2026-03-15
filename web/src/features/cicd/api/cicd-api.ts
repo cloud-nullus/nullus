@@ -1,76 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import type {
+  AppTemplateInfo,
+  CicdTemplate,
+  CreatePipelineRequest,
+  DeployAppRequest,
+  DeployAppResult,
+  Deployment,
+  Pipeline,
+} from '../../../types'
 
-// --- Types ---
-
-export type PipelineStatus = 'running' | 'success' | 'failed' | 'pending' | 'cancelled'
-export type AppType = 'web-backend' | 'web-frontend' | 'batch-job'
-export type AppTemplate = 'react-spa' | 'next-app' | 'express-api' | 'spring-boot' | 'python-fastapi'
-
-export interface CicdTemplate {
-  id: string
-  name: string
-  description: string
-  appType: AppType
-  stages: string[]
-}
-
-export interface Pipeline {
-  id: string
-  name: string
-  appType: AppType
-  clusterId: string
-  clusterName: string
-  status: PipelineStatus
-  lastDeployedAt: string | null
-  createdAt: string
-}
-
-export interface Deployment {
-  id: string
-  pipelineId: string
-  pipelineName: string
-  version: string
-  status: PipelineStatus
-  triggeredBy: string
-  startedAt: string
-  completedAt: string | null
-}
-
-export interface CreatePipelineRequest {
-  name: string
-  appType: AppType
-  clusterId: string
-  templateId?: string
-}
-
-export interface AppTemplateInfo {
-  id: AppTemplate
-  name: string
-  description: string
-  language: string
-}
-
-export interface DeployAppRequest {
-  appName: string
-  gitUrl: string
-  clusterId: string
-  namespace: string
-  template: AppTemplate
-  resources: {
-    cpuRequest: string
-    cpuLimit: string
-    memoryRequest: string
-    memoryLimit: string
-  }
-  envVars: { key: string; value: string }[]
-}
-
-export interface DeployAppResult {
-  deploymentId: string
-  appName: string
-  status: PipelineStatus
-}
+export type {
+  AppTemplate,
+  AppTemplateInfo,
+  AppType,
+  CicdTemplate,
+  CreatePipelineRequest,
+  DeployAppRequest,
+  DeployAppResult,
+  Deployment,
+  Pipeline,
+  PipelineStatus,
+} from '../../../types'
 
 // --- Query keys ---
 

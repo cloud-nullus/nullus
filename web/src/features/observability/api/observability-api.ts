@@ -1,63 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import type {
+  AlertHistoryEntry,
+  AlertRule,
+  AlertSeverity,
+  CreateAlertRuleRequest,
+  MonitoringDashboard,
+} from '../../../types'
 
-// --- Types ---
-
-export type AlertSeverity = 'critical' | 'warning' | 'info'
-export type AlertChannel = 'slack' | 'email'
-export type ToolHealthStatus = 'running' | 'warning' | 'error'
-
-export interface KpiMetrics {
-  cpuUsage: number
-  memoryUsage: number
-  storageUsage: number
-  podCount: number
-  podRunning: number
-}
-
-export interface PipelineStats {
-  successRate: number
-  totalRuns: number
-  avgBuildSeconds: number
-}
-
-export interface ToolHealth {
-  name: string
-  version: string
-  status: ToolHealthStatus
-}
-
-export interface MonitoringDashboard {
-  kpi: KpiMetrics
-  pipeline: PipelineStats
-  tools: ToolHealth[]
-}
-
-export interface AlertRule {
-  id: string
-  name: string
-  condition: string
-  threshold: string
-  channel: AlertChannel
-  enabled: boolean
-  createdAt: string
-}
-
-export interface AlertHistoryEntry {
-  id: string
-  ruleName: string
-  severity: AlertSeverity
-  message: string
-  firedAt: string
-  resolvedAt: string | null
-}
-
-export interface CreateAlertRuleRequest {
-  name: string
-  condition: string
-  threshold: string
-  channel: AlertChannel
-}
+export type {
+  AlertChannel,
+  AlertHistoryEntry,
+  AlertRule,
+  AlertSeverity,
+  CreateAlertRuleRequest,
+  MonitoringDashboard,
+  ToolHealthStatus,
+} from '../../../types'
 
 // --- Query keys ---
 
@@ -81,6 +40,9 @@ const observabilityApiCalls = {
 
   updateAlertRule: (id: string, data: Partial<AlertRule>) =>
     api.patch<AlertRule>(`/observability/alert-rules/${id}`, data).then((r) => r.data),
+
+  deleteAlertRule: (id: string) =>
+    api.delete(`/observability/alert-rules/${id}`).then((r) => r.data),
 
   getAlertHistory: (filters?: { severity?: AlertSeverity }) =>
     api
@@ -120,6 +82,16 @@ export function useUpdateAlertRule() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<AlertRule> }) =>
       observabilityApiCalls.updateAlertRule(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.alertRules() })
+    },
+  })
+}
+
+export function useDeleteAlertRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => observabilityApiCalls.deleteAlertRule(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.alertRules() })
     },
