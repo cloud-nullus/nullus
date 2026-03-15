@@ -1,9 +1,10 @@
-import { type ReactNode, type ChangeEvent } from 'react'
+import { type ReactNode } from 'react'
 import { Sun, Moon, ShieldCheck, HardHat, LaptopMinimal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores/theme-store'
 import { useAuthStore } from '../../stores/auth-store'
 import type { Role } from '../../types'
+import { LanguageSwitcher } from '../shared/language-switcher'
 
 const roleIcons: Record<Role, ReactNode> = {
   admin: <ShieldCheck size={14} />,
@@ -22,76 +23,26 @@ export function Header() {
   const { theme, toggleTheme } = useThemeStore()
   const { role } = useAuthStore()
 
-  const handleLanguageChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    void i18n.changeLanguage(e.target.value)
+  const handleLanguageChange = (language: string) => {
+    void i18n.changeLanguage(language)
   }
 
   return (
-    <header
-      style={{
-        height: 'var(--header-height)',
-        background: 'var(--color-surface-card)',
-        borderBottom: '1px solid var(--color-border-default)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        padding: '0 24px',
-        gap: '16px',
-        flexShrink: 0,
-      }}
-    >
+    <header className="flex h-[var(--header-height)] shrink-0 items-center justify-end gap-4 border-b border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-6">
       {/* Role badge */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '4px 10px',
-          borderRadius: '9999px',
-          background: 'rgba(99,102,241,0.15)',
-          color: '#a5b4fc',
-          fontSize: '12px',
-          fontWeight: 600,
-        }}
-      >
+      <div className="flex items-center gap-1.5 rounded-full bg-[rgba(99,102,241,0.15)] px-2.5 py-1 text-xs font-semibold text-[#a5b4fc]">
         {roleIcons[role]}
         {roleLabels[role]}
       </div>
 
-      {/* Language dropdown */}
-      <select
-        value={i18n.language}
-        onChange={handleLanguageChange}
-        aria-label="Select language"
-        style={{
-          background: 'var(--color-surface-card)',
-          border: '1px solid var(--color-border-default)',
-          color: 'var(--color-text-secondary)',
-          borderRadius: '6px',
-          padding: '4px 8px',
-          fontSize: '13px',
-          cursor: 'pointer',
-        }}
-      >
-        <option value="en">EN</option>
-        <option value="ko">한국어</option>
-      </select>
+      <LanguageSwitcher currentLanguage={i18n.language} onLanguageChange={handleLanguageChange} />
 
       {/* Theme toggle */}
       <button
+        type="button"
         onClick={toggleTheme}
         aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: 'var(--color-text-secondary)',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '6px',
-          borderRadius: '6px',
-          transition: 'color var(--transition-fast)',
-        }}
+        className="flex cursor-pointer items-center rounded-md border-none bg-none p-1.5 text-[var(--color-text-secondary)] transition-all duration-150 ease-in-out"
       >
         {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
       </button>

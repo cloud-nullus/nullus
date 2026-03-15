@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   Box,
@@ -24,6 +24,7 @@ import {
 import { useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
 import type { Role } from '../../types'
+import { cn } from '../../lib/utils'
 
 interface NavItem {
   key: string
@@ -91,8 +92,10 @@ const navGroups: NavGroup[] = [
 ]
 
 export function Sidebar() {
+  const navigate = useNavigate()
   const { t } = useTranslation()
-  const { role } = useAuthStore()
+  const role = useAuthStore((state) => state.role)
+  const logout = useAuthStore((state) => state.logout)
   const { collapsed, toggleSidebar } = useSidebarStore()
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     devsecops: true,
@@ -109,82 +112,50 @@ export function Sidebar() {
 
   return (
     <aside
-      style={{
-        width: collapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)',
-        minHeight: '100vh',
-        background: 'var(--color-surface-card)',
-        borderRight: '1px solid var(--color-border-default)',
-        display: 'flex',
-        flexDirection: 'column',
-        transition: 'width var(--transition-default)',
-        overflow: 'hidden',
-        flexShrink: 0,
-        zIndex: 'var(--z-sidebar)',
-        position: 'relative',
-      }}
+      className={cn(
+        'relative z-[var(--z-sidebar)] flex min-h-screen shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-default)] bg-[var(--color-surface-card)] transition-all duration-200 ease-in-out',
+        collapsed ? 'w-[var(--sidebar-collapsed)]' : 'w-[var(--sidebar-width)]'
+      )}
     >
       {/* Logo + toggle */}
       <div
-        style={{
-          height: 'var(--header-height)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'space-between',
-          padding: collapsed ? '0' : '0 16px',
-          borderBottom: '1px solid var(--color-border-default)',
-          flexShrink: 0,
-        }}
+        className={cn(
+          'flex h-[var(--header-height)] shrink-0 items-center border-b border-[var(--color-border-default)]',
+          collapsed ? 'justify-center px-0' : 'justify-between px-4'
+        )}
       >
         {!collapsed && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Box size={20} style={{ color: '#ffd700' }} />
-            <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--color-text-primary)' }}>
+          <div className="flex items-center gap-2">
+            <Box size={20} className="text-[#ffd700]" />
+            <span className="text-base font-bold text-[var(--color-text-primary)]">
               Nullus
             </span>
           </div>
         )}
         <button
+          type="button"
           onClick={toggleSidebar}
           aria-label="Toggle sidebar"
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--color-text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            padding: '6px',
-            borderRadius: '6px',
-          }}
+          className="flex cursor-pointer items-center rounded-md border-none bg-none p-1.5 text-[var(--color-text-secondary)]"
         >
           <Menu size={18} />
         </button>
       </div>
 
       {/* Nav groups */}
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+      <nav className="flex-1 overflow-y-auto py-2">
         {visibleGroups.map((group) => (
           <div key={group.key}>
             <button
+              type="button"
               onClick={() => toggleGroup(group.key)}
-              style={{
-                width: '100%',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: collapsed ? 'center' : 'space-between',
-                padding: collapsed ? '10px 0' : '10px 16px',
-                color: '#818cf8',
-                fontSize: '11px',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
+              className={cn(
+                'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[#818cf8] uppercase',
+                collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-4 py-2.5'
+              )}
               aria-label={t(group.label)}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="flex items-center gap-2">
                 {group.icon}
                 {!collapsed && t(group.label)}
               </span>
@@ -203,19 +174,15 @@ export function Sidebar() {
                     <NavLink
                       key={item.key}
                       to={item.path}
-                      style={({ isActive }) => ({
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: collapsed ? '10px 0' : '8px 16px 8px 32px',
-                        justifyContent: collapsed ? 'center' : 'flex-start',
-                        color: isActive ? '#a5b4fc' : 'var(--color-text-secondary)',
-                        background: isActive ? 'rgba(99,102,241,0.1)' : 'transparent',
-                        textDecoration: 'none',
-                        fontSize: '14px',
-                        borderRight: isActive ? '2px solid #6366f1' : '2px solid transparent',
-                        transition: 'all var(--transition-fast)',
-                      })}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex items-center gap-2.5 border-r-2 text-sm no-underline transition-all duration-150 ease-in-out',
+                          collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2 pl-8',
+                          isActive
+                            ? 'border-r-[#6366f1] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
+                            : 'border-r-transparent bg-transparent text-[var(--color-text-secondary)]'
+                        )
+                      }
                     >
                       {item.icon}
                       {!collapsed && t(item.label)}
@@ -228,22 +195,17 @@ export function Sidebar() {
       </nav>
 
       {/* Logout */}
-      <div style={{ borderTop: '1px solid var(--color-border-default)', padding: '8px 0' }}>
+      <div className="border-t border-[var(--color-border-default)] py-2">
         <button
-          style={{
-            width: '100%',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: collapsed ? '10px 0' : '10px 16px',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            color: 'var(--color-text-secondary)',
-            fontSize: '14px',
-            transition: 'color var(--transition-fast)',
+          type="button"
+          onClick={() => {
+            logout()
+            navigate('/login')
           }}
+          className={cn(
+            'flex w-full cursor-pointer items-center gap-2.5 border-none bg-none text-sm text-[var(--color-text-secondary)] transition-all duration-150 ease-in-out',
+            collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2.5'
+          )}
           aria-label={t('sidebar.logout')}
         >
           <LogOut size={18} />
