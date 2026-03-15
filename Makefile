@@ -1,4 +1,4 @@
-.PHONY: dev dev-up dev-down dev-status dev-logs build test test-cover lint migrate-up migrate-down migrate-status web-dev web-build web-test all clean db-shell
+.PHONY: dev dev-up dev-down dev-status dev-logs build test test-cover test-integration lint migrate-up migrate-down migrate-status web-dev web-build web-test all clean db-shell
 
 DB_URL := postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable
 
@@ -49,6 +49,9 @@ run: build
 
 test:
 	go test ./... -v -count=1
+
+test-integration:
+	go test -tags integration ./e2e/ -v -count=1
 
 test-cover:
 	go test ./... -coverprofile=coverage.out -covermode=atomic
