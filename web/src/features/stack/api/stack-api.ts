@@ -11,6 +11,16 @@ import type {
   StackVersionDiff,
 } from '../../../types'
 
+export interface TemplateMutationRequest {
+  id: string
+  name: string
+  description: string
+  tools: unknown[]
+  estimated_install_time: number
+  recommended_use_case: string
+  min_resources: string
+}
+
 export type {
   CompatibilityMatrix,
   CompatibilityValidationResult,
@@ -76,6 +86,15 @@ const stackApiCalls = {
 
   validateCompatibility: (stackId: string) =>
     api.post<CompatibilityValidationResult>(`/stacks/${stackId}/validate`).then((r) => r.data),
+
+  createTemplate: (request: TemplateMutationRequest) =>
+    api.post<StackTemplate>('/stacks/templates', request).then((r) => r.data),
+
+  updateTemplate: (request: TemplateMutationRequest) =>
+    api.put<StackTemplate>(`/stacks/templates/${request.id}`, request).then((r) => r.data),
+
+  deleteTemplate: (id: string) =>
+    api.delete<void>(`/stacks/templates/${id}`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -162,6 +181,38 @@ export function useValidateCompatibility(stackId: string) {
     mutationFn: () => stackApiCalls.validateCompatibility(stackId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
+    },
+  })
+}
+
+export function useCreateTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.createTemplate,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.templates() })
+    },
+  })
+}
+
+export function useUpdateTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.updateTemplate,
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.templates() })
+      void qc.invalidateQueries({ queryKey: queryKeys.template(variables.id) })
+    },
+  })
+}
+
+export function useDeleteTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.deleteTemplate,
+    onSuccess: (_, id) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.templates() })
+      void qc.invalidateQueries({ queryKey: queryKeys.template(id) })
     },
   })
 }

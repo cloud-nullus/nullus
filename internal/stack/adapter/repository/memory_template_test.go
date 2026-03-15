@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -105,4 +107,56 @@ func TestMemoryTemplateRepository_AllTemplatesHaveRequiredFields(t *testing.T) {
 			assert.NotEmpty(t, tmpl.MinResources, "MinResources must not be empty")
 		})
 	}
+}
+
+func TestMemoryTemplateRepository_Create(t *testing.T) {
+	repo := NewMemoryTemplateRepository()
+
+	tmpl := &domain.Template{
+		ID:                   "custom-template-v1",
+		Name:                 "Custom Template",
+		Description:          "Custom description",
+		Tools:                []domain.ToolConfig{{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"}},
+		EstimatedInstallTime: 30 * time.Minute,
+		RecommendedUseCase:   "테스트",
+		MinResources:         "2 vCPU / 4Gi RAM / 20Gi Storage",
+	}
+
+	require.NoError(t, repo.Create(context.Background(), tmpl))
+
+	got, err := repo.GetByID(context.Background(), tmpl.ID)
+	require.NoError(t, err)
+	assert.Equal(t, tmpl.Name, got.Name)
+}
+
+func TestMemoryTemplateRepository_Update(t *testing.T) {
+	repo := NewMemoryTemplateRepository()
+
+	original, err := repo.GetByID(context.Background(), "gitlab-allinone-v1")
+	require.NoError(t, err)
+
+	updated := &domain.Template{
+		ID:                   original.ID,
+		Name:                 "GitLab All-in-One Updated",
+		Description:          original.Description,
+		Tools:                original.Tools,
+		EstimatedInstallTime: original.EstimatedInstallTime,
+		RecommendedUseCase:   original.RecommendedUseCase,
+		MinResources:         original.MinResources,
+	}
+
+	require.NoError(t, repo.Update(context.Background(), updated))
+
+	got, err := repo.GetByID(context.Background(), original.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "GitLab All-in-One Updated", got.Name)
+}
+
+func TestMemoryTemplateRepository_Delete(t *testing.T) {
+	repo := NewMemoryTemplateRepository()
+
+	require.NoError(t, repo.Delete(context.Background(), "gitlab-allinone-v1"))
+
+	_, err := repo.GetByID(context.Background(), "gitlab-allinone-v1")
+	require.Error(t, err)
 }

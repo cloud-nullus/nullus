@@ -56,7 +56,7 @@ func newEchoServer() *echo.Echo {
 	exportConfigUC := stackuc.NewExportConfig(memStackRepo)
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, memStackRepo)
-	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC)
+	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, memTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 
 	// Compatibility + History

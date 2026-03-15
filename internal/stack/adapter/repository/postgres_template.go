@@ -20,6 +20,94 @@ func NewPostgresTemplateRepository(pool *pgxpool.Pool) *PostgresTemplateReposito
 	return &PostgresTemplateRepository{pool: pool}
 }
 
+func (r *PostgresTemplateRepository) Create(ctx context.Context, template *domain.Template) error {
+	toolsJSON, err := json.Marshal(template.Tools)
+	if err != nil {
+		return fmt.Errorf("marshal tools: %w", err)
+	}
+
+	const q = `
+		INSERT INTO golden_path_templates (
+			id,
+			name,
+			description,
+			tools,
+			estimated_install_time,
+			recommended_use_case,
+			min_resources
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+
+	_, err = r.pool.Exec(
+		ctx,
+		q,
+		template.ID,
+		template.Name,
+		template.Description,
+		toolsJSON,
+		int64(template.EstimatedInstallTime),
+		template.RecommendedUseCase,
+		template.MinResources,
+	)
+	if err != nil {
+		return fmt.Errorf("create template: %w", err)
+	}
+
+	return nil
+}
+
+func (r *PostgresTemplateRepository) Update(ctx context.Context, template *domain.Template) error {
+	toolsJSON, err := json.Marshal(template.Tools)
+	if err != nil {
+		return fmt.Errorf("marshal tools: %w", err)
+	}
+
+	const q = `
+		UPDATE golden_path_templates
+		SET
+			name = $2,
+			description = $3,
+			tools = $4,
+			estimated_install_time = $5,
+			recommended_use_case = $6,
+			min_resources = $7,
+			updated_at = NOW()
+		WHERE id = $1`
+
+	ct, err := r.pool.Exec(
+		ctx,
+		q,
+		template.ID,
+		template.Name,
+		template.Description,
+		toolsJSON,
+		int64(template.EstimatedInstallTime),
+		template.RecommendedUseCase,
+		template.MinResources,
+	)
+	if err != nil {
+		return fmt.Errorf("update template: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("template %q not found", template.ID)
+	}
+
+	return nil
+}
+
+func (r *PostgresTemplateRepository) Delete(ctx context.Context, id string) error {
+	const q = `DELETE FROM golden_path_templates WHERE id = $1`
+
+	ct, err := r.pool.Exec(ctx, q, id)
+	if err != nil {
+		return fmt.Errorf("delete template: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("template %q not found", id)
+	}
+
+	return nil
+}
+
 func (r *PostgresTemplateRepository) GetByID(ctx context.Context, id string) (*domain.Template, error) {
 	const q = `
 		SELECT id, name, description, tools, estimated_install_time, recommended_use_case, min_resources

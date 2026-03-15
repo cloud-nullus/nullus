@@ -44,6 +44,30 @@ func (r *MemoryTemplateRepository) List(_ context.Context) ([]*domain.Template, 
 	return result, nil
 }
 
+func (r *MemoryTemplateRepository) Create(_ context.Context, template *domain.Template) error {
+	if _, exists := r.templates[template.ID]; exists {
+		return fmt.Errorf("template %q already exists", template.ID)
+	}
+	r.templates[template.ID] = template
+	return nil
+}
+
+func (r *MemoryTemplateRepository) Update(_ context.Context, template *domain.Template) error {
+	if _, exists := r.templates[template.ID]; !exists {
+		return fmt.Errorf("template %q not found", template.ID)
+	}
+	r.templates[template.ID] = template
+	return nil
+}
+
+func (r *MemoryTemplateRepository) Delete(_ context.Context, id string) error {
+	if _, exists := r.templates[id]; !exists {
+		return fmt.Errorf("template %q not found", id)
+	}
+	delete(r.templates, id)
+	return nil
+}
+
 // goldenPathTemplates returns the three canonical Golden Path templates.
 func goldenPathTemplates() []*domain.Template {
 	return []*domain.Template{

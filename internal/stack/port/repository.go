@@ -17,6 +17,9 @@ type StackRepository interface {
 
 // TemplateRepository defines the interface for template persistence.
 type TemplateRepository interface {
+	Create(ctx context.Context, template *domain.Template) error
+	Update(ctx context.Context, template *domain.Template) error
+	Delete(ctx context.Context, id string) error
 	GetByID(ctx context.Context, id string) (*domain.Template, error)
 	List(ctx context.Context) ([]*domain.Template, error)
 }

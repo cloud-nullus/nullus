@@ -3,10 +3,44 @@ import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { StackTemplatePage } from './stack-template-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
+import { useAuthStore } from '../../../stores/auth-store'
 
-// Mock the API hooks — they return undefined so MOCK_TEMPLATES are used
+const mockCreateTemplateMutate = vi.fn()
+const mockUpdateTemplateMutate = vi.fn()
+const mockDeleteTemplateMutate = vi.fn()
+
+const mockTemplates = [
+  {
+    id: 'gitlab-allinone-v1',
+    name: 'GitLab All-in-One',
+    description: 'GitLab 올인원 스택',
+    tools: ['GitLab', 'GitLab CI', 'Argo CD'],
+    estimatedMinutes: 25,
+    category: 'gitlab',
+  },
+  {
+    id: 'gitlab-argocd-v1',
+    name: 'GitLab + ArgoCD',
+    description: 'GitLab + ArgoCD 스택',
+    tools: ['GitLab', 'Argo CD'],
+    estimatedMinutes: 30,
+    category: 'hybrid',
+  },
+  {
+    id: 'github-argocd-v1',
+    name: 'GitHub + ArgoCD',
+    description: 'GitHub + ArgoCD 스택',
+    tools: ['GitHub', 'Argo CD'],
+    estimatedMinutes: 20,
+    category: 'github',
+  },
+]
+
 vi.mock('../api/stack-api', () => ({
-  useTemplates: () => ({ data: undefined }),
+  useTemplates: () => ({ data: mockTemplates }),
+  useCreateTemplate: () => ({ mutate: mockCreateTemplateMutate, isPending: false }),
+  useUpdateTemplate: () => ({ mutate: mockUpdateTemplateMutate, isPending: false }),
+  useDeleteTemplate: () => ({ mutate: mockDeleteTemplateMutate, isPending: false }),
 }))
 
 // Mock useNavigate
@@ -18,7 +52,11 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 beforeEach(() => {
   useStackConfigStore.getState().resetConfig()
+  useAuthStore.setState({ role: 'developer', user: null, token: null, isAuthenticated: false })
   mockNavigate.mockClear()
+  mockCreateTemplateMutate.mockReset()
+  mockUpdateTemplateMutate.mockReset()
+  mockDeleteTemplateMutate.mockReset()
 })
 
 describe('StackTemplatePage', () => {
@@ -80,7 +118,7 @@ describe('StackTemplatePage', () => {
     renderWithProviders(<StackTemplatePage />)
     const buttons = screen.getAllByText('Use Template')
     fireEvent.click(buttons[0])
-    expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-all-in-one')
+    expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
   it('clicking Use Template sets template in store', () => {
@@ -88,6 +126,63 @@ describe('StackTemplatePage', () => {
     const buttons = screen.getAllByText('Use Template')
     fireEvent.click(buttons[0])
     const { draft } = useStackConfigStore.getState()
-    expect(draft.selectedTemplateId).toBe('gitlab-all-in-one')
+    expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
+  })
+
+  it('shows create template button only for admin role', () => {
+    const first = renderWithProviders(<StackTemplatePage />)
+    expect(screen.queryByRole('button', { name: 'Create Template' })).not.toBeInTheDocument()
+
+    first.unmount()
+
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+    expect(screen.getByRole('button', { name: 'Create Template' })).toBeInTheDocument()
+  })
+
+  it('admin can create a template', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Template' }))
+    fireEvent.change(screen.getByLabelText('Template ID'), { target: { value: 'custom-template-v1' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Custom Template' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Custom description' } })
+    fireEvent.change(screen.getByLabelText('Tools (JSON)'), {
+      target: { value: '[{"category":"cd_tool","name":"Argo CD","helm_version":"7.7.2","app_version":"2.13.2"}]' },
+    })
+    fireEvent.change(screen.getByLabelText('Estimated Install Time (ns)'), { target: { value: '1800000000000' } })
+    fireEvent.change(screen.getByLabelText('Recommended Use Case'), { target: { value: '테스트' } })
+    fireEvent.change(screen.getByLabelText('Minimum Resources'), { target: { value: '2 vCPU / 4Gi RAM / 20Gi Storage' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(mockCreateTemplateMutate).toHaveBeenCalled()
+    })
+  })
+
+  it('admin can update a template', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0])
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GitLab All-in-One Updated' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockUpdateTemplateMutate).toHaveBeenCalled()
+    })
+  })
+
+  it('admin can delete a template', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Template' }))
+
+    await waitFor(() => {
+      expect(mockDeleteTemplateMutate).toHaveBeenCalled()
+    })
   })
 })

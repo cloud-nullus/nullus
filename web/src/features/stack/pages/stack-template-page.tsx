@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, Search, Wrench } from 'lucide-react'
-import { useTemplates } from '../api/stack-api'
+import { BookOpen, Clock, Pencil, Plus, Search, Trash2, Wrench } from 'lucide-react'
+import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../api/stack-api'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
+import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { useAuthStore } from '../../../stores/auth-store'
 
 const MOCK_TEMPLATES = [
   {
@@ -55,12 +57,42 @@ const TEMPLATE_DETAILS: Record<string, { fullDescription: string; resource: stri
   },
 }
 
+interface TemplateFormState {
+  id: string
+  name: string
+  description: string
+  tools: string
+  estimatedInstallTime: string
+  recommendedUseCase: string
+  minResources: string
+}
+
+const EMPTY_TEMPLATE_FORM: TemplateFormState = {
+  id: '',
+  name: '',
+  description: '',
+  tools: '[]',
+  estimatedInstallTime: String(30 * 60 * 1_000_000_000),
+  recommendedUseCase: '',
+  minResources: '',
+}
+
 export function StackTemplatePage() {
   const navigate = useNavigate()
   const { data: apiTemplates } = useTemplates()
+  const createTemplate = useCreateTemplate()
+  const updateTemplate = useUpdateTemplate()
+  const deleteTemplate = useDeleteTemplate()
+  const role = useAuthStore((state) => state.role)
+  const isAdmin = role === 'admin'
   const { setTemplate, loadFromTemplate } = useStackConfigStore()
   const [search, setSearch] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [form, setForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM)
 
   const templates = Array.isArray(apiTemplates) ? apiTemplates : MOCK_TEMPLATES
 
@@ -87,14 +119,115 @@ export function StackTemplatePage() {
     navigate(`/stack/install?template=${templateId}`)
   }
 
+  const resetForm = () => {
+    setForm(EMPTY_TEMPLATE_FORM)
+    setFormError(null)
+    setEditingTemplateId(null)
+  }
+
+  const openCreateModal = () => {
+    resetForm()
+    setFormOpen(true)
+  }
+
+  const openEditModal = (template: { id: string; name: string; description: string; tools: string[]; estimatedMinutes: number }) => {
+    setEditingTemplateId(template.id)
+    setFormError(null)
+    setForm({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      tools: JSON.stringify(
+        template.tools.map((tool) => ({ category: '', name: tool, helm_version: '', app_version: '' })),
+        null,
+        2
+      ),
+      estimatedInstallTime: String(Math.max(1, Math.round(template.estimatedMinutes * 60 * 1_000_000_000))),
+      recommendedUseCase: '',
+      minResources: '',
+    })
+    setFormOpen(true)
+  }
+
+  const closeFormModal = () => {
+    setFormOpen(false)
+    resetForm()
+  }
+
+  const handleFormChange = (key: keyof TemplateFormState, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const submitTemplate = () => {
+    let parsedTools: unknown[]
+    try {
+      const maybeTools = JSON.parse(form.tools)
+      if (!Array.isArray(maybeTools)) {
+        setFormError('Tools JSON must be an array.')
+        return
+      }
+      parsedTools = maybeTools
+    } catch {
+      setFormError('Tools JSON is invalid.')
+      return
+    }
+
+    const estimatedInstallTime = Number(form.estimatedInstallTime)
+    if (!Number.isFinite(estimatedInstallTime) || estimatedInstallTime < 0) {
+      setFormError('Estimated install time must be a non-negative number.')
+      return
+    }
+
+    const payload = {
+      id: form.id,
+      name: form.name,
+      description: form.description,
+      tools: parsedTools,
+      estimated_install_time: estimatedInstallTime,
+      recommended_use_case: form.recommendedUseCase,
+      min_resources: form.minResources,
+    }
+
+    if (editingTemplateId) {
+      updateTemplate.mutate(
+        { ...payload, id: editingTemplateId },
+        {
+          onSuccess: () => {
+            closeFormModal()
+          },
+          onError: () => {
+            setFormError('Failed to update template.')
+          },
+        }
+      )
+      return
+    }
+
+    createTemplate.mutate(payload, {
+      onSuccess: () => {
+        closeFormModal()
+      },
+      onError: () => {
+        setFormError('Failed to create template.')
+      },
+    })
+  }
+
+  const handleDeleteTemplate = () => {
+    if (!deleteTemplateId) return
+    deleteTemplate.mutate(deleteTemplateId, {
+      onSuccess: () => {
+        setDeleteTemplateId(null)
+      },
+    })
+  }
+
   return (
     <div>
       {/* Page header */}
-      <div className="mb-7">
+      <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
-          <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.15)] text-[#34d399]"
-          >
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.15)] text-[#34d399]">
             <BookOpen size={18} />
           </div>
           <div>
@@ -106,6 +239,12 @@ export function StackTemplatePage() {
             </p>
           </div>
         </div>
+        {isAdmin && (
+          <Button variant="primary" size="md" type="button" onClick={openCreateModal}>
+            <Plus size={15} />
+            Create Template
+          </Button>
+        )}
       </div>
 
       {/* Search */}
@@ -161,16 +300,46 @@ export function StackTemplatePage() {
                 <Clock size={13} />
                 <span>약 {template.estimatedMinutes}분</span>
               </div>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  handleUseTemplate(template.id)
-                }}
-                className="cursor-pointer rounded-lg border-none bg-[linear-gradient(135deg,#facc15,#eab308)] px-3 py-2 text-xs font-bold text-[#111827]"
-              >
-                Use Template
-              </button>
+              <div className="flex items-center gap-1.5">
+                {isAdmin && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        openEditModal(template)
+                      }}
+                    >
+                      <Pencil size={13} />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setDeleteTemplateId(template.id)
+                      }}
+                    >
+                      <Trash2 size={13} />
+                      Delete
+                    </Button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleUseTemplate(template.id)
+                  }}
+                  className="cursor-pointer rounded-lg border-none bg-[linear-gradient(135deg,#facc15,#eab308)] px-3 py-2 text-xs font-bold text-[#111827]"
+                >
+                  Use Template
+                </button>
+              </div>
             </div>
           </button>
         ))}
@@ -250,6 +419,85 @@ export function StackTemplatePage() {
           </div>
         )}
       </Modal>
+
+      <Modal
+        open={formOpen}
+        onClose={closeFormModal}
+        title={editingTemplateId ? 'Edit Template' : 'Create Template'}
+        footer={
+          <>
+            <Button variant="outline" size="sm" onClick={closeFormModal} type="button">
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              onClick={submitTemplate}
+              loading={createTemplate.isPending || updateTemplate.isPending}
+            >
+              {editingTemplateId ? 'Save' : 'Create'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Input
+            label="Template ID"
+            value={editingTemplateId ?? form.id}
+            onChange={(event) => handleFormChange('id', event.target.value)}
+            disabled={editingTemplateId !== null}
+          />
+          <Input
+            label="Name"
+            value={form.name}
+            onChange={(event) => handleFormChange('name', event.target.value)}
+          />
+          <Input
+            label="Description"
+            value={form.description}
+            onChange={(event) => handleFormChange('description', event.target.value)}
+          />
+          <div className="flex flex-col gap-1">
+            <label htmlFor="template-tools-json" className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
+              Tools (JSON)
+            </label>
+            <textarea
+              id="template-tools-json"
+              value={form.tools}
+              onChange={(event) => handleFormChange('tools', event.target.value)}
+              className="min-h-28 w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"
+            />
+          </div>
+          <Input
+            label="Estimated Install Time (ns)"
+            value={form.estimatedInstallTime}
+            onChange={(event) => handleFormChange('estimatedInstallTime', event.target.value)}
+            type="number"
+          />
+          <Input
+            label="Recommended Use Case"
+            value={form.recommendedUseCase}
+            onChange={(event) => handleFormChange('recommendedUseCase', event.target.value)}
+          />
+          <Input
+            label="Minimum Resources"
+            value={form.minResources}
+            onChange={(event) => handleFormChange('minResources', event.target.value)}
+          />
+          {formError && <div className="text-xs text-[#f87171]">{formError}</div>}
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={deleteTemplateId !== null}
+        onClose={() => setDeleteTemplateId(null)}
+        onConfirm={handleDeleteTemplate}
+        title="Delete Template"
+        description="템플릿을 삭제하면 더 이상 목록에 표시되지 않습니다. 계속하시겠습니까?"
+        confirmLabel="Delete Template"
+        loading={deleteTemplate.isPending}
+      />
     </div>
   )
 }

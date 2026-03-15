@@ -2,10 +2,10 @@ package domain
 
 // ClusterMetrics holds resource utilization metrics for a cluster.
 type ClusterMetrics struct {
-	CPUUsage    float64 `json:"cpu_usage"`    // percentage 0-100
-	MemoryUsage float64 `json:"memory_usage"` // percentage 0-100
+	CPUUsage     float64 `json:"cpu_usage"`     // percentage 0-100
+	MemoryUsage  float64 `json:"memory_usage"`  // percentage 0-100
 	StorageUsage float64 `json:"storage_usage"` // percentage 0-100
-	PodCount    int     `json:"pod_count"`
+	PodCount     int     `json:"pod_count"`
 }
 
 // PipelineMetrics holds CI/CD pipeline execution statistics.
