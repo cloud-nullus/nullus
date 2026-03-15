@@ -5,9 +5,39 @@ import { OrganizationPage } from './organization-page'
 
 // Mock API hooks
 vi.mock('../api/admin-api', () => ({
-  useOrganization: () => ({ data: undefined }),
+  useOrganization: () => ({
+    data: {
+      id: 'org-1',
+      name: 'Cloud Nullus',
+      slug: 'cloud-nullus',
+      domain: 'nullus.io',
+      status: 'active',
+      clusterAccessScope: ['prod-cluster', 'staging-cluster'],
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+    isLoading: false,
+  }),
   useUpdateOrganization: () => ({ mutate: vi.fn(), isPending: false }),
-  useMembers: () => ({ data: undefined }),
+  useMembers: () => ({
+    data: {
+      items: [
+        { id: 'm1', name: 'Alice Kim', email: 'alice@nullus.io', role: 'admin', status: 'active', joinedAt: '2026-01-05T00:00:00Z' },
+        { id: 'm2', name: 'Bob Lee', email: 'bob@nullus.io', role: 'devops', status: 'active', joinedAt: '2026-01-10T00:00:00Z' },
+        { id: 'm3', name: 'Carol Park', email: 'carol@nullus.io', role: 'developer', status: 'pending', joinedAt: '2026-03-01T00:00:00Z' },
+      ],
+      total: 3,
+    },
+  }),
+  useClusters: () => ({
+    data: {
+      items: [
+        { id: 'c1', name: 'prod-cluster' },
+        { id: 'c2', name: 'staging-cluster' },
+      ],
+      total: 2,
+    },
+    isLoading: false,
+  }),
   useInviteMember: () => ({ mutate: vi.fn(), isPending: false }),
   useRemoveMember: () => ({ mutate: vi.fn(), isPending: false }),
 }))

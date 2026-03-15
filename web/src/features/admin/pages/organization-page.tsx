@@ -3,29 +3,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Settings, Plus, Trash2, Mail } from 'lucide-react'
-import { useOrganization, useUpdateOrganization, useMembers, useInviteMember, useRemoveMember } from '../api/admin-api'
-import type { OrgStatus, MemberRole, MemberStatus, InviteMemberRequest } from '../api/admin-api'
+import { useOrganization, useUpdateOrganization, useMembers, useInviteMember, useRemoveMember, useClusters } from '../api/admin-api'
+import type { MemberRole, MemberStatus, InviteMemberRequest } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { cn } from '../../../lib/utils'
-
-const MOCK_ORG = {
-  id: 'org-1',
-  name: 'Cloud Nullus',
-  slug: 'cloud-nullus',
-  domain: 'nullus.io',
-  status: 'active' as OrgStatus,
-  clusterAccessScope: ['prod-cluster', 'staging-cluster'],
-  createdAt: '2026-01-01T00:00:00Z',
-}
-
-const MOCK_MEMBERS = [
-  { id: 'm1', name: 'Alice Kim', email: 'alice@nullus.io', role: 'admin' as MemberRole, status: 'active' as MemberStatus, joinedAt: '2026-01-05T00:00:00Z' },
-  { id: 'm2', name: 'Bob Lee', email: 'bob@nullus.io', role: 'devops' as MemberRole, status: 'active' as MemberStatus, joinedAt: '2026-01-10T00:00:00Z' },
-  { id: 'm3', name: 'Carol Park', email: 'carol@nullus.io', role: 'developer' as MemberRole, status: 'pending' as MemberStatus, joinedAt: '2026-03-01T00:00:00Z' },
-]
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
   active: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' },
@@ -38,8 +22,6 @@ const ROLE_BADGE: Record<MemberRole, { className: string }> = {
   devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
   developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
 }
-
-const ALL_CLUSTERS = ['prod-cluster', 'staging-cluster', 'dev-cluster', 'test-cluster']
 
 const domainRegex = /^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
 
@@ -62,12 +44,13 @@ type OrgFormData = z.infer<typeof orgSchema>
 type InviteFormData = z.infer<typeof inviteSchema>
 
 export function OrganizationPage() {
-  const { data: orgData } = useOrganization()
-  const org = orgData ?? MOCK_ORG
+  const { data: orgData, isLoading: orgLoading } = useOrganization()
+  const org = orgData ?? { id: '', name: '', slug: '', domain: '', status: 'active' as const, clusterAccessScope: [] }
   const orgId = org.id
-
   const { data: membersData } = useMembers(orgId)
-  const members = membersData?.items ?? MOCK_MEMBERS
+  const members = membersData?.items ?? []
+  const { data: clustersData } = useClusters()
+  const allClusters = (clustersData?.items ?? []).map((c) => c.name)
 
   const updateOrg = useUpdateOrganization()
   const inviteMember = useInviteMember(orgId)
@@ -149,6 +132,10 @@ export function OrganizationPage() {
   const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
   const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
 
+  if (orgLoading || !orgData) {
+    return <div className="flex h-[200px] items-center justify-center text-[var(--color-text-secondary)]">Loading...</div>
+  }
+
   return (
     <div>
       {/* Page header */}
@@ -222,7 +209,7 @@ export function OrganizationPage() {
             이 조직에서 접근 가능한 클러스터를 선택하세요.
           </p>
           <div className="flex flex-col gap-2">
-            {ALL_CLUSTERS.map((cluster) => {
+            {allClusters.map((cluster) => {
                 const checked = clusterAccessScope.includes(cluster)
               return (
                 <label

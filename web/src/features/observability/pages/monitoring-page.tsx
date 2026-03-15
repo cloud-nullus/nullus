@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Cpu, HardDrive, MemoryStick, Box, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
 import { useDashboard } from '../api/observability-api'
-import type { MonitoringDashboard, ToolHealthStatus } from '../api/observability-api'
+import type { ToolHealthStatus } from '../api/observability-api'
 import { cn } from '../../../lib/utils'
 import {
   AreaChart,
@@ -18,29 +18,6 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-
-const MOCK_DASHBOARD: MonitoringDashboard = {
-  kpi: {
-    cpuUsage: 42,
-    memoryUsage: 67,
-    storageUsage: 55,
-    podCount: 24,
-    podRunning: 22,
-  },
-  pipeline: {
-    successRate: 87,
-    totalRuns: 142,
-    avgBuildSeconds: 183,
-  },
-  tools: [
-    { name: 'GitLab', version: '16.10.1', status: 'running' },
-    { name: 'ArgoCD', version: '2.10.0', status: 'running' },
-    { name: 'Prometheus', version: '2.50.0', status: 'warning' },
-    { name: 'Grafana', version: '10.3.1', status: 'running' },
-    { name: 'OpenSearch', version: '2.12.0', status: 'running' },
-    { name: 'Harbor', version: '2.10.0', status: 'error' },
-  ],
-}
 
 const TOOL_STATUS_CONFIG: Record<ToolHealthStatus, { icon: React.ReactNode; badgeClassName: string; label: string }> = {
   running: { icon: <CheckCircle size={13} />, badgeClassName: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Running' },
@@ -102,9 +79,11 @@ function generateTimeSeries(range: TimeRange) {
 
 export function MonitoringPage() {
   const [range, setRange] = useState<TimeRange>('24h')
-  const { data: apiData } = useDashboard(5000)
-  const dashboard = (apiData && typeof apiData === 'object' && 'kpi' in apiData) ? apiData : MOCK_DASHBOARD
-  const { kpi, pipeline, tools } = dashboard
+  const { data: apiData, isLoading } = useDashboard(5000)
+  const isDashboardReady = !isLoading && !!apiData && typeof apiData === 'object' && 'kpi' in apiData
+  const kpi = isDashboardReady ? apiData.kpi : null
+  const pipeline = isDashboardReady ? apiData.pipeline : null
+  const tools = isDashboardReady ? apiData.tools : null
 
   const usageData = useMemo(() => generateTimeSeries(range), [range])
 
@@ -123,19 +102,23 @@ export function MonitoringPage() {
 
   const podStatusData = useMemo(
     () => [
-      { name: 'Running', value: kpi.podRunning, color: '#22c55e' },
-      { name: 'Pending', value: Math.max(1, kpi.podCount - kpi.podRunning - 1), color: '#f59e0b' },
+      { name: 'Running', value: kpi?.podRunning ?? 0, color: '#22c55e' },
+      { name: 'Pending', value: Math.max(1, (kpi?.podCount ?? 0) - (kpi?.podRunning ?? 0) - 1), color: '#f59e0b' },
       { name: 'Failed', value: 1, color: '#ef4444' },
     ],
-    [kpi.podCount, kpi.podRunning]
+    [kpi?.podCount, kpi?.podRunning]
   )
 
   const kpiCards = [
-    { label: 'CPU 사용률', value: `${kpi.cpuUsage}%`, icon: <Cpu size={18} />, color: '#60a5fa', iconWrapClassName: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', bar: kpi.cpuUsage },
-    { label: '메모리 사용률', value: `${kpi.memoryUsage}%`, icon: <MemoryStick size={18} />, color: '#a78bfa', iconWrapClassName: 'bg-[rgba(139,92,246,0.15)] text-[#a78bfa]', bar: kpi.memoryUsage },
-    { label: '스토리지', value: `${kpi.storageUsage}%`, icon: <HardDrive size={18} />, color: '#34d399', iconWrapClassName: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]', bar: kpi.storageUsage },
-    { label: 'Pod 수', value: `${kpi.podRunning} / ${kpi.podCount}`, icon: <Box size={18} />, color: '#fbbf24', iconWrapClassName: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', bar: Math.round((kpi.podRunning / kpi.podCount) * 100) },
+    { label: 'CPU 사용률', value: `${kpi?.cpuUsage ?? 0}%`, icon: <Cpu size={18} />, color: '#60a5fa', iconWrapClassName: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', bar: kpi?.cpuUsage ?? 0 },
+    { label: '메모리 사용률', value: `${kpi?.memoryUsage ?? 0}%`, icon: <MemoryStick size={18} />, color: '#a78bfa', iconWrapClassName: 'bg-[rgba(139,92,246,0.15)] text-[#a78bfa]', bar: kpi?.memoryUsage ?? 0 },
+    { label: '스토리지', value: `${kpi?.storageUsage ?? 0}%`, icon: <HardDrive size={18} />, color: '#34d399', iconWrapClassName: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]', bar: kpi?.storageUsage ?? 0 },
+    { label: 'Pod 수', value: `${kpi?.podRunning ?? 0} / ${kpi?.podCount ?? 0}`, icon: <Box size={18} />, color: '#fbbf24', iconWrapClassName: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', bar: kpi?.podCount ? Math.round(((kpi?.podRunning ?? 0) / kpi.podCount) * 100) : 0 },
   ]
+
+  if (!isDashboardReady || !pipeline || !tools) {
+    return <div className="flex h-[300px] items-center justify-center text-[var(--color-text-secondary)]">Loading dashboard...</div>
+  }
 
   const cardClassName = 'rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]'
   const sectionTitleClassName = 'm-0 text-[15px] font-bold text-[var(--color-text-primary)]'

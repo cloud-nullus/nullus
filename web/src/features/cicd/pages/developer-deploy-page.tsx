@@ -7,24 +7,12 @@ import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { useAuthStore } from '../../../stores/auth-store'
-import { useDeployApp } from '../api/cicd-api'
+import { useAppTemplates, useDeployApp } from '../api/cicd-api'
+import { useClusters } from '../../admin/api/admin-api'
 import type { AppTemplate, DeployAppRequest } from '../api/cicd-api'
 import { cn } from '../../../lib/utils'
 
 type Step = 1 | 2 | 3 | 4 | 5
-
-const APP_TEMPLATES: { id: AppTemplate; name: string; description: string; language: string; color: string }[] = [
-  { id: 'react-spa', name: 'React SPA', description: 'Vite 기반 React 싱글 페이지 앱', language: 'TypeScript', color: '#61dafb' },
-  { id: 'next-app', name: 'Next.js App', description: 'App Router 기반 Next.js 풀스택', language: 'TypeScript', color: '#000000' },
-  { id: 'express-api', name: 'Express API', description: 'Node.js + Express REST API 서버', language: 'JavaScript', color: '#68a063' },
-  { id: 'spring-boot', name: 'Spring Boot', description: 'Java Spring Boot 마이크로서비스', language: 'Java', color: '#6db33f' },
-  { id: 'python-fastapi', name: 'FastAPI', description: 'Python FastAPI 고성능 API 서버', language: 'Python', color: '#009688' },
-]
-
-const CLUSTERS = [
-  { id: 'c1', name: 'prod-cluster', namespaces: ['default', 'production', 'staging'] },
-  { id: 'c2', name: 'dev-cluster', namespaces: ['default', 'dev', 'test'] },
-]
 
 const STEP_LABELS: Record<Step, string> = {
   1: '앱 이름',
@@ -146,6 +134,20 @@ export function DeveloperDeployPage() {
   const role = useAuthStore((s) => s.role)
   const [step, setStep] = useState<Step>(1)
   const [deployed, setDeployed] = useState(false)
+  const { data: appTemplatesRaw } = useAppTemplates()
+  const appTemplates = (appTemplatesRaw ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description ?? '',
+    language: t.language ?? '',
+    color: '#6366f1',
+  }))
+  const { data: clustersData } = useClusters()
+  const clusters = (clustersData?.items ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    namespaces: ['default', 'production', 'staging'],
+  }))
   const {
     register,
     control,
@@ -182,7 +184,7 @@ export function DeveloperDeployPage() {
     setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
   }
 
-  const selectedCluster = CLUSTERS.find((c) => c.id === form.clusterId) ?? CLUSTERS[0]
+  const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '', namespaces: ['default'] }
 
   const onSubmit = (data: FormState) => {
     const request: DeployAppRequest = {
@@ -201,7 +203,6 @@ export function DeveloperDeployPage() {
     }
     deployMutation.mutate(request, {
       onSuccess: () => setDeployed(true),
-      onError: () => setDeployed(true), // mock: show success regardless
     })
   }
 
@@ -275,7 +276,7 @@ export function DeveloperDeployPage() {
           앱 템플릿
         </p>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5">
-          {APP_TEMPLATES.map((t) => (
+          {appTemplates.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -377,12 +378,12 @@ export function DeveloperDeployPage() {
                     value={form.clusterId}
                     onChange={(e) => {
                       setField('clusterId', e.target.value)
-                      const cl = CLUSTERS.find((c) => c.id === e.target.value)
-                      if (cl) setField('namespace', cl.namespaces[0])
+                      const cl = clusters.find((c) => c.id === e.target.value)
+                      if (cl?.namespaces[0]) setField('namespace', cl.namespaces[0])
                     }}
                     className={selectStyleClass}
                   >
-                    {CLUSTERS.map((c) => (
+                    {clusters.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
