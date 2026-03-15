@@ -169,7 +169,7 @@ func resolveOrgID(c echo.Context) string {
 		return orgID
 	}
 
-	return "default-org"
+	return "00000000-0000-0000-0000-000000000001"
 }
 
 func orgIDFromPrincipal(principal any) string {
