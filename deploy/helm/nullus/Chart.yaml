@@ -1,0 +1,11 @@
+apiVersion: v2
+name: nullus
+description: Helm chart for deploying Nullus platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0-alpha"
+dependencies:
+  - name: postgresql
+    version: 16.7.21
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

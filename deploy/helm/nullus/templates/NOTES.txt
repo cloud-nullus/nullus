@@ -1,0 +1,17 @@
+Nullus has been deployed.
+
+1. Get web service URL:
+{{- if .Values.ingress.enabled }}
+  {{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+  {{- end }}
+{{- else }}
+  kubectl get svc -n {{ .Release.Namespace }} {{ include "nullus.web.fullname" . }}
+{{- end }}
+
+2. Check API health:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "nullus.api.fullname" . }} 8080:8080
+  curl http://127.0.0.1:8080/health
+
+3. Verify pods:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}

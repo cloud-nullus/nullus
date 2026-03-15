@@ -1,0 +1,71 @@
+api:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/cloud-nullus/nullus-api
+    tag: "0.1.0-alpha"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources: {}
+
+web:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/cloud-nullus/nullus-web
+    tag: "0.1.0-alpha"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources: {}
+
+config:
+  server:
+    mode: production
+  database:
+    port: 5432
+    sslmode: disable
+    maxOpenConns: 25
+    maxIdleConns: 10
+    connMaxLifetime: 5m
+    connMaxIdleTime: 1m
+  auth:
+    mode: session
+    sessionMaxAge: 86400
+    oidcIssuerUrl: ""
+    oidcAudience: nullus-app
+  helm:
+    timeout: 600s
+    namespacePrefix: nullus-
+  prometheus:
+    url: ""
+  log:
+    level: info
+    format: json
+
+secrets:
+  dbPassword: change-me
+  encryptionKey: change-me-32-bytes-minimum
+
+postgresql:
+  enabled: true
+  auth:
+    username: nullus
+    password: nullus
+    database: nullus
+  primary:
+    service:
+      ports:
+        postgresql: 5432
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: nullus.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []

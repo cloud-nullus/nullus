@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nullus.fullname" . }}-config
+  labels:
+    {{- include "nullus.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      port: 8080
+      mode: {{ .Values.config.server.mode | quote }}
+
+    database:
+      host: {{ include "nullus.postgresqlHost" . | quote }}
+      port: {{ .Values.config.database.port }}
+      name: {{ .Values.postgresql.auth.database | quote }}
+      user: {{ .Values.postgresql.auth.username | quote }}
+      password: {{ .Values.postgresql.auth.password | quote }}
+      sslmode: {{ .Values.config.database.sslmode | quote }}
+      max_open_conns: {{ .Values.config.database.maxOpenConns }}
+      max_idle_conns: {{ .Values.config.database.maxIdleConns }}
+      conn_max_lifetime: {{ .Values.config.database.connMaxLifetime | quote }}
+      conn_max_idle_time: {{ .Values.config.database.connMaxIdleTime | quote }}
+
+    auth:
+      mode: {{ .Values.config.auth.mode | quote }}
+      session:
+        secret: {{ .Values.secrets.encryptionKey | quote }}
+        max_age: {{ .Values.config.auth.sessionMaxAge }}
+      oidc:
+        issuer_url: {{ .Values.config.auth.oidcIssuerUrl | quote }}
+        audience: {{ .Values.config.auth.oidcAudience | quote }}
+
+    helm:
+      timeout: {{ .Values.config.helm.timeout | quote }}
+      namespace_prefix: {{ .Values.config.helm.namespacePrefix | quote }}
+
+    prometheus:
+      url: {{ .Values.config.prometheus.url | quote }}
+
+    log:
+      level: {{ .Values.config.log.level | quote }}
+      format: {{ .Values.config.log.format | quote }}
