@@ -43,19 +43,54 @@ const queryKeys = {
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
 }
 
+interface RawTemplate {
+  id: string
+  name: string
+  description: string
+  tools?: unknown[]
+  estimatedMinutes?: number
+  estimated_install_time?: number
+  category?: string
+  createdBy?: string
+  created_by?: string
+  recommendedUseCase?: string
+  recommended_use_case?: string
+  minResources?: string
+  min_resources?: string
+}
+
+const toToolName = (tool: unknown): string => {
+  if (typeof tool === 'string') {
+    return tool
+  }
+
+  if (tool && typeof tool === 'object' && 'name' in tool) {
+    const maybeName = (tool as { name?: unknown }).name
+    return typeof maybeName === 'string' ? maybeName : ''
+  }
+
+  return ''
+}
+
+const normalizeTemplate = (raw: RawTemplate): StackTemplate => ({
+  id: raw.id,
+  name: raw.name,
+  description: raw.description,
+  tools: Array.isArray(raw.tools) ? raw.tools.map(toToolName).filter((tool) => tool.length > 0) : [],
+  estimatedMinutes: typeof raw.estimatedMinutes === 'number'
+    ? raw.estimatedMinutes
+    : (typeof raw.estimated_install_time === 'number' ? Math.round(raw.estimated_install_time / 60000000000) : 30),
+  category: raw.category ?? 'default',
+  createdBy: raw.createdBy ?? raw.created_by,
+  recommendedUseCase: raw.recommendedUseCase ?? raw.recommended_use_case,
+  minResources: raw.minResources ?? raw.min_resources,
+})
+
 // --- API functions ---
 
 const stackApiCalls = {
   getTemplates: () =>
-    api.get<StackTemplate[]>('/stacks/templates').then((r) =>
-      (r.data ?? []).map((t: Record<string, unknown>) => ({
-        ...t,
-        tools: Array.isArray(t.tools)
-          ? t.tools.map((tool: unknown) => (typeof tool === 'string' ? tool : (tool as Record<string, string>).name ?? ''))
-          : [],
-        estimatedMinutes: t.estimatedMinutes ?? (typeof t.estimated_install_time === 'number' ? Math.round(Number(t.estimated_install_time) / 60000000000) : 30),
-      }))
-    ),
+    api.get<RawTemplate[]>('/stacks/templates').then((r) => (r.data ?? []).map(normalizeTemplate)),
 
   getTemplate: (id: string) =>
     api.get<StackTemplate>(`/stacks/templates/${id}`).then((r) => r.data),

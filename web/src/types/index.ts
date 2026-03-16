@@ -8,7 +8,7 @@ export type MemberRole = Role
 
 export type MemberStatus = 'active' | 'pending' | 'inactive'
 
-export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s'
+export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s' | 'pipeline' | 'target'
 
 export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive'
 
@@ -108,6 +108,8 @@ export interface Template {
   estimatedMinutes: number
   category: string
   createdBy?: string
+  recommendedUseCase?: string
+  minResources?: string
 }
 
 export interface StackHistoryEntry {
