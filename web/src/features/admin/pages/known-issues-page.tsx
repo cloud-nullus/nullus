@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 import { useKnownIssues } from '../api/admin-api'
 import type { KnownIssueSeverity, KnownIssueStatus } from '../../../types'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 const SEVERITY_BADGE: Record<KnownIssueSeverity, string> = {
@@ -21,6 +22,8 @@ export function KnownIssuesPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Known Issues' }]} />
+
       <div className="mb-7 flex items-center gap-2.5">
         <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]">
           <AlertTriangle size={18} />

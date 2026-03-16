@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Cpu, HardDrive, MemoryStick, Box, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useDashboard } from '../api/observability-api'
 import type { ToolHealthStatus } from '../api/observability-api'
 import { cn } from '../../../lib/utils'
@@ -77,8 +78,35 @@ function generateTimeSeries(range: TimeRange) {
   })
 }
 
+type ObsTab = 'stack' | 'cicd'
+
+const CICD_KPI_CARDS = [
+  { label: 'Build Success Rate', value: '97.3%', icon: <CheckCircle size={18} />, color: '#22c55e', iconWrapClassName: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', bar: 97 },
+  { label: 'Total Builds', value: '145', icon: <Box size={18} />, color: '#6366f1', iconWrapClassName: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 72 },
+  { label: 'Avg Build Time', value: '2m 34s', icon: <Cpu size={18} />, color: '#f59e0b', iconWrapClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', bar: 43 },
+  { label: 'Pods Running', value: '3/3', icon: <Box size={18} />, color: '#10b981', iconWrapClassName: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: 100 },
+]
+
+const CICD_PIPELINE_BARS = [
+  { day: 'Mon', success: 12, failed: 1 },
+  { day: 'Tue', success: 16, failed: 2 },
+  { day: 'Wed', success: 14, failed: 3 },
+  { day: 'Thu', success: 19, failed: 1 },
+  { day: 'Fri', success: 22, failed: 2 },
+  { day: 'Sat', success: 8, failed: 0 },
+  { day: 'Sun', success: 6, failed: 1 },
+]
+
+const CICD_TOOLS: { name: string; version: string; status: ToolHealthStatus }[] = [
+  { name: 'GitLab CI', status: 'running', version: '16.7' },
+  { name: 'ArgoCD', status: 'running', version: '2.9.3' },
+  { name: 'Harbor', status: 'running', version: '2.8.2' },
+  { name: 'Trivy', status: 'warning', version: '0.48.1' },
+]
+
 export function MonitoringPage() {
   const [range, setRange] = useState<TimeRange>('24h')
+  const [activeTab, setActiveTab] = useState<ObsTab>('stack')
   const { data: apiData, isLoading } = useDashboard(5000)
   const isDashboardReady = !isLoading && !!apiData && typeof apiData === 'object' && 'kpi' in apiData
   const kpi = isDashboardReady ? apiData.kpi : null
@@ -125,6 +153,8 @@ export function MonitoringPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Monitoring Dashboard' }]} />
+
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
         <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">
@@ -140,9 +170,31 @@ export function MonitoringPage() {
         </div>
       </div>
 
+      {/* Stack / CI/CD Tab Toggle */}
+      <div className="mb-6 flex gap-1.5">
+        {(['stack', 'cicd'] as const).map((tab) => {
+          const active = activeTab === tab
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'cursor-pointer rounded-[7px] border px-3 py-[5px] text-xs font-bold',
+                active
+                  ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
+                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
+              )}
+            >
+              {tab === 'stack' ? 'Stack' : 'CI/CD'}
+            </button>
+          )
+        })}
+      </div>
+
       {/* KPI Cards */}
       <div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        {kpiCards.map((card) => (
+        {(activeTab === 'cicd' ? CICD_KPI_CARDS : kpiCards).map((card) => (
           <div key={card.label} className={cardClassName}>
             <div className="mb-2.5 flex items-center gap-2.5">
               <div
@@ -229,7 +281,7 @@ export function MonitoringPage() {
           <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
             <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">Pipeline Success Rate</div>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={pipelineBars}>
+              <BarChart data={activeTab === 'cicd' ? CICD_PIPELINE_BARS : pipelineBars}>
                 <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
                 <XAxis dataKey="day" stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
                 <YAxis stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
@@ -258,7 +310,9 @@ export function MonitoringPage() {
         </div>
 
         <div className="mt-3 text-xs text-[var(--color-text-secondary)]">
-          Pipeline summary: {pipeline.successRate}% success, {pipeline.totalRuns} total runs, average build {Math.floor(pipeline.avgBuildSeconds / 60)}m {pipeline.avgBuildSeconds % 60}s.
+          {activeTab === 'cicd'
+            ? 'Pipeline summary: 97.3% success, 145 total runs, average build 2m 34s.'
+            : `Pipeline summary: ${pipeline.successRate}% success, ${pipeline.totalRuns} total runs, average build ${Math.floor(pipeline.avgBuildSeconds / 60)}m ${pipeline.avgBuildSeconds % 60}s.`}
         </div>
       </div>
 
@@ -266,7 +320,7 @@ export function MonitoringPage() {
       <div className={cardClassName}>
         <h2 className={cn(sectionTitleClassName, 'mb-4')}>Tool Health</h2>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-          {tools.map((tool) => {
+          {(activeTab === 'cicd' ? CICD_TOOLS : tools).map((tool) => {
             const cfg = TOOL_STATUS_CONFIG[tool.status]
             return (
               <div key={tool.name} className="rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3.5">

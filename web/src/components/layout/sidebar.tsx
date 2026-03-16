@@ -5,7 +5,6 @@ import {
   Box,
   Boxes,
   BookOpen,
-  Download,
   List,
   History,
   Shield,
@@ -51,7 +50,6 @@ const navGroups: NavGroup[] = [
     roles: ['admin', 'devops'],
     items: [
       { key: 'stackTemplate', label: 'sidebar.stackTemplate', path: '/stack/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackInstall', label: 'sidebar.stackInstall', path: '/stack/install', icon: <Download size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackList', label: 'sidebar.stackList', path: '/stack/list', icon: <List size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackHistory', label: 'sidebar.stackHistory', path: '/stack/history', icon: <History size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Shield size={16} />, roles: ['admin', 'devops'] },
@@ -116,23 +114,29 @@ export function Sidebar() {
     <aside
       className={cn(
         'relative z-[var(--z-sidebar)] flex min-h-screen shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-default)] bg-[var(--color-surface-card)] transition-all duration-200 ease-in-out',
+        'border-r-[var(--color-sidebar-border)]',
         collapsed ? 'w-[var(--sidebar-collapsed)]' : 'w-[var(--sidebar-width)]'
       )}
     >
       {/* Logo + toggle */}
       <div
         className={cn(
-          'flex h-[var(--header-height)] shrink-0 items-center border-b border-[var(--color-border-default)]',
+          'flex h-[var(--header-height)] shrink-0 items-center border-b border-[var(--color-sidebar-border)]',
           collapsed ? 'justify-center px-0' : 'justify-between px-4'
         )}
       >
         {!collapsed && (
-          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="flex cursor-pointer items-center gap-2 border-none bg-transparent p-0"
+            aria-label="Go to home"
+          >
             <Box size={20} className="text-[#ffd700]" />
             <span className="text-base font-bold text-[var(--color-text-primary)]">
               Nullus
             </span>
-          </div>
+          </button>
         )}
         <button
           type="button"
@@ -152,7 +156,7 @@ export function Sidebar() {
               type="button"
               onClick={() => toggleGroup(group.key)}
               className={cn(
-                'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[#818cf8] uppercase',
+                'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[var(--color-sidebar-group-text)] uppercase',
                 collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-4 py-2.5'
               )}
               aria-label={t(group.label)}
@@ -181,8 +185,8 @@ export function Sidebar() {
                           'flex items-center gap-2.5 border-r-2 text-sm no-underline transition-all duration-150 ease-in-out',
                           collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2 pl-8',
                           isActive
-                            ? 'border-r-[#6366f1] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
-                            : 'border-r-transparent bg-transparent text-[var(--color-text-secondary)]'
+                            ? 'border-r-[var(--color-sidebar-item-active-border)] bg-[var(--color-sidebar-item-active-bg)] text-[var(--color-sidebar-item-active-text)]'
+                            : 'border-r-transparent bg-transparent text-[var(--color-sidebar-item-text)]'
                         )
                       }
                     >
@@ -197,7 +201,7 @@ export function Sidebar() {
       </nav>
 
       {/* Logout */}
-      <div className="border-t border-[var(--color-border-default)] py-2">
+      <div className="border-t border-[var(--color-sidebar-border)] py-2">
         <button
           type="button"
           onClick={() => {

@@ -49,7 +49,13 @@ type createAlertRuleRequest struct {
 }
 
 // ListRules handles GET /api/v1/alerts/rules.
+// Query params:
+//
+//	scope: "stack" | "cicd" — filters alert rules to the specified domain.
+//	        TODO: pass scope to repository filter when scoped rules are implemented.
 func (h *AlertHandler) ListRules(c echo.Context) error {
+	_ = c.QueryParam("scope")
+
 	rules, err := h.alertRuleRepo.List(c.Request().Context())
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_LIST_FAILED", err.Error())

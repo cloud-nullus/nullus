@@ -49,6 +49,10 @@ type toolResponse struct {
 }
 
 func (h *DashboardHandler) GetDashboard(c echo.Context) error {
+	// scope: "stack" | "cicd" — filters metrics to the specified domain.
+	// TODO: pass scope to usecase when scoped metrics are implemented.
+	_ = c.QueryParam("scope")
+
 	out, err := h.getDashboard.Execute(c.Request().Context())
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "DASHBOARD_FETCH_FAILED", err.Error())

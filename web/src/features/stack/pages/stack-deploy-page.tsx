@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { CheckCircle, XCircle, Loader, Terminal } from 'lucide-react'
 import { useDeployLog } from '../hooks/use-deploy-log'
 import type { LogLevel, DeployStatus } from '../hooks/use-deploy-log'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 const PHASES = ['Initializing', 'Building', 'Deploying']
@@ -98,6 +99,8 @@ export function StackDeployPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Log' }]} />
+
       {/* Page header */}
       <div className="mb-6 flex items-center gap-2.5">
         <div

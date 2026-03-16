@@ -8,7 +8,7 @@ export type MemberRole = Role
 
 export type MemberStatus = 'active' | 'pending' | 'inactive'
 
-export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s'
+export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s' | 'pipeline' | 'target'
 
 export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive'
 
@@ -109,6 +109,9 @@ export interface Template {
   tools: string[]
   estimatedMinutes: number
   category: string
+  createdBy?: string
+  recommendedUseCase?: string
+  minResources?: string
 }
 
 export interface StackHistoryEntry {
@@ -189,6 +192,7 @@ export interface CICDTemplate {
   description: string
   appType: AppType
   stages: string[]
+  createdBy?: string
 }
 
 export interface AppTemplateInfo {
@@ -285,6 +289,14 @@ export interface CreatePipelineRequest {
   appType: AppType
   clusterId: string
   templateId?: string
+}
+
+export interface CreateCicdTemplateRequest {
+  id: string
+  name: string
+  description: string
+  appType: AppType
+  stages: string[]
 }
 
 export interface DeployAppRequest {

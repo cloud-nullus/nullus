@@ -22,6 +22,13 @@ type mockTemplateRepository struct {
 func (m *mockTemplateRepository) GetByID(_ context.Context, _ string) (*domain.PipelineTemplate, error) {
 	return nil, nil
 }
+func (m *mockTemplateRepository) Create(_ context.Context, _ *domain.PipelineTemplate) error {
+	return nil
+}
+func (m *mockTemplateRepository) Update(_ context.Context, _ *domain.PipelineTemplate) error {
+	return nil
+}
+func (m *mockTemplateRepository) Delete(_ context.Context, _ string) error { return nil }
 
 func (m *mockTemplateRepository) List(_ context.Context) ([]*domain.PipelineTemplate, error) {
 	if m.listErr != nil {

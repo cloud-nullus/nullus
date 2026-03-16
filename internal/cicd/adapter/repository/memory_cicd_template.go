@@ -43,6 +43,30 @@ func (r *MemoryCICDTemplateRepository) List(_ context.Context) ([]*domain.Pipeli
 	return result, nil
 }
 
+// Create stores a new pipeline template.
+func (r *MemoryCICDTemplateRepository) Create(_ context.Context, tmpl *domain.PipelineTemplate) error {
+	r.templates[tmpl.ID] = tmpl
+	return nil
+}
+
+// Update replaces an existing pipeline template.
+func (r *MemoryCICDTemplateRepository) Update(_ context.Context, tmpl *domain.PipelineTemplate) error {
+	if _, ok := r.templates[tmpl.ID]; !ok {
+		return fmt.Errorf("pipeline template %q not found", tmpl.ID)
+	}
+	r.templates[tmpl.ID] = tmpl
+	return nil
+}
+
+// Delete removes a pipeline template by ID.
+func (r *MemoryCICDTemplateRepository) Delete(_ context.Context, id string) error {
+	if _, ok := r.templates[id]; !ok {
+		return fmt.Errorf("pipeline template %q not found", id)
+	}
+	delete(r.templates, id)
+	return nil
+}
+
 // cicdTemplates returns the three canonical CI/CD pipeline templates.
 func cicdTemplates() []*domain.PipelineTemplate {
 	return []*domain.PipelineTemplate{

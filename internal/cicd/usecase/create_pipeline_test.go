@@ -61,6 +61,13 @@ func (m *mockCreateTemplateRepo) GetByID(_ context.Context, id string) (*domain.
 func (m *mockCreateTemplateRepo) List(_ context.Context) ([]*domain.PipelineTemplate, error) {
 	return nil, nil
 }
+func (m *mockCreateTemplateRepo) Create(_ context.Context, _ *domain.PipelineTemplate) error {
+	return nil
+}
+func (m *mockCreateTemplateRepo) Update(_ context.Context, _ *domain.PipelineTemplate) error {
+	return nil
+}
+func (m *mockCreateTemplateRepo) Delete(_ context.Context, _ string) error { return nil }
 
 func TestCreatePipeline_Success(t *testing.T) {
 	pipelineRepo := &mockCreatePipelineRepo{}

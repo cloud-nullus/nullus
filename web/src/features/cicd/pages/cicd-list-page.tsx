@@ -1,15 +1,13 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
+import { useNavigate } from 'react-router-dom'
 import { GitBranch, Plus, Search, Play } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { usePipelines, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
-import type { Pipeline, PipelineStatus, AppType } from '../api/cicd-api'
+import { usePipelines, useDeployPipeline } from '../api/cicd-api'
+import type { Pipeline, PipelineStatus } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
-import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
 const STATUS_STYLES: Record<PipelineStatus, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
@@ -27,39 +25,21 @@ function formatDate(iso: string | null) {
 const selectClassName =
   'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
-const createPipelineSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  template: z.enum(['web-backend', 'web-frontend', 'batch-job'], { message: 'Template is required' }),
-  clusterId: z.string().min(1, 'Cluster is required'),
-})
-
-type CreatePipelineFormData = z.infer<typeof createPipelineSchema>
-
-const CREATE_PIPELINE_DEFAULTS: CreatePipelineFormData = {
-  name: '',
-  template: 'web-backend',
-  clusterId: '',
-}
+const MOCK_PIPELINES: Pipeline[] = [
+  { id: 'frontend-web', name: 'frontend-web', appType: 'web-frontend' as const, clusterId: 'c1', clusterName: 'prod-k8s', status: 'success' as const, lastDeployedAt: '2026-03-03T14:28:00Z', createdAt: '2026-01-15T00:00:00Z' },
+  { id: 'backend-api', name: 'backend-api', appType: 'web-backend' as const, clusterId: 'c1', clusterName: 'prod-k8s', status: 'failed' as const, lastDeployedAt: '2026-03-01T16:30:00Z', createdAt: '2026-01-20T00:00:00Z' },
+  { id: 'ml-service', name: 'ml-service', appType: 'web-backend' as const, clusterId: 'c2', clusterName: 'dev-k8s', status: 'failed' as const, lastDeployedAt: '2026-02-28T11:05:00Z', createdAt: '2026-02-01T00:00:00Z' },
+  { id: 'batch-runner', name: 'batch-runner', appType: 'batch-job' as const, clusterId: 'c1', clusterName: 'prod-k8s', status: 'running' as const, lastDeployedAt: '2026-03-03T10:00:00Z', createdAt: '2026-02-10T00:00:00Z' },
+]
 
 export function CicdListPage() {
+  const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
-  const [createModal, setCreateModal] = useState(false)
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null)
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isValid, isSubmitting },
-  } = useForm<CreatePipelineFormData>({
-    resolver: zodResolver(createPipelineSchema),
-    defaultValues: CREATE_PIPELINE_DEFAULTS,
-    mode: 'onChange',
-  })
 
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
-  const pipelines = apiData?.items ?? []
-  const createPipeline = useCreatePipeline()
+  const pipelines = apiData?.items ?? MOCK_PIPELINES
   const deployPipeline = useDeployPipeline()
 
   const filtered = pipelines.filter((p) => {
@@ -68,15 +48,6 @@ export function CicdListPage() {
     const matchesStatus = !statusFilter || p.status === statusFilter
     return matchesSearch && matchesStatus
   })
-
-  const handleCreate = (data: CreatePipelineFormData) => {
-    createPipeline.mutate({ name: data.name, appType: data.template as AppType, clusterId: data.clusterId }, {
-      onSuccess: () => {
-        setCreateModal(false)
-        reset(CREATE_PIPELINE_DEFAULTS)
-      },
-    })
-  }
 
   const columns: ColumnDef<Pipeline, unknown>[] = [
     {
@@ -153,6 +124,8 @@ export function CicdListPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'CI/CD List' }]} />
+
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
@@ -163,7 +136,7 @@ export function CicdListPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              CI/CD Pipelines
+              CI/CD List
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
               CI/CD 파이프라인 목록
@@ -173,10 +146,7 @@ export function CicdListPage() {
         <Button
           variant="primary"
           size="md"
-          onClick={() => {
-            reset(CREATE_PIPELINE_DEFAULTS)
-            setCreateModal(true)
-          }}
+          onClick={() => navigate('/cicd/templates')}
           type="button"
         >
           <Plus size={15} />
@@ -229,68 +199,6 @@ export function CicdListPage() {
         </div>
       )}
 
-      {/* Create Pipeline Modal */}
-      <Modal
-        open={createModal}
-        onClose={() => {
-          setCreateModal(false)
-          reset(CREATE_PIPELINE_DEFAULTS)
-        }}
-        title="New Pipeline"
-        footer={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setCreateModal(false)
-                reset(CREATE_PIPELINE_DEFAULTS)
-              }}
-              type="button"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              loading={createPipeline.isPending || isSubmitting}
-              onClick={handleSubmit(handleCreate)}
-              disabled={!isValid || isSubmitting}
-              type="button"
-            >
-              Create
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-[14px]">
-          <Input
-            label="파이프라인 이름"
-            placeholder="예: api-server-pipeline"
-            {...register('name')}
-          />
-          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="pipeline-app-type" className="text-xs font-medium text-[var(--color-text-secondary)]">앱 타입</label>
-            <select
-              id="pipeline-app-type"
-              {...register('template')}
-              className={selectClassName}
-            >
-              <option value="web-backend">Web Backend</option>
-              <option value="web-frontend">Web Frontend</option>
-              <option value="batch-job">Batch Job</option>
-            </select>
-          </div>
-          {errors.template && <span className="text-xs text-[#ef4444]">{errors.template.message}</span>}
-          <Input
-            label="클러스터 ID"
-            placeholder="예: c1"
-            {...register('clusterId')}
-          />
-          {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
-        </div>
-      </Modal>
     </div>
   )
 }

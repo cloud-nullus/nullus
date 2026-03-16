@@ -5,7 +5,7 @@
     "stackInstall": "스택 설치",
     "stackList": "스택 목록",
     "stackHistory": "스택 이력",
-    "stackVersion": "스택 버전 관리",
+    "stackVersion": "스택 버전",
     "cicd": "CI/CD",
     "cicdTemplate": "CI/CD 템플릿",
     "cicdList": "CI/CD 목록",

@@ -18,6 +18,9 @@ type PipelineRepository interface {
 type PipelineTemplateRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.PipelineTemplate, error)
 	List(ctx context.Context) ([]*domain.PipelineTemplate, error)
+	Create(ctx context.Context, tmpl *domain.PipelineTemplate) error
+	Update(ctx context.Context, tmpl *domain.PipelineTemplate) error
+	Delete(ctx context.Context, id string) error
 }
 
 // DeploymentRepository defines the interface for deployment persistence.

@@ -8,6 +8,7 @@ import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { DataTable } from '../../../components/shared/data-table'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
@@ -21,6 +22,13 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
+const MOCK_STACKS: Stack[] = [
+  { id: 'production-stack', name: 'production-stack', templateId: 'gitlab-all-in-one', templateName: 'GitLab All-in-One', clusterId: 'c1', clusterName: 'prod-k8s', status: 'success' as const, createdAt: '2026-01-10T00:00:00Z', updatedAt: '2026-03-03T14:28:00Z' },
+  { id: 'development-stack', name: 'development-stack', templateId: 'github-argocd', templateName: 'GitHub + ArgoCD', clusterId: 'c2', clusterName: 'dev-k8s', status: 'running' as const, createdAt: '2026-02-01T00:00:00Z', updatedAt: '2026-03-03T09:15:00Z' },
+  { id: 'staging-environment', name: 'staging-environment', templateId: 'gitlab-argocd', templateName: 'GitLab + ArgoCD', clusterId: 'c1', clusterName: 'prod-k8s', status: 'failed' as const, createdAt: '2026-02-15T00:00:00Z', updatedAt: '2026-03-02T18:45:00Z' },
+  { id: 'microservices-platform', name: 'microservices-platform', templateId: 'gitlab-all-in-one', templateName: 'GitLab All-in-One', clusterId: 'c3', clusterName: 'staging-k8s', status: 'success' as const, createdAt: '2026-01-25T00:00:00Z', updatedAt: '2026-03-01T11:20:00Z' },
+]
+
 export function StackListPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
@@ -29,7 +37,7 @@ export function StackListPage() {
   const deleteStack = useDeleteStack()
 
   const { data: apiData, isLoading } = useStacks({ search, status: statusFilter || undefined })
-  const stacks = apiData?.items ?? []
+  const stacks = apiData?.items ?? MOCK_STACKS
 
   const filtered = stacks.filter((s) => {
     const q = search.toLowerCase()
@@ -116,6 +124,8 @@ export function StackListPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Stack List' }]} />
+
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
@@ -133,7 +143,7 @@ export function StackListPage() {
             </p>
           </div>
         </div>
-        <Button variant="primary" size="md" onClick={() => navigate('/stack/install')}>
+        <Button variant="primary" size="md" onClick={() => navigate('/stack/templates')}>
           <Plus size={15} />
           New Stack
         </Button>

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { Download, Save, Rocket } from 'lucide-react'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
 import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useDeployStack, toCreateStackBody } from '../api/stack-api'
@@ -462,6 +463,13 @@ export function StackInstallPage() {
 
   return (
     <div>
+      <Breadcrumb items={[
+        { label: 'Stack List', path: '/stack/list' },
+        { label: 'New Stack', path: '/stack/templates' },
+        { label: 'Stack Template', path: '/stack/templates' },
+        { label: 'Stack Install' },
+      ]} />
+
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">

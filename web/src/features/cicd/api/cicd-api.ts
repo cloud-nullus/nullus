@@ -3,6 +3,7 @@ import { api } from '../../../lib/api'
 import type {
   AppTemplateInfo,
   CicdTemplate,
+  CreateCicdTemplateRequest,
   CreatePipelineRequest,
   DeployAppRequest,
   DeployAppResult,
@@ -15,6 +16,7 @@ export type {
   AppTemplateInfo,
   AppType,
   CicdTemplate,
+  CreateCicdTemplateRequest,
   CreatePipelineRequest,
   DeployAppRequest,
   DeployAppResult,
@@ -37,6 +39,9 @@ const queryKeys = {
 const cicdApiCalls = {
   getTemplates: () =>
     api.get<CicdTemplate[]>('/cicd/templates').then((r) => r.data),
+
+  createTemplate: (data: CreateCicdTemplateRequest) =>
+    api.post<CicdTemplate>('/cicd/templates', data).then((r) => r.data),
 
   getPipelines: (filters?: { status?: string; search?: string }) =>
     api.get<{ items: Pipeline[]; total: number }>('/cicd/pipelines', { params: filters }).then((r) => r.data),
@@ -63,6 +68,16 @@ export function useCicdTemplates() {
   return useQuery({
     queryKey: queryKeys.templates(),
     queryFn: cicdApiCalls.getTemplates,
+  })
+}
+
+export function useCreateCicdTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: cicdApiCalls.createTemplate,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cicd', 'templates'] })
+    },
   })
 }
 

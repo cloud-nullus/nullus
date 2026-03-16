@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { History } from 'lucide-react'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
@@ -18,12 +19,19 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+const MOCK_DEPLOYMENTS: Deployment[] = [
+  { id: 'd1', pipelineId: 'frontend-web', pipelineName: 'frontend-web', version: 'v1.2.3', status: 'success' as const, triggeredBy: 'kim.dev', startedAt: '2026-03-03T14:22:00Z', completedAt: '2026-03-03T14:28:00Z' },
+  { id: 'd2', pipelineId: 'frontend-web', pipelineName: 'frontend-web', version: 'v1.2.2', status: 'success' as const, triggeredBy: 'lee.devops', startedAt: '2026-03-02T11:00:00Z', completedAt: '2026-03-02T11:20:00Z' },
+  { id: 'd3', pipelineId: 'backend-api', pipelineName: 'backend-api', version: 'v2.1.0', status: 'failed' as const, triggeredBy: 'park.dev', startedAt: '2026-03-01T16:25:00Z', completedAt: '2026-03-01T16:30:00Z' },
+  { id: 'd4', pipelineId: 'batch-runner', pipelineName: 'batch-runner', version: 'v1.3.1', status: 'success' as const, triggeredBy: 'choi.devops', startedAt: '2026-03-03T10:00:00Z', completedAt: '2026-03-03T10:08:00Z' },
+]
+
 export function CicdHistoryPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
 
   const { data: apiData } = useDeployments({ status: statusFilter as PipelineStatus || undefined })
-  const deployments = apiData?.items ?? []
+  const deployments = apiData?.items ?? MOCK_DEPLOYMENTS
 
   const filtered = deployments.filter((d) => {
     const matchesStatus = !statusFilter || d.status === statusFilter
@@ -76,6 +84,8 @@ export function CicdHistoryPage() {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'CI/CD History' }]} />
+
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
         <div
@@ -85,7 +95,7 @@ export function CicdHistoryPage() {
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            Deployment History
+            CI/CD History
           </h1>
           <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
             CI/CD 배포 이력

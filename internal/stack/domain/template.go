@@ -12,11 +12,12 @@ type ToolConfig struct {
 
 // Template represents a Golden Path template for stack deployment.
 type Template struct {
-	ID                   string       `json:"id"`
-	Name                 string       `json:"name"`
-	Description          string       `json:"description"`
-	Tools                []ToolConfig `json:"tools"`
+	ID                   string        `json:"id"`
+	Name                 string        `json:"name"`
+	Description          string        `json:"description"`
+	Tools                []ToolConfig  `json:"tools"`
 	EstimatedInstallTime time.Duration `json:"estimated_install_time"`
-	RecommendedUseCase   string       `json:"recommended_use_case"`
-	MinResources         string       `json:"min_resources"`
+	RecommendedUseCase   string        `json:"recommended_use_case"`
+	MinResources         string        `json:"min_resources"`
+	CreatedBy            string        `json:"created_by,omitempty"`
 }

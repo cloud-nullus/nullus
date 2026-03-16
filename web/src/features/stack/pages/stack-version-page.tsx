@@ -1,24 +1,84 @@
-import { useState, Fragment } from 'react'
-import { Layers, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react'
+import { Layers, ShieldCheck } from 'lucide-react'
+import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import type { CompatibilityMatrix, CompatibilityValidationResult } from '../api/stack-api'
 import { cn } from '../../../lib/utils'
+import { useState } from 'react'
+
+const MOCK_COMPATIBILITY_MATRIX: CompatibilityMatrix[] = [
+  {
+    id: 'gitlab-allinone-v1',
+    name: 'GitLab All-in-One',
+    status: 'verified',
+    k8sRange: '1.27-1.32',
+    tools: [
+      { name: 'GitLab CE', helmVersion: '8.7.2', appVersion: '17.7.2' },
+      { name: 'GitLab CI', helmVersion: '8.7.2', appVersion: '17.7.2' },
+      { name: 'GitLab Registry', helmVersion: '8.7.2', appVersion: '17.7.2' },
+      { name: 'Argo CD', helmVersion: '7.7.2', appVersion: '2.13.2' },
+      { name: 'Prometheus', helmVersion: '67.0.0', appVersion: '3.1.0' },
+      { name: 'Grafana', helmVersion: '8.5.0', appVersion: '11.4.0' },
+      { name: 'MinIO', helmVersion: '5.3.0', appVersion: '2024.11.7' },
+    ],
+  },
+  {
+    id: 'gitlab-argocd-v1',
+    name: 'GitLab + Argo CD',
+    status: 'verified',
+    k8sRange: '1.27-1.32',
+    tools: [
+      { name: 'GitLab CE', helmVersion: '8.7.2', appVersion: '17.7.2' },
+      { name: 'GitLab CI', helmVersion: '8.7.2', appVersion: '17.7.2' },
+      { name: 'Harbor', helmVersion: '1.14.0', appVersion: '2.11.0' },
+      { name: 'Argo CD', helmVersion: '7.7.2', appVersion: '2.13.2' },
+      { name: 'Prometheus', helmVersion: '67.0.0', appVersion: '3.1.0' },
+      { name: 'Grafana', helmVersion: '8.5.0', appVersion: '11.4.0' },
+      { name: 'MinIO', helmVersion: '5.3.0', appVersion: '2024.11.7' },
+    ],
+  },
+  {
+    id: 'github-argocd-v1',
+    name: 'GitHub + Argo CD',
+    status: 'untested',
+    k8sRange: '1.27-1.32',
+    tools: [
+      { name: 'GitHub', helmVersion: 'external', appVersion: 'external' },
+      { name: 'GitHub Actions', helmVersion: 'external', appVersion: 'external' },
+      { name: 'Harbor', helmVersion: '1.14.0', appVersion: '2.11.0' },
+      { name: 'Argo CD', helmVersion: '7.7.2', appVersion: '2.13.2' },
+      { name: 'Prometheus', helmVersion: '67.0.0', appVersion: '3.1.0' },
+      { name: 'Grafana', helmVersion: '8.5.0', appVersion: '11.4.0' },
+      { name: 'MinIO', helmVersion: '5.3.0', appVersion: '2024.11.7' },
+    ],
+  },
+]
 
 const STATUS_BADGE: Record<string, { className: string; label: string }> = {
   verified: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Verified' },
-  untested: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Untested' },
+  untested: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Partial' },
+  unsupported: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Not Supported' },
 }
 
+const toolVersion = (matrix: CompatibilityMatrix, keyword: string): string => {
+  const lower = keyword.toLowerCase()
+  const tool = matrix.tools.find((item) => item.name.toLowerCase().includes(lower))
+  return tool ? tool.appVersion : '-'
+}
+
+const rowClassName = 'border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm'
+
 export function StackVersionPage() {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [validationOpen, setValidationOpen] = useState(false)
   const [validating, setValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<CompatibilityValidationResult | null>(null)
   const { data: matrixData } = useCompatibilityMatrix()
-  const matrix: CompatibilityMatrix[] = Array.isArray(matrixData) ? matrixData : []
+  const matrix = Array.isArray(matrixData) && matrixData.length > 0 ? matrixData : MOCK_COMPATIBILITY_MATRIX
   const validateMutation = useValidateCompatibility('current')
+
+  const gitlabRows = matrix.filter((item) => item.name.toLowerCase().includes('gitlab'))
+  const githubRows = matrix.filter((item) => item.name.toLowerCase().includes('github'))
 
   const handleValidate = () => {
     setValidationOpen(true)
@@ -34,21 +94,16 @@ export function StackVersionPage() {
 
   return (
     <div>
-      {/* Page header */}
+      <Breadcrumb items={[{ label: 'Stack Version' }]} />
+
       <div className="mb-7 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(34,197,94,0.15)] text-[#4ade80]"
-          >
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(34,197,94,0.15)] text-[#4ade80]">
             <Layers size={18} />
           </div>
           <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Compatibility Matrix
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              스택 버전 호환성 매트릭스
-            </p>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">Stack Version</h1>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">테스트 완료된 버전 조합을 기반으로 호환성을 관리합니다.</p>
           </div>
         </div>
         <Button variant="primary" size="md" onClick={handleValidate}>
@@ -57,90 +112,87 @@ export function StackVersionPage() {
         </Button>
       </div>
 
-      {/* Table */}
+      <div className="mb-5 rounded-lg border border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.08)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+        테스트 완료된 버전 조합만 표시됩니다. 미검증 조합 사용 시 경고가 표시됩니다.
+      </div>
+
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
+        <div className="border-b border-[var(--color-border-default)] px-5 py-4 text-sm font-bold text-[var(--color-text-primary)]">
+          Verified Combinations
+        </div>
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[rgba(255,255,255,0.02)]">
-              <th className="w-8 whitespace-nowrap px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]" />
-              {['매트릭스 이름', '상태', 'K8s 호환 범위'].map((h) => (
-                <th
-                  key={h}
-                  className="whitespace-nowrap px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]"
-                >
-                  {h}
+              {['GitLab', 'Argo CD', 'Prometheus', 'Grafana', 'OpenTelemetry', 'K8s', 'Status'].map((header) => (
+                <th key={header} className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  {header}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {matrix.map((matrix) => {
-              const isExpanded = expandedId === matrix.id
-              const badge = STATUS_BADGE[matrix.status] ?? STATUS_BADGE.untested
+            {gitlabRows.map((item) => {
+              const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.untested
+              const recommended = item.id.includes('gitlab-argocd')
               return (
-                <Fragment key={matrix.id}>
-                  <tr
-                    className="cursor-pointer transition-colors duration-150 hover:bg-[rgba(255,255,255,0.02)]"
-                    onClick={() => setExpandedId(isExpanded ? null : matrix.id)}
-                  >
-                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-secondary)]">
-                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </td>
-                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]">
-                      <span className="font-semibold">{matrix.name}</span>
-                    </td>
-                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]">
-                      <span
-                        className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', badge.className)}
-                      >
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td className="border-t border-[var(--color-border-default)] px-[14px] py-3 font-mono text-[13px] text-[var(--color-text-secondary)]">
-                      {matrix.k8sRange}
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={4} className="border-t border-[var(--color-border-default)] p-0">
-                        <div className="bg-[rgba(0,0,0,0.2)] px-5 py-4">
-                          <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                            도구별 버전
-                          </p>
-                          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
-                            {matrix.tools.map((tool) => (
-                              <div
-                                key={tool.name}
-                                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-3"
-                              >
-                                <p className="mb-1.5 mt-0 text-[13px] font-bold text-[var(--color-text-primary)]">
-                                  {tool.name}
-                                </p>
-                                <div className="flex gap-[14px] font-mono text-xs">
-                                  <span>
-                                    <span className="text-[var(--color-text-secondary)]">helm: </span>
-                                    <span className="text-[#a5b4fc]">{tool.helmVersion}</span>
-                                  </span>
-                                  <span>
-                                    <span className="text-[var(--color-text-secondary)]">app: </span>
-                                    <span className="text-[#4ade80]">{tool.appVersion}</span>
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                <tr key={item.id}>
+                  <td className={cn(rowClassName, 'font-semibold text-[var(--color-text-primary)]')}>{toolVersion(item, 'gitlab')}</td>
+                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'argo')}</td>
+                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'prometheus')}</td>
+                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'grafana')}</td>
+                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'opentelemetry')}</td>
+                  <td className={cn(rowClassName, 'font-mono text-[13px] text-[var(--color-text-secondary)]')}>{item.k8sRange}</td>
+                  <td className={rowClassName}>
+                    <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', badge.className)}>{badge.label}</span>
+                    {recommended && (
+                      <span className="ml-1.5 rounded-md bg-[rgba(139,92,246,0.15)] px-[7px] py-[3px] text-[11px] font-semibold text-[#c4b5fd]">Recommended</span>
+                    )}
+                  </td>
+                </tr>
               )
             })}
           </tbody>
         </table>
       </div>
 
-      {/* Validation Result Modal */}
+      <div className="mt-5 overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
+        <div className="border-b border-[var(--color-border-default)] px-5 py-4 text-sm font-bold text-[var(--color-text-primary)]">
+          GitHub Actions + Argo CD Combinations
+        </div>
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-[rgba(255,255,255,0.02)]">
+              {['GitHub Actions', 'Argo CD', 'Prometheus', 'Grafana', 'K8s', 'Status'].map((header) => (
+                <th key={header} className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {githubRows.map((item) => {
+              const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.untested
+              const recommended = item.id.includes('github-argocd')
+              return (
+                <tr key={item.id}>
+                  <td className={cn(rowClassName, 'font-semibold text-[var(--color-text-primary)]')}>{toolVersion(item, 'github actions')}</td>
+                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'argo')}</td>
+                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'prometheus')}</td>
+                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'grafana')}</td>
+                  <td className={cn(rowClassName, 'font-mono text-[13px] text-[var(--color-text-secondary)]')}>{item.k8sRange}</td>
+                  <td className={rowClassName}>
+                    <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', badge.className)}>{badge.label}</span>
+                    {recommended && (
+                      <span className="ml-1.5 rounded-md bg-[rgba(139,92,246,0.15)] px-[7px] py-[3px] text-[11px] font-semibold text-[#c4b5fd]">Recommended</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
       <Modal
         open={validationOpen}
         onClose={() => {
@@ -151,9 +203,7 @@ export function StackVersionPage() {
       >
         {validating && (
           <div className="py-8 text-center text-[var(--color-text-secondary)]">
-            <div
-              className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-[rgba(255,255,255,0.1)] border-t-[#a5b4fc]"
-            />
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-[rgba(255,255,255,0.1)] border-t-[#a5b4fc]" />
             검증 중...
           </div>
         )}
@@ -168,50 +218,12 @@ export function StackVersionPage() {
               )}
             >
               <ShieldCheck size={20} color={validationResult.compatible ? '#22c55e' : '#ef4444'} />
-              <span
-                className={cn(
-                  'text-sm font-bold',
-                  validationResult.compatible ? 'text-[#22c55e]' : 'text-[#ef4444]'
-                )}
-              >
+              <span className={cn('text-sm font-bold', validationResult.compatible ? 'text-[#22c55e]' : 'text-[#ef4444]')}>
                 {validationResult.compatible ? '호환성 검증 통과' : '호환성 문제 발견'}
               </span>
             </div>
 
-            {validationResult.issues.length > 0 && (
-              <div>
-                <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                  이슈
-                </p>
-                <div className="flex flex-col gap-2">
-                  {validationResult.issues.map((issue) => (
-                    <div
-                      key={`${issue.tool}-${issue.message}`}
-                      className={cn(
-                        'rounded-lg border px-[14px] py-2.5',
-                        issue.severity === 'error'
-                          ? 'border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)]'
-                          : 'border-[rgba(245,158,11,0.25)] bg-[rgba(245,158,11,0.08)]'
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'mr-2 text-xs font-bold',
-                          issue.severity === 'error' ? 'text-[#f87171]' : 'text-[#fbbf24]'
-                        )}
-                      >
-                        [{issue.tool}]
-                      </span>
-                      <span className="text-[13px] text-[var(--color-text-primary)]">{issue.message}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <p className="m-0 text-xs text-[var(--color-text-secondary)]">
-              검증 시각: {new Date(validationResult.checkedAt).toLocaleString('ko-KR')}
-            </p>
+            <p className="m-0 text-xs text-[var(--color-text-secondary)]">검증 시각: {new Date(validationResult.checkedAt).toLocaleString('ko-KR')}</p>
           </div>
         )}
       </Modal>
