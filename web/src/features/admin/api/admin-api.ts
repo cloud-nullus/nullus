@@ -101,6 +101,9 @@ const adminApiCalls = {
 
   getKnownIssues: () =>
     api.get<{ items: KnownIssue[] }>('/admin/known-issues').then((r) => r.data),
+
+  searchUserByEmail: (email: string) =>
+    api.get<{ found: boolean; user?: { id: string; name: string; email: string; is_active: boolean } }>('/admin/users/search', { params: { email } }).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -220,6 +223,14 @@ export function useVerifyCluster() {
       void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
       void qc.invalidateQueries({ queryKey: queryKeys.cluster(id) })
     },
+  })
+}
+
+export function useSearchUser(email: string) {
+  return useQuery({
+    queryKey: ['users', 'search', email],
+    queryFn: () => adminApiCalls.searchUserByEmail(email),
+    enabled: email.length > 3 && email.includes('@'),
   })
 }
 

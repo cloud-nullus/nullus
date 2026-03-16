@@ -57,7 +57,11 @@ func (m *mockMemberUserRepository) GetByEmail(_ context.Context, email string) (
 			return &copied, nil
 		}
 	}
-	return nil, errors.New("user not found")
+	return nil, nil
+}
+
+func (m *mockMemberUserRepository) SearchByEmail(ctx context.Context, email string) (*domain.User, error) {
+	return m.GetByEmail(ctx, email)
 }
 
 func (m *mockMemberUserRepository) ListByOrg(_ context.Context, orgID string) ([]*domain.User, error) {
@@ -79,6 +83,28 @@ func (m *mockMemberUserRepository) Update(_ context.Context, user *domain.User) 
 	copied := *user
 	m.users[user.ID] = &copied
 	return nil
+}
+
+func (m *mockMemberUserRepository) AddMember(_ context.Context, orgID, userID string, role domain.Role) error {
+	if user, ok := m.users[userID]; ok {
+		user.Role = role
+	}
+	for _, id := range m.orgs[orgID] {
+		if id == userID {
+			return nil
+		}
+	}
+	m.orgs[orgID] = append(m.orgs[orgID], userID)
+	return nil
+}
+
+func (m *mockMemberUserRepository) IsMember(_ context.Context, orgID, userID string) (bool, error) {
+	for _, id := range m.orgs[orgID] {
+		if id == userID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *mockMemberUserRepository) Delete(_ context.Context, id string) error {
@@ -188,4 +214,68 @@ func TestMemberHandler_Remove_Success(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	_, exists := repo.users["member-1"]
 	assert.False(t, exists)
+}
+
+func TestMemberHandler_SearchUser_Found(t *testing.T) {
+	now := time.Now().UTC()
+	repo := newMockMemberUserRepository(&domain.User{
+		ID:        "member-1",
+		Email:     "member@nullus.io",
+		Name:      "Member",
+		Role:      domain.RoleDeveloper,
+		OrgID:     "org-1",
+		IsActive:  true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	e := newMemberEcho(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/search?email=member@nullus.io", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Found bool `json:"found"`
+		User  struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Email    string `json:"email"`
+			IsActive bool   `json:"is_active"`
+		} `json:"user"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.True(t, resp.Found)
+	assert.Equal(t, "member-1", resp.User.ID)
+	assert.Equal(t, "member@nullus.io", resp.User.Email)
+	assert.True(t, resp.User.IsActive)
+}
+
+func TestMemberHandler_SearchUser_NotFound(t *testing.T) {
+	e := newMemberEcho(newMockMemberUserRepository())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/search?email=missing@nullus.io", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Found bool `json:"found"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.False(t, resp.Found)
+}
+
+func TestMemberHandler_SearchUser_RequiresEmailQuery(t *testing.T) {
+	e := newMemberEcho(newMockMemberUserRepository())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/search", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "email query param required")
 }

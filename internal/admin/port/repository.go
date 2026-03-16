@@ -31,7 +31,10 @@ type UserRepository interface {
 	Create(ctx context.Context, user *domain.User) error
 	GetByID(ctx context.Context, id string) (*domain.User, error)
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	SearchByEmail(ctx context.Context, email string) (*domain.User, error)
 	ListByOrg(ctx context.Context, orgID string) ([]*domain.User, error)
+	AddMember(ctx context.Context, orgID, userID string, role domain.Role) error
+	IsMember(ctx context.Context, orgID, userID string) (bool, error)
 	Update(ctx context.Context, user *domain.User) error
 	Delete(ctx context.Context, id string) error
 }
