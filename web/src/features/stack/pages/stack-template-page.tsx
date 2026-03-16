@@ -9,7 +9,43 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { useAuthStore } from '../../../stores/auth-store'
+import type { StackTemplate } from '../api/stack-api'
 
+const MOCK_TEMPLATES: StackTemplate[] = [
+  {
+    id: 'gitlab-allinone-v1',
+    name: 'GitLab All-in-One',
+    description: 'GitLab CE 기반 단일 플랫폼. 소스코드 관리, CI/CD, 컨테이너 레지스트리를 GitLab에서 통합 제공합니다.',
+    tools: ['GitLab CE', 'GitLab CI', 'GitLab Registry', 'MinIO', 'Argo CD', 'Prometheus', 'Grafana'],
+    estimatedMinutes: 90,
+    category: 'gitlab',
+    createdBy: 'admin',
+    recommendedUseCase: '중견기업, 단일 플랫폼 선호',
+    minResources: '8 vCPU / 16Gi RAM / 100Gi Storage',
+  },
+  {
+    id: 'gitlab-argocd-v1',
+    name: 'GitLab + Argo CD',
+    description: 'GitLab CI와 Harbor 레지스트리를 분리하여 GitOps 패턴을 강화한 구성입니다.',
+    tools: ['GitLab CE', 'GitLab CI', 'Harbor', 'MinIO', 'Argo CD', 'Prometheus', 'Grafana'],
+    estimatedMinutes: 120,
+    category: 'gitlab',
+    createdBy: 'admin',
+    recommendedUseCase: 'GitOps 중심 조직',
+    minResources: '10 vCPU / 20Gi RAM / 130Gi Storage',
+  },
+  {
+    id: 'github-argocd-v1',
+    name: 'GitHub + Argo CD',
+    description: 'GitHub Actions를 외부 CI로 사용하고, 클러스터 내에는 Harbor + Argo CD + 모니터링만 설치합니다.',
+    tools: ['GitHub', 'GitHub Actions', 'Harbor', 'MinIO', 'Argo CD', 'Prometheus', 'Grafana'],
+    estimatedMinutes: 60,
+    category: 'github',
+    createdBy: 'admin',
+    recommendedUseCase: 'GitHub 사용 조직',
+    minResources: '6 vCPU / 12Gi RAM / 80Gi Storage',
+  },
+]
 
 interface TemplateFormState {
   id: string
@@ -48,7 +84,7 @@ export function StackTemplatePage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [form, setForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM)
 
-  const templates = Array.isArray(apiTemplates) ? apiTemplates : []
+  const templates = Array.isArray(apiTemplates) && apiTemplates.length > 0 ? apiTemplates : MOCK_TEMPLATES
 
   const filtered = templates.filter(
     (t) =>
