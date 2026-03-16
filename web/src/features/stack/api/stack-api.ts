@@ -145,6 +145,9 @@ const stackApiCalls = {
 
   getClusters: () =>
     api.get<{ items: ClusterSummary[] }>('/admin/clusters').then((r) => r.data?.items ?? []),
+
+  deployStack: (stackId: string) =>
+    api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -269,6 +272,16 @@ export function useDeleteTemplate() {
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: queryKeys.templates() })
       void qc.invalidateQueries({ queryKey: queryKeys.template(id) })
+    },
+  })
+}
+
+export function useDeployStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.deployStack,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
     },
   })
 }

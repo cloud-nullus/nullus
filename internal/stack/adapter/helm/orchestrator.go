@@ -3,21 +3,26 @@ package helm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 type Orchestrator struct {
-	installer   port.HelmInstaller
-	rollback    *RollbackManager
-	kubeconfig  []byte
-	namespace   string
-	chartConfig map[string]ChartSpec
-	stepOrder   map[string]int
-	orderedStep []string
-	mu          sync.Mutex
-	progress    map[string]int
+	installer           port.HelmInstaller
+	rollback            *RollbackManager
+	kubeconfig          []byte
+	namespace           string
+	chartConfig         map[string]ChartSpec
+	stepOrder           map[string]int
+	orderedStep         []string
+	stackConfig         *domain.StackConfig
+	stepConfigFieldPath map[string]string
+	stepConfigEnabled   map[string]func(domain.StackConfig) bool
+	mu                  sync.Mutex
+	progress            map[string]int
 }
 
 type ChartSpec struct {
@@ -99,8 +104,43 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_grafana",
 			"integration_check",
 		},
+		stepConfigFieldPath: map[string]string{
+			"installing_minio":      "config.artifacts.storage_backend",
+			"installing_gitlab":     "config.artifacts.source_repository",
+			"installing_argocd":     "config.pipeline.cd_tool",
+			"installing_runner":     "config.pipeline.ci_platform",
+			"installing_prometheus": "config.monitoring.collection",
+			"installing_grafana":    "config.monitoring.visualization",
+		},
+		stepConfigEnabled: map[string]func(domain.StackConfig) bool{
+			"installing_minio": func(cfg domain.StackConfig) bool {
+				return cfg.Artifacts.StorageBackend.Enabled
+			},
+			"installing_gitlab": func(cfg domain.StackConfig) bool {
+				return cfg.Artifacts.SourceRepository.Enabled
+			},
+			"installing_argocd": func(cfg domain.StackConfig) bool {
+				return cfg.Pipeline.CDTool.Enabled
+			},
+			"installing_runner": func(cfg domain.StackConfig) bool {
+				return cfg.Pipeline.CIPlatform.Enabled
+			},
+			"installing_prometheus": func(cfg domain.StackConfig) bool {
+				return cfg.Monitoring.Collection.Enabled
+			},
+			"installing_grafana": func(cfg domain.StackConfig) bool {
+				return cfg.Monitoring.Visualization.Enabled
+			},
+		},
 		progress: make(map[string]int),
 	}
+}
+
+func (o *Orchestrator) SetStackConfig(config domain.StackConfig) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	cfg := config
+	o.stackConfig = &cfg
 }
 
 func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase string) error {
@@ -118,6 +158,13 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 	if err := o.ensureOrder(stackID, step, order); err != nil {
 		return err
+	}
+
+	if !o.isStepEnabled(step) {
+		o.markCompleted(stackID, order)
+		path := o.stepConfigFieldPath[step]
+		slog.Info("skipping disabled stack install step", "stack_id", stackID, "step", step, "config_path", path)
+		return nil
 	}
 
 	if step == "integration_check" {
@@ -146,6 +193,27 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 	o.markCompleted(stackID, order)
 	return nil
+}
+
+func (o *Orchestrator) isStepEnabled(step string) bool {
+	if step == "installing_cert_manager" || step == "integration_check" {
+		return true
+	}
+
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+
+	if cfg == nil {
+		return true
+	}
+
+	enabledFn, ok := o.stepConfigEnabled[step]
+	if !ok {
+		return true
+	}
+
+	return enabledFn(*cfg)
 }
 
 func (o *Orchestrator) ensureOrder(stackID, step string, order int) error {

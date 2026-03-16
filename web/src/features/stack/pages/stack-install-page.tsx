@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { Download, Save, Rocket } from 'lucide-react'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useEstimateResources, useClusters } from '../api/stack-api'
+import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useDeployStack } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
@@ -376,6 +376,7 @@ export function StackInstallPage() {
   const navigate = useNavigate()
   const { draft, setActiveTab, setTool, setStackName, setCluster, updateResources } = useStackConfigStore()
   const createStack = useCreateStack()
+  const deployStack = useDeployStack()
   const saveDraft = useSaveDraft()
   const estimateResources = useEstimateResources()
   const { data: clusters } = useClusters()
@@ -425,7 +426,17 @@ export function StackInstallPage() {
         resources: draft.resources,
       },
       {
-        onSuccess: () => navigate('/stack/list'),
+        onSuccess: (data) => {
+          const stackId = data.id
+          deployStack.mutate(stackId, {
+            onSuccess: () => {
+              navigate(`/stack/deploy/${stackId}`)
+            },
+            onError: () => {
+              navigate('/stack/list')
+            },
+          })
+        },
       }
     )
   }

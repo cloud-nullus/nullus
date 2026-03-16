@@ -10,6 +10,7 @@ vi.mock('../api/stack-api', () => ({
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
   useClusters: () => ({ data: [{ id: 'cluster-1', name: 'test-cluster', connection_status: 'connected' }] }),
+  useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 // Mock useNavigate

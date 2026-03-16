@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -44,6 +45,10 @@ type InstallStack struct {
 	executor            port.StepExecutor
 	kubeconfigProvider  port.KubeconfigProvider
 	dynamicExecutorFunc func(kubeconfig []byte) port.StepExecutor
+}
+
+type stackConfigAwareExecutor interface {
+	SetStackConfig(config domain.StackConfig)
 }
 
 type InstallStackOption func(*InstallStack)
@@ -91,6 +96,7 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 	}
 
 	executor := uc.resolveExecutor(ctx, stack)
+	uc.configureExecutorForStack(stack, executor)
 
 	if err := stack.TransitionTo(domain.StateValidating); err != nil {
 		return fmt.Errorf("transition to validating: %w", err)
@@ -103,6 +109,51 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 	go uc.run(context.WithoutCancel(ctx), stack, executor)
 
 	return nil
+}
+
+func (uc *InstallStack) configureExecutorForStack(stack *domain.Stack, executor port.StepExecutor) {
+	if stack == nil || executor == nil {
+		return
+	}
+
+	awareExecutor, ok := executor.(stackConfigAwareExecutor)
+	if !ok {
+		return
+	}
+
+	cfg, ok := stackConfigFromInterface(stack.Config)
+	if !ok {
+		return
+	}
+
+	awareExecutor.SetStackConfig(cfg)
+}
+
+func stackConfigFromInterface(rawConfig any) (domain.StackConfig, bool) {
+	if rawConfig == nil {
+		return domain.StackConfig{}, false
+	}
+
+	switch cfg := rawConfig.(type) {
+	case domain.StackConfig:
+		return cfg, true
+	case *domain.StackConfig:
+		if cfg == nil {
+			return domain.StackConfig{}, false
+		}
+		return *cfg, true
+	default:
+		payload, err := json.Marshal(rawConfig)
+		if err != nil {
+			return domain.StackConfig{}, false
+		}
+
+		var decoded domain.StackConfig
+		if err := json.Unmarshal(payload, &decoded); err != nil {
+			return domain.StackConfig{}, false
+		}
+		return decoded, true
+	}
 }
 
 // run executes the full installation pipeline, performing state transitions and
