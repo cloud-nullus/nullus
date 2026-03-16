@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { Download, Save, Rocket } from 'lucide-react'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useEstimateResources } from '../api/stack-api'
+import { useCreateStack, useSaveDraft, useEstimateResources, useClusters } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
@@ -374,10 +374,11 @@ const TABS: { id: InstallTab; label: string }[] = [
 
 export function StackInstallPage() {
   const navigate = useNavigate()
-  const { draft, setActiveTab, setTool, setStackName, updateResources } = useStackConfigStore()
+  const { draft, setActiveTab, setTool, setStackName, setCluster, updateResources } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
   const estimateResources = useEstimateResources()
+  const { data: clusters } = useClusters()
   const [activeTab, setLocalTab] = useState<InstallTab>(draft.activeTab)
   const [deployScriptModalOpen, setDeployScriptModalOpen] = useState(false)
   const [k8sPreviewModalOpen, setK8sPreviewModalOpen] = useState(false)
@@ -500,27 +501,47 @@ export function StackInstallPage() {
         </div>
       </div>
 
-      {/* Stack name */}
-      <div className="mb-5 max-w-[400px]">
-        <Controller
-          control={control}
-          name="stackName"
-          render={({ field }) => (
-            <>
-              <Input
-                label="Stack Name"
-                placeholder="예: prod-gitlab-stack"
-                value={field.value}
-                onChange={(e) => {
-                  field.onChange(e.target.value)
-                  setStackName(e.target.value)
-                }}
-                onBlur={field.onBlur}
-              />
-              {errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>}
-            </>
-          )}
-        />
+      <div className="mb-5 flex items-start gap-4">
+        <div className="max-w-[400px] flex-1">
+          <Controller
+            control={control}
+            name="stackName"
+            render={({ field }) => (
+              <>
+                <Input
+                  label="Stack Name"
+                  placeholder="예: prod-gitlab-stack"
+                  value={field.value}
+                  onChange={(e) => {
+                    field.onChange(e.target.value)
+                    setStackName(e.target.value)
+                  }}
+                  onBlur={field.onBlur}
+                />
+                {errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>}
+              </>
+            )}
+          />
+        </div>
+        <div className="flex max-w-[300px] flex-1 flex-col gap-1">
+          <label htmlFor="cluster-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
+            Target Cluster
+          </label>
+          <select
+            id="cluster-select"
+            value={draft.clusterId ?? ''}
+            onChange={(e) => setCluster(e.target.value)}
+            className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+          >
+            <option value="">클러스터를 선택하세요</option>
+            {(clusters ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.connection_status})
+              </option>
+            ))}
+          </select>
+          {!draft.clusterId && <span className="text-xs text-[#f59e0b]">배포에 필요합니다</span>}
+        </div>
       </div>
 
       <div className="flex items-start gap-5">

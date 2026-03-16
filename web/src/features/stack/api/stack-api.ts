@@ -32,7 +32,11 @@ export type {
   StackVersionDiff,
 } from '../../../types'
 
-// --- Query keys ---
+export interface ClusterSummary {
+  id: string
+  name: string
+  connection_status: string
+}
 
 const queryKeys = {
   templates: () => ['stacks', 'templates'] as const,
@@ -41,9 +45,52 @@ const queryKeys = {
   history: (stackId: string) => ['stacks', 'history', stackId] as const,
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
+  clusters: () => ['clusters'] as const,
 }
 
 // --- API functions ---
+
+function toBackendTool(sel: { tool: string; version: string }) {
+  return { name: sel.tool, version: sel.version, enabled: true }
+}
+
+function toCreateStackBody(req: CreateStackRequest) {
+  const a = req.artifacts as Record<string, { tool: string; version: string }>
+  const p = req.pipeline as Record<string, { tool: string; version: string }>
+  const m = req.monitoring as Record<string, { tool: string; version: string }>
+  const l = req.logging as Record<string, { tool: string; version: string }>
+  return {
+    name: req.stackName,
+    cluster_id: req.clusterId ?? '',
+    golden_path_id: req.templateId ?? '',
+    config: {
+      artifacts: {
+        package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
+        source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),
+        container_registry: toBackendTool(a.containerRegistry ?? a.container_registry ?? { tool: '', version: '' }),
+        storage_backend: toBackendTool(a.storageBackend ?? a.storage_backend ?? { tool: '', version: '' }),
+      },
+      pipeline: {
+        ci_platform: toBackendTool(p.cicdPlatform ?? p.ci_platform ?? { tool: '', version: '' }),
+        cd_tool: toBackendTool(p.cdTool ?? p.cd_tool ?? { tool: '', version: '' }),
+      },
+      monitoring: {
+        collection: toBackendTool(m.collection ?? { tool: '', version: '' }),
+        visualization: toBackendTool(m.visualization ?? { tool: '', version: '' }),
+      },
+      logging: {
+        collection: toBackendTool(l.collection ?? { tool: '', version: '' }),
+        search: toBackendTool(l.search ?? { tool: '', version: '' }),
+      },
+      resources: {
+        developers: req.resources?.developerCount ?? 0,
+        concurrent_runners: req.resources?.concurrentRunners ?? 0,
+        weekly_commits: req.resources?.commitsPerDay ?? 0,
+        build_frequency: req.resources?.buildFrequency ?? 'medium',
+      },
+    },
+  }
+}
 
 const stackApiCalls = {
   getTemplates: () =>
@@ -64,7 +111,7 @@ const stackApiCalls = {
     api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => r.data),
 
   create: (request: CreateStackRequest) =>
-    api.post<{ id: string }>('/stacks', request).then((r) => r.data),
+    api.post<{ id: string }>('/stacks', toCreateStackBody(request)).then((r) => r.data),
 
   saveDraft: (request: CreateStackRequest) =>
     api.post<{ draftId: string }>('/stacks/draft', request).then((r) => r.data),
@@ -95,6 +142,9 @@ const stackApiCalls = {
 
   deleteTemplate: (id: string) =>
     api.delete<void>(`/stacks/templates/${id}`).then((r) => r.data),
+
+  getClusters: () =>
+    api.get<{ items: ClusterSummary[] }>('/admin/clusters').then((r) => r.data?.items ?? []),
 }
 
 // --- Hooks ---
@@ -106,6 +156,12 @@ export function useTemplates() {
   })
 }
 
+export function useClusters() {
+  return useQuery({
+    queryKey: queryKeys.clusters(),
+    queryFn: stackApiCalls.getClusters,
+  })
+}
 
 export function useStacks(filters?: { status?: string; search?: string }) {
   return useQuery({
