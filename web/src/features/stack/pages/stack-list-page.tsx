@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { List, Plus, Search } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useStacks } from '../api/stack-api'
+import { useDeleteStack, useStacks } from '../api/stack-api'
 import type { Stack } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -26,6 +26,7 @@ export function StackListPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [deleteStackId, setDeleteStackId] = useState<string | null>(null)
+  const deleteStack = useDeleteStack()
 
   const { data: apiData, isLoading } = useStacks({ search, status: statusFilter || undefined })
   const stacks = apiData?.items ?? []
@@ -42,8 +43,10 @@ export function StackListPage() {
   })
 
   const handleDeleteStack = () => {
-    // TODO: wire useDeleteStack when API is available
-    setDeleteStackId(null)
+    if (!deleteStackId) return
+    deleteStack.mutate(deleteStackId, {
+      onSuccess: () => setDeleteStackId(null),
+    })
   }
 
   const columns: ColumnDef<Stack, unknown>[] = [

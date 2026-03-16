@@ -6,7 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import { Download, Save, Rocket } from 'lucide-react'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useDeployStack } from '../api/stack-api'
+import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useDeployStack, toCreateStackBody } from '../api/stack-api'
+import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -416,32 +417,27 @@ export function StackInstallPage() {
     const isFormValid = await validateCoreFields()
     if (!isFormValid) return
 
-    createStack.mutate(
-      {
-        templateId: draft.selectedTemplateId,
-        clusterId: draft.clusterId,
-        namespace: draft.namespace,
-        stackName: draft.stackName,
-        artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
-        pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
-        monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
-        logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
-        resources: draft.resources,
-      },
-      {
-        onSuccess: (data) => {
-          const stackId = data.id
-          deployStack.mutate(stackId, {
-            onSuccess: () => {
-              navigate(`/stack/deploy/${stackId}`)
-            },
-            onError: () => {
-              navigate('/stack/list')
-            },
-          })
-        },
-      }
-    )
+    const body = toCreateStackBody({
+      templateId: draft.selectedTemplateId,
+      clusterId: draft.clusterId,
+      namespace: draft.namespace,
+      stackName: draft.stackName,
+      artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
+      pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
+      monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
+      logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
+      resources: draft.resources,
+    })
+
+    try {
+      const createRes = await api.post<{ id: string }>('/stacks', body)
+      const stackId = createRes.data?.id
+      if (!stackId) { navigate('/stack/list'); return }
+      await api.post(`/stacks/${stackId}/deploy`).catch(() => {})
+      navigate(`/stack/deploy/${stackId}`)
+    } catch {
+      navigate('/stack/list')
+    }
   }
 
   const handleSaveDraft = async () => {
@@ -501,12 +497,12 @@ export function StackInstallPage() {
           <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
             Preview K8s Objects
           </Button>
-          <Button
+           <Button
             variant="primary"
             size="md"
             loading={createStack.isPending}
             onClick={handleDeploy}
-            disabled={!isValid || isSubmitting}
+            disabled={isSubmitting || !draft.stackName || draft.stackName.length < 2 || !draft.clusterId}
             type="button"
           >
             <Rocket size={14} />

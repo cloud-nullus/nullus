@@ -54,7 +54,7 @@ function toBackendTool(sel: { tool: string; version: string }) {
   return { name: sel.tool, version: sel.version, enabled: true }
 }
 
-function toCreateStackBody(req: CreateStackRequest) {
+export function toCreateStackBody(req: CreateStackRequest) {
   const a = req.artifacts as Record<string, { tool: string; version: string }>
   const p = req.pipeline as Record<string, { tool: string; version: string }>
   const m = req.monitoring as Record<string, { tool: string; version: string }>
@@ -96,13 +96,18 @@ function toCreateStackBody(req: CreateStackRequest) {
 const stackApiCalls = {
   getTemplates: () =>
     api.get<StackTemplate[]>('/stacks/templates').then((r) =>
-      (r.data ?? []).map((t: Record<string, unknown>) => ({
-        ...t,
-        tools: Array.isArray(t.tools)
-          ? t.tools.map((tool: unknown) => (typeof tool === 'string' ? tool : (tool as Record<string, string>).name ?? ''))
+      (r.data ?? []).map((t) => {
+        const raw = t as unknown as Record<string, unknown>
+        return {
+          ...t,
+          tools: Array.isArray(raw.tools)
+            ? raw.tools.map((tool: unknown) => (typeof tool === 'string' ? tool : (tool as Record<string, string>).name ?? ''))
           : [],
-        estimatedMinutes: t.estimatedMinutes ?? (typeof t.estimated_install_time === 'number' ? Math.round(Number(t.estimated_install_time) / 60000000000) : 30),
-      }))
+          estimatedMinutes:
+            t.estimatedMinutes ??
+            (typeof raw.estimated_install_time === 'number' ? Math.round(Number(raw.estimated_install_time) / 60000000000) : 30),
+        }
+      })
     ),
 
   getTemplate: (id: string) =>
@@ -113,6 +118,9 @@ const stackApiCalls = {
 
   create: (request: CreateStackRequest) =>
     api.post<{ id: string }>('/stacks', toCreateStackBody(request)).then((r) => r.data),
+
+  delete: (stackId: string) =>
+    api.delete('/stacks/' + stackId).then((r) => r.data),
 
   saveDraft: (request: CreateStackRequest) =>
     api.post<{ draftId: string }>('/stacks/draft', request).then((r) => r.data),
@@ -180,6 +188,16 @@ export function useCreateStack() {
     mutationFn: stackApiCalls.create,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
+  })
+}
+
+export function useDeleteStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (stackId: string) => stackApiCalls.delete(stackId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.list() })
     },
   })
 }

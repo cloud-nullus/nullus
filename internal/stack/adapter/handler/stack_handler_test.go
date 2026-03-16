@@ -25,7 +25,8 @@ func newStackEcho() *echo.Echo {
 	memTemplateRepo := stackrepo.NewMemoryTemplateRepository()
 	createStackUC := usecase.NewCreateStack(memStackRepo, memTemplateRepo)
 	listStacksUC := usecase.NewListStacks(memStackRepo)
-	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, memStackRepo, nil)
+	deleteStackUC := usecase.NewDeleteStack(memStackRepo, nil, nil)
+	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, memStackRepo, nil)
 
 	v1 := e.Group("/api/v1")
 	stacks := v1.Group("/stacks")
@@ -80,4 +81,27 @@ func TestStackHandler_ListStacks_200(t *testing.T) {
 	require.True(t, ok)
 	assert.Len(t, items, 1)
 	assert.EqualValues(t, 1, resp["total"])
+}
+
+func TestStackHandler_DeleteStack_204(t *testing.T) {
+	e := newStackEcho()
+
+	body := `{"name":"stack-delete-test","cluster_id":"cls-1","golden_path_id":"github-argocd-v1"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Org-ID", "org-delete")
+	createRec := httptest.NewRecorder()
+	e.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var createResp map[string]any
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
+	stackID, ok := createResp["id"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, stackID)
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/stacks/"+stackID, nil)
+	deleteRec := httptest.NewRecorder()
+	e.ServeHTTP(deleteRec, deleteReq)
+	assert.Equal(t, http.StatusNoContent, deleteRec.Code)
 }
