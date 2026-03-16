@@ -24,6 +24,8 @@
 |------|---------|--------------|
 | **Admin** | `admin` | 조직 설정, 사용자 관리, 클러스터 등록 전체 |
 | **DevOps Engineer** | `devops` | 스택 템플릿 선택·설치·배포, CI/CD, 모니터링, Admin 기능 전체 |
+
+사용자는 여러 조직에 동시에 소속될 수 있으며 조직별로 다른 역할을 가질 수 있다.
 | **Developer** | `developer` | CI/CD 파이프라인 생성·배포, 관측성 대시보드 |
 
 ### 1.3 기술 스택
@@ -85,13 +87,18 @@ cd draft
 ### 2.3 환경변수 설정
 
 ```bash
-cp .env.example .env
-# .env 파일을 열어 필요한 값을 확인한다 (기본값으로 로컬 개발 가능)
-# kubeconfig 암호화 키(필수, 32바이트)
-export ENCRYPTION_KEY="nullus-dev-key-32bytes-padding!!"
+cp .env.example .env.dev
 ```
 
-`ENCRYPTION_KEY`는 클러스터 kubeconfig 암호화/복호화에 사용되며 길이가 정확히 32바이트여야 한다.
+`.env.dev` 파일은 `make run` 실행 시 자동으로 로드된다. 기본값으로 로컬 개발이 가능하며 별도 수정이 필요 없다.
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `ENCRYPTION_KEY` | `nullus-dev-key-32bytes-padding!!` | kubeconfig 암호화 키 (32바이트 필수) |
+| `NULLUS_DB_HOST` | `localhost` | PostgreSQL 호스트 |
+| `NULLUS_DB_PORT` | `5433` | PostgreSQL 포트 |
+
+> `ENCRYPTION_KEY`를 변경하면 기존 DB에 저장된 kubeconfig가 복호화되지 않는다. 클러스터를 다시 등록해야 한다.
 
 ### 2.4 인프라 기동
 
@@ -116,14 +123,13 @@ make dev
 ### 2.5 백엔드 빌드 + 실행
 
 ```bash
-make build
 make run
 ```
 
-기본 포트(8080)가 이미 사용 중이면:
+`make run`은 `.env.dev`에서 환경변수를 자동 로드하고 API 서버를 빌드 후 실행한다. 빌드 없이 빠르게 실행:
 
 ```bash
-NULLUS_SERVER_PORT=9090 make run
+make run-dev
 ```
 
 서버 기동 확인:

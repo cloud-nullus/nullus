@@ -43,8 +43,19 @@ build:
 	go build -o bin/api ./cmd/api
 
 run: build
-	NULLUS_DB_HOST=localhost NULLUS_DB_PORT=5433 NULLUS_DB_NAME=nullus \
-	NULLUS_DB_USER=nullus NULLUS_DB_PASSWORD=nullus_dev NULLUS_DB_SSLMODE=disable \
+	@set -a && [ -f .env.dev ] && . ./.env.dev; \
+	NULLUS_DB_HOST=$${NULLUS_DB_HOST:-localhost} \
+	NULLUS_DB_PORT=$${NULLUS_DB_PORT:-5433} \
+	NULLUS_DB_NAME=$${NULLUS_DB_NAME:-nullus} \
+	NULLUS_DB_USER=$${NULLUS_DB_USER:-nullus} \
+	NULLUS_DB_PASSWORD=$${NULLUS_DB_PASSWORD:-nullus_dev} \
+	NULLUS_DB_SSLMODE=$${NULLUS_DB_SSLMODE:-disable} \
+	ENCRYPTION_KEY=$${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!} \
+	./bin/api
+
+run-dev: build
+	@set -a && [ -f .env.dev ] && . ./.env.dev; \
+	ENCRYPTION_KEY=$${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!} \
 	./bin/api
 
 test:

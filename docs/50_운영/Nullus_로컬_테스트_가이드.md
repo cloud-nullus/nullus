@@ -24,7 +24,7 @@
 이 명령은 다음을 순서대로 실행합니다:
 
 1. Docker Compose로 PostgreSQL, Redis, MinIO, Keycloak 컨테이너 기동
-2. `golang-migrate`로 DB 마이그레이션 실행 (13개 파일)
+2. `golang-migrate`로 DB 마이그레이션 실행 (18개 파일)
 3. Go API 서버 빌드 + 실행 (`:8090`, `ENCRYPTION_KEY` 자동 설정)
 4. React 프론트엔드 개발 서버 실행 (`:5173`)
 
@@ -126,6 +126,10 @@ curl -X PATCH http://localhost:8090/api/v1/admin/clusters/{clusterId} \
 
 # 클러스터 삭제
 curl -X DELETE http://localhost:8090/api/v1/admin/clusters/{clusterId}
+
+# 클러스터 네임스페이스 목록 (K8s API 실시간 조회)
+curl http://localhost:8090/api/v1/admin/clusters/{clusterId}/namespaces
+# {"items":[{"name":"default"},{"name":"production"}]}
 ```
 
 kind 클러스터 등록 예시:
@@ -154,6 +158,10 @@ curl -X POST http://localhost:8090/api/v1/admin/organizations/{orgId}/members \
 curl -X PATCH http://localhost:8090/api/v1/admin/organizations/{orgId}/members/{memberId} \
   -H "Content-Type: application/json" \
   -d '{"role":"devops"}'
+
+# 기존 사용자 검색 (다른 조직에서 활동 중인 사용자)
+curl http://localhost:8090/api/v1/admin/users/search?email=devops@nullus.dev
+# {"found":true,"user":{"id":"...","name":"DevOps Engineer","email":"devops@nullus.dev","is_active":true}}
 ```
 
 ### 4.5 Admin — 기타
@@ -184,16 +192,20 @@ curl http://localhost:8090/api/v1/stacks
 # 호환성 매트릭스
 curl http://localhost:8090/api/v1/stacks/compatibility
 
-# 스택 생성
+# 스택 생성 (namespace 지정 가능)
 curl -X POST http://localhost:8090/api/v1/stacks \
   -H "Content-Type: application/json" \
-  -d '{"name":"my-stack","template_id":"tpl_standard","cluster_id":"{clusterId}","config":{"tools":["gitlab","argocd","prometheus"]}}'
+  -H "X-Org-ID: {orgId}" \
+  -d '{"name":"my-stack","cluster_id":"{clusterId}","namespace":"my-namespace","golden_path_id":"tpl_minimal","config":{}}'
 
 # 스택 배포
 curl -X POST http://localhost:8090/api/v1/stacks/{stackId}/deploy
 
 # 배포 상태 확인
 curl http://localhost:8090/api/v1/stacks/{stackId}/status
+
+# 스택 삭제 (Helm uninstall 포함)
+curl -X DELETE http://localhost:8090/api/v1/stacks/{stackId}
 ```
 
 ### 4.7 CI/CD
@@ -370,6 +382,7 @@ cd web && npx playwright test --reporter=list
 | DB 마이그레이션 실패 | 볼륨 데이터 충돌 | `make dev-clean && make dev` (볼륨 초기화) |
 | Playwright 브라우저 없음 | Chromium 미설치 | `npx playwright install chromium` |
 | kind 클러스터 안 됨 | kind 미설치 | `brew install kind` |
+| ENCRYPTION_KEY 불일치 | 서버 재시작 시 다른 키 사용 | `.env.dev`에서 키 확인. `make run`은 자동 로드 |
 
 ---
 
