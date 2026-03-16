@@ -45,18 +45,59 @@ const queryKeys = {
 
 interface RawTemplate {
   id: string
+  ID?: string
   name: string
+  Name?: string
   description: string
+  Description?: string
   tools?: unknown[]
+  Tools?: unknown[]
   estimatedMinutes?: number
   estimated_install_time?: number
+  EstimatedInstallTime?: number
   category?: string
+  Category?: string
   createdBy?: string
   created_by?: string
+  CreatedBy?: string
   recommendedUseCase?: string
   recommended_use_case?: string
+  RecommendedUseCase?: string
   minResources?: string
   min_resources?: string
+  MinResources?: string
+}
+
+interface RawCompatibilityTool {
+  name?: string
+  Name?: string
+  helmVersion?: string
+  HelmVersion?: string
+  appVersion?: string
+  AppVersion?: string
+}
+
+interface RawKubernetesRange {
+  min?: string
+  Min?: string
+  max?: string
+  Max?: string
+  recommended?: string
+  Recommended?: string
+}
+
+interface RawCompatibilityMatrix {
+  id?: string
+  ID?: string
+  name?: string
+  Name?: string
+  status?: string
+  Status?: string
+  k8sRange?: string
+  Kubernetes?: RawKubernetesRange
+  kubernetes?: RawKubernetesRange
+  tools?: RawCompatibilityTool[]
+  Tools?: RawCompatibilityTool[] | Record<string, RawCompatibilityTool>
 }
 
 const toToolName = (tool: unknown): string => {
@@ -73,18 +114,62 @@ const toToolName = (tool: unknown): string => {
 }
 
 const normalizeTemplate = (raw: RawTemplate): StackTemplate => ({
-  id: raw.id,
-  name: raw.name,
-  description: raw.description,
-  tools: Array.isArray(raw.tools) ? raw.tools.map(toToolName).filter((tool) => tool.length > 0) : [],
+  id: raw.id ?? raw.ID ?? '',
+  name: raw.name ?? raw.Name ?? '',
+  description: raw.description ?? raw.Description ?? '',
+  tools: Array.isArray(raw.tools ?? raw.Tools) ? (raw.tools ?? raw.Tools ?? []).map(toToolName).filter((tool) => tool.length > 0) : [],
   estimatedMinutes: typeof raw.estimatedMinutes === 'number'
     ? raw.estimatedMinutes
-    : (typeof raw.estimated_install_time === 'number' ? Math.round(raw.estimated_install_time / 60000000000) : 30),
-  category: raw.category ?? 'default',
-  createdBy: raw.createdBy ?? raw.created_by,
-  recommendedUseCase: raw.recommendedUseCase ?? raw.recommended_use_case,
-  minResources: raw.minResources ?? raw.min_resources,
+    : (typeof (raw.estimated_install_time ?? raw.EstimatedInstallTime) === 'number'
+      ? Math.round((raw.estimated_install_time ?? raw.EstimatedInstallTime ?? 1800000000000) / 60000000000)
+      : 30),
+  category: raw.category ?? raw.Category ?? 'default',
+  createdBy: raw.createdBy ?? raw.created_by ?? raw.CreatedBy,
+  recommendedUseCase: raw.recommendedUseCase ?? raw.recommended_use_case ?? raw.RecommendedUseCase,
+  minResources: raw.minResources ?? raw.min_resources ?? raw.MinResources,
 })
+
+const normalizeCompatibilityTool = (tool: RawCompatibilityTool) => ({
+  name: tool.name ?? tool.Name ?? 'Unknown',
+  helmVersion: tool.helmVersion ?? tool.HelmVersion ?? '-',
+  appVersion: tool.appVersion ?? tool.AppVersion ?? '-',
+})
+
+const normalizeK8sRange = (raw: RawCompatibilityMatrix): string => {
+  if (raw.k8sRange) {
+    return raw.k8sRange
+  }
+
+  const kubernetes = raw.kubernetes ?? raw.Kubernetes
+  if (!kubernetes) {
+    return 'N/A'
+  }
+
+  const min = kubernetes.min ?? kubernetes.Min
+  const max = kubernetes.max ?? kubernetes.Max
+  if (!min && !max) {
+    return 'N/A'
+  }
+  if (min && max && min !== max) {
+    return `${min}-${max}`
+  }
+  return min ?? max ?? 'N/A'
+}
+
+const normalizeCompatibilityMatrix = (raw: RawCompatibilityMatrix): CompatibilityMatrix => {
+  const rawTools = raw.tools ?? raw.Tools
+  const tools = Array.isArray(rawTools)
+    ? rawTools.map(normalizeCompatibilityTool)
+    : Object.values(rawTools ?? {}).map(normalizeCompatibilityTool)
+
+  return {
+    id: raw.id ?? raw.ID ?? '',
+    name: raw.name ?? raw.Name ?? 'Unnamed Matrix',
+    status: raw.status ?? raw.Status ?? 'untested',
+    k8sRange: normalizeK8sRange(raw),
+    tools,
+  }
+}
 
 // --- API functions ---
 
@@ -117,7 +202,7 @@ const stackApiCalls = {
     api.post<{ id: string }>(`/stacks/${stackId}/rollback`, { version }).then((r) => r.data),
 
   getCompatibilityMatrix: () =>
-    api.get<CompatibilityMatrix[]>('/stacks/compatibility').then((r) => r.data),
+    api.get<RawCompatibilityMatrix[]>('/stacks/compatibility').then((r) => (r.data ?? []).map(normalizeCompatibilityMatrix)),
 
   validateCompatibility: (stackId: string) =>
     api.post<CompatibilityValidationResult>(`/stacks/${stackId}/validate`).then((r) => r.data),
