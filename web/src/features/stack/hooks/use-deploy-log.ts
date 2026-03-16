@@ -37,11 +37,14 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
   useEffect(() => {
     if (!deploymentId) return
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/v1/stacks/${deploymentId}/deploy/logs`
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/deployments/${deploymentId}/logs`
 
     const client = connect(wsUrl, {
       onMessage: (data) => {
         const payload = data as DeployLogPayload
+        if (payload.progress !== undefined && payload.progress > 0) {
+          setProgress(payload.progress)
+        }
         if (payload.type === 'log' && payload.message) {
           const entry: LogEntry = {
             id: String(++counterRef.current),
@@ -52,8 +55,6 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
           setLogs((prev) => [...prev, entry])
         } else if (payload.type === 'status' && payload.status) {
           setStatus(payload.status)
-        } else if (payload.type === 'progress' && payload.progress !== undefined) {
-          setProgress(payload.progress)
         }
       },
       onStatusChange: (connected) => {
