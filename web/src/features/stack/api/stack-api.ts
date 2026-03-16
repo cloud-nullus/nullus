@@ -114,7 +114,21 @@ const stackApiCalls = {
     api.get<StackTemplate>(`/stacks/templates/${id}`).then((r) => r.data),
 
   getList: (filters?: { status?: string; search?: string }) =>
-    api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => r.data),
+    api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => ({
+      ...r.data,
+      items: (r.data.items ?? []).map((s: Record<string, unknown>) => ({
+        id: s.id ?? '',
+        name: s.name ?? '',
+        templateId: s.template_id ?? s.templateId ?? '',
+        templateName: s.template_name ?? s.templateName ?? s.template_id ?? '',
+        clusterId: s.cluster_id ?? s.clusterId ?? '',
+        clusterName: s.cluster_name ?? s.clusterName ?? s.cluster_id ?? '',
+        namespace: s.namespace ?? 'nullus',
+        status: s.state ?? s.status ?? 'pending',
+        createdAt: s.created_at ?? s.createdAt ?? '',
+        updatedAt: s.updated_at ?? s.updatedAt ?? '',
+      })) as Stack[],
+    })),
 
   create: (request: CreateStackRequest) =>
     api.post<{ id: string }>('/stacks', toCreateStackBody(request)).then((r) => r.data),
@@ -197,7 +211,7 @@ export function useDeleteStack() {
   return useMutation({
     mutationFn: (stackId: string) => stackApiCalls.delete(stackId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.list() })
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
     },
   })
 }
