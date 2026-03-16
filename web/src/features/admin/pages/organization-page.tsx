@@ -1,15 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Settings, Plus, Trash2, Mail } from 'lucide-react'
-import { useOrganization, useUpdateOrganization, useMembers, useInviteMember, useRemoveMember, useClusters } from '../api/admin-api'
-import type { MemberRole, MemberStatus, InviteMemberRequest } from '../api/admin-api'
-import { Button } from '../../../components/ui/button'
-import { Input } from '../../../components/ui/input'
-import { Modal } from '../../../components/ui/modal'
-import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
+import {
+  useClusters,
+  useInviteMember,
+  useMembers,
+  useOrganization,
+  useRemoveMember,
+  useUpdateOrganization,
+} from '../api/admin-api'
+import type { InviteMemberRequest, MemberRole, MemberStatus } from '../api/admin-api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
+import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
+import { Input } from '../../../components/ui/input'
+import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
+import { Modal } from '../../../components/ui/modal'
 import { cn } from '../../../lib/utils'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
@@ -29,10 +37,7 @@ const domainRegex = /^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
 const orgSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Slug must be lowercase alphanumeric with optional hyphens'),
-  domain: z
-    .string()
-    .optional()
-    .refine((value) => !value || domainRegex.test(value), 'Invalid domain'),
+  domain: z.string().optional().refine((value) => !value || domainRegex.test(value), 'Invalid domain'),
   status: z.enum(['active', 'inactive', 'suspended']),
 })
 
@@ -45,18 +50,35 @@ const inviteSchema = z.object({
 type OrgFormData = z.infer<typeof orgSchema>
 type InviteFormData = z.infer<typeof inviteSchema>
 
+const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
+const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
+
 export function OrganizationPage() {
   const { data: orgData, isLoading: orgLoading } = useOrganization()
-  const org = orgData ?? { id: '', name: '', slug: '', domain: '', status: 'active' as const, clusterAccessScope: [] }
-  const orgId = org.id
+  const organizations = useMemo(() => (orgData ? [orgData] : []), [orgData])
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!selectedOrgId && organizations.length > 0) {
+      setSelectedOrgId(organizations[0].id)
+    }
+  }, [organizations, selectedOrgId])
+
+  const selectedOrg = organizations.find((org) => org.id === selectedOrgId) ?? organizations[0] ?? null
+  const orgId = selectedOrg?.id ?? ''
+
   const { data: membersData } = useMembers(orgId)
   const members = membersData?.items ?? []
   const { data: clustersData } = useClusters()
-  const allClusters = (clustersData?.items ?? []).map((c) => c.name)
+  const allClusters = clustersData?.items ?? []
 
   const updateOrg = useUpdateOrganization()
   const inviteMember = useInviteMember(orgId)
   const removeMember = useRemoveMember(orgId)
+
+  const [clusterAccessScope, setClusterAccessScope] = useState<string[]>([])
+  const [inviteModal, setInviteModal] = useState(false)
+  const [removeMemberId, setRemoveMemberId] = useState<string | null>(null)
 
   const {
     register,
@@ -66,13 +88,14 @@ export function OrganizationPage() {
   } = useForm<OrgFormData>({
     resolver: zodResolver(orgSchema),
     defaultValues: {
-      name: org.name,
-      slug: org.slug,
-      domain: org.domain,
-      status: org.status,
+      name: selectedOrg?.name ?? '',
+      slug: selectedOrg?.slug ?? '',
+      domain: selectedOrg?.domain ?? '',
+      status: selectedOrg?.status ?? 'active',
     },
     mode: 'onChange',
   })
+
   const {
     register: registerInvite,
     handleSubmit: handleInviteSubmit,
@@ -83,26 +106,38 @@ export function OrganizationPage() {
     defaultValues: { name: '', email: '', role: 'developer' },
     mode: 'onChange',
   })
-  const [clusterAccessScope, setClusterAccessScope] = useState<string[]>([...(org.clusterAccessScope ?? [])])
-
-  const [inviteModal, setInviteModal] = useState(false)
-  const [removeMemberId, setRemoveMemberId] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!selectedOrg) {
+      return
+    }
+
     reset({
-      name: org.name,
-      slug: org.slug,
-      domain: org.domain,
-      status: org.status,
+      name: selectedOrg.name,
+      slug: selectedOrg.slug,
+      domain: selectedOrg.domain,
+      status: selectedOrg.status,
     })
-    setClusterAccessScope([...(org.clusterAccessScope ?? [])])
-  }, [org.domain, org.name, org.slug, org.status, org.clusterAccessScope, reset])
+    setClusterAccessScope([...(selectedOrg.clusterAccessScope ?? [])])
+  }, [selectedOrg, reset])
 
   const handleSave = (data: OrgFormData) => {
+    if (!selectedOrg) {
+      return
+    }
+
     updateOrg.mutate({
       ...data,
       clusterAccessScope,
     })
+  }
+
+  const handleScopeToggle = (clusterName: string) => {
+    setClusterAccessScope((current) =>
+      current.includes(clusterName)
+        ? current.filter((name) => name !== clusterName)
+        : [...current, clusterName]
+    )
   }
 
   const handleInvite = (data: InviteFormData) => {
@@ -114,16 +149,11 @@ export function OrganizationPage() {
     })
   }
 
-  const handleScopeToggle = (cluster: string) => {
-    setClusterAccessScope((current) =>
-      current.includes(cluster)
-        ? current.filter((c) => c !== cluster)
-        : [...current, cluster]
-    )
-  }
-
   const handleConfirmRemove = () => {
-    if (!removeMemberId) return
+    if (!removeMemberId) {
+      return
+    }
+
     removeMember.mutate(removeMemberId, {
       onSuccess: () => {
         setRemoveMemberId(null)
@@ -131,10 +161,7 @@ export function OrganizationPage() {
     })
   }
 
-  const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
-  const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
-
-  if (orgLoading || !orgData) {
+  if (orgLoading) {
     return <div className="flex h-[200px] items-center justify-center text-[var(--color-text-secondary)]">Loading...</div>
   }
 
@@ -142,184 +169,209 @@ export function OrganizationPage() {
     <div>
       <Breadcrumb items={[{ label: 'Organization' }]} />
 
-      {/* Page header */}
-      <div className="mb-7 flex items-center gap-2.5">
+      <div className="mb-6 flex items-center gap-2.5">
         <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">
           <Settings size={18} />
         </div>
         <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            Organization
-          </h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            조직 정보 및 멤버를 관리합니다.
-          </p>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">Organization</h1>
+          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">조직 설정, 접근 범위, 멤버를 통합 관리합니다.</p>
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-5">
-        {/* Org info form */}
-        <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
-          <h2 className="mb-4 mt-0 text-sm font-bold text-[var(--color-text-primary)]">
-            조직 정보
-          </h2>
-          <div className="flex flex-col gap-3">
-            <Input
-              label="조직 이름"
-              {...register('name')}
-            />
-            {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
-            <Input
-              label="슬러그 (Slug)"
-              {...register('slug')}
-            />
-            {errors.slug && <span className="text-xs text-[#ef4444]">{errors.slug.message}</span>}
-            <Input
-              label="도메인"
-              {...register('domain')}
-            />
-            {errors.domain && <span className="text-xs text-[#ef4444]">{errors.domain.message}</span>}
-            <div className="flex flex-col gap-1">
-              <label htmlFor="organization-status" className="text-xs font-medium text-[var(--color-text-secondary)]">상태</label>
-              <select
-                id="organization-status"
-                {...register('status')}
-                className={selectClassName}
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="suspended">Suspended</option>
-              </select>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              loading={updateOrg.isPending || isSubmitting}
-              onClick={handleSubmit(handleSave)}
-              disabled={!isValid || isSubmitting}
-              type="button"
-            >
-              저장
-            </Button>
-          </div>
-        </div>
-
-        {/* Cluster access scope */}
-        <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
-          <h2 className="mb-4 mt-0 text-sm font-bold text-[var(--color-text-primary)]">
-            클러스터 접근 범위
-          </h2>
-          <p className="mb-3.5 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-            이 조직에서 접근 가능한 클러스터를 선택하세요.
-          </p>
-          <div className="flex flex-col gap-2">
-            {allClusters.map((cluster) => {
-                const checked = clusterAccessScope.includes(cluster)
-              return (
-                <label
-                  key={cluster}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 transition-all duration-150',
-                    checked
-                      ? 'border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.08)]'
-                      : 'border-transparent bg-transparent'
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => handleScopeToggle(cluster)}
-                    className="h-[15px] w-[15px] accent-[#6366f1]"
-                  />
-                  <span className={cn('text-sm', checked ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
-                    {cluster}
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-          <div className="mt-4 flex justify-end">
-            <Button
-              variant="primary"
-              size="sm"
-              loading={updateOrg.isPending}
-              onClick={handleSubmit(handleSave)}
-              type="button"
-            >
-              클러스터 접근 범위 저장
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Members table */}
-      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-        <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-[18px] py-4">
-          <h2 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">
-            멤버 관리
-          </h2>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              resetInvite({ name: '', email: '', role: 'developer' })
-              setInviteModal(true)
-            }}
-            type="button"
-          >
-            <Plus size={13} />
-            Invite Member
-          </Button>
-        </div>
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-[rgba(255,255,255,0.02)]">
-              {['이름', '이메일', '역할', '상태', 'Actions'].map((h) => (
-                <th
-                  key={h}
-                  className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((m) => (
-              <tr key={m.id}>
-                <td className={tdClassName}>
-                  <span className="font-semibold">{m.name}</span>
-                </td>
-                <td className={cn(tdClassName, 'text-[var(--color-text-secondary)]')}>{m.email}</td>
-                <td className={tdClassName}>
-                  <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[m.role].className)}>
-                    {m.role}
-                  </span>
-                </td>
-                <td className={tdClassName}>
-                  <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[m.status].className)}>
-                    {m.status}
-                  </span>
-                </td>
-                <td className={tdClassName}>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    loading={removeMember.isPending}
-                    onClick={() => setRemoveMemberId(m.id)}
+      <div className="h-[700px]">
+        <ListDetailPanel
+          listWidth={280}
+          listContent={
+            <>
+              <div className="border-b border-[var(--color-border-default)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                Organizations ({organizations.length})
+              </div>
+              {organizations.map((org) => {
+                const selected = selectedOrg?.id === org.id
+                return (
+                  <button
+                    key={org.id}
                     type="button"
+                    onClick={() => setSelectedOrgId(org.id)}
+                    className={cn(
+                      'w-full cursor-pointer border-0 border-b border-l-[3px] border-b-[var(--color-border-default)] px-4 py-3.5 text-left transition-all duration-150',
+                      selected
+                        ? 'border-l-[#6366f1] bg-[rgba(99,102,241,0.1)]'
+                        : 'border-l-transparent bg-transparent'
+                    )}
                   >
-                    <Trash2 size={13} />
-                    Remove
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                        {org.name}
+                      </span>
+                      <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', org.status === 'active' ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' : 'bg-[rgba(100,116,139,0.15)] text-[#64748b]')}>
+                        {org.status}
+                      </span>
+                    </div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">{org.slug}</div>
+                  </button>
+                )
+              })}
+            </>
+          }
+          detailContent={
+            selectedOrg ? (
+              <div className="min-w-0 p-4">
+                <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Organization Detail</h2>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      loading={updateOrg.isPending || isSubmitting}
+                      onClick={handleSubmit(handleSave)}
+                      disabled={!isValid || isSubmitting}
+                      type="button"
+                    >
+                      Save Changes
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Organization Name" {...register('name')} />
+                    <Input label="Slug" {...register('slug')} />
+                    <Input label="Domain" {...register('domain')} />
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="organization-status" className="text-xs font-medium text-[var(--color-text-secondary)]">Status</label>
+                      <select id="organization-status" {...register('status')} className={selectClassName}>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="suspended">Suspended</option>
+                      </select>
+                    </div>
+                  </div>
+                  {(errors.name || errors.slug || errors.domain) && (
+                    <div className="mt-2 text-xs text-[#ef4444]">
+                      {errors.name?.message ?? errors.slug?.message ?? errors.domain?.message}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
+                  <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">Cluster Access Scope</h3>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {allClusters.map((cluster) => {
+                      const checked = clusterAccessScope.includes(cluster.name)
+                      const statusClassName = cluster.status === 'connected'
+                        ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
+                        : 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]'
+
+                      return (
+                        <label
+                          key={cluster.id}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 transition-all duration-150',
+                            checked
+                              ? 'border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.08)]'
+                              : 'border-[var(--color-border-default)] bg-transparent'
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleScopeToggle(cluster.name)}
+                            className="h-[15px] w-[15px] accent-[#6366f1]"
+                          />
+                          <div className="flex flex-1 items-center justify-between gap-2">
+                            <div>
+                              <div className={cn('text-sm font-semibold', checked ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                                {cluster.name}
+                              </div>
+                              <div className="text-xs text-[var(--color-text-secondary)]">{cluster.type.toUpperCase()}</div>
+                            </div>
+                            <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', statusClassName)}>
+                              {cluster.status}
+                            </span>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
+                  <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-[18px] py-4">
+                    <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Member Management</h3>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        resetInvite({ name: '', email: '', role: 'developer' })
+                        setInviteModal(true)
+                      }}
+                      type="button"
+                    >
+                      <Plus size={13} />
+                      Invite Member
+                    </Button>
+                  </div>
+
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-[rgba(255,255,255,0.02)]">
+                        {['Name', 'Email', 'Role', 'Status', 'Actions'].map((header) => (
+                          <th key={header} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {members.map((member) => (
+                        <tr key={member.id}>
+                          <td className={tdClassName}>
+                            <div className="flex items-center gap-2.5">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[linear-gradient(135deg,#6366f1,#8b5cf6)] text-xs font-bold text-white">
+                                {member.name.slice(0, 1).toUpperCase()}
+                              </span>
+                              <span className="font-semibold">{member.name}</span>
+                            </div>
+                          </td>
+                          <td className={cn(tdClassName, 'text-[var(--color-text-secondary)]')}>{member.email}</td>
+                          <td className={tdClassName}>
+                            <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[member.role].className)}>
+                              {member.role}
+                            </span>
+                          </td>
+                          <td className={tdClassName}>
+                            <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[member.status].className)}>
+                              {member.status}
+                            </span>
+                          </td>
+                          <td className={tdClassName}>
+                            {member.role === 'admin' ? (
+                              <span className="text-xs text-[var(--color-text-muted)]">Owner</span>
+                            ) : (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                loading={removeMember.isPending}
+                                onClick={() => setRemoveMemberId(member.id)}
+                                type="button"
+                              >
+                                <Trash2 size={13} />
+                                Remove
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null
+          }
+          emptyDetailMessage="Select an organization to view details"
+        />
       </div>
 
-      {/* Invite modal */}
       <Modal
         open={inviteModal}
         onClose={() => {
@@ -355,33 +407,22 @@ export function OrganizationPage() {
         }
       >
         <div className="flex flex-col gap-3.5">
-            <Input
-              label="이름"
-              placeholder="홍길동"
-              {...registerInvite('name')}
-            />
-            {inviteErrors.name && <span className="text-xs text-[#ef4444]">{inviteErrors.name.message}</span>}
-            <Input
-              label="이메일"
-              type="email"
-              placeholder="member@example.com"
-              {...registerInvite('email')}
-            />
-            {inviteErrors.email && <span className="text-xs text-[#ef4444]">{inviteErrors.email.message}</span>}
-            <div className="flex flex-col gap-1">
-              <label htmlFor="organization-invite-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
-              <select
-                id="organization-invite-role"
-                {...registerInvite('role')}
-                className={selectClassName}
-            >
+          <Input label="Name" placeholder="홍길동" {...registerInvite('name')} />
+          {inviteErrors.name && <span className="text-xs text-[#ef4444]">{inviteErrors.name.message}</span>}
+
+          <Input label="Email" type="email" placeholder="member@example.com" {...registerInvite('email')} />
+          {inviteErrors.email && <span className="text-xs text-[#ef4444]">{inviteErrors.email.message}</span>}
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="organization-invite-role" className="text-xs font-medium text-[var(--color-text-secondary)]">Role</label>
+            <select id="organization-invite-role" {...registerInvite('role')} className={selectClassName}>
               <option value="developer">Developer</option>
               <option value="devops">DevOps</option>
               <option value="admin">Admin</option>
-              </select>
-            </div>
-            {inviteErrors.role && <span className="text-xs text-[#ef4444]">{inviteErrors.role.message}</span>}
+            </select>
           </div>
+          {inviteErrors.role && <span className="text-xs text-[#ef4444]">{inviteErrors.role.message}</span>}
+        </div>
       </Modal>
 
       <ConfirmDialog

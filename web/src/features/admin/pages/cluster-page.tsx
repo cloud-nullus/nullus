@@ -78,6 +78,44 @@ const CLUSTER_DEFAULTS: ClusterFormData = {
   isEdit: false,
 }
 
+const CLUSTER_DETAIL_META: Record<Cluster['type'], { purpose: string; namespace: string; authMethod: string }> = {
+  kubernetes: {
+    purpose: 'Pipeline',
+    namespace: 'nullus-system',
+    authMethod: 'Kubeconfig (ServiceAccount)',
+  },
+  eks: {
+    purpose: 'Application',
+    namespace: 'default',
+    authMethod: 'IAM + Kubeconfig',
+  },
+  gke: {
+    purpose: 'Application',
+    namespace: 'default',
+    authMethod: 'Workload Identity',
+  },
+  aks: {
+    purpose: 'Application',
+    namespace: 'default',
+    authMethod: 'AAD + Kubeconfig',
+  },
+  k3s: {
+    purpose: 'Edge / Lightweight',
+    namespace: 'default',
+    authMethod: 'Kubeconfig',
+  },
+  pipeline: {
+    purpose: 'Pipeline',
+    namespace: 'nullus-system',
+    authMethod: 'Kubeconfig (ServiceAccount)',
+  },
+  target: {
+    purpose: 'Application',
+    namespace: 'default',
+    authMethod: 'Kubeconfig',
+  },
+}
+
 export function ClusterPage() {
   const { data: clustersData, isLoading } = useClusters()
   const clusters = clustersData?.items ?? []
@@ -228,6 +266,7 @@ export function ClusterPage() {
               {!isLoading && clusters.map((cluster) => {
                 const st = STATUS_CONFIG[cluster.status]
                 const isSelected = selected?.id === cluster.id
+                const meta = CLUSTER_DETAIL_META[cluster.type]
                 return (
                   <button
                     key={cluster.id}
@@ -250,7 +289,7 @@ export function ClusterPage() {
                       </span>
                     </div>
                     <div className="text-xs text-[var(--color-text-secondary)]">
-                      {cluster.type.toUpperCase()}
+                      {meta ? `${meta.purpose} · ${meta.namespace}` : cluster.type.toUpperCase()}
                     </div>
                   </button>
                 )
@@ -260,6 +299,12 @@ export function ClusterPage() {
           detailContent={
             selected ? (
               <div className="min-w-0 p-4">
+                {(() => {
+                  const detailMeta = CLUSTER_DETAIL_META[selected.type]
+                  const connected = selected.status === 'connected'
+
+                  return (
+                    <>
                 <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
                   <div className="mb-[18px] flex flex-wrap items-center justify-between gap-2.5">
                     <h2 className="m-0 text-base font-bold text-[var(--color-text-primary)]">
@@ -270,14 +315,15 @@ export function ClusterPage() {
                       <Button variant="danger" size="sm" onClick={() => setDeleteClusterId(selected.id)} type="button">Delete</Button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {[
-                      ['클러스터 이름', selected.name],
-                      ['타입', selected.type.toUpperCase()],
-                      ['엔드포인트', selected.endpoint],
-                      ['등록일', new Date(selected.createdAt).toLocaleDateString('ko-KR')],
-                    ].map(([label, val]) => (
-                      <div key={label}>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[
+                        ['클러스터 이름', selected.name],
+                        ['유형', detailMeta?.purpose ?? selected.type.toUpperCase()],
+                        ['네임스페이스', detailMeta?.namespace ?? 'Not Configured'],
+                        ['엔드포인트', selected.endpoint],
+                        ['Auth Method', detailMeta?.authMethod ?? 'Kubeconfig'],
+                      ].map(([label, val]) => (
+                        <div key={label}>
                         <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
                           {label}
                         </div>
@@ -315,6 +361,11 @@ export function ClusterPage() {
                             {verifyConnectionResult === 'success' ? 'Connection verified successfully.' : 'Connection failed. Check endpoint/kubeconfig.'}
                           </span>
                         )}
+                        {!verifyConnectionResult && !isVerifyingConnection && (
+                          <span className={cn('text-xs', connected ? 'text-[#22c55e]' : 'text-[#f59e0b]')}>
+                            {connected ? 'Connected' : 'Not Configured'}
+                          </span>
+                        )}
                       </div>
                     )
                   })()}
@@ -332,6 +383,9 @@ export function ClusterPage() {
                     ))}
                   </div>
                 </div>
+                    </>
+                  )
+                })()}
               </div>
             ) : null
           }
@@ -394,7 +448,9 @@ export function ClusterPage() {
               <option value="eks">AWS EKS</option>
               <option value="gke">GCP GKE</option>
               <option value="aks">Azure AKS</option>
-              <option value="k3s">K3s</option>
+               <option value="k3s">K3s</option>
+                <option value="pipeline">Pipeline Cluster</option>
+                <option value="target">Target Cluster</option>
             </select>
           </div>
           <Input
