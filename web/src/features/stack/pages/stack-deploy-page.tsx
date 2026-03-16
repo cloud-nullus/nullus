@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { CheckCircle, XCircle, Loader, Terminal } from 'lucide-react'
 import { useDeployLog } from '../hooks/use-deploy-log'
 import type { LogLevel, DeployStatus } from '../hooks/use-deploy-log'
+import { api } from '../../../lib/api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
@@ -88,10 +89,44 @@ function StatusSummary({ status }: { status: DeployStatus }) {
   )
 }
 
+const STATE_TO_STATUS: Record<string, DeployStatus> = {
+  completed: 'success',
+  failed: 'failed',
+  rolled_back: 'failed',
+  rolling_back: 'running',
+  installing: 'running',
+  configuring: 'running',
+  health_check: 'running',
+  validating: 'running',
+}
+
+const STATE_TO_PROGRESS: Record<string, number> = {
+  pending: 0, validating: 5, installing: 40, configuring: 80,
+  health_check: 90, completed: 100, failed: 0, rolling_back: 0, rolled_back: 0,
+}
+
 export function StackDeployPage() {
   const { id = '' } = useParams<{ id: string }>()
-  const { logs, status, progress, isConnected } = useDeployLog(id)
+  const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
   const logEndRef = useRef<HTMLDivElement>(null)
+  const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number } | null>(null)
+
+  useEffect(() => {
+    if (!id) return
+    api.get<{ data: { state: string } }>(`/stacks/${id}/status`).then((r) => {
+      const state = r.data?.data?.state ?? ''
+      if (state) {
+        setApiState({
+          status: STATE_TO_STATUS[state] ?? 'connecting',
+          progress: STATE_TO_PROGRESS[state] ?? 0,
+        })
+      }
+    }).catch(() => {})
+  }, [id])
+
+  const hasWsData = logs.length > 0 || (wsStatus !== 'connecting' && wsStatus !== 'running')
+  const status = hasWsData ? wsStatus : (apiState?.status ?? wsStatus)
+  const progress = wsProgress > 0 ? wsProgress : (apiState?.progress ?? 0)
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })

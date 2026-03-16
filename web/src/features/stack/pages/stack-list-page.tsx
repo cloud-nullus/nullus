@@ -11,11 +11,15 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
-  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Success' },
-  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Failed' },
   pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Pending' },
-  cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Cancelled' },
+  validating: { bg: 'rgba(99,102,241,0.15)', color: '#a5b4fc', label: 'Validating' },
+  installing: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Installing' },
+  configuring: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Configuring' },
+  health_check: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Health Check' },
+  completed: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Completed' },
+  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Failed' },
+  rolling_back: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Rolling Back' },
+  rolled_back: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Rolled Back' },
 }
 
 function formatDate(iso: string) {
