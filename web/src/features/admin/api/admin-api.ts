@@ -104,6 +104,9 @@ const adminApiCalls = {
 
   searchUserByEmail: (email: string) =>
     api.get<{ found: boolean; user?: { id: string; name: string; email: string; is_active: boolean } }>('/admin/users/search', { params: { email } }).then((r) => r.data),
+
+  getClusterNamespaces: (clusterId: string) =>
+    api.get<{ items: { name: string }[] }>(`/admin/clusters/${clusterId}/namespaces`).then((r) => r.data?.items ?? []),
 }
 
 // --- Hooks ---
@@ -231,6 +234,14 @@ export function useSearchUser(email: string) {
     queryKey: ['users', 'search', email],
     queryFn: () => adminApiCalls.searchUserByEmail(email),
     enabled: email.length > 3 && email.includes('@'),
+  })
+}
+
+export function useClusterNamespaces(clusterId: string) {
+  return useQuery({
+    queryKey: ['admin', 'clusters', clusterId, 'namespaces'],
+    queryFn: () => adminApiCalls.getClusterNamespaces(clusterId),
+    enabled: !!clusterId,
   })
 }
 

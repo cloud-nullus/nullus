@@ -42,6 +42,7 @@ export interface ResourceConfig {
 export interface StackConfigDraft {
   selectedTemplateId: string | null
   clusterId: string | null
+  namespace: string
   stackName: string
   artifacts: ArtifactsConfig
   pipeline: PipelineConfig
@@ -56,6 +57,7 @@ interface StackConfigState {
   isDirty: boolean
   setTemplate: (templateId: string) => void
   setCluster: (clusterId: string) => void
+  setNamespace: (namespace: string) => void
   setStackName: (name: string) => void
   setTool: (
     section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging',
@@ -71,6 +73,7 @@ interface StackConfigState {
 const DEFAULT_DRAFT: StackConfigDraft = {
   selectedTemplateId: null,
   clusterId: null,
+  namespace: '',
   stackName: '',
   artifacts: {
     packageRegistry: { tool: 'gitlab', version: 'latest' },
@@ -108,7 +111,10 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
     set((s) => ({ draft: { ...s.draft, selectedTemplateId: templateId }, isDirty: true })),
 
   setCluster: (clusterId) =>
-    set((s) => ({ draft: { ...s.draft, clusterId }, isDirty: true })),
+    set((s) => ({ draft: { ...s.draft, clusterId, namespace: '' }, isDirty: true })),
+
+  setNamespace: (namespace) =>
+    set((s) => ({ draft: { ...s.draft, namespace }, isDirty: true })),
 
   setStackName: (name) =>
     set((s) => ({ draft: { ...s.draft, stackName: name }, isDirty: true })),

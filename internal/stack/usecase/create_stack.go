@@ -14,6 +14,7 @@ type CreateStackInput struct {
 	Name       string
 	OrgID      string
 	ClusterID  string
+	Namespace  string
 	TemplateID string
 	Config     domain.StackConfig
 }
@@ -50,12 +51,17 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	}
 
 	now := time.Now()
+	namespace := input.Namespace
+	if namespace == "" {
+		namespace = "nullus"
+	}
 	stack := &domain.Stack{
 		ID:         generateID("stk"),
 		Name:       input.Name,
 		TemplateID: input.TemplateID,
 		OrgID:      input.OrgID,
 		ClusterID:  input.ClusterID,
+		Namespace:  namespace,
 		State:      domain.StatePending,
 		Config:     input.Config,
 		CreatedAt:  now,

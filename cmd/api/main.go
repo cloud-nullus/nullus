@@ -90,7 +90,7 @@ func main() {
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			return stackhelm.NewOrchestrator(installer, kubeconfig, "nullus")
+			return stackhelm.NewOrchestrator(installer, kubeconfig, "")
 		}),
 	)
 	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)

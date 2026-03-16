@@ -62,6 +62,7 @@ function toCreateStackBody(req: CreateStackRequest) {
   return {
     name: req.stackName,
     cluster_id: req.clusterId ?? '',
+    namespace: req.namespace || 'nullus',
     golden_path_id: req.templateId ?? '',
     config: {
       artifacts: {

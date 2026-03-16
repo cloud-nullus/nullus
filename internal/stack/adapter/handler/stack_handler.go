@@ -52,6 +52,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 type createStackRequest struct {
 	Name       string             `json:"name"`
 	ClusterID  string             `json:"cluster_id"`
+	Namespace  string             `json:"namespace"`
 	TemplateID string             `json:"golden_path_id"`
 	Config     domain.StackConfig `json:"config"`
 }
@@ -69,6 +70,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 		Name:       req.Name,
 		OrgID:      orgID,
 		ClusterID:  req.ClusterID,
+		Namespace:  req.Namespace,
 		TemplateID: req.TemplateID,
 		Config:     req.Config,
 	})
@@ -85,6 +87,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 				"name":        req.Name,
 				"org_id":      orgID,
 				"cluster_id":  req.ClusterID,
+				"namespace":   req.Namespace,
 				"template_id": req.TemplateID,
 			},
 			IPAddress: c.RealIP(),

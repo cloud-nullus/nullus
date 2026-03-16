@@ -51,6 +51,10 @@ type stackConfigAwareExecutor interface {
 	SetStackConfig(config domain.StackConfig)
 }
 
+type namespaceAwareExecutor interface {
+	SetNamespace(namespace string)
+}
+
 type InstallStackOption func(*InstallStack)
 
 func WithExecutor(executor port.StepExecutor) InstallStackOption {
@@ -114,6 +118,14 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 func (uc *InstallStack) configureExecutorForStack(stack *domain.Stack, executor port.StepExecutor) {
 	if stack == nil || executor == nil {
 		return
+	}
+
+	if awareExecutor, ok := executor.(namespaceAwareExecutor); ok {
+		namespace := stack.Namespace
+		if namespace == "" {
+			namespace = "nullus"
+		}
+		awareExecutor.SetNamespace(namespace)
 	}
 
 	awareExecutor, ok := executor.(stackConfigAwareExecutor)

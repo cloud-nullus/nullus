@@ -17,6 +17,7 @@ func TestOrchestrator_ImplementsStepExecutor(t *testing.T) {
 
 type mockInstaller struct {
 	installed   []string
+	namespaces  []string
 	uninstalled []string
 	failOn      string
 	failDelete  map[string]error
@@ -27,6 +28,7 @@ func (m *mockInstaller) Install(_ context.Context, req port.HelmInstallRequest) 
 		return nil, fmt.Errorf("install %s failed", req.ReleaseName)
 	}
 	m.installed = append(m.installed, req.ReleaseName)
+	m.namespaces = append(m.namespaces, req.Namespace)
 	return &port.HelmInstallResult{ReleaseName: req.ReleaseName, Namespace: req.Namespace, Status: "deployed", Revision: 1}, nil
 }
 
@@ -103,4 +105,14 @@ func TestOrchestrator_ExecuteStep_OutOfOrderReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "out of order")
 	assert.Empty(t, installer.installed)
+}
+
+func TestOrchestrator_SetNamespace_OverridesDefaultNamespace(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetNamespace("production")
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_cert_manager", "A"))
+
+	assert.Equal(t, []string{"production"}, installer.namespaces)
 }

@@ -34,6 +34,9 @@ type ChartSpec struct {
 }
 
 func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace string) *Orchestrator {
+	if namespace == "" {
+		namespace = "nullus"
+	}
 	return &Orchestrator{
 		installer:  installer,
 		rollback:   &RollbackManager{},
@@ -134,6 +137,15 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		},
 		progress: make(map[string]int),
 	}
+}
+
+func (o *Orchestrator) SetNamespace(namespace string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if namespace == "" {
+		namespace = "nullus"
+	}
+	o.namespace = namespace
 }
 
 func (o *Orchestrator) SetStackConfig(config domain.StackConfig) {

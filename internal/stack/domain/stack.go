@@ -40,6 +40,7 @@ type Stack struct {
 	TemplateID string          `json:"template_id"`
 	OrgID      string          `json:"org_id"`
 	ClusterID  string          `json:"cluster_id"`
+	Namespace  string          `json:"namespace"`
 	State      DeploymentState `json:"state"`
 	Config     interface{}     `json:"config"` // JSONB
 	CreatedAt  time.Time       `json:"created_at"`
