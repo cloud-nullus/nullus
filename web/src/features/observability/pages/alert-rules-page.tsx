@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Bell, Plus } from 'lucide-react'
+import { Bell, Plus, Search } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
 import type { AlertRule, AlertChannel, AlertSeverity, CreateAlertRuleRequest } from '../api/observability-api'
@@ -66,6 +66,7 @@ const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-bo
 
 export function AlertRulesPage() {
   const [activeTab, setActiveTab] = useState<ObsTab>('stack')
+  const [search, setSearch] = useState('')
   const { data: apiData } = useAlertRules()
   const [localRules, setLocalRules] = useState<AlertRuleWithSeverity[]>([])
   const rules = useMemo<AlertRuleWithSeverity[]>(() => {
@@ -305,7 +306,28 @@ export function AlertRulesPage() {
         })}
       </div>
 
-      <DataTable columns={columns} data={activeTab === 'cicd' ? CICD_MOCK_RULES : rules} getRowKey={(row) => row.id} emptyMessage="알림 규칙이 없습니다." />
+      <DataTable
+        columns={columns}
+        data={(activeTab === 'cicd' ? CICD_MOCK_RULES : rules).filter(
+          (r) => !search || r.name.toLowerCase().includes(search.toLowerCase()) || r.metric.toLowerCase().includes(search.toLowerCase())
+        )}
+        getRowKey={(row) => row.id}
+        emptyMessage="알림 규칙이 없습니다."
+        toolbar={
+          <div className="relative ml-auto">
+            <Search
+              size={13}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+            />
+            <input
+              placeholder="규칙명 / 메트릭 검색..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            />
+          </div>
+        }
+      />
 
       <Modal
         open={ruleModalOpen}

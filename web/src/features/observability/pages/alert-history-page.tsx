@@ -187,18 +187,6 @@ export function AlertHistoryPage() {
         emptyMessage="알림 이력이 없습니다."
         toolbar={
           <>
-            <div className="relative">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder="Rule name 검색..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
             <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Severity</option>
               <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Critical</option>
@@ -229,6 +217,18 @@ export function AlertHistoryPage() {
                   </button>
                 )
               })}
+            </div>
+            <div className="relative ml-auto">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <input
+                placeholder="Rule name 검색..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              />
             </div>
           </>
         }

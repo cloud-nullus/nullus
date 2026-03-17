@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
@@ -37,6 +37,7 @@ export function StackHistoryPage() {
   const stacks = stacksData?.items ?? MOCK_STACKS_FOR_HISTORY
   const [stackId, setStackId] = useState(stacks[0]?.id ?? '')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [compareOpen, setCompareOpen] = useState(false)
   const [versionA, setVersionA] = useState(4)
   const [versionB, setVersionB] = useState(5)
@@ -49,7 +50,14 @@ export function StackHistoryPage() {
   }, [stacks, stackId])
 
   const { data: historyData } = useStackHistory(stackId)
-  const entries = Array.isArray(historyData) && historyData.length > 0 ? historyData : MOCK_STACK_HISTORY
+  const allEntries = Array.isArray(historyData) && historyData.length > 0 ? historyData : MOCK_STACK_HISTORY
+  const entries = search.trim()
+    ? allEntries.filter(
+        (e) =>
+          e.changedBy.toLowerCase().includes(search.toLowerCase()) ||
+          e.reason.toLowerCase().includes(search.toLowerCase())
+      )
+    : allEntries
   const rollbackMutation = useRollbackStack()
 
   const versionOptions = entries.map((entry) => entry.version).sort((a, b) => b - a)
@@ -193,6 +201,20 @@ export function StackHistoryPage() {
         columns={columns}
         data={entries}
         getRowKey={(row) => row.id}
+        toolbar={
+          <div className="relative ml-auto">
+            <Search
+              size={13}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+            />
+            <input
+              placeholder="변경자 / 변경 사유 검색..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            />
+          </div>
+        }
       />
 
       {expandedEntry && (

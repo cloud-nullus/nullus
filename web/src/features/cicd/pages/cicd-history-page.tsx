@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, History } from 'lucide-react'
+import { ChevronDown, ChevronUp, History, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
@@ -31,6 +31,7 @@ export function CicdHistoryPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [expandedDeploymentId, setExpandedDeploymentId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   const { data: apiData } = useDeployments({ status: statusFilter as PipelineStatus || undefined })
   const deployments = apiData?.items ?? MOCK_DEPLOYMENTS
@@ -38,7 +39,8 @@ export function CicdHistoryPage() {
   const filtered = deployments.filter((d) => {
     const matchesStatus = !statusFilter || d.status === statusFilter
     const matchesType = !typeFilter || d.pipelineName.includes(typeFilter)
-    return matchesStatus && matchesType
+    const matchesSearch = !search || d.pipelineName.toLowerCase().includes(search.toLowerCase()) || d.triggeredBy.toLowerCase().includes(search.toLowerCase())
+    return matchesStatus && matchesType && matchesSearch
   })
 
   const selectClassName =
@@ -151,6 +153,18 @@ export function CicdHistoryPage() {
               <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
               <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
             </select>
+            <div className="relative ml-auto">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <input
+                placeholder="파이프라인 / 배포자 검색..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              />
+            </div>
           </>
         }
       />

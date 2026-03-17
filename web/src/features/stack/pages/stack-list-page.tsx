@@ -1459,18 +1459,6 @@ export function StackListPage() {
 			data={filtered}
 			toolbar={
 				<>
-					<div className="relative">
-						<Search
-							size={13}
-							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-						/>
-						<input
-							placeholder="스택 검색..."
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-							className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-						/>
-					</div>
 					<select
 						value={statusFilter}
 						onChange={(e) => setStatusFilter(e.target.value)}
@@ -1483,6 +1471,18 @@ export function StackListPage() {
 						<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
 						<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
 					</select>
+					<div className="relative ml-auto">
+						<Search
+							size={13}
+							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+						/>
+						<input
+							placeholder="스택 검색..."
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+						/>
+					</div>
 				</>
 			}
 				getRowKey={(row) => row.id}
