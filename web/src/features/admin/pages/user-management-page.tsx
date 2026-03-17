@@ -137,7 +137,7 @@ const ROLE_BADGE: Record<MemberRole, { className: string }> = {
   developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
 }
 
-const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
+const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
 
 const inviteUserSchema = z.object({
   name: z.string().min(1, 'Name is required'),

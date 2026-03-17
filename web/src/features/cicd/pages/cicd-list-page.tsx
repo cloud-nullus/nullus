@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { usePipelines, useDeployPipeline } from '../api/cicd-api'
+import { usePipelines } from '../api/cicd-api'
 import type { Pipeline } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { DataTable } from '../../../components/shared/data-table'
@@ -488,7 +488,6 @@ export function CicdListPage() {
 
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
   const pipelines = apiData?.items ?? MOCK_PIPELINES
-  const deployPipeline = useDeployPipeline()
 
   const filtered = pipelines.filter((p) => {
     const q = search.toLowerCase()
@@ -558,16 +557,15 @@ export function CicdListPage() {
       cell: ({ row }) => {
         return (
           <div className="flex gap-1.5">
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={deployPipeline.isPending}
-              onClick={(event) => {
-                event.stopPropagation()
-                deployPipeline.mutate(row.original.id)
-              }}
-              type="button"
-            >
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  navigate(`/cicd/developer-deploy?pipeline=${row.original.id}`)
+                }}
+                type="button"
+              >
               <Play size={11} />
               Deploy
             </Button>
@@ -647,7 +645,7 @@ export function CicdListPage() {
         <PipelineDetailPanel
           key={expandedPipeline.id}
           pipeline={expandedPipeline}
-          onRun={() => deployPipeline.mutate(expandedPipeline.id)}
+          onRun={() => navigate(`/cicd/developer-deploy?pipeline=${expandedPipeline.id}`)}
           onOpenLogs={() => navigate('/cicd/history')}
         />
       )}
