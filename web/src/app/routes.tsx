@@ -132,7 +132,7 @@ export const router = createBrowserRouter([
         children: [
           { path: 'cicd/developer-deploy', element: withSuspense(<DeveloperDeployPage />) },
           { path: 'cicd/templates', element: withSuspense(<CicdTemplatePage />) },
-          { path: 'cicd/pipeline/setup', element: withSuspense(<CicdPipelineSetupPage />) },
+          { path: 'cicd/create', element: withSuspense(<CicdPipelineSetupPage />) },
           { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
           { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },
         ],

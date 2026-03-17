@@ -368,7 +368,7 @@ export function CicdPipelineSetupPage() {
               const nextTemplate = templates.find((item) => item.id === event.target.value)
               if (nextTemplate) {
                 setPipelineName(`${nextTemplate.name.toLowerCase().replace(/\s+/g, '-')}-pipeline`)
-                navigate(`/cicd/pipeline/setup?template=${nextTemplate.id}`)
+                navigate(`/cicd/create?template=${nextTemplate.id}`)
               }
             }}
             className={appTypeOptionClassName}
