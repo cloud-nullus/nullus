@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { GitBranch, Plus, Search, Play } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitBranch, Plus, Search, Play } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { usePipelines, useDeployPipeline } from '../api/cicd-api'
 import type { Pipeline, PipelineStatus } from '../api/cicd-api'
@@ -50,6 +50,27 @@ export function CicdListPage() {
   })
 
   const columns: ColumnDef<Pipeline, unknown>[] = [
+    {
+      id: 'expand',
+      header: '',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const isExpanded = expandedPipelineId === row.original.id
+        return (
+          <Button
+            variant={isExpanded ? 'secondary' : 'ghost'}
+            size="sm"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpandedPipelineId((prev) => (prev === row.original.id ? null : row.original.id))
+            }}
+          >
+            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </Button>
+        )
+      },
+    },
     {
       accessorKey: 'name',
       header: '이름',
@@ -103,17 +124,7 @@ export function CicdListPage() {
               <Play size={11} />
               Deploy
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                setExpandedPipelineId((prev) => (prev === row.original.id ? null : row.original.id))
-              }}
-            >
-              {expanded ? 'Hide' : 'View'}
-            </Button>
+
           </div>
         )
       },
@@ -161,16 +172,16 @@ export function CicdListPage() {
         emptyMessage="파이프라인이 없습니다."
         toolbar={
           <>
-            <div className="relative max-w-[320px] flex-[1_1_240px]">
+            <div className="relative">
               <Search
                 size={13}
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
               />
-              <Input
+              <input
                 placeholder="파이프라인 검색..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-[30px]"
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
