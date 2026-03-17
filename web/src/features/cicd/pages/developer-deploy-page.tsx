@@ -244,7 +244,13 @@ export function DeveloperDeployPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'CI/CD List', path: '/cicd/list' }, { label: 'Developer Deploy' }]} />
+      <Breadcrumb
+        items={[
+          { label: 'CI/CD', path: '/cicd/list' },
+          { label: 'CI/CD List', path: '/cicd/list' },
+          { label: 'Pipeline Setup & Deploy' },
+        ]}
+      />
 
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
@@ -255,10 +261,10 @@ export function DeveloperDeployPage() {
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            Developer Self-Service 배포
+            CI/CD Pipeline Setup & Developer Deploy
           </h1>
           <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-            앱 템플릿을 선택하고 배포 위자드를 따라 배포하세요.
+            파이프라인 템플릿 선택과 개발자 배포를 하나의 화면에서 진행하세요.
           </p>
         </div>
       </div>

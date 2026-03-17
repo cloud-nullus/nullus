@@ -140,7 +140,7 @@ export function CicdTemplatePage() {
     createTemplate.mutate(payload, {
       onSuccess: () => {
         closeFormModal()
-        navigate(`/cicd/create?template=${payload.id}`)
+        navigate('/cicd/developer-deploy')
       },
       onError: () => setFormError('Failed to create template.'),
     })
@@ -281,7 +281,7 @@ export function CicdTemplatePage() {
                     size="sm"
                     type="button"
                     className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
-                    onClick={() => navigate(`/cicd/create?template=${template.id}`)}
+                    onClick={() => navigate('/cicd/developer-deploy')}
                   >
                     Use Base Template
                   </Button>
