@@ -21,20 +21,20 @@ const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   'batch-job': { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24' },
 }
 
+const STAGE_OPTIONS = ['Production', 'QA', 'Development', 'Beta'] as const
+
 interface TemplateFormState {
   id: string
   name: string
   description: string
-  appType: string
-  stages: string
+  stages: string[]
 }
 
 const EMPTY_FORM: TemplateFormState = {
   id: '',
   name: '',
   description: '',
-  appType: 'web-backend',
-  stages: '',
+  stages: [],
 }
 
 const MOCK_CICD_TEMPLATES: CicdTemplate[] = [
@@ -90,14 +90,22 @@ export function CicdTemplatePage() {
       id: template.id,
       name: template.name,
       description: template.description,
-      appType: template.appType,
-      stages: template.stages.join(', '),
+      stages: template.stages.filter((s) => (STAGE_OPTIONS as readonly string[]).includes(s)),
     })
     setFormOpen(true)
   }
 
-  const handleFormChange = (key: keyof TemplateFormState, value: string) => {
+  const handleFormChange = (key: Exclude<keyof TemplateFormState, 'stages'>, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const toggleStage = (stage: string) => {
+    setForm((prev) => ({
+      ...prev,
+      stages: prev.stages.includes(stage)
+        ? prev.stages.filter((s) => s !== stage)
+        : [...prev.stages, stage],
+    }))
   }
 
   const submitTemplate = () => {
@@ -106,12 +114,7 @@ export function CicdTemplatePage() {
       return
     }
 
-    const stages = form.stages
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-
-    if (stages.length === 0) {
+    if (form.stages.length === 0) {
       setFormError('At least one stage is required.')
       return
     }
@@ -122,8 +125,8 @@ export function CicdTemplatePage() {
       id: templateId,
       name: form.name,
       description: form.description,
-      appType: form.appType as CicdTemplate['appType'],
-      stages,
+      appType: 'web-backend' as CicdTemplate['appType'],
+      stages: form.stages,
     }
 
     if (editingTemplateId) {
@@ -135,7 +138,10 @@ export function CicdTemplatePage() {
     }
 
     createTemplate.mutate(payload, {
-      onSuccess: () => closeFormModal(),
+      onSuccess: () => {
+        closeFormModal()
+        navigate(`/cicd/create?template=${payload.id}`)
+      },
       onError: () => setFormError('Failed to create template.'),
     })
   }
@@ -275,7 +281,7 @@ export function CicdTemplatePage() {
                     size="sm"
                     type="button"
                     className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
-                    onClick={() => navigate(`/cicd/pipeline/setup?template=${template.id}`)}
+                    onClick={() => navigate(`/cicd/create?template=${template.id}`)}
                   >
                     Use Base Template
                   </Button>
@@ -333,30 +339,34 @@ export function CicdTemplatePage() {
             value={form.description}
             onChange={(e) => handleFormChange('description', e.target.value)}
           />
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="cicd-template-app-type"
-              className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]"
-            >
-              App Type
-            </label>
-            <select
-              id="cicd-template-app-type"
-              value={form.appType}
-              onChange={(e) => handleFormChange('appType', e.target.value)}
-              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-            >
-              <option value="web-backend">Web Backend</option>
-              <option value="web-frontend">Web Frontend</option>
-              <option value="batch-job">Batch Job</option>
-            </select>
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
+              Stages
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {STAGE_OPTIONS.map((stage) => {
+                const checked = form.stages.includes(stage)
+                return (
+                  <label
+                    key={stage}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 ${
+                      checked
+                        ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
+                        : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-secondary)]'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleStage(stage)}
+                      className="accent-[#6366f1]"
+                    />
+                    {stage}
+                  </label>
+                )
+              })}
+            </div>
           </div>
-          <Input
-            label="Stages (comma-separated)"
-            placeholder="예: Build, Test, Push, Deploy"
-            value={form.stages}
-            onChange={(e) => handleFormChange('stages', e.target.value)}
-          />
           {formError && <div className="text-xs text-[#f87171]">{formError}</div>}
         </div>
       </Modal>
