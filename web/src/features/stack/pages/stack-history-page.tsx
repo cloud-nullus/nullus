@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { History, GitCompare, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
@@ -69,6 +69,36 @@ export function StackHistoryPage() {
   }
 
   const columns: ColumnDef<StackHistoryEntry, unknown>[] = [
+    {
+      id: 'expand',
+      header: '',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const isExpanded = expandedId === row.original.id
+        return (
+          <Button
+            variant={isExpanded ? 'secondary' : 'ghost'}
+            size="sm"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpandedId((prev) => (prev === row.original.id ? null : row.original.id))
+            }}
+          >
+            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </Button>
+        )
+      },
+    },
+    {
+      id: 'stackName',
+      header: '스택 이름',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const name = stacks.find((s) => s.id === row.original.stackId)?.name ?? row.original.stackId
+        return <span className="font-semibold text-[var(--color-text-primary)]">{name}</span>
+      },
+    },
     {
       accessorKey: 'version',
       header: '버전',
@@ -163,7 +193,6 @@ export function StackHistoryPage() {
         columns={columns}
         data={entries}
         getRowKey={(row) => row.id}
-        onRowClick={(row) => setExpandedId((prev) => (prev === row.id ? null : row.id))}
       />
 
       {expandedEntry && (
