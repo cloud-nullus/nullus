@@ -272,15 +272,15 @@ export function CicdPipelineSetupPage() {
   const effectiveDeployYaml = deployMode === 'template' ? selectedDeployYaml.content : customDeployYaml
 
   const generatedPipelineYaml = getPipelineYaml({
-      pipelineName,
-      appType: selectedAppType,
-      clusterName: selectedClusterName,
-      templateName: template?.name ?? 'custom-template',
-      dockerfilePath: selectedDockerfile.path,
-      deployYamlPath: deployMode === 'template' ? `./deploy/${selectedDeployYaml.id}.yaml` : './deploy/custom.yaml',
-      deployMode,
-      deployYamlContent: effectiveDeployYaml,
-    })
+    pipelineName,
+    appType: selectedAppType,
+    clusterName: selectedClusterName,
+    templateName: template?.name ?? 'custom-template',
+    dockerfilePath: selectedDockerfile.path,
+    deployYamlPath: deployMode === 'template' ? `./deploy/${selectedDeployYaml.id}.yaml` : './deploy/custom.yaml',
+    deployMode,
+    deployYamlContent: effectiveDeployYaml,
+  })
 
   const handleCreatePipeline = () => {
     if (!pipelineName.trim()) {
@@ -328,7 +328,7 @@ export function CicdPipelineSetupPage() {
               CI/CD Pipeline Setup
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              Stack Install과 유사한 단계형 UX로 파이프라인을 설정합니다.
+              CI/CD Pipeline을 구성해보세요. 각 단계별 설정을 완료한 후, 'Create Pipeline' 버튼을 눌러 파이프라인을 생성할 수 있습니다.
             </p>
           </div>
         </div>
