@@ -37,17 +37,27 @@ Nullus는 DevOps 엔지니어가 검증된 CI/CD 베스트 프랙티스 조합(G
 
 Docker Compose로 PostgreSQL(:5433), Redis(:6380), MinIO(:9000/:9001), Keycloak(:8180)을 기동하고 DB 마이그레이션을 실행합니다.
 
+### 환경변수
+
+```bash
+cp .env.example .env.dev
+# .env.dev는 make run 시 자동 로드 (ENCRYPTION_KEY 포함)
+```
+
 ### 2. 백엔드 실행
 
 ```bash
-ENCRYPTION_KEY="nullus-dev-key-32bytes-padding!!" \
-NULLUS_DATABASE_HOST=localhost \
-NULLUS_DATABASE_PORT=5433 \
-NULLUS_SERVER_MODE=development \
-go run ./cmd/api
+make run
 ```
 
-API 서버가 `http://localhost:8090`에서 실행됩니다. `ENCRYPTION_KEY`는 kubeconfig 암호화에 사용되며 반드시 32바이트여야 합니다.
+`.env.dev`에서 환경변수(`ENCRYPTION_KEY` 포함)를 자동 로드합니다.
+수동 실행 시:
+
+```bash
+ENCRYPTION_KEY="nullus-dev-key-32bytes-padding!!" go run ./cmd/api
+```
+
+API 서버: `http://localhost:8090`. `ENCRYPTION_KEY`는 kubeconfig 암호화에 사용되며 32바이트 필수.
 
 설정 파일: `configs/config.yaml`
 
@@ -136,8 +146,10 @@ API 서버: `http://localhost:8090`
 | GET/POST | `/admin/clusters` | 클러스터 목록 / 등록 |
 | GET/PATCH/DELETE | `/admin/clusters/:id` | 클러스터 상세 / 수정 / 삭제 |
 | POST | `/admin/clusters/:id/verify` | 클러스터 연결 검증 (K8s API 실연동) |
-| GET/POST | `/admin/organizations/:orgId/members` | 멤버 목록 / 초대 |
+| GET/POST | `/admin/organizations/:orgId/members` | 멤버 목록 / 초대 (기존 사용자 추가 포함) |
 | DELETE/PATCH | `/admin/organizations/:orgId/members/:id` | 멤버 제거 / 역할 변경 |
+| GET | `/admin/users/search?email=` | 기존 사용자 검색 |
+| GET | `/admin/clusters/:id/namespaces` | 클러스터 네임스페이스 목록 (K8s API) |
 | GET | `/admin/known-issues` | Known Issues 목록 |
 | GET | `/admin/audit-logs` | 감사 로그 |
 | GET/POST | `/admin/notifications/configs` | 알림 설정 |
@@ -147,7 +159,8 @@ API 서버: `http://localhost:8090`
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET/POST | `/stacks` | 스택 목록 / 생성 |
+| GET/POST | `/stacks` | 스택 목록 / 생성 (namespace 지정 가능) |
+| DELETE | `/stacks/:id` | 스택 삭제 (Helm uninstall 포함) |
 | GET | `/stacks/templates` | Golden Path 템플릿 (3개) |
 | GET | `/stacks/compatibility` | 도구 호환성 매트릭스 |
 | POST | `/stacks/:id/deploy` | 스택 배포 (Helm SDK) |
@@ -195,6 +208,8 @@ API 서버: `http://localhost:8090`
 | F8 | 버전 호환성 관리 | [x] 호환성 매트릭스, JSONB Diff, 검증 API |
 | F9 | UI 권한 체계 | [x] Keycloak OIDC, JWT, 라우트별 RBAC |
 | F10 | 리소스 예상량 계산 | [x] 리소스 계산기, 비용 추정 |
+| F11 | 기존 사용자 추가 | [x] org_members 멀티 조직, 이메일 검색, 즉시 활성 |
+| F12 | 네임스페이스 선택/생성 | [x] K8s API 조회, 스택별 namespace 지정 |
 
 전체 기능 명세: [PRD v1.3](./docs/10_제품기획/nullus_PRD_1.3.md)
 
@@ -204,7 +219,7 @@ API 서버: `http://localhost:8090`
 nullus/
 ├── cmd/api/                # API 서버 진입점
 ├── configs/                # 설정 파일 (config.yaml)
-├── db/migrations/          # DB 마이그레이션 (13개)
+├── db/migrations/          # DB 마이그레이션 (18개)
 ├── deploy/helm/nullus/     # Helm 차트
 ├── internal/               # 내부 모듈 (Clean Architecture)
 │   ├── admin/              # 조직/클러스터/사용자 관리

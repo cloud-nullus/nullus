@@ -51,11 +51,12 @@ func newEchoServer() *echo.Echo {
 	installStackUC := stackuc.NewInstallStack(memStackRepo, memStreamer)
 	createStackUC := stackuc.NewCreateStack(memStackRepo, memTemplateRepo)
 	listStacksUC := stackuc.NewListStacks(memStackRepo)
+	deleteStackUC := stackuc.NewDeleteStack(memStackRepo, nil, nil)
 	getTemplateUC := stackuc.NewGetTemplate(memTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(memTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(memStackRepo)
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, memStackRepo)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, memStackRepo)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, memTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 

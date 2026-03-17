@@ -49,26 +49,25 @@ import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
 import { Button } from "../../../components/ui/button";
-import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
-import { useStacks } from "../api/stack-api";
+import { useDeleteStack, useStacks } from "../api/stack-api";
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
-const STATUS_STYLES: Record<
-	string,
-	{ bg: string; color: string; label: string }
-> = {
+const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+	pending: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Pending" },
+	validating: { bg: "rgba(99,102,241,0.15)", color: "#a5b4fc", label: "Validating" },
+	installing: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Installing" },
+	configuring: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Configuring" },
+	health_check: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Health Check" },
+	completed: { bg: "rgba(34,197,94,0.15)", color: "#22c55e", label: "Completed" },
+	failed: { bg: "rgba(239,68,68,0.15)", color: "#ef4444", label: "Failed" },
+	rolling_back: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Rolling Back" },
+	rolled_back: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Rolled Back" },
 	running: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Running" },
 	success: { bg: "rgba(34,197,94,0.15)", color: "#22c55e", label: "Success" },
-	failed: { bg: "rgba(239,68,68,0.15)", color: "#ef4444", label: "Failed" },
-	pending: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Pending" },
-	cancelled: {
-		bg: "rgba(100,116,139,0.15)",
-		color: "#64748b",
-		label: "Cancelled",
-	},
+	cancelled: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Cancelled" },
 };
 
 function formatDate(iso: string) {
@@ -194,13 +193,13 @@ function ToolOption({
 			</div>
 			{checked && version && (
 				<div className="ml-6 flex flex-wrap items-center gap-3">
-				<select
-					defaultValue={version}
-					className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-				>
-					{(versions ?? [version]).map((v) => (
-						<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
-					))}
+					<select
+						defaultValue={version}
+						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+					>
+						{(versions ?? [version]).map((v) => (
+							<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
+						))}
 					</select>
 					<div className="flex items-center gap-1.5">
 						<span className="text-[11px] text-[#6366f1]">Instances:</span>
@@ -607,10 +606,10 @@ function generateMonitoringSeries(range: MonitoringRange) {
 			range === "7d"
 				? ts.toLocaleDateString("en-US", { weekday: "short" })
 				: ts.toLocaleTimeString("en-US", {
-						hour: "2-digit",
-						minute: "2-digit",
-						hour12: false,
-					});
+					hour: "2-digit",
+					minute: "2-digit",
+					hour12: false,
+				});
 
 		const cpuWave = 56 + Math.sin(index / 2.5) * 16 + (index % 3) * 2.1;
 		const memoryWave = 63 + Math.cos(index / 3.2) * 10 + (index % 4) * 1.8;
@@ -1022,7 +1021,7 @@ function StackHistoryTab() {
 					DevSecOps Stack History
 				</h3>
 			</div>
-		<div className="flex flex-col gap-3">
+			<div className="flex flex-col gap-3">
 				{HISTORY_ENTRIES.map((entry) => (
 					<div
 						key={entry.version}
@@ -1074,9 +1073,9 @@ function StackHistoryTab() {
 									style={
 										entry.result === "success"
 											? {
-													background: "rgba(16,185,129,0.15)",
-													color: "#6ee7b7",
-												}
+												background: "rgba(16,185,129,0.15)",
+												color: "#6ee7b7",
+											}
 											: { background: "rgba(239,68,68,0.15)", color: "#fca5a5" }
 									}
 								>
@@ -1302,6 +1301,7 @@ export function StackListPage() {
 	const [statusFilter, setStatusFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
 	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
+	const deleteStack = useDeleteStack();
 
 	const { data: apiData, isLoading } = useStacks({
 		search,
@@ -1319,11 +1319,13 @@ export function StackListPage() {
 		const matchesStatus = !statusFilter || s.status === statusFilter;
 		return matchesSearch && matchesStatus;
 	});
-
 	const expandedStack = filtered.find((s) => s.id === expandedStackId) ?? null;
 
 	const handleDeleteStack = () => {
-		setDeleteStackId(null);
+		if (!deleteStackId) return;
+		deleteStack.mutate(deleteStackId, {
+			onSuccess: () => setDeleteStackId(null),
+		});
 	};
 
 	const columns: ColumnDef<Stack, unknown>[] = [
@@ -1454,37 +1456,37 @@ export function StackListPage() {
 				</Button>
 			</div>
 
-		<DataTable
-			columns={columns}
-			data={filtered}
-			toolbar={
-				<>
-					<select
-						value={statusFilter}
-						onChange={(e) => setStatusFilter(e.target.value)}
-						className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-					>
-						<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
-						<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
-						<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
-						<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
-						<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
-						<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
-					</select>
-					<div className="relative ml-auto">
-						<Search
-							size={13}
-							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-						/>
-						<input
-							placeholder="스택 검색..."
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-							className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-						/>
-					</div>
-				</>
-			}
+			<DataTable
+				columns={columns}
+				data={filtered}
+				toolbar={
+					<>
+						<select
+							value={statusFilter}
+							onChange={(e) => setStatusFilter(e.target.value)}
+							className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+						>
+							<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
+							<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
+							<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
+							<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
+							<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
+							<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+						</select>
+						<div className="relative ml-auto">
+							<Search
+								size={13}
+								className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+							/>
+							<input
+								placeholder="스택 검색..."
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+							/>
+						</div>
+					</>
+				}
 				getRowKey={(row) => row.id}
 				onRowClick={(row) =>
 					setExpandedStackId((prev) => (prev === row.id ? null : row.id))

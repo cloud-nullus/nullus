@@ -49,11 +49,16 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
+  const { token, user } = useAuthStore.getState()
+
+  config.headers = axios.AxiosHeaders.from(config.headers)
 
   if (token) {
-    config.headers = axios.AxiosHeaders.from(config.headers)
     config.headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  if (user?.orgId) {
+    config.headers.set('X-Org-ID', user.orgId)
   }
 
   return config

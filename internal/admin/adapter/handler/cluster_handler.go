@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/base64"
 	"net/http"
 	"os"
@@ -11,7 +12,12 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/labstack/echo/v4"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
+
+var namespaceListerFn = listNamespacesFromKubeconfig
 
 // ClusterHandler handles HTTP requests for clusters.
 type ClusterHandler struct {
@@ -56,6 +62,10 @@ type clusterResponse struct {
 	Kubeconfig       string                  `json:"kubeconfig,omitempty"`
 	CreatedAt        any                     `json:"created_at"`
 	UpdatedAt        any                     `json:"updated_at"`
+}
+
+type clusterNamespaceResponseItem struct {
+	Name string `json:"name"`
 }
 
 func toClusterResponse(cluster *domain.Cluster, kubeconfig string) clusterResponse {
@@ -256,11 +266,77 @@ func (h *ClusterHandler) VerifyCluster(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func (h *ClusterHandler) ListNamespaces(c echo.Context) error {
+	id := c.Param("id")
+
+	encryptedConfig, err := h.clusterUC.GetKubeconfig(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if len(encryptedConfig) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "kubeconfig is not registered for this cluster")
+	}
+	if len(h.encryptionKey) != 32 {
+		return echo.NewHTTPError(http.StatusInternalServerError, "ENCRYPTION_KEY must be 32 bytes")
+	}
+
+	decrypted, err := crypto.Decrypt(h.encryptionKey, string(encryptedConfig))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to decrypt kubeconfig")
+	}
+
+	namespaces, err := namespaceListerFn(decrypted)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+
+	systemNamespaces := map[string]struct{}{
+		"kube-system":        {},
+		"kube-public":        {},
+		"kube-node-lease":    {},
+		"local-path-storage": {},
+	}
+
+	items := make([]clusterNamespaceResponseItem, 0, len(namespaces))
+	for _, name := range namespaces {
+		if _, isSystem := systemNamespaces[name]; isSystem {
+			continue
+		}
+		items = append(items, clusterNamespaceResponseItem{Name: name})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{"items": items})
+}
+
+func listNamespacesFromKubeconfig(kubeconfig []byte) ([]string, error) {
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	nsList, err := clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]string, 0, len(nsList.Items))
+	for _, ns := range nsList.Items {
+		items = append(items, ns.Name)
+	}
+	return items, nil
+}
+
 // RegisterRoutes registers cluster routes on the given group.
 func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/clusters", h.RegisterCluster)
 	g.GET("/clusters", h.ListClusters)
 	g.GET("/clusters/:id", h.GetCluster)
+	g.GET("/clusters/:id/namespaces", h.ListNamespaces)
 	g.PATCH("/clusters/:id", h.UpdateCluster)
 	g.DELETE("/clusters/:id", h.DeleteCluster)
 	g.POST("/clusters/:id/verify", h.VerifyCluster)

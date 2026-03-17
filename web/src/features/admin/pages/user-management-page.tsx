@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Mail, Plus, Search, Server, Shield, Users } from 'lucide-react'
+import { GitBranch, Mail, Plus, Search, Server, Shield, Users, UserPlus, Loader2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization } from '../api/admin-api'
+import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization, useSearchUser } from '../api/admin-api'
 import type { MemberRole, MemberStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -193,6 +193,8 @@ export function UserManagementPage() {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isValid, isSubmitting },
   } = useForm<InviteUserFormData>({
     resolver: zodResolver(inviteUserSchema),
@@ -200,6 +202,21 @@ export function UserManagementPage() {
     mode: 'onChange',
   })
   const [search, setSearch] = useState('')
+
+  const watchedEmail = watch('email')
+  const [debouncedEmail, setDebouncedEmail] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedEmail(watchedEmail), 300)
+    return () => clearTimeout(timer)
+  }, [watchedEmail])
+  const { data: searchResult, isFetching: isSearching } = useSearchUser(debouncedEmail)
+  const existingUser = searchResult?.found ? searchResult.user : null
+
+  useEffect(() => {
+    if (existingUser) {
+      setValue('name', existingUser.name, { shouldValidate: true })
+    }
+  }, [existingUser, setValue])
   const [deactivateUserId, setDeactivateUserId] = useState<string | null>(null)
   const [roleOverrides, setRoleOverrides] = useState<Record<string, MemberRole>>({})
 
@@ -215,6 +232,7 @@ export function UserManagementPage() {
       onSuccess: () => {
         setInviteModal(false)
         reset(INVITE_USER_DEFAULTS)
+        setDebouncedEmail('')
       },
     })
   }
@@ -500,8 +518,9 @@ export function UserManagementPage() {
         onClose={() => {
           setInviteModal(false)
           reset(INVITE_USER_DEFAULTS)
+          setDebouncedEmail('')
         }}
-        title="Invite User"
+        title={existingUser ? 'Add Existing Member' : 'Invite User'}
         footer={
           <>
             <Button
@@ -522,26 +541,42 @@ export function UserManagementPage() {
               disabled={!isValid || isSubmitting}
               type="button"
             >
-              <Mail size={13} />
-              Send Invite
+              {existingUser ? <><UserPlus size={13} /> Add Member</> : <><Mail size={13} /> Send Invite</>}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3.5">
-          <Input
-            label="이름"
-            placeholder="User name"
-            {...register('name')}
-          />
-          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
-          <Input
-            label="이메일"
-            type="email"
-            placeholder="user@example.com"
-            {...register('email')}
-          />
+          <div className="relative">
+            <Input
+              label="이메일"
+              type="email"
+              placeholder="user@example.com"
+              {...register('email')}
+            />
+            {isSearching && (
+              <Loader2 size={14} className="absolute right-3 top-[34px] animate-spin text-[var(--color-text-secondary)]" />
+            )}
+          </div>
           {errors.email && <span className="text-xs text-[#ef4444]">{errors.email.message}</span>}
+          {existingUser && (
+            <div className="rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-[13px] text-[#86efac]">
+              ✓ 기존 사용자: {existingUser.name} ({existingUser.email})
+            </div>
+          )}
+          {!existingUser && debouncedEmail.includes('@') && debouncedEmail.length > 3 && !isSearching && (
+            <span className="text-xs text-[var(--color-text-secondary)]">새 사용자로 초대됩니다</span>
+          )}
+          {!existingUser && (
+            <>
+              <Input
+                label="이름"
+                placeholder="User name"
+                {...register('name')}
+              />
+              {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
+            </>
+          )}
           <div className="flex flex-col gap-1">
             <label htmlFor="invite-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
             <select

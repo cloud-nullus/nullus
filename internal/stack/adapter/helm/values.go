@@ -8,7 +8,14 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_minio":
 		return map[string]any{
-			"mode": "standalone",
+			"mode":         "standalone",
+			"rootUser":     "nullus-admin",
+			"rootPassword": "nullus-minio-secret",
+			"resources": map[string]any{
+				"requests": map[string]any{
+					"memory": "512Mi",
+				},
+			},
 		}
 	case "installing_gitlab":
 		return map[string]any{

@@ -90,18 +90,25 @@ func main() {
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			return stackhelm.NewOrchestrator(installer, kubeconfig, "nullus")
+			return stackhelm.NewOrchestrator(installer, kubeconfig, "")
 		}),
 	)
 	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)
 	listStacksUC := stackuc.NewListStacks(pgStackRepo)
+	deleteStackUC := stackuc.NewDeleteStack(
+		pgStackRepo,
+		kubeconfigProvider,
+		func(kubeconfig []byte) stackport.HelmInstaller {
+			return stackhelm.NewHelmInstaller(kubeconfig)
+		},
+	)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, pgStackRepo, auditLogger)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, pgStackRepo, auditLogger)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)

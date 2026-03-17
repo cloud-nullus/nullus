@@ -158,6 +158,36 @@ func (e *fakeStepExecutor) calledSteps() []string {
 	return out
 }
 
+type fakeConfigurableExecutor struct {
+	fakeStepExecutor
+
+	mu               sync.Mutex
+	configuredConfig domain.StackConfig
+	namespace        string
+	namespaceSet     bool
+	configSet        bool
+}
+
+func (e *fakeConfigurableExecutor) SetStackConfig(config domain.StackConfig) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.configuredConfig = config
+	e.configSet = true
+}
+
+func (e *fakeConfigurableExecutor) SetNamespace(namespace string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.namespace = namespace
+	e.namespaceSet = true
+}
+
+func (e *fakeConfigurableExecutor) configuredNamespace() (string, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.namespace, e.namespaceSet
+}
+
 // --- tests ---
 
 func TestInstallStack_SuccessfulInstallation(t *testing.T) {
@@ -286,4 +316,34 @@ func TestInstallStack_UsesKubeconfigProviderExecutor(t *testing.T) {
 	assert.Equal(t, []string{"cluster-01"}, provider.requestedClusterIDs())
 	assert.NotEmpty(t, exec.calledSteps())
 	assert.Equal(t, domain.StateCompleted, repo.getState("stk_with_exec"))
+}
+
+func TestInstallStack_ConfiguresExecutorNamespaceFromStack(t *testing.T) {
+	stack := &domain.Stack{
+		ID:        "stk_with_namespace",
+		ClusterID: "cluster-namespace",
+		Namespace: "production",
+		State:     domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeConfigurableExecutor{}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	namespace, namespaceSet := exec.configuredNamespace()
+	assert.True(t, namespaceSet)
+	assert.Equal(t, "production", namespace)
+	assert.Equal(t, domain.StateCompleted, repo.getState(stack.ID))
 }

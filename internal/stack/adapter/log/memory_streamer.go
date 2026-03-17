@@ -14,19 +14,28 @@ const defaultChannelBuffer = 64
 type MemoryStreamer struct {
 	mu          sync.RWMutex
 	subscribers map[string][]chan port.LogEntry
+	history     map[string][]port.LogEntry
 }
 
 // NewMemoryStreamer constructs a MemoryStreamer.
 func NewMemoryStreamer() *MemoryStreamer {
 	return &MemoryStreamer{
 		subscribers: make(map[string][]chan port.LogEntry),
+		history:     make(map[string][]port.LogEntry),
 	}
 }
 
 // Subscribe registers a new channel to receive log entries for deploymentID.
+// Any previously buffered entries are replayed to the new subscriber immediately.
 func (s *MemoryStreamer) Subscribe(deploymentID string) <-chan port.LogEntry {
 	ch := make(chan port.LogEntry, defaultChannelBuffer)
 	s.mu.Lock()
+	for _, entry := range s.history[deploymentID] {
+		select {
+		case ch <- entry:
+		default:
+		}
+	}
 	s.subscribers[deploymentID] = append(s.subscribers[deploymentID], ch)
 	s.mu.Unlock()
 	return ch
@@ -53,16 +62,16 @@ func (s *MemoryStreamer) Unsubscribe(deploymentID string, ch <-chan port.LogEntr
 // Stream publishes entry to all subscribers of deploymentID.
 // Non-blocking: drops the entry for any subscriber whose buffer is full.
 func (s *MemoryStreamer) Stream(ctx context.Context, deploymentID string, entry port.LogEntry) {
-	s.mu.RLock()
+	s.mu.Lock()
+	s.history[deploymentID] = append(s.history[deploymentID], entry)
 	list := make([]chan port.LogEntry, len(s.subscribers[deploymentID]))
 	copy(list, s.subscribers[deploymentID])
-	s.mu.RUnlock()
+	s.mu.Unlock()
 
 	for _, ch := range list {
 		select {
 		case ch <- entry:
 		default:
-			// subscriber too slow; drop entry rather than block
 		}
 	}
 }

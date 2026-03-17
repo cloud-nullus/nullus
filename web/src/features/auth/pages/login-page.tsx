@@ -13,18 +13,20 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>
 
+const ORG_ID = '89226bdf-96fd-4d12-9ff5-c1d4f555c5ad'
+
 const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   'admin@nullus.dev': {
     password: 'admin123',
-    user: { id: '1', name: 'Admin User', email: 'admin@nullus.dev', role: 'admin' },
+    user: { id: '1', name: 'Admin User', email: 'admin@nullus.dev', role: 'admin', orgId: ORG_ID },
   },
   'devops@nullus.dev': {
     password: 'devops123',
-    user: { id: '2', name: 'DevOps Engineer', email: 'devops@nullus.dev', role: 'devops' },
+    user: { id: '2', name: 'DevOps Engineer', email: 'devops@nullus.dev', role: 'devops', orgId: ORG_ID },
   },
   'developer@nullus.dev': {
     password: 'developer123',
-    user: { id: '3', name: 'Developer', email: 'developer@nullus.dev', role: 'developer' },
+    user: { id: '3', name: 'Developer', email: 'developer@nullus.dev', role: 'developer', orgId: ORG_ID },
   },
 }
 

@@ -33,6 +33,7 @@ export interface User {
   name: string
   email: string
   role: Role
+  orgId?: string
 }
 
 export interface Organization {
@@ -80,6 +81,7 @@ export interface StackResourcesInput {
 export interface StackConfig {
   templateId: string | null
   clusterId: string | null
+  namespace?: string
   stackName: string
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>

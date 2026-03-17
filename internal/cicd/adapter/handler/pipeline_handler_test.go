@@ -118,6 +118,13 @@ func (m *mockPipelineTemplateRepository) List(_ context.Context) ([]*domain.Pipe
 	}
 	return result, nil
 }
+func (m *mockPipelineTemplateRepository) Create(_ context.Context, _ *domain.PipelineTemplate) error {
+	return nil
+}
+func (m *mockPipelineTemplateRepository) Update(_ context.Context, _ *domain.PipelineTemplate) error {
+	return nil
+}
+func (m *mockPipelineTemplateRepository) Delete(_ context.Context, _ string) error { return nil }
 
 type mockDeploymentRepository struct {
 	deployments []*domain.Deployment

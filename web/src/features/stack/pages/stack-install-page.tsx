@@ -7,7 +7,9 @@ import { Download, Save, Rocket } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useEstimateResources } from '../api/stack-api'
+import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useDeployStack, toCreateStackBody } from '../api/stack-api'
+import { api } from '../../../lib/api'
+import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
@@ -371,10 +373,13 @@ const TABS: { id: InstallTab; label: string }[] = [
 
 export function StackInstallPage() {
   const navigate = useNavigate()
-  const { draft, setActiveTab, setTool, setStackName, updateResources } = useStackConfigStore()
+  const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace, updateResources } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
   const estimateResources = useEstimateResources()
+  const { data: clusters } = useClusters()
+  const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
+  const [createNewNs, setCreateNewNs] = useState(false)
   const [activeTab, setLocalTab] = useState<InstallTab>(draft.activeTab)
   const [deployScriptModalOpen, setDeployScriptModalOpen] = useState(false)
   const [k8sPreviewModalOpen, setK8sPreviewModalOpen] = useState(false)
@@ -409,21 +414,27 @@ export function StackInstallPage() {
     const isFormValid = await validateCoreFields()
     if (!isFormValid) return
 
-    createStack.mutate(
-      {
-        templateId: draft.selectedTemplateId,
-        clusterId: draft.clusterId,
-        stackName: draft.stackName,
-        artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
-        pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
-        monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
-        logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
-        resources: draft.resources,
-      },
-      {
-        onSuccess: () => navigate('/stack/list'),
-      }
-    )
+    const body = toCreateStackBody({
+      templateId: draft.selectedTemplateId,
+      clusterId: draft.clusterId,
+      namespace: draft.namespace,
+      stackName: draft.stackName,
+      artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
+      pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
+      monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
+      logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
+      resources: draft.resources,
+    })
+
+    try {
+      const createRes = await api.post<{ id: string }>('/stacks', body)
+      const stackId = createRes.data?.id
+      if (!stackId) { navigate('/stack/list'); return }
+      await api.post(`/stacks/${stackId}/deploy`).catch(() => {})
+      navigate(`/stack/deploy/${stackId}`)
+    } catch {
+      navigate('/stack/list')
+    }
   }
 
   const handleSaveDraft = async () => {
@@ -490,12 +501,12 @@ export function StackInstallPage() {
           <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
             Preview K8s Objects
           </Button>
-          <Button
+           <Button
             variant="primary"
             size="md"
             loading={createStack.isPending}
             onClick={handleDeploy}
-            disabled={!isValid || isSubmitting}
+            disabled={isSubmitting || !draft.stackName || draft.stackName.length < 2 || !draft.clusterId}
             type="button"
           >
             <Rocket size={14} />
@@ -504,27 +515,84 @@ export function StackInstallPage() {
         </div>
       </div>
 
-      {/* Stack name */}
-      <div className="mb-5 max-w-[400px]">
-        <Controller
-          control={control}
-          name="stackName"
-          render={({ field }) => (
-            <>
-              <Input
-                label="Stack Name"
-                placeholder="예: prod-gitlab-stack"
-                value={field.value}
-                onChange={(e) => {
-                  field.onChange(e.target.value)
-                  setStackName(e.target.value)
-                }}
-                onBlur={field.onBlur}
+      <div className="mb-5 flex items-start gap-4">
+        <div className="max-w-[400px] flex-1">
+          <Controller
+            control={control}
+            name="stackName"
+            render={({ field }) => (
+              <>
+                <Input
+                  label="Stack Name"
+                  placeholder="예: prod-gitlab-stack"
+                  value={field.value}
+                  onChange={(e) => {
+                    field.onChange(e.target.value)
+                    setStackName(e.target.value)
+                  }}
+                  onBlur={field.onBlur}
+                />
+                {errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>}
+              </>
+            )}
+          />
+        </div>
+        <div className="flex max-w-[300px] flex-1 flex-col gap-1">
+          <label htmlFor="cluster-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
+            Target Cluster
+          </label>
+          <select
+            id="cluster-select"
+            value={draft.clusterId ?? ''}
+            onChange={(e) => setCluster(e.target.value)}
+            className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+          >
+            <option value="">클러스터를 선택하세요</option>
+            {(clusters ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.connection_status})
+              </option>
+            ))}
+          </select>
+          {!draft.clusterId && <span className="text-xs text-[#f59e0b]">배포에 필요합니다</span>}
+        </div>
+        {draft.clusterId && (
+          <div className="flex max-w-[300px] flex-1 flex-col gap-1">
+            <label htmlFor="namespace-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
+              Namespace
+            </label>
+            <select
+              id="namespace-select"
+              value={createNewNs ? '__new__' : draft.namespace}
+              onChange={(e) => {
+                if (e.target.value === '__new__') {
+                  setCreateNewNs(true)
+                  setNamespace('')
+                } else {
+                  setCreateNewNs(false)
+                  setNamespace(e.target.value)
+                }
+              }}
+              className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+            >
+              <option value="">기본 (nullus)</option>
+              {(namespaces ?? []).map((ns) => (
+                <option key={ns.name} value={ns.name}>{ns.name}</option>
+              ))}
+              <option value="__new__">새 네임스페이스 생성...</option>
+            </select>
+            {createNewNs && (
+              <input
+                type="text"
+                placeholder="my-namespace"
+                value={draft.namespace}
+                onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
               />
-              {errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>}
-            </>
-          )}
-        />
+            )}
+            <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-start gap-5">

@@ -27,8 +27,8 @@ func (r *PostgresStackRepository) Create(ctx context.Context, stack *domain.Stac
 	}
 
 	const q = `
-		INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, config, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+		INSERT INTO stacks (id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 	_, err = r.pool.Exec(ctx, q,
 		stack.ID,
@@ -36,6 +36,7 @@ func (r *PostgresStackRepository) Create(ctx context.Context, stack *domain.Stac
 		stack.TemplateID,
 		stack.OrgID,
 		stack.ClusterID,
+		stack.Namespace,
 		string(stack.State),
 		configJSON,
 		stack.CreatedAt,
@@ -46,7 +47,7 @@ func (r *PostgresStackRepository) Create(ctx context.Context, stack *domain.Stac
 
 func (r *PostgresStackRepository) GetByID(ctx context.Context, id string) (*domain.Stack, error) {
 	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, state, config, created_at, updated_at
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at
 		FROM stacks WHERE id = $1`
 
 	return r.scanStack(r.pool.QueryRow(ctx, q, id))
@@ -54,7 +55,7 @@ func (r *PostgresStackRepository) GetByID(ctx context.Context, id string) (*doma
 
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string) ([]*domain.Stack, error) {
 	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, state, config, created_at, updated_at
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at
 		FROM stacks WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, orgID)
@@ -138,6 +139,7 @@ func (r *PostgresStackRepository) scanStack(row pgxScanner) (*domain.Stack, erro
 		&s.TemplateID,
 		&s.OrgID,
 		&s.ClusterID,
+		&s.Namespace,
 		&state,
 		&configJSON,
 		&s.CreatedAt,

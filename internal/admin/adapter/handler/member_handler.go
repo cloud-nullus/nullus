@@ -33,11 +33,37 @@ func NewMemberHandler(userUC *usecase.UserUseCase, auditLogger ...*audit.AuditLo
 }
 
 func (h *MemberHandler) RegisterRoutes(g *echo.Group) {
+	g.GET("/users/search", h.SearchUser)
 	g.GET("/organizations/:orgId/members", h.ListMembers)
 	g.POST("/organizations/:orgId/members", h.CreateMember)
 	g.DELETE("/organizations/:orgId/members/:memberId", h.DeleteMember)
 	g.PATCH("/organizations/:orgId/members/:memberId", h.UpdateMemberRole)
 	g.POST("/organizations/:orgId/members/:memberId/deactivate", h.DeactivateMember)
+}
+
+func (h *MemberHandler) SearchUser(c echo.Context) error {
+	email := c.QueryParam("email")
+	if email == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "email query param required")
+	}
+	if h.userUC == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
+	}
+
+	user, err := h.userUC.SearchByEmail(c.Request().Context(), email)
+	if err != nil || user == nil {
+		return c.JSON(http.StatusOK, map[string]any{"found": false})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"found": true,
+		"user": map[string]any{
+			"id":        user.ID,
+			"name":      user.Name,
+			"email":     user.Email,
+			"is_active": user.IsActive,
+		},
+	})
 }
 
 func (h *MemberHandler) ListMembers(c echo.Context) error {

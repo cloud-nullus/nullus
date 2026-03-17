@@ -28,9 +28,46 @@ func (uc *UserUseCase) ListMembers(ctx context.Context, orgID string) ([]*domain
 	return users, nil
 }
 
+func (uc *UserUseCase) SearchByEmail(ctx context.Context, email string) (*domain.User, error) {
+	user, err := uc.userRepo.SearchByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("searching user by email: %w", err)
+	}
+	return user, nil
+}
+
 func (uc *UserUseCase) InviteMember(ctx context.Context, orgID, email, name string, role domain.Role) (*domain.User, error) {
 	if role == "" {
 		role = domain.RoleDeveloper
+	}
+
+	existingUser, err := uc.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("checking user by email: %w", err)
+	}
+	if existingUser != nil {
+		isMember, err := uc.userRepo.IsMember(ctx, orgID, existingUser.ID)
+		if err != nil {
+			return nil, fmt.Errorf("checking organization membership: %w", err)
+		}
+		if isMember {
+			return nil, &shareddomain.AppError{
+				Code:       "USER_ALREADY_MEMBER",
+				HTTPStatus: http.StatusConflict,
+				Message:    "User is already a member",
+				Detail:     fmt.Sprintf("user with email %q already belongs to organization %q", email, orgID),
+				Retryable:  false,
+			}
+		}
+
+		if err := uc.userRepo.AddMember(ctx, orgID, existingUser.ID, role); err != nil {
+			return nil, fmt.Errorf("adding existing member: %w", err)
+		}
+
+		existingUser.OrgID = orgID
+		existingUser.Role = role
+		existingUser.IsActive = true
+		return existingUser, nil
 	}
 
 	now := time.Now().UTC()
@@ -47,6 +84,10 @@ func (uc *UserUseCase) InviteMember(ctx context.Context, orgID, email, name stri
 
 	if err := uc.userRepo.Create(ctx, user); err != nil {
 		return nil, fmt.Errorf("inviting member: %w", err)
+	}
+
+	if err := uc.userRepo.AddMember(ctx, orgID, user.ID, role); err != nil {
+		return nil, fmt.Errorf("adding invited member: %w", err)
 	}
 
 	return user, nil

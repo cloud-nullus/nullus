@@ -32,7 +32,11 @@ export type {
   StackVersionDiff,
 } from '../../../types'
 
-// --- Query keys ---
+export interface ClusterSummary {
+  id: string
+  name: string
+  connection_status: string
+}
 
 const queryKeys = {
   templates: () => ['stacks', 'templates'] as const,
@@ -41,6 +45,7 @@ const queryKeys = {
   history: (stackId: string) => ['stacks', 'history', stackId] as const,
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
+  clusters: () => ['clusters'] as const,
 }
 
 interface RawTemplate {
@@ -173,6 +178,49 @@ const normalizeCompatibilityMatrix = (raw: RawCompatibilityMatrix): Compatibilit
 
 // --- API functions ---
 
+function toBackendTool(sel: { tool: string; version: string }) {
+  return { name: sel.tool, version: sel.version, enabled: true }
+}
+
+export function toCreateStackBody(req: CreateStackRequest) {
+  const a = req.artifacts as Record<string, { tool: string; version: string }>
+  const p = req.pipeline as Record<string, { tool: string; version: string }>
+  const m = req.monitoring as Record<string, { tool: string; version: string }>
+  const l = req.logging as Record<string, { tool: string; version: string }>
+  return {
+    name: req.stackName,
+    cluster_id: req.clusterId ?? '',
+    namespace: req.namespace || 'nullus',
+    golden_path_id: req.templateId ?? '',
+    config: {
+      artifacts: {
+        package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
+        source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),
+        container_registry: toBackendTool(a.containerRegistry ?? a.container_registry ?? { tool: '', version: '' }),
+        storage_backend: toBackendTool(a.storageBackend ?? a.storage_backend ?? { tool: '', version: '' }),
+      },
+      pipeline: {
+        ci_platform: toBackendTool(p.cicdPlatform ?? p.ci_platform ?? { tool: '', version: '' }),
+        cd_tool: toBackendTool(p.cdTool ?? p.cd_tool ?? { tool: '', version: '' }),
+      },
+      monitoring: {
+        collection: toBackendTool(m.collection ?? { tool: '', version: '' }),
+        visualization: toBackendTool(m.visualization ?? { tool: '', version: '' }),
+      },
+      logging: {
+        collection: toBackendTool(l.collection ?? { tool: '', version: '' }),
+        search: toBackendTool(l.search ?? { tool: '', version: '' }),
+      },
+      resources: {
+        developers: req.resources?.developerCount ?? 0,
+        concurrent_runners: req.resources?.concurrentRunners ?? 0,
+        weekly_commits: req.resources?.commitsPerDay ?? 0,
+        build_frequency: req.resources?.buildFrequency ?? 'medium',
+      },
+    },
+  }
+}
+
 const stackApiCalls = {
   getTemplates: () =>
     api.get<RawTemplate[]>('/stacks/templates').then((r) => (r.data ?? []).map(normalizeTemplate)),
@@ -181,10 +229,27 @@ const stackApiCalls = {
     api.get<StackTemplate>(`/stacks/templates/${id}`).then((r) => r.data),
 
   getList: (filters?: { status?: string; search?: string }) =>
-    api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => r.data),
+    api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => ({
+      ...r.data,
+      items: (r.data.items ?? []).map((s: Record<string, unknown>) => ({
+        id: s.id ?? '',
+        name: s.name ?? '',
+        templateId: s.template_id ?? s.templateId ?? '',
+        templateName: s.template_name ?? s.templateName ?? s.template_id ?? '',
+        clusterId: s.cluster_id ?? s.clusterId ?? '',
+        clusterName: s.cluster_name ?? s.clusterName ?? s.cluster_id ?? '',
+        namespace: s.namespace ?? 'nullus',
+        status: s.state ?? s.status ?? 'pending',
+        createdAt: s.created_at ?? s.createdAt ?? '',
+        updatedAt: s.updated_at ?? s.updatedAt ?? '',
+      })) as Stack[],
+    })),
 
   create: (request: CreateStackRequest) =>
-    api.post<{ id: string }>('/stacks', request).then((r) => r.data),
+    api.post<{ id: string }>('/stacks', toCreateStackBody(request)).then((r) => r.data),
+
+  delete: (stackId: string) =>
+    api.delete('/stacks/' + stackId).then((r) => r.data),
 
   saveDraft: (request: CreateStackRequest) =>
     api.post<{ draftId: string }>('/stacks/draft', request).then((r) => r.data),
@@ -215,6 +280,12 @@ const stackApiCalls = {
 
   deleteTemplate: (id: string) =>
     api.delete<void>(`/stacks/templates/${id}`).then((r) => r.data),
+
+  getClusters: () =>
+    api.get<{ items: ClusterSummary[] }>('/admin/clusters').then((r) => r.data?.items ?? []),
+
+  deployStack: (stackId: string) =>
+    api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -226,6 +297,12 @@ export function useTemplates() {
   })
 }
 
+export function useClusters() {
+  return useQuery({
+    queryKey: queryKeys.clusters(),
+    queryFn: stackApiCalls.getClusters,
+  })
+}
 
 export function useStacks(filters?: { status?: string; search?: string }) {
   return useQuery({
@@ -238,6 +315,16 @@ export function useCreateStack() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: stackApiCalls.create,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
+  })
+}
+
+export function useDeleteStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (stackId: string) => stackApiCalls.delete(stackId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
     },
@@ -333,6 +420,16 @@ export function useDeleteTemplate() {
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: queryKeys.templates() })
       void qc.invalidateQueries({ queryKey: queryKeys.template(id) })
+    },
+  })
+}
+
+export function useDeployStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.deployStack,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
     },
   })
 }

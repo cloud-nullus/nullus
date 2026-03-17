@@ -16,6 +16,7 @@ import (
 type StackHandler struct {
 	createStack *usecase.CreateStack
 	listStacks  *usecase.ListStacks
+	deleteStack *usecase.DeleteStack
 	stackRepo   port.StackRepository
 	audit       *audit.AuditLogger
 }
@@ -24,6 +25,7 @@ type StackHandler struct {
 func NewStackHandler(
 	createStack *usecase.CreateStack,
 	listStacks *usecase.ListStacks,
+	deleteStack *usecase.DeleteStack,
 	stackRepo port.StackRepository,
 	auditLogger ...*audit.AuditLogger,
 ) *StackHandler {
@@ -34,6 +36,7 @@ func NewStackHandler(
 	return &StackHandler{
 		createStack: createStack,
 		listStacks:  listStacks,
+		deleteStack: deleteStack,
 		stackRepo:   stackRepo,
 		audit:       logger,
 	}
@@ -44,6 +47,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("", h.CreateStack)
 	g.GET("", h.ListStacks)
 	g.GET("/:stackId", h.GetStack)
+	g.DELETE("/:stackId", h.DeleteStack)
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.POST("/draft", h.SaveDraft)
 }
@@ -52,6 +56,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 type createStackRequest struct {
 	Name       string             `json:"name"`
 	ClusterID  string             `json:"cluster_id"`
+	Namespace  string             `json:"namespace"`
 	TemplateID string             `json:"golden_path_id"`
 	Config     domain.StackConfig `json:"config"`
 }
@@ -69,6 +74,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 		Name:       req.Name,
 		OrgID:      orgID,
 		ClusterID:  req.ClusterID,
+		Namespace:  req.Namespace,
 		TemplateID: req.TemplateID,
 		Config:     req.Config,
 	})
@@ -85,6 +91,7 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 				"name":        req.Name,
 				"org_id":      orgID,
 				"cluster_id":  req.ClusterID,
+				"namespace":   req.Namespace,
 				"template_id": req.TemplateID,
 			},
 			IPAddress: c.RealIP(),
@@ -116,6 +123,14 @@ func (h *StackHandler) GetStack(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, stack)
+}
+
+func (h *StackHandler) DeleteStack(c echo.Context) error {
+	stackID := c.Param("stackId")
+	if err := h.deleteStack.Execute(c.Request().Context(), stackID); err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "STACK_DELETE_FAILED", err.Error())
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 // saveConfigRequest is the request body for POST /stacks/:id/config.
