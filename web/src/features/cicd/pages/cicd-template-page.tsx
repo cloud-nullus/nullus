@@ -275,7 +275,7 @@ export function CicdTemplatePage() {
                     size="sm"
                     type="button"
                     className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
-                    onClick={() => navigate(`/cicd/list?template=${template.id}`)}
+                    onClick={() => navigate(`/cicd/pipeline/setup?template=${template.id}`)}
                   >
                     Use Base Template
                   </Button>

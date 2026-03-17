@@ -51,6 +51,10 @@ const CicdListPage = lazy(() =>
   import('../features/cicd/pages/cicd-list-page').then((m) => ({ default: m.CicdListPage }))
 )
 
+const CicdPipelineSetupPage = lazy(() =>
+  import('../features/cicd/pages/cicd-pipeline-setup-page').then((m) => ({ default: m.CicdPipelineSetupPage }))
+)
+
 const CicdHistoryPage = lazy(() =>
   import('../features/cicd/pages/cicd-history-page').then((m) => ({ default: m.CicdHistoryPage }))
 )
@@ -128,6 +132,7 @@ export const router = createBrowserRouter([
         children: [
           { path: 'cicd/developer-deploy', element: withSuspense(<DeveloperDeployPage />) },
           { path: 'cicd/templates', element: withSuspense(<CicdTemplatePage />) },
+          { path: 'cicd/pipeline/setup', element: withSuspense(<CicdPipelineSetupPage />) },
           { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
           { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },
         ],
