@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -22,6 +22,7 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void
   emptyMessage?: string
   pageSize?: number
+  toolbar?: ReactNode
 }
 
 export function DataTable<T>({
@@ -32,6 +33,7 @@ export function DataTable<T>({
   onRowClick,
   emptyMessage = '데이터가 없습니다.',
   pageSize = 20,
+  toolbar,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -72,13 +74,15 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-      <div className="border-b border-[var(--color-border-default)] px-[14px] py-3">
-        <input
-          value={globalFilter}
-          onChange={(event) => setGlobalFilter(event.target.value)}
-          placeholder="Search..."
-          className="w-full max-w-[280px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-        />
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--color-border-default)] px-[14px] py-3">
+        {toolbar ?? (
+          <input
+            value={globalFilter}
+            onChange={(event) => setGlobalFilter(event.target.value)}
+            placeholder="Search..."
+            className="w-full max-w-[280px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+          />
+        )}
       </div>
 
       <table className="w-full border-collapse">
