@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { GitBranch, Pencil, Plus, Search, Trash2, User } from 'lucide-react'
+import { BookOpen, GitBranch, Pencil, Plus, Search, Trash2, User } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import {
   useCicdTemplates,
@@ -169,7 +169,7 @@ export function CicdTemplatePage() {
           <div
             className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
           >
-            <GitBranch size={18} />
+            <BookOpen size={18} />
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronUp, GitBranch, Plus, Search, Play } from 'lucide-react'
+import { ChevronDown, ChevronUp, List, Plus, Search, Play } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { usePipelines, useDeployPipeline } from '../api/cicd-api'
 import type { Pipeline, PipelineStatus } from '../api/cicd-api'
@@ -143,7 +143,7 @@ export function CicdListPage() {
           <div
             className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
           >
-            <GitBranch size={18} />
+            <List size={18} />
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
