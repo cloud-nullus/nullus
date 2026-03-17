@@ -194,13 +194,13 @@ function ToolOption({
 			</div>
 			{checked && version && (
 				<div className="ml-6 flex flex-wrap items-center gap-3">
-					<select
-						defaultValue={version}
-						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[12px] text-[var(--color-text-primary)]"
-					>
-						{(versions ?? [version]).map((v) => (
-							<option key={v}>{v}</option>
-						))}
+				<select
+					defaultValue={version}
+					className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+				>
+					{(versions ?? [version]).map((v) => (
+						<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
+					))}
 					</select>
 					<div className="flex items-center gap-1.5">
 						<span className="text-[11px] text-[#6366f1]">Instances:</span>
@@ -963,6 +963,7 @@ function StackMonitoringTab() {
 
 const HISTORY_ENTRIES = [
 	{
+		id: "deploy-v3-20260302",
 		version: "v3 · Current",
 		versionBg: "#059669",
 		tools: "GitLab CI + Argo CD + Prometheus + Grafana",
@@ -978,6 +979,7 @@ const HISTORY_ENTRIES = [
 		canRollback: false,
 	},
 	{
+		id: "deploy-v2-20260228",
 		version: "v2",
 		versionBg: "#6366f1",
 		tools: "GitLab CI + Argo CD + Prometheus + Grafana",
@@ -993,6 +995,7 @@ const HISTORY_ENTRIES = [
 		canRollback: true,
 	},
 	{
+		id: "deploy-v1-20260220",
 		version: "v1 · Failed",
 		versionBg: "#ef4444",
 		tools: "GitLab CI + Argo CD + Prometheus",
@@ -1010,6 +1013,7 @@ const HISTORY_ENTRIES = [
 ];
 
 function StackHistoryTab() {
+	const navigate = useNavigate();
 	return (
 		<div>
 			<div className="mb-4 flex items-center gap-3">
@@ -1018,15 +1022,7 @@ function StackHistoryTab() {
 					DevSecOps Stack History
 				</h3>
 			</div>
-			<div className="mb-4">
-				<select className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-[13px] text-[var(--color-text-primary)]">
-					<option>All Status</option>
-					<option>Success</option>
-					<option>Failed</option>
-					<option>Rolled Back</option>
-				</select>
-			</div>
-			<div className="flex flex-col gap-3">
+		<div className="flex flex-col gap-3">
 				{HISTORY_ENTRIES.map((entry) => (
 					<div
 						key={entry.version}
@@ -1092,7 +1088,8 @@ function StackHistoryTab() {
 							<div className="flex gap-2">
 								<button
 									type="button"
-									className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)]"
+									onClick={() => navigate(`/stack/logs/${entry.id}`)}
+									className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)] transition-colors duration-150 hover:border-[rgba(99,102,241,0.4)] hover:bg-[rgba(99,102,241,0.08)] hover:text-[#a5b4fc]"
 								>
 									<Terminal size={12} /> Logs
 								</button>
@@ -1331,6 +1328,29 @@ export function StackListPage() {
 
 	const columns: ColumnDef<Stack, unknown>[] = [
 		{
+			id: "expand",
+			header: "",
+			enableSorting: false,
+			cell: ({ row }) => {
+				const isExpanded = expandedStackId === row.original.id;
+				return (
+					<Button
+						variant={isExpanded ? "secondary" : "ghost"}
+						size="sm"
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							setExpandedStackId((prev) =>
+								prev === row.original.id ? null : row.original.id,
+							);
+						}}
+					>
+						{isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+					</Button>
+				);
+			},
+		},
+		{
 			accessorKey: "name",
 			header: "스택 이름",
 			cell: ({ row }) => (
@@ -1388,38 +1408,19 @@ export function StackListPage() {
 			id: "actions",
 			header: "Actions",
 			enableSorting: false,
-			cell: ({ row }) => {
-				const isExpanded = expandedStackId === row.original.id;
-				return (
-					<div className="flex gap-1.5">
-						<Button
-							variant={isExpanded ? "secondary" : "ghost"}
-							size="sm"
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								setExpandedStackId((prev) =>
-									prev === row.original.id ? null : row.original.id,
-								);
-							}}
-						>
-							{isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-							{isExpanded ? "Close" : "Detail"}
-						</Button>
-						<Button
-							variant="danger"
-							size="sm"
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								setDeleteStackId(row.original.id);
-							}}
-						>
-							Delete
-						</Button>
-					</div>
-				);
-			},
+			cell: ({ row }) => (
+				<Button
+					variant="danger"
+					size="sm"
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						setDeleteStackId(row.original.id);
+					}}
+				>
+					Delete
+				</Button>
+			),
 		},
 	];
 
@@ -1453,36 +1454,37 @@ export function StackListPage() {
 				</Button>
 			</div>
 
-			<div className="mb-4 flex flex-wrap gap-2.5">
-				<div className="relative max-w-[320px] flex-[1_1_240px]">
-					<Search
-						size={13}
-						className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-					/>
-					<Input
-						placeholder="스택 검색..."
-						value={search}
-						onChange={(e) => setSearch(e.target.value)}
-						className="pl-[30px]"
-					/>
-				</div>
-				<select
-					value={statusFilter}
-					onChange={(e) => setStatusFilter(e.target.value)}
-					className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-				>
-					<option value="">All Status</option>
-					<option value="success">Success</option>
-					<option value="running">Running</option>
-					<option value="pending">Pending</option>
-					<option value="failed">Failed</option>
-					<option value="cancelled">Cancelled</option>
-				</select>
-			</div>
-
-			<DataTable
-				columns={columns}
-				data={filtered}
+		<DataTable
+			columns={columns}
+			data={filtered}
+			toolbar={
+				<>
+					<div className="relative max-w-[320px] flex-[1_1_240px]">
+						<Search
+							size={13}
+							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+						/>
+						<Input
+							placeholder="스택 검색..."
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							className="pl-[30px]"
+						/>
+					</div>
+					<select
+						value={statusFilter}
+						onChange={(e) => setStatusFilter(e.target.value)}
+						className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+					>
+						<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
+						<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
+						<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
+						<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
+						<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
+						<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+					</select>
+				</>
+			}
 				getRowKey={(row) => row.id}
 				onRowClick={(row) =>
 					setExpandedStackId((prev) => (prev === row.id ? null : row.id))

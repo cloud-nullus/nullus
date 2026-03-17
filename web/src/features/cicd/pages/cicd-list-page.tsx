@@ -154,31 +154,36 @@ export function CicdListPage() {
         </Button>
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-2.5">
-        <div className="relative max-w-[320px] flex-[1_1_240px]">
-          <Search
-            size={13}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-          />
-          <Input
-            placeholder="파이프라인 검색..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-[30px]"
-          />
-        </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClassName}>
-          <option value="">All Status</option>
-          <option value="success">Success</option>
-          <option value="running">Running</option>
-          <option value="pending">Pending</option>
-          <option value="failed">Failed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-      </div>
-
-      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="파이프라인이 없습니다." />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        getRowKey={(row) => row.id}
+        emptyMessage="파이프라인이 없습니다."
+        toolbar={
+          <>
+            <div className="relative max-w-[320px] flex-[1_1_240px]">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <Input
+                placeholder="파이프라인 검색..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-[30px]"
+              />
+            </div>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
+              <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
+              <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
+              <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
+              <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
+              <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+            </select>
+          </>
+        }
+      />
 
       {expandedPipeline && (
         <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-[14px]">

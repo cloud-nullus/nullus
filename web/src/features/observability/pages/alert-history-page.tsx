@@ -155,49 +155,54 @@ export function AlertHistoryPage() {
         })}
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-2.5">
-        <div className="min-w-[220px] max-w-[320px] flex-[1_1_220px]">
-          <Input
-            placeholder="Rule name 검색..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
-        <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className={selectClassName}>
-          <option value="">All Severity</option>
-          <option value="critical">Critical</option>
-          <option value="warning">Warning</option>
-          <option value="info">Info</option>
-        </select>
-        <div className="flex gap-1.5">
-          {[
-            { id: '24h', label: 'Last 24h' },
-            { id: '7d', label: 'Last 7d' },
-            { id: '30d', label: 'Last 30d' },
-            { id: 'all', label: 'All' },
-          ].map((item) => {
-            const active = dateRange === item.id
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setDateRange(item.id as '24h' | '7d' | '30d' | 'all')}
-                className={cn(
-                  'cursor-pointer rounded-[7px] border px-2.5 py-1.5 text-xs font-semibold',
-                  active
-                    ? 'border-[rgba(59,130,246,0.5)] bg-[rgba(59,130,246,0.15)] text-[#93c5fd]'
-                    : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
-                )}
-              >
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="알림 이력이 없습니다." />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        getRowKey={(row) => row.id}
+        emptyMessage="알림 이력이 없습니다."
+        toolbar={
+          <>
+            <div className="min-w-[220px] max-w-[320px] flex-[1_1_220px]">
+              <Input
+                placeholder="Rule name 검색..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Severity</option>
+              <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Critical</option>
+              <option value="warning" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Warning</option>
+              <option value="info" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Info</option>
+            </select>
+            <div className="flex gap-1.5">
+              {[
+                { id: '24h', label: 'Last 24h' },
+                { id: '7d', label: 'Last 7d' },
+                { id: '30d', label: 'Last 30d' },
+                { id: 'all', label: 'All' },
+              ].map((item) => {
+                const active = dateRange === item.id
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setDateRange(item.id as '24h' | '7d' | '30d' | 'all')}
+                    className={cn(
+                      'cursor-pointer rounded-[7px] border px-2.5 py-1.5 text-xs font-semibold',
+                      active
+                        ? 'border-[rgba(59,130,246,0.5)] bg-[rgba(59,130,246,0.15)] text-[#93c5fd]'
+                        : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        }
+      />
     </div>
   )
 }

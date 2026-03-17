@@ -103,25 +103,30 @@ export function CicdHistoryPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-2.5">
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={selectClassName}>
-          <option value="">All Types</option>
-          <option value="api">API</option>
-          <option value="frontend">Frontend</option>
-          <option value="batch">Batch</option>
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClassName}>
-          <option value="">All Status</option>
-          <option value="success">Success</option>
-          <option value="running">Running</option>
-          <option value="pending">Pending</option>
-          <option value="failed">Failed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-      </div>
-
-      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="배포 이력이 없습니다." />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        getRowKey={(row) => row.id}
+        emptyMessage="배포 이력이 없습니다."
+        toolbar={
+          <>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Types</option>
+              <option value="api" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">API</option>
+              <option value="frontend" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Frontend</option>
+              <option value="batch" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Batch</option>
+            </select>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
+              <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
+              <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
+              <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
+              <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
+              <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+            </select>
+          </>
+        }
+      />
     </div>
   )
 }
