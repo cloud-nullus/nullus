@@ -1,12 +1,18 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { GitBranch, Plus, Search, User } from 'lucide-react'
+import { GitBranch, Pencil, Plus, Search, Trash2, User } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-import { useCicdTemplates, useCreateCicdTemplate } from '../api/cicd-api'
+import {
+  useCicdTemplates,
+  useCreateCicdTemplate,
+  useUpdateCicdTemplate,
+  useDeleteCicdTemplate,
+} from '../api/cicd-api'
 import type { CicdTemplate } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
+import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { useAuthStore } from '../../../stores/auth-store'
 
 const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
@@ -44,10 +50,14 @@ export function CicdTemplatePage() {
 
   const { data: apiTemplates } = useCicdTemplates()
   const createTemplate = useCreateCicdTemplate()
+  const updateTemplate = useUpdateCicdTemplate()
+  const deleteTemplate = useDeleteCicdTemplate()
   const templates = Array.isArray(apiTemplates) && apiTemplates.length > 0 ? apiTemplates : MOCK_CICD_TEMPLATES
 
   const [search, setSearch] = useState('')
   const [formOpen, setFormOpen] = useState(false)
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null)
   const [form, setForm] = useState<TemplateFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -60,6 +70,7 @@ export function CicdTemplatePage() {
   const resetForm = () => {
     setForm(EMPTY_FORM)
     setFormError(null)
+    setEditingTemplateId(null)
   }
 
   const openCreateModal = () => {
@@ -70,6 +81,19 @@ export function CicdTemplatePage() {
   const closeFormModal = () => {
     setFormOpen(false)
     resetForm()
+  }
+
+  const openEditModal = (template: CicdTemplate) => {
+    setEditingTemplateId(template.id)
+    setFormError(null)
+    setForm({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      appType: template.appType,
+      stages: template.stages.join(', '),
+    })
+    setFormOpen(true)
   }
 
   const handleFormChange = (key: keyof TemplateFormState, value: string) => {
@@ -92,19 +116,38 @@ export function CicdTemplatePage() {
       return
     }
 
-    createTemplate.mutate(
-      {
-        id: form.id.trim() || form.name.toLowerCase().replace(/\s+/g, '-'),
-        name: form.name,
-        description: form.description,
-        appType: form.appType as CicdTemplate['appType'],
-        stages,
-      },
-      {
+    const templateId = editingTemplateId ?? (form.id.trim() || form.name.toLowerCase().replace(/\s+/g, '-'))
+
+    const payload = {
+      id: templateId,
+      name: form.name,
+      description: form.description,
+      appType: form.appType as CicdTemplate['appType'],
+      stages,
+    }
+
+    if (editingTemplateId) {
+      updateTemplate.mutate(payload, {
         onSuccess: () => closeFormModal(),
-        onError: () => setFormError('Failed to create template.'),
-      }
-    )
+        onError: () => setFormError('Failed to update template.'),
+      })
+      return
+    }
+
+    createTemplate.mutate(payload, {
+      onSuccess: () => closeFormModal(),
+      onError: () => setFormError('Failed to create template.'),
+    })
+  }
+
+  const handleDeleteTemplate = () => {
+    if (!deleteTemplateId) {
+      return
+    }
+
+    deleteTemplate.mutate(deleteTemplateId, {
+      onSuccess: () => setDeleteTemplateId(null),
+    })
   }
 
   return (
@@ -162,7 +205,7 @@ export function CicdTemplatePage() {
           return (
             <div
               key={template.id}
-              className="flex flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-150"
+              className="flex h-full flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-150"
             >
               {/* Card header */}
               <div>
@@ -199,23 +242,44 @@ export function CicdTemplatePage() {
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-between border-t border-[var(--color-border-default)] pt-2.5">
-                {template.createdBy ? (
-                  <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
-                    <User size={12} />
-                    <span>{template.createdBy}</span>
-                  </div>
-                ) : (
-                  <span />
-                )}
-                <Button
-                  variant="primary"
-                  size="sm"
-                  type="button"
-                  onClick={() => navigate(`/cicd/list?template=${template.id}`)}
-                >
-                  Base Template
-                </Button>
+              <div className="mt-auto flex items-center justify-between border-t border-[var(--color-border-default)] pt-2.5">
+                <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
+                  {template.createdBy && <User size={12} />}
+                  <span>{template.createdBy ?? ''}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {isAdmin && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={() => openEditModal(template)}
+                      >
+                        <Pencil size={13} />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        type="button"
+                        onClick={() => setDeleteTemplateId(template.id)}
+                      >
+                        <Trash2 size={13} />
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    type="button"
+                    className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
+                    onClick={() => navigate(`/cicd/list?template=${template.id}`)}
+                  >
+                    Use Base Template
+                  </Button>
+                </div>
               </div>
             </div>
           )
@@ -232,7 +296,7 @@ export function CicdTemplatePage() {
       <Modal
         open={formOpen}
         onClose={closeFormModal}
-        title="Create Template"
+        title={editingTemplateId ? 'Edit Template' : 'Create Template'}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeFormModal} type="button">
@@ -243,19 +307,20 @@ export function CicdTemplatePage() {
               size="sm"
               type="button"
               onClick={submitTemplate}
-              loading={createTemplate.isPending}
+              loading={createTemplate.isPending || updateTemplate.isPending}
             >
-              Create
+              {editingTemplateId ? 'Save' : 'Create'}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
           <Input
-            label="Template ID (optional)"
+            label="Template ID"
             placeholder="예: web-backend-standard"
-            value={form.id}
+            value={editingTemplateId ?? form.id}
             onChange={(e) => handleFormChange('id', e.target.value)}
+            disabled={editingTemplateId !== null}
           />
           <Input
             label="Name"
@@ -295,6 +360,16 @@ export function CicdTemplatePage() {
           {formError && <div className="text-xs text-[#f87171]">{formError}</div>}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteTemplateId !== null}
+        onClose={() => setDeleteTemplateId(null)}
+        onConfirm={handleDeleteTemplate}
+        title="Delete Template"
+        description="템플릿을 삭제하면 더 이상 목록에 표시되지 않습니다. 계속하시겠습니까?"
+        confirmLabel="Delete Template"
+        loading={deleteTemplate.isPending}
+      />
     </div>
   )
 }
