@@ -105,6 +105,25 @@ interface RawCompatibilityMatrix {
   Tools?: RawCompatibilityTool[] | Record<string, RawCompatibilityTool>
 }
 
+interface RawStackItem {
+  id?: string
+  name?: string
+  template_id?: string
+  templateId?: string
+  template_name?: string
+  templateName?: string
+  cluster_id?: string
+  clusterId?: string
+  cluster_name?: string
+  clusterName?: string
+  state?: string
+  status?: string
+  created_at?: string
+  createdAt?: string
+  updated_at?: string
+  updatedAt?: string
+}
+
 const toToolName = (tool: unknown): string => {
   if (typeof tool === 'string') {
     return tool
@@ -167,12 +186,30 @@ const normalizeCompatibilityMatrix = (raw: RawCompatibilityMatrix): Compatibilit
     ? rawTools.map(normalizeCompatibilityTool)
     : Object.values(rawTools ?? {}).map(normalizeCompatibilityTool)
 
+  const status = raw.status ?? raw.Status
+  const normalizedStatus: CompatibilityMatrix['status'] = status === 'verified' ? 'verified' : 'untested'
+
   return {
     id: raw.id ?? raw.ID ?? '',
     name: raw.name ?? raw.Name ?? 'Unnamed Matrix',
-    status: raw.status ?? raw.Status ?? 'untested',
+    status: normalizedStatus,
     k8sRange: normalizeK8sRange(raw),
     tools,
+  }
+}
+
+const normalizeStackItem = (raw: RawStackItem): Stack => {
+  const status = raw.state ?? raw.status ?? 'pending'
+  return {
+    id: raw.id ?? '',
+    name: raw.name ?? '',
+    templateId: raw.template_id ?? raw.templateId ?? '',
+    templateName: raw.template_name ?? raw.templateName ?? raw.template_id ?? '',
+    clusterId: raw.cluster_id ?? raw.clusterId ?? '',
+    clusterName: raw.cluster_name ?? raw.clusterName ?? raw.cluster_id ?? '',
+    status: status as Stack['status'],
+    createdAt: raw.created_at ?? raw.createdAt ?? '',
+    updatedAt: raw.updated_at ?? raw.updatedAt ?? '',
   }
 }
 
@@ -231,18 +268,7 @@ const stackApiCalls = {
   getList: (filters?: { status?: string; search?: string }) =>
     api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => ({
       ...r.data,
-      items: (r.data.items ?? []).map((s: Record<string, unknown>) => ({
-        id: s.id ?? '',
-        name: s.name ?? '',
-        templateId: s.template_id ?? s.templateId ?? '',
-        templateName: s.template_name ?? s.templateName ?? s.template_id ?? '',
-        clusterId: s.cluster_id ?? s.clusterId ?? '',
-        clusterName: s.cluster_name ?? s.clusterName ?? s.cluster_id ?? '',
-        namespace: s.namespace ?? 'nullus',
-        status: s.state ?? s.status ?? 'pending',
-        createdAt: s.created_at ?? s.createdAt ?? '',
-        updatedAt: s.updated_at ?? s.updatedAt ?? '',
-      })) as Stack[],
+      items: ((r.data.items ?? []) as unknown as RawStackItem[]).map(normalizeStackItem),
     })),
 
   create: (request: CreateStackRequest) =>

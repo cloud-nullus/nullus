@@ -43,6 +43,12 @@ const cicdApiCalls = {
   createTemplate: (data: CreateCicdTemplateRequest) =>
     api.post<CicdTemplate>('/cicd/templates', data).then((r) => r.data),
 
+  updateTemplate: (data: CreateCicdTemplateRequest) =>
+    api.put<CicdTemplate>(`/cicd/templates/${data.id}`, data).then((r) => r.data),
+
+  deleteTemplate: (id: string) =>
+    api.delete<void>(`/cicd/templates/${id}`).then((r) => r.data),
+
   getPipelines: (filters?: { status?: string; search?: string }) =>
     api.get<{ items: Pipeline[]; total: number }>('/cicd/pipelines', { params: filters }).then((r) => r.data),
 
@@ -75,6 +81,26 @@ export function useCreateCicdTemplate() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: cicdApiCalls.createTemplate,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cicd', 'templates'] })
+    },
+  })
+}
+
+export function useUpdateCicdTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: cicdApiCalls.updateTemplate,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cicd', 'templates'] })
+    },
+  })
+}
+
+export function useDeleteCicdTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: cicdApiCalls.deleteTemplate,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['cicd', 'templates'] })
     },

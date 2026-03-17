@@ -3,6 +3,7 @@ import { api } from '../../../lib/api'
 import type {
   Cluster,
   CreateClusterRequest,
+  CreateOrgRequest,
   InviteMemberRequest,
   KnownIssue,
   Member,
@@ -16,6 +17,7 @@ export type {
   ClusterStatus,
   ClusterType,
   CreateClusterRequest,
+  CreateOrgRequest,
   InviteMemberRequest,
   KnownIssue,
   KnownIssueSeverity,
@@ -43,6 +45,9 @@ const adminApiCalls = {
   getOrganization: () =>
     api.get<Organization>('/admin/organization').then((r) => r.data),
 
+  createOrganization: (data: CreateOrgRequest) =>
+    api.post<Organization>('/admin/organizations', data).then((r) => r.data),
+
   updateOrganization: (data: UpdateOrgRequest) =>
     api.patch<Organization>('/admin/organization', data).then((r) => r.data),
 
@@ -50,11 +55,11 @@ const adminApiCalls = {
     api.get<{ items: Member[]; total: number }>(`/admin/organizations/${orgId}/members`).then((r) => ({
       ...r.data,
       items: (r.data.items ?? []).map((m) => {
-        const raw = m as Member & { is_active?: boolean }
+        const raw = m as Member & { is_active?: boolean; created_at?: string }
         return {
           ...m,
           status: m.status ?? (raw.is_active ? 'active' : 'pending'),
-          joinedAt: m.joinedAt ?? (raw as Record<string, unknown>).created_at as string ?? '',
+          joinedAt: m.joinedAt ?? raw.created_at ?? '',
         }
       }),
     })),
@@ -115,6 +120,16 @@ export function useOrganization() {
   return useQuery({
     queryKey: queryKeys.organization(),
     queryFn: adminApiCalls.getOrganization,
+  })
+}
+
+export function useCreateOrganization() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: adminApiCalls.createOrganization,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.organization() })
+    },
   })
 }
 

@@ -214,7 +214,12 @@ export function StackTemplatePage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Stack Template' }]} />
+      <Breadcrumb
+        items={[
+          { label: 'Stack List', path: '/stack/list' },
+          { label: 'Stack Template' },
+        ]}
+      />
 
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between gap-4">
@@ -243,14 +248,14 @@ export function StackTemplatePage() {
       <div className="mb-5 max-w-[360px]">
         <div className="relative">
           <Search
-            size={14}
+            size={13}
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
-          <Input
+          <input
             placeholder="템플릿 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
+            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
           />
         </div>
       </div>

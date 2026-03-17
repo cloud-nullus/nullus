@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { BellRing } from 'lucide-react'
+import { BellRing, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertHistory } from '../api/observability-api'
 import type { AlertHistoryEntry, AlertSeverity } from '../api/observability-api'
-import { Input } from '../../../components/ui/input'
+import { Button } from '../../../components/ui/button'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
@@ -52,6 +52,7 @@ function formatDate(iso: string | null) {
 
 export function AlertHistoryPage() {
   const [activeTab, setActiveTab] = useState<ObsTab>('stack')
+  const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null)
   const [severityFilter, setSeverityFilter] = useState<AlertSeverity | ''>('')
   const [search, setSearch] = useState('')
   const [dateRange, setDateRange] = useState<'24h' | '7d' | '30d' | 'all'>('7d')
@@ -75,7 +76,30 @@ export function AlertHistoryPage() {
     return new Date(entry.firedAt).getTime() >= fromByRange[dateRange]
   })
 
+  const expandedAlert = filtered.find((e) => e.id === expandedAlertId) ?? null
+
   const columns: ColumnDef<AlertHistoryEntry, unknown>[] = [
+    {
+      id: 'expand',
+      header: '',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const isExpanded = expandedAlertId === row.original.id
+        return (
+          <Button
+            variant={isExpanded ? 'secondary' : 'ghost'}
+            size="sm"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpandedAlertId((prev) => (prev === row.original.id ? null : row.original.id))
+            }}
+          >
+            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </Button>
+        )
+      },
+    },
     {
       accessorKey: 'ruleName',
       header: '알림명',
@@ -155,49 +179,84 @@ export function AlertHistoryPage() {
         })}
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-2.5">
-        <div className="min-w-[220px] max-w-[320px] flex-[1_1_220px]">
-          <Input
-            placeholder="Rule name 검색..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
-        <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className={selectClassName}>
-          <option value="">All Severity</option>
-          <option value="critical">Critical</option>
-          <option value="warning">Warning</option>
-          <option value="info">Info</option>
-        </select>
-        <div className="flex gap-1.5">
-          {[
-            { id: '24h', label: 'Last 24h' },
-            { id: '7d', label: 'Last 7d' },
-            { id: '30d', label: 'Last 30d' },
-            { id: 'all', label: 'All' },
-          ].map((item) => {
-            const active = dateRange === item.id
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setDateRange(item.id as '24h' | '7d' | '30d' | 'all')}
-                className={cn(
-                  'cursor-pointer rounded-[7px] border px-2.5 py-1.5 text-xs font-semibold',
-                  active
-                    ? 'border-[rgba(59,130,246,0.5)] bg-[rgba(59,130,246,0.15)] text-[#93c5fd]'
-                    : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
-                )}
-              >
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={filtered}
+        getRowKey={(row) => row.id}
+        emptyMessage="알림 이력이 없습니다."
+        toolbar={
+          <>
+            <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Severity</option>
+              <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Critical</option>
+              <option value="warning" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Warning</option>
+              <option value="info" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Info</option>
+            </select>
+            <div className="flex gap-1.5">
+              {[
+                { id: '24h', label: 'Last 24h' },
+                { id: '7d', label: 'Last 7d' },
+                { id: '30d', label: 'Last 30d' },
+                { id: 'all', label: 'All' },
+              ].map((item) => {
+                const active = dateRange === item.id
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setDateRange(item.id as '24h' | '7d' | '30d' | 'all')}
+                    className={cn(
+                      'cursor-pointer rounded-[7px] border px-2.5 py-1.5 text-xs font-semibold',
+                      active
+                        ? 'border-[rgba(59,130,246,0.5)] bg-[rgba(59,130,246,0.15)] text-[#93c5fd]'
+                        : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="relative ml-auto">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <input
+                placeholder="Rule name 검색..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              />
+            </div>
+          </>
+        }
+      />
 
-      <DataTable columns={columns} data={filtered} getRowKey={(row) => row.id} emptyMessage="알림 이력이 없습니다." />
+      {expandedAlert && (
+        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-5 py-4">
+          <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+            Alert Detail
+          </p>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+            {[
+              { label: 'Rule', value: expandedAlert.ruleName },
+              { label: 'Severity', value: expandedAlert.severity },
+              { label: 'Fired At', value: new Date(expandedAlert.firedAt).toLocaleString('ko-KR') },
+              { label: 'Resolved At', value: expandedAlert.resolvedAt ? new Date(expandedAlert.resolvedAt).toLocaleString('ko-KR') : '미해결' },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex gap-2 text-[13px]">
+                <span className="w-[80px] shrink-0 text-[var(--color-text-muted)]">{label}</span>
+                <span className="text-[var(--color-text-primary)]">{value}</span>
+              </div>
+            ))}
+            <div className="col-span-2 flex gap-2 text-[13px]">
+              <span className="w-[80px] shrink-0 text-[var(--color-text-muted)]">Message</span>
+              <span className="text-[var(--color-text-primary)]">{expandedAlert.message}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

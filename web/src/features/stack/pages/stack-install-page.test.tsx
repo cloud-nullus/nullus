@@ -36,12 +36,11 @@ describe('StackInstallPage', () => {
     expect(screen.getByText('Stack Install')).toBeInTheDocument()
   })
 
-  it('renders all 6 tabs', () => {
+  it('renders all 5 tabs', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getByText('Artifacts')).toBeInTheDocument()
-    expect(screen.getByText('Pipeline')).toBeInTheDocument()
-    expect(screen.getByText('Monitoring')).toBeInTheDocument()
-    expect(screen.getByText('Logging')).toBeInTheDocument()
+    expect(screen.getByText('CI/CD')).toBeInTheDocument()
+    expect(screen.getByText('Observability')).toBeInTheDocument()
     expect(screen.getByText('Resources')).toBeInTheDocument()
     expect(screen.getByText('YAML View')).toBeInTheDocument()
   })
@@ -52,25 +51,20 @@ describe('StackInstallPage', () => {
     expect(screen.getAllByText('Source Repository')[0]).toBeInTheDocument()
   })
 
-  it('clicking Pipeline tab shows Pipeline content', () => {
+  it('clicking CI/CD tab shows CI/CD content', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('Pipeline'))
+    fireEvent.click(screen.getByText('CI/CD'))
     expect(screen.getAllByText('CI/CD Platform')[0]).toBeInTheDocument()
     expect(screen.getAllByText('CD Tool')[0]).toBeInTheDocument()
   })
 
-  it('clicking Monitoring tab shows Monitoring content', () => {
+  it('clicking Observability tab shows merged observability content', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('Monitoring'))
-    expect(screen.getAllByText('Metrics Collection')[0]).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Observability'))
     expect(screen.getAllByText('Visualization')[0]).toBeInTheDocument()
-  })
-
-  it('clicking Logging tab shows Logging content', () => {
-    renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('Logging'))
-    expect(screen.getAllByText('Log Collection')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('Log Search')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Metrics')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Logs')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Traces')[0]).toBeInTheDocument()
   })
 
   it('clicking Resources tab shows Resources content', () => {
@@ -103,7 +97,7 @@ describe('StackInstallPage', () => {
 
   it('selecting a tool in Pipeline updates the store', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('Pipeline'))
+    fireEvent.click(screen.getByText('CI/CD'))
     fireEvent.click(screen.getByText('GitHub Actions'))
     expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.tool).toBe('github-actions')
   })

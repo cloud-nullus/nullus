@@ -7,7 +7,7 @@ import { Download, Save, Rocket } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useDeployStack, toCreateStackBody } from '../api/stack-api'
+import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, toCreateStackBody } from '../api/stack-api'
 import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -64,22 +64,21 @@ const PIPELINE_OPTIONS: Record<string, ToolOption[]> = {
 const MONITORING_OPTIONS: Record<string, ToolOption[]> = {
   collection: [
     { id: 'prometheus', label: 'Prometheus', description: '시계열 메트릭 수집' },
-    { id: 'datadog', label: 'Datadog', description: '클라우드 모니터링 플랫폼' },
-    { id: 'newrelic', label: 'New Relic', description: 'APM 및 모니터링 플랫폼' },
+    { id: 'thanos', label: 'Thanos', description: '장기 보관 및 글로벌 메트릭 집계' },
+    { id: 'victoriametrics', label: 'VictoriaMetrics', description: '고성능 시계열 데이터베이스' },
   ],
   visualization: [
     { id: 'grafana', label: 'Grafana', description: '오픈소스 메트릭 시각화' },
     { id: 'kibana', label: 'Kibana', description: 'Elastic Stack 시각화' },
-    { id: 'datadog-dashboards', label: 'Datadog Dashboards', description: 'Datadog 내장 대시보드' },
+    { id: 'opensearch-dashboards', label: 'OpenSearch Dashboards', description: 'OpenSearch 시각화 대시보드' },
+  ],
+  traceLayer: [
+    { id: 'tempo', label: 'Tempo', description: '분산 추적 백엔드' },
+    { id: 'jaeger', label: 'Jaeger', description: '분산 추적 및 트레이스 분석' },
   ],
 }
 
 const LOGGING_OPTIONS: Record<string, ToolOption[]> = {
-  collection: [
-    { id: 'opentelemetry', label: 'OpenTelemetry', description: '벤더 중립 텔레메트리 수집' },
-    { id: 'fluentbit', label: 'Fluent Bit', description: '경량 로그 수집기' },
-    { id: 'logstash', label: 'Logstash', description: 'ELK Stack 로그 파이프라인' },
-  ],
   search: [
     { id: 'opensearch', label: 'OpenSearch', description: 'Elasticsearch 호환 검색/분석' },
     { id: 'elasticsearch', label: 'Elasticsearch', description: '분산 검색/분석 엔진' },
@@ -115,14 +114,13 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   flux: { repoUrl: 'https://fluxcd-community.github.io/helm-charts', chartName: 'fluxcd/flux2' },
   spinnaker: { repoUrl: 'https://opsmx.github.io/charts', chartName: 'spinnaker/spin' },
   prometheus: { repoUrl: 'https://prometheus-community.github.io/helm-charts', chartName: 'prometheus-community/kube-prometheus-stack' },
-  datadog: { repoUrl: 'https://helm.datadoghq.com', chartName: 'datadog/datadog' },
-  newrelic: { repoUrl: 'https://helm-charts.newrelic.com', chartName: 'newrelic/nri-bundle' },
+  thanos: { repoUrl: 'https://prometheus-community.github.io/helm-charts', chartName: 'prometheus-community/thanos' },
+  victoriametrics: { repoUrl: 'https://victoriametrics.github.io/helm-charts', chartName: 'victoria-metrics/victoria-metrics-k8s-stack' },
   grafana: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/grafana' },
   kibana: { repoUrl: 'https://helm.elastic.co', chartName: 'elastic/kibana' },
-  'datadog-dashboards': { repoUrl: 'https://helm.datadoghq.com', chartName: 'datadog/datadog' },
-  opentelemetry: { repoUrl: 'https://open-telemetry.github.io/opentelemetry-helm-charts', chartName: 'open-telemetry/opentelemetry-collector' },
-  fluentbit: { repoUrl: 'https://fluent.github.io/helm-charts', chartName: 'fluent/fluent-bit' },
-  logstash: { repoUrl: 'https://helm.elastic.co', chartName: 'elastic/logstash' },
+  'opensearch-dashboards': { repoUrl: 'https://opensearch-project.github.io/helm-charts', chartName: 'opensearch/opensearch-dashboards' },
+  tempo: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/tempo' },
+  jaeger: { repoUrl: 'https://jaegertracing.github.io/helm-charts', chartName: 'jaegertracing/jaeger' },
   opensearch: { repoUrl: 'https://opensearch-project.github.io/helm-charts', chartName: 'opensearch/opensearch' },
   elasticsearch: { repoUrl: 'https://helm.elastic.co', chartName: 'elastic/elasticsearch' },
   loki: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/loki-stack' },
@@ -176,15 +174,14 @@ function createDeployScript(draft: StackConfigDraft): string {
     '',
     '# 2. Install Artifacts',
     ...installBlock('Package Registry', draft.artifacts.packageRegistry),
-    '# 3. Install Pipeline',
+    '# 3. Install CI/CD',
     ...installBlock('CI/CD Platform', draft.pipeline.cicdPlatform),
     ...installBlock('CD Tool', draft.pipeline.cdTool),
-    '# 4. Install Monitoring',
-    ...installBlock('Metrics Collection', draft.monitoring.collection),
+    '# 4. Install Observability',
     ...installBlock('Visualization', draft.monitoring.visualization),
-    '# 5. Install Logging',
-    ...installBlock('Log Collection', draft.logging.collection),
-    ...installBlock('Log Search', draft.logging.search),
+    ...installBlock('Metrics', draft.monitoring.collection),
+    ...installBlock('Logs', draft.logging.search),
+    ...installBlock('Traces', draft.logging.traceLayer),
     'echo "Nullus stack deploy script completed."',
   ].join('\n')
 }
@@ -349,8 +346,8 @@ function draftToYaml(draft: StackConfigDraft): string {
     `  visualization: ${draft.monitoring.visualization.tool}`,
     '',
     'logging:',
-    `  collection: ${draft.logging.collection.tool}`,
-    `  search: ${draft.logging.search.tool}`,
+    `  logs: ${draft.logging.search.tool}`,
+    `  traces: ${draft.logging.traceLayer.tool}`,
     '',
     'resources:',
     `  developerCount: ${draft.resources.developerCount}`,
@@ -366,9 +363,8 @@ function draftToYaml(draft: StackConfigDraft): string {
 
 const TABS: { id: InstallTab; label: string }[] = [
   { id: 'artifacts', label: 'Artifacts' },
-  { id: 'pipeline', label: 'Pipeline' },
-  { id: 'monitoring', label: 'Monitoring' },
-  { id: 'logging', label: 'Logging' },
+  { id: 'pipeline', label: 'CI/CD' },
+  { id: 'monitoring', label: 'Observability' },
   { id: 'resources', label: 'Resources' },
   { id: 'yaml', label: 'YAML View' },
 ]
@@ -675,33 +671,28 @@ export function StackInstallPage() {
             {activeTab === 'monitoring' && (
               <>
                 <ToolSelector
-                  label="Metrics Collection"
-                  options={MONITORING_OPTIONS.collection}
-                  value={draft.monitoring.collection}
-                  onChange={(v) => setTool('monitoring', 'collection', v)}
-                />
-                <ToolSelector
                   label="Visualization"
                   options={MONITORING_OPTIONS.visualization}
                   value={draft.monitoring.visualization}
                   onChange={(v) => setTool('monitoring', 'visualization', v)}
                 />
-              </>
-            )}
-
-            {activeTab === 'logging' && (
-              <>
                 <ToolSelector
-                  label="Log Collection"
-                  options={LOGGING_OPTIONS.collection}
-                  value={draft.logging.collection}
-                  onChange={(v) => setTool('logging', 'collection', v)}
+                  label="Metrics"
+                  options={MONITORING_OPTIONS.collection}
+                  value={draft.monitoring.collection}
+                  onChange={(v) => setTool('monitoring', 'collection', v)}
                 />
                 <ToolSelector
-                  label="Log Search"
+                  label="Logs"
                   options={LOGGING_OPTIONS.search}
                   value={draft.logging.search}
                   onChange={(v) => setTool('logging', 'search', v)}
+                />
+                <ToolSelector
+                  label="Traces"
+                  options={MONITORING_OPTIONS.traceLayer}
+                  value={draft.logging.traceLayer}
+                  onChange={(v) => setTool('logging', 'traceLayer', v)}
                 />
               </>
             )}
@@ -834,12 +825,12 @@ export function StackInstallPage() {
             ['Source Repo', draft.artifacts.sourceRepository.tool],
             ['Container Registry', draft.artifacts.containerRegistry.tool],
             ['Storage', draft.artifacts.storageBackend.tool],
-            ['CI/CD Platform', draft.pipeline.cicdPlatform.tool],
+            ['CI/CD', draft.pipeline.cicdPlatform.tool],
             ['CD Tool', draft.pipeline.cdTool.tool],
-            ['Metrics', draft.monitoring.collection.tool],
             ['Visualization', draft.monitoring.visualization.tool],
-            ['Log Collection', draft.logging.collection.tool],
-            ['Log Search', draft.logging.search.tool],
+            ['Metrics', draft.monitoring.collection.tool],
+            ['Logs', draft.logging.search.tool],
+            ['Traces', draft.logging.traceLayer.tool],
           ].map(([label, val]) => (
             <div
               key={label}

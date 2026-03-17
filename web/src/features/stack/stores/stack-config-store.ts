@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
-export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'logging' | 'resources' | 'yaml'
+export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'yaml'
 
 export interface ToolSelection {
   tool: string
@@ -27,8 +27,8 @@ export interface MonitoringConfig {
 }
 
 export interface LoggingConfig {
-  collection: ToolSelection
   search: ToolSelection
+  traceLayer: ToolSelection
 }
 
 export interface ResourceConfig {
@@ -90,8 +90,8 @@ const DEFAULT_DRAFT: StackConfigDraft = {
     visualization: { tool: 'grafana', version: 'latest' },
   },
   logging: {
-    collection: { tool: 'opentelemetry', version: 'latest' },
     search: { tool: 'opensearch', version: 'latest' },
+    traceLayer: { tool: 'tempo', version: 'latest' },
   },
   resources: {
     developerCount: 10,
