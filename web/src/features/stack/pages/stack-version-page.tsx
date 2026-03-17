@@ -155,44 +155,6 @@ export function StackVersionPage() {
         </table>
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-        <div className="border-b border-[var(--color-border-default)] px-5 py-4 text-sm font-bold text-[var(--color-text-primary)]">
-          GitHub Actions + Argo CD Combinations
-        </div>
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-[rgba(255,255,255,0.02)]">
-              {['GitHub Actions', 'Argo CD', 'Prometheus', 'Grafana', 'K8s', 'Status'].map((header) => (
-                <th key={header} className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {githubRows.map((item) => {
-              const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.untested
-              const recommended = item.id.includes('github-argocd')
-              return (
-                <tr key={item.id}>
-                  <td className={cn(rowClassName, 'font-semibold text-[var(--color-text-primary)]')}>{toolVersion(item, 'github actions')}</td>
-                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'argo')}</td>
-                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'prometheus')}</td>
-                  <td className={cn(rowClassName, 'text-[var(--color-text-secondary)]')}>{toolVersion(item, 'grafana')}</td>
-                  <td className={cn(rowClassName, 'font-mono text-[13px] text-[var(--color-text-secondary)]')}>{item.k8sRange}</td>
-                  <td className={rowClassName}>
-                    <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', badge.className)}>{badge.label}</span>
-                    {recommended && (
-                      <span className="ml-1.5 rounded-md bg-[rgba(139,92,246,0.15)] px-[7px] py-[3px] text-[11px] font-semibold text-[#c4b5fd]">Recommended</span>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
       <Modal
         open={validationOpen}
         onClose={() => {
