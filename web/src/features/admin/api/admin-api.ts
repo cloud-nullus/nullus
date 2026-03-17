@@ -3,6 +3,7 @@ import { api } from '../../../lib/api'
 import type {
   Cluster,
   CreateClusterRequest,
+  CreateOrgRequest,
   InviteMemberRequest,
   KnownIssue,
   Member,
@@ -16,6 +17,7 @@ export type {
   ClusterStatus,
   ClusterType,
   CreateClusterRequest,
+  CreateOrgRequest,
   InviteMemberRequest,
   KnownIssue,
   KnownIssueSeverity,
@@ -42,6 +44,9 @@ const queryKeys = {
 const adminApiCalls = {
   getOrganization: () =>
     api.get<Organization>('/admin/organization').then((r) => r.data),
+
+  createOrganization: (data: CreateOrgRequest) =>
+    api.post<Organization>('/admin/organizations', data).then((r) => r.data),
 
   updateOrganization: (data: UpdateOrgRequest) =>
     api.patch<Organization>('/admin/organization', data).then((r) => r.data),
@@ -109,6 +114,16 @@ export function useOrganization() {
   return useQuery({
     queryKey: queryKeys.organization(),
     queryFn: adminApiCalls.getOrganization,
+  })
+}
+
+export function useCreateOrganization() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: adminApiCalls.createOrganization,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.organization() })
+    },
   })
 }
 

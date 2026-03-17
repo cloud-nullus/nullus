@@ -5,13 +5,14 @@ import { z } from 'zod'
 import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
 import {
   useClusters,
+  useCreateOrganization,
   useInviteMember,
   useMembers,
   useOrganization,
   useRemoveMember,
   useUpdateOrganization,
 } from '../api/admin-api'
-import type { InviteMemberRequest, MemberRole, MemberStatus } from '../api/admin-api'
+import type { CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus } from '../api/admin-api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
@@ -40,6 +41,14 @@ const orgSchema = z.object({
   domain: z.string().optional().refine((value) => !value || domainRegex.test(value), 'Invalid domain'),
   status: z.enum(['active', 'inactive', 'suspended']),
 })
+
+const newOrgSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Slug must be lowercase alphanumeric with optional hyphens'),
+  domain: z.string().optional().refine((value) => !value || domainRegex.test(value), 'Invalid domain'),
+})
+
+type NewOrgFormData = z.infer<typeof newOrgSchema>
 
 const inviteSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -72,12 +81,14 @@ export function OrganizationPage() {
   const { data: clustersData } = useClusters()
   const allClusters = clustersData?.items ?? []
 
+  const createOrg = useCreateOrganization()
   const updateOrg = useUpdateOrganization()
   const inviteMember = useInviteMember(orgId)
   const removeMember = useRemoveMember(orgId)
 
   const [clusterAccessScope, setClusterAccessScope] = useState<string[]>([])
   const [inviteModal, setInviteModal] = useState(false)
+  const [newOrgModal, setNewOrgModal] = useState(false)
   const [removeMemberId, setRemoveMemberId] = useState<string | null>(null)
 
   const {
@@ -104,6 +115,17 @@ export function OrganizationPage() {
   } = useForm<InviteFormData>({
     resolver: zodResolver(inviteSchema),
     defaultValues: { name: '', email: '', role: 'developer' },
+    mode: 'onChange',
+  })
+
+  const {
+    register: registerNewOrg,
+    handleSubmit: handleNewOrgSubmit,
+    reset: resetNewOrg,
+    formState: { errors: newOrgErrors, isValid: isNewOrgValid, isSubmitting: isNewOrgSubmitting },
+  } = useForm<NewOrgFormData>({
+    resolver: zodResolver(newOrgSchema),
+    defaultValues: { name: '', slug: '', domain: '' },
     mode: 'onChange',
   })
 
@@ -140,6 +162,21 @@ export function OrganizationPage() {
     )
   }
 
+  const handleCreateOrg = (data: NewOrgFormData) => {
+    const payload: CreateOrgRequest = {
+      name: data.name,
+      slug: data.slug,
+      domain: data.domain || undefined,
+      status: 'active',
+    }
+    createOrg.mutate(payload, {
+      onSuccess: () => {
+        setNewOrgModal(false)
+        resetNewOrg()
+      },
+    })
+  }
+
   const handleInvite = (data: InviteFormData) => {
     inviteMember.mutate(data as InviteMemberRequest, {
       onSuccess: () => {
@@ -169,14 +206,28 @@ export function OrganizationPage() {
     <div>
       <Breadcrumb items={[{ label: 'Organization' }]} />
 
-      <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">
-          <Settings size={18} />
+      <div className="mb-6 flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">
+            <Settings size={18} />
+          </div>
+          <div>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">Organization</h1>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">조직 설정, 접근 범위, 멤버를 통합 관리합니다.</p>
+          </div>
         </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">Organization</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">조직 설정, 접근 범위, 멤버를 통합 관리합니다.</p>
-        </div>
+        <Button
+          variant="primary"
+          size="md"
+          type="button"
+          onClick={() => {
+            resetNewOrg()
+            setNewOrgModal(true)
+          }}
+        >
+          <Plus size={15} />
+          New Organization
+        </Button>
       </div>
 
       <div className="h-[700px]">
@@ -422,6 +473,54 @@ export function OrganizationPage() {
             </select>
           </div>
           {inviteErrors.role && <span className="text-xs text-[#ef4444]">{inviteErrors.role.message}</span>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={newOrgModal}
+        onClose={() => {
+          setNewOrgModal(false)
+          resetNewOrg()
+        }}
+        title="New Organization"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => {
+                setNewOrgModal(false)
+                resetNewOrg()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              loading={createOrg.isPending || isNewOrgSubmitting}
+              onClick={handleNewOrgSubmit(handleCreateOrg)}
+              disabled={!isNewOrgValid || isNewOrgSubmitting}
+            >
+              <Plus size={13} />
+              Create Organization
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Input label="Organization Name" placeholder="예: Acme Corp" {...registerNewOrg('name')} />
+          {newOrgErrors.name && <span className="text-xs text-[#ef4444]">{newOrgErrors.name.message}</span>}
+          <Input
+            label="Slug"
+            placeholder="예: acme-corp"
+            {...registerNewOrg('slug')}
+          />
+          {newOrgErrors.slug && <span className="text-xs text-[#ef4444]">{newOrgErrors.slug.message}</span>}
+          <Input label="Domain (optional)" placeholder="예: acme.com" {...registerNewOrg('domain')} />
+          {newOrgErrors.domain && <span className="text-xs text-[#ef4444]">{newOrgErrors.domain.message}</span>}
         </div>
       </Modal>
 

@@ -255,6 +255,13 @@ export interface UpdateOrgRequest {
   clusterAccessScope?: string[]
 }
 
+export interface CreateOrgRequest {
+  name: string
+  slug: string
+  domain?: string
+  status: OrgStatus
+}
+
 export interface InviteMemberRequest {
   name: string
   email: string
