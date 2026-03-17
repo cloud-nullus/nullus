@@ -84,7 +84,6 @@ export function StackVersionPage() {
       item.name.toLowerCase().includes('gitlab') &&
       (!q || item.name.toLowerCase().includes(q) || item.tools.some((t) => t.name.toLowerCase().includes(q) || t.appVersion.toLowerCase().includes(q)))
   )
-  const githubRows = matrix.filter((item) => item.name.toLowerCase().includes('github'))
 
   const handleValidate = () => {
     setValidationOpen(true)

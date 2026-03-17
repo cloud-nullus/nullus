@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, GitBranch, Pencil, Plus, Search, Trash2, User } from 'lucide-react'
+import { BookOpen, Pencil, Plus, Search, Trash2, User } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import {
   useCicdTemplates,

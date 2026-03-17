@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { BookOpen, Clock, Pencil, Plus, Search, Trash2, User, Wrench } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../api/stack-api'
@@ -69,8 +69,6 @@ const EMPTY_TEMPLATE_FORM: TemplateFormState = {
 
 export function StackTemplatePage() {
   const navigate = useNavigate()
-  const location = useLocation()
-  const fromStackList = (location.state as { from?: string } | null)?.from === 'stack-list'
   const { data: apiTemplates } = useTemplates()
   const createTemplate = useCreateTemplate()
   const updateTemplate = useUpdateTemplate()

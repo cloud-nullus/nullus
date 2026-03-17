@@ -177,6 +177,11 @@ export function AlertRulesPage() {
     updateRule.mutate({ id: rule.id, data: { enabled: !rule.enabled } })
   }
 
+  const extractMetric = (condition: string): string => {
+    const [metric = ''] = condition.trim().split(' ')
+    return metric
+  }
+
   const columns: ColumnDef<AlertRuleWithSeverity, unknown>[] = [
     {
       accessorKey: 'name',
@@ -309,7 +314,7 @@ export function AlertRulesPage() {
       <DataTable
         columns={columns}
         data={(activeTab === 'cicd' ? CICD_MOCK_RULES : rules).filter(
-          (r) => !search || r.name.toLowerCase().includes(search.toLowerCase()) || r.metric.toLowerCase().includes(search.toLowerCase())
+          (r) => !search || r.name.toLowerCase().includes(search.toLowerCase()) || extractMetric(r.condition).toLowerCase().includes(search.toLowerCase())
         )}
         getRowKey={(row) => row.id}
         emptyMessage="알림 규칙이 없습니다."

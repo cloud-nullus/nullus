@@ -8,6 +8,7 @@ import { YamlEditor } from '../../../components/shared/yaml-editor'
 import { useCicdTemplates, useCreatePipeline } from '../api/cicd-api'
 import { useClusters } from '../../admin/api/admin-api'
 import type { CicdTemplate } from '../api/cicd-api'
+import type { AppType } from '../../../types'
 import { cn } from '../../../lib/utils'
 
 type SetupTab = 'cluster' | 'build' | 'deploy' | 'yaml'

@@ -17,12 +17,12 @@ import {
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { usePipelines, useDeployPipeline } from '../api/cicd-api'
-import type { Pipeline, PipelineStatus } from '../api/cicd-api'
+import type { Pipeline } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-const STATUS_STYLES: Record<PipelineStatus, { bg: string; color: string; label: string }> = {
+const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
   success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Success' },
   failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Failed' },

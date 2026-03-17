@@ -12,7 +12,19 @@ export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s' | 'pipeli
 
 export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive'
 
-export type DeploymentState = 'running' | 'success' | 'failed' | 'pending' | 'cancelled'
+export type DeploymentState =
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'pending'
+  | 'cancelled'
+  | 'validating'
+  | 'installing'
+  | 'configuring'
+  | 'health_check'
+  | 'completed'
+  | 'rolling_back'
+  | 'rolled_back'
 
 export type StackStatus = DeploymentState
 

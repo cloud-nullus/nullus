@@ -45,7 +45,7 @@ const selectClassName = 'rounded-lg border border-[var(--color-border-default)] 
 const clusterSchema = z
   .object({
     name: z.string().min(2, 'Name must be at least 2 characters'),
-    type: z.enum(['kubernetes', 'eks', 'gke', 'aks', 'k3s']),
+    type: z.enum(['kubernetes', 'eks', 'gke', 'aks', 'k3s', 'pipeline', 'target']),
     endpoint: z.string().optional().refine((value) => !value || z.url().safeParse(value).success, 'Invalid URL'),
     kubeconfig: z.string(),
     isEdit: z.boolean(),
@@ -448,9 +448,9 @@ export function ClusterPage() {
               <option value="eks">AWS EKS</option>
               <option value="gke">GCP GKE</option>
               <option value="aks">Azure AKS</option>
-               <option value="k3s">K3s</option>
-                <option value="pipeline">Pipeline Cluster</option>
-                <option value="target">Target Cluster</option>
+              <option value="k3s">K3s</option>
+              <option value="pipeline">Pipeline Cluster</option>
+              <option value="target">Target Cluster</option>
             </select>
           </div>
           <Input

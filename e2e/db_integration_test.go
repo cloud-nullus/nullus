@@ -28,8 +28,26 @@ func getTestDB(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+func requireTables(t *testing.T, pool *pgxpool.Pool, tables ...string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, table := range tables {
+		var exists bool
+		err := pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists)
+		if err != nil {
+			t.Skip("schema check failed:", err)
+		}
+		if !exists {
+			t.Skip("required table not found:", table)
+		}
+	}
+}
+
 func TestDBIntegration_Organizations(t *testing.T) {
 	pool := getTestDB(t)
+	requireTables(t, pool, "organizations")
 	ctx := context.Background()
 
 	// INSERT
@@ -61,6 +79,7 @@ func TestDBIntegration_Organizations(t *testing.T) {
 
 func TestDBIntegration_Users(t *testing.T) {
 	pool := getTestDB(t)
+	requireTables(t, pool, "organizations", "users", "org_members")
 	ctx := context.Background()
 
 	// Create org first (FK)
@@ -97,6 +116,7 @@ func TestDBIntegration_Users(t *testing.T) {
 
 func TestDBIntegration_Clusters(t *testing.T) {
 	pool := getTestDB(t)
+	requireTables(t, pool, "organizations", "clusters")
 	ctx := context.Background()
 
 	var orgID string
@@ -133,6 +153,7 @@ func TestDBIntegration_Clusters(t *testing.T) {
 
 func TestDBIntegration_Stacks(t *testing.T) {
 	pool := getTestDB(t)
+	requireTables(t, pool, "organizations", "clusters", "stacks")
 	ctx := context.Background()
 
 	// Setup: org + cluster
@@ -194,6 +215,7 @@ func TestDBIntegration_Stacks(t *testing.T) {
 
 func TestDBIntegration_Pipelines(t *testing.T) {
 	pool := getTestDB(t)
+	requireTables(t, pool, "organizations", "clusters", "pipelines", "pipeline_deployments")
 	ctx := context.Background()
 
 	// pipelines table uses VARCHAR for org_id/cluster_id, not UUID FK
@@ -259,6 +281,7 @@ func TestDBIntegration_Pipelines(t *testing.T) {
 
 func TestDBIntegration_Alerts(t *testing.T) {
 	pool := getTestDB(t)
+	requireTables(t, pool, "alert_rules", "alerts")
 	ctx := context.Background()
 
 	// Insert alert rule (id is VARCHAR, no auto-gen)

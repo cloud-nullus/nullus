@@ -55,11 +55,11 @@ const adminApiCalls = {
     api.get<{ items: Member[]; total: number }>(`/admin/organizations/${orgId}/members`).then((r) => ({
       ...r.data,
       items: (r.data.items ?? []).map((m) => {
-        const raw = m as Member & { is_active?: boolean }
+        const raw = m as Member & { is_active?: boolean; created_at?: string }
         return {
           ...m,
           status: m.status ?? (raw.is_active ? 'active' : 'pending'),
-          joinedAt: m.joinedAt ?? (raw as Record<string, unknown>).created_at as string ?? '',
+          joinedAt: m.joinedAt ?? raw.created_at ?? '',
         }
       }),
     })),
