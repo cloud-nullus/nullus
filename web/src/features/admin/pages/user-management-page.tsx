@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Mail, Plus, Server, Shield, Users } from 'lucide-react'
+import { GitBranch, Mail, Plus, Search, Server, Shield, Users } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization } from '../api/admin-api'
 import type { MemberRole, MemberStatus } from '../api/admin-api'
@@ -470,12 +470,18 @@ export function UserManagementPage() {
                 )
               })}
             </div>
-            <Input
-              placeholder="이름/이메일 검색..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="max-w-[220px]"
-            />
+            <div className="relative">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <input
+                placeholder="이름/이메일 검색..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              />
+            </div>
           </div>
 
           {isLoading ? (

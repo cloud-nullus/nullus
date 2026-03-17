@@ -1,4 +1,4 @@
-import { Layers, ShieldCheck } from 'lucide-react'
+import { Layers, Search, ShieldCheck } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
@@ -70,6 +70,7 @@ const toolVersion = (matrix: CompatibilityMatrix, keyword: string): string => {
 const rowClassName = 'border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm'
 
 export function StackVersionPage() {
+  const [search, setSearch] = useState('')
   const [validationOpen, setValidationOpen] = useState(false)
   const [validating, setValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<CompatibilityValidationResult | null>(null)
@@ -77,7 +78,12 @@ export function StackVersionPage() {
   const matrix = Array.isArray(matrixData) && matrixData.length > 0 ? matrixData : MOCK_COMPATIBILITY_MATRIX
   const validateMutation = useValidateCompatibility('current')
 
-  const gitlabRows = matrix.filter((item) => item.name.toLowerCase().includes('gitlab'))
+  const q = search.trim().toLowerCase()
+  const gitlabRows = matrix.filter(
+    (item) =>
+      item.name.toLowerCase().includes('gitlab') &&
+      (!q || item.name.toLowerCase().includes(q) || item.tools.some((t) => t.name.toLowerCase().includes(q) || t.appVersion.toLowerCase().includes(q)))
+  )
   const githubRows = matrix.filter((item) => item.name.toLowerCase().includes('github'))
 
   const handleValidate = () => {
@@ -117,8 +123,17 @@ export function StackVersionPage() {
       </div>
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-        <div className="border-b border-[var(--color-border-default)] px-5 py-4 text-sm font-bold text-[var(--color-text-primary)]">
-          Verified Combinations
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3">
+          <span className="text-sm font-bold text-[var(--color-text-primary)]">Verified Combinations</span>
+          <div className="relative">
+            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search stacks or tools..."
+              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            />
+          </div>
         </div>
         <table className="w-full border-collapse">
           <thead>

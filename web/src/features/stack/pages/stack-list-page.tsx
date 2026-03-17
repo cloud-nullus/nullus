@@ -1459,16 +1459,16 @@ export function StackListPage() {
 			data={filtered}
 			toolbar={
 				<>
-					<div className="relative max-w-[320px] flex-[1_1_240px]">
+					<div className="relative">
 						<Search
 							size={13}
 							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
 						/>
-						<Input
+						<input
 							placeholder="스택 검색..."
 							value={search}
 							onChange={(e) => setSearch(e.target.value)}
-							className="pl-[30px]"
+							className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
 						/>
 					</div>
 					<select
