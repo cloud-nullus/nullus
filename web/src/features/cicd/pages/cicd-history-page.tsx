@@ -1,11 +1,17 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, History, Search } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import type { Resolver } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { ChevronDown, ChevronUp, History, RotateCcw, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useDeployments } from '../api/cicd-api'
+import { useDeployments, useRollbackDeployment } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
+import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
+import { useAppToast } from '../../../hooks/use-toast'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
@@ -27,14 +33,39 @@ const MOCK_DEPLOYMENTS: Deployment[] = [
   { id: 'd4', pipelineId: 'batch-runner', pipelineName: 'batch-runner', version: 'v1.3.1', status: 'success' as const, triggeredBy: 'choi.devops', startedAt: '2026-03-03T10:00:00Z', completedAt: '2026-03-03T10:08:00Z' },
 ]
 
+const rollbackFormSchema = z.object({
+  confirmText: z
+    .string()
+    .trim()
+    .refine((value) => value === 'ROLLBACK', '확인을 위해 ROLLBACK을 입력하세요.'),
+})
+
+interface RollbackFormValues {
+  confirmText: string
+}
+
 export function CicdHistoryPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [expandedDeploymentId, setExpandedDeploymentId] = useState<string | null>(null)
+  const [rollbackTarget, setRollbackTarget] = useState<Deployment | null>(null)
   const [search, setSearch] = useState('')
+  const toast = useAppToast()
 
   const { data: apiData } = useDeployments({ status: statusFilter as PipelineStatus || undefined })
+  const rollbackMutation = useRollbackDeployment()
   const deployments = apiData?.items ?? MOCK_DEPLOYMENTS
+  const {
+    register,
+    reset,
+    watch,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<RollbackFormValues>({
+    resolver: zodResolver(rollbackFormSchema) as Resolver<RollbackFormValues>,
+    defaultValues: { confirmText: '' },
+    mode: 'onChange',
+  })
 
   const filtered = deployments.filter((d) => {
     const matchesStatus = !statusFilter || d.status === statusFilter
@@ -47,6 +78,36 @@ export function CicdHistoryPage() {
     'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
   const expandedDeployment = filtered.find((d) => d.id === expandedDeploymentId) ?? null
+
+  const getPreviousVersion = (target: Deployment) => {
+    const currentIndex = deployments.findIndex((item) => item.id === target.id)
+    if (currentIndex < 0) return null
+    return deployments.slice(currentIndex + 1).find((item) => item.pipelineId === target.pipelineId) ?? null
+  }
+
+  const closeRollbackModal = () => {
+    reset({ confirmText: '' })
+    setRollbackTarget(null)
+  }
+
+  const previousVersion = rollbackTarget ? getPreviousVersion(rollbackTarget) : null
+  const canRollbackConfirm = watch('confirmText').trim() === 'ROLLBACK'
+
+  const submitRollback = handleSubmit(() => {
+    if (!rollbackTarget) return
+    rollbackMutation.mutate(
+      { pipelineId: rollbackTarget.pipelineId, deploymentId: rollbackTarget.id },
+      {
+        onSuccess: () => {
+          toast.success(`배포를 ${rollbackTarget.version} 기준으로 롤백했습니다.`)
+          closeRollbackModal()
+        },
+        onError: () => {
+          toast.error('롤백에 실패했습니다. 잠시 후 다시 시도해주세요.')
+        },
+      }
+    )
+  })
 
   const columns: ColumnDef<Deployment, unknown>[] = [
     {
@@ -108,6 +169,31 @@ export function CicdHistoryPage() {
       accessorKey: 'completedAt',
       header: '완료 시간',
       cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.completedAt)}</span>,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const canRollback = row.original.status === 'success' || row.original.status === 'failed'
+        if (!canRollback) return null
+        return (
+          <Button
+            variant="danger"
+            size="sm"
+            type="button"
+            data-testid="rollback-btn"
+            onClick={(event) => {
+              event.stopPropagation()
+              reset({ confirmText: '' })
+              setRollbackTarget(row.original)
+            }}
+          >
+            <RotateCcw size={13} />
+            Rollback
+          </Button>
+        )
+      },
     },
   ]
 
@@ -191,6 +277,66 @@ export function CicdHistoryPage() {
           </div>
         </div>
       )}
+
+      <Modal
+        open={!!rollbackTarget}
+        onClose={closeRollbackModal}
+        title="배포 롤백 확인"
+        footer={
+          <>
+            <Button variant="outline" size="md" onClick={closeRollbackModal} disabled={rollbackMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              type="button"
+              data-testid="rollback-confirm"
+              onClick={submitRollback}
+              disabled={!canRollbackConfirm || rollbackMutation.isPending}
+              loading={rollbackMutation.isPending}
+            >
+              Rollback
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
+            선택한 배포로 롤백하면 현재 버전이 이전 상태로 교체됩니다. 이 작업은 되돌릴 수 없습니다.
+          </p>
+
+          <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] p-3 text-sm">
+            <div className="mb-1.5 flex justify-between gap-3">
+              <span className="text-[var(--color-text-secondary)]">Current Version</span>
+              <span className="font-mono text-[var(--color-text-primary)]">{rollbackTarget?.version ?? '-'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-[var(--color-text-secondary)]">Previous Version</span>
+              <span className="font-mono text-[var(--color-text-primary)]">{previousVersion?.version ?? '-'}</span>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
+              확인하려면{' '}
+              <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
+                ROLLBACK
+              </code>
+              을(를) 입력하세요.
+            </p>
+            <input
+              type="text"
+              placeholder="ROLLBACK"
+              className="box-border w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none"
+              {...register('confirmText')}
+            />
+            {errors.confirmText && (
+              <p className="mb-0 mt-1.5 text-xs text-[#f87171]">{errors.confirmText.message}</p>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

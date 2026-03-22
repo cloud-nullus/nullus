@@ -715,74 +715,144 @@ export function StackInstallPage() {
                 <p className="mb-4 mt-0 text-[13px] text-[var(--color-text-secondary)]">
                   팀 규모와 사용 패턴을 입력하면 필요한 리소스를 계산합니다.
                 </p>
-                <div className="mb-4 grid grid-cols-2 gap-[14px]">
-                  <Controller
-                    control={control}
-                    name="developerCount"
-                    render={({ field }) => (
-                      <>
-                        <Input
-                          label="개발자 수"
-                          type="number"
-                          min={1}
-                          value={field.value}
-                          onChange={(e) => {
-                            const value = Number(e.target.value)
-                            field.onChange(value)
-                            updateResources({ developerCount: value })
-                          }}
-                          onBlur={field.onBlur}
-                        />
-                        {errors.developerCount && <span className="text-xs text-[#ef4444]">{errors.developerCount.message}</span>}
-                      </>
-                    )}
-                  />
-                  <Controller
-                    control={control}
-                    name="concurrentRunners"
-                    render={({ field }) => (
-                      <>
-                        <Input
-                          label="동시 러너 수"
-                          type="number"
-                          min={1}
-                          value={field.value}
-                          onChange={(e) => {
-                            const value = Number(e.target.value)
-                            field.onChange(value)
-                            updateResources({ concurrentRunners: value })
-                          }}
-                          onBlur={field.onBlur}
-                        />
-                        {errors.concurrentRunners && <span className="text-xs text-[#ef4444]">{errors.concurrentRunners.message}</span>}
-                      </>
-                    )}
-                  />
-                  <Input
-                    label="일일 커밋 수"
-                    type="number"
-                    min={1}
-                    value={draft.resources.commitsPerDay}
-                    onChange={(e) => updateResources({ commitsPerDay: Number(e.target.value) })}
-                  />
+                
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label htmlFor="resource-mode-auto" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                      리소스 모드
+                    </label>
+                    <div className="flex gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-1">
+                      {(['auto', 'manual'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          id={mode === 'auto' ? 'resource-mode-auto' : 'resource-mode-manual'}
+                          type="button"
+                          onClick={() => updateResources({ mode })}
+                          className={cn(
+                            'px-3 py-1.5 text-xs font-medium rounded transition-all duration-150',
+                            draft.resources.mode === mode
+                              ? 'bg-[#6366f1] text-white'
+                              : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                          )}
+                        >
+                          {mode === 'auto' ? 'Auto' : 'Manual'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
                   <div className="flex flex-col gap-1">
-                    <label htmlFor="build-frequency" className="text-xs font-medium text-[var(--color-text-secondary)]">
-                      빌드 빈도
+                    <label htmlFor="currency-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                      통화
                     </label>
                     <select
-                      id="build-frequency"
-                      value={draft.resources.buildFrequency}
+                      id="currency-select"
+                      value={draft.resources.currency}
                       onChange={(e) =>
-                        updateResources({ buildFrequency: e.target.value as 'low' | 'medium' | 'high' })
+                        updateResources({ currency: e.target.value as 'USD' | 'KRW' | 'CNY' })
                       }
                       className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                     >
-                      <option value="low">낮음 (Low)</option>
-                      <option value="medium">보통 (Medium)</option>
-                      <option value="high">높음 (High)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="KRW">KRW (₩)</option>
+                      <option value="CNY">CNY (¥)</option>
                     </select>
                   </div>
                 </div>
+
+                {draft.resources.mode === 'auto' && (
+                  <div className="mb-4 grid grid-cols-2 gap-[14px]">
+                    <Controller
+                      control={control}
+                      name="developerCount"
+                      render={({ field }) => (
+                        <>
+                          <Input
+                            label="개발자 수"
+                            type="number"
+                            min={1}
+                            value={field.value}
+                            onChange={(e) => {
+                              const value = Number(e.target.value)
+                              field.onChange(value)
+                              updateResources({ developerCount: value })
+                            }}
+                            onBlur={field.onBlur}
+                          />
+                          {errors.developerCount && <span className="text-xs text-[#ef4444]">{errors.developerCount.message}</span>}
+                        </>
+                      )}
+                    />
+                    <Controller
+                      control={control}
+                      name="concurrentRunners"
+                      render={({ field }) => (
+                        <>
+                          <Input
+                            label="동시 러너 수"
+                            type="number"
+                            min={1}
+                            value={field.value}
+                            onChange={(e) => {
+                              const value = Number(e.target.value)
+                              field.onChange(value)
+                              updateResources({ concurrentRunners: value })
+                            }}
+                            onBlur={field.onBlur}
+                          />
+                          {errors.concurrentRunners && <span className="text-xs text-[#ef4444]">{errors.concurrentRunners.message}</span>}
+                        </>
+                      )}
+                    />
+                    <Input
+                      label="일일 커밋 수"
+                      type="number"
+                      min={1}
+                      value={draft.resources.commitsPerDay}
+                      onChange={(e) => updateResources({ commitsPerDay: Number(e.target.value) })}
+                    />
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="build-frequency" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                        빌드 빈도
+                      </label>
+                      <select
+                        id="build-frequency"
+                        value={draft.resources.buildFrequency}
+                        onChange={(e) =>
+                          updateResources({ buildFrequency: e.target.value as 'low' | 'medium' | 'high' })
+                        }
+                        className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                      >
+                        <option value="low">낮음 (Low)</option>
+                        <option value="medium">보통 (Medium)</option>
+                        <option value="high">높음 (High)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {draft.resources.mode === 'manual' && (
+                  <div className="mb-4 grid grid-cols-2 gap-[14px]">
+                    <Input
+                      label="CPU 요청"
+                      placeholder="예: 4"
+                      value={draft.resources.cpuRequest || ''}
+                      onChange={(e) => updateResources({ cpuRequest: e.target.value })}
+                    />
+                    <Input
+                      label="메모리 요청"
+                      placeholder="예: 8Gi"
+                      value={draft.resources.memoryRequest || ''}
+                      onChange={(e) => updateResources({ memoryRequest: e.target.value })}
+                    />
+                    <Input
+                      label="스토리지 요청"
+                      placeholder="예: 100Gi"
+                      value={draft.resources.storageRequest || ''}
+                      onChange={(e) => updateResources({ storageRequest: e.target.value })}
+                    />
+                  </div>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"

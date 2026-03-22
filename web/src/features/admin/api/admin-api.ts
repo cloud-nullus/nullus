@@ -29,6 +29,13 @@ export type {
   UpdateOrgRequest,
 } from '../../../types'
 
+export interface InviteLink {
+  token: string
+  role: MemberRole
+  expiresAt: string
+  status: 'active' | 'expired'
+}
+
 // --- Query keys ---
 
 const queryKeys = {
@@ -37,6 +44,7 @@ const queryKeys = {
   clusters: () => ['admin', 'clusters'] as const,
   cluster: (id: string) => ['admin', 'clusters', id] as const,
   knownIssues: () => ['admin', 'known-issues'] as const,
+  inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
 }
 
 // --- API functions ---
@@ -112,6 +120,15 @@ const adminApiCalls = {
 
   getClusterNamespaces: (clusterId: string) =>
     api.get<{ items: { name: string }[] }>(`/admin/clusters/${clusterId}/namespaces`).then((r) => r.data?.items ?? []),
+
+  createInviteLink: (orgId: string, data: { role: MemberRole; expiresInDays: number }) =>
+    api.post<{ token: string; url: string; role: MemberRole; expiresAt: string }>(`/admin/organizations/${orgId}/invites`, data).then((r) => r.data),
+
+  getInviteLinks: (orgId: string) =>
+    api.get<{ items: InviteLink[] }>(`/admin/organizations/${orgId}/invites`).then((r) => r.data),
+
+  revokeInviteLink: (orgId: string, token: string) =>
+    api.delete(`/admin/organizations/${orgId}/invites/${token}`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -264,5 +281,34 @@ export function useKnownIssues() {
   return useQuery({
     queryKey: queryKeys.knownIssues(),
     queryFn: adminApiCalls.getKnownIssues,
+  })
+}
+
+export function useCreateInviteLink(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { role: MemberRole; expiresInDays: number }) =>
+      adminApiCalls.createInviteLink(orgId, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.inviteLinks(orgId) })
+    },
+  })
+}
+
+export function useInviteLinks(orgId: string) {
+  return useQuery({
+    queryKey: queryKeys.inviteLinks(orgId),
+    queryFn: () => adminApiCalls.getInviteLinks(orgId),
+    enabled: !!orgId,
+  })
+}
+
+export function useRevokeInviteLink(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (token: string) => adminApiCalls.revokeInviteLink(orgId, token),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.inviteLinks(orgId) })
+    },
   })
 }
