@@ -48,6 +48,10 @@ func (r *fakeStackRepo) GetByID(_ context.Context, id string) (*domain.Stack, er
 	return &cp, nil
 }
 
+func (r *fakeStackRepo) FindByID(ctx context.Context, id string) (*domain.Stack, error) {
+	return r.GetByID(ctx, id)
+}
+
 func (r *fakeStackRepo) List(_ context.Context, _ string) ([]*domain.Stack, error) {
 	return nil, nil
 }
@@ -58,6 +62,10 @@ func (r *fakeStackRepo) Update(_ context.Context, s *domain.Stack) error {
 	cp := *s
 	r.stacks[s.ID] = &cp
 	return nil
+}
+
+func (r *fakeStackRepo) UpdateTools(ctx context.Context, s *domain.Stack) error {
+	return r.Update(ctx, s)
 }
 
 func (r *fakeStackRepo) Delete(_ context.Context, id string) error {

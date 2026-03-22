@@ -2,10 +2,50 @@ package domain
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestStack_AddTools_AppendsNewToolsAndUpdatesTimestamp(t *testing.T) {
+	before := time.Now().Add(-1 * time.Minute)
+	s := &Stack{
+		ID: "s1",
+		Tools: []ToolConfig{
+			{Category: "artifacts", Tool: "harbor", Version: "2.9.0"},
+		},
+		UpdatedAt: before,
+	}
+
+	err := s.AddTools([]ToolConfig{
+		{Category: "pipeline", Tool: "argo-cd", Version: "2.11.0"},
+		{Category: "monitoring", Tool: "prometheus", Version: "2.53.0"},
+	})
+	require.NoError(t, err)
+	assert.Len(t, s.Tools, 3)
+	assert.Equal(t, "harbor", s.Tools[0].Tool)
+	assert.Equal(t, "argo-cd", s.Tools[1].Tool)
+	assert.Equal(t, "prometheus", s.Tools[2].Tool)
+	assert.True(t, s.UpdatedAt.After(before))
+}
+
+func TestStack_AddTools_DuplicateReturnsErrorAndNoMutation(t *testing.T) {
+	before := time.Now().Add(-1 * time.Minute)
+	s := &Stack{
+		ID: "s1",
+		Tools: []ToolConfig{
+			{Category: "pipeline", Tool: "argo-cd", Version: "2.10.0"},
+		},
+		UpdatedAt: before,
+	}
+
+	err := s.AddTools([]ToolConfig{{Category: "pipeline", Tool: "argo-cd", Version: "2.11.0"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+	assert.Len(t, s.Tools, 1)
+	assert.Equal(t, before, s.UpdatedAt)
+}
 
 func TestStack_TransitionTo_ValidSequence(t *testing.T) {
 	s := &Stack{ID: "s1", State: StatePending}

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type { Role, User } from '../types'
+import { getProviderConfig } from '../lib/oidc-providers'
+import type { OIDCUser } from '../lib/oidc-providers'
 
 const SESSION_TOKEN_KEY = 'nullus-token'
 const SESSION_USER_KEY = 'nullus-user'
@@ -25,6 +27,14 @@ interface AuthState {
 }
 
 const storedUser = getStoredUser()
+
+export function extractRoleFromOidc(user: OIDCUser): Role {
+  const config = getProviderConfig()
+  const roles = config.extractRoles(user)
+  if (roles.includes('admin')) return 'admin'
+  if (roles.includes('devops')) return 'devops'
+  return 'developer'
+}
 
 export const useAuthStore = create<AuthState>()((set) => ({
   token: getStoredToken(),

@@ -47,6 +47,10 @@ func (r *MemoryStackRepository) GetByID(_ context.Context, id string) (*domain.S
 	return &cp, nil
 }
 
+func (r *MemoryStackRepository) FindByID(ctx context.Context, id string) (*domain.Stack, error) {
+	return r.GetByID(ctx, id)
+}
+
 // List returns all stacks belonging to the given organization.
 func (r *MemoryStackRepository) List(_ context.Context, orgID string) ([]*domain.Stack, error) {
 	r.mu.RLock()
@@ -71,6 +75,10 @@ func (r *MemoryStackRepository) Update(_ context.Context, stack *domain.Stack) e
 	cp := *stack
 	r.stacks[stack.ID] = &cp
 	return nil
+}
+
+func (r *MemoryStackRepository) UpdateTools(ctx context.Context, stack *domain.Stack) error {
+	return r.Update(ctx, stack)
 }
 
 // Delete removes a stack by ID.

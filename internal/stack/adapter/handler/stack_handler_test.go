@@ -26,7 +26,8 @@ func newStackEcho() *echo.Echo {
 	createStackUC := usecase.NewCreateStack(memStackRepo, memTemplateRepo)
 	listStacksUC := usecase.NewListStacks(memStackRepo)
 	deleteStackUC := usecase.NewDeleteStack(memStackRepo, nil, nil)
-	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, memStackRepo, nil)
+	addToolsUC := usecase.NewAddToolsUseCase(memStackRepo)
+	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, nil)
 
 	v1 := e.Group("/api/v1")
 	stacks := v1.Group("/stacks")

@@ -102,13 +102,14 @@ func main() {
 			return stackhelm.NewHelmInstaller(kubeconfig)
 		},
 	)
+	addToolsUC := stackuc.NewAddToolsUseCase(pgStackRepo)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, pgStackRepo, auditLogger)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
