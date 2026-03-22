@@ -381,7 +381,7 @@ export function DeveloperDeployPage() {
                       const cl = clusters.find((c) => c.id === e.target.value)
                       if (cl?.namespaces[0]) setField('namespace', cl.namespaces[0])
                     }}
-                    className={selectStyleClass}
+                    className="w-full"
                   >
                     {clusters.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
@@ -395,7 +395,7 @@ export function DeveloperDeployPage() {
                     id="deploy-namespace"
                     value={form.namespace}
                     onChange={(e) => setField('namespace', e.target.value)}
-                    className={selectStyleClass}
+                    className="w-full"
                   >
                     {selectedCluster.namespaces.map((ns) => (
                       <option key={ns} value={ns}>{ns}</option>
