@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useAuth } from 'react-oidc-context'
 import { useTranslation } from 'react-i18next'
 import {
   Box,
@@ -21,7 +22,8 @@ import {
   ChevronRight,
   AlertTriangle,
 } from 'lucide-react'
-import { useAuthStore } from '../../stores/auth-store'
+import { isOidcMode } from '../../lib/oidc-config'
+import { extractRoleFromOidc, useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
 import type { Role } from '../../types'
 import { cn } from '../../lib/utils'
@@ -92,10 +94,39 @@ const navGroups: NavGroup[] = [
 ]
 
 export function Sidebar() {
+  if (isOidcMode) {
+    return <OidcSidebar />
+  }
+
+  return <MockSidebar />
+}
+
+function MockSidebar() {
   const navigate = useNavigate()
-  const { t } = useTranslation()
   const role = useAuthStore((state) => state.role)
   const logout = useAuthStore((state) => state.logout)
+
+  return (
+    <SidebarShell
+      role={role}
+      onLogout={() => {
+        logout()
+        navigate('/login')
+      }}
+    />
+  )
+}
+
+function OidcSidebar() {
+  const auth = useAuth()
+  const role = extractRoleFromOidc(auth.user)
+
+  return <SidebarShell role={role} onLogout={() => void auth.signoutRedirect()} />
+}
+
+function SidebarShell({ role, onLogout }: { role: Role; onLogout: () => void }) {
+  const navigate = useNavigate()
+  const { t } = useTranslation()
   const { collapsed, toggleSidebar } = useSidebarStore()
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     devsecops: true,
@@ -204,10 +235,7 @@ export function Sidebar() {
       <div className="border-t border-[var(--color-sidebar-border)] py-2">
         <button
           type="button"
-          onClick={() => {
-            logout()
-            navigate('/login')
-          }}
+          onClick={onLogout}
           className={cn(
             'flex w-full cursor-pointer items-center gap-2.5 border-none bg-none text-sm text-[var(--color-text-secondary)] transition-all duration-150 ease-in-out',
             collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2.5'

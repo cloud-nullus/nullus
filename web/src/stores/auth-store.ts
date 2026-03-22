@@ -4,6 +4,23 @@ import type { Role, User } from '../types'
 const SESSION_TOKEN_KEY = 'nullus-token'
 const SESSION_USER_KEY = 'nullus-user'
 
+export const ROLE_HOME: Record<Role, string> = {
+  admin: '/admin/organization',
+  devops: '/stack/templates',
+  developer: '/cicd/developer-deploy',
+}
+
+export function getHomePathForRole(role: Role): string {
+  return ROLE_HOME[role] ?? '/'
+}
+
+export function extractRoleFromOidc(user: any): Role {
+  const roles = user?.profile?.realm_access?.roles || []
+  if (roles.includes('admin')) return 'admin'
+  if (roles.includes('devops')) return 'devops'
+  return 'developer'
+}
+
 function getStoredToken(): string | null {
   return sessionStorage.getItem(SESSION_TOKEN_KEY)
 }
