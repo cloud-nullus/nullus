@@ -20,7 +20,7 @@ test.describe('Navigation E2E', () => {
   test('Stack Templates 페이지 이동 (/stack/templates)', async ({ page }) => {
     await loginAs(page, 'devops@nullus.dev', 'devops123', '/stack/templates')
     await page.goto('/stack/templates')
-    await expect(page.locator('h1')).toContainText('Golden Path Templates', { timeout: 10000 })
+    await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
   })
 
   test('Stack Install 페이지 이동 (/stack/install)', async ({ page }) => {

@@ -18,7 +18,7 @@ test.describe('UAT: DevOps Engineer 미정', () => {
 
   test('devops@nullus.dev 이메일 입력 + Sign In → Stack Templates로 리다이렉트', async ({ page }) => {
     await loginAsDevOps(page)
-    await expect(page.locator('h1')).toContainText('Golden Path Templates', { timeout: 10000 })
+    await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
   })
 
   test('"Get Started" CTA 버튼 표시 확인', async ({ page }) => {
@@ -38,9 +38,10 @@ test.describe('UAT: DevOps Engineer 미정', () => {
 
   test('Stack Templates 이동 → 3개 템플릿 카드 확인', async ({ page }) => {
     await loginAsDevOps(page)
-    await expect(page.locator('h1')).toContainText('Golden Path Templates', { timeout: 10000 })
+    await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
 
-    await expect(page.getByRole('button', { name: 'Use Template', exact: true })).toHaveCount(3)
+    const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
+    await expect(cards).toHaveCount(3)
   })
 
   test('Stack Install 이동 → 5개 탭 표시 확인', async ({ page }) => {
@@ -49,8 +50,11 @@ test.describe('UAT: DevOps Engineer 미정', () => {
     await page.goto('/stack/install')
     await expect(page.locator('h1')).toContainText('Stack Install', { timeout: 10000 })
 
-    for (const tab of ['Artifacts', 'Pipeline', 'Monitoring', 'Logging', 'Resources']) {
-      await expect(page.locator(`button:has-text("${tab}")`)).toBeVisible()
+    for (const tab of ['Artifacts', 'CI/CD', 'Observability', 'Resources', 'YAML View']) {
+      const tabBtn = page.locator('main').getByRole('tab', { name: tab }).or(
+        page.locator('main button').filter({ hasText: new RegExp(`^${tab}$`) })
+      ).first()
+      await expect(tabBtn).toBeVisible()
     }
   })
 

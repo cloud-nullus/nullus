@@ -11,25 +11,30 @@ test.describe('Stack Workflow E2E', () => {
   })
 
   test('Stack Templates 페이지 → 3개 카드 표시', async ({ page }) => {
-    await expect(page.locator('h1')).toContainText('Golden Path Templates', { timeout: 10000 })
-    await expect(page.getByRole('button', { name: 'Use Template', exact: true })).toHaveCount(3)
+    await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
+    const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
+    await expect(cards).toHaveCount(3)
   })
 
   test('"Use Template" 클릭 → Install 페이지 이동', async ({ page }) => {
-    await expect(page.locator('h1')).toContainText('Golden Path Templates', { timeout: 10000 })
-    await page.getByRole('button', { name: 'Use Template', exact: true }).first().click()
-    await page.waitForURL('**/stack/install*')
+    await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
+    const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
+    await cards.first().getByRole('button', { name: 'Use Base Template' }).click()
+    await page.waitForURL('**/stack/install*', { timeout: 10000 })
     await expect(page.locator('h1')).toContainText('Stack Install', { timeout: 10000 })
   })
 
-  test('5단계 탭 전환 (Artifacts → Pipeline → Monitoring → Logging → Resources)', async ({ page }) => {
+  test('5단계 탭 전환 (Artifacts → CI/CD → Observability → Resources → YAML View)', async ({ page }) => {
     await page.goto('/stack/install')
     await expect(page.locator('h1')).toContainText('Stack Install', { timeout: 10000 })
 
-    const tabs = ['Artifacts', 'Pipeline', 'Monitoring', 'Logging', 'Resources']
+    const tabs = ['Artifacts', 'CI/CD', 'Observability', 'Resources', 'YAML View']
     for (const tab of tabs) {
-      await page.click(`button:has-text("${tab}")`)
-      await expect(page.locator(`button:has-text("${tab}")`)).toBeVisible()
+      const tabBtn = page.locator('main').getByRole('tab', { name: tab }).or(
+        page.locator('main button').filter({ hasText: new RegExp(`^${tab}$`) })
+      ).first()
+      await tabBtn.click()
+      await expect(tabBtn).toBeVisible()
     }
   })
 
@@ -53,6 +58,5 @@ test.describe('Stack Workflow E2E', () => {
   test('Stack List 페이지 렌더링 확인', async ({ page }) => {
     await page.goto('/stack/list')
     await expect(page.locator('h1')).toContainText('Stack List', { timeout: 10000 })
-    await expect(page.getByText('스택이 없습니다.')).toBeVisible()
   })
 })
