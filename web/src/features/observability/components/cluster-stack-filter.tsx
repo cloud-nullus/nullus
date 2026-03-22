@@ -34,8 +34,10 @@ export const useClusterStackFilterState = (selectedClusterId: string, selectedSt
   const clusters = clustersData?.items ?? []
   const stacks = stacksData?.items ?? []
 
+  // When a cluster is selected show only its stacks; otherwise show all stacks
+  // so users can pick a stack independently without selecting a cluster first.
   const filteredStacks = useMemo(
-    () => (selectedClusterId ? stacks.filter((stack) => stack.clusterId === selectedClusterId) : []),
+    () => (selectedClusterId ? stacks.filter((stack) => stack.clusterId === selectedClusterId) : stacks),
     [selectedClusterId, stacks]
   )
 
@@ -107,9 +109,8 @@ export const ClusterStackFilter = ({
           value={selectedStackId}
           onChange={(event) => onStackChange(event.target.value)}
           className="min-w-[200px]"
-          disabled={!selectedClusterId}
         >
-          <option value="">{selectedClusterId ? '— Select Stack —' : '— Select Cluster First —'}</option>
+          <option value="">— Select Stack —</option>
           {filteredStacks.map((stack) => (
             <option key={stack.id} value={stack.id}>{stack.name}</option>
           ))}

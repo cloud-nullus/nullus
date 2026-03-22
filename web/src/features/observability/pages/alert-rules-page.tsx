@@ -56,13 +56,6 @@ const ALERT_RULE_DEFAULTS: AlertRuleForm = {
   enabled: true,
 }
 
-type ObsTab = 'stack' | 'cicd'
-
-const CICD_MOCK_RULES: AlertRuleWithSeverity[] = [
-  { id: 'cicd-1', name: 'Build Failure Rate', severity: 'critical', condition: 'build_failure_rate > 10%', threshold: '10', channel: 'slack', enabled: true, createdAt: '2026-01-15T10:00:00Z' },
-  { id: 'cicd-2', name: 'Deployment Rollback', severity: 'warning', condition: 'deployment_rollback > 2', threshold: '2', channel: 'email', enabled: true, createdAt: '2026-01-20T10:00:00Z' },
-  { id: 'cicd-3', name: 'Pipeline Duration', severity: 'info', condition: 'pipeline_duration > 300s', threshold: '300', channel: 'slack', enabled: false, createdAt: '2026-02-01T10:00:00Z' },
-]
 
 export function AlertRulesPage() {
   const [selectedClusterId, setSelectedClusterId] = useState('')

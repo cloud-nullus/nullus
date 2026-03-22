@@ -11,7 +11,6 @@ import type { Deployment, PipelineStatus } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Modal } from '../../../components/ui/modal'
-import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 import { useAppToast } from '../../../hooks/use-toast'
 

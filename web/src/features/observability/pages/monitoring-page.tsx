@@ -10,11 +10,8 @@ import {
   Activity, Clock, Package, TrendingUp, TrendingDown, Layers,
 } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-import { NativeSelect } from '../../../components/ui/native-select'
 import { useDashboard } from '../api/observability-api'
 import type { ToolHealthStatus } from '../api/observability-api'
-import { useStacks } from '../../stack/api/stack-api'
-import { useClusters } from '../../admin/api/admin-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
@@ -44,12 +41,6 @@ const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string
   warning: { icon: <AlertCircle size={13} />, cls: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Warning' },
   error: { icon: <XCircle size={13} />, cls: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Error' },
 }
-
-const statusDot = (s: string) => (
-  <span className={cn('h-2 w-2 rounded-full shrink-0 inline-block',
-    s === 'running' || s === 'connected' || s === 'completed' || s === 'success' ? 'bg-emerald-400' :
-      s === 'warning' || s === 'pending' ? 'bg-amber-400' : 'bg-red-400')} />
-)
 
 // ─── Time series generator ────────────────────────────────────────────────────
 function makeSeries(range: TimeRange) {
@@ -1076,12 +1067,9 @@ export function MonitoringPage() {
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [selectedStackId, setSelectedStackId] = useState('')
   const [activeView, setActiveView] = useState<ViewType | null>(null)
-  const { data: clustersData } = useClusters()
-  const { data: stacksData } = useStacks()
-  const clusters = clustersData?.items ?? []
-  const stacks = stacksData?.items ?? []
-  const hasContext = selectedClusterId !== '' || selectedStackId !== ''
 
+  const { clusters, filteredStacks, selectedCluster, selectedStack, hasContext } =
+    useClusterStackFilterState(selectedClusterId, selectedStackId)
 
   // Auto-select initial view
   function handleClusterChange(id: string) {
@@ -1097,9 +1085,6 @@ export function MonitoringPage() {
     setSelectedStackId(id)
     if (id && !activeView) setActiveView('stack')
   }
-
-  const selectedCluster = clusters.find((c) => c.id === selectedClusterId)
-  const selectedStack = stacks.find((s) => s.id === selectedStackId)
 
   const views: { id: ViewType; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
     { id: 'cluster', label: 'Cluster', icon: <Server size={15} />, disabled: !selectedClusterId },
@@ -1122,56 +1107,6 @@ export function MonitoringPage() {
         </div>
       </div>
 
-      {/* ── Context selector ── */}
-      <div className="mb-5 flex flex-wrap items-end gap-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
-        <div className="flex items-end gap-3">
-          <NativeSelect
-            label="Cluster"
-            value={selectedClusterId}
-            onChange={(e) => handleClusterChange(e.target.value)}
-            className="min-w-[200px]"
-          >
-            <option value="">— Select Cluster —</option>
-            {clusters.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </NativeSelect>
-          {selectedCluster && (
-            <div className="mb-[9px] flex items-center gap-1.5 text-xs">
-              {statusDot(selectedCluster.status)}
-              <span className="capitalize text-[var(--color-text-secondary)]">{selectedCluster.status}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-end gap-3">
-          <NativeSelect
-            label="Stack"
-            value={selectedStackId}
-            onChange={(e) => handleStackChange(e.target.value)}
-            className="min-w-[200px]"
-          >
-            <option value="">— Select Stack —</option>
-            {stacks.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </NativeSelect>
-          {selectedStack && (
-            <div className="mb-[9px] flex items-center gap-1.5 text-xs">
-              {statusDot(selectedStack.status)}
-              <span className="capitalize text-[var(--color-text-secondary)]">{selectedStack.status}</span>
-            </div>
-          )}
-        </div>
-
-        {hasContext && (
-          <button type="button"
-            onClick={() => { setSelectedClusterId(''); setSelectedStackId(''); setActiveView(null) }}
-            className="mb-[9px] text-xs text-[var(--color-text-secondary)] hover:text-red-400">
-            Clear
-          </button>
-        )}
-      </div>
       <ClusterStackFilter
         selectedClusterId={selectedClusterId}
         selectedStackId={selectedStackId}
