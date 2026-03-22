@@ -3,6 +3,7 @@ bin/
 *.exe
 coverage.out
 coverage.html
+.gocache/*
 
 # Node/React
 web/node_modules/
