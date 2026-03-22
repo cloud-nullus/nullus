@@ -16,13 +16,6 @@ export function getHomePathForRole(role: Role): string {
   return ROLE_HOME[role] ?? '/'
 }
 
-export function extractRoleFromOidc(user: any): Role {
-  const roles = user?.profile?.realm_access?.roles || []
-  if (roles.includes('admin')) return 'admin'
-  if (roles.includes('devops')) return 'devops'
-  return 'developer'
-}
-
 function getStoredToken(): string | null {
   return sessionStorage.getItem(SESSION_TOKEN_KEY)
 }

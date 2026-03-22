@@ -46,7 +46,7 @@ function OidcProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />
   }
 
-  const role = extractRoleFromOidc(auth.user)
+  const role = auth.user ? extractRoleFromOidc(auth.user) : 'developer' as Role
   if (allowedRoles && !allowedRoles.includes(role)) {
     return <Navigate to={getHomePathForRole(role)} replace />
   }
