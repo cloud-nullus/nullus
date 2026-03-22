@@ -193,10 +193,22 @@ export function UserManagementPage() {
   const [menuAccessOverrides, setMenuAccessOverrides] = useState<
     Partial<Record<MemberRole, Record<string, 'View' | 'Edit'>>>
   >({})
+  const [permissionSaved, setPermissionSaved] = useState(false)
 
   const hasRoleChanges = Object.values(menuAccessOverrides).some(
     (r) => Object.keys(r ?? {}).length > 0
   )
+
+  useEffect(() => {
+    const stored = localStorage.getItem('nullus-role-permission-overrides')
+    if (stored) {
+      try {
+        setMenuAccessOverrides(JSON.parse(stored))
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }, [])
 
   const getMenuAccess = (role: MemberRole, menuName: string, defaultAccess: 'View' | 'Edit'): 'View' | 'Edit' =>
     menuAccessOverrides[role]?.[menuName] ?? defaultAccess
@@ -212,7 +224,11 @@ export function UserManagementPage() {
   }
 
   const handleSaveRoleChanges = () => {
-    setMenuAccessOverrides({})
+    if (Object.keys(menuAccessOverrides).length > 0) {
+      localStorage.setItem('nullus-role-permission-overrides', JSON.stringify(menuAccessOverrides))
+    }
+    setPermissionSaved(true)
+    setTimeout(() => setPermissionSaved(false), 3000)
   }
   const {
     register,
@@ -404,20 +420,25 @@ export function UserManagementPage() {
             )
           })}
         </div>
-        <div className="pb-2">
-          {activeMainTab === 'roles' && (
-            <Button
-              variant="primary"
-              size="sm"
-              type="button"
-              disabled={!hasRoleChanges}
-              onClick={handleSaveRoleChanges}
-            >
-              Save Changes
-            </Button>
-          )}
-          {activeMainTab === 'users' && (
-            <div className="flex gap-2">
+        <div className="flex items-center gap-3 pb-2">
+           {activeMainTab === 'roles' && (
+             <>
+               <Button
+                 variant="primary"
+                 size="sm"
+                 type="button"
+                 disabled={!hasRoleChanges}
+                 onClick={handleSaveRoleChanges}
+               >
+                 Save Changes
+               </Button>
+               {permissionSaved && (
+                 <span className="text-xs font-medium text-[#22c55e]">Changes saved</span>
+               )}
+             </>
+           )}
+           {activeMainTab === 'users' && (
+             <div className="flex gap-2 pb-0">
               <Button
                 variant="outline"
                 size="sm"

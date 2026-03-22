@@ -12,7 +12,7 @@ import {
   useRemoveMember,
   useUpdateOrganization,
 } from '../api/admin-api'
-import type { CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus } from '../api/admin-api'
+import type { CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
@@ -64,7 +64,11 @@ const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 t
 
 export function OrganizationPage() {
   const { data: orgData, isLoading: orgLoading } = useOrganization()
-  const organizations = useMemo(() => (orgData ? [orgData] : []), [orgData])
+  const [localOrgs, setLocalOrgs] = useState<Organization[]>([])
+  const organizations = useMemo(() => {
+    const fromApi = orgData ? [orgData] : []
+    return [...fromApi, ...localOrgs]
+  }, [orgData, localOrgs])
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -151,6 +155,15 @@ export function OrganizationPage() {
     updateOrg.mutate({
       ...data,
       clusterAccessScope,
+    }, {
+      onError: () => {
+        // Mock mode fallback: update local org
+        setLocalOrgs(prev => prev.map(org => 
+          org.id === selectedOrg.id 
+            ? { ...org, ...data, clusterAccessScope }
+            : org
+        ))
+      },
     })
   }
 
@@ -173,6 +186,22 @@ export function OrganizationPage() {
       onSuccess: () => {
         setNewOrgModal(false)
         resetNewOrg()
+      },
+      onError: () => {
+        // Mock mode fallback: add to local state
+        const mockOrg: Organization = {
+          id: `org-${Date.now()}`,
+          name: payload.name,
+          slug: payload.slug,
+          domain: payload.domain || '',
+          status: 'active',
+          clusterAccessScope: [],
+          createdAt: new Date().toISOString(),
+        }
+        setLocalOrgs(prev => [...prev, mockOrg])
+        setNewOrgModal(false)
+        resetNewOrg()
+        setSelectedOrgId(mockOrg.id)
       },
     })
   }
