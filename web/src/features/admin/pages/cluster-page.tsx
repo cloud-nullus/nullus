@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle } from 'lucide-react'
+import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } from 'lucide-react'
 import { useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster } from '../api/admin-api'
 import type { Cluster, ClusterStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -130,6 +130,8 @@ export function ClusterPage() {
   const [deleteClusterId, setDeleteClusterId] = useState<string | null>(null)
   const [isVerifyingConnection, setIsVerifyingConnection] = useState(false)
   const [verifyConnectionResult, setVerifyConnectionResult] = useState<'success' | 'error' | null>(null)
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (clusters.length === 0) {
@@ -146,6 +148,7 @@ export function ClusterPage() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isValid, isSubmitting },
   } = useForm<ClusterFormData>({
     resolver: zodResolver(clusterSchema),
@@ -224,6 +227,43 @@ export function ClusterPage() {
         setIsVerifyingConnection(false)
       },
     })
+  }
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setFileUploadError(null)
+
+    const validExtensions = ['.yaml', '.yml', '.conf']
+    const fileName = file.name.toLowerCase()
+    const hasValidExtension = validExtensions.some((ext) => fileName.endsWith(ext))
+
+    if (!hasValidExtension) {
+      setFileUploadError('Invalid file type. Please upload a .yaml, .yml, or .conf file.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const MAX_FILE_SIZE = 1048576
+    if (file.size > MAX_FILE_SIZE) {
+      setFileUploadError('File size exceeds 1MB limit.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const content = e.target?.result as string
+      if (content) {
+        setValue('kubeconfig', content)
+      }
+    }
+    reader.onerror = () => {
+      setFileUploadError('Failed to read file.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+    reader.readAsText(file)
   }
 
   return (
@@ -458,20 +498,49 @@ export function ClusterPage() {
             placeholder="예: https://prod.k8s.nullus.io"
             {...register('endpoint')}
           />
-          {errors.endpoint && <span className="text-xs text-[#ef4444]">{errors.endpoint.message}</span>}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="cluster-kubeconfig" className="text-xs font-medium text-[var(--color-text-secondary)]">
-              kubeconfig (YAML)
-            </label>
-            <textarea
-              id="cluster-kubeconfig"
-              {...register('kubeconfig')}
-              placeholder="kubeconfig 내용을 붙여넣으세요..."
-              rows={8}
-              className="resize-y rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs text-[var(--color-text-primary)] outline-none [font-family:'Fira_Code',monospace]"
-            />
-          </div>
-          {errors.kubeconfig && <span className="text-xs text-[#ef4444]">{errors.kubeconfig.message}</span>}
+           {errors.endpoint && <span className="text-xs text-[#ef4444]">{errors.endpoint.message}</span>}
+           <div className="flex flex-col gap-1">
+             <label htmlFor="kubeconfig-file" className="text-xs font-medium text-[var(--color-text-secondary)]">
+               Upload kubeconfig File
+             </label>
+             <div className="flex items-center gap-2">
+               <input
+                 ref={fileInputRef}
+                 id="kubeconfig-file"
+                 type="file"
+                 accept=".yaml,.yml,.conf"
+                 onChange={handleFileUpload}
+                 className="hidden"
+               />
+               <button
+                 type="button"
+                 onClick={() => fileInputRef.current?.click()}
+                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.08)]"
+               >
+                 <Upload size={14} />
+                 Choose File
+               </button>
+               {fileInputRef.current?.files?.[0] && (
+                 <span className="text-xs text-[var(--color-text-secondary)]">
+                   {fileInputRef.current.files[0].name}
+                 </span>
+               )}
+             </div>
+             {fileUploadError && <span className="text-xs text-[#ef4444]">{fileUploadError}</span>}
+           </div>
+           <div className="flex flex-col gap-1">
+             <label htmlFor="cluster-kubeconfig" className="text-xs font-medium text-[var(--color-text-secondary)]">
+               kubeconfig (YAML)
+             </label>
+             <textarea
+               id="cluster-kubeconfig"
+               {...register('kubeconfig')}
+               placeholder="kubeconfig 내용을 붙여넣으세요..."
+               rows={8}
+               className="resize-y rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs text-[var(--color-text-primary)] outline-none [font-family:'Fira_Code',monospace]"
+             />
+           </div>
+           {errors.kubeconfig && <span className="text-xs text-[#ef4444]">{errors.kubeconfig.message}</span>}
         </div>
       </Modal>
 

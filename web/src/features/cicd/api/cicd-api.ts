@@ -159,3 +159,15 @@ export function useDeployApp() {
     },
   })
 }
+
+export function useRollbackDeployment() {
+   const qc = useQueryClient()
+   return useMutation({
+     mutationFn: async ({ pipelineId, deploymentId, preservePVC }: { pipelineId: string; deploymentId: string; preservePVC: boolean }) =>
+       api.post(`/api/v1/cicd/pipelines/${pipelineId}/rollback/${deploymentId}`, { preservePVC }).then((r) => r.data),
+     onSuccess: () => {
+       void qc.invalidateQueries({ queryKey: ['cicd', 'deployments'] })
+       void qc.invalidateQueries({ queryKey: ['deployments'] })
+     },
+   })
+ }

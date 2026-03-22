@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../../stores/auth-store'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { useAuth } from 'react-oidc-context'
+import { isOidcMode } from '../../../lib/oidc-config'
+import { extractRoleFromOidc, getHomePathForRole, useAuthStore } from '../../../stores/auth-store'
 import type { User } from '../../../types'
 
 const loginSchema = z.object({
@@ -30,13 +32,60 @@ const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   },
 }
 
-const ROLE_HOME: Record<string, string> = {
-  admin: '/admin/organization',
-  devops: '/stack/templates',
-  developer: '/cicd/developer-deploy',
+export function LoginPage() {
+  if (isOidcMode) {
+    return <OidcLoginPage />
+  }
+  return <MockLoginPage />
 }
 
-export function LoginPage() {
+function OidcLoginPage() {
+  const auth = useAuth()
+
+  useEffect(() => {
+    if (!auth.isLoading && !auth.isAuthenticated && !auth.activeNavigator) {
+      void auth.signinRedirect()
+    }
+  }, [auth.activeNavigator, auth.isAuthenticated, auth.isLoading, auth.signinRedirect])
+
+  if (auth.error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-base)] p-6">
+        <div className="w-full max-w-[520px] rounded-2xl border border-[rgba(239,68,68,0.35)] bg-[var(--color-surface-card)] p-8 text-center">
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Keycloak connection failed</h1>
+          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
+            Unable to reach the identity provider. Check Keycloak URL and realm settings, then try again.
+          </p>
+          <button
+            type="button"
+            onClick={() => void auth.signinRedirect()}
+            className="mt-5 rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] px-4 py-2.5 text-sm font-bold text-[#1a1d29]"
+          >
+            Retry sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (auth.isAuthenticated) {
+    const role = extractRoleFromOidc(auth.user)
+    return <Navigate to={getHomePathForRole(role)} replace />
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-base)] p-6">
+      <div className="w-full max-w-[420px] rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-8 text-center">
+        <h1 className="text-lg font-bold text-[var(--color-text-primary)]">Redirecting to Keycloak</h1>
+        <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
+          {auth.activeNavigator ? 'Completing authentication...' : 'Starting secure sign-in...'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function MockLoginPage() {
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +109,7 @@ export function LoginPage() {
     }
 
     login(account.user)
-    navigate(ROLE_HOME[account.user.role] ?? '/')
+    navigate(getHomePathForRole(account.user.role))
   }
 
   return (

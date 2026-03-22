@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { screen, fireEvent, act } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { StackInstallPage } from './stack-install-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
@@ -20,72 +20,151 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => mockNavigate }
 })
 
-// Mock YamlEditor — it's not the focus of these tests
-vi.mock('../../../components/shared/yaml-editor', () => ({
-  YamlEditor: ({ value }: { value: string }) => <pre data-testid="yaml-editor">{value}</pre>,
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ value, onChange }: { value?: string; onChange?: (value: string) => void }) => (
+    <textarea
+      data-testid="monaco-yaml-editor"
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
+  ),
+}))
+
+vi.mock('monaco-yaml', () => ({
+  configureMonacoYaml: vi.fn(),
 }))
 
 beforeEach(() => {
   useStackConfigStore.getState().resetConfig()
   mockNavigate.mockClear()
+  Object.assign(navigator, {
+    clipboard: {
+      writeText: vi.fn().mockResolvedValue(undefined),
+    },
+  })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('StackInstallPage', () => {
   it('renders the page heading', () => {
     renderWithProviders(<StackInstallPage />)
-    expect(screen.getByText('Stack Install')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Stack Install' })).toBeTruthy()
   })
 
   it('renders all 5 tabs', () => {
     renderWithProviders(<StackInstallPage />)
-    expect(screen.getByText('Artifacts')).toBeInTheDocument()
-    expect(screen.getByText('CI/CD')).toBeInTheDocument()
-    expect(screen.getByText('Observability')).toBeInTheDocument()
-    expect(screen.getByText('Resources')).toBeInTheDocument()
-    expect(screen.getByText('YAML View')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Artifacts' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'CI/CD' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Observability' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Resources' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'YAML View' })).toBeTruthy()
   })
 
   it('default tab shows Artifacts content', () => {
     renderWithProviders(<StackInstallPage />)
-    expect(screen.getAllByText('Package Registry')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('Source Repository')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Package Registry')[0]).toBeTruthy()
+    expect(screen.getAllByText('Source Repository')[0]).toBeTruthy()
   })
 
   it('clicking CI/CD tab shows CI/CD content', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('CI/CD'))
-    expect(screen.getAllByText('CI/CD Platform')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('CD Tool')[0]).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'CI/CD' }))
+    expect(screen.getAllByText('CI/CD Platform')[0]).toBeTruthy()
+    expect(screen.getAllByText('CD Tool')[0]).toBeTruthy()
   })
 
   it('clicking Observability tab shows merged observability content', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('Observability'))
-    expect(screen.getAllByText('Visualization')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('Metrics')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('Logs')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('Traces')[0]).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Observability' }))
+    expect(screen.getAllByText('Visualization')[0]).toBeTruthy()
+    expect(screen.getAllByText('Metrics')[0]).toBeTruthy()
+    expect(screen.getAllByText('Logs')[0]).toBeTruthy()
+    expect(screen.getAllByText('Traces')[0]).toBeTruthy()
   })
 
   it('clicking Resources tab shows Resources content', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('Resources'))
-    expect(screen.getByText('개발자 수')).toBeInTheDocument()
-    expect(screen.getByText('동시 러너 수')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
+    expect(screen.getByText('개발자 수')).toBeTruthy()
+    expect(screen.getByText('동시 러너 수')).toBeTruthy()
   })
 
-  it('clicking YAML View tab shows yaml editor', () => {
+  it('clicking YAML View tab shows monaco yaml editor', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('YAML View'))
-    expect(screen.getByTestId('yaml-editor')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    expect(screen.getByTestId('monaco-yaml-editor')).toBeTruthy()
   })
 
   it('YAML View shows current configuration', () => {
     useStackConfigStore.getState().setStackName('test-stack')
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('YAML View'))
-    const yaml = screen.getByTestId('yaml-editor').textContent ?? ''
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    const yaml = (screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement).value
     expect(yaml).toContain('test-stack')
+  })
+
+  it('editing valid YAML updates stack config store after debounce', () => {
+    vi.useFakeTimers()
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+
+    const editor = screen.getByTestId('monaco-yaml-editor')
+    fireEvent.change(editor, { target: { value: 'stackName: yaml-stack' } })
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(useStackConfigStore.getState().draft.stackName).toBe('yaml-stack')
+  })
+
+  it('editing invalid YAML does not update stack config store', () => {
+    vi.useFakeTimers()
+    useStackConfigStore.getState().setStackName('before-invalid')
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+
+    const editor = screen.getByTestId('monaco-yaml-editor')
+    fireEvent.change(editor, { target: { value: 'stackName: [invalid' } })
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(useStackConfigStore.getState().draft.stackName).toBe('before-invalid')
+  })
+
+  it('copy button copies current YAML content', async () => {
+    useStackConfigStore.getState().setStackName('copy-stack')
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('copy-stack'))
+  })
+
+  it('format button reprints YAML and keeps store synced', () => {
+    vi.useFakeTimers()
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+
+    fireEvent.change(editor, { target: { value: 'stackName: formatted' } })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Format' }))
+
+    expect((screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement).value).toContain('stackName: formatted')
+    expect(useStackConfigStore.getState().draft.stackName).toBe('formatted')
   })
 
   it('selecting a tool in Artifacts updates the store', () => {
@@ -97,19 +176,19 @@ describe('StackInstallPage', () => {
 
   it('selecting a tool in Pipeline updates the store', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByText('CI/CD'))
+    fireEvent.click(screen.getByRole('button', { name: 'CI/CD' }))
     fireEvent.click(screen.getByText('GitHub Actions'))
     expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.tool).toBe('github-actions')
   })
 
   it('renders Save Draft and Deploy buttons', () => {
     renderWithProviders(<StackInstallPage />)
-    expect(screen.getByText('Save Draft')).toBeInTheDocument()
-    expect(screen.getByText('Deploy')).toBeInTheDocument()
+    expect(screen.getByText('Save Draft')).toBeTruthy()
+    expect(screen.getByText('Deploy')).toBeTruthy()
   })
 
   it('renders Configuration Summary sidebar', () => {
     renderWithProviders(<StackInstallPage />)
-    expect(screen.getByText('Configuration Summary')).toBeInTheDocument()
+    expect(screen.getByText('Configuration Summary')).toBeTruthy()
   })
 })
