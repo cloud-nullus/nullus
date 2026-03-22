@@ -5,26 +5,28 @@ import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 
 interface ConfirmDialogProps {
-  open: boolean
-  onClose: () => void
-  onConfirm: () => void
-  title: string
-  description: string
-  confirmLabel?: string
-  confirmText?: string
-  loading?: boolean
-}
+   open: boolean
+   onClose: () => void
+   onConfirm: () => void
+   title: string
+   description: string
+   confirmLabel?: string
+   confirmText?: string
+   loading?: boolean
+   customContent?: React.ReactNode
+ }
 
 export function ConfirmDialog({
-  open,
-  onClose,
-  onConfirm,
-  title,
-  description,
-  confirmLabel = 'Confirm',
-  confirmText,
-  loading = false,
-}: ConfirmDialogProps) {
+   open,
+   onClose,
+   onConfirm,
+   title,
+   description,
+   confirmLabel = 'Confirm',
+   confirmText,
+   loading = false,
+   customContent,
+ }: ConfirmDialogProps) {
   const [typed, setTyped] = useState('')
 
   const canConfirm = confirmText ? typed === confirmText : true
@@ -73,29 +75,31 @@ export function ConfirmDialog({
           </p>
         </div>
 
-        {confirmText && (
-          <div>
-            <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-              확인하려면{' '}
-              <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
-                {confirmText}
-              </code>
-              을(를) 입력하세요.
-            </p>
-            <input
-              type="text"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder={confirmText}
-              className={cn(
-                'box-border w-full rounded-lg border bg-[rgba(255,255,255,0.04)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none',
-                typed === confirmText
-                  ? 'border-[rgba(239,68,68,0.5)]'
-                  : 'border-[var(--color-border-default)]'
-              )}
-            />
-          </div>
-        )}
+        {customContent && customContent}
+
+         {confirmText && (
+           <div>
+             <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
+               확인하려면{' '}
+               <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
+                 {confirmText}
+               </code>
+               을(를) 입력하세요.
+             </p>
+             <input
+               type="text"
+               value={typed}
+               onChange={(e) => setTyped(e.target.value)}
+               placeholder={confirmText}
+               className={cn(
+                 'box-border w-full rounded-lg border bg-[rgba(255,255,255,0.04)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none',
+                 typed === confirmText
+                   ? 'border-[rgba(239,68,68,0.5)]'
+                   : 'border-[var(--color-border-default)]'
+               )}
+             />
+           </div>
+         )}
       </div>
     </Modal>
   )

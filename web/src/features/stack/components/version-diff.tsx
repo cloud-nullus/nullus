@@ -1,12 +1,20 @@
-import { type ReactNode, useMemo, useState } from 'react'
-import Prism from 'prismjs'
-import 'prismjs/components/prism-json'
-import 'prismjs/themes/prism-tomorrow.css'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type { StackVersionDiff } from '../api/stack-api'
 
-type DiffPane = 'left' | 'right'
+interface DiffLine {
+  type: 'add' | 'remove' | 'change' | 'unchanged' | 'header'
+  oldLineNum?: number
+  newLineNum?: number
+  content: string
+  key: string
+}
+
+interface CollapsedRegion {
+  startIndex: number
+  count: number
+}
 
 interface VersionDiffProps {
   versionA: number
@@ -16,180 +24,235 @@ interface VersionDiffProps {
   diff: StackVersionDiff
 }
 
-export function VersionDiff({ versionA, versionB, configA, configB, diff }: VersionDiffProps) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <DiffPaneCard title={`Version A (v${versionA})`} pane="left" data={configA} diff={diff} />
-      <DiffPaneCard title={`Version B (v${versionB})`} pane="right" data={configB} diff={diff} />
-    </div>
-  )
-}
-
-function DiffPaneCard({
-  title,
-  pane,
-  data,
-  diff,
-}: {
-  title: string
-  pane: DiffPane
-  data: Record<string, unknown>
-  diff: StackVersionDiff
-}) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-
-  const keys = useMemo(() => Object.keys(data).sort(), [data])
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[rgba(15,23,42,0.45)]">
-      <div className="border-b border-[var(--color-border-default)] px-4 py-3">
-        <p className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">{title}</p>
-      </div>
-      <div className="max-h-[480px] overflow-auto p-3 font-mono text-[12px] leading-6">
-        {keys.map((key) => (
-          <JsonNode
-            key={key}
-            keyName={key}
-            path={key}
-            value={data[key]}
-            depth={0}
-            pane={pane}
-            diff={diff}
-            expanded={expanded}
-            onToggle={(target) => setExpanded((prev) => ({ ...prev, [target]: !prev[target] }))}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function JsonNode({
-  keyName,
-  path,
-  value,
-  depth,
-  pane,
-  diff,
-  expanded,
-  onToggle,
-}: {
-  keyName: string
-  path: string
-  value: unknown
-  depth: number
-  pane: DiffPane
-  diff: StackVersionDiff
-  expanded: Record<string, boolean>
-  onToggle: (path: string) => void
-}) {
-  const indent = depth * 16
-  const pathState = stateForPath(path, pane, diff)
-  const isObject = isPlainObject(value)
-  const open = expanded[path] ?? true
-
-  if (isObject) {
-    const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
-    return (
-      <div>
-        <button
-          type="button"
-          onClick={() => onToggle(path)}
-          className={cn('flex w-full items-center gap-1 rounded px-1 py-0.5 text-left', stateClass(pathState))}
-          style={{ paddingLeft: indent + 4 }}
-        >
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <span className="text-[#93c5fd]">"{keyName}"</span>
-          <span className="text-[#94a3b8]">{`{ ${entries.length} }`}</span>
-        </button>
-        {open &&
-          entries.map(([childKey, childValue]) => (
-            <JsonNode
-              key={childKey}
-              keyName={childKey}
-              path={`${path}.${childKey}`}
-              value={childValue}
-              depth={depth + 1}
-              pane={pane}
-              diff={diff}
-              expanded={expanded}
-              onToggle={onToggle}
-            />
-          ))}
-      </div>
-    )
-  }
-
-  const tokens = Prism.tokenize(JSON.stringify(value), Prism.languages.json)
-  return (
-    <div className={cn('rounded px-1 py-0.5', stateClass(pathState))} style={{ marginLeft: indent }}>
-      <span className="text-[#93c5fd]">"{keyName}"</span>
-      <span className="text-[#94a3b8]">: </span>
-      <span>{renderPrismTokens(tokens, `${path}-${keyName}`)}</span>
-    </div>
-  )
-}
-
-function stateForPath(path: string, pane: DiffPane, diff: StackVersionDiff): 'none' | 'added' | 'removed' | 'changed' {
-  if (diff.changed[path]) {
-    return 'changed'
-  }
-  if (pane === 'left' && Object.hasOwn(diff.removed, path)) {
-    return 'removed'
-  }
-  if (pane === 'right' && Object.hasOwn(diff.added, path)) {
-    return 'added'
-  }
-  return 'none'
-}
-
-function stateClass(state: 'none' | 'added' | 'removed' | 'changed') {
-  if (state === 'added') {
-    return 'bg-[rgba(34,197,94,0.18)]'
-  }
-  if (state === 'removed') {
-    return 'bg-[rgba(239,68,68,0.2)]'
-  }
-  if (state === 'changed') {
-    return 'bg-[rgba(250,204,21,0.18)]'
-  }
-  return ''
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function renderPrismTokens(tokens: Array<string | Prism.Token>, keyPrefix: string): ReactNode {
-  return tokens.map((token, index) => {
-    const key = `${keyPrefix}-${index}`
-    if (typeof token === 'string') {
-      return <span key={key}>{token}</span>
+function flattenObject(obj: Record<string, unknown>, prefix = ''): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${key}` : key
+    if (isPlainObject(value)) {
+      Object.assign(out, flattenObject(value, path))
+    } else {
+      out[path] = value
     }
-
-    const className = Array.isArray(token.type) ? token.type.join(' ') : token.type
-    const content = renderPrismTokenContent(token.content, key)
-
-    return (
-      <span key={key} className={`token ${className}`}>
-        {content}
-      </span>
-    )
-  })
+  }
+  return out
 }
 
-function renderPrismTokenContent(content: Prism.Token['content'], keyPrefix: string): ReactNode {
-  if (Array.isArray(content)) {
-    return renderPrismTokens(content as Array<string | Prism.Token>, keyPrefix)
-  }
-  if (typeof content === 'string') {
-    return content
+function formatValue(value: unknown): string {
+  if (value === null) return 'null'
+  if (value === undefined) return '~'
+  if (typeof value === 'string') return `"${value}"`
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value)
+  if (Array.isArray(value)) return JSON.stringify(value)
+  return JSON.stringify(value)
+}
+
+function topLevelSection(key: string): string {
+  const dot = key.indexOf('.')
+  return dot === -1 ? key : key.slice(0, dot)
+}
+
+function computeUnifiedDiff(
+  oldObj: Record<string, unknown>,
+  newObj: Record<string, unknown>,
+  diff: StackVersionDiff,
+): DiffLine[] {
+  const flatOld = flattenObject(oldObj)
+  const flatNew = flattenObject(newObj)
+
+  const allKeys = Array.from(new Set([...Object.keys(flatOld), ...Object.keys(flatNew)])).sort()
+
+  const lines: DiffLine[] = []
+  let oldLine = 1
+  let newLine = 1
+  let lastSection = ''
+
+  for (const key of allKeys) {
+    const section = topLevelSection(key)
+    if (section !== lastSection) {
+      lines.push({ type: 'header', content: `@@ ${section} @@`, key: `header-${section}` })
+      lastSection = section
+    }
+
+    const inOld = Object.hasOwn(flatOld, key)
+    const inNew = Object.hasOwn(flatNew, key)
+
+    if (diff.changed[key]) {
+      const [oldVal, newVal] = diff.changed[key]
+      lines.push({ type: 'remove', oldLineNum: oldLine, content: `- ${key}: ${formatValue(oldVal)}`, key: `rm-${key}` })
+      oldLine++
+      lines.push({ type: 'add', newLineNum: newLine, content: `+ ${key}: ${formatValue(newVal)}`, key: `add-${key}` })
+      newLine++
+    } else if (!inOld && inNew) {
+      lines.push({ type: 'add', newLineNum: newLine, content: `+ ${key}: ${formatValue(flatNew[key])}`, key: `add-${key}` })
+      newLine++
+    } else if (inOld && !inNew) {
+      lines.push({ type: 'remove', oldLineNum: oldLine, content: `- ${key}: ${formatValue(flatOld[key])}`, key: `rm-${key}` })
+      oldLine++
+    } else {
+      lines.push({
+        type: 'unchanged',
+        oldLineNum: oldLine,
+        newLineNum: newLine,
+        content: `  ${key}: ${formatValue(flatOld[key])}`,
+        key: `eq-${key}`,
+      })
+      oldLine++
+      newLine++
+    }
   }
 
-  const className = Array.isArray(content.type) ? content.type.join(' ') : content.type
+  return lines
+}
+
+function findCollapsedRegions(lines: DiffLine[], threshold = 3): CollapsedRegion[] {
+  const regions: CollapsedRegion[] = []
+  let runStart = -1
+  let runLength = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].type === 'unchanged') {
+      if (runStart === -1) runStart = i
+      runLength++
+    } else {
+      if (runLength > threshold) {
+        regions.push({ startIndex: runStart, count: runLength })
+      }
+      runStart = -1
+      runLength = 0
+    }
+  }
+  if (runLength > threshold) {
+    regions.push({ startIndex: runStart, count: runLength })
+  }
+
+  return regions
+}
+
+export function VersionDiff({ versionA, versionB, configA, configB, diff }: VersionDiffProps) {
+  const lines = useMemo(() => computeUnifiedDiff(configA, configB, diff), [configA, configB, diff])
+  const collapsedRegions = useMemo(() => findCollapsedRegions(lines), [lines])
+  const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set())
+
+  const toggleRegion = (startIndex: number) => {
+    setExpandedRegions((prev) => {
+      const next = new Set(prev)
+      if (next.has(startIndex)) {
+        next.delete(startIndex)
+      } else {
+        next.add(startIndex)
+      }
+      return next
+    })
+  }
+
+  const collapsedIndices = useMemo(() => {
+    const set = new Set<number>()
+    for (const region of collapsedRegions) {
+      if (!expandedRegions.has(region.startIndex)) {
+        for (let i = region.startIndex; i < region.startIndex + region.count; i++) {
+          set.add(i)
+        }
+      }
+    }
+    return set
+  }, [collapsedRegions, expandedRegions])
+
+  const adds = lines.filter((l) => l.type === 'add').length
+  const removes = lines.filter((l) => l.type === 'remove').length
+
   return (
-    <span className={`token ${className}`}>
-      {renderPrismTokenContent(content.content, `${keyPrefix}-nested`)}
-    </span>
+    <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[rgba(15,23,42,0.45)]">
+      <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-2.5">
+        <p className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">
+          v{versionA} → v{versionB}
+        </p>
+        <div className="flex items-center gap-3 text-xs font-mono">
+          {adds > 0 && <span className="text-[#22c55e]">+{adds}</span>}
+          {removes > 0 && <span className="text-[#ef4444]">-{removes}</span>}
+        </div>
+      </div>
+
+      <div className="max-h-[480px] overflow-auto">
+        {lines.length === 0 && (
+          <p className="px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
+            설정 변경 사항이 없습니다.
+          </p>
+        )}
+
+        {lines.map((line, idx) => {
+          if (collapsedIndices.has(idx)) {
+            const region = collapsedRegions.find((r) => r.startIndex === idx)
+            if (region) {
+              return (
+                <button
+                  key={`collapse-${region.startIndex}`}
+                  type="button"
+                  onClick={() => toggleRegion(region.startIndex)}
+                  className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[rgba(255,255,255,0.05)] transition-colors cursor-pointer"
+                >
+                  <ChevronRight size={12} />
+                  <span>... {region.count} unchanged lines ...</span>
+                </button>
+              )
+            }
+            return null
+          }
+
+          const expandedRegion = collapsedRegions.find(
+            (r) => r.startIndex === idx && expandedRegions.has(r.startIndex),
+          )
+
+          return (
+            <div key={line.key}>
+              {expandedRegion && (
+                <button
+                  type="button"
+                  onClick={() => toggleRegion(expandedRegion.startIndex)}
+                  className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[rgba(255,255,255,0.05)] transition-colors cursor-pointer"
+                >
+                  <ChevronDown size={12} />
+                  <span>... {expandedRegion.count} unchanged lines (click to collapse) ...</span>
+                </button>
+              )}
+              <DiffRow line={line} />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function DiffRow({ line }: { line: DiffLine }) {
+  if (line.type === 'header') {
+    return (
+      <div className="bg-[rgba(99,102,241,0.08)] px-4 py-1.5 font-mono text-xs text-[var(--color-text-muted)]">
+        {line.content}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex items-stretch font-mono text-xs leading-6',
+        line.type === 'add' && 'bg-[rgba(34,197,94,0.15)]',
+        line.type === 'remove' && 'bg-[rgba(239,68,68,0.15)]',
+        line.type === 'change' && 'bg-[rgba(245,158,11,0.15)]',
+        line.type === 'unchanged' && 'text-[var(--color-text-muted)]',
+      )}
+    >
+      <span className="w-10 shrink-0 select-none text-right pr-1 text-[var(--color-text-muted)] opacity-50">
+        {line.oldLineNum ?? ''}
+      </span>
+      <span className="w-10 shrink-0 select-none text-right pr-2 text-[var(--color-text-muted)] opacity-50 border-r border-[var(--color-border-default)]">
+        {line.newLineNum ?? ''}
+      </span>
+      <span className="flex-1 px-3 whitespace-pre">{line.content}</span>
+    </div>
   )
 }

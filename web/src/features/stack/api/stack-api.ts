@@ -289,8 +289,8 @@ const stackApiCalls = {
   getVersionDiff: (stackId: string, from: number, to: number) =>
     api.get<StackVersionDiff>(`/stacks/${stackId}/history/diff`, { params: { versionA: from, versionB: to } }).then((r) => r.data),
 
-  rollbackStack: (stackId: string, version: number) =>
-    api.post<{ id: string }>(`/stacks/${stackId}/rollback`, { version }).then((r) => r.data),
+   rollbackStack: (stackId: string, version: number, preservePVC: boolean) =>
+     api.post<{ id: string }>(`/stacks/${stackId}/rollback`, { version, preservePVC }).then((r) => r.data),
 
   getCompatibilityMatrix: () =>
     api.get<RawCompatibilityMatrix[]>('/stacks/compatibility').then((r) => (r.data ?? []).map(normalizeCompatibilityMatrix)),
@@ -406,13 +406,13 @@ export function useStackVersionDiff(stackId: string, from: number, to: number) {
 }
 
 export function useRollbackStack() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ stackId, version }: { stackId: string; version: number }) =>
-      stackApiCalls.rollbackStack(stackId, version),
-    onSuccess: (_, variables) => {
-      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
-      void qc.invalidateQueries({ queryKey: queryKeys.history(variables.stackId) })
+   const qc = useQueryClient()
+   return useMutation({
+     mutationFn: ({ stackId, version, preservePVC }: { stackId: string; version: number; preservePVC: boolean }) =>
+       stackApiCalls.rollbackStack(stackId, version, preservePVC),
+     onSuccess: (_, variables) => {
+       void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+       void qc.invalidateQueries({ queryKey: queryKeys.history(variables.stackId) })
     },
   })
 }
