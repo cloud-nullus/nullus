@@ -1079,12 +1079,21 @@ export function MonitoringPage() {
   const { data: stacksData }   = useStacks()
   const clusters = clustersData?.items ?? []
   const stacks   = stacksData?.items   ?? []
+  const filteredStacks = useMemo(
+    () => selectedClusterId ? stacks.filter((stack) => stack.clusterId === selectedClusterId) : [],
+    [selectedClusterId, stacks]
+  )
 
   const hasContext = selectedClusterId !== '' || selectedStackId !== ''
 
   // Auto-select initial view
   function handleClusterChange(id: string) {
+    const clusterChanged = id !== selectedClusterId
     setSelectedClusterId(id)
+    if (clusterChanged) {
+      setSelectedStackId('')
+      if (activeView === 'stack') setActiveView('cluster')
+    }
     if (id && !activeView) setActiveView('cluster')
   }
   function handleStackChange(id: string) {
@@ -1093,7 +1102,7 @@ export function MonitoringPage() {
   }
 
   const selectedCluster = clusters.find((c) => c.id === selectedClusterId)
-  const selectedStack   = stacks.find((s) => s.id === selectedStackId)
+  const selectedStack   = filteredStacks.find((s) => s.id === selectedStackId)
 
   const views: { id: ViewType; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
     { id: 'cluster', label: 'Cluster',  icon: <Server size={15} />,    disabled: !selectedClusterId },
@@ -1144,9 +1153,10 @@ export function MonitoringPage() {
             value={selectedStackId}
             onChange={(e) => handleStackChange(e.target.value)}
             className="min-w-[200px]"
+            disabled={!selectedClusterId}
           >
-            <option value="">— Select Stack —</option>
-            {stacks.map((s) => (
+            <option value="">{selectedClusterId ? '— Select Stack —' : '— Select Cluster First —'}</option>
+            {filteredStacks.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </NativeSelect>
