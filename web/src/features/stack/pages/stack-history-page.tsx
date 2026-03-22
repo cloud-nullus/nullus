@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search } from 'lucide-react'
+import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
-import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
@@ -33,15 +32,17 @@ const MOCK_STACK_HISTORY: StackHistoryEntry[] = [
 ]
 
 export function StackHistoryPage() {
-  const { data: stacksData } = useStacks()
-  const stacks = stacksData?.items ?? MOCK_STACKS_FOR_HISTORY
-  const [stackId, setStackId] = useState(stacks[0]?.id ?? '')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [compareOpen, setCompareOpen] = useState(false)
-  const [versionA, setVersionA] = useState(4)
-  const [versionB, setVersionB] = useState(5)
-  const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
+   const { data: stacksData } = useStacks()
+   const stacks = stacksData?.items ?? MOCK_STACKS_FOR_HISTORY
+   const [stackId, setStackId] = useState(stacks[0]?.id ?? '')
+   const [expandedId, setExpandedId] = useState<string | null>(null)
+   const [search, setSearch] = useState('')
+   const [compareOpen, setCompareOpen] = useState(false)
+   const [versionA, setVersionA] = useState(4)
+   const [versionB, setVersionB] = useState(5)
+   const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
+   const [preservePVC, setPreservePVC] = useState(true)
+   const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
   useEffect(() => {
     if (stacks.length > 0 && !stackId) {
@@ -68,13 +69,17 @@ export function StackHistoryPage() {
   const fallbackDiff = buildSnapshotDiff(compareEntryA?.snapshot ?? {}, compareEntryB?.snapshot ?? {})
   const diff = apiDiff ?? fallbackDiff
 
-  const handleRollbackConfirm = () => {
-    if (!rollbackEntry) return
-    rollbackMutation.mutate(
-      { stackId, version: rollbackEntry.version },
-      { onSuccess: () => setRollbackEntry(null) }
-    )
-  }
+   const handleRollbackConfirm = () => {
+     if (!rollbackEntry) return
+     rollbackMutation.mutate(
+       { stackId, version: rollbackEntry.version, preservePVC },
+       { onSuccess: () => {
+         setRollbackEntry(null)
+         setPreservePVC(true)
+         setDeleteConfirmText('')
+       } }
+     )
+   }
 
   const columns: ColumnDef<StackHistoryEntry, unknown>[] = [
     {
@@ -282,17 +287,95 @@ export function StackHistoryPage() {
         </div>
       </Modal>
 
-      {/* Rollback confirm */}
-      <ConfirmDialog
-        open={!!rollbackEntry}
-        onClose={() => setRollbackEntry(null)}
-        onConfirm={handleRollbackConfirm}
-        title={`v${rollbackEntry?.version ?? ''}로 롤백`}
-        description={`스택을 v${rollbackEntry?.version ?? ''}으로 롤백합니다. 현재 설정이 변경되며 이 작업은 되돌릴 수 없습니다.`}
-        confirmLabel="Rollback"
-        confirmText={`v${rollbackEntry?.version ?? ''}`}
-        loading={rollbackMutation.isPending}
-      />
+       {/* Rollback confirm */}
+       <Modal
+         open={!!rollbackEntry}
+         onClose={() => {
+           setRollbackEntry(null)
+           setPreservePVC(true)
+           setDeleteConfirmText('')
+         }}
+         title={`v${rollbackEntry?.version ?? ''}로 롤백`}
+         footer={
+           <>
+             <Button
+               variant="outline"
+               size="md"
+               onClick={() => {
+                 setRollbackEntry(null)
+                 setPreservePVC(true)
+                 setDeleteConfirmText('')
+               }}
+               disabled={rollbackMutation.isPending}
+             >
+               Cancel
+             </Button>
+             <Button
+               variant="danger"
+               size="md"
+               onClick={handleRollbackConfirm}
+               disabled={!preservePVC && deleteConfirmText !== 'DELETE' || rollbackMutation.isPending}
+               loading={rollbackMutation.isPending}
+             >
+               Rollback
+             </Button>
+           </>
+         }
+       >
+         <div className="flex flex-col gap-4">
+           <div className="flex items-start gap-3">
+             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[rgba(239,68,68,0.15)] text-[#f87171]">
+               <AlertTriangle size={20} />
+             </div>
+             <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
+               스택을 v{rollbackEntry?.version ?? ''}으로 롤백합니다. 현재 설정이 변경되며 이 작업은 되돌릴 수 없습니다.
+             </p>
+           </div>
+
+           <div className="mt-4">
+             <p className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">데이터 보존 옵션</p>
+             <div className="flex flex-col gap-2">
+               <label className="flex items-center gap-2 text-sm cursor-pointer">
+                 <input
+                   type="radio"
+                   name="pvcMode"
+                   value="safe"
+                   checked={preservePVC}
+                   onChange={() => {
+                     setPreservePVC(true)
+                     setDeleteConfirmText('')
+                   }}
+                 />
+                 <span>Safe Mode — 데이터 보존</span>
+               </label>
+               <label className="flex items-center gap-2 text-sm cursor-pointer">
+                 <input
+                   type="radio"
+                   name="pvcMode"
+                   value="clean"
+                   checked={!preservePVC}
+                   onChange={() => setPreservePVC(false)}
+                 />
+                 <span>Clean Mode — 볼륨 삭제</span>
+               </label>
+             </div>
+             {!preservePVC && (
+               <div className="mt-3">
+                 <div className="rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-sm text-[#ef4444]">
+                   이 작업은 Persistent Volume을 영구 삭제합니다
+                 </div>
+                 <input
+                   type="text"
+                   placeholder='확인하려면 "DELETE" 입력'
+                   value={deleteConfirmText}
+                   onChange={(e) => setDeleteConfirmText(e.target.value)}
+                   className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"
+                 />
+               </div>
+             )}
+           </div>
+         </div>
+       </Modal>
     </div>
   )
 }

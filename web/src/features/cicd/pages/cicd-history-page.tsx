@@ -45,12 +45,14 @@ interface RollbackFormValues {
 }
 
 export function CicdHistoryPage() {
-  const [statusFilter, setStatusFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
-  const [expandedDeploymentId, setExpandedDeploymentId] = useState<string | null>(null)
-  const [rollbackTarget, setRollbackTarget] = useState<Deployment | null>(null)
-  const [search, setSearch] = useState('')
-  const toast = useAppToast()
+   const [statusFilter, setStatusFilter] = useState('')
+   const [typeFilter, setTypeFilter] = useState('')
+   const [expandedDeploymentId, setExpandedDeploymentId] = useState<string | null>(null)
+   const [rollbackTarget, setRollbackTarget] = useState<Deployment | null>(null)
+   const [search, setSearch] = useState('')
+   const [preservePVC, setPreservePVC] = useState(true)
+   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+   const toast = useAppToast()
 
   const { data: apiData } = useDeployments({ status: statusFilter as PipelineStatus || undefined })
   const rollbackMutation = useRollbackDeployment()
@@ -85,29 +87,31 @@ export function CicdHistoryPage() {
     return deployments.slice(currentIndex + 1).find((item) => item.pipelineId === target.pipelineId) ?? null
   }
 
-  const closeRollbackModal = () => {
-    reset({ confirmText: '' })
-    setRollbackTarget(null)
-  }
+   const closeRollbackModal = () => {
+     reset({ confirmText: '' })
+     setRollbackTarget(null)
+     setPreservePVC(true)
+     setDeleteConfirmText('')
+   }
 
-  const previousVersion = rollbackTarget ? getPreviousVersion(rollbackTarget) : null
-  const canRollbackConfirm = watch('confirmText').trim() === 'ROLLBACK'
+   const previousVersion = rollbackTarget ? getPreviousVersion(rollbackTarget) : null
+   const canRollbackConfirm = watch('confirmText').trim() === 'ROLLBACK' && (preservePVC || deleteConfirmText === 'DELETE')
 
-  const submitRollback = handleSubmit(() => {
-    if (!rollbackTarget) return
-    rollbackMutation.mutate(
-      { pipelineId: rollbackTarget.pipelineId, deploymentId: rollbackTarget.id },
-      {
-        onSuccess: () => {
-          toast.success(`배포를 ${rollbackTarget.version} 기준으로 롤백했습니다.`)
-          closeRollbackModal()
-        },
-        onError: () => {
-          toast.error('롤백에 실패했습니다. 잠시 후 다시 시도해주세요.')
-        },
-      }
-    )
-  })
+   const submitRollback = handleSubmit(() => {
+     if (!rollbackTarget) return
+     rollbackMutation.mutate(
+       { pipelineId: rollbackTarget.pipelineId, deploymentId: rollbackTarget.id, preservePVC },
+       {
+         onSuccess: () => {
+           toast.success(`배포를 ${rollbackTarget.version} 기준으로 롤백했습니다.`)
+           closeRollbackModal()
+         },
+         onError: () => {
+           toast.error('롤백에 실패했습니다. 잠시 후 다시 시도해주세요.')
+         },
+       }
+     )
+   })
 
   const columns: ColumnDef<Deployment, unknown>[] = [
     {
@@ -317,24 +321,67 @@ export function CicdHistoryPage() {
             </div>
           </div>
 
-          <div>
-            <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-              확인하려면{' '}
-              <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
-                ROLLBACK
-              </code>
-              을(를) 입력하세요.
-            </p>
-            <input
-              type="text"
-              placeholder="ROLLBACK"
-              className="box-border w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none"
-              {...register('confirmText')}
-            />
-            {errors.confirmText && (
-              <p className="mb-0 mt-1.5 text-xs text-[#f87171]">{errors.confirmText.message}</p>
-            )}
-          </div>
+           <div className="mt-4">
+             <p className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">데이터 보존 옵션</p>
+             <div className="flex flex-col gap-2">
+               <label className="flex items-center gap-2 text-sm cursor-pointer">
+                 <input
+                   type="radio"
+                   name="pvcMode"
+                   value="safe"
+                   checked={preservePVC}
+                   onChange={() => {
+                     setPreservePVC(true)
+                     setDeleteConfirmText('')
+                   }}
+                 />
+                 <span>Safe Mode — 데이터 보존</span>
+               </label>
+               <label className="flex items-center gap-2 text-sm cursor-pointer">
+                 <input
+                   type="radio"
+                   name="pvcMode"
+                   value="clean"
+                   checked={!preservePVC}
+                   onChange={() => setPreservePVC(false)}
+                 />
+                 <span>Clean Mode — 볼륨 삭제</span>
+               </label>
+             </div>
+             {!preservePVC && (
+               <div className="mt-3">
+                 <div className="rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-sm text-[#ef4444]">
+                   이 작업은 Persistent Volume을 영구 삭제합니다
+                 </div>
+                 <input
+                   type="text"
+                   placeholder='확인하려면 "DELETE" 입력'
+                   value={deleteConfirmText}
+                   onChange={(e) => setDeleteConfirmText(e.target.value)}
+                   className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"
+                 />
+               </div>
+             )}
+           </div>
+
+           <div>
+             <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
+               확인하려면{' '}
+               <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
+                 ROLLBACK
+               </code>
+               을(를) 입력하세요.
+             </p>
+             <input
+               type="text"
+               placeholder="ROLLBACK"
+               className="box-border w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none"
+               {...register('confirmText')}
+             />
+             {errors.confirmText && (
+               <p className="mb-0 mt-1.5 text-xs text-[#f87171]">{errors.confirmText.message}</p>
+             )}
+           </div>
         </div>
       </Modal>
     </div>
