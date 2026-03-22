@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -17,6 +19,7 @@ type StackHandler struct {
 	createStack *usecase.CreateStack
 	listStacks  *usecase.ListStacks
 	deleteStack *usecase.DeleteStack
+	addToolsUC  *usecase.AddToolsUseCase
 	stackRepo   port.StackRepository
 	audit       *audit.AuditLogger
 }
@@ -26,6 +29,7 @@ func NewStackHandler(
 	createStack *usecase.CreateStack,
 	listStacks *usecase.ListStacks,
 	deleteStack *usecase.DeleteStack,
+	addToolsUC *usecase.AddToolsUseCase,
 	stackRepo port.StackRepository,
 	auditLogger ...*audit.AuditLogger,
 ) *StackHandler {
@@ -37,6 +41,7 @@ func NewStackHandler(
 		createStack: createStack,
 		listStacks:  listStacks,
 		deleteStack: deleteStack,
+		addToolsUC:  addToolsUC,
 		stackRepo:   stackRepo,
 		audit:       logger,
 	}
@@ -48,6 +53,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("", h.ListStacks)
 	g.GET("/:stackId", h.GetStack)
 	g.DELETE("/:stackId", h.DeleteStack)
+	g.PATCH("/:stackId/tools", h.AddTools)
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.POST("/draft", h.SaveDraft)
 }
@@ -136,6 +142,44 @@ func (h *StackHandler) DeleteStack(c echo.Context) error {
 // saveConfigRequest is the request body for POST /stacks/:id/config.
 type saveConfigRequest struct {
 	Config domain.StackConfig `json:"config"`
+}
+
+type addToolsRequest struct {
+	Tools []domain.ToolConfig `json:"tools"`
+}
+
+func (h *StackHandler) AddTools(c echo.Context) error {
+	stackID := c.Param("stackId")
+	if stackID == "" {
+		return errorResponse(c, http.StatusBadRequest, "STACK_ID_REQUIRED", "stack_id is required")
+	}
+
+	var req addToolsRequest
+	if err := c.Bind(&req); err != nil {
+		return errorResponse(c, http.StatusBadRequest, "STACK_TOOLS_INVALID", err.Error())
+	}
+	if len(req.Tools) == 0 {
+		return errorResponse(c, http.StatusBadRequest, "STACK_TOOLS_INVALID", "tools is required")
+	}
+	if h.addToolsUC == nil {
+		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", "add tools usecase not configured")
+	}
+
+	result, err := h.addToolsUC.Execute(c.Request().Context(), usecase.AddToolsInput{
+		StackID: stackID,
+		Tools:   req.Tools,
+	})
+	if err != nil {
+		if errors.Is(err, usecase.ErrStackNotFound) {
+			return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+		}
+		if strings.Contains(err.Error(), "already exists") {
+			return errorResponse(c, http.StatusBadRequest, "STACK_TOOLS_DUPLICATE", err.Error())
+		}
+		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, result)
 }
 
 // SaveConfig handles POST /api/v1/stacks/:id/config.

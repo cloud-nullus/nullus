@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
+export type ResourceMode = 'auto' | 'manual'
 export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'yaml'
 
 export interface ToolSelection {
@@ -37,6 +38,10 @@ export interface ResourceConfig {
   commitsPerDay: number
   buildFrequency: BuildFrequency
   currency: Currency
+  mode: ResourceMode
+  cpuRequest?: string
+  memoryRequest?: string
+  storageRequest?: string
 }
 
 export interface StackConfigDraft {
@@ -99,6 +104,10 @@ const DEFAULT_DRAFT: StackConfigDraft = {
     commitsPerDay: 50,
     buildFrequency: 'medium',
     currency: 'KRW',
+    mode: 'auto',
+    cpuRequest: '4',
+    memoryRequest: '8Gi',
+    storageRequest: '100Gi',
   },
   activeTab: 'artifacts',
 }

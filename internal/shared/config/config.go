@@ -51,6 +51,7 @@ type SessionConfig struct {
 }
 
 type OIDCConfig struct {
+	Provider  string `mapstructure:"provider"`
 	IssuerURL string `mapstructure:"issuer_url"`
 	Audience  string `mapstructure:"audience"`
 }

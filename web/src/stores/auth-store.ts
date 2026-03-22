@@ -1,8 +1,27 @@
 import { create } from 'zustand'
 import type { Role, User } from '../types'
+import { getProviderConfig } from '../lib/oidc-providers'
+import type { OIDCUser } from '../lib/oidc-providers'
 
 const SESSION_TOKEN_KEY = 'nullus-token'
 const SESSION_USER_KEY = 'nullus-user'
+
+export const ROLE_HOME: Record<Role, string> = {
+  admin: '/admin/organization',
+  devops: '/stack/templates',
+  developer: '/cicd/developer-deploy',
+}
+
+export function getHomePathForRole(role: Role): string {
+  return ROLE_HOME[role] ?? '/'
+}
+
+export function extractRoleFromOidc(user: any): Role {
+  const roles = user?.profile?.realm_access?.roles || []
+  if (roles.includes('admin')) return 'admin'
+  if (roles.includes('devops')) return 'devops'
+  return 'developer'
+}
 
 function getStoredToken(): string | null {
   return sessionStorage.getItem(SESSION_TOKEN_KEY)
@@ -25,6 +44,14 @@ interface AuthState {
 }
 
 const storedUser = getStoredUser()
+
+export function extractRoleFromOidc(user: OIDCUser): Role {
+  const config = getProviderConfig()
+  const roles = config.extractRoles(user)
+  if (roles.includes('admin')) return 'admin'
+  if (roles.includes('devops')) return 'devops'
+  return 'developer'
+}
 
 export const useAuthStore = create<AuthState>()((set) => ({
   token: getStoredToken(),

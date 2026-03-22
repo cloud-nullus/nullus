@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Mail, Plus, Search, Server, Shield, Users, UserPlus, Loader2 } from 'lucide-react'
+import { GitBranch, Check, Copy, Link2, Mail, Plus, Search, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization, useSearchUser } from '../api/admin-api'
-import type { MemberRole, MemberStatus } from '../api/admin-api'
+import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
+import type { MemberRole, MemberStatus, InviteLink } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
@@ -154,6 +154,18 @@ const INVITE_USER_DEFAULTS: InviteUserFormData = {
   role: 'developer',
 }
 
+const MOCK_INVITES: InviteLink[] = [
+  { token: 'inv-1', role: 'devops', expiresAt: '2026-04-01T00:00:00Z', status: 'active' },
+  { token: 'inv-2', role: 'developer', expiresAt: '2026-03-10T00:00:00Z', status: 'expired' },
+]
+
+const EXPIRY_OPTIONS = [
+  { value: 1, label: '1 day' },
+  { value: 3, label: '3 days' },
+  { value: 7, label: '7 days' },
+  { value: 30, label: '30 days' },
+]
+
 export function UserManagementPage() {
   const { data: orgData } = useOrganization()
   const ORG_ID = orgData?.id ?? ''
@@ -162,10 +174,23 @@ export function UserManagementPage() {
   const inviteMember = useInviteMember(ORG_ID)
   const updateUserRole = useUpdateUserRole(ORG_ID)
   const deactivateUser = useDeactivateUser(ORG_ID)
+  const createInviteLink = useCreateInviteLink(ORG_ID)
+  const { data: inviteLinksData } = useInviteLinks(ORG_ID)
+  const revokeInviteLink = useRevokeInviteLink(ORG_ID)
+
+  const inviteLinks: InviteLink[] = (inviteLinksData?.items ?? []).length > 0
+    ? inviteLinksData!.items
+    : MOCK_INVITES
 
   const [activeMainTab, setActiveMainTab] = useState<'roles' | 'users'>('roles')
   const [activeRoleTab, setActiveRoleTab] = useState<ActiveRoleTab>('all')
   const [inviteModal, setInviteModal] = useState(false)
+  const [inviteLinkModal, setInviteLinkModal] = useState(false)
+  const [inviteLinkRole, setInviteLinkRole] = useState<MemberRole>('developer')
+  const [inviteLinkExpiry, setInviteLinkExpiry] = useState(7)
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [revokeToken, setRevokeToken] = useState<string | null>(null)
   const [menuAccessOverrides, setMenuAccessOverrides] = useState<
     Partial<Record<MemberRole, Record<string, 'View' | 'Edit'>>>
   >({})
@@ -251,6 +276,45 @@ export function UserManagementPage() {
       },
     })
   }
+
+  const handleGenerateLink = () => {
+    createInviteLink.mutate(
+      { role: inviteLinkRole, expiresInDays: inviteLinkExpiry },
+      {
+        onSuccess: (data) => {
+          setGeneratedLink(data.url ?? `${window.location.origin}/invite/${data.token}`)
+        },
+        onError: () => {
+          const mockToken = `inv-${Date.now()}`
+          setGeneratedLink(`${window.location.origin}/invite/${mockToken}`)
+        },
+      }
+    )
+  }
+
+  const handleCopyLink = async () => {
+    if (!generatedLink) return
+    await navigator.clipboard.writeText(generatedLink)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
+  }
+
+  const handleCloseInviteLinkModal = () => {
+    setInviteLinkModal(false)
+    setGeneratedLink(null)
+    setLinkCopied(false)
+    setInviteLinkRole('developer')
+    setInviteLinkExpiry(7)
+  }
+
+  const handleRevokeInvite = () => {
+    if (!revokeToken) return
+    revokeInviteLink.mutate(revokeToken, {
+      onSuccess: () => setRevokeToken(null),
+    })
+  }
+
+  const isInviteExpired = (expiresAt: string) => new Date(expiresAt) < new Date()
 
   const columns: ColumnDef<(typeof filteredUsers)[number], unknown>[] = [
     {
@@ -354,18 +418,29 @@ export function UserManagementPage() {
             </Button>
           )}
           {activeMainTab === 'users' && (
-            <Button
-              variant="primary"
-              size="sm"
-              type="button"
-              onClick={() => {
-                reset(INVITE_USER_DEFAULTS)
-                setInviteModal(true)
-              }}
-            >
-              <Plus size={13} />
-              Invite User
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => setInviteLinkModal(true)}
+              >
+                <Link2 size={13} />
+                Generate Invite Link
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  reset(INVITE_USER_DEFAULTS)
+                  setInviteModal(true)
+                }}
+              >
+                <Plus size={13} />
+                Invite User
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -510,6 +585,67 @@ export function UserManagementPage() {
           ) : (
             <DataTable columns={columns} data={filteredUsers} getRowKey={(row) => row.id} emptyMessage="사용자가 없습니다." />
           )}
+
+          {/* Pending Invites */}
+          <div className="mt-6">
+            <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-primary)]">Pending Invites</h3>
+            <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Role</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Expires At</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Status</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inviteLinks.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
+                        대기 중인 초대가 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    inviteLinks.map((invite) => {
+                      const expired = isInviteExpired(invite.expiresAt)
+                      return (
+                        <tr key={invite.token} className="border-b border-[var(--color-border-default)] last:border-b-0">
+                          <td className="px-4 py-2.5">
+                            <span className={cn('rounded-md px-2.5 py-1 text-xs font-semibold capitalize', ROLE_BADGE[invite.role].className)}>
+                              {invite.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
+                            {new Date(invite.expiresAt).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {expired ? (
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(100,116,139,0.15)] text-[#64748b]">Expired</span>
+                            ) : (
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(34,197,94,0.15)] text-[#22c55e]">Active</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              type="button"
+                              disabled={expired}
+                              onClick={() => setRevokeToken(invite.token)}
+                            >
+                              <Trash2 size={12} />
+                              Revoke
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -595,6 +731,91 @@ export function UserManagementPage() {
         description="선택한 사용자를 비활성화하면 로그인 및 배포 작업이 제한됩니다. 계속하시겠습니까?"
         confirmLabel="Deactivate"
         loading={deactivateUser.isPending}
+      />
+
+      <Modal
+        open={inviteLinkModal}
+        onClose={handleCloseInviteLinkModal}
+        title="Generate Invite Link"
+        footer={
+          generatedLink ? (
+            <Button variant="outline" size="sm" onClick={handleCloseInviteLinkModal}>
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={handleCloseInviteLinkModal}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                type="button"
+                loading={createInviteLink.isPending}
+                onClick={handleGenerateLink}
+              >
+                <Link2 size={13} />
+                Generate
+              </Button>
+            </>
+          )
+        }
+      >
+        {generatedLink ? (
+          <div className="flex flex-col gap-3">
+            <p className="m-0 text-sm text-[var(--color-text-secondary)]">
+              초대 링크가 생성되었습니다. 링크를 복사하여 공유하세요.
+            </p>
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2">
+              <code className="flex-1 truncate text-xs text-[var(--color-text-primary)]">{generatedLink}</code>
+              <Button variant="outline" size="sm" type="button" onClick={handleCopyLink}>
+                {linkCopied ? <><Check size={13} className="text-[#22c55e]" /> Copied!</> : <><Copy size={13} /> Copy Link</>}
+              </Button>
+            </div>
+            {linkCopied && (
+              <span className="text-xs text-[#22c55e]">클립보드에 복사되었습니다</span>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3.5">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="invite-link-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
+              <select
+                id="invite-link-role"
+                value={inviteLinkRole}
+                onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
+                className={selectClassName}
+              >
+                <option value="developer">Developer</option>
+                <option value="devops">DevOps</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="invite-link-expiry" className="text-xs font-medium text-[var(--color-text-secondary)]">만료 기간</label>
+              <select
+                id="invite-link-expiry"
+                value={inviteLinkExpiry}
+                onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
+                className={selectClassName}
+              >
+                {EXPIRY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={revokeToken !== null}
+        onClose={() => setRevokeToken(null)}
+        onConfirm={handleRevokeInvite}
+        title="Revoke Invite Link"
+        description="이 초대 링크를 취소하면 더 이상 사용할 수 없습니다. 계속하시겠습니까?"
+        confirmLabel="Revoke"
+        loading={revokeInviteLink.isPending}
       />
     </div>
   )

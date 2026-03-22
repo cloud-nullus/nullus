@@ -7,6 +7,7 @@ import (
 	"time"
 
 	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
+	"github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ func TestDualAuth_SessionMode_ValidSession(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := DualAuthMiddleware("session", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{}))(func(c echo.Context) error {
+	h := DualAuthMiddleware("session", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{}, keycloak.NewOIDCProvider()))(func(c echo.Context) error {
 		user, ok := c.Get(userContextKey).(*admindomain.User)
 		require.True(t, ok)
 		require.NotNil(t, user)
@@ -41,7 +42,7 @@ func TestDualAuth_SessionMode_NoSession(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := DualAuthMiddleware("session", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{}))(func(c echo.Context) error {
+	h := DualAuthMiddleware("session", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{}, keycloak.NewOIDCProvider()))(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
@@ -74,7 +75,7 @@ func TestDualAuth_OIDCMode_ValidToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := DualAuthMiddleware("oidc", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"}))(func(c echo.Context) error {
+	h := DualAuthMiddleware("oidc", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"}, keycloak.NewOIDCProvider()))(func(c echo.Context) error {
 		user, ok := c.Get(userContextKey).(*admindomain.User)
 		require.True(t, ok)
 		require.NotNil(t, user)
@@ -95,7 +96,7 @@ func TestDualAuth_OIDCMode_InvalidToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := DualAuthMiddleware("oidc", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{IssuerURL: "https://issuer.local", Audience: "nullus-app"}))(func(c echo.Context) error {
+	h := DualAuthMiddleware("oidc", AuthMiddleware(), JWTAuthMiddleware(JWTConfig{IssuerURL: "https://issuer.local", Audience: "nullus-app"}, keycloak.NewOIDCProvider()))(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
+import { isOidcMode, getProviderConfig } from '../../lib/oidc-providers'
 import type { Role } from '../../types'
 import { cn } from '../../lib/utils'
 
@@ -200,11 +201,21 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Logout */}
       <div className="border-t border-[var(--color-sidebar-border)] py-2">
         <button
           type="button"
-          onClick={() => {
+          onClick={async () => {
+            if (isOidcMode) {
+              const config = getProviderConfig()
+              if (config.getLogoutUrl) {
+                const idToken = sessionStorage.getItem('nullus-id-token') ?? ''
+                const redirectUri = window.location.origin
+                logout()
+                window.location.href = config.getLogoutUrl(idToken, redirectUri)
+                return
+              }
+              // When react-oidc-context is installed, call auth.signoutRedirect() here
+            }
             logout()
             navigate('/login')
           }}

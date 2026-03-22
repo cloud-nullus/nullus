@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
-import { Download, Save, Rocket } from 'lucide-react'
+import { AlignLeft, Check, Copy, Download, Rocket, Save } from 'lucide-react'
+import Editor from '@monaco-editor/react'
+import type { Monaco } from '@monaco-editor/react'
+import { configureMonacoYaml } from 'monaco-yaml'
+import YAML from 'yaml'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
@@ -13,10 +17,10 @@ import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
-import { YamlEditor } from '../../../components/shared/yaml-editor'
 import { Modal } from '../../../components/ui/modal'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { cn } from '../../../lib/utils'
+import { useThemeStore } from '../../../stores/theme-store'
 
 // --- Tool option types ---
 
@@ -327,37 +331,137 @@ function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
 // --- YAML conversion ---
 
 function draftToYaml(draft: StackConfigDraft): string {
-  const lines: string[] = [
-    `stackName: ${draft.stackName || '""'}`,
-    `templateId: ${draft.selectedTemplateId ?? 'null'}`,
-    `clusterId: ${draft.clusterId ?? 'null'}`,
-    '',
-    'artifacts:',
-    `  packageRegistry: ${draft.artifacts.packageRegistry.tool}`,
-    `  sourceRepository: ${draft.artifacts.sourceRepository.tool}`,
-    `  containerRegistry: ${draft.artifacts.containerRegistry.tool}`,
-    `  storageBackend: ${draft.artifacts.storageBackend.tool}`,
-    '',
-    'pipeline:',
-    `  cicdPlatform: ${draft.pipeline.cicdPlatform.tool}`,
-    `  cdTool: ${draft.pipeline.cdTool.tool}`,
-    '',
-    'monitoring:',
-    `  collection: ${draft.monitoring.collection.tool}`,
-    `  visualization: ${draft.monitoring.visualization.tool}`,
-    '',
-    'logging:',
-    `  logs: ${draft.logging.search.tool}`,
-    `  traces: ${draft.logging.traceLayer.tool}`,
-    '',
-    'resources:',
-    `  developerCount: ${draft.resources.developerCount}`,
-    `  concurrentRunners: ${draft.resources.concurrentRunners}`,
-    `  commitsPerDay: ${draft.resources.commitsPerDay}`,
-    `  buildFrequency: ${draft.resources.buildFrequency}`,
-    `  currency: ${draft.resources.currency}`,
-  ]
-  return lines.join('\n')
+  return YAML.stringify(
+    {
+      stackName: draft.stackName,
+      templateId: draft.selectedTemplateId,
+      clusterId: draft.clusterId,
+      namespace: draft.namespace,
+      artifacts: {
+        packageRegistry: draft.artifacts.packageRegistry.tool,
+        sourceRepository: draft.artifacts.sourceRepository.tool,
+        containerRegistry: draft.artifacts.containerRegistry.tool,
+        storageBackend: draft.artifacts.storageBackend.tool,
+      },
+      pipeline: {
+        cicdPlatform: draft.pipeline.cicdPlatform.tool,
+        cdTool: draft.pipeline.cdTool.tool,
+      },
+      monitoring: {
+        collection: draft.monitoring.collection.tool,
+        visualization: draft.monitoring.visualization.tool,
+      },
+      logging: {
+        logs: draft.logging.search.tool,
+        traces: draft.logging.traceLayer.tool,
+      },
+      resources: {
+        developerCount: draft.resources.developerCount,
+        concurrentRunners: draft.resources.concurrentRunners,
+        commitsPerDay: draft.resources.commitsPerDay,
+        buildFrequency: draft.resources.buildFrequency,
+        currency: draft.resources.currency,
+        mode: draft.resources.mode,
+        cpuRequest: draft.resources.cpuRequest,
+        memoryRequest: draft.resources.memoryRequest,
+        storageRequest: draft.resources.storageRequest,
+      },
+    },
+    { indent: 2, lineWidth: 0 }
+  )
+}
+
+function parseDraftFromYaml(text: string, currentDraft: StackConfigDraft): StackConfigDraft | null {
+  const parsed = YAML.parse(text)
+  if (!parsed || typeof parsed !== 'object') return null
+
+  const root = parsed as Record<string, unknown>
+  const artifacts = (root.artifacts ?? {}) as Record<string, unknown>
+  const pipeline = (root.pipeline ?? {}) as Record<string, unknown>
+  const monitoring = (root.monitoring ?? {}) as Record<string, unknown>
+  const logging = (root.logging ?? {}) as Record<string, unknown>
+  const resources = (root.resources ?? {}) as Record<string, unknown>
+
+  const toStringOrFallback = (value: unknown, fallback: string) =>
+    typeof value === 'string' ? value : fallback
+
+  const toNullableStringOrFallback = (value: unknown, fallback: string | null) => {
+    if (value === null) return null
+    return typeof value === 'string' ? value : fallback
+  }
+
+  const toNumberOrFallback = (value: unknown, fallback: number) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    return fallback
+  }
+
+  return {
+    ...currentDraft,
+    stackName: toStringOrFallback(root.stackName, currentDraft.stackName),
+    selectedTemplateId: toNullableStringOrFallback(root.templateId, currentDraft.selectedTemplateId),
+    clusterId: toNullableStringOrFallback(root.clusterId, currentDraft.clusterId),
+    namespace: toStringOrFallback(root.namespace, currentDraft.namespace),
+    artifacts: {
+      packageRegistry: {
+        tool: toStringOrFallback(artifacts.packageRegistry, currentDraft.artifacts.packageRegistry.tool),
+        version: currentDraft.artifacts.packageRegistry.version,
+      },
+      sourceRepository: {
+        tool: toStringOrFallback(artifacts.sourceRepository, currentDraft.artifacts.sourceRepository.tool),
+        version: currentDraft.artifacts.sourceRepository.version,
+      },
+      containerRegistry: {
+        tool: toStringOrFallback(artifacts.containerRegistry, currentDraft.artifacts.containerRegistry.tool),
+        version: currentDraft.artifacts.containerRegistry.version,
+      },
+      storageBackend: {
+        tool: toStringOrFallback(artifacts.storageBackend, currentDraft.artifacts.storageBackend.tool),
+        version: currentDraft.artifacts.storageBackend.version,
+      },
+    },
+    pipeline: {
+      cicdPlatform: {
+        tool: toStringOrFallback(pipeline.cicdPlatform, currentDraft.pipeline.cicdPlatform.tool),
+        version: currentDraft.pipeline.cicdPlatform.version,
+      },
+      cdTool: {
+        tool: toStringOrFallback(pipeline.cdTool, currentDraft.pipeline.cdTool.tool),
+        version: currentDraft.pipeline.cdTool.version,
+      },
+    },
+    monitoring: {
+      collection: {
+        tool: toStringOrFallback(monitoring.collection, currentDraft.monitoring.collection.tool),
+        version: currentDraft.monitoring.collection.version,
+      },
+      visualization: {
+        tool: toStringOrFallback(monitoring.visualization, currentDraft.monitoring.visualization.tool),
+        version: currentDraft.monitoring.visualization.version,
+      },
+    },
+    logging: {
+      search: {
+        tool: toStringOrFallback(logging.logs, currentDraft.logging.search.tool),
+        version: currentDraft.logging.search.version,
+      },
+      traceLayer: {
+        tool: toStringOrFallback(logging.traces, currentDraft.logging.traceLayer.tool),
+        version: currentDraft.logging.traceLayer.version,
+      },
+    },
+    resources: {
+      ...currentDraft.resources,
+      developerCount: toNumberOrFallback(resources.developerCount, currentDraft.resources.developerCount),
+      concurrentRunners: toNumberOrFallback(resources.concurrentRunners, currentDraft.resources.concurrentRunners),
+      commitsPerDay: toNumberOrFallback(resources.commitsPerDay, currentDraft.resources.commitsPerDay),
+      buildFrequency: toStringOrFallback(resources.buildFrequency, currentDraft.resources.buildFrequency) as StackConfigDraft['resources']['buildFrequency'],
+      currency: toStringOrFallback(resources.currency, currentDraft.resources.currency) as StackConfigDraft['resources']['currency'],
+      mode: toStringOrFallback(resources.mode, currentDraft.resources.mode) as StackConfigDraft['resources']['mode'],
+      cpuRequest: toStringOrFallback(resources.cpuRequest, currentDraft.resources.cpuRequest ?? ''),
+      memoryRequest: toStringOrFallback(resources.memoryRequest, currentDraft.resources.memoryRequest ?? ''),
+      storageRequest: toStringOrFallback(resources.storageRequest, currentDraft.resources.storageRequest ?? ''),
+    },
+  }
 }
 
 // --- Tab definitions ---
@@ -374,6 +478,8 @@ const TABS: { id: InstallTab; label: string }[] = [
 
 export function StackInstallPage() {
   const navigate = useNavigate()
+  const theme = useThemeStore((state) => state.theme)
+  const isDarkMode = theme === 'dark'
   const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace, updateResources } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
@@ -385,9 +491,17 @@ export function StackInstallPage() {
   const [deployScriptModalOpen, setDeployScriptModalOpen] = useState(false)
   const [k8sPreviewModalOpen, setK8sPreviewModalOpen] = useState(false)
   const [activeK8sPreviewTab, setActiveK8sPreviewTab] = useState<K8sPreviewTab>('namespace')
+  const [yamlContent, setYamlContent] = useState(() => draftToYaml(draft))
+  const [yamlCopied, setYamlCopied] = useState(false)
+  const yamlContentRef = useRef(yamlContent)
+  const syncFromYamlTimerRef = useRef<number | null>(null)
+  const syncFromDraftTimerRef = useRef<number | null>(null)
+  const applyingYamlToStoreRef = useRef(false)
+  const monacoConfiguredRef = useRef(false)
   const {
     control,
     trigger,
+    setValue,
     formState: { errors, isValid, isSubmitting },
   } = useForm<StackInstallFormData>({
     resolver: zodResolver(stackInstallSchema),
@@ -401,6 +515,108 @@ export function StackInstallPage() {
 
   const deployScript = createDeployScript(draft)
   const k8sObjects = createK8sObjects(draft)
+
+  const handleYamlChange = useCallback((value?: string) => {
+    const nextYaml = value ?? ''
+    yamlContentRef.current = nextYaml
+    setYamlContent(nextYaml)
+
+    if (syncFromDraftTimerRef.current !== null) {
+      window.clearTimeout(syncFromDraftTimerRef.current)
+      syncFromDraftTimerRef.current = null
+    }
+
+    if (syncFromYamlTimerRef.current !== null) {
+      window.clearTimeout(syncFromYamlTimerRef.current)
+    }
+
+    syncFromYamlTimerRef.current = window.setTimeout(() => {
+      try {
+        const currentDraft = useStackConfigStore.getState().draft
+        const parsedDraft = parseDraftFromYaml(nextYaml, currentDraft)
+        if (!parsedDraft) return
+
+        applyingYamlToStoreRef.current = true
+        useStackConfigStore.setState((state) => ({
+          draft: {
+            ...parsedDraft,
+            activeTab: state.draft.activeTab,
+          },
+          isDirty: true,
+        }))
+      } catch {
+      }
+    }, 300)
+  }, [])
+
+  const handleCopyYaml = useCallback(() => {
+    void navigator.clipboard.writeText(yamlContentRef.current).then(() => {
+      setYamlCopied(true)
+      window.setTimeout(() => setYamlCopied(false), 1500)
+    })
+  }, [])
+
+  const handleFormatYaml = useCallback(() => {
+    try {
+      const parsed = YAML.parse(yamlContentRef.current)
+      const formatted = YAML.stringify(parsed, { indent: 2, lineWidth: 0 })
+      handleYamlChange(formatted)
+    } catch {
+    }
+  }, [handleYamlChange])
+
+  const handleMonacoBeforeMount = useCallback((monaco: Monaco) => {
+    if (monacoConfiguredRef.current) return
+    configureMonacoYaml(monaco, {
+      validate: true,
+      completion: false,
+      hover: true,
+      format: true,
+      enableSchemaRequest: false,
+      schemas: [],
+    })
+    monacoConfiguredRef.current = true
+  }, [])
+
+  useEffect(() => {
+    yamlContentRef.current = yamlContent
+  }, [yamlContent])
+
+  useEffect(() => {
+    if (applyingYamlToStoreRef.current) {
+      applyingYamlToStoreRef.current = false
+      return
+    }
+
+    const nextYaml = draftToYaml(draft)
+    if (nextYaml === yamlContentRef.current) return
+
+    if (syncFromDraftTimerRef.current !== null) {
+      window.clearTimeout(syncFromDraftTimerRef.current)
+    }
+
+    syncFromDraftTimerRef.current = window.setTimeout(() => {
+      yamlContentRef.current = nextYaml
+      setYamlContent(nextYaml)
+    }, 300)
+  }, [draft])
+
+  useEffect(() => {
+    setValue('stackName', draft.stackName)
+    setValue('developerCount', draft.resources.developerCount)
+    setValue('concurrentRunners', draft.resources.concurrentRunners)
+  }, [draft.resources.concurrentRunners, draft.resources.developerCount, draft.stackName, setValue])
+
+  useEffect(() => {
+    return () => {
+      if (syncFromYamlTimerRef.current !== null) {
+        window.clearTimeout(syncFromYamlTimerRef.current)
+      }
+      if (syncFromDraftTimerRef.current !== null) {
+        window.clearTimeout(syncFromDraftTimerRef.current)
+      }
+    }
+  }, [])
 
   const switchTab = (tab: InstallTab) => {
     setLocalTab(tab)
@@ -431,7 +647,7 @@ export function StackInstallPage() {
       const createRes = await api.post<{ id: string }>('/stacks', body)
       const stackId = createRes.data?.id
       if (!stackId) { navigate('/stack/list'); return }
-      await api.post(`/stacks/${stackId}/deploy`).catch(() => {})
+      await api.post(`/stacks/${stackId}/deploy`).catch(() => { })
       navigate(`/stack/deploy/${stackId}`)
     } catch {
       navigate('/stack/list')
@@ -502,7 +718,7 @@ export function StackInstallPage() {
           <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
             Preview K8s Objects
           </Button>
-           <Button
+          <Button
             variant="primary"
             size="md"
             loading={createStack.isPending}
@@ -695,13 +911,36 @@ export function StackInstallPage() {
             {activeTab === 'yaml' && (
               <div>
                 <p className="mb-[14px] mt-0 text-[13px] text-[var(--color-text-secondary)]">
-                  현재 스택 설정의 YAML 표현입니다. (읽기 전용)
+                  폼과 YAML이 300ms 단위로 동기화됩니다. YAML 문법이 유효할 때만 설정에 반영됩니다.
                 </p>
-                <YamlEditor
-                  value={draftToYaml(draft)}
-                  readOnly
-                  height="360px"
-                />
+                <div className="mb-2 flex items-center justify-end gap-2">
+                  <Button variant="outline" size="sm" type="button" onClick={handleFormatYaml}>
+                    <AlignLeft size={12} />
+                    Format
+                  </Button>
+                  <Button variant="outline" size="sm" type="button" onClick={handleCopyYaml}>
+                    {yamlCopied ? <Check size={12} /> : <Copy size={12} />}
+                    {yamlCopied ? 'Copied!' : 'Copy'}
+                  </Button>
+                </div>
+                <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)]">
+                  <Editor
+                    beforeMount={handleMonacoBeforeMount}
+                    height="500px"
+                    language="yaml"
+                    theme={isDarkMode ? 'vs-dark' : 'vs-light'}
+                    value={yamlContent}
+                    onChange={handleYamlChange}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'on',
+                      tabSize: 2,
+                    }}
+                  />
+                </div>
               </div>
             )}
 
@@ -710,69 +949,143 @@ export function StackInstallPage() {
                 <p className="mb-4 mt-0 text-[13px] text-[var(--color-text-secondary)]">
                   팀 규모와 사용 패턴을 입력하면 필요한 리소스를 계산합니다.
                 </p>
-                <div className="mb-4 grid grid-cols-2 gap-[14px]">
-                  <Controller
-                    control={control}
-                    name="developerCount"
-                    render={({ field }) => (
-                      <>
-                        <Input
-                          label="개발자 수"
-                          type="number"
-                          min={1}
-                          value={field.value}
-                          onChange={(e) => {
-                            const value = Number(e.target.value)
-                            field.onChange(value)
-                            updateResources({ developerCount: value })
-                          }}
-                          onBlur={field.onBlur}
-                        />
-                        {errors.developerCount && <span className="text-xs text-[#ef4444]">{errors.developerCount.message}</span>}
-                      </>
-                    )}
-                  />
-                  <Controller
-                    control={control}
-                    name="concurrentRunners"
-                    render={({ field }) => (
-                      <>
-                        <Input
-                          label="동시 러너 수"
-                          type="number"
-                          min={1}
-                          value={field.value}
-                          onChange={(e) => {
-                            const value = Number(e.target.value)
-                            field.onChange(value)
-                            updateResources({ concurrentRunners: value })
-                          }}
-                          onBlur={field.onBlur}
-                        />
-                        {errors.concurrentRunners && <span className="text-xs text-[#ef4444]">{errors.concurrentRunners.message}</span>}
-                      </>
-                    )}
-                  />
-                  <Input
-                    label="일일 커밋 수"
-                    type="number"
-                    min={1}
-                    value={draft.resources.commitsPerDay}
-                    onChange={(e) => updateResources({ commitsPerDay: Number(e.target.value) })}
-                  />
-                  <NativeSelect
-                      label="빌드 빈도"
-                      value={draft.resources.buildFrequency}
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label htmlFor="resource-mode-auto" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                      리소스 모드
+                    </label>
+                    <div className="flex gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-1">
+                      {(['auto', 'manual'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          id={mode === 'auto' ? 'resource-mode-auto' : 'resource-mode-manual'}
+                          type="button"
+                          onClick={() => updateResources({ mode })}
+                          className={cn(
+                            'px-3 py-1.5 text-xs font-medium rounded transition-all duration-150',
+                            draft.resources.mode === mode
+                              ? 'bg-[#6366f1] text-white'
+                              : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                          )}
+                        >
+                          {mode === 'auto' ? 'Auto' : 'Manual'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="currency-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                      통화
+                    </label>
+                    <NativeSelect
+                      id="currency-select"
+                      value={draft.resources.currency}
                       onChange={(e) =>
-                        updateResources({ buildFrequency: e.target.value as 'low' | 'medium' | 'high' })
+                        updateResources({ currency: e.target.value as 'USD' | 'KRW' | 'CNY' })
                       }
                       className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                     >
-                      <option value="low">낮음 (Low)</option>
-                      <option value="medium">보통 (Medium)</option>
-                      <option value="high">높음 (High)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="KRW">KRW (₩)</option>
+                      <option value="CNY">CNY (¥)</option>
                     </NativeSelect>
+                  </div>
                 </div>
+
+                {draft.resources.mode === 'auto' && (
+                  <div className="mb-4 grid grid-cols-2 gap-[14px]">
+                    <Controller
+                      control={control}
+                      name="developerCount"
+                      render={({ field }) => (
+                        <>
+                          <Input
+                            label="개발자 수"
+                            type="number"
+                            min={1}
+                            value={field.value}
+                            onChange={(e) => {
+                              const value = Number(e.target.value)
+                              field.onChange(value)
+                              updateResources({ developerCount: value })
+                            }}
+                            onBlur={field.onBlur}
+                          />
+                          {errors.developerCount && <span className="text-xs text-[#ef4444]">{errors.developerCount.message}</span>}
+                        </>
+                      )}
+                    />
+                    <Controller
+                      control={control}
+                      name="concurrentRunners"
+                      render={({ field }) => (
+                        <>
+                          <Input
+                            label="동시 러너 수"
+                            type="number"
+                            min={1}
+                            value={field.value}
+                            onChange={(e) => {
+                              const value = Number(e.target.value)
+                              field.onChange(value)
+                              updateResources({ concurrentRunners: value })
+                            }}
+                            onBlur={field.onBlur}
+                          />
+                          {errors.concurrentRunners && <span className="text-xs text-[#ef4444]">{errors.concurrentRunners.message}</span>}
+                        </>
+                      )}
+                    />
+                    <Input
+                      label="일일 커밋 수"
+                      type="number"
+                      min={1}
+                      value={draft.resources.commitsPerDay}
+                      onChange={(e) => updateResources({ commitsPerDay: Number(e.target.value) })}
+                    />
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="build-frequency" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                        빌드 빈도
+                      </label>
+                      <select
+                        id="build-frequency"
+                        value={draft.resources.buildFrequency}
+                        onChange={(e) =>
+                          updateResources({ buildFrequency: e.target.value as 'low' | 'medium' | 'high' })
+                        }
+                        className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                      >
+                        <option value="low">낮음 (Low)</option>
+                        <option value="medium">보통 (Medium)</option>
+                        <option value="high">높음 (High)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {draft.resources.mode === 'manual' && (
+                  <div className="mb-4 grid grid-cols-2 gap-[14px]">
+                    <Input
+                      label="CPU 요청"
+                      placeholder="예: 4"
+                      value={draft.resources.cpuRequest || ''}
+                      onChange={(e) => updateResources({ cpuRequest: e.target.value })}
+                    />
+                    <Input
+                      label="메모리 요청"
+                      placeholder="예: 8Gi"
+                      value={draft.resources.memoryRequest || ''}
+                      onChange={(e) => updateResources({ memoryRequest: e.target.value })}
+                    />
+                    <Input
+                      label="스토리지 요청"
+                      placeholder="예: 100Gi"
+                      value={draft.resources.storageRequest || ''}
+                      onChange={(e) => updateResources({ storageRequest: e.target.value })}
+                    />
+                  </div>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"

@@ -46,11 +46,20 @@ func (r *PostgresStackRepository) Create(ctx context.Context, stack *domain.Stac
 }
 
 func (r *PostgresStackRepository) GetByID(ctx context.Context, id string) (*domain.Stack, error) {
+	return r.FindByID(ctx, id)
+}
+
+func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*domain.Stack, error) {
 	const q = `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at
 		FROM stacks WHERE id = $1`
 
-	return r.scanStack(r.pool.QueryRow(ctx, q, id))
+	stack, configJSON, err := r.scanStackWithConfig(r.pool.QueryRow(ctx, q, id))
+	if err != nil || stack == nil {
+		return stack, err
+	}
+	stack.Tools = parseToolsFromConfig(configJSON)
+	return stack, nil
 }
 
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string) ([]*domain.Stack, error) {
@@ -109,6 +118,69 @@ func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stac
 	return nil
 }
 
+func (r *PostgresStackRepository) UpdateTools(ctx context.Context, stack *domain.Stack) error {
+	const selectQ = `SELECT config FROM stacks WHERE id = $1`
+
+	var configJSON []byte
+	if err := r.pool.QueryRow(ctx, selectQ, stack.ID).Scan(&configJSON); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("stack %q not found", stack.ID)
+		}
+		return fmt.Errorf("load stack config: %w", err)
+	}
+
+	configMap := map[string]any{}
+	if len(configJSON) > 0 {
+		if err := json.Unmarshal(configJSON, &configMap); err != nil {
+			return fmt.Errorf("unmarshal config: %w", err)
+		}
+	}
+
+	tools := make([]map[string]string, 0, len(stack.Tools))
+	for _, tool := range stack.Tools {
+		name := tool.Tool
+		if name == "" {
+			name = tool.Name
+		}
+		version := tool.Version
+		if version == "" {
+			if tool.AppVersion != "" {
+				version = tool.AppVersion
+			} else {
+				version = tool.HelmVersion
+			}
+		}
+		tools = append(tools, map[string]string{
+			"category": tool.Category,
+			"tool":     name,
+			"version":  version,
+		})
+	}
+	configMap["tools"] = tools
+
+	mergedJSON, err := json.Marshal(configMap)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	stack.UpdatedAt = time.Now()
+
+	const updateQ = `
+		UPDATE stacks
+		SET config = $2, updated_at = $3
+		WHERE id = $1`
+
+	ct, err := r.pool.Exec(ctx, updateQ, stack.ID, mergedJSON, stack.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("update stack tools: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("stack %q not found", stack.ID)
+	}
+
+	return nil
+}
+
 func (r *PostgresStackRepository) Delete(ctx context.Context, id string) error {
 	const q = `DELETE FROM stacks WHERE id = $1`
 
@@ -127,6 +199,11 @@ type pgxScanner interface {
 }
 
 func (r *PostgresStackRepository) scanStack(row pgxScanner) (*domain.Stack, error) {
+	stack, _, err := r.scanStackWithConfig(row)
+	return stack, err
+}
+
+func (r *PostgresStackRepository) scanStackWithConfig(row pgxScanner) (*domain.Stack, []byte, error) {
 	var (
 		s          domain.Stack
 		state      string
@@ -146,18 +223,61 @@ func (r *PostgresStackRepository) scanStack(row pgxScanner) (*domain.Stack, erro
 		&s.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	s.State = domain.DeploymentState(state)
 
 	var cfg domain.StackConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+		return nil, nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	s.Config = cfg
 
-	return &s, nil
+	return &s, configJSON, nil
+}
+
+func parseToolsFromConfig(configJSON []byte) []domain.ToolConfig {
+	if len(configJSON) == 0 {
+		return nil
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(configJSON, &raw); err != nil {
+		return nil
+	}
+
+	toolsRaw, ok := raw["tools"]
+	if !ok {
+		return nil
+	}
+
+	var tools []domain.ToolConfig
+	if err := json.Unmarshal(toolsRaw, &tools); err == nil {
+		for i := range tools {
+			if tools[i].Tool == "" {
+				tools[i].Tool = tools[i].Name
+			}
+			if tools[i].Name == "" {
+				tools[i].Name = tools[i].Tool
+			}
+			if tools[i].Version == "" {
+				if tools[i].AppVersion != "" {
+					tools[i].Version = tools[i].AppVersion
+				} else {
+					tools[i].Version = tools[i].HelmVersion
+				}
+			}
+			if tools[i].AppVersion == "" {
+				tools[i].AppVersion = tools[i].Version
+			}
+			if tools[i].HelmVersion == "" {
+				tools[i].HelmVersion = tools[i].Version
+			}
+		}
+	}
+
+	return tools
 }

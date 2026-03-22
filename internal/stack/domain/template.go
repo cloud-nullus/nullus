@@ -8,6 +8,8 @@ type ToolConfig struct {
 	Name        string `json:"name"`
 	HelmVersion string `json:"helm_version"`
 	AppVersion  string `json:"app_version"`
+	Tool        string `json:"tool,omitempty"`
+	Version     string `json:"version,omitempty"`
 }
 
 // Template represents a Golden Path template for stack deployment.
