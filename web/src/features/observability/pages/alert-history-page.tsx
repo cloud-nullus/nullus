@@ -8,35 +8,7 @@ import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
-
-type ObsTab = 'stack' | 'cicd'
-
-const CICD_MOCK_HISTORY: AlertHistoryEntry[] = [
-  {
-    id: 'cicd-alert-1',
-    ruleName: 'Build Failure Spike',
-    severity: 'critical',
-    message: 'Build failure rate exceeded 15% in last 10 minutes.',
-    firedAt: '2026-03-08T02:14:00Z',
-    resolvedAt: '2026-03-08T02:29:00Z',
-  },
-  {
-    id: 'cicd-alert-2',
-    ruleName: 'Pipeline Queue Delay',
-    severity: 'warning',
-    message: 'Queue wait time is above 120 seconds.',
-    firedAt: '2026-03-07T15:22:00Z',
-    resolvedAt: null,
-  },
-  {
-    id: 'cicd-alert-3',
-    ruleName: 'Rollback Triggered',
-    severity: 'info',
-    message: 'Automatic rollback executed for backend-api deployment.',
-    firedAt: '2026-03-07T10:03:00Z',
-    resolvedAt: '2026-03-07T10:11:00Z',
-  },
-]
+import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
 
 const SEVERITY_BADGE: Record<AlertSeverity, { className: string; label: string }> = {
   critical: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]', label: 'Critical' },
@@ -51,14 +23,16 @@ function formatDate(iso: string | null) {
 }
 
 export function AlertHistoryPage() {
-  const [activeTab, setActiveTab] = useState<ObsTab>('stack')
+  const [selectedClusterId, setSelectedClusterId] = useState('')
+  const [selectedStackId, setSelectedStackId] = useState('')
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null)
   const [severityFilter, setSeverityFilter] = useState<AlertSeverity | ''>('')
   const [search, setSearch] = useState('')
   const [dateRange, setDateRange] = useState<'24h' | '7d' | '30d' | 'all'>('7d')
+  const { clusters, filteredStacks, selectedCluster, selectedStack } = useClusterStackFilterState(selectedClusterId, selectedStackId)
 
   const { data: apiData } = useAlertHistory(severityFilter ? { severity: severityFilter } : undefined)
-  const history = activeTab === 'cicd' ? CICD_MOCK_HISTORY : (apiData?.items ?? [])
+  const history = apiData?.items ?? []
 
   const filtered = history.filter((entry) => {
     if (severityFilter && entry.severity !== severityFilter) return false
@@ -139,6 +113,15 @@ export function AlertHistoryPage() {
     },
   ]
 
+  const handleClusterChange = (clusterId: string) => {
+    setSelectedClusterId(clusterId)
+    setSelectedStackId('')
+  }
+
+  const handleStackChange = (stackId: string) => {
+    setSelectedStackId(stackId)
+  }
+
   return (
     <div>
       <Breadcrumb items={[{ label: 'Alert History' }]} />
@@ -158,26 +141,17 @@ export function AlertHistoryPage() {
         </div>
       </div>
 
-      <div className="mb-5 flex gap-1.5">
-        {(['stack', 'cicd'] as const).map((tab) => {
-          const active = activeTab === tab
-          return (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                'cursor-pointer rounded-[7px] border px-3 py-[5px] text-xs font-bold',
-                active
-                  ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
-              )}
-            >
-              {tab === 'stack' ? 'Stack' : 'CI/CD'}
-            </button>
-          )
-        })}
-      </div>
+      <ClusterStackFilter
+        selectedClusterId={selectedClusterId}
+        selectedStackId={selectedStackId}
+        onClusterChange={handleClusterChange}
+        onStackChange={handleStackChange}
+        onClear={() => { setSelectedClusterId(''); setSelectedStackId('') }}
+        clusters={clusters}
+        filteredStacks={filteredStacks}
+        selectedCluster={selectedCluster}
+        selectedStack={selectedStack}
+      />
 
       <DataTable
         columns={columns}
