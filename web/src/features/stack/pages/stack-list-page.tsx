@@ -49,6 +49,7 @@ import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
 import { Button } from "../../../components/ui/button";
+import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
 import { useDeleteStack, useStacks } from "../api/stack-api";
@@ -193,14 +194,14 @@ function ToolOption({
 			</div>
 			{checked && version && (
 				<div className="ml-6 flex flex-wrap items-center gap-3">
-					<select
+					<NativeSelect
 						defaultValue={version}
 						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 					>
 						{(versions ?? [version]).map((v) => (
 							<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
 						))}
-					</select>
+					</NativeSelect>
 					<div className="flex items-center gap-1.5">
 						<span className="text-[11px] text-[#6366f1]">Instances:</span>
 						<div className="flex items-center">
@@ -1461,7 +1462,7 @@ export function StackListPage() {
 				data={filtered}
 				toolbar={
 					<>
-						<select
+						<NativeSelect
 							value={statusFilter}
 							onChange={(e) => setStatusFilter(e.target.value)}
 							className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
@@ -1472,7 +1473,7 @@ export function StackListPage() {
 							<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
 							<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
 							<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
-						</select>
+						</NativeSelect>
 						<div className="relative ml-auto">
 							<Search
 								size={13}

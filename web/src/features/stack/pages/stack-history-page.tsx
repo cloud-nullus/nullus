@@ -4,6 +4,7 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
@@ -246,7 +247,7 @@ export function StackHistoryPage() {
           <div className="grid gap-2 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
               Version A
-              <select
+              <NativeSelect
                 value={versionA}
                 onChange={(event) => setVersionA(Number(event.target.value))}
                 className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
@@ -254,11 +255,11 @@ export function StackHistoryPage() {
                 {versionOptions.map((version) => (
                   <option key={`a-${version}`} value={version}>{`v${version}`}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
               Version B
-              <select
+              <NativeSelect
                 value={versionB}
                 onChange={(event) => setVersionB(Number(event.target.value))}
                 className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
@@ -266,7 +267,7 @@ export function StackHistoryPage() {
                 {versionOptions.map((version) => (
                   <option key={`b-${version}`} value={version}>{`v${version}`}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           </div>
 

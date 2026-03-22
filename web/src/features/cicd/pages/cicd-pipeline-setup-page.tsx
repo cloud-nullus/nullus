@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
 import { useCicdTemplates, useCreatePipeline } from '../api/cicd-api'
@@ -358,12 +359,8 @@ export function CicdPipelineSetupPage() {
           value={pipelineName}
           onChange={(event) => setPipelineName(event.target.value)}
         />
-        <div className="flex flex-col gap-1">
-          <label htmlFor="pipeline-template" className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
-            Selected Template
-          </label>
-          <select
-            id="pipeline-template"
+        <NativeSelect
+            label="Selected Template"
             value={template?.id ?? ''}
             onChange={(event) => {
               const nextTemplate = templates.find((item) => item.id === event.target.value)
@@ -379,8 +376,7 @@ export function CicdPipelineSetupPage() {
                 {item.name}
               </option>
             ))}
-          </select>
-        </div>
+          </NativeSelect>
       </div>
 
       <div className="flex items-start gap-5">
@@ -411,12 +407,8 @@ export function CicdPipelineSetupPage() {
           <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
             {activeTab === 'cluster' && (
               <div className="max-w-[420px]">
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="pipeline-cluster" className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
-                    Deploy Cluster
-                  </label>
-                  <select
-                    id="pipeline-cluster"
+                <NativeSelect
+                    label="Deploy Cluster"
                     value={clusterId}
                     onChange={(event) => setClusterId(event.target.value)}
                     className={appTypeOptionClassName}
@@ -426,8 +418,7 @@ export function CicdPipelineSetupPage() {
                         {cluster.name}
                       </option>
                     ))}
-                  </select>
-                </div>
+                  </NativeSelect>
               </div>
             )}
 

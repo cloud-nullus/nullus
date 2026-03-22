@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Bell, Plus, Search } from 'lucide-react'
@@ -9,6 +9,7 @@ import type { AlertRule, AlertChannel, AlertSeverity, CreateAlertRuleRequest } f
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
@@ -29,29 +30,29 @@ const SEVERITY_BADGE: Record<AlertSeverity, { className: string; label: string }
 
 interface AlertRuleForm {
   name: string
-  metric: string
+  severity: AlertSeverity
   condition: string
   threshold: number
-  channels: AlertChannel[]
-  severity: AlertSeverity
+  channel: AlertChannel
+  enabled: boolean
 }
 
 const alertRuleSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  metric: z.string().min(1, 'Metric is required'),
-  condition: z.string().min(1, 'Condition is required'),
-  threshold: z.number().gt(0, 'Threshold must be greater than 0'),
-  channels: z.array(z.enum(['slack', 'email'])).min(1, 'At least one channel is required'),
+  name: z.string().min(1, '이름을 입력하세요'),
   severity: z.enum(['critical', 'warning', 'info']),
+  condition: z.string().min(1, '조건을 입력하세요'),
+  threshold: z.number().gt(0, '임계값은 0보다 커야 합니다'),
+  channel: z.enum(['slack', 'email']),
+  enabled: z.boolean(),
 })
 
 const ALERT_RULE_DEFAULTS: AlertRuleForm = {
   name: '',
-  metric: '',
   severity: 'warning',
   condition: '',
   threshold: 1,
-  channels: ['slack'],
+  channel: 'slack',
+  enabled: true,
 }
 
 type ObsTab = 'stack' | 'cicd'
@@ -62,7 +63,6 @@ const CICD_MOCK_RULES: AlertRuleWithSeverity[] = [
   { id: 'cicd-3', name: 'Pipeline Duration', severity: 'info', condition: 'pipeline_duration > 300s', threshold: '300', channel: 'slack', enabled: false, createdAt: '2026-02-01T10:00:00Z' },
 ]
 
-const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 export function AlertRulesPage() {
   const [activeTab, setActiveTab] = useState<ObsTab>('stack')
@@ -83,9 +83,10 @@ export function AlertRulesPage() {
   const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
   const {
     register,
-    control,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isValid, isSubmitting },
   } = useForm<AlertRuleForm>({
     resolver: zodResolver(alertRuleSchema),
@@ -104,15 +105,14 @@ export function AlertRulesPage() {
   }
 
   const openEditModal = (rule: AlertRuleWithSeverity) => {
-    const [metric, ...conditionTokens] = rule.condition.split(' ')
     setEditingRuleId(rule.id)
     reset({
       name: rule.name,
-      metric,
       severity: rule.severity,
-      condition: conditionTokens.join(' ') || rule.condition,
+      condition: rule.condition,
       threshold: Number(rule.threshold.replace('%', '')) || 1,
-      channels: [rule.channel],
+      channel: rule.channel,
+      enabled: rule.enabled,
     })
     setRuleModalOpen(true)
   }
@@ -120,9 +120,9 @@ export function AlertRulesPage() {
   const submitRule = (form: AlertRuleForm) => {
     const payload: CreateAlertRuleRequest = {
       name: form.name,
-      condition: `${form.metric} ${form.condition}`,
+      condition: form.condition,
       threshold: String(form.threshold),
-      channel: form.channels[0],
+      channel: form.channel,
     }
 
     if (editingRuleId) {
@@ -155,7 +155,7 @@ export function AlertRulesPage() {
         condition: payload.condition,
         threshold: payload.threshold,
         channel: payload.channel,
-        enabled: true,
+        enabled: form.enabled,
         createdAt: new Date().toISOString(),
       },
       ...prev,
@@ -368,72 +368,74 @@ export function AlertRulesPage() {
         }
       >
         <div className="flex flex-col gap-3.5">
-          <Input
-            label="규칙 이름"
-            placeholder="예: High CPU"
-            {...register('name')}
-          />
-          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
-          <Input
-            label="메트릭"
-            placeholder="예: cpu_usage"
-            {...register('metric')}
-          />
-          {errors.metric && <span className="text-xs text-[#ef4444]">{errors.metric.message}</span>}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="alert-rule-severity" className="text-xs font-medium text-[var(--color-text-secondary)]">심각도</label>
-            <select
-              id="alert-rule-severity"
-              {...register('severity')}
-              className={selectClassName}
-            >
-              <option value="critical">Critical</option>
-              <option value="warning">Warning</option>
-              <option value="info">Info</option>
-            </select>
+          {/* 이름 */}
+          <div>
+            <Input
+              label="이름"
+              placeholder="예: High CPU Alert"
+              {...register('name')}
+            />
+            {errors.name && <span className="mt-1 block text-xs text-[#ef4444]">{errors.name.message}</span>}
           </div>
-          <Input
-            label="조건"
-            placeholder="예: > threshold"
-            {...register('condition')}
-          />
-          {errors.condition && <span className="text-xs text-[#ef4444]">{errors.condition.message}</span>}
-          <Input
-            label="임계값"
-            type="number"
-            placeholder="예: 80"
-            {...register('threshold', { valueAsNumber: true })}
-          />
-          {errors.threshold && <span className="text-xs text-[#ef4444]">{errors.threshold.message}</span>}
-          <Controller
-            control={control}
-            name="channels"
-            render={({ field }) => (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-[var(--color-text-secondary)]">채널</span>
-                {(['slack', 'email'] as AlertChannel[]).map((channel) => {
-                  const checked = field.value.includes(channel)
-                  return (
-                    <label key={channel} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            field.onChange([...field.value, channel])
-                            return
-                          }
-                          field.onChange(field.value.filter((value) => value !== channel))
-                        }}
-                      />
-                      {channel}
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-          />
-          {errors.channels && <span className="text-xs text-[#ef4444]">{errors.channels.message}</span>}
+
+          {/* 심각도 */}
+          <NativeSelect label="심각도" {...register('severity')}>
+            <option value="critical">Critical</option>
+            <option value="warning">Warning</option>
+            <option value="info">Info</option>
+          </NativeSelect>
+
+          {/* 조건 */}
+          <div>
+            <Input
+              label="조건"
+              placeholder="예: cpu_usage > 80%"
+              {...register('condition')}
+            />
+            {errors.condition && <span className="mt-1 block text-xs text-[#ef4444]">{errors.condition.message}</span>}
+          </div>
+
+          {/* 임계값 */}
+          <div>
+            <Input
+              label="임계값"
+              type="number"
+              placeholder="예: 80"
+              {...register('threshold', { valueAsNumber: true })}
+            />
+            {errors.threshold && <span className="mt-1 block text-xs text-[#ef4444]">{errors.threshold.message}</span>}
+          </div>
+
+          {/* 채널 */}
+          <NativeSelect label="채널" {...register('channel')}>
+            <option value="slack">Slack</option>
+            <option value="email">Email</option>
+          </NativeSelect>
+
+          {/* 활성 */}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">활성</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setValue('enabled', !watch('enabled'), { shouldValidate: true })}
+                className={cn(
+                  'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
+                  watch('enabled') ? 'bg-[#6366f1]' : 'bg-[rgba(255,255,255,0.12)]'
+                )}
+              >
+                <div
+                  className={cn(
+                    'absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-150',
+                    watch('enabled') && 'translate-x-4'
+                  )}
+                />
+              </button>
+              <span className={cn('text-sm', watch('enabled') ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
+                {watch('enabled') ? 'On' : 'Off'}
+              </span>
+            </div>
+          </div>
         </div>
       </Modal>
 

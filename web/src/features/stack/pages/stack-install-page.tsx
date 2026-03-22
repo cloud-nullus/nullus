@@ -11,6 +11,7 @@ import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, toCrea
 import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
 import { Modal } from '../../../components/ui/modal'
@@ -538,11 +539,8 @@ export function StackInstallPage() {
           />
         </div>
         <div className="flex max-w-[300px] flex-1 flex-col gap-1">
-          <label htmlFor="cluster-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
-            Target Cluster
-          </label>
-          <select
-            id="cluster-select"
+          <NativeSelect
+            label="Target Cluster"
             value={draft.clusterId ?? ''}
             onChange={(e) => setCluster(e.target.value)}
             className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
@@ -553,16 +551,13 @@ export function StackInstallPage() {
                 {c.name} ({c.connection_status})
               </option>
             ))}
-          </select>
+          </NativeSelect>
           {!draft.clusterId && <span className="text-xs text-[#f59e0b]">배포에 필요합니다</span>}
         </div>
         {draft.clusterId && (
           <div className="flex max-w-[300px] flex-1 flex-col gap-1">
-            <label htmlFor="namespace-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
-              Namespace
-            </label>
-            <select
-              id="namespace-select"
+            <NativeSelect
+              label="Namespace"
               value={createNewNs ? '__new__' : draft.namespace}
               onChange={(e) => {
                 if (e.target.value === '__new__') {
@@ -580,7 +575,7 @@ export function StackInstallPage() {
                 <option key={ns.name} value={ns.name}>{ns.name}</option>
               ))}
               <option value="__new__">새 네임스페이스 생성...</option>
-            </select>
+            </NativeSelect>
             {createNewNs && (
               <input
                 type="text"
@@ -765,12 +760,8 @@ export function StackInstallPage() {
                     value={draft.resources.commitsPerDay}
                     onChange={(e) => updateResources({ commitsPerDay: Number(e.target.value) })}
                   />
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="build-frequency" className="text-xs font-medium text-[var(--color-text-secondary)]">
-                      빌드 빈도
-                    </label>
-                    <select
-                      id="build-frequency"
+                  <NativeSelect
+                      label="빌드 빈도"
                       value={draft.resources.buildFrequency}
                       onChange={(e) =>
                         updateResources({ buildFrequency: e.target.value as 'low' | 'medium' | 'high' })
@@ -780,8 +771,7 @@ export function StackInstallPage() {
                       <option value="low">낮음 (Low)</option>
                       <option value="medium">보통 (Medium)</option>
                       <option value="high">높음 (High)</option>
-                    </select>
-                  </div>
+                    </NativeSelect>
                 </div>
                 <Button
                   variant="secondary"

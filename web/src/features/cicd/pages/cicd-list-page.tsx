@@ -19,6 +19,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { usePipelines } from '../api/cicd-api'
 import type { Pipeline } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
@@ -35,8 +36,6 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-const selectClassName =
-  'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 const MOCK_PIPELINES: Pipeline[] = [
   { id: 'frontend-web', name: 'frontend-web', appType: 'web-frontend' as const, clusterId: 'c1', clusterName: 'prod-k8s', status: 'success' as const, lastDeployedAt: '2026-03-03T14:28:00Z', createdAt: '2026-01-15T00:00:00Z' },
@@ -286,25 +285,25 @@ function PipelineHistoryTab() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select
+        <NativeSelect
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as 'all' | 'ci' | 'cd')}
-          className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}
+          className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
         >
           <option value="all" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Types</option>
           <option value="ci" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">CI (Build)</option>
           <option value="cd" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">CD (Deploy)</option>
-        </select>
-        <select
+        </NativeSelect>
+        <NativeSelect
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as 'all' | 'success' | 'failed' | 'running')}
-          className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}
+          className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
         >
           <option value="all" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
           <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
           <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
           <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
-        </select>
+        </NativeSelect>
       </div>
 
       <div className="flex flex-col gap-2.5">
@@ -617,14 +616,14 @@ export function CicdListPage() {
         emptyMessage="파이프라인이 없습니다."
         toolbar={
           <>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
               <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
               <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
               <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
               <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
               <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
-            </select>
+            </NativeSelect>
             <div className="relative ml-auto">
               <Search
                 size={13}

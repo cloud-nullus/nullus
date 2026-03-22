@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Rocket, Plus, Trash2, ChevronRight } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
@@ -372,7 +373,7 @@ export function DeveloperDeployPage() {
               <div className="flex flex-col gap-3">
                 <div>
                   <label htmlFor="deploy-cluster" className={labelStyleClass}>클러스터</label>
-                  <select
+                  <NativeSelect
                     id="deploy-cluster"
                     value={form.clusterId}
                     onChange={(e) => {
@@ -385,12 +386,12 @@ export function DeveloperDeployPage() {
                     {clusters.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
                 </div>
                 <div>
                   <label htmlFor="deploy-namespace" className={labelStyleClass}>네임스페이스</label>
-                  <select
+                  <NativeSelect
                     id="deploy-namespace"
                     value={form.namespace}
                     onChange={(e) => setField('namespace', e.target.value)}
@@ -399,7 +400,7 @@ export function DeveloperDeployPage() {
                     {selectedCluster.namespaces.map((ns) => (
                       <option key={ns} value={ns}>{ns}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   {errors.namespace && <span className="text-xs text-[#ef4444]">{errors.namespace.message}</span>}
                 </div>
               </div>
@@ -590,5 +591,3 @@ function ResourceSlider({
 
 const labelStyleClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]'
 
-const selectStyleClass =
-  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'

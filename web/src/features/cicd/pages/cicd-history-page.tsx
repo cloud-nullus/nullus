@@ -5,6 +5,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -43,8 +44,6 @@ export function CicdHistoryPage() {
     return matchesStatus && matchesType && matchesSearch
   })
 
-  const selectClassName =
-    'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
   const expandedDeployment = filtered.find((d) => d.id === expandedDeploymentId) ?? null
 
@@ -139,20 +138,20 @@ export function CicdHistoryPage() {
         emptyMessage="배포 이력이 없습니다."
         toolbar={
           <>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+            <NativeSelect value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Types</option>
               <option value="api" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">API</option>
               <option value="frontend" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Frontend</option>
               <option value="batch" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Batch</option>
-            </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+            </NativeSelect>
+            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
               <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
               <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
               <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
               <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
               <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
-            </select>
+            </NativeSelect>
             <div className="relative ml-auto">
               <Search
                 size={13}

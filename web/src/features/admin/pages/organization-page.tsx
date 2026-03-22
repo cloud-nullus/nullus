@@ -15,6 +15,7 @@ import {
 import type { CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus } from '../api/admin-api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Input } from '../../../components/ui/input'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
@@ -288,14 +289,11 @@ export function OrganizationPage() {
                     <Input label="Organization Name" {...register('name')} />
                     <Input label="Slug" {...register('slug')} />
                     <Input label="Domain" {...register('domain')} />
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="organization-status" className="text-xs font-medium text-[var(--color-text-secondary)]">Status</label>
-                      <select id="organization-status" {...register('status')} className={selectClassName}>
+                    <NativeSelect label="Status" {...register('status')} className={selectClassName}>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                         <option value="suspended">Suspended</option>
-                      </select>
-                    </div>
+                      </NativeSelect>
                   </div>
                   {(errors.name || errors.slug || errors.domain) && (
                     <div className="mt-2 text-xs text-[#ef4444]">
@@ -464,14 +462,11 @@ export function OrganizationPage() {
           <Input label="Email" type="email" placeholder="member@example.com" {...registerInvite('email')} />
           {inviteErrors.email && <span className="text-xs text-[#ef4444]">{inviteErrors.email.message}</span>}
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor="organization-invite-role" className="text-xs font-medium text-[var(--color-text-secondary)]">Role</label>
-            <select id="organization-invite-role" {...registerInvite('role')} className={selectClassName}>
+          <NativeSelect label="Role" {...registerInvite('role')} className={selectClassName}>
               <option value="developer">Developer</option>
               <option value="devops">DevOps</option>
               <option value="admin">Admin</option>
-            </select>
-          </div>
+            </NativeSelect>
           {inviteErrors.role && <span className="text-xs text-[#ef4444]">{inviteErrors.role.message}</span>}
         </div>
       </Modal>

@@ -7,6 +7,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization, useSearchUser } from '../api/admin-api'
 import type { MemberRole, MemberStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
@@ -269,7 +270,7 @@ export function UserManagementPage() {
         const selectedRole = roleOverrides[row.original.id] ?? row.original.role
         const role = ROLE_BADGE[selectedRole]
         return (
-          <select
+          <NativeSelect
             value={selectedRole}
             onChange={(event) => handleRoleChange(row.original.id, event.target.value as MemberRole)}
             className={cn('cursor-pointer rounded-[5px] border-0 px-2.5 py-1 text-xs font-semibold', role.className)}
@@ -277,7 +278,7 @@ export function UserManagementPage() {
             <option value="admin">Admin</option>
             <option value="devops">DevOps</option>
             <option value="developer">Developer</option>
-          </select>
+          </NativeSelect>
         )
       },
     },
@@ -577,18 +578,11 @@ export function UserManagementPage() {
               {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
             </>
           )}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="invite-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
-            <select
-              id="invite-role"
-              {...register('role')}
-              className={selectClassName}
-            >
+          <NativeSelect label="역할" {...register('role')} className={selectClassName}>
               <option value="developer">Developer</option>
               <option value="devops">DevOps</option>
               <option value="admin">Admin</option>
-            </select>
-          </div>
+            </NativeSelect>
           {errors.role && <span className="text-xs text-[#ef4444]">{errors.role.message}</span>}
         </div>
       </Modal>
