@@ -37,6 +37,7 @@ type Pipeline struct {
 	TemplateID string         `json:"template_id"`
 	OrgID      string         `json:"org_id"`
 	ClusterID  string         `json:"cluster_id"`
+	StackID    string         `json:"stack_id,omitempty"`
 	Namespace  string         `json:"namespace"`
 	AppType    AppType        `json:"app_type"`
 	GitRepoURL string         `json:"git_repo_url"`
