@@ -657,11 +657,11 @@ cd web && npx vitest run && npx vite build
 
 ### 전체 검증 체크리스트:
 
-- [ ] `go build ./...` — 에러 0
-- [ ] `go test ./... -count=1` — 전체 PASS
-- [ ] `cd web && npx vitest run` — 전체 PASS
-- [ ] `cd web && npx vite build` — 빌드 성공
-- [ ] 프론트엔드에서 MOCK_ 상수 grep 결과 0건
+- [x] `go build ./...` — 에러 0
+- [x] `go test ./... -count=1` — 전체 PASS
+- [x] `cd web && npx vitest run` — 전체 PASS (150/150)
+- [x] `cd web && npx vite build` — 빌드 성공
+- [ ] 프론트엔드에서 MOCK_ 상수 grep 결과 0건 (observability/cicd 일부 잔존 — Prompt 6 미완)
 - [ ] `curl http://localhost:8090/api/v1/admin/organization` — 200 OK
 - [ ] `curl http://localhost:8090/api/v1/admin/known-issues` — DB 기반 데이터 반환
-- [ ] 브라우저 Console 경고 0건
+- [x] 브라우저 Console 경고 0건 (button nesting, MOCK fallback 수정 완료)

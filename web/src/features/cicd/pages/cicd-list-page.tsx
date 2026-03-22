@@ -37,13 +37,6 @@ function formatDate(iso: string | null) {
 }
 
 
-const MOCK_PIPELINES: Pipeline[] = [
-  { id: 'frontend-web', name: 'frontend-web', appType: 'web-frontend' as const, clusterId: 'c1', clusterName: 'prod-k8s', status: 'success' as const, lastDeployedAt: '2026-03-03T14:28:00Z', createdAt: '2026-01-15T00:00:00Z' },
-  { id: 'backend-api', name: 'backend-api', appType: 'web-backend' as const, clusterId: 'c1', clusterName: 'prod-k8s', status: 'failed' as const, lastDeployedAt: '2026-03-01T16:30:00Z', createdAt: '2026-01-20T00:00:00Z' },
-  { id: 'ml-service', name: 'ml-service', appType: 'web-backend' as const, clusterId: 'c2', clusterName: 'dev-k8s', status: 'failed' as const, lastDeployedAt: '2026-02-28T11:05:00Z', createdAt: '2026-02-01T00:00:00Z' },
-  { id: 'batch-runner', name: 'batch-runner', appType: 'batch-job' as const, clusterId: 'c1', clusterName: 'prod-k8s', status: 'running' as const, lastDeployedAt: '2026-03-03T10:00:00Z', createdAt: '2026-02-10T00:00:00Z' },
-]
-
 type PipelineInnerTab = 'info' | 'monitoring' | 'history' | 'actions'
 
 type PipelineHistoryItem = {
@@ -486,7 +479,7 @@ export function CicdListPage() {
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null)
 
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
-  const pipelines = apiData?.items ?? MOCK_PIPELINES
+  const pipelines = apiData?.items ?? []
 
   const filtered = pipelines.filter((p) => {
     const q = search.toLowerCase()

@@ -3,6 +3,55 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] - 2026-03-22
+
+### Changed
+
+#### Mock 데이터 제거 (전 페이지)
+
+**변경 이유:**
+프론트엔드 페이지들이 API 응답 실패 시 하드코딩된 MOCK 데이터를 fallback으로 사용하고 있었습니다.
+이 패턴은 두 가지 문제를 야기합니다:
+1. **오류 은폐**: API가 실패해도 화면에 가짜 데이터가 표시되어 문제를 인지하지 못함
+2. **개발 혼란**: 실제 API 연동 여부를 UI만으로 판단할 수 없음
+
+권장 전략: API 실패 시 빈 배열(`[]`) 또는 `null` 반환 → 에러 상태를 명시적으로 처리
+
+**변경된 파일:**
+- `web/src/features/cicd/pages/cicd-list-page.tsx` — `MOCK_PIPELINES` 제거, fallback `[]`
+- `web/src/features/cicd/pages/cicd-template-page.tsx` — `MOCK_CICD_TEMPLATES` 제거, fallback `[]`
+- `web/src/features/cicd/pages/cicd-history-page.tsx` — `MOCK_DEPLOYMENTS` 제거, fallback `[]`
+- `web/src/features/stack/pages/stack-template-page.tsx` — `MOCK_TEMPLATES` 제거, fallback `[]`
+- `web/src/features/stack/pages/stack-history-page.tsx` — `MOCK_STACKS_FOR_HISTORY` 제거, fallback `[]`
+- `web/src/features/stack/pages/stack-list-page.tsx` — MOCK 제거, fallback `[]`
+- `web/src/features/stack/pages/stack-version-page.tsx` — MOCK 제거, fallback `[]`
+- `web/src/features/stack/pages/stack-add-tools-page.tsx` — `MOCK_STACKS` 제거, fallback `null`
+- `web/src/features/admin/pages/user-management-page.tsx` — `MOCK_INVITES` 유지 (초대 링크 API 미연동 시 샘플 표시)
+- `web/src/features/observability/pages/monitoring-page.tsx` — `MOCK_APPS` 유지 (실제 API 연동 전 시각화 데이터로 사용)
+
+#### 접근성 개선 (stack-template-page.tsx)
+
+**변경 이유:**
+HTML 명세상 `<button>` 내부에 `<button>`을 중첩할 수 없음 (interactive content model 위반).
+브라우저 콘솔 경고 및 스크린리더 동작 불일치 발생.
+
+**변경 내용:**
+- 카드 외곽 `<button>` → `<div role="button" tabIndex={0}>` + `onKeyDown` 핸들러 추가
+- 내부 `<Button>` (Use Template)은 유지
+
+#### 마이그레이션 파일 정리
+
+**변경 이유:**
+- `000016_sync_org_members` → `000021_sync_org_members`: `phase1`이 이미 `000019_seed_demo_data`, `000020_pipeline_stack_relation`을 사용하므로 번호 충돌 방지
+- `000017_fix_healthcheck_enum.up.down.sql` (잘못된 이중 확장자) → `000017_fix_healthcheck_enum.down.sql`로 수정
+- `000007_seed_templates.up.sql`: `golden_path_templates` 테이블 CREATE TABLE 구문 추가 (INSERT 전 테이블이 없어 마이그레이션 실패하던 문제 수정)
+
+### Fixed
+
+- `web/src/__tests__/uat-devops-scenario.test.tsx`: `useTemplates` mock을 `data: MOCK_TEMPLATES`로 변경하여 MOCK 제거 후에도 UAT 시나리오 테스트 통과
+
+---
+
 ## [0.1.0-alpha] - 2026-03-15
 
 ### Core Features (F0-F10)

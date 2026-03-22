@@ -96,7 +96,7 @@ describe('CicdHistoryPage rollback flow', () => {
     fireEvent.click(confirmButton)
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith(
-        { pipelineId: 'frontend-web', deploymentId: 'd-success' },
+        { pipelineId: 'frontend-web', deploymentId: 'd-success', preservePVC: true },
         expect.any(Object)
       )
     })

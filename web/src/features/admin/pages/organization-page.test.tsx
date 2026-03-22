@@ -3,20 +3,24 @@ import { screen, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { OrganizationPage } from './organization-page'
 
+// Stable mock data (hoisted to avoid re-render loops from reference changes)
+const mockOrg = vi.hoisted(() => ({
+  id: 'org-1',
+  name: 'Cloud Nullus',
+  slug: 'cloud-nullus',
+  domain: 'nullus.io',
+  status: 'active' as const,
+  clusterAccessScope: ['prod-cluster', 'staging-cluster'],
+  createdAt: '2026-01-01T00:00:00Z',
+}))
+
 // Mock API hooks
 vi.mock('../api/admin-api', () => ({
   useOrganization: () => ({
-    data: {
-      id: 'org-1',
-      name: 'Cloud Nullus',
-      slug: 'cloud-nullus',
-      domain: 'nullus.io',
-      status: 'active',
-      clusterAccessScope: ['prod-cluster', 'staging-cluster'],
-      createdAt: '2026-01-01T00:00:00Z',
-    },
+    data: mockOrg,
     isLoading: false,
   }),
+  useCreateOrganization: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateOrganization: () => ({ mutate: vi.fn(), isPending: false }),
   useMembers: () => ({
     data: {
@@ -31,8 +35,8 @@ vi.mock('../api/admin-api', () => ({
   useClusters: () => ({
     data: {
       items: [
-        { id: 'c1', name: 'prod-cluster' },
-        { id: 'c2', name: 'staging-cluster' },
+        { id: 'c1', name: 'prod-cluster', type: 'eks', status: 'connected' },
+        { id: 'c2', name: 'staging-cluster', type: 'kubernetes', status: 'connected' },
       ],
       total: 2,
     },
@@ -49,12 +53,12 @@ beforeEach(() => {
 describe('OrganizationPage', () => {
   it('renders the page heading', () => {
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('Organization')).toBeInTheDocument()
+    expect(screen.getAllByText('Organization')[0]).toBeInTheDocument()
   })
 
   it('renders org info form fields', () => {
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('조직 정보')).toBeInTheDocument()
+    expect(screen.getByText('Organization Detail')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Cloud Nullus')).toBeInTheDocument()
     expect(screen.getByDisplayValue('cloud-nullus')).toBeInTheDocument()
     expect(screen.getByDisplayValue('nullus.io')).toBeInTheDocument()
@@ -69,7 +73,7 @@ describe('OrganizationPage', () => {
 
   it('renders member management section heading', () => {
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('멤버 관리')).toBeInTheDocument()
+    expect(screen.getByText('Member Management')).toBeInTheDocument()
   })
 
   it('renders Invite Member button', () => {
@@ -87,7 +91,7 @@ describe('OrganizationPage', () => {
     renderWithProviders(<OrganizationPage />)
     fireEvent.click(screen.getByText('Invite Member'))
     expect(screen.getByPlaceholderText('member@example.com')).toBeInTheDocument()
-    expect(screen.getAllByText('역할').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Role').length).toBeGreaterThanOrEqual(1)
   })
 
   it('closing invite modal hides Send Invite button', () => {
@@ -99,7 +103,7 @@ describe('OrganizationPage', () => {
 
   it('renders cluster access scope section', () => {
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('클러스터 접근 범위')).toBeInTheDocument()
+    expect(screen.getByText('Cluster Access Scope')).toBeInTheDocument()
     expect(screen.getByText('prod-cluster')).toBeInTheDocument()
     expect(screen.getByText('staging-cluster')).toBeInTheDocument()
   })

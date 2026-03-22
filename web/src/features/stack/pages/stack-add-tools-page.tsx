@@ -157,31 +157,6 @@ const TOOL_CATEGORIES: ToolCategory[] = [
   },
 ]
 
-const MOCK_STACKS: StackWithTools[] = [
-  {
-    id: 'production-stack',
-    name: 'production-stack',
-    templateId: 'gitlab-all-in-one',
-    templateName: 'GitLab All-in-One',
-    clusterId: 'c1',
-    clusterName: 'prod-k8s',
-    status: 'success',
-    createdAt: '2026-01-10T00:00:00Z',
-    updatedAt: '2026-03-03T14:28:00Z',
-    tools: [
-      { category: 'package_registry', tool: 'gitlab', version: 'latest' },
-      { category: 'source_repository', tool: 'gitlab', version: 'latest' },
-      { category: 'container_registry', tool: 'harbor', version: 'latest' },
-      { category: 'storage_backend', tool: 'minio', version: 'latest' },
-      { category: 'ci_platform', tool: 'gitlab-ci', version: 'latest' },
-      { category: 'cd_tool', tool: 'argocd', version: 'latest' },
-      { category: 'metrics_collection', tool: 'prometheus', version: 'latest' },
-      { category: 'visualization', tool: 'grafana', version: 'latest' },
-      { category: 'trace_layer', tool: 'tempo', version: 'latest' },
-      { category: 'log_search', tool: 'opensearch', version: 'latest' },
-    ],
-  },
-]
 
 const STEP_TABS = [
   { id: 0, label: '1. Category Selection' },
@@ -280,7 +255,7 @@ export function StackAddToolsPage() {
 
   const stack = useMemo(() => {
     const apiStack = (stackListData?.items as StackWithTools[] | undefined)?.find((item) => item.id === stackId)
-    return apiStack ?? MOCK_STACKS.find((item) => item.id === stackId) ?? null
+    return apiStack ?? null
   }, [stackListData?.items, stackId])
 
   const installedTools = (stack?.tools ?? []) as InstalledTool[]

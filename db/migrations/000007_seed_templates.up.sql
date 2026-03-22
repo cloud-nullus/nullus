@@ -1,3 +1,16 @@
+CREATE TABLE IF NOT EXISTS golden_path_templates (
+    id                     VARCHAR(100) PRIMARY KEY,
+    name                   VARCHAR(255) NOT NULL,
+    description            TEXT NOT NULL DEFAULT '',
+    tools                  JSONB NOT NULL DEFAULT '[]',
+    estimated_install_time BIGINT NOT NULL DEFAULT 0,
+    recommended_use_case   TEXT NOT NULL DEFAULT '',
+    min_resources          TEXT NOT NULL DEFAULT '',
+    created_by             VARCHAR(255) NOT NULL DEFAULT 'admin',
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 INSERT INTO golden_path_templates (
     id,
     name,

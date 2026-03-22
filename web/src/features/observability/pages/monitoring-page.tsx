@@ -602,6 +602,7 @@ interface DeployedApp {
   errRate: number; lastDeploy: string; reqRate: number
 }
 
+
 const MOCK_APPS: DeployedApp[] = [
   { name: 'app-frontend', version: 'v2.3.1', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [3, 3], respMs: 125, errRate: 0.1, lastDeploy: '2m ago', reqRate: 1240 },
   { name: 'app-backend', version: 'v1.8.0', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [5, 5], respMs: 89, errRate: 0.0, lastDeploy: '15m ago', reqRate: 3870 },

@@ -27,12 +27,6 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-const MOCK_DEPLOYMENTS: Deployment[] = [
-  { id: 'd1', pipelineId: 'frontend-web', pipelineName: 'frontend-web', version: 'v1.2.3', status: 'success' as const, triggeredBy: 'kim.dev', startedAt: '2026-03-03T14:22:00Z', completedAt: '2026-03-03T14:28:00Z' },
-  { id: 'd2', pipelineId: 'frontend-web', pipelineName: 'frontend-web', version: 'v1.2.2', status: 'success' as const, triggeredBy: 'lee.devops', startedAt: '2026-03-02T11:00:00Z', completedAt: '2026-03-02T11:20:00Z' },
-  { id: 'd3', pipelineId: 'backend-api', pipelineName: 'backend-api', version: 'v2.1.0', status: 'failed' as const, triggeredBy: 'park.dev', startedAt: '2026-03-01T16:25:00Z', completedAt: '2026-03-01T16:30:00Z' },
-  { id: 'd4', pipelineId: 'batch-runner', pipelineName: 'batch-runner', version: 'v1.3.1', status: 'success' as const, triggeredBy: 'choi.devops', startedAt: '2026-03-03T10:00:00Z', completedAt: '2026-03-03T10:08:00Z' },
-]
 
 const rollbackFormSchema = z.object({
   confirmText: z
@@ -57,7 +51,7 @@ export function CicdHistoryPage() {
 
   const { data: apiData } = useDeployments({ status: statusFilter as PipelineStatus || undefined })
   const rollbackMutation = useRollbackDeployment()
-  const deployments = apiData?.items ?? MOCK_DEPLOYMENTS
+  const deployments = apiData?.items ?? []
   const {
     register,
     reset,

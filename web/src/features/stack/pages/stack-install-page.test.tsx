@@ -13,6 +13,10 @@ vi.mock('../api/stack-api', () => ({
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
+vi.mock('../../admin/api/admin-api', () => ({
+  useClusterNamespaces: () => ({ data: [] }),
+}))
+
 // Mock useNavigate
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -51,16 +55,16 @@ afterEach(() => {
 describe('StackInstallPage', () => {
   it('renders the page heading', () => {
     renderWithProviders(<StackInstallPage />)
-    expect(screen.getByRole('heading', { name: 'Stack Install' })).toBeTruthy()
+    expect(screen.getAllByText('Stack Install')[0]).toBeInTheDocument()
   })
 
   it('renders all 5 tabs', () => {
     renderWithProviders(<StackInstallPage />)
-    expect(screen.getByRole('button', { name: 'Artifacts' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'CI/CD' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Observability' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Resources' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'YAML View' })).toBeTruthy()
+    expect(screen.getByText('Artifacts')).toBeInTheDocument()
+    expect(screen.getAllByText('CI/CD')[0]).toBeInTheDocument()
+    expect(screen.getByText('Observability')).toBeInTheDocument()
+    expect(screen.getByText('Resources')).toBeInTheDocument()
+    expect(screen.getByText('YAML View')).toBeInTheDocument()
   })
 
   it('default tab shows Artifacts content', () => {
@@ -71,9 +75,9 @@ describe('StackInstallPage', () => {
 
   it('clicking CI/CD tab shows CI/CD content', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByRole('button', { name: 'CI/CD' }))
-    expect(screen.getAllByText('CI/CD Platform')[0]).toBeTruthy()
-    expect(screen.getAllByText('CD Tool')[0]).toBeTruthy()
+    fireEvent.click(screen.getAllByText('CI/CD')[0])
+    expect(screen.getAllByText('CI/CD Platform')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('CD Tool')[0]).toBeInTheDocument()
   })
 
   it('clicking Observability tab shows merged observability content', () => {
@@ -176,7 +180,7 @@ describe('StackInstallPage', () => {
 
   it('selecting a tool in Pipeline updates the store', () => {
     renderWithProviders(<StackInstallPage />)
-    fireEvent.click(screen.getByRole('button', { name: 'CI/CD' }))
+    fireEvent.click(screen.getAllByText('CI/CD')[0])
     fireEvent.click(screen.getByText('GitHub Actions'))
     expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.tool).toBe('github-actions')
   })

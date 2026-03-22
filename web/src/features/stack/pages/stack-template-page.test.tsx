@@ -62,7 +62,7 @@ beforeEach(() => {
 describe('StackTemplatePage', () => {
   it('renders the page heading', () => {
     renderWithProviders(<StackTemplatePage />)
-    expect(screen.getByText('Golden Path Templates')).toBeInTheDocument()
+    expect(screen.getAllByText('Stack Template')[0]).toBeInTheDocument()
   })
 
   it('renders 3 Golden Path template cards', () => {
@@ -72,9 +72,9 @@ describe('StackTemplatePage', () => {
     expect(screen.getByText('GitHub + ArgoCD')).toBeInTheDocument()
   })
 
-  it('renders 3 Use Template buttons', () => {
+  it('renders 3 Use Base Template buttons', () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByText('Use Template')
+    const buttons = screen.getAllByText('Use Base Template')
     expect(buttons).toHaveLength(3)
   })
 
@@ -114,16 +114,16 @@ describe('StackTemplatePage', () => {
     })
   })
 
-  it('clicking Use Template navigates to /stack/install', () => {
+  it('clicking Use Base Template navigates to /stack/install', () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByText('Use Template')
+    const buttons = screen.getAllByText('Use Base Template')
     fireEvent.click(buttons[0])
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
-  it('clicking Use Template sets template in store', () => {
+  it('clicking Use Base Template sets template in store', () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByText('Use Template')
+    const buttons = screen.getAllByText('Use Base Template')
     fireEvent.click(buttons[0])
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
@@ -148,9 +148,6 @@ describe('StackTemplatePage', () => {
     fireEvent.change(screen.getByLabelText('Template ID'), { target: { value: 'custom-template-v1' } })
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Custom Template' } })
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Custom description' } })
-    fireEvent.change(screen.getByLabelText('Tools (JSON)'), {
-      target: { value: '[{"category":"cd_tool","name":"Argo CD","helm_version":"7.7.2","app_version":"2.13.2"}]' },
-    })
     fireEvent.change(screen.getByLabelText('Estimated Install Time (ns)'), { target: { value: '1800000000000' } })
     fireEvent.change(screen.getByLabelText('Recommended Use Case'), { target: { value: '테스트' } })
     fireEvent.change(screen.getByLabelText('Minimum Resources'), { target: { value: '2 vCPU / 4Gi RAM / 20Gi Storage' } })
