@@ -17,6 +17,8 @@ import { useStacks } from '../../stack/api/stack-api'
 import { useClusters } from '../../admin/api/admin-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
+import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ViewType = 'cluster' | 'stack' | 'cicd'
@@ -38,15 +40,15 @@ const CHART_STYLE = {
 }
 
 const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string; label: string }> = {
-  running: { icon: <CheckCircle size={13} />, cls: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',  label: 'Running' },
+  running: { icon: <CheckCircle size={13} />, cls: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Running' },
   warning: { icon: <AlertCircle size={13} />, cls: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Warning' },
-  error:   { icon: <XCircle size={13} />,    cls: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',   label: 'Error'   },
+  error: { icon: <XCircle size={13} />, cls: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Error' },
 }
 
 const statusDot = (s: string) => (
   <span className={cn('h-2 w-2 rounded-full shrink-0 inline-block',
     s === 'running' || s === 'connected' || s === 'completed' || s === 'success' ? 'bg-emerald-400' :
-    s === 'warning' || s === 'pending'  ? 'bg-amber-400' : 'bg-red-400')} />
+      s === 'warning' || s === 'pending' ? 'bg-amber-400' : 'bg-red-400')} />
 )
 
 // ─── Time series generator ────────────────────────────────────────────────────
@@ -63,7 +65,7 @@ function makeSeries(range: TimeRange) {
       : t.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false })
     return {
       time: label,
-      cpu:    Math.max(12, Math.min(96, Math.round(56 + Math.sin(i / 2.5) * 16 + (i % 3) * 2))),
+      cpu: Math.max(12, Math.min(96, Math.round(56 + Math.sin(i / 2.5) * 16 + (i % 3) * 2))),
       memory: Math.max(24, Math.min(97, Math.round(63 + Math.cos(i / 3.2) * 10 + (i % 4) * 2))),
       success: Math.round(89 + Math.random() * 10),
     }
@@ -74,7 +76,7 @@ const WEEK_BARS = [
   { day: 'Mon', success: 16, failed: 2 }, { day: 'Tue', success: 19, failed: 3 },
   { day: 'Wed', success: 15, failed: 4 }, { day: 'Thu', success: 21, failed: 2 },
   { day: 'Fri', success: 24, failed: 3 }, { day: 'Sat', success: 11, failed: 2 },
-  { day: 'Sun', success: 9,  failed: 1 },
+  { day: 'Sun', success: 9, failed: 1 },
 ]
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────
@@ -165,11 +167,11 @@ const isKnownNonEmbeddableHost = (rawUrl: string): boolean => {
 
 function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTimePanel }: TabLayoutProps) {
   const uid = useId()
-  const [activeId, setActiveId]     = useState('default')
-  const [tabs, setTabs]             = useState<EmbedTab[]>(() => loadTabs(viewId, seedTabs))
+  const [activeId, setActiveId] = useState('default')
+  const [tabs, setTabs] = useState<EmbedTab[]>(() => loadTabs(viewId, seedTabs))
   const [isManaging, setIsManaging] = useState(false)
-  const [drafts, setDrafts]         = useState<EmbedTab[]>([])
-  const [saved, setSaved]           = useState(false)
+  const [drafts, setDrafts] = useState<EmbedTab[]>([])
+  const [saved, setSaved] = useState(false)
   const [embedError, setEmbedError] = useState(false)
   const [skipConnect, setSkipConnect] = useState(() => {
     try { return localStorage.getItem(SKIP_KEY(viewId)) === 'true' } catch { return false }
@@ -200,7 +202,7 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
       const i = p.findIndex((d) => d.id === id); if (i < 0) return p
       const n = [...p]; const j = i + dir
       if (j < 0 || j >= n.length) return p
-      ;[n[i], n[j]] = [n[j], n[i]]; return n
+        ;[n[i], n[j]] = [n[j], n[i]]; return n
     })
   }
 
@@ -399,8 +401,8 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
   const series = useMemo(() => makeSeries(range), [range])
   const pods = [
     { name: 'Running', value: 22, color: '#22c55e' },
-    { name: 'Pending', value: 1,  color: '#f59e0b' },
-    { name: 'Failed',  value: 1,  color: '#ef4444' },
+    { name: 'Pending', value: 1, color: '#f59e0b' },
+    { name: 'Failed', value: 1, color: '#ef4444' },
   ]
   return (
     <div>
@@ -411,44 +413,44 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-[var(--color-text-secondary)]">Range:</span>
-          {(['1h','6h','24h','7d'] as TimeRange[]).map((r) => (
+          {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
                 range === r ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
-                            : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
+                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
               {r}
             </button>
           ))}
         </div>
       </div>
       <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        <KpiCard label="Nodes"   value="3/4"   icon={<Server size={18}/>}      color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]"  bar={75}/>
-        <KpiCard label="Pods"    value="22/24"  icon={<Box size={18}/>}         color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]"   bar={92}/>
-        <KpiCard label="CPU"     value="62%"   icon={<Cpu size={18}/>}          color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]"  bar={62}/>
-        <KpiCard label="Memory"  value="71%"   icon={<MemoryStick size={18}/>}  color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]"  bar={71}/>
+        <KpiCard label="Nodes" value="3/4" icon={<Server size={18} />} color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]" bar={75} />
+        <KpiCard label="Pods" value="22/24" icon={<Box size={18} />} color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]" bar={92} />
+        <KpiCard label="CPU" value="62%" icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={62} />
+        <KpiCard label="Memory" value="71%" icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={71} />
       </div>
       <div className="grid grid-cols-2 gap-3.5">
         <ChartPanel title="CPU Usage">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={series}>
-              <defs><linearGradient id="ccpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5}/><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05}/></linearGradient></defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <YAxis domain={[0,100]} stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#ccpu)"/>
+              <defs><linearGradient id="ccpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05} /></linearGradient></defs>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#ccpu)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
         <ChartPanel title="Memory Usage">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={series}>
-              <defs><linearGradient id="cmem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05}/></linearGradient></defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <YAxis domain={[0,100]} stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#cmem)"/>
+              <defs><linearGradient id="cmem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05} /></linearGradient></defs>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#cmem)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -456,23 +458,23 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={pods} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                {pods.map((e) => <Cell key={e.name} fill={e.color}/>)}
+                {pods.map((e) => <Cell key={e.name} fill={e.color} />)}
               </Pie>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Legend wrapperStyle={{ color: '#e5e7eb' }}/>
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Legend wrapperStyle={{ color: '#e5e7eb' }} />
             </PieChart>
           </ResponsiveContainer>
         </ChartPanel>
         <ChartPanel title="Pipeline Success (this week)">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={WEEK_BARS}>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="day" stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Legend wrapperStyle={{ color: '#e5e7eb' }}/>
-              <Bar dataKey="success" fill="#22c55e" radius={[4,4,0,0]}/>
-              <Bar dataKey="failed"  fill="#ef4444" radius={[4,4,0,0]}/>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="day" stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Legend wrapperStyle={{ color: '#e5e7eb' }} />
+              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -492,16 +494,16 @@ function StackDefault({ stackName }: { stackName: string }) {
   const kpi = dash.kpi
 
   const kpis = [
-    { label: 'CPU Usage',    value: `${kpi.cpuUsage}%`,                             icon: <Cpu size={18}/>,        color: '#60a5fa', iconCls: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',  bar: kpi.cpuUsage },
-    { label: 'Memory',       value: `${kpi.memoryUsage}%`,                           icon: <MemoryStick size={18}/>, color: '#a78bfa', iconCls: 'bg-[rgba(139,92,246,0.15)] text-[#a78bfa]',  bar: kpi.memoryUsage },
-    { label: 'Storage',      value: `${kpi.storageUsage}%`,                          icon: <HardDrive size={18}/>,  color: '#34d399', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]',  bar: kpi.storageUsage },
-    { label: 'Running Pods', value: `${kpi.podRunning}/${kpi.podCount}`,             icon: <Box size={18}/>,        color: '#fbbf24', iconCls: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',  bar: kpi.podCount ? Math.round(kpi.podRunning / kpi.podCount * 100) : 0 },
+    { label: 'CPU Usage', value: `${kpi.cpuUsage}%`, icon: <Cpu size={18} />, color: '#60a5fa', iconCls: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', bar: kpi.cpuUsage },
+    { label: 'Memory', value: `${kpi.memoryUsage}%`, icon: <MemoryStick size={18} />, color: '#a78bfa', iconCls: 'bg-[rgba(139,92,246,0.15)] text-[#a78bfa]', bar: kpi.memoryUsage },
+    { label: 'Storage', value: `${kpi.storageUsage}%`, icon: <HardDrive size={18} />, color: '#34d399', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]', bar: kpi.storageUsage },
+    { label: 'Running Pods', value: `${kpi.podRunning}/${kpi.podCount}`, icon: <Box size={18} />, color: '#fbbf24', iconCls: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', bar: kpi.podCount ? Math.round(kpi.podRunning / kpi.podCount * 100) : 0 },
   ]
 
   const podData = [
     { name: 'Running', value: kpi.podRunning, color: '#22c55e' },
     { name: 'Pending', value: Math.max(1, kpi.podCount - kpi.podRunning - 1), color: '#f59e0b' },
-    { name: 'Failed',  value: 1, color: '#ef4444' },
+    { name: 'Failed', value: 1, color: '#ef4444' },
   ]
 
   return (
@@ -515,11 +517,11 @@ function StackDefault({ stackName }: { stackName: string }) {
             className="flex items-center gap-1 rounded-lg border border-[var(--color-border-default)] px-2.5 py-[5px] text-xs text-[var(--color-text-secondary)] hover:bg-[rgba(255,255,255,0.06)]">
             <RefreshCw size={11} className={cn(isLoading && 'animate-spin')} />Refresh
           </button>
-          {(['1h','6h','24h','7d'] as TimeRange[]).map((r) => (
+          {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
                 range === r ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
-                            : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
+                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
               {r}
             </button>
           ))}
@@ -534,32 +536,32 @@ function StackDefault({ stackName }: { stackName: string }) {
         <ChartPanel title="CPU Usage">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={series}>
-              <defs><linearGradient id="scpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5}/><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05}/></linearGradient></defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick}/><YAxis domain={[0,100]} stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#scpu)"/>
+              <defs><linearGradient id="scpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05} /></linearGradient></defs>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} /><YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#scpu)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
         <ChartPanel title="Memory Usage">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={series}>
-              <defs><linearGradient id="smem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05}/></linearGradient></defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick}/><YAxis domain={[0,100]} stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#smem)"/>
+              <defs><linearGradient id="smem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05} /></linearGradient></defs>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} /><YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#smem)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
         <ChartPanel title="Pipeline Success Rate">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={WEEK_BARS}>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="day" stroke="#94a3b8" tick={CHART_STYLE.tick}/><YAxis stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/><Legend wrapperStyle={{ color: '#e5e7eb' }}/>
-              <Bar dataKey="success" fill="#22c55e" radius={[4,4,0,0]}/><Bar dataKey="failed" fill="#ef4444" radius={[4,4,0,0]}/>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="day" stroke="#94a3b8" tick={CHART_STYLE.tick} /><YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} /><Legend wrapperStyle={{ color: '#e5e7eb' }} />
+              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} /><Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -567,9 +569,9 @@ function StackDefault({ stackName }: { stackName: string }) {
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={podData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                {podData.map((e) => <Cell key={e.name} fill={e.color}/>)}
+                {podData.map((e) => <Cell key={e.name} fill={e.color} />)}
               </Pie>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/><Legend wrapperStyle={{ color: '#e5e7eb' }}/>
+              <Tooltip contentStyle={CHART_STYLE.tooltip} /><Legend wrapperStyle={{ color: '#e5e7eb' }} />
             </PieChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -601,7 +603,7 @@ function StackDefault({ stackName }: { stackName: string }) {
 // ─── Default content: CI/CD view ─────────────────────────────────────────────
 // ─── CI/CD Application monitoring data ───────────────────────────────────────
 type AppStatus = 'healthy' | 'degraded' | 'down'
-type AppEnv    = 'prod' | 'staging' | 'dev'
+type AppEnv = 'prod' | 'staging' | 'dev'
 
 interface DeployedApp {
   name: string; version: string; pipeline: string; env: AppEnv
@@ -610,32 +612,32 @@ interface DeployedApp {
 }
 
 const MOCK_APPS: DeployedApp[] = [
-  { name: 'app-frontend',     version: 'v2.3.1', pipeline: 'GitLab CI', env: 'prod',    status: 'healthy',  pods: [3,3], respMs: 125, errRate: 0.1, lastDeploy: '2m ago',  reqRate: 1240 },
-  { name: 'app-backend',      version: 'v1.8.0', pipeline: 'GitLab CI', env: 'prod',    status: 'healthy',  pods: [5,5], respMs: 89,  errRate: 0.0, lastDeploy: '15m ago', reqRate: 3870 },
-  { name: 'auth-service',     version: 'v0.9.2', pipeline: 'GitLab CI', env: 'prod',    status: 'degraded', pods: [1,3], respMs: 450, errRate: 3.2, lastDeploy: '1h ago',  reqRate: 580  },
-  { name: 'payment-api',      version: 'v3.1.0', pipeline: 'ArgoCD',    env: 'prod',    status: 'healthy',  pods: [2,2], respMs: 201, errRate: 0.2, lastDeploy: '3h ago',  reqRate: 920  },
-  { name: 'notification-svc', version: 'v0.4.1', pipeline: 'ArgoCD',    env: 'prod',    status: 'healthy',  pods: [2,2], respMs: 67,  errRate: 0.0, lastDeploy: '5h ago',  reqRate: 430  },
-  { name: 'worker-jobs',      version: 'v1.2.3', pipeline: 'GitLab CI', env: 'prod',    status: 'healthy',  pods: [3,3], respMs: 0,   errRate: 0.0, lastDeploy: '1d ago',  reqRate: 0    },
-  { name: 'data-pipeline',    version: 'v2.0.0', pipeline: 'ArgoCD',    env: 'staging', status: 'healthy',  pods: [1,1], respMs: 312, errRate: 0.5, lastDeploy: '2d ago',  reqRate: 140  },
-  { name: 'admin-ui',         version: 'v1.5.0', pipeline: 'GitLab CI', env: 'staging', status: 'down',     pods: [0,2], respMs: 0,   errRate: 100, lastDeploy: '2d ago',  reqRate: 0    },
+  { name: 'app-frontend', version: 'v2.3.1', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [3, 3], respMs: 125, errRate: 0.1, lastDeploy: '2m ago', reqRate: 1240 },
+  { name: 'app-backend', version: 'v1.8.0', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [5, 5], respMs: 89, errRate: 0.0, lastDeploy: '15m ago', reqRate: 3870 },
+  { name: 'auth-service', version: 'v0.9.2', pipeline: 'GitLab CI', env: 'prod', status: 'degraded', pods: [1, 3], respMs: 450, errRate: 3.2, lastDeploy: '1h ago', reqRate: 580 },
+  { name: 'payment-api', version: 'v3.1.0', pipeline: 'ArgoCD', env: 'prod', status: 'healthy', pods: [2, 2], respMs: 201, errRate: 0.2, lastDeploy: '3h ago', reqRate: 920 },
+  { name: 'notification-svc', version: 'v0.4.1', pipeline: 'ArgoCD', env: 'prod', status: 'healthy', pods: [2, 2], respMs: 67, errRate: 0.0, lastDeploy: '5h ago', reqRate: 430 },
+  { name: 'worker-jobs', version: 'v1.2.3', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [3, 3], respMs: 0, errRate: 0.0, lastDeploy: '1d ago', reqRate: 0 },
+  { name: 'data-pipeline', version: 'v2.0.0', pipeline: 'ArgoCD', env: 'staging', status: 'healthy', pods: [1, 1], respMs: 312, errRate: 0.5, lastDeploy: '2d ago', reqRate: 140 },
+  { name: 'admin-ui', version: 'v1.5.0', pipeline: 'GitLab CI', env: 'staging', status: 'down', pods: [0, 2], respMs: 0, errRate: 100, lastDeploy: '2d ago', reqRate: 0 },
 ]
 
 const RECENT_DEPLOYS = [
-  { app: 'app-frontend',  version: 'v2.3.1', env: 'prod',    pipeline: 'GitLab CI', status: 'success', time: '2m ago',  duration: '1m 42s' },
-  { app: 'app-backend',   version: 'v1.8.0', env: 'prod',    pipeline: 'GitLab CI', status: 'success', time: '15m ago', duration: '2m 11s' },
-  { app: 'auth-service',  version: 'v0.9.2', env: 'prod',    pipeline: 'GitLab CI', status: 'failed',  time: '1h ago',  duration: '3m 05s' },
-  { app: 'payment-api',   version: 'v3.1.0', env: 'prod',    pipeline: 'ArgoCD',    status: 'success', time: '3h ago',  duration: '58s'    },
-  { app: 'admin-ui',      version: 'v1.5.0', env: 'staging', pipeline: 'GitLab CI', status: 'failed',  time: '2d ago',  duration: '4m 22s' },
+  { app: 'app-frontend', version: 'v2.3.1', env: 'prod', pipeline: 'GitLab CI', status: 'success', time: '2m ago', duration: '1m 42s' },
+  { app: 'app-backend', version: 'v1.8.0', env: 'prod', pipeline: 'GitLab CI', status: 'success', time: '15m ago', duration: '2m 11s' },
+  { app: 'auth-service', version: 'v0.9.2', env: 'prod', pipeline: 'GitLab CI', status: 'failed', time: '1h ago', duration: '3m 05s' },
+  { app: 'payment-api', version: 'v3.1.0', env: 'prod', pipeline: 'ArgoCD', status: 'success', time: '3h ago', duration: '58s' },
+  { app: 'admin-ui', version: 'v1.5.0', env: 'staging', pipeline: 'GitLab CI', status: 'failed', time: '2d ago', duration: '4m 22s' },
 ]
 
 const REQ_SERIES = [
-  { time: '00:00', frontend: 980,  backend: 3200, auth: 620  },
-  { time: '04:00', frontend: 420,  backend: 1800, auth: 310  },
-  { time: '08:00', frontend: 1100, backend: 3900, auth: 740  },
-  { time: '12:00', frontend: 1560, backend: 4800, auth: 890  },
-  { time: '16:00', frontend: 1380, backend: 4200, auth: 710  },
-  { time: '20:00', frontend: 1240, backend: 3870, auth: 580  },
-  { time: 'now',   frontend: 1240, backend: 3870, auth: 580  },
+  { time: '00:00', frontend: 980, backend: 3200, auth: 620 },
+  { time: '04:00', frontend: 420, backend: 1800, auth: 310 },
+  { time: '08:00', frontend: 1100, backend: 3900, auth: 740 },
+  { time: '12:00', frontend: 1560, backend: 4800, auth: 890 },
+  { time: '16:00', frontend: 1380, backend: 4200, auth: 710 },
+  { time: '20:00', frontend: 1240, backend: 3870, auth: 580 },
+  { time: 'now', frontend: 1240, backend: 3870, auth: 580 },
 ]
 
 const ERR_SERIES = [
@@ -645,18 +647,18 @@ const ERR_SERIES = [
   { time: '12:00', frontend: 0.2, backend: 0.0, auth: 2.8 },
   { time: '16:00', frontend: 0.1, backend: 0.1, auth: 3.0 },
   { time: '20:00', frontend: 0.1, backend: 0.0, auth: 3.2 },
-  { time: 'now',   frontend: 0.1, backend: 0.0, auth: 3.2 },
+  { time: 'now', frontend: 0.1, backend: 0.0, auth: 3.2 },
 ]
 
 const APP_STATUS_CFG: Record<AppStatus, { label: string; cls: string; dot: string }> = {
-  healthy:  { label: 'Healthy',  cls: 'bg-emerald-500/15 text-emerald-400', dot: 'bg-emerald-400' },
-  degraded: { label: 'Degraded', cls: 'bg-amber-500/15 text-amber-400',    dot: 'bg-amber-400'   },
-  down:     { label: 'Down',     cls: 'bg-red-500/15 text-red-400',        dot: 'bg-red-400'     },
+  healthy: { label: 'Healthy', cls: 'bg-emerald-500/15 text-emerald-400', dot: 'bg-emerald-400' },
+  degraded: { label: 'Degraded', cls: 'bg-amber-500/15 text-amber-400', dot: 'bg-amber-400' },
+  down: { label: 'Down', cls: 'bg-red-500/15 text-red-400', dot: 'bg-red-400' },
 }
 const ENV_CFG: Record<AppEnv, { cls: string }> = {
-  prod:    { cls: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]'  },
-  staging: { cls: 'bg-[rgba(245,158,11,0.12)] text-[#fbbf24]'  },
-  dev:     { cls: 'bg-[rgba(148,163,184,0.12)] text-[#94a3b8]' },
+  prod: { cls: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' },
+  staging: { cls: 'bg-[rgba(245,158,11,0.12)] text-[#fbbf24]' },
+  dev: { cls: 'bg-[rgba(148,163,184,0.12)] text-[#94a3b8]' },
 }
 
 /** Sample Grafana tab pre-seeded into CI/CD localStorage */
@@ -671,20 +673,20 @@ export const CICD_DEFAULT_TABS: EmbedTab[] = [
 
 function CicdDefault() {
   const [envFilter, setEnvFilter] = useState<AppEnv | 'all'>('all')
-  const [range, setRange]         = useState<TimeRange>('24h')
+  const [range, setRange] = useState<TimeRange>('24h')
 
   const filtered = envFilter === 'all' ? MOCK_APPS : MOCK_APPS.filter((a) => a.env === envFilter)
 
-  const healthy  = filtered.filter((a) => a.status === 'healthy').length
+  const healthy = filtered.filter((a) => a.status === 'healthy').length
   const degraded = filtered.filter((a) => a.status === 'degraded').length
-  const down     = filtered.filter((a) => a.status === 'down').length
+  const down = filtered.filter((a) => a.status === 'down').length
   const totalPods = filtered.reduce((s, a) => s + a.pods[0], 0)
 
   const appKpis = [
-    { label: 'Total Apps',      value: String(filtered.length), icon: <Layers size={18}/>,      color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]',  bar: 100 },
-    { label: 'Healthy',         value: String(healthy),          icon: <CheckCircle size={18}/>, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400',         bar: Math.round(healthy / filtered.length * 100) || 0 },
-    { label: 'Degraded / Down', value: `${degraded} / ${down}`, icon: <AlertCircle size={18}/>, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400',             bar: Math.round((degraded + down) / filtered.length * 100) || 0 },
-    { label: 'Running Pods',    value: String(totalPods),        icon: <Box size={18}/>,         color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]',  bar: 80 },
+    { label: 'Total Apps', value: String(filtered.length), icon: <Layers size={18} />, color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 100 },
+    { label: 'Healthy', value: String(healthy), icon: <CheckCircle size={18} />, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: Math.round(healthy / filtered.length * 100) || 0 },
+    { label: 'Degraded / Down', value: `${degraded} / ${down}`, icon: <AlertCircle size={18} />, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400', bar: Math.round((degraded + down) / filtered.length * 100) || 0 },
+    { label: 'Running Pods', value: String(totalPods), icon: <Box size={18} />, color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: 80 },
   ]
 
   return (
@@ -704,7 +706,7 @@ function CicdDefault() {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          {(['1h','6h','24h','7d'] as TimeRange[]).map((r) => (
+          {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
                 range === r
@@ -727,18 +729,18 @@ function CicdDefault() {
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={REQ_SERIES}>
               <defs>
-                <linearGradient id="rr-fe" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={.4}/><stop offset="95%" stopColor="#6366f1" stopOpacity={.02}/></linearGradient>
-                <linearGradient id="rr-be" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={.4}/><stop offset="95%" stopColor="#22c55e" stopOpacity={.02}/></linearGradient>
-                <linearGradient id="rr-au" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.4}/><stop offset="95%" stopColor="#f59e0b" stopOpacity={.02}/></linearGradient>
+                <linearGradient id="rr-fe" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={.4} /><stop offset="95%" stopColor="#6366f1" stopOpacity={.02} /></linearGradient>
+                <linearGradient id="rr-be" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={.4} /><stop offset="95%" stopColor="#22c55e" stopOpacity={.02} /></linearGradient>
+                <linearGradient id="rr-au" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.4} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.02} /></linearGradient>
               </defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }}/>
-              <Area type="monotone" dataKey="frontend" name="app-frontend" stroke="#6366f1" strokeWidth={2} fill="url(#rr-fe)"/>
-              <Area type="monotone" dataKey="backend"  name="app-backend"  stroke="#22c55e" strokeWidth={2} fill="url(#rr-be)"/>
-              <Area type="monotone" dataKey="auth"     name="auth-service" stroke="#f59e0b" strokeWidth={2} fill="url(#rr-au)"/>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }} />
+              <Area type="monotone" dataKey="frontend" name="app-frontend" stroke="#6366f1" strokeWidth={2} fill="url(#rr-fe)" />
+              <Area type="monotone" dataKey="backend" name="app-backend" stroke="#22c55e" strokeWidth={2} fill="url(#rr-be)" />
+              <Area type="monotone" dataKey="auth" name="auth-service" stroke="#f59e0b" strokeWidth={2} fill="url(#rr-au)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -746,16 +748,16 @@ function CicdDefault() {
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={ERR_SERIES}>
               <defs>
-                <linearGradient id="er-fe" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={.3}/><stop offset="95%" stopColor="#6366f1" stopOpacity={.02}/></linearGradient>
-                <linearGradient id="er-au" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={.4}/><stop offset="95%" stopColor="#ef4444" stopOpacity={.02}/></linearGradient>
+                <linearGradient id="er-fe" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={.3} /><stop offset="95%" stopColor="#6366f1" stopOpacity={.02} /></linearGradient>
+                <linearGradient id="er-au" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={.4} /><stop offset="95%" stopColor="#ef4444" stopOpacity={.02} /></linearGradient>
               </defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3"/>
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick}/>
-              <Tooltip contentStyle={CHART_STYLE.tooltip}/>
-              <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }}/>
-              <Area type="monotone" dataKey="frontend" name="app-frontend" stroke="#6366f1" strokeWidth={2} fill="url(#er-fe)"/>
-              <Area type="monotone" dataKey="auth"     name="auth-service" stroke="#ef4444" strokeWidth={2} fill="url(#er-au)"/>
+              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <Tooltip contentStyle={CHART_STYLE.tooltip} />
+              <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }} />
+              <Area type="monotone" dataKey="frontend" name="app-frontend" stroke="#6366f1" strokeWidth={2} fill="url(#er-fe)" />
+              <Area type="monotone" dataKey="auth" name="auth-service" stroke="#ef4444" strokeWidth={2} fill="url(#er-au)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -820,8 +822,8 @@ function CicdDefault() {
                         {app.errRate > 1
                           ? <><TrendingUp size={11} className="text-red-400" /><span className="text-red-400">{app.errRate}%</span></>
                           : app.errRate > 0
-                          ? <><TrendingUp size={11} className="text-amber-400" /><span className="text-amber-400">{app.errRate}%</span></>
-                          : <><TrendingDown size={11} className="text-emerald-400" /><span className="text-emerald-400">0%</span></>}
+                            ? <><TrendingUp size={11} className="text-amber-400" /><span className="text-amber-400">{app.errRate}%</span></>
+                            : <><TrendingDown size={11} className="text-emerald-400" /><span className="text-emerald-400">0%</span></>}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -886,12 +888,12 @@ interface StackComponent {
 }
 
 const DETECTABLE_COMPONENTS: StackComponent[] = [
-  { name: 'Grafana',    description: 'Metrics & dashboards',  status: 'warning', version: '10.3'   },
-  { name: 'Prometheus', description: 'Metrics & alerting',    status: 'running', version: '2.48.1' },
-  { name: 'ArgoCD',     description: 'GitOps CD',             status: 'running', version: '2.9.3'  },
-  { name: 'Harbor',     description: 'Container registry',    status: 'running', version: '2.8.2'  },
-  { name: 'GitLab',     description: 'CI/CD pipelines',       status: 'running', version: '16.7'   },
-  { name: 'Kibana',     description: 'Log analysis',          status: 'running', version: '8.11.0' },
+  { name: 'Grafana', description: 'Metrics & dashboards', status: 'warning', version: '10.3' },
+  { name: 'Prometheus', description: 'Metrics & alerting', status: 'running', version: '2.48.1' },
+  { name: 'ArgoCD', description: 'GitOps CD', status: 'running', version: '2.9.3' },
+  { name: 'Harbor', description: 'Container registry', status: 'running', version: '2.8.2' },
+  { name: 'GitLab', description: 'CI/CD pipelines', status: 'running', version: '16.7' },
+  { name: 'Kibana', description: 'Log analysis', status: 'running', version: '8.11.0' },
 ]
 
 function StackConnectPanel({
@@ -903,8 +905,8 @@ function StackConnectPanel({
   onConnect: (tabs: Pick<EmbedTab, 'label' | 'url'>[]) => void
   onSkip: () => void
 }) {
-  const [urls, setUrls]           = useState<Record<string, string>>({})
-  const [open, setOpen]           = useState<Record<string, boolean>>({})
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [open, setOpen] = useState<Record<string, boolean>>({})
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
 
   function toggleOpen(name: string) {
@@ -960,8 +962,8 @@ function StackConnectPanel({
                 isDone
                   ? 'border-emerald-500/40 bg-emerald-500/5'
                   : isOpen
-                  ? 'border-[#6366f1]/40'
-                  : 'border-[var(--color-border-default)]',
+                    ? 'border-[#6366f1]/40'
+                    : 'border-[var(--color-border-default)]',
               )}
             >
               {/* Tool header */}
@@ -1072,19 +1074,23 @@ export function MonitoringPage() {
   const isAdmin = role === 'admin'
 
   const [selectedClusterId, setSelectedClusterId] = useState('')
-  const [selectedStackId, setSelectedStackId]     = useState('')
-  const [activeView, setActiveView]               = useState<ViewType | null>(null)
-
+  const [selectedStackId, setSelectedStackId] = useState('')
+  const [activeView, setActiveView] = useState<ViewType | null>(null)
   const { data: clustersData } = useClusters()
-  const { data: stacksData }   = useStacks()
+  const { data: stacksData } = useStacks()
   const clusters = clustersData?.items ?? []
-  const stacks   = stacksData?.items   ?? []
-
+  const stacks = stacksData?.items ?? []
   const hasContext = selectedClusterId !== '' || selectedStackId !== ''
+
 
   // Auto-select initial view
   function handleClusterChange(id: string) {
+    const clusterChanged = id !== selectedClusterId
     setSelectedClusterId(id)
+    if (clusterChanged) {
+      setSelectedStackId('')
+      if (activeView === 'stack') setActiveView('cluster')
+    }
     if (id && !activeView) setActiveView('cluster')
   }
   function handleStackChange(id: string) {
@@ -1093,12 +1099,12 @@ export function MonitoringPage() {
   }
 
   const selectedCluster = clusters.find((c) => c.id === selectedClusterId)
-  const selectedStack   = stacks.find((s) => s.id === selectedStackId)
+  const selectedStack = stacks.find((s) => s.id === selectedStackId)
 
   const views: { id: ViewType; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
-    { id: 'cluster', label: 'Cluster',  icon: <Server size={15} />,    disabled: !selectedClusterId },
-    { id: 'stack',   label: 'Stack',    icon: <BarChart3 size={15} />, disabled: !selectedStackId },
-    { id: 'cicd',    label: 'CI/CD',    icon: <GitBranch size={15} /> },
+    { id: 'cluster', label: 'Cluster', icon: <Server size={15} />, disabled: !selectedClusterId },
+    { id: 'stack', label: 'Stack', icon: <BarChart3 size={15} />, disabled: !selectedStackId },
+    { id: 'cicd', label: 'CI/CD', icon: <GitBranch size={15} /> },
   ]
 
   return (
@@ -1166,72 +1172,87 @@ export function MonitoringPage() {
           </button>
         )}
       </div>
+      <ClusterStackFilter
+        selectedClusterId={selectedClusterId}
+        selectedStackId={selectedStackId}
+        onClusterChange={handleClusterChange}
+        onStackChange={handleStackChange}
+        onClear={() => { setSelectedClusterId(''); setSelectedStackId(''); setActiveView(null) }}
+        clusters={clusters}
+        filteredStacks={filteredStacks}
+        selectedCluster={selectedCluster}
+        selectedStack={selectedStack}
+      />
 
       {/* ── Empty state ── */}
-      {!hasContext && (
-        <div className="flex h-44 flex-col items-center justify-center gap-2 rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] text-[var(--color-text-secondary)]">
-          <BarChart3 size={28} className="opacity-20" />
-          <p className="text-sm font-medium text-[var(--color-text-primary)]">Select a Cluster or Stack above to begin</p>
-          <p className="text-xs">You can select either one or both.</p>
-        </div>
-      )}
+      {
+        !hasContext && (
+          <div className="flex h-44 flex-col items-center justify-center gap-2 rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] text-[var(--color-text-secondary)]">
+            <BarChart3 size={28} className="opacity-20" />
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">Select a Cluster or Stack above to begin</p>
+            <p className="text-xs">You can select either one or both.</p>
+          </div>
+        )
+      }
 
       {/* ── View switcher + content ── */}
-      {hasContext && (
-        <>
-          {/* View tabs */}
-          <div className="mb-0 flex items-end border-b border-[var(--color-border-default)]">
-            {views.map((v) => (
-              <button key={v.id} type="button"
-                onClick={() => !v.disabled && setActiveView(v.id)}
-                disabled={v.disabled}
-                className={cn(
-                  'flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors',
-                  activeView === v.id
-                    ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
-                    : v.disabled
-                      ? 'cursor-not-allowed border-b-transparent text-[var(--color-text-secondary)] opacity-35'
-                      : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                )}>
-                {v.icon}{v.label}
-              </button>
-            ))}
-          </div>
+      {
+        hasContext && (
+          <>
+            {/* View tabs */}
+            <div className="mb-0 flex items-end border-b border-[var(--color-border-default)]">
+              {views.map((v) => (
+                <button key={v.id} type="button"
+                  onClick={() => !v.disabled && setActiveView(v.id)}
+                  disabled={v.disabled}
+                  className={cn(
+                    'flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors',
+                    activeView === v.id
+                      ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
+                      : v.disabled
+                        ? 'cursor-not-allowed border-b-transparent text-[var(--color-text-secondary)] opacity-35'
+                        : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                  )}>
+                  {v.icon}{v.label}
+                </button>
+              ))}
+            </div>
 
-          {/* View content */}
-          <div className="pt-5">
-            {activeView === 'cluster' && (
-              <DashboardTabLayout
-                viewId="cluster"
-                isAdmin={isAdmin}
-                defaultContent={<ClusterDefault clusterId={selectedCluster?.name ?? selectedClusterId} />}
-              />
-            )}
-            {activeView === 'stack' && (
-              <DashboardTabLayout
-                viewId="stack"
-                isAdmin={isAdmin}
-                defaultContent={<StackDefault stackName={selectedStack?.name ?? selectedStackId} />}
-                firstTimePanel={(onConnect, onSkip) => (
-                  <StackConnectPanel
-                    stackName={selectedStack?.name ?? selectedStackId}
-                    onConnect={onConnect}
-                    onSkip={onSkip}
-                  />
-                )}
-              />
-            )}
-            {activeView === 'cicd' && (
-              <DashboardTabLayout
-                viewId="cicd"
-                isAdmin={isAdmin}
-                defaultContent={<CicdDefault />}
-                seedTabs={CICD_DEFAULT_TABS}
-              />
-            )}
-          </div>
-        </>
-      )}
-    </div>
+            {/* View content */}
+            <div className="pt-5">
+              {activeView === 'cluster' && (
+                <DashboardTabLayout
+                  viewId="cluster"
+                  isAdmin={isAdmin}
+                  defaultContent={<ClusterDefault clusterId={selectedCluster?.name ?? selectedClusterId} />}
+                />
+              )}
+              {activeView === 'stack' && (
+                <DashboardTabLayout
+                  viewId="stack"
+                  isAdmin={isAdmin}
+                  defaultContent={<StackDefault stackName={selectedStack?.name ?? selectedStackId} />}
+                  firstTimePanel={(onConnect, onSkip) => (
+                    <StackConnectPanel
+                      stackName={selectedStack?.name ?? selectedStackId}
+                      onConnect={onConnect}
+                      onSkip={onSkip}
+                    />
+                  )}
+                />
+              )}
+              {activeView === 'cicd' && (
+                <DashboardTabLayout
+                  viewId="cicd"
+                  isAdmin={isAdmin}
+                  defaultContent={<CicdDefault />}
+                  seedTabs={CICD_DEFAULT_TABS}
+                />
+              )}
+            </div>
+          </>
+        )
+      }
+    </div >
   )
 }

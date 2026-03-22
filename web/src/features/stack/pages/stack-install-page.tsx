@@ -15,6 +15,7 @@ import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, toCrea
 import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { CodePreview } from '../../../components/shared/code-preview'
@@ -646,7 +647,7 @@ export function StackInstallPage() {
       const createRes = await api.post<{ id: string }>('/stacks', body)
       const stackId = createRes.data?.id
       if (!stackId) { navigate('/stack/list'); return }
-      await api.post(`/stacks/${stackId}/deploy`).catch(() => {})
+      await api.post(`/stacks/${stackId}/deploy`).catch(() => { })
       navigate(`/stack/deploy/${stackId}`)
     } catch {
       navigate('/stack/list')
@@ -717,7 +718,7 @@ export function StackInstallPage() {
           <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
             Preview K8s Objects
           </Button>
-           <Button
+          <Button
             variant="primary"
             size="md"
             loading={createStack.isPending}
@@ -754,11 +755,8 @@ export function StackInstallPage() {
           />
         </div>
         <div className="flex max-w-[300px] flex-1 flex-col gap-1">
-          <label htmlFor="cluster-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
-            Target Cluster
-          </label>
-          <select
-            id="cluster-select"
+          <NativeSelect
+            label="Target Cluster"
             value={draft.clusterId ?? ''}
             onChange={(e) => setCluster(e.target.value)}
             className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
@@ -769,16 +767,13 @@ export function StackInstallPage() {
                 {c.name} ({c.connection_status})
               </option>
             ))}
-          </select>
+          </NativeSelect>
           {!draft.clusterId && <span className="text-xs text-[#f59e0b]">배포에 필요합니다</span>}
         </div>
         {draft.clusterId && (
           <div className="flex max-w-[300px] flex-1 flex-col gap-1">
-            <label htmlFor="namespace-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
-              Namespace
-            </label>
-            <select
-              id="namespace-select"
+            <NativeSelect
+              label="Namespace"
               value={createNewNs ? '__new__' : draft.namespace}
               onChange={(e) => {
                 if (e.target.value === '__new__') {
@@ -796,7 +791,7 @@ export function StackInstallPage() {
                 <option key={ns.name} value={ns.name}>{ns.name}</option>
               ))}
               <option value="__new__">새 네임스페이스 생성...</option>
-            </select>
+            </NativeSelect>
             {createNewNs && (
               <input
                 type="text"
@@ -954,7 +949,6 @@ export function StackInstallPage() {
                 <p className="mb-4 mt-0 text-[13px] text-[var(--color-text-secondary)]">
                   팀 규모와 사용 패턴을 입력하면 필요한 리소스를 계산합니다.
                 </p>
-                
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <label htmlFor="resource-mode-auto" className="text-xs font-medium text-[var(--color-text-secondary)]">
@@ -979,12 +973,12 @@ export function StackInstallPage() {
                       ))}
                     </div>
                   </div>
-                  
+
                   <div className="flex flex-col gap-1">
                     <label htmlFor="currency-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
                       통화
                     </label>
-                    <select
+                    <NativeSelect
                       id="currency-select"
                       value={draft.resources.currency}
                       onChange={(e) =>
@@ -995,7 +989,7 @@ export function StackInstallPage() {
                       <option value="USD">USD ($)</option>
                       <option value="KRW">KRW (₩)</option>
                       <option value="CNY">CNY (¥)</option>
-                    </select>
+                    </NativeSelect>
                   </div>
                 </div>
 
