@@ -20,6 +20,7 @@ auth:
     secret: dev-secret-change-in-production
     max_age: 86400
   oidc:
+    provider: keycloak
     issuer_url: http://localhost:8180/realms/nullus
     audience: nullus-app
 

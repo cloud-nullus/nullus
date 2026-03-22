@@ -14,6 +14,7 @@ import (
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
@@ -183,10 +184,15 @@ func main() {
 		observability = v1.Group("/observability")
 	} else {
 		sessionMW := authmw.AuthMiddleware()
+		oidcProvider, err := authadapter.NewOIDCProvider(cfg.Auth.OIDC.Provider)
+		if err != nil {
+			slog.Error("failed to initialize OIDC provider", "provider", cfg.Auth.OIDC.Provider, "error", err)
+			os.Exit(1)
+		}
 		oidcMW := authmw.JWTAuthMiddleware(authmw.JWTConfig{
 			IssuerURL: cfg.Auth.OIDC.IssuerURL,
 			Audience:  cfg.Auth.OIDC.Audience,
-		})
+		}, oidcProvider)
 		authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW)
 		admin = v1.Group("/admin", authMW, authmw.RequireRole("admin"))
 		stacks = v1.Group("/stacks", authMW, authmw.RequireRole("admin", "devops"))

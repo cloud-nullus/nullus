@@ -11,6 +11,8 @@ import (
 	"time"
 
 	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
+	"github.com/cloud-nullus/draft/internal/auth/adapter/authentik"
+	"github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
@@ -40,7 +42,7 @@ func TestJWTAuthMiddleware_ValidJWT_SetsUserInContext(t *testing.T) {
 	c := e.NewContext(req, rec)
 
 	called := false
-	h := JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"})(func(c echo.Context) error {
+	h := JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"}, keycloak.NewOIDCProvider())(func(c echo.Context) error {
 		called = true
 		user, ok := c.Get(userContextKey).(*admindomain.User)
 		require.True(t, ok)
@@ -55,6 +57,41 @@ func TestJWTAuthMiddleware_ValidJWT_SetsUserInContext(t *testing.T) {
 	err := h(c)
 	require.NoError(t, err)
 	require.True(t, called)
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestJWTAuthMiddleware_ValidJWTWithAuthentikGroups_SetsUserRole(t *testing.T) {
+	signingKey := mustGenerateRSAKey(t)
+	issuer := startJWKS(t, &signingKey.PublicKey, "test-kid")
+
+	token := mustSignToken(t, signingKey, "test-kid", jwt.MapClaims{
+		"sub":                "user-2",
+		"email":              "developer@nullus.io",
+		"preferred_username": "developer",
+		"groups":             []string{"developer"},
+		"iss":                issuer,
+		"aud":                "nullus-app",
+		"exp":                time.Now().Add(5 * time.Minute).Unix(),
+		"iat":                time.Now().Unix(),
+	})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	h := JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"}, authentik.NewOIDCProvider())(func(c echo.Context) error {
+		user, ok := c.Get(userContextKey).(*admindomain.User)
+		require.True(t, ok)
+		require.NotNil(t, user)
+		require.Equal(t, "user-2", user.ID)
+		require.Equal(t, admindomain.RoleDeveloper, user.Role)
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := h(c)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
@@ -76,7 +113,7 @@ func TestJWTAuthMiddleware_ExpiredJWT_ReturnsUnauthorized(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"})(func(c echo.Context) error {
+	h := JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"}, keycloak.NewOIDCProvider())(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
@@ -91,7 +128,7 @@ func TestJWTAuthMiddleware_MissingAuthorizationHeader_ReturnsUnauthorized(t *tes
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := JWTAuthMiddleware(JWTConfig{IssuerURL: "http://issuer.local", Audience: "nullus-app"})(func(c echo.Context) error {
+	h := JWTAuthMiddleware(JWTConfig{IssuerURL: "http://issuer.local", Audience: "nullus-app"}, keycloak.NewOIDCProvider())(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
@@ -119,7 +156,7 @@ func TestJWTAuthMiddleware_InvalidSignature_ReturnsUnauthorized(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"})(func(c echo.Context) error {
+	h := JWTAuthMiddleware(JWTConfig{IssuerURL: issuer, Audience: "nullus-app"}, keycloak.NewOIDCProvider())(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 

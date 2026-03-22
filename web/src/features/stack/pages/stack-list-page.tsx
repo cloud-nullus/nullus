@@ -1411,17 +1411,30 @@ export function StackListPage() {
 			header: "Actions",
 			enableSorting: false,
 			cell: ({ row }) => (
-				<Button
-					variant="danger"
-					size="sm"
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						setDeleteStackId(row.original.id);
-					}}
-				>
-					Delete
-				</Button>
+				<div className="flex gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							navigate(`/stack/${row.original.id}/add-tools`);
+						}}
+					>
+						<Plus size={13} /> Add Tools
+					</Button>
+					<Button
+						variant="danger"
+						size="sm"
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							setDeleteStackId(row.original.id);
+						}}
+					>
+						Delete
+					</Button>
+				</div>
 			),
 		},
 	];

@@ -23,6 +23,10 @@ const StackInstallPage = lazy(() =>
   import('../features/stack/pages/stack-install-page').then((m) => ({ default: m.StackInstallPage }))
 )
 
+const StackAddToolsPage = lazy(() =>
+  import('../features/stack/pages/stack-add-tools-page').then((m) => ({ default: m.StackAddToolsPage }))
+)
+
 const StackListPage = lazy(() =>
   import('../features/stack/pages/stack-list-page').then((m) => ({ default: m.StackListPage }))
 )
@@ -125,6 +129,7 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute allowedRoles={['admin', 'devops']} />,
         children: [
           { path: 'stack/install', element: withSuspense(<StackInstallPage />) },
+          { path: 'stack/:id/add-tools', element: withSuspense(<StackAddToolsPage />) },
           { path: 'stack/deploy/:id', element: withSuspense(<StackDeployPage />) },
         ],
       },

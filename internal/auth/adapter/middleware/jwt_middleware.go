@@ -13,6 +13,7 @@ import (
 	"time"
 
 	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
+	authport "github.com/cloud-nullus/draft/internal/auth/port"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 )
@@ -39,7 +40,20 @@ var (
 	jwksRefreshOnce sync.Once
 )
 
-func JWTAuthMiddleware(cfg JWTConfig) echo.MiddlewareFunc {
+type JWTMiddleware struct {
+	cfg      JWTConfig
+	provider authport.OIDCProvider
+}
+
+func NewJWTMiddleware(cfg JWTConfig, provider authport.OIDCProvider) *JWTMiddleware {
+	return &JWTMiddleware{cfg: cfg, provider: provider}
+}
+
+func JWTAuthMiddleware(cfg JWTConfig, provider authport.OIDCProvider) echo.MiddlewareFunc {
+	return NewJWTMiddleware(cfg, provider).Handler()
+}
+
+func (m *JWTMiddleware) Handler() echo.MiddlewareFunc {
 	ensureJWKSRefreshTimer()
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -65,7 +79,7 @@ func JWTAuthMiddleware(cfg JWTConfig) echo.MiddlewareFunc {
 					return nil, errors.New("missing kid")
 				}
 
-				keys, err := getJWKS(c.Request().Context(), cfg.IssuerURL)
+				keys, err := getJWKS(c.Request().Context(), m.cfg.IssuerURL)
 				if err != nil {
 					return nil, err
 				}
@@ -78,8 +92,8 @@ func JWTAuthMiddleware(cfg JWTConfig) echo.MiddlewareFunc {
 				return key, nil
 			},
 				jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}),
-				jwt.WithIssuer(cfg.IssuerURL),
-				jwt.WithAudience(cfg.Audience),
+				jwt.WithIssuer(m.cfg.IssuerURL),
+				jwt.WithAudience(m.cfg.Audience),
 			)
 			if err != nil {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
@@ -89,7 +103,7 @@ func JWTAuthMiddleware(cfg JWTConfig) echo.MiddlewareFunc {
 				ID:       claimString(claims, "sub"),
 				Email:    claimString(claims, "email"),
 				Name:     claimString(claims, "preferred_username"),
-				Role:     extractRole(claims),
+				Role:     m.extractRole(claims),
 				IsActive: true,
 			}
 
@@ -199,26 +213,20 @@ func claimString(claims jwt.MapClaims, key string) string {
 	return v
 }
 
-func extractRole(claims jwt.MapClaims) admindomain.Role {
-	realmAccess, ok := claims["realm_access"].(map[string]any)
-	if !ok {
+func (m *JWTMiddleware) extractRole(claims jwt.MapClaims) admindomain.Role {
+	if m.provider == nil {
 		return ""
 	}
 
-	rawRoles, ok := realmAccess["roles"].([]any)
-	if !ok {
-		return ""
-	}
-
-	for _, rawRole := range rawRoles {
-		role, ok := rawRole.(string)
-		if !ok {
-			continue
-		}
-
-		switch admindomain.Role(role) {
-		case admindomain.RoleAdmin, admindomain.RoleDevOps, admindomain.RoleDeveloper:
-			return admindomain.Role(role)
+	roles := m.provider.ExtractRoles(claims)
+	for _, role := range roles {
+		switch role {
+		case string(admindomain.RoleAdmin):
+			return admindomain.RoleAdmin
+		case string(admindomain.RoleDevOps):
+			return admindomain.RoleDevOps
+		case string(admindomain.RoleDeveloper):
+			return admindomain.RoleDeveloper
 		}
 	}
 

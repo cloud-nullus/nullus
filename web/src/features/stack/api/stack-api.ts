@@ -347,6 +347,22 @@ export function useCreateStack() {
   })
 }
 
+export function useAddTools() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      stackId,
+      tools,
+    }: {
+      stackId: string
+      tools: Array<{ category: string; tool: string; version: string }>
+    }) => api.patch(`/stacks/${stackId}/tools`, { tools }).then((r) => r.data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
+  })
+}
+
 export function useDeleteStack() {
   const qc = useQueryClient()
   return useMutation({
