@@ -4,6 +4,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertHistory } from '../api/observability-api'
 import type { AlertHistoryEntry, AlertSeverity } from '../api/observability-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
@@ -43,7 +44,6 @@ const SEVERITY_BADGE: Record<AlertSeverity, { className: string; label: string }
   info: { className: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', label: 'Info' },
 }
 
-const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 function formatDate(iso: string | null) {
   if (!iso) return '-'
@@ -186,12 +186,12 @@ export function AlertHistoryPage() {
         emptyMessage="알림 이력이 없습니다."
         toolbar={
           <>
-            <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className={`${selectClassName} [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]`}>
+            <NativeSelect value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Severity</option>
               <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Critical</option>
               <option value="warning" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Warning</option>
               <option value="info" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Info</option>
-            </select>
+            </NativeSelect>
             <div className="flex gap-1.5">
               {[
                 { id: '24h', label: 'Last 24h' },

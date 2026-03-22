@@ -6,6 +6,7 @@ import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } f
 import { useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster } from '../api/admin-api'
 import type { Cluster, ClusterStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
@@ -475,15 +476,7 @@ export function ClusterPage() {
             {...register('name')}
           />
           {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="cluster-type-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
-              클러스터 타입
-            </label>
-            <select
-              id="cluster-type-select"
-              {...register('type')}
-              className={selectClassName}
-            >
+          <NativeSelect label="클러스터 타입" {...register('type')} className={selectClassName}>
               <option value="kubernetes">Kubernetes</option>
               <option value="eks">AWS EKS</option>
               <option value="gke">GCP GKE</option>
@@ -491,8 +484,7 @@ export function ClusterPage() {
               <option value="k3s">K3s</option>
               <option value="pipeline">Pipeline Cluster</option>
               <option value="target">Target Cluster</option>
-            </select>
-          </div>
+            </NativeSelect>
           <Input
             label="엔드포인트"
             placeholder="예: https://prod.k8s.nullus.io"
