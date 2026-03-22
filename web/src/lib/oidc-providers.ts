@@ -85,4 +85,4 @@ export function toAuthProviderProps(config: OIDCProviderConfig): OIDCAuthProvide
   }
 }
 
-export const isOidcMode = import.meta.env.VITE_AUTH_MODE !== 'mock'
+export const isOidcMode = import.meta.env.VITE_AUTH_MODE === 'oidc'
