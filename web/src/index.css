@@ -117,3 +117,19 @@ code, pre, .font-mono {
   display: flex;
   flex-direction: column;
 }
+
+/* Native select: force dark background on option dropdown (cross-browser) */
+select {
+  color-scheme: dark;
+}
+select option {
+  background-color: #111827;
+  color: #f1f5f9;
+}
+[data-theme="light"] select {
+  color-scheme: light;
+}
+[data-theme="light"] select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
