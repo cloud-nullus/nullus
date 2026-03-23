@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
-import { AlignLeft, Check, Copy, Download, Rocket, Save } from 'lucide-react'
+import { AlignLeft, Check, Copy, Download, Rocket, Save, ShoppingCart } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
@@ -11,7 +11,7 @@ import YAML from 'yaml'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, toCreateStackBody } from '../api/stack-api'
+import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useResourceDefaults, toCreateStackBody } from '../api/stack-api'
 import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -129,6 +129,11 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   opensearch: { repoUrl: 'https://opensearch-project.github.io/helm-charts', chartName: 'opensearch/opensearch' },
   elasticsearch: { repoUrl: 'https://helm.elastic.co', chartName: 'elastic/elasticsearch' },
   loki: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/loki-stack' },
+}
+
+const RESOURCE_DEFAULT_TOOL_MAP: Record<string, string> = {
+  gitlab: 'gitlab-ce',
+  'gitlab-ci': 'gitlab-runner',
 }
 
 type K8sPreviewTab = 'namespace' | 'deployment' | 'service' | 'ingress'
@@ -484,6 +489,7 @@ export function StackInstallPage() {
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
   const estimateResources = useEstimateResources()
+  const { data: resourceDefaultsData } = useResourceDefaults()
   const { data: clusters } = useClusters()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
   const [createNewNs, setCreateNewNs] = useState(false)
@@ -516,6 +522,55 @@ export function StackInstallPage() {
   const deployScript = createDeployScript(draft)
   const k8sObjects = createK8sObjects(draft)
 
+  const selectedToolKeys = Array.from(
+    new Set(
+      [
+        draft.artifacts.packageRegistry.tool,
+        draft.artifacts.sourceRepository.tool,
+        draft.artifacts.containerRegistry.tool,
+        draft.artifacts.storageBackend.tool,
+        draft.pipeline.cicdPlatform.tool,
+        draft.pipeline.cdTool.tool,
+        draft.monitoring.collection.tool,
+        draft.monitoring.visualization.tool,
+        draft.logging.search.tool,
+        draft.logging.traceLayer.tool,
+      ]
+        .filter((tool) => tool.length > 0)
+        .map((tool) => RESOURCE_DEFAULT_TOOL_MAP[tool] ?? tool)
+    )
+  )
+
+  const defaultByTool = useMemo(
+    () => new Map((resourceDefaultsData?.items ?? []).map((item) => [item.tool_key, item])),
+    [resourceDefaultsData?.items]
+  )
+
+  const selectedDefaults = selectedToolKeys
+    .map((toolKey) => defaultByTool.get(toolKey))
+    .filter((item): item is NonNullable<typeof item> => item != null)
+
+  const missingDefaultTools = selectedToolKeys.filter((toolKey) => !defaultByTool.has(toolKey))
+
+  const resourceDefaultTotal = selectedDefaults.reduce(
+    (acc, item) => ({
+      cpuRequest: acc.cpuRequest + item.cpu_request,
+      cpuLimit: acc.cpuLimit + item.cpu_limit,
+      memoryRequestGi: acc.memoryRequestGi + item.memory_request_gi,
+      memoryLimitGi: acc.memoryLimitGi + item.memory_limit_gi,
+      storageRequestGi: acc.storageRequestGi + item.storage_request_gi,
+      storageLimitGi: acc.storageLimitGi + item.storage_limit_gi,
+    }),
+    {
+      cpuRequest: 0,
+      cpuLimit: 0,
+      memoryRequestGi: 0,
+      memoryLimitGi: 0,
+      storageRequestGi: 0,
+      storageLimitGi: 0,
+    }
+  )
+
   const handleYamlChange = useCallback((value?: string) => {
     const nextYaml = value ?? ''
     yamlContentRef.current = nextYaml
@@ -544,7 +599,8 @@ export function StackInstallPage() {
           },
           isDirty: true,
         }))
-      } catch {
+      } catch (error) {
+        void error
       }
     }, 300)
   }, [])
@@ -561,7 +617,8 @@ export function StackInstallPage() {
       const parsed = YAML.parse(yamlContentRef.current)
       const formatted = YAML.stringify(parsed, { indent: 2, lineWidth: 0 })
       handleYamlChange(formatted)
-    } catch {
+    } catch (error) {
+      void error
     }
   }, [handleYamlChange])
 
@@ -732,78 +789,138 @@ export function StackInstallPage() {
         </div>
       </div>
 
-      <div className="mb-5 flex items-start gap-4">
-        <div className="max-w-[400px] flex-1">
-          <Controller
-            control={control}
-            name="stackName"
-            render={({ field }) => (
-              <>
-                <Input
-                  label="Stack Name"
-                  placeholder="예: prod-gitlab-stack"
-                  value={field.value}
-                  onChange={(e) => {
-                    field.onChange(e.target.value)
-                    setStackName(e.target.value)
-                  }}
-                  onBlur={field.onBlur}
-                />
-                {errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>}
-              </>
-            )}
-          />
-        </div>
-        <div className="flex max-w-[300px] flex-1 flex-col gap-1">
-          <NativeSelect
-            label="Target Cluster"
-            value={draft.clusterId ?? ''}
-            onChange={(e) => setCluster(e.target.value)}
-            className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-          >
-            <option value="">클러스터를 선택하세요</option>
-            {(clusters ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.connection_status})
-              </option>
-            ))}
-          </NativeSelect>
-          {!draft.clusterId && <span className="text-xs text-[#f59e0b]">배포에 필요합니다</span>}
-        </div>
-        {draft.clusterId && (
+      <div className="mb-5 flex flex-wrap items-start gap-4">
+        <div className="flex min-w-0 flex-1 flex-wrap items-start gap-4">
+          <div className="max-w-[400px] flex-1">
+            <Controller
+              control={control}
+              name="stackName"
+              render={({ field }) => (
+                <>
+                  <Input
+                    label="Stack Name"
+                    placeholder="예: prod-gitlab-stack"
+                    value={field.value}
+                    onChange={(e) => {
+                      field.onChange(e.target.value)
+                      setStackName(e.target.value)
+                    }}
+                    onBlur={field.onBlur}
+                  />
+                  {errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>}
+                </>
+              )}
+            />
+          </div>
           <div className="flex max-w-[300px] flex-1 flex-col gap-1">
             <NativeSelect
-              label="Namespace"
-              value={createNewNs ? '__new__' : draft.namespace}
-              onChange={(e) => {
-                if (e.target.value === '__new__') {
-                  setCreateNewNs(true)
-                  setNamespace('')
-                } else {
-                  setCreateNewNs(false)
-                  setNamespace(e.target.value)
-                }
-              }}
+              label="Target Cluster"
+              value={draft.clusterId ?? ''}
+              onChange={(e) => setCluster(e.target.value)}
               className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
             >
-              <option value="">기본 (nullus)</option>
-              {(namespaces ?? []).map((ns) => (
-                <option key={ns.name} value={ns.name}>{ns.name}</option>
+              <option value="">클러스터를 선택하세요</option>
+              {(clusters ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.connection_status})
+                </option>
               ))}
-              <option value="__new__">새 네임스페이스 생성...</option>
             </NativeSelect>
-            {createNewNs && (
-              <input
-                type="text"
-                placeholder="my-namespace"
-                value={draft.namespace}
-                onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-              />
-            )}
-            <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
+            {!draft.clusterId && <span className="text-xs text-[#f59e0b]">배포에 필요합니다</span>}
           </div>
-        )}
+          {draft.clusterId && (
+            <div className="flex max-w-[300px] flex-1 flex-col gap-1">
+              <NativeSelect
+                label="Namespace"
+                value={createNewNs ? '__new__' : draft.namespace}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    setCreateNewNs(true)
+                    setNamespace('')
+                  } else {
+                    setCreateNewNs(false)
+                    setNamespace(e.target.value)
+                  }
+                }}
+                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+              >
+                <option value="">기본 (nullus)</option>
+                {(namespaces ?? []).map((ns) => (
+                  <option key={ns.name} value={ns.name}>{ns.name}</option>
+                ))}
+                <option value="__new__">새 네임스페이스 생성...</option>
+              </NativeSelect>
+              {createNewNs && (
+                <input
+                  type="text"
+                  placeholder="my-namespace"
+                  value={draft.namespace}
+                  onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                />
+              )}
+              <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
+            </div>
+          )}
+        </div>
+
+        <div className="w-full max-w-[860px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(99,102,241,0.18)] text-[#a5b4fc]">
+              <ShoppingCart size={16} />
+            </div>
+            <div>
+              <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">OSS Resource Default Total</h3>
+              <p className="m-0 text-xs text-[var(--color-text-secondary)]">
+                선택한 OSS {selectedToolKeys.length}개 기준 request/limit 총합
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-[rgba(99,102,241,0.25)] bg-[rgba(99,102,241,0.08)] p-3">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Request Total</div>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div>
+                  <div className="font-semibold text-[#a5b4fc]">{resourceDefaultTotal.cpuRequest.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div>
+                  <div className="font-semibold text-[#a5b4fc]">{resourceDefaultTotal.memoryRequestGi.toFixed(2)}Gi</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div>
+                  <div className="font-semibold text-[#a5b4fc]">{resourceDefaultTotal.storageRequestGi.toFixed(2)}Gi</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[rgba(34,197,94,0.25)] bg-[rgba(34,197,94,0.08)] p-3">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Limit Total</div>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div>
+                  <div className="font-semibold text-[#86efac]">{resourceDefaultTotal.cpuLimit.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div>
+                  <div className="font-semibold text-[#86efac]">{resourceDefaultTotal.memoryLimitGi.toFixed(2)}Gi</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div>
+                  <div className="font-semibold text-[#86efac]">{resourceDefaultTotal.storageLimitGi.toFixed(2)}Gi</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {missingDefaultTools.length > 0 && (
+            <div className="mt-3 text-xs text-[#fbbf24]">
+              기본값 미정의 OSS: {missingDefaultTools.join(', ')}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex items-start gap-5">
