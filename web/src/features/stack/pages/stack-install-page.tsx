@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
-import { AlignLeft, Check, Copy, Download, Rocket, Save, ShoppingCart } from 'lucide-react'
+import { AlignLeft, Check, Copy, Download, Info, Rocket, Save, ShoppingCart } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
@@ -11,7 +11,7 @@ import YAML from 'yaml'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, useResourceDefaults, toCreateStackBody } from '../api/stack-api'
+import { useCreateStack, useSaveDraft, useClusters, useResourceDefaults, toCreateStackBody } from '../api/stack-api'
 import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -133,14 +133,302 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
 
 type K8sPreviewTab = 'namespace' | 'deployment' | 'service' | 'ingress'
 
+type PlanningSlot =
+  | 'artifacts.packageRegistry'
+  | 'artifacts.sourceRepository'
+  | 'artifacts.containerRegistry'
+  | 'artifacts.storageBackend'
+  | 'pipeline.cicdPlatform'
+  | 'pipeline.cdTool'
+  | 'monitoring.collection'
+  | 'monitoring.visualization'
+  | 'logging.search'
+  | 'logging.traceLayer'
+
+type PlanningProfile = 'startup' | 'standard' | 'enterprise'
+
+type ResourceVector = {
+  cpuRequest: number
+  cpuLimit: number
+  memoryRequestGi: number
+  memoryLimitGi: number
+  storageRequestGi: number
+  storageLimitGi: number
+}
+
+type ResourceMultipliers = {
+  cpu: number
+  memory: number
+  storage: number
+  raw: {
+    cpu: number
+    memory: number
+    storage: number
+  }
+  clamped: {
+    cpu: boolean
+    memory: boolean
+    storage: boolean
+  }
+}
+
+type ResourceUnit = 'Gi' | 'Mi'
+
+type PlanningRowUnit = {
+  memory: ResourceUnit
+  storage: ResourceUnit
+}
+
+type PlanningOptionDefinition = {
+  key: string
+  label: string
+  baseline: number
+  min: number
+  max: number
+  step: number
+  weight: number
+  impact: {
+    cpu: number
+    memory: number
+    storage: number
+  }
+}
+
+const PLANNING_PROFILE_LABEL: Record<PlanningProfile, string> = {
+  startup: 'Startup',
+  standard: 'Standard',
+  enterprise: 'Enterprise',
+}
+
+const PLANNING_OPTION_DEFS: Record<PlanningSlot, PlanningOptionDefinition[]> = {
+  'artifacts.packageRegistry': [
+    { key: 'registryCallsPerDay', label: 'Registry 호출 수/일', baseline: 3000, min: 500, max: 50000, step: 500, weight: 0.45, impact: { cpu: 1, memory: 0.8, storage: 0.3 } },
+    { key: 'avgArtifactSizeMb', label: '평균 패키지 크기(MB)', baseline: 120, min: 10, max: 2000, step: 10, weight: 0.25, impact: { cpu: 0.1, memory: 0.2, storage: 1 } },
+    { key: 'retentionDays', label: '보관 기간(일)', baseline: 30, min: 1, max: 365, step: 1, weight: 0.30, impact: { cpu: 0, memory: 0.1, storage: 1 } },
+  ],
+  'artifacts.sourceRepository': [
+    { key: 'activeRepoUsers', label: '활성 Repo 사용자 수', baseline: 20, min: 5, max: 500, step: 1, weight: 0.4, impact: { cpu: 0.8, memory: 0.6, storage: 0.3 } },
+    { key: 'repoCount', label: '관리 저장소 수', baseline: 60, min: 5, max: 3000, step: 5, weight: 0.35, impact: { cpu: 0.2, memory: 0.4, storage: 1 } },
+    { key: 'dailyPushEvents', label: '일일 Push 이벤트 수', baseline: 250, min: 20, max: 20000, step: 10, weight: 0.25, impact: { cpu: 1, memory: 0.5, storage: 0.4 } },
+  ],
+  'artifacts.containerRegistry': [
+    { key: 'imagePullsPerDay', label: '이미지 Pull 수/일', baseline: 2000, min: 200, max: 100000, step: 100, weight: 0.4, impact: { cpu: 0.8, memory: 0.7, storage: 0.4 } },
+    { key: 'newImagePushesPerDay', label: '신규 이미지 Push 수/일', baseline: 180, min: 10, max: 8000, step: 10, weight: 0.35, impact: { cpu: 0.9, memory: 0.6, storage: 0.8 } },
+    { key: 'avgImageSizeGb', label: '평균 이미지 크기(GB)', baseline: 1.2, min: 0.1, max: 20, step: 0.1, weight: 0.25, impact: { cpu: 0.1, memory: 0.2, storage: 1 } },
+  ],
+  'artifacts.storageBackend': [
+    { key: 'objectOpsPerDay', label: 'Object 요청 수/일', baseline: 10000, min: 1000, max: 200000, step: 500, weight: 0.45, impact: { cpu: 0.9, memory: 0.8, storage: 0.4 } },
+    { key: 'storedDataTb', label: '저장 데이터(TB)', baseline: 1.5, min: 0.1, max: 100, step: 0.1, weight: 0.35, impact: { cpu: 0.1, memory: 0.2, storage: 1 } },
+    { key: 'backupFrequencyPerWeek', label: '주간 백업 횟수', baseline: 7, min: 1, max: 30, step: 1, weight: 0.20, impact: { cpu: 0.4, memory: 0.3, storage: 0.7 } },
+  ],
+  'pipeline.cicdPlatform': [
+    { key: 'developers', label: '개발자 수', baseline: 20, min: 1, max: 1000, step: 1, weight: 0.2, impact: { cpu: 0.4, memory: 0.4, storage: 0.2 } },
+    { key: 'concurrentRunners', label: '동시 러너 수', baseline: 4, min: 1, max: 400, step: 1, weight: 0.55, impact: { cpu: 1.8, memory: 1.6, storage: 0.7 } },
+    { key: 'dailyCommits', label: '일일 커밋 수', baseline: 120, min: 10, max: 10000, step: 10, weight: 0.25, impact: { cpu: 0.8, memory: 0.6, storage: 0.3 } },
+  ],
+  'pipeline.cdTool': [
+    { key: 'deploymentsPerDay', label: '배포 횟수/일', baseline: 40, min: 1, max: 2000, step: 1, weight: 0.5, impact: { cpu: 0.8, memory: 0.6, storage: 0.2 } },
+    { key: 'environmentsCount', label: '운영 환경 수', baseline: 4, min: 1, max: 30, step: 1, weight: 0.25, impact: { cpu: 0.4, memory: 0.5, storage: 0.3 } },
+    { key: 'rollbackRatePercent', label: '롤백 비율(%)', baseline: 8, min: 0, max: 80, step: 1, weight: 0.25, impact: { cpu: 0.5, memory: 0.6, storage: 0.2 } },
+  ],
+  'monitoring.collection': [
+    { key: 'metricsTargets', label: '모니터링 타겟 수', baseline: 150, min: 20, max: 5000, step: 5, weight: 0.45, impact: { cpu: 0.7, memory: 0.9, storage: 0.4 } },
+    { key: 'scrapeIntervalSec', label: '스크랩 주기(초)', baseline: 30, min: 5, max: 120, step: 1, weight: 0.30, impact: { cpu: -0.6, memory: -0.7, storage: -0.2 } },
+    { key: 'retentionDays', label: '메트릭 보관 기간(일)', baseline: 15, min: 1, max: 365, step: 1, weight: 0.25, impact: { cpu: 0, memory: 0.2, storage: 1 } },
+  ],
+  'monitoring.visualization': [
+    { key: 'dashboardUsers', label: '대시보드 사용자 수', baseline: 30, min: 5, max: 2000, step: 1, weight: 0.45, impact: { cpu: 0.5, memory: 0.5, storage: 0.1 } },
+    { key: 'dashboardCount', label: '대시보드 수', baseline: 40, min: 5, max: 1500, step: 5, weight: 0.30, impact: { cpu: 0.4, memory: 0.6, storage: 0.2 } },
+    { key: 'refreshIntervalSec', label: '대시보드 갱신 주기(초)', baseline: 30, min: 5, max: 300, step: 1, weight: 0.25, impact: { cpu: -0.5, memory: -0.4, storage: -0.1 } },
+  ],
+  'logging.search': [
+    { key: 'logGbPerDay', label: '로그 수집량(GB/일)', baseline: 100, min: 5, max: 10000, step: 5, weight: 0.5, impact: { cpu: 0.6, memory: 0.7, storage: 1 } },
+    { key: 'retentionDays', label: '로그 보관 기간(일)', baseline: 30, min: 1, max: 365, step: 1, weight: 0.3, impact: { cpu: 0, memory: 0.2, storage: 1 } },
+    { key: 'queryUsers', label: '로그 조회 사용자 수', baseline: 20, min: 1, max: 1000, step: 1, weight: 0.2, impact: { cpu: 0.7, memory: 0.6, storage: 0.2 } },
+  ],
+  'logging.traceLayer': [
+    { key: 'traceSpansPerMin', label: 'Trace Span 수/분', baseline: 50000, min: 1000, max: 3000000, step: 1000, weight: 0.5, impact: { cpu: 0.8, memory: 0.7, storage: 0.5 } },
+    { key: 'serviceCount', label: '추적 대상 서비스 수', baseline: 40, min: 5, max: 2000, step: 1, weight: 0.3, impact: { cpu: 0.4, memory: 0.5, storage: 0.3 } },
+    { key: 'traceRetentionDays', label: '트레이스 보관 기간(일)', baseline: 7, min: 1, max: 90, step: 1, weight: 0.2, impact: { cpu: 0, memory: 0.2, storage: 1 } },
+  ],
+}
+
+function round2(value: number): number {
+  return Number(value.toFixed(2))
+}
+
+function ceil2(value: number): number {
+  return Math.ceil(value * 100) / 100
+}
+
+function convertGiToUnit(valueGi: number, unit: ResourceUnit): number {
+  if (unit === 'Gi') {
+    return ceil2(valueGi)
+  }
+  return ceil2(valueGi * 1024)
+}
+
+function convertUnitToGi(value: number, unit: ResourceUnit): number {
+  if (unit === 'Gi') {
+    return ceil2(value)
+  }
+  return ceil2(value / 1024)
+}
+
+function profileFactorByOption(profile: PlanningProfile, optionKey: string): number {
+  if (profile === 'standard') {
+    return 1
+  }
+
+  const isRetention = optionKey.toLowerCase().includes('retention')
+  const isInterval = optionKey.toLowerCase().includes('interval')
+  const isConcurrency = optionKey === 'concurrentRunners'
+  const isThroughput = /(calls|events|pulls|pushes|ops|deployments|commits|targets|spans|query|users|count)/i.test(optionKey)
+
+  if (profile === 'startup') {
+    if (isRetention) return 0.6
+    if (isInterval) return 1.35
+    if (isConcurrency) return 0.55
+    if (isThroughput) return 0.6
+    return 0.7
+  }
+
+  if (isRetention) return 1.8
+  if (isInterval) return 0.7
+  if (isConcurrency) return 1.8
+  if (isThroughput) return 1.7
+  return 1.45
+}
+
+function profileAdjustedBaseline(profile: PlanningProfile, def: PlanningOptionDefinition): number {
+  const factor = profileFactorByOption(profile, def.key)
+  const value = def.baseline * factor
+  return Math.min(def.max, Math.max(def.min, ceil2(value)))
+}
+
+function calculateMultipliers(slot: PlanningSlot, optionValues: Record<string, number>): ResourceMultipliers {
+  const defs = PLANNING_OPTION_DEFS[slot]
+  const weighted = defs.reduce(
+    (sum, def) => {
+    const value = optionValues[def.key] ?? def.baseline
+      const delta = (value - def.baseline) / def.baseline
+      return {
+        cpu: sum.cpu + delta * def.weight * def.impact.cpu,
+        memory: sum.memory + delta * def.weight * def.impact.memory,
+        storage: sum.storage + delta * def.weight * def.impact.storage,
+      }
+    },
+    { cpu: 0, memory: 0, storage: 0 }
+  )
+
+  const clampMax =
+    slot === 'pipeline.cicdPlatform'
+      ? { cpu: 6, memory: 6, storage: 4 }
+      : { cpu: 3, memory: 3, storage: 3 }
+
+  const clamp = (value: number, max: number) => Math.min(max, Math.max(0.5, value))
+  let rawCpu = 1 + weighted.cpu
+  let rawMemory = 1 + weighted.memory
+  const rawStorage = 1 + weighted.storage
+
+  if (slot === 'pipeline.cicdPlatform') {
+    const runnerDef = defs.find((def) => def.key === 'concurrentRunners')
+    if (runnerDef) {
+      const runners = optionValues.concurrentRunners ?? runnerDef.baseline
+      const ratio = Math.max(0.25, runners / runnerDef.baseline)
+      const runnerCpuBoost = Math.pow(ratio, 0.6)
+      const runnerMemoryBoost = Math.pow(ratio, 0.55)
+
+      rawCpu *= runnerCpuBoost
+      rawMemory *= runnerMemoryBoost
+    }
+  }
+
+  return {
+    cpu: clamp(rawCpu, clampMax.cpu),
+    memory: clamp(rawMemory, clampMax.memory),
+    storage: clamp(rawStorage, clampMax.storage),
+    raw: {
+      cpu: rawCpu,
+      memory: rawMemory,
+      storage: rawStorage,
+    },
+    clamped: {
+      cpu: rawCpu !== clamp(rawCpu, clampMax.cpu),
+      memory: rawMemory !== clamp(rawMemory, clampMax.memory),
+      storage: rawStorage !== clamp(rawStorage, clampMax.storage),
+    },
+  }
+}
+
+function applyMultipliers(base: {
+  cpu_request: number
+  cpu_limit: number
+  memory_request_gi: number
+  memory_limit_gi: number
+  storage_request_gi: number
+  storage_limit_gi: number
+}, multipliers: Pick<ResourceMultipliers, 'cpu' | 'memory' | 'storage'>): ResourceVector {
+  return {
+    cpuRequest: round2(base.cpu_request * multipliers.cpu),
+    cpuLimit: round2(base.cpu_limit * multipliers.cpu),
+    memoryRequestGi: round2(base.memory_request_gi * multipliers.memory),
+    memoryLimitGi: round2(base.memory_limit_gi * multipliers.memory),
+    storageRequestGi: round2(base.storage_request_gi * multipliers.storage),
+    storageLimitGi: round2(base.storage_limit_gi * multipliers.storage),
+  }
+}
+
+function buildFormulaTooltip(toolLabelValue: string, defs: PlanningOptionDefinition[]): string {
+  const clampText = '최종 배수는 최소 0.5배이며, 상한은 슬롯별로 적용됩니다(CI/CD CPU/MEM 최대 6배).' 
+  const lines = [
+    `${toolLabelValue} 리소스 산정 가이드`,
+    '',
+    '1) 기본값에서 얼마나 바뀌었는지 계산합니다.',
+    '   변화율(Δ) = (입력값 - 기본값) / 기본값',
+    '',
+    '2) 각 옵션의 영향도를 CPU/Memory/Storage에 따로 반영합니다.',
+    '   - w: 옵션 중요도(가중치)',
+    '   - a: CPU 영향도',
+    '   - m: Memory 영향도',
+    '   - s: Storage 영향도',
+    '   - 값이 클수록 해당 자원에 더 크게 반영됩니다.',
+    '   - 음수면(예: interval) 값이 커질수록 부하가 줄어듭니다.',
+    '',
+    '3) 추천값 계산식',
+    '   CPU 추천 = 기본 CPU × (1 + Σ(w × a × Δ))',
+    '   MEM 추천 = 기본 MEM × (1 + Σ(w × m × Δ))',
+    '   STO 추천 = 기본 STO × (1 + Σ(w × s × Δ))',
+    `   ${clampText}`,
+    '',
+    '4) 적용값',
+    '   - 처음에는 추천값으로 자동 세팅됩니다.',
+    '   - 이후 직접 수정할 수 있습니다.',
+    '   - 플래닝 옵션을 다시 바꾸면 추천값 기준으로 재설정됩니다.',
+    '',
+    '옵션별 계수:',
+  ]
+
+  defs.forEach((def) => {
+    lines.push(`${def.label}: w=${def.weight}, a=${def.impact.cpu}, m=${def.impact.memory}, s=${def.impact.storage}`)
+  })
+
+  if (defs.some((def) => def.key === 'concurrentRunners')) {
+    lines.push('')
+    lines.push('추가 규칙(CI/CD): 동시 러너 수는 CPU/MEM에 배수 계수로 추가 반영됩니다.')
+    lines.push('CPU 추가 배수 = (동시러너 / 기준러너)^0.6')
+    lines.push('MEM 추가 배수 = (동시러너 / 기준러너)^0.55')
+  }
+
+  return lines.join('\n')
+}
+
 const stackInstallSchema = z.object({
   stackName: z
     .string()
     .min(2, 'Stack name must be at least 2 characters')
     .max(50, 'Stack name must be 50 characters or less')
     .regex(/^[a-zA-Z0-9-]+$/, 'Stack name can include only letters, numbers, and hyphens'),
-  developerCount: z.number().min(1, 'Developer count must be greater than 0'),
-  concurrentRunners: z.number().min(1, 'Concurrent runners must be greater than 0'),
 })
 
 type StackInstallFormData = z.infer<typeof stackInstallSchema>
@@ -480,10 +768,9 @@ export function StackInstallPage() {
   const navigate = useNavigate()
   const theme = useThemeStore((state) => state.theme)
   const isDarkMode = theme === 'dark'
-  const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace, updateResources } = useStackConfigStore()
+  const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
-  const estimateResources = useEstimateResources()
   const { data: resourceDefaultsData } = useResourceDefaults()
   const { data: clusters } = useClusters()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
@@ -492,6 +779,11 @@ export function StackInstallPage() {
   const [deployScriptModalOpen, setDeployScriptModalOpen] = useState(false)
   const [k8sPreviewModalOpen, setK8sPreviewModalOpen] = useState(false)
   const [activeK8sPreviewTab, setActiveK8sPreviewTab] = useState<K8sPreviewTab>('namespace')
+  const [planningProfile, setPlanningProfile] = useState<PlanningProfile>('standard')
+  const [planningOptionOverrides, setPlanningOptionOverrides] = useState<Record<string, Record<string, number>>>({})
+  const [appliedResourceOverrides, setAppliedResourceOverrides] = useState<Record<string, ResourceVector>>({})
+  const [planningRowUnits, setPlanningRowUnits] = useState<Record<string, PlanningRowUnit>>({})
+  const [activeFormulaPopoverKey, setActiveFormulaPopoverKey] = useState<string | null>(null)
   const [yamlContent, setYamlContent] = useState(() => draftToYaml(draft))
   const [yamlCopied, setYamlCopied] = useState(false)
   const yamlContentRef = useRef(yamlContent)
@@ -508,8 +800,6 @@ export function StackInstallPage() {
     resolver: zodResolver(stackInstallSchema),
     defaultValues: {
       stackName: draft.stackName,
-      developerCount: draft.resources.developerCount,
-      concurrentRunners: draft.resources.concurrentRunners,
     },
     mode: 'onChange',
   })
@@ -517,44 +807,130 @@ export function StackInstallPage() {
   const deployScript = createDeployScript(draft)
   const k8sObjects = createK8sObjects(draft)
 
-  const selectedToolKeys = Array.from(
-    new Set(
-      [
-        draft.artifacts.packageRegistry.tool,
-        draft.artifacts.sourceRepository.tool,
-        draft.artifacts.containerRegistry.tool,
-        draft.artifacts.storageBackend.tool,
-        draft.pipeline.cicdPlatform.tool,
-        draft.pipeline.cdTool.tool,
-        draft.monitoring.collection.tool,
-        draft.monitoring.visualization.tool,
-        draft.logging.search.tool,
-        draft.logging.traceLayer.tool,
-      ]
-        .filter((tool) => tool.length > 0)
-    )
-  )
+  const selectedInstallItems: { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string }[] = [
+    {
+      slot: 'artifacts.packageRegistry',
+      category: 'Artifacts > Package Registry',
+      toolKey: draft.artifacts.packageRegistry.tool,
+      toolLabel: toolLabel(draft.artifacts.packageRegistry.tool),
+    },
+    {
+      slot: 'artifacts.sourceRepository',
+      category: 'Artifacts > Source Repository',
+      toolKey: draft.artifacts.sourceRepository.tool,
+      toolLabel: toolLabel(draft.artifacts.sourceRepository.tool),
+    },
+    {
+      slot: 'artifacts.containerRegistry',
+      category: 'Artifacts > Container Registry',
+      toolKey: draft.artifacts.containerRegistry.tool,
+      toolLabel: toolLabel(draft.artifacts.containerRegistry.tool),
+    },
+    {
+      slot: 'artifacts.storageBackend',
+      category: 'Artifacts > Storage Backend',
+      toolKey: draft.artifacts.storageBackend.tool,
+      toolLabel: toolLabel(draft.artifacts.storageBackend.tool),
+    },
+    {
+      slot: 'pipeline.cicdPlatform',
+      category: 'CI/CD > Platform',
+      toolKey: draft.pipeline.cicdPlatform.tool,
+      toolLabel: toolLabel(draft.pipeline.cicdPlatform.tool),
+    },
+    {
+      slot: 'pipeline.cdTool',
+      category: 'CI/CD > CD Tool',
+      toolKey: draft.pipeline.cdTool.tool,
+      toolLabel: toolLabel(draft.pipeline.cdTool.tool),
+    },
+    {
+      slot: 'monitoring.collection',
+      category: 'Observability > Metrics Collection',
+      toolKey: draft.monitoring.collection.tool,
+      toolLabel: toolLabel(draft.monitoring.collection.tool),
+    },
+    {
+      slot: 'monitoring.visualization',
+      category: 'Observability > Visualization',
+      toolKey: draft.monitoring.visualization.tool,
+      toolLabel: toolLabel(draft.monitoring.visualization.tool),
+    },
+    {
+      slot: 'logging.search',
+      category: 'Observability > Logging/Search',
+      toolKey: draft.logging.search.tool,
+      toolLabel: toolLabel(draft.logging.search.tool),
+    },
+    {
+      slot: 'logging.traceLayer',
+      category: 'Observability > Trace Layer',
+      toolKey: draft.logging.traceLayer.tool,
+      toolLabel: toolLabel(draft.logging.traceLayer.tool),
+    },
+  ].filter((item) => item.toolKey.length > 0)
+
+  const selectedToolKeys = Array.from(new Set(selectedInstallItems.map((item) => item.toolKey)))
 
   const defaultByTool = useMemo(
     () => new Map((resourceDefaultsData?.items ?? []).map((item) => [item.tool_key, item])),
     [resourceDefaultsData?.items]
   )
 
-  const selectedDefaults = selectedToolKeys
-    .map((toolKey) => defaultByTool.get(toolKey))
-    .filter((item): item is NonNullable<typeof item> => item != null)
-
   const missingDefaultTools = selectedToolKeys.filter((toolKey) => !defaultByTool.has(toolKey))
 
-  const resourceDefaultTotal = selectedDefaults.reduce(
-    (acc, item) => ({
-      cpuRequest: acc.cpuRequest + item.cpu_request,
-      cpuLimit: acc.cpuLimit + item.cpu_limit,
-      memoryRequestGi: acc.memoryRequestGi + item.memory_request_gi,
-      memoryLimitGi: acc.memoryLimitGi + item.memory_limit_gi,
-      storageRequestGi: acc.storageRequestGi + item.storage_request_gi,
-      storageLimitGi: acc.storageLimitGi + item.storage_limit_gi,
-    }),
+  const planningRows = selectedInstallItems.map((item) => {
+    const rowKey = `${item.slot}:${item.toolKey}`
+    const defs = PLANNING_OPTION_DEFS[item.slot]
+    const baseOptions = defs.reduce<Record<string, number>>((acc, def) => {
+      acc[def.key] = profileAdjustedBaseline(planningProfile, def)
+      return acc
+    }, {})
+
+    const optionValues = { ...baseOptions, ...(planningOptionOverrides[rowKey] ?? {}) }
+    const baseDefault = defaultByTool.get(item.toolKey)
+
+    if (!baseDefault) {
+      return {
+        ...item,
+        rowKey,
+        defs,
+        optionValues,
+        recommended: null,
+        applied: null,
+        multipliers: null,
+      }
+    }
+
+    const multipliers = calculateMultipliers(item.slot, optionValues)
+    const recommended = applyMultipliers(baseDefault, multipliers)
+    const applied = appliedResourceOverrides[rowKey] ?? recommended
+    const units = planningRowUnits[rowKey] ?? { memory: 'Gi', storage: 'Gi' }
+
+    return {
+      ...item,
+      rowKey,
+      defs,
+      optionValues,
+      recommended,
+      applied,
+      multipliers,
+      units,
+    }
+  })
+
+  const planningAppliedTotal = planningRows.reduce(
+    (acc, row) => {
+      if (!row.applied) return acc
+      return {
+        cpuRequest: acc.cpuRequest + row.applied.cpuRequest,
+        cpuLimit: acc.cpuLimit + row.applied.cpuLimit,
+        memoryRequestGi: acc.memoryRequestGi + row.applied.memoryRequestGi,
+        memoryLimitGi: acc.memoryLimitGi + row.applied.memoryLimitGi,
+        storageRequestGi: acc.storageRequestGi + row.applied.storageRequestGi,
+        storageLimitGi: acc.storageLimitGi + row.applied.storageLimitGi,
+      }
+    },
     {
       cpuRequest: 0,
       cpuLimit: 0,
@@ -564,6 +940,47 @@ export function StackInstallPage() {
       storageLimitGi: 0,
     }
   )
+
+  const handlePlanningOptionChange = (rowKey: string, optionKey: string, value: number) => {
+    setPlanningOptionOverrides((prev) => ({
+      ...prev,
+      [rowKey]: {
+        ...(prev[rowKey] ?? {}),
+        [optionKey]: value,
+      },
+    }))
+    setAppliedResourceOverrides((prev) => {
+      const next = { ...prev }
+      delete next[rowKey]
+      return next
+    })
+  }
+
+  const handlePlanningProfileChange = (profile: PlanningProfile) => {
+    setPlanningProfile(profile)
+    setPlanningOptionOverrides({})
+    setAppliedResourceOverrides({})
+  }
+
+  const handleAppliedResourceChange = (rowKey: string, current: ResourceVector, field: keyof ResourceVector, value: number) => {
+    setAppliedResourceOverrides((prev) => ({
+      ...prev,
+      [rowKey]: {
+        ...(prev[rowKey] ?? current),
+        [field]: value,
+      },
+    }))
+  }
+
+  const handlePlanningUnitChange = (rowKey: string, field: keyof PlanningRowUnit, value: ResourceUnit) => {
+    setPlanningRowUnits((prev) => ({
+      ...prev,
+      [rowKey]: {
+        ...(prev[rowKey] ?? { memory: 'Gi', storage: 'Gi' }),
+        [field]: value,
+      },
+    }))
+  }
 
   const handleYamlChange = useCallback((value?: string) => {
     const nextYaml = value ?? ''
@@ -654,9 +1071,7 @@ export function StackInstallPage() {
 
   useEffect(() => {
     setValue('stackName', draft.stackName)
-    setValue('developerCount', draft.resources.developerCount)
-    setValue('concurrentRunners', draft.resources.concurrentRunners)
-  }, [draft.resources.concurrentRunners, draft.resources.developerCount, draft.stackName, setValue])
+  }, [draft.stackName, setValue])
 
   useEffect(() => {
     return () => {
@@ -675,7 +1090,7 @@ export function StackInstallPage() {
   }
 
   const validateCoreFields = async () => {
-    return trigger(['stackName', 'developerCount', 'concurrentRunners'])
+    return trigger(['stackName'])
   }
 
   const handleDeploy = async () => {
@@ -719,10 +1134,6 @@ export function StackInstallPage() {
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
     })
-  }
-
-  const handleEstimate = () => {
-    estimateResources.mutate(draft.resources)
   }
 
   return (
@@ -864,9 +1275,9 @@ export function StackInstallPage() {
               <ShoppingCart size={16} />
             </div>
             <div>
-              <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">OSS Resource Default Total</h3>
+              <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Resource Total</h3>
               <p className="m-0 text-xs text-[var(--color-text-secondary)]">
-                선택한 OSS {selectedToolKeys.length}개 기준 request/limit 총합
+                선택한 OSS {selectedToolKeys.length}개 적용값(request/limit) 총합
               </p>
             </div>
           </div>
@@ -877,15 +1288,15 @@ export function StackInstallPage() {
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div>
-                  <div className="font-semibold text-[#a5b4fc]">{resourceDefaultTotal.cpuRequest.toFixed(2)}</div>
+                  <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.cpuRequest.toFixed(2)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div>
-                  <div className="font-semibold text-[#a5b4fc]">{resourceDefaultTotal.memoryRequestGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.memoryRequestGi.toFixed(2)}Gi</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div>
-                  <div className="font-semibold text-[#a5b4fc]">{resourceDefaultTotal.storageRequestGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.storageRequestGi.toFixed(2)}Gi</div>
                 </div>
               </div>
             </div>
@@ -895,15 +1306,15 @@ export function StackInstallPage() {
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div>
-                  <div className="font-semibold text-[#86efac]">{resourceDefaultTotal.cpuLimit.toFixed(2)}</div>
+                  <div className="font-semibold text-[#86efac]">{planningAppliedTotal.cpuLimit.toFixed(2)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div>
-                  <div className="font-semibold text-[#86efac]">{resourceDefaultTotal.memoryLimitGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[#86efac]">{planningAppliedTotal.memoryLimitGi.toFixed(2)}Gi</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div>
-                  <div className="font-semibold text-[#86efac]">{resourceDefaultTotal.storageLimitGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[#86efac]">{planningAppliedTotal.storageLimitGi.toFixed(2)}Gi</div>
                 </div>
               </div>
             </div>
@@ -1057,171 +1468,204 @@ export function StackInstallPage() {
 
             {activeTab === 'resources' && (
               <div>
-                <p className="mb-4 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-                  팀 규모와 사용 패턴을 입력하면 필요한 리소스를 계산합니다.
-                </p>
-                <div className="mb-4 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <label htmlFor="resource-mode-auto" className="text-xs font-medium text-[var(--color-text-secondary)]">
-                      리소스 모드
-                    </label>
-                    <div className="flex gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-1">
-                      {(['auto', 'manual'] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          id={mode === 'auto' ? 'resource-mode-auto' : 'resource-mode-manual'}
-                          type="button"
-                          onClick={() => updateResources({ mode })}
-                          className={cn(
-                            'px-3 py-1.5 text-xs font-medium rounded transition-all duration-150',
-                            draft.resources.mode === mode
-                              ? 'bg-[#6366f1] text-white'
-                              : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                          )}
-                        >
-                          {mode === 'auto' ? 'Auto' : 'Manual'}
-                        </button>
-                      ))}
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">OSS별 Resource Planning</h3>
+                      <p className="mb-0 mt-1 text-xs text-[var(--color-text-secondary)]">
+                        각 OSS별 세부 옵션을 변경하면 추천값이 재계산되고 적용값은 추천값으로 재설정됩니다.
+                      </p>
                     </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="currency-select" className="text-xs font-medium text-[var(--color-text-secondary)]">
-                      통화
-                    </label>
-                    <NativeSelect
-                      id="currency-select"
-                      value={draft.resources.currency}
-                      onChange={(e) =>
-                        updateResources({ currency: e.target.value as 'USD' | 'KRW' | 'CNY' })
-                      }
-                      className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-                    >
-                      <option value="USD">USD ($)</option>
-                      <option value="KRW">KRW (₩)</option>
-                      <option value="CNY">CNY (¥)</option>
-                    </NativeSelect>
-                  </div>
-                </div>
-
-                {draft.resources.mode === 'auto' && (
-                  <div className="mb-4 grid grid-cols-2 gap-[14px]">
-                    <Controller
-                      control={control}
-                      name="developerCount"
-                      render={({ field }) => (
-                        <>
-                          <Input
-                            label="개발자 수"
-                            type="number"
-                            min={1}
-                            value={field.value}
-                            onChange={(e) => {
-                              const value = Number(e.target.value)
-                              field.onChange(value)
-                              updateResources({ developerCount: value })
-                            }}
-                            onBlur={field.onBlur}
-                          />
-                          {errors.developerCount && <span className="text-xs text-[#ef4444]">{errors.developerCount.message}</span>}
-                        </>
-                      )}
-                    />
-                    <Controller
-                      control={control}
-                      name="concurrentRunners"
-                      render={({ field }) => (
-                        <>
-                          <Input
-                            label="동시 러너 수"
-                            type="number"
-                            min={1}
-                            value={field.value}
-                            onChange={(e) => {
-                              const value = Number(e.target.value)
-                              field.onChange(value)
-                              updateResources({ concurrentRunners: value })
-                            }}
-                            onBlur={field.onBlur}
-                          />
-                          {errors.concurrentRunners && <span className="text-xs text-[#ef4444]">{errors.concurrentRunners.message}</span>}
-                        </>
-                      )}
-                    />
-                    <Input
-                      label="일일 커밋 수"
-                      type="number"
-                      min={1}
-                      value={draft.resources.commitsPerDay}
-                      onChange={(e) => updateResources({ commitsPerDay: Number(e.target.value) })}
-                    />
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="build-frequency" className="text-xs font-medium text-[var(--color-text-secondary)]">
-                        빌드 빈도
-                      </label>
-                      <select
-                        id="build-frequency"
-                        value={draft.resources.buildFrequency}
-                        onChange={(e) =>
-                          updateResources({ buildFrequency: e.target.value as 'low' | 'medium' | 'high' })
-                        }
-                        className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[var(--color-text-secondary)]">Sizing Profile</span>
+                      <NativeSelect
+                        value={planningProfile}
+                        onChange={(e) => handlePlanningProfileChange(e.target.value as PlanningProfile)}
+                        className="min-w-[140px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
                       >
-                        <option value="low">낮음 (Low)</option>
-                        <option value="medium">보통 (Medium)</option>
-                        <option value="high">높음 (High)</option>
-                      </select>
+                        {(['startup', 'standard', 'enterprise'] as PlanningProfile[]).map((profile) => (
+                          <option key={profile} value={profile}>
+                            {PLANNING_PROFILE_LABEL[profile]}
+                          </option>
+                        ))}
+                      </NativeSelect>
                     </div>
                   </div>
-                )}
 
-                {draft.resources.mode === 'manual' && (
-                  <div className="mb-4 grid grid-cols-2 gap-[14px]">
-                    <Input
-                      label="CPU 요청"
-                      placeholder="예: 4"
-                      value={draft.resources.cpuRequest || ''}
-                      onChange={(e) => updateResources({ cpuRequest: e.target.value })}
-                    />
-                    <Input
-                      label="메모리 요청"
-                      placeholder="예: 8Gi"
-                      value={draft.resources.memoryRequest || ''}
-                      onChange={(e) => updateResources({ memoryRequest: e.target.value })}
-                    />
-                    <Input
-                      label="스토리지 요청"
-                      placeholder="예: 100Gi"
-                      value={draft.resources.storageRequest || ''}
-                      onChange={(e) => updateResources({ storageRequest: e.target.value })}
-                    />
+                  <div className="mb-4 grid grid-cols-3 gap-3 rounded-lg border border-[rgba(99,102,241,0.2)] bg-[rgba(99,102,241,0.06)] p-3">
+                    <div>
+                      <div className="text-[11px] text-[var(--color-text-secondary)]">적용값 총 CPU (Req | Limit)</div>
+                      <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.cpuRequest.toFixed(2)} | {planningAppliedTotal.cpuLimit.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-[var(--color-text-secondary)]">적용값 총 Memory (Gi)</div>
+                      <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.memoryRequestGi.toFixed(2)} | {planningAppliedTotal.memoryLimitGi.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-[var(--color-text-secondary)]">적용값 총 Storage (Gi)</div>
+                      <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.storageRequestGi.toFixed(2)} | {planningAppliedTotal.storageLimitGi.toFixed(2)}</div>
+                    </div>
                   </div>
-                )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={estimateResources.isPending}
-                  onClick={handleEstimate}
-                  type="button"
-                  className="mb-4"
-                >
-                  리소스 계산
-                </Button>
-                {estimateResources.data && (
-                  <div className="grid grid-cols-4 gap-3 rounded-lg border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.08)] p-[14px]">
-                    {[
-                      ['CPU', estimateResources.data.cpu],
-                      ['Memory', estimateResources.data.memory],
-                      ['Storage', estimateResources.data.storage],
-                      ['월 비용', `${estimateResources.data.estimatedCostMonthly.toLocaleString()} ${estimateResources.data.currency}`],
-                    ].map(([label, val]) => (
-                      <div key={label}>
-                        <div className="mb-1 text-[11px] text-[var(--color-text-secondary)]">{label}</div>
-                        <div className="text-[15px] font-bold text-[#a5b4fc]">{val}</div>
+
+                  <div className="flex flex-col gap-3">
+                    {planningRows.map((row) => (
+                      <div key={row.rowKey} className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">{row.category}</div>
+                            <div className="flex items-center gap-1 text-sm font-bold text-[var(--color-text-primary)]">
+                              <span>{row.toolLabel} 리소스 플래닝</span>
+                              <button
+                                type="button"
+                                aria-label={`${row.toolLabel} 리소스 산정식 보기`}
+                                onClick={() => setActiveFormulaPopoverKey((prev) => (prev === row.rowKey ? null : row.rowKey))}
+                                className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--color-text-primary)]"
+                              >
+                                <Info size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {activeFormulaPopoverKey === row.rowKey && (
+                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">산정식</div>
+                              <button
+                                type="button"
+                                onClick={() => setActiveFormulaPopoverKey(null)}
+                                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                              >
+                                닫기
+                              </button>
+                            </div>
+                            <pre className="m-0 whitespace-pre-wrap break-words text-[11px] leading-5 text-[var(--color-text-secondary)]">
+                              {buildFormulaTooltip(row.toolLabel, row.defs)}
+                            </pre>
+                          </div>
+                        )}
+
+                        {!row.recommended || !row.applied ? (
+                          <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
+                            해당 OSS의 default 리소스가 정의되지 않았습니다.
+                          </div>
+                        ) : (
+                          <>
+                            {row.multipliers && (row.multipliers.clamped.cpu || row.multipliers.clamped.memory || row.multipliers.clamped.storage) && (
+                              <div className="mb-3 rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
+                                계산 배수가 제한에 도달했습니다:
+                                {row.multipliers.clamped.cpu ? ' CPU' : ''}
+                                {row.multipliers.clamped.memory ? ' Memory' : ''}
+                                {row.multipliers.clamped.storage ? ' Storage' : ''}
+                                {' '} 
+                                (0.5x~3.0x 범위). 현재 입력에서는 추가 증가/감소가 추천값에 제한적으로 반영될 수 있습니다.
+                              </div>
+                            )}
+
+                            <div className="mb-3 grid grid-cols-2 gap-3">
+                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
+                                <span className="text-[11px] text-[var(--color-text-secondary)]">Memory 단위</span>
+                                <NativeSelect
+                                  value={row.units.memory}
+                                  onChange={(e) => handlePlanningUnitChange(row.rowKey, 'memory', e.target.value as ResourceUnit)}
+                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
+                                >
+                                  <option value="Gi">Gi</option>
+                                  <option value="Mi">Mi</option>
+                                </NativeSelect>
+                              </div>
+                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
+                                <span className="text-[11px] text-[var(--color-text-secondary)]">Storage 단위</span>
+                                <NativeSelect
+                                  value={row.units.storage}
+                                  onChange={(e) => handlePlanningUnitChange(row.rowKey, 'storage', e.target.value as ResourceUnit)}
+                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
+                                >
+                                  <option value="Gi">Gi</option>
+                                  <option value="Mi">Mi</option>
+                                </NativeSelect>
+                              </div>
+                            </div>
+
+                            <div className="mb-3 grid grid-cols-2 gap-3">
+                              {row.defs.map((def) => (
+                                <div key={def.key} className="flex flex-col gap-1">
+                                  <label className="text-[11px] text-[var(--color-text-secondary)]">{def.label}</label>
+                                  <Input
+                                    type="number"
+                                    min={def.min}
+                                    max={def.max}
+                                    step={def.step}
+                                    value={row.optionValues[def.key] ?? def.baseline}
+                                    onChange={(e) => handlePlanningOptionChange(row.rowKey, def.key, Number(e.target.value))}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 border-t border-[rgba(255,255,255,0.06)] pt-3">
+                              <div className="p-1">
+                                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">추천값 (읽기 전용)</div>
+                                <div className="grid grid-cols-3 gap-2 text-sm">
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div><div className="font-semibold text-[#a5b4fc]">{row.recommended.cpuRequest.toFixed(2)} | {row.recommended.cpuLimit.toFixed(2)}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.memoryRequestGi, row.units.memory).toFixed(2)} | {convertGiToUnit(row.recommended.memoryLimitGi, row.units.memory).toFixed(2)} {row.units.memory}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.storageRequestGi, row.units.storage).toFixed(2)} | {convertGiToUnit(row.recommended.storageLimitGi, row.units.storage).toFixed(2)} {row.units.storage}</div></div>
+                                </div>
+                              </div>
+
+                              <div className="p-1">
+                                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">적용값 (수정 가능)</div>
+                                <div className="grid grid-cols-3 gap-2 text-sm">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-[11px] text-[var(--color-text-secondary)]">CPU (Req|Limit)</span>
+                                    <div className="flex gap-1">
+                                      <Input type="number" step="0.01" value={row.applied.cpuRequest} onChange={(e) => handleAppliedResourceChange(row.rowKey, row.applied, 'cpuRequest', Number(e.target.value))} />
+                                      <Input type="number" step="0.01" value={row.applied.cpuLimit} onChange={(e) => handleAppliedResourceChange(row.rowKey, row.applied, 'cpuLimit', Number(e.target.value))} />
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-[11px] text-[var(--color-text-secondary)]">Memory (Req|Limit)</span>
+                                    <div className="flex gap-1">
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={convertGiToUnit(row.applied.memoryRequestGi, row.units.memory)}
+                                        onChange={(e) => handleAppliedResourceChange(row.rowKey, row.applied, 'memoryRequestGi', convertUnitToGi(Number(e.target.value), row.units.memory))}
+                                      />
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={convertGiToUnit(row.applied.memoryLimitGi, row.units.memory)}
+                                        onChange={(e) => handleAppliedResourceChange(row.rowKey, row.applied, 'memoryLimitGi', convertUnitToGi(Number(e.target.value), row.units.memory))}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-[11px] text-[var(--color-text-secondary)]">Storage (Req|Limit)</span>
+                                    <div className="flex gap-1">
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={convertGiToUnit(row.applied.storageRequestGi, row.units.storage)}
+                                        onChange={(e) => handleAppliedResourceChange(row.rowKey, row.applied, 'storageRequestGi', convertUnitToGi(Number(e.target.value), row.units.storage))}
+                                      />
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={convertGiToUnit(row.applied.storageLimitGi, row.units.storage)}
+                                        onChange={(e) => handleAppliedResourceChange(row.rowKey, row.applied, 'storageLimitGi', convertUnitToGi(Number(e.target.value), row.units.storage))}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
