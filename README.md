@@ -163,6 +163,8 @@ API 서버: `http://localhost:8090`
 | DELETE | `/stacks/:id` | 스택 삭제 (Helm uninstall 포함) |
 | GET | `/stacks/templates` | Golden Path 템플릿 (3개) |
 | GET | `/stacks/compatibility` | 도구 호환성 매트릭스 |
+| GET | `/stacks/resource-defaults` | OSS별 리소스 request/limit 기본값 목록 |
+| POST | `/stacks/resource-defaults` | OSS 리소스 request/limit 업서트 (`tool_key` 기준, idempotent) |
 | POST | `/stacks/:id/deploy` | 스택 배포 (Helm SDK) |
 | GET | `/stacks/:id/status` | 배포 상태 조회 |
 

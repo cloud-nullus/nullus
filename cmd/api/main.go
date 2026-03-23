@@ -82,6 +82,7 @@ func main() {
 	// Stack: postgres repos + log streamer
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
+	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
 	memStreamer := logadapter.NewMemoryStreamer()
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
@@ -108,12 +109,14 @@ func main() {
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
+	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
+	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
-	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
+	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
 
 	pgCompatRepo := stackrepo.NewPostgresCompatibilityRepository(pool)
 	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)

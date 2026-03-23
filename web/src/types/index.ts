@@ -176,6 +176,19 @@ export interface ResourceEstimate {
   currency: string
 }
 
+export interface StackResourceDefault {
+  tool_key: string
+  display_name: string
+  cpu_request: number
+  cpu_limit: number
+  memory_request_gi: number
+  memory_limit_gi: number
+  storage_request_gi: number
+  storage_limit_gi: number
+  is_default: boolean
+  updated_at: string
+}
+
 export interface Pipeline {
   id: string
   name: string

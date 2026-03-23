@@ -2674,7 +2674,9 @@ components:
 | 51 | GET | `/api/v1/cicd/app-templates` | 앱 템플릿 목록 | Beta |
 | 52 | POST | `/api/v1/cicd/deploy-app` | 앱 배포 | Beta |
 | 53 | POST | `/api/v1/resources/estimate` | 리소스 예상량 | Alpha |
-| 54 | GET | `/api/v1/users` | 사용자 목록 | v1 |
-| 55 | PUT | `/api/v1/users/:userId/role` | 역할 변경 | v1 |
-| 56 | DELETE | `/api/v1/users/:userId` | 사용자 비활성화 | v1 |
-| 57 | WSS | `/ws/deployments/:id/logs` | 설치 로그 스트리밍 | Alpha |
+| 54 | GET | `/api/v1/stacks/resource-defaults` | OSS 리소스 request/limit 기본값 목록 조회 | Alpha |
+| 55 | POST | `/api/v1/stacks/resource-defaults` | OSS 리소스 request/limit 업서트 (`tool_key` 기준, idempotent) | Alpha |
+| 56 | GET | `/api/v1/users` | 사용자 목록 | v1 |
+| 57 | PUT | `/api/v1/users/:userId/role` | 역할 변경 | v1 |
+| 58 | DELETE | `/api/v1/users/:userId` | 사용자 비활성화 | v1 |
+| 59 | WSS | `/ws/deployments/:id/logs` | 설치 로그 스트리밍 | Alpha |

@@ -5,6 +5,7 @@ import type {
   CompatibilityValidationResult,
   CreateStackRequest,
   ResourceEstimate,
+  StackResourceDefault,
   Stack,
   StackHistoryEntry,
   StackTemplate,
@@ -46,6 +47,7 @@ const queryKeys = {
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
+  resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
 }
 
 interface RawTemplate {
@@ -283,6 +285,14 @@ const stackApiCalls = {
   estimateResources: (input: CreateStackRequest['resources']) =>
     api.post<ResourceEstimate>('/stacks/estimate', input).then((r) => r.data),
 
+  getResourceDefaults: () =>
+    api
+      .get<{ items: StackResourceDefault[]; total: number }>('/stacks/resource-defaults')
+      .then((r) => r.data),
+
+  upsertResourceDefault: (payload: Omit<StackResourceDefault, 'updated_at'>) =>
+    api.post<StackResourceDefault>('/stacks/resource-defaults', payload).then((r) => r.data),
+
   getHistory: (stackId: string) =>
     api.get<StackHistoryEntry[]>(`/stacks/${stackId}/history`).then((r) => r.data),
 
@@ -386,6 +396,23 @@ export function useSaveDraft() {
 export function useEstimateResources() {
   return useMutation({
     mutationFn: stackApiCalls.estimateResources,
+  })
+}
+
+export function useResourceDefaults() {
+  return useQuery({
+    queryKey: queryKeys.resourceDefaults(),
+    queryFn: stackApiCalls.getResourceDefaults,
+  })
+}
+
+export function useUpsertResourceDefault() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.upsertResourceDefault,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.resourceDefaults() })
+    },
   })
 }
 
