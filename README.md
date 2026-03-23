@@ -44,6 +44,29 @@ cp .env.example .env.dev
 # .env.dev는 make run 시 자동 로드 (ENCRYPTION_KEY 포함)
 ```
 
+### 샘플데이터 마이그레이션 (DevSecOps Stack 목업)
+
+`000022_seed_devsecops_stack_mock` 마이그레이션으로 스택 목록/이력 화면 검증용 샘플 데이터를 추가할 수 있습니다.
+
+```bash
+# 1) 로컬 인프라 실행 (PostgreSQL 포함)
+make dev-up
+
+# 2) 최신 마이그레이션 전체 적용 (000022 포함)
+make migrate-up
+
+# 3) 샘플 데이터 확인
+docker compose -f docker-compose.dev.yaml exec postgres \
+  psql -U nullus -d nullus \
+  -c "SELECT id, name, state, namespace FROM stacks WHERE id LIKE 'mock-devsecops-%' ORDER BY id;"
+```
+
+롤백이 필요하면 마지막 마이그레이션 1개를 되돌립니다.
+
+```bash
+make migrate-down
+```
+
 ### 2. 백엔드 실행
 
 ```bash
