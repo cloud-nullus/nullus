@@ -131,11 +131,6 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   loki: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/loki-stack' },
 }
 
-const RESOURCE_DEFAULT_TOOL_MAP: Record<string, string> = {
-  gitlab: 'gitlab-ce',
-  'gitlab-ci': 'gitlab-runner',
-}
-
 type K8sPreviewTab = 'namespace' | 'deployment' | 'service' | 'ingress'
 
 const stackInstallSchema = z.object({
@@ -537,7 +532,6 @@ export function StackInstallPage() {
         draft.logging.traceLayer.tool,
       ]
         .filter((tool) => tool.length > 0)
-        .map((tool) => RESOURCE_DEFAULT_TOOL_MAP[tool] ?? tool)
     )
   )
 
