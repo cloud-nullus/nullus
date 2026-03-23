@@ -77,6 +77,34 @@ register_kind_cluster_endpoints() {
   done < <(kind_cluster_names)
 }
 
+kind_cluster_exists() {
+  local name="$1"
+  kind get clusters 2>/dev/null | grep -q "^${name}$"
+}
+
+kind_cluster_names() {
+  if [[ -f "$KIND_CONFIG" ]]; then
+    awk '/^name:[[:space:]]+/ { print $2 }' "$KIND_CONFIG"
+  fi
+}
+
+kind_print_status() {
+  local has_cluster="false"
+  if ! command -v kind >/dev/null 2>&1; then
+    return 0
+  fi
+
+  while IFS= read -r cluster_name; do
+    [[ -z "$cluster_name" ]] && continue
+    if kind_cluster_exists "$cluster_name"; then
+      has_cluster="true"
+      echo "  K8s Cluster   kind-$cluster_name ($(kubectl get nodes --context "kind-$cluster_name" -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo 'unknown'))"
+    fi
+  done < <(kind_cluster_names)
+
+  [[ "$has_cluster" == "true" ]] && echo ""
+}
+
 usage() {
   cat <<'EOF'
 Usage:
