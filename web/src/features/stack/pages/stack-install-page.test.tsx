@@ -74,6 +74,7 @@ describe('StackInstallPage', () => {
     expect(screen.getByRole('button', { name: 'Resources' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Storage' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'YAML View' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preview Deploy Script' })).toBeInTheDocument()
   })
 
   it('sets default stack name automatically', () => {
@@ -205,7 +206,7 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/최종 접근 가이드/)).toBeInTheDocument()
   })
 
-  it('shows Preview Deploy Script inside YAML View and script reflects selected options', () => {
+  it('shows deploy script tab with EOF-generated values and dynamic options', () => {
     const store = useStackConfigStore.getState()
     store.setStackName('devsecops-stack')
     store.setTool('artifacts', 'packageRegistry', { tool: 'gitlab', version: '17.2.1' })
@@ -213,13 +214,15 @@ describe('StackInstallPage', () => {
 
     renderWithProviders(<StackInstallPage />)
     fillRequiredSelectionsForConfigTabs()
-    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
     fireEvent.click(screen.getByRole('button', { name: 'Preview Deploy Script' }))
 
-    expect(screen.getByText('Deploy Script Preview')).toBeInTheDocument()
+    expect(screen.getByText(/현재 선택된 YAML View/)).toBeInTheDocument()
+    expect(screen.getByText(/cat <<'NULLUS_VALUES_EOF_1' >/)).toBeInTheDocument()
+    expect(screen.getAllByText(/\.nullus\/generated-values\/gitlab\.values\.yaml/).length).toBeGreaterThan(0)
     expect(screen.getByText(/helm upgrade --install gitlab/)).toBeInTheDocument()
     expect(screen.getByText(/--version 17.2.1/)).toBeInTheDocument()
-    expect(screen.getByText(/kubectl apply -n qa-namespace -f manifests\/grafana.yaml/)).toBeInTheDocument()
+    expect(screen.getAllByText(/cat <<'NULLUS_MANIFEST_EOF_/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/kubectl apply -n qa-namespace -f ".nullus\/generated-manifests\/grafana\.yaml"/)).toBeInTheDocument()
   })
 
   it('selecting a tool in Artifacts updates the store', () => {

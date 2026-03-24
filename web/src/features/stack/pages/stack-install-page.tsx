@@ -686,66 +686,44 @@ function buildToolManifest(
     .join('\n---\n')
 }
 
-function createDeployScript(draft: StackConfigDraft): string {
+function createDeployScript(
+  draft: StackConfigDraft,
+  manifestTools: Array<{ toolId: string; installType: ManifestInstallType; toolVersion: string; roles: string[] }>,
+  manifestByTool: Record<string, string>
+): string {
   const stackName = draft.stackName || 'nullus-stack'
   const namespace = draft.namespace.trim() || 'nullus'
   const accessDomain = draft.accessDomain || `${stackName}.internal`
   const clusterContext = draft.clusterId ?? ''
 
-  const selected = [
-    { role: 'Artifacts > Package Registry', selection: draft.artifacts.packageRegistry },
-    { role: 'Artifacts > Source Repository', selection: draft.artifacts.sourceRepository },
-    { role: 'Artifacts > Container Registry', selection: draft.artifacts.containerRegistry },
-    { role: 'Artifacts > Storage Backend', selection: draft.artifacts.storageBackend },
-    { role: 'CI/CD > Platform', selection: draft.pipeline.cicdPlatform },
-    { role: 'CI/CD > CD Tool', selection: draft.pipeline.cdTool },
-    { role: 'Observability > Metrics Collection', selection: draft.monitoring.collection },
-    { role: 'Observability > Visualization', selection: draft.monitoring.visualization },
-    { role: 'Observability > Logging/Search', selection: draft.logging.search },
-    { role: 'Observability > Trace Layer', selection: draft.logging.traceLayer },
-  ]
+  const deployBlocks = manifestTools.flatMap((tool, index) => {
+    const blockHeader = [`# ${index + 1}. ${toolLabel(tool.toolId)} (${tool.installType.toUpperCase()})`, `# roles: ${tool.roles.join(', ')}`]
+    const manifestText = (manifestByTool[tool.toolId] ?? '').trimEnd()
 
-  const bundles = new Map<string, { toolId: string; version: string; roles: string[] }>()
-  selected.forEach(({ role, selection }) => {
-    if (!selection.tool) return
-    const bundleId = getManifestBundleId(selection.tool)
-    const existing = bundles.get(bundleId)
-    if (!existing) {
-      bundles.set(bundleId, {
-        toolId: bundleId,
-        version: selection.version || 'latest',
-        roles: [role],
-      })
-      return
-    }
-    if (!existing.roles.includes(role)) {
-      existing.roles.push(role)
-    }
-    if (existing.version === 'latest' && selection.version) {
-      existing.version = selection.version
-    }
-  })
-
-  const deployBlocks = Array.from(bundles.values()).flatMap((bundle, index) => {
-    const installType = getInstallType(bundle.toolId)
-    const label = toolLabel(bundle.toolId)
-    const blockHeader = [`# ${index + 1}. ${label} (${installType.toUpperCase()})`, `# roles: ${bundle.roles.join(', ')}`]
-
-    if (installType === 'helm') {
-      const meta = getHelmMeta(bundle.toolId)
+    if (tool.installType === 'helm') {
+      const meta = getHelmMeta(tool.toolId)
+      const valuesPath = `.nullus/generated-values/${tool.toolId}.values.yaml`
+      const delimiter = `NULLUS_VALUES_EOF_${index + 1}`
       return [
         ...blockHeader,
-        `helm repo add ${bundle.toolId} ${meta.repoUrl}`,
-        `helm upgrade --install ${bundle.toolId} ${meta.chartName} --namespace ${namespace} --create-namespace --version ${bundle.version} --set global.stackName=${stackName} --set global.accessDomain=${accessDomain} --set global.clusterId=${clusterContext} --set global.namespace=${namespace} --set image.tag=${bundle.version}`,
+        `cat <<'${delimiter}' > "${valuesPath}"`,
+        ...manifestText.split('\n'),
+        delimiter,
+        `helm repo add ${tool.toolId} ${meta.repoUrl}`,
+        `helm upgrade --install ${tool.toolId} ${meta.chartName} --namespace ${namespace} --create-namespace -f "${valuesPath}" --version ${tool.toolVersion}`,
         '',
       ]
     }
 
+    const manifestPath = `.nullus/generated-manifests/${tool.toolId}.yaml`
+    const delimiter = `NULLUS_MANIFEST_EOF_${index + 1}`
+
     return [
       ...blockHeader,
-      `# YAML manifest path: manifests/${bundle.toolId}.yaml`,
-      `# expected image tag: ${bundle.version}`,
-      `kubectl apply -n ${namespace} -f manifests/${bundle.toolId}.yaml`,
+      `cat <<'${delimiter}' > "${manifestPath}"`,
+      ...manifestText.split('\n'),
+      delimiter,
+      `kubectl apply -n ${namespace} -f "${manifestPath}"`,
       '',
     ]
   })
@@ -762,6 +740,7 @@ function createDeployScript(draft: StackConfigDraft): string {
     '',
     clusterContext ? `kubectl config use-context "${clusterContext}"` : '# using current kubectl context',
     `kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f -`,
+    'mkdir -p .nullus/generated-values .nullus/generated-manifests',
     '',
     '# storage plan',
     `# plan_mode=${draft.storage.planMode}`,
@@ -923,6 +902,7 @@ const TABS: { id: InstallTab; label: string }[] = [
   { id: 'resources', label: 'Resources' },
   { id: 'storage', label: 'Storage' },
   { id: 'manifests', label: 'YAML View' },
+  { id: 'deploy-script', label: 'Preview Deploy Script' },
 ]
 
 // --- Main page ---
@@ -939,7 +919,6 @@ export function StackInstallPage() {
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
   const [createNewNs, setCreateNewNs] = useState(false)
   const [activeTab, setLocalTab] = useState<InstallTab>(draft.activeTab)
-  const [deployScriptModalOpen, setDeployScriptModalOpen] = useState(false)
   const [k8sPreviewModalOpen, setK8sPreviewModalOpen] = useState(false)
   const [activeK8sPreviewTab, setActiveK8sPreviewTab] = useState<K8sPreviewTab>('namespace')
   const [planningProfile, setPlanningProfile] = useState<PlanningProfile>('standard')
@@ -974,7 +953,6 @@ export function StackInstallPage() {
 
   const effectiveNamespace = createNewNs ? draft.namespace.trim() : draft.namespace.trim() || 'nullus'
 
-  const deployScript = createDeployScript(draft)
   const k8sObjects = createK8sObjects(draft)
 
   const selectedInstallItems = ([
@@ -1230,6 +1208,8 @@ export function StackInstallPage() {
     ? manifestTools.find((tool) => tool.toolId === resolvedActiveManifestTool) ?? null
     : null
 
+  const deployScript = createDeployScript(draft, manifestTools, defaultManifestByTool)
+
   const handlePlanningOptionChange = (rowKey: string, optionKey: string, value: number) => {
     setPlanningOptionOverrides((prev) => ({
       ...prev,
@@ -1349,7 +1329,7 @@ export function StackInstallPage() {
   }, [])
 
   const switchTab = (tab: InstallTab) => {
-    if (tab === 'manifests') {
+    if (tab === 'manifests' || tab === 'deploy-script') {
       const ok = ensureCoreSelectionsForConfigTabs()
       if (!ok) return
     }
@@ -2223,11 +2203,6 @@ export function StackInstallPage() {
                   선택한 OSS별 설치 파일입니다. Helm은 실제 <code>values.yaml</code>, YAML 타입은 배포 가능한 Kubernetes manifest 형식으로 생성됩니다.
                   문법/필수 항목 검증을 통과하면 이전 탭 설정을 오버라이드합니다.
                 </p>
-                <div className="mb-3 flex justify-end">
-                  <Button variant="outline" size="sm" type="button" onClick={() => setDeployScriptModalOpen(true)}>
-                    Preview Deploy Script
-                  </Button>
-                </div>
 
                 {manifestTools.length === 0 ? (
                   <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
@@ -2314,6 +2289,21 @@ export function StackInstallPage() {
                     )}
                   </>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'deploy-script' && (
+              <div>
+                <p className="mb-[14px] mt-0 text-[13px] text-[var(--color-text-secondary)]">
+                  현재 선택된 YAML View(OSS별 설치 파일), 버전, 네임스페이스, 스토리지 설정을 기반으로 생성된 배포 스크립트입니다.
+                  Helm 항목은 <code>values.yaml</code> 파일을 EOF로 생성한 뒤 <code>helm upgrade --install -f</code>로 적용합니다.
+                </p>
+                <CodePreview
+                  code={deployScript}
+                  language="bash"
+                  title={`${draft.stackName || 'nullus-stack'}-deploy.sh`}
+                  maxHeight="560px"
+                />
               </div>
             )}
 
@@ -2761,25 +2751,6 @@ export function StackInstallPage() {
           ))}
         </div>
       </div>
-
-      <Modal
-        open={deployScriptModalOpen}
-        onClose={() => setDeployScriptModalOpen(false)}
-        title="Deploy Script Preview"
-        wide
-        footer={
-          <Button variant="outline" size="sm" onClick={() => setDeployScriptModalOpen(false)} type="button">
-            Close
-          </Button>
-        }
-      >
-        <CodePreview
-          code={deployScript}
-          language="bash"
-          title={`${draft.stackName || 'nullus-stack'}-deploy.sh`}
-          maxHeight="520px"
-        />
-      </Modal>
 
       <Modal
         open={k8sPreviewModalOpen}
