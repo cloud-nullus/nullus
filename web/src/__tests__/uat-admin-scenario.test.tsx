@@ -11,16 +11,51 @@ import { ClusterPage } from '../features/admin/pages/cluster-page'
 import { useAuthStore } from '../stores/auth-store'
 import { useSidebarStore } from '../stores/sidebar-store'
 
+// Stable mock data (hoisted to avoid re-render loops from reference changes)
+const mockOrg = vi.hoisted(() => ({
+  id: 'org-1',
+  name: 'Cloud Nullus',
+  slug: 'cloud-nullus',
+  domain: 'nullus.io',
+  status: 'active' as const,
+  clusterAccessScope: ['prod-cluster', 'staging-cluster'],
+  createdAt: '2026-01-01T00:00:00Z',
+}))
+
 vi.mock('../features/admin/api/admin-api', () => ({
-  useOrganization: () => ({ data: undefined }),
+  useOrganization: () => ({
+    data: mockOrg,
+    isLoading: false,
+  }),
+  useCreateOrganization: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateOrganization: () => ({ mutate: vi.fn(), isPending: false }),
-  useMembers: () => ({ data: undefined }),
+  useMembers: () => ({
+    data: {
+      items: [
+        { id: 'm1', name: 'Alice Kim', email: 'alice@nullus.io', role: 'admin', status: 'active', joinedAt: '2026-01-05T00:00:00Z' },
+        { id: 'm2', name: 'Bob Lee', email: 'bob@nullus.io', role: 'devops', status: 'active', joinedAt: '2026-01-10T00:00:00Z' },
+        { id: 'm3', name: 'Carol Park', email: 'carol@nullus.io', role: 'developer', status: 'pending', joinedAt: '2026-03-01T00:00:00Z' },
+      ],
+      total: 3,
+    },
+  }),
   useInviteMember: () => ({ mutate: vi.fn(), isPending: false }),
   useRemoveMember: () => ({ mutate: vi.fn(), isPending: false }),
-  useClusters: () => ({ data: undefined }),
+  useClusters: () => ({
+    data: {
+      items: [
+        { id: 'c1', name: 'prod-cluster', type: 'eks', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
+        { id: 'c2', name: 'staging-cluster', type: 'kubernetes', endpoint: 'https://staging.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-15T00:00:00Z' },
+        { id: 'c3', name: 'dev-cluster', type: 'k3s', endpoint: 'https://dev.k8s.nullus.io', status: 'pending', organizationIds: ['org-1'], createdAt: '2026-03-01T00:00:00Z' },
+      ],
+      total: 3,
+    },
+    isLoading: false,
+  }),
   useCreateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
+  useVerifyCluster: () => ({ mutate: vi.fn() }),
 }))
 
 const mockNavigate = vi.fn()
@@ -71,15 +106,15 @@ describe('UAT-3: Admin scenario', () => {
   it('step 3: organization page renders org info form', () => {
     useAuthStore.setState({ role: 'admin', user: null, isAuthenticated: true })
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('Organization')).toBeInTheDocument()
-    expect(screen.getByText('조직 정보')).toBeInTheDocument()
+    expect(screen.getAllByText('Organization')[0]).toBeInTheDocument()
+    expect(screen.getByText('Organization Detail')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Cloud Nullus')).toBeInTheDocument()
   })
 
   it('step 4: user management section renders member table', () => {
     useAuthStore.setState({ role: 'admin', user: null, isAuthenticated: true })
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('멤버 관리')).toBeInTheDocument()
+    expect(screen.getByText('Member Management')).toBeInTheDocument()
     expect(screen.getByText('Alice Kim')).toBeInTheDocument()
     expect(screen.getByText('Bob Lee')).toBeInTheDocument()
     expect(screen.getByText('Carol Park')).toBeInTheDocument()
@@ -88,16 +123,16 @@ describe('UAT-3: Admin scenario', () => {
   it('step 4: member table renders name, email, role, status columns', () => {
     useAuthStore.setState({ role: 'admin', user: null, isAuthenticated: true })
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('이름')).toBeInTheDocument()
-    expect(screen.getByText('이메일')).toBeInTheDocument()
-    expect(screen.getAllByText('역할')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('상태')[0]).toBeInTheDocument()
+    expect(screen.getByText('Name')).toBeInTheDocument()
+    expect(screen.getByText('Email')).toBeInTheDocument()
+    expect(screen.getAllByText('Role')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Status')[0]).toBeInTheDocument()
   })
 
   it('step 5: cluster management page renders cluster list', () => {
     useAuthStore.setState({ role: 'admin', user: null, isAuthenticated: true })
     renderWithProviders(<ClusterPage />)
-    expect(screen.getByText('Cluster Management')).toBeInTheDocument()
+    expect(screen.getAllByText('Cluster Management')[0]).toBeInTheDocument()
     expect(screen.getAllByText('prod-cluster')[0]).toBeInTheDocument()
     expect(screen.getByText('staging-cluster')).toBeInTheDocument()
     expect(screen.getByText('dev-cluster')).toBeInTheDocument()

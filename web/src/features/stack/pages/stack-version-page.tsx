@@ -7,53 +7,6 @@ import type { CompatibilityMatrix, CompatibilityValidationResult } from '../api/
 import { cn } from '../../../lib/utils'
 import { useState } from 'react'
 
-const MOCK_COMPATIBILITY_MATRIX: CompatibilityMatrix[] = [
-  {
-    id: 'gitlab-allinone-v1',
-    name: 'GitLab All-in-One',
-    status: 'verified',
-    k8sRange: '1.27-1.32',
-    tools: [
-      { name: 'GitLab CE', helmVersion: '8.7.2', appVersion: '17.7.2' },
-      { name: 'GitLab CI', helmVersion: '8.7.2', appVersion: '17.7.2' },
-      { name: 'GitLab Registry', helmVersion: '8.7.2', appVersion: '17.7.2' },
-      { name: 'Argo CD', helmVersion: '7.7.2', appVersion: '2.13.2' },
-      { name: 'Prometheus', helmVersion: '67.0.0', appVersion: '3.1.0' },
-      { name: 'Grafana', helmVersion: '8.5.0', appVersion: '11.4.0' },
-      { name: 'MinIO', helmVersion: '5.3.0', appVersion: '2024.11.7' },
-    ],
-  },
-  {
-    id: 'gitlab-argocd-v1',
-    name: 'GitLab + Argo CD',
-    status: 'verified',
-    k8sRange: '1.27-1.32',
-    tools: [
-      { name: 'GitLab CE', helmVersion: '8.7.2', appVersion: '17.7.2' },
-      { name: 'GitLab CI', helmVersion: '8.7.2', appVersion: '17.7.2' },
-      { name: 'Harbor', helmVersion: '1.14.0', appVersion: '2.11.0' },
-      { name: 'Argo CD', helmVersion: '7.7.2', appVersion: '2.13.2' },
-      { name: 'Prometheus', helmVersion: '67.0.0', appVersion: '3.1.0' },
-      { name: 'Grafana', helmVersion: '8.5.0', appVersion: '11.4.0' },
-      { name: 'MinIO', helmVersion: '5.3.0', appVersion: '2024.11.7' },
-    ],
-  },
-  {
-    id: 'github-argocd-v1',
-    name: 'GitHub + Argo CD',
-    status: 'untested',
-    k8sRange: '1.27-1.32',
-    tools: [
-      { name: 'GitHub', helmVersion: 'external', appVersion: 'external' },
-      { name: 'GitHub Actions', helmVersion: 'external', appVersion: 'external' },
-      { name: 'Harbor', helmVersion: '1.14.0', appVersion: '2.11.0' },
-      { name: 'Argo CD', helmVersion: '7.7.2', appVersion: '2.13.2' },
-      { name: 'Prometheus', helmVersion: '67.0.0', appVersion: '3.1.0' },
-      { name: 'Grafana', helmVersion: '8.5.0', appVersion: '11.4.0' },
-      { name: 'MinIO', helmVersion: '5.3.0', appVersion: '2024.11.7' },
-    ],
-  },
-]
 
 const STATUS_BADGE: Record<string, { className: string; label: string }> = {
   verified: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Verified' },
@@ -75,7 +28,7 @@ export function StackVersionPage() {
   const [validating, setValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<CompatibilityValidationResult | null>(null)
   const { data: matrixData } = useCompatibilityMatrix()
-  const matrix = Array.isArray(matrixData) && matrixData.length > 0 ? matrixData : MOCK_COMPATIBILITY_MATRIX
+  const matrix = Array.isArray(matrixData) ? matrixData : []
   const validateMutation = useValidateCompatibility('current')
 
   const q = search.trim().toLowerCase()

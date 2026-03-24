@@ -20,21 +20,10 @@ function formatDate(iso: string) {
   })
 }
 
-const MOCK_STACKS_FOR_HISTORY = [
-  { id: 'production-stack', name: 'production-stack' },
-]
-
-const MOCK_STACK_HISTORY: StackHistoryEntry[] = [
-  { id: 'h1', stackId: 'production-stack', version: 5, changedBy: 'kim.dev', changedAt: '2026-03-03T14:28:00Z', reason: 'Grafana 버전 업그레이드 (v10.2 → v10.3)', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.3', prometheus: 'v2.49', grafana: 'v10.3' } },
-  { id: 'h2', stackId: 'production-stack', version: 4, changedBy: 'lee.devops', changedAt: '2026-02-20T09:15:00Z', reason: 'ArgoCD 보안 패치 적용', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.3', prometheus: 'v2.49', grafana: 'v10.2' } },
-  { id: 'h3', stackId: 'production-stack', version: 3, changedBy: 'park.dev', changedAt: '2026-02-10T11:00:00Z', reason: 'Prometheus 설정 변경 (retention 30d)', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.2', prometheus: 'v2.49', grafana: 'v10.2' } },
-  { id: 'h4', stackId: 'production-stack', version: 2, changedBy: 'choi.devops', changedAt: '2026-01-25T16:30:00Z', reason: 'GitLab Runner 리소스 증설', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.2', prometheus: 'v2.47', grafana: 'v10.2' } },
-  { id: 'h5', stackId: 'production-stack', version: 1, changedBy: 'admin', changedAt: '2026-01-10T00:00:00Z', reason: '초기 스택 배포', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.2', prometheus: 'v2.47', grafana: 'v10.1' } },
-]
 
 export function StackHistoryPage() {
    const { data: stacksData } = useStacks()
-   const stacks = stacksData?.items ?? MOCK_STACKS_FOR_HISTORY
+   const stacks = stacksData?.items ?? []
    const [stackId, setStackId] = useState(stacks[0]?.id ?? '')
    const [expandedId, setExpandedId] = useState<string | null>(null)
    const [search, setSearch] = useState('')
@@ -52,7 +41,7 @@ export function StackHistoryPage() {
   }, [stacks, stackId])
 
   const { data: historyData } = useStackHistory(stackId)
-  const allEntries = Array.isArray(historyData) && historyData.length > 0 ? historyData : MOCK_STACK_HISTORY
+  const allEntries = Array.isArray(historyData) ? historyData : []
   const entries = search.trim()
     ? allEntries.filter(
         (e) =>

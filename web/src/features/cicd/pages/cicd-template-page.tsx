@@ -37,11 +37,6 @@ const EMPTY_FORM: TemplateFormState = {
   stages: [],
 }
 
-const MOCK_CICD_TEMPLATES: CicdTemplate[] = [
-  { id: 'web-frontend', name: 'Web Frontend', description: 'React/Next.js 웹 프론트엔드 앱을 위한 표준 CI/CD 파이프라인. Docker 빌드 후 ArgoCD로 배포.', appType: 'web-frontend', stages: ['Build', 'Test', 'Docker Build', 'ArgoCD Deploy'], createdBy: 'admin' },
-  { id: 'web-backend', name: 'Backend API', description: 'REST API 백엔드 서비스를 위한 파이프라인. Security Scan(Trivy) 포함, Kubernetes Deployment 배포.', appType: 'web-backend', stages: ['Build', 'Test', 'Security', 'Docker Build', 'ArgoCD Deploy'], createdBy: 'admin' },
-  { id: 'batch-job', name: 'Batch Job', description: '정기 실행 배치 잡을 위한 파이프라인. Kubernetes CronJob으로 배포, 실행 결과 자동 기록.', appType: 'batch-job', stages: ['Build', 'Test', 'Docker Build', 'CronJob Deploy'], createdBy: 'admin' },
-]
 
 export function CicdTemplatePage() {
   const navigate = useNavigate()
@@ -52,7 +47,7 @@ export function CicdTemplatePage() {
   const createTemplate = useCreateCicdTemplate()
   const updateTemplate = useUpdateCicdTemplate()
   const deleteTemplate = useDeleteCicdTemplate()
-  const templates = Array.isArray(apiTemplates) && apiTemplates.length > 0 ? apiTemplates : MOCK_CICD_TEMPLATES
+  const templates = Array.isArray(apiTemplates) ? apiTemplates : []
 
   const [search, setSearch] = useState('')
   const [formOpen, setFormOpen] = useState(false)

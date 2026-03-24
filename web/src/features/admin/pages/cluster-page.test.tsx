@@ -4,41 +4,21 @@ import { screen, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { ClusterPage } from './cluster-page'
 
-const verifyMutate = vi.fn()
-
-const MOCK_CLUSTERS = [
-  {
-    id: 'c1',
-    name: 'prod-cluster',
-    type: 'eks' as const,
-    endpoint: 'https://prod.k8s.nullus.io',
-    status: 'connected' as const,
-    organizationIds: ['org-1'],
-    createdAt: '2026-01-01T00:00:00Z',
-  },
-  {
-    id: 'c2',
-    name: 'staging-cluster',
-    type: 'kubernetes' as const,
-    endpoint: 'https://staging.k8s.nullus.io',
-    status: 'connected' as const,
-    organizationIds: ['org-1'],
-    createdAt: '2026-01-15T00:00:00Z',
-  },
-  {
-    id: 'c3',
-    name: 'dev-cluster',
-    type: 'k3s' as const,
-    endpoint: 'https://dev.k8s.nullus.io',
-    status: 'pending' as const,
-    organizationIds: ['org-1'],
-    createdAt: '2026-03-01T00:00:00Z',
-  },
-]
+const verifyMutate = vi.hoisted(() => vi.fn())
 
 // Mock API hooks
 vi.mock('../api/admin-api', () => ({
-  useClusters: () => ({ data: { items: MOCK_CLUSTERS, total: MOCK_CLUSTERS.length }, isLoading: false }),
+  useClusters: () => ({
+    data: {
+      items: [
+        { id: 'c1', name: 'prod-cluster', type: 'eks', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
+        { id: 'c2', name: 'staging-cluster', type: 'kubernetes', endpoint: 'https://staging.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-15T00:00:00Z' },
+        { id: 'c3', name: 'dev-cluster', type: 'k3s', endpoint: 'https://dev.k8s.nullus.io', status: 'pending', organizationIds: ['org-1'], createdAt: '2026-03-01T00:00:00Z' },
+      ],
+      total: 3,
+    },
+    isLoading: false,
+  }),
   useCreateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
@@ -52,7 +32,7 @@ beforeEach(() => {
 describe('ClusterPage', () => {
   it('renders the page heading', () => {
     renderWithProviders(<ClusterPage />)
-    expect(screen.getByText('Cluster Management')).toBeInTheDocument()
+    expect(screen.getAllByText('Cluster Management')[0]).toBeInTheDocument()
   })
 
   it('renders cluster list with mock clusters', () => {

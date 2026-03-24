@@ -11,37 +11,38 @@ beforeEach(() => {
 describe('HomePage', () => {
   it('renders the welcome heading', () => {
     renderWithProviders(<HomePage />)
-    expect(screen.getByText('Welcome to Nullus Platform')).toBeInTheDocument()
+    expect(screen.getByText('Nullus Platform')).toBeInTheDocument()
   })
 
-  it('renders Get Started button for all roles', () => {
+  it('renders Stack Start button for all roles', () => {
     renderWithProviders(<HomePage />)
-    expect(screen.getByText('Get Started')).toBeInTheDocument()
+    expect(screen.getByText('Stack 시작하기')).toBeInTheDocument()
   })
 
-  it('renders View Pipelines button for all roles', () => {
+  it('renders CI/CD Pipeline button for all roles', () => {
     renderWithProviders(<HomePage />)
-    expect(screen.getByText('View Pipelines')).toBeInTheDocument()
+    expect(screen.getByText('CI/CD 파이프라인')).toBeInTheDocument()
   })
 
-  it('shows developer greeting for developer role', () => {
+  it('shows core features section for developer role', () => {
     useAuthStore.setState({ role: 'developer', user: null, isAuthenticated: false })
     renderWithProviders(<HomePage />)
-    expect(screen.getByText('You are deploying applications as Developer.')).toBeInTheDocument()
+    expect(screen.getByText('핵심 기능')).toBeInTheDocument()
+    expect(screen.getByText('Stack 시작하기')).toBeInTheDocument()
   })
 
-  it('shows devops greeting and View Stacks CTA for devops role', () => {
+  it('shows core features section for devops role', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: false })
     renderWithProviders(<HomePage />)
-    expect(screen.getByText('You are managing DevSecOps stacks as DevOps Engineer.')).toBeInTheDocument()
-    expect(screen.getByText('View Stacks')).toBeInTheDocument()
+    expect(screen.getByText('핵심 기능')).toBeInTheDocument()
+    expect(screen.getByText('Stack 시작하기')).toBeInTheDocument()
   })
 
-  it('shows admin greeting and View Stacks CTA for admin role', () => {
+  it('shows core features section for admin role', () => {
     useAuthStore.setState({ role: 'admin', user: null, isAuthenticated: false })
     renderWithProviders(<HomePage />)
-    expect(screen.getByText('You are managing the platform as Administrator.')).toBeInTheDocument()
-    expect(screen.getByText('View Stacks')).toBeInTheDocument()
+    expect(screen.getByText('핵심 기능')).toBeInTheDocument()
+    expect(screen.getByText('Stack 시작하기')).toBeInTheDocument()
   })
 
   it('does not show View Stacks button for developer role', () => {
