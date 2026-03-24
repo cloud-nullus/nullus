@@ -27,7 +27,8 @@ vi.mock('../features/stack/api/stack-api', () => ({
   useDeleteTemplate: () => ({ mutate: vi.fn(), isPending: false }),
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
-  useClusters: () => ({ data: [] }),
+  useClusters: () => ({ data: [{ id: 'cluster-1', name: 'dev-cluster', connection_status: 'connected' }] }),
+  useResourceDefaults: () => ({ data: { items: [], total: 0 } }),
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
@@ -98,7 +99,7 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     expect(useStackConfigStore.getState().draft.selectedTemplateId).toBe('gitlab-allinone-v1')
   })
 
-  it('step 5: install page tab traversal - all 5 workflow tabs visible', () => {
+  it('step 5: install page tab traversal - workflow tabs visible', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
     renderWithProviders(<StackInstallPage />)
 
@@ -106,8 +107,9 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     expect(screen.getByText('Artifacts')).toBeInTheDocument()
     expect(screen.getAllByText('CI/CD')[0]).toBeInTheDocument()
     expect(screen.getByText('Observability')).toBeInTheDocument()
-    expect(screen.getByText('Resources')).toBeInTheDocument()
-    expect(screen.getByText('YAML View')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resources' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Storage' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'YAML View' })).toBeInTheDocument()
 
     // Traverse through tabs
     fireEvent.click(screen.getAllByText('CI/CD')[0])
@@ -116,18 +118,21 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     fireEvent.click(screen.getByText('Observability'))
     expect(screen.getAllByText('Metrics')[0]).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Resources'))
-    expect(screen.getByText('개발자 수')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
+    expect(screen.getByText('OSS별 Resource Planning')).toBeInTheDocument()
   })
 
-  it('step 6: YAML View tab shows configuration', () => {
+  it('step 6: YAML View tab shows configuration after required selections', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
     renderWithProviders(<StackInstallPage />)
+    fireEvent.change(screen.getByLabelText('Target Cluster'), { target: { value: 'cluster-1' } })
+    fireEvent.change(screen.getByLabelText('Namespace'), { target: { value: '__new__' } })
+    fireEvent.change(screen.getByPlaceholderText('my-namespace'), { target: { value: 'uat' } })
     fireEvent.click(screen.getByText('YAML View'))
     expect(screen.getByTestId('yaml-editor')).toBeInTheDocument()
     const yaml = screen.getByTestId('yaml-editor').textContent ?? ''
-    expect(yaml).toContain('stackName:')
-    expect(yaml).toContain('artifacts:')
+    expect(yaml).toContain('global:')
+    expect(yaml).toContain('resources:')
   })
 
   it('step 7: devops sidebar shows DevSecOps Stack, CI/CD, Observability menus', () => {

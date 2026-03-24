@@ -82,6 +82,13 @@ export interface ToolSelection {
   version: string
 }
 
+export interface TemplateToolDetail {
+  category: string
+  name: string
+  helm_version: string
+  app_version: string
+}
+
 export interface StackResourcesInput {
   developerCount: number
   concurrentRunners: number
@@ -90,16 +97,48 @@ export interface StackResourcesInput {
   currency: string
 }
 
+export type StorageMode = 'existing' | 'create'
+
+export type StoragePlanMode = 'existing-all' | 'integrated-create'
+
+export interface StorageTargetInput {
+  mode: StorageMode
+  existingRef: string
+  endpoint: string
+  resourceName: string
+  accessSecretRef: string
+  authId: string
+  authPasswordKey: string
+  providerOrEngine: string
+  version: string
+  size: 'small' | 'medium' | 'large'
+}
+
+export interface StackStorageInput {
+  planMode: StoragePlanMode
+  database: StorageTargetInput
+  objectStorage: StorageTargetInput
+}
+
+export interface AccessDomainTlsInput {
+  enabled: boolean
+  secretName: string
+  secretNamespace: string
+}
+
 export interface StackConfig {
   templateId: string | null
   clusterId: string | null
   namespace?: string
   stackName: string
+  accessDomain?: string
+  accessDomainTls?: AccessDomainTlsInput
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>
   monitoring: Record<string, ToolSelection>
   logging: Record<string, ToolSelection>
   resources: StackResourcesInput
+  storage?: StackStorageInput
 }
 
 export interface Stack {
@@ -119,6 +158,7 @@ export interface Template {
   name: string
   description: string
   tools: string[]
+  toolDetails?: TemplateToolDetail[]
   estimatedMinutes: number
   category: string
   createdBy?: string
@@ -174,6 +214,19 @@ export interface ResourceEstimate {
   storage: string
   estimatedCostMonthly: number
   currency: string
+}
+
+export interface StackResourceDefault {
+  tool_key: string
+  display_name: string
+  cpu_request: number
+  cpu_limit: number
+  memory_request_gi: number
+  memory_limit_gi: number
+  storage_request_gi: number
+  storage_limit_gi: number
+  is_default: boolean
+  updated_at: string
 }
 
 export interface Pipeline {

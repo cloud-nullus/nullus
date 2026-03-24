@@ -5,9 +5,11 @@ import type {
   CompatibilityValidationResult,
   CreateStackRequest,
   ResourceEstimate,
+  StackResourceDefault,
   Stack,
   StackHistoryEntry,
   StackTemplate,
+  TemplateToolDetail,
   StackVersionDiff,
 } from '../../../types'
 
@@ -46,6 +48,7 @@ const queryKeys = {
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
+  resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
 }
 
 interface RawTemplate {
@@ -137,11 +140,46 @@ const toToolName = (tool: unknown): string => {
   return ''
 }
 
+const toToolDetail = (tool: unknown): TemplateToolDetail | null => {
+  if (!tool || typeof tool !== 'object') {
+    return null
+  }
+
+  const record = tool as Record<string, unknown>
+  const category = typeof record.category === 'string' ? record.category : ''
+  const name =
+    typeof record.name === 'string'
+      ? record.name
+      : (typeof record.Name === 'string' ? record.Name : '')
+  const helmVersion =
+    typeof record.helm_version === 'string'
+      ? record.helm_version
+      : (typeof record.HelmVersion === 'string' ? record.HelmVersion : '')
+  const appVersion =
+    typeof record.app_version === 'string'
+      ? record.app_version
+      : (typeof record.AppVersion === 'string' ? record.AppVersion : '')
+
+  if (!name) {
+    return null
+  }
+
+  return {
+    category,
+    name,
+    helm_version: helmVersion,
+    app_version: appVersion,
+  }
+}
+
 const normalizeTemplate = (raw: RawTemplate): StackTemplate => ({
   id: raw.id ?? raw.ID ?? '',
   name: raw.name ?? raw.Name ?? '',
   description: raw.description ?? raw.Description ?? '',
   tools: Array.isArray(raw.tools ?? raw.Tools) ? (raw.tools ?? raw.Tools ?? []).map(toToolName).filter((tool) => tool.length > 0) : [],
+  toolDetails: Array.isArray(raw.tools ?? raw.Tools)
+    ? (raw.tools ?? raw.Tools ?? []).map(toToolDetail).filter((detail): detail is TemplateToolDetail => detail !== null)
+    : [],
   estimatedMinutes: typeof raw.estimatedMinutes === 'number'
     ? raw.estimatedMinutes
     : (typeof (raw.estimated_install_time ?? raw.EstimatedInstallTime) === 'number'
@@ -230,6 +268,14 @@ export function toCreateStackBody(req: CreateStackRequest) {
     namespace: req.namespace || 'nullus',
     golden_path_id: req.templateId ?? '',
     config: {
+      access_domain: req.accessDomain || `${req.stackName}.internal`,
+      access_domain_tls: req.accessDomainTls
+        ? {
+            enabled: req.accessDomainTls.enabled,
+            secret_name: req.accessDomainTls.secretName,
+            secret_namespace: req.accessDomainTls.secretNamespace,
+          }
+        : undefined,
       artifacts: {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
         source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),
@@ -254,6 +300,35 @@ export function toCreateStackBody(req: CreateStackRequest) {
         weekly_commits: req.resources?.commitsPerDay ?? 0,
         build_frequency: req.resources?.buildFrequency ?? 'medium',
       },
+      storage: req.storage
+        ? {
+            plan_mode: req.storage.planMode,
+            database: {
+              mode: req.storage.database.mode,
+              existing_ref: req.storage.database.existingRef,
+              endpoint: req.storage.database.endpoint,
+              resource_name: req.storage.database.resourceName,
+              access_secret_ref: req.storage.database.accessSecretRef,
+              auth_id: req.storage.database.authId,
+              auth_password_key: req.storage.database.authPasswordKey,
+              provider_or_engine: req.storage.database.providerOrEngine,
+              version: req.storage.database.version,
+              size: req.storage.database.mode === 'create' ? req.storage.database.size : undefined,
+            },
+            object_storage: {
+              mode: req.storage.objectStorage.mode,
+              existing_ref: req.storage.objectStorage.existingRef,
+              endpoint: req.storage.objectStorage.endpoint,
+              resource_name: req.storage.objectStorage.resourceName,
+              access_secret_ref: req.storage.objectStorage.accessSecretRef,
+              auth_id: req.storage.objectStorage.authId,
+              auth_password_key: req.storage.objectStorage.authPasswordKey,
+              provider_or_engine: req.storage.objectStorage.providerOrEngine,
+              version: req.storage.objectStorage.version,
+              size: req.storage.objectStorage.mode === 'create' ? req.storage.objectStorage.size : undefined,
+            },
+          }
+        : undefined,
     },
   }
 }
@@ -282,6 +357,14 @@ const stackApiCalls = {
 
   estimateResources: (input: CreateStackRequest['resources']) =>
     api.post<ResourceEstimate>('/stacks/estimate', input).then((r) => r.data),
+
+  getResourceDefaults: () =>
+    api
+      .get<{ items: StackResourceDefault[]; total: number }>('/stacks/resource-defaults')
+      .then((r) => r.data),
+
+  upsertResourceDefault: (payload: Omit<StackResourceDefault, 'updated_at'>) =>
+    api.post<StackResourceDefault>('/stacks/resource-defaults', payload).then((r) => r.data),
 
   getHistory: (stackId: string) =>
     api.get<StackHistoryEntry[]>(`/stacks/${stackId}/history`).then((r) => r.data),
@@ -386,6 +469,23 @@ export function useSaveDraft() {
 export function useEstimateResources() {
   return useMutation({
     mutationFn: stackApiCalls.estimateResources,
+  })
+}
+
+export function useResourceDefaults() {
+  return useQuery({
+    queryKey: queryKeys.resourceDefaults(),
+    queryFn: stackApiCalls.getResourceDefaults,
+  })
+}
+
+export function useUpsertResourceDefault() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.upsertResourceDefault,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.resourceDefaults() })
+    },
   })
 }
 
