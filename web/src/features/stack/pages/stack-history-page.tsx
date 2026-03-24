@@ -231,7 +231,7 @@ export function StackHistoryPage() {
             설정 스냅샷 (v{expandedEntry.version})
           </p>
           <div className="flex flex-wrap gap-2.5">
-            {Object.entries(expandedEntry.snapshot).map(([k, v]) => (
+            {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
               <div
                 key={k}
                 className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-2 font-mono text-xs"
