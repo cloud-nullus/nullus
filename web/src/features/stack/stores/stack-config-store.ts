@@ -66,12 +66,19 @@ export interface StorageConfig {
   objectStorage: StorageTargetConfig
 }
 
+export interface AccessDomainTlsConfig {
+  enabled: boolean
+  secretName: string
+  secretNamespace: string
+}
+
 export interface StackConfigDraft {
   selectedTemplateId: string | null
   clusterId: string | null
   namespace: string
   stackName: string
   accessDomain: string
+  accessDomainTls: AccessDomainTlsConfig
   artifacts: ArtifactsConfig
   pipeline: PipelineConfig
   monitoring: MonitoringConfig
@@ -89,6 +96,7 @@ interface StackConfigState {
   setNamespace: (namespace: string) => void
   setStackName: (name: string) => void
   setAccessDomain: (domain: string) => void
+  updateAccessDomainTls: (config: Partial<AccessDomainTlsConfig>) => void
   setTool: (
     section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging',
     field: string,
@@ -108,6 +116,11 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   namespace: '',
   stackName: '',
   accessDomain: '',
+  accessDomainTls: {
+    enabled: false,
+    secretName: 'nullus-wildcard-tls',
+    secretNamespace: 'nullus',
+  },
   artifacts: {
     packageRegistry: { tool: 'gitlab', version: 'latest' },
     sourceRepository: { tool: 'gitlab', version: 'latest' },
@@ -192,6 +205,15 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
           ...s.draft,
           stackName: name,
           accessDomain: shouldUpdateAccessDomain ? `${name}.internal` : s.draft.accessDomain,
+          accessDomainTls: {
+            ...s.draft.accessDomainTls,
+            secretName:
+              !s.draft.accessDomainTls.secretName.trim() ||
+              s.draft.accessDomainTls.secretName === 'nullus-wildcard-tls' ||
+              s.draft.accessDomainTls.secretName === `${s.draft.stackName || 'nullus'}-wildcard-tls`
+                ? `${name || 'nullus'}-wildcard-tls`
+                : s.draft.accessDomainTls.secretName,
+          },
         },
         isDirty: true,
       }
@@ -199,6 +221,12 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
 
   setAccessDomain: (domain) =>
     set((s) => ({ draft: { ...s.draft, accessDomain: domain }, isDirty: true })),
+
+  updateAccessDomainTls: (config) =>
+    set((s) => ({
+      draft: { ...s.draft, accessDomainTls: { ...s.draft.accessDomainTls, ...config } },
+      isDirty: true,
+    })),
 
   setTool: (section, field, value) =>
     set((s) => ({

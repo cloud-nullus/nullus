@@ -223,6 +223,29 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/최종 접근 가이드/)).toBeInTheDocument()
   })
 
+  it('enables access domain TLS and reflects HTTPS listener/openssl script', () => {
+    renderWithProviders(<StackInstallPage />)
+
+    fireEvent.click(screen.getByLabelText(/Access Domain TLS 인증서 적용/))
+    fireEvent.change(screen.getByLabelText('TLS Secret Name'), { target: { value: 'corp-wildcard-tls' } })
+    fireEvent.change(screen.getByLabelText('TLS Secret Namespace'), { target: { value: 'kube-system' } })
+
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    fireEvent.click(screen.getByRole('button', { name: /Gateway/i }))
+
+    const gatewayEditor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+    expect(gatewayEditor.value).toContain('protocol: HTTPS')
+    expect(gatewayEditor.value).toContain('port: 443')
+    expect(gatewayEditor.value).toContain('certificateRefs:')
+    expect(gatewayEditor.value).toContain('name: corp-wildcard-tls')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview Deploy Script' }))
+    expect(screen.getByText(/openssl req -x509 -nodes -days 3650 -newkey rsa:2048/)).toBeInTheDocument()
+    expect(screen.getByText(/kubectl create secret tls "corp-wildcard-tls"/)).toBeInTheDocument()
+    expect(screen.getAllByText(/kind: ReferenceGrant/).length).toBeGreaterThan(0)
+  })
+
   it('shows deploy script tab with EOF-generated values and dynamic options', () => {
     const store = useStackConfigStore.getState()
     store.setStackName('devsecops-stack')

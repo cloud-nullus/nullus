@@ -10,6 +10,9 @@ describe('stack-config-store', () => {
     const { draft, isDirty } = useStackConfigStore.getState()
     expect(draft.stackName).toBe('')
     expect(draft.accessDomain).toBe('')
+    expect(draft.accessDomainTls.enabled).toBe(false)
+    expect(draft.accessDomainTls.secretName).toBe('nullus-wildcard-tls')
+    expect(draft.accessDomainTls.secretNamespace).toBe('nullus')
     expect(draft.selectedTemplateId).toBeNull()
     expect(draft.activeTab).toBe('artifacts')
     expect(draft.storage.planMode).toBe('integrated-create')
@@ -112,6 +115,24 @@ describe('stack-config-store', () => {
       useStackConfigStore.getState().setStackName('next-stack')
       const { draft } = useStackConfigStore.getState()
       expect(draft.accessDomain).toBe('custom.company.internal')
+    })
+
+    it('setStackName updates default TLS secret name automatically', () => {
+      useStackConfigStore.getState().setStackName('team-stack')
+      expect(useStackConfigStore.getState().draft.accessDomainTls.secretName).toBe('team-stack-wildcard-tls')
+    })
+
+    it('updateAccessDomainTls updates tls options and marks dirty', () => {
+      useStackConfigStore.getState().updateAccessDomainTls({
+        enabled: true,
+        secretName: 'corp-wildcard',
+        secretNamespace: 'kube-system',
+      })
+      const { draft, isDirty } = useStackConfigStore.getState()
+      expect(draft.accessDomainTls.enabled).toBe(true)
+      expect(draft.accessDomainTls.secretName).toBe('corp-wildcard')
+      expect(draft.accessDomainTls.secretNamespace).toBe('kube-system')
+      expect(isDirty).toBe(true)
     })
   })
 

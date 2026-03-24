@@ -233,6 +233,13 @@ export function toCreateStackBody(req: CreateStackRequest) {
     golden_path_id: req.templateId ?? '',
     config: {
       access_domain: req.accessDomain || `${req.stackName}.internal`,
+      access_domain_tls: req.accessDomainTls
+        ? {
+            enabled: req.accessDomainTls.enabled,
+            secret_name: req.accessDomainTls.secretName,
+            secret_namespace: req.accessDomainTls.secretNamespace,
+          }
+        : undefined,
       artifacts: {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
         source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),

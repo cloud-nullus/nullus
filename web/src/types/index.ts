@@ -113,12 +113,19 @@ export interface StackStorageInput {
   objectStorage: StorageTargetInput
 }
 
+export interface AccessDomainTlsInput {
+  enabled: boolean
+  secretName: string
+  secretNamespace: string
+}
+
 export interface StackConfig {
   templateId: string | null
   clusterId: string | null
   namespace?: string
   stackName: string
   accessDomain?: string
+  accessDomainTls?: AccessDomainTlsInput
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>
   monitoring: Record<string, ToolSelection>

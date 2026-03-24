@@ -712,6 +712,10 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
   const stackName = draft.stackName || 'nullus-stack'
   const accessDomain = draft.accessDomain || `${stackName}.internal`
   const gatewayName = `${stackName}-gateway`
+  const tlsEnabled = draft.accessDomainTls.enabled
+  const tlsSecretName = draft.accessDomainTls.secretName.trim()
+  const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim()
+  const requiresReferenceGrant = tlsEnabled && tlsSecretName.length > 0 && tlsSecretNamespace.length > 0 && tlsSecretNamespace !== namespace
 
   const rules = manifestTools
     .filter((tool) => tool.toolId !== GATEWAY_MANIFEST_ID)
@@ -758,6 +762,31 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
             },
           },
         },
+        ...(tlsEnabled && tlsSecretName
+          ? [
+              {
+                name: 'https',
+                protocol: 'HTTPS',
+                port: 443,
+                hostname: `*.${accessDomain}`,
+                tls: {
+                  mode: 'Terminate',
+                  certificateRefs: [
+                    {
+                      kind: 'Secret',
+                      name: tlsSecretName,
+                      ...(tlsSecretNamespace ? { namespace: tlsSecretNamespace } : {}),
+                    },
+                  ],
+                },
+                allowedRoutes: {
+                  namespaces: {
+                    from: 'Same',
+                  },
+                },
+              },
+            ]
+          : []),
       ],
     },
   }
@@ -806,7 +835,44 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
     }
   })
 
-  return [YAML.stringify(gateway, { indent: 2, lineWidth: 0 }), ...httpRoutes.map((route) => YAML.stringify(route, { indent: 2, lineWidth: 0 }))].join('\n---\n')
+  const referenceGrant = requiresReferenceGrant
+    ? {
+        apiVersion: 'gateway.networking.k8s.io/v1beta1',
+        kind: 'ReferenceGrant',
+        metadata: {
+          name: `${stackName}-tls-secret-grant`,
+          namespace: tlsSecretNamespace,
+          labels: {
+            'nullus.io/stack-name': stackName,
+            'nullus.io/type': 'gateway-reference-grant',
+          },
+        },
+        spec: {
+          from: [
+            {
+              group: 'gateway.networking.k8s.io',
+              kind: 'Gateway',
+              namespace,
+            },
+          ],
+          to: [
+            {
+              group: '',
+              kind: 'Secret',
+              name: tlsSecretName,
+            },
+          ],
+        },
+      }
+    : null
+
+  const gatewayDocuments = [
+    YAML.stringify(gateway, { indent: 2, lineWidth: 0 }),
+    ...httpRoutes.map((route) => YAML.stringify(route, { indent: 2, lineWidth: 0 })),
+    ...(referenceGrant ? [YAML.stringify(referenceGrant, { indent: 2, lineWidth: 0 })] : []),
+  ]
+
+  return gatewayDocuments.join('\n---\n')
 }
 
 function createDeployScript(
@@ -818,6 +884,9 @@ function createDeployScript(
   const namespace = draft.namespace.trim() || 'nullus'
   const accessDomain = draft.accessDomain || `${stackName}.internal`
   const clusterContext = draft.clusterId ?? ''
+  const tlsEnabled = draft.accessDomainTls.enabled
+  const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${stackName}-wildcard-tls`
+  const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || namespace
 
   const deployBlocks = manifestTools.flatMap((tool, index) => {
     const blockHeader = [`# ${index + 1}. ${toolLabel(tool.toolId)} (${tool.installType.toUpperCase()})`, `# roles: ${tool.roles.join(', ')}`]
@@ -857,6 +926,7 @@ function createDeployScript(
     `# stack: ${stackName}`,
     `# namespace: ${namespace}`,
     `# access-domain: ${accessDomain}`,
+    `# access-domain-tls: ${tlsEnabled ? `enabled (${tlsSecretNamespace}/${tlsSecretName})` : 'disabled'}`,
     `# cluster-context: ${clusterContext || '(current context)'}`,
     '',
     'set -euo pipefail',
@@ -874,6 +944,54 @@ function createDeployScript(
     `# developers=${draft.resources.developerCount}, runners=${draft.resources.concurrentRunners}, commitsPerDay=${draft.resources.commitsPerDay}`,
     `# buildFrequency=${draft.resources.buildFrequency}, currency=${draft.resources.currency}`,
     '',
+    ...(tlsEnabled
+      ? [
+          '# TLS (Wildcard certificate, 10 years) - internal/dev baseline',
+          `DOMAIN="${accessDomain}"`,
+          `SECRET_NAME="${tlsSecretName}"`,
+          `CERT_DIR=".nullus/certs"`,
+          'COUNTRY="KR"',
+          'STATE="Seoul"',
+          'CITY="Seoul"',
+          'ORG_NAME="Nullus"',
+          'OU_NAME="Platform"',
+          'mkdir -p "${CERT_DIR}"',
+          'openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \\',
+          '  -keyout "${CERT_DIR}/${DOMAIN}.key" \\',
+          '  -out "${CERT_DIR}/${DOMAIN}.crt" \\',
+          '  -subj "/C=${COUNTRY}/ST=${STATE}/L=${CITY}/O=${ORG_NAME}/OU=${OU_NAME}/CN=${DOMAIN}" \\',
+          '  -addext "subjectAltName = DNS:${DOMAIN},DNS:*.${DOMAIN}"',
+          'chmod 600 "${CERT_DIR}/${DOMAIN}.key"',
+          'chmod 644 "${CERT_DIR}/${DOMAIN}.crt"',
+          `kubectl create secret tls "${tlsSecretName}" \\`,
+          '  --cert="${CERT_DIR}/${DOMAIN}.crt" \\',
+          '  --key="${CERT_DIR}/${DOMAIN}.key" \\',
+          `  -n "${tlsSecretNamespace}" --dry-run=client -o yaml | kubectl apply -f -`,
+          ...(tlsSecretNamespace !== namespace
+            ? [
+                '# If TLS Secret namespace differs from Gateway namespace, apply ReferenceGrant too.',
+                `cat <<'NULLUS_TLS_REFGRANT_EOF' > ".nullus/generated-manifests/${stackName}-tls-reference-grant.yaml"`,
+                'apiVersion: gateway.networking.k8s.io/v1beta1',
+                'kind: ReferenceGrant',
+                'metadata:',
+                `  name: ${stackName}-tls-secret-grant`,
+                `  namespace: ${tlsSecretNamespace}`,
+                'spec:',
+                '  from:',
+                '    - group: gateway.networking.k8s.io',
+                '      kind: Gateway',
+                `      namespace: ${namespace}`,
+                '  to:',
+                '    - group: ""',
+                '      kind: Secret',
+                `      name: ${tlsSecretName}`,
+                'NULLUS_TLS_REFGRANT_EOF',
+                `kubectl apply -f ".nullus/generated-manifests/${stackName}-tls-reference-grant.yaml"`,
+              ]
+            : []),
+          '',
+        ]
+      : []),
     ...deployBlocks,
     'echo "✅ Nullus stack deploy script completed"',
   ].join('\n')
@@ -882,8 +1000,13 @@ function createDeployScript(
 function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string> {
   const appName = draft.stackName || 'nullus-stack'
   const serviceName = `${appName}-svc`
+  const gatewayNamespace = 'nullus-stack'
   const accessDomain = draft.accessDomain || `${appName}.internal`
   const gatewayName = `${appName}-gateway`
+  const tlsEnabled = draft.accessDomainTls.enabled
+  const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${appName}-wildcard-tls`
+  const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || gatewayNamespace
+  const requiresReferenceGrant = tlsEnabled && tlsSecretNamespace !== gatewayNamespace
 
   return {
     namespace: [
@@ -944,7 +1067,7 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       'kind: Gateway',
       'metadata:',
       `  name: ${gatewayName}`,
-      '  namespace: nullus-stack',
+      `  namespace: ${gatewayNamespace}`,
       'spec:',
       '  gatewayClassName: nginx',
       '  listeners:',
@@ -955,12 +1078,29 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       '      allowedRoutes:',
       '        namespaces:',
       '          from: Same',
+      ...(tlsEnabled
+        ? [
+            '    - name: https',
+            '      protocol: HTTPS',
+            '      port: 443',
+            `      hostname: *.${accessDomain}`,
+            '      tls:',
+            '        mode: Terminate',
+            '        certificateRefs:',
+            `          - kind: Secret`,
+            `            name: ${tlsSecretName}`,
+            `            namespace: ${tlsSecretNamespace}`,
+            '      allowedRoutes:',
+            '        namespaces:',
+            '          from: Same',
+          ]
+        : []),
       '---',
       'apiVersion: gateway.networking.k8s.io/v1',
       'kind: HTTPRoute',
       'metadata:',
       `  name: ${appName}-route`,
-      '  namespace: nullus-stack',
+      `  namespace: ${gatewayNamespace}`,
       'spec:',
       '  parentRefs:',
       `    - name: ${gatewayName}`,
@@ -974,6 +1114,25 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       '      backendRefs:',
       `        - name: ${serviceName}`,
       '          port: 80',
+      ...(requiresReferenceGrant
+        ? [
+            '---',
+            'apiVersion: gateway.networking.k8s.io/v1beta1',
+            'kind: ReferenceGrant',
+            'metadata:',
+            `  name: ${appName}-tls-secret-grant`,
+            `  namespace: ${tlsSecretNamespace}`,
+            'spec:',
+            '  from:',
+            '    - group: gateway.networking.k8s.io',
+            '      kind: Gateway',
+            `      namespace: ${gatewayNamespace}`,
+            '  to:',
+            '    - group: ""',
+            '      kind: Secret',
+            `      name: ${tlsSecretName}`,
+          ]
+        : []),
     ].join('\n'),
   }
 }
@@ -1051,7 +1210,18 @@ export function StackInstallPage() {
   const navigate = useNavigate()
   const theme = useThemeStore((state) => state.theme)
   const isDarkMode = theme === 'dark'
-  const { draft, setActiveTab, setTool, setStackName, setAccessDomain, setCluster, setNamespace, updateStorage, updateStorageTarget } = useStackConfigStore()
+  const {
+    draft,
+    setActiveTab,
+    setTool,
+    setStackName,
+    setAccessDomain,
+    setCluster,
+    setNamespace,
+    updateStorage,
+    updateStorageTarget,
+    updateAccessDomainTls,
+  } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
@@ -1390,6 +1560,39 @@ export function StackInstallPage() {
         : `권장 규칙(.internal) 미준수: ${accessDomain}`,
     })
 
+    const tlsConfig = draft.accessDomainTls
+    const tlsSecretName = tlsConfig.secretName.trim()
+    const tlsSecretNamespace = tlsConfig.secretNamespace.trim()
+    if (!tlsConfig.enabled) {
+      checks.push({
+        id: 'gatewayTls',
+        title: 'Gateway HTTPS/TLS 적용 여부',
+        status: 'warn',
+        detail: '현재 자동 생성 Gateway는 HTTP(80) 기본값입니다. 운영 환경에서는 Access Domain TLS 인증서 적용을 권장합니다.',
+      })
+    } else if (!tlsSecretName || !tlsSecretNamespace) {
+      checks.push({
+        id: 'gatewayTls',
+        title: 'Gateway HTTPS/TLS 적용 여부',
+        status: 'fail',
+        detail: 'TLS 활성화 시 Secret 이름과 Secret 네임스페이스는 필수입니다.',
+      })
+    } else if (tlsSecretNamespace !== effectiveNamespace) {
+      checks.push({
+        id: 'gatewayTls',
+        title: 'Gateway HTTPS/TLS 적용 여부',
+        status: 'warn',
+        detail: `TLS Secret namespace가 Gateway namespace(${effectiveNamespace})와 다릅니다: ${tlsSecretNamespace}/${tlsSecretName}. 교차 네임스페이스 참조에는 ReferenceGrant가 필요합니다.`,
+      })
+    } else {
+      checks.push({
+        id: 'gatewayTls',
+        title: 'Gateway HTTPS/TLS 적용 여부',
+        status: 'pass',
+        detail: `TLS 활성화됨: ${tlsSecretNamespace}/${tlsSecretName} (10년 wildcard cert 생성 스크립트 포함)`,
+      })
+    }
+
     const manifestCount = allManifestTools.length
     const hasOssManifest = manifestTools.length > 0
     checks.push({
@@ -1575,6 +1778,10 @@ export function StackInstallPage() {
         ...state.draft,
         stackName: generated,
         accessDomain: `${generated}.internal`,
+        accessDomainTls: {
+          ...state.draft.accessDomainTls,
+          secretName: `${generated}-wildcard-tls`,
+        },
       },
       isDirty: state.isDirty,
     }))
@@ -1735,6 +1942,7 @@ export function StackInstallPage() {
       const docObjects = docs.map((docItem) => docItem.toJS() as Record<string, unknown>)
       const gateway = docObjects.find((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'Gateway')
       const routes = docObjects.filter((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'HTTPRoute')
+      const referenceGrants = docObjects.filter((docItem) => docItem.kind === 'ReferenceGrant')
       if (!gateway || routes.length === 0) {
         return 'Gateway YAML은 gateway.networking.k8s.io/v1 Gateway + HTTPRoute 형식이어야 합니다.'
       }
@@ -1745,6 +1953,71 @@ export function StackInstallPage() {
       const listeners = Array.isArray(spec.listeners) ? spec.listeners : []
       if (!namespace || listeners.length === 0) {
         return 'Gateway YAML은 metadata.namespace와 spec.listeners를 포함해야 합니다.'
+      }
+
+      const httpsListener = listeners.find((listener) => {
+        if (!listener || typeof listener !== 'object') return false
+        const listenerObj = listener as Record<string, unknown>
+        return listenerObj.protocol === 'HTTPS' && typeof listenerObj.tls === 'object'
+      })
+
+      let parsedTlsSecretName = ''
+      let parsedTlsSecretNamespace = ''
+      if (httpsListener && typeof httpsListener === 'object') {
+        const listenerObj = httpsListener as Record<string, unknown>
+        const tls = (listenerObj.tls ?? {}) as Record<string, unknown>
+        const certificateRefs = Array.isArray(tls.certificateRefs) ? tls.certificateRefs : []
+        if (certificateRefs.length === 0) {
+          return 'HTTPS listener를 사용할 때 tls.certificateRefs는 필수입니다.'
+        }
+        const certRef = certificateRefs[0]
+        if (!certRef || typeof certRef !== 'object') {
+          return 'tls.certificateRefs[0] 형식이 올바르지 않습니다.'
+        }
+        const certRefObj = certRef as Record<string, unknown>
+        parsedTlsSecretName = typeof certRefObj.name === 'string' ? certRefObj.name.trim() : ''
+        parsedTlsSecretNamespace = typeof certRefObj.namespace === 'string' ? certRefObj.namespace.trim() : namespace
+
+        if (!parsedTlsSecretName || !K8S_SECRET_REF_REGEX.test(parsedTlsSecretName)) {
+          return 'TLS Secret 이름은 DNS-1123 형식이어야 합니다.'
+        }
+        if (!parsedTlsSecretNamespace || !K8S_SECRET_REF_REGEX.test(parsedTlsSecretNamespace)) {
+          return 'TLS Secret namespace는 DNS-1123 형식이어야 합니다.'
+        }
+
+        if (parsedTlsSecretNamespace !== namespace) {
+          const hasReferenceGrant = referenceGrants.some((grant) => {
+            const grantMetadata = (grant.metadata ?? {}) as Record<string, unknown>
+            const grantSpec = (grant.spec ?? {}) as Record<string, unknown>
+            const grantNamespace = typeof grantMetadata.namespace === 'string' ? grantMetadata.namespace.trim() : ''
+            if (grantNamespace !== parsedTlsSecretNamespace) return false
+
+            const from = Array.isArray(grantSpec.from) ? grantSpec.from : []
+            const to = Array.isArray(grantSpec.to) ? grantSpec.to : []
+
+            const hasGatewayFrom = from.some((fromItem) => {
+              if (!fromItem || typeof fromItem !== 'object') return false
+              const fromObj = fromItem as Record<string, unknown>
+              return (
+                fromObj.group === 'gateway.networking.k8s.io' &&
+                fromObj.kind === 'Gateway' &&
+                fromObj.namespace === namespace
+              )
+            })
+
+            const hasSecretTo = to.some((toItem) => {
+              if (!toItem || typeof toItem !== 'object') return false
+              const toObj = toItem as Record<string, unknown>
+              return toObj.kind === 'Secret' && toObj.name === parsedTlsSecretName
+            })
+
+            return hasGatewayFrom && hasSecretTo
+          })
+
+          if (!hasReferenceGrant) {
+            return 'TLS Secret가 Gateway namespace와 다를 때는 ReferenceGrant가 필요합니다.'
+          }
+        }
       }
 
       const firstHost = (() => {
@@ -1787,6 +2060,12 @@ export function StackInstallPage() {
       }
 
       setAccessDomain(derivedAccessDomain)
+      const hasHttpsListener = Boolean(httpsListener)
+      updateAccessDomainTls({
+        enabled: hasHttpsListener,
+        secretName: hasHttpsListener ? parsedTlsSecretName : draft.accessDomainTls.secretName,
+        secretNamespace: hasHttpsListener ? parsedTlsSecretNamespace : draft.accessDomainTls.secretNamespace,
+      })
       if (namespace === 'nullus') {
         setCreateNewNs(false)
         setNamespace('')
@@ -2158,6 +2437,19 @@ export function StackInstallPage() {
       return false
     }
 
+    if (draft.accessDomainTls.enabled) {
+      const tlsSecretName = draft.accessDomainTls.secretName.trim()
+      const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim()
+      if (!tlsSecretName || !K8S_SECRET_REF_REGEX.test(tlsSecretName)) {
+        setTabGuardError('TLS Secret Name은 DNS-1123 형식으로 입력해 주세요. (예: nullus-wildcard-tls)')
+        return false
+      }
+      if (!tlsSecretNamespace || !K8S_SECRET_REF_REGEX.test(tlsSecretNamespace)) {
+        setTabGuardError('TLS Secret Namespace는 DNS-1123 형식으로 입력해 주세요. (예: kube-system)')
+        return false
+      }
+    }
+
     setTabGuardError(null)
     return true
   }
@@ -2177,6 +2469,7 @@ export function StackInstallPage() {
       namespace: effectiveNamespace,
       stackName: draft.stackName,
       accessDomain: draft.accessDomain,
+      accessDomainTls: draft.accessDomainTls,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
@@ -2211,6 +2504,7 @@ export function StackInstallPage() {
       namespace: effectiveNamespace,
       stackName: draft.stackName,
       accessDomain: draft.accessDomain,
+      accessDomainTls: draft.accessDomainTls,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
@@ -2314,6 +2608,33 @@ export function StackInstallPage() {
               <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
                 최종 접근 가이드: 각 OSS는 <code>{`{OSS}.${draft.stackName || 'stack-name'}.internal`}</code> 형태로 접근합니다.
               </p>
+              <label className="mt-2 inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={draft.accessDomainTls.enabled}
+                  onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
+                />
+                Access Domain TLS 인증서 적용 (와일드카드 10년)
+              </label>
+              {draft.accessDomainTls.enabled && (
+                <div className="mt-2 grid gap-2">
+                  <Input
+                    label="TLS Secret Name"
+                    placeholder="nullus-wildcard-tls"
+                    value={draft.accessDomainTls.secretName}
+                    onChange={(e) => updateAccessDomainTls({ secretName: e.target.value })}
+                  />
+                  <Input
+                    label="TLS Secret Namespace"
+                    placeholder="nullus"
+                    value={draft.accessDomainTls.secretNamespace}
+                    onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
+                  />
+                  <p className="text-[11px] text-[var(--color-text-secondary)]">
+                    Preview Deploy Script에 10년 wildcard cert 생성(<code>openssl -days 3650</code>) 및 <code>kubectl create secret tls</code> 단계가 포함됩니다.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex max-w-[300px] flex-1 flex-col gap-1">
@@ -2622,7 +2943,7 @@ export function StackInstallPage() {
                             )}
                             {activeManifestInfo.toolId === GATEWAY_MANIFEST_ID ? (
                               <div className="mt-1 text-[var(--color-text-secondary)]">
-                                Gateway API YAML은 선택된 OSS 기준으로 Gateway/HTTPRoute를 자동 구성합니다.
+                                Gateway API YAML은 선택된 OSS 기준으로 Gateway/HTTPRoute를 자동 구성합니다. Access Domain TLS 인증서 적용을 켜면 HTTPS(443) + tls.certificateRefs(secret)가 함께 생성됩니다.
                               </div>
                             ) : (
                               <div className="mt-1 text-[var(--color-text-secondary)]">
@@ -3204,6 +3525,12 @@ export function StackInstallPage() {
             ['Template', draft.selectedTemplateId ?? '—'],
             ['Stack Name', draft.stackName || '—'],
             ['Access Domain', draft.accessDomain || `${draft.stackName || 'nullus-stack'}.internal`],
+            [
+              'Access TLS',
+              draft.accessDomainTls.enabled
+                ? `enabled (${draft.accessDomainTls.secretNamespace || 'nullus'}/${draft.accessDomainTls.secretName || 'nullus-wildcard-tls'})`
+                : 'disabled',
+            ],
             ['Package Registry', draft.artifacts.packageRegistry.tool],
             ['Source Repo', draft.artifacts.sourceRepository.tool],
             ['Container Registry', draft.artifacts.containerRegistry.tool],
