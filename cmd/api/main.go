@@ -167,10 +167,12 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           7200,
 	}))
-	e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
-		Authenticated:   300,
-		Unauthenticated: 30,
-	}))
+	if cfg.Server.Mode == "production" {
+		e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
+			Authenticated:   300,
+			Unauthenticated: 30,
+		}))
+	}
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
