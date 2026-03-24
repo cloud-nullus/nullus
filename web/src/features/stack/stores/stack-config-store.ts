@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
 export type ResourceMode = 'auto' | 'manual'
-export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'storage' | 'manifests' | 'deploy-script'
+export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'storage' | 'manifests' | 'deploy-script' | 'dry-run'
 
 export type StorageMode = 'existing' | 'create'
 export type StoragePlanMode = 'existing-all' | 'integrated-create'

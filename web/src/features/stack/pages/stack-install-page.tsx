@@ -257,6 +257,14 @@ type StorageTargetKey = 'database' | 'objectStorage'
 type StorageFieldKey = 'existingRef' | 'endpoint' | 'resourceName' | 'accessSecretRef' | 'authId' | 'authPasswordKey'
 type StorageValidationErrorKey = `${StorageTargetKey}.${StorageFieldKey}`
 type StorageValidationErrors = Partial<Record<StorageValidationErrorKey, string>>
+type DryRunCheckStatus = 'pass' | 'warn' | 'fail'
+
+type DryRunCheck = {
+  id: string
+  title: string
+  status: DryRunCheckStatus
+  detail: string
+}
 
 const PLANNING_PROFILE_LABEL: Record<PlanningProfile, string> = {
   startup: 'Startup',
@@ -903,6 +911,7 @@ const TABS: { id: InstallTab; label: string }[] = [
   { id: 'storage', label: 'Storage' },
   { id: 'manifests', label: 'YAML View' },
   { id: 'deploy-script', label: 'Preview Deploy Script' },
+  { id: 'dry-run', label: 'Dry Run' },
 ]
 
 // --- Main page ---
@@ -931,6 +940,7 @@ export function StackInstallPage() {
   const [manifestDraftByTool, setManifestDraftByTool] = useState<Record<string, string>>({})
   const [manifestErrorsByTool, setManifestErrorsByTool] = useState<Record<string, string>>({})
   const [activeManifestTool, setActiveManifestTool] = useState<string | null>(null)
+  const [dryRunExecutedAt, setDryRunExecutedAt] = useState<string | null>(null)
   const manifestSyncTimerRef = useRef<number | null>(null)
   const monacoConfiguredRef = useRef(false)
   const initializedDefaultStackNameRef = useRef(false)
@@ -1210,6 +1220,123 @@ export function StackInstallPage() {
 
   const deployScript = createDeployScript(draft, manifestTools, defaultManifestByTool)
 
+  const dryRunChecks: DryRunCheck[] = (() => {
+    const checks: DryRunCheck[] = []
+
+    checks.push({
+      id: 'stackName',
+      title: 'Stack Name 형식',
+      status: draft.stackName.trim().length >= 2 ? 'pass' : 'fail',
+      detail:
+        draft.stackName.trim().length >= 2
+          ? `stack name: ${draft.stackName}`
+          : 'Stack Name은 2자 이상이어야 합니다.',
+    })
+
+    checks.push({
+      id: 'cluster',
+      title: 'Target Cluster 선택',
+      status: draft.clusterId ? 'pass' : 'fail',
+      detail: draft.clusterId ? `cluster: ${draft.clusterId}` : 'Target Cluster를 선택하세요.',
+    })
+
+    checks.push({
+      id: 'namespace',
+      title: 'Namespace 유효성',
+      status: effectiveNamespace ? 'pass' : 'fail',
+      detail: effectiveNamespace ? `namespace: ${effectiveNamespace}` : 'Namespace가 비어 있습니다.',
+    })
+
+    const accessDomain = draft.accessDomain || `${draft.stackName}.internal`
+    checks.push({
+      id: 'accessDomain',
+      title: 'Access domain 규칙',
+      status: accessDomain.endsWith('.internal') ? 'pass' : 'warn',
+      detail: accessDomain.endsWith('.internal')
+        ? `access domain: ${accessDomain}`
+        : `권장 규칙(.internal) 미준수: ${accessDomain}`,
+    })
+
+    const manifestCount = manifestTools.length
+    checks.push({
+      id: 'manifestCount',
+      title: '설치 파일 생성 상태',
+      status: manifestCount > 0 ? 'pass' : 'fail',
+      detail:
+        manifestCount > 0
+          ? `생성된 설치 파일: ${manifestCount}개`
+          : '설치 대상 OSS가 없어 YAML/Deploy Script를 생성할 수 없습니다.',
+    })
+
+    const manifestErrors = Object.values(manifestErrorsByTool).filter((e) => e && e.length > 0)
+    checks.push({
+      id: 'manifestLint',
+      title: 'YAML/values 검증',
+      status: manifestErrors.length === 0 ? 'pass' : 'fail',
+      detail:
+        manifestErrors.length === 0
+          ? '모든 YAML/values 문법 및 필수 항목 검증 통과'
+          : `검증 실패 ${manifestErrors.length}건: ${manifestErrors[0]}`,
+    })
+
+    const hasResourceFloorIssue = planningRows.some((row) => {
+      if (!row.applied) return false
+      return (
+        row.applied.cpuRequest <= 0 ||
+        row.applied.cpuLimit <= 0 ||
+        row.applied.memoryRequestGi <= 0 ||
+        row.applied.memoryLimitGi <= 0
+      )
+    })
+    checks.push({
+      id: 'resourceBounds',
+      title: '리소스 하한 검증',
+      status: hasResourceFloorIssue ? 'fail' : 'pass',
+      detail: hasResourceFloorIssue
+        ? '적용값 중 0 이하 리소스가 있습니다.'
+        : `request total CPU ${planningAppliedTotal.cpuRequest.toFixed(2)}, memory ${planningAppliedTotal.memoryRequestGi.toFixed(2)}Gi`,
+    })
+
+    const hasVersionConflict = manifestTools.some((tool) => tool.hasVersionConflict)
+    checks.push({
+      id: 'versionConflict',
+      title: '번들 OSS 버전 충돌',
+      status: hasVersionConflict ? 'warn' : 'pass',
+      detail: hasVersionConflict
+        ? '동일 번들 내 OSS 버전이 달라 대표 버전으로 통합됩니다.'
+        : '번들 OSS 버전 충돌 없음',
+    })
+
+    checks.push({
+      id: 'storage',
+      title: 'Storage 플랜 검토',
+      status: draft.storage.planMode === 'existing-all' ? 'warn' : 'pass',
+      detail:
+        draft.storage.planMode === 'existing-all'
+          ? '기존 스토리지 연결 모드입니다. endpoint/secret 참조를 배포 전 확인하세요.'
+          : '통합 생성 모드: 설치 시 DB/Object Storage를 함께 생성',
+    })
+
+    return checks
+  })()
+
+  const dryRunSummary = (() => {
+    const failed = dryRunChecks.filter((c) => c.status === 'fail').length
+    const warned = dryRunChecks.filter((c) => c.status === 'warn').length
+    const passed = dryRunChecks.filter((c) => c.status === 'pass').length
+    return {
+      failed,
+      warned,
+      passed,
+      total: dryRunChecks.length,
+      readyToDeploy: failed === 0,
+    }
+  })()
+
+  const runDryRunChecks = () => {
+    setDryRunExecutedAt(new Date().toLocaleString())
+  }
+
   const handlePlanningOptionChange = (rowKey: string, optionKey: string, value: number) => {
     setPlanningOptionOverrides((prev) => ({
       ...prev,
@@ -1329,7 +1456,7 @@ export function StackInstallPage() {
   }, [])
 
   const switchTab = (tab: InstallTab) => {
-    if (tab === 'manifests' || tab === 'deploy-script') {
+    if (tab === 'manifests' || tab === 'deploy-script' || tab === 'dry-run') {
       const ok = ensureCoreSelectionsForConfigTabs()
       if (!ok) return
     }
@@ -2304,6 +2431,127 @@ export function StackInstallPage() {
                   title={`${draft.stackName || 'nullus-stack'}-deploy.sh`}
                   maxHeight="560px"
                 />
+              </div>
+            )}
+
+            {activeTab === 'dry-run' && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Dry Run — 배포 전 최종 검토</h3>
+                      <p className="mb-0 mt-1 text-xs text-[var(--color-text-secondary)]">
+                        필수 항목, YAML 검증, 리소스/스토리지 상태를 점검하고 배포 준비 여부를 확인합니다.
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" type="button" onClick={runDryRunChecks}>
+                      Run Dry Run
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-xs">
+                      <div className="text-[var(--color-text-secondary)]">PASS</div>
+                      <div className="font-semibold text-[#86efac]">{dryRunSummary.passed}</div>
+                    </div>
+                    <div className="rounded border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-3 py-2 text-xs">
+                      <div className="text-[var(--color-text-secondary)]">WARN</div>
+                      <div className="font-semibold text-[#fcd34d]">{dryRunSummary.warned}</div>
+                    </div>
+                    <div className="rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs">
+                      <div className="text-[var(--color-text-secondary)]">FAIL</div>
+                      <div className="font-semibold text-[#fca5a5]">{dryRunSummary.failed}</div>
+                    </div>
+                    <div
+                      className={cn(
+                        'rounded border px-3 py-2 text-xs',
+                        dryRunSummary.readyToDeploy
+                          ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)]'
+                          : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)]'
+                      )}
+                    >
+                      <div className="text-[var(--color-text-secondary)]">READY</div>
+                      <div className={cn('font-semibold', dryRunSummary.readyToDeploy ? 'text-[#86efac]' : 'text-[#fca5a5]')}>
+                        {dryRunSummary.readyToDeploy ? 'YES' : 'NO'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {dryRunExecutedAt && (
+                    <div className="mt-2 text-[11px] text-[var(--color-text-secondary)]">last run: {dryRunExecutedAt}</div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {dryRunChecks.map((check) => (
+                    <div
+                      key={check.id}
+                      className={cn(
+                        'rounded-lg border px-3 py-2',
+                        check.status === 'pass' && 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)]',
+                        check.status === 'warn' && 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)]',
+                        check.status === 'fail' && 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)]'
+                      )}
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-[var(--color-text-primary)]">{check.title}</span>
+                        <span
+                          className={cn(
+                            'rounded px-2 py-0.5 text-[10px] font-bold uppercase',
+                            check.status === 'pass' && 'bg-[rgba(34,197,94,0.2)] text-[#86efac]',
+                            check.status === 'warn' && 'bg-[rgba(245,158,11,0.2)] text-[#fcd34d]',
+                            check.status === 'fail' && 'bg-[rgba(239,68,68,0.2)] text-[#fca5a5]'
+                          )}
+                        >
+                          {check.status}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[var(--color-text-secondary)]">{check.detail}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] p-3">
+                  <div className="mb-2">
+                    <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">Final Kubernetes Objects</h4>
+                    <p className="mb-0 mt-1 text-xs text-[var(--color-text-secondary)]">
+                      현재 옵션으로 최종 생성되는 Kubernetes 오브젝트를 배포 전에 확인합니다.
+                    </p>
+                  </div>
+
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {([
+                      { id: 'namespace', label: 'Namespace' },
+                      { id: 'deployment', label: 'Deployment' },
+                      { id: 'service', label: 'Service' },
+                      { id: 'ingress', label: 'Ingress' },
+                    ] as const).map((tab) => {
+                      const isActive = activeK8sPreviewTab === tab.id
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveK8sPreviewTab(tab.id)}
+                          className={cn(
+                            'cursor-pointer rounded-lg border px-3 py-[7px] text-[13px]',
+                            isActive
+                              ? 'border-[#ca8a04] bg-[rgba(202,138,4,0.18)] font-bold text-[#fcd34d]'
+                              : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] font-medium text-[var(--color-text-secondary)]'
+                          )}
+                        >
+                          {tab.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <CodePreview
+                    code={k8sObjects[activeK8sPreviewTab]}
+                    language="yaml"
+                    title={`${activeK8sPreviewTab}.yaml`}
+                    maxHeight="420px"
+                  />
+                </div>
               </div>
             )}
 

@@ -75,6 +75,7 @@ describe('StackInstallPage', () => {
     expect(screen.getByRole('button', { name: 'Storage' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'YAML View' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Preview Deploy Script' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dry Run' })).toBeInTheDocument()
   })
 
   it('sets default stack name automatically', () => {
@@ -223,6 +224,22 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/--version 17.2.1/)).toBeInTheDocument()
     expect(screen.getAllByText(/cat <<'NULLUS_MANIFEST_EOF_/).length).toBeGreaterThan(0)
     expect(screen.getByText(/kubectl apply -n qa-namespace -f ".nullus\/generated-manifests\/grafana\.yaml"/)).toBeInTheDocument()
+  })
+
+  it('shows Dry Run checklist and updates last run timestamp', () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'Dry Run' }))
+
+    expect(screen.getByText(/Dry Run — 배포 전 최종 검토/)).toBeInTheDocument()
+    expect(screen.getByText('Stack Name 형식')).toBeInTheDocument()
+    expect(screen.getByText('YAML/values 검증')).toBeInTheDocument()
+    expect(screen.getByText('Final Kubernetes Objects')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Namespace' }).length).toBeGreaterThan(0)
+    expect(screen.getByText(/kind: Namespace/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Dry Run' }))
+    expect(screen.getByText(/last run:/)).toBeInTheDocument()
   })
 
   it('selecting a tool in Artifacts updates the store', () => {
