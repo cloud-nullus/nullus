@@ -85,83 +85,43 @@ ON CONFLICT (id) DO NOTHING;
 -- ── Stack Config Versions (이력 5개) ────────────────────────────────────────
 
 INSERT INTO stack_config_versions (id, stack_id, version, config, changed_by, change_reason, created_at) VALUES
-(
-  'h1', 'production-stack', 1,
-  '{"gitlab": "v16.7", "argocd": "v2.9.3", "prometheus": "v2.48", "grafana": "v10.2"}'::jsonb,
-  'admin@nullus.io',
-  '초기 스택 배포',
-  '2026-01-10T09:00:00Z'
-),
-(
-  'h2', 'production-stack', 2,
-  '{"gitlab": "v16.7", "argocd": "v2.9.3", "prometheus": "v2.49", "grafana": "v10.2"}'::jsonb,
-  'kim@nullus.io',
-  'Prometheus 버전 업그레이드 (v2.48 → v2.49)',
-  '2026-02-05T11:30:00Z'
-),
-(
-  'h3', 'production-stack', 3,
-  '{"gitlab": "v16.7", "argocd": "v2.9.3", "prometheus": "v2.49", "grafana": "v10.3"}'::jsonb,
-  'kim@nullus.io',
-  'Grafana 버전 업그레이드 (v10.2 → v10.3)',
-  '2026-02-20T14:00:00Z'
-),
-(
-  'h4', 'production-stack', 4,
-  '{"gitlab": "v16.8", "argocd": "v2.10.0", "prometheus": "v2.49", "grafana": "v10.3"}'::jsonb,
-  'admin@nullus.io',
-  'GitLab + ArgoCD 마이너 업그레이드',
-  '2026-03-03T14:28:00Z'
-),
-(
-  'h5', 'development-stack', 1,
-  '{"gitlab": "v16.7", "harbor": "v2.10", "argocd": "v2.9.3", "prometheus": "v2.48"}'::jsonb,
-  'kim@nullus.io',
-  '개발 스택 초기 배포',
-  '2026-01-15T10:00:00Z'
-),
-(
-  'h6', 'development-stack', 2,
-  '{"gitlab": "v16.8", "harbor": "v2.10", "argocd": "v2.10.0", "prometheus": "v2.49"}'::jsonb,
-  'kim@nullus.io',
-  'GitLab + ArgoCD + Prometheus 업그레이드',
-  '2026-02-20T09:00:00Z'
-),
-(
-  'h7', 'staging-environment', 1,
-  '{"github-actions": "external", "argocd": "v2.9.3", "harbor": "v1.16.2", "prometheus": "v2.48"}'::jsonb,
-  'admin@nullus.io',
-  '스테이징 환경 초기 배포',
-  '2026-02-01T08:00:00Z'
-),
-(
-  'h8', 'staging-environment', 2,
-  '{"github-actions": "external", "argocd": "v2.10.0", "harbor": "v1.16.2", "prometheus": "v2.49"}'::jsonb,
-  'kim@nullus.io',
-  'ArgoCD + Prometheus 버전 업그레이드',
-  '2026-03-05T10:00:00Z'
-),
-(
-  'h9', 'microservices-platform', 1,
-  '{"gitlab": "v16.7", "flux": "v2.3.0", "harbor": "v1.16.2", "thanos": "v0.34"}'::jsonb,
-  'admin@nullus.io',
-  'MSA 플랫폼 초기 배포',
-  '2026-03-01T13:00:00Z'
-),
-(
-  'h10', 'microservices-platform', 2,
-  '{"gitlab": "v16.7", "flux": "v2.4.0", "harbor": "v1.16.2", "thanos": "v0.35"}'::jsonb,
-  'kim@nullus.io',
-  'Flux + Thanos 버전 업그레이드',
-  '2026-03-10T11:00:00Z'
-),
-(
-  'h11', 'microservices-platform', 3,
-  '{"gitlab": "v16.8", "flux": "v2.4.0", "harbor": "v1.16.3", "thanos": "v0.35"}'::jsonb,
-  'kim@nullus.io',
-  'GitLab + Harbor 마이너 업그레이드',
-  '2026-03-18T15:00:00Z'
-)
+-- production-stack: v1-v4
+('h1', 'production-stack', 1,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.5.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.7","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.48","enabled":true},"visualization":{"name":"Grafana","version":"10.2","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', '초기 스택 배포', '2026-01-10T09:00:00Z'),
+('h2', 'production-stack', 2,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.5.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.7","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"10.2","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'Prometheus 버전 업그레이드 (v2.48 → v2.49)', '2026-02-05T11:30:00Z'),
+('h3', 'production-stack', 3,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.5.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.7","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"10.3","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'Grafana 버전 업그레이드 (v10.2 → v10.3)', '2026-02-20T14:00:00Z'),
+('h4', 'production-stack', 4,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.7.3","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.8","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.8","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.8","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.10.0","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"10.3","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', 'GitLab + ArgoCD 마이너 업그레이드', '2026-03-03T14:28:00Z'),
+-- development-stack: v1-v2
+('h5', 'development-stack', 1,
+ '{"artifacts":{"package_registry":{"name":"Nexus","version":"3.75.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.48","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', '개발 스택 초기 배포', '2026-01-15T10:00:00Z'),
+('h6', 'development-stack', 2,
+ '{"artifacts":{"package_registry":{"name":"Nexus","version":"3.75.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.8","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.8","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.10.0","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'GitLab + ArgoCD + Prometheus 업그레이드', '2026-02-20T09:00:00Z'),
+-- staging-environment: v1-v2
+('h7', 'staging-environment', 1,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitHub","version":"external","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitHub Actions","version":"external","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.48","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', '스테이징 환경 초기 배포', '2026-02-01T08:00:00Z'),
+('h8', 'staging-environment', 2,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitHub","version":"external","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitHub Actions","version":"external","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.10.0","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'ArgoCD + Prometheus 버전 업그레이드', '2026-03-05T10:00:00Z'),
+-- microservices-platform: v1-v3
+('h9', 'microservices-platform', 1,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Flux","version":"2.3.0","enabled":true}},"monitoring":{"collection":{"name":"Thanos","version":"0.34","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', 'MSA 플랫폼 초기 배포', '2026-03-01T13:00:00Z'),
+('h10', 'microservices-platform', 2,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Flux","version":"2.4.0","enabled":true}},"monitoring":{"collection":{"name":"Thanos","version":"0.35","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'Flux + Thanos 버전 업그레이드', '2026-03-10T11:00:00Z'),
+('h11', 'microservices-platform', 3,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitLab CE","version":"16.8","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.3","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.8","enabled":true},"cd_tool":{"name":"Flux","version":"2.4.0","enabled":true}},"monitoring":{"collection":{"name":"Thanos","version":"0.35","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'GitLab + Harbor 마이너 업그레이드', '2026-03-18T15:00:00Z')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Pipelines (4개) ─────────────────────────────────────────────────────────
