@@ -47,14 +47,15 @@ Template
 **Step 1**: 마이그레이션 파일 생성
 
 ```bash
-touch db/migrations/000019_seed_template_jenkins.up.sql
-touch db/migrations/000019_seed_template_jenkins.down.sql
+# 현재 최신 번호 + 1을 사용 (예: 000023)
+touch db/migrations/000023_seed_template_jenkins.up.sql
+touch db/migrations/000023_seed_template_jenkins.down.sql
 ```
 
 **Step 2**: UP 마이그레이션 작성
 
 ```sql
--- db/migrations/000019_seed_template_jenkins.up.sql
+-- db/migrations/000023_seed_template_jenkins.up.sql
 INSERT INTO golden_path_templates (id, name, description, tools, estimated_install_time, recommended_use_case, min_resources, created_by)
 VALUES (
   'jenkins-tekton-v1',
@@ -80,7 +81,7 @@ ON CONFLICT (id) DO NOTHING;
 **Step 3**: DOWN 마이그레이션 작성
 
 ```sql
--- db/migrations/000019_seed_template_jenkins.down.sql
+-- db/migrations/000023_seed_template_jenkins.down.sql
 DELETE FROM golden_path_templates WHERE id = 'jenkins-tekton-v1';
 ```
 
@@ -88,7 +89,7 @@ DELETE FROM golden_path_templates WHERE id = 'jenkins-tekton-v1';
 
 ```bash
 # Docker Compose 환경
-docker exec -i draft-postgres-1 psql -U nullus -d nullus < db/migrations/000019_seed_template_jenkins.up.sql
+docker exec -i draft-postgres-1 psql -U nullus -d nullus < db/migrations/000023_seed_template_jenkins.up.sql
 
 # migrate CLI 사용 시
 migrate -path db/migrations -database "postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable" up
@@ -172,8 +173,7 @@ PipelineTemplate
 ├── name            string      "ML Training Pipeline"
 ├── description     string      "머신러닝 모델 학습/배포 파이프라인"
 ├── app_type        string      "batch" (web | backend | batch)
-├── stages          []string    ["DataPrep", "Train", "Evaluate", "Deploy"]
-└── created_by      string      "admin"
+└── stages          []string    ["DataPrep", "Train", "Evaluate", "Deploy"]
 ```
 
 **app_type 값과 UI 색상**:
@@ -199,22 +199,22 @@ PipelineTemplate
 **Step 1**: 마이그레이션 파일 생성
 
 ```bash
-touch db/migrations/000019_seed_cicd_template_ml.up.sql
-touch db/migrations/000019_seed_cicd_template_ml.down.sql
+# 현재 최신 번호 + 1을 사용 (예: 000024)
+touch db/migrations/000024_seed_cicd_template_ml.up.sql
+touch db/migrations/000024_seed_cicd_template_ml.down.sql
 ```
 
 **Step 2**: UP 마이그레이션 작성
 
 ```sql
--- db/migrations/000019_seed_cicd_template_ml.up.sql
-INSERT INTO pipeline_templates (id, name, description, app_type, stages, created_by)
+-- db/migrations/000024_seed_cicd_template_ml.up.sql
+INSERT INTO pipeline_templates (id, name, description, app_type, stages)
 VALUES (
   'ml-pipeline-v1',
   'ML Training Pipeline',
   '머신러닝 모델 학습, 평가, 배포를 자동화하는 파이프라인. GPU 워크로드에 최적화되어 있습니다.',
   'batch',
-  '["DataPrep", "Train", "Evaluate", "ModelRegistry", "Deploy"]'::jsonb,
-  'admin'
+  '["DataPrep", "Train", "Evaluate", "ModelRegistry", "Deploy"]'::jsonb
 )
 ON CONFLICT (id) DO NOTHING;
 ```
@@ -222,14 +222,14 @@ ON CONFLICT (id) DO NOTHING;
 **Step 3**: DOWN 마이그레이션 작성
 
 ```sql
--- db/migrations/000019_seed_cicd_template_ml.down.sql
+-- db/migrations/000024_seed_cicd_template_ml.down.sql
 DELETE FROM pipeline_templates WHERE id = 'ml-pipeline-v1';
 ```
 
 **Step 4**: 마이그레이션 적용
 
 ```bash
-docker exec -i draft-postgres-1 psql -U nullus -d nullus < db/migrations/000019_seed_cicd_template_ml.up.sql
+docker exec -i draft-postgres-1 psql -U nullus -d nullus < db/migrations/000024_seed_cicd_template_ml.up.sql
 ```
 
 **Step 5**: 확인
