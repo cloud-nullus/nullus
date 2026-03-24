@@ -54,7 +54,7 @@ const adminApiCalls = {
     api.get<Organization>('/admin/organization').then((r) => r.data),
 
   createOrganization: (data: CreateOrgRequest) =>
-    api.post<Organization>('/admin/organizations', data).then((r) => r.data),
+    api.post<Organization>('/admin/orgs', data).then((r) => r.data),
 
   updateOrganization: (data: UpdateOrgRequest) =>
     api.patch<Organization>('/admin/organization', data).then((r) => r.data),

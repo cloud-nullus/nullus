@@ -3,7 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] - 2026-03-22
+
+## [Unreleased] - 2026-03-24
+
+### Fixed
+
+- Organization 생성 시 DB 미저장 — 프론트엔드 API 경로 `/admin/organizations` → `/admin/orgs` 수정
+- Mock auth ORG_ID/User ID가 DB 시드와 불일치하여 멤버 조회 등 org 기반 API 실패하던 문제 수정
+
+### Added
+
+- Mock auth 사용자(`@nullus.dev`) 3명 DB 시드 등록 (login-page.tsx TEST_ACCOUNTS와 ID 동기화)
+- 데모 조직 2개 추가 (Acme Corp, Startup Labs), 사용자 5명, 클러스터 3개 시드
+- 클러스터 `connection_status` 전체 enum 커버 (connected, pending, unreachable, auth_failed)
+
+### Merged
+
+- Phase1 (#10) — Mock fallback 제거, 접근성 개선, 마이그레이션 정리, 포트 설정 통일
 
 ### Changed
 
