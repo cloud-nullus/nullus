@@ -119,6 +119,48 @@ INSERT INTO stack_config_versions (id, stack_id, version, config, changed_by, ch
   'kim@nullus.io',
   '개발 스택 초기 배포',
   '2026-01-15T10:00:00Z'
+),
+(
+  'h6', 'development-stack', 2,
+  '{"gitlab": "v16.8", "harbor": "v2.10", "argocd": "v2.10.0", "prometheus": "v2.49"}'::jsonb,
+  'kim@nullus.io',
+  'GitLab + ArgoCD + Prometheus 업그레이드',
+  '2026-02-20T09:00:00Z'
+),
+(
+  'h7', 'staging-environment', 1,
+  '{"github-actions": "external", "argocd": "v2.9.3", "harbor": "v1.16.2", "prometheus": "v2.48"}'::jsonb,
+  'admin@nullus.io',
+  '스테이징 환경 초기 배포',
+  '2026-02-01T08:00:00Z'
+),
+(
+  'h8', 'staging-environment', 2,
+  '{"github-actions": "external", "argocd": "v2.10.0", "harbor": "v1.16.2", "prometheus": "v2.49"}'::jsonb,
+  'kim@nullus.io',
+  'ArgoCD + Prometheus 버전 업그레이드',
+  '2026-03-05T10:00:00Z'
+),
+(
+  'h9', 'microservices-platform', 1,
+  '{"gitlab": "v16.7", "flux": "v2.3.0", "harbor": "v1.16.2", "thanos": "v0.34"}'::jsonb,
+  'admin@nullus.io',
+  'MSA 플랫폼 초기 배포',
+  '2026-03-01T13:00:00Z'
+),
+(
+  'h10', 'microservices-platform', 2,
+  '{"gitlab": "v16.7", "flux": "v2.4.0", "harbor": "v1.16.2", "thanos": "v0.35"}'::jsonb,
+  'kim@nullus.io',
+  'Flux + Thanos 버전 업그레이드',
+  '2026-03-10T11:00:00Z'
+),
+(
+  'h11', 'microservices-platform', 3,
+  '{"gitlab": "v16.8", "flux": "v2.4.0", "harbor": "v1.16.3", "thanos": "v0.35"}'::jsonb,
+  'kim@nullus.io',
+  'GitLab + Harbor 마이너 업그레이드',
+  '2026-03-18T15:00:00Z'
 )
 ON CONFLICT (id) DO NOTHING;
 
