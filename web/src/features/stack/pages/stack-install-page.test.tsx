@@ -133,6 +133,8 @@ describe('StackInstallPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
     expect(screen.getByText(/선택한 OSS별 설치 파일입니다/)).toBeInTheDocument()
     expect(screen.getAllByText(/helm|yaml/i)[0]).toBeTruthy()
+    expect(screen.getAllByText('Gateway').length).toBeGreaterThan(0)
+    expect(screen.getByText('OSS')).toBeInTheDocument()
     const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
     expect(editor.value).toContain('global:')
     expect(editor.value).toContain('chart:')
@@ -142,6 +144,20 @@ describe('StackInstallPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Grafana/i }))
     expect((screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement).value).toContain('apiVersion: apps/v1')
+  })
+
+  it('shows gateway button and auto-generated Gateway API yaml', () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    fireEvent.click(screen.getByRole('button', { name: /Gateway/i }))
+
+    const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+    expect(editor.value).toContain('kind: Gateway')
+    expect(editor.value).toContain('kind: HTTPRoute')
+    expect(editor.value).toContain('apiVersion: gateway.networking.k8s.io/v1')
+    expect(editor.value).toContain('nullus.io/type: gateway')
+    expect(editor.value).toContain('.internal')
   })
 
   it('bundles gitlab-related selections into one install file with merged roles', () => {
@@ -218,7 +234,7 @@ describe('StackInstallPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview Deploy Script' }))
 
     expect(screen.getByText(/현재 선택된 YAML View/)).toBeInTheDocument()
-    expect(screen.getByText(/cat <<'NULLUS_VALUES_EOF_1' >/)).toBeInTheDocument()
+    expect(screen.getAllByText(/cat <<'NULLUS_VALUES_EOF_/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\.nullus\/generated-values\/gitlab\.values\.yaml/).length).toBeGreaterThan(0)
     expect(screen.getByText(/helm upgrade --install gitlab/)).toBeInTheDocument()
     expect(screen.getByText(/--version 17.2.1/)).toBeInTheDocument()

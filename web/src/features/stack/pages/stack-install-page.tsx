@@ -183,7 +183,7 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   loki: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/loki-stack' },
 }
 
-type K8sPreviewTab = 'namespace' | 'deployment' | 'service' | 'ingress'
+type K8sPreviewTab = 'namespace' | 'deployment' | 'service' | 'gateway'
 
 type PlanningSlot =
   | 'artifacts.packageRegistry'
@@ -232,6 +232,17 @@ type PlanningRowUnit = {
 }
 
 type ManifestInstallType = 'helm' | 'yaml'
+
+type ManifestToolEntry = {
+  toolId: string
+  toolLabel: string
+  installType: ManifestInstallType
+  toolVersion: string
+  hasVersionConflict: boolean
+  roles: string[]
+  sourceToolIds: string[]
+  sourceVersions: string[]
+}
 
 type ToolManifestResourceSpec = {
   requests: { cpu: number; memory: string; storage: string }
@@ -305,6 +316,8 @@ const SLOT_TOOL_BINDING: Record<PlanningSlot, { section: 'artifacts' | 'pipeline
   'logging.search': { section: 'logging', field: 'search' },
   'logging.traceLayer': { section: 'logging', field: 'traceLayer' },
 }
+
+const GATEWAY_MANIFEST_ID = 'gateway'
 
 const PLANNING_OPTION_DEFS: Record<PlanningSlot, PlanningOptionDefinition[]> = {
   'artifacts.packageRegistry': [
@@ -694,9 +707,111 @@ function buildToolManifest(
     .join('\n---\n')
 }
 
+function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestToolEntry[]): string {
+  const namespace = draft.namespace.trim() || 'nullus'
+  const stackName = draft.stackName || 'nullus-stack'
+  const accessDomain = draft.accessDomain || `${stackName}.internal`
+  const gatewayName = `${stackName}-gateway`
+
+  const rules = manifestTools
+    .filter((tool) => tool.toolId !== GATEWAY_MANIFEST_ID)
+    .map((tool) => ({
+      host: `${tool.toolId}.${accessDomain}`,
+      http: {
+        paths: [
+          {
+            path: '/',
+            pathType: 'Prefix',
+            backend: {
+              service: {
+                name: `${tool.toolId}-svc`,
+                port: { number: 80 },
+              },
+            },
+          },
+        ],
+      },
+    }))
+
+  const gateway = {
+    apiVersion: 'gateway.networking.k8s.io/v1',
+    kind: 'Gateway',
+    metadata: {
+      name: gatewayName,
+      namespace,
+      labels: {
+        'nullus.io/stack-name': stackName,
+        'nullus.io/type': 'gateway',
+      },
+    },
+    spec: {
+      gatewayClassName: 'nginx',
+      listeners: [
+        {
+          name: 'http',
+          protocol: 'HTTP',
+          port: 80,
+          hostname: `*.${accessDomain}`,
+          allowedRoutes: {
+            namespaces: {
+              from: 'Same',
+            },
+          },
+        },
+      ],
+    },
+  }
+
+  const httpRoutes = rules.map((rule) => {
+    const host = rule.host
+    const backendServiceName = rule.http.paths[0]?.backend?.service?.name
+
+    return {
+      apiVersion: 'gateway.networking.k8s.io/v1',
+      kind: 'HTTPRoute',
+      metadata: {
+        name: `${String(backendServiceName).replace(/-svc$/, '')}-route`,
+        namespace,
+        labels: {
+          'nullus.io/stack-name': stackName,
+          'nullus.io/type': 'gateway-route',
+        },
+      },
+      spec: {
+        parentRefs: [
+          {
+            name: gatewayName,
+          },
+        ],
+        hostnames: [host],
+        rules: [
+          {
+            matches: [
+              {
+                path: {
+                  type: 'PathPrefix',
+                  value: '/',
+                },
+              },
+            ],
+            backendRefs: [
+              {
+                name: backendServiceName,
+                port: 80,
+              },
+            ],
+          },
+        ],
+      },
+    }
+  })
+
+  return [YAML.stringify(gateway, { indent: 2, lineWidth: 0 }), ...httpRoutes.map((route) => YAML.stringify(route, { indent: 2, lineWidth: 0 }))].join('\n---\n')
+}
+
 function createDeployScript(
   draft: StackConfigDraft,
-  manifestTools: Array<{ toolId: string; installType: ManifestInstallType; toolVersion: string; roles: string[] }>,
+  manifestTools: ManifestToolEntry[],
   manifestByTool: Record<string, string>
 ): string {
   const stackName = draft.stackName || 'nullus-stack'
@@ -767,7 +882,8 @@ function createDeployScript(
 function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string> {
   const appName = draft.stackName || 'nullus-stack'
   const serviceName = `${appName}-svc`
-  const host = `${appName}.nullus.local`
+  const accessDomain = draft.accessDomain || `${appName}.internal`
+  const gatewayName = `${appName}-gateway`
 
   return {
     namespace: [
@@ -823,26 +939,41 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       '      targetPort: 8080',
       '  type: ClusterIP',
     ].join('\n'),
-    ingress: [
-      'apiVersion: networking.k8s.io/v1',
-      'kind: Ingress',
+    gateway: [
+      'apiVersion: gateway.networking.k8s.io/v1',
+      'kind: Gateway',
       'metadata:',
-      `  name: ${appName}-ingress`,
+      `  name: ${gatewayName}`,
       '  namespace: nullus-stack',
-      '  annotations:',
-      '    nginx.ingress.kubernetes.io/rewrite-target: /',
       'spec:',
+      '  gatewayClassName: nginx',
+      '  listeners:',
+      '    - name: http',
+      '      protocol: HTTP',
+      '      port: 80',
+      `      hostname: *.${accessDomain}`,
+      '      allowedRoutes:',
+      '        namespaces:',
+      '          from: Same',
+      '---',
+      'apiVersion: gateway.networking.k8s.io/v1',
+      'kind: HTTPRoute',
+      'metadata:',
+      `  name: ${appName}-route`,
+      '  namespace: nullus-stack',
+      'spec:',
+      '  parentRefs:',
+      `    - name: ${gatewayName}`,
+      '  hostnames:',
+      `    - ${appName}.${accessDomain}`,
       '  rules:',
-      `    - host: ${host}`,
-      '      http:',
-      '        paths:',
-      '          - path: /',
-      '            pathType: Prefix',
-      '            backend:',
-      '              service:',
-      `                name: ${serviceName}`,
-      '                port:',
-      '                  number: 80',
+      '    - matches:',
+      '        - path:',
+      '            type: PathPrefix',
+      '            value: /',
+      '      backendRefs:',
+      `        - name: ${serviceName}`,
+      '          port: 80',
     ].join('\n'),
   }
 }
@@ -1112,19 +1243,7 @@ export function StackInstallPage() {
   )
 
   const manifestTools = (() => {
-    const map = new Map<
-      string,
-      {
-        toolId: string
-        toolLabel: string
-        installType: ManifestInstallType
-        toolVersion: string
-        hasVersionConflict: boolean
-        roles: string[]
-        sourceToolIds: string[]
-        sourceVersions: string[]
-      }
-    >()
+    const map = new Map<string, ManifestToolEntry>()
     selectedInstallItems.forEach((item) => {
       const bundleId = getManifestBundleId(item.toolKey)
       const existing = map.get(bundleId)
@@ -1159,6 +1278,19 @@ export function StackInstallPage() {
     })
     return Array.from(map.values())
   })()
+
+  const gatewayManifestTool: ManifestToolEntry = {
+    toolId: GATEWAY_MANIFEST_ID,
+    toolLabel: 'Gateway',
+    installType: 'yaml',
+    toolVersion: 'latest',
+    hasVersionConflict: false,
+    roles: ['Gateway'],
+    sourceToolIds: [GATEWAY_MANIFEST_ID],
+    sourceVersions: ['latest'],
+  }
+
+  const allManifestTools = [gatewayManifestTool, ...manifestTools]
 
   const resourceByTool = (() => {
     const map = new Map<string, ResourceVector>()
@@ -1195,6 +1327,7 @@ export function StackInstallPage() {
 
   const defaultManifestByTool = (() => {
     const map: Record<string, string> = {}
+    map[GATEWAY_MANIFEST_ID] = buildGatewayManifest(draft, allManifestTools)
     manifestTools.forEach((tool) => {
       const resources = resourceByTool.get(tool.toolId) ?? {
         cpuRequest: 0,
@@ -1212,13 +1345,13 @@ export function StackInstallPage() {
   const resolvedActiveManifestTool =
     activeManifestTool && defaultManifestByTool[activeManifestTool]
       ? activeManifestTool
-      : (manifestTools[0]?.toolId ?? null)
+      : (manifestTools[0]?.toolId ?? GATEWAY_MANIFEST_ID)
 
   const activeManifestInfo = resolvedActiveManifestTool
-    ? manifestTools.find((tool) => tool.toolId === resolvedActiveManifestTool) ?? null
+    ? allManifestTools.find((tool) => tool.toolId === resolvedActiveManifestTool) ?? null
     : null
 
-  const deployScript = createDeployScript(draft, manifestTools, defaultManifestByTool)
+  const deployScript = createDeployScript(draft, allManifestTools, defaultManifestByTool)
 
   const dryRunChecks: DryRunCheck[] = (() => {
     const checks: DryRunCheck[] = []
@@ -1257,14 +1390,15 @@ export function StackInstallPage() {
         : `권장 규칙(.internal) 미준수: ${accessDomain}`,
     })
 
-    const manifestCount = manifestTools.length
+    const manifestCount = allManifestTools.length
+    const hasOssManifest = manifestTools.length > 0
     checks.push({
       id: 'manifestCount',
       title: '설치 파일 생성 상태',
-      status: manifestCount > 0 ? 'pass' : 'fail',
+      status: hasOssManifest ? 'pass' : 'fail',
       detail:
-        manifestCount > 0
-          ? `생성된 설치 파일: ${manifestCount}개`
+        hasOssManifest
+          ? `생성된 설치 파일: ${manifestCount}개 (Gateway 1 + OSS ${manifestTools.length})`
           : '설치 대상 OSS가 없어 YAML/Deploy Script를 생성할 수 없습니다.',
     })
 
@@ -1585,6 +1719,85 @@ export function StackInstallPage() {
   }
 
   function validateManifestAndApply(toolId: string, text: string): string | null {
+    if (toolId === GATEWAY_MANIFEST_ID) {
+      let docs: ReturnType<typeof YAML.parseAllDocuments>
+      try {
+        docs = YAML.parseAllDocuments(text)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'YAML 파싱 오류'
+        return `YAML 문법 오류: ${message}`
+      }
+
+      if (docs.some((docItem) => docItem.errors.length > 0)) {
+        return 'Gateway YAML 문서에 파싱 오류가 있습니다.'
+      }
+
+      const docObjects = docs.map((docItem) => docItem.toJS() as Record<string, unknown>)
+      const gateway = docObjects.find((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'Gateway')
+      const routes = docObjects.filter((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'HTTPRoute')
+      if (!gateway || routes.length === 0) {
+        return 'Gateway YAML은 gateway.networking.k8s.io/v1 Gateway + HTTPRoute 형식이어야 합니다.'
+      }
+
+      const metadata = (gateway.metadata ?? {}) as Record<string, unknown>
+      const spec = (gateway.spec ?? {}) as Record<string, unknown>
+      const namespace = typeof metadata.namespace === 'string' ? metadata.namespace.trim() : ''
+      const listeners = Array.isArray(spec.listeners) ? spec.listeners : []
+      if (!namespace || listeners.length === 0) {
+        return 'Gateway YAML은 metadata.namespace와 spec.listeners를 포함해야 합니다.'
+      }
+
+      const firstHost = (() => {
+        for (const route of routes) {
+          const routeSpec = (route.spec ?? {}) as Record<string, unknown>
+          const hostnames = Array.isArray(routeSpec.hostnames) ? routeSpec.hostnames : []
+          for (const hostname of hostnames) {
+            if (typeof hostname === 'string' && hostname.trim()) {
+              return hostname.trim()
+            }
+          }
+        }
+        return ''
+      })()
+
+      if (!firstHost.includes('.')) {
+        return 'Gateway host는 {oss}.{access-domain} 형식이어야 합니다.'
+      }
+
+      const derivedAccessDomain = firstHost.split('.').slice(1).join('.').replace(/^\*\./, '')
+      if (!derivedAccessDomain.endsWith('.internal')) {
+        return 'Gateway host의 access domain은 .internal로 끝나야 합니다.'
+      }
+
+      const gatewayName = typeof metadata.name === 'string' ? metadata.name.trim() : ''
+      for (const route of routes) {
+        const routeSpec = (route.spec ?? {}) as Record<string, unknown>
+        const parentRefs = Array.isArray(routeSpec.parentRefs) ? routeSpec.parentRefs : []
+        const rules = Array.isArray(routeSpec.rules) ? routeSpec.rules : []
+        const parentGatewayMatched = parentRefs.some((parent) => {
+          if (!parent || typeof parent !== 'object') return false
+          return (parent as Record<string, unknown>).name === gatewayName
+        })
+        if (!parentGatewayMatched) {
+          return 'HTTPRoute의 parentRefs.name은 Gateway metadata.name과 일치해야 합니다.'
+        }
+        if (rules.length === 0) {
+          return 'HTTPRoute는 최소 1개 이상의 rules를 포함해야 합니다.'
+        }
+      }
+
+      setAccessDomain(derivedAccessDomain)
+      if (namespace === 'nullus') {
+        setCreateNewNs(false)
+        setNamespace('')
+      } else {
+        setCreateNewNs(false)
+        setNamespace(namespace)
+      }
+
+      return null
+    }
+
     const installType = getInstallType(toolId)
     const parseGi = (value: string) => {
       const match = value.trim().match(/^([0-9]+(?:\.[0-9]+)?)Gi$/i)
@@ -2331,38 +2544,62 @@ export function StackInstallPage() {
                   문법/필수 항목 검증을 통과하면 이전 탭 설정을 오버라이드합니다.
                 </p>
 
-                {manifestTools.length === 0 ? (
-                  <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
-                    설치 대상 OSS가 없습니다. Artifacts/CI-CD/Observability에서 툴을 선택해 주세요.
-                  </div>
-                ) : (
-                  <>
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      {manifestTools.map((tool) => {
-                        const isActive = resolvedActiveManifestTool === tool.toolId
-                        return (
-                          <button
-                            key={tool.toolId}
-                            type="button"
-                            onClick={() => setActiveManifestTool(tool.toolId)}
-                            className={cn(
-                              'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
-                              isActive
-                                ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
-                                : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-primary)]'
-                            )}
-                          >
-                            <span className="font-semibold">{tool.toolLabel}</span>
-                            <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--color-text-secondary)]">
-                              {tool.installType}
-                            </span>
-                          </button>
-                        )
-                      })}
+                <div className="mb-3 grid gap-3 md:grid-cols-2">
+                  <div>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Gateway</div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveManifestTool(GATEWAY_MANIFEST_ID)}
+                        className={cn(
+                          'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
+                          resolvedActiveManifestTool === GATEWAY_MANIFEST_ID
+                            ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
+                            : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-primary)]'
+                        )}
+                      >
+                        <span className="font-semibold">Gateway</span>
+                        <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--color-text-secondary)]">yaml</span>
+                      </button>
                     </div>
+                  </div>
 
-                    {resolvedActiveManifestTool && (
-                      <>
+                  <div>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">OSS</div>
+                    {manifestTools.length === 0 ? (
+                      <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
+                        설치 대상 OSS가 없습니다. Gateway YAML은 자동 생성되며, OSS 설치파일은 툴 선택 후 생성됩니다.
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {manifestTools.map((tool) => {
+                          const isActive = resolvedActiveManifestTool === tool.toolId
+                          return (
+                            <button
+                              key={tool.toolId}
+                              type="button"
+                              onClick={() => setActiveManifestTool(tool.toolId)}
+                              className={cn(
+                                'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
+                                isActive
+                                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
+                                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-primary)]'
+                              )}
+                            >
+                              <span className="font-semibold">{tool.toolLabel}</span>
+                              <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--color-text-secondary)]">
+                                {tool.installType}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {resolvedActiveManifestTool && (
+                  <>
                         {activeManifestInfo && (
                           <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(99,102,241,0.08)] p-3 text-xs">
                             <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -2372,20 +2609,26 @@ export function StackInstallPage() {
                               </span>
                               <span className="text-[var(--color-text-secondary)]">version: {activeManifestInfo.toolVersion || 'latest'}</span>
                             </div>
-                            <div className="text-[var(--color-text-secondary)]">
-                              역할: {activeManifestInfo.roles.join(', ')}
-                            </div>
-                            <div className="mt-1 text-[var(--color-text-secondary)]">
-                              포함 OSS: {activeManifestInfo.sourceToolIds.map((id) => toolLabel(id)).join(', ')}
-                            </div>
-                            {activeManifestInfo.hasVersionConflict && (
+                            <div className="text-[var(--color-text-secondary)]">역할: {activeManifestInfo.roles.join(', ')}</div>
+                            {activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (
+                              <div className="mt-1 text-[var(--color-text-secondary)]">
+                                포함 OSS: {activeManifestInfo.sourceToolIds.map((id) => toolLabel(id)).join(', ')}
+                              </div>
+                            )}
+                            {activeManifestInfo.hasVersionConflict && activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (
                               <div className="mt-1 text-[#fcd34d]">
                                 주의: 포함된 OSS들의 선택 버전이 달라 단일 값으로 통합되었습니다({activeManifestInfo.toolVersion}).
                               </div>
                             )}
-                            <div className="mt-1 text-[var(--color-text-secondary)]">
-                              동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합되어 생성됩니다.
-                            </div>
+                            {activeManifestInfo.toolId === GATEWAY_MANIFEST_ID ? (
+                              <div className="mt-1 text-[var(--color-text-secondary)]">
+                                Gateway API YAML은 선택된 OSS 기준으로 Gateway/HTTPRoute를 자동 구성합니다.
+                              </div>
+                            ) : (
+                              <div className="mt-1 text-[var(--color-text-secondary)]">
+                                동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합되어 생성됩니다.
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -2412,8 +2655,6 @@ export function StackInstallPage() {
                             {manifestErrorsByTool[resolvedActiveManifestTool]}
                           </div>
                         )}
-                      </>
-                    )}
                   </>
                 )}
               </div>
@@ -2524,7 +2765,7 @@ export function StackInstallPage() {
                       { id: 'namespace', label: 'Namespace' },
                       { id: 'deployment', label: 'Deployment' },
                       { id: 'service', label: 'Service' },
-                      { id: 'ingress', label: 'Ingress' },
+                      { id: 'gateway', label: 'Gateway API' },
                     ] as const).map((tab) => {
                       const isActive = activeK8sPreviewTab === tab.id
                       return (
@@ -3016,7 +3257,7 @@ export function StackInstallPage() {
             { id: 'namespace', label: 'Namespace' },
             { id: 'deployment', label: 'Deployment' },
             { id: 'service', label: 'Service' },
-            { id: 'ingress', label: 'Ingress' },
+            { id: 'gateway', label: 'Gateway API' },
           ].map((tab) => {
             const isActive = activeK8sPreviewTab === tab.id
             return (
