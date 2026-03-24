@@ -688,39 +688,92 @@ function buildToolManifest(
 
 function createDeployScript(draft: StackConfigDraft): string {
   const stackName = draft.stackName || 'nullus-stack'
+  const namespace = draft.namespace.trim() || 'nullus'
+  const accessDomain = draft.accessDomain || `${stackName}.internal`
+  const clusterContext = draft.clusterId ?? ''
 
-  const installBlock = (title: string, selection: ToolSelection) => {
-    const selectedLabel = toolLabel(selection.tool)
-    const meta = getHelmMeta(selection.tool)
+  const selected = [
+    { role: 'Artifacts > Package Registry', selection: draft.artifacts.packageRegistry },
+    { role: 'Artifacts > Source Repository', selection: draft.artifacts.sourceRepository },
+    { role: 'Artifacts > Container Registry', selection: draft.artifacts.containerRegistry },
+    { role: 'Artifacts > Storage Backend', selection: draft.artifacts.storageBackend },
+    { role: 'CI/CD > Platform', selection: draft.pipeline.cicdPlatform },
+    { role: 'CI/CD > CD Tool', selection: draft.pipeline.cdTool },
+    { role: 'Observability > Metrics Collection', selection: draft.monitoring.collection },
+    { role: 'Observability > Visualization', selection: draft.monitoring.visualization },
+    { role: 'Observability > Logging/Search', selection: draft.logging.search },
+    { role: 'Observability > Trace Layer', selection: draft.logging.traceLayer },
+  ]
+
+  const bundles = new Map<string, { toolId: string; version: string; roles: string[] }>()
+  selected.forEach(({ role, selection }) => {
+    if (!selection.tool) return
+    const bundleId = getManifestBundleId(selection.tool)
+    const existing = bundles.get(bundleId)
+    if (!existing) {
+      bundles.set(bundleId, {
+        toolId: bundleId,
+        version: selection.version || 'latest',
+        roles: [role],
+      })
+      return
+    }
+    if (!existing.roles.includes(role)) {
+      existing.roles.push(role)
+    }
+    if (existing.version === 'latest' && selection.version) {
+      existing.version = selection.version
+    }
+  })
+
+  const deployBlocks = Array.from(bundles.values()).flatMap((bundle, index) => {
+    const installType = getInstallType(bundle.toolId)
+    const label = toolLabel(bundle.toolId)
+    const blockHeader = [`# ${index + 1}. ${label} (${installType.toUpperCase()})`, `# roles: ${bundle.roles.join(', ')}`]
+
+    if (installType === 'helm') {
+      const meta = getHelmMeta(bundle.toolId)
+      return [
+        ...blockHeader,
+        `helm repo add ${bundle.toolId} ${meta.repoUrl}`,
+        `helm upgrade --install ${bundle.toolId} ${meta.chartName} --namespace ${namespace} --create-namespace --version ${bundle.version} --set global.stackName=${stackName} --set global.accessDomain=${accessDomain} --set global.clusterId=${clusterContext} --set global.namespace=${namespace} --set image.tag=${bundle.version}`,
+        '',
+      ]
+    }
+
     return [
-      `# ${title} (${selectedLabel})`,
-      `helm repo add ${selection.tool} ${meta.repoUrl}`,
-      `helm install ${selection.tool} ${meta.chartName} -n nullus-stack --version ${selection.version}`,
+      ...blockHeader,
+      `# YAML manifest path: manifests/${bundle.toolId}.yaml`,
+      `# expected image tag: ${bundle.version}`,
+      `kubectl apply -n ${namespace} -f manifests/${bundle.toolId}.yaml`,
       '',
     ]
-  }
+  })
 
   return [
-    '#!/bin/bash',
-    '# Nullus Stack Deploy Script',
-    `# Stack: ${stackName}`,
+    '#!/usr/bin/env bash',
+    '# Nullus Stack Deploy Script (generated from current Stack Install options)',
+    `# stack: ${stackName}`,
+    `# namespace: ${namespace}`,
+    `# access-domain: ${accessDomain}`,
+    `# cluster-context: ${clusterContext || '(current context)'}`,
     '',
     'set -euo pipefail',
     '',
-    '# 1. Create namespace',
-    'kubectl create namespace nullus-stack --dry-run=client -o yaml | kubectl apply -f -',
+    clusterContext ? `kubectl config use-context "${clusterContext}"` : '# using current kubectl context',
+    `kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f -`,
     '',
-    '# 2. Install Artifacts',
-    ...installBlock('Package Registry', draft.artifacts.packageRegistry),
-    '# 3. Install CI/CD',
-    ...installBlock('CI/CD Platform', draft.pipeline.cicdPlatform),
-    ...installBlock('CD Tool', draft.pipeline.cdTool),
-    '# 4. Install Observability',
-    ...installBlock('Visualization', draft.monitoring.visualization),
-    ...installBlock('Metrics', draft.monitoring.collection),
-    ...installBlock('Logs', draft.logging.search),
-    ...installBlock('Traces', draft.logging.traceLayer),
-    'echo "Nullus stack deploy script completed."',
+    '# storage plan',
+    `# plan_mode=${draft.storage.planMode}`,
+    `# database=${draft.storage.database.mode}:${draft.storage.database.providerOrEngine}:${draft.storage.database.version}`,
+    `# object_storage=${draft.storage.objectStorage.mode}:${draft.storage.objectStorage.providerOrEngine}:${draft.storage.objectStorage.version}`,
+    '',
+    '# resource planning inputs',
+    `# developers=${draft.resources.developerCount}, runners=${draft.resources.concurrentRunners}, commitsPerDay=${draft.resources.commitsPerDay}`,
+    `# buildFrequency=${draft.resources.buildFrequency}, currency=${draft.resources.currency}`,
+    '',
+    ...deployBlocks,
+    'echo "✅ Nullus stack deploy script completed"',
   ].join('\n')
 }
 
@@ -1885,9 +1938,6 @@ export function StackInstallPage() {
             <Save size={14} />
             Save Draft
           </Button>
-          <Button variant="ghost" size="md" onClick={() => setDeployScriptModalOpen(true)} type="button">
-            Preview Deploy Script
-          </Button>
           <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
             Preview K8s Objects
           </Button>
@@ -2173,6 +2223,11 @@ export function StackInstallPage() {
                   선택한 OSS별 설치 파일입니다. Helm은 실제 <code>values.yaml</code>, YAML 타입은 배포 가능한 Kubernetes manifest 형식으로 생성됩니다.
                   문법/필수 항목 검증을 통과하면 이전 탭 설정을 오버라이드합니다.
                 </p>
+                <div className="mb-3 flex justify-end">
+                  <Button variant="outline" size="sm" type="button" onClick={() => setDeployScriptModalOpen(true)}>
+                    Preview Deploy Script
+                  </Button>
+                </div>
 
                 {manifestTools.length === 0 ? (
                   <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">

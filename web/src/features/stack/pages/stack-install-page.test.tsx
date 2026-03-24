@@ -66,7 +66,7 @@ describe('StackInstallPage', () => {
     expect(screen.getAllByText('Stack Install')[0]).toBeInTheDocument()
   })
 
-  it('renders all install tabs including storage/manifests/yaml', () => {
+  it('renders install tabs including storage and YAML view', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getByText('Artifacts')).toBeInTheDocument()
     expect(screen.getAllByText('CI/CD')[0]).toBeInTheDocument()
@@ -203,6 +203,23 @@ describe('StackInstallPage', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getByLabelText('Access domain')).toBeInTheDocument()
     expect(screen.getByText(/최종 접근 가이드/)).toBeInTheDocument()
+  })
+
+  it('shows Preview Deploy Script inside YAML View and script reflects selected options', () => {
+    const store = useStackConfigStore.getState()
+    store.setStackName('devsecops-stack')
+    store.setTool('artifacts', 'packageRegistry', { tool: 'gitlab', version: '17.2.1' })
+    store.setTool('monitoring', 'visualization', { tool: 'grafana', version: '11.0.0' })
+
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Preview Deploy Script' }))
+
+    expect(screen.getByText('Deploy Script Preview')).toBeInTheDocument()
+    expect(screen.getByText(/helm upgrade --install gitlab/)).toBeInTheDocument()
+    expect(screen.getByText(/--version 17.2.1/)).toBeInTheDocument()
+    expect(screen.getByText(/kubectl apply -n qa-namespace -f manifests\/grafana.yaml/)).toBeInTheDocument()
   })
 
   it('selecting a tool in Artifacts updates the store', () => {
