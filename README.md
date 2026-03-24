@@ -94,6 +94,34 @@ Vite 개발 서버가 `http://localhost:5173`에서 실행됩니다.
 
 ### 4. K8s 테스트 클러스터 (선택)
 
+기본 클러스터 구조(dual kind):
+
+- `nullus-platform`: control-plane 1 + worker(data-plane) 1
+- `nullus-develop`: control-plane 1 + worker(data-plane) 1
+- Kubernetes 버전: `kindest/node:v1.35.1`
+
+생성(권장):
+
+```bash
+./scripts/runbook_local.sh kind-up
+kind get clusters
+```
+
+상태 확인:
+
+```bash
+kubectl get nodes --context kind-nullus-platform
+kubectl get nodes --context kind-nullus-develop
+```
+
+삭제:
+
+```bash
+./scripts/runbook_local.sh kind-down
+```
+
+직접 kind 명령으로 생성하려면 아래를 사용할 수 있습니다.
+
 ```bash
 kind create cluster --config scripts/kind-cluster.yaml
 ```
