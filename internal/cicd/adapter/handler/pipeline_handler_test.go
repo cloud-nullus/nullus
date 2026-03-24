@@ -296,7 +296,7 @@ func TestPipelineHandler_Deploy_NotFound(t *testing.T) {
 
 func TestPipelineHandler_List_NoOrgHeader(t *testing.T) {
 	pipelineRepo := newMockPipelineRepository(
-		&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "00000000-0000-0000-0000-000000000001"},
+		&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "11111111-1111-1111-1111-111111111111"},
 	)
 	templateRepo := newMockPipelineTemplateRepository()
 	deploymentRepo := &mockDeploymentRepository{}
