@@ -9,6 +9,7 @@ describe('stack-config-store', () => {
   it('initial state has default values', () => {
     const { draft, isDirty } = useStackConfigStore.getState()
     expect(draft.stackName).toBe('')
+    expect(draft.accessDomain).toBe('')
     expect(draft.selectedTemplateId).toBeNull()
     expect(draft.activeTab).toBe('artifacts')
     expect(draft.storage.planMode).toBe('integrated-create')
@@ -95,6 +96,22 @@ describe('stack-config-store', () => {
       const before = useStackConfigStore.getState().draft.artifacts.sourceRepository.tool
       useStackConfigStore.getState().setTool('artifacts', 'packageRegistry', { tool: 'jfrog', version: 'latest' })
       expect(useStackConfigStore.getState().draft.artifacts.sourceRepository.tool).toBe(before)
+    })
+  })
+
+  describe('stack name and access domain', () => {
+    it('setStackName updates default access domain automatically', () => {
+      useStackConfigStore.getState().setStackName('team-stack')
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.accessDomain).toBe('team-stack.internal')
+    })
+
+    it('manual accessDomain is preserved on later stackName changes', () => {
+      useStackConfigStore.getState().setStackName('team-stack')
+      useStackConfigStore.getState().setAccessDomain('custom.company.internal')
+      useStackConfigStore.getState().setStackName('next-stack')
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.accessDomain).toBe('custom.company.internal')
     })
   })
 

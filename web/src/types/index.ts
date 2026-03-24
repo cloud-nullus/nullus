@@ -118,6 +118,7 @@ export interface StackConfig {
   clusterId: string | null
   namespace?: string
   stackName: string
+  accessDomain?: string
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>
   monitoring: Record<string, ToolSelection>

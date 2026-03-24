@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
 export type ResourceMode = 'auto' | 'manual'
-export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'storage' | 'yaml'
+export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'storage' | 'manifests'
 
 export type StorageMode = 'existing' | 'create'
 export type StoragePlanMode = 'existing-all' | 'integrated-create'
@@ -71,6 +71,7 @@ export interface StackConfigDraft {
   clusterId: string | null
   namespace: string
   stackName: string
+  accessDomain: string
   artifacts: ArtifactsConfig
   pipeline: PipelineConfig
   monitoring: MonitoringConfig
@@ -87,6 +88,7 @@ interface StackConfigState {
   setCluster: (clusterId: string) => void
   setNamespace: (namespace: string) => void
   setStackName: (name: string) => void
+  setAccessDomain: (domain: string) => void
   setTool: (
     section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging',
     field: string,
@@ -105,6 +107,7 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   clusterId: null,
   namespace: '',
   stackName: '',
+  accessDomain: '',
   artifacts: {
     packageRegistry: { tool: 'gitlab', version: 'latest' },
     sourceRepository: { tool: 'gitlab', version: 'latest' },
@@ -178,7 +181,24 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
     set((s) => ({ draft: { ...s.draft, namespace }, isDirty: true })),
 
   setStackName: (name) =>
-    set((s) => ({ draft: { ...s.draft, stackName: name }, isDirty: true })),
+    set((s) => {
+      const prevDefaultAccessDomain = s.draft.stackName ? `${s.draft.stackName}.internal` : ''
+      const shouldUpdateAccessDomain =
+        s.draft.accessDomain.trim().length === 0 ||
+        s.draft.accessDomain === prevDefaultAccessDomain
+
+      return {
+        draft: {
+          ...s.draft,
+          stackName: name,
+          accessDomain: shouldUpdateAccessDomain ? `${name}.internal` : s.draft.accessDomain,
+        },
+        isDirty: true,
+      }
+    }),
+
+  setAccessDomain: (domain) =>
+    set((s) => ({ draft: { ...s.draft, accessDomain: domain }, isDirty: true })),
 
   setTool: (section, field, value) =>
     set((s) => ({

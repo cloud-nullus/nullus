@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
-import { AlignLeft, Check, Copy, Download, Info, Rocket, Save, ShoppingCart } from 'lucide-react'
+import { Download, Info, Rocket, Save, ShoppingCart } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
@@ -231,6 +231,13 @@ type PlanningRowUnit = {
   storage: ResourceUnit
 }
 
+type ManifestInstallType = 'helm' | 'yaml'
+
+type ToolManifestResourceSpec = {
+  requests: { cpu: number; memory: string; storage: string }
+  limits: { cpu: number; memory: string; storage: string }
+}
+
 type PlanningOptionDefinition = {
   key: string
   label: string
@@ -260,6 +267,36 @@ const PLANNING_PROFILE_LABEL: Record<PlanningProfile, string> = {
 const STORAGE_ENDPOINT_REGEX = /^((https?:\/\/)[^\s]+|[a-zA-Z0-9.-]+(?::\d{1,5})?)$/
 const K8S_SECRET_REF_REGEX = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
 const SECRET_KEY_REGEX = /^[-._a-zA-Z0-9]+$/
+
+const TOOL_INSTALL_METHOD: Record<string, ManifestInstallType> = {
+  grafana: 'yaml',
+  prometheus: 'yaml',
+  tempo: 'yaml',
+  jaeger: 'yaml',
+  loki: 'yaml',
+}
+
+const TOOL_BUNDLE_CANONICAL: Record<string, string> = {
+  'gitlab-registry': 'gitlab',
+  'gitlab-ci': 'gitlab',
+}
+
+function getManifestBundleId(toolId: string): string {
+  return TOOL_BUNDLE_CANONICAL[toolId] ?? toolId
+}
+
+const SLOT_TOOL_BINDING: Record<PlanningSlot, { section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging'; field: string }> = {
+  'artifacts.packageRegistry': { section: 'artifacts', field: 'packageRegistry' },
+  'artifacts.sourceRepository': { section: 'artifacts', field: 'sourceRepository' },
+  'artifacts.containerRegistry': { section: 'artifacts', field: 'containerRegistry' },
+  'artifacts.storageBackend': { section: 'artifacts', field: 'storageBackend' },
+  'pipeline.cicdPlatform': { section: 'pipeline', field: 'cicdPlatform' },
+  'pipeline.cdTool': { section: 'pipeline', field: 'cdTool' },
+  'monitoring.collection': { section: 'monitoring', field: 'collection' },
+  'monitoring.visualization': { section: 'monitoring', field: 'visualization' },
+  'logging.search': { section: 'logging', field: 'search' },
+  'logging.traceLayer': { section: 'logging', field: 'traceLayer' },
+}
 
 const PLANNING_OPTION_DEFS: Record<PlanningSlot, PlanningOptionDefinition[]> = {
   'artifacts.packageRegistry': [
@@ -502,6 +539,153 @@ function getHelmMeta(toolId: string) {
   return TOOL_HELM_META[toolId] ?? { repoUrl: 'https://charts.example.com', chartName: `nullus/${toolId}` }
 }
 
+function buildDefaultStackName(now = new Date()): string {
+  const pad = (value: number) => value.toString().padStart(2, '0')
+  const year = now.getFullYear()
+  const month = pad(now.getMonth() + 1)
+  const day = pad(now.getDate())
+  const hour = pad(now.getHours())
+  const minute = pad(now.getMinutes())
+  const second = pad(now.getSeconds())
+  return `nullus-devsecops-stack-${year}${month}${day}-${hour}${minute}${second}`
+}
+
+function getInstallType(toolId: string): ManifestInstallType {
+  if (TOOL_INSTALL_METHOD[toolId]) return TOOL_INSTALL_METHOD[toolId]
+  return TOOL_HELM_META[toolId] ? 'helm' : 'yaml'
+}
+
+function buildToolManifest(
+  toolId: string,
+  toolLabelValue: string,
+  draft: StackConfigDraft,
+  resources: ResourceVector,
+  toolVersion: string
+): string {
+  const installType = getInstallType(toolId)
+  const helmMeta = getHelmMeta(toolId)
+  const namespace = draft.namespace.trim() || 'nullus'
+  const resourcesSpec: ToolManifestResourceSpec = {
+    requests: {
+      cpu: resources.cpuRequest,
+      memory: `${resources.memoryRequestGi.toFixed(2)}Gi`,
+      storage: `${resources.storageRequestGi.toFixed(2)}Gi`,
+    },
+    limits: {
+      cpu: resources.cpuLimit,
+      memory: `${resources.memoryLimitGi.toFixed(2)}Gi`,
+      storage: `${resources.storageLimitGi.toFixed(2)}Gi`,
+    },
+  }
+
+  if (installType === 'helm') {
+    const valuesYaml = {
+      global: {
+        stackName: draft.stackName,
+        accessDomain: draft.accessDomain || `${draft.stackName}.internal`,
+        clusterId: draft.clusterId ?? '',
+        namespace,
+        toolId,
+        toolLabel: toolLabelValue,
+      },
+      chart: {
+        repoUrl: helmMeta.repoUrl,
+        name: helmMeta.chartName,
+      },
+      image: {
+        tag: toolVersion || 'latest',
+      },
+      resources: resourcesSpec,
+      storage: {
+        planMode: draft.storage.planMode,
+        database: {
+          mode: draft.storage.database.mode,
+          existingRef: draft.storage.database.existingRef,
+          endpoint: draft.storage.database.endpoint,
+          resourceName: draft.storage.database.resourceName,
+          accessSecretRef: draft.storage.database.accessSecretRef,
+          authId: draft.storage.database.authId,
+          authPasswordKey: draft.storage.database.authPasswordKey,
+          providerOrEngine: draft.storage.database.providerOrEngine,
+          version: draft.storage.database.version,
+          size: draft.storage.database.size,
+        },
+        objectStorage: {
+          mode: draft.storage.objectStorage.mode,
+          existingRef: draft.storage.objectStorage.existingRef,
+          endpoint: draft.storage.objectStorage.endpoint,
+          resourceName: draft.storage.objectStorage.resourceName,
+          accessSecretRef: draft.storage.objectStorage.accessSecretRef,
+          authId: draft.storage.objectStorage.authId,
+          authPasswordKey: draft.storage.objectStorage.authPasswordKey,
+          providerOrEngine: draft.storage.objectStorage.providerOrEngine,
+          version: draft.storage.objectStorage.version,
+          size: draft.storage.objectStorage.size,
+        },
+      },
+    }
+
+    return YAML.stringify(valuesYaml, { indent: 2, lineWidth: 0 })
+  }
+
+  const deployment = {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: {
+      name: toolId,
+      namespace,
+      labels: {
+        app: toolId,
+        'nullus.io/stack-name': draft.stackName,
+        'nullus.io/cluster-id': draft.clusterId ?? '',
+        'nullus.io/tool-id': toolId,
+      },
+    },
+    spec: {
+      replicas: 1,
+      selector: { matchLabels: { app: toolId } },
+      template: {
+        metadata: { labels: { app: toolId } },
+        spec: {
+          containers: [
+            {
+              name: toolId,
+              image: `ghcr.io/cloud-nullus/${toolId}:${toolVersion || 'latest'}`,
+              resources: {
+                requests: {
+                  cpu: String(resources.cpuRequest),
+                  memory: resourcesSpec.requests.memory,
+                },
+                limits: {
+                  cpu: String(resources.cpuLimit),
+                  memory: resourcesSpec.limits.memory,
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  }
+
+  const service = {
+    apiVersion: 'v1',
+    kind: 'Service',
+    metadata: {
+      name: `${toolId}-svc`,
+      namespace,
+      labels: { app: toolId },
+    },
+    spec: {
+      selector: { app: toolId },
+      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
+    },
+  }
+
+  return [YAML.stringify(deployment, { indent: 2, lineWidth: 0 }), YAML.stringify(service, { indent: 2, lineWidth: 0 })]
+    .join('\n---\n')
+}
+
 function createDeployScript(draft: StackConfigDraft): string {
   const stackName = draft.stackName || 'nullus-stack'
 
@@ -677,214 +861,6 @@ function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
   )
 }
 
-// --- YAML conversion ---
-
-function draftToYaml(draft: StackConfigDraft): string {
-  return YAML.stringify(
-    {
-      stackName: draft.stackName,
-      templateId: draft.selectedTemplateId,
-      clusterId: draft.clusterId,
-      namespace: draft.namespace,
-      artifacts: {
-        packageRegistry: draft.artifacts.packageRegistry.tool,
-        sourceRepository: draft.artifacts.sourceRepository.tool,
-        containerRegistry: draft.artifacts.containerRegistry.tool,
-        storageBackend: draft.artifacts.storageBackend.tool,
-      },
-      pipeline: {
-        cicdPlatform: draft.pipeline.cicdPlatform.tool,
-        cdTool: draft.pipeline.cdTool.tool,
-      },
-      monitoring: {
-        collection: draft.monitoring.collection.tool,
-        visualization: draft.monitoring.visualization.tool,
-      },
-      logging: {
-        logs: draft.logging.search.tool,
-        traces: draft.logging.traceLayer.tool,
-      },
-      resources: {
-        developerCount: draft.resources.developerCount,
-        concurrentRunners: draft.resources.concurrentRunners,
-        commitsPerDay: draft.resources.commitsPerDay,
-        buildFrequency: draft.resources.buildFrequency,
-        currency: draft.resources.currency,
-        mode: draft.resources.mode,
-        cpuRequest: draft.resources.cpuRequest,
-        memoryRequest: draft.resources.memoryRequest,
-        storageRequest: draft.resources.storageRequest,
-      },
-      storage: {
-        planMode: draft.storage.planMode,
-        database: {
-          mode: draft.storage.database.mode,
-          existingRef: draft.storage.database.existingRef,
-          endpoint: draft.storage.database.endpoint,
-          resourceName: draft.storage.database.resourceName,
-          accessSecretRef: draft.storage.database.accessSecretRef,
-          authId: draft.storage.database.authId,
-          authPasswordKey: draft.storage.database.authPasswordKey,
-          providerOrEngine: draft.storage.database.providerOrEngine,
-          version: draft.storage.database.version,
-          size: draft.storage.database.size,
-        },
-        objectStorage: {
-          mode: draft.storage.objectStorage.mode,
-          existingRef: draft.storage.objectStorage.existingRef,
-          endpoint: draft.storage.objectStorage.endpoint,
-          resourceName: draft.storage.objectStorage.resourceName,
-          accessSecretRef: draft.storage.objectStorage.accessSecretRef,
-          authId: draft.storage.objectStorage.authId,
-          authPasswordKey: draft.storage.objectStorage.authPasswordKey,
-          providerOrEngine: draft.storage.objectStorage.providerOrEngine,
-          version: draft.storage.objectStorage.version,
-          size: draft.storage.objectStorage.size,
-        },
-      },
-    },
-    { indent: 2, lineWidth: 0 }
-  )
-}
-
-function parseDraftFromYaml(text: string, currentDraft: StackConfigDraft): StackConfigDraft | null {
-  const parsed = YAML.parse(text)
-  if (!parsed || typeof parsed !== 'object') return null
-
-  const root = parsed as Record<string, unknown>
-  const artifacts = (root.artifacts ?? {}) as Record<string, unknown>
-  const pipeline = (root.pipeline ?? {}) as Record<string, unknown>
-  const monitoring = (root.monitoring ?? {}) as Record<string, unknown>
-  const logging = (root.logging ?? {}) as Record<string, unknown>
-  const resources = (root.resources ?? {}) as Record<string, unknown>
-  const storage = (root.storage ?? {}) as Record<string, unknown>
-  const storageDatabase = (storage.database ?? {}) as Record<string, unknown>
-  const storageObjectStorage = (storage.objectStorage ?? {}) as Record<string, unknown>
-
-  const toStringOrFallback = (value: unknown, fallback: string) =>
-    typeof value === 'string' ? value : fallback
-
-  const toNullableStringOrFallback = (value: unknown, fallback: string | null) => {
-    if (value === null) return null
-    return typeof value === 'string' ? value : fallback
-  }
-
-  const toNumberOrFallback = (value: unknown, fallback: number) => {
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-    return fallback
-  }
-
-  const toStorageModeOrFallback = (value: unknown, fallback: StorageMode): StorageMode =>
-    value === 'existing' || value === 'create' ? value : fallback
-
-  const toStoragePlanModeOrFallback = (value: unknown, fallback: StoragePlanMode): StoragePlanMode =>
-    value === 'existing-all' || value === 'integrated-create' ? value : fallback
-
-  const toStorageSizeOrFallback = (
-    value: unknown,
-    fallback: StorageTargetConfig['size']
-  ): StorageTargetConfig['size'] =>
-    value === 'small' || value === 'medium' || value === 'large' ? value : fallback
-
-  return {
-    ...currentDraft,
-    stackName: toStringOrFallback(root.stackName, currentDraft.stackName),
-    selectedTemplateId: toNullableStringOrFallback(root.templateId, currentDraft.selectedTemplateId),
-    clusterId: toNullableStringOrFallback(root.clusterId, currentDraft.clusterId),
-    namespace: toStringOrFallback(root.namespace, currentDraft.namespace),
-    artifacts: {
-      packageRegistry: {
-        tool: toStringOrFallback(artifacts.packageRegistry, currentDraft.artifacts.packageRegistry.tool),
-        version: currentDraft.artifacts.packageRegistry.version,
-      },
-      sourceRepository: {
-        tool: toStringOrFallback(artifacts.sourceRepository, currentDraft.artifacts.sourceRepository.tool),
-        version: currentDraft.artifacts.sourceRepository.version,
-      },
-      containerRegistry: {
-        tool: toStringOrFallback(artifacts.containerRegistry, currentDraft.artifacts.containerRegistry.tool),
-        version: currentDraft.artifacts.containerRegistry.version,
-      },
-      storageBackend: {
-        tool: toStringOrFallback(artifacts.storageBackend, currentDraft.artifacts.storageBackend.tool),
-        version: currentDraft.artifacts.storageBackend.version,
-      },
-    },
-    pipeline: {
-      cicdPlatform: {
-        tool: toStringOrFallback(pipeline.cicdPlatform, currentDraft.pipeline.cicdPlatform.tool),
-        version: currentDraft.pipeline.cicdPlatform.version,
-      },
-      cdTool: {
-        tool: toStringOrFallback(pipeline.cdTool, currentDraft.pipeline.cdTool.tool),
-        version: currentDraft.pipeline.cdTool.version,
-      },
-    },
-    monitoring: {
-      collection: {
-        tool: toStringOrFallback(monitoring.collection, currentDraft.monitoring.collection.tool),
-        version: currentDraft.monitoring.collection.version,
-      },
-      visualization: {
-        tool: toStringOrFallback(monitoring.visualization, currentDraft.monitoring.visualization.tool),
-        version: currentDraft.monitoring.visualization.version,
-      },
-    },
-    logging: {
-      search: {
-        tool: toStringOrFallback(logging.logs, currentDraft.logging.search.tool),
-        version: currentDraft.logging.search.version,
-      },
-      traceLayer: {
-        tool: toStringOrFallback(logging.traces, currentDraft.logging.traceLayer.tool),
-        version: currentDraft.logging.traceLayer.version,
-      },
-    },
-    resources: {
-      ...currentDraft.resources,
-      developerCount: toNumberOrFallback(resources.developerCount, currentDraft.resources.developerCount),
-      concurrentRunners: toNumberOrFallback(resources.concurrentRunners, currentDraft.resources.concurrentRunners),
-      commitsPerDay: toNumberOrFallback(resources.commitsPerDay, currentDraft.resources.commitsPerDay),
-      buildFrequency: toStringOrFallback(resources.buildFrequency, currentDraft.resources.buildFrequency) as StackConfigDraft['resources']['buildFrequency'],
-      currency: toStringOrFallback(resources.currency, currentDraft.resources.currency) as StackConfigDraft['resources']['currency'],
-      mode: toStringOrFallback(resources.mode, currentDraft.resources.mode) as StackConfigDraft['resources']['mode'],
-      cpuRequest: toStringOrFallback(resources.cpuRequest, currentDraft.resources.cpuRequest ?? ''),
-      memoryRequest: toStringOrFallback(resources.memoryRequest, currentDraft.resources.memoryRequest ?? ''),
-      storageRequest: toStringOrFallback(resources.storageRequest, currentDraft.resources.storageRequest ?? ''),
-    },
-    storage: {
-      ...currentDraft.storage,
-      planMode: toStoragePlanModeOrFallback(storage.planMode, currentDraft.storage.planMode),
-      database: {
-        ...currentDraft.storage.database,
-        mode: toStorageModeOrFallback(storageDatabase.mode, currentDraft.storage.database.mode),
-        existingRef: toStringOrFallback(storageDatabase.existingRef, currentDraft.storage.database.existingRef),
-        endpoint: toStringOrFallback(storageDatabase.endpoint, currentDraft.storage.database.endpoint),
-        resourceName: toStringOrFallback(storageDatabase.resourceName, currentDraft.storage.database.resourceName),
-        accessSecretRef: toStringOrFallback(storageDatabase.accessSecretRef, currentDraft.storage.database.accessSecretRef),
-        authId: toStringOrFallback(storageDatabase.authId, currentDraft.storage.database.authId),
-        authPasswordKey: toStringOrFallback(storageDatabase.authPasswordKey, currentDraft.storage.database.authPasswordKey),
-        providerOrEngine: toStringOrFallback(storageDatabase.providerOrEngine, currentDraft.storage.database.providerOrEngine),
-        version: toStringOrFallback(storageDatabase.version, currentDraft.storage.database.version),
-        size: toStorageSizeOrFallback(storageDatabase.size, currentDraft.storage.database.size),
-      },
-      objectStorage: {
-        ...currentDraft.storage.objectStorage,
-        mode: toStorageModeOrFallback(storageObjectStorage.mode, currentDraft.storage.objectStorage.mode),
-        existingRef: toStringOrFallback(storageObjectStorage.existingRef, currentDraft.storage.objectStorage.existingRef),
-        endpoint: toStringOrFallback(storageObjectStorage.endpoint, currentDraft.storage.objectStorage.endpoint),
-        resourceName: toStringOrFallback(storageObjectStorage.resourceName, currentDraft.storage.objectStorage.resourceName),
-        accessSecretRef: toStringOrFallback(storageObjectStorage.accessSecretRef, currentDraft.storage.objectStorage.accessSecretRef),
-        authId: toStringOrFallback(storageObjectStorage.authId, currentDraft.storage.objectStorage.authId),
-        authPasswordKey: toStringOrFallback(storageObjectStorage.authPasswordKey, currentDraft.storage.objectStorage.authPasswordKey),
-        providerOrEngine: toStringOrFallback(storageObjectStorage.providerOrEngine, currentDraft.storage.objectStorage.providerOrEngine),
-        version: toStringOrFallback(storageObjectStorage.version, currentDraft.storage.objectStorage.version),
-        size: toStorageSizeOrFallback(storageObjectStorage.size, currentDraft.storage.objectStorage.size),
-      },
-    },
-  }
-}
-
 // --- Tab definitions ---
 
 const TABS: { id: InstallTab; label: string }[] = [
@@ -893,7 +869,7 @@ const TABS: { id: InstallTab; label: string }[] = [
   { id: 'monitoring', label: 'Observability' },
   { id: 'resources', label: 'Resources' },
   { id: 'storage', label: 'Storage' },
-  { id: 'yaml', label: 'YAML View' },
+  { id: 'manifests', label: 'YAML View' },
 ]
 
 // --- Main page ---
@@ -902,7 +878,7 @@ export function StackInstallPage() {
   const navigate = useNavigate()
   const theme = useThemeStore((state) => state.theme)
   const isDarkMode = theme === 'dark'
-  const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace, updateStorage, updateStorageTarget } = useStackConfigStore()
+  const { draft, setActiveTab, setTool, setStackName, setAccessDomain, setCluster, setNamespace, updateStorage, updateStorageTarget } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
@@ -919,13 +895,17 @@ export function StackInstallPage() {
   const [planningRowUnits, setPlanningRowUnits] = useState<Record<string, PlanningRowUnit>>({})
   const [activeFormulaPopoverKey, setActiveFormulaPopoverKey] = useState<string | null>(null)
   const [storageValidationErrors, setStorageValidationErrors] = useState<StorageValidationErrors>({})
-  const [yamlContent, setYamlContent] = useState(() => draftToYaml(draft))
-  const [yamlCopied, setYamlCopied] = useState(false)
-  const yamlContentRef = useRef(yamlContent)
-  const syncFromYamlTimerRef = useRef<number | null>(null)
-  const syncFromDraftTimerRef = useRef<number | null>(null)
-  const applyingYamlToStoreRef = useRef(false)
+  const [tabGuardError, setTabGuardError] = useState<string | null>(null)
+  const [manifestDraftByTool, setManifestDraftByTool] = useState<Record<string, string>>({})
+  const [manifestErrorsByTool, setManifestErrorsByTool] = useState<Record<string, string>>({})
+  const [activeManifestTool, setActiveManifestTool] = useState<string | null>(null)
+  const manifestSyncTimerRef = useRef<number | null>(null)
   const monacoConfiguredRef = useRef(false)
+  const initializedDefaultStackNameRef = useRef(false)
+  const stackNameInputRef = useRef<HTMLInputElement | null>(null)
+  const clusterSelectRef = useRef<HTMLSelectElement | null>(null)
+  const namespaceSelectRef = useRef<HTMLSelectElement | null>(null)
+  const newNamespaceInputRef = useRef<HTMLInputElement | null>(null)
   const {
     control,
     trigger,
@@ -939,6 +919,8 @@ export function StackInstallPage() {
     mode: 'onChange',
   })
 
+  const effectiveNamespace = createNewNs ? draft.namespace.trim() : draft.namespace.trim() || 'nullus'
+
   const deployScript = createDeployScript(draft)
   const k8sObjects = createK8sObjects(draft)
 
@@ -948,62 +930,72 @@ export function StackInstallPage() {
       category: 'Artifacts > Package Registry',
       toolKey: draft.artifacts.packageRegistry.tool,
       toolLabel: toolLabel(draft.artifacts.packageRegistry.tool),
+      toolVersion: draft.artifacts.packageRegistry.version,
     },
     {
       slot: 'artifacts.sourceRepository',
       category: 'Artifacts > Source Repository',
       toolKey: draft.artifacts.sourceRepository.tool,
       toolLabel: toolLabel(draft.artifacts.sourceRepository.tool),
+      toolVersion: draft.artifacts.sourceRepository.version,
     },
     {
       slot: 'artifacts.containerRegistry',
       category: 'Artifacts > Container Registry',
       toolKey: draft.artifacts.containerRegistry.tool,
       toolLabel: toolLabel(draft.artifacts.containerRegistry.tool),
+      toolVersion: draft.artifacts.containerRegistry.version,
     },
     {
       slot: 'artifacts.storageBackend',
       category: 'Artifacts > Storage Backend',
       toolKey: draft.artifacts.storageBackend.tool,
       toolLabel: toolLabel(draft.artifacts.storageBackend.tool),
+      toolVersion: draft.artifacts.storageBackend.version,
     },
     {
       slot: 'pipeline.cicdPlatform',
       category: 'CI/CD > Platform',
       toolKey: draft.pipeline.cicdPlatform.tool,
       toolLabel: toolLabel(draft.pipeline.cicdPlatform.tool),
+      toolVersion: draft.pipeline.cicdPlatform.version,
     },
     {
       slot: 'pipeline.cdTool',
       category: 'CI/CD > CD Tool',
       toolKey: draft.pipeline.cdTool.tool,
       toolLabel: toolLabel(draft.pipeline.cdTool.tool),
+      toolVersion: draft.pipeline.cdTool.version,
     },
     {
       slot: 'monitoring.collection',
       category: 'Observability > Metrics Collection',
       toolKey: draft.monitoring.collection.tool,
       toolLabel: toolLabel(draft.monitoring.collection.tool),
+      toolVersion: draft.monitoring.collection.version,
     },
     {
       slot: 'monitoring.visualization',
       category: 'Observability > Visualization',
       toolKey: draft.monitoring.visualization.tool,
       toolLabel: toolLabel(draft.monitoring.visualization.tool),
+      toolVersion: draft.monitoring.visualization.version,
     },
     {
       slot: 'logging.search',
       category: 'Observability > Logging/Search',
       toolKey: draft.logging.search.tool,
       toolLabel: toolLabel(draft.logging.search.tool),
+      toolVersion: draft.logging.search.version,
     },
     {
       slot: 'logging.traceLayer',
       category: 'Observability > Trace Layer',
       toolKey: draft.logging.traceLayer.tool,
       toolLabel: toolLabel(draft.logging.traceLayer.tool),
+      toolVersion: draft.logging.traceLayer.version,
     },
-  ] satisfies { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string }[]).filter(
+  ] satisfies { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string; toolVersion: string }[]).filter(
     (item) => item.toolKey.length > 0
   )
 
@@ -1078,6 +1070,113 @@ export function StackInstallPage() {
     }
   )
 
+  const manifestTools = (() => {
+    const map = new Map<
+      string,
+      {
+        toolId: string
+        toolLabel: string
+        installType: ManifestInstallType
+        toolVersion: string
+        hasVersionConflict: boolean
+        roles: string[]
+        sourceToolIds: string[]
+        sourceVersions: string[]
+      }
+    >()
+    selectedInstallItems.forEach((item) => {
+      const bundleId = getManifestBundleId(item.toolKey)
+      const existing = map.get(bundleId)
+      if (!existing) {
+        map.set(bundleId, {
+          toolId: bundleId,
+          toolLabel: toolLabel(bundleId),
+          installType: getInstallType(bundleId),
+          toolVersion: item.toolVersion || 'latest',
+          hasVersionConflict: false,
+          roles: [item.category],
+          sourceToolIds: [item.toolKey],
+          sourceVersions: [item.toolVersion || 'latest'],
+        })
+        return
+      }
+
+      if (!existing.roles.includes(item.category)) {
+        existing.roles.push(item.category)
+      }
+      if (!existing.sourceToolIds.includes(item.toolKey)) {
+        existing.sourceToolIds.push(item.toolKey)
+      }
+      if (!existing.sourceVersions.includes(item.toolVersion || 'latest')) {
+        existing.sourceVersions.push(item.toolVersion || 'latest')
+      }
+
+      if (existing.toolVersion === 'latest' && item.toolVersion) {
+        existing.toolVersion = item.toolVersion
+      }
+      existing.hasVersionConflict = existing.sourceVersions.filter((v) => v && v.length > 0).length > 1
+    })
+    return Array.from(map.values())
+  })()
+
+  const resourceByTool = (() => {
+    const map = new Map<string, ResourceVector>()
+    planningRows.forEach((row) => {
+      if (!row.applied) return
+      const bundleId = getManifestBundleId(row.toolKey)
+      const prev = map.get(bundleId)
+      if (!prev) {
+        map.set(bundleId, { ...row.applied })
+        return
+      }
+      map.set(bundleId, {
+        cpuRequest: round2(prev.cpuRequest + row.applied.cpuRequest),
+        cpuLimit: round2(prev.cpuLimit + row.applied.cpuLimit),
+        memoryRequestGi: round2(prev.memoryRequestGi + row.applied.memoryRequestGi),
+        memoryLimitGi: round2(prev.memoryLimitGi + row.applied.memoryLimitGi),
+        storageRequestGi: round2(prev.storageRequestGi + row.applied.storageRequestGi),
+        storageLimitGi: round2(prev.storageLimitGi + row.applied.storageLimitGi),
+      })
+    })
+    return map
+  })()
+
+  const rowKeysByTool = (() => {
+    const map = new Map<string, string[]>()
+    planningRows.forEach((row) => {
+      const bundleId = getManifestBundleId(row.toolKey)
+      const list = map.get(bundleId) ?? []
+      list.push(row.rowKey)
+      map.set(bundleId, list)
+    })
+    return map
+  })()
+
+  const defaultManifestByTool = (() => {
+    const map: Record<string, string> = {}
+    manifestTools.forEach((tool) => {
+      const resources = resourceByTool.get(tool.toolId) ?? {
+        cpuRequest: 0,
+        cpuLimit: 0,
+        memoryRequestGi: 0,
+        memoryLimitGi: 0,
+        storageRequestGi: 0,
+        storageLimitGi: 0,
+      }
+      map[tool.toolId] = buildToolManifest(tool.toolId, tool.toolLabel, draft, resources, tool.toolVersion)
+    })
+    return map
+  })()
+
+  const resolvedActiveManifestTool =
+    activeManifestTool && defaultManifestByTool[activeManifestTool]
+      ? activeManifestTool
+      : (manifestTools[0]?.toolId ?? null)
+
+  const activeManifestInfo = resolvedActiveManifestTool
+    ? manifestTools.find((tool) => tool.toolId === resolvedActiveManifestTool) ?? null
+    : null
+
   const handlePlanningOptionChange = (rowKey: string, optionKey: string, value: number) => {
     setPlanningOptionOverrides((prev) => ({
       ...prev,
@@ -1119,56 +1218,39 @@ export function StackInstallPage() {
     }))
   }
 
-  const handleYamlChange = useCallback((value?: string) => {
+  const handleManifestChange = (toolId: string, value?: string) => {
     const nextYaml = value ?? ''
-    yamlContentRef.current = nextYaml
-    setYamlContent(nextYaml)
+    setManifestDraftByTool((prev) => ({
+      ...prev,
+      [toolId]: nextYaml,
+    }))
 
-    if (syncFromDraftTimerRef.current !== null) {
-      window.clearTimeout(syncFromDraftTimerRef.current)
-      syncFromDraftTimerRef.current = null
+    if (manifestSyncTimerRef.current !== null) {
+      window.clearTimeout(manifestSyncTimerRef.current)
     }
 
-    if (syncFromYamlTimerRef.current !== null) {
-      window.clearTimeout(syncFromYamlTimerRef.current)
-    }
-
-    syncFromYamlTimerRef.current = window.setTimeout(() => {
-      try {
-        const currentDraft = useStackConfigStore.getState().draft
-        const parsedDraft = parseDraftFromYaml(nextYaml, currentDraft)
-        if (!parsedDraft) return
-
-        applyingYamlToStoreRef.current = true
-        useStackConfigStore.setState((state) => ({
-          draft: {
-            ...parsedDraft,
-            activeTab: state.draft.activeTab,
-          },
-          isDirty: true,
-        }))
-      } catch (error) {
-        void error
+    manifestSyncTimerRef.current = window.setTimeout(() => {
+      const error = validateManifestAndApply(toolId, nextYaml)
+      setManifestErrorsByTool((prev) => {
+        if (!error) {
+          const next = { ...prev }
+          delete next[toolId]
+          return next
+        }
+        return {
+          ...prev,
+          [toolId]: error,
+        }
+      })
+      if (!error) {
+        setManifestDraftByTool((prev) => {
+          const next = { ...prev }
+          delete next[toolId]
+          return next
+        })
       }
-    }, 300)
-  }, [])
-
-  const handleCopyYaml = useCallback(() => {
-    void navigator.clipboard.writeText(yamlContentRef.current).then(() => {
-      setYamlCopied(true)
-      window.setTimeout(() => setYamlCopied(false), 1500)
-    })
-  }, [])
-
-  const handleFormatYaml = useCallback(() => {
-    try {
-      const parsed = YAML.parse(yamlContentRef.current)
-      const formatted = YAML.stringify(parsed, { indent: 2, lineWidth: 0 })
-      handleYamlChange(formatted)
-    } catch (error) {
-      void error
-    }
-  }, [handleYamlChange])
+    }, 350)
+  }
 
   const handleMonacoBeforeMount = useCallback((monaco: Monaco) => {
     if (monacoConfiguredRef.current) return
@@ -1184,44 +1266,41 @@ export function StackInstallPage() {
   }, [])
 
   useEffect(() => {
-    yamlContentRef.current = yamlContent
-  }, [yamlContent])
-
-  useEffect(() => {
-    if (applyingYamlToStoreRef.current) {
-      applyingYamlToStoreRef.current = false
-      return
-    }
-
-    const nextYaml = draftToYaml(draft)
-    if (nextYaml === yamlContentRef.current) return
-
-    if (syncFromDraftTimerRef.current !== null) {
-      window.clearTimeout(syncFromDraftTimerRef.current)
-    }
-
-    syncFromDraftTimerRef.current = window.setTimeout(() => {
-      yamlContentRef.current = nextYaml
-      setYamlContent(nextYaml)
-    }, 300)
-  }, [draft])
-
-  useEffect(() => {
     setValue('stackName', draft.stackName)
   }, [draft.stackName, setValue])
 
   useEffect(() => {
+    if (initializedDefaultStackNameRef.current) return
+    initializedDefaultStackNameRef.current = true
+
+    if (useStackConfigStore.getState().draft.stackName.trim().length > 0) return
+
+    const generated = buildDefaultStackName()
+    useStackConfigStore.setState((state) => ({
+      draft: {
+        ...state.draft,
+        stackName: generated,
+        accessDomain: `${generated}.internal`,
+      },
+      isDirty: state.isDirty,
+    }))
+    setValue('stackName', generated)
+  }, [setValue])
+
+  useEffect(() => {
     return () => {
-      if (syncFromYamlTimerRef.current !== null) {
-        window.clearTimeout(syncFromYamlTimerRef.current)
-      }
-      if (syncFromDraftTimerRef.current !== null) {
-        window.clearTimeout(syncFromDraftTimerRef.current)
+      if (manifestSyncTimerRef.current !== null) {
+        window.clearTimeout(manifestSyncTimerRef.current)
       }
     }
   }, [])
 
   const switchTab = (tab: InstallTab) => {
+    if (tab === 'manifests') {
+      const ok = ensureCoreSelectionsForConfigTabs()
+      if (!ok) return
+    }
+    setTabGuardError(null)
     setLocalTab(tab)
     setActiveTab(tab)
   }
@@ -1316,8 +1395,398 @@ export function StackInstallPage() {
     return Object.keys(errors).length === 0
   }
 
+  const ensureCoreSelectionsForConfigTabs = (): boolean => {
+    if (!draft.stackName.trim()) {
+      setTabGuardError('YAML View 탭으로 이동하려면 Stack Name이 필요합니다.')
+      setLocalTab('artifacts')
+      setActiveTab('artifacts')
+      stackNameInputRef.current?.focus()
+      return false
+    }
+
+    if (!draft.clusterId) {
+      setTabGuardError('YAML View 탭으로 이동하려면 Target Cluster 선택이 필요합니다.')
+      setLocalTab('artifacts')
+      setActiveTab('artifacts')
+      clusterSelectRef.current?.focus()
+      return false
+    }
+
+    if (createNewNs && !draft.namespace.trim()) {
+      setTabGuardError('YAML View 탭으로 이동하려면 Namespace 선택 또는 입력이 필요합니다.')
+      setLocalTab('artifacts')
+      setActiveTab('artifacts')
+      newNamespaceInputRef.current?.focus()
+      return false
+    }
+
+    setTabGuardError(null)
+    return true
+  }
+
+  function validateManifestAndApply(toolId: string, text: string): string | null {
+    const installType = getInstallType(toolId)
+    const parseGi = (value: string) => {
+      const match = value.trim().match(/^([0-9]+(?:\.[0-9]+)?)Gi$/i)
+      if (!match) return null
+      const parsed = Number(match[1])
+      return Number.isFinite(parsed) ? parsed : null
+    }
+
+    const toNumber = (value: unknown) => {
+      const n = typeof value === 'number' ? value : Number(value)
+      return Number.isFinite(n) ? n : null
+    }
+
+    let stackName = ''
+    let accessDomain = ''
+    let clusterId = ''
+    let namespace = ''
+    let version = 'latest'
+    let planMode: StoragePlanMode | null = null
+
+    let cpuReq: number | null = null
+    let cpuLimit: number | null = null
+    let memoryReqGi: number | null = null
+    let memoryLimitGi: number | null = null
+    let storageReqGi: number | null = null
+    let storageLimitGi: number | null = null
+
+    let database: Record<string, unknown> = {}
+    let objectStorage: Record<string, unknown> = {}
+
+    if (installType === 'helm') {
+      let parsed: unknown
+      try {
+        parsed = YAML.parse(text)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'YAML 파싱 오류'
+        return `YAML 문법 오류: ${message}`
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        return 'Helm values.yaml은 객체 형태여야 합니다.'
+      }
+
+      const values = parsed as Record<string, unknown>
+      const global = (values.global ?? {}) as Record<string, unknown>
+      const chart = (values.chart ?? {}) as Record<string, unknown>
+      const image = (values.image ?? {}) as Record<string, unknown>
+      const resources = (values.resources ?? {}) as Record<string, unknown>
+      const requests = (resources.requests ?? {}) as Record<string, unknown>
+      const limits = (resources.limits ?? {}) as Record<string, unknown>
+      const storage = (values.storage ?? {}) as Record<string, unknown>
+      database = (storage.database ?? {}) as Record<string, unknown>
+      objectStorage = (storage.objectStorage ?? {}) as Record<string, unknown>
+
+      stackName = typeof global.stackName === 'string' ? global.stackName.trim() : ''
+      accessDomain = typeof global.accessDomain === 'string' ? global.accessDomain.trim() : ''
+      clusterId = typeof global.clusterId === 'string' ? global.clusterId.trim() : ''
+      namespace = typeof global.namespace === 'string' ? global.namespace.trim() : ''
+      version = typeof image.tag === 'string' && image.tag.trim() ? image.tag.trim() : 'latest'
+
+      const chartRepoUrl = typeof chart.repoUrl === 'string' ? chart.repoUrl.trim() : ''
+      const chartName = typeof chart.name === 'string' ? chart.name.trim() : ''
+      const expectedChart = getHelmMeta(toolId)
+      if (!chartRepoUrl || !chartName) {
+        return 'Helm values는 chart.repoUrl, chart.name이 필요합니다.'
+      }
+      if (chartRepoUrl !== expectedChart.repoUrl || chartName !== expectedChart.chartName) {
+        return `선택된 OSS(${toolId})의 Helm Chart와 일치하지 않습니다. 기대값: ${expectedChart.chartName} @ ${expectedChart.repoUrl}`
+      }
+
+      cpuReq = toNumber(requests.cpu)
+      cpuLimit = toNumber(limits.cpu)
+      memoryReqGi = typeof requests.memory === 'string' ? parseGi(requests.memory) : null
+      memoryLimitGi = typeof limits.memory === 'string' ? parseGi(limits.memory) : null
+      storageReqGi = typeof requests.storage === 'string' ? parseGi(requests.storage) : null
+      storageLimitGi = typeof limits.storage === 'string' ? parseGi(limits.storage) : null
+
+      planMode = storage.planMode === 'existing-all' || storage.planMode === 'integrated-create'
+        ? storage.planMode
+        : null
+    } else {
+      let docs: ReturnType<typeof YAML.parseAllDocuments>
+      try {
+        docs = YAML.parseAllDocuments(text)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'YAML 파싱 오류'
+        return `YAML 문법 오류: ${message}`
+      }
+
+      if (docs.some((doc) => doc.errors.length > 0)) {
+        return 'YAML 문서에 파싱 오류가 있습니다. Deployment/Service 문서를 확인해 주세요.'
+      }
+
+      const docObjects = docs.map((doc) => doc.toJS() as Record<string, unknown>)
+      const deployment = docObjects.find((doc) => doc.kind === 'Deployment' && doc.apiVersion === 'apps/v1')
+      const service = docObjects.find((doc) => doc.kind === 'Service' && doc.apiVersion === 'v1')
+      if (docObjects.length !== 2 || !deployment || !service) {
+        return 'YAML 타입은 apps/v1 Deployment + v1 Service 두 문서가 모두 필요합니다.'
+      }
+
+      const metadata = (deployment.metadata ?? {}) as Record<string, unknown>
+      const labels = (metadata.labels ?? {}) as Record<string, unknown>
+      const spec = (deployment.spec ?? {}) as Record<string, unknown>
+      const selector = (spec.selector ?? {}) as Record<string, unknown>
+      const matchLabels = (selector.matchLabels ?? {}) as Record<string, unknown>
+      const template = (spec.template ?? {}) as Record<string, unknown>
+      const templateSpec = (template.spec ?? {}) as Record<string, unknown>
+      const templateMeta = (template.metadata ?? {}) as Record<string, unknown>
+      const templateLabels = (templateMeta.labels ?? {}) as Record<string, unknown>
+      const containers = Array.isArray(templateSpec.containers) ? templateSpec.containers : []
+      const firstContainer = (containers[0] ?? {}) as Record<string, unknown>
+      const containerResources = (firstContainer.resources ?? {}) as Record<string, unknown>
+      const requests = (containerResources.requests ?? {}) as Record<string, unknown>
+      const limits = (containerResources.limits ?? {}) as Record<string, unknown>
+      const image = typeof firstContainer.image === 'string' ? firstContainer.image : ''
+
+      if (matchLabels.app !== toolId || templateLabels.app !== toolId) {
+        return 'Deployment selector/template labels가 toolId와 일치해야 합니다.'
+      }
+      if (!image.includes(':')) {
+        return 'Deployment 컨테이너 image에는 버전 태그가 필요합니다. (예: ghcr.io/cloud-nullus/grafana:v1.2.3)'
+      }
+
+      const serviceMeta = (service.metadata ?? {}) as Record<string, unknown>
+      const serviceSpec = (service.spec ?? {}) as Record<string, unknown>
+      const serviceSelector = (serviceSpec.selector ?? {}) as Record<string, unknown>
+      const serviceNamespace = typeof serviceMeta.namespace === 'string' ? serviceMeta.namespace.trim() : ''
+      if (serviceSelector.app !== toolId || serviceNamespace !== namespace) {
+        return 'Service selector(app)와 namespace가 Deployment와 동일해야 합니다.'
+      }
+
+      stackName = typeof labels['nullus.io/stack-name'] === 'string' ? String(labels['nullus.io/stack-name']).trim() : ''
+      accessDomain = draft.accessDomain || `${stackName}.internal`
+      clusterId = typeof labels['nullus.io/cluster-id'] === 'string' ? String(labels['nullus.io/cluster-id']).trim() : ''
+      namespace = typeof metadata.namespace === 'string' ? metadata.namespace.trim() : ''
+      if (image.includes(':')) {
+        version = image.split(':').pop()?.trim() || 'latest'
+      }
+
+      cpuReq = toNumber(requests.cpu)
+      cpuLimit = toNumber(limits.cpu)
+      memoryReqGi = typeof requests.memory === 'string' ? parseGi(requests.memory) : null
+      memoryLimitGi = typeof limits.memory === 'string' ? parseGi(limits.memory) : null
+
+      const defaultResource = resourceByTool.get(toolId)
+      storageReqGi = defaultResource?.storageRequestGi ?? 0
+      storageLimitGi = defaultResource?.storageLimitGi ?? 0
+      planMode = draft.storage.planMode
+    }
+
+    if (!stackName || !clusterId || !namespace) {
+      return installType === 'helm'
+        ? 'values.global.stackName, values.global.clusterId, values.global.namespace는 필수입니다.'
+        : 'Deployment metadata.namespace 및 labels(nullus.io/stack-name, nullus.io/cluster-id)가 필요합니다.'
+    }
+
+    if (installType === 'helm') {
+      if (!accessDomain) {
+        return 'values.global.accessDomain은 필수입니다.'
+      }
+      if (!accessDomain.endsWith('.internal')) {
+        return 'values.global.accessDomain은 .internal 도메인이어야 합니다.'
+      }
+    }
+
+    if (
+      cpuReq === null ||
+      cpuLimit === null ||
+      memoryReqGi === null ||
+      memoryLimitGi === null ||
+      storageReqGi === null ||
+      storageLimitGi === null
+    ) {
+      return installType === 'helm'
+        ? 'values.resources.requests/limits(cpu/memory/storage)는 모두 필요하며 memory/storage는 Gi 형식이어야 합니다.'
+        : 'Deployment 컨테이너 resources.requests/limits(cpu/memory)가 필요하며 memory는 Gi 형식이어야 합니다.'
+    }
+
+    if (cpuReq <= 0 || cpuLimit <= 0 || memoryReqGi <= 0 || memoryLimitGi <= 0 || storageReqGi <= 0 || storageLimitGi <= 0) {
+      return '리소스 값은 모두 0보다 커야 합니다.'
+    }
+
+    if (cpuReq > cpuLimit || memoryReqGi > memoryLimitGi || storageReqGi > storageLimitGi) {
+      return '요청값(request)은 제한값(limit)보다 클 수 없습니다.'
+    }
+
+    if (installType === 'helm' && planMode === 'existing-all') {
+      const databaseEndpoint = typeof database.endpoint === 'string' ? database.endpoint.trim() : ''
+      const databaseSecretRef = typeof database.accessSecretRef === 'string' ? database.accessSecretRef.trim() : ''
+      const databaseSecretKey = typeof database.authPasswordKey === 'string' ? database.authPasswordKey.trim() : ''
+      const objectEndpoint = typeof objectStorage.endpoint === 'string' ? objectStorage.endpoint.trim() : ''
+      const objectSecretRef = typeof objectStorage.accessSecretRef === 'string' ? objectStorage.accessSecretRef.trim() : ''
+      const objectSecretKey = typeof objectStorage.authPasswordKey === 'string' ? objectStorage.authPasswordKey.trim() : ''
+
+      const requiredExisting = [
+        database.existingRef,
+        databaseEndpoint,
+        database.resourceName,
+        databaseSecretRef,
+        database.authId,
+        databaseSecretKey,
+        objectStorage.existingRef,
+        objectEndpoint,
+        objectStorage.resourceName,
+        objectSecretRef,
+        objectStorage.authId,
+        objectSecretKey,
+      ].every((value) => typeof value === 'string' && value.trim().length > 0)
+
+      if (!requiredExisting) {
+        return 'storage.planMode가 existing-all이면 DB/Object Storage 연결 및 계정 정보가 모두 필요합니다.'
+      }
+
+      if (
+        !STORAGE_ENDPOINT_REGEX.test(databaseEndpoint) ||
+        !STORAGE_ENDPOINT_REGEX.test(objectEndpoint) ||
+        !K8S_SECRET_REF_REGEX.test(databaseSecretRef) ||
+        !K8S_SECRET_REF_REGEX.test(objectSecretRef) ||
+        !SECRET_KEY_REGEX.test(databaseSecretKey) ||
+        !SECRET_KEY_REGEX.test(objectSecretKey)
+      ) {
+        return 'existing-all 설정의 endpoint/secret 형식이 올바르지 않습니다.'
+      }
+    }
+
+    const rowKeys = rowKeysByTool.get(toolId) ?? []
+    if (rowKeys.length === 0) {
+      return '현재 선택된 OSS에서 해당 tool을 찾을 수 없습니다.'
+    }
+
+    const installVersion = version || 'latest'
+    const rowAppliedMap = new Map(
+      planningRows
+        .filter((row) => row.applied)
+        .map((row) => [row.rowKey, row.applied as ResourceVector])
+    )
+
+    const currentTotals = rowKeys.reduce(
+      (acc, rowKey) => {
+        const current = rowAppliedMap.get(rowKey)
+        if (!current) return acc
+        return {
+          cpuRequest: acc.cpuRequest + current.cpuRequest,
+          cpuLimit: acc.cpuLimit + current.cpuLimit,
+          memoryRequestGi: acc.memoryRequestGi + current.memoryRequestGi,
+          memoryLimitGi: acc.memoryLimitGi + current.memoryLimitGi,
+          storageRequestGi: acc.storageRequestGi + current.storageRequestGi,
+          storageLimitGi: acc.storageLimitGi + current.storageLimitGi,
+        }
+      },
+      {
+        cpuRequest: 0,
+        cpuLimit: 0,
+        memoryRequestGi: 0,
+        memoryLimitGi: 0,
+        storageRequestGi: 0,
+        storageLimitGi: 0,
+      }
+    )
+
+    const targetTotal: ResourceVector = {
+      cpuRequest: cpuReq,
+      cpuLimit,
+      memoryRequestGi: memoryReqGi,
+      memoryLimitGi,
+      storageRequestGi: storageReqGi,
+      storageLimitGi,
+    }
+
+    const fieldRatio = (rowKey: string, field: keyof ResourceVector) => {
+      const base = rowAppliedMap.get(rowKey)
+      const total = currentTotals[field]
+      if (base && total > 0) return base[field] / total
+      return 1 / Math.max(rowKeys.length, 1)
+    }
+
+    const distributedOverrides = rowKeys.reduce<Record<string, ResourceVector>>((acc, rowKey) => {
+      acc[rowKey] = {
+        cpuRequest: round2(targetTotal.cpuRequest * fieldRatio(rowKey, 'cpuRequest')),
+        cpuLimit: round2(targetTotal.cpuLimit * fieldRatio(rowKey, 'cpuLimit')),
+        memoryRequestGi: round2(targetTotal.memoryRequestGi * fieldRatio(rowKey, 'memoryRequestGi')),
+        memoryLimitGi: round2(targetTotal.memoryLimitGi * fieldRatio(rowKey, 'memoryLimitGi')),
+        storageRequestGi: round2(targetTotal.storageRequestGi * fieldRatio(rowKey, 'storageRequestGi')),
+        storageLimitGi: round2(targetTotal.storageLimitGi * fieldRatio(rowKey, 'storageLimitGi')),
+      }
+      return acc
+    }, {})
+
+    rowKeys.forEach((rowKey) => {
+      const slot = rowKey.split(':')[0] as PlanningSlot
+      const rowToolId = rowKey.split(':')[1]
+      const binding = SLOT_TOOL_BINDING[slot]
+      if (!binding) return
+      setTool(binding.section, binding.field, { tool: rowToolId, version: installVersion })
+    })
+
+    setAppliedResourceOverrides((prev) => ({
+      ...prev,
+      ...distributedOverrides,
+    }))
+
+    setStackName(stackName)
+    if (installType === 'helm') {
+      setAccessDomain(accessDomain)
+    }
+    setCluster(clusterId)
+    if (namespace === 'nullus') {
+      setCreateNewNs(false)
+      setNamespace('')
+    } else {
+      setCreateNewNs(false)
+      setNamespace(namespace)
+    }
+
+    if (installType === 'helm' && planMode) {
+      updateStorage({ planMode })
+      if (planMode === 'existing-all') {
+        updateStorageTarget('database', {
+          mode: 'existing',
+          existingRef: String(database.existingRef ?? ''),
+          endpoint: String(database.endpoint ?? ''),
+          resourceName: String(database.resourceName ?? ''),
+          accessSecretRef: String(database.accessSecretRef ?? ''),
+          authId: String(database.authId ?? ''),
+          authPasswordKey: String(database.authPasswordKey ?? ''),
+        })
+        updateStorageTarget('objectStorage', {
+          mode: 'existing',
+          existingRef: String(objectStorage.existingRef ?? ''),
+          endpoint: String(objectStorage.endpoint ?? ''),
+          resourceName: String(objectStorage.resourceName ?? ''),
+          accessSecretRef: String(objectStorage.accessSecretRef ?? ''),
+          authId: String(objectStorage.authId ?? ''),
+          authPasswordKey: String(objectStorage.authPasswordKey ?? ''),
+        })
+      }
+    }
+
+    return null
+  }
+
   const validateCoreFields = async () => {
-    return trigger(['stackName'])
+    const isStackValid = await trigger(['stackName'])
+    if (!isStackValid) {
+      stackNameInputRef.current?.focus()
+      return false
+    }
+
+    if (!draft.clusterId) {
+      setTabGuardError('Deploy/Save 전 Target Cluster를 선택해 주세요.')
+      clusterSelectRef.current?.focus()
+      return false
+    }
+
+    if (createNewNs && !draft.namespace.trim()) {
+      setTabGuardError('Deploy/Save 전 Namespace를 선택하거나 입력해 주세요.')
+      newNamespaceInputRef.current?.focus()
+      return false
+    }
+
+    setTabGuardError(null)
+    return true
   }
 
   const handleDeploy = async () => {
@@ -1332,8 +1801,9 @@ export function StackInstallPage() {
     const body = toCreateStackBody({
       templateId: draft.selectedTemplateId,
       clusterId: draft.clusterId,
-      namespace: draft.namespace,
+      namespace: effectiveNamespace,
       stackName: draft.stackName,
+      accessDomain: draft.accessDomain,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
@@ -1365,7 +1835,9 @@ export function StackInstallPage() {
     saveDraft.mutate({
       templateId: draft.selectedTemplateId,
       clusterId: draft.clusterId,
+      namespace: effectiveNamespace,
       stackName: draft.stackName,
+      accessDomain: draft.accessDomain,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
@@ -1424,7 +1896,13 @@ export function StackInstallPage() {
             size="md"
             loading={createStack.isPending}
             onClick={handleDeploy}
-            disabled={isSubmitting || !draft.stackName || draft.stackName.length < 2 || !draft.clusterId}
+            disabled={
+              isSubmitting ||
+              !draft.stackName ||
+              draft.stackName.length < 2 ||
+              !draft.clusterId ||
+              (createNewNs && !draft.namespace.trim())
+            }
             type="button"
           >
             <Rocket size={14} />
@@ -1442,8 +1920,9 @@ export function StackInstallPage() {
               render={({ field }) => (
                 <>
                   <Input
+                    ref={stackNameInputRef}
                     label="Stack Name"
-                    placeholder="예: prod-gitlab-stack"
+                    placeholder="예: nullus-devsecops-stack-20260324-193000"
                     value={field.value}
                     onChange={(e) => {
                       field.onChange(e.target.value)
@@ -1455,9 +1934,21 @@ export function StackInstallPage() {
                 </>
               )}
             />
+            <div className="mt-3">
+              <Input
+                label="Access domain"
+                placeholder="{stack-name}.internal"
+                value={draft.accessDomain || `${draft.stackName || 'nullus-stack'}.internal`}
+                onChange={(e) => setAccessDomain(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                최종 접근 가이드: 각 OSS는 <code>{`{OSS}.${draft.stackName || 'stack-name'}.internal`}</code> 형태로 접근합니다.
+              </p>
+            </div>
           </div>
           <div className="flex max-w-[300px] flex-1 flex-col gap-1">
             <NativeSelect
+              ref={clusterSelectRef}
               label="Target Cluster"
               value={draft.clusterId ?? ''}
               onChange={(e) => setCluster(e.target.value)}
@@ -1475,6 +1966,7 @@ export function StackInstallPage() {
           {draft.clusterId && (
             <div className="flex max-w-[300px] flex-1 flex-col gap-1">
               <NativeSelect
+                ref={namespaceSelectRef}
                 label="Namespace"
                 value={createNewNs ? '__new__' : draft.namespace}
                 onChange={(e) => {
@@ -1496,6 +1988,7 @@ export function StackInstallPage() {
               </NativeSelect>
               {createNewNs && (
                 <input
+                  ref={newNamespaceInputRef}
                   type="text"
                   placeholder="my-namespace"
                   value={draft.namespace}
@@ -1591,6 +2084,11 @@ export function StackInstallPage() {
               )
             })}
           </div>
+          {tabGuardError && (
+            <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
+              {tabGuardError}
+            </div>
+          )}
 
           {/* Tab content */}
           <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
@@ -1669,39 +2167,98 @@ export function StackInstallPage() {
               </>
             )}
 
-            {activeTab === 'yaml' && (
+            {activeTab === 'manifests' && (
               <div>
                 <p className="mb-[14px] mt-0 text-[13px] text-[var(--color-text-secondary)]">
-                  폼과 YAML이 300ms 단위로 동기화됩니다. YAML 문법이 유효할 때만 설정에 반영됩니다.
+                  선택한 OSS별 설치 파일입니다. Helm은 실제 <code>values.yaml</code>, YAML 타입은 배포 가능한 Kubernetes manifest 형식으로 생성됩니다.
+                  문법/필수 항목 검증을 통과하면 이전 탭 설정을 오버라이드합니다.
                 </p>
-                <div className="mb-2 flex items-center justify-end gap-2">
-                  <Button variant="outline" size="sm" type="button" onClick={handleFormatYaml}>
-                    <AlignLeft size={12} />
-                    Format
-                  </Button>
-                  <Button variant="outline" size="sm" type="button" onClick={handleCopyYaml}>
-                    {yamlCopied ? <Check size={12} /> : <Copy size={12} />}
-                    {yamlCopied ? 'Copied!' : 'Copy'}
-                  </Button>
-                </div>
-                <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)]">
-                  <Editor
-                    beforeMount={handleMonacoBeforeMount}
-                    height="500px"
-                    language="yaml"
-                    theme={isDarkMode ? 'vs-dark' : 'vs-light'}
-                    value={yamlContent}
-                    onChange={handleYamlChange}
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      wordWrap: 'on',
-                      tabSize: 2,
-                    }}
-                  />
-                </div>
+
+                {manifestTools.length === 0 ? (
+                  <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
+                    설치 대상 OSS가 없습니다. Artifacts/CI-CD/Observability에서 툴을 선택해 주세요.
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {manifestTools.map((tool) => {
+                        const isActive = resolvedActiveManifestTool === tool.toolId
+                        return (
+                          <button
+                            key={tool.toolId}
+                            type="button"
+                            onClick={() => setActiveManifestTool(tool.toolId)}
+                            className={cn(
+                              'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
+                              isActive
+                                ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
+                                : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-primary)]'
+                            )}
+                          >
+                            <span className="font-semibold">{tool.toolLabel}</span>
+                            <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--color-text-secondary)]">
+                              {tool.installType}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {resolvedActiveManifestTool && (
+                      <>
+                        {activeManifestInfo && (
+                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(99,102,241,0.08)] p-3 text-xs">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-[#a5b4fc]">{activeManifestInfo.toolLabel}</span>
+                              <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 uppercase text-[10px] text-[var(--color-text-secondary)]">
+                                {activeManifestInfo.installType}
+                              </span>
+                              <span className="text-[var(--color-text-secondary)]">version: {activeManifestInfo.toolVersion || 'latest'}</span>
+                            </div>
+                            <div className="text-[var(--color-text-secondary)]">
+                              역할: {activeManifestInfo.roles.join(', ')}
+                            </div>
+                            <div className="mt-1 text-[var(--color-text-secondary)]">
+                              포함 OSS: {activeManifestInfo.sourceToolIds.map((id) => toolLabel(id)).join(', ')}
+                            </div>
+                            {activeManifestInfo.hasVersionConflict && (
+                              <div className="mt-1 text-[#fcd34d]">
+                                주의: 포함된 OSS들의 선택 버전이 달라 단일 값으로 통합되었습니다({activeManifestInfo.toolVersion}).
+                              </div>
+                            )}
+                            <div className="mt-1 text-[var(--color-text-secondary)]">
+                              동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합되어 생성됩니다.
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] p-2">
+                          <Editor
+                            beforeMount={handleMonacoBeforeMount}
+                            height="520px"
+                            language="yaml"
+                            theme={isDarkMode ? 'vs-dark' : 'vs-light'}
+                            value={manifestDraftByTool[resolvedActiveManifestTool] ?? defaultManifestByTool[resolvedActiveManifestTool] ?? ''}
+                            onChange={(value) => handleManifestChange(resolvedActiveManifestTool, value)}
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 13,
+                              lineNumbers: 'on',
+                              scrollBeyondLastLine: false,
+                              wordWrap: 'on',
+                              tabSize: 2,
+                            }}
+                          />
+                        </div>
+                        {manifestErrorsByTool[resolvedActiveManifestTool] && (
+                          <div className="mt-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
+                            {manifestErrorsByTool[resolvedActiveManifestTool]}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -1913,7 +2470,7 @@ export function StackInstallPage() {
                 <div>
                   <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Storage Plan</h3>
                   <p className="mb-0 mt-1 text-xs text-[var(--color-text-secondary)]">
-                    DB(Postgres)와 Object Storage를 기존 연결/통합 생성/개별 구성 중 하나로 선택할 수 있습니다.
+                    DB(Postgres)와 Object Storage를 기존 연결 또는 통합 생성으로 선택할 수 있습니다.
                   </p>
                 </div>
 
@@ -2112,6 +2669,7 @@ export function StackInstallPage() {
           {[
             ['Template', draft.selectedTemplateId ?? '—'],
             ['Stack Name', draft.stackName || '—'],
+            ['Access Domain', draft.accessDomain || `${draft.stackName || 'nullus-stack'}.internal`],
             ['Package Registry', draft.artifacts.packageRegistry.tool],
             ['Source Repo', draft.artifacts.sourceRepository.tool],
             ['Container Registry', draft.artifacts.containerRegistry.tool],

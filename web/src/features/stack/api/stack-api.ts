@@ -232,6 +232,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
     namespace: req.namespace || 'nullus',
     golden_path_id: req.templateId ?? '',
     config: {
+      access_domain: req.accessDomain || `${req.stackName}.internal`,
       artifacts: {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
         source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),
