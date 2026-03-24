@@ -15,8 +15,35 @@ REDIS_PORT=6380
 KEYCLOAK_PORT=8180
 
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!}"
-KIND_CLUSTER_NAME="nullus-test"
 KIND_CONFIG="$PROJECT_ROOT/scripts/kind-cluster.yaml"
+
+kind_cluster_exists() {
+  local name="$1"
+  kind get clusters 2>/dev/null | grep -q "^${name}$"
+}
+
+kind_cluster_names() {
+  if [[ -f "$KIND_CONFIG" ]]; then
+    awk '/^name:[[:space:]]+/ { print $2 }' "$KIND_CONFIG"
+  fi
+}
+
+kind_print_status() {
+  local has_cluster="false"
+  if ! command -v kind >/dev/null 2>&1; then
+    return 0
+  fi
+
+  while IFS= read -r cluster_name; do
+    [[ -z "$cluster_name" ]] && continue
+    if kind_cluster_exists "$cluster_name"; then
+      has_cluster="true"
+      echo "  K8s Cluster   kind-$cluster_name ($(kubectl get nodes --context "kind-$cluster_name" -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo 'unknown'))"
+    fi
+  done < <(kind_cluster_names)
+
+  [[ "$has_cluster" == "true" ]] && echo ""
+}
 
 usage() {
   cat <<'EOF'
@@ -171,27 +198,72 @@ do_kind_up() {
     echo "[nullus] kind not found, skipping K8s cluster"
     return 1
   fi
-  if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
-    echo "[nullus] kind cluster '$KIND_CLUSTER_NAME' already exists"
-    return 0
-  fi
-  echo "[nullus] creating kind cluster '$KIND_CLUSTER_NAME'..."
+
   if [[ -f "$KIND_CONFIG" ]]; then
-    kind create cluster --config "$KIND_CONFIG"
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    awk -v outdir="$tmp_dir" '
+      BEGIN { doc=0; file="" }
+      /^---[[:space:]]*$/ { file=""; next }
+      {
+        if (file == "") {
+          doc++
+          file=sprintf("%s/kind-doc-%d.yaml", outdir, doc)
+        }
+        print >> file
+      }
+    ' "$KIND_CONFIG"
+
+    local cfg cluster_name
+    for cfg in "$tmp_dir"/kind-doc-*.yaml; do
+      [[ -f "$cfg" ]] || continue
+      cluster_name="$(awk '/^name:[[:space:]]+/ { print $2; exit }' "$cfg")"
+      if [[ -z "$cluster_name" ]]; then
+        continue
+      fi
+
+      if kind_cluster_exists "$cluster_name"; then
+        echo "[nullus] kind cluster '$cluster_name' already exists"
+        continue
+      fi
+
+      echo "[nullus] creating kind cluster '$cluster_name'..."
+      kind create cluster --config "$cfg"
+      echo "[nullus] kind cluster '$cluster_name' ready"
+    done
+
+    rm -rf "$tmp_dir"
   else
-    kind create cluster --name "$KIND_CLUSTER_NAME"
+    if kind_cluster_exists "nullus-platform"; then
+      echo "[nullus] kind cluster 'nullus-platform' already exists"
+      return 0
+    fi
+    echo "[nullus] creating kind cluster 'nullus-platform'..."
+    kind create cluster --name "nullus-platform"
+    echo "[nullus] kind cluster 'nullus-platform' ready"
   fi
-  echo "[nullus] kind cluster ready"
 }
 
 do_kind_down() {
   if ! command -v kind >/dev/null 2>&1; then
     return 0
   fi
-  if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
-    echo "[nullus] deleting kind cluster '$KIND_CLUSTER_NAME'..."
-    kind delete cluster --name "$KIND_CLUSTER_NAME"
-    echo "[nullus] kind cluster deleted"
+
+  local found="false"
+  while IFS= read -r cluster_name; do
+    [[ -z "$cluster_name" ]] && continue
+    if kind_cluster_exists "$cluster_name"; then
+      found="true"
+      echo "[nullus] deleting kind cluster '$cluster_name'..."
+      kind delete cluster --name "$cluster_name"
+      echo "[nullus] kind cluster '$cluster_name' deleted"
+    fi
+  done < <(kind_cluster_names)
+
+  if [[ "$found" == "false" ]] && kind_cluster_exists "nullus-platform"; then
+    echo "[nullus] deleting kind cluster 'nullus-platform'..."
+    kind delete cluster --name "nullus-platform"
+    echo "[nullus] kind cluster 'nullus-platform' deleted"
   fi
 }
 
@@ -339,10 +411,7 @@ do_up() {
   echo "  MinIO         http://localhost:$MINIO_CONSOLE_PORT  (nullus/nullus_dev)"
   echo "  Redis         localhost:$REDIS_PORT"
   echo ""
-  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
-    echo "  K8s Cluster   kind-$KIND_CLUSTER_NAME ($(kubectl get nodes --context "kind-$KIND_CLUSTER_NAME" -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo 'unknown'))"
-    echo ""
-  fi
+  kind_print_status
   echo "  Logs:         ./scripts/runbook_local.sh logs"
   echo "  Stop:         ./scripts/runbook_local.sh down"
   echo "══════════════════════════════════════════════════"
@@ -379,10 +448,20 @@ do_status() {
   fi
   echo ""
 
-  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
-    echo "[nullus] kind cluster"
-    kubectl get nodes --context "kind-$KIND_CLUSTER_NAME" 2>/dev/null || echo "  kind cluster not reachable"
-    echo ""
+  if command -v kind >/dev/null 2>&1; then
+    local printed="false"
+    while IFS= read -r cluster_name; do
+      [[ -z "$cluster_name" ]] && continue
+      if kind_cluster_exists "$cluster_name"; then
+        if [[ "$printed" == "false" ]]; then
+          echo "[nullus] kind clusters"
+          printed="true"
+        fi
+        echo "  - kind-$cluster_name"
+        kubectl get nodes --context "kind-$cluster_name" 2>/dev/null || echo "    kind cluster not reachable"
+      fi
+    done < <(kind_cluster_names)
+    [[ "$printed" == "true" ]] && echo ""
   fi
 
   if [[ -f "$PID_FILE" ]]; then
@@ -474,8 +553,18 @@ do_down() {
   fi
 
   echo "[nullus] all stopped"
-  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
-    echo "[nullus] note: kind cluster '$KIND_CLUSTER_NAME' is still running (use 'kind-down' or 'down --kind' to remove)"
+  if command -v kind >/dev/null 2>&1; then
+    local remaining=""
+    while IFS= read -r cluster_name; do
+      [[ -z "$cluster_name" ]] && continue
+      if kind_cluster_exists "$cluster_name"; then
+        remaining="$remaining kind-$cluster_name"
+      fi
+    done < <(kind_cluster_names)
+
+    if [[ -n "$remaining" ]]; then
+      echo "[nullus] note: kind cluster(s)$remaining still running (use 'kind-down' or 'down --kind' to remove)"
+    fi
   fi
 }
 
