@@ -13,6 +13,60 @@ export interface ToolSelection {
   version: string
 }
 
+export interface ToolVersionCatalogEntry {
+  appVersion: string
+  chartVersion?: string
+}
+
+export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
+  gitlab: { appVersion: '18.5.1', chartVersion: '9.5.1' },
+  'gitlab-registry': { appVersion: '18.5.1', chartVersion: '9.5.1' },
+  'gitlab-ci': { appVersion: '18.5.1', chartVersion: '9.5.1' },
+  argocd: { appVersion: 'v2.8.3', chartVersion: '6.8.0' },
+  minio: { appVersion: 'RELEASE.2024-08-03T04-33-23Z', chartVersion: '5.2.0' },
+  prometheus: { appVersion: 'v2.54.1' },
+  grafana: { appVersion: '11.1.0' },
+  opensearch: { appVersion: '2.14.0', chartVersion: '2.22.0' },
+  tempo: { appVersion: '2.5.0' },
+  nexus: { appVersion: '3.68.1', chartVersion: '62.1.0' },
+  jfrog: { appVersion: '7.77.3', chartVersion: '107.95.10' },
+  github: { appVersion: '2.45.0', chartVersion: '0.23.7' },
+  gitea: { appVersion: '1.22.2', chartVersion: '10.4.0' },
+  harbor: { appVersion: '2.11.0', chartVersion: '1.15.0' },
+  'docker-hub': { appVersion: '2.0.0', chartVersion: '0.1.0' },
+  s3: { appVersion: '1.0.0', chartVersion: '1.0.0' },
+  gcs: { appVersion: '1.0.0', chartVersion: '1.0.0' },
+  'github-actions': { appVersion: 'v0.9.0', chartVersion: '0.9.0' },
+  jenkins: { appVersion: '2.452.3', chartVersion: '5.5.0' },
+  flux: { appVersion: 'v2.3.0', chartVersion: '2.13.0' },
+  spinnaker: { appVersion: '1.33.0', chartVersion: '2.32.1' },
+  thanos: { appVersion: '0.36.1', chartVersion: '15.7.1' },
+  victoriametrics: { appVersion: 'v1.102.1', chartVersion: '0.30.0' },
+  kibana: { appVersion: '8.14.1', chartVersion: '8.5.1' },
+  'opensearch-dashboards': { appVersion: '2.14.0', chartVersion: '2.18.0' },
+  jaeger: { appVersion: '1.57.0', chartVersion: '3.3.0' },
+  elasticsearch: { appVersion: '8.14.1', chartVersion: '8.5.1' },
+  loki: { appVersion: '2.9.8', chartVersion: '2.10.2' },
+}
+
+export function getToolAppVersion(toolId: string): string {
+  return TOOL_VERSION_CATALOG[toolId]?.appVersion ?? '1.0.0'
+}
+
+export function getToolChartVersion(toolId: string): string | undefined {
+  return TOOL_VERSION_CATALOG[toolId]?.chartVersion
+}
+
+function normalizeToolSelectionVersion(selection: ToolSelection): ToolSelection {
+  if (!selection.version || selection.version === 'latest') {
+    return {
+      ...selection,
+      version: getToolAppVersion(selection.tool),
+    }
+  }
+  return selection
+}
+
 export interface ArtifactsConfig {
   packageRegistry: ToolSelection
   sourceRepository: ToolSelection
@@ -122,22 +176,22 @@ const DEFAULT_DRAFT: StackConfigDraft = {
     secretNamespace: 'nullus',
   },
   artifacts: {
-    packageRegistry: { tool: 'gitlab', version: 'latest' },
-    sourceRepository: { tool: 'gitlab', version: 'latest' },
-    containerRegistry: { tool: 'gitlab-registry', version: 'latest' },
-    storageBackend: { tool: 'minio', version: 'latest' },
+    packageRegistry: { tool: 'gitlab', version: getToolAppVersion('gitlab') },
+    sourceRepository: { tool: 'gitlab', version: getToolAppVersion('gitlab') },
+    containerRegistry: { tool: 'gitlab-registry', version: getToolAppVersion('gitlab-registry') },
+    storageBackend: { tool: 'minio', version: getToolAppVersion('minio') },
   },
   pipeline: {
-    cicdPlatform: { tool: 'gitlab-ci', version: 'latest' },
-    cdTool: { tool: 'argocd', version: 'latest' },
+    cicdPlatform: { tool: 'gitlab-ci', version: getToolAppVersion('gitlab-ci') },
+    cdTool: { tool: 'argocd', version: getToolAppVersion('argocd') },
   },
   monitoring: {
-    collection: { tool: 'prometheus', version: 'latest' },
-    visualization: { tool: 'grafana', version: 'latest' },
+    collection: { tool: 'prometheus', version: getToolAppVersion('prometheus') },
+    visualization: { tool: 'grafana', version: getToolAppVersion('grafana') },
   },
   logging: {
-    search: { tool: 'opensearch', version: 'latest' },
-    traceLayer: { tool: 'tempo', version: 'latest' },
+    search: { tool: 'opensearch', version: getToolAppVersion('opensearch') },
+    traceLayer: { tool: 'tempo', version: getToolAppVersion('tempo') },
   },
   resources: {
     developerCount: 10,
@@ -180,8 +234,32 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   activeTab: 'artifacts',
 }
 
+function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {
+  return {
+    ...draft,
+    artifacts: {
+      packageRegistry: normalizeToolSelectionVersion(draft.artifacts.packageRegistry),
+      sourceRepository: normalizeToolSelectionVersion(draft.artifacts.sourceRepository),
+      containerRegistry: normalizeToolSelectionVersion(draft.artifacts.containerRegistry),
+      storageBackend: normalizeToolSelectionVersion(draft.artifacts.storageBackend),
+    },
+    pipeline: {
+      cicdPlatform: normalizeToolSelectionVersion(draft.pipeline.cicdPlatform),
+      cdTool: normalizeToolSelectionVersion(draft.pipeline.cdTool),
+    },
+    monitoring: {
+      collection: normalizeToolSelectionVersion(draft.monitoring.collection),
+      visualization: normalizeToolSelectionVersion(draft.monitoring.visualization),
+    },
+    logging: {
+      search: normalizeToolSelectionVersion(draft.logging.search),
+      traceLayer: normalizeToolSelectionVersion(draft.logging.traceLayer),
+    },
+  }
+}
+
 export const useStackConfigStore = create<StackConfigState>()((set) => ({
-  draft: DEFAULT_DRAFT,
+  draft: migrateDraftToolVersions(DEFAULT_DRAFT),
   isDirty: false,
 
   setTemplate: (templateId) =>
@@ -232,7 +310,10 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
     set((s) => ({
       draft: {
         ...s.draft,
-        [section]: { ...(s.draft[section] as unknown as Record<string, ToolSelection>), [field]: value },
+        [section]: {
+          ...(s.draft[section] as unknown as Record<string, ToolSelection>),
+          [field]: normalizeToolSelectionVersion(value),
+        },
       },
       isDirty: true,
     })),
@@ -269,9 +350,9 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
 
   loadFromTemplate: (templateId, overrides) =>
     set(() => ({
-      draft: { ...DEFAULT_DRAFT, selectedTemplateId: templateId, ...overrides },
+      draft: migrateDraftToolVersions({ ...DEFAULT_DRAFT, selectedTemplateId: templateId, ...overrides }),
       isDirty: false,
     })),
 
-  resetConfig: () => set({ draft: DEFAULT_DRAFT, isDirty: false }),
+  resetConfig: () => set({ draft: migrateDraftToolVersions(DEFAULT_DRAFT), isDirty: false }),
 }))

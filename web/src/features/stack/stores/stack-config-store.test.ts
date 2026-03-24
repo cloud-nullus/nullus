@@ -15,6 +15,8 @@ describe('stack-config-store', () => {
     expect(draft.accessDomainTls.secretNamespace).toBe('nullus')
     expect(draft.selectedTemplateId).toBeNull()
     expect(draft.activeTab).toBe('artifacts')
+    expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
+    expect(draft.pipeline.cdTool.version).toBe('v2.8.3')
     expect(draft.storage.planMode).toBe('integrated-create')
     expect(draft.storage.database.mode).toBe('create')
     expect(draft.storage.objectStorage.mode).toBe('create')
@@ -83,6 +85,7 @@ describe('stack-config-store', () => {
     it('updates pipeline section tool', () => {
       useStackConfigStore.getState().setTool('pipeline', 'cicdPlatform', { tool: 'github-actions', version: 'latest' })
       expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.tool).toBe('github-actions')
+      expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.version).toBe('v0.9.0')
     })
 
     it('updates monitoring section tool', () => {

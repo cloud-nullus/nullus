@@ -82,6 +82,13 @@ export interface ToolSelection {
   version: string
 }
 
+export interface TemplateToolDetail {
+  category: string
+  name: string
+  helm_version: string
+  app_version: string
+}
+
 export interface StackResourcesInput {
   developerCount: number
   concurrentRunners: number
@@ -151,6 +158,7 @@ export interface Template {
   name: string
   description: string
   tools: string[]
+  toolDetails?: TemplateToolDetail[]
   estimatedMinutes: number
   category: string
   createdBy?: string

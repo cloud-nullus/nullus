@@ -18,6 +18,7 @@ import type {
   StoragePlanMode,
   StorageTargetConfig,
 } from '../stores/stack-config-store'
+import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
 import { useCreateStack, useSaveDraft, useClusters, useResourceDefaults, toCreateStackBody } from '../api/stack-api'
 import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
@@ -238,6 +239,7 @@ type ManifestToolEntry = {
   toolLabel: string
   installType: ManifestInstallType
   toolVersion: string
+  chartVersion?: string
   hasVersionConflict: boolean
   roles: string[]
   sourceToolIds: string[]
@@ -581,7 +583,8 @@ function buildToolManifest(
   toolLabelValue: string,
   draft: StackConfigDraft,
   resources: ResourceVector,
-  toolVersion: string
+  toolVersion: string,
+  chartVersion?: string
 ): string {
   const installType = getInstallType(toolId)
   const helmMeta = getHelmMeta(toolId)
@@ -612,9 +615,10 @@ function buildToolManifest(
       chart: {
         repoUrl: helmMeta.repoUrl,
         name: helmMeta.chartName,
+        version: chartVersion || getToolChartVersion(toolId) || toolVersion,
       },
       image: {
-        tag: toolVersion || 'latest',
+        tag: toolVersion || getToolAppVersion(toolId),
       },
       resources: resourcesSpec,
       storage: {
@@ -671,7 +675,7 @@ function buildToolManifest(
           containers: [
             {
               name: toolId,
-              image: `ghcr.io/cloud-nullus/${toolId}:${toolVersion || 'latest'}`,
+              image: `ghcr.io/cloud-nullus/${toolId}:${toolVersion || getToolAppVersion(toolId)}`,
               resources: {
                 requests: {
                   cpu: String(resources.cpuRequest),
@@ -894,6 +898,7 @@ function createDeployScript(
 
     if (tool.installType === 'helm') {
       const meta = getHelmMeta(tool.toolId)
+      const chartVersion = tool.chartVersion || getToolChartVersion(tool.toolId) || tool.toolVersion
       const valuesPath = `.nullus/generated-values/${tool.toolId}.values.yaml`
       const delimiter = `NULLUS_VALUES_EOF_${index + 1}`
       return [
@@ -902,7 +907,7 @@ function createDeployScript(
         ...manifestText.split('\n'),
         delimiter,
         `helm repo add ${tool.toolId} ${meta.repoUrl}`,
-        `helm upgrade --install ${tool.toolId} ${meta.chartName} --namespace ${namespace} --create-namespace -f "${valuesPath}" --version ${tool.toolVersion}`,
+        `helm upgrade --install ${tool.toolId} ${meta.chartName} --namespace ${namespace} --create-namespace -f "${valuesPath}" --version ${chartVersion}`,
         '',
       ]
     }
@@ -1038,11 +1043,11 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       '    spec:',
       '      containers:',
       `        - name: ${draft.pipeline.cicdPlatform.tool}`,
-      `          image: ghcr.io/nullus/${draft.pipeline.cicdPlatform.tool}:latest`,
+      `          image: ghcr.io/nullus/${draft.pipeline.cicdPlatform.tool}:${draft.pipeline.cicdPlatform.version || getToolAppVersion(draft.pipeline.cicdPlatform.tool)}`,
       '          ports:',
       '            - containerPort: 8080',
       '        - name: metrics-sidecar',
-      `          image: ghcr.io/nullus/${draft.monitoring.collection.tool}:latest`,
+      `          image: ghcr.io/nullus/${draft.monitoring.collection.tool}:${draft.monitoring.collection.version || getToolAppVersion(draft.monitoring.collection.tool)}`,
       '          ports:',
       '            - containerPort: 9090',
     ].join('\n'),
@@ -1418,15 +1423,17 @@ export function StackInstallPage() {
       const bundleId = getManifestBundleId(item.toolKey)
       const existing = map.get(bundleId)
       if (!existing) {
+        const appVersion = item.toolVersion || getToolAppVersion(bundleId)
         map.set(bundleId, {
           toolId: bundleId,
           toolLabel: toolLabel(bundleId),
           installType: getInstallType(bundleId),
-          toolVersion: item.toolVersion || 'latest',
+          toolVersion: appVersion,
+          chartVersion: getInstallType(bundleId) === 'helm' ? (getToolChartVersion(bundleId) || appVersion) : undefined,
           hasVersionConflict: false,
           roles: [item.category],
           sourceToolIds: [item.toolKey],
-          sourceVersions: [item.toolVersion || 'latest'],
+          sourceVersions: [appVersion],
         })
         return
       }
@@ -1437,11 +1444,12 @@ export function StackInstallPage() {
       if (!existing.sourceToolIds.includes(item.toolKey)) {
         existing.sourceToolIds.push(item.toolKey)
       }
-      if (!existing.sourceVersions.includes(item.toolVersion || 'latest')) {
-        existing.sourceVersions.push(item.toolVersion || 'latest')
+      const appVersion = item.toolVersion || getToolAppVersion(bundleId)
+      if (!existing.sourceVersions.includes(appVersion)) {
+        existing.sourceVersions.push(appVersion)
       }
 
-      if (existing.toolVersion === 'latest' && item.toolVersion) {
+      if (existing.toolVersion === getToolAppVersion(bundleId) && item.toolVersion) {
         existing.toolVersion = item.toolVersion
       }
       existing.hasVersionConflict = existing.sourceVersions.filter((v) => v && v.length > 0).length > 1
@@ -1453,11 +1461,11 @@ export function StackInstallPage() {
     toolId: GATEWAY_MANIFEST_ID,
     toolLabel: 'Gateway',
     installType: 'yaml',
-    toolVersion: 'latest',
+    toolVersion: 'gateway.networking.k8s.io/v1',
     hasVersionConflict: false,
     roles: ['Gateway'],
     sourceToolIds: [GATEWAY_MANIFEST_ID],
-    sourceVersions: ['latest'],
+    sourceVersions: ['gateway.networking.k8s.io/v1'],
   }
 
   const allManifestTools = [gatewayManifestTool, ...manifestTools]
@@ -1507,7 +1515,7 @@ export function StackInstallPage() {
         storageRequestGi: 0,
         storageLimitGi: 0,
       }
-      map[tool.toolId] = buildToolManifest(tool.toolId, tool.toolLabel, draft, resources, tool.toolVersion)
+      map[tool.toolId] = buildToolManifest(tool.toolId, tool.toolLabel, draft, resources, tool.toolVersion, tool.chartVersion)
     })
     return map
   })()
@@ -2094,7 +2102,7 @@ export function StackInstallPage() {
     let accessDomain = ''
     let clusterId = ''
     let namespace = ''
-    let version = 'latest'
+    let version = getToolAppVersion(toolId)
     let planMode: StoragePlanMode | null = null
 
     let cpuReq: number | null = null
@@ -2135,16 +2143,21 @@ export function StackInstallPage() {
       accessDomain = typeof global.accessDomain === 'string' ? global.accessDomain.trim() : ''
       clusterId = typeof global.clusterId === 'string' ? global.clusterId.trim() : ''
       namespace = typeof global.namespace === 'string' ? global.namespace.trim() : ''
-      version = typeof image.tag === 'string' && image.tag.trim() ? image.tag.trim() : 'latest'
+      version = typeof image.tag === 'string' && image.tag.trim() ? image.tag.trim() : getToolAppVersion(toolId)
 
       const chartRepoUrl = typeof chart.repoUrl === 'string' ? chart.repoUrl.trim() : ''
       const chartName = typeof chart.name === 'string' ? chart.name.trim() : ''
+      const chartVersion = typeof chart.version === 'string' ? chart.version.trim() : ''
       const expectedChart = getHelmMeta(toolId)
-      if (!chartRepoUrl || !chartName) {
-        return 'Helm values는 chart.repoUrl, chart.name이 필요합니다.'
+      const expectedChartVersion = getToolChartVersion(toolId)
+      if (!chartRepoUrl || !chartName || !chartVersion) {
+        return 'Helm values는 chart.repoUrl, chart.name, chart.version이 필요합니다.'
       }
       if (chartRepoUrl !== expectedChart.repoUrl || chartName !== expectedChart.chartName) {
         return `선택된 OSS(${toolId})의 Helm Chart와 일치하지 않습니다. 기대값: ${expectedChart.chartName} @ ${expectedChart.repoUrl}`
+      }
+      if (expectedChartVersion && chartVersion !== expectedChartVersion) {
+        return `선택된 OSS(${toolId})의 Helm Chart 버전과 일치하지 않습니다. 기대값: ${expectedChartVersion}`
       }
 
       cpuReq = toNumber(requests.cpu)
@@ -2213,7 +2226,7 @@ export function StackInstallPage() {
       clusterId = typeof labels['nullus.io/cluster-id'] === 'string' ? String(labels['nullus.io/cluster-id']).trim() : ''
       namespace = typeof metadata.namespace === 'string' ? metadata.namespace.trim() : ''
       if (image.includes(':')) {
-        version = image.split(':').pop()?.trim() || 'latest'
+        version = image.split(':').pop()?.trim() || getToolAppVersion(toolId)
       }
 
       cpuReq = toNumber(requests.cpu)
@@ -2307,7 +2320,7 @@ export function StackInstallPage() {
       return '현재 선택된 OSS에서 해당 tool을 찾을 수 없습니다.'
     }
 
-    const installVersion = version || 'latest'
+    const installVersion = version || getToolAppVersion(toolId)
     const rowAppliedMap = new Map(
       planningRows
         .filter((row) => row.applied)
@@ -2928,7 +2941,12 @@ export function StackInstallPage() {
                               <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 uppercase text-[10px] text-[var(--color-text-secondary)]">
                                 {activeManifestInfo.installType}
                               </span>
-                              <span className="text-[var(--color-text-secondary)]">version: {activeManifestInfo.toolVersion || 'latest'}</span>
+                              <span className="text-[var(--color-text-secondary)]">
+                                app version: {activeManifestInfo.toolVersion || getToolAppVersion(activeManifestInfo.toolId)}
+                                {activeManifestInfo.installType === 'helm' && activeManifestInfo.chartVersion
+                                  ? ` / chart version: ${activeManifestInfo.chartVersion}`
+                                  : ''}
+                              </span>
                             </div>
                             <div className="text-[var(--color-text-secondary)]">역할: {activeManifestInfo.roles.join(', ')}</div>
                             {activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (

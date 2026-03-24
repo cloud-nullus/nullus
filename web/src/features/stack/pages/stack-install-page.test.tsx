@@ -138,6 +138,8 @@ describe('StackInstallPage', () => {
     const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
     expect(editor.value).toContain('global:')
     expect(editor.value).toContain('chart:')
+    expect(editor.value).toContain('version: 9.5.1')
+    expect(editor.value).toContain('tag: 18.5.1')
     expect(editor.value).not.toContain('kind: StackToolInstall')
     expect(screen.getByText(/역할:/)).toBeInTheDocument()
     expect(screen.getByText(/동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합/)).toBeInTheDocument()
@@ -179,6 +181,7 @@ describe('StackInstallPage', () => {
     const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
     expect(editor.value).toContain('chart:')
     expect(editor.value).toContain('name: gitlab/gitlab')
+    expect(editor.value).toContain('version: 9.5.1')
     expect(editor.value).toContain('tag: 17.2.0')
   })
 
@@ -260,7 +263,7 @@ describe('StackInstallPage', () => {
     expect(screen.getAllByText(/cat <<'NULLUS_VALUES_EOF_/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\.nullus\/generated-values\/gitlab\.values\.yaml/).length).toBeGreaterThan(0)
     expect(screen.getByText(/helm upgrade --install gitlab/)).toBeInTheDocument()
-    expect(screen.getByText(/--version 17.2.1/)).toBeInTheDocument()
+    expect(screen.getByText(/--version 9.5.1/)).toBeInTheDocument()
     expect(screen.getAllByText(/cat <<'NULLUS_MANIFEST_EOF_/).length).toBeGreaterThan(0)
     expect(screen.getByText(/kubectl apply -n qa-namespace -f ".nullus\/generated-manifests\/grafana\.yaml"/)).toBeInTheDocument()
   })

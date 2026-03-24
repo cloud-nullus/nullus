@@ -9,6 +9,7 @@ import type {
   Stack,
   StackHistoryEntry,
   StackTemplate,
+  TemplateToolDetail,
   StackVersionDiff,
 } from '../../../types'
 
@@ -139,11 +140,46 @@ const toToolName = (tool: unknown): string => {
   return ''
 }
 
+const toToolDetail = (tool: unknown): TemplateToolDetail | null => {
+  if (!tool || typeof tool !== 'object') {
+    return null
+  }
+
+  const record = tool as Record<string, unknown>
+  const category = typeof record.category === 'string' ? record.category : ''
+  const name =
+    typeof record.name === 'string'
+      ? record.name
+      : (typeof record.Name === 'string' ? record.Name : '')
+  const helmVersion =
+    typeof record.helm_version === 'string'
+      ? record.helm_version
+      : (typeof record.HelmVersion === 'string' ? record.HelmVersion : '')
+  const appVersion =
+    typeof record.app_version === 'string'
+      ? record.app_version
+      : (typeof record.AppVersion === 'string' ? record.AppVersion : '')
+
+  if (!name) {
+    return null
+  }
+
+  return {
+    category,
+    name,
+    helm_version: helmVersion,
+    app_version: appVersion,
+  }
+}
+
 const normalizeTemplate = (raw: RawTemplate): StackTemplate => ({
   id: raw.id ?? raw.ID ?? '',
   name: raw.name ?? raw.Name ?? '',
   description: raw.description ?? raw.Description ?? '',
   tools: Array.isArray(raw.tools ?? raw.Tools) ? (raw.tools ?? raw.Tools ?? []).map(toToolName).filter((tool) => tool.length > 0) : [],
+  toolDetails: Array.isArray(raw.tools ?? raw.Tools)
+    ? (raw.tools ?? raw.Tools ?? []).map(toToolDetail).filter((detail): detail is TemplateToolDetail => detail !== null)
+    : [],
   estimatedMinutes: typeof raw.estimatedMinutes === 'number'
     ? raw.estimatedMinutes
     : (typeof (raw.estimated_install_time ?? raw.EstimatedInstallTime) === 'number'
