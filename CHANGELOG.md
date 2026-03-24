@@ -3,9 +3,48 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] - 2026-03-22
+## [Unreleased] - 2026-03-24
+
+### Fixed
+
+- Organization 생성 시 DB 미저장 — 프론트엔드 API 경로 `/admin/organizations` → `/admin/orgs` 수정
+- Mock auth ORG_ID/User ID가 DB 시드와 불일치하여 멤버 조회 등 org 기반 API 실패하던 문제 수정
+
+### Added
+
+- Mock auth 사용자(`@nullus.dev`) 3명 DB 시드 등록 (login-page.tsx TEST_ACCOUNTS와 ID 동기화)
+- 데모 조직 2개 추가 (Acme Corp, Startup Labs), 사용자 5명, 클러스터 3개 시드
+- 클러스터 `connection_status` 전체 enum 커버 (connected, pending, unreachable, auth_failed)
+- Stack Install에 `OSS Resource Default` 기반 Resource Planning UX 추가 (단위 전환 Gi/Mi, 수식 설명, clamp 경고, 총합 연동)
+- Stack Install에 Storage 플랜 단계 추가 (기존 연결/통합 생성, DB·Object Storage 입력, 연결 정보 검증)
+- Stack Install에 OSS별 실제 설치 파일 `YAML View` 추가 (Helm values.yaml / Kubernetes manifest, 역할 태깅, 번들 통합)
+- Stack Install에 `Preview Deploy Script` 탭 추가 (EOF 기반 values.yaml/manifest 생성 후 Helm/Kubectl 적용 스크립트 미리보기)
+- Stack Install에 `Dry Run` 탭 추가 (사전 검증 체크리스트, PASS/WARN/FAIL/READY 요약, 최종 Kubernetes Objects 미리보기)
+
+### Merged
+
+- Phase1 (#10) — Mock fallback 제거, 접근성 개선, 마이그레이션 정리, 포트 설정 통일
 
 ### Changed
+
+#### Stack Install 최종 배포 검토 흐름 고도화
+
+**변경 이유:**
+배포 직전 설정 검토가 분산되어 있어(리소스/스토리지/설치파일/스크립트) 실제 설치 전에 오류를 놓치기 쉬웠습니다.
+
+**변경 내용:**
+- 탭 흐름을 `YAML View → Preview Deploy Script → Dry Run` 단계로 확장하여 배포 전 검토를 일원화
+- 설치파일 편집 시 유효한 변경만 이전 단계 설정으로 역반영하고, 이전 단계 수정은 설치파일/스크립트에 재반영
+- GitLab 계열(`gitlab`, `gitlab-registry`, `gitlab-ci`)은 단일 Helm 번들로 통합해 중복 values.yaml 생성 방지
+
+#### Access Domain 설정 추가
+
+**변경 이유:**
+Stack 이름과 실제 접근 도메인 규칙을 사용자에게 명확히 안내할 필요가 있었습니다.
+
+**변경 내용:**
+- Stack Name 하단에 `Access domain` 입력란 추가 (기본값: `{StackName}.internal`)
+- OSS 접근 가이드 표기: `{OSS}.{StackName}.internal`
 
 #### Mock 데이터 제거 (전 페이지)
 
