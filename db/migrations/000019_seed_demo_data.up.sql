@@ -17,11 +17,11 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'completed',
   'nullus-prod',
   '{
-    "stackName": "production-stack",
-    "artifacts": {"packageRegistry": "gitlab", "sourceRepository": "gitlab-ce", "containerRegistry": "gitlab-registry", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "gitlab-ci", "cdTool": "argocd"},
-    "monitoring": {"collection": "prometheus", "visualization": "grafana"},
-    "logging": {"collection": "loki", "search": "opensearch"}
+    "artifacts": {"package_registry": {"name": "GitLab", "version": "8.7.3", "enabled": true}, "source_repository": {"name": "GitLab CE", "version": "17.7.3", "enabled": true}, "container_registry": {"name": "GitLab Registry", "version": "17.7.3", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitLab CI", "version": "17.7.3", "enabled": true}, "cd_tool": {"name": "Argo CD", "version": "2.14.2", "enabled": true}},
+    "monitoring": {"collection": {"name": "Prometheus", "version": "27.3.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "OpenSearch", "version": "2.28.0", "enabled": true}},
+    "resources": {"developers": 10, "concurrent_runners": 4, "weekly_commits": 50, "build_frequency": "high"}
   }'::jsonb,
   '2026-01-10T09:00:00Z',
   '2026-03-15T14:30:00Z'
@@ -35,10 +35,11 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'completed',
   'nullus-dev',
   '{
-    "stackName": "development-stack",
-    "artifacts": {"packageRegistry": "nexus", "sourceRepository": "gitlab-ce", "containerRegistry": "harbor", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "gitlab-ci", "cdTool": "argocd"},
-    "monitoring": {"collection": "prometheus", "visualization": "grafana"}
+    "artifacts": {"package_registry": {"name": "Nexus", "version": "3.75.0", "enabled": true}, "source_repository": {"name": "GitLab CE", "version": "17.7.3", "enabled": true}, "container_registry": {"name": "Harbor", "version": "1.16.2", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitLab CI", "version": "17.7.3", "enabled": true}, "cd_tool": {"name": "Argo CD", "version": "2.14.2", "enabled": true}},
+    "monitoring": {"collection": {"name": "Prometheus", "version": "27.3.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "resources": {"developers": 5, "concurrent_runners": 2, "weekly_commits": 30, "build_frequency": "medium"}
   }'::jsonb,
   '2026-01-15T10:00:00Z',
   '2026-03-10T11:00:00Z'
@@ -52,10 +53,11 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'installing',
   'nullus-staging',
   '{
-    "stackName": "staging-environment",
-    "artifacts": {"sourceRepository": "github", "containerRegistry": "harbor", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "github-actions", "cdTool": "argocd"},
-    "monitoring": {"collection": "prometheus", "visualization": "grafana"}
+    "artifacts": {"package_registry": {"name": "", "version": "", "enabled": false}, "source_repository": {"name": "GitHub", "version": "external", "enabled": true}, "container_registry": {"name": "Harbor", "version": "1.16.2", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitHub Actions", "version": "external", "enabled": true}, "cd_tool": {"name": "Argo CD", "version": "2.14.2", "enabled": true}},
+    "monitoring": {"collection": {"name": "Prometheus", "version": "27.3.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "resources": {"developers": 3, "concurrent_runners": 1, "weekly_commits": 15, "build_frequency": "low"}
   }'::jsonb,
   '2026-02-01T08:00:00Z',
   '2026-03-18T16:00:00Z'
@@ -69,10 +71,11 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'failed',
   'nullus-msa',
   '{
-    "stackName": "microservices-platform",
-    "artifacts": {"sourceRepository": "gitlab-ce", "containerRegistry": "harbor", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "gitlab-ci", "cdTool": "flux"},
-    "monitoring": {"collection": "thanos", "visualization": "grafana"}
+    "artifacts": {"package_registry": {"name": "", "version": "", "enabled": false}, "source_repository": {"name": "GitLab CE", "version": "17.7.3", "enabled": true}, "container_registry": {"name": "Harbor", "version": "1.16.2", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitLab CI", "version": "17.7.3", "enabled": true}, "cd_tool": {"name": "Flux", "version": "2.4.0", "enabled": true}},
+    "monitoring": {"collection": {"name": "Thanos", "version": "15.7.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "OpenSearch", "version": "2.28.0", "enabled": true}},
+    "resources": {"developers": 15, "concurrent_runners": 6, "weekly_commits": 80, "build_frequency": "high"}
   }'::jsonb,
   '2026-03-01T13:00:00Z',
   '2026-03-20T09:00:00Z'
