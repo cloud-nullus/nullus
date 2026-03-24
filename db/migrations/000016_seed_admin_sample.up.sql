@@ -8,7 +8,7 @@ VALUES (
   'nullus-devops',
   'nullus.io',
   'active',
-  ARRAY['devops-cluster'],
+  ARRAY['kind-nullus-test'],
   NOW(),
   NOW()
 )
@@ -27,7 +27,7 @@ WHERE id = '11111111-1111-1111-1111-111111111111';
 
 INSERT INTO clusters (id, name, type, endpoint, connection_status, org_id, created_at, updated_at)
 VALUES
-  ('31111111-1111-1111-1111-111111111111', 'devops-cluster', 'pipeline', 'https://devops-cluster.nullus.io', 'connected', '11111111-1111-1111-1111-111111111111', NOW(), NOW()),
+  ('31111111-1111-1111-1111-111111111111', 'kind-nullus-test', 'pipeline', 'https://127.0.0.1:6443', 'connected', '11111111-1111-1111-1111-111111111111', NOW(), NOW()),
   ('32222222-2222-2222-2222-222222222222', 'app-cluster-prod', 'target', 'https://app-cluster-prod.nullus.io', 'pending', '11111111-1111-1111-1111-111111111111', NOW(), NOW())
 ON CONFLICT (id) DO NOTHING;
 

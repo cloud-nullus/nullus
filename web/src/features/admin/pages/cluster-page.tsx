@@ -39,6 +39,18 @@ const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassNa
     panelClassName: 'border-[#64748b40] bg-[rgba(100,116,139,0.15)] text-[#64748b]',
     label: 'Inactive',
   },
+  unreachable: {
+    icon: <AlertCircle size={14} />,
+    badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
+    panelClassName: 'border-[#f59e0b40] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
+    label: 'Unreachable',
+  },
+  auth_failed: {
+    icon: <AlertCircle size={14} />,
+    badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+    panelClassName: 'border-[#ef444440] bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+    label: 'Auth Failed',
+  },
 }
 
 const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'

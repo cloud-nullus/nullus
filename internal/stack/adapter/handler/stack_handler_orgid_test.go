@@ -39,5 +39,5 @@ func TestResolveOrgID_DefaultsToDefaultOrg(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	require.Equal(t, "00000000-0000-0000-0000-000000000001", resolveOrgID(c))
+	require.Equal(t, "11111111-1111-1111-1111-111111111111", resolveOrgID(c))
 }

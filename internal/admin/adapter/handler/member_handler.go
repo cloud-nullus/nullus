@@ -39,6 +39,16 @@ func (h *MemberHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/organizations/:orgId/members/:memberId", h.DeleteMember)
 	g.PATCH("/organizations/:orgId/members/:memberId", h.UpdateMemberRole)
 	g.POST("/organizations/:orgId/members/:memberId/deactivate", h.DeactivateMember)
+
+	g.GET("/organizations/:orgId/invites", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]any{"items": []any{}})
+	})
+	g.POST("/organizations/:orgId/invites", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]any{"token": "", "url": "", "role": "developer", "expiresAt": ""})
+	})
+	g.DELETE("/organizations/:orgId/invites/:token", func(c echo.Context) error {
+		return c.NoContent(http.StatusNoContent)
+	})
 }
 
 func (h *MemberHandler) SearchUser(c echo.Context) error {

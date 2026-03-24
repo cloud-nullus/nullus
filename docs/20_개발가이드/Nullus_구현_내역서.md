@@ -156,12 +156,9 @@
 
 | 영역 | 프레임워크 | 수량 | 범위 |
 |------|----------|------|------|
-| Go Domain/UseCase | `testing` + `testify` | 50+ | stack, auth, admin, cicd |
-| Go Handler | `httptest` + `echo.Test` | 20+ | 전체 API 엔드포인트 |
-| Go OIDC Provider | `testify` | 10 | Keycloak + Authentik claims 추출 |
-| React 단위 | Vitest + Testing Library | 18+ | stack-add-tools-page |
-| CI/CD 단위 | Vitest | 2 | cicd-history-page rollback |
-| E2E | Playwright | 41 | 전체 사용자 시나리오 |
+| Go 전체 | `testing` + `testify` | 276 | domain, usecase, handler, middleware (전 모듈) |
+| React 단위 | Vitest + Testing Library | 174 | 18개 테스트 파일 (admin, stack, cicd, observability, home, auth) |
+| E2E | Playwright | 18 파일 | 전체 사용자 시나리오 |
 
 ---
 
