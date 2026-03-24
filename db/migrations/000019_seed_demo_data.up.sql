@@ -13,15 +13,15 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'Production Stack',
   'gitlab-allinone-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id FROM clusters WHERE name = 'devops-cluster' LIMIT 1),
+  (SELECT id FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
   'completed',
   'nullus-prod',
   '{
-    "stackName": "production-stack",
-    "artifacts": {"packageRegistry": "gitlab", "sourceRepository": "gitlab-ce", "containerRegistry": "gitlab-registry", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "gitlab-ci", "cdTool": "argocd"},
-    "monitoring": {"collection": "prometheus", "visualization": "grafana"},
-    "logging": {"collection": "loki", "search": "opensearch"}
+    "artifacts": {"package_registry": {"name": "GitLab", "version": "8.7.3", "enabled": true}, "source_repository": {"name": "GitLab CE", "version": "17.7.3", "enabled": true}, "container_registry": {"name": "GitLab Registry", "version": "17.7.3", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitLab CI", "version": "17.7.3", "enabled": true}, "cd_tool": {"name": "Argo CD", "version": "2.14.2", "enabled": true}},
+    "monitoring": {"collection": {"name": "Prometheus", "version": "27.3.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "OpenSearch", "version": "2.28.0", "enabled": true}},
+    "resources": {"developers": 10, "concurrent_runners": 4, "weekly_commits": 50, "build_frequency": "high"}
   }'::jsonb,
   '2026-01-10T09:00:00Z',
   '2026-03-15T14:30:00Z'
@@ -31,14 +31,15 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'Development Stack',
   'gitlab-argocd-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id FROM clusters WHERE name = 'devops-cluster' LIMIT 1),
+  (SELECT id FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
   'completed',
   'nullus-dev',
   '{
-    "stackName": "development-stack",
-    "artifacts": {"packageRegistry": "nexus", "sourceRepository": "gitlab-ce", "containerRegistry": "harbor", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "gitlab-ci", "cdTool": "argocd"},
-    "monitoring": {"collection": "prometheus", "visualization": "grafana"}
+    "artifacts": {"package_registry": {"name": "Nexus", "version": "3.75.0", "enabled": true}, "source_repository": {"name": "GitLab CE", "version": "17.7.3", "enabled": true}, "container_registry": {"name": "Harbor", "version": "1.16.2", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitLab CI", "version": "17.7.3", "enabled": true}, "cd_tool": {"name": "Argo CD", "version": "2.14.2", "enabled": true}},
+    "monitoring": {"collection": {"name": "Prometheus", "version": "27.3.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "resources": {"developers": 5, "concurrent_runners": 2, "weekly_commits": 30, "build_frequency": "medium"}
   }'::jsonb,
   '2026-01-15T10:00:00Z',
   '2026-03-10T11:00:00Z'
@@ -52,10 +53,11 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'installing',
   'nullus-staging',
   '{
-    "stackName": "staging-environment",
-    "artifacts": {"sourceRepository": "github", "containerRegistry": "harbor", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "github-actions", "cdTool": "argocd"},
-    "monitoring": {"collection": "prometheus", "visualization": "grafana"}
+    "artifacts": {"package_registry": {"name": "", "version": "", "enabled": false}, "source_repository": {"name": "GitHub", "version": "external", "enabled": true}, "container_registry": {"name": "Harbor", "version": "1.16.2", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitHub Actions", "version": "external", "enabled": true}, "cd_tool": {"name": "Argo CD", "version": "2.14.2", "enabled": true}},
+    "monitoring": {"collection": {"name": "Prometheus", "version": "27.3.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "resources": {"developers": 3, "concurrent_runners": 1, "weekly_commits": 15, "build_frequency": "low"}
   }'::jsonb,
   '2026-02-01T08:00:00Z',
   '2026-03-18T16:00:00Z'
@@ -69,10 +71,11 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'failed',
   'nullus-msa',
   '{
-    "stackName": "microservices-platform",
-    "artifacts": {"sourceRepository": "gitlab-ce", "containerRegistry": "harbor", "storageBackend": "minio"},
-    "pipeline": {"cicdPlatform": "gitlab-ci", "cdTool": "flux"},
-    "monitoring": {"collection": "thanos", "visualization": "grafana"}
+    "artifacts": {"package_registry": {"name": "", "version": "", "enabled": false}, "source_repository": {"name": "GitLab CE", "version": "17.7.3", "enabled": true}, "container_registry": {"name": "Harbor", "version": "1.16.2", "enabled": true}, "storage_backend": {"name": "MinIO", "version": "5.4.0", "enabled": true}},
+    "pipeline": {"ci_platform": {"name": "GitLab CI", "version": "17.7.3", "enabled": true}, "cd_tool": {"name": "Flux", "version": "2.4.0", "enabled": true}},
+    "monitoring": {"collection": {"name": "Thanos", "version": "15.7.0", "enabled": true}, "visualization": {"name": "Grafana", "version": "8.8.4", "enabled": true}},
+    "logging": {"collection": {"name": "Loki", "version": "6.24.0", "enabled": true}, "search": {"name": "OpenSearch", "version": "2.28.0", "enabled": true}},
+    "resources": {"developers": 15, "concurrent_runners": 6, "weekly_commits": 80, "build_frequency": "high"}
   }'::jsonb,
   '2026-03-01T13:00:00Z',
   '2026-03-20T09:00:00Z'
@@ -82,41 +85,43 @@ ON CONFLICT (id) DO NOTHING;
 -- ── Stack Config Versions (이력 5개) ────────────────────────────────────────
 
 INSERT INTO stack_config_versions (id, stack_id, version, config, changed_by, change_reason, created_at) VALUES
-(
-  'h1', 'production-stack', 1,
-  '{"gitlab": "v16.7", "argocd": "v2.9.3", "prometheus": "v2.48", "grafana": "v10.2"}'::jsonb,
-  'admin@nullus.io',
-  '초기 스택 배포',
-  '2026-01-10T09:00:00Z'
-),
-(
-  'h2', 'production-stack', 2,
-  '{"gitlab": "v16.7", "argocd": "v2.9.3", "prometheus": "v2.49", "grafana": "v10.2"}'::jsonb,
-  'kim@nullus.io',
-  'Prometheus 버전 업그레이드 (v2.48 → v2.49)',
-  '2026-02-05T11:30:00Z'
-),
-(
-  'h3', 'production-stack', 3,
-  '{"gitlab": "v16.7", "argocd": "v2.9.3", "prometheus": "v2.49", "grafana": "v10.3"}'::jsonb,
-  'kim@nullus.io',
-  'Grafana 버전 업그레이드 (v10.2 → v10.3)',
-  '2026-02-20T14:00:00Z'
-),
-(
-  'h4', 'production-stack', 4,
-  '{"gitlab": "v16.8", "argocd": "v2.10.0", "prometheus": "v2.49", "grafana": "v10.3"}'::jsonb,
-  'admin@nullus.io',
-  'GitLab + ArgoCD 마이너 업그레이드',
-  '2026-03-03T14:28:00Z'
-),
-(
-  'h5', 'development-stack', 1,
-  '{"gitlab": "v16.7", "harbor": "v2.10", "argocd": "v2.9.3", "prometheus": "v2.48"}'::jsonb,
-  'kim@nullus.io',
-  '개발 스택 초기 배포',
-  '2026-01-15T10:00:00Z'
-)
+-- production-stack: v1-v4
+('h1', 'production-stack', 1,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.5.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.7","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.48","enabled":true},"visualization":{"name":"Grafana","version":"10.2","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', '초기 스택 배포', '2026-01-10T09:00:00Z'),
+('h2', 'production-stack', 2,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.5.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.7","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"10.2","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'Prometheus 버전 업그레이드 (v2.48 → v2.49)', '2026-02-05T11:30:00Z'),
+('h3', 'production-stack', 3,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.5.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.7","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"10.3","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'Grafana 버전 업그레이드 (v10.2 → v10.3)', '2026-02-20T14:00:00Z'),
+('h4', 'production-stack', 4,
+ '{"artifacts":{"package_registry":{"name":"GitLab","version":"8.7.3","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.8","enabled":true},"container_registry":{"name":"GitLab Registry","version":"16.8","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.8","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.10.0","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"10.3","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', 'GitLab + ArgoCD 마이너 업그레이드', '2026-03-03T14:28:00Z'),
+-- development-stack: v1-v2
+('h5', 'development-stack', 1,
+ '{"artifacts":{"package_registry":{"name":"Nexus","version":"3.75.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.48","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', '개발 스택 초기 배포', '2026-01-15T10:00:00Z'),
+('h6', 'development-stack', 2,
+ '{"artifacts":{"package_registry":{"name":"Nexus","version":"3.75.0","enabled":true},"source_repository":{"name":"GitLab CE","version":"16.8","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.8","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.10.0","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'GitLab + ArgoCD + Prometheus 업그레이드', '2026-02-20T09:00:00Z'),
+-- staging-environment: v1-v2
+('h7', 'staging-environment', 1,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitHub","version":"external","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitHub Actions","version":"external","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.9.3","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.48","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', '스테이징 환경 초기 배포', '2026-02-01T08:00:00Z'),
+('h8', 'staging-environment', 2,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitHub","version":"external","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitHub Actions","version":"external","enabled":true},"cd_tool":{"name":"Argo CD","version":"2.10.0","enabled":true}},"monitoring":{"collection":{"name":"Prometheus","version":"2.49","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"Grafana","version":"8.8.4","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'ArgoCD + Prometheus 버전 업그레이드', '2026-03-05T10:00:00Z'),
+-- microservices-platform: v1-v3
+('h9', 'microservices-platform', 1,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Flux","version":"2.3.0","enabled":true}},"monitoring":{"collection":{"name":"Thanos","version":"0.34","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.20.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'admin@nullus.io', 'MSA 플랫폼 초기 배포', '2026-03-01T13:00:00Z'),
+('h10', 'microservices-platform', 2,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitLab CE","version":"16.7","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.2","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.7","enabled":true},"cd_tool":{"name":"Flux","version":"2.4.0","enabled":true}},"monitoring":{"collection":{"name":"Thanos","version":"0.35","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'Flux + Thanos 버전 업그레이드', '2026-03-10T11:00:00Z'),
+('h11', 'microservices-platform', 3,
+ '{"artifacts":{"package_registry":{"name":"","version":"","enabled":false},"source_repository":{"name":"GitLab CE","version":"16.8","enabled":true},"container_registry":{"name":"Harbor","version":"1.16.3","enabled":true},"storage_backend":{"name":"MinIO","version":"5.4.0","enabled":true}},"pipeline":{"ci_platform":{"name":"GitLab CI","version":"16.8","enabled":true},"cd_tool":{"name":"Flux","version":"2.4.0","enabled":true}},"monitoring":{"collection":{"name":"Thanos","version":"0.35","enabled":true},"visualization":{"name":"Grafana","version":"8.8.4","enabled":true}},"logging":{"collection":{"name":"Loki","version":"6.24.0","enabled":true},"search":{"name":"OpenSearch","version":"2.28.0","enabled":true}}}'::jsonb,
+ 'kim@nullus.io', 'GitLab + Harbor 마이너 업그레이드', '2026-03-18T15:00:00Z')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Pipelines (4개) ─────────────────────────────────────────────────────────
@@ -127,7 +132,7 @@ INSERT INTO pipelines (id, name, template_id, org_id, cluster_id, namespace, app
   'Frontend Web App',
   'web-frontend-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id::varchar FROM clusters WHERE name = 'devops-cluster' LIMIT 1),
+  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
   'nullus-prod',
   'web',
   'https://github.com/nullus/web-frontend.git',
@@ -139,7 +144,7 @@ INSERT INTO pipelines (id, name, template_id, org_id, cluster_id, namespace, app
   'Backend API Server',
   'web-backend-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id::varchar FROM clusters WHERE name = 'devops-cluster' LIMIT 1),
+  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
   'nullus-prod',
   'backend',
   'https://github.com/nullus/backend-api.git',

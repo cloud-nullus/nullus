@@ -163,14 +163,16 @@ func main() {
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
 		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "X-Org-ID"},
 		AllowCredentials: true,
 		MaxAge:           7200,
 	}))
-	e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
-		Authenticated:   300,
-		Unauthenticated: 30,
-	}))
+	if cfg.Server.Mode == "production" {
+		e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
+			Authenticated:   300,
+			Unauthenticated: 30,
+		}))
+	}
 
 	// API v1 group
 	v1 := e.Group("/api/v1")

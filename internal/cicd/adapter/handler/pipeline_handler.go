@@ -65,7 +65,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "00000000-0000-0000-0000-000000000001"
+		orgID = "11111111-1111-1111-1111-111111111111"
 	}
 
 	out, err := h.createPipeline.Execute(c.Request().Context(), usecase.CreatePipelineInput{
@@ -88,7 +88,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "00000000-0000-0000-0000-000000000001"
+		orgID = "11111111-1111-1111-1111-111111111111"
 	}
 
 	out, err := h.listPipelines.Execute(c.Request().Context(), usecase.ListPipelinesInput{OrgID: orgID})
@@ -129,7 +129,7 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 func (h *PipelineHandler) ListDeployments(c echo.Context) error {
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "00000000-0000-0000-0000-000000000001"
+		orgID = "11111111-1111-1111-1111-111111111111"
 	}
 
 	pipelines, err := h.pipelineRepo.List(c.Request().Context(), orgID)

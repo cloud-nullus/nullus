@@ -270,7 +270,7 @@ API 서버: `http://localhost:8090`
 nullus/
 ├── cmd/api/                # API 서버 진입점
 ├── configs/                # 설정 파일 (config.yaml)
-├── db/migrations/          # DB 마이그레이션 (18개)
+├── db/migrations/          # DB 마이그레이션 (22개)
 ├── deploy/helm/nullus/     # Helm 차트
 ├── internal/               # 내부 모듈 (Clean Architecture)
 │   ├── admin/              # 조직/클러스터/사용자 관리
@@ -283,7 +283,7 @@ nullus/
 ├── scripts/                # 운영 스크립트 (runbook, keycloak, kind)
 ├── web/                    # React 프론트엔드
 │   ├── src/features/       # 기능별 모듈 (admin, auth, cicd, observability, stack)
-│   └── e2e/                # Playwright E2E 테스트 (41개)
+│   └── e2e/                # Playwright E2E 테스트 (18개)
 ├── e2e/                    # Go E2E 테스트
 ├── CHANGELOG.md            # 변경 이력
 ├── ROADMAP.md              # 로드맵
