@@ -10,7 +10,14 @@ import { configureMonacoYaml } from 'monaco-yaml'
 import YAML from 'yaml'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
-import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
+import type {
+  InstallTab,
+  ToolSelection,
+  StackConfigDraft,
+  StorageMode,
+  StoragePlanMode,
+  StorageTargetConfig,
+} from '../stores/stack-config-store'
 import { useCreateStack, useSaveDraft, useClusters, useResourceDefaults, toCreateStackBody } from '../api/stack-api'
 import { api } from '../../../lib/api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
@@ -88,6 +95,51 @@ const LOGGING_OPTIONS: Record<string, ToolOption[]> = {
     { id: 'opensearch', label: 'OpenSearch', description: 'Elasticsearch 호환 검색/분석' },
     { id: 'elasticsearch', label: 'Elasticsearch', description: '분산 검색/분석 엔진' },
     { id: 'loki', label: 'Grafana Loki', description: 'Prometheus 스타일 로그 집계' },
+  ],
+}
+
+const STORAGE_PLAN_MODE_OPTIONS: Array<{ id: StoragePlanMode; label: string; description: string }> = [
+  {
+    id: 'existing-all',
+    label: '기존 DB/Storage 연결',
+    description: '조직에서 이미 운영 중인 DB와 Object Storage를 참조하여 연결합니다.',
+  },
+  {
+    id: 'integrated-create',
+    label: '통합 DB/Storage 생성 연결',
+    description: '설치 시 DB와 Object Storage를 함께 신규 생성하고 자동 연동합니다.',
+  },
+]
+
+const STORAGE_SIZE_OPTIONS: Array<StorageTargetConfig['size']> = ['small', 'medium', 'large']
+
+const STORAGE_SIZE_RESOURCE_HINTS: Record<
+  'database' | 'objectStorage',
+  Record<StorageTargetConfig['size'], string>
+> = {
+  database: {
+    small: '(CPU 0.5 / Memory 1Gi / Storage 20Gi)',
+    medium: '(CPU 1 / Memory 2Gi / Storage 50Gi)',
+    large: '(CPU 2 / Memory 4Gi / Storage 100Gi)',
+  },
+  objectStorage: {
+    small: '(CPU 0.5 / Memory 1Gi / Storage 50Gi)',
+    medium: '(CPU 1 / Memory 2Gi / Storage 100Gi)',
+    large: '(CPU 2 / Memory 4Gi / Storage 300Gi)',
+  },
+}
+
+const STORAGE_PROVIDER_OPTIONS: Record<'database' | 'objectStorage', Array<{ id: string; label: string }>> = {
+  database: [
+    { id: 'postgres', label: 'PostgreSQL' },
+    { id: 'mysql', label: 'MySQL' },
+    { id: 'mariadb', label: 'MariaDB' },
+  ],
+  objectStorage: [
+    { id: 'minio', label: 'MinIO' },
+    { id: 's3', label: 'Amazon S3' },
+    { id: 'gcs', label: 'Google Cloud Storage' },
+    { id: 'azure-blob', label: 'Azure Blob Storage' },
   ],
 }
 
@@ -194,11 +246,20 @@ type PlanningOptionDefinition = {
   }
 }
 
+type StorageTargetKey = 'database' | 'objectStorage'
+type StorageFieldKey = 'existingRef' | 'endpoint' | 'resourceName' | 'accessSecretRef' | 'authId' | 'authPasswordKey'
+type StorageValidationErrorKey = `${StorageTargetKey}.${StorageFieldKey}`
+type StorageValidationErrors = Partial<Record<StorageValidationErrorKey, string>>
+
 const PLANNING_PROFILE_LABEL: Record<PlanningProfile, string> = {
   startup: 'Startup',
   standard: 'Standard',
   enterprise: 'Enterprise',
 }
+
+const STORAGE_ENDPOINT_REGEX = /^((https?:\/\/)[^\s]+|[a-zA-Z0-9.-]+(?::\d{1,5})?)$/
+const K8S_SECRET_REF_REGEX = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
+const SECRET_KEY_REGEX = /^[-._a-zA-Z0-9]+$/
 
 const PLANNING_OPTION_DEFS: Record<PlanningSlot, PlanningOptionDefinition[]> = {
   'artifacts.packageRegistry': [
@@ -654,6 +715,33 @@ function draftToYaml(draft: StackConfigDraft): string {
         memoryRequest: draft.resources.memoryRequest,
         storageRequest: draft.resources.storageRequest,
       },
+      storage: {
+        planMode: draft.storage.planMode,
+        database: {
+          mode: draft.storage.database.mode,
+          existingRef: draft.storage.database.existingRef,
+          endpoint: draft.storage.database.endpoint,
+          resourceName: draft.storage.database.resourceName,
+          accessSecretRef: draft.storage.database.accessSecretRef,
+          authId: draft.storage.database.authId,
+          authPasswordKey: draft.storage.database.authPasswordKey,
+          providerOrEngine: draft.storage.database.providerOrEngine,
+          version: draft.storage.database.version,
+          size: draft.storage.database.size,
+        },
+        objectStorage: {
+          mode: draft.storage.objectStorage.mode,
+          existingRef: draft.storage.objectStorage.existingRef,
+          endpoint: draft.storage.objectStorage.endpoint,
+          resourceName: draft.storage.objectStorage.resourceName,
+          accessSecretRef: draft.storage.objectStorage.accessSecretRef,
+          authId: draft.storage.objectStorage.authId,
+          authPasswordKey: draft.storage.objectStorage.authPasswordKey,
+          providerOrEngine: draft.storage.objectStorage.providerOrEngine,
+          version: draft.storage.objectStorage.version,
+          size: draft.storage.objectStorage.size,
+        },
+      },
     },
     { indent: 2, lineWidth: 0 }
   )
@@ -669,6 +757,9 @@ function parseDraftFromYaml(text: string, currentDraft: StackConfigDraft): Stack
   const monitoring = (root.monitoring ?? {}) as Record<string, unknown>
   const logging = (root.logging ?? {}) as Record<string, unknown>
   const resources = (root.resources ?? {}) as Record<string, unknown>
+  const storage = (root.storage ?? {}) as Record<string, unknown>
+  const storageDatabase = (storage.database ?? {}) as Record<string, unknown>
+  const storageObjectStorage = (storage.objectStorage ?? {}) as Record<string, unknown>
 
   const toStringOrFallback = (value: unknown, fallback: string) =>
     typeof value === 'string' ? value : fallback
@@ -682,6 +773,18 @@ function parseDraftFromYaml(text: string, currentDraft: StackConfigDraft): Stack
     if (typeof value === 'number' && Number.isFinite(value)) return value
     return fallback
   }
+
+  const toStorageModeOrFallback = (value: unknown, fallback: StorageMode): StorageMode =>
+    value === 'existing' || value === 'create' ? value : fallback
+
+  const toStoragePlanModeOrFallback = (value: unknown, fallback: StoragePlanMode): StoragePlanMode =>
+    value === 'existing-all' || value === 'integrated-create' ? value : fallback
+
+  const toStorageSizeOrFallback = (
+    value: unknown,
+    fallback: StorageTargetConfig['size']
+  ): StorageTargetConfig['size'] =>
+    value === 'small' || value === 'medium' || value === 'large' ? value : fallback
 
   return {
     ...currentDraft,
@@ -749,6 +852,36 @@ function parseDraftFromYaml(text: string, currentDraft: StackConfigDraft): Stack
       memoryRequest: toStringOrFallback(resources.memoryRequest, currentDraft.resources.memoryRequest ?? ''),
       storageRequest: toStringOrFallback(resources.storageRequest, currentDraft.resources.storageRequest ?? ''),
     },
+    storage: {
+      ...currentDraft.storage,
+      planMode: toStoragePlanModeOrFallback(storage.planMode, currentDraft.storage.planMode),
+      database: {
+        ...currentDraft.storage.database,
+        mode: toStorageModeOrFallback(storageDatabase.mode, currentDraft.storage.database.mode),
+        existingRef: toStringOrFallback(storageDatabase.existingRef, currentDraft.storage.database.existingRef),
+        endpoint: toStringOrFallback(storageDatabase.endpoint, currentDraft.storage.database.endpoint),
+        resourceName: toStringOrFallback(storageDatabase.resourceName, currentDraft.storage.database.resourceName),
+        accessSecretRef: toStringOrFallback(storageDatabase.accessSecretRef, currentDraft.storage.database.accessSecretRef),
+        authId: toStringOrFallback(storageDatabase.authId, currentDraft.storage.database.authId),
+        authPasswordKey: toStringOrFallback(storageDatabase.authPasswordKey, currentDraft.storage.database.authPasswordKey),
+        providerOrEngine: toStringOrFallback(storageDatabase.providerOrEngine, currentDraft.storage.database.providerOrEngine),
+        version: toStringOrFallback(storageDatabase.version, currentDraft.storage.database.version),
+        size: toStorageSizeOrFallback(storageDatabase.size, currentDraft.storage.database.size),
+      },
+      objectStorage: {
+        ...currentDraft.storage.objectStorage,
+        mode: toStorageModeOrFallback(storageObjectStorage.mode, currentDraft.storage.objectStorage.mode),
+        existingRef: toStringOrFallback(storageObjectStorage.existingRef, currentDraft.storage.objectStorage.existingRef),
+        endpoint: toStringOrFallback(storageObjectStorage.endpoint, currentDraft.storage.objectStorage.endpoint),
+        resourceName: toStringOrFallback(storageObjectStorage.resourceName, currentDraft.storage.objectStorage.resourceName),
+        accessSecretRef: toStringOrFallback(storageObjectStorage.accessSecretRef, currentDraft.storage.objectStorage.accessSecretRef),
+        authId: toStringOrFallback(storageObjectStorage.authId, currentDraft.storage.objectStorage.authId),
+        authPasswordKey: toStringOrFallback(storageObjectStorage.authPasswordKey, currentDraft.storage.objectStorage.authPasswordKey),
+        providerOrEngine: toStringOrFallback(storageObjectStorage.providerOrEngine, currentDraft.storage.objectStorage.providerOrEngine),
+        version: toStringOrFallback(storageObjectStorage.version, currentDraft.storage.objectStorage.version),
+        size: toStorageSizeOrFallback(storageObjectStorage.size, currentDraft.storage.objectStorage.size),
+      },
+    },
   }
 }
 
@@ -759,6 +892,7 @@ const TABS: { id: InstallTab; label: string }[] = [
   { id: 'pipeline', label: 'CI/CD' },
   { id: 'monitoring', label: 'Observability' },
   { id: 'resources', label: 'Resources' },
+  { id: 'storage', label: 'Storage' },
   { id: 'yaml', label: 'YAML View' },
 ]
 
@@ -768,7 +902,7 @@ export function StackInstallPage() {
   const navigate = useNavigate()
   const theme = useThemeStore((state) => state.theme)
   const isDarkMode = theme === 'dark'
-  const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace } = useStackConfigStore()
+  const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace, updateStorage, updateStorageTarget } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
@@ -784,6 +918,7 @@ export function StackInstallPage() {
   const [appliedResourceOverrides, setAppliedResourceOverrides] = useState<Record<string, ResourceVector>>({})
   const [planningRowUnits, setPlanningRowUnits] = useState<Record<string, PlanningRowUnit>>({})
   const [activeFormulaPopoverKey, setActiveFormulaPopoverKey] = useState<string | null>(null)
+  const [storageValidationErrors, setStorageValidationErrors] = useState<StorageValidationErrors>({})
   const [yamlContent, setYamlContent] = useState(() => draftToYaml(draft))
   const [yamlCopied, setYamlCopied] = useState(false)
   const yamlContentRef = useRef(yamlContent)
@@ -807,7 +942,7 @@ export function StackInstallPage() {
   const deployScript = createDeployScript(draft)
   const k8sObjects = createK8sObjects(draft)
 
-  const selectedInstallItems: { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string }[] = [
+  const selectedInstallItems = ([
     {
       slot: 'artifacts.packageRegistry',
       category: 'Artifacts > Package Registry',
@@ -868,7 +1003,9 @@ export function StackInstallPage() {
       toolKey: draft.logging.traceLayer.tool,
       toolLabel: toolLabel(draft.logging.traceLayer.tool),
     },
-  ].filter((item) => item.toolKey.length > 0)
+  ] satisfies { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string }[]).filter(
+    (item) => item.toolKey.length > 0
+  )
 
   const selectedToolKeys = Array.from(new Set(selectedInstallItems.map((item) => item.toolKey)))
 
@@ -1089,6 +1226,96 @@ export function StackInstallPage() {
     setActiveTab(tab)
   }
 
+  const handleStoragePlanModeChange = (planMode: StoragePlanMode) => {
+    setStorageValidationErrors({})
+    if (planMode === 'existing-all') {
+      updateStorage({
+        planMode,
+        database: { ...draft.storage.database, mode: 'existing' },
+        objectStorage: { ...draft.storage.objectStorage, mode: 'existing' },
+      })
+      return
+    }
+
+    if (planMode === 'integrated-create') {
+      updateStorage({
+        planMode,
+        database: { ...draft.storage.database, mode: 'create' },
+        objectStorage: { ...draft.storage.objectStorage, mode: 'create' },
+      })
+      return
+    }
+
+    updateStorage({
+      planMode,
+      database: { ...draft.storage.database, mode: 'create' },
+      objectStorage: { ...draft.storage.objectStorage, mode: 'create' },
+    })
+  }
+
+  const getStorageEffectiveMode = (): StorageMode => {
+    return draft.storage.planMode === 'existing-all' ? 'existing' : 'create'
+  }
+
+  const getStorageFieldError = (target: StorageTargetKey, field: StorageFieldKey): string | undefined => {
+    return storageValidationErrors[`${target}.${field}`]
+  }
+
+  const clearStorageFieldError = (target: StorageTargetKey, field: StorageFieldKey) => {
+    setStorageValidationErrors((prev) => {
+      const next = { ...prev }
+      delete next[`${target}.${field}`]
+      return next
+    })
+  }
+
+  const validateStorageConfig = (): boolean => {
+    const errors: StorageValidationErrors = {}
+
+    const validateTarget = (target: StorageTargetKey) => {
+      if (getStorageEffectiveMode() !== 'existing') return
+
+      const config = draft.storage[target]
+      const key = (field: StorageFieldKey): StorageValidationErrorKey => `${target}.${field}`
+
+      if (!config.existingRef.trim()) {
+        errors[key('existingRef')] = '기존 리소스 참조 ID는 필수입니다.'
+      }
+
+      if (!config.endpoint.trim()) {
+        errors[key('endpoint')] = '엔드포인트는 필수입니다.'
+      } else if (!STORAGE_ENDPOINT_REGEX.test(config.endpoint.trim())) {
+        errors[key('endpoint')] = '엔드포인트 형식이 올바르지 않습니다. (예: postgres.shared.svc:5432 또는 http://minio.shared.svc:9000)'
+      }
+
+      if (!config.resourceName.trim()) {
+        errors[key('resourceName')] = target === 'database' ? 'DB 이름은 필수입니다.' : 'Bucket 이름은 필수입니다.'
+      }
+
+      if (!config.accessSecretRef.trim()) {
+        errors[key('accessSecretRef')] = '접근 Secret Ref는 필수입니다.'
+      } else if (!K8S_SECRET_REF_REGEX.test(config.accessSecretRef.trim())) {
+        errors[key('accessSecretRef')] = 'Secret Ref 형식이 올바르지 않습니다. (소문자/숫자/-, DNS-1123)'
+      }
+
+      if (!config.authId.trim()) {
+        errors[key('authId')] = target === 'database' ? 'DB 사용자 ID는 필수입니다.' : 'Access Key ID는 필수입니다.'
+      }
+
+      if (!config.authPasswordKey.trim()) {
+        errors[key('authPasswordKey')] = target === 'database' ? 'DB 비밀번호 Key는 필수입니다.' : 'Secret Key Key는 필수입니다.'
+      } else if (!SECRET_KEY_REGEX.test(config.authPasswordKey.trim())) {
+        errors[key('authPasswordKey')] = '비밀번호 Key 형식이 올바르지 않습니다. (영문/숫자/-, _, .)'
+      }
+    }
+
+    validateTarget('database')
+    validateTarget('objectStorage')
+
+    setStorageValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
   const validateCoreFields = async () => {
     return trigger(['stackName'])
   }
@@ -1096,6 +1323,11 @@ export function StackInstallPage() {
   const handleDeploy = async () => {
     const isFormValid = await validateCoreFields()
     if (!isFormValid) return
+    const isStorageValid = validateStorageConfig()
+    if (!isStorageValid) {
+      switchTab('storage')
+      return
+    }
 
     const body = toCreateStackBody({
       templateId: draft.selectedTemplateId,
@@ -1107,6 +1339,7 @@ export function StackInstallPage() {
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
+      storage: draft.storage,
     })
 
     try {
@@ -1123,6 +1356,11 @@ export function StackInstallPage() {
   const handleSaveDraft = async () => {
     const isFormValid = await validateCoreFields()
     if (!isFormValid) return
+    const isStorageValid = validateStorageConfig()
+    if (!isStorageValid) {
+      switchTab('storage')
+      return
+    }
 
     saveDraft.mutate({
       templateId: draft.selectedTemplateId,
@@ -1133,6 +1371,7 @@ export function StackInstallPage() {
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
+      storage: draft.storage,
     })
   }
 
@@ -1668,6 +1907,200 @@ export function StackInstallPage() {
                 </div>
               </div>
             )}
+
+            {activeTab === 'storage' && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Storage Plan</h3>
+                  <p className="mb-0 mt-1 text-xs text-[var(--color-text-secondary)]">
+                    DB(Postgres)와 Object Storage를 기존 연결/통합 생성/개별 구성 중 하나로 선택할 수 있습니다.
+                  </p>
+                </div>
+
+                <div className="grid gap-2">
+                  {STORAGE_PLAN_MODE_OPTIONS.map((option) => {
+                    const selected = draft.storage.planMode === option.id
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleStoragePlanModeChange(option.id)}
+                        className={cn(
+                          'w-full rounded-lg border px-3 py-2 text-left transition-all',
+                          selected
+                            ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
+                            : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                        )}
+                      >
+                        <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                          {option.label}
+                        </div>
+                        <div className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{option.description}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {([
+                    { key: 'database', title: 'Database', target: draft.storage.database },
+                    { key: 'objectStorage', title: 'Object Storage', target: draft.storage.objectStorage },
+                  ] as const).map((item) => {
+                    const targetKey = item.key
+                    const effectiveMode: StorageMode = getStorageEffectiveMode()
+
+                    const providerOptions = STORAGE_PROVIDER_OPTIONS[targetKey]
+                    const existingRefError = getStorageFieldError(targetKey, 'existingRef')
+                    const endpointError = getStorageFieldError(targetKey, 'endpoint')
+                    const resourceNameError = getStorageFieldError(targetKey, 'resourceName')
+                    const accessSecretRefError = getStorageFieldError(targetKey, 'accessSecretRef')
+                    const authIdError = getStorageFieldError(targetKey, 'authId')
+                    const authPasswordKeyError = getStorageFieldError(targetKey, 'authPasswordKey')
+
+                    return (
+                      <div
+                        key={targetKey}
+                        className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3"
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h4>
+                          <span className="rounded border border-[var(--color-border-default)] px-2 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
+                            {effectiveMode === 'existing' ? '기존 연결' : '신규 생성'}
+                          </span>
+                        </div>
+
+                        {effectiveMode === 'existing' && (
+                          <div className="mb-3 grid gap-2">
+                            <div>
+                              <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">기존 리소스 참조 ID</label>
+                            <Input
+                              value={item.target.existingRef}
+                              placeholder={targetKey === 'database' ? 'org-shared-postgres' : 'org-shared-object-storage'}
+                              onChange={(e) => {
+                                clearStorageFieldError(targetKey, 'existingRef')
+                                updateStorageTarget(targetKey, { existingRef: e.target.value })
+                              }}
+                            />
+                            {existingRefError && <span className="mt-1 block text-xs text-[#ef4444]">{existingRefError}</span>}
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">엔드포인트</label>
+                            <Input
+                              value={item.target.endpoint}
+                              placeholder={targetKey === 'database' ? 'postgres.shared.svc:5432' : 'http://minio.shared.svc:9000'}
+                              onChange={(e) => {
+                                clearStorageFieldError(targetKey, 'endpoint')
+                                updateStorageTarget(targetKey, { endpoint: e.target.value })
+                              }}
+                            />
+                            {endpointError && <span className="mt-1 block text-xs text-[#ef4444]">{endpointError}</span>}
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 이름' : 'Bucket 이름'}</label>
+                            <Input
+                              value={item.target.resourceName}
+                              placeholder={targetKey === 'database' ? 'nullus' : 'nullus-artifacts'}
+                              onChange={(e) => {
+                                clearStorageFieldError(targetKey, 'resourceName')
+                                updateStorageTarget(targetKey, { resourceName: e.target.value })
+                              }}
+                            />
+                            {resourceNameError && <span className="mt-1 block text-xs text-[#ef4444]">{resourceNameError}</span>}
+                          </div>
+                            <div>
+                              <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">접근 Secret Ref</label>
+                              <Input
+                                value={item.target.accessSecretRef}
+                                placeholder={
+                                  targetKey === 'database'
+                                    ? 'shared-postgres-credentials'
+                                    : 'shared-object-storage-credentials'
+                                }
+                                onChange={(e) => {
+                                  clearStorageFieldError(targetKey, 'accessSecretRef')
+                                  updateStorageTarget(targetKey, { accessSecretRef: e.target.value })
+                                }}
+                              />
+                              {accessSecretRefError && <span className="mt-1 block text-xs text-[#ef4444]">{accessSecretRefError}</span>}
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 사용자 ID' : 'Access Key ID'}</label>
+                              <Input
+                                value={item.target.authId}
+                                placeholder={targetKey === 'database' ? 'nullus_app' : 'nullus_access_key'}
+                                onChange={(e) => {
+                                  clearStorageFieldError(targetKey, 'authId')
+                                  updateStorageTarget(targetKey, { authId: e.target.value })
+                                }}
+                              />
+                              {authIdError && <span className="mt-1 block text-xs text-[#ef4444]">{authIdError}</span>}
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 비밀번호 Key' : 'Secret Key Key'}</label>
+                              <Input
+                                value={item.target.authPasswordKey}
+                                placeholder={targetKey === 'database' ? 'password' : 'secretKey'}
+                                onChange={(e) => {
+                                  clearStorageFieldError(targetKey, 'authPasswordKey')
+                                  updateStorageTarget(targetKey, { authPasswordKey: e.target.value })
+                                }}
+                              />
+                              {authPasswordKeyError && <span className="mt-1 block text-xs text-[#ef4444]">{authPasswordKeyError}</span>}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mb-3">
+                          <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 엔진' : 'Storage Provider'}</label>
+                          <NativeSelect
+                            value={item.target.providerOrEngine}
+                            onChange={(e) => updateStorageTarget(targetKey, { providerOrEngine: e.target.value })}
+                            className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[7px] text-xs"
+                          >
+                            {providerOptions.map((provider) => (
+                              <option key={provider.id} value={provider.id}>
+                                {provider.label}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </div>
+
+                        <div className={cn('grid gap-2', effectiveMode === 'create' ? 'grid-cols-2' : 'grid-cols-1')}>
+                          <div>
+                            <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">버전</label>
+                            <Input
+                              value={item.target.version}
+                              placeholder={targetKey === 'database' ? '16' : 'latest'}
+                              onChange={(e) => updateStorageTarget(targetKey, { version: e.target.value })}
+                            />
+                          </div>
+                          {effectiveMode === 'create' && (
+                            <div>
+                              <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">사이즈</label>
+                              <NativeSelect
+                                value={item.target.size}
+                                onChange={(e) =>
+                                  updateStorageTarget(targetKey, {
+                                    size: e.target.value as StorageTargetConfig['size'],
+                                  })
+                                }
+                                className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[7px] text-xs"
+                              >
+                                {STORAGE_SIZE_OPTIONS.map((size) => (
+                                  <option key={size} value={size}>
+                                    {`${size} ${STORAGE_SIZE_RESOURCE_HINTS[targetKey][size]}`}
+                                  </option>
+                                ))}
+                              </NativeSelect>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1689,6 +2122,19 @@ export function StackInstallPage() {
             ['Metrics', draft.monitoring.collection.tool],
             ['Logs', draft.logging.search.tool],
             ['Traces', draft.logging.traceLayer.tool],
+            ['Storage Plan', draft.storage.planMode],
+            [
+              'Database',
+              `${draft.storage.database.mode}:${draft.storage.database.providerOrEngine}${draft.storage.database.mode === 'create' ? `/${draft.storage.database.size}` : ''}`,
+            ],
+            ['DB Ref', `${draft.storage.database.existingRef || '-'} @ ${draft.storage.database.endpoint || '-'}`],
+            ['DB Auth', `${draft.storage.database.authId || '-'} (${draft.storage.database.authPasswordKey || '-'})`],
+            [
+              'Object Storage',
+              `${draft.storage.objectStorage.mode}:${draft.storage.objectStorage.providerOrEngine}${draft.storage.objectStorage.mode === 'create' ? `/${draft.storage.objectStorage.size}` : ''}`,
+            ],
+            ['Object Ref', `${draft.storage.objectStorage.existingRef || '-'} @ ${draft.storage.objectStorage.endpoint || '-'}`],
+            ['Object Auth', `${draft.storage.objectStorage.authId || '-'} (${draft.storage.objectStorage.authPasswordKey || '-'})`],
           ].map(([label, val]) => (
             <div
               key={label}

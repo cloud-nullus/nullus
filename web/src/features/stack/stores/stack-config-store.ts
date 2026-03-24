@@ -3,7 +3,10 @@ import { create } from 'zustand'
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
 export type ResourceMode = 'auto' | 'manual'
-export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'yaml'
+export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'storage' | 'yaml'
+
+export type StorageMode = 'existing' | 'create'
+export type StoragePlanMode = 'existing-all' | 'integrated-create'
 
 export interface ToolSelection {
   tool: string
@@ -44,6 +47,25 @@ export interface ResourceConfig {
   storageRequest?: string
 }
 
+export interface StorageTargetConfig {
+  mode: StorageMode
+  existingRef: string
+  endpoint: string
+  resourceName: string
+  accessSecretRef: string
+  authId: string
+  authPasswordKey: string
+  providerOrEngine: string
+  version: string
+  size: 'small' | 'medium' | 'large'
+}
+
+export interface StorageConfig {
+  planMode: StoragePlanMode
+  database: StorageTargetConfig
+  objectStorage: StorageTargetConfig
+}
+
 export interface StackConfigDraft {
   selectedTemplateId: string | null
   clusterId: string | null
@@ -54,6 +76,7 @@ export interface StackConfigDraft {
   monitoring: MonitoringConfig
   logging: LoggingConfig
   resources: ResourceConfig
+  storage: StorageConfig
   activeTab: InstallTab
 }
 
@@ -70,6 +93,8 @@ interface StackConfigState {
     value: ToolSelection
   ) => void
   updateResources: (config: Partial<ResourceConfig>) => void
+  updateStorage: (config: Partial<StorageConfig>) => void
+  updateStorageTarget: (target: 'database' | 'objectStorage', config: Partial<StorageTargetConfig>) => void
   setActiveTab: (tab: InstallTab) => void
   loadFromTemplate: (templateId: string, overrides?: Partial<StackConfigDraft>) => void
   resetConfig: () => void
@@ -109,6 +134,33 @@ const DEFAULT_DRAFT: StackConfigDraft = {
     memoryRequest: '8Gi',
     storageRequest: '100Gi',
   },
+  storage: {
+    planMode: 'integrated-create',
+    database: {
+      mode: 'create',
+      existingRef: 'org-shared-postgres',
+      endpoint: 'postgres.shared.svc:5432',
+      resourceName: 'nullus',
+      accessSecretRef: 'shared-postgres-credentials',
+      authId: 'nullus_app',
+      authPasswordKey: 'password',
+      providerOrEngine: 'postgres',
+      version: '16',
+      size: 'medium',
+    },
+    objectStorage: {
+      mode: 'create',
+      existingRef: 'org-shared-object-storage',
+      endpoint: 'http://minio.shared.svc:9000',
+      resourceName: 'nullus-artifacts',
+      accessSecretRef: 'shared-object-storage-credentials',
+      authId: 'nullus_access_key',
+      authPasswordKey: 'secretKey',
+      providerOrEngine: 'minio',
+      version: 'latest',
+      size: 'medium',
+    },
+  },
   activeTab: 'artifacts',
 }
 
@@ -140,6 +192,27 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
   updateResources: (config) =>
     set((s) => ({
       draft: { ...s.draft, resources: { ...s.draft.resources, ...config } },
+      isDirty: true,
+    })),
+
+  updateStorage: (config) =>
+    set((s) => ({
+      draft: { ...s.draft, storage: { ...s.draft.storage, ...config } },
+      isDirty: true,
+    })),
+
+  updateStorageTarget: (target, config) =>
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        storage: {
+          ...s.draft.storage,
+          [target]: {
+            ...s.draft.storage[target],
+            ...config,
+          },
+        },
+      },
       isDirty: true,
     })),
 

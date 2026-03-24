@@ -90,6 +90,29 @@ export interface StackResourcesInput {
   currency: string
 }
 
+export type StorageMode = 'existing' | 'create'
+
+export type StoragePlanMode = 'existing-all' | 'integrated-create'
+
+export interface StorageTargetInput {
+  mode: StorageMode
+  existingRef: string
+  endpoint: string
+  resourceName: string
+  accessSecretRef: string
+  authId: string
+  authPasswordKey: string
+  providerOrEngine: string
+  version: string
+  size: 'small' | 'medium' | 'large'
+}
+
+export interface StackStorageInput {
+  planMode: StoragePlanMode
+  database: StorageTargetInput
+  objectStorage: StorageTargetInput
+}
+
 export interface StackConfig {
   templateId: string | null
   clusterId: string | null
@@ -100,6 +123,7 @@ export interface StackConfig {
   monitoring: Record<string, ToolSelection>
   logging: Record<string, ToolSelection>
   resources: StackResourcesInput
+  storage?: StackStorageInput
 }
 
 export interface Stack {

@@ -11,7 +11,60 @@ describe('stack-config-store', () => {
     expect(draft.stackName).toBe('')
     expect(draft.selectedTemplateId).toBeNull()
     expect(draft.activeTab).toBe('artifacts')
+    expect(draft.storage.planMode).toBe('integrated-create')
+    expect(draft.storage.database.mode).toBe('create')
+    expect(draft.storage.objectStorage.mode).toBe('create')
+    expect(draft.storage.database.endpoint).toBe('postgres.shared.svc:5432')
+    expect(draft.storage.objectStorage.endpoint).toBe('http://minio.shared.svc:9000')
+    expect(draft.storage.database.authId).toBe('nullus_app')
+    expect(draft.storage.database.authPasswordKey).toBe('password')
+    expect(draft.storage.objectStorage.authId).toBe('nullus_access_key')
+    expect(draft.storage.objectStorage.authPasswordKey).toBe('secretKey')
     expect(isDirty).toBe(false)
+  })
+
+  describe('storage actions', () => {
+    it('updateStorage changes plan mode and marks dirty', () => {
+      useStackConfigStore.getState().updateStorage({ planMode: 'existing-all' })
+      const { draft, isDirty } = useStackConfigStore.getState()
+      expect(draft.storage.planMode).toBe('existing-all')
+      expect(isDirty).toBe(true)
+    })
+
+    it('updateStorageTarget updates database fields without mutating object storage', () => {
+      const beforeObjectStorage = useStackConfigStore.getState().draft.storage.objectStorage
+      useStackConfigStore.getState().updateStorageTarget('database', {
+        mode: 'create',
+        providerOrEngine: 'postgres',
+        version: '17',
+        size: 'large',
+        endpoint: 'db.prod.svc:5432',
+        resourceName: 'prod',
+        accessSecretRef: 'prod-db-secret',
+        authId: 'prod_app',
+        authPasswordKey: 'password',
+      })
+
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.storage.database.mode).toBe('create')
+      expect(draft.storage.database.providerOrEngine).toBe('postgres')
+      expect(draft.storage.database.version).toBe('17')
+      expect(draft.storage.database.size).toBe('large')
+      expect(draft.storage.database.endpoint).toBe('db.prod.svc:5432')
+      expect(draft.storage.database.resourceName).toBe('prod')
+      expect(draft.storage.database.accessSecretRef).toBe('prod-db-secret')
+      expect(draft.storage.database.authId).toBe('prod_app')
+      expect(draft.storage.database.authPasswordKey).toBe('password')
+      expect(draft.storage.objectStorage).toEqual(beforeObjectStorage)
+    })
+
+    it('updateStorageTarget updates objectStorage existing reference', () => {
+      useStackConfigStore.getState().updateStorageTarget('objectStorage', {
+        existingRef: 'team-a-shared-minio',
+      })
+
+      expect(useStackConfigStore.getState().draft.storage.objectStorage.existingRef).toBe('team-a-shared-minio')
+    })
   })
 
   describe('setTool', () => {

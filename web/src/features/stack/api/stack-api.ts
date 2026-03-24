@@ -256,6 +256,35 @@ export function toCreateStackBody(req: CreateStackRequest) {
         weekly_commits: req.resources?.commitsPerDay ?? 0,
         build_frequency: req.resources?.buildFrequency ?? 'medium',
       },
+      storage: req.storage
+        ? {
+            plan_mode: req.storage.planMode,
+            database: {
+              mode: req.storage.database.mode,
+              existing_ref: req.storage.database.existingRef,
+              endpoint: req.storage.database.endpoint,
+              resource_name: req.storage.database.resourceName,
+              access_secret_ref: req.storage.database.accessSecretRef,
+              auth_id: req.storage.database.authId,
+              auth_password_key: req.storage.database.authPasswordKey,
+              provider_or_engine: req.storage.database.providerOrEngine,
+              version: req.storage.database.version,
+              size: req.storage.database.mode === 'create' ? req.storage.database.size : undefined,
+            },
+            object_storage: {
+              mode: req.storage.objectStorage.mode,
+              existing_ref: req.storage.objectStorage.existingRef,
+              endpoint: req.storage.objectStorage.endpoint,
+              resource_name: req.storage.objectStorage.resourceName,
+              access_secret_ref: req.storage.objectStorage.accessSecretRef,
+              auth_id: req.storage.objectStorage.authId,
+              auth_password_key: req.storage.objectStorage.authPasswordKey,
+              provider_or_engine: req.storage.objectStorage.providerOrEngine,
+              version: req.storage.objectStorage.version,
+              size: req.storage.objectStorage.mode === 'create' ? req.storage.objectStorage.size : undefined,
+            },
+          }
+        : undefined,
     },
   }
 }
