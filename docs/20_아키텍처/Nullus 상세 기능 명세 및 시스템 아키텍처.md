@@ -1584,3 +1584,22 @@ nullus/
 | ADR-008 | 모노레포 | 단일 리포지토리 | FE/BE 동시 변경 용이, CI 단일 파이프라인 |
 | ADR-009 | 상태 관리 | Zustand | Redux 대비 보일러플레이트 90% 감소, 작은 번들 |
 | ADR-010 | 스택 설정 저장 | JSONB (PostgreSQL) | 스키마 유연성, 버전별 스냅샷 저장 용이 |
+
+---
+
+## Part 8: 구현 동기화 업데이트 (2026-03, Stack 범위)
+
+DevSecOps Stack 구현과 문서의 싱크를 맞추기 위해 아래 원칙을 추가한다.
+
+- Stack Install은 `YAML View → Preview Deploy Script → Dry Run` 흐름을 기본 검토 단계로 사용한다.
+- Gateway는 `Ingress` 대신 `Gateway API(Gateway + HTTPRoute)`를 기본으로 하며,
+  Access Domain TLS 옵션을 통해 HTTPS listener + `tls.certificateRefs`를 반영한다.
+- OSS 버전은 app/chart를 분리 고정한다 (예: GitLab `18.5.1 / 9.5.1`, Argo CD `v2.8.3 / 6.8.0`).
+- 템플릿 편집 시 `helm_version`, `app_version`가 유실되지 않아야 하며, 생성 YAML/스크립트는 고정 버전을 명시한다.
+
+### Stack 네임스페이스 모델 보정
+
+| 구분 | 논리 모델(문서) | 실행 기본값(구현) |
+|---|---|---|
+| 스택 배포 단위 | `nullus-*` 영역 분리 | `nullus-stack` 중심 + 도구별 매니페스트 |
+| 접근 도메인 | `{OSS}.{stack}.internal` | 동일(게이트웨이 라우팅 규칙 반영) |

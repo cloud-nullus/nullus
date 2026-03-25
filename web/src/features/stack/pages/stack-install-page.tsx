@@ -2968,6 +2968,11 @@ export function StackInstallPage() {
                                 동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합되어 생성됩니다.
                               </div>
                             )}
+                            {activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (
+                              <div className="mt-1 text-[var(--color-text-secondary)]">
+                                버전 정책: <span className="font-semibold">Strict 고정</span> (카탈로그 app/chart 버전과 불일치하면 검증에서 차단됩니다)
+                              </div>
+                            )}
                           </div>
                         )}
 
