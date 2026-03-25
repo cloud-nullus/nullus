@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -49,6 +50,9 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	if input.OrgID == "" {
 		return nil, fmt.Errorf("org_id is required")
 	}
+	if err := validateStorageConfig(input.Config.Storage); err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 	namespace := input.Namespace
@@ -73,4 +77,56 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	}
 
 	return &CreateStackOutput{Stack: stack}, nil
+}
+
+func validateStorageConfig(storage *domain.StorageConfig) error {
+	if storage == nil {
+		return nil
+	}
+
+	planMode := strings.TrimSpace(storage.PlanMode)
+	if planMode != "integrated-create" && planMode != "existing-connect" {
+		return fmt.Errorf("storage.plan_mode must be integrated-create or existing-connect")
+	}
+
+	if err := validateStorageTarget("storage.database", storage.Database); err != nil {
+		return err
+	}
+	if err := validateStorageTarget("storage.object_storage", storage.ObjectStorage); err != nil {
+		return err
+	}
+
+	if planMode == "integrated-create" {
+		if storage.Database.Mode != "create" || storage.ObjectStorage.Mode != "create" {
+			return fmt.Errorf("integrated-create 모드에서는 database/object_storage 모두 create 이어야 합니다")
+		}
+	}
+
+	return nil
+}
+
+func validateStorageTarget(path string, target domain.StorageTarget) error {
+	mode := strings.TrimSpace(target.Mode)
+	switch mode {
+	case "create":
+		if strings.TrimSpace(target.ProviderOrEngine) == "" {
+			return fmt.Errorf("%s.provider_or_engine is required in create mode", path)
+		}
+		if target.Size <= 0 {
+			return fmt.Errorf("%s.size must be greater than 0 in create mode", path)
+		}
+	case "existing-connect":
+		if strings.TrimSpace(target.Endpoint) == "" {
+			return fmt.Errorf("%s.endpoint is required in existing-connect mode", path)
+		}
+		hasSecretRef := strings.TrimSpace(target.AccessSecretRef) != ""
+		hasPair := strings.TrimSpace(target.AuthID) != "" && strings.TrimSpace(target.AuthPasswordKey) != ""
+		if !hasSecretRef && !hasPair {
+			return fmt.Errorf("%s requires access_secret_ref or auth_id/auth_password_key in existing-connect mode", path)
+		}
+	default:
+		return fmt.Errorf("%s.mode must be create or existing-connect", path)
+	}
+
+	return nil
 }
