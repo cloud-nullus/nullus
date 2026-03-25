@@ -10,7 +10,7 @@ export type MemberStatus = 'active' | 'pending' | 'inactive'
 
 export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s' | 'pipeline' | 'target'
 
-export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive'
+export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive' | 'unreachable' | 'auth_failed'
 
 export type DeploymentState =
   | 'running'

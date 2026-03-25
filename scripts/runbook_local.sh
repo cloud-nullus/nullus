@@ -6,6 +6,13 @@ LOG_DIR="$PROJECT_ROOT/.runbook-logs"
 PID_FILE="$LOG_DIR/pids.txt"
 DB_URL="postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable"
 
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
 API_PORT=8090
 WEB_PORT=5173
 POSTGRES_PORT=5433
@@ -51,6 +58,7 @@ Usage:
   ./scripts/runbook_local.sh preflight
   ./scripts/runbook_local.sh up [--seed] [--kind]
   ./scripts/runbook_local.sh status
+  ./scripts/runbook_local.sh info
   ./scripts/runbook_local.sh smoke
   ./scripts/runbook_local.sh logs [api|web|all]
   ./scripts/runbook_local.sh down
@@ -63,6 +71,7 @@ Commands:
   up [--seed]   Start infra (PostgreSQL, Redis, MinIO, Keycloak) + migrate + API + frontend
      [--kind]   Also create a kind K8s cluster
   status        Show health of all services (including kind cluster)
+  info          Show access URLs and credentials
   smoke         Run API smoke tests (13 endpoints)
   logs [svc]    Tail logs for a service (api, web) or all
   down [--kind] Stop API, frontend, docker infra (add --kind to also delete kind cluster)
@@ -310,6 +319,54 @@ do_preflight() {
   echo "[nullus] preflight OK"
 }
 
+do_info() {
+  echo ""
+  echo -e "${BOLD}════════════════════════════════════════════════════════════════════════${NC}"
+  echo -e "${BOLD}  Nullus Local Environment — Access Info${NC}"
+  echo -e "${BOLD}════════════════════════════════════════════════════════════════════════${NC}"
+  echo ""
+  echo -e "${BOLD}  Test Accounts (Frontend mock auth, development mode)${NC}"
+  echo "  ──────────────────────────────────────────────────────────────────"
+  echo "  Email                        Password        Role"
+  echo "  ──────────────────────────────────────────────────────────────────"
+  echo "  admin@nullus.dev             admin123        admin"
+  echo "  devops@nullus.dev            devops123       devops"
+  echo "  developer@nullus.dev         developer123    developer"
+  echo ""
+  echo -e "${BOLD}  Test Accounts (Keycloak OIDC, production mode)${NC}"
+  echo "  ──────────────────────────────────────────────────────────────────"
+  echo "  Email                        Password        Role"
+  echo "  ──────────────────────────────────────────────────────────────────"
+  echo "  admin@nullus.io              nullus123!      admin"
+  echo "  devops@nullus.io             nullus123!      devops"
+  echo "  dev@nullus.io                nullus123!      developer"
+  echo ""
+  echo -e "${CYAN}  ── Application ──${NC}"
+  echo "  Frontend           http://localhost:$WEB_PORT"
+  echo "  API                http://localhost:$API_PORT"
+  echo "  Health             http://localhost:$API_PORT/health"
+  echo ""
+  echo -e "${CYAN}  ── Infrastructure ──${NC}"
+  echo "  PostgreSQL         localhost:$POSTGRES_PORT  (nullus / nullus_dev)"
+  echo "  Keycloak           http://localhost:$KEYCLOAK_PORT  (admin / admin)"
+  echo "  MinIO Console      http://localhost:$MINIO_CONSOLE_PORT  (nullus / nullus_dev)"
+  echo "  MinIO API          localhost:$MINIO_PORT"
+  echo "  Redis              localhost:$REDIS_PORT"
+  echo ""
+  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    echo -e "${CYAN}  ── Kubernetes ──${NC}"
+    echo "  Kind Cluster       kind-$KIND_CLUSTER_NAME ($(kubectl get nodes --context "kind-$KIND_CLUSTER_NAME" -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo 'unknown'))"
+    echo ""
+  fi
+  echo -e "${CYAN}  ── Commands ──${NC}"
+  echo "  Logs               ./scripts/runbook_local.sh logs"
+  echo "  Status             ./scripts/runbook_local.sh status"
+  echo "  Smoke Test         ./scripts/runbook_local.sh smoke"
+  echo "  Stop               ./scripts/runbook_local.sh down"
+  echo ""
+  echo -e "${BOLD}════════════════════════════════════════════════════════════════════════${NC}"
+}
+
 do_up() {
   local seed="false" with_kind="false"
   for arg in "$@"; do
@@ -353,6 +410,16 @@ do_up() {
   "$MIGRATE" -path "$PROJECT_ROOT/db/migrations" -database "$DB_URL" up || {
     echo "[nullus] migration failed (may already be applied, continuing...)"
   }
+
+  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    local KIND_ENDPOINT
+    KIND_ENDPOINT="$(kubectl config view --context "kind-${KIND_CLUSTER_NAME}" --minify --raw -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
+    if [[ -n "$KIND_ENDPOINT" ]]; then
+      echo "[nullus] registering kind cluster endpoint: $KIND_ENDPOINT"
+      docker exec draft-postgres-1 psql -U nullus -d nullus -c \
+        "UPDATE clusters SET endpoint = '${KIND_ENDPOINT}' WHERE name = 'kind-nullus-test';" >/dev/null 2>&1
+    fi
+  fi
 
   # 3. Build + start API (with ENCRYPTION_KEY)
   echo ""
@@ -592,6 +659,7 @@ main() {
     preflight) do_preflight ;;
     up) do_up "$@" ;;
     status) do_status ;;
+    info) do_info ;;
     smoke) do_smoke ;;
     logs) do_logs "${1:-all}" ;;
     down) do_down "$@" ;;

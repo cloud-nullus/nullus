@@ -101,6 +101,6 @@ ON CONFLICT (id) DO NOTHING;
 -- ── 기존 조직 cluster_access_scope 업데이트 (새 클러스터 반영) ──────────────
 
 UPDATE organizations
-SET cluster_access_scope = ARRAY['devops-cluster', 'app-cluster-prod', 'staging-cluster', 'legacy-cluster'],
+SET cluster_access_scope = ARRAY['kind-nullus-test', 'app-cluster-prod', 'staging-cluster', 'legacy-cluster'],
     updated_at = NOW()
 WHERE id = '11111111-1111-1111-1111-111111111111';

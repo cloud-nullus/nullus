@@ -194,13 +194,14 @@ export const api = axios.create({
 })
 ```
 
-### Mock Data Fallback
+### API 에러 처리
 
-백엔드 미응답 시 MOCK 데이터를 사용하는 패턴:
+API 실패 시 빈 배열 또는 `null`을 반환하여 에러 상태를 명시적으로 처리한다.
+MOCK 데이터 fallback은 오류를 은폐하므로 사용하지 않는다.
 
 ```typescript
-const { data: stacks } = useStacks(orgId)
-const displayStacks = stacks ?? MOCK_STACKS  // fallback
+const { data: stacks, isLoading, error } = useStacks(orgId)
+const displayStacks = stacks?.items ?? []  // 빈 배열 fallback
 ```
 
 ---

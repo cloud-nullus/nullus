@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - Organization 생성 시 DB 미저장 — 프론트엔드 API 경로 `/admin/organizations` → `/admin/orgs` 수정
 - Mock auth ORG_ID/User ID가 DB 시드와 불일치하여 멤버 조회 등 org 기반 API 실패하던 문제 수정
+- 백엔드 fallback Org ID가 DB에 없는 값(`00000000-...`)이어서 스택/CI/CD 목록 빈 결과 반환 → 시드 org(`11111111-...`)로 수정
+- CORS `AllowHeaders`에 `X-Org-ID` 누락 → 프록시 없이도 헤더 전달 가능하도록 추가
+- 스택 시드 config JSON이 `StackConfig` 구조체와 불일치하여 unmarshal 실패 → `ToolSelection` 형식으로 수정
+- 스택 히스토리 config version도 동일 포맷 불일치 수정 (플랫 문자열 → 중첩 객체)
+- 스택 히스토리 diff `versionA`/`versionB` 초기값 `4`, `5` 하드코딩 → `0`으로 변경, 이력 로드 후 최신 2개 버전 자동 선택
+- 스택 히스토리 스냅샷 `Object.entries(snapshot)` null 크래시 → `snapshot ?? {}` null-safe 처리
+- 클러스터 페이지 `unreachable`/`auth_failed` 상태 매핑 누락으로 크래시 → `ClusterStatus` 타입 및 `STATUS_CONFIG` 추가
+- `/organizations/:orgId/invites` 엔드포인트 미구현 404 → stub 핸들러 추가
+- 개발 모드에서 rate limiter(30/min)로 smoke test 및 프론트엔드 요청 차단 → 프로덕션에서만 적용
 
 ### Added
 
@@ -23,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Stack Install에 `Dry Run` 탭 추가 (사전 검증 체크리스트, PASS/WARN/FAIL/READY 요약, 최종 Kubernetes Objects 미리보기)
 - Stack Install OSS 버전 카탈로그 추가 (GitLab app `18.5.1`/chart `9.5.1`, Argo CD app `v2.8.3`/chart `6.8.0` 포함)
 - DB migration `000024_align_template_and_compatibility_versions` 추가 (golden_path_templates/compatibility_matrices 버전 정보 정렬)
+- 4개 스택 전체에 config version 시드 추가 (총 11개, 스택별 2~4개)
+- 로컬 kind 클러스터(`kind-nullus-test`)를 데모 조직에 기본 등록, runbook에서 엔드포인트 동적 갱신
+
 
 ### Merged
 

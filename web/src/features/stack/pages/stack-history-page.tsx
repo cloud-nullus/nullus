@@ -28,8 +28,8 @@ export function StackHistoryPage() {
    const [expandedId, setExpandedId] = useState<string | null>(null)
    const [search, setSearch] = useState('')
    const [compareOpen, setCompareOpen] = useState(false)
-   const [versionA, setVersionA] = useState(4)
-   const [versionB, setVersionB] = useState(5)
+   const [versionA, setVersionA] = useState(0)
+   const [versionB, setVersionB] = useState(0)
    const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
    const [preservePVC, setPreservePVC] = useState(true)
    const [deleteConfirmText, setDeleteConfirmText] = useState('')
@@ -39,6 +39,11 @@ export function StackHistoryPage() {
       setStackId(stacks[0].id)
     }
   }, [stacks, stackId])
+
+  useEffect(() => {
+    setVersionA(0)
+    setVersionB(0)
+  }, [stackId])
 
   const { data: historyData } = useStackHistory(stackId)
   const allEntries = Array.isArray(historyData) ? historyData : []
@@ -52,6 +57,14 @@ export function StackHistoryPage() {
   const rollbackMutation = useRollbackStack()
 
   const versionOptions = entries.map((entry) => entry.version).sort((a, b) => b - a)
+
+  useEffect(() => {
+    if (versionOptions.length >= 2 && versionA === 0 && versionB === 0) {
+      setVersionA(versionOptions[1])
+      setVersionB(versionOptions[0])
+    }
+  }, [versionOptions, versionA, versionB])
+
   const compareEntryA = entries.find((entry) => entry.version === versionA) ?? null
   const compareEntryB = entries.find((entry) => entry.version === versionB) ?? null
 
@@ -218,7 +231,7 @@ export function StackHistoryPage() {
             설정 스냅샷 (v{expandedEntry.version})
           </p>
           <div className="flex flex-wrap gap-2.5">
-            {Object.entries(expandedEntry.snapshot).map(([k, v]) => (
+            {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
               <div
                 key={k}
                 className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-2 font-mono text-xs"
