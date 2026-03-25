@@ -91,6 +91,20 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONFIG_INVALID", err.Error())
 	}
+	if h.manageHistory != nil {
+		changedBy := c.Request().Header.Get("X-User-ID")
+		if changedBy == "" {
+			changedBy = "system"
+		}
+		if _, err := h.manageHistory.SaveVersion(c.Request().Context(), usecase.SaveVersionInput{
+			StackID:      out.Stack.ID,
+			Config:       req.Config,
+			ChangedBy:    changedBy,
+			ChangeReason: "stack created",
+		}); err != nil {
+			return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
+		}
+	}
 	if h.audit != nil {
 		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
 			UserID:       c.Request().Header.Get("X-User-ID"),

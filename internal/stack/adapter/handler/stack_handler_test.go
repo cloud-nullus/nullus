@@ -58,6 +58,16 @@ func TestStackHandler_CreateStack_201(t *testing.T) {
 	id, ok := resp["id"].(string)
 	require.True(t, ok)
 	assert.NotEmpty(t, id)
+
+	historyReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks/"+id+"/history", nil)
+	historyRec := httptest.NewRecorder()
+	e.ServeHTTP(historyRec, historyReq)
+	require.Equal(t, http.StatusOK, historyRec.Code)
+
+	var versions []map[string]any
+	require.NoError(t, json.Unmarshal(historyRec.Body.Bytes(), &versions))
+	require.Len(t, versions, 1)
+	assert.Equal(t, "stack created", versions[0]["ChangeReason"])
 }
 
 func TestStackHandler_ListStacks_200(t *testing.T) {
@@ -143,7 +153,8 @@ func TestStackHandler_SaveConfig_CreatesHistoryWithYAMLOverridesReason(t *testin
 
 	var versions []map[string]any
 	require.NoError(t, json.Unmarshal(historyRec.Body.Bytes(), &versions))
-	require.Len(t, versions, 1)
-	assert.Equal(t, "yaml_view_customization (1 overrides)", versions[0]["ChangeReason"])
-	assert.Equal(t, "tester", versions[0]["ChangedBy"])
+	require.Len(t, versions, 2)
+	assert.Equal(t, "stack created", versions[0]["ChangeReason"])
+	assert.Equal(t, "yaml_view_customization (1 overrides)", versions[1]["ChangeReason"])
+	assert.Equal(t, "tester", versions[1]["ChangedBy"])
 }
