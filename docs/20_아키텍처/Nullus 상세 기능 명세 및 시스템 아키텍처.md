@@ -1603,3 +1603,48 @@ DevSecOps Stack 구현과 문서의 싱크를 맞추기 위해 아래 원칙을 
 |---|---|---|
 | 스택 배포 단위 | `nullus-*` 영역 분리 | `nullus-stack` 중심 + 도구별 매니페스트 |
 | 접근 도메인 | `{OSS}.{stack}.internal` | 동일(게이트웨이 라우팅 규칙 반영) |
+
+### Stack API As-Is 경로 기준(문서 우선 정렬)
+
+> 본 표는 **Stack 영역만** 대상으로 하며, `admin`/`cicd` 경로는 타 작업자 영역으로 제외한다.
+
+#### Stack Config / Draft
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/api/v1/stacks` | 스택 생성 |
+| GET | `/api/v1/stacks` | 스택 목록 |
+| GET | `/api/v1/stacks/:stackId` | 스택 상세 |
+| DELETE | `/api/v1/stacks/:stackId` | 스택 삭제 |
+| PATCH | `/api/v1/stacks/:stackId/tools` | 스택 도구 추가 |
+| POST | `/api/v1/stacks/:stackId/config` | 스택 설정 저장 |
+| POST | `/api/v1/stacks/draft` | 스택 드래프트 저장 |
+
+#### Template / Compatibility / Resource
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/stacks/templates` | 템플릿 목록 |
+| GET | `/api/v1/stacks/templates/:id` | 템플릿 상세 |
+| POST | `/api/v1/stacks/templates` | 템플릿 생성 |
+| PUT | `/api/v1/stacks/templates/:id` | 템플릿 수정 |
+| DELETE | `/api/v1/stacks/templates/:id` | 템플릿 삭제 |
+| GET | `/api/v1/stacks/compatibility` | 호환성 매트릭스 조회 |
+| POST | `/api/v1/stacks/:stackId/validate` | 선택 조합 검증 |
+| POST | `/api/v1/stacks/estimate` | 리소스 예상량 계산 |
+| GET | `/api/v1/stacks/resource-defaults` | OSS 리소스 기본값 조회 |
+| POST | `/api/v1/stacks/resource-defaults` | OSS 리소스 기본값 저장 |
+
+#### Deploy / History / Export
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/api/v1/stacks/:id/deploy` | 배포 시작 |
+| GET | `/api/v1/stacks/:id/status` | 배포 상태 |
+| GET | `/api/v1/stacks/:id/deploy/logs` | 배포 로그(HTTP 스트림) |
+| GET | `/ws/deployments/:id/logs` | 배포 로그(WebSocket) |
+| GET | `/api/v1/stacks/:stackId/history` | 버전 이력 조회 |
+| GET | `/api/v1/stacks/:id/history/diff?versionA=&versionB=` | 버전 간 diff |
+| GET | `/api/v1/stacks/:stackId/diff?versionId=` | 현재 대비 diff |
+| POST | `/api/v1/stacks/:stackId/rollback` | 버전 롤백 |
+| GET | `/api/v1/stacks/:id/export?format=json|yaml` | 설정 내보내기 |
