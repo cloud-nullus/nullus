@@ -277,6 +277,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
             issuer_name: req.accessDomainTls.issuerName,
           }
         : undefined,
+      yaml_overrides: req.yamlOverrides,
       artifacts: {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
         source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),

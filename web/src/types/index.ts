@@ -134,6 +134,7 @@ export interface StackConfig {
   stackName: string
   accessDomain?: string
   accessDomainTls?: AccessDomainTlsInput
+  yamlOverrides?: Record<string, string>
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>
   monitoring: Record<string, ToolSelection>

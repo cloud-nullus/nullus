@@ -111,9 +111,11 @@ func main() {
 	calculateResourcesUC := stackuc.NewCalculateResources()
 	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
 	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
+	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
+	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, manageHistoryUC, auditLogger)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
@@ -122,8 +124,6 @@ func main() {
 	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
 	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
 
-	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
-	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
 
 	// CI/CD: postgres repos

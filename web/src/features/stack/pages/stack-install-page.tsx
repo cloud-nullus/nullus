@@ -1285,6 +1285,7 @@ export function StackInstallPage() {
   const [storageValidationErrors, setStorageValidationErrors] = useState<StorageValidationErrors>({})
   const [tabGuardError, setTabGuardError] = useState<string | null>(null)
   const [manifestDraftByTool, setManifestDraftByTool] = useState<Record<string, string>>({})
+  const [manifestOverridesByTool, setManifestOverridesByTool] = useState<Record<string, string>>({})
   const [manifestErrorsByTool, setManifestErrorsByTool] = useState<Record<string, string>>({})
   const [activeManifestTool, setActiveManifestTool] = useState<string | null>(null)
   const [dryRunExecutedAt, setDryRunExecutedAt] = useState<string | null>(null)
@@ -1571,6 +1572,15 @@ export function StackInstallPage() {
     : null
   const manifestValidationErrorCount = Object.keys(manifestErrorsByTool).length
   const hasManifestValidationError = manifestValidationErrorCount > 0
+  const validManifestToolIds = new Set(allManifestTools.map((tool) => tool.toolId))
+  const yamlOverridesPayload = Object.entries(manifestOverridesByTool).reduce<Record<string, string>>((acc, [toolId, yamlText]) => {
+    const trimmed = yamlText.trim()
+    if (!trimmed || !validManifestToolIds.has(toolId)) {
+      return acc
+    }
+    acc[toolId] = yamlText
+    return acc
+  }, {})
 
   const deployScript = createDeployScript(draft, allManifestTools, defaultManifestByTool)
 
@@ -1792,6 +1802,10 @@ export function StackInstallPage() {
         }
       })
       if (!error) {
+        setManifestOverridesByTool((prev) => ({
+          ...prev,
+          [toolId]: nextYaml,
+        }))
         setManifestDraftByTool((prev) => {
           const next = { ...prev }
           delete next[toolId]
@@ -2554,6 +2568,7 @@ export function StackInstallPage() {
       stackName: draft.stackName,
       accessDomain: draft.accessDomain,
       accessDomainTls: draft.accessDomainTls,
+      yamlOverrides: yamlOverridesPayload,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
@@ -2589,6 +2604,7 @@ export function StackInstallPage() {
       stackName: draft.stackName,
       accessDomain: draft.accessDomain,
       accessDomainTls: draft.accessDomainTls,
+      yamlOverrides: yamlOverridesPayload,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
@@ -3070,7 +3086,7 @@ export function StackInstallPage() {
                             height="520px"
                             language="yaml"
                             theme={isDarkMode ? 'vs-dark' : 'vs-light'}
-                            value={manifestDraftByTool[resolvedActiveManifestTool] ?? defaultManifestByTool[resolvedActiveManifestTool] ?? ''}
+                            value={manifestDraftByTool[resolvedActiveManifestTool] ?? manifestOverridesByTool[resolvedActiveManifestTool] ?? defaultManifestByTool[resolvedActiveManifestTool] ?? ''}
                             onChange={(value) => handleManifestChange(resolvedActiveManifestTool, value)}
                             options={{
                               minimap: { enabled: false },

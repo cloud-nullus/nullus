@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -16,12 +17,13 @@ import (
 
 // StackHandler handles HTTP requests for stack operations.
 type StackHandler struct {
-	createStack *usecase.CreateStack
-	listStacks  *usecase.ListStacks
-	deleteStack *usecase.DeleteStack
-	addToolsUC  *usecase.AddToolsUseCase
-	stackRepo   port.StackRepository
-	audit       *audit.AuditLogger
+	createStack   *usecase.CreateStack
+	listStacks    *usecase.ListStacks
+	deleteStack   *usecase.DeleteStack
+	addToolsUC    *usecase.AddToolsUseCase
+	manageHistory *usecase.ManageHistory
+	stackRepo     port.StackRepository
+	audit         *audit.AuditLogger
 }
 
 // NewStackHandler constructs a StackHandler.
@@ -31,6 +33,7 @@ func NewStackHandler(
 	deleteStack *usecase.DeleteStack,
 	addToolsUC *usecase.AddToolsUseCase,
 	stackRepo port.StackRepository,
+	manageHistory *usecase.ManageHistory,
 	auditLogger ...*audit.AuditLogger,
 ) *StackHandler {
 	var logger *audit.AuditLogger
@@ -38,12 +41,13 @@ func NewStackHandler(
 		logger = auditLogger[0]
 	}
 	return &StackHandler{
-		createStack: createStack,
-		listStacks:  listStacks,
-		deleteStack: deleteStack,
-		addToolsUC:  addToolsUC,
-		stackRepo:   stackRepo,
-		audit:       logger,
+		createStack:   createStack,
+		listStacks:    listStacks,
+		deleteStack:   deleteStack,
+		addToolsUC:    addToolsUC,
+		manageHistory: manageHistory,
+		stackRepo:     stackRepo,
+		audit:         logger,
 	}
 }
 
@@ -200,6 +204,27 @@ func (h *StackHandler) SaveConfig(c echo.Context) error {
 
 	if err := h.stackRepo.Update(c.Request().Context(), stack); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", err.Error())
+	}
+
+	if h.manageHistory != nil {
+		changedBy := c.Request().Header.Get("X-User-ID")
+		if changedBy == "" {
+			changedBy = "system"
+		}
+
+		reason := "stack config updated"
+		if len(req.Config.YAMLOverrides) > 0 {
+			reason = fmt.Sprintf("yaml_view_customization (%d overrides)", len(req.Config.YAMLOverrides))
+		}
+
+		if _, err := h.manageHistory.SaveVersion(c.Request().Context(), usecase.SaveVersionInput{
+			StackID:      id,
+			Config:       req.Config,
+			ChangedBy:    changedBy,
+			ChangeReason: reason,
+		}); err != nil {
+			return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
+		}
 	}
 
 	return c.JSON(http.StatusOK, stack)

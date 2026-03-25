@@ -4,6 +4,7 @@ package domain
 type StackConfig struct {
 	AccessDomain    string                 `json:"access_domain,omitempty"`
 	AccessDomainTLS *AccessDomainTLSConfig `json:"access_domain_tls,omitempty"`
+	YAMLOverrides   map[string]string      `json:"yaml_overrides,omitempty"`
 	Artifacts       ArtifactsConfig        `json:"artifacts"`
 	Pipeline        PipelineConfig         `json:"pipeline"`
 	Monitoring      MonitoringConfig       `json:"monitoring"`
