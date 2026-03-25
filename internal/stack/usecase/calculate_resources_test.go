@@ -33,6 +33,11 @@ func TestCalculateResources_BasicEstimate(t *testing.T) {
 	assert.Greater(t, out.Summary.StorageGi, 0.0)
 	assert.Greater(t, out.Summary.MonthlyCostUSD, 0.0)
 	assert.Len(t, out.PerTool, 5)
+	assert.Greater(t, out.WorkloadScaleFactor, 0.0)
+	assert.GreaterOrEqual(t, out.ArtifactStorageGi, 0.0)
+	assert.Greater(t, out.CostBreakdown.CPUCostUSD, 0.0)
+	assert.Greater(t, out.CostBreakdown.MemoryCostUSD, 0.0)
+	assert.GreaterOrEqual(t, out.CostBreakdown.StorageCostUSD, 0.0)
 }
 
 func TestCalculateResources_RunnerScaling(t *testing.T) {
