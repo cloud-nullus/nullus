@@ -71,7 +71,10 @@ func newEchoServer() *echo.Echo {
 
 	// Resources
 	calcResourcesUC := stackuc.NewCalculateResources()
-	resourceHandler := stackhandler.NewResourceHandler(calcResourcesUC)
+	memResourceDefaultRepo := stackrepo.NewMemoryResourceDefaultRepository()
+	listResourceDefaultsUC := stackuc.NewListResourceDefaults(memResourceDefaultRepo)
+	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(memResourceDefaultRepo)
+	resourceHandler := stackhandler.NewResourceHandler(calcResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
 
 	// CI/CD
 	cicdTemplateRepo := cicdrepo.NewMemoryCICDTemplateRepository()

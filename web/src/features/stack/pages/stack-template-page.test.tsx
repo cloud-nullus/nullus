@@ -23,6 +23,20 @@ const mockTemplates = [
     name: 'GitLab + ArgoCD',
     description: 'GitLab + ArgoCD 스택',
     tools: ['GitLab', 'Argo CD'],
+    toolDetails: [
+      {
+        category: 'source_repository',
+        name: 'GitLab CE',
+        helm_version: '9.5.1',
+        app_version: '18.5.1',
+      },
+      {
+        category: 'cd_tool',
+        name: 'Argo CD',
+        helm_version: '6.8.0',
+        app_version: 'v2.8.3',
+      },
+    ],
     estimatedMinutes: 30,
     category: 'hybrid',
   },
@@ -169,6 +183,26 @@ describe('StackTemplatePage', () => {
     await waitFor(() => {
       expect(mockUpdateTemplateMutate).toHaveBeenCalled()
     })
+  })
+
+  it('preserves tool version metadata when editing gitlab+argocd template', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockUpdateTemplateMutate).toHaveBeenCalled()
+    })
+
+    const firstCall = mockUpdateTemplateMutate.mock.calls[0]?.[0] as { tools?: Array<Record<string, string>> }
+    expect(firstCall.tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'GitLab CE', helm_version: '9.5.1', app_version: '18.5.1' }),
+        expect.objectContaining({ name: 'Argo CD', helm_version: '6.8.0', app_version: 'v2.8.3' }),
+      ])
+    )
   })
 
   it('admin can delete a template', async () => {

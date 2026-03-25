@@ -6,6 +6,7 @@
     "stackList": "Stack List",
     "stackHistory": "Stack History",
     "stackVersion": "Stack Version",
+    "stackOssResourceDefault": "OSS Resource Default",
     "cicd": "CI/CD",
     "cicdTemplate": "CI/CD Template",
     "cicdList": "CI/CD List",

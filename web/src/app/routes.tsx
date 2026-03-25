@@ -47,6 +47,10 @@ const StackVersionPage = lazy(() =>
   import('../features/stack/pages/stack-version-page').then((m) => ({ default: m.StackVersionPage }))
 )
 
+const StackOssResourceDefaultPage = lazy(() =>
+  import('../features/stack/pages/stack-oss-resource-default-page').then((m) => ({ default: m.StackOssResourceDefaultPage }))
+)
+
 const DeveloperDeployPage = lazy(() =>
   import('../features/cicd/pages/developer-deploy-page').then((m) => ({ default: m.DeveloperDeployPage }))
 )
@@ -131,6 +135,7 @@ export const router = createBrowserRouter([
           { path: 'stack/install', element: withSuspense(<StackInstallPage />) },
           { path: 'stack/:id/add-tools', element: withSuspense(<StackAddToolsPage />) },
           { path: 'stack/deploy/:id', element: withSuspense(<StackDeployPage />) },
+          { path: 'stack/oss-resource-default', element: withSuspense(<StackOssResourceDefaultPage />) },
         ],
       },
       {

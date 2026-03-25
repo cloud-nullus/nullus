@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronRight,
   AlertTriangle,
+  Database,
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
@@ -54,6 +55,7 @@ const navGroups: NavGroup[] = [
       { key: 'stackList', label: 'sidebar.stackList', path: '/stack/list', icon: <List size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackHistory', label: 'sidebar.stackHistory', path: '/stack/history', icon: <History size={16} />, roles: ['admin', 'devops'] },
       { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Shield size={16} />, roles: ['admin', 'devops'] },
+      { key: 'stackOssResourceDefault', label: 'sidebar.stackOssResourceDefault', path: '/stack/oss-resource-default', icon: <Database size={16} />, roles: ['admin', 'devops'] },
     ],
   },
   {

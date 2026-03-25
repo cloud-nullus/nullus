@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+
 ## [Unreleased] - 2026-03-24
 
 ### Fixed
@@ -24,14 +25,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Mock auth 사용자(`@nullus.dev`) 3명 DB 시드 등록 (login-page.tsx TEST_ACCOUNTS와 ID 동기화)
 - 데모 조직 2개 추가 (Acme Corp, Startup Labs), 사용자 5명, 클러스터 3개 시드
 - 클러스터 `connection_status` 전체 enum 커버 (connected, pending, unreachable, auth_failed)
+- Stack Install에 `OSS Resource Default` 기반 Resource Planning UX 추가 (단위 전환 Gi/Mi, 수식 설명, clamp 경고, 총합 연동)
+- Stack Install에 Storage 플랜 단계 추가 (기존 연결/통합 생성, DB·Object Storage 입력, 연결 정보 검증)
+- Stack Install에 OSS별 실제 설치 파일 `YAML View` 추가 (Helm values.yaml / Kubernetes manifest, 역할 태깅, 번들 통합)
+- Stack Install에 `Preview Deploy Script` 탭 추가 (EOF 기반 values.yaml/manifest 생성 후 Helm/Kubectl 적용 스크립트 미리보기)
+- Stack Install에 `Dry Run` 탭 추가 (사전 검증 체크리스트, PASS/WARN/FAIL/READY 요약, 최종 Kubernetes Objects 미리보기)
+- Stack Install OSS 버전 카탈로그 추가 (GitLab app `18.5.1`/chart `9.5.1`, Argo CD app `v2.8.3`/chart `6.8.0` 포함)
+- DB migration `000024_align_template_and_compatibility_versions` 추가 (golden_path_templates/compatibility_matrices 버전 정보 정렬)
 - 4개 스택 전체에 config version 시드 추가 (총 11개, 스택별 2~4개)
 - 로컬 kind 클러스터(`kind-nullus-test`)를 데모 조직에 기본 등록, runbook에서 엔드포인트 동적 갱신
+
 
 ### Merged
 
 - Phase1 (#10) — Mock fallback 제거, 접근성 개선, 마이그레이션 정리, 포트 설정 통일
 
 ### Changed
+
+#### Stack Install 최종 배포 검토 흐름 고도화
+
+**변경 이유:**
+배포 직전 설정 검토가 분산되어 있어(리소스/스토리지/설치파일/스크립트) 실제 설치 전에 오류를 놓치기 쉬웠습니다.
+
+**변경 내용:**
+- 탭 흐름을 `YAML View → Preview Deploy Script → Dry Run` 단계로 확장하여 배포 전 검토를 일원화
+- 설치파일 편집 시 유효한 변경만 이전 단계 설정으로 역반영하고, 이전 단계 수정은 설치파일/스크립트에 재반영
+- GitLab 계열(`gitlab`, `gitlab-registry`, `gitlab-ci`)은 단일 Helm 번들로 통합해 중복 values.yaml 생성 방지
+
+#### Access Domain 설정 추가
+
+**변경 이유:**
+Stack 이름과 실제 접근 도메인 규칙을 사용자에게 명확히 안내할 필요가 있었습니다.
+
+**변경 내용:**
+- Stack Name 하단에 `Access domain` 입력란 추가 (기본값: `{StackName}.internal`)
+- OSS 접근 가이드 표기: `{OSS}.{StackName}.internal`
+
+#### OSS 버전 명시/동기화 강화
+
+**변경 이유:**
+GitLab + Argo CD 템플릿 편집 시 tool 버전(`helm_version`, `app_version`)이 저장되지 않아,
+재편집/재생성 시 버전 정보가 유실되는 문제가 있었습니다.
+
+**변경 내용:**
+- Stack Template 편집 로직에서 `toolDetails`를 우선 로딩하여 기존 버전 메타데이터를 보존
+- 템플릿 업데이트 payload에 `helm_version`/`app_version`이 유지되도록 API 정규화 로직 보강
+- Stack Install YAML/Deploy Script 생성 시 앱 버전과 차트 버전을 분리 적용
+  - Helm values: `image.tag` = app version, `chart.version` = chart version
+  - Deploy Script: `helm --version` = chart version
 
 #### Mock 데이터 제거 (전 페이지)
 
