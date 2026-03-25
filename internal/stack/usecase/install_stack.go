@@ -55,6 +55,10 @@ type namespaceAwareExecutor interface {
 	SetNamespace(namespace string)
 }
 
+type deploymentVerifiableExecutor interface {
+	VerifyDeployment(ctx context.Context, stackID string) error
+}
+
 type InstallStackOption func(*InstallStack)
 
 func WithExecutor(executor port.StepExecutor) InstallStackOption {
@@ -199,6 +203,10 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		uc.handleFailure(ctx, stack, err)
 		return
 	}
+	if err := uc.verifyDeployment(ctx, stack, executor); err != nil {
+		uc.handleFailure(ctx, stack, err)
+		return
+	}
 	uc.emit(ctx, deploymentID, "info", "health_check", "C", "all health checks passed")
 
 	// Transition: HealthCheck → Completed
@@ -207,6 +215,21 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		return
 	}
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
+}
+
+func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {
+	verifier, ok := executor.(deploymentVerifiableExecutor)
+	if !ok {
+		uc.emit(ctx, stack.ID, "warn", "health_check", "C", "executor does not support deep verification, skipping runtime readiness checks")
+		return nil
+	}
+
+	uc.emit(ctx, stack.ID, "info", "health_check", "C", "running runtime readiness checks")
+	if err := verifier.VerifyDeployment(ctx, stack.ID); err != nil {
+		return fmt.Errorf("runtime readiness check failed: %w", err)
+	}
+
+	return nil
 }
 
 func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {

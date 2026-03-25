@@ -166,6 +166,15 @@ func (e *fakeStepExecutor) calledSteps() []string {
 	return out
 }
 
+type fakeVerifiableExecutor struct {
+	fakeStepExecutor
+	verifyErr error
+}
+
+func (e *fakeVerifiableExecutor) VerifyDeployment(_ context.Context, _ string) error {
+	return e.verifyErr
+}
+
 type fakeConfigurableExecutor struct {
 	fakeStepExecutor
 
@@ -354,4 +363,32 @@ func TestInstallStack_ConfiguresExecutorNamespaceFromStack(t *testing.T) {
 	assert.True(t, namespaceSet)
 	assert.Equal(t, "production", namespace)
 	assert.Equal(t, domain.StateCompleted, repo.getState(stack.ID))
+}
+
+func TestInstallStack_RuntimeVerificationFailureTriggersRollback(t *testing.T) {
+	stack := &domain.Stack{
+		ID:        "stk_verify_fail",
+		ClusterID: "cluster-verify-fail",
+		State:     domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeVerifiableExecutor{verifyErr: fmt.Errorf("gitlab not ready")}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: "stk_verify_fail"})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState("stk_verify_fail") == domain.StateRolledBack {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	assert.Equal(t, domain.StateRolledBack, repo.getState("stk_verify_fail"))
+	assert.Contains(t, streamer.steps(), "health_check")
+	assert.Contains(t, streamer.steps(), "rolling_back")
 }

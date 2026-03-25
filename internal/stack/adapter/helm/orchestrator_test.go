@@ -16,11 +16,12 @@ func TestOrchestrator_ImplementsStepExecutor(t *testing.T) {
 }
 
 type mockInstaller struct {
-	installed   []string
-	namespaces  []string
-	uninstalled []string
-	failOn      string
-	failDelete  map[string]error
+	installed       []string
+	namespaces      []string
+	uninstalled     []string
+	failOn          string
+	failDelete      map[string]error
+	statusByRelease map[string]string
 }
 
 func (m *mockInstaller) Install(_ context.Context, req port.HelmInstallRequest) (*port.HelmInstallResult, error) {
@@ -44,7 +45,13 @@ func (m *mockInstaller) Uninstall(_ context.Context, releaseName, _ string) erro
 }
 
 func (m *mockInstaller) Status(_ context.Context, releaseName, namespace string) (*port.HelmInstallResult, error) {
-	return &port.HelmInstallResult{ReleaseName: releaseName, Namespace: namespace, Status: "deployed", Revision: 1}, nil
+	status := "deployed"
+	if m.statusByRelease != nil {
+		if s, ok := m.statusByRelease[releaseName]; ok {
+			status = s
+		}
+	}
+	return &port.HelmInstallResult{ReleaseName: releaseName, Namespace: namespace, Status: status, Revision: 1}, nil
 }
 
 func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
@@ -115,4 +122,52 @@ func TestOrchestrator_SetNamespace_OverridesDefaultNamespace(t *testing.T) {
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_cert_manager", "A"))
 
 	assert.Equal(t, []string{"production"}, installer.namespaces)
+}
+
+func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+		{name: "installing_prometheus", phase: "C"},
+		{name: "installing_grafana", phase: "C"},
+	}
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_verify_ok", step.name, step.phase))
+	}
+
+	require.NoError(t, orch.VerifyDeployment(context.Background(), "stk_verify_ok"))
+}
+
+func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) {
+	installer := &mockInstaller{statusByRelease: map[string]string{"gitlab": "pending-install"}}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+		{name: "installing_prometheus", phase: "C"},
+		{name: "installing_grafana", phase: "C"},
+	}
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_verify_fail", step.name, step.phase))
+	}
+
+	err := orch.VerifyDeployment(context.Background(), "stk_verify_fail")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not healthy")
 }

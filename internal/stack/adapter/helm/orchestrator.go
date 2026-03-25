@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -23,6 +24,43 @@ type Orchestrator struct {
 	stepConfigEnabled   map[string]func(domain.StackConfig) bool
 	mu                  sync.Mutex
 	progress            map[string]int
+}
+
+func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) error {
+	_ = stackID
+
+	for _, step := range o.orderedStep {
+		if step == "integration_check" {
+			continue
+		}
+		if !o.isStepEnabled(step) {
+			continue
+		}
+
+		spec, ok := o.chartConfig[step]
+		if !ok {
+			return fmt.Errorf("chart config not found for step %s", step)
+		}
+
+		namespace := o.namespace
+		if spec.Namespace != "" {
+			namespace = spec.Namespace
+		}
+
+		status, err := o.installer.Status(ctx, spec.ChartName, namespace)
+		if err != nil {
+			return fmt.Errorf("status check failed for %s: %w", spec.ChartName, err)
+		}
+		if status == nil {
+			return fmt.Errorf("status check returned nil for %s", spec.ChartName)
+		}
+
+		if !strings.EqualFold(status.Status, "deployed") {
+			return fmt.Errorf("release %s is not healthy: status=%s", spec.ChartName, status.Status)
+		}
+	}
+
+	return nil
 }
 
 type ChartSpec struct {
