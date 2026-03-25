@@ -274,6 +274,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
             enabled: req.accessDomainTls.enabled,
             secret_name: req.accessDomainTls.secretName,
             secret_namespace: req.accessDomainTls.secretNamespace,
+            issuer_name: req.accessDomainTls.issuerName,
           }
         : undefined,
       artifacts: {

@@ -13,6 +13,7 @@ describe('stack-config-store', () => {
     expect(draft.accessDomainTls.enabled).toBe(false)
     expect(draft.accessDomainTls.secretName).toBe('nullus-wildcard-tls')
     expect(draft.accessDomainTls.secretNamespace).toBe('nullus')
+    expect(draft.accessDomainTls.issuerName).toBe('nullus-ca-issuer')
     expect(draft.selectedTemplateId).toBeNull()
     expect(draft.activeTab).toBe('artifacts')
     expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
@@ -130,11 +131,13 @@ describe('stack-config-store', () => {
         enabled: true,
         secretName: 'corp-wildcard',
         secretNamespace: 'kube-system',
+        issuerName: 'corp-cluster-issuer',
       })
       const { draft, isDirty } = useStackConfigStore.getState()
       expect(draft.accessDomainTls.enabled).toBe(true)
       expect(draft.accessDomainTls.secretName).toBe('corp-wildcard')
       expect(draft.accessDomainTls.secretNamespace).toBe('kube-system')
+      expect(draft.accessDomainTls.issuerName).toBe('corp-cluster-issuer')
       expect(isDirty).toBe(true)
     })
   })

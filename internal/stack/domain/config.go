@@ -16,6 +16,7 @@ type AccessDomainTLSConfig struct {
 	Enabled         bool   `json:"enabled"`
 	SecretName      string `json:"secret_name,omitempty"`
 	SecretNamespace string `json:"secret_namespace,omitempty"`
+	IssuerName      string `json:"issuer_name,omitempty"`
 }
 
 type StorageConfig struct {

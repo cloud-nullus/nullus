@@ -116,3 +116,24 @@ func TestCreateStack_AllowsValidStorageConfig(t *testing.T) {
 	require.NotNil(t, out)
 	require.NotNil(t, out.Stack)
 }
+
+func TestCreateStack_RejectsTlsEnabledWithoutIssuer(t *testing.T) {
+	stackRepo := stackrepo.NewMemoryStackRepository()
+	templateRepo := stackrepo.NewMemoryTemplateRepository()
+	uc := NewCreateStack(stackRepo, templateRepo)
+
+	_, err := uc.Execute(context.Background(), CreateStackInput{
+		Name:      "stack-tls-invalid",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config: domain.StackConfig{
+			AccessDomainTLS: &domain.AccessDomainTLSConfig{
+				Enabled:         true,
+				SecretName:      "nullus-wildcard-tls",
+				SecretNamespace: "nullus",
+			},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "access_domain_tls.issuer_name")
+}

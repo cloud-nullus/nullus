@@ -719,6 +719,7 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim()
   const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim()
+  const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
   const requiresReferenceGrant = tlsEnabled && tlsSecretName.length > 0 && tlsSecretNamespace.length > 0 && tlsSecretNamespace !== namespace
 
   const rules = manifestTools
@@ -870,9 +871,34 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
       }
     : null
 
+  const certificate = tlsEnabled && tlsSecretName
+    ? {
+        apiVersion: 'cert-manager.io/v1',
+        kind: 'Certificate',
+        metadata: {
+          name: `${stackName}-wildcard-cert`,
+          namespace: tlsSecretNamespace || namespace,
+          labels: {
+            'nullus.io/stack-name': stackName,
+            'nullus.io/type': 'gateway-certificate',
+          },
+        },
+        spec: {
+          secretName: tlsSecretName,
+          commonName: accessDomain,
+          dnsNames: [accessDomain, `*.${accessDomain}`],
+          issuerRef: {
+            name: tlsIssuerName,
+            kind: 'ClusterIssuer',
+          },
+        },
+      }
+    : null
+
   const gatewayDocuments = [
     YAML.stringify(gateway, { indent: 2, lineWidth: 0 }),
     ...httpRoutes.map((route) => YAML.stringify(route, { indent: 2, lineWidth: 0 })),
+    ...(certificate ? [YAML.stringify(certificate, { indent: 2, lineWidth: 0 })] : []),
     ...(referenceGrant ? [YAML.stringify(referenceGrant, { indent: 2, lineWidth: 0 })] : []),
   ]
 
@@ -891,6 +917,7 @@ function createDeployScript(
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${stackName}-wildcard-tls`
   const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || namespace
+  const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
 
   const deployBlocks = manifestTools.flatMap((tool, index) => {
     const blockHeader = [`# ${index + 1}. ${toolLabel(tool.toolId)} (${tool.installType.toUpperCase()})`, `# roles: ${tool.roles.join(', ')}`]
@@ -951,30 +978,27 @@ function createDeployScript(
     '',
     ...(tlsEnabled
       ? [
-          '# TLS (Wildcard certificate, 10 years) - internal/dev baseline',
-          `DOMAIN="${accessDomain}"`,
-          `SECRET_NAME="${tlsSecretName}"`,
-          `CERT_DIR=".nullus/certs"`,
-          'COUNTRY="KR"',
-          'STATE="Seoul"',
-          'CITY="Seoul"',
-          'ORG_NAME="Nullus"',
-          'OU_NAME="Platform"',
-          'mkdir -p "${CERT_DIR}"',
-          'openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \\',
-          '  -keyout "${CERT_DIR}/${DOMAIN}.key" \\',
-          '  -out "${CERT_DIR}/${DOMAIN}.crt" \\',
-          '  -subj "/C=${COUNTRY}/ST=${STATE}/L=${CITY}/O=${ORG_NAME}/OU=${OU_NAME}/CN=${DOMAIN}" \\',
-          '  -addext "subjectAltName = DNS:${DOMAIN},DNS:*.${DOMAIN}"',
-          'chmod 600 "${CERT_DIR}/${DOMAIN}.key"',
-          'chmod 644 "${CERT_DIR}/${DOMAIN}.crt"',
-          `kubectl create secret tls "${tlsSecretName}" \\`,
-          '  --cert="${CERT_DIR}/${DOMAIN}.crt" \\',
-          '  --key="${CERT_DIR}/${DOMAIN}.key" \\',
-          `  -n "${tlsSecretNamespace}" --dry-run=client -o yaml | kubectl apply -f -`,
+          '# TLS via cert-manager (manual openssl/secret creation is not required)',
+          `cat <<'NULLUS_TLS_CERT_EOF' > ".nullus/generated-manifests/${stackName}-tls-certificate.yaml"`,
+          'apiVersion: cert-manager.io/v1',
+          'kind: Certificate',
+          'metadata:',
+          `  name: ${stackName}-wildcard-cert`,
+          `  namespace: ${tlsSecretNamespace}`,
+          'spec:',
+          `  secretName: ${tlsSecretName}`,
+          `  commonName: ${accessDomain}`,
+          '  dnsNames:',
+          `    - ${accessDomain}`,
+          `    - *.${accessDomain}`,
+          '  issuerRef:',
+          `    name: ${tlsIssuerName}`,
+          '    kind: ClusterIssuer',
+          'NULLUS_TLS_CERT_EOF',
+          `kubectl apply -f ".nullus/generated-manifests/${stackName}-tls-certificate.yaml"`,
           ...(tlsSecretNamespace !== namespace
             ? [
-                '# If TLS Secret namespace differs from Gateway namespace, apply ReferenceGrant too.',
+              '# If TLS Secret namespace differs from Gateway namespace, apply ReferenceGrant too.',
                 `cat <<'NULLUS_TLS_REFGRANT_EOF' > ".nullus/generated-manifests/${stackName}-tls-reference-grant.yaml"`,
                 'apiVersion: gateway.networking.k8s.io/v1beta1',
                 'kind: ReferenceGrant',
@@ -1011,6 +1035,7 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${appName}-wildcard-tls`
   const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || gatewayNamespace
+  const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
   const requiresReferenceGrant = tlsEnabled && tlsSecretNamespace !== gatewayNamespace
 
   return {
@@ -1098,6 +1123,22 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
             '      allowedRoutes:',
             '        namespaces:',
             '          from: Same',
+
+            '---',
+            'apiVersion: cert-manager.io/v1',
+            'kind: Certificate',
+            'metadata:',
+            `  name: ${appName}-wildcard-cert`,
+            `  namespace: ${tlsSecretNamespace}`,
+            'spec:',
+            `  secretName: ${tlsSecretName}`,
+            `  commonName: ${accessDomain}`,
+            '  dnsNames:',
+            `    - ${accessDomain}`,
+            `    - *.${accessDomain}`,
+            '  issuerRef:',
+            `    name: ${tlsIssuerName}`,
+            '    kind: ClusterIssuer',
           ]
         : []),
       '---',
@@ -1573,6 +1614,7 @@ export function StackInstallPage() {
     const tlsConfig = draft.accessDomainTls
     const tlsSecretName = tlsConfig.secretName.trim()
     const tlsSecretNamespace = tlsConfig.secretNamespace.trim()
+    const tlsIssuerName = tlsConfig.issuerName.trim()
     if (!tlsConfig.enabled) {
       checks.push({
         id: 'gatewayTls',
@@ -1580,12 +1622,12 @@ export function StackInstallPage() {
         status: 'warn',
         detail: '현재 자동 생성 Gateway는 HTTP(80) 기본값입니다. 운영 환경에서는 Access Domain TLS 인증서 적용을 권장합니다.',
       })
-    } else if (!tlsSecretName || !tlsSecretNamespace) {
+    } else if (!tlsSecretName || !tlsSecretNamespace || !tlsIssuerName) {
       checks.push({
         id: 'gatewayTls',
         title: 'Gateway HTTPS/TLS 적용 여부',
         status: 'fail',
-        detail: 'TLS 활성화 시 Secret 이름과 Secret 네임스페이스는 필수입니다.',
+        detail: 'TLS 활성화 시 Secret 이름, Secret 네임스페이스, cert-manager Issuer 이름은 필수입니다.',
       })
     } else if (tlsSecretNamespace !== effectiveNamespace) {
       checks.push({
@@ -1599,7 +1641,7 @@ export function StackInstallPage() {
         id: 'gatewayTls',
         title: 'Gateway HTTPS/TLS 적용 여부',
         status: 'pass',
-        detail: `TLS 활성화됨: ${tlsSecretNamespace}/${tlsSecretName} (10년 wildcard cert 생성 스크립트 포함)`,
+        detail: `TLS 활성화됨: ${tlsSecretNamespace}/${tlsSecretName} (cert-manager issuer: ${tlsIssuerName})`,
       })
     }
 
@@ -1952,6 +1994,7 @@ export function StackInstallPage() {
       const docObjects = docs.map((docItem) => docItem.toJS() as Record<string, unknown>)
       const gateway = docObjects.find((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'Gateway')
       const routes = docObjects.filter((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'HTTPRoute')
+      const certificates = docObjects.filter((docItem) => docItem.apiVersion === 'cert-manager.io/v1' && docItem.kind === 'Certificate')
       const referenceGrants = docObjects.filter((docItem) => docItem.kind === 'ReferenceGrant')
       if (!gateway || routes.length === 0) {
         return 'Gateway YAML은 gateway.networking.k8s.io/v1 Gateway + HTTPRoute 형식이어야 합니다.'
@@ -1973,6 +2016,7 @@ export function StackInstallPage() {
 
       let parsedTlsSecretName = ''
       let parsedTlsSecretNamespace = ''
+      let parsedTlsIssuerName = ''
       if (httpsListener && typeof httpsListener === 'object') {
         const listenerObj = httpsListener as Record<string, unknown>
         const tls = (listenerObj.tls ?? {}) as Record<string, unknown>
@@ -1993,6 +2037,25 @@ export function StackInstallPage() {
         }
         if (!parsedTlsSecretNamespace || !K8S_SECRET_REF_REGEX.test(parsedTlsSecretNamespace)) {
           return 'TLS Secret namespace는 DNS-1123 형식이어야 합니다.'
+        }
+
+        const matchingCertificate = certificates.find((certificate) => {
+          const certificateMetadata = (certificate.metadata ?? {}) as Record<string, unknown>
+          const certificateSpec = (certificate.spec ?? {}) as Record<string, unknown>
+          const certNamespace = typeof certificateMetadata.namespace === 'string' ? certificateMetadata.namespace.trim() : namespace
+          const certSecretName = typeof certificateSpec.secretName === 'string' ? certificateSpec.secretName.trim() : ''
+          return certNamespace === parsedTlsSecretNamespace && certSecretName === parsedTlsSecretName
+        })
+
+        if (!matchingCertificate) {
+          return 'HTTPS listener를 사용할 때 cert-manager Certificate 문서(secretName 매칭)가 필요합니다.'
+        }
+
+        const certificateSpec = (matchingCertificate.spec ?? {}) as Record<string, unknown>
+        const issuerRef = (certificateSpec.issuerRef ?? {}) as Record<string, unknown>
+        parsedTlsIssuerName = typeof issuerRef.name === 'string' ? issuerRef.name.trim() : ''
+        if (!parsedTlsIssuerName || !K8S_SECRET_REF_REGEX.test(parsedTlsIssuerName)) {
+          return 'cert-manager issuerRef.name은 DNS-1123 형식이어야 합니다.'
         }
 
         if (parsedTlsSecretNamespace !== namespace) {
@@ -2075,6 +2138,7 @@ export function StackInstallPage() {
         enabled: hasHttpsListener,
         secretName: hasHttpsListener ? parsedTlsSecretName : draft.accessDomainTls.secretName,
         secretNamespace: hasHttpsListener ? parsedTlsSecretNamespace : draft.accessDomainTls.secretNamespace,
+        issuerName: hasHttpsListener ? parsedTlsIssuerName : draft.accessDomainTls.issuerName,
       })
       if (namespace === 'nullus') {
         setCreateNewNs(false)
@@ -2455,12 +2519,17 @@ export function StackInstallPage() {
     if (draft.accessDomainTls.enabled) {
       const tlsSecretName = draft.accessDomainTls.secretName.trim()
       const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim()
+      const tlsIssuerName = draft.accessDomainTls.issuerName.trim()
       if (!tlsSecretName || !K8S_SECRET_REF_REGEX.test(tlsSecretName)) {
         setTabGuardError('TLS Secret Name은 DNS-1123 형식으로 입력해 주세요. (예: nullus-wildcard-tls)')
         return false
       }
       if (!tlsSecretNamespace || !K8S_SECRET_REF_REGEX.test(tlsSecretNamespace)) {
-        setTabGuardError('TLS Secret Namespace는 DNS-1123 형식으로 입력해 주세요. (예: kube-system)')
+        setTabGuardError('TLS Secret Namespace는 DNS-1123 형식으로 입력해 주세요. (예: nullus)')
+        return false
+      }
+      if (!tlsIssuerName || !K8S_SECRET_REF_REGEX.test(tlsIssuerName)) {
+        setTabGuardError('cert-manager Issuer Name은 DNS-1123 형식으로 입력해 주세요. (예: nullus-ca-issuer)')
         return false
       }
     }
@@ -2635,7 +2704,7 @@ export function StackInstallPage() {
                   checked={draft.accessDomainTls.enabled}
                   onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
                 />
-                Access Domain TLS 인증서 적용 (와일드카드 10년)
+                Access Domain TLS 인증서 적용 (cert-manager)
               </label>
               {draft.accessDomainTls.enabled && (
                 <div className="mt-2 grid gap-2">
@@ -2651,8 +2720,14 @@ export function StackInstallPage() {
                     value={draft.accessDomainTls.secretNamespace}
                     onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
                   />
+                  <Input
+                    label="cert-manager Issuer Name"
+                    placeholder="nullus-ca-issuer"
+                    value={draft.accessDomainTls.issuerName}
+                    onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
+                  />
                   <p className="text-[11px] text-[var(--color-text-secondary)]">
-                    Preview Deploy Script에 10년 wildcard cert 생성(<code>openssl -days 3650</code>) 및 <code>kubectl create secret tls</code> 단계가 포함됩니다.
+                    Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
                   </p>
                 </div>
               )}
@@ -2974,7 +3049,7 @@ export function StackInstallPage() {
                             )}
                             {activeManifestInfo.toolId === GATEWAY_MANIFEST_ID ? (
                               <div className="mt-1 text-[var(--color-text-secondary)]">
-                                Gateway API YAML은 선택된 OSS 기준으로 Gateway/HTTPRoute를 자동 구성합니다. Access Domain TLS 인증서 적용을 켜면 HTTPS(443) + tls.certificateRefs(secret)가 함께 생성됩니다.
+                                Gateway API YAML은 선택된 OSS 기준으로 Gateway/HTTPRoute를 자동 구성합니다. Access Domain TLS 인증서 적용을 켜면 HTTPS(443) + cert-manager Certificate + tls.certificateRefs(secret)가 함께 생성됩니다.
                               </div>
                             ) : (
                               <div className="mt-1 text-[var(--color-text-secondary)]">
@@ -3564,7 +3639,7 @@ export function StackInstallPage() {
             [
               'Access TLS',
               draft.accessDomainTls.enabled
-                ? `enabled (${draft.accessDomainTls.secretNamespace || 'nullus'}/${draft.accessDomainTls.secretName || 'nullus-wildcard-tls'})`
+                ? `enabled (${draft.accessDomainTls.secretNamespace || 'nullus'}/${draft.accessDomainTls.secretName || 'nullus-wildcard-tls'}, issuer=${draft.accessDomainTls.issuerName || 'nullus-ca-issuer'})`
                 : 'disabled',
             ],
             ['Package Registry', draft.artifacts.packageRegistry.tool],

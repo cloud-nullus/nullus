@@ -226,12 +226,13 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/최종 접근 가이드/)).toBeInTheDocument()
   })
 
-  it('enables access domain TLS and reflects HTTPS listener/openssl script', () => {
+  it('enables access domain TLS and reflects HTTPS listener/cert-manager script', () => {
     renderWithProviders(<StackInstallPage />)
 
     fireEvent.click(screen.getByLabelText(/Access Domain TLS 인증서 적용/))
     fireEvent.change(screen.getByLabelText('TLS Secret Name'), { target: { value: 'corp-wildcard-tls' } })
     fireEvent.change(screen.getByLabelText('TLS Secret Namespace'), { target: { value: 'kube-system' } })
+    fireEvent.change(screen.getByLabelText('cert-manager Issuer Name'), { target: { value: 'corp-cluster-issuer' } })
 
     fillRequiredSelectionsForConfigTabs()
     fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
@@ -244,8 +245,9 @@ describe('StackInstallPage', () => {
     expect(gatewayEditor.value).toContain('name: corp-wildcard-tls')
 
     fireEvent.click(screen.getByRole('button', { name: 'Preview Deploy Script' }))
-    expect(screen.getByText(/openssl req -x509 -nodes -days 3650 -newkey rsa:2048/)).toBeInTheDocument()
-    expect(screen.getByText(/kubectl create secret tls "corp-wildcard-tls"/)).toBeInTheDocument()
+    expect(screen.getAllByText(/apiVersion: cert-manager.io\/v1/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/kind: Certificate/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/name: corp-cluster-issuer/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/kind: ReferenceGrant/).length).toBeGreaterThan(0)
   })
 

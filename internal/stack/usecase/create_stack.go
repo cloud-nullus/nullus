@@ -50,6 +50,9 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	if input.OrgID == "" {
 		return nil, fmt.Errorf("org_id is required")
 	}
+	if err := validateAccessDomainTLS(input.Config.AccessDomainTLS); err != nil {
+		return nil, err
+	}
 	if err := validateStorageConfig(input.Config.Storage); err != nil {
 		return nil, err
 	}
@@ -126,6 +129,24 @@ func validateStorageTarget(path string, target domain.StorageTarget) error {
 		}
 	default:
 		return fmt.Errorf("%s.mode must be create or existing-connect", path)
+	}
+
+	return nil
+}
+
+func validateAccessDomainTLS(tls *domain.AccessDomainTLSConfig) error {
+	if tls == nil || !tls.Enabled {
+		return nil
+	}
+
+	if strings.TrimSpace(tls.SecretName) == "" {
+		return fmt.Errorf("access_domain_tls.secret_name is required when enabled")
+	}
+	if strings.TrimSpace(tls.SecretNamespace) == "" {
+		return fmt.Errorf("access_domain_tls.secret_namespace is required when enabled")
+	}
+	if strings.TrimSpace(tls.IssuerName) == "" {
+		return fmt.Errorf("access_domain_tls.issuer_name is required when enabled")
 	}
 
 	return nil

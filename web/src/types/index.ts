@@ -124,6 +124,7 @@ export interface AccessDomainTlsInput {
   enabled: boolean
   secretName: string
   secretNamespace: string
+  issuerName: string
 }
 
 export interface StackConfig {
