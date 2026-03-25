@@ -1528,6 +1528,8 @@ export function StackInstallPage() {
   const activeManifestInfo = resolvedActiveManifestTool
     ? allManifestTools.find((tool) => tool.toolId === resolvedActiveManifestTool) ?? null
     : null
+  const manifestValidationErrorCount = Object.keys(manifestErrorsByTool).length
+  const hasManifestValidationError = manifestValidationErrorCount > 0
 
   const deployScript = createDeployScript(draft, allManifestTools, defaultManifestByTool)
 
@@ -2578,7 +2580,8 @@ export function StackInstallPage() {
               !draft.stackName ||
               draft.stackName.length < 2 ||
               !draft.clusterId ||
-              (createNewNs && !draft.namespace.trim())
+              (createNewNs && !draft.namespace.trim()) ||
+              hasManifestValidationError
             }
             type="button"
           >
@@ -2587,6 +2590,11 @@ export function StackInstallPage() {
           </Button>
         </div>
       </div>
+      {hasManifestValidationError && (
+        <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
+          Strict 버전/YAML 검증 실패 {manifestValidationErrorCount}건으로 Deploy가 잠겼습니다. YAML View에서 오류를 해소해 주세요.
+        </div>
+      )}
 
       <div className="mb-5 flex flex-wrap items-start gap-4">
         <div className="flex min-w-0 flex-1 flex-wrap items-start gap-4">
@@ -2941,6 +2949,11 @@ export function StackInstallPage() {
                               <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 uppercase text-[10px] text-[var(--color-text-secondary)]">
                                 {activeManifestInfo.installType}
                               </span>
+                              {manifestErrorsByTool[activeManifestInfo.toolId] && (
+                                <span className="rounded border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.15)] px-1.5 py-0.5 text-[10px] font-semibold text-[#fca5a5]">
+                                  STRICT 검증 실패
+                                </span>
+                              )}
                               <span className="text-[var(--color-text-secondary)]">
                                 app version: {activeManifestInfo.toolVersion || getToolAppVersion(activeManifestInfo.toolId)}
                                 {activeManifestInfo.installType === 'helm' && activeManifestInfo.chartVersion
