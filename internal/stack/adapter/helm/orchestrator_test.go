@@ -399,3 +399,37 @@ func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
 	assert.Contains(t, installer.installed, "opensearch")
 	assert.Contains(t, installer.installed, "opentelemetry-collector")
 }
+
+func TestOrchestrator_ExecuteStep_AppliesRunnerGitlabURL(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			StorageBackend:   domain.ToolSelection{Enabled: true},
+			SourceRepository: domain.ToolSelection{Enabled: true},
+		},
+		Pipeline: domain.PipelineConfig{
+			CIPlatform: domain.ToolSelection{Enabled: true},
+			CDTool:     domain.ToolSelection{Enabled: true},
+		},
+	})
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+	}
+
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_runner_url", step.name, step.phase))
+	}
+
+	runnerValues := installer.valuesByRelease["gitlab-runner"]
+	require.NotNil(t, runnerValues)
+	assert.Equal(t, "http://gitlab-webservice-default.nullus.svc", runnerValues["gitlabUrl"])
+}

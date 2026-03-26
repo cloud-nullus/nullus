@@ -477,6 +477,15 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 	o.mu.Unlock()
 
 	if cfg == nil || len(cfg.YAMLOverrides) == 0 {
+		if step == "installing_runner" {
+			namespace := strings.TrimSpace(o.namespace)
+			if namespace == "" {
+				namespace = "nullus"
+			}
+			base = mergeMaps(base, map[string]any{
+				"gitlabUrl": fmt.Sprintf("http://gitlab-webservice-default.%s.svc", namespace),
+			})
+		}
 		if cfg != nil && step == "installing_gitlab" && strings.TrimSpace(cfg.AccessDomain) != "" {
 			base = mergeMaps(base, map[string]any{
 				"global": map[string]any{
@@ -496,6 +505,16 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 					"domain": cfg.AccessDomain,
 				},
 			},
+		})
+	}
+
+	if step == "installing_runner" {
+		namespace := strings.TrimSpace(o.namespace)
+		if namespace == "" {
+			namespace = "nullus"
+		}
+		base = mergeMaps(base, map[string]any{
+			"gitlabUrl": fmt.Sprintf("http://gitlab-webservice-default.%s.svc", namespace),
 		})
 	}
 

@@ -8,8 +8,6 @@ import {
 	Boxes,
 	Check,
 	CheckCircle,
-	ChevronDown,
-	ChevronUp,
 	ClipboardList,
 	Cpu,
 	FileText,
@@ -21,13 +19,14 @@ import {
 	List,
 	MemoryStick,
 	Monitor,
+	ExternalLink,
 	Plus,
 	Search,
 	Server,
 	Terminal,
 	XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Area,
@@ -54,6 +53,81 @@ import type { Stack } from "../api/stack-api";
 import { useDeleteStack, useStackHistory, useStacks } from "../api/stack-api";
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
+
+type PipelineNode = {
+	category: string;
+	oss: string;
+	version: string;
+	instances: number;
+	color: string;
+	health: "healthy" | "progressing" | "degraded";
+	sync: "synced" | "out-of-sync";
+};
+
+type ToolSelectionView = {
+	name: string;
+	version: string;
+	instances: number;
+};
+
+type LaunchTool = {
+	name: string;
+	version: string;
+	url: string | null;
+	logo: string;
+};
+
+function tryGetHostname(url: string | null): string | null {
+	if (!url) return null;
+	try {
+		return new URL(url).hostname;
+	} catch {
+		return null;
+	}
+}
+
+function buildHostsText(stackName: string, accessDomain: string, launchTools: LaunchTool[]): string {
+	if (!accessDomain) {
+		return "";
+	}
+	const hostSet = new Set<string>();
+	for (const tool of launchTools) {
+		const hostname = tryGetHostname(tool.url);
+		if (hostname) {
+			hostSet.add(hostname);
+		}
+	}
+	hostSet.add(accessDomain);
+
+	const hosts = Array.from(hostSet).sort();
+	if (hosts.length === 0) {
+		return "";
+	}
+
+	return [
+		`# Nullus Stack: ${stackName}`,
+		`127.0.0.1 ${hosts.join(" ")}`,
+	].join("\n");
+}
+
+async function copyTextToClipboard(value: string): Promise<void> {
+	if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+		await navigator.clipboard.writeText(value);
+		return;
+	}
+
+	if (typeof document !== "undefined") {
+		const textArea = document.createElement("textarea");
+		textArea.value = value;
+		textArea.style.position = "fixed";
+		textArea.style.left = "-9999px";
+		document.body.appendChild(textArea);
+		textArea.focus();
+		textArea.select();
+		document.execCommand("copy");
+		document.body.removeChild(textArea);
+	}
+}
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
 	pending: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Pending" },
@@ -83,6 +157,216 @@ function formatDate(iso: string) {
 		month: "2-digit",
 		day: "2-digit",
 	});
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	return value as Record<string, unknown>;
+}
+
+function readString(record: Record<string, unknown>, keys: string[]): string {
+	for (const key of keys) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim() !== "") {
+			return value;
+		}
+	}
+	return "";
+}
+
+function readNumber(record: Record<string, unknown>, keys: string[]): number | null {
+	for (const key of keys) {
+		const value = record[key];
+		if (typeof value === "number" && Number.isFinite(value)) {
+			return value;
+		}
+	}
+	return null;
+}
+
+function readBool(record: Record<string, unknown>, keys: string[], defaultValue = true): boolean {
+	for (const key of keys) {
+		const value = record[key];
+		if (typeof value === "boolean") {
+			return value;
+		}
+	}
+	return defaultValue;
+}
+
+function parseToolSelection(raw: unknown): ToolSelectionView | null {
+	const record = toRecord(raw);
+	if (!record) {
+		return null;
+	}
+
+	if (!readBool(record, ["enabled", "Enabled"], true)) {
+		return null;
+	}
+
+	const name = readString(record, ["tool", "name", "Name", "id"]);
+	if (!name) {
+		return null;
+	}
+	const version = readString(record, ["version", "Version", "app_version", "appVersion"]) || "-";
+	const instances = Math.max(1, Math.floor(readNumber(record, ["instances", "replicas", "count"]) ?? 1));
+
+	return { name, version, instances };
+}
+
+function resolveSnapshotConfig(snapshot: unknown): Record<string, unknown> {
+	const root = toRecord(snapshot);
+	if (!root) {
+		return {};
+	}
+	const nested = toRecord(root.config) ?? toRecord(root.Config);
+	return nested ?? root;
+}
+
+function pickGroup(config: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+	for (const key of keys) {
+		const group = toRecord(config[key]);
+		if (group) {
+			return group;
+		}
+	}
+	return {};
+}
+
+function parseCategorySelections(group: Record<string, unknown>, keyPairs: string[][]): ToolSelectionView[] {
+	const tools: ToolSelectionView[] = [];
+	for (const pair of keyPairs) {
+		let selection: ToolSelectionView | null = null;
+		for (const key of pair) {
+			selection = parseToolSelection(group[key]);
+			if (selection) break;
+		}
+		if (selection) {
+			tools.push(selection);
+		}
+	}
+	return tools;
+}
+
+function toPipelineNode(category: string, tools: ToolSelectionView[], color: string): PipelineNode | null {
+	if (tools.length === 0) {
+		return null;
+	}
+	return {
+		category,
+		oss: tools.map((tool) => tool.name).join(" + "),
+		version: tools.map((tool) => tool.version).join(" / "),
+		instances: tools.reduce((sum, tool) => sum + tool.instances, 0),
+		color,
+		health: "healthy",
+		sync: "synced",
+	};
+}
+
+function buildPipelineNodesFromSnapshot(snapshot: unknown): PipelineNode[] {
+	const config = resolveSnapshotConfig(snapshot);
+	const artifacts = parseCategorySelections(
+		pickGroup(config, ["artifacts", "Artifacts"]),
+		[["package_registry", "packageRegistry"], ["source_repository", "sourceRepository"], ["container_registry", "containerRegistry"], ["storage_backend", "storageBackend"]],
+	);
+	const pipeline = pickGroup(config, ["pipeline", "Pipeline"]);
+	const ci = parseCategorySelections(pipeline, [["ci_platform", "ciPlatform"]]);
+	const cd = parseCategorySelections(pipeline, [["cd_tool", "cdTool"]]);
+	const monitoring = parseCategorySelections(
+		pickGroup(config, ["monitoring", "Monitoring"]),
+		[["collection", "Collection"], ["visualization", "Visualization"]],
+	);
+	const loggingGroup = pickGroup(config, ["logging", "Logging"]);
+	const logging = parseCategorySelections(loggingGroup, [["collection", "Collection"], ["search", "Search"]]);
+	const trace = parseCategorySelections(loggingGroup, [["trace_layer", "traceLayer", "TraceLayer"]]);
+
+	return [
+		toPipelineNode("Artifacts", artifacts, "#6366f1"),
+		toPipelineNode("CI", ci, "#0ea5e9"),
+		toPipelineNode("CD", cd, "#8b5cf6"),
+		toPipelineNode("Monitoring", monitoring, "#10b981"),
+		toPipelineNode("Logging", logging, "#f59e0b"),
+		toPipelineNode("Trace", trace, "#ef4444"),
+	].filter((node): node is PipelineNode => !!node);
+}
+
+function buildInstalledToolsFromSnapshot(snapshot: unknown): ToolSelectionView[] {
+	const config = resolveSnapshotConfig(snapshot);
+	const artifacts = parseCategorySelections(
+		pickGroup(config, ["artifacts", "Artifacts"]),
+		[["package_registry", "packageRegistry"], ["source_repository", "sourceRepository"], ["container_registry", "containerRegistry"], ["storage_backend", "storageBackend"]],
+	);
+	const pipeline = parseCategorySelections(
+		pickGroup(config, ["pipeline", "Pipeline"]),
+		[["ci_platform", "ciPlatform"], ["cd_tool", "cdTool"]],
+	);
+	const monitoring = parseCategorySelections(
+		pickGroup(config, ["monitoring", "Monitoring"]),
+		[["collection", "Collection"], ["visualization", "Visualization"]],
+	);
+	const logging = parseCategorySelections(
+		pickGroup(config, ["logging", "Logging"]),
+		[["collection", "Collection"], ["search", "Search"], ["trace_layer", "traceLayer", "TraceLayer"]],
+	);
+
+	const byName = new Map<string, ToolSelectionView>();
+	for (const tool of [...artifacts, ...pipeline, ...monitoring, ...logging]) {
+		const key = tool.name.toLowerCase();
+		if (!byName.has(key)) {
+			byName.set(key, tool);
+		}
+	}
+
+	return Array.from(byName.values());
+}
+
+function extractAccessDomain(snapshot: unknown): string {
+	const config = resolveSnapshotConfig(snapshot);
+	const value = config.access_domain ?? config.accessDomain;
+	return typeof value === "string" ? value.trim() : "";
+}
+
+function toolLogoURL(toolName: string): string {
+	const key = toolName.toLowerCase();
+	const map: Record<string, string> = {
+		gitlab: "gitlab",
+		"gitlab-ci": "gitlab",
+		"gitlab-registry": "gitlab",
+		argocd: "argo",
+		"argo-cd": "argo",
+		grafana: "grafana",
+		prometheus: "prometheus",
+		loki: "grafana",
+		opensearch: "opensearch",
+		elasticsearch: "elasticsearch",
+		"opentelemetry-collector": "opentelemetry",
+		tempo: "grafana",
+		jaeger: "jaeger",
+		harbor: "goharbor",
+		minio: "minio",
+	};
+	const slug = map[key] ?? "kubernetes";
+	return `https://cdn.simpleicons.org/${slug}`;
+}
+
+function toolLaunchURL(toolName: string, accessDomain: string): string | null {
+	if (!accessDomain) {
+		return null;
+	}
+	const key = toolName.toLowerCase();
+	if (["gitlab", "gitlab-ci", "gitlab-registry"].includes(key)) return `https://gitlab.${accessDomain}`;
+	if (["argocd", "argo-cd"].includes(key)) return `https://argocd.${accessDomain}`;
+	if (key === "grafana") return `https://grafana.${accessDomain}`;
+	if (key === "prometheus") return `https://prometheus.${accessDomain}`;
+	if (key === "harbor") return `https://harbor.${accessDomain}`;
+	if (key === "minio") return `https://minio.${accessDomain}`;
+	if (key === "opensearch") return `https://opensearch-dashboards.${accessDomain}`;
+	if (key === "elasticsearch") return `https://kibana.${accessDomain}`;
+	if (key === "jaeger") return `https://jaeger.${accessDomain}`;
+	if (["tempo", "loki", "opentelemetry-collector"].includes(key)) return `https://grafana.${accessDomain}`;
+	return null;
 }
 
 
@@ -460,41 +744,243 @@ function ResourcesPanel() {
 	);
 }
 
-function StackInfoTab() {
+function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTools: () => void; onDelete: () => void }) {
+	const [hostsCopyState, setHostsCopyState] = useState<"idle" | "copied" | "failed">("idle");
+	const { data: historyData } = useStackHistory(stack.id);
+	const latestSnapshot = Array.isArray(historyData) && historyData.length > 0
+		? historyData[historyData.length - 1].snapshot
+		: null;
+	const derivedNodes = buildPipelineNodesFromSnapshot(latestSnapshot);
+	const pipelineNodes: PipelineNode[] =
+		derivedNodes.length > 0
+			? derivedNodes
+			: [{ category: "Stack", oss: stack.templateName, version: "-", instances: 1, color: "#6366f1", health: "progressing", sync: "out-of-sync" }];
+
+	const degradedState = ["failed", "rolling_back", "rolled_back", "cancelled"].includes(stack.status);
+	const progressingState = ["pending", "validating", "installing", "configuring", "health_check"].includes(stack.status);
+	const runtimeNodes = pipelineNodes.map((node) => ({
+		...node,
+		health: degradedState ? "degraded" : progressingState ? "progressing" : "healthy",
+		sync: degradedState ? "out-of-sync" : "synced",
+	}));
+	const topologySlots = 6;
+	const topologyNodeCount = Math.min(runtimeNodes.length, topologySlots);
+	const installedTools = buildInstalledToolsFromSnapshot(latestSnapshot);
+	const accessDomain = extractAccessDomain(latestSnapshot);
+	const launchTools: LaunchTool[] = installedTools.map((tool) => ({
+		name: tool.name,
+		version: tool.version,
+		url: toolLaunchURL(tool.name, accessDomain),
+		logo: toolLogoURL(tool.name),
+	}));
+	const hostsText = buildHostsText(stack.name, accessDomain, launchTools);
+
+	const handleCopyHosts = async () => {
+		if (!hostsText) return;
+		try {
+			await copyTextToClipboard(hostsText);
+			setHostsCopyState("copied");
+		} catch {
+			setHostsCopyState("failed");
+		}
+		setTimeout(() => setHostsCopyState("idle"), 2200);
+	};
+
+	const observabilitySummary = ["Monitoring", "Logging", "Trace"]
+		.filter((category) => pipelineNodes.some((node) => node.category === category))
+		.join(" + ") || "Not configured";
+
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
-				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<Archive size={13} /> Artifacts
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
+				<div className="mb-3 flex items-center justify-between gap-3">
+					<div>
+						<div className="flex items-center gap-2">
+							<div className="text-[14px] font-bold text-[var(--color-text-primary)]">Installed Stack Summary</div>
+							<Button
+								variant="ghost"
+								size="sm"
+								type="button"
+								onClick={handleCopyHosts}
+								disabled={!hostsText}
+								title={hostsText ? "/etc/hosts 복사용 매핑 복사" : "access domain이 없어 hosts 매핑을 만들 수 없습니다"}
+							>
+								<ClipboardList size={13} />
+								{hostsCopyState === "copied"
+									? "Copied"
+									: hostsCopyState === "failed"
+										? "Copy Failed"
+										: "/etc/hosts Copy"}
+							</Button>
+						</div>
+						<div className="text-[12px] text-[var(--color-text-secondary)]">배포된 구성 요약과 핵심 액션</div>
+					</div>
+					<div className="flex items-center gap-2">
+						<Button variant="outline" size="sm" type="button" onClick={onAddTools}>
+							<Plus size={13} /> Add Tools
+						</Button>
+						<Button variant="danger" size="sm" type="button" onClick={onDelete}>
+							Delete
+						</Button>
+					</div>
 				</div>
+				<div className="grid grid-cols-2 gap-3 text-[12px] text-[var(--color-text-secondary)] lg:grid-cols-4">
+					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+						<div className="text-[11px] uppercase tracking-[0.04em]">Category</div>
+						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{stack.templateName}</div>
+					</div>
+					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+						<div className="text-[11px] uppercase tracking-[0.04em]">Runtime</div>
+						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">Kubernetes / Helm</div>
+					</div>
+					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+						<div className="text-[11px] uppercase tracking-[0.04em]">Observability</div>
+						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{observabilitySummary}</div>
+					</div>
+					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+						<div className="text-[11px] uppercase tracking-[0.04em]">Update Mode</div>
+						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{STATUS_STYLES[stack.status]?.label ?? stack.status}</div>
+					</div>
+				</div>
+				<div className="mt-3 border-t border-[var(--color-border-default)] pt-3">
+					<div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+						Open Source Consoles
+					</div>
+					<div className="flex flex-wrap gap-2">
+						{launchTools.map((tool) => (
+							<a
+								key={tool.name}
+								href={tool.url ?? undefined}
+								target="_blank"
+								rel="noreferrer"
+								onClick={(event) => {
+									if (!tool.url) {
+										event.preventDefault();
+									}
+								}}
+								className={cn(
+									"inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] transition-colors",
+									tool.url
+										? "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-primary)] hover:border-[rgba(99,102,241,0.45)] hover:bg-[rgba(99,102,241,0.1)]"
+										: "cursor-not-allowed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-muted)]",
+								)}
+								title={tool.url ? `${tool.name} 콘솔 열기` : `${tool.name}: 외부 경로 미설정`}
+							>
+								<span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[rgba(255,255,255,0.08)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
+									{tool.name.slice(0, 2)}
+									<img
+										src={tool.logo}
+										alt={`${tool.name} logo`}
+										className="absolute inset-0 h-full w-full object-contain p-0.5"
+										onError={(event) => {
+											event.currentTarget.style.display = "none";
+										}}
+									/>
+								</span>
+								<span className="font-medium">{tool.name}</span>
+								<span className="text-[10px] text-[var(--color-text-secondary)]">{tool.version}</span>
+								<ExternalLink size={12} />
+							</a>
+						))}
+					</div>
+				</div>
+			</div>
+
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
+				<div className="mb-3 flex items-center gap-2">
+					<GitBranch size={14} className="text-[#818cf8]" />
+					<div className="text-[14px] font-bold text-[var(--color-text-primary)]">Pipeline Topology</div>
+				</div>
+				<div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+					<span className={cn(
+						"inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
+						degradedState
+							? "bg-[rgba(239,68,68,0.15)] text-[#fca5a5]"
+							: progressingState
+								? "bg-[rgba(59,130,246,0.15)] text-[#93c5fd]"
+								: "bg-[rgba(34,197,94,0.15)] text-[#86efac]",
+					)}>
+						● Health {degradedState ? "Degraded" : progressingState ? "Progressing" : "Healthy"}
+					</span>
+					<span className={cn(
+						"inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
+						degradedState
+							? "bg-[rgba(245,158,11,0.15)] text-[#fcd34d]"
+							: "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]",
+					)}>
+						◉ Sync {degradedState ? "OutOfSync" : "Synced"}
+					</span>
+				</div>
+				<div className="relative">
+					{topologyNodeCount > 1 && (
+						<svg
+							className="pointer-events-none absolute inset-x-0 top-[20px] hidden h-3 w-full xl:block"
+							viewBox="0 0 100 10"
+							preserveAspectRatio="none"
+							aria-hidden="true"
+						>
+							<polyline
+								points={Array.from({ length: topologyNodeCount }, (_, idx) => {
+									const x = ((idx + 0.5) / topologySlots) * 100;
+									return `${x},5`;
+								}).join(" ")}
+								fill="none"
+								stroke="rgba(148,163,184,0.55)"
+								strokeWidth="1.3"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							/>
+						</svg>
+					)}
+					<div className="grid gap-3 xl:grid-cols-6">
+						{runtimeNodes.map((node) => (
+							<div key={node.category} className="relative rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]">
+								<div className="mb-2 flex items-center justify-between gap-2">
+									<div className="flex items-center gap-2">
+										<div className="h-6 w-6 rounded-full ring-2 ring-white/10" style={{ backgroundColor: node.color }} />
+										<div className="text-[12px] font-semibold text-[var(--color-text-primary)]">{node.category}</div>
+									</div>
+									<span className={cn(
+										"rounded-full px-2 py-0.5 text-[10px] font-semibold",
+										node.health === "degraded"
+											? "bg-[rgba(239,68,68,0.15)] text-[#fca5a5]"
+											: node.health === "progressing"
+												? "bg-[rgba(59,130,246,0.15)] text-[#93c5fd]"
+												: "bg-[rgba(34,197,94,0.15)] text-[#86efac]",
+									)}>
+										{node.health}
+									</span>
+								</div>
+								<div className="mb-2 flex items-center gap-1.5">
+									<span className={cn(
+										"rounded-full px-2 py-0.5 text-[10px] font-semibold",
+										node.sync === "synced"
+											? "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]"
+											: "bg-[rgba(245,158,11,0.15)] text-[#fcd34d]",
+									)}>
+										{node.sync}
+									</span>
+								</div>
+								<div className="text-[11px] text-[var(--color-text-secondary)]">OSS</div>
+								<div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">{node.oss}</div>
+								<div className="text-[11px] text-[var(--color-text-secondary)]">Version</div>
+								<div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">{node.version}</div>
+								<div className="text-[11px] text-[var(--color-text-secondary)]">Instances</div>
+								<div className="text-[12px] font-medium text-[var(--color-text-primary)]">{node.instances}</div>
+							</div>
+						))}
+					</div>
+				</div>
+			</div>
+
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
+				상세 설치 카드는 숨김 처리되었습니다. 도구 상세 상태는 Monitoring / History 탭에서 확인할 수 있습니다.
+			</div>
+			<div className="hidden" aria-hidden="true">
 				<ArtifactsPanel />
-			</div>
-
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
-				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<GitBranch size={13} /> Pipeline Tools
-				</div>
 				<PipelineToolsPanel />
-			</div>
-
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
-				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<Monitor size={13} /> Monitoring Tools
-				</div>
 				<MonitoringToolsPanel />
-			</div>
-
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
-				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<FileText size={13} /> Logging Tools
-				</div>
 				<LoggingToolsPanel />
-			</div>
-
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
-				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<Server size={13} /> Resources
-				</div>
 				<ResourcesPanel />
 			</div>
 		</div>
@@ -649,7 +1135,7 @@ function StackMonitoringTab() {
 		{ name: "Argo CD", status: "running", version: "2.9.3" },
 		{ name: "Prometheus", status: "running", version: "2.48.1" },
 		{ name: "Grafana", status: "warning", version: "10.3" },
-		{ name: "Harbor", status: "running", version: "2.8.2" },
+		{ name: "Loki", status: "running", version: "2.9.8" },
 	];
 
 	const cardClassName =
@@ -1142,12 +1628,22 @@ const INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
 	},
 ];
 
-function StackDetailPanel({ stack }: { stack: Stack }) {
+function StackDetailPanel({
+	stack,
+	onAddTools,
+	onDelete,
+	className,
+}: {
+	stack: Stack;
+	onAddTools: () => void;
+	onDelete: () => void;
+	className?: string;
+}) {
 	const [innerTab, setInnerTab] = useState<InnerTab>("info");
 	const statusStyle = STATUS_STYLES[stack.status] ?? STATUS_STYLES.pending;
 
 	return (
-		<div className="mt-2.5 overflow-hidden rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.3)] bg-[var(--color-surface-card)]">
+		<div className={cn("overflow-hidden rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.3)] bg-[var(--color-surface-card)]", className)}>
 			<div className="flex items-center gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
 				<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
 					<Layers size={16} />
@@ -1185,7 +1681,7 @@ function StackDetailPanel({ stack }: { stack: Stack }) {
 			</div>
 
 			<div className="p-5">
-				{innerTab === "info" && <StackInfoTab />}
+				{innerTab === "info" && <StackInfoTab stack={stack} onAddTools={onAddTools} onDelete={onDelete} />}
 				{innerTab === "monitoring" && <StackMonitoringTab />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
@@ -1200,7 +1696,20 @@ export function StackListPage() {
 	const [statusFilter, setStatusFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
 	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
+	const [viewportHeight, setViewportHeight] = useState(() =>
+		typeof window !== "undefined" ? window.innerHeight : 960,
+	);
 	const deleteStack = useDeleteStack();
+	const tablePageSize = Math.max(6, Math.min(14, Math.floor((viewportHeight - 340) / 52)));
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		const onResize = () => setViewportHeight(window.innerHeight);
+		window.addEventListener("resize", onResize);
+		return () => window.removeEventListener("resize", onResize);
+	}, []);
 
 	const { data: apiData, isLoading } = useStacks({
 		search,
@@ -1218,7 +1727,12 @@ export function StackListPage() {
 		const matchesStatus = !statusFilter || s.status === statusFilter;
 		return matchesSearch && matchesStatus;
 	});
-	const expandedStack = filtered.find((s) => s.id === expandedStackId) ?? null;
+	const selectedStackId = expandedStackId && filtered.some((stack) => stack.id === expandedStackId)
+		? expandedStackId
+		: (filtered[0]?.id ?? null);
+	const expandedStack = selectedStackId
+		? filtered.find((s) => s.id === selectedStackId) ?? null
+		: null;
 
 	const handleDeleteStack = () => {
 		if (!deleteStackId) return;
@@ -1229,34 +1743,11 @@ export function StackListPage() {
 
 	const columns: ColumnDef<Stack, unknown>[] = [
 		{
-			id: "expand",
-			header: "",
-			enableSorting: false,
-			cell: ({ row }) => {
-				const isExpanded = expandedStackId === row.original.id;
-				return (
-					<Button
-						variant={isExpanded ? "secondary" : "ghost"}
-						size="sm"
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							setExpandedStackId((prev) =>
-								prev === row.original.id ? null : row.original.id,
-							);
-						}}
-					>
-						{isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-					</Button>
-				);
-			},
-		},
-		{
 			accessorKey: "name",
 			header: "스택 이름",
 			cell: ({ row }) => (
 				<div className="flex items-center gap-2">
-					{expandedStackId === row.original.id && (
+					{selectedStackId === row.original.id && (
 						<div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#6366f1]" />
 					)}
 					<span className="font-semibold">{row.original.name}</span>
@@ -1269,15 +1760,6 @@ export function StackListPage() {
 			cell: ({ row }) => (
 				<span className="text-[var(--color-text-secondary)]">
 					{row.original.templateName}
-				</span>
-			),
-		},
-		{
-			accessorKey: "clusterName",
-			header: "클러스터",
-			cell: ({ row }) => (
-				<span className="text-[var(--color-text-secondary)]">
-					{row.original.clusterName}
 				</span>
 			),
 		},
@@ -1303,37 +1785,6 @@ export function StackListPage() {
 				<span className="text-[13px] text-[var(--color-text-secondary)]">
 					{formatDate(row.original.createdAt)}
 				</span>
-			),
-		},
-		{
-			id: "actions",
-			header: "Actions",
-			enableSorting: false,
-			cell: ({ row }) => (
-				<div className="flex gap-2">
-					<Button
-						variant="outline"
-						size="sm"
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							navigate(`/stack/${row.original.id}/add-tools`);
-						}}
-					>
-						<Plus size={13} /> Add Tools
-					</Button>
-					<Button
-						variant="danger"
-						size="sm"
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							setDeleteStackId(row.original.id);
-						}}
-					>
-						Delete
-					</Button>
-				</div>
 			),
 		},
 	];
@@ -1368,46 +1819,76 @@ export function StackListPage() {
 				</Button>
 			</div>
 
-			<DataTable
-				columns={columns}
-				data={filtered}
-				toolbar={
-					<>
-						<NativeSelect
-							value={statusFilter}
-							onChange={(e) => setStatusFilter(e.target.value)}
-							className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-						>
-							<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
-							<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
-							<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
-							<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
-							<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
-							<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
-						</NativeSelect>
-						<div className="relative ml-auto">
-							<Search
-								size={13}
-								className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-							/>
-							<input
-								placeholder="스택 검색..."
-								value={search}
-								onChange={(e) => setSearch(e.target.value)}
-								className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+			<div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
+				<div className="min-w-0">
+					<DataTable
+						key={`stack-list-${tablePageSize}`}
+						columns={columns}
+						data={filtered}
+						pageSize={tablePageSize}
+						toolbar={
+							<>
+								<NativeSelect
+									value={statusFilter}
+									onChange={(e) => setStatusFilter(e.target.value)}
+									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+								>
+									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
+									<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
+									<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
+									<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
+									<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
+									<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+								</NativeSelect>
+								<div className="relative ml-auto">
+									<Search
+										size={13}
+										className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+									/>
+									<input
+										placeholder="스택 검색..."
+										value={search}
+										onChange={(e) => setSearch(e.target.value)}
+										className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+									/>
+								</div>
+							</>
+						}
+						getRowKey={(row) => row.id}
+						onRowClick={(row) => setExpandedStackId(row.id)}
+						emptyMessage={isLoading ? "스택을 불러오는 중..." : "스택이 없습니다."}
+					/>
+					<div className="mt-2 hidden text-[12px] text-[var(--color-text-secondary)] xl:block">
+						목록에서 스택을 선택하면 오른쪽 상세 패널이 즉시 갱신됩니다.
+					</div>
+				</div>
+
+				<div className="hidden xl:block">
+					{expandedStack ? (
+						<div className="sticky top-4 max-h-[calc(100vh-110px)] overflow-auto pr-1">
+							<StackDetailPanel
+								key={expandedStack.id}
+								stack={expandedStack}
+								onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
+								onDelete={() => setDeleteStackId(expandedStack.id)}
 							/>
 						</div>
-					</>
-				}
-				getRowKey={(row) => row.id}
-				onRowClick={(row) =>
-					setExpandedStackId((prev) => (prev === row.id ? null : row.id))
-				}
-				emptyMessage={isLoading ? "스택을 불러오는 중..." : "스택이 없습니다."}
-			/>
+					) : (
+						<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
+							리스트에서 스택을 선택하면 상세 정보가 여기에 표시됩니다.
+						</div>
+					)}
+				</div>
+			</div>
 
 			{expandedStack && (
-				<StackDetailPanel key={expandedStack.id} stack={expandedStack} />
+				<StackDetailPanel
+					key={`${expandedStack.id}-mobile`}
+					stack={expandedStack}
+					onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
+					onDelete={() => setDeleteStackId(expandedStack.id)}
+					className="mt-4 xl:hidden"
+				/>
 			)}
 
 			<ConfirmDialog
