@@ -43,6 +43,46 @@ func TestCreateStack_UsesProvidedNamespace(t *testing.T) {
 	assert.Equal(t, "production", out.Stack.Namespace)
 }
 
+func TestCreateStack_DefaultAccessDomainWhenEmpty(t *testing.T) {
+	stackRepo := stackrepo.NewMemoryStackRepository()
+	templateRepo := stackrepo.NewMemoryTemplateRepository()
+	uc := NewCreateStack(stackRepo, templateRepo)
+
+	out, err := uc.Execute(context.Background(), CreateStackInput{
+		Name:      "stack-domain-default",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config:    domain.StackConfig{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	require.NotNil(t, out.Stack)
+	config, ok := out.Stack.Config.(domain.StackConfig)
+	require.True(t, ok)
+	assert.Equal(t, "stack-domain-default.internal", config.AccessDomain)
+}
+
+func TestCreateStack_PreservesProvidedAccessDomain(t *testing.T) {
+	stackRepo := stackrepo.NewMemoryStackRepository()
+	templateRepo := stackrepo.NewMemoryTemplateRepository()
+	uc := NewCreateStack(stackRepo, templateRepo)
+
+	out, err := uc.Execute(context.Background(), CreateStackInput{
+		Name:      "stack-domain-custom",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config: domain.StackConfig{
+			AccessDomain: "custom.example.internal",
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	require.NotNil(t, out.Stack)
+	config, ok := out.Stack.Config.(domain.StackConfig)
+	require.True(t, ok)
+	assert.Equal(t, "custom.example.internal", config.AccessDomain)
+}
+
 func TestCreateStack_RejectsInvalidStoragePlanMode(t *testing.T) {
 	stackRepo := stackrepo.NewMemoryStackRepository()
 	templateRepo := stackrepo.NewMemoryTemplateRepository()

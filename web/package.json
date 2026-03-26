@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "e2e": "playwright test",
+    "e2e:stack-critical": "playwright test --grep @stack-critical",
     "e2e:headed": "playwright test --headed",
     "e2e:report": "playwright show-report"
   },

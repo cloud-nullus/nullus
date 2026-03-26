@@ -33,3 +33,6 @@ Thumbs.db
 postgres_data/
 .runbook-logs/
 .sisyphus/
+
+# Local planning/spec drafts
+Nullus 상세 기능 명세 및 시스템 아키텍처.md

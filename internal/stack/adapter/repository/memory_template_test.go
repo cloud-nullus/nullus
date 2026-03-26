@@ -49,14 +49,13 @@ func TestMemoryTemplateRepository_GetByID_GitLabArgoCD(t *testing.T) {
 	assert.Equal(t, "GitLab + Argo CD", tmpl.Name)
 	assert.NotEmpty(t, tmpl.Tools)
 
-	// Harbor should be the container registry for this template
-	var hasHarbor bool
+	var hasGitLabRegistry bool
 	for _, tool := range tmpl.Tools {
-		if tool.Name == "Harbor" {
-			hasHarbor = true
+		if tool.Name == "GitLab Registry" {
+			hasGitLabRegistry = true
 		}
 	}
-	assert.True(t, hasHarbor, "GitLab + Argo CD template should use Harbor")
+	assert.True(t, hasGitLabRegistry, "GitLab + Argo CD template should use GitLab Registry")
 }
 
 func TestMemoryTemplateRepository_GetByID_GitHubArgoCD(t *testing.T) {

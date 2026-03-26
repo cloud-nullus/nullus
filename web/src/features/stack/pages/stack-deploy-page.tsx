@@ -106,7 +106,8 @@ const STATE_TO_PROGRESS: Record<string, number> = {
 }
 
 export function StackDeployPage() {
-  const { id = '' } = useParams<{ id: string }>()
+  const params = useParams<{ id?: string; deploymentId?: string }>()
+  const id = params.id ?? params.deploymentId ?? ''
   const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
   const logEndRef = useRef<HTMLDivElement>(null)
   const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number } | null>(null)

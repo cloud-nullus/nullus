@@ -1573,14 +1573,28 @@ export function StackInstallPage() {
   const manifestValidationErrorCount = Object.keys(manifestErrorsByTool).length
   const hasManifestValidationError = manifestValidationErrorCount > 0
   const validManifestToolIds = new Set(allManifestTools.map((tool) => tool.toolId))
-  const yamlOverridesPayload = Object.entries(manifestOverridesByTool).reduce<Record<string, string>>((acc, [toolId, yamlText]) => {
-    const trimmed = yamlText.trim()
-    if (!trimmed || !validManifestToolIds.has(toolId)) {
+  const yamlOverridesPayload = allManifestTools.reduce<Record<string, string>>((acc, tool) => {
+    if (tool.toolId === GATEWAY_MANIFEST_ID || tool.installType !== 'yaml') {
       return acc
     }
-    acc[toolId] = yamlText
+
+    const overridden = manifestOverridesByTool[tool.toolId]
+    const candidate = overridden && overridden.trim() ? overridden : defaultManifestByTool[tool.toolId]
+    if (!candidate || !candidate.trim()) {
+      return acc
+    }
+
+    acc[tool.toolId] = candidate
     return acc
   }, {})
+
+  Object.entries(manifestOverridesByTool).forEach(([toolId, yamlText]) => {
+    const trimmed = yamlText.trim()
+    if (!trimmed || !validManifestToolIds.has(toolId)) {
+      return
+    }
+    yamlOverridesPayload[toolId] = yamlText
+  })
 
   const deployScript = createDeployScript(draft, allManifestTools, defaultManifestByTool)
 

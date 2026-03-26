@@ -3,6 +3,7 @@ package helm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/port"
@@ -22,6 +23,8 @@ type HelmInstaller struct {
 	newActionConfig func(kubeconfig []byte, namespace string) (*action.Configuration, error)
 }
 
+const helmOperationTimeout = 30 * time.Minute
+
 func NewHelmInstaller(kubeconfig []byte) *HelmInstaller {
 	return &HelmInstaller{
 		newActionConfig: func(_ []byte, namespace string) (*action.Configuration, error) {
@@ -39,9 +42,9 @@ func (h *HelmInstaller) Install(ctx context.Context, req port.HelmInstallRequest
 	client := action.NewInstall(cfg)
 	client.ReleaseName = req.ReleaseName
 	client.Namespace = req.Namespace
-	client.Timeout = 10 * time.Minute
+	client.Timeout = helmOperationTimeout
 	client.CreateNamespace = true
-	client.Wait = true
+	client.Wait = resolveWait(req.Wait)
 	client.Version = req.Version
 	client.ChartPathOptions.RepoURL = req.RepoURL
 	client.ChartPathOptions.Version = req.Version
@@ -64,6 +67,21 @@ func (h *HelmInstaller) Install(ctx context.Context, req port.HelmInstallRequest
 
 	release, runErr := client.RunWithContext(ctx, chart, values)
 	if runErr != nil {
+		if shouldUpgradeOnInstallError(runErr) {
+			existingStatus, statusErr := h.releaseStatus(ctx, cfg, req.ReleaseName)
+			if statusErr == nil && shouldReinstallOnExistingStatus(existingStatus) {
+				return h.reinstallRelease(ctx, cfg, req, values)
+			}
+
+			upgraded, upgradeErr := h.upgradeExistingRelease(ctx, cfg, req, values)
+			if upgradeErr == nil {
+				return upgraded, nil
+			}
+			if shouldReinstallOnUpgradeError(upgradeErr) {
+				return h.reinstallRelease(ctx, cfg, req, values)
+			}
+			return upgraded, upgradeErr
+		}
 		if release != nil {
 			return &port.HelmInstallResult{
 				ReleaseName: release.Name,
@@ -73,6 +91,177 @@ func (h *HelmInstaller) Install(ctx context.Context, req port.HelmInstallRequest
 			}, fmt.Errorf("install release %s: %w", req.ReleaseName, runErr)
 		}
 		return nil, fmt.Errorf("install release %s: %w", req.ReleaseName, runErr)
+	}
+
+	return &port.HelmInstallResult{
+		ReleaseName: release.Name,
+		Namespace:   release.Namespace,
+		Status:      release.Info.Status.String(),
+		Revision:    release.Version,
+	}, nil
+}
+
+func (h *HelmInstaller) releaseStatus(ctx context.Context, cfg *action.Configuration, releaseName string) (string, error) {
+	statusClient := action.NewStatus(cfg)
+	release, err := statusClient.Run(releaseName)
+	if err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if release == nil || release.Info == nil {
+		return "", nil
+	}
+	return release.Info.Status.String(), nil
+}
+
+func shouldUpgradeOnInstallError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "cannot re-use a name that is still in use")
+}
+
+func resolveWait(wait *bool) bool {
+	if wait == nil {
+		return true
+	}
+	return *wait
+}
+
+func shouldReinstallOnExistingStatus(status string) bool {
+	s := strings.ToLower(strings.TrimSpace(status))
+	if s == "" {
+		return false
+	}
+	return strings.HasPrefix(s, "pending-") || s == "failed"
+}
+
+func shouldReinstallOnUpgradeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "another operation")
+}
+
+func shouldIgnoreUninstallError(err error) bool {
+	if err == nil {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "release: not found") || strings.Contains(msg, "not found")
+}
+
+func shouldRetryReinstallError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found")
+}
+
+func (h *HelmInstaller) reinstallRelease(
+	ctx context.Context,
+	cfg *action.Configuration,
+	req port.HelmInstallRequest,
+	values map[string]any,
+) (*port.HelmInstallResult, error) {
+	uninstall := action.NewUninstall(cfg)
+	_, uninstallErr := uninstall.Run(req.ReleaseName)
+	if uninstallErr != nil && !shouldIgnoreUninstallError(uninstallErr) {
+		return nil, fmt.Errorf("uninstall existing release %s before reinstall: %w", req.ReleaseName, uninstallErr)
+	}
+
+	client := action.NewInstall(cfg)
+	client.ReleaseName = req.ReleaseName
+	client.Namespace = req.Namespace
+	client.Timeout = helmOperationTimeout
+	client.CreateNamespace = true
+	client.Wait = resolveWait(req.Wait)
+	client.Version = req.Version
+	client.ChartPathOptions.RepoURL = req.RepoURL
+	client.ChartPathOptions.Version = req.Version
+
+	settings := cli.New()
+	chartPath, err := client.ChartPathOptions.LocateChart(req.ChartName, settings)
+	if err != nil {
+		return nil, fmt.Errorf("locate chart %s: %w", req.ChartName, err)
+	}
+
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("load chart %s: %w", chartPath, err)
+	}
+
+	release, err := client.RunWithContext(ctx, chart, values)
+	if err != nil && shouldRetryReinstallError(err) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+		release, err = client.RunWithContext(ctx, chart, values)
+	}
+	if err != nil {
+		if release != nil {
+			return &port.HelmInstallResult{
+				ReleaseName: release.Name,
+				Namespace:   release.Namespace,
+				Status:      release.Info.Status.String(),
+				Revision:    release.Version,
+			}, fmt.Errorf("reinstall release %s: %w", req.ReleaseName, err)
+		}
+		return nil, fmt.Errorf("reinstall release %s: %w", req.ReleaseName, err)
+	}
+
+	return &port.HelmInstallResult{
+		ReleaseName: release.Name,
+		Namespace:   release.Namespace,
+		Status:      release.Info.Status.String(),
+		Revision:    release.Version,
+	}, nil
+}
+
+func (h *HelmInstaller) upgradeExistingRelease(
+	ctx context.Context,
+	cfg *action.Configuration,
+	req port.HelmInstallRequest,
+	values map[string]any,
+) (*port.HelmInstallResult, error) {
+	upgrade := action.NewUpgrade(cfg)
+	upgrade.Namespace = req.Namespace
+	upgrade.Timeout = helmOperationTimeout
+	upgrade.Wait = resolveWait(req.Wait)
+	upgrade.Install = true
+	upgrade.Version = req.Version
+	upgrade.ChartPathOptions.RepoURL = req.RepoURL
+	upgrade.ChartPathOptions.Version = req.Version
+
+	settings := cli.New()
+	chartPath, err := upgrade.ChartPathOptions.LocateChart(req.ChartName, settings)
+	if err != nil {
+		return nil, fmt.Errorf("locate chart %s: %w", req.ChartName, err)
+	}
+
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("load chart %s: %w", chartPath, err)
+	}
+
+	release, err := upgrade.RunWithContext(ctx, req.ReleaseName, chart, values)
+	if err != nil {
+		if release != nil {
+			return &port.HelmInstallResult{
+				ReleaseName: release.Name,
+				Namespace:   release.Namespace,
+				Status:      release.Info.Status.String(),
+				Revision:    release.Version,
+			}, fmt.Errorf("upgrade release %s: %w", req.ReleaseName, err)
+		}
+		return nil, fmt.Errorf("upgrade release %s: %w", req.ReleaseName, err)
 	}
 
 	return &port.HelmInstallResult{

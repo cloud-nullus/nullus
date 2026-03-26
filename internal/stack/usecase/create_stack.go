@@ -62,6 +62,9 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	if namespace == "" {
 		namespace = "nullus"
 	}
+	if strings.TrimSpace(input.Config.AccessDomain) == "" {
+		input.Config.AccessDomain = fmt.Sprintf("%s.internal", input.Name)
+	}
 	stack := &domain.Stack{
 		ID:         generateID("stk"),
 		Name:       input.Name,

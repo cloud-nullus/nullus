@@ -2,13 +2,17 @@ package helm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
+	"gopkg.in/yaml.v3"
 )
 
 type Orchestrator struct {
@@ -34,6 +38,9 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 			continue
 		}
 		if !o.isStepEnabled(step) {
+			continue
+		}
+		if _, ok := o.monitoringManifestForStep(step); ok {
 			continue
 		}
 
@@ -69,6 +76,11 @@ type ChartSpec struct {
 	Version   string
 	Namespace string
 	Values    map[string]any
+	Wait      bool
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace string) *Orchestrator {
@@ -86,42 +98,49 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				RepoURL:   "https://charts.jetstack.io",
 				Version:   "v1.16.3",
 				Values:    DefaultValues("installing_cert_manager"),
+				Wait:      false,
 			},
 			"installing_minio": {
 				ChartName: "minio",
 				RepoURL:   "https://charts.min.io/",
 				Version:   "5.4.0",
 				Values:    DefaultValues("installing_minio"),
+				Wait:      false,
 			},
 			"installing_gitlab": {
 				ChartName: "gitlab",
 				RepoURL:   "https://charts.gitlab.io/",
 				Version:   "8.7.2",
 				Values:    DefaultValues("installing_gitlab"),
+				Wait:      false,
 			},
 			"installing_argocd": {
 				ChartName: "argo-cd",
 				RepoURL:   "https://argoproj.github.io/argo-helm",
 				Version:   "7.7.16",
 				Values:    DefaultValues("installing_argocd"),
+				Wait:      false,
 			},
 			"installing_runner": {
 				ChartName: "gitlab-runner",
 				RepoURL:   "https://charts.gitlab.io/",
 				Version:   "0.72.0",
 				Values:    DefaultValues("installing_runner"),
+				Wait:      false,
 			},
 			"installing_prometheus": {
 				ChartName: "kube-prometheus-stack",
 				RepoURL:   "https://prometheus-community.github.io/helm-charts",
 				Version:   "69.3.0",
 				Values:    DefaultValues("installing_prometheus"),
+				Wait:      false,
 			},
 			"installing_grafana": {
 				ChartName: "grafana",
 				RepoURL:   "https://grafana.github.io/helm-charts",
 				Version:   "8.9.0",
 				Values:    DefaultValues("installing_grafana"),
+				Wait:      false,
 			},
 			"integration_check": {},
 		},
@@ -227,13 +246,22 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		namespace = spec.Namespace
 	}
 
+	if manifest, ok := o.monitoringManifestForStep(step); ok {
+		if err := o.applyManifest(ctx, namespace, manifest); err != nil {
+			return fmt.Errorf("apply yaml manifest for step %s: %w", step, err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	result, err := o.installer.Install(ctx, port.HelmInstallRequest{
 		ReleaseName: spec.ChartName,
 		ChartName:   spec.ChartName,
 		RepoURL:     spec.RepoURL,
 		Version:     spec.Version,
 		Namespace:   namespace,
-		Values:      spec.Values,
+		Values:      o.valuesForStep(step, spec),
+		Wait:        boolPtr(spec.Wait),
 	})
 	if err != nil {
 		return fmt.Errorf("install step %s: %w", step, err)
@@ -243,6 +271,192 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 	o.markCompleted(stackID, order)
 	return nil
+}
+
+func (o *Orchestrator) monitoringManifestForStep(step string) (string, bool) {
+	if step != "installing_prometheus" && step != "installing_grafana" {
+		return "", false
+	}
+
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+	if cfg == nil || len(cfg.YAMLOverrides) == 0 {
+		return "", false
+	}
+
+	keys := []string{step}
+	if step == "installing_prometheus" {
+		keys = append(keys, "prometheus", cfg.Monitoring.Collection.Name)
+	}
+	if step == "installing_grafana" {
+		keys = append(keys, "grafana", cfg.Monitoring.Visualization.Name)
+	}
+
+	for _, key := range keys {
+		k := strings.TrimSpace(key)
+		if k == "" {
+			continue
+		}
+		raw, ok := cfg.YAMLOverrides[k]
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(trimmed, "apiVersion:") && strings.Contains(trimmed, "kind:") {
+			return raw, true
+		}
+	}
+
+	return "", false
+}
+
+func (o *Orchestrator) applyManifest(ctx context.Context, namespace, manifest string) error {
+	if strings.TrimSpace(manifest) == "" {
+		return nil
+	}
+
+	kubeconfigPath, err := o.writeKubeconfigTempFile()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = os.Remove(kubeconfigPath)
+	}()
+
+	cmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfigPath, "apply", "-n", namespace, "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl apply failed: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (o *Orchestrator) writeKubeconfigTempFile() (string, error) {
+	if len(o.kubeconfig) == 0 {
+		return "", fmt.Errorf("kubeconfig is empty")
+	}
+	tmpFile, err := os.CreateTemp("", "nullus-kubeconfig-*.yaml")
+	if err != nil {
+		return "", fmt.Errorf("create kubeconfig temp file: %w", err)
+	}
+	defer func() {
+		_ = tmpFile.Close()
+	}()
+	if _, err := tmpFile.Write(o.kubeconfig); err != nil {
+		return "", fmt.Errorf("write kubeconfig temp file: %w", err)
+	}
+	return tmpFile.Name(), nil
+}
+
+func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any {
+	base := deepCopyMap(spec.Values)
+
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+
+	if cfg == nil || len(cfg.YAMLOverrides) == 0 {
+		if cfg != nil && step == "installing_gitlab" && strings.TrimSpace(cfg.AccessDomain) != "" {
+			base = mergeMaps(base, map[string]any{
+				"global": map[string]any{
+					"hosts": map[string]any{
+						"domain": cfg.AccessDomain,
+					},
+				},
+			})
+		}
+		return base
+	}
+
+	if step == "installing_gitlab" && strings.TrimSpace(cfg.AccessDomain) != "" {
+		base = mergeMaps(base, map[string]any{
+			"global": map[string]any{
+				"hosts": map[string]any{
+					"domain": cfg.AccessDomain,
+				},
+			},
+		})
+	}
+
+	keys := []string{step, spec.ChartName, strings.TrimPrefix(step, "installing_")}
+	for _, key := range keys {
+		raw, ok := cfg.YAMLOverrides[key]
+		if !ok || strings.TrimSpace(raw) == "" {
+			continue
+		}
+
+		override, err := decodeValuesOverride(raw)
+		if err != nil {
+			slog.Warn("invalid yaml override skipped", "step", step, "key", key, "error", err)
+			continue
+		}
+		base = mergeMaps(base, override)
+		break
+	}
+
+	return base
+}
+
+func deepCopyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return map[string]any{}
+	}
+	b, err := json.Marshal(src)
+	if err != nil {
+		return map[string]any{}
+	}
+	var copied map[string]any
+	if err := json.Unmarshal(b, &copied); err != nil {
+		return map[string]any{}
+	}
+	return copied
+}
+
+func decodeValuesOverride(raw string) (map[string]any, error) {
+	var parsed any
+	if err := yaml.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, fmt.Errorf("parse yaml: %w", err)
+	}
+
+	b, err := json.Marshal(parsed)
+	if err != nil {
+		return nil, fmt.Errorf("normalize yaml: %w", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, fmt.Errorf("expected mapping yaml for helm values: %w", err)
+	}
+
+	if _, hasAPIVersion := out["apiVersion"]; hasAPIVersion {
+		if _, hasKind := out["kind"]; hasKind {
+			return nil, fmt.Errorf("manifest yaml is not supported for helm values override")
+		}
+	}
+
+	return out, nil
+}
+
+func mergeMaps(base, override map[string]any) map[string]any {
+	if base == nil {
+		base = map[string]any{}
+	}
+	for key, value := range override {
+		subOverride, ok := value.(map[string]any)
+		if !ok {
+			base[key] = value
+			continue
+		}
+
+		subBase, _ := base[key].(map[string]any)
+		base[key] = mergeMaps(subBase, subOverride)
+	}
+	return base
 }
 
 func (o *Orchestrator) isStepEnabled(step string) bool {

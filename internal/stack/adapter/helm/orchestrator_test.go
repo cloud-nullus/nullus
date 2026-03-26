@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,8 @@ func TestOrchestrator_ImplementsStepExecutor(t *testing.T) {
 type mockInstaller struct {
 	installed       []string
 	namespaces      []string
+	valuesByRelease map[string]map[string]any
+	waitByRelease   map[string]bool
 	uninstalled     []string
 	failOn          string
 	failDelete      map[string]error
@@ -30,6 +33,18 @@ func (m *mockInstaller) Install(_ context.Context, req port.HelmInstallRequest) 
 	}
 	m.installed = append(m.installed, req.ReleaseName)
 	m.namespaces = append(m.namespaces, req.Namespace)
+	if m.valuesByRelease == nil {
+		m.valuesByRelease = make(map[string]map[string]any)
+	}
+	m.valuesByRelease[req.ReleaseName] = req.Values
+	if m.waitByRelease == nil {
+		m.waitByRelease = make(map[string]bool)
+	}
+	if req.Wait == nil {
+		m.waitByRelease[req.ReleaseName] = true
+	} else {
+		m.waitByRelease[req.ReleaseName] = *req.Wait
+	}
 	return &port.HelmInstallResult{ReleaseName: req.ReleaseName, Namespace: req.Namespace, Status: "deployed", Revision: 1}, nil
 }
 
@@ -170,4 +185,131 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 	err := orch.VerifyDeployment(context.Background(), "stk_verify_fail")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not healthy")
+}
+
+func TestOrchestrator_ExecuteStep_AppliesYAMLOverrideByChartName(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{SourceRepository: domain.ToolSelection{Enabled: true}},
+		YAMLOverrides: map[string]string{
+			"gitlab": "global:\n  hosts:\n    domain: custom.internal\n",
+		},
+	})
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_minio", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_gitlab", "B"))
+
+	gitlabValues := installer.valuesByRelease["gitlab"]
+	require.NotNil(t, gitlabValues)
+	global, ok := gitlabValues["global"].(map[string]any)
+	require.True(t, ok)
+	hosts, ok := global["hosts"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "custom.internal", hosts["domain"])
+	assert.False(t, installer.waitByRelease["gitlab"])
+}
+
+func TestOrchestrator_ExecuteStep_AppliesAccessDomainToGitLabValues(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		AccessDomain: "template-domain.internal",
+		Artifacts:    domain.ArtifactsConfig{SourceRepository: domain.ToolSelection{Enabled: true}},
+	})
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_minio", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_gitlab", "B"))
+
+	gitlabValues := installer.valuesByRelease["gitlab"]
+	require.NotNil(t, gitlabValues)
+	global, ok := gitlabValues["global"].(map[string]any)
+	require.True(t, ok)
+	hosts, ok := global["hosts"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "template-domain.internal", hosts["domain"])
+}
+
+func TestOrchestrator_ExecuteStep_SkipsManifestOverride(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{SourceRepository: domain.ToolSelection{Enabled: true}},
+		YAMLOverrides: map[string]string{
+			"gitlab": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: wrong-shape\n",
+		},
+	})
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_minio", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_gitlab", "B"))
+
+	gitlabValues := installer.valuesByRelease["gitlab"]
+	require.NotNil(t, gitlabValues)
+	global, ok := gitlabValues["global"].(map[string]any)
+	require.True(t, ok)
+	hosts, ok := global["hosts"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "nullus.internal", hosts["domain"])
+}
+
+func TestOrchestrator_MonitoringManifestForStep_ReturnsPrometheusYAML(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Monitoring: domain.MonitoringConfig{
+			Collection:    domain.ToolSelection{Name: "prometheus", Enabled: true},
+			Visualization: domain.ToolSelection{Name: "grafana", Enabled: true},
+		},
+		YAMLOverrides: map[string]string{
+			"prometheus": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: prom\n",
+		},
+	})
+
+	manifest, ok := orch.monitoringManifestForStep("installing_prometheus")
+	require.True(t, ok)
+	assert.Contains(t, manifest, "kind: Deployment")
+}
+
+func TestOrchestrator_MonitoringManifestForStep_IgnoresValuesYAML(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Monitoring: domain.MonitoringConfig{
+			Collection: domain.ToolSelection{Name: "prometheus", Enabled: true},
+		},
+		YAMLOverrides: map[string]string{
+			"prometheus": "global:\n  hosts:\n    domain: example.internal\n",
+		},
+	})
+
+	_, ok := orch.monitoringManifestForStep("installing_prometheus")
+	assert.False(t, ok)
+}
+
+func TestOrchestrator_VerifyDeployment_SkipsHelmStatusForYAMLMonitoring(t *testing.T) {
+	installer := &mockInstaller{statusByRelease: map[string]string{"cert-manager": "deployed"}}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			StorageBackend:    domain.ToolSelection{Enabled: false},
+			SourceRepository:  domain.ToolSelection{Enabled: false},
+			ContainerRegistry: domain.ToolSelection{Enabled: false},
+			PackageRegistry:   domain.ToolSelection{Enabled: false},
+		},
+		Pipeline: domain.PipelineConfig{
+			CIPlatform: domain.ToolSelection{Enabled: false},
+			CDTool:     domain.ToolSelection{Enabled: false},
+		},
+		Monitoring: domain.MonitoringConfig{
+			Collection:    domain.ToolSelection{Name: "prometheus", Enabled: true},
+			Visualization: domain.ToolSelection{Name: "grafana", Enabled: true},
+		},
+		YAMLOverrides: map[string]string{
+			"prometheus": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: prometheus-yaml\n",
+			"grafana":    "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: grafana-yaml\n",
+		},
+	})
+
+	require.NoError(t, orch.VerifyDeployment(context.Background(), "stk_yaml_monitoring"))
 }

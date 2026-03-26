@@ -1,5 +1,7 @@
 package domain
 
+import "encoding/json"
+
 // StackConfig holds the full configuration for a DevSecOps stack.
 type StackConfig struct {
 	AccessDomain    string                 `json:"access_domain,omitempty"`
@@ -79,6 +81,31 @@ type ToolSelection struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Enabled bool   `json:"enabled"`
+}
+
+func (t *ToolSelection) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*t = ToolSelection{}
+		return nil
+	}
+
+	var legacyName string
+	if err := json.Unmarshal(data, &legacyName); err == nil {
+		*t = ToolSelection{
+			Name:    legacyName,
+			Enabled: legacyName != "",
+		}
+		return nil
+	}
+
+	type toolSelectionAlias ToolSelection
+	var current toolSelectionAlias
+	if err := json.Unmarshal(data, &current); err != nil {
+		return err
+	}
+
+	*t = ToolSelection(current)
+	return nil
 }
 
 // ResourceEstimate holds computed resource requirements.
