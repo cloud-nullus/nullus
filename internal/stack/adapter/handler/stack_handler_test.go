@@ -10,6 +10,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -119,6 +120,32 @@ func TestStackHandler_DeleteStack_204(t *testing.T) {
 	deleteRec := httptest.NewRecorder()
 	e.ServeHTTP(deleteRec, deleteReq)
 	assert.Equal(t, http.StatusNoContent, deleteRec.Code)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks", nil)
+	listReq.Header.Set("X-Org-ID", "org-delete")
+	listRec := httptest.NewRecorder()
+	e.ServeHTTP(listRec, listReq)
+	require.Equal(t, http.StatusOK, listRec.Code)
+
+	var listResp map[string]any
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listResp))
+	items, ok := listResp["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	deletedItem, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, stackID, deletedItem["id"])
+	assert.Equal(t, string(domain.StateCancelled), deletedItem["state"])
+}
+
+func TestStackHandler_DeleteStack_404WhenNotFound(t *testing.T) {
+	e := newStackEcho()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/stacks/stk-not-found", nil)
+	deleteRec := httptest.NewRecorder()
+	e.ServeHTTP(deleteRec, deleteReq)
+
+	assert.Equal(t, http.StatusNotFound, deleteRec.Code)
 }
 
 func TestStackHandler_SaveConfig_CreatesHistoryWithYAMLOverridesReason(t *testing.T) {

@@ -35,6 +35,8 @@ var installPhases = [][]installStep{
 	{
 		{name: "installing_prometheus", phase: "C", duration: time.Second},
 		{name: "installing_grafana", phase: "C", duration: time.Second},
+		{name: "installing_logging", phase: "C", duration: time.Second},
+		{name: "installing_opentelemetry", phase: "C", duration: time.Second},
 		{name: "integration_check", phase: "C", duration: time.Second},
 	},
 }

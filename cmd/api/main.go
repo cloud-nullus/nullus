@@ -103,6 +103,7 @@ func main() {
 		func(kubeconfig []byte) stackport.HelmInstaller {
 			return stackhelm.NewHelmInstaller(kubeconfig)
 		},
+		memStreamer,
 	)
 	addToolsUC := stackuc.NewAddToolsUseCase(pgStackRepo)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)

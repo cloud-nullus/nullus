@@ -65,6 +65,7 @@ type MonitoringConfig struct {
 type LoggingConfig struct {
 	Collection ToolSelection `json:"collection"`
 	Search     ToolSelection `json:"search"`
+	TraceLayer ToolSelection `json:"trace_layer,omitempty"`
 }
 
 // ResourcesConfig holds workload parameters and the calculated estimate.

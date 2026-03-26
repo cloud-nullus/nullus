@@ -152,6 +152,9 @@ func (h *StackHandler) GetStack(c echo.Context) error {
 func (h *StackHandler) DeleteStack(c echo.Context) error {
 	stackID := c.Param("stackId")
 	if err := h.deleteStack.Execute(c.Request().Context(), stackID); err != nil {
+		if errors.Is(err, usecase.ErrStackNotFound) {
+			return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+		}
 		return errorResponse(c, http.StatusInternalServerError, "STACK_DELETE_FAILED", err.Error())
 	}
 	return c.NoContent(http.StatusNoContent)

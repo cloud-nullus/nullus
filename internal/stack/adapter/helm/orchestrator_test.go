@@ -84,6 +84,8 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		{name: "installing_runner", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
+		{name: "installing_logging", phase: "C"},
+		{name: "installing_opentelemetry", phase: "C"},
 	}
 
 	for _, step := range steps {
@@ -98,6 +100,8 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		"gitlab-runner",
 		"kube-prometheus-stack",
 		"grafana",
+		"loki",
+		"opentelemetry-collector",
 	}, installer.installed)
 }
 
@@ -154,6 +158,8 @@ func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
 		{name: "installing_runner", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
+		{name: "installing_logging", phase: "C"},
+		{name: "installing_opentelemetry", phase: "C"},
 	}
 	for _, step := range steps {
 		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_verify_ok", step.name, step.phase))
@@ -177,6 +183,8 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 		{name: "installing_runner", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
+		{name: "installing_logging", phase: "C"},
+		{name: "installing_opentelemetry", phase: "C"},
 	}
 	for _, step := range steps {
 		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_verify_fail", step.name, step.phase))
@@ -312,4 +320,82 @@ func TestOrchestrator_VerifyDeployment_SkipsHelmStatusForYAMLMonitoring(t *testi
 	})
 
 	require.NoError(t, orch.VerifyDeployment(context.Background(), "stk_yaml_monitoring"))
+}
+
+func TestLooksLikeKubeconfig(t *testing.T) {
+	assert.True(t, looksLikeKubeconfig([]byte("apiVersion: v1\nclusters:\n- name: kind\n")))
+	assert.False(t, looksLikeKubeconfig([]byte("kubeconfig")))
+	assert.False(t, looksLikeKubeconfig(nil))
+}
+
+func TestOrchestrator_InternalCAManifest_Defaults(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("apiVersion: v1\nclusters:\n- name: kind\n"), "nullus")
+	manifest := orch.internalCAManifest("nullus")
+
+	assert.Contains(t, manifest, "kind: ClusterIssuer")
+	assert.Contains(t, manifest, "name: nullus-selfsigned-bootstrap")
+	assert.Contains(t, manifest, "name: nullus-internal-ca-issuer")
+	assert.Contains(t, manifest, "secretName: nullus-internal-ca")
+	assert.Contains(t, manifest, "namespace: nullus")
+}
+
+func TestOrchestrator_InternalCAManifest_UsesTLSOverrides(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("apiVersion: v1\nclusters:\n- name: kind\n"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		AccessDomainTLS: &domain.AccessDomainTLSConfig{
+			Enabled:    true,
+			IssuerName: "corp-offline-ca",
+			SecretName: "corp-ca-secret",
+		},
+	})
+
+	manifest := orch.internalCAManifest("nullus")
+	assert.Contains(t, manifest, "name: corp-offline-ca")
+	assert.Contains(t, manifest, "secretName: corp-ca-secret")
+	assert.Contains(t, manifest, "name: corp-ca-secret-cert")
+}
+
+func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			StorageBackend:   domain.ToolSelection{Enabled: true},
+			SourceRepository: domain.ToolSelection{Enabled: true},
+		},
+		Pipeline: domain.PipelineConfig{
+			CIPlatform: domain.ToolSelection{Enabled: true},
+			CDTool:     domain.ToolSelection{Enabled: true},
+		},
+		Monitoring: domain.MonitoringConfig{
+			Collection:    domain.ToolSelection{Enabled: true},
+			Visualization: domain.ToolSelection{Enabled: true},
+		},
+		Logging: domain.LoggingConfig{
+			Search:     domain.ToolSelection{Name: "opensearch", Enabled: true},
+			TraceLayer: domain.ToolSelection{Name: "opentelemetry-collector", Enabled: true},
+		},
+	})
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+		{name: "installing_prometheus", phase: "C"},
+		{name: "installing_grafana", phase: "C"},
+		{name: "installing_logging", phase: "C"},
+		{name: "installing_opentelemetry", phase: "C"},
+	}
+
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_logging", step.name, step.phase))
+	}
+
+	assert.Contains(t, installer.installed, "opensearch")
+	assert.Contains(t, installer.installed, "opentelemetry-collector")
 }

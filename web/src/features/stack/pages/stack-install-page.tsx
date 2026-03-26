@@ -19,8 +19,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useClusters, useResourceDefaults, toCreateStackBody } from '../api/stack-api'
-import { api } from '../../../lib/api'
+import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -36,6 +35,46 @@ interface ToolOption {
   id: string
   label: string
   description: string
+}
+
+function toDeployErrorMessage(error: unknown): string {
+  let code = ''
+  let backendMessage = ''
+  let status: number | undefined
+  let genericMessage = ''
+
+  if (typeof error === 'object' && error !== null) {
+    const record = error as Record<string, unknown>
+    if (typeof record.message === 'string') {
+      genericMessage = record.message
+    }
+    if (typeof record.status === 'number') {
+      status = record.status
+    }
+
+    const details = record.details
+    if (typeof details === 'object' && details !== null) {
+      const detailRecord = details as Record<string, unknown>
+      const nestedError = detailRecord.error
+      if (typeof nestedError === 'object' && nestedError !== null) {
+        const nested = nestedError as Record<string, unknown>
+        if (typeof nested.code === 'string') {
+          code = nested.code
+        }
+        if (typeof nested.message === 'string') {
+          backendMessage = nested.message
+        }
+        if (typeof nested.http_status === 'number') {
+          status = nested.http_status
+        }
+      }
+    }
+  }
+
+  const reason = backendMessage || genericMessage || 'unknown backend error'
+  const prefix = code ? `[${code}] ` : ''
+  const statusSuffix = status ? ` (HTTP ${status})` : ''
+  return `배포 작업 등록 실패: ${prefix}${reason}${statusSuffix}`
 }
 
 const ARTIFACTS_OPTIONS: Record<string, ToolOption[]> = {
@@ -88,6 +127,7 @@ const MONITORING_OPTIONS: Record<string, ToolOption[]> = {
   traceLayer: [
     { id: 'tempo', label: 'Tempo', description: '분산 추적 백엔드' },
     { id: 'jaeger', label: 'Jaeger', description: '분산 추적 및 트레이스 분석' },
+    { id: 'opentelemetry-collector', label: 'OpenTelemetry Collector', description: 'OTLP 수집/처리 파이프라인' },
   ],
 }
 
@@ -179,6 +219,10 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   'opensearch-dashboards': { repoUrl: 'https://opensearch-project.github.io/helm-charts', chartName: 'opensearch/opensearch-dashboards' },
   tempo: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/tempo' },
   jaeger: { repoUrl: 'https://jaegertracing.github.io/helm-charts', chartName: 'jaegertracing/jaeger' },
+  'opentelemetry-collector': {
+    repoUrl: 'https://open-telemetry.github.io/opentelemetry-helm-charts',
+    chartName: 'open-telemetry/opentelemetry-collector',
+  },
   opensearch: { repoUrl: 'https://opensearch-project.github.io/helm-charts', chartName: 'opensearch/opensearch' },
   elasticsearch: { repoUrl: 'https://helm.elastic.co', chartName: 'elastic/elasticsearch' },
   loki: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/loki-stack' },
@@ -300,6 +344,15 @@ const TOOL_INSTALL_METHOD: Record<string, ManifestInstallType> = {
 const TOOL_BUNDLE_CANONICAL: Record<string, string> = {
   'gitlab-registry': 'gitlab',
   'gitlab-ci': 'gitlab',
+}
+
+const TOOL_DEFAULT_IMAGE_REPOSITORY: Record<string, string> = {
+  prometheus: 'quay.io/prometheus/prometheus',
+  grafana: 'docker.io/grafana/grafana',
+  loki: 'docker.io/grafana/loki',
+  tempo: 'docker.io/grafana/tempo',
+  jaeger: 'docker.io/jaegertracing/all-in-one',
+  'opentelemetry-collector': 'docker.io/otel/opentelemetry-collector-k8s',
 }
 
 function getManifestBundleId(toolId: string): string {
@@ -578,6 +631,12 @@ function getInstallType(toolId: string): ManifestInstallType {
   return TOOL_HELM_META[toolId] ? 'helm' : 'yaml'
 }
 
+function resolveToolImage(toolId: string, toolVersion: string): string {
+  const repository = TOOL_DEFAULT_IMAGE_REPOSITORY[toolId] ?? `ghcr.io/cloud-nullus/${toolId}`
+  const version = toolVersion || getToolAppVersion(toolId)
+  return `${repository}:${version}`
+}
+
 function buildToolManifest(
   toolId: string,
   toolLabelValue: string,
@@ -675,7 +734,7 @@ function buildToolManifest(
           containers: [
             {
               name: toolId,
-              image: `ghcr.io/cloud-nullus/${toolId}:${toolVersion || getToolAppVersion(toolId)}`,
+              image: resolveToolImage(toolId, toolVersion),
               resources: {
                 requests: {
                   cpu: String(resources.cpuRequest),
@@ -1269,6 +1328,7 @@ export function StackInstallPage() {
     updateAccessDomainTls,
   } = useStackConfigStore()
   const createStack = useCreateStack()
+  const deployStack = useDeployStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
   const { data: clusters } = useClusters()
@@ -2304,8 +2364,8 @@ export function StackInstallPage() {
         return 'Deployment selector/template labels가 toolId와 일치해야 합니다.'
       }
       if (!image.includes(':')) {
-        return 'Deployment 컨테이너 image에는 버전 태그가 필요합니다. (예: ghcr.io/cloud-nullus/grafana:v1.2.3)'
-      }
+      return 'Deployment 컨테이너 image에는 버전 태그가 필요합니다. (예: docker.io/grafana/grafana:11.1.0)'
+    }
 
       const serviceMeta = (service.metadata ?? {}) as Record<string, unknown>
       const serviceSpec = (service.spec ?? {}) as Record<string, unknown>
@@ -2575,7 +2635,7 @@ export function StackInstallPage() {
       return
     }
 
-    const body = toCreateStackBody({
+    const request = {
       templateId: draft.selectedTemplateId,
       clusterId: draft.clusterId,
       namespace: effectiveNamespace,
@@ -2589,16 +2649,19 @@ export function StackInstallPage() {
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
       storage: draft.storage,
-    })
+    }
 
     try {
-      const createRes = await api.post<{ id: string }>('/stacks', body)
-      const stackId = createRes.data?.id
-      if (!stackId) { navigate('/stack/list'); return }
-      await api.post(`/stacks/${stackId}/deploy`).catch(() => { })
+      const createRes = await createStack.mutateAsync(request)
+      const stackId = createRes?.id
+      if (!stackId) {
+        setTabGuardError('스택 생성은 되었지만 stack ID를 확인하지 못했습니다. 다시 시도해 주세요.')
+        return
+      }
+      await deployStack.mutateAsync(stackId)
       navigate(`/stack/deploy/${stackId}`)
-    } catch {
-      navigate('/stack/list')
+    } catch (error) {
+      setTabGuardError(toDeployErrorMessage(error))
     }
   }
 
@@ -2672,10 +2735,12 @@ export function StackInstallPage() {
           <Button
             variant="primary"
             size="md"
-            loading={createStack.isPending}
+            loading={createStack.isPending || deployStack.isPending}
             onClick={handleDeploy}
             disabled={
               isSubmitting ||
+              createStack.isPending ||
+              deployStack.isPending ||
               !draft.stackName ||
               draft.stackName.length < 2 ||
               !draft.clusterId ||

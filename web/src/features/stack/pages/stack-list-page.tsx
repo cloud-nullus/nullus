@@ -22,7 +22,6 @@ import {
 	MemoryStick,
 	Monitor,
 	Plus,
-	RotateCcw,
 	Search,
 	Server,
 	Terminal,
@@ -52,7 +51,7 @@ import { Button } from "../../../components/ui/button";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
-import { useDeleteStack, useStacks } from "../api/stack-api";
+import { useDeleteStack, useStackHistory, useStacks } from "../api/stack-api";
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
@@ -72,7 +71,14 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
 };
 
 function formatDate(iso: string) {
-	return new Date(iso).toLocaleDateString("ko-KR", {
+	if (!iso) {
+		return "-";
+	}
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) {
+		return "-";
+	}
+	return date.toLocaleDateString("ko-KR", {
 		year: "numeric",
 		month: "2-digit",
 		day: "2-digit",
@@ -915,94 +921,71 @@ function StackMonitoringTab() {
 	);
 }
 
-const HISTORY_ENTRIES = [
-	{
-		id: "deploy-v3-20260302",
-		version: "v3 · Current",
-		versionBg: "#059669",
-		tools: "GitLab CI + Argo CD + Prometheus + Grafana",
-		tag: "Tool Upgrade",
-		tagBg: "rgba(245,158,11,0.15)",
-		tagColor: "#fcd34d",
-		borderColor: "#bbf7d0",
-		reason: "Grafana v10.2 → v10.3 upgrade",
-		duration: "42 min",
-		result: "success",
-		who: "admin@nullus.io",
-		when: "2026-03-02 14:30",
-		canRollback: false,
-	},
-	{
-		id: "deploy-v2-20260228",
-		version: "v2",
-		versionBg: "#6366f1",
-		tools: "GitLab CI + Argo CD + Prometheus + Grafana",
-		tag: "Config Change",
-		tagBg: "#e0f2fe",
-		tagColor: "#0369a1",
-		borderColor: "var(--color-border-default)",
-		reason: "Storage: AWS S3 → MinIO",
-		duration: "58 min",
-		result: "success",
-		who: "kim@nullus.io",
-		when: "2026-02-28 09:15",
-		canRollback: true,
-	},
-	{
-		id: "deploy-v1-20260220",
-		version: "v1 · Failed",
-		versionBg: "#ef4444",
-		tools: "GitLab CI + Argo CD + Prometheus",
-		tag: "Initial Deploy",
-		tagBg: "rgba(239,68,68,0.15)",
-		tagColor: "#fca5a5",
-		borderColor: "#fecaca",
-		reason: "Initial stack deployment",
-		duration: "12 min (aborted)",
-		result: "failed",
-		who: "admin@nullus.io",
-		when: "2026-02-20 16:00",
-		canRollback: false,
-	},
-];
-
-function StackHistoryTab() {
+function StackHistoryTab({ stack }: { stack: Stack }) {
 	const navigate = useNavigate();
+	const { data: historyData, isLoading } = useStackHistory(stack.id);
+	const entries = Array.isArray(historyData) ? historyData : [];
+	const latestEntryID = entries[entries.length - 1]?.id;
+
 	return (
 		<div>
-			<div className="mb-4 flex items-center gap-3">
-				<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,#10b981,#059669)]" />
-				<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">
-					DevSecOps Stack History
-				</h3>
+			<div className="mb-4 flex items-center justify-between gap-3">
+				<div className="flex items-center gap-3">
+					<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,#10b981,#059669)]" />
+					<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">{stack.name} History</h3>
+				</div>
+				<div className="flex items-center gap-2">
+					<Button variant="outline" size="sm" onClick={() => navigate(`/stack/logs/${stack.id}`)} type="button">
+						<Terminal size={13} /> Open Logs
+					</Button>
+					<Button variant="outline" size="sm" onClick={() => navigate(`/stack/history/${stack.id}`)} type="button">
+						Open Full History
+					</Button>
+				</div>
 			</div>
+			{isLoading && (
+				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
+					Loading history...
+				</div>
+			)}
+			{!isLoading && entries.length === 0 && (
+				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
+					No history found for this stack yet.
+				</div>
+			)}
 			<div className="flex flex-col gap-3">
-				{HISTORY_ENTRIES.map((entry) => (
+				{entries.map((entry) => {
+					const isCurrent = entry.id === latestEntryID;
+					return (
 					<div
-						key={entry.version}
+						key={entry.id}
 						className="overflow-hidden rounded-lg border"
-						style={{ borderColor: entry.borderColor }}
+						style={{ borderColor: isCurrent ? "#bbf7d0" : "var(--color-border-default)" }}
 					>
 						<div className="flex flex-wrap items-center justify-between gap-3 bg-[rgba(255,255,255,0.04)] px-5 py-3">
 							<div className="flex flex-wrap items-center gap-2.5">
 								<span
 									className="rounded-full px-2.5 py-0.5 text-[12px] font-bold text-white"
-									style={{ background: entry.versionBg }}
+									style={{
+										background: isCurrent
+											? "#059669"
+											: "#6366f1",
+									}}
 								>
-									{entry.version}
-								</span>
-								<span className="text-[13px] font-semibold text-[var(--color-text-secondary)]">
-									{entry.tools}
+									v{entry.version}{isCurrent ? " · Current" : ""}
 								</span>
 								<span
 									className="rounded-[8px] px-2 py-0.5 text-[11px] font-semibold"
-									style={{ background: entry.tagBg, color: entry.tagColor }}
+									style={{
+										background: isCurrent ? "rgba(245,158,11,0.15)" : "rgba(99,102,241,0.15)",
+										color: isCurrent ? "#fcd34d" : "#a5b4fc",
+									}}
 								>
-									{entry.tag}
+									{isCurrent ? "Current Config" : "Version Snapshot"}
 								</span>
 							</div>
 							<div className="text-[12px] text-[var(--color-text-secondary)]">
-								👤 {entry.who} &nbsp;🕐 {entry.when}
+								👤 {entry.changedBy} &nbsp;🕐 {formatDate(entry.changedAt)}
 							</div>
 						</div>
 						<div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
@@ -1012,53 +995,14 @@ function StackHistoryTab() {
 										Reason:
 									</strong>{" "}
 									<span className="text-[var(--color-text-secondary)]">
-										{entry.reason}
+										{entry.reason || "N/A"}
 									</span>
 								</span>
-								<span>
-									<strong className="text-[var(--color-text-primary)]">
-										Duration:
-									</strong>{" "}
-									<span className="text-[var(--color-text-secondary)]">
-										{entry.duration}
-									</span>
-								</span>
-								<span
-									className="rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
-									style={
-										entry.result === "success"
-											? {
-												background: "rgba(16,185,129,0.15)",
-												color: "#6ee7b7",
-											}
-											: { background: "rgba(239,68,68,0.15)", color: "#fca5a5" }
-									}
-								>
-									{entry.result === "success"
-										? "✓ Success"
-										: "✗ Failed · Auto Rolled Back"}
-								</span>
-							</div>
-							<div className="flex gap-2">
-								<button
-									type="button"
-									onClick={() => navigate(`/stack/logs/${entry.id}`)}
-									className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)] transition-colors duration-150 hover:border-[rgba(99,102,241,0.4)] hover:bg-[rgba(99,102,241,0.08)] hover:text-[#a5b4fc]"
-								>
-									<Terminal size={12} /> Logs
-								</button>
-								{entry.canRollback && (
-									<button
-										type="button"
-										className="flex items-center gap-1.5 rounded-md border border-[#6366f1] bg-[rgba(99,102,241,0.12)] px-2.5 py-1.5 text-[12px] text-[#a5b4fc]"
-									>
-										<RotateCcw size={12} /> Rollback to {entry.version}
-									</button>
-								)}
 							</div>
 						</div>
 					</div>
-				))}
+					);
+				})}
 			</div>
 		</div>
 	);
@@ -1243,7 +1187,7 @@ function StackDetailPanel({ stack }: { stack: Stack }) {
 			<div className="p-5">
 				{innerTab === "info" && <StackInfoTab />}
 				{innerTab === "monitoring" && <StackMonitoringTab />}
-				{innerTab === "history" && <StackHistoryTab />}
+				{innerTab === "history" && <StackHistoryTab stack={stack} />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
 			</div>
 		</div>

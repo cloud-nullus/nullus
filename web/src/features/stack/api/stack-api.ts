@@ -127,6 +127,25 @@ interface RawStackItem {
   updatedAt?: string
 }
 
+interface RawStackHistoryEntry {
+  id?: string
+  ID?: string
+  stackId?: string
+  StackID?: string
+  version?: number
+  Version?: number
+  changedBy?: string
+  ChangedBy?: string
+  changedAt?: string
+  CreatedAt?: string
+  reason?: string
+  changeReason?: string
+  ChangeReason?: string
+  snapshot?: Record<string, unknown>
+  config?: Record<string, unknown>
+  Config?: Record<string, unknown>
+}
+
 const toToolName = (tool: unknown): string => {
   if (typeof tool === 'string') {
     return tool
@@ -251,10 +270,32 @@ const normalizeStackItem = (raw: RawStackItem): Stack => {
   }
 }
 
+const normalizeStackHistoryEntry = (raw: RawStackHistoryEntry): StackHistoryEntry => ({
+  id: raw.id ?? raw.ID ?? '',
+  stackId: raw.stackId ?? raw.StackID ?? '',
+  version: raw.version ?? raw.Version ?? 0,
+  changedBy: raw.changedBy ?? raw.ChangedBy ?? 'system',
+  changedAt: raw.changedAt ?? raw.CreatedAt ?? '',
+  reason: raw.reason ?? raw.changeReason ?? raw.ChangeReason ?? '',
+  snapshot: raw.snapshot ?? raw.config ?? raw.Config ?? {},
+})
+
 // --- API functions ---
 
 function toBackendTool(sel: { tool: string; version: string }) {
   return { name: sel.tool, version: sel.version, enabled: true }
+}
+
+function toStorageSizeGi(target: 'database' | 'objectStorage', size: 'small' | 'medium' | 'large'): number {
+  if (target === 'database') {
+    if (size === 'small') return 20
+    if (size === 'medium') return 50
+    return 100
+  }
+
+  if (size === 'small') return 50
+  if (size === 'medium') return 100
+  return 300
 }
 
 export function toCreateStackBody(req: CreateStackRequest) {
@@ -295,6 +336,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
       logging: {
         collection: toBackendTool(l.collection ?? { tool: '', version: '' }),
         search: toBackendTool(l.search ?? { tool: '', version: '' }),
+        trace_layer: toBackendTool(l.traceLayer ?? l.trace_layer ?? { tool: '', version: '' }),
       },
       resources: {
         developers: req.resources?.developerCount ?? 0,
@@ -315,7 +357,10 @@ export function toCreateStackBody(req: CreateStackRequest) {
               auth_password_key: req.storage.database.authPasswordKey,
               provider_or_engine: req.storage.database.providerOrEngine,
               version: req.storage.database.version,
-              size: req.storage.database.mode === 'create' ? req.storage.database.size : undefined,
+              size:
+                req.storage.database.mode === 'create'
+                  ? toStorageSizeGi('database', req.storage.database.size)
+                  : undefined,
             },
             object_storage: {
               mode: req.storage.objectStorage.mode,
@@ -327,7 +372,10 @@ export function toCreateStackBody(req: CreateStackRequest) {
               auth_password_key: req.storage.objectStorage.authPasswordKey,
               provider_or_engine: req.storage.objectStorage.providerOrEngine,
               version: req.storage.objectStorage.version,
-              size: req.storage.objectStorage.mode === 'create' ? req.storage.objectStorage.size : undefined,
+              size:
+                req.storage.objectStorage.mode === 'create'
+                  ? toStorageSizeGi('objectStorage', req.storage.objectStorage.size)
+                  : undefined,
             },
           }
         : undefined,
@@ -369,7 +417,9 @@ const stackApiCalls = {
     api.post<StackResourceDefault>('/stacks/resource-defaults', payload).then((r) => r.data),
 
   getHistory: (stackId: string) =>
-    api.get<StackHistoryEntry[]>(`/stacks/${stackId}/history`).then((r) => r.data),
+    api
+      .get<RawStackHistoryEntry[]>(`/stacks/${stackId}/history`)
+      .then((r) => (r.data ?? []).map(normalizeStackHistoryEntry)),
 
   getVersionDiff: (stackId: string, from: number, to: number) =>
     api.get<StackVersionDiff>(`/stacks/${stackId}/history/diff`, { params: { versionA: from, versionB: to } }).then((r) => r.data),

@@ -15,6 +15,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultSelfSignedBootstrapIssuer = "nullus-selfsigned-bootstrap"
+	defaultInternalCAIssuer          = "nullus-internal-ca-issuer"
+	defaultInternalCASecretName      = "nullus-internal-ca"
+	defaultInternalCACertName        = "nullus-internal-ca-cert"
+)
+
 type Orchestrator struct {
 	installer           port.HelmInstaller
 	rollback            *RollbackManager
@@ -142,17 +149,33 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				Values:    DefaultValues("installing_grafana"),
 				Wait:      false,
 			},
+			"installing_logging": {
+				ChartName: "loki",
+				RepoURL:   "https://grafana.github.io/helm-charts",
+				Version:   "2.10.2",
+				Values:    DefaultValues("installing_logging"),
+				Wait:      false,
+			},
+			"installing_opentelemetry": {
+				ChartName: "opentelemetry-collector",
+				RepoURL:   "https://open-telemetry.github.io/opentelemetry-helm-charts",
+				Version:   "0.75.0",
+				Values:    DefaultValues("installing_opentelemetry"),
+				Wait:      false,
+			},
 			"integration_check": {},
 		},
 		stepOrder: map[string]int{
-			"installing_cert_manager": 0,
-			"installing_minio":        1,
-			"installing_gitlab":       2,
-			"installing_argocd":       3,
-			"installing_runner":       4,
-			"installing_prometheus":   5,
-			"installing_grafana":      6,
-			"integration_check":       7,
+			"installing_cert_manager":  0,
+			"installing_minio":         1,
+			"installing_gitlab":        2,
+			"installing_argocd":        3,
+			"installing_runner":        4,
+			"installing_prometheus":    5,
+			"installing_grafana":       6,
+			"installing_logging":       7,
+			"installing_opentelemetry": 8,
+			"integration_check":        9,
 		},
 		orderedStep: []string{
 			"installing_cert_manager",
@@ -162,15 +185,19 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_runner",
 			"installing_prometheus",
 			"installing_grafana",
+			"installing_logging",
+			"installing_opentelemetry",
 			"integration_check",
 		},
 		stepConfigFieldPath: map[string]string{
-			"installing_minio":      "config.artifacts.storage_backend",
-			"installing_gitlab":     "config.artifacts.source_repository",
-			"installing_argocd":     "config.pipeline.cd_tool",
-			"installing_runner":     "config.pipeline.ci_platform",
-			"installing_prometheus": "config.monitoring.collection",
-			"installing_grafana":    "config.monitoring.visualization",
+			"installing_minio":         "config.artifacts.storage_backend",
+			"installing_gitlab":        "config.artifacts.source_repository",
+			"installing_argocd":        "config.pipeline.cd_tool",
+			"installing_runner":        "config.pipeline.ci_platform",
+			"installing_prometheus":    "config.monitoring.collection",
+			"installing_grafana":       "config.monitoring.visualization",
+			"installing_logging":       "config.logging.search",
+			"installing_opentelemetry": "config.logging.trace_layer",
 		},
 		stepConfigEnabled: map[string]func(domain.StackConfig) bool{
 			"installing_minio": func(cfg domain.StackConfig) bool {
@@ -190,6 +217,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_grafana": func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Visualization.Enabled
+			},
+			"installing_logging": func(cfg domain.StackConfig) bool {
+				return cfg.Logging.Search.Enabled
+			},
+			"installing_opentelemetry": func(cfg domain.StackConfig) bool {
+				return cfg.Logging.TraceLayer.Enabled
 			},
 		},
 		progress: make(map[string]int),
@@ -246,6 +279,8 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		namespace = spec.Namespace
 	}
 
+	spec = o.resolveChartSpecForStep(step, spec)
+
 	if manifest, ok := o.monitoringManifestForStep(step); ok {
 		if err := o.applyManifest(ctx, namespace, manifest); err != nil {
 			return fmt.Errorf("apply yaml manifest for step %s: %w", step, err)
@@ -269,12 +304,87 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	if result != nil {
 		o.rollback.Push(result.ReleaseName)
 	}
+	if step == "installing_cert_manager" {
+		if err := o.bootstrapInternalCA(ctx, namespace); err != nil {
+			return fmt.Errorf("bootstrap internal ca: %w", err)
+		}
+	}
 	o.markCompleted(stackID, order)
 	return nil
 }
 
+func looksLikeKubeconfig(kubeconfig []byte) bool {
+	if len(kubeconfig) == 0 {
+		return false
+	}
+	text := string(kubeconfig)
+	return strings.Contains(text, "apiVersion:") && strings.Contains(text, "clusters:")
+}
+
+func (o *Orchestrator) bootstrapInternalCA(ctx context.Context, namespace string) error {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+	manifest := o.internalCAManifest(namespace)
+	if strings.TrimSpace(manifest) == "" {
+		return nil
+	}
+	return o.applyManifest(ctx, namespace, manifest)
+}
+
+func (o *Orchestrator) internalCAManifest(namespace string) string {
+	issuerName := defaultInternalCAIssuer
+	secretName := defaultInternalCASecretName
+	certName := defaultInternalCACertName
+
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+
+	if cfg != nil && cfg.AccessDomainTLS != nil {
+		if strings.TrimSpace(cfg.AccessDomainTLS.IssuerName) != "" {
+			issuerName = cfg.AccessDomainTLS.IssuerName
+		}
+		if strings.TrimSpace(cfg.AccessDomainTLS.SecretName) != "" {
+			secretName = cfg.AccessDomainTLS.SecretName
+			certName = cfg.AccessDomainTLS.SecretName + "-cert"
+		}
+	}
+
+	return fmt.Sprintf(`apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: %s
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  isCA: true
+  commonName: nullus-internal-root
+  secretName: %s
+  duration: 87600h
+  renewBefore: 720h
+  issuerRef:
+    name: %s
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: %s
+spec:
+  ca:
+    secretName: %s
+`, defaultSelfSignedBootstrapIssuer, certName, namespace, secretName, defaultSelfSignedBootstrapIssuer, issuerName, secretName)
+}
+
 func (o *Orchestrator) monitoringManifestForStep(step string) (string, bool) {
-	if step != "installing_prometheus" && step != "installing_grafana" {
+	if step != "installing_prometheus" && step != "installing_grafana" && step != "installing_logging" && step != "installing_opentelemetry" {
 		return "", false
 	}
 
@@ -291,6 +401,12 @@ func (o *Orchestrator) monitoringManifestForStep(step string) (string, bool) {
 	}
 	if step == "installing_grafana" {
 		keys = append(keys, "grafana", cfg.Monitoring.Visualization.Name)
+	}
+	if step == "installing_logging" {
+		keys = append(keys, "logging", cfg.Logging.Search.Name)
+	}
+	if step == "installing_opentelemetry" {
+		keys = append(keys, "opentelemetry", "opentelemetry-collector", cfg.Logging.TraceLayer.Name)
 	}
 
 	for _, key := range keys {
@@ -400,6 +516,57 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 	}
 
 	return base
+}
+
+func (o *Orchestrator) resolveChartSpecForStep(step string, spec ChartSpec) ChartSpec {
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+	if cfg == nil {
+		return spec
+	}
+
+	if step == "installing_logging" {
+		switch strings.TrimSpace(cfg.Logging.Search.Name) {
+		case "opensearch":
+			spec.ChartName = "opensearch"
+			spec.RepoURL = "https://opensearch-project.github.io/helm-charts"
+			spec.Version = "2.22.0"
+			spec.Values = DefaultValues("installing_logging_opensearch")
+		case "elasticsearch":
+			spec.ChartName = "elasticsearch"
+			spec.RepoURL = "https://helm.elastic.co"
+			spec.Version = "8.5.1"
+			spec.Values = DefaultValues("installing_logging_elasticsearch")
+		default:
+			spec.ChartName = "loki"
+			spec.RepoURL = "https://grafana.github.io/helm-charts"
+			spec.Version = "2.10.2"
+			spec.Values = DefaultValues("installing_logging")
+		}
+	}
+
+	if step == "installing_opentelemetry" {
+		switch strings.TrimSpace(cfg.Logging.TraceLayer.Name) {
+		case "tempo":
+			spec.ChartName = "tempo"
+			spec.RepoURL = "https://grafana.github.io/helm-charts"
+			spec.Version = "1.18.1"
+			spec.Values = DefaultValues("installing_tempo")
+		case "jaeger":
+			spec.ChartName = "jaeger"
+			spec.RepoURL = "https://jaegertracing.github.io/helm-charts"
+			spec.Version = "3.3.0"
+			spec.Values = DefaultValues("installing_jaeger")
+		default:
+			spec.ChartName = "opentelemetry-collector"
+			spec.RepoURL = "https://open-telemetry.github.io/opentelemetry-helm-charts"
+			spec.Version = "0.75.0"
+			spec.Values = DefaultValues("installing_opentelemetry")
+		}
+	}
+
+	return spec
 }
 
 func deepCopyMap(src map[string]any) map[string]any {

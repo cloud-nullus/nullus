@@ -148,3 +148,22 @@ func TestDefaultValues_GrafanaIngressDisabled(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, false, ingress["enabled"])
 }
+
+func TestDefaultValues_LoggingDefaults(t *testing.T) {
+	values := DefaultValues("installing_logging")
+	require.NotNil(t, values)
+
+	loki, ok := values["loki"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, loki["enabled"])
+
+	promtail, ok := values["promtail"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, promtail["enabled"])
+}
+
+func TestDefaultValues_OpenTelemetryDefaults(t *testing.T) {
+	values := DefaultValues("installing_opentelemetry")
+	require.NotNil(t, values)
+	assert.Equal(t, "deployment", values["mode"])
+}

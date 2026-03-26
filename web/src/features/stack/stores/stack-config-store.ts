@@ -45,6 +45,7 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   kibana: { appVersion: '8.14.1', chartVersion: '8.5.1' },
   'opensearch-dashboards': { appVersion: '2.14.0', chartVersion: '2.18.0' },
   jaeger: { appVersion: '1.57.0', chartVersion: '3.3.0' },
+  'opentelemetry-collector': { appVersion: '0.104.0', chartVersion: '0.75.0' },
   elasticsearch: { appVersion: '8.14.1', chartVersion: '8.5.1' },
   loki: { appVersion: '2.9.8', chartVersion: '2.10.2' },
 }

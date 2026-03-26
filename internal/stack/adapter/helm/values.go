@@ -134,6 +134,34 @@ func DefaultValues(stepName string) map[string]any {
 				"enabled": false,
 			},
 		}
+	case "installing_logging":
+		return map[string]any{
+			"loki": map[string]any{
+				"enabled": true,
+			},
+			"promtail": map[string]any{
+				"enabled": true,
+			},
+			"grafana": map[string]any{
+				"enabled": false,
+			},
+		}
+	case "installing_logging_opensearch":
+		return map[string]any{
+			"singleNode": true,
+		}
+	case "installing_logging_elasticsearch":
+		return map[string]any{
+			"replicas": 1,
+		}
+	case "installing_opentelemetry":
+		return map[string]any{
+			"mode": "deployment",
+		}
+	case "installing_tempo":
+		return map[string]any{}
+	case "installing_jaeger":
+		return map[string]any{}
 	default:
 		return map[string]any{}
 	}

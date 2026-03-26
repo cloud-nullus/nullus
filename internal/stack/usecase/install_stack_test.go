@@ -244,6 +244,8 @@ func TestInstallStack_SuccessfulInstallation(t *testing.T) {
 	assert.Contains(t, steps, "installing_runner")
 	assert.Contains(t, steps, "installing_prometheus")
 	assert.Contains(t, steps, "installing_grafana")
+	assert.Contains(t, steps, "installing_logging")
+	assert.Contains(t, steps, "installing_opentelemetry")
 	assert.Contains(t, steps, "integration_check")
 	assert.Contains(t, steps, "completed")
 }
