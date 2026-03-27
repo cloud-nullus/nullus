@@ -92,6 +92,7 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -112,6 +113,7 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"cert-manager",
+		"metrics-server",
 		"nullus-postgresql",
 		"nullus-minio",
 		"gitlab",
@@ -173,6 +175,7 @@ func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -202,6 +205,7 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -228,6 +232,7 @@ func TestOrchestrator_VerifyDeployment_RepairsMissingGatewayRelease(t *testing.T
 	installer := &mockInstaller{strictStatus: true}
 	installer.installed = []string{
 		"cert-manager",
+		"metrics-server",
 		"nullus-postgresql",
 		"nullus-minio",
 		"gitlab",
@@ -265,6 +270,7 @@ func TestOrchestrator_ExecuteStep_AppliesYAMLOverrideByChartName(t *testing.T) {
 	})
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_metrics_server", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_postgresql", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_minio", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_object_storage_secret", "A"))
@@ -289,6 +295,7 @@ func TestOrchestrator_ExecuteStep_AppliesAccessDomainToGitLabValues(t *testing.T
 	})
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_metrics_server", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_postgresql", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_minio", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_object_storage_secret", "A"))
@@ -314,6 +321,7 @@ func TestOrchestrator_ExecuteStep_SkipsManifestOverride(t *testing.T) {
 	})
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_metrics_server", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_postgresql", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_minio", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_object_storage_secret", "A"))
@@ -447,6 +455,7 @@ func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -490,6 +499,7 @@ func TestOrchestrator_VerifyDeployment_UsesResolvedChartsForLoggingAndTrace(t *t
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -530,6 +540,7 @@ func TestOrchestrator_ExecuteStep_AppliesRunnerGitlabURL(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},

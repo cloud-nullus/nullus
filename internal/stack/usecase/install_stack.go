@@ -27,6 +27,7 @@ var installPhases = [][]installStep{
 	// Phase A
 	{
 		{name: "installing_cert_manager", phase: "A", duration: time.Second},
+		{name: "installing_metrics_server", phase: "A", duration: time.Second},
 		{name: "installing_postgresql", phase: "A", duration: time.Second},
 		{name: "installing_minio", phase: "A", duration: time.Second},
 		{name: "installing_object_storage_secret", phase: "A", duration: time.Second},

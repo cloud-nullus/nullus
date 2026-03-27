@@ -258,6 +258,7 @@ func TestInstallStack_SuccessfulInstallation(t *testing.T) {
 	// Verify key steps were logged.
 	steps := streamer.steps()
 	assert.Contains(t, steps, "installing_cert_manager")
+	assert.Contains(t, steps, "installing_metrics_server")
 	assert.Contains(t, steps, "installing_postgresql")
 	assert.Contains(t, steps, "installing_minio")
 	assert.Contains(t, steps, "installing_object_storage_secret")

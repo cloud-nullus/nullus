@@ -6,6 +6,13 @@ func DefaultValues(stepName string) map[string]any {
 		return map[string]any{
 			"installCRDs": true,
 		}
+	case "installing_metrics_server":
+		return map[string]any{
+			"args": []string{
+				"--kubelet-insecure-tls",
+				"--kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP",
+			},
+		}
 	case "installing_postgresql":
 		return map[string]any{
 			"architecture": "standalone",
