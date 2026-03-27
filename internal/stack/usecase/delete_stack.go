@@ -5,24 +5,89 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
+	"gopkg.in/yaml.v3"
 )
 
 var stackHelmReleaseNames = []string{
 	"cert-manager",
+	"nullus-postgresql",
+	"postgresql",
+	"nullus-minio",
 	"minio",
 	"gitlab",
 	"argo-cd",
 	"gitlab-runner",
 	"kube-prometheus-stack",
 	"grafana",
+	"loki",
+	"opensearch",
+	"elasticsearch",
+	"tempo",
+	"jaeger",
+	"opentelemetry-collector",
+	"eg",
+	"envoy-gateway",
+}
+
+const legacyEnvoyGatewayNamespace = "envoy-gateway-system"
+
+const stackNameLabelKey = "nullus.io/stack-name"
+
+var orphanTempoResourceNames = map[string]struct{}{
+	"tempo":        {},
+	"tempo-svc":    {},
+	"tempo-config": {},
+}
+
+var legacyReleaseArtifactExactNames = map[string]struct{}{
+	"argo-cd-argocd-redis-secret-init":                      {},
+	"argocd-initial-admin-secret":                           {},
+	"argocd-redis":                                          {},
+	"eg-gateway-helm-certgen":                               {},
+	"nullus-object-storage":                                 {},
+	"data-nullus-postgresql-0":                              {},
+	"opensearch-cluster-master-opensearch-cluster-master-0": {},
+	"redis-data-gitlab-redis-master-0":                      {},
+	"repo-data-gitlab-gitaly-0":                             {},
+}
+
+var legacyReleaseArtifactPrefixes = []string{
+	"gitlab-",
+	"argo-cd-",
+	"argocd-",
+	"envoy-",
+	"nullus-",
+	"opensearch-",
+	"tempo-",
+	"loki-",
+	"grafana-",
+	"prometheus-",
+	"kube-prometheus-",
+	"postgresql-",
+	"data-nullus-postgresql-",
+	"redis-data-gitlab-",
+	"repo-data-gitlab-",
+}
+
+var gatewayCRDNames = []string{
+	"gatewayclasses.gateway.networking.k8s.io",
+	"gateways.gateway.networking.k8s.io",
+	"httproutes.gateway.networking.k8s.io",
+	"grpcroutes.gateway.networking.k8s.io",
+	"referencegrants.gateway.networking.k8s.io",
+	"tcproutes.gateway.networking.k8s.io",
+	"tlsroutes.gateway.networking.k8s.io",
+	"udproutes.gateway.networking.k8s.io",
 }
 
 type DeleteStack struct {
@@ -74,17 +139,30 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 
 	uc.emit(ctx, stackID, "deleting_started", "info", "stack delete started")
 
-	kubeconfig := uc.loadKubeconfig(ctx, stack.ClusterID)
-	uc.bestEffortUninstall(ctx, kubeconfig, stack.Namespace, stackID)
-	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
-	uc.bestEffortDeleteLegacyMonitoringResources(ctx, kubeconfig, stack, stackID)
-
 	stack.State = domain.StateCancelled
 	stack.UpdatedAt = time.Now()
 	if err := uc.stackRepo.Update(ctx, stack); err != nil {
 		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
 		return fmt.Errorf("mark stack cancelled: %w", err)
 	}
+
+	kubeconfig := uc.loadKubeconfig(ctx, stack.ClusterID)
+	gatewayNames := uc.collectGatewayNames(ctx, kubeconfig, stack)
+	gatewayNames = uc.mergeGatewayNames(gatewayNames, uc.collectGatewayNamesFromManagedResources(ctx, kubeconfig, stack))
+	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortUninstall(ctx, kubeconfig, stack.Namespace, stackID)
+	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteGatewayManagedResources(ctx, kubeconfig, stack, gatewayNames, stackID)
+	uc.bestEffortDeleteLegacyMonitoringResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteGatewayCRDs(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
 
@@ -115,12 +193,46 @@ func (uc *DeleteStack) bestEffortUninstall(ctx context.Context, kubeconfig []byt
 	}
 
 	for _, releaseName := range stackHelmReleaseNames {
-		uc.emit(ctx, stackID, "deleting_release", "info", fmt.Sprintf("uninstalling release %s", releaseName))
-		if err := installer.Uninstall(ctx, releaseName, namespace); err != nil {
-			slog.Warn("helm uninstall failed during stack delete", "release", releaseName, "namespace", namespace, "error", err)
-			uc.emit(ctx, stackID, "deleting_release", "warn", fmt.Sprintf("release %s uninstall warning: %v", releaseName, err))
+		namespaces := uninstallNamespacesForRelease(namespace, releaseName)
+		for _, targetNamespace := range namespaces {
+			uc.emit(ctx, stackID, "deleting_release", "info", fmt.Sprintf("uninstalling release %s in namespace %s", releaseName, targetNamespace))
+			if err := installer.Uninstall(ctx, releaseName, targetNamespace); err != nil {
+				slog.Warn("helm uninstall failed during stack delete", "release", releaseName, "namespace", targetNamespace, "error", err)
+				uc.emit(ctx, stackID, "deleting_release", "warn", fmt.Sprintf("release %s uninstall warning in %s: %v", releaseName, targetNamespace, err))
+			}
 		}
 	}
+}
+
+func uninstallNamespacesForRelease(stackNamespace, releaseName string) []string {
+	namespaces := []string{stackNamespace}
+	if stackNamespace != "default" {
+		namespaces = append(namespaces, "default")
+	}
+
+	if releaseName == "eg" || releaseName == "envoy-gateway" {
+		namespaces = append(namespaces, "nullus", legacyEnvoyGatewayNamespace)
+	}
+
+	seen := make(map[string]struct{}, len(namespaces))
+	ordered := make([]string, 0, len(namespaces))
+	for _, ns := range namespaces {
+		trimmed := strings.TrimSpace(ns)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		ordered = append(ordered, trimmed)
+	}
+
+	return ordered
+}
+
+func cleanupNamespacesForStack(stackNamespace string) []string {
+	return uninstallNamespacesForRelease(stackNamespace, "eg")
 }
 
 func (uc *DeleteStack) bestEffortDeleteYAMLResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
@@ -136,30 +248,22 @@ func (uc *DeleteStack) bestEffortDeleteYAMLResources(ctx context.Context, kubeco
 		return
 	}
 
-	manifests := []struct {
-		step string
-		body string
-	}{
-		{step: "prometheus", body: cfg.YAMLOverrides["prometheus"]},
-		{step: "grafana", body: cfg.YAMLOverrides["grafana"]},
-		{step: "logging", body: cfg.YAMLOverrides["logging"]},
-		{step: "opentelemetry", body: cfg.YAMLOverrides["opentelemetry"]},
-		{step: "opentelemetry-collector", body: cfg.YAMLOverrides["opentelemetry-collector"]},
-		{step: "installing_prometheus", body: cfg.YAMLOverrides["installing_prometheus"]},
-		{step: "installing_grafana", body: cfg.YAMLOverrides["installing_grafana"]},
-		{step: "installing_logging", body: cfg.YAMLOverrides["installing_logging"]},
-		{step: "installing_opentelemetry", body: cfg.YAMLOverrides["installing_opentelemetry"]},
+	overrideKeys := make([]string, 0, len(cfg.YAMLOverrides))
+	for key := range cfg.YAMLOverrides {
+		overrideKeys = append(overrideKeys, key)
 	}
+	sort.Strings(overrideKeys)
 
-	for _, m := range manifests {
-		trimmed := strings.TrimSpace(m.body)
+	for _, key := range overrideKeys {
+		body := cfg.YAMLOverrides[key]
+		trimmed := strings.TrimSpace(body)
 		if trimmed == "" || !looksLikeManifest(trimmed) {
 			continue
 		}
-		uc.emit(ctx, stackID, "deleting_manifest", "info", fmt.Sprintf("deleting yaml manifest %s", m.step))
-		if err := uc.deleteManifestFunc(ctx, kubeconfig, stack.Namespace, m.body); err != nil {
-			slog.Warn("yaml manifest delete failed during stack delete", "step", m.step, "namespace", stack.Namespace, "error", err)
-			uc.emit(ctx, stackID, "deleting_manifest", "warn", fmt.Sprintf("manifest %s delete warning: %v", m.step, err))
+		uc.emit(ctx, stackID, "deleting_manifest", "info", fmt.Sprintf("deleting yaml manifest %s", key))
+		if err := uc.deleteManifestFunc(ctx, kubeconfig, stack.Namespace, body); err != nil {
+			slog.Warn("yaml manifest delete failed during stack delete", "step", key, "namespace", stack.Namespace, "error", err)
+			uc.emit(ctx, stackID, "deleting_manifest", "warn", fmt.Sprintf("manifest %s delete warning: %v", key, err))
 		}
 	}
 }
@@ -214,6 +318,463 @@ func (uc *DeleteStack) bestEffortDeleteLegacyMonitoringResources(ctx context.Con
 	}
 }
 
+func (uc *DeleteStack) bestEffortDeleteGatewayCRDs(ctx context.Context, kubeconfig []byte, stackID string) {
+	if len(kubeconfig) == 0 {
+		return
+	}
+
+	hasGatewayResources := false
+	checks := [][]string{
+		{"get", "gateways.gateway.networking.k8s.io", "-A", "-o", "name"},
+		{"get", "httproutes.gateway.networking.k8s.io", "-A", "-o", "name"},
+		{"get", "gatewayclasses.gateway.networking.k8s.io", "-o", "name"},
+	}
+	for _, args := range checks {
+		out, err := runKubectlWithKubeconfig(ctx, kubeconfig, args...)
+		if err != nil {
+			slog.Warn("gateway crd cleanup skipped due to check failure", "args", strings.Join(args, " "), "error", err)
+			return
+		}
+		if strings.TrimSpace(out) != "" {
+			hasGatewayResources = true
+			break
+		}
+	}
+	if hasGatewayResources {
+		uc.emit(ctx, stackID, "deleting_crd", "info", "skipping gateway CRD delete because gateway resources still exist")
+		return
+	}
+
+	for _, crd := range gatewayCRDNames {
+		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting gateway crd %s", crd))
+		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "crd", crd, "--ignore-not-found"); err != nil {
+			slog.Warn("gateway crd delete warning", "crd", crd, "error", err)
+			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("gateway crd %s delete warning: %v", crd, err))
+		}
+	}
+}
+
+func (uc *DeleteStack) collectGatewayNames(ctx context.Context, kubeconfig []byte, stack *domain.Stack) []string {
+	set := make(map[string]struct{})
+	if stack == nil {
+		return nil
+	}
+
+	cfg, ok := extractStackConfig(stack.Config)
+	if ok {
+		for _, raw := range cfg.YAMLOverrides {
+			for _, gatewayName := range parseGatewayNamesFromManifest(raw) {
+				set[gatewayName] = struct{}{}
+			}
+		}
+	}
+
+	if len(kubeconfig) != 0 && strings.TrimSpace(stack.Namespace) != "" {
+		output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "gateways.gateway.networking.k8s.io", "-n", stack.Namespace, "-o", "name")
+		if err == nil {
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			for _, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" {
+					continue
+				}
+				name := strings.TrimSpace(strings.TrimPrefix(trimmed, "gateway.gateway.networking.k8s.io/"))
+				if name == "" {
+					continue
+				}
+				if stack.Name != "" && !strings.Contains(name, stack.Name) {
+					continue
+				}
+				set[name] = struct{}{}
+			}
+		}
+	}
+
+	if len(set) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func parseGatewayNamesFromManifest(manifest string) []string {
+	trimmed := strings.TrimSpace(manifest)
+	if trimmed == "" {
+		return nil
+	}
+
+	dec := yaml.NewDecoder(strings.NewReader(trimmed))
+	set := make(map[string]struct{})
+	for {
+		doc := map[string]any{}
+		err := dec.Decode(&doc)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			continue
+		}
+		kind, _ := doc["kind"].(string)
+		if !strings.EqualFold(strings.TrimSpace(kind), "Gateway") {
+			continue
+		}
+		metadata, _ := doc["metadata"].(map[string]any)
+		name, _ := metadata["name"].(string)
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		set[name] = struct{}{}
+	}
+
+	if len(set) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func parseGatewayNamesFromManagedResourceJSON(raw string, stackName string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	var payload struct {
+		Items []struct {
+			Metadata struct {
+				Name   string            `json:"name"`
+				Labels map[string]string `json:"labels"`
+			} `json:"metadata"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return nil
+	}
+
+	stackName = strings.ToLower(strings.TrimSpace(stackName))
+	set := make(map[string]struct{})
+	for _, item := range payload.Items {
+		labels := item.Metadata.Labels
+		if len(labels) == 0 {
+			continue
+		}
+		gatewayName := strings.TrimSpace(labels["gateway.envoyproxy.io/owning-gateway-name"])
+		if gatewayName == "" {
+			continue
+		}
+		if stackName != "" && !strings.Contains(strings.ToLower(gatewayName), stackName) {
+			continue
+		}
+		set[gatewayName] = struct{}{}
+	}
+
+	if len(set) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (uc *DeleteStack) collectGatewayNamesFromManagedResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack) []string {
+	if len(kubeconfig) == 0 || stack == nil || strings.TrimSpace(stack.Namespace) == "" {
+		return nil
+	}
+
+	stackNamespace := strings.TrimSpace(stack.Namespace)
+	namespaces := cleanupNamespacesForStack(stackNamespace)
+	selector := fmt.Sprintf("gateway.envoyproxy.io/owning-gateway-namespace=%s", stackNamespace)
+	set := make(map[string]struct{})
+	for _, targetNamespace := range namespaces {
+		output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "deploy,svc", "-n", targetNamespace, "-l", selector, "-o", "json")
+		if err != nil {
+			continue
+		}
+		for _, name := range parseGatewayNamesFromManagedResourceJSON(output, stack.Name) {
+			set[name] = struct{}{}
+		}
+	}
+
+	if len(set) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (uc *DeleteStack) mergeGatewayNames(primary []string, extra []string) []string {
+	if len(primary) == 0 && len(extra) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(primary)+len(extra))
+	for _, name := range primary {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		set[trimmed] = struct{}{}
+	}
+	for _, name := range extra {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		set[trimmed] = struct{}{}
+	}
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (uc *DeleteStack) bestEffortDeleteGatewayManagedResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, gatewayNames []string, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil || strings.TrimSpace(stack.Namespace) == "" || len(gatewayNames) == 0 {
+		return
+	}
+
+	namespaces := cleanupNamespacesForStack(stack.Namespace)
+	for _, gatewayName := range gatewayNames {
+		selector := fmt.Sprintf("gateway.envoyproxy.io/owning-gateway-name=%s", gatewayName)
+		for _, targetNamespace := range namespaces {
+			uc.emit(ctx, stackID, "deleting_gateway_managed", "info", fmt.Sprintf("deleting gateway managed resources for %s in namespace %s", gatewayName, targetNamespace))
+			for _, kind := range []string{"deploy", "svc", "cm", "sa", "pod", "rs", "secret", "pvc"} {
+				if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", kind, "-n", targetNamespace, "-l", selector, "--ignore-not-found"); err != nil {
+					slog.Warn("gateway managed resource delete warning", "kind", kind, "namespace", targetNamespace, "gateway", gatewayName, "error", err)
+					uc.emit(ctx, stackID, "deleting_gateway_managed", "warn", fmt.Sprintf("gateway managed %s delete warning for %s in %s: %v", kind, gatewayName, targetNamespace, err))
+				}
+			}
+		}
+	}
+}
+
+func (uc *DeleteStack) bestEffortDeleteStackLabeledResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil {
+		return
+	}
+
+	stackName := strings.TrimSpace(stack.Name)
+	if stackName == "" {
+		return
+	}
+
+	selector := fmt.Sprintf("%s=%s", stackNameLabelKey, stackName)
+	namespaces := cleanupNamespacesForStack(stack.Namespace)
+	for _, targetNamespace := range namespaces {
+		uc.emit(ctx, stackID, "deleting_stack_labeled", "info", fmt.Sprintf("deleting stack-labeled resources in namespace %s", targetNamespace))
+		for _, kind := range []string{"deploy", "svc", "cm", "sa", "pod", "rs", "sts", "job", "cronjob", "secret", "pvc"} {
+			if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", kind, "-n", targetNamespace, "-l", selector, "--ignore-not-found"); err != nil {
+				slog.Warn("stack-labeled resource delete warning", "kind", kind, "namespace", targetNamespace, "selector", selector, "error", err)
+				uc.emit(ctx, stackID, "deleting_stack_labeled", "warn", fmt.Sprintf("stack-labeled %s delete warning in %s: %v", kind, targetNamespace, err))
+			}
+		}
+	}
+}
+
+func (uc *DeleteStack) bestEffortDeleteLegacyGatewayPolicyResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil || strings.TrimSpace(stack.Namespace) == "" {
+		return
+	}
+	namespace := strings.TrimSpace(stack.Namespace)
+	legacyResources := []string{
+		"backendtlspolicy.gateway.networking.k8s.io/opensearch-backend-tls",
+		"configmap/opensearch-root-ca",
+	}
+	for _, resource := range legacyResources {
+		uc.emit(ctx, stackID, "deleting_manifest", "info", fmt.Sprintf("deleting legacy gateway policy resource %s", resource))
+		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "-n", namespace, resource, "--ignore-not-found"); err != nil {
+			slog.Warn("legacy gateway policy resource delete warning", "resource", resource, "namespace", namespace, "error", err)
+			uc.emit(ctx, stackID, "deleting_manifest", "warn", fmt.Sprintf("legacy gateway policy resource %s delete warning: %v", resource, err))
+		}
+	}
+}
+
+func (uc *DeleteStack) bestEffortDeleteLegacyReleaseArtifacts(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil || uc.listResourcesFunc == nil || uc.deleteResourceFunc == nil {
+		return
+	}
+
+	stackName := strings.TrimSpace(stack.Name)
+	namespaces := cleanupNamespacesForStack(stack.Namespace)
+	seen := make(map[string]struct{})
+	for _, targetNamespace := range namespaces {
+		resources, err := uc.listResourcesFunc(ctx, kubeconfig, targetNamespace)
+		if err != nil {
+			slog.Warn("legacy release artifact list warning", "namespace", targetNamespace, "error", err)
+			uc.emit(ctx, stackID, "deleting_manifest", "warn", fmt.Sprintf("legacy release artifact list warning in %s: %v", targetNamespace, err))
+			continue
+		}
+		for _, resource := range resources {
+			trimmed := strings.TrimSpace(resource)
+			if trimmed == "" {
+				continue
+			}
+			key := targetNamespace + "::" + trimmed
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+
+			if !shouldDeleteLegacyReleaseArtifact(trimmed, stackName) {
+				continue
+			}
+
+			uc.emit(ctx, stackID, "deleting_manifest", "info", fmt.Sprintf("deleting legacy release artifact %s in namespace %s", trimmed, targetNamespace))
+			if err := uc.deleteResourceFunc(ctx, kubeconfig, targetNamespace, trimmed); err != nil {
+				slog.Warn("legacy release artifact delete warning", "resource", trimmed, "namespace", targetNamespace, "error", err)
+				uc.emit(ctx, stackID, "deleting_manifest", "warn", fmt.Sprintf("legacy release artifact %s delete warning in %s: %v", trimmed, targetNamespace, err))
+			}
+		}
+	}
+}
+
+func shouldDeleteLegacyReleaseArtifact(resourceRef, stackName string) bool {
+	name := strings.ToLower(strings.TrimSpace(resourceNameFromRef(resourceRef)))
+	if name == "" {
+		return false
+	}
+
+	if _, ok := legacyReleaseArtifactExactNames[name]; ok {
+		return true
+	}
+
+	stackName = strings.ToLower(strings.TrimSpace(stackName))
+	if stackName != "" && strings.Contains(name, stackName) {
+		return true
+	}
+
+	for _, prefix := range legacyReleaseArtifactPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (uc *DeleteStack) bestEffortDeleteOrphanGatewayTempoResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil || uc.listResourcesFunc == nil || uc.deleteResourceFunc == nil {
+		return
+	}
+
+	stackName := strings.ToLower(strings.TrimSpace(stack.Name))
+	namespaces := cleanupNamespacesForStack(stack.Namespace)
+	seen := make(map[string]struct{})
+	for _, targetNamespace := range namespaces {
+		resources, err := uc.listResourcesFunc(ctx, kubeconfig, targetNamespace)
+		if err != nil {
+			slog.Warn("orphan gateway/tempo resource list warning", "namespace", targetNamespace, "error", err)
+			uc.emit(ctx, stackID, "deleting_orphan_resources", "warn", fmt.Sprintf("orphan resource list warning in %s: %v", targetNamespace, err))
+			continue
+		}
+
+		for _, resource := range resources {
+			trimmed := strings.TrimSpace(resource)
+			if trimmed == "" {
+				continue
+			}
+			if _, ok := seen[targetNamespace+"::"+trimmed]; ok {
+				continue
+			}
+			seen[targetNamespace+"::"+trimmed] = struct{}{}
+
+			if !shouldDeleteOrphanGatewayTempoResource(trimmed, stackName, targetNamespace, stack.Namespace) {
+				continue
+			}
+
+			uc.emit(ctx, stackID, "deleting_orphan_resources", "info", fmt.Sprintf("deleting orphan resource %s in namespace %s", trimmed, targetNamespace))
+			if err := uc.deleteResourceFunc(ctx, kubeconfig, targetNamespace, trimmed); err != nil {
+				slog.Warn("orphan gateway/tempo resource delete warning", "resource", trimmed, "namespace", targetNamespace, "error", err)
+				uc.emit(ctx, stackID, "deleting_orphan_resources", "warn", fmt.Sprintf("orphan resource %s delete warning in %s: %v", trimmed, targetNamespace, err))
+				uc.bestEffortClearResourceFinalizers(ctx, kubeconfig, targetNamespace, trimmed, stackID)
+				uc.bestEffortForceDeleteResource(ctx, kubeconfig, targetNamespace, trimmed, stackID)
+			}
+		}
+	}
+}
+
+func shouldDeleteOrphanGatewayTempoResource(resourceRef, stackNameLower, targetNamespace, stackNamespace string) bool {
+	name := strings.ToLower(strings.TrimSpace(resourceNameFromRef(resourceRef)))
+	if name == "" {
+		return false
+	}
+
+	targetNamespace = strings.TrimSpace(targetNamespace)
+	stackNamespace = strings.TrimSpace(stackNamespace)
+	if targetNamespace == "" || stackNamespace == "" {
+		return false
+	}
+
+	isStackNamespace := targetNamespace == stackNamespace
+
+	if _, ok := orphanTempoResourceNames[name]; ok && isStackNamespace {
+		return true
+	}
+	if strings.HasPrefix(name, "tempo-") && isStackNamespace {
+		return true
+	}
+
+	if strings.HasPrefix(name, "envoy-") {
+		return stackNameLower != "" && strings.Contains(name, stackNameLower)
+	}
+
+	if stackNameLower != "" && strings.Contains(name, stackNameLower) && strings.Contains(name, "gateway") {
+		return true
+	}
+
+	return false
+}
+
+func resourceNameFromRef(resourceRef string) string {
+	trimmed := strings.TrimSpace(resourceRef)
+	if trimmed == "" {
+		return ""
+	}
+	if idx := strings.Index(trimmed, "/"); idx >= 0 {
+		return strings.TrimSpace(trimmed[idx+1:])
+	}
+	return trimmed
+}
+
+func (uc *DeleteStack) bestEffortClearResourceFinalizers(ctx context.Context, kubeconfig []byte, namespace, resource, stackID string) {
+	if len(kubeconfig) == 0 || strings.TrimSpace(namespace) == "" || strings.TrimSpace(resource) == "" {
+		return
+	}
+	if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "patch", "-n", namespace, resource, "--type=merge", "-p", `{"metadata":{"finalizers":[]}}`); err != nil {
+		slog.Warn("clear finalizers warning", "resource", resource, "namespace", namespace, "error", err)
+		uc.emit(ctx, stackID, "deleting_orphan_resources", "warn", fmt.Sprintf("clear finalizers warning for %s in %s: %v", resource, namespace, err))
+	}
+}
+
+func (uc *DeleteStack) bestEffortForceDeleteResource(ctx context.Context, kubeconfig []byte, namespace, resource, stackID string) {
+	if len(kubeconfig) == 0 || strings.TrimSpace(namespace) == "" || strings.TrimSpace(resource) == "" {
+		return
+	}
+	if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "-n", namespace, resource, "--ignore-not-found", "--force", "--grace-period=0"); err != nil {
+		slog.Warn("force delete orphan warning", "resource", resource, "namespace", namespace, "error", err)
+		uc.emit(ctx, stackID, "deleting_orphan_resources", "warn", fmt.Sprintf("force delete warning for %s in %s: %v", resource, namespace, err))
+	}
+}
+
 func looksLikeManifest(raw string) bool {
 	return strings.Contains(raw, "apiVersion:") && strings.Contains(raw, "kind:")
 }
@@ -263,7 +824,7 @@ func listNamespaceResources(ctx context.Context, kubeconfig []byte, namespace st
 	if strings.TrimSpace(namespace) == "" {
 		return nil, nil
 	}
-	output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "deploy,svc", "-n", namespace, "-o", "name")
+	output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "deploy,svc,cm,sa,pod,rs,sts,job,cronjob,secret,pvc", "-n", namespace, "-o", "name")
 	if err != nil {
 		return nil, err
 	}

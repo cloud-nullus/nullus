@@ -6,6 +6,22 @@ func DefaultValues(stepName string) map[string]any {
 		return map[string]any{
 			"installCRDs": true,
 		}
+	case "installing_postgresql":
+		return map[string]any{
+			"architecture": "standalone",
+			"auth": map[string]any{
+				"username":         "gitlab",
+				"password":         "nullus-gitlab-password",
+				"database":         "gitlabhq_production",
+				"postgresPassword": "nullus-postgres-admin",
+			},
+			"primary": map[string]any{
+				"persistence": map[string]any{
+					"enabled": true,
+					"size":    "20Gi",
+				},
+			},
+		}
 	case "installing_minio":
 		return map[string]any{
 			"mode":         "standalone",
@@ -25,8 +41,25 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_gitlab":
 		return map[string]any{
+			"postgresql": map[string]any{
+				"install": false,
+			},
 			"global": map[string]any{
 				"edition": "ce",
+				"minio": map[string]any{
+					"enabled": false,
+				},
+				"psql": map[string]any{
+					"host":     "nullus-postgresql.nullus.svc.cluster.local",
+					"port":     5432,
+					"database": "gitlabhq_production",
+					"username": "gitlab",
+					"password": map[string]any{
+						"useSecret": true,
+						"secret":    "nullus-postgresql",
+						"key":       "password",
+					},
+				},
 				"hosts": map[string]any{
 					"domain": "nullus.internal",
 				},
@@ -55,11 +88,6 @@ func DefaultValues(stepName string) map[string]any {
 					"enabled": false,
 				},
 			},
-			"minio": map[string]any{
-				"ingress": map[string]any{
-					"enabled": false,
-				},
-			},
 			"certmanager": map[string]any{
 				"install": false,
 			},
@@ -68,18 +96,6 @@ func DefaultValues(stepName string) map[string]any {
 			},
 			"gitlab-runner": map[string]any{
 				"install": false,
-			},
-			"postgresql": map[string]any{
-				"image": map[string]any{
-					"repository": "bitnamilegacy/postgresql",
-					"tag":        "16.6.0-debian-12-r2",
-				},
-				"metrics": map[string]any{
-					"image": map[string]any{
-						"repository": "bitnamilegacy/postgres-exporter",
-						"tag":        "0.17.1-debian-12-r16",
-					},
-				},
 			},
 			"redis": map[string]any{
 				"image": map[string]any{
@@ -98,6 +114,11 @@ func DefaultValues(stepName string) map[string]any {
 		return map[string]any{
 			"crds": map[string]any{
 				"install": true,
+			},
+			"configs": map[string]any{
+				"params": map[string]any{
+					"server.insecure": "true",
+				},
 			},
 			"server": map[string]any{
 				"ingress": map[string]any{
@@ -136,6 +157,9 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_logging":
 		return map[string]any{
+			"rbac": map[string]any{
+				"pspEnabled": false,
+			},
 			"loki": map[string]any{
 				"enabled": true,
 			},
@@ -149,6 +173,19 @@ func DefaultValues(stepName string) map[string]any {
 	case "installing_logging_opensearch":
 		return map[string]any{
 			"singleNode": true,
+			"protocol":   "http",
+			"securityConfig": map[string]any{
+				"enabled": false,
+			},
+			"config": map[string]any{
+				"opensearch.yml": "cluster.name: opensearch-cluster\nnetwork.host: 0.0.0.0\nplugins.security.disabled: true\n",
+			},
+			"extraEnvs": []map[string]any{
+				{
+					"name":  "OPENSEARCH_INITIAL_ADMIN_PASSWORD",
+					"value": "NullusAdmin123!",
+				},
+			},
 		}
 	case "installing_logging_elasticsearch":
 		return map[string]any{

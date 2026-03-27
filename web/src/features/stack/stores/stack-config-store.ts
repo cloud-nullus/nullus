@@ -68,6 +68,10 @@ function normalizeToolSelectionVersion(selection: ToolSelection): ToolSelection 
   return selection
 }
 
+function normalizeAccessDomain(domain: string): string {
+  return domain.trim().replace(/\.intenral$/i, '.internal')
+}
+
 export interface ArtifactsConfig {
   packageRegistry: ToolSelection
   sourceRepository: ToolSelection
@@ -285,7 +289,7 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
         draft: {
           ...s.draft,
           stackName: name,
-          accessDomain: shouldUpdateAccessDomain ? `${name}.internal` : s.draft.accessDomain,
+          accessDomain: shouldUpdateAccessDomain ? `${name}.internal` : normalizeAccessDomain(s.draft.accessDomain),
           accessDomainTls: {
             ...s.draft.accessDomainTls,
             secretName:
@@ -301,7 +305,7 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
     }),
 
   setAccessDomain: (domain) =>
-    set((s) => ({ draft: { ...s.draft, accessDomain: domain }, isDirty: true })),
+    set((s) => ({ draft: { ...s.draft, accessDomain: normalizeAccessDomain(domain) }, isDirty: true })),
 
   updateAccessDomainTls: (config) =>
     set((s) => ({

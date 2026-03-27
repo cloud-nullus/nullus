@@ -311,7 +311,7 @@ func (h *HelmInstaller) Status(ctx context.Context, releaseName, namespace strin
 }
 
 func newActionConfig(kubeconfig []byte, namespace string) (*action.Configuration, error) {
-	getter, err := newKubeRESTClientGetter(kubeconfig)
+	getter, err := newKubeRESTClientGetter(kubeconfig, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -330,15 +330,20 @@ type kubeRESTClientGetter struct {
 	rawConfig  clientcmd.ClientConfig
 }
 
-func newKubeRESTClientGetter(kubeconfig []byte) (*kubeRESTClientGetter, error) {
+func newKubeRESTClientGetter(kubeconfig []byte, namespace string) (*kubeRESTClientGetter, error) {
 	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
 	if err != nil {
 		return nil, fmt.Errorf("parse kubeconfig: %w", err)
 	}
 
-	raw := clientcmd.NewDefaultClientConfig(*clientcmdapi.NewConfig(), &clientcmd.ConfigOverrides{})
+	overrides := &clientcmd.ConfigOverrides{}
+	if strings.TrimSpace(namespace) != "" {
+		overrides.Context.Namespace = namespace
+	}
+
+	raw := clientcmd.NewDefaultClientConfig(*clientcmdapi.NewConfig(), overrides)
 	if config, err := clientcmd.Load(kubeconfig); err == nil {
-		raw = clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{})
+		raw = clientcmd.NewDefaultClientConfig(*config, overrides)
 	}
 
 	return &kubeRESTClientGetter{restConfig: restConfig, rawConfig: raw}, nil

@@ -160,6 +160,50 @@ describe('StackInstallPage', () => {
     expect(editor.value).toContain('apiVersion: gateway.networking.k8s.io/v1')
     expect(editor.value).toContain('nullus.io/type: gateway')
     expect(editor.value).toContain('.internal')
+    expect(editor.value).toContain('name: gitlab-webservice-default')
+    expect(editor.value).toContain('port: 8181')
+    expect(editor.value).toContain('name: argo-cd-argocd-server')
+    expect(editor.value).toContain('name: nullus-minio-console')
+    expect(editor.value).toContain('port: 9001')
+    expect(editor.value).toContain('name: opensearch-cluster-master')
+    expect(editor.value).toContain('port: 9200')
+    expect(editor.value).toContain('kind: BackendTLSPolicy')
+    expect(editor.value).toContain('name: opensearch-backend-tls')
+    expect(editor.value).toContain('hostname: opensearch-cluster-master.qa-namespace.svc.cluster.local')
+    expect(editor.value).toContain('subjectAltNames:')
+    expect(editor.value).toContain('wellKnownCACertificates: System')
+    expect(editor.value).toContain('name: grafana-svc')
+    expect(editor.value).toContain('name: prometheus-svc')
+  })
+
+  it('generates grafana and prometheus service target ports that match container defaults', () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Grafana/i }))
+    const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+    expect(editor.value).toContain('containerPort: 3000')
+    expect(editor.value).toContain('targetPort: 3000')
+
+    fireEvent.click(screen.getByRole('button', { name: /Prometheus/i }))
+    expect(editor.value).toContain('containerPort: 9090')
+    expect(editor.value).toContain('targetPort: 9090')
+  })
+
+  it('renders a runnable tempo manifest with config and service ports', () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    fireEvent.click(screen.getByRole('button', { name: /Tempo/i }))
+
+    const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+    expect(editor.value).toContain('kind: ConfigMap')
+    expect(editor.value).toContain('name: tempo-config')
+    expect(editor.value).toContain('-config.file=/etc/tempo/tempo.yaml')
+    expect(editor.value).toContain('backend: local')
+    expect(editor.value).toContain('name: tempo-svc')
+    expect(editor.value).toContain('port: 3200')
   })
 
   it('bundles gitlab-related selections into one install file with merged roles', () => {

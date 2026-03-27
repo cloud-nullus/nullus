@@ -77,6 +77,17 @@ function toDeployErrorMessage(error: unknown): string {
   return `배포 작업 등록 실패: ${prefix}${reason}${statusSuffix}`
 }
 
+function formatConnectionStatusLabel(status: string): string {
+  if (!status) {
+    return 'Unknown'
+  }
+  return status
+    .split('_')
+    .filter(Boolean)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(' ')
+}
+
 const ARTIFACTS_OPTIONS: Record<string, ToolOption[]> = {
   packageRegistry: [
     { id: 'gitlab', label: 'GitLab Package Registry', description: 'GitLab 내장 패키지 레지스트리' },
@@ -290,6 +301,47 @@ type ManifestToolEntry = {
   sourceVersions: string[]
 }
 
+function normalizeAccessDomain(domain: string): string {
+  return domain.trim().replace(/\.intenral$/i, '.internal')
+}
+
+function buildOpenSearchBackendTLSPolicy(namespace: string, stackName: string, accessDomain: string): Record<string, unknown> {
+  const serviceName = 'opensearch-cluster-master'
+  const serviceHost = `${serviceName}.${namespace}.svc.cluster.local`
+  const routeHost = `opensearch.${accessDomain}`
+
+  return {
+    apiVersion: 'gateway.networking.k8s.io/v1',
+    kind: 'BackendTLSPolicy',
+    metadata: {
+      name: 'opensearch-backend-tls',
+      namespace,
+      labels: {
+        'nullus.io/stack-name': stackName,
+        'nullus.io/type': 'gateway-backend-tls',
+      },
+    },
+    spec: {
+      targetRefs: [
+        {
+          group: '',
+          kind: 'Service',
+          name: serviceName,
+        },
+      ],
+      validation: {
+        hostname: serviceHost,
+        subjectAltNames: [
+          { type: 'Hostname', value: serviceHost },
+          { type: 'Hostname', value: serviceName },
+          { type: 'Hostname', value: routeHost },
+        ],
+        wellKnownCACertificates: 'System',
+      },
+    },
+  }
+}
+
 type ToolManifestResourceSpec = {
   requests: { cpu: number; memory: string; storage: string }
   limits: { cpu: number; memory: string; storage: string }
@@ -344,6 +396,8 @@ const TOOL_INSTALL_METHOD: Record<string, ManifestInstallType> = {
 const TOOL_BUNDLE_CANONICAL: Record<string, string> = {
   'gitlab-registry': 'gitlab',
   'gitlab-ci': 'gitlab',
+  'argo-cd': 'argocd',
+  'opensearch-dashboards': 'opensearch',
 }
 
 const TOOL_DEFAULT_IMAGE_REPOSITORY: Record<string, string> = {
@@ -631,6 +685,41 @@ function getInstallType(toolId: string): ManifestInstallType {
   return TOOL_HELM_META[toolId] ? 'helm' : 'yaml'
 }
 
+function gatewayBackendForTool(toolId: string): { serviceName: string; port: number } {
+  switch (toolId) {
+    case 'gitlab':
+      return { serviceName: 'gitlab-webservice-default', port: 8181 }
+    case 'argo-cd':
+    case 'argocd':
+      return { serviceName: 'argo-cd-argocd-server', port: 80 }
+    case 'grafana':
+      return { serviceName: 'grafana-svc', port: 80 }
+    case 'prometheus':
+      return { serviceName: 'prometheus-svc', port: 80 }
+    case 'minio':
+      return { serviceName: 'nullus-minio-console', port: 9001 }
+    case 'opensearch':
+      return { serviceName: 'opensearch-cluster-master', port: 9200 }
+    case 'tempo':
+      return { serviceName: 'tempo-svc', port: 3200 }
+    default:
+      return { serviceName: `${toolId}-svc`, port: 80 }
+  }
+}
+
+function workloadContainerPortForTool(toolId: string): number {
+  switch (toolId) {
+    case 'grafana':
+      return 3000
+    case 'prometheus':
+      return 9090
+    case 'loki':
+      return 3100
+    default:
+      return 8080
+  }
+}
+
 function resolveToolImage(toolId: string, toolVersion: string): string {
   const repository = TOOL_DEFAULT_IMAGE_REPOSITORY[toolId] ?? `ghcr.io/cloud-nullus/${toolId}`
   const version = toolVersion || getToolAppVersion(toolId)
@@ -712,6 +801,127 @@ function buildToolManifest(
     return YAML.stringify(valuesYaml, { indent: 2, lineWidth: 0 })
   }
 
+  if (toolId === 'tempo') {
+    const configMap = {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: {
+        name: 'tempo-config',
+        namespace,
+        labels: {
+          app: toolId,
+          'nullus.io/stack-name': draft.stackName,
+          'nullus.io/tool-id': toolId,
+        },
+      },
+      data: {
+        'tempo.yaml': [
+          'server:',
+          '  http_listen_port: 3200',
+          'distributor:',
+          '  receivers:',
+          '    otlp:',
+          '      protocols:',
+          '        grpc:',
+          '          endpoint: 0.0.0.0:4317',
+          '        http:',
+          '          endpoint: 0.0.0.0:4318',
+          'ingester:',
+          '  trace_idle_period: 10s',
+          '  max_block_duration: 5m',
+          'compactor:',
+          '  compaction:',
+          '    block_retention: 24h',
+          'storage:',
+          '  trace:',
+          '    backend: local',
+          '    local:',
+          '      path: /var/tempo/traces',
+          '    wal:',
+          '      path: /var/tempo/wal',
+        ].join('\n'),
+      },
+    }
+
+    const deployment = {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: {
+        name: toolId,
+        namespace,
+        labels: {
+          app: toolId,
+          'nullus.io/stack-name': draft.stackName,
+          'nullus.io/cluster-id': draft.clusterId ?? '',
+          'nullus.io/tool-id': toolId,
+        },
+      },
+      spec: {
+        replicas: 1,
+        selector: { matchLabels: { app: toolId } },
+        template: {
+          metadata: { labels: { app: toolId } },
+          spec: {
+            containers: [
+              {
+                name: toolId,
+                image: resolveToolImage(toolId, toolVersion),
+                args: ['-config.file=/etc/tempo/tempo.yaml'],
+                ports: [
+                  { name: 'http', containerPort: 3200 },
+                  { name: 'otlp-grpc', containerPort: 4317 },
+                  { name: 'otlp-http', containerPort: 4318 },
+                ],
+                volumeMounts: [
+                  { name: 'tempo-config', mountPath: '/etc/tempo' },
+                  { name: 'tempo-data', mountPath: '/var/tempo' },
+                ],
+                resources: {
+                  requests: {
+                    cpu: String(resources.cpuRequest),
+                    memory: resourcesSpec.requests.memory,
+                  },
+                  limits: {
+                    cpu: String(resources.cpuLimit),
+                    memory: resourcesSpec.limits.memory,
+                  },
+                },
+              },
+            ],
+            volumes: [
+              { name: 'tempo-config', configMap: { name: 'tempo-config' } },
+              { name: 'tempo-data', emptyDir: {} },
+            ],
+          },
+        },
+      },
+    }
+
+    const service = {
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: {
+        name: 'tempo-svc',
+        namespace,
+        labels: { app: toolId },
+      },
+      spec: {
+        selector: { app: toolId },
+        ports: [
+          { name: 'http', port: 3200, targetPort: 3200 },
+          { name: 'otlp-grpc', port: 4317, targetPort: 4317 },
+          { name: 'otlp-http', port: 4318, targetPort: 4318 },
+        ],
+      },
+    }
+
+    return [
+      YAML.stringify(configMap, { indent: 2, lineWidth: 0 }),
+      YAML.stringify(deployment, { indent: 2, lineWidth: 0 }),
+      YAML.stringify(service, { indent: 2, lineWidth: 0 }),
+    ].join('\n---\n')
+  }
+
   const deployment = {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
@@ -735,6 +945,7 @@ function buildToolManifest(
             {
               name: toolId,
               image: resolveToolImage(toolId, toolVersion),
+              ports: [{ name: 'http', containerPort: workloadContainerPortForTool(toolId) }],
               resources: {
                 requests: {
                   cpu: String(resources.cpuRequest),
@@ -762,7 +973,7 @@ function buildToolManifest(
     },
     spec: {
       selector: { app: toolId },
-      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
+      ports: [{ name: 'http', port: 80, targetPort: workloadContainerPortForTool(toolId) }],
     },
   }
 
@@ -773,7 +984,7 @@ function buildToolManifest(
 function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestToolEntry[]): string {
   const namespace = draft.namespace.trim() || 'nullus'
   const stackName = draft.stackName || 'nullus-stack'
-  const accessDomain = draft.accessDomain || `${stackName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${stackName}.internal`)
   const gatewayName = `${stackName}-gateway`
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim()
@@ -783,23 +994,28 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
 
   const rules = manifestTools
     .filter((tool) => tool.toolId !== GATEWAY_MANIFEST_ID)
-    .map((tool) => ({
-      host: `${tool.toolId}.${accessDomain}`,
-      http: {
-        paths: [
-          {
-            path: '/',
-            pathType: 'Prefix',
-            backend: {
-              service: {
-                name: `${tool.toolId}-svc`,
-                port: { number: 80 },
+    .map((tool) => {
+      const backend = gatewayBackendForTool(tool.toolId)
+      return {
+        host: `${tool.toolId}.${accessDomain}`,
+        http: {
+          paths: [
+            {
+              path: '/',
+              pathType: 'Prefix',
+              backend: {
+                service: {
+                  name: backend.serviceName,
+                  port: { number: backend.port },
+                },
               },
             },
-          },
-        ],
-      },
-    }))
+          ],
+        },
+      }
+    })
+
+  const includesOpenSearch = manifestTools.some((tool) => tool.toolId === 'opensearch')
 
   const gateway = {
     apiVersion: 'gateway.networking.k8s.io/v1',
@@ -813,7 +1029,7 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
       },
     },
     spec: {
-      gatewayClassName: 'nginx',
+      gatewayClassName: 'envoy',
       listeners: [
         {
           name: 'http',
@@ -857,7 +1073,9 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
 
   const httpRoutes = rules.map((rule) => {
     const host = rule.host
-    const backendServiceName = rule.http.paths[0]?.backend?.service?.name
+    const backendService = rule.http.paths[0]?.backend?.service
+    const backendServiceName = backendService?.name
+    const backendServicePort = backendService?.port?.number ?? 80
 
     return {
       apiVersion: 'gateway.networking.k8s.io/v1',
@@ -890,7 +1108,7 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
             backendRefs: [
               {
                 name: backendServiceName,
-                port: 80,
+                port: backendServicePort,
               },
             ],
           },
@@ -957,6 +1175,11 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
   const gatewayDocuments = [
     YAML.stringify(gateway, { indent: 2, lineWidth: 0 }),
     ...httpRoutes.map((route) => YAML.stringify(route, { indent: 2, lineWidth: 0 })),
+    ...(includesOpenSearch
+      ? [
+          YAML.stringify(buildOpenSearchBackendTLSPolicy(namespace, stackName, accessDomain), { indent: 2, lineWidth: 0 }),
+        ]
+      : []),
     ...(certificate ? [YAML.stringify(certificate, { indent: 2, lineWidth: 0 })] : []),
     ...(referenceGrant ? [YAML.stringify(referenceGrant, { indent: 2, lineWidth: 0 })] : []),
   ]
@@ -971,7 +1194,7 @@ function createDeployScript(
 ): string {
   const stackName = draft.stackName || 'nullus-stack'
   const namespace = draft.namespace.trim() || 'nullus'
-  const accessDomain = draft.accessDomain || `${stackName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${stackName}.internal`)
   const clusterContext = draft.clusterId ?? ''
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${stackName}-wildcard-tls`
@@ -1089,7 +1312,7 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
   const appName = draft.stackName || 'nullus-stack'
   const serviceName = `${appName}-svc`
   const gatewayNamespace = 'nullus-stack'
-  const accessDomain = draft.accessDomain || `${appName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${appName}.internal`)
   const gatewayName = `${appName}-gateway`
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${appName}-wildcard-tls`
@@ -1158,7 +1381,7 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       `  name: ${gatewayName}`,
       `  namespace: ${gatewayNamespace}`,
       'spec:',
-      '  gatewayClassName: nginx',
+      '  gatewayClassName: envoy',
       '  listeners:',
       '    - name: http',
       '      protocol: HTTP',
@@ -1634,7 +1857,7 @@ export function StackInstallPage() {
   const hasManifestValidationError = manifestValidationErrorCount > 0
   const validManifestToolIds = new Set(allManifestTools.map((tool) => tool.toolId))
   const yamlOverridesPayload = allManifestTools.reduce<Record<string, string>>((acc, tool) => {
-    if (tool.toolId === GATEWAY_MANIFEST_ID || tool.installType !== 'yaml') {
+    if (tool.installType !== 'yaml') {
       return acc
     }
 
@@ -1685,7 +1908,7 @@ export function StackInstallPage() {
       detail: effectiveNamespace ? `namespace: ${effectiveNamespace}` : 'Namespace가 비어 있습니다.',
     })
 
-    const accessDomain = draft.accessDomain || `${draft.stackName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${draft.stackName}.internal`)
     checks.push({
       id: 'accessDomain',
       title: 'Access domain 규칙',
@@ -2198,7 +2421,7 @@ export function StackInstallPage() {
         return 'Gateway host는 {oss}.{access-domain} 형식이어야 합니다.'
       }
 
-      const derivedAccessDomain = firstHost.split('.').slice(1).join('.').replace(/^\*\./, '')
+      const derivedAccessDomain = normalizeAccessDomain(firstHost.split('.').slice(1).join('.').replace(/^\*\./, ''))
       if (!derivedAccessDomain.endsWith('.internal')) {
         return 'Gateway host의 access domain은 .internal로 끝나야 합니다.'
       }
@@ -2294,7 +2517,7 @@ export function StackInstallPage() {
       objectStorage = (storage.objectStorage ?? {}) as Record<string, unknown>
 
       stackName = typeof global.stackName === 'string' ? global.stackName.trim() : ''
-      accessDomain = typeof global.accessDomain === 'string' ? global.accessDomain.trim() : ''
+      accessDomain = typeof global.accessDomain === 'string' ? normalizeAccessDomain(global.accessDomain) : ''
       clusterId = typeof global.clusterId === 'string' ? global.clusterId.trim() : ''
       namespace = typeof global.namespace === 'string' ? global.namespace.trim() : ''
       version = typeof image.tag === 'string' && image.tag.trim() ? image.tag.trim() : getToolAppVersion(toolId)
@@ -2376,7 +2599,7 @@ export function StackInstallPage() {
       }
 
       stackName = typeof labels['nullus.io/stack-name'] === 'string' ? String(labels['nullus.io/stack-name']).trim() : ''
-      accessDomain = draft.accessDomain || `${stackName}.internal`
+      accessDomain = normalizeAccessDomain(draft.accessDomain || `${stackName}.internal`)
       clusterId = typeof labels['nullus.io/cluster-id'] === 'string' ? String(labels['nullus.io/cluster-id']).trim() : ''
       namespace = typeof metadata.namespace === 'string' ? metadata.namespace.trim() : ''
       if (image.includes(':')) {
@@ -2839,7 +3062,7 @@ export function StackInstallPage() {
               <option value="">클러스터를 선택하세요</option>
               {(clusters ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.connection_status})
+                  {c.name} ({formatConnectionStatusLabel(c.connection_status)})
                 </option>
               ))}
             </NativeSelect>

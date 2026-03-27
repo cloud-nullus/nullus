@@ -175,6 +175,28 @@ func (e *fakeVerifiableExecutor) VerifyDeployment(_ context.Context, _ string) e
 	return e.verifyErr
 }
 
+type fakeCancellingExecutor struct {
+	repo       *fakeStackRepo
+	stackID    string
+	stepCalls  []string
+	cancelOnce sync.Once
+}
+
+func (e *fakeCancellingExecutor) ExecuteStep(_ context.Context, _ string, step, _ string) error {
+	e.stepCalls = append(e.stepCalls, step)
+	if step == "installing_cert_manager" {
+		e.cancelOnce.Do(func() {
+			stack, err := e.repo.GetByID(context.Background(), e.stackID)
+			if err != nil || stack == nil {
+				return
+			}
+			stack.State = domain.StateCancelled
+			_ = e.repo.Update(context.Background(), stack)
+		})
+	}
+	return nil
+}
+
 type fakeConfigurableExecutor struct {
 	fakeStepExecutor
 
@@ -223,9 +245,7 @@ func TestInstallStack_SuccessfulInstallation(t *testing.T) {
 	// After Execute returns, state should be Validating (goroutine may not have finished yet).
 	assert.Equal(t, domain.StateValidating, repo.getState("stk_test01"))
 
-	// Wait for goroutine to complete (all phases + transitions ≤ ~10 s real time,
-	// but phases are mocked with actual sleeps so we poll up to 15 s).
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(25 * time.Second)
 	for time.Now().Before(deadline) {
 		if repo.getState("stk_test01") == domain.StateCompleted {
 			break
@@ -238,14 +258,18 @@ func TestInstallStack_SuccessfulInstallation(t *testing.T) {
 	// Verify key steps were logged.
 	steps := streamer.steps()
 	assert.Contains(t, steps, "installing_cert_manager")
+	assert.Contains(t, steps, "installing_postgresql")
 	assert.Contains(t, steps, "installing_minio")
+	assert.Contains(t, steps, "installing_object_storage_secret")
 	assert.Contains(t, steps, "installing_gitlab")
 	assert.Contains(t, steps, "installing_argocd")
 	assert.Contains(t, steps, "installing_runner")
 	assert.Contains(t, steps, "installing_prometheus")
 	assert.Contains(t, steps, "installing_grafana")
 	assert.Contains(t, steps, "installing_logging")
+	assert.Contains(t, steps, "installing_log_search")
 	assert.Contains(t, steps, "installing_opentelemetry")
+	assert.Contains(t, steps, "installing_gateway")
 	assert.Contains(t, steps, "integration_check")
 	assert.Contains(t, steps, "completed")
 }
@@ -280,7 +304,7 @@ func TestInstallStack_ContextCancellation_TriggersRollback(t *testing.T) {
 	cancel()
 
 	// Wait for rollback to complete (longer timeout for CI).
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(25 * time.Second)
 	for time.Now().Before(deadline) {
 		state := repo.getState("stk_cancel")
 		if state == domain.StateRolledBack || state == domain.StateCompleted || state == domain.StateFailed {
@@ -393,4 +417,32 @@ func TestInstallStack_RuntimeVerificationFailureTriggersRollback(t *testing.T) {
 	assert.Equal(t, domain.StateRolledBack, repo.getState("stk_verify_fail"))
 	assert.Contains(t, streamer.steps(), "health_check")
 	assert.Contains(t, streamer.steps(), "rolling_back")
+}
+
+func TestInstallStack_StopsWhenStackIsCancelledDuringRun(t *testing.T) {
+	stack := &domain.Stack{
+		ID:    "stk_cancelled_mid_run",
+		State: domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeCancellingExecutor{repo: repo, stackID: stack.ID}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateCancelled {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	assert.Equal(t, domain.StateCancelled, repo.getState(stack.ID))
+	assert.NotContains(t, exec.stepCalls, "installing_gateway")
+	assert.NotContains(t, streamer.steps(), "rolling_back")
+	assert.NotContains(t, streamer.steps(), "failed")
 }

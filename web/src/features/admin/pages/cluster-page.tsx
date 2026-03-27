@@ -53,6 +53,23 @@ const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassNa
   },
 }
 
+function getConnectionHint(status: ClusterStatus): { text: string; className: string } {
+  switch (status) {
+    case 'connected':
+      return { text: 'Connected', className: 'text-[#22c55e]' }
+    case 'auth_failed':
+      return { text: 'Authentication failed. Recheck credentials/kubeconfig.', className: 'text-[#ef4444]' }
+    case 'error':
+      return { text: 'Connection error. Check endpoint and network path.', className: 'text-[#ef4444]' }
+    case 'unreachable':
+      return { text: 'Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.', className: 'text-[#f59e0b]' }
+    case 'pending':
+      return { text: 'Pending verification', className: 'text-[#f59e0b]' }
+    case 'inactive':
+      return { text: 'Inactive', className: 'text-[#64748b]' }
+  }
+}
+
 const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 const clusterSchema = z
@@ -141,6 +158,7 @@ export function ClusterPage() {
   const [registerModal, setRegisterModal] = useState(false)
   const [editingClusterId, setEditingClusterId] = useState<string | null>(null)
   const [deleteClusterId, setDeleteClusterId] = useState<string | null>(null)
+  const [deleteClusterError, setDeleteClusterError] = useState<string | null>(null)
   const [isVerifyingConnection, setIsVerifyingConnection] = useState(false)
   const [verifyConnectionResult, setVerifyConnectionResult] = useState<'success' | 'error' | null>(null)
   const [fileUploadError, setFileUploadError] = useState<string | null>(null)
@@ -220,10 +238,20 @@ export function ClusterPage() {
 
     deleteCluster.mutate(deleteClusterId, {
       onSuccess: () => {
+        setDeleteClusterError(null)
         setDeleteClusterId(null)
       },
+      onError: (err) => {
+        const message =
+          typeof err === 'object' &&
+          err !== null &&
+          'message' in err &&
+          typeof err.message === 'string'
+            ? err.message
+            : 'Failed to delete cluster'
+        setDeleteClusterError(message)
+      },
     })
-    setDeleteClusterId(null)
   }
 
   const handleVerifyConnection = () => {
@@ -354,7 +382,7 @@ export function ClusterPage() {
               <div className="min-w-0 p-4">
                 {(() => {
                   const detailMeta = CLUSTER_DETAIL_META[selected.type]
-                  const connected = selected.status === 'connected'
+                  const connectionHint = getConnectionHint(selected.status)
 
                   return (
                     <>
@@ -415,8 +443,8 @@ export function ClusterPage() {
                           </span>
                         )}
                         {!verifyConnectionResult && !isVerifyingConnection && (
-                          <span className={cn('text-xs', connected ? 'text-[#22c55e]' : 'text-[#f59e0b]')}>
-                            {connected ? 'Connected' : 'Not Configured'}
+                          <span className={cn('text-xs', connectionHint.className)}>
+                            {connectionHint.text}
                           </span>
                         )}
                       </div>
@@ -550,12 +578,22 @@ export function ClusterPage() {
 
       <ConfirmDialog
         open={deleteClusterId !== null}
-        onClose={() => setDeleteClusterId(null)}
+        onClose={() => {
+          setDeleteClusterId(null)
+          setDeleteClusterError(null)
+        }}
         onConfirm={handleDeleteCluster}
         title="Delete Cluster"
         description="선택한 클러스터를 삭제하면 연결된 파이프라인과 배포 정보가 영향을 받을 수 있습니다. 계속하시겠습니까?"
         confirmLabel="Delete"
         loading={deleteCluster.isPending}
+        customContent={
+          deleteClusterError ? (
+            <p className="m-0 rounded-md border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.12)] px-3 py-2 text-xs text-[#fca5a5]">
+              {deleteClusterError}
+            </p>
+          ) : undefined
+        }
       />
     </div>
   )

@@ -63,7 +63,7 @@ function PhaseStep({ label, index, progress }: { label: string; index: number; p
   )
 }
 
-function StatusSummary({ status }: { status: DeployStatus }) {
+function StatusSummary({ status, latestFailureMessage }: { status: DeployStatus; latestFailureMessage?: string }) {
   if (status !== 'success' && status !== 'failed') return null
 
   const isSuccess = status === 'success'
@@ -82,8 +82,15 @@ function StatusSummary({ status }: { status: DeployStatus }) {
           {isSuccess ? '배포 완료' : '배포 실패'}
         </div>
         <div className="text-[13px] text-[var(--color-text-secondary)]">
-          {isSuccess ? '모든 단계가 성공적으로 완료되었습니다.' : '배포 중 오류가 발생했습니다. 로그를 확인하세요.'}
+          {isSuccess
+            ? '모든 단계가 성공적으로 완료되었습니다.'
+            : '배포 중 오류가 발생했습니다. 하단 로그 콘솔(Logs)에서 ERROR/failed 라인을 확인하세요. 로그가 비어 있으면 Stack List > 해당 스택 > History 탭에서 최근 실패 이력을 확인할 수 있습니다.'}
         </div>
+        {!isSuccess && latestFailureMessage && (
+          <div className="mt-2 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-2.5 py-2 text-[12px] text-[#fca5a5]">
+            최신 실패 원인: {latestFailureMessage}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -128,6 +135,11 @@ export function StackDeployPage() {
   const hasWsData = logs.length > 0 || (wsStatus !== 'connecting' && wsStatus !== 'running')
   const status = hasWsData ? wsStatus : (apiState?.status ?? wsStatus)
   const progress = wsProgress > 0 ? wsProgress : (apiState?.progress ?? 0)
+  const latestFailureLog = [...logs].reverse().find((log) => {
+    if (log.level === 'error') return true
+    const normalized = log.message.toLowerCase()
+    return normalized.includes('failed') || normalized.includes('error')
+  })
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -203,7 +215,11 @@ export function StackDeployPage() {
         >
           {logs.length === 0 && (
             <div className="px-1 py-2 text-[var(--color-text-secondary)]">
-              {isConnected ? '로그를 기다리는 중...' : 'WebSocket에 연결 중...'}
+              {status === 'failed'
+                ? '실시간 로그를 수신하지 못했습니다. Stack List > 해당 스택 > History 탭에서 최근 실패 이력을 확인해 주세요.'
+                : isConnected
+                  ? '로그를 기다리는 중...'
+                  : 'WebSocket에 연결 중...'}
             </div>
           )}
           {logs.map((log) => {
@@ -227,7 +243,7 @@ export function StackDeployPage() {
       </div>
 
       {/* Result summary */}
-      <StatusSummary status={status} />
+      <StatusSummary status={status} latestFailureMessage={latestFailureLog?.message} />
     </div>
   )
 }

@@ -17,9 +17,21 @@ func TestDefaultValues_GitLab(t *testing.T) {
 	values := DefaultValues("installing_gitlab")
 	require.NotNil(t, values)
 
+	postgresql, ok := values["postgresql"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, postgresql["install"])
+
 	global, ok := values["global"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "ce", global["edition"])
+	globalMinio, ok := global["minio"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, globalMinio["enabled"])
+	globalPSQL, ok := global["psql"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "nullus-postgresql.nullus.svc.cluster.local", globalPSQL["host"])
+	assert.Equal(t, "gitlabhq_production", globalPSQL["database"])
+	assert.Equal(t, "gitlab", globalPSQL["username"])
 
 	hosts, ok := global["hosts"].(map[string]any)
 	require.True(t, ok)
@@ -54,12 +66,6 @@ func TestDefaultValues_GitLab(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, false, registryIngress["enabled"])
 
-	minio, ok := values["minio"].(map[string]any)
-	require.True(t, ok)
-	minioIngress, ok := minio["ingress"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, false, minioIngress["enabled"])
-
 	certmanager, ok := values["certmanager"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, false, certmanager["install"])
@@ -71,20 +77,6 @@ func TestDefaultValues_GitLab(t *testing.T) {
 	runner, ok := values["gitlab-runner"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, false, runner["install"])
-
-	postgresql, ok := values["postgresql"].(map[string]any)
-	require.True(t, ok)
-	postgresqlImage, ok := postgresql["image"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "bitnamilegacy/postgresql", postgresqlImage["repository"])
-	assert.Equal(t, "16.6.0-debian-12-r2", postgresqlImage["tag"])
-
-	postgresqlMetrics, ok := postgresql["metrics"].(map[string]any)
-	require.True(t, ok)
-	postgresqlMetricsImage, ok := postgresqlMetrics["image"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "bitnamilegacy/postgres-exporter", postgresqlMetricsImage["repository"])
-	assert.Equal(t, "0.17.1-debian-12-r16", postgresqlMetricsImage["tag"])
 
 	redis, ok := values["redis"].(map[string]any)
 	require.True(t, ok)
@@ -118,6 +110,24 @@ func TestDefaultValues_MinIOIngressDisabled(t *testing.T) {
 	assert.Equal(t, false, consoleIngress["enabled"])
 }
 
+func TestDefaultValues_PostgreSQLSharedDefaults(t *testing.T) {
+	values := DefaultValues("installing_postgresql")
+	require.NotNil(t, values)
+	assert.Equal(t, "standalone", values["architecture"])
+
+	auth, ok := values["auth"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "gitlab", auth["username"])
+	assert.Equal(t, "gitlabhq_production", auth["database"])
+
+	primary, ok := values["primary"].(map[string]any)
+	require.True(t, ok)
+	persistence, ok := primary["persistence"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, persistence["enabled"])
+	assert.Equal(t, "20Gi", persistence["size"])
+}
+
 func TestDefaultValues_ArgoCDIngressDisabled(t *testing.T) {
 	values := DefaultValues("installing_argocd")
 	server, ok := values["server"].(map[string]any)
@@ -125,6 +135,27 @@ func TestDefaultValues_ArgoCDIngressDisabled(t *testing.T) {
 	ingress, ok := server["ingress"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, false, ingress["enabled"])
+
+	configs, ok := values["configs"].(map[string]any)
+	require.True(t, ok)
+	params, ok := configs["params"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "true", params["server.insecure"])
+}
+
+func TestDefaultValues_OpenSearchProtocolAndSecurity(t *testing.T) {
+	values := DefaultValues("installing_logging_opensearch")
+	assert.Equal(t, "http", values["protocol"])
+
+	securityConfig, ok := values["securityConfig"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, securityConfig["enabled"])
+
+	config, ok := values["config"].(map[string]any)
+	require.True(t, ok)
+	opensearchConfig, ok := config["opensearch.yml"].(string)
+	require.True(t, ok)
+	assert.Contains(t, opensearchConfig, "plugins.security.disabled: true")
 }
 
 func TestDefaultValues_PrometheusIngressDisabled(t *testing.T) {

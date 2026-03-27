@@ -150,6 +150,7 @@ export interface Stack {
   templateName: string
   clusterId: string
   clusterName: string
+  namespace?: string
   status: StackStatus
   createdAt: string
   updatedAt: string

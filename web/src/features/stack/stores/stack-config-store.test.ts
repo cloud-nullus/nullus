@@ -121,6 +121,12 @@ describe('stack-config-store', () => {
       expect(draft.accessDomain).toBe('custom.company.internal')
     })
 
+    it('normalizes common typo intenral to internal', () => {
+      useStackConfigStore.getState().setAccessDomain('nullus-devsecops-stack.intenral')
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.accessDomain).toBe('nullus-devsecops-stack.internal')
+    })
+
     it('setStackName updates default TLS secret name automatically', () => {
       useStackConfigStore.getState().setStackName('team-stack')
       expect(useStackConfigStore.getState().draft.accessDomainTls.secretName).toBe('team-stack-wildcard-tls')

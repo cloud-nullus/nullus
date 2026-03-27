@@ -47,6 +47,7 @@ import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
 import { Button } from "../../../components/ui/button";
+import { Modal } from "../../../components/ui/modal";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
@@ -70,11 +71,27 @@ type ToolSelectionView = {
 	instances: number;
 };
 
-type LaunchTool = {
+export type LaunchTool = {
 	name: string;
 	version: string;
 	url: string | null;
 	logo: string;
+};
+
+export type StorageConnectionInfo = {
+	mode: string;
+	providerOrEngine: string;
+	endpoint: string;
+	resourceName: string;
+	authId: string;
+	accessSecretRef: string;
+	authPasswordKey: string;
+};
+
+export type StackConnectionInfo = {
+	accessDomain: string;
+	database: StorageConnectionInfo;
+	objectStorage: StorageConnectionInfo;
 };
 
 function tryGetHostname(url: string | null): string | null {
@@ -157,6 +174,10 @@ function formatDate(iso: string) {
 		month: "2-digit",
 		day: "2-digit",
 	});
+}
+
+function toShellSingleQuoted(value: string): string {
+	return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -328,6 +349,104 @@ function extractAccessDomain(snapshot: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
 }
 
+function readStorageTarget(record: Record<string, unknown>, fallback: Partial<StorageConnectionInfo>): StorageConnectionInfo {
+	return {
+		mode: readString(record, ["mode", "Mode"]) || fallback.mode || "create",
+		providerOrEngine: readString(record, ["provider_or_engine", "providerOrEngine", "ProviderOrEngine"]) || fallback.providerOrEngine || "-",
+		endpoint: readString(record, ["endpoint", "Endpoint"]) || fallback.endpoint || "-",
+		resourceName: readString(record, ["resource_name", "resourceName", "ResourceName"]) || fallback.resourceName || "-",
+		authId: readString(record, ["auth_id", "authId", "AuthID", "user", "username"]) || fallback.authId || "-",
+		accessSecretRef: readString(record, ["access_secret_ref", "accessSecretRef", "AccessSecretRef", "secret", "secretRef"]) || fallback.accessSecretRef || "-",
+		authPasswordKey: readString(record, ["auth_password_key", "authPasswordKey", "AuthPasswordKey", "passwordKey"]) || fallback.authPasswordKey || "-",
+	};
+}
+
+export function extractConnectionInfo(snapshot: unknown, namespace: string, accessDomain: string): StackConnectionInfo {
+	const config = resolveSnapshotConfig(snapshot);
+	const storage = pickGroup(config, ["storage", "Storage"]);
+	const db = pickGroup(storage, ["database", "Database"]);
+	const objectStorage = pickGroup(storage, ["object_storage", "objectStorage", "ObjectStorage"]);
+
+	const ns = namespace.trim() || "nullus";
+	const dbFallback: Partial<StorageConnectionInfo> = {
+		mode: "create",
+		providerOrEngine: "postgres",
+		endpoint: `${ns}-postgresql:5432`,
+		resourceName: "nullus",
+		authId: "postgres",
+		accessSecretRef: `${ns}-postgresql`,
+		authPasswordKey: "postgres-password",
+	};
+	const objectFallback: Partial<StorageConnectionInfo> = {
+		mode: "create",
+		providerOrEngine: "minio",
+		endpoint: `http://${ns}-minio:9000`,
+		resourceName: "nullus-artifacts",
+		authId: "nullus",
+		accessSecretRef: `${ns}-minio`,
+		authPasswordKey: "root-password",
+	};
+
+	return {
+		accessDomain,
+		database: readStorageTarget(db, dbFallback),
+		objectStorage: readStorageTarget(objectStorage, objectFallback),
+	};
+}
+
+export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo): string {
+	const key = toolName.toLowerCase();
+	if (["argocd", "argo-cd"].includes(key)) {
+		return "ID: admin / Password: kubectl -n nullus get secret argo-cd-argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d";
+	}
+	if (["gitlab", "gitlab-ci", "gitlab-registry"].includes(key)) {
+		return "ID: root / Password: kubectl -n nullus get secret gitlab-gitlab-initial-root-password -o jsonpath='{.data.password}' | base64 -d";
+	}
+	if (key === "grafana") {
+		return "Default: admin / admin (또는 values override 확인)";
+	}
+	if (key === "minio") {
+		return `ID: ${conn.objectStorage.authId} / SecretRef: ${conn.objectStorage.accessSecretRef} (key: ${conn.objectStorage.authPasswordKey})`;
+	}
+	if (key === "opensearch") {
+		return "ID: admin / Password: NullusAdmin123! (기본값, 변경 시 values 확인)";
+	}
+	if (key === "prometheus") {
+		return "No login required (기본 설정)";
+	}
+	return "도구별 기본 인증정보를 확인하세요.";
+}
+
+export function buildConnectionInfoText(stackName: string, conn: StackConnectionInfo, launchTools: LaunchTool[]): string {
+	const ossLines = launchTools
+		.map((tool) => `- ${tool.name}: ${tool.url ?? "(URL 없음)"} | ${buildOssLoginHint(tool.name, conn)}`)
+		.join("\n");
+
+	return [
+		`[Stack] ${stackName}`,
+		`[Access Domain] ${conn.accessDomain || "-"}`,
+		"",
+		"[OSS Login]",
+		ossLines,
+		"",
+		"[Database]",
+		`- mode=${conn.database.mode}`,
+		`- engine=${conn.database.providerOrEngine}`,
+		`- endpoint=${conn.database.endpoint}`,
+		`- db=${conn.database.resourceName}`,
+		`- user=${conn.database.authId}`,
+		`- secret=${conn.database.accessSecretRef} (key=${conn.database.authPasswordKey})`,
+		"",
+		"[Object Storage]",
+		`- mode=${conn.objectStorage.mode}`,
+		`- provider=${conn.objectStorage.providerOrEngine}`,
+		`- endpoint=${conn.objectStorage.endpoint}`,
+		`- bucket=${conn.objectStorage.resourceName}`,
+		`- accessKey=${conn.objectStorage.authId}`,
+		`- secret=${conn.objectStorage.accessSecretRef} (key=${conn.objectStorage.authPasswordKey})`,
+	].join("\n");
+}
+
 function toolLogoURL(toolName: string): string {
 	const key = toolName.toLowerCase();
 	const map: Record<string, string> = {
@@ -352,21 +471,21 @@ function toolLogoURL(toolName: string): string {
 }
 
 function toolLaunchURL(toolName: string, accessDomain: string): string | null {
-	if (!accessDomain) {
-		return null;
-	}
-	const key = toolName.toLowerCase();
-	if (["gitlab", "gitlab-ci", "gitlab-registry"].includes(key)) return `https://gitlab.${accessDomain}`;
-	if (["argocd", "argo-cd"].includes(key)) return `https://argocd.${accessDomain}`;
-	if (key === "grafana") return `https://grafana.${accessDomain}`;
-	if (key === "prometheus") return `https://prometheus.${accessDomain}`;
-	if (key === "harbor") return `https://harbor.${accessDomain}`;
-	if (key === "minio") return `https://minio.${accessDomain}`;
-	if (key === "opensearch") return `https://opensearch-dashboards.${accessDomain}`;
-	if (key === "elasticsearch") return `https://kibana.${accessDomain}`;
-	if (key === "jaeger") return `https://jaeger.${accessDomain}`;
-	if (["tempo", "loki", "opentelemetry-collector"].includes(key)) return `https://grafana.${accessDomain}`;
-	return null;
+  if (!accessDomain) {
+    return null;
+  }
+  const key = toolName.toLowerCase();
+	if (["gitlab", "gitlab-ci", "gitlab-registry"].includes(key)) return `http://gitlab.${accessDomain}`;
+	if (["argocd", "argo-cd"].includes(key)) return `http://argocd.${accessDomain}`;
+	if (key === "grafana") return `http://grafana.${accessDomain}`;
+	if (key === "prometheus") return `http://prometheus.${accessDomain}`;
+  if (key === "harbor") return `http://harbor.${accessDomain}`;
+  if (key === "minio") return `http://minio.${accessDomain}`;
+  if (key === "opensearch") return `http://opensearch.${accessDomain}`;
+  if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
+  if (key === "jaeger") return `http://jaeger.${accessDomain}`;
+  if (["tempo", "loki", "opentelemetry-collector"].includes(key)) return `http://grafana.${accessDomain}`;
+  return null;
 }
 
 
@@ -746,6 +865,9 @@ function ResourcesPanel() {
 
 function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTools: () => void; onDelete: () => void }) {
 	const [hostsCopyState, setHostsCopyState] = useState<"idle" | "copied" | "failed">("idle");
+	const [gatewayCopyState, setGatewayCopyState] = useState<"idle" | "copied" | "failed">("idle");
+	const [connOpen, setConnOpen] = useState(false);
+	const [connCopyState, setConnCopyState] = useState<"idle" | "copied" | "failed">("idle");
 	const { data: historyData } = useStackHistory(stack.id);
 	const latestSnapshot = Array.isArray(historyData) && historyData.length > 0
 		? historyData[historyData.length - 1].snapshot
@@ -763,8 +885,6 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 		health: degradedState ? "degraded" : progressingState ? "progressing" : "healthy",
 		sync: degradedState ? "out-of-sync" : "synced",
 	}));
-	const topologySlots = 6;
-	const topologyNodeCount = Math.min(runtimeNodes.length, topologySlots);
 	const installedTools = buildInstalledToolsFromSnapshot(latestSnapshot);
 	const accessDomain = extractAccessDomain(latestSnapshot);
 	const launchTools: LaunchTool[] = installedTools.map((tool) => ({
@@ -774,6 +894,22 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 		logo: toolLogoURL(tool.name),
 	}));
 	const hostsText = buildHostsText(stack.name, accessDomain, launchTools);
+	const connectionInfo = extractConnectionInfo(latestSnapshot, stack.namespace?.trim() || "nullus", accessDomain);
+	const connectionInfoText = buildConnectionInfoText(stack.name, connectionInfo, launchTools);
+	const stackNamespace = stack.namespace?.trim() || "nullus";
+	const stackNamespaceArg = toShellSingleQuoted(stackNamespace);
+	const gatewayPFCommand = [
+		"# Gateway 데이터플레인 서비스 자동 선택 후 포트포워드",
+		`STACK_NAMESPACE=${stackNamespaceArg}`,
+		"KUBECONFIG_PATH=${KUBECONFIG:-$HOME/.kube/config}",
+		"if [ ! -f \"$KUBECONFIG_PATH\" ]; then echo \"kubeconfig 파일이 없습니다: $KUBECONFIG_PATH\"; return 1 2>/dev/null || exit 1; fi",
+		"KUBE_CONTEXT=${KUBE_CONTEXT:-$(kubectl --kubeconfig \"$KUBECONFIG_PATH\" config current-context 2>/dev/null)}",
+		"if [ -z \"$KUBE_CONTEXT\" ]; then echo 'kubectl context가 없습니다. 먼저 kubectl config use-context <context> 실행하세요.'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
+		"if ! kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" get ns \"$STACK_NAMESPACE\" >/dev/null 2>&1; then echo \"kubectl context 연결 실패: $KUBE_CONTEXT\"; echo '올바른 컨텍스트를 지정하세요. 예) export KUBE_CONTEXT=kind-nullus-platform'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
+		"GW_SVC=$(kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" -n \"$STACK_NAMESPACE\" get svc -l gateway.envoyproxy.io/owning-gateway-namespace=$STACK_NAMESPACE -o name | head -n1 | cut -d'/' -f2)",
+		"if [ -z \"$GW_SVC\" ]; then echo 'Gateway 서비스가 없습니다. deploy에서 installing_gateway/route 생성 여부를 확인하세요.'; return 1 2>/dev/null || exit 1; fi",
+		"sudo kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" -n \"$STACK_NAMESPACE\" port-forward \"svc/$GW_SVC\" 80:80",
+	].join("\n");
 
 	const handleCopyHosts = async () => {
 		if (!hostsText) return;
@@ -784,6 +920,26 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 			setHostsCopyState("failed");
 		}
 		setTimeout(() => setHostsCopyState("idle"), 2200);
+	};
+
+	const handleCopyConnectionInfo = async () => {
+		try {
+			await copyTextToClipboard(connectionInfoText);
+			setConnCopyState("copied");
+		} catch {
+			setConnCopyState("failed");
+		}
+		setTimeout(() => setConnCopyState("idle"), 2200);
+	};
+
+	const handleCopyGatewayPF = async () => {
+		try {
+			await copyTextToClipboard(gatewayPFCommand);
+			setGatewayCopyState("copied");
+		} catch {
+			setGatewayCopyState("failed");
+		}
+		setTimeout(() => setGatewayCopyState("idle"), 2200);
 	};
 
 	const observabilitySummary = ["Monitoring", "Logging", "Trace"]
@@ -797,6 +953,29 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 					<div>
 						<div className="flex items-center gap-2">
 							<div className="text-[14px] font-bold text-[var(--color-text-primary)]">Installed Stack Summary</div>
+							<Button
+								variant="ghost"
+								size="sm"
+								type="button"
+								onClick={() => setConnOpen(true)}
+								title="OSS 로그인/DB/ObjectStorage 접속정보 확인"
+							>
+								접속정보 조회
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								type="button"
+								onClick={handleCopyGatewayPF}
+								title="Gateway 포트포워드 명령 복사"
+							>
+								<ClipboardList size={13} />
+								{gatewayCopyState === "copied"
+									? "Copied"
+									: gatewayCopyState === "failed"
+										? "Copy Failed"
+										: "Gateway PF Copy"}
+							</Button>
 							<Button
 								variant="ghost"
 								size="sm"
@@ -850,41 +1029,122 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 						{launchTools.map((tool) => (
 							<a
 								key={tool.name}
-								href={tool.url ?? undefined}
-								target="_blank"
-								rel="noreferrer"
-								onClick={(event) => {
-									if (!tool.url) {
-										event.preventDefault();
-									}
-								}}
-								className={cn(
-									"inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] transition-colors",
-									tool.url
-										? "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-primary)] hover:border-[rgba(99,102,241,0.45)] hover:bg-[rgba(99,102,241,0.1)]"
-										: "cursor-not-allowed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-muted)]",
-								)}
-								title={tool.url ? `${tool.name} 콘솔 열기` : `${tool.name}: 외부 경로 미설정`}
+									href={tool.url ?? undefined}
+									target="_blank"
+									rel="noreferrer"
+									onClick={(event) => {
+										if (!tool.url) {
+											event.preventDefault();
+										}
+									}}
+									className={cn(
+										"inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] transition-colors",
+										tool.url
+											? "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-primary)] hover:border-[rgba(99,102,241,0.45)] hover:bg-[rgba(99,102,241,0.1)]"
+											: "cursor-not-allowed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-muted)]",
+									)}
+									title={tool.url ? `${tool.name} 콘솔 열기` : `${tool.name}: 경로 미설정`}
 							>
-								<span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[rgba(255,255,255,0.08)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
-									{tool.name.slice(0, 2)}
-									<img
-										src={tool.logo}
-										alt={`${tool.name} logo`}
-										className="absolute inset-0 h-full w-full object-contain p-0.5"
-										onError={(event) => {
-											event.currentTarget.style.display = "none";
-										}}
-									/>
-								</span>
-								<span className="font-medium">{tool.name}</span>
-								<span className="text-[10px] text-[var(--color-text-secondary)]">{tool.version}</span>
-								<ExternalLink size={12} />
+									<span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[rgba(255,255,255,0.08)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
+										<img
+											src={tool.logo}
+											alt={`${tool.name} logo`}
+											className="absolute inset-0 h-full w-full object-contain p-0.5"
+											onError={(event) => {
+												event.currentTarget.style.display = "none";
+											}}
+										/>
+									</span>
+									<span className="font-medium">{tool.name}</span>
+									<span className="text-[10px] text-[var(--color-text-secondary)]">{tool.version}</span>
+									<ExternalLink size={12} />
 							</a>
 						))}
 					</div>
+					<div className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
+						Gateway 단일 진입 포트포워드 후 hosts 매핑 기준으로 각 OSS 도메인으로 접속하세요.
+					</div>
+					<div className="mt-3 flex justify-end">
+						<Button size="sm" variant="outline" type="button" onClick={() => setConnOpen(true)}>
+							접속정보 조회
+						</Button>
+					</div>
 				</div>
 			</div>
+
+			<Modal
+				open={connOpen}
+				onClose={() => setConnOpen(false)}
+				title="접속정보 조회"
+				wide
+				footer={(
+					<>
+						<Button variant="ghost" size="sm" type="button" onClick={handleCopyConnectionInfo}>
+							{connCopyState === "copied" ? "복사됨" : connCopyState === "failed" ? "복사 실패" : "전체 복사"}
+						</Button>
+						<Button variant="secondary" size="sm" type="button" onClick={() => setConnOpen(false)}>
+							닫기
+						</Button>
+					</>
+				)}
+			>
+				<div className="space-y-4 text-[13px]">
+					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[var(--color-text-secondary)]">
+						<span className="font-semibold text-[var(--color-text-primary)]">Access Domain:</span> {connectionInfo.accessDomain || "-"}
+					</div>
+
+					<div>
+						<div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">OSS Login</div>
+						<div className="space-y-2">
+							{launchTools.map((tool) => (
+								<div key={`conn-${tool.name}`} className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+									<div className="flex flex-wrap items-center justify-between gap-2">
+										<div className="font-semibold text-[var(--color-text-primary)]">{tool.name}</div>
+										<a
+											href={tool.url ?? undefined}
+											target="_blank"
+											rel="noreferrer"
+											onClick={(event) => {
+												if (!tool.url) event.preventDefault();
+											}}
+											className={cn("text-[12px] underline", tool.url ? "text-[#93c5fd]" : "pointer-events-none text-[var(--color-text-muted)]")}
+										>
+											{tool.url || "URL 없음"}
+										</a>
+									</div>
+									<div className="mt-1 text-[12px] text-[var(--color-text-secondary)]">{buildOssLoginHint(tool.name, connectionInfo)}</div>
+								</div>
+							))}
+						</div>
+					</div>
+
+					<div className="grid gap-3 md:grid-cols-2">
+						<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+							<div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Database</div>
+							<div className="space-y-1 text-[12px] text-[var(--color-text-secondary)]">
+								<div><strong className="text-[var(--color-text-primary)]">Mode:</strong> {connectionInfo.database.mode}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Engine:</strong> {connectionInfo.database.providerOrEngine}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Endpoint:</strong> {connectionInfo.database.endpoint}</div>
+								<div><strong className="text-[var(--color-text-primary)]">DB:</strong> {connectionInfo.database.resourceName}</div>
+								<div><strong className="text-[var(--color-text-primary)]">User:</strong> {connectionInfo.database.authId}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Secret:</strong> {connectionInfo.database.accessSecretRef} ({connectionInfo.database.authPasswordKey})</div>
+							</div>
+						</div>
+
+						<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+							<div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Object Storage</div>
+							<div className="space-y-1 text-[12px] text-[var(--color-text-secondary)]">
+								<div><strong className="text-[var(--color-text-primary)]">Mode:</strong> {connectionInfo.objectStorage.mode}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Provider:</strong> {connectionInfo.objectStorage.providerOrEngine}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Endpoint:</strong> {connectionInfo.objectStorage.endpoint}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Bucket:</strong> {connectionInfo.objectStorage.resourceName}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Access Key:</strong> {connectionInfo.objectStorage.authId}</div>
+								<div><strong className="text-[var(--color-text-primary)]">Secret:</strong> {connectionInfo.objectStorage.accessSecretRef} ({connectionInfo.objectStorage.authPasswordKey})</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</Modal>
 
 			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
 				<div className="mb-3 flex items-center gap-2">
@@ -912,30 +1172,15 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 					</span>
 				</div>
 				<div className="relative">
-					{topologyNodeCount > 1 && (
-						<svg
-							className="pointer-events-none absolute inset-x-0 top-[20px] hidden h-3 w-full xl:block"
-							viewBox="0 0 100 10"
-							preserveAspectRatio="none"
-							aria-hidden="true"
-						>
-							<polyline
-								points={Array.from({ length: topologyNodeCount }, (_, idx) => {
-									const x = ((idx + 0.5) / topologySlots) * 100;
-									return `${x},5`;
-								}).join(" ")}
-								fill="none"
-								stroke="rgba(148,163,184,0.55)"
-								strokeWidth="1.3"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							/>
-						</svg>
-					)}
-					<div className="grid gap-3 xl:grid-cols-6">
-						{runtimeNodes.map((node) => (
+					<div className="relative z-10 grid gap-3 xl:grid-cols-6">
+						{runtimeNodes.map((node, idx) => (
 							<div key={node.category} className="relative rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]">
-								<div className="mb-2 flex items-center justify-between gap-2">
+								{idx < runtimeNodes.length - 1 && (
+									<div className="pointer-events-none absolute right-[-16px] top-3 hidden h-[2px] w-8 bg-gradient-to-r from-[rgba(148,163,184,0.25)] to-[rgba(148,163,184,0.62)] xl:block" aria-hidden="true">
+										<div className="absolute right-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[rgba(148,163,184,0.72)]" />
+									</div>
+								)}
+								<div className="mb-2 flex items-center gap-2">
 									<div className="flex items-center gap-2">
 										<div className="h-6 w-6 rounded-full ring-2 ring-white/10" style={{ backgroundColor: node.color }} />
 										<div className="text-[12px] font-semibold text-[var(--color-text-primary)]">{node.category}</div>

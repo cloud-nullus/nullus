@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
 import type {
+  ClusterStatus,
   CompatibilityMatrix,
   CompatibilityValidationResult,
   CreateStackRequest,
@@ -37,7 +38,14 @@ export type {
 export interface ClusterSummary {
   id: string
   name: string
-  connection_status: string
+  connection_status: ClusterStatus
+}
+
+interface RawClusterSummary {
+  id: string
+  name: string
+  connection_status?: ClusterStatus
+  status?: ClusterStatus
 }
 
 const queryKeys = {
@@ -119,6 +127,7 @@ interface RawStackItem {
   clusterId?: string
   cluster_name?: string
   clusterName?: string
+  namespace?: string
   state?: string
   status?: string
   created_at?: string
@@ -264,6 +273,7 @@ const normalizeStackItem = (raw: RawStackItem): Stack => {
     templateName: raw.template_name ?? raw.templateName ?? raw.template_id ?? '',
     clusterId: raw.cluster_id ?? raw.clusterId ?? '',
     clusterName: raw.cluster_name ?? raw.clusterName ?? raw.cluster_id ?? '',
+    namespace: raw.namespace ?? 'nullus',
     status: status as Stack['status'],
     createdAt: raw.created_at ?? raw.createdAt ?? '',
     updatedAt: raw.updated_at ?? raw.updatedAt ?? '',
@@ -443,7 +453,13 @@ const stackApiCalls = {
     api.delete<void>(`/stacks/templates/${id}`).then((r) => r.data),
 
   getClusters: () =>
-    api.get<{ items: ClusterSummary[] }>('/admin/clusters').then((r) => r.data?.items ?? []),
+    api.get<{ items: RawClusterSummary[] }>('/admin/clusters').then((r) =>
+      (r.data?.items ?? []).map((cluster) => ({
+        id: cluster.id,
+        name: cluster.name,
+        connection_status: cluster.connection_status ?? cluster.status ?? 'pending',
+      }))
+    ),
 
   deployStack: (stackId: string) =>
     api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
