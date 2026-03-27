@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -11,7 +12,14 @@ import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('ko-KR', {
+  if (!iso) {
+    return '-'
+  }
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return '-'
+  }
+  return date.toLocaleString('ko-KR', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -24,7 +32,10 @@ function formatDate(iso: string) {
 export function StackHistoryPage() {
    const { data: stacksData } = useStacks()
    const stacks = stacksData?.items ?? []
-   const [stackId, setStackId] = useState(stacks[0]?.id ?? '')
+   const navigate = useNavigate()
+   const { stackId: routeStackId } = useParams<{ stackId?: string }>()
+   const isKnownStackId = !!routeStackId && stacks.some((stack) => stack.id === routeStackId)
+   const stackId = isKnownStackId ? routeStackId : (stacks[0]?.id ?? '')
    const [expandedId, setExpandedId] = useState<string | null>(null)
    const [search, setSearch] = useState('')
    const [compareOpen, setCompareOpen] = useState(false)
@@ -35,10 +46,13 @@ export function StackHistoryPage() {
    const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
   useEffect(() => {
-    if (stacks.length > 0 && !stackId) {
-      setStackId(stacks[0].id)
+    if (stacks.length === 0) {
+      return
     }
-  }, [stacks, stackId])
+    if (!routeStackId || !stacks.some((stack) => stack.id === routeStackId)) {
+      navigate(`/stack/history/${stacks[0].id}`, { replace: true })
+    }
+  }, [stacks, routeStackId, navigate])
 
   useEffect(() => {
     setVersionA(0)
@@ -203,6 +217,24 @@ export function StackHistoryPage() {
           <GitCompare size={15} />
           Compare Versions
         </Button>
+      </div>
+
+      <div className="mb-4 max-w-[360px]">
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+          Stack
+        </label>
+        <NativeSelect
+          value={stackId}
+          onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
+          disabled={stacks.length === 0}
+          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+        >
+          {stacks.map((stack) => (
+            <option key={stack.id} value={stack.id}>
+              {stack.name}
+            </option>
+          ))}
+        </NativeSelect>
       </div>
 
       <DataTable

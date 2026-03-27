@@ -116,6 +116,74 @@ func TestScenario2_StackDeployFlow(t *testing.T) {
 	assert.NotEmpty(t, statusData["state"])
 }
 
+func TestScenario2b_StackListDeployAndTemplateDomainAccess(t *testing.T) {
+	stackName := "list-deploy-domain-stack"
+
+	status, resp := doRequest(t, http.MethodPost, "/api/v1/stacks", map[string]any{
+		"name":           stackName,
+		"cluster_id":     "cluster-001",
+		"golden_path_id": "gitlab-argocd-v1",
+		"config": map[string]any{
+			"artifacts": map[string]any{
+				"package_registry":   map[string]any{"name": "", "version": "", "enabled": false},
+				"source_repository":  map[string]any{"name": "", "version": "", "enabled": false},
+				"container_registry": map[string]any{"name": "", "version": "", "enabled": false},
+				"storage_backend":    map[string]any{"name": "", "version": "", "enabled": false},
+			},
+			"pipeline": map[string]any{
+				"ci_platform": map[string]any{"name": "", "version": "", "enabled": false},
+				"cd_tool":     map[string]any{"name": "", "version": "", "enabled": false},
+			},
+			"monitoring": map[string]any{
+				"collection":    map[string]any{"name": "", "version": "", "enabled": false},
+				"visualization": map[string]any{"name": "", "version": "", "enabled": false},
+			},
+			"logging": map[string]any{
+				"collection": map[string]any{"name": "", "version": "", "enabled": false},
+				"search":     map[string]any{"name": "", "version": "", "enabled": false},
+			},
+		},
+	})
+	assertStatus(t, status, http.StatusCreated)
+	stackData := parseData(t, resp)
+	stackID := getString(t, stackData, "id")
+
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/stacks", nil)
+	assertStatus(t, status, http.StatusOK)
+	items := parseDataSlice(t, resp)
+	found := false
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if id, ok := m["id"].(string); ok && id == stackID {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "created stack should be visible from stack list data source")
+
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/stacks/"+stackID, nil)
+	assertStatus(t, status, http.StatusOK)
+	full := parseData(t, resp)
+	config, ok := full["config"].(map[string]any)
+	require.True(t, ok)
+	accessDomain, ok := config["access_domain"].(string)
+	require.True(t, ok)
+	assert.Equal(t, stackName+".internal", accessDomain)
+
+	status, resp = doRequest(t, http.MethodPost, "/api/v1/stacks/"+stackID+"/deploy", nil)
+	assertStatus(t, status, http.StatusAccepted)
+	require.NotNil(t, resp)
+
+	status, resp = doRequest(t, http.MethodGet, "/api/v1/stacks/"+stackID+"/status", nil)
+	assertStatus(t, status, http.StatusOK)
+	statusData := parseData(t, resp)
+	assert.Equal(t, stackID, statusData["stack_id"])
+	assert.NotEmpty(t, statusData["state"])
+}
+
 // Scenario 3: 호환성 매트릭스
 func TestScenario3_CompatibilityMatrix(t *testing.T) {
 	// 1. GET /api/v1/stacks/compatibility → 200

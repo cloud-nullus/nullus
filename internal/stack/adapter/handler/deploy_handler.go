@@ -96,6 +96,9 @@ func (h *DeployHandler) Status(c echo.Context) error {
 	if err != nil {
 		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
 	}
+	if stack == nil {
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", "stack not found")
+	}
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"data": statusResponse{
@@ -132,18 +135,27 @@ type wsLogMessage struct {
 }
 
 var stepProgress = map[string]int{
-	"validate":                5,
-	"installing_cert_manager": 15,
-	"installing_minio":        25,
-	"installing_gitlab":       40,
-	"installing_argocd":       55,
-	"installing_runner":       65,
-	"installing_prometheus":   75,
-	"installing_grafana":      85,
-	"integration_check":       90,
-	"configuring":             93,
-	"health_check":            96,
-	"completed":               100,
+	"validate":                 5,
+	"installing_cert_manager":  15,
+	"installing_minio":         25,
+	"installing_gitlab":        40,
+	"installing_argocd":        55,
+	"installing_runner":        65,
+	"installing_prometheus":    75,
+	"installing_grafana":       85,
+	"installing_logging":       87,
+	"installing_log_search":    88,
+	"installing_opentelemetry": 89,
+	"installing_gateway":       90,
+	"integration_check":        90,
+	"configuring":              93,
+	"health_check":             96,
+	"completed":                100,
+	"deleting_started":         5,
+	"deleting_release":         45,
+	"deleting_manifest":        75,
+	"deleted":                  100,
+	"delete_failed":            100,
 }
 
 func (h *DeployHandler) StreamLogs(c echo.Context) error {
@@ -205,10 +217,10 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 				Progress:  progress,
 			}
 
-			if entry.Step == "completed" {
+			if entry.Step == "completed" || entry.Step == "deleted" {
 				msg.Type = "status"
 				msg.Status = "success"
-			} else if entry.Step == "failed" || entry.Step == "rolling_back" || entry.Step == "rolled_back" {
+			} else if entry.Step == "failed" || entry.Step == "rolling_back" || entry.Step == "rolled_back" || entry.Step == "delete_failed" {
 				msg.Type = "status"
 				msg.Status = "failed"
 			}

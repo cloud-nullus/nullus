@@ -12,7 +12,7 @@ import {
   useRemoveMember,
   useUpdateOrganization,
 } from '../api/admin-api'
-import type { CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
+import type { ClusterStatus, CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -32,6 +32,15 @@ const ROLE_BADGE: Record<MemberRole, { className: string }> = {
   admin: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
   devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
   developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
+}
+
+const CLUSTER_STATUS_BADGE: Record<ClusterStatus, { className: string; label: string }> = {
+  connected: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Connected' },
+  pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Pending' },
+  error: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Error' },
+  inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]', label: 'Inactive' },
+  unreachable: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Unreachable' },
+  auth_failed: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Auth Failed' },
 }
 
 const domainRegex = /^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
@@ -336,9 +345,7 @@ export function OrganizationPage() {
                   <div className="grid grid-cols-2 gap-2.5">
                     {allClusters.map((cluster) => {
                       const checked = clusterAccessScope.includes(cluster.name)
-                      const statusClassName = cluster.status === 'connected'
-                        ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
-                        : 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]'
+                      const statusBadge = CLUSTER_STATUS_BADGE[cluster.status]
 
                       return (
                         <label
@@ -363,8 +370,8 @@ export function OrganizationPage() {
                               </div>
                               <div className="text-xs text-[var(--color-text-secondary)]">{cluster.type.toUpperCase()}</div>
                             </div>
-                            <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', statusClassName)}>
-                              {cluster.status}
+                            <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', statusBadge.className)}>
+                              {statusBadge.label}
                             </span>
                           </div>
                         </label>

@@ -2,18 +2,21 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/cloud-nullus/draft/internal/admin/domain"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // mockClusterRepo is an in-memory mock of port.ClusterRepository.
 type mockClusterRepo struct {
-	clusters map[string]*domain.Cluster
-	kubeconf map[string][]byte
+	clusters  map[string]*domain.Cluster
+	kubeconf  map[string][]byte
+	deleteErr error
 }
 
 func newMockClusterRepo() *mockClusterRepo {
@@ -48,6 +51,9 @@ func (m *mockClusterRepo) Update(_ context.Context, cluster *domain.Cluster) err
 }
 
 func (m *mockClusterRepo) Delete(_ context.Context, id string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
 	delete(m.clusters, id)
 	return nil
 }
@@ -154,6 +160,25 @@ func TestClusterUseCase_DeleteCluster_Success(t *testing.T) {
 
 	_, err = uc.GetCluster(context.Background(), created.ID)
 	require.Error(t, err)
+}
+
+func TestClusterUseCase_DeleteCluster_InUseConflict(t *testing.T) {
+	repo := newMockClusterRepo()
+	repo.deleteErr = &pgconn.PgError{Code: "23503"}
+	uc := NewClusterUseCase(repo)
+
+	created, err := uc.RegisterCluster(context.Background(), RegisterClusterInput{
+		Name: "in-use", Type: domain.ClusterTypePipeline, OrgID: "org_001",
+	})
+	require.NoError(t, err)
+
+	err = uc.DeleteCluster(context.Background(), created.ID)
+	require.Error(t, err)
+
+	var appErr *shareddomain.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, "CLUSTER_IN_USE", appErr.Code)
+	assert.Equal(t, 409, appErr.HTTPStatus)
 }
 
 func TestClusterUseCase_VerifyCluster_Success(t *testing.T) {

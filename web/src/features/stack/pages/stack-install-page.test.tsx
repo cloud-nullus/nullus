@@ -160,6 +160,50 @@ describe('StackInstallPage', () => {
     expect(editor.value).toContain('apiVersion: gateway.networking.k8s.io/v1')
     expect(editor.value).toContain('nullus.io/type: gateway')
     expect(editor.value).toContain('.internal')
+    expect(editor.value).toContain('name: gitlab-webservice-default')
+    expect(editor.value).toContain('port: 8181')
+    expect(editor.value).toContain('name: argo-cd-argocd-server')
+    expect(editor.value).toContain('name: nullus-minio-console')
+    expect(editor.value).toContain('port: 9001')
+    expect(editor.value).toContain('name: opensearch-cluster-master')
+    expect(editor.value).toContain('port: 9200')
+    expect(editor.value).toContain('kind: BackendTLSPolicy')
+    expect(editor.value).toContain('name: opensearch-backend-tls')
+    expect(editor.value).toContain('hostname: opensearch-cluster-master.qa-namespace.svc.cluster.local')
+    expect(editor.value).toContain('subjectAltNames:')
+    expect(editor.value).toContain('wellKnownCACertificates: System')
+    expect(editor.value).toContain('name: grafana-svc')
+    expect(editor.value).toContain('name: prometheus-svc')
+  })
+
+  it('generates grafana and prometheus service target ports that match container defaults', () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Grafana/i }))
+    const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+    expect(editor.value).toContain('containerPort: 3000')
+    expect(editor.value).toContain('targetPort: 3000')
+
+    fireEvent.click(screen.getByRole('button', { name: /Prometheus/i }))
+    expect(editor.value).toContain('containerPort: 9090')
+    expect(editor.value).toContain('targetPort: 9090')
+  })
+
+  it('renders a runnable tempo manifest with config and service ports', () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
+    fireEvent.click(screen.getByRole('button', { name: /Tempo/i }))
+
+    const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+    expect(editor.value).toContain('kind: ConfigMap')
+    expect(editor.value).toContain('name: tempo-config')
+    expect(editor.value).toContain('-config.file=/etc/tempo/tempo.yaml')
+    expect(editor.value).toContain('backend: local')
+    expect(editor.value).toContain('name: tempo-svc')
+    expect(editor.value).toContain('port: 3200')
   })
 
   it('bundles gitlab-related selections into one install file with merged roles', () => {
@@ -226,12 +270,13 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/최종 접근 가이드/)).toBeInTheDocument()
   })
 
-  it('enables access domain TLS and reflects HTTPS listener/openssl script', () => {
+  it('enables access domain TLS and reflects HTTPS listener/cert-manager script', () => {
     renderWithProviders(<StackInstallPage />)
 
     fireEvent.click(screen.getByLabelText(/Access Domain TLS 인증서 적용/))
     fireEvent.change(screen.getByLabelText('TLS Secret Name'), { target: { value: 'corp-wildcard-tls' } })
     fireEvent.change(screen.getByLabelText('TLS Secret Namespace'), { target: { value: 'kube-system' } })
+    fireEvent.change(screen.getByLabelText('cert-manager Issuer Name'), { target: { value: 'corp-cluster-issuer' } })
 
     fillRequiredSelectionsForConfigTabs()
     fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
@@ -244,8 +289,9 @@ describe('StackInstallPage', () => {
     expect(gatewayEditor.value).toContain('name: corp-wildcard-tls')
 
     fireEvent.click(screen.getByRole('button', { name: 'Preview Deploy Script' }))
-    expect(screen.getByText(/openssl req -x509 -nodes -days 3650 -newkey rsa:2048/)).toBeInTheDocument()
-    expect(screen.getByText(/kubectl create secret tls "corp-wildcard-tls"/)).toBeInTheDocument()
+    expect(screen.getAllByText(/apiVersion: cert-manager.io\/v1/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/kind: Certificate/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/name: corp-cluster-issuer/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/kind: ReferenceGrant/).length).toBeGreaterThan(0)
   })
 

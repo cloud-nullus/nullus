@@ -103,6 +103,7 @@ func main() {
 		func(kubeconfig []byte) stackport.HelmInstaller {
 			return stackhelm.NewHelmInstaller(kubeconfig)
 		},
+		memStreamer,
 	)
 	addToolsUC := stackuc.NewAddToolsUseCase(pgStackRepo)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)
@@ -111,9 +112,11 @@ func main() {
 	calculateResourcesUC := stackuc.NewCalculateResources()
 	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
 	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
+	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
+	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, manageHistoryUC, auditLogger)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
@@ -122,9 +125,8 @@ func main() {
 	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
 	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
 
-	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
-	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
+	stackMonitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
 
 	// CI/CD: postgres repos
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
@@ -222,6 +224,7 @@ func main() {
 	exportHandler.RegisterRoutes(v1)
 	compatHandler.RegisterRoutes(stacks)
 	historyHandler.RegisterRoutes(stacks)
+	stackMonitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)

@@ -19,8 +19,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useSaveDraft, useClusters, useResourceDefaults, toCreateStackBody } from '../api/stack-api'
-import { api } from '../../../lib/api'
+import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -36,6 +35,57 @@ interface ToolOption {
   id: string
   label: string
   description: string
+}
+
+function toDeployErrorMessage(error: unknown): string {
+  let code = ''
+  let backendMessage = ''
+  let status: number | undefined
+  let genericMessage = ''
+
+  if (typeof error === 'object' && error !== null) {
+    const record = error as Record<string, unknown>
+    if (typeof record.message === 'string') {
+      genericMessage = record.message
+    }
+    if (typeof record.status === 'number') {
+      status = record.status
+    }
+
+    const details = record.details
+    if (typeof details === 'object' && details !== null) {
+      const detailRecord = details as Record<string, unknown>
+      const nestedError = detailRecord.error
+      if (typeof nestedError === 'object' && nestedError !== null) {
+        const nested = nestedError as Record<string, unknown>
+        if (typeof nested.code === 'string') {
+          code = nested.code
+        }
+        if (typeof nested.message === 'string') {
+          backendMessage = nested.message
+        }
+        if (typeof nested.http_status === 'number') {
+          status = nested.http_status
+        }
+      }
+    }
+  }
+
+  const reason = backendMessage || genericMessage || 'unknown backend error'
+  const prefix = code ? `[${code}] ` : ''
+  const statusSuffix = status ? ` (HTTP ${status})` : ''
+  return `배포 작업 등록 실패: ${prefix}${reason}${statusSuffix}`
+}
+
+function formatConnectionStatusLabel(status: string): string {
+  if (!status) {
+    return 'Unknown'
+  }
+  return status
+    .split('_')
+    .filter(Boolean)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(' ')
 }
 
 const ARTIFACTS_OPTIONS: Record<string, ToolOption[]> = {
@@ -88,6 +138,7 @@ const MONITORING_OPTIONS: Record<string, ToolOption[]> = {
   traceLayer: [
     { id: 'tempo', label: 'Tempo', description: '분산 추적 백엔드' },
     { id: 'jaeger', label: 'Jaeger', description: '분산 추적 및 트레이스 분석' },
+    { id: 'opentelemetry-collector', label: 'OpenTelemetry Collector', description: 'OTLP 수집/처리 파이프라인' },
   ],
 }
 
@@ -179,6 +230,10 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   'opensearch-dashboards': { repoUrl: 'https://opensearch-project.github.io/helm-charts', chartName: 'opensearch/opensearch-dashboards' },
   tempo: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/tempo' },
   jaeger: { repoUrl: 'https://jaegertracing.github.io/helm-charts', chartName: 'jaegertracing/jaeger' },
+  'opentelemetry-collector': {
+    repoUrl: 'https://open-telemetry.github.io/opentelemetry-helm-charts',
+    chartName: 'open-telemetry/opentelemetry-collector',
+  },
   opensearch: { repoUrl: 'https://opensearch-project.github.io/helm-charts', chartName: 'opensearch/opensearch' },
   elasticsearch: { repoUrl: 'https://helm.elastic.co', chartName: 'elastic/elasticsearch' },
   loki: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/loki-stack' },
@@ -246,6 +301,47 @@ type ManifestToolEntry = {
   sourceVersions: string[]
 }
 
+function normalizeAccessDomain(domain: string): string {
+  return domain.trim().replace(/\.intenral$/i, '.internal')
+}
+
+function buildOpenSearchBackendTLSPolicy(namespace: string, stackName: string, accessDomain: string): Record<string, unknown> {
+  const serviceName = 'opensearch-cluster-master'
+  const serviceHost = `${serviceName}.${namespace}.svc.cluster.local`
+  const routeHost = `opensearch.${accessDomain}`
+
+  return {
+    apiVersion: 'gateway.networking.k8s.io/v1',
+    kind: 'BackendTLSPolicy',
+    metadata: {
+      name: 'opensearch-backend-tls',
+      namespace,
+      labels: {
+        'nullus.io/stack-name': stackName,
+        'nullus.io/type': 'gateway-backend-tls',
+      },
+    },
+    spec: {
+      targetRefs: [
+        {
+          group: '',
+          kind: 'Service',
+          name: serviceName,
+        },
+      ],
+      validation: {
+        hostname: serviceHost,
+        subjectAltNames: [
+          { type: 'Hostname', value: serviceHost },
+          { type: 'Hostname', value: serviceName },
+          { type: 'Hostname', value: routeHost },
+        ],
+        wellKnownCACertificates: 'System',
+      },
+    },
+  }
+}
+
 type ToolManifestResourceSpec = {
   requests: { cpu: number; memory: string; storage: string }
   limits: { cpu: number; memory: string; storage: string }
@@ -300,6 +396,17 @@ const TOOL_INSTALL_METHOD: Record<string, ManifestInstallType> = {
 const TOOL_BUNDLE_CANONICAL: Record<string, string> = {
   'gitlab-registry': 'gitlab',
   'gitlab-ci': 'gitlab',
+  'argo-cd': 'argocd',
+  'opensearch-dashboards': 'opensearch',
+}
+
+const TOOL_DEFAULT_IMAGE_REPOSITORY: Record<string, string> = {
+  prometheus: 'quay.io/prometheus/prometheus',
+  grafana: 'docker.io/grafana/grafana',
+  loki: 'docker.io/grafana/loki',
+  tempo: 'docker.io/grafana/tempo',
+  jaeger: 'docker.io/jaegertracing/all-in-one',
+  'opentelemetry-collector': 'docker.io/otel/opentelemetry-collector-k8s',
 }
 
 function getManifestBundleId(toolId: string): string {
@@ -578,6 +685,47 @@ function getInstallType(toolId: string): ManifestInstallType {
   return TOOL_HELM_META[toolId] ? 'helm' : 'yaml'
 }
 
+function gatewayBackendForTool(toolId: string): { serviceName: string; port: number } {
+  switch (toolId) {
+    case 'gitlab':
+      return { serviceName: 'gitlab-webservice-default', port: 8181 }
+    case 'argo-cd':
+    case 'argocd':
+      return { serviceName: 'argo-cd-argocd-server', port: 80 }
+    case 'grafana':
+      return { serviceName: 'grafana-svc', port: 80 }
+    case 'prometheus':
+      return { serviceName: 'prometheus-svc', port: 80 }
+    case 'minio':
+      return { serviceName: 'nullus-minio-console', port: 9001 }
+    case 'opensearch':
+      return { serviceName: 'opensearch-cluster-master', port: 9200 }
+    case 'tempo':
+      return { serviceName: 'tempo-svc', port: 3200 }
+    default:
+      return { serviceName: `${toolId}-svc`, port: 80 }
+  }
+}
+
+function workloadContainerPortForTool(toolId: string): number {
+  switch (toolId) {
+    case 'grafana':
+      return 3000
+    case 'prometheus':
+      return 9090
+    case 'loki':
+      return 3100
+    default:
+      return 8080
+  }
+}
+
+function resolveToolImage(toolId: string, toolVersion: string): string {
+  const repository = TOOL_DEFAULT_IMAGE_REPOSITORY[toolId] ?? `ghcr.io/cloud-nullus/${toolId}`
+  const version = toolVersion || getToolAppVersion(toolId)
+  return `${repository}:${version}`
+}
+
 function buildToolManifest(
   toolId: string,
   toolLabelValue: string,
@@ -653,6 +801,127 @@ function buildToolManifest(
     return YAML.stringify(valuesYaml, { indent: 2, lineWidth: 0 })
   }
 
+  if (toolId === 'tempo') {
+    const configMap = {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: {
+        name: 'tempo-config',
+        namespace,
+        labels: {
+          app: toolId,
+          'nullus.io/stack-name': draft.stackName,
+          'nullus.io/tool-id': toolId,
+        },
+      },
+      data: {
+        'tempo.yaml': [
+          'server:',
+          '  http_listen_port: 3200',
+          'distributor:',
+          '  receivers:',
+          '    otlp:',
+          '      protocols:',
+          '        grpc:',
+          '          endpoint: 0.0.0.0:4317',
+          '        http:',
+          '          endpoint: 0.0.0.0:4318',
+          'ingester:',
+          '  trace_idle_period: 10s',
+          '  max_block_duration: 5m',
+          'compactor:',
+          '  compaction:',
+          '    block_retention: 24h',
+          'storage:',
+          '  trace:',
+          '    backend: local',
+          '    local:',
+          '      path: /var/tempo/traces',
+          '    wal:',
+          '      path: /var/tempo/wal',
+        ].join('\n'),
+      },
+    }
+
+    const deployment = {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: {
+        name: toolId,
+        namespace,
+        labels: {
+          app: toolId,
+          'nullus.io/stack-name': draft.stackName,
+          'nullus.io/cluster-id': draft.clusterId ?? '',
+          'nullus.io/tool-id': toolId,
+        },
+      },
+      spec: {
+        replicas: 1,
+        selector: { matchLabels: { app: toolId } },
+        template: {
+          metadata: { labels: { app: toolId } },
+          spec: {
+            containers: [
+              {
+                name: toolId,
+                image: resolveToolImage(toolId, toolVersion),
+                args: ['-config.file=/etc/tempo/tempo.yaml'],
+                ports: [
+                  { name: 'http', containerPort: 3200 },
+                  { name: 'otlp-grpc', containerPort: 4317 },
+                  { name: 'otlp-http', containerPort: 4318 },
+                ],
+                volumeMounts: [
+                  { name: 'tempo-config', mountPath: '/etc/tempo' },
+                  { name: 'tempo-data', mountPath: '/var/tempo' },
+                ],
+                resources: {
+                  requests: {
+                    cpu: String(resources.cpuRequest),
+                    memory: resourcesSpec.requests.memory,
+                  },
+                  limits: {
+                    cpu: String(resources.cpuLimit),
+                    memory: resourcesSpec.limits.memory,
+                  },
+                },
+              },
+            ],
+            volumes: [
+              { name: 'tempo-config', configMap: { name: 'tempo-config' } },
+              { name: 'tempo-data', emptyDir: {} },
+            ],
+          },
+        },
+      },
+    }
+
+    const service = {
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: {
+        name: 'tempo-svc',
+        namespace,
+        labels: { app: toolId },
+      },
+      spec: {
+        selector: { app: toolId },
+        ports: [
+          { name: 'http', port: 3200, targetPort: 3200 },
+          { name: 'otlp-grpc', port: 4317, targetPort: 4317 },
+          { name: 'otlp-http', port: 4318, targetPort: 4318 },
+        ],
+      },
+    }
+
+    return [
+      YAML.stringify(configMap, { indent: 2, lineWidth: 0 }),
+      YAML.stringify(deployment, { indent: 2, lineWidth: 0 }),
+      YAML.stringify(service, { indent: 2, lineWidth: 0 }),
+    ].join('\n---\n')
+  }
+
   const deployment = {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
@@ -675,7 +944,8 @@ function buildToolManifest(
           containers: [
             {
               name: toolId,
-              image: `ghcr.io/cloud-nullus/${toolId}:${toolVersion || getToolAppVersion(toolId)}`,
+              image: resolveToolImage(toolId, toolVersion),
+              ports: [{ name: 'http', containerPort: workloadContainerPortForTool(toolId) }],
               resources: {
                 requests: {
                   cpu: String(resources.cpuRequest),
@@ -703,7 +973,7 @@ function buildToolManifest(
     },
     spec: {
       selector: { app: toolId },
-      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
+      ports: [{ name: 'http', port: 80, targetPort: workloadContainerPortForTool(toolId) }],
     },
   }
 
@@ -714,32 +984,38 @@ function buildToolManifest(
 function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestToolEntry[]): string {
   const namespace = draft.namespace.trim() || 'nullus'
   const stackName = draft.stackName || 'nullus-stack'
-  const accessDomain = draft.accessDomain || `${stackName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${stackName}.internal`)
   const gatewayName = `${stackName}-gateway`
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim()
   const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim()
+  const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
   const requiresReferenceGrant = tlsEnabled && tlsSecretName.length > 0 && tlsSecretNamespace.length > 0 && tlsSecretNamespace !== namespace
 
   const rules = manifestTools
     .filter((tool) => tool.toolId !== GATEWAY_MANIFEST_ID)
-    .map((tool) => ({
-      host: `${tool.toolId}.${accessDomain}`,
-      http: {
-        paths: [
-          {
-            path: '/',
-            pathType: 'Prefix',
-            backend: {
-              service: {
-                name: `${tool.toolId}-svc`,
-                port: { number: 80 },
+    .map((tool) => {
+      const backend = gatewayBackendForTool(tool.toolId)
+      return {
+        host: `${tool.toolId}.${accessDomain}`,
+        http: {
+          paths: [
+            {
+              path: '/',
+              pathType: 'Prefix',
+              backend: {
+                service: {
+                  name: backend.serviceName,
+                  port: { number: backend.port },
+                },
               },
             },
-          },
-        ],
-      },
-    }))
+          ],
+        },
+      }
+    })
+
+  const includesOpenSearch = manifestTools.some((tool) => tool.toolId === 'opensearch')
 
   const gateway = {
     apiVersion: 'gateway.networking.k8s.io/v1',
@@ -753,7 +1029,7 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
       },
     },
     spec: {
-      gatewayClassName: 'nginx',
+      gatewayClassName: 'envoy',
       listeners: [
         {
           name: 'http',
@@ -797,7 +1073,9 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
 
   const httpRoutes = rules.map((rule) => {
     const host = rule.host
-    const backendServiceName = rule.http.paths[0]?.backend?.service?.name
+    const backendService = rule.http.paths[0]?.backend?.service
+    const backendServiceName = backendService?.name
+    const backendServicePort = backendService?.port?.number ?? 80
 
     return {
       apiVersion: 'gateway.networking.k8s.io/v1',
@@ -830,7 +1108,7 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
             backendRefs: [
               {
                 name: backendServiceName,
-                port: 80,
+                port: backendServicePort,
               },
             ],
           },
@@ -870,9 +1148,39 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
       }
     : null
 
+  const certificate = tlsEnabled && tlsSecretName
+    ? {
+        apiVersion: 'cert-manager.io/v1',
+        kind: 'Certificate',
+        metadata: {
+          name: `${stackName}-wildcard-cert`,
+          namespace: tlsSecretNamespace || namespace,
+          labels: {
+            'nullus.io/stack-name': stackName,
+            'nullus.io/type': 'gateway-certificate',
+          },
+        },
+        spec: {
+          secretName: tlsSecretName,
+          commonName: accessDomain,
+          dnsNames: [accessDomain, `*.${accessDomain}`],
+          issuerRef: {
+            name: tlsIssuerName,
+            kind: 'ClusterIssuer',
+          },
+        },
+      }
+    : null
+
   const gatewayDocuments = [
     YAML.stringify(gateway, { indent: 2, lineWidth: 0 }),
     ...httpRoutes.map((route) => YAML.stringify(route, { indent: 2, lineWidth: 0 })),
+    ...(includesOpenSearch
+      ? [
+          YAML.stringify(buildOpenSearchBackendTLSPolicy(namespace, stackName, accessDomain), { indent: 2, lineWidth: 0 }),
+        ]
+      : []),
+    ...(certificate ? [YAML.stringify(certificate, { indent: 2, lineWidth: 0 })] : []),
     ...(referenceGrant ? [YAML.stringify(referenceGrant, { indent: 2, lineWidth: 0 })] : []),
   ]
 
@@ -886,11 +1194,12 @@ function createDeployScript(
 ): string {
   const stackName = draft.stackName || 'nullus-stack'
   const namespace = draft.namespace.trim() || 'nullus'
-  const accessDomain = draft.accessDomain || `${stackName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${stackName}.internal`)
   const clusterContext = draft.clusterId ?? ''
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${stackName}-wildcard-tls`
   const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || namespace
+  const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
 
   const deployBlocks = manifestTools.flatMap((tool, index) => {
     const blockHeader = [`# ${index + 1}. ${toolLabel(tool.toolId)} (${tool.installType.toUpperCase()})`, `# roles: ${tool.roles.join(', ')}`]
@@ -951,30 +1260,27 @@ function createDeployScript(
     '',
     ...(tlsEnabled
       ? [
-          '# TLS (Wildcard certificate, 10 years) - internal/dev baseline',
-          `DOMAIN="${accessDomain}"`,
-          `SECRET_NAME="${tlsSecretName}"`,
-          `CERT_DIR=".nullus/certs"`,
-          'COUNTRY="KR"',
-          'STATE="Seoul"',
-          'CITY="Seoul"',
-          'ORG_NAME="Nullus"',
-          'OU_NAME="Platform"',
-          'mkdir -p "${CERT_DIR}"',
-          'openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \\',
-          '  -keyout "${CERT_DIR}/${DOMAIN}.key" \\',
-          '  -out "${CERT_DIR}/${DOMAIN}.crt" \\',
-          '  -subj "/C=${COUNTRY}/ST=${STATE}/L=${CITY}/O=${ORG_NAME}/OU=${OU_NAME}/CN=${DOMAIN}" \\',
-          '  -addext "subjectAltName = DNS:${DOMAIN},DNS:*.${DOMAIN}"',
-          'chmod 600 "${CERT_DIR}/${DOMAIN}.key"',
-          'chmod 644 "${CERT_DIR}/${DOMAIN}.crt"',
-          `kubectl create secret tls "${tlsSecretName}" \\`,
-          '  --cert="${CERT_DIR}/${DOMAIN}.crt" \\',
-          '  --key="${CERT_DIR}/${DOMAIN}.key" \\',
-          `  -n "${tlsSecretNamespace}" --dry-run=client -o yaml | kubectl apply -f -`,
+          '# TLS via cert-manager (manual openssl/secret creation is not required)',
+          `cat <<'NULLUS_TLS_CERT_EOF' > ".nullus/generated-manifests/${stackName}-tls-certificate.yaml"`,
+          'apiVersion: cert-manager.io/v1',
+          'kind: Certificate',
+          'metadata:',
+          `  name: ${stackName}-wildcard-cert`,
+          `  namespace: ${tlsSecretNamespace}`,
+          'spec:',
+          `  secretName: ${tlsSecretName}`,
+          `  commonName: ${accessDomain}`,
+          '  dnsNames:',
+          `    - ${accessDomain}`,
+          `    - *.${accessDomain}`,
+          '  issuerRef:',
+          `    name: ${tlsIssuerName}`,
+          '    kind: ClusterIssuer',
+          'NULLUS_TLS_CERT_EOF',
+          `kubectl apply -f ".nullus/generated-manifests/${stackName}-tls-certificate.yaml"`,
           ...(tlsSecretNamespace !== namespace
             ? [
-                '# If TLS Secret namespace differs from Gateway namespace, apply ReferenceGrant too.',
+              '# If TLS Secret namespace differs from Gateway namespace, apply ReferenceGrant too.',
                 `cat <<'NULLUS_TLS_REFGRANT_EOF' > ".nullus/generated-manifests/${stackName}-tls-reference-grant.yaml"`,
                 'apiVersion: gateway.networking.k8s.io/v1beta1',
                 'kind: ReferenceGrant',
@@ -1006,11 +1312,12 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
   const appName = draft.stackName || 'nullus-stack'
   const serviceName = `${appName}-svc`
   const gatewayNamespace = 'nullus-stack'
-  const accessDomain = draft.accessDomain || `${appName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${appName}.internal`)
   const gatewayName = `${appName}-gateway`
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${appName}-wildcard-tls`
   const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || gatewayNamespace
+  const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
   const requiresReferenceGrant = tlsEnabled && tlsSecretNamespace !== gatewayNamespace
 
   return {
@@ -1074,7 +1381,7 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       `  name: ${gatewayName}`,
       `  namespace: ${gatewayNamespace}`,
       'spec:',
-      '  gatewayClassName: nginx',
+      '  gatewayClassName: envoy',
       '  listeners:',
       '    - name: http',
       '      protocol: HTTP',
@@ -1098,6 +1405,22 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
             '      allowedRoutes:',
             '        namespaces:',
             '          from: Same',
+
+            '---',
+            'apiVersion: cert-manager.io/v1',
+            'kind: Certificate',
+            'metadata:',
+            `  name: ${appName}-wildcard-cert`,
+            `  namespace: ${tlsSecretNamespace}`,
+            'spec:',
+            `  secretName: ${tlsSecretName}`,
+            `  commonName: ${accessDomain}`,
+            '  dnsNames:',
+            `    - ${accessDomain}`,
+            `    - *.${accessDomain}`,
+            '  issuerRef:',
+            `    name: ${tlsIssuerName}`,
+            '    kind: ClusterIssuer',
           ]
         : []),
       '---',
@@ -1228,6 +1551,7 @@ export function StackInstallPage() {
     updateAccessDomainTls,
   } = useStackConfigStore()
   const createStack = useCreateStack()
+  const deployStack = useDeployStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
   const { data: clusters } = useClusters()
@@ -1244,6 +1568,7 @@ export function StackInstallPage() {
   const [storageValidationErrors, setStorageValidationErrors] = useState<StorageValidationErrors>({})
   const [tabGuardError, setTabGuardError] = useState<string | null>(null)
   const [manifestDraftByTool, setManifestDraftByTool] = useState<Record<string, string>>({})
+  const [manifestOverridesByTool, setManifestOverridesByTool] = useState<Record<string, string>>({})
   const [manifestErrorsByTool, setManifestErrorsByTool] = useState<Record<string, string>>({})
   const [activeManifestTool, setActiveManifestTool] = useState<string | null>(null)
   const [dryRunExecutedAt, setDryRunExecutedAt] = useState<string | null>(null)
@@ -1528,6 +1853,31 @@ export function StackInstallPage() {
   const activeManifestInfo = resolvedActiveManifestTool
     ? allManifestTools.find((tool) => tool.toolId === resolvedActiveManifestTool) ?? null
     : null
+  const manifestValidationErrorCount = Object.keys(manifestErrorsByTool).length
+  const hasManifestValidationError = manifestValidationErrorCount > 0
+  const validManifestToolIds = new Set(allManifestTools.map((tool) => tool.toolId))
+  const yamlOverridesPayload = allManifestTools.reduce<Record<string, string>>((acc, tool) => {
+    if (tool.installType !== 'yaml') {
+      return acc
+    }
+
+    const overridden = manifestOverridesByTool[tool.toolId]
+    const candidate = overridden && overridden.trim() ? overridden : defaultManifestByTool[tool.toolId]
+    if (!candidate || !candidate.trim()) {
+      return acc
+    }
+
+    acc[tool.toolId] = candidate
+    return acc
+  }, {})
+
+  Object.entries(manifestOverridesByTool).forEach(([toolId, yamlText]) => {
+    const trimmed = yamlText.trim()
+    if (!trimmed || !validManifestToolIds.has(toolId)) {
+      return
+    }
+    yamlOverridesPayload[toolId] = yamlText
+  })
 
   const deployScript = createDeployScript(draft, allManifestTools, defaultManifestByTool)
 
@@ -1558,7 +1908,7 @@ export function StackInstallPage() {
       detail: effectiveNamespace ? `namespace: ${effectiveNamespace}` : 'Namespace가 비어 있습니다.',
     })
 
-    const accessDomain = draft.accessDomain || `${draft.stackName}.internal`
+  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${draft.stackName}.internal`)
     checks.push({
       id: 'accessDomain',
       title: 'Access domain 규칙',
@@ -1571,6 +1921,7 @@ export function StackInstallPage() {
     const tlsConfig = draft.accessDomainTls
     const tlsSecretName = tlsConfig.secretName.trim()
     const tlsSecretNamespace = tlsConfig.secretNamespace.trim()
+    const tlsIssuerName = tlsConfig.issuerName.trim()
     if (!tlsConfig.enabled) {
       checks.push({
         id: 'gatewayTls',
@@ -1578,12 +1929,12 @@ export function StackInstallPage() {
         status: 'warn',
         detail: '현재 자동 생성 Gateway는 HTTP(80) 기본값입니다. 운영 환경에서는 Access Domain TLS 인증서 적용을 권장합니다.',
       })
-    } else if (!tlsSecretName || !tlsSecretNamespace) {
+    } else if (!tlsSecretName || !tlsSecretNamespace || !tlsIssuerName) {
       checks.push({
         id: 'gatewayTls',
         title: 'Gateway HTTPS/TLS 적용 여부',
         status: 'fail',
-        detail: 'TLS 활성화 시 Secret 이름과 Secret 네임스페이스는 필수입니다.',
+        detail: 'TLS 활성화 시 Secret 이름, Secret 네임스페이스, cert-manager Issuer 이름은 필수입니다.',
       })
     } else if (tlsSecretNamespace !== effectiveNamespace) {
       checks.push({
@@ -1597,7 +1948,7 @@ export function StackInstallPage() {
         id: 'gatewayTls',
         title: 'Gateway HTTPS/TLS 적용 여부',
         status: 'pass',
-        detail: `TLS 활성화됨: ${tlsSecretNamespace}/${tlsSecretName} (10년 wildcard cert 생성 스크립트 포함)`,
+        detail: `TLS 활성화됨: ${tlsSecretNamespace}/${tlsSecretName} (cert-manager issuer: ${tlsIssuerName})`,
       })
     }
 
@@ -1748,6 +2099,10 @@ export function StackInstallPage() {
         }
       })
       if (!error) {
+        setManifestOverridesByTool((prev) => ({
+          ...prev,
+          [toolId]: nextYaml,
+        }))
         setManifestDraftByTool((prev) => {
           const next = { ...prev }
           delete next[toolId]
@@ -1950,6 +2305,7 @@ export function StackInstallPage() {
       const docObjects = docs.map((docItem) => docItem.toJS() as Record<string, unknown>)
       const gateway = docObjects.find((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'Gateway')
       const routes = docObjects.filter((docItem) => docItem.apiVersion === 'gateway.networking.k8s.io/v1' && docItem.kind === 'HTTPRoute')
+      const certificates = docObjects.filter((docItem) => docItem.apiVersion === 'cert-manager.io/v1' && docItem.kind === 'Certificate')
       const referenceGrants = docObjects.filter((docItem) => docItem.kind === 'ReferenceGrant')
       if (!gateway || routes.length === 0) {
         return 'Gateway YAML은 gateway.networking.k8s.io/v1 Gateway + HTTPRoute 형식이어야 합니다.'
@@ -1971,6 +2327,7 @@ export function StackInstallPage() {
 
       let parsedTlsSecretName = ''
       let parsedTlsSecretNamespace = ''
+      let parsedTlsIssuerName = ''
       if (httpsListener && typeof httpsListener === 'object') {
         const listenerObj = httpsListener as Record<string, unknown>
         const tls = (listenerObj.tls ?? {}) as Record<string, unknown>
@@ -1991,6 +2348,25 @@ export function StackInstallPage() {
         }
         if (!parsedTlsSecretNamespace || !K8S_SECRET_REF_REGEX.test(parsedTlsSecretNamespace)) {
           return 'TLS Secret namespace는 DNS-1123 형식이어야 합니다.'
+        }
+
+        const matchingCertificate = certificates.find((certificate) => {
+          const certificateMetadata = (certificate.metadata ?? {}) as Record<string, unknown>
+          const certificateSpec = (certificate.spec ?? {}) as Record<string, unknown>
+          const certNamespace = typeof certificateMetadata.namespace === 'string' ? certificateMetadata.namespace.trim() : namespace
+          const certSecretName = typeof certificateSpec.secretName === 'string' ? certificateSpec.secretName.trim() : ''
+          return certNamespace === parsedTlsSecretNamespace && certSecretName === parsedTlsSecretName
+        })
+
+        if (!matchingCertificate) {
+          return 'HTTPS listener를 사용할 때 cert-manager Certificate 문서(secretName 매칭)가 필요합니다.'
+        }
+
+        const certificateSpec = (matchingCertificate.spec ?? {}) as Record<string, unknown>
+        const issuerRef = (certificateSpec.issuerRef ?? {}) as Record<string, unknown>
+        parsedTlsIssuerName = typeof issuerRef.name === 'string' ? issuerRef.name.trim() : ''
+        if (!parsedTlsIssuerName || !K8S_SECRET_REF_REGEX.test(parsedTlsIssuerName)) {
+          return 'cert-manager issuerRef.name은 DNS-1123 형식이어야 합니다.'
         }
 
         if (parsedTlsSecretNamespace !== namespace) {
@@ -2045,7 +2421,7 @@ export function StackInstallPage() {
         return 'Gateway host는 {oss}.{access-domain} 형식이어야 합니다.'
       }
 
-      const derivedAccessDomain = firstHost.split('.').slice(1).join('.').replace(/^\*\./, '')
+      const derivedAccessDomain = normalizeAccessDomain(firstHost.split('.').slice(1).join('.').replace(/^\*\./, ''))
       if (!derivedAccessDomain.endsWith('.internal')) {
         return 'Gateway host의 access domain은 .internal로 끝나야 합니다.'
       }
@@ -2073,6 +2449,7 @@ export function StackInstallPage() {
         enabled: hasHttpsListener,
         secretName: hasHttpsListener ? parsedTlsSecretName : draft.accessDomainTls.secretName,
         secretNamespace: hasHttpsListener ? parsedTlsSecretNamespace : draft.accessDomainTls.secretNamespace,
+        issuerName: hasHttpsListener ? parsedTlsIssuerName : draft.accessDomainTls.issuerName,
       })
       if (namespace === 'nullus') {
         setCreateNewNs(false)
@@ -2140,7 +2517,7 @@ export function StackInstallPage() {
       objectStorage = (storage.objectStorage ?? {}) as Record<string, unknown>
 
       stackName = typeof global.stackName === 'string' ? global.stackName.trim() : ''
-      accessDomain = typeof global.accessDomain === 'string' ? global.accessDomain.trim() : ''
+      accessDomain = typeof global.accessDomain === 'string' ? normalizeAccessDomain(global.accessDomain) : ''
       clusterId = typeof global.clusterId === 'string' ? global.clusterId.trim() : ''
       namespace = typeof global.namespace === 'string' ? global.namespace.trim() : ''
       version = typeof image.tag === 'string' && image.tag.trim() ? image.tag.trim() : getToolAppVersion(toolId)
@@ -2210,8 +2587,8 @@ export function StackInstallPage() {
         return 'Deployment selector/template labels가 toolId와 일치해야 합니다.'
       }
       if (!image.includes(':')) {
-        return 'Deployment 컨테이너 image에는 버전 태그가 필요합니다. (예: ghcr.io/cloud-nullus/grafana:v1.2.3)'
-      }
+      return 'Deployment 컨테이너 image에는 버전 태그가 필요합니다. (예: docker.io/grafana/grafana:11.1.0)'
+    }
 
       const serviceMeta = (service.metadata ?? {}) as Record<string, unknown>
       const serviceSpec = (service.spec ?? {}) as Record<string, unknown>
@@ -2222,7 +2599,7 @@ export function StackInstallPage() {
       }
 
       stackName = typeof labels['nullus.io/stack-name'] === 'string' ? String(labels['nullus.io/stack-name']).trim() : ''
-      accessDomain = draft.accessDomain || `${stackName}.internal`
+      accessDomain = normalizeAccessDomain(draft.accessDomain || `${stackName}.internal`)
       clusterId = typeof labels['nullus.io/cluster-id'] === 'string' ? String(labels['nullus.io/cluster-id']).trim() : ''
       namespace = typeof metadata.namespace === 'string' ? metadata.namespace.trim() : ''
       if (image.includes(':')) {
@@ -2453,12 +2830,17 @@ export function StackInstallPage() {
     if (draft.accessDomainTls.enabled) {
       const tlsSecretName = draft.accessDomainTls.secretName.trim()
       const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim()
+      const tlsIssuerName = draft.accessDomainTls.issuerName.trim()
       if (!tlsSecretName || !K8S_SECRET_REF_REGEX.test(tlsSecretName)) {
         setTabGuardError('TLS Secret Name은 DNS-1123 형식으로 입력해 주세요. (예: nullus-wildcard-tls)')
         return false
       }
       if (!tlsSecretNamespace || !K8S_SECRET_REF_REGEX.test(tlsSecretNamespace)) {
-        setTabGuardError('TLS Secret Namespace는 DNS-1123 형식으로 입력해 주세요. (예: kube-system)')
+        setTabGuardError('TLS Secret Namespace는 DNS-1123 형식으로 입력해 주세요. (예: nullus)')
+        return false
+      }
+      if (!tlsIssuerName || !K8S_SECRET_REF_REGEX.test(tlsIssuerName)) {
+        setTabGuardError('cert-manager Issuer Name은 DNS-1123 형식으로 입력해 주세요. (예: nullus-ca-issuer)')
         return false
       }
     }
@@ -2476,29 +2858,33 @@ export function StackInstallPage() {
       return
     }
 
-    const body = toCreateStackBody({
+    const request = {
       templateId: draft.selectedTemplateId,
       clusterId: draft.clusterId,
       namespace: effectiveNamespace,
       stackName: draft.stackName,
       accessDomain: draft.accessDomain,
       accessDomainTls: draft.accessDomainTls,
+      yamlOverrides: yamlOverridesPayload,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
       storage: draft.storage,
-    })
+    }
 
     try {
-      const createRes = await api.post<{ id: string }>('/stacks', body)
-      const stackId = createRes.data?.id
-      if (!stackId) { navigate('/stack/list'); return }
-      await api.post(`/stacks/${stackId}/deploy`).catch(() => { })
+      const createRes = await createStack.mutateAsync(request)
+      const stackId = createRes?.id
+      if (!stackId) {
+        setTabGuardError('스택 생성은 되었지만 stack ID를 확인하지 못했습니다. 다시 시도해 주세요.')
+        return
+      }
+      await deployStack.mutateAsync(stackId)
       navigate(`/stack/deploy/${stackId}`)
-    } catch {
-      navigate('/stack/list')
+    } catch (error) {
+      setTabGuardError(toDeployErrorMessage(error))
     }
   }
 
@@ -2518,6 +2904,7 @@ export function StackInstallPage() {
       stackName: draft.stackName,
       accessDomain: draft.accessDomain,
       accessDomainTls: draft.accessDomainTls,
+      yamlOverrides: yamlOverridesPayload,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
@@ -2571,14 +2958,17 @@ export function StackInstallPage() {
           <Button
             variant="primary"
             size="md"
-            loading={createStack.isPending}
+            loading={createStack.isPending || deployStack.isPending}
             onClick={handleDeploy}
             disabled={
               isSubmitting ||
+              createStack.isPending ||
+              deployStack.isPending ||
               !draft.stackName ||
               draft.stackName.length < 2 ||
               !draft.clusterId ||
-              (createNewNs && !draft.namespace.trim())
+              (createNewNs && !draft.namespace.trim()) ||
+              hasManifestValidationError
             }
             type="button"
           >
@@ -2587,6 +2977,11 @@ export function StackInstallPage() {
           </Button>
         </div>
       </div>
+      {hasManifestValidationError && (
+        <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
+          Strict 버전/YAML 검증 실패 {manifestValidationErrorCount}건으로 Deploy가 잠겼습니다. YAML View에서 오류를 해소해 주세요.
+        </div>
+      )}
 
       <div className="mb-5 flex flex-wrap items-start gap-4">
         <div className="flex min-w-0 flex-1 flex-wrap items-start gap-4">
@@ -2627,7 +3022,7 @@ export function StackInstallPage() {
                   checked={draft.accessDomainTls.enabled}
                   onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
                 />
-                Access Domain TLS 인증서 적용 (와일드카드 10년)
+                Access Domain TLS 인증서 적용 (cert-manager)
               </label>
               {draft.accessDomainTls.enabled && (
                 <div className="mt-2 grid gap-2">
@@ -2643,8 +3038,14 @@ export function StackInstallPage() {
                     value={draft.accessDomainTls.secretNamespace}
                     onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
                   />
+                  <Input
+                    label="cert-manager Issuer Name"
+                    placeholder="nullus-ca-issuer"
+                    value={draft.accessDomainTls.issuerName}
+                    onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
+                  />
                   <p className="text-[11px] text-[var(--color-text-secondary)]">
-                    Preview Deploy Script에 10년 wildcard cert 생성(<code>openssl -days 3650</code>) 및 <code>kubectl create secret tls</code> 단계가 포함됩니다.
+                    Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
                   </p>
                 </div>
               )}
@@ -2661,7 +3062,7 @@ export function StackInstallPage() {
               <option value="">클러스터를 선택하세요</option>
               {(clusters ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.connection_status})
+                  {c.name} ({formatConnectionStatusLabel(c.connection_status)})
                 </option>
               ))}
             </NativeSelect>
@@ -2941,6 +3342,11 @@ export function StackInstallPage() {
                               <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 uppercase text-[10px] text-[var(--color-text-secondary)]">
                                 {activeManifestInfo.installType}
                               </span>
+                              {manifestErrorsByTool[activeManifestInfo.toolId] && (
+                                <span className="rounded border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.15)] px-1.5 py-0.5 text-[10px] font-semibold text-[#fca5a5]">
+                                  STRICT 검증 실패
+                                </span>
+                              )}
                               <span className="text-[var(--color-text-secondary)]">
                                 app version: {activeManifestInfo.toolVersion || getToolAppVersion(activeManifestInfo.toolId)}
                                 {activeManifestInfo.installType === 'helm' && activeManifestInfo.chartVersion
@@ -2961,11 +3367,16 @@ export function StackInstallPage() {
                             )}
                             {activeManifestInfo.toolId === GATEWAY_MANIFEST_ID ? (
                               <div className="mt-1 text-[var(--color-text-secondary)]">
-                                Gateway API YAML은 선택된 OSS 기준으로 Gateway/HTTPRoute를 자동 구성합니다. Access Domain TLS 인증서 적용을 켜면 HTTPS(443) + tls.certificateRefs(secret)가 함께 생성됩니다.
+                                Gateway API YAML은 선택된 OSS 기준으로 Gateway/HTTPRoute를 자동 구성합니다. Access Domain TLS 인증서 적용을 켜면 HTTPS(443) + cert-manager Certificate + tls.certificateRefs(secret)가 함께 생성됩니다.
                               </div>
                             ) : (
                               <div className="mt-1 text-[var(--color-text-secondary)]">
                                 동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합되어 생성됩니다.
+                              </div>
+                            )}
+                            {activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (
+                              <div className="mt-1 text-[var(--color-text-secondary)]">
+                                버전 정책: <span className="font-semibold">Strict 고정</span> (카탈로그 app/chart 버전과 불일치하면 검증에서 차단됩니다)
                               </div>
                             )}
                           </div>
@@ -2977,7 +3388,7 @@ export function StackInstallPage() {
                             height="520px"
                             language="yaml"
                             theme={isDarkMode ? 'vs-dark' : 'vs-light'}
-                            value={manifestDraftByTool[resolvedActiveManifestTool] ?? defaultManifestByTool[resolvedActiveManifestTool] ?? ''}
+                            value={manifestDraftByTool[resolvedActiveManifestTool] ?? manifestOverridesByTool[resolvedActiveManifestTool] ?? defaultManifestByTool[resolvedActiveManifestTool] ?? ''}
                             onChange={(value) => handleManifestChange(resolvedActiveManifestTool, value)}
                             options={{
                               minimap: { enabled: false },
@@ -3546,7 +3957,7 @@ export function StackInstallPage() {
             [
               'Access TLS',
               draft.accessDomainTls.enabled
-                ? `enabled (${draft.accessDomainTls.secretNamespace || 'nullus'}/${draft.accessDomainTls.secretName || 'nullus-wildcard-tls'})`
+                ? `enabled (${draft.accessDomainTls.secretNamespace || 'nullus'}/${draft.accessDomainTls.secretName || 'nullus-wildcard-tls'}, issuer=${draft.accessDomainTls.issuerName || 'nullus-ca-issuer'})`
                 : 'disabled',
             ],
             ['Package Registry', draft.artifacts.packageRegistry.tool],

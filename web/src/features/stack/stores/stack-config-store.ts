@@ -45,6 +45,7 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   kibana: { appVersion: '8.14.1', chartVersion: '8.5.1' },
   'opensearch-dashboards': { appVersion: '2.14.0', chartVersion: '2.18.0' },
   jaeger: { appVersion: '1.57.0', chartVersion: '3.3.0' },
+  'opentelemetry-collector': { appVersion: '0.104.0', chartVersion: '0.75.0' },
   elasticsearch: { appVersion: '8.14.1', chartVersion: '8.5.1' },
   loki: { appVersion: '2.9.8', chartVersion: '2.10.2' },
 }
@@ -65,6 +66,10 @@ function normalizeToolSelectionVersion(selection: ToolSelection): ToolSelection 
     }
   }
   return selection
+}
+
+function normalizeAccessDomain(domain: string): string {
+  return domain.trim().replace(/\.intenral$/i, '.internal')
 }
 
 export interface ArtifactsConfig {
@@ -124,6 +129,7 @@ export interface AccessDomainTlsConfig {
   enabled: boolean
   secretName: string
   secretNamespace: string
+  issuerName: string
 }
 
 export interface StackConfigDraft {
@@ -174,6 +180,7 @@ const DEFAULT_DRAFT: StackConfigDraft = {
     enabled: false,
     secretName: 'nullus-wildcard-tls',
     secretNamespace: 'nullus',
+    issuerName: 'nullus-ca-issuer',
   },
   artifacts: {
     packageRegistry: { tool: 'gitlab', version: getToolAppVersion('gitlab') },
@@ -282,7 +289,7 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
         draft: {
           ...s.draft,
           stackName: name,
-          accessDomain: shouldUpdateAccessDomain ? `${name}.internal` : s.draft.accessDomain,
+          accessDomain: shouldUpdateAccessDomain ? `${name}.internal` : normalizeAccessDomain(s.draft.accessDomain),
           accessDomainTls: {
             ...s.draft.accessDomainTls,
             secretName:
@@ -298,7 +305,7 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
     }),
 
   setAccessDomain: (domain) =>
-    set((s) => ({ draft: { ...s.draft, accessDomain: domain }, isDirty: true })),
+    set((s) => ({ draft: { ...s.draft, accessDomain: normalizeAccessDomain(domain) }, isDirty: true })),
 
   updateAccessDomainTls: (config) =>
     set((s) => ({

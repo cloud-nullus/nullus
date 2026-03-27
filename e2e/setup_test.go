@@ -56,8 +56,10 @@ func newEchoServer() *echo.Echo {
 	getTemplateUC := stackuc.NewGetTemplate(memTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(memTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(memStackRepo)
+	memHistoryRepo := stackrepo.NewMemoryHistoryRepository()
+	manageHistoryUC := stackuc.NewManageHistory(memHistoryRepo)
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, manageHistoryUC)
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, memTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 
@@ -65,8 +67,6 @@ func newEchoServer() *echo.Echo {
 	memCompatRepo := stackrepo.NewMemoryCompatibilityRepository()
 	validateCompatUC := stackuc.NewValidateCompatibility(memCompatRepo)
 	compatHandler := stackhandler.NewCompatibilityHandler(memCompatRepo, validateCompatUC)
-	memHistoryRepo := stackrepo.NewMemoryHistoryRepository()
-	manageHistoryUC := stackuc.NewManageHistory(memHistoryRepo)
 	historyHandler := stackhandler.NewHistoryHandler(memHistoryRepo, memStackRepo, manageHistoryUC)
 
 	// Resources

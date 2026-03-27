@@ -87,10 +87,20 @@ func (h *ResourceHandler) Estimate(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
-		"cpu":     out.Summary.CPUCores,
-		"memory":  out.Summary.MemoryGi,
-		"storage": out.Summary.StorageGi,
-		"cost":    out.Summary.MonthlyCostUSD,
+		"cpu":                   out.Summary.CPUCores,
+		"memory":                out.Summary.MemoryGi,
+		"storage":               out.Summary.StorageGi,
+		"cost":                  out.Summary.MonthlyCostUSD,
+		"summary":               out.Summary,
+		"per_tool":              out.PerTool,
+		"notes":                 out.Notes,
+		"workload_scale_factor": out.WorkloadScaleFactor,
+		"artifact_storage_gi":   out.ArtifactStorageGi,
+		"cost_breakdown": map[string]float64{
+			"cpu_cost_usd":     out.CostBreakdown.CPUCostUSD,
+			"memory_cost_usd":  out.CostBreakdown.MemoryCostUSD,
+			"storage_cost_usd": out.CostBreakdown.StorageCostUSD,
+		},
 	})
 }
 

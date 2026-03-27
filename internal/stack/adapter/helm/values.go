@@ -6,11 +6,40 @@ func DefaultValues(stepName string) map[string]any {
 		return map[string]any{
 			"installCRDs": true,
 		}
+	case "installing_metrics_server":
+		return map[string]any{
+			"args": []string{
+				"--kubelet-insecure-tls",
+				"--kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP",
+			},
+		}
+	case "installing_postgresql":
+		return map[string]any{
+			"architecture": "standalone",
+			"auth": map[string]any{
+				"username":         "gitlab",
+				"password":         "nullus-gitlab-password",
+				"database":         "gitlabhq_production",
+				"postgresPassword": "nullus-postgres-admin",
+			},
+			"primary": map[string]any{
+				"persistence": map[string]any{
+					"enabled": true,
+					"size":    "20Gi",
+				},
+			},
+		}
 	case "installing_minio":
 		return map[string]any{
 			"mode":         "standalone",
 			"rootUser":     "nullus-admin",
 			"rootPassword": "nullus-minio-secret",
+			"ingress": map[string]any{
+				"enabled": false,
+			},
+			"consoleIngress": map[string]any{
+				"enabled": false,
+			},
 			"resources": map[string]any{
 				"requests": map[string]any{
 					"memory": "512Mi",
@@ -19,14 +48,89 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_gitlab":
 		return map[string]any{
+			"postgresql": map[string]any{
+				"install": false,
+			},
 			"global": map[string]any{
 				"edition": "ce",
+				"minio": map[string]any{
+					"enabled": false,
+				},
+				"psql": map[string]any{
+					"host":     "nullus-postgresql.nullus.svc.cluster.local",
+					"port":     5432,
+					"database": "gitlabhq_production",
+					"username": "gitlab",
+					"password": map[string]any{
+						"useSecret": true,
+						"secret":    "nullus-postgresql",
+						"key":       "password",
+					},
+				},
+				"hosts": map[string]any{
+					"domain": "nullus.internal",
+				},
+				"ingress": map[string]any{
+					"enabled":              false,
+					"configureCertmanager": false,
+				},
+			},
+			"nginx-ingress": map[string]any{
+				"enabled": false,
+			},
+			"gitlab": map[string]any{
+				"webservice": map[string]any{
+					"ingress": map[string]any{
+						"enabled": false,
+					},
+				},
+				"kas": map[string]any{
+					"ingress": map[string]any{
+						"enabled": false,
+					},
+				},
+			},
+			"registry": map[string]any{
+				"ingress": map[string]any{
+					"enabled": false,
+				},
+			},
+			"certmanager": map[string]any{
+				"install": false,
+			},
+			"certmanager-issuer": map[string]any{
+				"enabled": false,
+			},
+			"gitlab-runner": map[string]any{
+				"install": false,
+			},
+			"redis": map[string]any{
+				"image": map[string]any{
+					"repository": "bitnamilegacy/redis",
+					"tag":        "7.4.2-debian-12-r0",
+				},
+				"metrics": map[string]any{
+					"image": map[string]any{
+						"repository": "bitnamilegacy/redis-exporter",
+						"tag":        "1.76.0-debian-12-r0",
+					},
+				},
 			},
 		}
 	case "installing_argocd":
 		return map[string]any{
 			"crds": map[string]any{
 				"install": true,
+			},
+			"configs": map[string]any{
+				"params": map[string]any{
+					"server.insecure": "true",
+				},
+			},
+			"server": map[string]any{
+				"ingress": map[string]any{
+					"enabled": false,
+				},
 			},
 		}
 	case "installing_runner":
@@ -37,6 +141,16 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_prometheus":
 		return map[string]any{
+			"prometheus": map[string]any{
+				"ingress": map[string]any{
+					"enabled": false,
+				},
+			},
+			"alertmanager": map[string]any{
+				"ingress": map[string]any{
+					"enabled": false,
+				},
+			},
 			"grafana": map[string]any{
 				"enabled": false,
 			},
@@ -44,7 +158,54 @@ func DefaultValues(stepName string) map[string]any {
 	case "installing_grafana":
 		return map[string]any{
 			"adminUser": "admin",
+			"ingress": map[string]any{
+				"enabled": false,
+			},
 		}
+	case "installing_logging":
+		return map[string]any{
+			"rbac": map[string]any{
+				"pspEnabled": false,
+			},
+			"loki": map[string]any{
+				"enabled": true,
+			},
+			"promtail": map[string]any{
+				"enabled": true,
+			},
+			"grafana": map[string]any{
+				"enabled": false,
+			},
+		}
+	case "installing_logging_opensearch":
+		return map[string]any{
+			"singleNode": true,
+			"protocol":   "http",
+			"securityConfig": map[string]any{
+				"enabled": false,
+			},
+			"config": map[string]any{
+				"opensearch.yml": "cluster.name: opensearch-cluster\nnetwork.host: 0.0.0.0\nplugins.security.disabled: true\n",
+			},
+			"extraEnvs": []map[string]any{
+				{
+					"name":  "OPENSEARCH_INITIAL_ADMIN_PASSWORD",
+					"value": "NullusAdmin123!",
+				},
+			},
+		}
+	case "installing_logging_elasticsearch":
+		return map[string]any{
+			"replicas": 1,
+		}
+	case "installing_opentelemetry":
+		return map[string]any{
+			"mode": "deployment",
+		}
+	case "installing_tempo":
+		return map[string]any{}
+	case "installing_jaeger":
+		return map[string]any{}
 	default:
 		return map[string]any{}
 	}

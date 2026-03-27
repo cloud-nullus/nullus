@@ -32,6 +32,18 @@ const statusConfig: Record<ClusterStatus, {
     icon: <AlertCircle size={12} />,
     defaultLabel: 'Error',
   },
+  unreachable: {
+    bgClass: 'bg-[rgba(245,158,11,0.15)]',
+    textClass: 'text-[#f59e0b]',
+    icon: <AlertCircle size={12} />,
+    defaultLabel: 'Unreachable',
+  },
+  auth_failed: {
+    bgClass: 'bg-[rgba(239,68,68,0.15)]',
+    textClass: 'text-[#ef4444]',
+    icon: <AlertCircle size={12} />,
+    defaultLabel: 'Auth Failed',
+  },
   inactive: {
     bgClass: 'bg-[rgba(100,116,139,0.15)]',
     textClass: 'text-[#64748b]',
