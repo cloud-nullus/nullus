@@ -36,11 +36,20 @@ type ToolResourceEstimate struct {
 	StorageGi float64
 }
 
+type ResourceCostBreakdown struct {
+	CPUCostUSD     float64
+	MemoryCostUSD  float64
+	StorageCostUSD float64
+}
+
 // EstimateResourcesOutput holds the full resource estimation result.
 type EstimateResourcesOutput struct {
-	Summary  domain.ResourceEstimate
-	PerTool  []ToolResourceEstimate
-	Notes    []string
+	Summary             domain.ResourceEstimate
+	PerTool             []ToolResourceEstimate
+	Notes               []string
+	WorkloadScaleFactor float64
+	ArtifactStorageGi   float64
+	CostBreakdown       ResourceCostBreakdown
 }
 
 // toolBaseline defines the per-instance baseline resource requirements.
@@ -68,9 +77,9 @@ var toolBaselineMap = map[string]toolBaseline{
 
 // costPerCPUPerMonth is an approximate AWS on-demand hourly rate scaled to monthly (USD).
 const (
-	costPerCPUPerMonth     = 12.0  // ~$0.016/hr per vCPU
-	costPerGiBMemPerMonth  = 1.5   // ~$0.002/hr per GiB
-	costPerGiBStorPerMonth = 0.10  // EBS gp3 ~$0.10/GiB/month
+	costPerCPUPerMonth     = 12.0 // ~$0.016/hr per vCPU
+	costPerGiBMemPerMonth  = 1.5  // ~$0.002/hr per GiB
+	costPerGiBStorPerMonth = 0.10 // EBS gp3 ~$0.10/GiB/month
 )
 
 // CalculateResources computes estimated resource requirements for a tool set.
@@ -144,9 +153,10 @@ func (uc *CalculateResources) Execute(_ context.Context, input EstimateResources
 		))
 	}
 
-	monthlyCost := totalCPU*costPerCPUPerMonth +
-		totalMemory*costPerGiBMemPerMonth +
-		totalStorage*costPerGiBStorPerMonth
+	cpuCost := totalCPU * costPerCPUPerMonth
+	memoryCost := totalMemory * costPerGiBMemPerMonth
+	storageCost := totalStorage * costPerGiBStorPerMonth
+	monthlyCost := cpuCost + memoryCost + storageCost
 
 	return &EstimateResourcesOutput{
 		Summary: domain.ResourceEstimate{
@@ -155,8 +165,15 @@ func (uc *CalculateResources) Execute(_ context.Context, input EstimateResources
 			StorageGi:      roundTwo(totalStorage),
 			MonthlyCostUSD: roundTwo(monthlyCost),
 		},
-		PerTool: perTool,
-		Notes:   notes,
+		PerTool:             perTool,
+		Notes:               notes,
+		WorkloadScaleFactor: roundTwo(scaleFactor),
+		ArtifactStorageGi:   roundTwo(artifactStorage),
+		CostBreakdown: ResourceCostBreakdown{
+			CPUCostUSD:     roundTwo(cpuCost),
+			MemoryCostUSD:  roundTwo(memoryCost),
+			StorageCostUSD: roundTwo(storageCost),
+		},
 	}, nil
 }
 

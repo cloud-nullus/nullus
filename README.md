@@ -128,6 +128,67 @@ kind create cluster --config scripts/kind-cluster.yaml
 
 상세 가이드: [kind E2E 테스트 가이드](./docs/guides/kind-e2e-testing-guide.md)
 
+### 5. 클러스터 등록/검증 가이드 (팀 공통)
+
+스택 설치 전에 반드시 클러스터를 등록하고 연결 검증(Verify)을 완료하세요.
+
+#### 사전 조건
+
+- API 서버가 실행 중이어야 합니다 (`http://localhost:8090/health` = healthy)
+- `ENCRYPTION_KEY`가 **32바이트**로 설정되어 있어야 kubeconfig 저장/복호화가 정상 동작합니다
+
+#### A) UI에서 등록 (권장)
+
+1. `http://localhost:5173` 접속 → **Cluster Management** 이동
+2. **Register Cluster** 클릭
+3. 아래 값 입력
+   - Name: 예) `kind-nullus-platform-fresh`
+   - Type: `Kubernetes`(UI) / 백엔드 기준 `pipeline` 또는 `target`
+   - kubeconfig: 파일 업로드 또는 YAML 붙여넣기
+4. 저장 후 상세 패널에서 **Verify Connection** 실행
+5. 상태가 `Connected`로 바뀌면 스택 설치 진행
+
+#### B) API로 등록 (자동화/스크립트용)
+
+kind 클러스터 예시:
+
+```bash
+kind get kubeconfig --name nullus-platform > /tmp/nullus-platform.kubeconfig
+
+curl -X POST http://localhost:8090/api/v1/admin/clusters \
+  -H 'Content-Type: application/json' \
+  -d "$(jq -n \
+    --arg name 'kind-nullus-platform-fresh' \
+    --arg type 'pipeline' \
+    --arg org '11111111-1111-1111-1111-111111111111' \
+    --arg kubeconfig "$(cat /tmp/nullus-platform.kubeconfig)" \
+    '{name:$name,type:$type,org_id:$org,kubeconfig:$kubeconfig}')"
+```
+
+응답으로 받은 `id`를 사용해 연결 검증:
+
+```bash
+curl -X POST http://localhost:8090/api/v1/admin/clusters/<cluster-id>/verify
+```
+
+성공 시 응답 예시:
+
+```json
+{"status":"connected","version":"v1.35.1"}
+```
+
+#### C) 검증 체크리스트
+
+- `GET /api/v1/admin/clusters`에서 `connection_status=connected`
+- `GET /api/v1/admin/clusters/:id/namespaces`가 정상 조회
+- 스택 생성 시 해당 `cluster_id` 선택 가능
+
+#### D) 운영 팁 / 자주 막히는 지점
+
+- Verify 502/연결 실패: kubeconfig의 API endpoint가 폐기된 kind 포트를 가리키는 경우가 많습니다. 클러스터 재생성 후 kubeconfig를 다시 등록하세요.
+- `kubeconfig is not registered for this cluster`: 등록 시 kubeconfig를 비워서 저장한 경우입니다.
+- 클러스터 삭제 409(`CLUSTER_IN_USE`): 해당 클러스터를 참조하는 스택/파이프라인을 먼저 삭제해야 합니다.
+
 ## 테스트 계정
 
 ### 프론트엔드 (Mock Auth, development 모드)

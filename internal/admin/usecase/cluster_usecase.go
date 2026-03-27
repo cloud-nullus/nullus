@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/admin/port"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ClusterUseCase handles Cluster business logic.
@@ -132,6 +134,16 @@ func (uc *ClusterUseCase) DeleteCluster(ctx context.Context, id string) error {
 	}
 
 	if err := uc.clusterRepo.Delete(ctx, id); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return &shareddomain.AppError{
+				Code:       "CLUSTER_IN_USE",
+				HTTPStatus: http.StatusConflict,
+				Message:    "Cluster is in use",
+				Detail:     "Delete stacks and pipelines linked to this cluster first",
+				Retryable:  false,
+			}
+		}
 		return fmt.Errorf("deleting cluster: %w", err)
 	}
 

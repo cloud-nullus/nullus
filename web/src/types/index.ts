@@ -124,6 +124,7 @@ export interface AccessDomainTlsInput {
   enabled: boolean
   secretName: string
   secretNamespace: string
+  issuerName: string
 }
 
 export interface StackConfig {
@@ -133,6 +134,7 @@ export interface StackConfig {
   stackName: string
   accessDomain?: string
   accessDomainTls?: AccessDomainTlsInput
+  yamlOverrides?: Record<string, string>
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>
   monitoring: Record<string, ToolSelection>
@@ -148,6 +150,7 @@ export interface Stack {
   templateName: string
   clusterId: string
   clusterName: string
+  namespace?: string
   status: StackStatus
   createdAt: string
   updatedAt: string

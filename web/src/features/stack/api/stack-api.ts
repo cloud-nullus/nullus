@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
 import type {
+  ClusterStatus,
   CompatibilityMatrix,
   CompatibilityValidationResult,
   CreateStackRequest,
@@ -37,7 +38,14 @@ export type {
 export interface ClusterSummary {
   id: string
   name: string
-  connection_status: string
+  connection_status: ClusterStatus
+}
+
+interface RawClusterSummary {
+  id: string
+  name: string
+  connection_status?: ClusterStatus
+  status?: ClusterStatus
 }
 
 const queryKeys = {
@@ -45,10 +53,68 @@ const queryKeys = {
   template: (id: string) => ['stacks', 'templates', id] as const,
   list: (filters?: Record<string, unknown>) => ['stacks', 'list', filters] as const,
   history: (stackId: string) => ['stacks', 'history', stackId] as const,
+  monitoring: (stackId: string) => ['stacks', 'monitoring', stackId] as const,
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
   resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
+}
+
+export interface PodMonitoringStatus {
+  name: string
+  phase: string
+  ready: boolean
+  restart_count: number
+  node_name: string
+  cpu_request_millicores: number
+  cpu_limit_millicores: number
+  cpu_usage_millicores: number
+  memory_request_mib: number
+  memory_limit_mib: number
+  memory_usage_mib: number
+  status: 'running' | 'warning' | 'error'
+}
+
+export interface OSSMonitoringStatus {
+  key: string
+  name: string
+  version: string
+  enabled: boolean
+  status: 'running' | 'warning' | 'error'
+  pod_count: number
+  ready_pods: number
+  pods: PodMonitoringStatus[]
+}
+
+export interface StackMonitoringSummary {
+  total_pods: number
+  ready_pods: number
+  cpu_request_millicores: number
+  cpu_limit_millicores: number
+  cpu_usage_millicores: number
+  memory_request_mib: number
+  memory_limit_mib: number
+  memory_usage_mib: number
+  usage_available: boolean
+}
+
+export interface InstalledResourceStatus {
+  kind: string
+  name: string
+  desired_replicas: number
+  ready_replicas: number
+  available_replicas: number
+  status: 'running' | 'warning' | 'error'
+}
+
+export interface StackMonitoringSnapshot {
+  stack_id: string
+  namespace: string
+  timestamp: string
+  summary: StackMonitoringSummary
+  pod_status_counts: Array<{ name: string; count: number }>
+  installed_resources: InstalledResourceStatus[]
+  oss_statuses: OSSMonitoringStatus[]
 }
 
 interface RawTemplate {
@@ -119,12 +185,32 @@ interface RawStackItem {
   clusterId?: string
   cluster_name?: string
   clusterName?: string
+  namespace?: string
   state?: string
   status?: string
   created_at?: string
   createdAt?: string
   updated_at?: string
   updatedAt?: string
+}
+
+interface RawStackHistoryEntry {
+  id?: string
+  ID?: string
+  stackId?: string
+  StackID?: string
+  version?: number
+  Version?: number
+  changedBy?: string
+  ChangedBy?: string
+  changedAt?: string
+  CreatedAt?: string
+  reason?: string
+  changeReason?: string
+  ChangeReason?: string
+  snapshot?: Record<string, unknown>
+  config?: Record<string, unknown>
+  Config?: Record<string, unknown>
 }
 
 const toToolName = (tool: unknown): string => {
@@ -245,16 +331,39 @@ const normalizeStackItem = (raw: RawStackItem): Stack => {
     templateName: raw.template_name ?? raw.templateName ?? raw.template_id ?? '',
     clusterId: raw.cluster_id ?? raw.clusterId ?? '',
     clusterName: raw.cluster_name ?? raw.clusterName ?? raw.cluster_id ?? '',
+    namespace: raw.namespace ?? 'nullus',
     status: status as Stack['status'],
     createdAt: raw.created_at ?? raw.createdAt ?? '',
     updatedAt: raw.updated_at ?? raw.updatedAt ?? '',
   }
 }
 
+const normalizeStackHistoryEntry = (raw: RawStackHistoryEntry): StackHistoryEntry => ({
+  id: raw.id ?? raw.ID ?? '',
+  stackId: raw.stackId ?? raw.StackID ?? '',
+  version: raw.version ?? raw.Version ?? 0,
+  changedBy: raw.changedBy ?? raw.ChangedBy ?? 'system',
+  changedAt: raw.changedAt ?? raw.CreatedAt ?? '',
+  reason: raw.reason ?? raw.changeReason ?? raw.ChangeReason ?? '',
+  snapshot: raw.snapshot ?? raw.config ?? raw.Config ?? {},
+})
+
 // --- API functions ---
 
 function toBackendTool(sel: { tool: string; version: string }) {
   return { name: sel.tool, version: sel.version, enabled: true }
+}
+
+function toStorageSizeGi(target: 'database' | 'objectStorage', size: 'small' | 'medium' | 'large'): number {
+  if (target === 'database') {
+    if (size === 'small') return 20
+    if (size === 'medium') return 50
+    return 100
+  }
+
+  if (size === 'small') return 50
+  if (size === 'medium') return 100
+  return 300
 }
 
 export function toCreateStackBody(req: CreateStackRequest) {
@@ -274,8 +383,10 @@ export function toCreateStackBody(req: CreateStackRequest) {
             enabled: req.accessDomainTls.enabled,
             secret_name: req.accessDomainTls.secretName,
             secret_namespace: req.accessDomainTls.secretNamespace,
+            issuer_name: req.accessDomainTls.issuerName,
           }
         : undefined,
+      yaml_overrides: req.yamlOverrides,
       artifacts: {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
         source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),
@@ -293,6 +404,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
       logging: {
         collection: toBackendTool(l.collection ?? { tool: '', version: '' }),
         search: toBackendTool(l.search ?? { tool: '', version: '' }),
+        trace_layer: toBackendTool(l.traceLayer ?? l.trace_layer ?? { tool: '', version: '' }),
       },
       resources: {
         developers: req.resources?.developerCount ?? 0,
@@ -313,7 +425,10 @@ export function toCreateStackBody(req: CreateStackRequest) {
               auth_password_key: req.storage.database.authPasswordKey,
               provider_or_engine: req.storage.database.providerOrEngine,
               version: req.storage.database.version,
-              size: req.storage.database.mode === 'create' ? req.storage.database.size : undefined,
+              size:
+                req.storage.database.mode === 'create'
+                  ? toStorageSizeGi('database', req.storage.database.size)
+                  : undefined,
             },
             object_storage: {
               mode: req.storage.objectStorage.mode,
@@ -325,7 +440,10 @@ export function toCreateStackBody(req: CreateStackRequest) {
               auth_password_key: req.storage.objectStorage.authPasswordKey,
               provider_or_engine: req.storage.objectStorage.providerOrEngine,
               version: req.storage.objectStorage.version,
-              size: req.storage.objectStorage.mode === 'create' ? req.storage.objectStorage.size : undefined,
+              size:
+                req.storage.objectStorage.mode === 'create'
+                  ? toStorageSizeGi('objectStorage', req.storage.objectStorage.size)
+                  : undefined,
             },
           }
         : undefined,
@@ -367,7 +485,12 @@ const stackApiCalls = {
     api.post<StackResourceDefault>('/stacks/resource-defaults', payload).then((r) => r.data),
 
   getHistory: (stackId: string) =>
-    api.get<StackHistoryEntry[]>(`/stacks/${stackId}/history`).then((r) => r.data),
+    api
+      .get<RawStackHistoryEntry[]>(`/stacks/${stackId}/history`)
+      .then((r) => (r.data ?? []).map(normalizeStackHistoryEntry)),
+
+  getMonitoring: (stackId: string) =>
+    api.get<StackMonitoringSnapshot>(`/stacks/${stackId}/monitoring`).then((r) => r.data),
 
   getVersionDiff: (stackId: string, from: number, to: number) =>
     api.get<StackVersionDiff>(`/stacks/${stackId}/history/diff`, { params: { versionA: from, versionB: to } }).then((r) => r.data),
@@ -391,7 +514,13 @@ const stackApiCalls = {
     api.delete<void>(`/stacks/templates/${id}`).then((r) => r.data),
 
   getClusters: () =>
-    api.get<{ items: ClusterSummary[] }>('/admin/clusters').then((r) => r.data?.items ?? []),
+    api.get<{ items: RawClusterSummary[] }>('/admin/clusters').then((r) =>
+      (r.data?.items ?? []).map((cluster) => ({
+        id: cluster.id,
+        name: cluster.name,
+        connection_status: cluster.connection_status ?? cluster.status ?? 'pending',
+      }))
+    ),
 
   deployStack: (stackId: string) =>
     api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
@@ -494,6 +623,16 @@ export function useStackHistory(stackId: string) {
     queryKey: queryKeys.history(stackId),
     queryFn: () => stackApiCalls.getHistory(stackId),
     enabled: !!stackId,
+  })
+}
+
+export function useStackMonitoring(stackId: string, refetchIntervalMs = 5000) {
+  return useQuery({
+    queryKey: queryKeys.monitoring(stackId),
+    queryFn: () => stackApiCalls.getMonitoring(stackId),
+    enabled: !!stackId,
+    refetchInterval: refetchIntervalMs,
+    staleTime: 0,
   })
 }
 

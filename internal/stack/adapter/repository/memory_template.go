@@ -91,11 +91,11 @@ func goldenPathTemplates() []*domain.Template {
 		{
 			ID:          "gitlab-argocd-v1",
 			Name:        "GitLab + Argo CD",
-			Description: "GitLab CI와 Harbor 레지스트리를 분리하여 GitOps 패턴을 강화한 구성입니다.",
+			Description: "GitLab CI와 GitLab Registry를 사용하고 Argo CD로 GitOps 패턴을 강화한 구성입니다.",
 			Tools: []domain.ToolConfig{
 				{Category: "source_repository", Name: "GitLab CE", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
 				{Category: "ci_platform", Name: "GitLab CI", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
-				{Category: "container_registry", Name: "Harbor", HelmVersion: "1.14.0", AppVersion: "2.11.0"},
+				{Category: "container_registry", Name: "GitLab Registry", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
 				{Category: "storage_backend", Name: "MinIO", HelmVersion: "5.3.0", AppVersion: "2024.11.7"},
 				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"},
 				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "3.1.0"},

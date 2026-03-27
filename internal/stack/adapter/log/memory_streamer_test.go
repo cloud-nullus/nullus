@@ -109,3 +109,28 @@ func TestMemoryStreamer_IsolatedDeployments(t *testing.T) {
 
 	require.NoError(t, nil) // explicit pass
 }
+
+func TestMemoryStreamer_ReplaysHistoryToLateSubscriber(t *testing.T) {
+	s := NewMemoryStreamer()
+
+	first := port.LogEntry{Level: "info", Step: "installing_gitlab", Message: "before subscribe 1", Phase: "B"}
+	second := port.LogEntry{Level: "info", Step: "installing_argocd", Message: "before subscribe 2", Phase: "B"}
+	s.Stream(context.Background(), "dep-history", first)
+	s.Stream(context.Background(), "dep-history", second)
+
+	ch := s.Subscribe("dep-history")
+
+	select {
+	case got := <-ch:
+		assert.Equal(t, first.Message, got.Message)
+	case <-time.After(time.Second):
+		t.Fatal("expected first replayed log entry")
+	}
+
+	select {
+	case got := <-ch:
+		assert.Equal(t, second.Message, got.Message)
+	case <-time.After(time.Second):
+		t.Fatal("expected second replayed log entry")
+	}
+}

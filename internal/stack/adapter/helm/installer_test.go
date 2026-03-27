@@ -56,3 +56,46 @@ func TestHelmInstaller_Status_ReturnsActionConfigError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "init failed")
 }
+
+func TestShouldUpgradeOnInstallError(t *testing.T) {
+	assert.True(t, shouldUpgradeOnInstallError(fmt.Errorf("cannot re-use a name that is still in use")))
+	assert.False(t, shouldUpgradeOnInstallError(fmt.Errorf("some other install error")))
+	assert.False(t, shouldUpgradeOnInstallError(nil))
+}
+
+func TestShouldReinstallOnExistingStatus(t *testing.T) {
+	assert.True(t, shouldReinstallOnExistingStatus("pending-upgrade"))
+	assert.True(t, shouldReinstallOnExistingStatus("failed"))
+	assert.False(t, shouldReinstallOnExistingStatus("deployed"))
+	assert.False(t, shouldReinstallOnExistingStatus(""))
+}
+
+func TestShouldReinstallOnUpgradeError(t *testing.T) {
+	assert.True(t, shouldReinstallOnUpgradeError(fmt.Errorf("upgrade release gitlab: context deadline exceeded")))
+	assert.True(t, shouldReinstallOnUpgradeError(fmt.Errorf("another operation (install/upgrade/rollback) is in progress")))
+	assert.False(t, shouldReinstallOnUpgradeError(fmt.Errorf("validation failed")))
+	assert.False(t, shouldReinstallOnUpgradeError(nil))
+}
+
+func TestShouldIgnoreUninstallError(t *testing.T) {
+	assert.True(t, shouldIgnoreUninstallError(nil))
+	assert.True(t, shouldIgnoreUninstallError(fmt.Errorf("uninstall: release: not found")))
+	assert.False(t, shouldIgnoreUninstallError(fmt.Errorf("permission denied")))
+}
+
+func TestShouldRetryReinstallError(t *testing.T) {
+	assert.True(t, shouldRetryReinstallError(fmt.Errorf("services \"gitlab-gitaly\" not found")))
+	assert.False(t, shouldRetryReinstallError(fmt.Errorf("context deadline exceeded")))
+	assert.False(t, shouldRetryReinstallError(nil))
+}
+
+func TestResolveWait_DefaultsTrueWhenNil(t *testing.T) {
+	assert.True(t, resolveWait(nil))
+}
+
+func TestResolveWait_UsesExplicitValue(t *testing.T) {
+	falseValue := false
+	trueValue := true
+	assert.False(t, resolveWait(&falseValue))
+	assert.True(t, resolveWait(&trueValue))
+}

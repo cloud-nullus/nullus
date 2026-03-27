@@ -1584,3 +1584,169 @@ nullus/
 | ADR-008 | 모노레포 | 단일 리포지토리 | FE/BE 동시 변경 용이, CI 단일 파이프라인 |
 | ADR-009 | 상태 관리 | Zustand | Redux 대비 보일러플레이트 90% 감소, 작은 번들 |
 | ADR-010 | 스택 설정 저장 | JSONB (PostgreSQL) | 스키마 유연성, 버전별 스냅샷 저장 용이 |
+
+---
+
+## Part 8: 구현 동기화 업데이트 (2026-03, Stack 범위)
+
+DevSecOps Stack 구현과 문서의 싱크를 맞추기 위해 아래 원칙을 추가한다.
+
+- Stack Install은 `YAML View → Preview Deploy Script → Dry Run` 흐름을 기본 검토 단계로 사용한다.
+- Gateway는 `Ingress` 대신 `Gateway API(Gateway + HTTPRoute)`를 기본으로 하며,
+  Access Domain TLS 옵션을 통해 HTTPS listener + `tls.certificateRefs`를 반영한다.
+- OSS 버전은 app/chart를 분리 고정한다 (예: GitLab `18.5.1 / 9.5.1`, Argo CD `v2.8.3 / 6.8.0`).
+- 템플릿 편집 시 `helm_version`, `app_version`가 유실되지 않아야 하며, 생성 YAML/스크립트는 고정 버전을 명시한다.
+
+### Stack 네임스페이스 모델 보정
+
+| 구분 | 논리 모델(문서) | 실행 기본값(구현) |
+|---|---|---|
+| 스택 배포 단위 | `nullus-*` 영역 분리 | `nullus-stack` 중심 + 도구별 매니페스트 |
+| 접근 도메인 | `{OSS}.{stack}.internal` | 동일(게이트웨이 라우팅 규칙 반영) |
+
+### Stack API As-Is 경로 기준(문서 우선 정렬)
+
+> 본 표는 **Stack 영역만** 대상으로 하며, `admin`/`cicd` 경로는 타 작업자 영역으로 제외한다.
+
+#### Stack Config / Draft
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/api/v1/stacks` | 스택 생성 |
+| GET | `/api/v1/stacks` | 스택 목록 |
+| GET | `/api/v1/stacks/:stackId` | 스택 상세 |
+| DELETE | `/api/v1/stacks/:stackId` | 스택 삭제 |
+| PATCH | `/api/v1/stacks/:stackId/tools` | 스택 도구 추가 |
+| POST | `/api/v1/stacks/:stackId/config` | 스택 설정 저장 |
+| POST | `/api/v1/stacks/draft` | 스택 드래프트 저장 |
+
+#### Template / Compatibility / Resource
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/stacks/templates` | 템플릿 목록 |
+| GET | `/api/v1/stacks/templates/:id` | 템플릿 상세 |
+| POST | `/api/v1/stacks/templates` | 템플릿 생성 |
+| PUT | `/api/v1/stacks/templates/:id` | 템플릿 수정 |
+| DELETE | `/api/v1/stacks/templates/:id` | 템플릿 삭제 |
+| GET | `/api/v1/stacks/compatibility` | 호환성 매트릭스 조회 |
+| POST | `/api/v1/stacks/:stackId/validate` | 선택 조합 검증 |
+| POST | `/api/v1/stacks/estimate` | 리소스 예상량 계산 |
+| GET | `/api/v1/stacks/resource-defaults` | OSS 리소스 기본값 조회 |
+| POST | `/api/v1/stacks/resource-defaults` | OSS 리소스 기본값 저장 |
+
+#### Deploy / History / Export
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/api/v1/stacks/:id/deploy` | 배포 시작 |
+| GET | `/api/v1/stacks/:id/status` | 배포 상태 |
+| GET | `/api/v1/stacks/:id/deploy/logs` | 배포 로그(HTTP 스트림) |
+| GET | `/ws/deployments/:id/logs` | 배포 로그(WebSocket) |
+| GET | `/api/v1/stacks/:stackId/history` | 버전 이력 조회 |
+| GET | `/api/v1/stacks/:id/history/diff?versionA=&versionB=` | 버전 간 diff |
+| GET | `/api/v1/stacks/:stackId/diff?versionId=` | 현재 대비 diff |
+| POST | `/api/v1/stacks/:stackId/rollback` | 버전 롤백 |
+| GET | `/api/v1/stacks/:id/export?format=json|yaml` | 설정 내보내기 |
+
+### Stack 상세 설계 보강 (리소스/스토리지/YAML 커스텀)
+
+#### 1) Dry Run 계약 (Contract)
+
+- 목적: 실제 배포 전 실패 가능성을 사전에 노출
+- 판정 상태:
+  - `PASS`: 즉시 배포 가능한 수준
+  - `WARN`: 배포 가능하나 운영 리스크 존재(예: cross-namespace TLS secret)
+  - `FAIL`: 배포 차단 수준(필수 필드 누락, YAML 검증 실패 등)
+- 최소 검증 축:
+  1. Stack Name/Namespace 규칙
+  2. Access Domain 규칙(`.internal`) 및 TLS 필드 정합
+  3. 리소스 총량(request/limit) 유효성
+  4. Storage 연결 정보/모드 유효성
+  5. YAML View 문법 + OSS/버전 정책 일치 여부
+- 출력:
+  - 체크리스트 요약(PASS/WARN/FAIL 개수)
+  - 최종 Kubernetes Objects Preview
+
+#### 2) Deploy Script 계약 (표시용 산출물)
+
+- `Preview Deploy Script`는 운영자가 실행 흐름을 검토하기 위한 **표시용 산출물**이다.
+- 실제 배포 상태 전이는 서버의 Install Engine 사이클(`VALIDATING → INSTALLING → CONFIGURING → HEALTHCHECK`)을 따른다.
+- 따라서 스크립트는 “실행 참고본”, 배포 성공/실패의 최종 권위는 백엔드 오케스트레이터 상태로 판단한다.
+
+#### 3) YAML View 커스텀 계약
+
+- 사용자 커스텀 허용 범위:
+  - Helm values 본문(운영 파라미터)
+  - 일반 Kubernetes YAML 본문
+- 고정 정책(Strict):
+  - 선택 OSS와 무관한 chart repo/name 불가
+  - 카탈로그와 불일치한 `chart.version`/`app(image.tag)`는 검증 실패
+  - Gateway는 `Gateway API (Gateway + HTTPRoute)` 구조를 유지해야 함
+- 실패 처리:
+  - YAML 오류는 도구 단위로 표시
+  - Strict 검증 실패 시 Deploy 버튼 잠금
+
+#### 4) 리소스 산정 상세 설계
+
+- 입력 파라미터:
+  - `developers`, `concurrent_runners`, `weekly_commits`, `build_frequency`
+  - 선택 OSS 목록(역할별 선택값)
+- 계산 모델:
+  1. OSS baseline 합산
+  2. workload scale factor 적용
+  3. artifact/storage 증분 반영
+  4. request/limit 총합 및 비용 추정
+- 관리 API:
+  - `GET /api/v1/stacks/resource-defaults`
+  - `POST /api/v1/stacks/resource-defaults`
+
+#### 5) 스토리지 선택 상세 설계
+
+- `plan_mode`
+  - `integrated-create`: 스택 설치와 함께 통합 생성
+  - `existing-connect`: 기존 엔드포인트/계정 연결
+- 대상별 입력 구조:
+  - `database`: `mode`, `provider`, `version`, `size_gi`, `endpoint`, `username`, `password`
+  - `object_storage`: `mode`, `provider`, `version`, `size_gi`, `endpoint`, `access_key`, `secret_key`, `bucket`
+- 검증 규칙:
+  - connect 모드에서 endpoint/credential 필수
+  - create 모드에서 최소 size/provider 필수
+
+### Stack 데이터 모델/인터페이스 확장(동기화 반영)
+
+#### A. StackConfig 필드 확장 (JSONB)
+
+- `access_domain`
+- `access_domain_tls`
+  - `enabled`
+  - `secret_name`
+  - `secret_namespace`
+- `storage`
+  - `plan_mode`
+  - `database` / `object_storage` 세부 블록
+
+#### B. 템플릿 도구 버전 메타데이터
+
+- `tools[]` 엔트리에 다음 필드를 유지
+  - `helm_version`
+  - `app_version`
+- 템플릿 편집/저장 시 해당 메타데이터 유실 금지
+
+#### C. DB 반영 항목 (Stack 범위)
+
+- `stack_resource_defaults` (리소스 기본값 저장)
+  - `tool_key`, `display_name`
+  - `cpu_request`, `cpu_limit`
+  - `memory_request_gi`, `memory_limit_gi`
+  - `storage_request_gi`, `storage_limit_gi`
+  - `is_default`
+- 템플릿/호환성 버전 동기화
+  - `golden_path_templates.tools`의 `helm_version/app_version`
+  - `compatibility_matrices.tools`의 `HelmVersion/AppVersion`
+
+#### D. 인터페이스 일관성 원칙
+
+- 동일 목적 필드는 Stack 도메인 전반에서 명칭을 통일한다.
+  - 예: `access_domain`, `access_domain_tls`, `plan_mode`, `helm_version`, `app_version`
+- 신규 UI 기능으로 생긴 필드는 API/DB/문서에 동시에 반영한다.
