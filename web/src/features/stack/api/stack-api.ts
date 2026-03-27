@@ -53,10 +53,68 @@ const queryKeys = {
   template: (id: string) => ['stacks', 'templates', id] as const,
   list: (filters?: Record<string, unknown>) => ['stacks', 'list', filters] as const,
   history: (stackId: string) => ['stacks', 'history', stackId] as const,
+  monitoring: (stackId: string) => ['stacks', 'monitoring', stackId] as const,
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
   resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
+}
+
+export interface PodMonitoringStatus {
+  name: string
+  phase: string
+  ready: boolean
+  restart_count: number
+  node_name: string
+  cpu_request_millicores: number
+  cpu_limit_millicores: number
+  cpu_usage_millicores: number
+  memory_request_mib: number
+  memory_limit_mib: number
+  memory_usage_mib: number
+  status: 'running' | 'warning' | 'error'
+}
+
+export interface OSSMonitoringStatus {
+  key: string
+  name: string
+  version: string
+  enabled: boolean
+  status: 'running' | 'warning' | 'error'
+  pod_count: number
+  ready_pods: number
+  pods: PodMonitoringStatus[]
+}
+
+export interface StackMonitoringSummary {
+  total_pods: number
+  ready_pods: number
+  cpu_request_millicores: number
+  cpu_limit_millicores: number
+  cpu_usage_millicores: number
+  memory_request_mib: number
+  memory_limit_mib: number
+  memory_usage_mib: number
+  usage_available: boolean
+}
+
+export interface InstalledResourceStatus {
+  kind: string
+  name: string
+  desired_replicas: number
+  ready_replicas: number
+  available_replicas: number
+  status: 'running' | 'warning' | 'error'
+}
+
+export interface StackMonitoringSnapshot {
+  stack_id: string
+  namespace: string
+  timestamp: string
+  summary: StackMonitoringSummary
+  pod_status_counts: Array<{ name: string; count: number }>
+  installed_resources: InstalledResourceStatus[]
+  oss_statuses: OSSMonitoringStatus[]
 }
 
 interface RawTemplate {
@@ -431,6 +489,9 @@ const stackApiCalls = {
       .get<RawStackHistoryEntry[]>(`/stacks/${stackId}/history`)
       .then((r) => (r.data ?? []).map(normalizeStackHistoryEntry)),
 
+  getMonitoring: (stackId: string) =>
+    api.get<StackMonitoringSnapshot>(`/stacks/${stackId}/monitoring`).then((r) => r.data),
+
   getVersionDiff: (stackId: string, from: number, to: number) =>
     api.get<StackVersionDiff>(`/stacks/${stackId}/history/diff`, { params: { versionA: from, versionB: to } }).then((r) => r.data),
 
@@ -562,6 +623,16 @@ export function useStackHistory(stackId: string) {
     queryKey: queryKeys.history(stackId),
     queryFn: () => stackApiCalls.getHistory(stackId),
     enabled: !!stackId,
+  })
+}
+
+export function useStackMonitoring(stackId: string, refetchIntervalMs = 5000) {
+  return useQuery({
+    queryKey: queryKeys.monitoring(stackId),
+    queryFn: () => stackApiCalls.getMonitoring(stackId),
+    enabled: !!stackId,
+    refetchInterval: refetchIntervalMs,
+    staleTime: 0,
   })
 }
 

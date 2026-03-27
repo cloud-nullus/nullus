@@ -29,20 +29,19 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-	Area,
-	AreaChart,
-	Bar,
-	BarChart,
-	CartesianGrid,
-	Cell,
-	Legend,
-	Pie,
-	PieChart,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
+	ArcElement,
+	BarElement,
+	CategoryScale,
+	Chart as ChartJS,
+	Filler,
+	Legend as ChartLegend,
+	LineElement,
+	LinearScale,
+	PointElement,
+	Tooltip as ChartTooltip,
+	type ChartOptions,
+} from "chart.js";
+import { Bar, Doughnut, Line } from "react-chartjs-2";
 import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
@@ -51,7 +50,19 @@ import { Modal } from "../../../components/ui/modal";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
-import { useDeleteStack, useStackHistory, useStacks } from "../api/stack-api";
+import { useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
+
+ChartJS.register(
+	CategoryScale,
+	LinearScale,
+	PointElement,
+	LineElement,
+	BarElement,
+	ArcElement,
+	ChartTooltip,
+	ChartLegend,
+	Filler,
+);
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
@@ -1232,7 +1243,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 	);
 }
 
-type MonitoringRange = "1h" | "6h" | "24h" | "7d";
+type MonitoringRange = "realtime" | "1h" | "6h" | "24h" | "7d";
 type ToolHealthStatus = "running" | "warning" | "error";
 
 const TOOL_STATUS_CONFIG: Record<
@@ -1272,116 +1283,443 @@ function UsageBar({ value, color }: { value: number; color: string }) {
 	);
 }
 
-function generateMonitoringSeries(range: MonitoringRange) {
-	const pointsByRange: Record<MonitoringRange, number> = {
-		"1h": 6,
-		"6h": 12,
-		"24h": 24,
-		"7d": 28,
-	};
-	const hoursByRange: Record<MonitoringRange, number> = {
-		"1h": 1,
-		"6h": 6,
-		"24h": 24,
-		"7d": 24 * 7,
-	};
+type MonitoringSample = {
+	ts: number;
+	overall: ScopeMetrics;
+	byTool: Record<string, ScopeMetrics>;
+};
 
-	const now = Date.now();
-	const points = pointsByRange[range];
-	const totalHours = hoursByRange[range];
-	const hourStep = totalHours / points;
+type ScopeMetrics = {
+	cpuRequest: number;
+	cpuLimit: number;
+	cpuUsage: number | null;
+	memoryRequest: number;
+	memoryLimit: number;
+	memoryUsage: number | null;
+	readyPods: number;
+	totalPods: number;
+	statusCounts: Record<string, number>;
+};
 
-	return Array.from({ length: points }, (_, index) => {
-		const ageHours = totalHours - hourStep * (index + 1);
-		const ts = new Date(now - ageHours * 60 * 60 * 1000);
-		const label =
-			range === "7d"
-				? ts.toLocaleDateString("en-US", { weekday: "short" })
-				: ts.toLocaleTimeString("en-US", {
-					hour: "2-digit",
-					minute: "2-digit",
-					hour12: false,
-				});
-
-		const cpuWave = 56 + Math.sin(index / 2.5) * 16 + (index % 3) * 2.1;
-		const memoryWave = 63 + Math.cos(index / 3.2) * 10 + (index % 4) * 1.8;
-
-		return {
-			time: label,
-			cpu: Math.max(12, Math.min(96, Math.round(cpuWave))),
-			memory: Math.max(24, Math.min(97, Math.round(memoryWave))),
-		};
-	});
+function normalizeToPercent(value: number, maxValue: number): number {
+	if (maxValue <= 0) return 0;
+	return Math.max(0, Math.min(100, Math.round((value / maxValue) * 100)));
 }
 
-function StackMonitoringTab() {
-	const [range, setRange] = useState<MonitoringRange>("24h");
-	const usageData = useMemo(() => generateMonitoringSeries(range), [range]);
+function selectSeries(samples: MonitoringSample[], range: MonitoringRange): MonitoringSample[] {
+	if (samples.length === 0) return [];
+	if (range === "realtime") {
+		return samples.slice(-60);
+	}
 
-	const pipelineBars = useMemo(
+	const now = Date.now();
+	const windowMs: Record<Exclude<MonitoringRange, "realtime">, number> = {
+		"1h": 60 * 60 * 1000,
+		"6h": 6 * 60 * 60 * 1000,
+		"24h": 24 * 60 * 60 * 1000,
+		"7d": 7 * 24 * 60 * 60 * 1000,
+	};
+	const cutoff = now - windowMs[range];
+	const ranged = samples.filter((s) => s.ts >= cutoff);
+	if (ranged.length <= 120) return ranged;
+
+	const stride = Math.ceil(ranged.length / 120);
+	return ranged.filter((_, idx) => idx % stride === 0);
+}
+
+function toStatusCountMap(items: Array<{ name: string; count: number }>): Record<string, number> {
+	return items.reduce<Record<string, number>>((acc, item) => {
+		acc[item.name] = item.count;
+		return acc;
+	}, {});
+}
+
+function toScopeMetricsFromPods(
+	pods: Array<{
+		phase: string;
+		ready: boolean;
+		cpu_request_millicores: number;
+		cpu_limit_millicores: number;
+		cpu_usage_millicores: number;
+		memory_request_mib: number;
+		memory_limit_mib: number;
+		memory_usage_mib: number;
+	}>,
+): ScopeMetrics {
+	const statusCounts: Record<string, number> = {};
+	let cpuRequest = 0;
+	let cpuLimit = 0;
+	let cpuUsage = 0;
+	let memoryRequest = 0;
+	let memoryLimit = 0;
+	let memoryUsage = 0;
+	let readyPods = 0;
+
+	for (const pod of pods) {
+		const phase = pod.phase?.trim() || "Unknown";
+		statusCounts[phase] = (statusCounts[phase] ?? 0) + 1;
+		cpuRequest += pod.cpu_request_millicores;
+		cpuLimit += pod.cpu_limit_millicores;
+		cpuUsage += pod.cpu_usage_millicores;
+		memoryRequest += pod.memory_request_mib;
+		memoryLimit += pod.memory_limit_mib;
+		memoryUsage += pod.memory_usage_mib;
+		if (pod.ready) readyPods += 1;
+	}
+
+	return {
+		cpuRequest,
+		cpuLimit,
+		cpuUsage,
+		memoryRequest,
+		memoryLimit,
+		memoryUsage,
+		readyPods,
+		totalPods: pods.length,
+		statusCounts,
+	};
+}
+
+function isResourceLinkedToPods(resourceName: string, podNames: string[]): boolean {
+	for (const podName of podNames) {
+		if (podName === resourceName || podName.startsWith(`${resourceName}-`)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function StackMonitoringTab({ stackId }: { stackId: string }) {
+	const [range, setRange] = useState<MonitoringRange>("realtime");
+	const [scope, setScope] = useState<string>("all");
+	const [samples, setSamples] = useState<MonitoringSample[]>([]);
+	const { data: monitoring, isLoading } = useStackMonitoring(stackId, 5000);
+
+	const scopeOptions = useMemo(
 		() => [
-			{ day: "Mon", success: 16, failed: 2 },
-			{ day: "Tue", success: 19, failed: 3 },
-			{ day: "Wed", success: 15, failed: 4 },
-			{ day: "Thu", success: 21, failed: 2 },
-			{ day: "Fri", success: 24, failed: 3 },
-			{ day: "Sat", success: 11, failed: 2 },
-			{ day: "Sun", success: 9, failed: 1 },
+			{ key: "all", label: "전체" },
+			...(monitoring?.oss_statuses ?? []).map((tool) => ({ key: tool.key, label: tool.name })),
 		],
+		[monitoring],
+	);
+
+	useEffect(() => {
+		if (!scopeOptions.some((item) => item.key === scope)) {
+			setScope("all");
+		}
+	}, [scopeOptions, scope]);
+
+	useEffect(() => {
+		if (!monitoring?.summary) return;
+
+		const overall: ScopeMetrics = {
+			cpuRequest: monitoring.summary.cpu_request_millicores,
+			cpuLimit: monitoring.summary.cpu_limit_millicores,
+			cpuUsage: monitoring.summary.usage_available ? monitoring.summary.cpu_usage_millicores : null,
+			memoryRequest: monitoring.summary.memory_request_mib,
+			memoryLimit: monitoring.summary.memory_limit_mib,
+			memoryUsage: monitoring.summary.usage_available ? monitoring.summary.memory_usage_mib : null,
+			readyPods: monitoring.summary.ready_pods,
+			totalPods: monitoring.summary.total_pods,
+			statusCounts: toStatusCountMap(monitoring.pod_status_counts ?? []),
+		};
+
+		const byTool = (monitoring.oss_statuses ?? []).reduce<Record<string, ScopeMetrics>>((acc, tool) => {
+			const metrics = toScopeMetricsFromPods(tool.pods ?? []);
+			if (!monitoring.summary.usage_available) {
+				metrics.cpuUsage = null;
+				metrics.memoryUsage = null;
+			}
+			acc[tool.key] = metrics;
+			return acc;
+		}, {});
+
+		const next: MonitoringSample = {
+			ts: Date.now(),
+			overall,
+			byTool,
+		};
+
+		setSamples((prev) => {
+			const appended = [...prev, next];
+			return appended.slice(-4000);
+		});
+	}, [monitoring]);
+
+	const activeTool = useMemo(
+		() => (monitoring?.oss_statuses ?? []).find((tool) => tool.key === scope) ?? null,
+		[monitoring, scope],
+	);
+
+	const currentMetrics = useMemo<ScopeMetrics>(() => {
+		if (!monitoring?.summary) {
+			return {
+				cpuRequest: 0,
+				cpuLimit: 0,
+				cpuUsage: null,
+				memoryRequest: 0,
+				memoryLimit: 0,
+				memoryUsage: null,
+				readyPods: 0,
+				totalPods: 0,
+				statusCounts: {},
+			};
+		}
+		if (scope === "all") {
+			return {
+				cpuRequest: monitoring.summary.cpu_request_millicores,
+				cpuLimit: monitoring.summary.cpu_limit_millicores,
+				cpuUsage: monitoring.summary.usage_available ? monitoring.summary.cpu_usage_millicores : null,
+				memoryRequest: monitoring.summary.memory_request_mib,
+				memoryLimit: monitoring.summary.memory_limit_mib,
+				memoryUsage: monitoring.summary.usage_available ? monitoring.summary.memory_usage_mib : null,
+				readyPods: monitoring.summary.ready_pods,
+				totalPods: monitoring.summary.total_pods,
+				statusCounts: toStatusCountMap(monitoring.pod_status_counts ?? []),
+			};
+		}
+		if (!activeTool) {
+			return {
+				cpuRequest: 0,
+				cpuLimit: 0,
+				cpuUsage: null,
+				memoryRequest: 0,
+				memoryLimit: 0,
+				memoryUsage: null,
+				readyPods: 0,
+				totalPods: 0,
+				statusCounts: {},
+			};
+		}
+		const scoped = toScopeMetricsFromPods(activeTool.pods ?? []);
+		if (!monitoring.summary.usage_available) {
+			scoped.cpuUsage = null;
+			scoped.memoryUsage = null;
+		}
+		return scoped;
+	}, [monitoring, scope, activeTool]);
+
+	const usageData = useMemo(() => {
+		const selected = selectSeries(samples, range);
+		return selected.map((item) => {
+			const ts = new Date(item.ts);
+			const scoped =
+				scope === "all"
+					? item.overall
+					: (item.byTool[scope] ?? {
+							cpuRequest: 0,
+							cpuLimit: 0,
+							cpuUsage: null,
+							memoryRequest: 0,
+							memoryLimit: 0,
+							memoryUsage: null,
+							readyPods: 0,
+							totalPods: 0,
+							statusCounts: {},
+					  });
+			return {
+				time:
+					range === "7d"
+						? ts.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" })
+						: ts.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+				cpuRequest: scoped.cpuRequest,
+				cpuLimit: scoped.cpuLimit,
+				cpuUsage: scoped.cpuUsage,
+				memoryRequest: scoped.memoryRequest,
+				memoryLimit: scoped.memoryLimit,
+				memoryUsage: scoped.memoryUsage,
+			};
+		});
+	}, [samples, range, scope]);
+
+	const cpuMaxInWindow = useMemo(() => {
+		const values = usageData.flatMap((item) => [item.cpuRequest, item.cpuLimit, item.cpuUsage ?? 0]);
+		const max = Math.max(0, ...values);
+		return max;
+	}, [usageData]);
+
+	const memoryMaxInWindow = useMemo(() => {
+		const values = usageData.flatMap((item) => [item.memoryRequest, item.memoryLimit, item.memoryUsage ?? 0]);
+		const max = Math.max(0, ...values);
+		return max;
+	}, [usageData]);
+
+	const podStatusData = useMemo(() => {
+		const palette = ["#22c55e", "#f59e0b", "#ef4444", "#60a5fa", "#a78bfa", "#94a3b8"];
+		const counts = Object.entries(currentMetrics.statusCounts).map(([name, count]) => ({ name, count }));
+		return counts.map((item, idx) => ({
+			name: item.name,
+			value: item.count,
+			color: palette[idx % palette.length],
+		}));
+	}, [currentMetrics]);
+
+	const ossBars = useMemo(
+		() => {
+			if (scope === "all") {
+				return (monitoring?.oss_statuses ?? []).map((tool) => ({
+					name: tool.name,
+					pods: tool.pod_count,
+					ready: tool.ready_pods,
+				}));
+			}
+			if (!activeTool) return [];
+			return [{ name: activeTool.name, pods: activeTool.pod_count, ready: activeTool.ready_pods }];
+		},
+		[monitoring, scope, activeTool],
+	);
+
+	const visibleResources = useMemo(() => {
+		const all = monitoring?.installed_resources ?? [];
+		if (scope === "all" || !activeTool) return all;
+		const podNames = (activeTool.pods ?? []).map((pod) => pod.name);
+		return all.filter((res) => isResourceLinkedToPods(res.name, podNames));
+	}, [monitoring, scope, activeTool]);
+
+	const kpiCards = useMemo(() => {
+		if (!monitoring?.summary) {
+			return [
+				{ label: "CPU Requests", value: "-", icon: <Cpu size={18} />, color: "#60a5fa", iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]", bar: 0 },
+				{ label: "Memory Requests", value: "-", icon: <MemoryStick size={18} />, color: "#a78bfa", iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]", bar: 0 },
+				{ label: "Current Usage", value: "-", icon: <HardDrive size={18} />, color: "#34d399", iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]", bar: 0 },
+				{ label: "Ready Pods", value: "-", icon: <Box size={18} />, color: "#fbbf24", iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]", bar: 0 },
+			];
+		}
+
+		const readyRatio = currentMetrics.totalPods > 0 ? Math.round((currentMetrics.readyPods / currentMetrics.totalPods) * 100) : 0;
+		const cpuTrend = normalizeToPercent(currentMetrics.cpuRequest, cpuMaxInWindow || currentMetrics.cpuRequest || 1);
+		const memTrend = normalizeToPercent(currentMetrics.memoryRequest, memoryMaxInWindow || currentMetrics.memoryRequest || 1);
+		const usageValue =
+			currentMetrics.cpuUsage !== null && currentMetrics.memoryUsage !== null
+				? `CPU ${currentMetrics.cpuUsage}m / MEM ${currentMetrics.memoryUsage}MiB`
+				: "N/A (metrics-server 미감지)";
+
+		return [
+			{ label: "CPU Requests", value: `${currentMetrics.cpuRequest}m`, icon: <Cpu size={18} />, color: "#60a5fa", iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]", bar: cpuTrend },
+			{ label: "Memory Requests", value: `${currentMetrics.memoryRequest} MiB`, icon: <MemoryStick size={18} />, color: "#a78bfa", iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]", bar: memTrend },
+			{ label: "Current Usage", value: usageValue, icon: <HardDrive size={18} />, color: "#34d399", iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]", bar: currentMetrics.cpuUsage !== null ? normalizeToPercent(currentMetrics.cpuUsage, cpuMaxInWindow || currentMetrics.cpuUsage || 1) : 0 },
+			{ label: "Ready Pods", value: `${currentMetrics.readyPods} / ${currentMetrics.totalPods}`, icon: <Box size={18} />, color: "#fbbf24", iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]", bar: readyRatio },
+		];
+	}, [monitoring, currentMetrics, cpuMaxInWindow, memoryMaxInWindow]);
+
+	const tools: { name: string; version: string; status: ToolHealthStatus }[] = useMemo(
+		() => {
+			const all = monitoring?.oss_statuses ?? [];
+			const filtered = scope === "all" ? all : all.filter((tool) => tool.key === scope);
+			return filtered.map((tool) => ({ name: tool.name, version: tool.version, status: tool.status }));
+		},
+		[monitoring, scope],
+	);
+
+	const baseChartOptions: ChartOptions<"line"> = useMemo(
+		() => ({
+			responsive: true,
+			maintainAspectRatio: false,
+			interaction: { mode: "index", intersect: false },
+			plugins: {
+				legend: { labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 } },
+				tooltip: {
+					backgroundColor: "#111827",
+					borderColor: "#374151",
+					borderWidth: 1,
+					titleColor: "#f9fafb",
+					bodyColor: "#e5e7eb",
+				},
+			},
+			scales: {
+				x: { ticks: { color: "#cbd5e1", maxRotation: 0 }, grid: { color: "rgba(148,163,184,0.12)" } },
+				y: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148,163,184,0.12)" }, beginAtZero: true },
+			},
+			elements: { line: { tension: 0.35 }, point: { radius: 0, hoverRadius: 3 } },
+		}),
 		[],
 	);
 
-	const podStatusData = useMemo(
-		() => [
-			{ name: "Running", value: 24, color: "#22c55e" },
-			{ name: "Pending", value: 2, color: "#f59e0b" },
-			{ name: "Failed", value: 1, color: "#ef4444" },
-		],
+	const cpuChartData = useMemo(
+		() => ({
+			labels: usageData.map((item) => item.time),
+			datasets: [
+				{ label: "CPU Request", data: usageData.map((item) => item.cpuRequest), borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.18)", fill: true },
+				{ label: "CPU Limit", data: usageData.map((item) => item.cpuLimit), borderColor: "#60a5fa", backgroundColor: "rgba(96,165,250,0.08)", fill: false },
+				{ label: "CPU Current", data: usageData.map((item) => item.cpuUsage), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", fill: false },
+			],
+		}),
+		[usageData],
+	);
+
+	const memoryChartData = useMemo(
+		() => ({
+			labels: usageData.map((item) => item.time),
+			datasets: [
+				{ label: "Memory Request", data: usageData.map((item) => item.memoryRequest), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.18)", fill: true },
+				{ label: "Memory Limit", data: usageData.map((item) => item.memoryLimit), borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.08)", fill: false },
+				{ label: "Memory Current", data: usageData.map((item) => item.memoryUsage), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", fill: false },
+			],
+		}),
+		[usageData],
+	);
+
+	const ossBarData = useMemo(
+		() => ({
+			labels: ossBars.map((item) => item.name),
+			datasets: [
+				{ label: "Total Pods", data: ossBars.map((item) => item.pods), backgroundColor: "rgba(99,102,241,0.72)", borderRadius: 6 },
+				{ label: "Ready Pods", data: ossBars.map((item) => item.ready), backgroundColor: "rgba(34,197,94,0.72)", borderRadius: 6 },
+			],
+		}),
+		[ossBars],
+	);
+
+	const ossBarOptions: ChartOptions<"bar"> = useMemo(
+		() => ({
+			responsive: true,
+			maintainAspectRatio: false,
+			plugins: {
+				legend: { labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 } },
+				tooltip: {
+					backgroundColor: "#111827",
+					borderColor: "#374151",
+					borderWidth: 1,
+					titleColor: "#f9fafb",
+					bodyColor: "#e5e7eb",
+				},
+			},
+			scales: {
+				x: { ticks: { color: "#cbd5e1", maxRotation: 0 }, grid: { color: "rgba(148,163,184,0.12)" } },
+				y: { beginAtZero: true, ticks: { color: "#cbd5e1", precision: 0 }, grid: { color: "rgba(148,163,184,0.12)" } },
+			},
+		}),
 		[],
 	);
 
-	const kpiCards = [
-		{
-			label: "CPU 사용률",
-			value: "68%",
-			icon: <Cpu size={18} />,
-			color: "#60a5fa",
-			iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]",
-			bar: 68,
-		},
-		{
-			label: "메모리 사용률",
-			value: "42%",
-			icon: <MemoryStick size={18} />,
-			color: "#a78bfa",
-			iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]",
-			bar: 42,
-		},
-		{
-			label: "스토리지",
-			value: "31%",
-			icon: <HardDrive size={18} />,
-			color: "#34d399",
-			iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
-			bar: 31,
-		},
-		{
-			label: "Pod 수",
-			value: "24 / 27",
-			icon: <Box size={18} />,
-			color: "#fbbf24",
-			iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]",
-			bar: 89,
-		},
-	];
+	const podStatusChartData = useMemo(
+		() => ({
+			labels: podStatusData.map((item) => item.name),
+			datasets: [
+				{ data: podStatusData.map((item) => item.value), backgroundColor: podStatusData.map((item) => item.color), borderColor: "rgba(15,23,42,0.8)", borderWidth: 2 },
+			],
+		}),
+		[podStatusData],
+	);
 
-	const tools: { name: string; version: string; status: ToolHealthStatus }[] = [
-		{ name: "GitLab", status: "running", version: "16.7" },
-		{ name: "Argo CD", status: "running", version: "2.9.3" },
-		{ name: "Prometheus", status: "running", version: "2.48.1" },
-		{ name: "Grafana", status: "warning", version: "10.3" },
-		{ name: "Loki", status: "running", version: "2.9.8" },
-	];
+	const podStatusOptions: ChartOptions<"doughnut"> = useMemo(
+		() => ({
+			responsive: true,
+			maintainAspectRatio: false,
+			cutout: "62%",
+			plugins: {
+				legend: { position: "bottom", labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 } },
+				tooltip: {
+					backgroundColor: "#111827",
+					borderColor: "#374151",
+					borderWidth: 1,
+					titleColor: "#f9fafb",
+					bodyColor: "#e5e7eb",
+				},
+			},
+		}),
+		[],
+	);
 
 	const cardClassName =
 		"rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]";
@@ -1414,11 +1752,40 @@ function StackMonitoringTab() {
 
 			<div className={cn(cardClassName, "mb-6")}>
 				<div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
-					<h2 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
-						Monitoring Charts
-					</h2>
-					<div className="flex gap-1.5">
-						{(["1h", "6h", "24h", "7d"] as const).map((item) => {
+					<div className="flex items-center gap-2">
+						<h2 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
+							Resource Trend (실측 기반)
+						</h2>
+						{isLoading && (
+							<span className="rounded-full bg-[rgba(99,102,241,0.15)] px-2 py-0.5 text-[11px] font-semibold text-[#a5b4fc]">
+								데이터를 불러오는 중...
+							</span>
+						)}
+					</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<div className="flex gap-1.5">
+							{scopeOptions.map((item) => {
+								const active = scope === item.key;
+								return (
+									<button
+										key={item.key}
+										type="button"
+										onClick={() => setScope(item.key)}
+										className={cn(
+											"cursor-pointer rounded-[7px] border px-2.5 py-[5px] text-xs font-semibold",
+											active
+												? "border-[rgba(16,185,129,0.65)] bg-[rgba(16,185,129,0.2)] text-[#6ee7b7]"
+												: "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]",
+										)}
+									>
+										{item.label}
+									</button>
+								);
+							})}
+						</div>
+						<div className="h-4 w-px bg-[var(--color-border-default)]" />
+						<div className="flex gap-1.5">
+						{(["realtime", "1h", "6h", "24h", "7d"] as const).map((item) => {
 							const active = range === item;
 							return (
 								<button
@@ -1432,185 +1799,54 @@ function StackMonitoringTab() {
 											: "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]",
 									)}
 								>
-									{item}
+									{item === "realtime" ? "Live 5s" : item}
 								</button>
 							);
 						})}
+						</div>
 					</div>
 				</div>
 
 				<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
 					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
 						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							CPU Usage
+							CPU (Request / Limit / Current)
 						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<AreaChart data={usageData}>
-								<defs>
-									<linearGradient
-										id="stackCpuGradient"
-										x1="0"
-										y1="0"
-										x2="0"
-										y2="1"
-									>
-										<stop offset="5%" stopColor="#f59e0b" stopOpacity={0.58} />
-										<stop offset="95%" stopColor="#f59e0b" stopOpacity={0.06} />
-									</linearGradient>
-								</defs>
-								<CartesianGrid
-									stroke="rgba(148,163,184,0.2)"
-									strokeDasharray="3 3"
-								/>
-								<XAxis
-									dataKey="time"
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<YAxis
-									domain={[0, 100]}
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-								<Area
-									type="monotone"
-									dataKey="cpu"
-									stroke="#f59e0b"
-									strokeWidth={2}
-									fill="url(#stackCpuGradient)"
-									name="CPU %"
-								/>
-							</AreaChart>
-						</ResponsiveContainer>
+						<div className="h-[250px]">
+							<Line data={cpuChartData} options={baseChartOptions} />
+						</div>
 					</div>
 
 					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
 						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							Memory Usage
+							Memory (Request / Limit / Current)
 						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<AreaChart data={usageData}>
-								<defs>
-									<linearGradient
-										id="stackMemoryGradient"
-										x1="0"
-										y1="0"
-										x2="0"
-										y2="1"
-									>
-										<stop offset="5%" stopColor="#3b82f6" stopOpacity={0.54} />
-										<stop offset="95%" stopColor="#3b82f6" stopOpacity={0.08} />
-									</linearGradient>
-								</defs>
-								<CartesianGrid
-									stroke="rgba(148,163,184,0.2)"
-									strokeDasharray="3 3"
-								/>
-								<XAxis
-									dataKey="time"
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<YAxis
-									domain={[0, 100]}
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-								<Area
-									type="monotone"
-									dataKey="memory"
-									stroke="#3b82f6"
-									strokeWidth={2}
-									fill="url(#stackMemoryGradient)"
-									name="Memory %"
-								/>
-							</AreaChart>
-						</ResponsiveContainer>
+						<div className="h-[250px]">
+							<Line data={memoryChartData} options={baseChartOptions} />
+						</div>
 					</div>
 
 					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
 						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							Pipeline Success Rate
+							OSS Pod Coverage
 						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<BarChart data={pipelineBars}>
-								<CartesianGrid
-									stroke="rgba(148,163,184,0.2)"
-									strokeDasharray="3 3"
-								/>
-								<XAxis
-									dataKey="day"
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<YAxis
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-								<Bar dataKey="success" fill="#22c55e" radius={[5, 5, 0, 0]} />
-								<Bar dataKey="failed" fill="#ef4444" radius={[5, 5, 0, 0]} />
-							</BarChart>
-						</ResponsiveContainer>
+						<div className="h-[250px]">
+							<Bar data={ossBarData} options={ossBarOptions} />
+						</div>
 					</div>
 
 					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
 						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
 							Pod Status
 						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<PieChart>
-								<Pie
-									data={podStatusData}
-									dataKey="value"
-									nameKey="name"
-									cx="50%"
-									cy="50%"
-									outerRadius={86}
-									label
-								>
-									{podStatusData.map((entry) => (
-										<Cell key={entry.name} fill={entry.color} />
-									))}
-								</Pie>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-							</PieChart>
-						</ResponsiveContainer>
+						<div className="h-[250px]">
+							<Doughnut data={podStatusChartData} options={podStatusOptions} />
+						</div>
 					</div>
 				</div>
 
 				<div className="mt-3 text-xs text-[var(--color-text-secondary)]">
-					Pipeline summary: 97.3% success, 145 total runs, average build 2m 34s.
+					실시간은 5초 간격으로 갱신됩니다. 선택한 범위는 현재 세션에서 누적된 실측값 기반으로 표시됩니다.
 				</div>
 			</div>
 
@@ -1618,6 +1854,28 @@ function StackMonitoringTab() {
 				<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
 					Tool Health
 				</h2>
+				<div className="mb-4 overflow-x-auto rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
+					<table className="min-w-full text-left text-[12px] text-[var(--color-text-secondary)]">
+						<thead>
+							<tr className="border-b border-[var(--color-border-default)] text-[11px] uppercase tracking-[0.05em]">
+								<th className="px-3 py-2">Kind</th>
+								<th className="px-3 py-2">Resource</th>
+								<th className="px-3 py-2">Ready/Desired</th>
+								<th className="px-3 py-2">Status</th>
+							</tr>
+						</thead>
+						<tbody>
+							{visibleResources.map((item) => (
+								<tr key={`${item.kind}-${item.name}`} className="border-b border-[rgba(255,255,255,0.04)]">
+									<td className="px-3 py-2">{item.kind}</td>
+									<td className="px-3 py-2 font-medium text-[var(--color-text-primary)]">{item.name}</td>
+									<td className="px-3 py-2">{item.ready_replicas}/{item.desired_replicas}</td>
+									<td className="px-3 py-2">{item.status}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
 				<div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
 					{tools.map((tool) => {
 						const cfg = TOOL_STATUS_CONFIG[tool.status];
@@ -1646,6 +1904,42 @@ function StackMonitoringTab() {
 							</div>
 						);
 					})}
+				</div>
+				<div className="mt-4 space-y-2">
+					{(scope === "all" ? (monitoring?.oss_statuses ?? []) : (activeTool ? [activeTool] : [])).map((tool) => (
+						<div key={`pods-${tool.key}`} className="rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+							<div className="mb-2 flex items-center justify-between">
+								<div className="text-sm font-semibold text-[var(--color-text-primary)]">{tool.name} Pod Details</div>
+								<div className="text-xs text-[var(--color-text-secondary)]">ready {tool.ready_pods}/{tool.pod_count}</div>
+							</div>
+							<div className="overflow-x-auto">
+								<table className="min-w-full text-left text-[12px] text-[var(--color-text-secondary)]">
+									<thead>
+										<tr className="border-b border-[var(--color-border-default)] text-[11px] uppercase tracking-[0.05em]">
+											<th className="py-1 pr-3">Pod</th>
+											<th className="py-1 pr-3">Status</th>
+											<th className="py-1 pr-3">Ready</th>
+											<th className="py-1 pr-3">CPU Req/Limit</th>
+											<th className="py-1 pr-3">Mem Req/Limit</th>
+											<th className="py-1 pr-3">Restarts</th>
+										</tr>
+									</thead>
+									<tbody>
+										{tool.pods.map((pod) => (
+											<tr key={pod.name} className="border-b border-[rgba(255,255,255,0.04)]">
+												<td className="py-1 pr-3 font-medium text-[var(--color-text-primary)]">{pod.name}</td>
+												<td className="py-1 pr-3">{pod.status}</td>
+												<td className="py-1 pr-3">{pod.ready ? "yes" : "no"}</td>
+												<td className="py-1 pr-3">{pod.cpu_request_millicores}m / {pod.cpu_limit_millicores}m</td>
+												<td className="py-1 pr-3">{pod.memory_request_mib}Mi / {pod.memory_limit_mib}Mi</td>
+												<td className="py-1 pr-3">{pod.restart_count}</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					))}
 				</div>
 			</div>
 		</div>
@@ -1927,7 +2221,7 @@ function StackDetailPanel({
 
 			<div className="p-5">
 				{innerTab === "info" && <StackInfoTab stack={stack} onAddTools={onAddTools} onDelete={onDelete} />}
-				{innerTab === "monitoring" && <StackMonitoringTab />}
+				{innerTab === "monitoring" && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
 			</div>
