@@ -10,6 +10,7 @@ import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { useAuthStore } from '../../../stores/auth-store'
 import type { StackTemplate } from '../api/stack-api'
+import type { TemplateToolDetail } from '../../../types'
 
 interface TemplateFormState {
   id: string
@@ -94,16 +95,16 @@ const buildInitialAddToolDrafts = () =>
     })
   ) as Record<string, AddToolDraft>
 
-const toToolEntry = (toolName: string): ToolEntry => {
+const toToolEntry = (toolName: string, detail?: Partial<TemplateToolDetail>): ToolEntry => {
   const matched = TOOL_SECTIONS
     .flatMap((section) => section.categories)
     .find((category) => category.options.includes(toolName))
 
   return {
-    category: matched?.category ?? '',
+    category: detail?.category ?? matched?.category ?? '',
     name: toolName,
-    helm_version: '',
-    app_version: '',
+    helm_version: detail?.helm_version ?? '',
+    app_version: detail?.app_version ?? '',
   }
 }
 
@@ -185,13 +186,21 @@ export function StackTemplatePage() {
   }
 
   const openEditModal = (template: StackTemplate) => {
+    const toolsFromDetail = (template.toolDetails ?? [])
+      .filter((tool) => tool.name && tool.name.trim().length > 0)
+      .map((tool) => toToolEntry(tool.name, tool))
+
+    const tools = toolsFromDetail.length > 0
+      ? toolsFromDetail
+      : template.tools.map((toolName) => toToolEntry(toolName))
+
     setEditingTemplateId(template.id)
     setFormError(null)
     setForm({
       id: template.id,
       name: template.name,
       description: template.description,
-      tools: template.tools.map(toToolEntry),
+      tools,
       estimatedInstallTime: String(Math.max(1, Math.round(template.estimatedMinutes * 60 * 1_000_000_000))),
       recommendedUseCase: template.recommendedUseCase ?? '',
       minResources: template.minResources ?? '',
