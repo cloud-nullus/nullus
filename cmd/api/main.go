@@ -126,6 +126,7 @@ func main() {
 	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
 
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
+	stackMonitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
 
 	// CI/CD: postgres repos
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
@@ -223,6 +224,7 @@ func main() {
 	exportHandler.RegisterRoutes(v1)
 	compatHandler.RegisterRoutes(stacks)
 	historyHandler.RegisterRoutes(stacks)
+	stackMonitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
