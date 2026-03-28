@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -26,6 +27,8 @@ type StackMonitoringHandler struct {
 	kubeconfigProvider  port.KubeconfigProvider
 	collectMonitoringFn func(ctx context.Context, stack *domain.Stack, kubeconfig []byte) (*stackMonitoringResponse, error)
 }
+
+const stackNameLabelKey = "nullus.io/stack-name"
 
 func NewStackMonitoringHandler(stackRepo port.StackRepository, kubeconfigProvider port.KubeconfigProvider) *StackMonitoringHandler {
 	return &StackMonitoringHandler{
@@ -81,15 +84,19 @@ type stackMonitoringResponse struct {
 }
 
 type monitoringSummary struct {
-	TotalPods            int   `json:"total_pods"`
-	ReadyPods            int   `json:"ready_pods"`
-	CPURequestMillicores int64 `json:"cpu_request_millicores"`
-	CPULimitMillicores   int64 `json:"cpu_limit_millicores"`
-	CPUUsageMillicores   int64 `json:"cpu_usage_millicores"`
-	MemoryRequestMiB     int64 `json:"memory_request_mib"`
-	MemoryLimitMiB       int64 `json:"memory_limit_mib"`
-	MemoryUsageMiB       int64 `json:"memory_usage_mib"`
-	UsageAvailable       bool  `json:"usage_available"`
+	TotalPods             int     `json:"total_pods"`
+	ReadyPods             int     `json:"ready_pods"`
+	CPURequestMillicores  int64   `json:"cpu_request_millicores"`
+	CPULimitMillicores    int64   `json:"cpu_limit_millicores"`
+	CPUUsageMillicores    int64   `json:"cpu_usage_millicores"`
+	MemoryRequestMiB      int64   `json:"memory_request_mib"`
+	MemoryLimitMiB        int64   `json:"memory_limit_mib"`
+	MemoryUsageMiB        int64   `json:"memory_usage_mib"`
+	StorageRequestGiB     int64   `json:"storage_request_gib"`
+	StorageLimitGiB       int64   `json:"storage_limit_gib"`
+	StorageUsageGiB       float64 `json:"storage_usage_gib"`
+	StorageUsageAvailable bool    `json:"storage_usage_available"`
+	UsageAvailable        bool    `json:"usage_available"`
 }
 
 type namedCount struct {
@@ -118,23 +125,32 @@ type ossMonitoringStatus struct {
 }
 
 type podMonitoringStatus struct {
-	Name                 string `json:"name"`
-	Phase                string `json:"phase"`
-	Ready                bool   `json:"ready"`
-	RestartCount         int32  `json:"restart_count"`
-	NodeName             string `json:"node_name"`
-	CPURequestMillicores int64  `json:"cpu_request_millicores"`
-	CPULimitMillicores   int64  `json:"cpu_limit_millicores"`
-	CPUUsageMillicores   int64  `json:"cpu_usage_millicores"`
-	MemoryRequestMiB     int64  `json:"memory_request_mib"`
-	MemoryLimitMiB       int64  `json:"memory_limit_mib"`
-	MemoryUsageMiB       int64  `json:"memory_usage_mib"`
-	Status               string `json:"status"`
+	Name                 string  `json:"name"`
+	Phase                string  `json:"phase"`
+	Ready                bool    `json:"ready"`
+	RestartCount         int32   `json:"restart_count"`
+	NodeName             string  `json:"node_name"`
+	CPURequestMillicores int64   `json:"cpu_request_millicores"`
+	CPULimitMillicores   int64   `json:"cpu_limit_millicores"`
+	CPUUsageMillicores   int64   `json:"cpu_usage_millicores"`
+	MemoryRequestMiB     int64   `json:"memory_request_mib"`
+	MemoryLimitMiB       int64   `json:"memory_limit_mib"`
+	MemoryUsageMiB       int64   `json:"memory_usage_mib"`
+	StorageRequestGiB    int64   `json:"storage_request_gib"`
+	StorageLimitGiB      int64   `json:"storage_limit_gib"`
+	StorageUsageGiB      float64 `json:"storage_usage_gib"`
+	Status               string  `json:"status"`
 }
 
 type podUsage struct {
 	CPUUsageMillicores int64
 	MemoryUsageMiB     int64
+}
+
+type pvcStorageStats struct {
+	RequestGiB int64
+	LimitGiB   int64
+	UsageGiB   float64
 }
 
 func collectStackMonitoring(ctx context.Context, stack *domain.Stack, kubeconfig []byte) (*stackMonitoringResponse, error) {
@@ -154,25 +170,75 @@ func collectStackMonitoring(ctx context.Context, stack *domain.Stack, kubeconfig
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
 
-	pods, err := clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	selector := ""
+	if stack != nil && strings.TrimSpace(stack.Name) != "" {
+		selector = fmt.Sprintf("%s=%s", stackNameLabelKey, strings.TrimSpace(stack.Name))
+	}
+
+	listOptions := metav1.ListOptions{}
+	if selector != "" {
+		listOptions.LabelSelector = selector
+	}
+
+	pods, err := clientset.CoreV1().Pods(ns).List(ctx, listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("list pods: %w", err)
 	}
+	if len(pods.Items) == 0 && selector != "" {
+		pods, err = clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("list pods fallback: %w", err)
+		}
+	}
 
-	deployments, err := clientset.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
+	deployments, err := clientset.AppsV1().Deployments(ns).List(ctx, listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("list deployments: %w", err)
 	}
+	if len(deployments.Items) == 0 && selector != "" {
+		deployments, err = clientset.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("list deployments fallback: %w", err)
+		}
+	}
 
-	statefulSets, err := clientset.AppsV1().StatefulSets(ns).List(ctx, metav1.ListOptions{})
+	statefulSets, err := clientset.AppsV1().StatefulSets(ns).List(ctx, listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("list statefulsets: %w", err)
+	}
+	if len(statefulSets.Items) == 0 && selector != "" {
+		statefulSets, err = clientset.AppsV1().StatefulSets(ns).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("list statefulsets fallback: %w", err)
+		}
+	}
+
+	pvcStatsByName := map[string]pvcStorageStats{}
+	if pvcs, pvcErr := clientset.CoreV1().PersistentVolumeClaims(ns).List(ctx, listOptions); pvcErr == nil {
+		if len(pvcs.Items) == 0 && selector != "" {
+			if fallbackPVCs, fallbackErr := clientset.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{}); fallbackErr == nil {
+				pvcs = fallbackPVCs
+			}
+		}
+		pvcStatsByName = buildPVCStorageStats(pvcs.Items)
+	}
+
+	if pvcUsageByName, ok := collectPVCStorageUsageByNameWithNodeStats(ctx, clientset, ns, pods.Items); ok {
+		for pvcName, usageGiB := range pvcUsageByName {
+			stats := pvcStatsByName[pvcName]
+			stats.UsageGiB = usageGiB
+			pvcStatsByName[pvcName] = stats
+		}
 	}
 
 	podUsageMap, usageAvailable := collectPodUsageWithKubectl(ctx, kubeconfig, ns)
 	stackCfg := extractStackConfig(stack)
-	podStatuses, podStatusCounts, summary := toPodMonitoringStatuses(pods.Items, podUsageMap)
+	podStatuses, podStatusCounts, summary := toPodMonitoringStatuses(pods.Items, podUsageMap, pvcStatsByName)
 	summary.UsageAvailable = usageAvailable
+	summary.StorageRequestGiB, summary.StorageLimitGiB, summary.StorageUsageGiB = sumPVCStorageStats(pvcStatsByName)
+	if len(pvcStatsByName) > 0 {
+		summary.StorageUsageAvailable = true
+	}
 
 	out := &stackMonitoringResponse{
 		StackID:           stack.ID,
@@ -213,13 +279,14 @@ func extractStackConfig(stack *domain.Stack) domain.StackConfig {
 	}
 }
 
-func toPodMonitoringStatuses(pods []corev1.Pod, usageByPod map[string]podUsage) ([]podMonitoringStatus, []namedCount, monitoringSummary) {
+func toPodMonitoringStatuses(pods []corev1.Pod, usageByPod map[string]podUsage, pvcStatsByName map[string]pvcStorageStats) ([]podMonitoringStatus, []namedCount, monitoringSummary) {
 	out := make([]podMonitoringStatus, 0, len(pods))
 	statusCountMap := make(map[string]int)
 	var summary monitoringSummary
 
 	for _, pod := range pods {
 		cpuReq, cpuLimit, memReq, memLimit := podResourceTotals(pod)
+		storageReq, storageLimit, storageUsage := podStorageTotals(pod, pvcStatsByName)
 		ready := isPodReady(pod)
 		restarts := podRestartCount(pod)
 		status := classifyPodStatus(pod)
@@ -237,6 +304,9 @@ func toPodMonitoringStatuses(pods []corev1.Pod, usageByPod map[string]podUsage) 
 			MemoryRequestMiB:     memReq,
 			MemoryLimitMiB:       memLimit,
 			MemoryUsageMiB:       usage.MemoryUsageMiB,
+			StorageRequestGiB:    storageReq,
+			StorageLimitGiB:      storageLimit,
+			StorageUsageGiB:      storageUsage,
 			Status:               status,
 		}
 
@@ -392,6 +462,182 @@ func parseMemoryToMiB(raw string) (int64, error) {
 		return 0, err
 	}
 	return int64(v / (1024 * 1024)), nil
+}
+
+func collectPVCStorageTotals(pvcs []corev1.PersistentVolumeClaim) (requestGiB int64, limitGiB int64) {
+	for _, pvc := range pvcs {
+		req := int64(0)
+		if q, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
+			req = q.Value() / (1024 * 1024 * 1024)
+		}
+
+		lim := int64(0)
+		if q, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok {
+			lim = q.Value() / (1024 * 1024 * 1024)
+		}
+		if lim <= 0 {
+			lim = req
+		}
+
+		requestGiB += req
+		limitGiB += lim
+	}
+
+	return requestGiB, limitGiB
+}
+
+func buildPVCStorageStats(pvcs []corev1.PersistentVolumeClaim) map[string]pvcStorageStats {
+	out := make(map[string]pvcStorageStats, len(pvcs))
+	for _, pvc := range pvcs {
+		name := strings.TrimSpace(pvc.Name)
+		if name == "" {
+			continue
+		}
+		req := int64(0)
+		if q, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
+			req = q.Value() / (1024 * 1024 * 1024)
+		}
+		lim := int64(0)
+		if q, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok {
+			lim = q.Value() / (1024 * 1024 * 1024)
+		}
+		if lim <= 0 {
+			lim = req
+		}
+		out[name] = pvcStorageStats{RequestGiB: req, LimitGiB: lim}
+	}
+	return out
+}
+
+func sumPVCStorageStats(stats map[string]pvcStorageStats) (requestGiB int64, limitGiB int64, usageGiB float64) {
+	for _, s := range stats {
+		requestGiB += s.RequestGiB
+		limitGiB += s.LimitGiB
+		usageGiB += s.UsageGiB
+	}
+	usageGiB = math.Round(usageGiB*100) / 100
+	return requestGiB, limitGiB, usageGiB
+}
+
+type nodeStatsSummary struct {
+	Pods []nodePodStats `json:"pods"`
+}
+
+type nodePodStats struct {
+	PodRef struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"podRef"`
+	Volume []nodeVolumeStats `json:"volume"`
+}
+
+type nodeVolumeStats struct {
+	PVCRef *struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"pvcRef"`
+	UsedBytes *uint64 `json:"usedBytes"`
+}
+
+func collectPVCStorageUsageByNameWithNodeStats(ctx context.Context, clientset *kubernetes.Clientset, namespace string, pods []corev1.Pod) (map[string]float64, bool) {
+	if clientset == nil || len(pods) == 0 {
+		return map[string]float64{}, false
+	}
+
+	nodeNames := make(map[string]struct{})
+	podNames := make(map[string]struct{})
+	for _, pod := range pods {
+		podNames[pod.Name] = struct{}{}
+		if node := strings.TrimSpace(pod.Spec.NodeName); node != "" {
+			nodeNames[node] = struct{}{}
+		}
+	}
+	if len(nodeNames) == 0 {
+		return map[string]float64{}, false
+	}
+
+	pvcUsedBytesByName := make(map[string]uint64)
+	hit := false
+
+	for nodeName := range nodeNames {
+		nodeCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+		raw, err := clientset.CoreV1().RESTClient().Get().
+			Resource("nodes").
+			Name(nodeName).
+			SubResource("proxy").
+			Suffix("stats", "summary").
+			Do(nodeCtx).
+			Raw()
+		cancel()
+		if err != nil {
+			continue
+		}
+
+		var summary nodeStatsSummary
+		if err := json.Unmarshal(raw, &summary); err != nil {
+			continue
+		}
+
+		for _, podStat := range summary.Pods {
+			if podStat.PodRef.Namespace != namespace {
+				continue
+			}
+			if _, ok := podNames[podStat.PodRef.Name]; !ok {
+				continue
+			}
+
+			for _, vol := range podStat.Volume {
+				if vol.PVCRef == nil || vol.UsedBytes == nil {
+					continue
+				}
+				if vol.PVCRef.Namespace != "" && vol.PVCRef.Namespace != namespace {
+					continue
+				}
+				if prev, exists := pvcUsedBytesByName[vol.PVCRef.Name]; !exists || *vol.UsedBytes > prev {
+					pvcUsedBytesByName[vol.PVCRef.Name] = *vol.UsedBytes
+				}
+				hit = true
+			}
+		}
+	}
+
+	if !hit {
+		return map[string]float64{}, false
+	}
+
+	const gib = 1024 * 1024 * 1024
+	usageByPVCGiB := make(map[string]float64, len(pvcUsedBytesByName))
+	for pvcName, used := range pvcUsedBytesByName {
+		usageGiB := float64(used) / gib
+		usageByPVCGiB[pvcName] = math.Round(usageGiB*100) / 100
+	}
+	return usageByPVCGiB, true
+}
+
+func podStorageTotals(pod corev1.Pod, pvcStatsByName map[string]pvcStorageStats) (reqGiB int64, limitGiB int64, usageGiB float64) {
+	seen := make(map[string]struct{})
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim == nil {
+			continue
+		}
+		pvcName := strings.TrimSpace(vol.PersistentVolumeClaim.ClaimName)
+		if pvcName == "" {
+			continue
+		}
+		if _, exists := seen[pvcName]; exists {
+			continue
+		}
+		seen[pvcName] = struct{}{}
+		stats, ok := pvcStatsByName[pvcName]
+		if !ok {
+			continue
+		}
+		reqGiB += stats.RequestGiB
+		limitGiB += stats.LimitGiB
+		usageGiB += stats.UsageGiB
+	}
+	usageGiB = math.Round(usageGiB*100) / 100
+	return reqGiB, limitGiB, usageGiB
 }
 
 func podResourceTotals(pod corev1.Pod) (cpuReqMillicores, cpuLimitMillicores, memReqMiB, memLimitMiB int64) {
@@ -561,10 +807,24 @@ type selectedToolType struct {
 }
 
 func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
+	fallbackNameByKey := map[string]string{
+		"source_repository":  "gitlab",
+		"cd_tool":            "argocd",
+		"collection":         "prometheus",
+		"visualization":      "grafana",
+		"logging_collection": "loki",
+		"logging_search":     "opensearch",
+		"trace_layer":        "tempo",
+		"storage_backend":    "minio",
+	}
+
 	tool := func(key string, sel domain.ToolSelection, prefixes ...string) selectedToolType {
 		name := strings.TrimSpace(sel.Name)
 		if name == "" {
-			name = key
+			name = fallbackNameByKey[key]
+			if name == "" {
+				name = key
+			}
 		}
 		version := strings.TrimSpace(sel.Version)
 		if version == "" {

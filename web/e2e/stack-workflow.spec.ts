@@ -2,6 +2,22 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 
 const apiBase = 'http://localhost:8090/api/v1'
 
+async function getConnectedPipelineClusterId(request: APIRequestContext): Promise<string> {
+  const res = await request.get(`${apiBase}/admin/clusters`)
+  expect(res.ok()).toBeTruthy()
+
+  const body = (await res.json()) as {
+    items?: Array<{ id: string; type?: string; connection_status?: string }>
+  }
+
+  const cluster = (body.items ?? []).find(
+    (item) => item.type === 'pipeline' && item.connection_status === 'connected',
+  )
+
+  expect(cluster).toBeTruthy()
+  return cluster!.id
+}
+
 async function pollStackState(request: APIRequestContext, stackId: string, timeoutMs = 180000): Promise<string> {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {
@@ -80,10 +96,11 @@ test.describe('Stack Workflow E2E', () => {
   test('@stack-critical Stack List 기반 배포 상태/로그 페이지 및 템플릿 도메인 검증', async ({ page, request }) => {
     test.setTimeout(240000)
 
+    const clusterId = await getConnectedPipelineClusterId(request)
     const stackName = `pw-list-domain-${Date.now()}`
     const createPayload = {
       name: stackName,
-      cluster_id: '60223295-ea34-4319-8cc9-6e5417803445',
+      cluster_id: clusterId,
       namespace: 'nullus',
       golden_path_id: 'gitlab-argocd-v1',
       config: {
@@ -130,7 +147,7 @@ test.describe('Stack Workflow E2E', () => {
 
     await page.goto('/stack/list')
     await expect(page.locator('h1')).toContainText('Stack List', { timeout: 10000 })
-    await expect(page.getByText(stackName)).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(stackName).first()).toBeVisible({ timeout: 15000 })
 
     await page.goto(`/stack/logs/${stackId}`)
     await expect(page).toHaveURL(new RegExp(`/stack/logs/${stackId}`), { timeout: 10000 })

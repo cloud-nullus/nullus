@@ -28,6 +28,18 @@ type mockInstaller struct {
 	strictStatus    bool
 }
 
+type mockResourceDefaultRepo struct {
+	items []*domain.ResourceDefault
+}
+
+func (m *mockResourceDefaultRepo) List(_ context.Context) ([]*domain.ResourceDefault, error) {
+	return m.items, nil
+}
+
+func (m *mockResourceDefaultRepo) Upsert(_ context.Context, _ *domain.ResourceDefault) error {
+	return nil
+}
+
 func (m *mockInstaller) Install(_ context.Context, req port.HelmInstallRequest) (*port.HelmInstallResult, error) {
 	if req.ReleaseName == m.failOn {
 		return nil, fmt.Errorf("install %s failed", req.ReleaseName)
@@ -126,6 +138,78 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		"opentelemetry-collector",
 		"eg",
 	}, installer.installed)
+}
+
+func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
+	installer := &mockInstaller{}
+	resourceRepo := &mockResourceDefaultRepo{items: []*domain.ResourceDefault{
+		{
+			ToolKey:         "argocd",
+			CPURequest:      1,
+			CPULimit:        2,
+			MemoryRequestGi: 2,
+			MemoryLimitGi:   4,
+		},
+		{
+			ToolKey:         "gitlab-runner",
+			CPURequest:      2,
+			CPULimit:        4,
+			MemoryRequestGi: 4,
+			MemoryLimitGi:   8,
+		},
+	}}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus", WithResourceDefaultRepository(resourceRepo))
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_postgresql", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+	}
+
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_resource_defaults", step.name, step.phase))
+	}
+
+	argocdValues := installer.valuesByRelease["argo-cd"]
+	require.NotNil(t, argocdValues)
+
+	server, ok := argocdValues["server"].(map[string]any)
+	require.True(t, ok)
+	serverResources, ok := server["resources"].(map[string]any)
+	require.True(t, ok)
+
+	requests, ok := serverResources["requests"].(map[string]any)
+	require.True(t, ok)
+	limits, ok := serverResources["limits"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "200m", requests["cpu"])
+	assert.Equal(t, "0.4Gi", requests["memory"])
+	assert.Equal(t, "400m", limits["cpu"])
+	assert.Equal(t, "0.8Gi", limits["memory"])
+
+	runnerValues := installer.valuesByRelease["gitlab-runner"]
+	require.NotNil(t, runnerValues)
+
+	runnerResources, ok := runnerValues["resources"].(map[string]any)
+	require.True(t, ok)
+	runnerRequests, ok := runnerResources["requests"].(map[string]any)
+	require.True(t, ok)
+	runnerLimits, ok := runnerResources["limits"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "2", runnerRequests["cpu"])
+	assert.Equal(t, "4Gi", runnerRequests["memory"])
+	assert.Equal(t, "4", runnerLimits["cpu"])
+	assert.Equal(t, "8Gi", runnerLimits["memory"])
 }
 
 func TestOrchestrator_ExecuteStep_UnknownStepReturnsError(t *testing.T) {
@@ -610,6 +694,7 @@ func TestIsRetryableRunnerTokenDiscoveryError_TrueCases(t *testing.T) {
 		fmt.Errorf("kubectl exec failed: unable to upgrade connection: container not found (\"toolbox\")"),
 		fmt.Errorf("PG::UndefinedTable: ERROR: relation \"application_settings\" does not exist"),
 		fmt.Errorf("connect: connection refused"),
+		fmt.Errorf("kubectl exec failed: Error from server (BadRequest): pod gitlab-toolbox-abc123 does not have a host assigned"),
 	}
 
 	for _, tc := range cases {
@@ -620,4 +705,23 @@ func TestIsRetryableRunnerTokenDiscoveryError_TrueCases(t *testing.T) {
 func TestIsRetryableRunnerTokenDiscoveryError_FalseCase(t *testing.T) {
 	err := fmt.Errorf("runner registration token not found in output")
 	assert.False(t, isRetryableRunnerTokenDiscoveryError(err))
+}
+
+func TestNormalizeLegacyResourceOverrideForStep_LoggingAddsRootResourcesFromNested(t *testing.T) {
+	override := map[string]any{
+		"loki": map[string]any{
+			"resources": map[string]any{
+				"requests": map[string]any{"cpu": "350m", "memory": "0.7Gi"},
+				"limits":   map[string]any{"cpu": "700m", "memory": "1.4Gi"},
+			},
+		},
+	}
+
+	normalized := normalizeLegacyResourceOverrideForStep("installing_logging", override)
+	resources, ok := normalized["resources"].(map[string]any)
+	assert.True(t, ok)
+	requests, ok := resources["requests"].(map[string]any)
+	assert.True(t, ok)
+	assert.Equal(t, "350m", requests["cpu"])
+	assert.Equal(t, "0.7Gi", requests["memory"])
 }
