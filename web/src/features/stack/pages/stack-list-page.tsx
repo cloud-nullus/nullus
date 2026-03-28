@@ -26,7 +26,7 @@ import {
 	Terminal,
 	XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	ArcElement,
@@ -1296,6 +1296,9 @@ type ScopeMetrics = {
 	memoryRequest: number;
 	memoryLimit: number;
 	memoryUsage: number | null;
+	storageRequest: number;
+	storageLimit: number;
+	storageUsage: number | null;
 	readyPods: number;
 	totalPods: number;
 	statusCounts: Record<string, number>;
@@ -1344,6 +1347,9 @@ function toScopeMetricsFromPods(
 		memory_request_mib: number;
 		memory_limit_mib: number;
 		memory_usage_mib: number;
+		storage_request_gib?: number;
+		storage_limit_gib?: number;
+		storage_usage_gib?: number;
 	}>,
 ): ScopeMetrics {
 	const statusCounts: Record<string, number> = {};
@@ -1353,6 +1359,10 @@ function toScopeMetricsFromPods(
 	let memoryRequest = 0;
 	let memoryLimit = 0;
 	let memoryUsage = 0;
+	let storageRequest = 0;
+	let storageLimit = 0;
+	let storageUsage = 0;
+	let storageUsageHit = false;
 	let readyPods = 0;
 
 	for (const pod of pods) {
@@ -1364,6 +1374,12 @@ function toScopeMetricsFromPods(
 		memoryRequest += pod.memory_request_mib;
 		memoryLimit += pod.memory_limit_mib;
 		memoryUsage += pod.memory_usage_mib;
+		storageRequest += pod.storage_request_gib ?? 0;
+		storageLimit += pod.storage_limit_gib ?? 0;
+		if (typeof pod.storage_usage_gib === "number") {
+			storageUsage += pod.storage_usage_gib;
+			storageUsageHit = true;
+		}
 		if (pod.ready) readyPods += 1;
 	}
 
@@ -1374,6 +1390,9 @@ function toScopeMetricsFromPods(
 		memoryRequest,
 		memoryLimit,
 		memoryUsage,
+		storageRequest,
+		storageLimit,
+		storageUsage: storageUsageHit ? storageUsage : null,
 		readyPods,
 		totalPods: pods.length,
 		statusCounts,
@@ -1393,6 +1412,8 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 	const [range, setRange] = useState<MonitoringRange>("realtime");
 	const [scope, setScope] = useState<string>("all");
 	const [samples, setSamples] = useState<MonitoringSample[]>([]);
+	const [ossIconPositions, setOssIconPositions] = useState<number[]>([]);
+	const ossBarChartRef = useRef<ChartJS<"bar"> | null>(null);
 	const { data: monitoring, isLoading } = useStackMonitoring(stackId, 5000);
 
 	const scopeOptions = useMemo(
@@ -1419,6 +1440,9 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 			memoryRequest: monitoring.summary.memory_request_mib,
 			memoryLimit: monitoring.summary.memory_limit_mib,
 			memoryUsage: monitoring.summary.usage_available ? monitoring.summary.memory_usage_mib : null,
+			storageRequest: monitoring.summary.storage_request_gib ?? 0,
+			storageLimit: monitoring.summary.storage_limit_gib ?? 0,
+			storageUsage: monitoring.summary.storage_usage_available ? (monitoring.summary.storage_usage_gib ?? 0) : null,
 			readyPods: monitoring.summary.ready_pods,
 			totalPods: monitoring.summary.total_pods,
 			statusCounts: toStatusCountMap(monitoring.pod_status_counts ?? []),
@@ -1460,6 +1484,9 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 				memoryRequest: 0,
 				memoryLimit: 0,
 				memoryUsage: null,
+				storageRequest: 0,
+				storageLimit: 0,
+				storageUsage: null,
 				readyPods: 0,
 				totalPods: 0,
 				statusCounts: {},
@@ -1473,6 +1500,9 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 				memoryRequest: monitoring.summary.memory_request_mib,
 				memoryLimit: monitoring.summary.memory_limit_mib,
 				memoryUsage: monitoring.summary.usage_available ? monitoring.summary.memory_usage_mib : null,
+				storageRequest: monitoring.summary.storage_request_gib ?? 0,
+				storageLimit: monitoring.summary.storage_limit_gib ?? 0,
+				storageUsage: monitoring.summary.storage_usage_available ? (monitoring.summary.storage_usage_gib ?? 0) : null,
 				readyPods: monitoring.summary.ready_pods,
 				totalPods: monitoring.summary.total_pods,
 				statusCounts: toStatusCountMap(monitoring.pod_status_counts ?? []),
@@ -1486,6 +1516,9 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 				memoryRequest: 0,
 				memoryLimit: 0,
 				memoryUsage: null,
+				storageRequest: 0,
+				storageLimit: 0,
+				storageUsage: null,
 				readyPods: 0,
 				totalPods: 0,
 				statusCounts: {},
@@ -1513,6 +1546,9 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 							memoryRequest: 0,
 							memoryLimit: 0,
 							memoryUsage: null,
+							storageRequest: 0,
+							storageLimit: 0,
+							storageUsage: null,
 							readyPods: 0,
 							totalPods: 0,
 							statusCounts: {},
@@ -1557,14 +1593,24 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 	const ossBars = useMemo(
 		() => {
 			if (scope === "all") {
-				return (monitoring?.oss_statuses ?? []).map((tool) => ({
-					name: tool.name,
+				return [...(monitoring?.oss_statuses ?? [])]
+					.sort((a, b) => a.name.localeCompare(b.name))
+					.map((tool) => ({
+					key: tool.key,
+					fullName: tool.name,
+					iconUrl: toolLogoURL(tool.name),
 					pods: tool.pod_count,
 					ready: tool.ready_pods,
 				}));
 			}
 			if (!activeTool) return [];
-			return [{ name: activeTool.name, pods: activeTool.pod_count, ready: activeTool.ready_pods }];
+			return [{
+				key: activeTool.key,
+				fullName: activeTool.name,
+				iconUrl: toolLogoURL(activeTool.name),
+				pods: activeTool.pod_count,
+				ready: activeTool.ready_pods,
+			}];
 		},
 		[monitoring, scope, activeTool],
 	);
@@ -1579,25 +1625,81 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 	const kpiCards = useMemo(() => {
 		if (!monitoring?.summary) {
 			return [
-				{ label: "CPU Requests", value: "-", icon: <Cpu size={18} />, color: "#60a5fa", iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]", bar: 0 },
-				{ label: "Memory Requests", value: "-", icon: <MemoryStick size={18} />, color: "#a78bfa", iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]", bar: 0 },
-				{ label: "Current Usage", value: "-", icon: <HardDrive size={18} />, color: "#34d399", iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]", bar: 0 },
+				{ label: "Current CPU", value: "-", icon: <Cpu size={18} />, color: "#60a5fa", iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]", bar: 0, metricScale: { current: null, request: 0, limit: 0, unit: "Core" } },
+				{ label: "Current Memory", value: "-", icon: <MemoryStick size={18} />, color: "#a78bfa", iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]", bar: 0, metricScale: { current: null, request: 0, limit: 0, unit: "GiB" } },
+				{ label: "Current Storage", value: "-", icon: <HardDrive size={18} />, color: "#34d399", iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]", bar: 0 },
 				{ label: "Ready Pods", value: "-", icon: <Box size={18} />, color: "#fbbf24", iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]", bar: 0 },
 			];
 		}
 
 		const readyRatio = currentMetrics.totalPods > 0 ? Math.round((currentMetrics.readyPods / currentMetrics.totalPods) * 100) : 0;
-		const cpuTrend = normalizeToPercent(currentMetrics.cpuRequest, cpuMaxInWindow || currentMetrics.cpuRequest || 1);
-		const memTrend = normalizeToPercent(currentMetrics.memoryRequest, memoryMaxInWindow || currentMetrics.memoryRequest || 1);
-		const usageValue =
-			currentMetrics.cpuUsage !== null && currentMetrics.memoryUsage !== null
-				? `CPU ${currentMetrics.cpuUsage}m / MEM ${currentMetrics.memoryUsage}MiB`
-				: "N/A (metrics-server 미감지)";
+		const cpuCurrentBar = currentMetrics.cpuUsage !== null
+			? normalizeToPercent(currentMetrics.cpuUsage, currentMetrics.cpuRequest || currentMetrics.cpuLimit || cpuMaxInWindow || 1)
+			: 0;
+		const memoryCurrentBar = currentMetrics.memoryUsage !== null
+			? normalizeToPercent(currentMetrics.memoryUsage, currentMetrics.memoryRequest || currentMetrics.memoryLimit || memoryMaxInWindow || 1)
+			: 0;
+		const storageCurrentBar = currentMetrics.storageUsage !== null
+			? normalizeToPercent(currentMetrics.storageUsage, currentMetrics.storageRequest || currentMetrics.storageLimit || 1)
+			: 0;
+		const cpuUsageC = currentMetrics.cpuUsage !== null ? currentMetrics.cpuUsage / 1000 : null;
+		const cpuRequestC = currentMetrics.cpuRequest / 1000;
+		const cpuLimitC = currentMetrics.cpuLimit / 1000;
+		const memoryUsageGiB = currentMetrics.memoryUsage !== null ? currentMetrics.memoryUsage / 1024 : null;
+		const memoryRequestGiB = currentMetrics.memoryRequest / 1024;
+		const memoryLimitGiB = currentMetrics.memoryLimit / 1024;
+		const storageUsageGiB = currentMetrics.storageUsage;
+		const storageRequestGiB = currentMetrics.storageRequest;
+		const storageLimitGiB = currentMetrics.storageLimit;
 
 		return [
-			{ label: "CPU Requests", value: `${currentMetrics.cpuRequest}m`, icon: <Cpu size={18} />, color: "#60a5fa", iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]", bar: cpuTrend },
-			{ label: "Memory Requests", value: `${currentMetrics.memoryRequest} MiB`, icon: <MemoryStick size={18} />, color: "#a78bfa", iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]", bar: memTrend },
-			{ label: "Current Usage", value: usageValue, icon: <HardDrive size={18} />, color: "#34d399", iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]", bar: currentMetrics.cpuUsage !== null ? normalizeToPercent(currentMetrics.cpuUsage, cpuMaxInWindow || currentMetrics.cpuUsage || 1) : 0 },
+			{
+				label: "Current CPU",
+				value: cpuUsageC !== null ? `${cpuUsageC.toFixed(2)} Core` : "N/A",
+				icon: <Cpu size={18} />,
+				color: "#60a5fa",
+				iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]",
+				bar: cpuCurrentBar,
+				metricScale: {
+					current: cpuUsageC,
+					request: cpuRequestC,
+					limit: cpuLimitC,
+					unit: "Core",
+				},
+			},
+			{
+				label: "Current Memory",
+				value: memoryUsageGiB !== null ? `${memoryUsageGiB.toFixed(2)} GiB` : "N/A",
+				icon: <MemoryStick size={18} />,
+				color: "#a78bfa",
+				iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]",
+				bar: memoryCurrentBar,
+				metricScale: {
+					current: memoryUsageGiB,
+					request: memoryRequestGiB,
+					limit: memoryLimitGiB,
+					unit: "GiB",
+				},
+			},
+			{
+				label: "Current Storage",
+				value: storageUsageGiB !== null
+					? `${storageUsageGiB.toFixed(2)} GiB`
+					: (storageLimitGiB > 0
+						? `${storageLimitGiB.toFixed(2)} GiB`
+						: (storageRequestGiB > 0 ? `${storageRequestGiB.toFixed(2)} GiB` : "0.00 GiB")),
+				icon: <HardDrive size={18} />,
+				color: "#34d399",
+				iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
+				bar: storageCurrentBar,
+				metricScale: {
+					current: storageUsageGiB,
+					request: storageRequestGiB,
+					limit: storageRequestGiB,
+					unit: "GiB",
+					showLimit: false,
+				},
+			},
 			{ label: "Ready Pods", value: `${currentMetrics.readyPods} / ${currentMetrics.totalPods}`, icon: <Box size={18} />, color: "#fbbf24", iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]", bar: readyRatio },
 		];
 	}, [monitoring, currentMetrics, cpuMaxInWindow, memoryMaxInWindow]);
@@ -1611,7 +1713,7 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 		[monitoring, scope],
 	);
 
-	const baseChartOptions: ChartOptions<"line"> = useMemo(
+	const cpuChartOptions: ChartOptions<"line"> = useMemo(
 		() => ({
 			responsive: true,
 			maintainAspectRatio: false,
@@ -1627,8 +1729,74 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 				},
 			},
 			scales: {
-				x: { ticks: { color: "#cbd5e1", maxRotation: 0 }, grid: { color: "rgba(148,163,184,0.12)" } },
-				y: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148,163,184,0.12)" }, beginAtZero: true },
+				x: {
+					ticks: {
+						color: "#cbd5e1",
+						maxRotation: 0,
+						autoSkip: true,
+						maxTicksLimit: 8,
+					},
+					grid: { color: "rgba(148,163,184,0.12)" },
+				},
+				y: {
+					ticks: {
+						color: "#cbd5e1",
+						callback: (value) => {
+							const n = Number(value);
+							if (!Number.isFinite(n)) return "0";
+							if (n !== 0 && Math.abs(n) < 1) return n.toFixed(2);
+							return `${Math.round(n)}`;
+						},
+					},
+					title: { display: true, text: "Core", color: "#cbd5e1" },
+					grid: { color: "rgba(148,163,184,0.12)" },
+					beginAtZero: true,
+				},
+			},
+			elements: { line: { tension: 0.35 }, point: { radius: 0, hoverRadius: 3 } },
+		}),
+		[],
+	);
+
+	const memoryChartOptions: ChartOptions<"line"> = useMemo(
+		() => ({
+			responsive: true,
+			maintainAspectRatio: false,
+			interaction: { mode: "index", intersect: false },
+			plugins: {
+				legend: { labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 } },
+				tooltip: {
+					backgroundColor: "#111827",
+					borderColor: "#374151",
+					borderWidth: 1,
+					titleColor: "#f9fafb",
+					bodyColor: "#e5e7eb",
+				},
+			},
+			scales: {
+				x: {
+					ticks: {
+						color: "#cbd5e1",
+						maxRotation: 0,
+						autoSkip: true,
+						maxTicksLimit: 8,
+					},
+					grid: { color: "rgba(148,163,184,0.12)" },
+				},
+				y: {
+					ticks: {
+						color: "#cbd5e1",
+						callback: (value) => {
+							const n = Number(value);
+							if (!Number.isFinite(n)) return "0";
+							if (n !== 0 && Math.abs(n) < 1) return n.toFixed(2);
+							return `${Math.round(n)}`;
+						},
+					},
+					title: { display: true, text: "GiB", color: "#cbd5e1" },
+					grid: { color: "rgba(148,163,184,0.12)" },
+					beginAtZero: true,
+				},
 			},
 			elements: { line: { tension: 0.35 }, point: { radius: 0, hoverRadius: 3 } },
 		}),
@@ -1639,9 +1807,9 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 		() => ({
 			labels: usageData.map((item) => item.time),
 			datasets: [
-				{ label: "CPU Request", data: usageData.map((item) => item.cpuRequest), borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.18)", fill: true },
-				{ label: "CPU Limit", data: usageData.map((item) => item.cpuLimit), borderColor: "#60a5fa", backgroundColor: "rgba(96,165,250,0.08)", fill: false },
-				{ label: "CPU Current", data: usageData.map((item) => item.cpuUsage), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", fill: false },
+				{ label: "CPU Request", data: usageData.map((item) => item.cpuRequest / 1000), borderColor: "#60a5fa", backgroundColor: "rgba(96,165,250,0.18)", fill: true },
+				{ label: "CPU Limit", data: usageData.map((item) => item.cpuLimit / 1000), borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.08)", fill: false },
+				{ label: "CPU Current", data: usageData.map((item) => (item.cpuUsage === null ? null : item.cpuUsage / 1000)), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", fill: false },
 			],
 		}),
 		[usageData],
@@ -1651,9 +1819,9 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 		() => ({
 			labels: usageData.map((item) => item.time),
 			datasets: [
-				{ label: "Memory Request", data: usageData.map((item) => item.memoryRequest), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.18)", fill: true },
-				{ label: "Memory Limit", data: usageData.map((item) => item.memoryLimit), borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.08)", fill: false },
-				{ label: "Memory Current", data: usageData.map((item) => item.memoryUsage), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", fill: false },
+				{ label: "Memory Request", data: usageData.map((item) => item.memoryRequest / 1024), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.18)", fill: true },
+				{ label: "Memory Limit", data: usageData.map((item) => item.memoryLimit / 1024), borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.08)", fill: false },
+				{ label: "Memory Current", data: usageData.map((item) => (item.memoryUsage === null ? null : item.memoryUsage / 1024)), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", fill: false },
 			],
 		}),
 		[usageData],
@@ -1661,7 +1829,7 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 
 	const ossBarData = useMemo(
 		() => ({
-			labels: ossBars.map((item) => item.name),
+			labels: ossBars.map(() => ""),
 			datasets: [
 				{ label: "Total Pods", data: ossBars.map((item) => item.pods), backgroundColor: "rgba(99,102,241,0.72)", borderRadius: 6 },
 				{ label: "Ready Pods", data: ossBars.map((item) => item.ready), backgroundColor: "rgba(34,197,94,0.72)", borderRadius: 6 },
@@ -1682,15 +1850,40 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 					borderWidth: 1,
 					titleColor: "#f9fafb",
 					bodyColor: "#e5e7eb",
+					callbacks: {
+						title: (items) => {
+							const idx = items[0]?.dataIndex ?? 0;
+							return ossBars[idx]?.fullName ?? "OSS";
+						},
+					},
 				},
 			},
 			scales: {
-				x: { ticks: { color: "#cbd5e1", maxRotation: 0 }, grid: { color: "rgba(148,163,184,0.12)" } },
+				x: { ticks: { display: false }, grid: { color: "rgba(148,163,184,0.12)" } },
 				y: { beginAtZero: true, ticks: { color: "#cbd5e1", precision: 0 }, grid: { color: "rgba(148,163,184,0.12)" } },
 			},
 		}),
-		[],
+		[ossBars],
 	);
+
+	useEffect(() => {
+		const updateIconPositions = () => {
+			const chart = ossBarChartRef.current;
+			const xScale = chart?.scales?.x;
+			if (!xScale || ossBars.length === 0) {
+				setOssIconPositions([]);
+				return;
+			}
+			setOssIconPositions(ossBars.map((_, idx) => xScale.getPixelForValue(idx)));
+		};
+
+		const rafId = window.requestAnimationFrame(updateIconPositions);
+		window.addEventListener("resize", updateIconPositions);
+		return () => {
+			window.cancelAnimationFrame(rafId);
+			window.removeEventListener("resize", updateIconPositions);
+		};
+	}, [ossBars, usageData]);
 
 	const podStatusChartData = useMemo(
 		() => ({
@@ -1745,7 +1938,51 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 						<div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">
 							{card.value}
 						</div>
-						<UsageBar value={card.bar} color={card.color} />
+						{card.metricScale ? (
+							<div className="mt-2">
+								{(() => {
+									const showLimit = card.metricScale.showLimit !== false;
+									const scaleLimit = showLimit ? card.metricScale.limit : card.metricScale.request;
+									const scaleMax = Math.max(scaleLimit, 0.000001);
+									const reqPos = Math.max(0, Math.min(100, (card.metricScale.request / scaleMax) * 100));
+									const limPos = showLimit ? 100 : reqPos;
+									const curPos = card.metricScale.current === null
+										? null
+										: Math.max(0, Math.min(100, (card.metricScale.current / scaleMax) * 100));
+
+									const reqLabelShift = reqPos < 8 ? "translate-x-0" : reqPos > 92 ? "-translate-x-full" : "-translate-x-1/2";
+									const limLabelShift = limPos < 8 ? "translate-x-0" : limPos > 92 ? "-translate-x-full" : "-translate-x-1/2";
+
+									return (
+										<>
+											<div className="relative h-4">
+												<div className="absolute left-0 right-0 top-1 h-2 rounded-full bg-[rgba(148,163,184,0.22)]" />
+												{curPos !== null && (
+													<div className="absolute left-0 top-1 h-2 rounded-full" style={{ width: `${curPos}%`, backgroundColor: card.color }} />
+												)}
+												<div className="absolute top-0.5 h-[10px] w-px bg-[#60a5fa]" style={{ left: `${reqPos}%` }} />
+												{showLimit && (
+													<div className="absolute top-0.5 h-[10px] w-px bg-[#f59e0b]" style={{ left: `${limPos}%` }} />
+												)}
+											</div>
+											<div className="relative mt-1 h-8 text-[10px] font-semibold text-[var(--color-text-secondary)]">
+												<span className="absolute left-0 top-0 whitespace-nowrap">0</span>
+												<span className={`absolute top-0 whitespace-nowrap ${reqLabelShift}`} style={{ left: `${reqPos}%` }}>{card.metricScale.request.toFixed(2)}</span>
+												<span className={`absolute top-4 whitespace-nowrap ${reqLabelShift}`} style={{ left: `${reqPos}%` }}>(Req)</span>
+												{showLimit && (
+													<>
+														<span className={`absolute top-0 whitespace-nowrap ${limLabelShift}`} style={{ left: `${limPos}%` }}>{card.metricScale.limit.toFixed(2)}</span>
+														<span className={`absolute top-4 whitespace-nowrap ${limLabelShift}`} style={{ left: `${limPos}%` }}>(Lim)</span>
+													</>
+												)}
+											</div>
+										</>
+									);
+								})()}
+							</div>
+						) : (
+							<UsageBar value={card.bar} color={card.color} />
+						)}
 					</div>
 				))}
 			</div>
@@ -1754,7 +1991,7 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 				<div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
 					<div className="flex items-center gap-2">
 						<h2 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
-							Resource Trend (실측 기반)
+							Resource Trend
 						</h2>
 						{isLoading && (
 							<span className="rounded-full bg-[rgba(99,102,241,0.15)] px-2 py-0.5 text-[11px] font-semibold text-[#a5b4fc]">
@@ -1813,7 +2050,7 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 							CPU (Request / Limit / Current)
 						</div>
 						<div className="h-[250px]">
-							<Line data={cpuChartData} options={baseChartOptions} />
+							<Line data={cpuChartData} options={cpuChartOptions} />
 						</div>
 					</div>
 
@@ -1822,16 +2059,54 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 							Memory (Request / Limit / Current)
 						</div>
 						<div className="h-[250px]">
-							<Line data={memoryChartData} options={baseChartOptions} />
+							<Line data={memoryChartData} options={memoryChartOptions} />
 						</div>
 					</div>
 
 					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							OSS Pod Coverage
-						</div>
-						<div className="h-[250px]">
-							<Bar data={ossBarData} options={ossBarOptions} />
+					<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+						OSS Pod Coverage
+					</div>
+						<div className="relative h-[272px]">
+							<div className="h-[250px]">
+								<Bar ref={ossBarChartRef} data={ossBarData} options={ossBarOptions} />
+							</div>
+							<div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[20px]">
+								{ossBars.map((item, idx) => {
+									const fallbackLeft = ((idx + 0.5) / Math.max(ossBars.length, 1)) * 100;
+									const left = ossIconPositions[idx] ?? fallbackLeft;
+									const leftStyle = typeof left === "number"
+										? (ossIconPositions[idx] !== undefined ? `${left}px` : `${left}%`)
+										: "0px";
+									return (
+										<div
+											key={`oss-icon-${item.key}`}
+											className="absolute bottom-0 -translate-x-1/2"
+											style={{ left: leftStyle }}
+										>
+											<div className="relative h-4 w-4">
+												<img
+													src={item.iconUrl}
+													alt={`${item.fullName} icon`}
+													className="h-4 w-4 rounded-[3px]"
+													loading="lazy"
+													onError={(e) => {
+														e.currentTarget.style.display = "none";
+														const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+														if (fallback) fallback.style.display = "flex";
+													}}
+												/>
+												<span
+													className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[rgba(148,163,184,0.25)] text-[9px] font-bold text-[#e2e8f0]"
+													aria-hidden="true"
+												>
+													{item.fullName.slice(0, 1).toUpperCase()}
+												</span>
+											</div>
+										</div>
+									);
+								})}
+							</div>
 						</div>
 					</div>
 

@@ -72,6 +72,9 @@ export interface PodMonitoringStatus {
   memory_request_mib: number
   memory_limit_mib: number
   memory_usage_mib: number
+  storage_request_gib?: number
+  storage_limit_gib?: number
+  storage_usage_gib?: number
   status: 'running' | 'warning' | 'error'
 }
 
@@ -95,6 +98,10 @@ export interface StackMonitoringSummary {
   memory_request_mib: number
   memory_limit_mib: number
   memory_usage_mib: number
+  storage_request_gib: number
+  storage_limit_gib: number
+  storage_usage_gib: number
+  storage_usage_available?: boolean
   usage_available: boolean
 }
 
