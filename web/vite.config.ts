@@ -57,9 +57,15 @@ export default defineConfig({
     exclude: ['e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html', 'lcov'],
-      include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/test-setup.ts', 'src/main.tsx', 'e2e/**'],
+      reporter: ['text', 'text-summary', 'lcov'],
+      include: ['src/features/**', 'src/components/**', 'src/stores/**'],
+      exclude: ['**/*.test.*', '**/__tests__/**', '**/node_modules/**'],
+      thresholds: {
+        statements: 60,
+        branches: 50,
+        functions: 55,
+        lines: 60,
+      },
     },
   },
 })

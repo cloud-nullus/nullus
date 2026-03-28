@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased] - 2026-03-28
 
+### Added (테스트 커버리지 보강 — Phase 1–4)
+
+#### Backend 테스트 (16개 신규 파일)
+
+- **Stack domain 단위 테스트**: `compatibility_test.go`, `history_test.go`, `resource_default_test.go`, `template_test.go` — 순수 도메인 엔티티 검증 (domain 45%→90%)
+- **Stack Postgres repository 통합 테스트**: `postgres_integration_test.go` — testcontainers 기반 Stack/Template/History/Compatibility/ResourceDefault CRUD 검증
+- **Admin Postgres repository 통합 테스트**: `postgres_integration_test.go` — Org/Cluster/User/Member/KnownIssues CRUD + kubeconfig 저장/조회 검증
+- **CICD Postgres repository 통합 테스트**: `postgres_integration_test.go` — Pipeline/Template/Deployment CRUD + 정렬 검증
+- **Observability domain 단위 테스트**: `alert_test.go`, `dashboard_test.go`, `errors_test.go` — AlertRule/Dashboard/sentinel error 검증
+- **Observability Postgres repository 통합 테스트**: `postgres_integration_test.go` — AlertRule CRUD, Alert 생성/목록 검증
+- **Port 인터페이스 컴파일 타임 검증**: `stack/port`, `admin/port`, `cicd/port`, `observability/port` — `var _ Interface = (*Impl)(nil)` 패턴으로 모든 구현체 계약 보장
+- **Helm 배포 E2E 테스트**: `e2e/helm_deploy_test.go` (`//go:build e2e`) — kind 클러스터 대상 실제 HelmOrchestrator 구조 검증 + 차트 설치/언설치
+
+#### Frontend 테스트 (27개 신규 파일, 248→305 tests)
+
+- **Observability 모듈** (0%→100%): `monitoring-page`, `alert-rules-page`, `alert-history-page`, `observability-api`, `cluster-stack-filter` 테스트
+- **CI/CD 모듈** (14%→86%): `cicd-list-page`, `cicd-template-page`, `cicd-pipeline-setup-page`, `developer-deploy-page`, `cicd-api` 테스트
+- **Auth 모듈** (0%→100%): `login-page` 테스트 — 폼 필드, 테스트 계정, 역할별 네비게이션 검증
+- **Admin 모듈** (40%→80%): `user-management-page`, `known-issues-page`, `admin-api` 테스트
+- **Stack 모듈** (45%→82%): `stack-list-page`, `stack-deploy-page`, `stack-history-page`, `stack-version-page` 테스트
+- **Shared components** (23%→60%): `data-table`, `error-boundary`, `protected-route`, `confirm-dialog`, `yaml-editor`, `step-wizard`, `list-detail-panel`, `native-select` 테스트
+
+#### 인프라
+
+- `scripts/check-coverage.sh`: Go 테스트 커버리지 임계값(60%) 검증 스크립트
+- `web/vite.config.ts`: Vitest coverage thresholds 추가 (statements 60%, branches 50%, functions 55%, lines 60%)
+
+### Changed
+
+#### F4 InstallStack simulation fallback 명시화
+
+**변경 이유:**
+`install_stack.go`의 `executeStep()`이 executor nil 시 `time.After()`로 시뮬레이션하지만, 로그에 아무 표시가 없어 실제 Helm 배포와 구분 불가.
+
+**변경 내용:**
+- executor nil 시 `slog.Warn("step executor is nil; running simulated install step", ...)` 경고 출력
+- 기존 graceful fallback 동작은 유지 (개발 환경 호환)
+- `cmd/api/main.go`에 이미 `WithExecutorFactory(HelmOrchestrator)` 와이어링이 존재함을 확인 — kubeconfig 제공 환경에서는 실제 Helm 실행
+
+### Fixed
+
+- `delete_stack_test.go`: brittle assertion 안정화 (환경 의존 비교 제거)
+- `cicd-api.test.ts`: `vi.mock` 호이스팅 오류 수정 (외부 const 참조 → 인라인 객체)
+- `cicd-list-page.test.tsx`, `alert-history-page.test.tsx`: `getByText` → `getAllByText` 변경 (중복 DOM 노드 이슈)
+
 ### Added
 
 #### Backend — Stack Install Engine 고도화
