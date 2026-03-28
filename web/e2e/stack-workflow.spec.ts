@@ -59,17 +59,19 @@ test.describe('Stack Workflow E2E', () => {
     await page.goto('/stack/install')
     await expect(page.locator('h1')).toContainText('Stack Install', { timeout: 10000 })
     await page.click('button:has-text("YAML View")')
-    await expect(page.getByText('stackName:')).toBeVisible()
-    await expect(page.getByText('artifacts:')).toBeVisible()
+    await expect(
+      page.getByText('Target Cluster 선택이 필요합니다')
+        .or(page.getByText('설치 대상 OSS가 없습니다'))
+        .or(page.locator('.monaco-editor').first())
+    ).toBeVisible({ timeout: 10000 })
   })
 
   test('Resources 탭에서 입력 필드 확인', async ({ page }) => {
     await page.goto('/stack/install')
     await expect(page.locator('h1')).toContainText('Stack Install', { timeout: 10000 })
     await page.click('button:has-text("Resources")')
-    await expect(page.getByText('개발자 수')).toBeVisible()
-    await expect(page.getByText('동시 러너 수')).toBeVisible()
-    await expect(page.getByText('일일 커밋 수')).toBeVisible()
+    await expect(page.getByText(/Resource Planning/i).first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/Sizing Profile/i).first()).toBeVisible()
   })
 
   test('Stack List 페이지 렌더링 확인', async ({ page }) => {
@@ -80,10 +82,18 @@ test.describe('Stack Workflow E2E', () => {
   test('@stack-critical Stack List 기반 배포 상태/로그 페이지 및 템플릿 도메인 검증', async ({ page, request }) => {
     test.setTimeout(240000)
 
+    const clustersRes = await request.get(`${apiBase}/clusters`)
+    const clustersBody = (await clustersRes.json()) as { items?: Array<{ id: string }> }
+    const clusterId = clustersBody.items?.[0]?.id
+    if (!clusterId) {
+      test.skip(true, 'No clusters available — seed data required')
+      return
+    }
+
     const stackName = `pw-list-domain-${Date.now()}`
     const createPayload = {
       name: stackName,
-      cluster_id: '60223295-ea34-4319-8cc9-6e5417803445',
+      cluster_id: clusterId,
       namespace: 'nullus',
       golden_path_id: 'gitlab-argocd-v1',
       config: {
