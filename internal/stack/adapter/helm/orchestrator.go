@@ -103,6 +103,56 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 	return nil
 }
 
+func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) error {
+	_ = stackID
+
+	for _, step := range o.orderedStep {
+		if step == "integration_check" {
+			continue
+		}
+		if !o.isStepEnabled(step) {
+			continue
+		}
+		if _, ok := o.stepManifestForStep(step); ok {
+			continue
+		}
+
+		spec, ok := o.chartConfig[step]
+		if !ok {
+			return fmt.Errorf("chart config not found for step %s", step)
+		}
+		spec = o.resolveChartSpecForStep(step, spec)
+		if strings.TrimSpace(spec.ChartName) == "" {
+			continue
+		}
+
+		namespace := o.namespace
+		if spec.Namespace != "" {
+			namespace = spec.Namespace
+		}
+
+		releaseName := o.releaseNameForSpec(spec)
+		status, err := o.installer.Status(ctx, releaseName, namespace)
+		if err != nil && step == "installing_gateway" && isReleaseNotFoundError(err) {
+			if fallbackErr := installGatewayOCIRelease(ctx, o.kubeconfig, releaseName, spec.ChartName, namespace, spec.Version); fallbackErr == nil {
+				status, err = o.installer.Status(ctx, releaseName, namespace)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("status check failed for %s: %w", releaseName, err)
+		}
+		if status == nil {
+			return fmt.Errorf("status check returned nil for %s", releaseName)
+		}
+
+		if !strings.EqualFold(status.Status, "deployed") {
+			return fmt.Errorf("release %s is not healthy: status=%s", releaseName, status.Status)
+		}
+	}
+
+	return nil
+}
+
 type ChartSpec struct {
 	ReleaseName string
 	ChartName   string
