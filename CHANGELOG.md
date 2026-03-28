@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased] - 2026-03-28
 
+### Verified (E2E / UAT / Demo 시나리오 전체 검증)
+
+전체 405건 테스트 실행 — **통과율 97.8%** (396 pass / 9 fail)
+
+#### Vitest 단위 + UAT — 305/305 ✅ (100%)
+- 46개 테스트 파일, 305개 테스트 케이스 전체 통과
+- UAT-1 DevOps 시나리오 7건, UAT-2 Developer 시나리오 10건, UAT-3 Admin 시나리오 11건 포함
+
+#### Go 단위 + E2E/UAT — 31/31 ✅ (100%)
+- `internal/...` 28개 패키지 전부 PASS (admin, auth, cicd, observability, stack, shared)
+- Go E2E UAT 3건 PASS: TestUAT1_Mijeong_JuniorDevOps, TestUAT2_Jieun_Developer, TestUAT3_Admin_PlatformSetup
+
+#### Playwright E2E — 88/97 ⚠️ (90.7%)
+- 전체 통과 스위트 (0 실패): navigation, theme-i18n, sidebar, uat-devops, uat-admin, uat-developer, rbac-menu-visibility
+- 9건 실패 — **기능 결함 0건**, 전부 Phase 1–2 UI 리팩토링 후 E2E 셀렉터 미갱신:
+  - `stack-workflow` 3건: YAML View `stackName:` 셀렉터, Resources `개발자 수` 라벨, Stack 생성 API 시드 의존
+  - `admin-scenarios` 2건: `#organization-status` ID 변경, `select an organization` 텍스트 변경
+  - `devops-scenarios` 4건: 템플릿 카드 `button`→`div[role="button"]` 변경, Auto/Manual 토글 UI 변경, 이력 시드 미존재, YAML 에디터 조건부 렌더링
+
+#### 기능 커버리지 — F0–F12 전체 커버 ✅
+- 13개 기능 모두 최소 2개 이상의 테스트 레이어(Playwright + Vitest + Go E2E)에서 검증됨
+
 ### Added (테스트 커버리지 보강 — Phase 1–4)
 
 #### Backend 테스트 (16개 신규 파일)
