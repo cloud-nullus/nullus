@@ -1,8 +1,11 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -446,4 +449,59 @@ func TestInstallStack_StopsWhenStackIsCancelledDuringRun(t *testing.T) {
 	assert.NotContains(t, exec.stepCalls, "installing_gateway")
 	assert.NotContains(t, streamer.steps(), "rolling_back")
 	assert.NotContains(t, streamer.steps(), "failed")
+}
+
+func TestInstallStack_ExecuteStep_UsesResolvedExecutorWithoutSimulationDelay(t *testing.T) {
+	stack := &domain.Stack{
+		ID:        "stk_exec_step_direct",
+		ClusterID: "cluster-direct",
+		State:     domain.StatePending,
+	}
+	provider := &fakeKubeconfigProvider{
+		configs: map[string][]byte{
+			"cluster-direct": []byte("apiVersion: v1\nkind: Config\n"),
+		},
+	}
+	exec := &fakeStepExecutor{}
+	uc := NewInstallStack(
+		newFakeStackRepo(stack),
+		&fakeStreamer{},
+		WithKubeconfigProvider(provider),
+		WithExecutorFactory(func(_ []byte) port.StepExecutor { return exec }),
+	)
+
+	resolved := uc.resolveExecutor(context.Background(), stack)
+	require.NotNil(t, resolved)
+
+	start := time.Now()
+	err := uc.executeStep(context.Background(), stack.ID, installStep{
+		name:     "installing_cert_manager",
+		phase:    "A",
+		duration: 300 * time.Millisecond,
+	}, resolved)
+	require.NoError(t, err)
+
+	assert.Less(t, time.Since(start), 100*time.Millisecond)
+	assert.Equal(t, []string{"installing_cert_manager"}, exec.calledSteps())
+}
+
+func TestInstallStack_ExecuteStep_LogsWarningWhenSimulationFallbackActive(t *testing.T) {
+	oldDefault := slog.Default()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	slog.SetDefault(logger)
+	t.Cleanup(func() {
+		slog.SetDefault(oldDefault)
+	})
+
+	uc := &InstallStack{}
+	err := uc.executeStep(context.Background(), "stk_simulation", installStep{
+		name:     "installing_cert_manager",
+		phase:    "A",
+		duration: 5 * time.Millisecond,
+	}, nil)
+	require.NoError(t, err)
+
+	logs := buf.String()
+	assert.True(t, strings.Contains(logs, "simulation mode") || strings.Contains(logs, "simulated"), logs)
 }
