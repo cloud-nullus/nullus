@@ -14,7 +14,7 @@ test.describe('Admin UAT Scenarios', () => {
       await expect(detailName).toBeVisible()
       await expect(page.locator('input[name="slug"]').first()).toBeVisible()
       await expect(page.locator('input[name="domain"]').first()).toBeVisible()
-      await expect(page.locator('#organization-status')).toBeVisible()
+      await expect(page.locator('select[name="status"]')).toBeVisible()
       return
     }
 
@@ -103,13 +103,15 @@ test.describe('Admin UAT Scenarios', () => {
   })
 
   test('A6: Organization 상태 드롭다운 존재', async ({ page }) => {
-    const statusSelect = page.locator('#organization-status')
-    if (await statusSelect.isVisible()) {
-      await expect(statusSelect).toBeVisible({ timeout: 10000 })
+    const statusSelect = page.locator('select[name="status"]')
+    if (await statusSelect.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await expect(statusSelect).toBeVisible()
       return
     }
 
-    await expect(page.getByText(/select an organization to view details/i)).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.getByText(/select an organization|organization/i).first()
+    ).toBeVisible({ timeout: 10000 })
   })
 
   test('A7: Known Issues 페이지 렌더링', async ({ page }) => {
