@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, History, RotateCcw, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -40,6 +41,8 @@ interface RollbackFormValues {
 }
 
 export function CicdHistoryPage() {
+  const [searchParams] = useSearchParams()
+  const pipelineFilter = searchParams.get('pipeline') ?? ''
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [expandedDeploymentId, setExpandedDeploymentId] = useState<string | null>(null)
@@ -49,7 +52,10 @@ export function CicdHistoryPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const toast = useAppToast()
 
-  const { data: apiData } = useDeployments({ status: statusFilter as PipelineStatus || undefined })
+  const { data: apiData } = useDeployments({
+    pipelineId: pipelineFilter || undefined,
+    status: statusFilter as PipelineStatus || undefined,
+  })
   const rollbackMutation = useRollbackDeployment()
   const deployments = apiData?.items ?? []
   const {
@@ -65,10 +71,11 @@ export function CicdHistoryPage() {
   })
 
   const filtered = deployments.filter((d) => {
+    const matchesPipeline = !pipelineFilter || d.pipelineId === pipelineFilter
     const matchesStatus = !statusFilter || d.status === statusFilter
     const matchesType = !typeFilter || d.pipelineName.includes(typeFilter)
     const matchesSearch = !search || d.pipelineName.toLowerCase().includes(search.toLowerCase()) || d.triggeredBy.toLowerCase().includes(search.toLowerCase())
-    return matchesStatus && matchesType && matchesSearch
+    return matchesPipeline && matchesStatus && matchesType && matchesSearch
   })
 
 
@@ -214,6 +221,27 @@ export function CicdHistoryPage() {
           </p>
         </div>
       </div>
+
+      {pipelineFilter && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(59,130,246,0.08)] px-3 py-2 text-sm">
+          <span className="text-[var(--color-text-secondary)]">Filtered by pipeline:</span>
+          <span className="font-semibold text-[var(--color-text-primary)]">
+            {deployments.find((d) => d.pipelineId === pipelineFilter)?.pipelineName ?? pipelineFilter}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const newParams = new URLSearchParams(searchParams)
+              newParams.delete('pipeline')
+              window.history.replaceState({}, '', `${window.location.pathname}?${newParams.toString()}`)
+              window.location.reload()
+            }}
+            className="ml-auto cursor-pointer text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}

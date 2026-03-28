@@ -49,7 +49,7 @@ var templateConfigs = map[string]templateConfig{
 	"express-api":    {image: "node:20-alpine", port: 3000},
 	"spring-boot":    {image: "eclipse-temurin:21-jre", port: 8080},
 	"python-fastapi": {image: "python:3.12-slim", port: 8000},
-	"go-web-api":     {image: "golang:1.24-alpine", port: 8080},
+	"go-web-api":     {image: "nginx:alpine", port: 80},
 }
 
 func Generate(req DeployAppRequest) (*GeneratedManifests, error) {

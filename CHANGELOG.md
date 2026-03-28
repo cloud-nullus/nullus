@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 
+## [Unreleased] - 2026-03-29
+
+### Added
+- CI/CD 파이프라인 실제 K8s 클러스터 배포 구현 (시뮬레이션 → 실배포)
+  - `ManifestApplier` / `KubeconfigProvider` 포트 인터페이스 추가 (`internal/cicd/port/deployer.go`)
+  - `DeployPipeline` usecase가 kubeconfig 획득 → 매니페스트 생성 → dynamic client로 Apply
+  - Deployment 상태 추적: `running` → `success` / `failed`
+- CI/CD developer-deploy 위저드 전체 플로우 연결
+  - Zod 스키마 수정 (template enum → `z.string()`)
+  - `createPipeline` → `deployPipeline` 순차 호출로 실제 DB 레코드 생성
+  - API 요청 snake_case 변환 (`cluster_id`, `app_type`, `template_id`, `namespace`)
+  - `deployed_by` 필드에 현재 로그인 사용자 이메일 전송
+- CI/CD List 페이지 데이터 정확성 개선
+  - Pipeline/Deployment API 응답 snake_case → camelCase 변환 레이어 추가
+  - `clusterName`, `lastDeployedAt`, `pipelineName` 파생 필드 매핑
+  - `active` 상태 배지 추가 (`STATUS_STYLES`)
+- CI/CD History 페이지 파이프라인 필터 기능
+  - `?pipeline=<id>` 쿼리 파라미터로 특정 파이프라인 이력 필터링
+  - Deployment에 pipelineName 조인 (pipelines API 병렬 fetch)
+  - 필터 인디케이터 + Clear filter 버튼
+- Step 4 리소스 설정에 Replicas 슬라이더 추가 (1~5, 기본값 2)
+- Helm 차트 ServiceAccount 템플릿 추가 (`deploy/helm/nullus/templates/serviceaccount.yaml`)
+- API Deployment에 wait-for-db initContainer + ConfigMap 볼륨 마운트 추가
+- `docs/guides/cicd-pipeline-kind-deploy-guide.md` 시연 가이드 작성
+- `docs/agent-reference.md` 시행착오 및 해결 방법 정리
+
+### Fixed
+- Breadcrumb key 중복 에러 (`/cicd/list` 2회 사용) 수정
+- Dockerfile Go 버전 불일치 (`golang:1.24` → `golang:1.26`)
+- `web/Dockerfile` 빌드 컨텍스트 경로 (`web/nginx.conf` → `nginx.conf`)
+- `web/Dockerfile` npm ci peer dependency 충돌 (`--legacy-peer-deps`)
+- Migration Job pre-install Hook 타이밍 문제 → 외부 마이그레이션 패턴으로 전환
+- `go-web-api` 템플릿 이미지를 런타임 서버로 변경 (`golang:1.24-alpine` → `nginx:alpine`)
+- CI/CD List에서 Deploy 버튼 제거 (상세 패널의 Run으로 대체)
+
+### Changed
+- `DeployPipeline` usecase 시그니처 변경: `KubeconfigProvider`, `ManifestApplier` 의존성 추가
+
 ## [Unreleased] - 2026-03-28
 
 ### Verified (E2E / UAT / Demo 시나리오 전체 검증)

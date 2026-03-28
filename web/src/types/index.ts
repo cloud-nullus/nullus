@@ -28,11 +28,18 @@ export type DeploymentState =
 
 export type StackStatus = DeploymentState
 
-export type PipelineStatus = DeploymentState
+export type PipelineStatus = DeploymentState | 'active' | 'inactive'
 
-export type AppType = 'web-backend' | 'web-frontend' | 'batch-job'
+export type AppType = 'web' | 'backend' | 'batch' | 'web-backend' | 'web-frontend' | 'batch-job'
 
-export type AppTemplate = 'react-spa' | 'next-app' | 'express-api' | 'spring-boot' | 'python-fastapi'
+export type AppTemplate =
+  | 'go-web-api'
+  | 'react-vite'
+  | 'react-spa'
+  | 'next-app'
+  | 'express-api'
+  | 'spring-boot'
+  | 'python-fastapi'
 
 export type AlertSeverity = 'critical' | 'warning' | 'info'
 
@@ -363,6 +370,7 @@ export interface CreatePipelineRequest {
   name: string
   appType: AppType
   clusterId: string
+  namespace?: string
   templateId?: string
 }
 
@@ -375,18 +383,19 @@ export interface CreateCicdTemplateRequest {
 }
 
 export interface DeployAppRequest {
+  templateId: string
   appName: string
   gitUrl: string
   clusterId: string
   namespace: string
-  template: AppTemplate
+  replicas: number
   resources: {
     cpuRequest: string
     cpuLimit: string
-    memoryRequest: string
-    memoryLimit: string
+    memRequest: string
+    memLimit: string
   }
-  envVars: { key: string; value: string }[]
+  envVars: Record<string, string>
 }
 
 export interface DeployAppResult {

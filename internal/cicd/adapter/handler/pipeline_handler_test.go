@@ -163,13 +163,23 @@ func (m *mockDeploymentRepository) ListByPipelineID(_ context.Context, pipelineI
 
 func (m *mockDeploymentRepository) Update(_ context.Context, _ *domain.Deployment) error { return nil }
 
+type noopKubeconfigProvider struct{}
+
+func (n *noopKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]byte, error) {
+	return []byte("fake-kubeconfig"), nil
+}
+
+type noopManifestApplier struct{}
+
+func (n *noopManifestApplier) Apply(_ context.Context, _ []byte, _ []string) error { return nil }
+
 func newPipelineEcho(t *testing.T, pipelineRepo *mockPipelineRepository, templateRepo *mockPipelineTemplateRepository, deploymentRepo *mockDeploymentRepository) *echo.Echo {
 	t.Helper()
 
 	e := echo.New()
 	createPipelineUC := usecase.NewCreatePipeline(pipelineRepo, templateRepo)
 	listPipelinesUC := usecase.NewListPipelines(pipelineRepo)
-	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, deploymentRepo)
+	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, &noopManifestApplier{})
 	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo)
 
 	v1 := e.Group("/api/v1")

@@ -24,6 +24,7 @@ import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  active: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Active' },
   running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
   success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Success' },
   failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Failed' },
@@ -542,30 +543,6 @@ export function CicdListPage() {
       header: '최근 배포',
       cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.lastDeployedAt)}</span>,
     },
-    {
-      id: 'actions',
-      header: 'Actions',
-      enableSorting: false,
-      cell: ({ row }) => {
-        return (
-          <div className="flex gap-1.5">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  navigate(`/cicd/developer-deploy?pipeline=${row.original.id}`)
-                }}
-                type="button"
-              >
-              <Play size={11} />
-              Deploy
-            </Button>
-
-          </div>
-        )
-      },
-    },
   ]
 
   const expandedPipeline = filtered.find((pipeline) => pipeline.id === expandedPipelineId) ?? null
@@ -638,7 +615,7 @@ export function CicdListPage() {
           key={expandedPipeline.id}
           pipeline={expandedPipeline}
           onRun={() => navigate(`/cicd/developer-deploy?pipeline=${expandedPipeline.id}`)}
-          onOpenLogs={() => navigate('/cicd/history')}
+          onOpenLogs={() => navigate(`/cicd/history?pipeline=${expandedPipeline.id}`)}
         />
       )}
 

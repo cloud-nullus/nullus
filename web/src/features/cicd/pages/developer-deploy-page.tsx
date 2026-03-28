@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -9,9 +9,8 @@ import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-import { useAppTemplates, useDeployApp } from '../api/cicd-api'
+import { useAppTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
 import { useClusters } from '../../admin/api/admin-api'
-import type { AppTemplate, DeployAppRequest } from '../api/cicd-api'
 import { cn } from '../../../lib/utils'
 
 type Step = 1 | 2 | 3 | 4 | 5
@@ -27,6 +26,7 @@ const STEP_LABELS: Record<Step, string> = {
 function generateYaml(form: Partial<FormState>): string {
   const cpu = form.cpuLimit ?? '500m'
   const mem = form.memoryLimit ?? '512Mi'
+  const replicas = form.replicas ?? 2
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,9 +34,9 @@ metadata:
   namespace: ${form.namespace ?? 'default'}
   labels:
     app: ${form.appName ?? 'my-app'}
-    template: ${form.template ?? 'react-spa'}
+    template: ${form.template ?? 'go-web-api'}
 spec:
-  replicas: 2
+  replicas: ${replicas}
   selector:
     matchLabels:
       app: ${form.appName ?? 'my-app'}
@@ -77,11 +77,12 @@ spec:
 interface EnvVar { key: string; value: string }
 
 interface FormState {
-  template: AppTemplate
+  template: string
   appName: string
   gitUrl: string
   clusterId: string
   namespace: string
+  replicas: number
   cpuRequest: string
   cpuLimit: string
   memoryRequest: string
@@ -90,11 +91,12 @@ interface FormState {
 }
 
 const deploySchema = z.object({
-  template: z.enum(['react-spa', 'next-app', 'express-api', 'spring-boot', 'python-fastapi']),
+  template: z.string().min(1, 'Template is required'),
   appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
   gitUrl: z.string().min(1, 'Git URL is required').url('Invalid Git URL'),
   clusterId: z.string().min(1, 'Cluster is required'),
   namespace: z.string().min(1, 'Namespace is required'),
+  replicas: z.number().min(1).max(10),
   cpuRequest: z.string().min(1, 'CPU request is required'),
   cpuLimit: z.string().min(1, 'CPU limit is required'),
   memoryRequest: z.string().min(1, 'Memory request is required'),
@@ -120,11 +122,12 @@ const deploySchema = z.object({
 })
 
 const DEFAULT_FORM: FormState = {
-  template: 'react-spa',
+  template: 'go-web-api',
   appName: '',
   gitUrl: '',
-  clusterId: 'c1',
+  clusterId: '',
   namespace: 'default',
+  replicas: 2,
   cpuRequest: '100m',
   cpuLimit: '500m',
   memoryRequest: '128Mi',
@@ -170,7 +173,15 @@ export function DeveloperDeployPage() {
 
   const form = watch()
 
-  const deployMutation = useDeployApp()
+  const firstClusterId = clusters[0]?.id ?? ''
+  useEffect(() => {
+    if (firstClusterId && !form.clusterId) {
+      setValue('clusterId', firstClusterId, { shouldValidate: true })
+    }
+  }, [firstClusterId, form.clusterId, setValue])
+
+  const createPipelineMutation = useCreatePipeline()
+  const deployPipelineMutation = useDeployPipeline()
 
   const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
     setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
@@ -178,31 +189,25 @@ export function DeveloperDeployPage() {
 
   const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '', namespaces: ['default'] }
 
-  const onSubmit = (data: FormState) => {
-    const request: DeployAppRequest = {
-      appName: data.appName,
-      gitUrl: data.gitUrl,
-      clusterId: data.clusterId,
-      namespace: data.namespace,
-      template: data.template,
-      resources: {
-        cpuRequest: data.cpuRequest,
-        cpuLimit: data.cpuLimit,
-        memoryRequest: data.memoryRequest,
-        memoryLimit: data.memoryLimit,
-      },
-      envVars: data.envVars.filter((e) => e.key),
-    }
-    deployMutation.mutate(request, {
-      onSuccess: () => setDeployed(true),
-    })
+  const onSubmit = async (data: FormState) => {
+    try {
+      const pipeline = await createPipelineMutation.mutateAsync({
+        name: data.appName,
+        appType: 'backend',
+        clusterId: data.clusterId,
+        namespace: data.namespace,
+        templateId: 'web-backend-v1',
+      })
+      await deployPipelineMutation.mutateAsync(pipeline.id)
+      setDeployed(true)
+    } catch { /* react-query handles mutation errors */ }
   }
 
   const validateCurrentStep = async () => {
     if (step === 1) return trigger('appName')
     if (step === 2) return trigger('gitUrl')
     if (step === 3) return trigger(['clusterId', 'namespace'])
-    if (step === 4) return trigger(['cpuLimit', 'memoryLimit'])
+    if (step === 4) return trigger(['replicas', 'cpuLimit', 'memoryLimit'])
     return trigger('envVars')
   }
 
@@ -210,7 +215,7 @@ export function DeveloperDeployPage() {
     1: form.appName.trim().length >= 2,
     2: form.gitUrl.trim().length > 0 && !errors.gitUrl,
     3: !!form.clusterId && !!form.namespace,
-    4: !!form.cpuLimit && !!form.memoryLimit,
+    4: form.replicas >= 1 && !!form.cpuLimit && !!form.memoryLimit,
     5: !errors.envVars,
   }
 
@@ -247,7 +252,6 @@ export function DeveloperDeployPage() {
     <div>
       <Breadcrumb
         items={[
-          { label: 'CI/CD', path: '/cicd/list' },
           { label: 'CI/CD List', path: '/cicd/list' },
           { label: 'Pipeline Setup & Deploy' },
         ]}
@@ -411,6 +415,12 @@ export function DeveloperDeployPage() {
             <StepSection title="리소스 설정">
               <div className="flex flex-col gap-4">
                 <ResourceSlider
+                  label="Replicas"
+                  value={String(form.replicas)}
+                  options={['1', '2', '3', '4', '5']}
+                  onChange={(v) => setField('replicas', Number(v))}
+                />
+                <ResourceSlider
                   label="CPU Request"
                   value={form.cpuRequest}
                   options={['100m', '200m', '500m', '1000m']}
@@ -507,7 +517,7 @@ export function DeveloperDeployPage() {
               <Button
                 variant="primary"
                 size="md"
-                loading={deployMutation.isPending}
+                loading={createPipelineMutation.isPending || deployPipelineMutation.isPending}
                 disabled={isSubmitting || !!errors.envVars}
                 onClick={handleSubmit(onSubmit)}
               >
@@ -590,4 +600,3 @@ function ResourceSlider({
 }
 
 const labelStyleClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]'
-
