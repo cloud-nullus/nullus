@@ -304,6 +304,12 @@ func (uc *InstallStack) executeStep(ctx context.Context, stackID string, step in
 	if executor != nil {
 		return executor.ExecuteStep(ctx, stackID, step.name, step.phase)
 	}
+	slog.Warn("step executor is nil; running simulated install step",
+		"stack_id", stackID,
+		"step", step.name,
+		"phase", step.phase,
+		"duration", step.duration,
+	)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
