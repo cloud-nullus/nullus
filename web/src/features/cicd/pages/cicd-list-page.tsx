@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart2,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
   GitBranch,
   History,
   Info,
@@ -16,7 +18,7 @@ import {
 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { usePipelines } from '../api/cicd-api'
+import { usePipelineDeployments, usePipelines, useTemplateById } from '../api/cicd-api'
 import type { Pipeline } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -40,84 +42,11 @@ function formatDate(iso: string | null) {
 
 type PipelineInnerTab = 'info' | 'monitoring' | 'history' | 'actions'
 
-type PipelineHistoryItem = {
-  id: string
-  stage: 'ci' | 'cd'
-  status: 'success' | 'failed' | 'running'
-  title: string
-  detail: string
-  duration: string
-  timestamp: string
-}
-
 const INNER_TABS: Array<{ key: PipelineInnerTab; label: string; icon: React.ReactNode }> = [
   { key: 'info', label: 'Info', icon: <Info size={13} /> },
   { key: 'monitoring', label: 'Monitoring', icon: <BarChart2 size={13} /> },
   { key: 'history', label: 'History', icon: <History size={13} /> },
   { key: 'actions', label: 'Actions', icon: <Play size={13} /> },
-]
-
-const STAGE_FLOW = [
-  { key: 'build', label: 'Build', detail: '1m 12s', done: true },
-  { key: 'test', label: 'Test', detail: '45s', done: true },
-  { key: 'security', label: 'Security', detail: '2m 10s', done: true },
-  { key: 'package', label: 'Package', detail: '37s', done: true },
-  { key: 'deploy', label: 'Deploy', detail: '45s', done: true },
-]
-
-const PIPELINE_VARIABLES = [
-  { key: 'DOCKER_DRIVER', value: 'overlay2', type: 'plaintext' },
-  { key: 'NODE_VERSION', value: '18', type: 'plaintext' },
-  { key: 'REGISTRY_TOKEN', value: '********', type: 'masked' },
-]
-
-const BUILD_TREND = [
-  { date: '2/25', success: 12, failed: 1 },
-  { date: '2/26', success: 15, failed: 2 },
-  { date: '2/27', success: 11, failed: 3 },
-  { date: '2/28', success: 16, failed: 1 },
-  { date: '3/01', success: 13, failed: 2 },
-  { date: '3/02', success: 17, failed: 1 },
-  { date: '3/03', success: 19, failed: 0 },
-]
-
-const PIPELINE_HISTORY: PipelineHistoryItem[] = [
-  {
-    id: 'ci-145',
-    stage: 'ci',
-    status: 'success',
-    title: '#145',
-    detail: 'feat: add dark mode toggle',
-    duration: '2m 34s',
-    timestamp: '2026-03-03 14:22',
-  },
-  {
-    id: 'cd-311',
-    stage: 'cd',
-    status: 'success',
-    title: 'prod-k8s / production',
-    detail: 'registry/frontend-web:v1.2.3',
-    duration: '45s',
-    timestamp: '2026-03-03 14:28',
-  },
-  {
-    id: 'ci-143',
-    stage: 'ci',
-    status: 'failed',
-    title: '#143',
-    detail: 'refactor: update API client',
-    duration: '1m 05s',
-    timestamp: '2026-03-01 16:30',
-  },
-  {
-    id: 'cd-309',
-    stage: 'cd',
-    status: 'running',
-    title: 'prod-k8s / production',
-    detail: 'registry/frontend-web:v1.2.4-rc1',
-    duration: 'running',
-    timestamp: '2026-03-03 15:10',
-  },
 ]
 
 function DetailCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -141,70 +70,157 @@ function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) 
 }
 
 function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
+  const { data: template } = useTemplateById(pipeline.templateId)
+  const [revealedVars, setRevealedVars] = useState<Set<string>>(new Set())
+
+  const toggleReveal = (key: string) => {
+    setRevealedVars((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  const stages = (template?.stages ?? []) as string[]
+  const pipelineVariables = [
+    { key: 'TEMPLATE_ID', value: pipeline.templateId || '-', masked: false },
+    { key: 'NAMESPACE', value: pipeline.namespace || 'default', masked: false },
+    { key: 'GIT_REPOSITORY', value: pipeline.gitRepoUrl || '-', masked: true },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <DetailCard title="CI Configuration">
+        <DetailCard title="Pipeline Info">
           <div className="flex flex-col gap-2.5">
-            <ConfigRow label="Platform" value="GitLab CI/CD" />
-            <ConfigRow label="Branch" value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">main</code>} />
-            <ConfigRow label="Config File" value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">.gitlab-ci.yml</code>} />
-            <ConfigRow label="Runner" value="k8s-runner-01" />
-            <ConfigRow label="Trigger" value="Push / MR" />
+            <ConfigRow label="Name" value={pipeline.name} />
+            <ConfigRow label="App Type" value={pipeline.appType} />
+            <ConfigRow label="Template" value={template?.name ?? pipeline.templateId} />
+            <ConfigRow
+              label="Git Repository"
+              value={
+                pipeline.gitRepoUrl ? (
+                  <code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.gitRepoUrl}</code>
+                ) : (
+                  '-'
+                )
+              }
+            />
+            <ConfigRow label="Status" value={(STATUS_STYLES[pipeline.status] ?? STATUS_STYLES.pending).label} />
           </div>
         </DetailCard>
 
-        <DetailCard title="CD Configuration">
+        <DetailCard title="Deployment Target">
           <div className="flex flex-col gap-2.5">
-            <ConfigRow label="Platform" value="Argo CD" />
             <ConfigRow label="Cluster" value={pipeline.clusterName} />
-            <ConfigRow label="Namespace" value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">production</code>} />
-            <ConfigRow label="Sync Policy" value="Auto Sync" />
-            <ConfigRow label="Image" value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[11px]">registry/{pipeline.name}:v1.2.3</code>} />
+            <ConfigRow
+              label="Namespace"
+              value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.namespace}</code>}
+            />
+            <ConfigRow label="Created" value={formatDate(pipeline.createdAt)} />
+            <ConfigRow label="Last Deployed" value={formatDate(pipeline.lastDeployedAt)} />
           </div>
         </DetailCard>
       </div>
 
-      <DetailCard title="Pipeline Stages">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          {STAGE_FLOW.map((stage) => (
-            <div key={stage.key} className="flex flex-col items-center gap-1.5">
-              <div className={`flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-semibold ${stage.done ? 'bg-[#6366f1] text-white' : 'bg-[rgba(100,116,139,0.2)] text-[var(--color-text-secondary)]'}`}>
-                {stage.key.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="text-[11px] font-semibold text-[var(--color-text-primary)]">{stage.label}</div>
-              <div className="text-[10px] text-[#6ee7b7]">{stage.done ? `✓ ${stage.detail}` : 'Pending'}</div>
-            </div>
-          ))}
-        </div>
-      </DetailCard>
+      {stages.length > 0 && (
+        <DetailCard title="Pipeline Stages">
+          <div className="flex flex-wrap items-center gap-2">
+            {stages.map((stage: string, i: number) => (
+              <Fragment key={stage}>
+                <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(99,102,241,0.1)] px-3 py-1.5">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#6366f1] text-[10px] font-bold text-white">{i + 1}</span>
+                  <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">{stage}</span>
+                </div>
+                {i < stages.length - 1 && <span className="text-[var(--color-text-muted)]">→</span>}
+              </Fragment>
+            ))}
+          </div>
+        </DetailCard>
+      )}
 
       <DetailCard title="Pipeline Variables">
         <div className="flex flex-col gap-2">
-          {PIPELINE_VARIABLES.map((variable) => (
-            <div key={variable.key} className="grid grid-cols-[1fr_1fr_88px] items-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[12px]">
-              <span className="font-mono text-[var(--color-text-primary)]">{variable.key}</span>
-              <span className="font-mono text-[var(--color-text-secondary)]">{variable.value}</span>
-              <span className={`rounded px-2 py-[2px] text-center text-[11px] ${variable.type === 'masked' ? 'bg-[rgba(245,158,11,0.2)] text-[#f59e0b]' : 'bg-[rgba(148,163,184,0.2)] text-[var(--color-text-secondary)]'}`}>
-                {variable.type}
-              </span>
-            </div>
-          ))}
+          {pipelineVariables.map((variable) => {
+            const isRevealed = revealedVars.has(variable.key)
+            const displayValue = variable.masked && !isRevealed ? '********' : variable.value
+
+            return (
+              <div
+                key={variable.key}
+                className="grid grid-cols-[1fr_1fr_88px] items-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[12px]"
+              >
+                <span className="font-mono text-[var(--color-text-primary)]">{variable.key}</span>
+                <span className="font-mono text-[var(--color-text-secondary)]">{displayValue}</span>
+                {variable.masked ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleReveal(variable.key)}
+                    className="inline-flex items-center justify-center gap-1 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
+                  >
+                    {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
+                    {isRevealed ? 'Hide' : 'Show'}
+                  </button>
+                ) : (
+                  <span className="rounded px-2 py-[2px] text-center text-[11px] bg-[rgba(148,163,184,0.2)] text-[var(--color-text-secondary)]">plain</span>
+                )}
+              </div>
+            )
+          })}
         </div>
       </DetailCard>
     </div>
   )
 }
 
-function PipelineMonitoringTab() {
+function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
+  const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
+  const deployments = deploymentsData?.items ?? []
+
+  const total = deployments.length
+  const successCount = deployments.filter((d) => d.status === 'success').length
+  const failedCount = deployments.filter((d) => d.status === 'failed').length
+  const successRate = total > 0 ? Math.round((successCount / total) * 100) : 0
+
+  const deploymentsWithDuration = deployments.filter((d) => d.startedAt && d.completedAt)
+  const avgDurationMs =
+    deploymentsWithDuration.reduce((acc, d) => {
+      const start = new Date(d.startedAt).getTime()
+      const end = new Date(d.completedAt as string).getTime()
+      return acc + (end - start)
+    }, 0) / Math.max(deploymentsWithDuration.length, 1)
+
+  const avgDuration =
+    avgDurationMs > 60000
+      ? `${Math.round(avgDurationMs / 60000)}m ${Math.round((avgDurationMs % 60000) / 1000)}s`
+      : `${Math.round(avgDurationMs / 1000)}s`
+
+  const trendMap = new Map<string, { success: number; failed: number }>()
+  for (const d of deployments) {
+    const date = new Date(d.startedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+    const entry = trendMap.get(date) ?? { success: 0, failed: 0 }
+    if (d.status === 'success') {
+      entry.success += 1
+    } else if (d.status === 'failed') {
+      entry.failed += 1
+    }
+    trendMap.set(date, entry)
+  }
+
+  const buildTrend = [...trendMap.entries()].slice(-7).map(([date, counts]) => ({ date, ...counts }))
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         {[
-          { label: 'Success Rate', value: '97.3%', color: '#10b981' },
-          { label: 'Total Builds', value: '145', color: '#818cf8' },
-          { label: 'Avg Duration', value: '2m 34s', color: '#f59e0b' },
-          { label: 'Pods Running', value: '3/3', color: '#22c55e' },
+          { label: 'Success Rate', value: total > 0 ? `${successRate}%` : '-', color: '#10b981' },
+          { label: 'Total Deployments', value: String(total), color: '#818cf8' },
+          { label: 'Avg Duration', value: total > 0 ? avgDuration : '-', color: '#f59e0b' },
+          { label: 'Failed', value: String(failedCount), color: '#ef4444' },
         ].map((item) => (
           <div key={item.label} className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4 text-center">
             <div className="text-[28px] font-extrabold leading-none" style={{ color: item.color }}>
@@ -215,11 +231,11 @@ function PipelineMonitoringTab() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
+      {buildTrend.length > 0 && (
         <div className="rounded-lg border border-[var(--color-border-default)] bg-[#0b1220] p-4">
-          <h4 className="m-0 mb-3 text-[14px] font-bold text-[#f8fafc]">Build Trend (Last 7 days)</h4>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={BUILD_TREND}>
+          <h4 className="m-0 mb-3 text-[14px] font-bold text-[#f8fafc]">Deployment Trend</h4>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={buildTrend}>
               <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
               <YAxis stroke="#cbd5e1" tick={{ fill: '#cbd5e1', fontSize: 11 }} />
@@ -229,105 +245,48 @@ function PipelineMonitoringTab() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      )}
 
-        <div className="rounded-lg border border-[var(--color-border-default)] bg-[#0b1220] p-4">
-          <h4 className="m-0 mb-3 text-[14px] font-bold text-[#f8fafc]">Application Health</h4>
-          <div className="flex flex-col gap-3">
-            {[
-              { label: 'CPU', value: '0.3 cores', rate: 15, color: '#6366f1' },
-              { label: 'Memory', value: '256 Mi', rate: 25, color: '#10b981' },
-            ].map((item) => (
-              <div key={item.label}>
-                <div className="mb-1 flex items-center justify-between text-[12px]">
-                  <span className="text-[#94a3b8]">{item.label}</span>
-                  <span style={{ color: item.color }} className="font-semibold">{item.value}</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-[#1e293b]">
-                  <div className="h-1.5 rounded-full" style={{ width: `${item.rate}%`, backgroundColor: item.color }} />
-                </div>
-              </div>
-            ))}
-            <div className="rounded-md bg-[#1e293b] p-2.5">
-              <div className="text-[11px] text-[#64748b]">ArgoCD Sync Status</div>
-              <div className="text-[13px] font-semibold text-[#6ee7b7]">Synced</div>
-            </div>
-            <div className="rounded-md bg-[#1e293b] p-2.5">
-              <div className="text-[11px] text-[#64748b]">Last Deployment</div>
-              <div className="text-[13px] text-[#e2e8f0]">2026-03-03 14:28</div>
-            </div>
-          </div>
+      {buildTrend.length === 0 && (
+        <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-sm text-[var(--color-text-secondary)]">
+          배포 이력이 없습니다
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
-function PipelineHistoryTab() {
-  const [typeFilter, setTypeFilter] = useState<'all' | 'ci' | 'cd'>('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failed' | 'running'>('all')
+function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
+  const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
+  const deployments = deploymentsData?.items ?? []
 
-  const historyItems = useMemo(
-    () =>
-      PIPELINE_HISTORY.filter((item) => {
-        const matchesType = typeFilter === 'all' || item.stage === typeFilter
-        const matchesStatus = statusFilter === 'all' || item.status === statusFilter
-        return matchesType && matchesStatus
-      }),
-    [statusFilter, typeFilter],
-  )
+  if (deployments.length === 0) {
+    return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">배포 이력이 없습니다</div>
+  }
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <NativeSelect
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as 'all' | 'ci' | 'cd')}
-          className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-        >
-          <option value="all" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Types</option>
-          <option value="ci" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">CI (Build)</option>
-          <option value="cd" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">CD (Deploy)</option>
-        </NativeSelect>
-        <NativeSelect
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as 'all' | 'success' | 'failed' | 'running')}
-          className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-        >
-          <option value="all" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
-          <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
-          <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
-          <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
-        </NativeSelect>
-      </div>
+    <div className="flex flex-col gap-2.5">
+      {deployments.map((d) => {
+        const st = STATUS_STYLES[d.status] ?? STATUS_STYLES.pending
+        const duration =
+          d.completedAt && d.startedAt
+            ? `${Math.round((new Date(d.completedAt).getTime() - new Date(d.startedAt).getTime()) / 1000)}s`
+            : d.status === 'running'
+              ? 'running'
+              : '-'
 
-      <div className="flex flex-col gap-2.5">
-        {historyItems.map((item) => {
-          const statusStyle =
-            item.status === 'success'
-              ? 'bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]'
-              : item.status === 'failed'
-                ? 'bg-[rgba(239,68,68,0.15)] text-[#fca5a5]'
-                : 'bg-[rgba(59,130,246,0.15)] text-[#93c5fd]'
-          const typeStyle =
-            item.stage === 'ci'
-              ? 'bg-[rgba(245,158,11,0.15)] text-[#fcd34d]'
-              : 'bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]'
-
-          return (
-            <div key={item.id} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3.5 py-3">
-              <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${statusStyle}`}>{item.status}</span>
-              <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase ${typeStyle}`}>{item.stage}</span>
-              <span className="text-[13px] font-semibold text-[#a5b4fc]">{item.title}</span>
-              <code className="flex-1 rounded bg-[rgba(255,255,255,0.06)] px-2 py-[2px] text-[12px] text-[var(--color-text-primary)]">{item.detail}</code>
-              <span className="text-[12px] text-[var(--color-text-secondary)]">{item.duration}</span>
-              <span className="text-[12px] text-[var(--color-text-secondary)]">{item.timestamp}</span>
-              <button type="button" className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--color-text-primary)]">
-                Logs
-              </button>
-            </div>
-          )
-        })}
-      </div>
+        return (
+          <div key={d.id} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3.5 py-3">
+            <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: st.bg, color: st.color }}>
+              {st.label}
+            </span>
+            <span className="text-[13px] font-semibold text-[#a5b4fc]">{d.version}</span>
+            <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{d.triggeredBy || '-'}</span>
+            <span className="text-[12px] text-[var(--color-text-secondary)]">{duration}</span>
+            <span className="text-[12px] text-[var(--color-text-secondary)]">{formatDate(d.startedAt)}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -343,7 +302,7 @@ function PipelineActionsTab({
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <DetailCard title="Runbook Actions">
+      <DetailCard title="Actions">
         <div className="flex flex-col gap-2.5">
           <button
             type="button"
@@ -358,44 +317,26 @@ function PipelineActionsTab({
             onClick={onOpenLogs}
             className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-left"
           >
-            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">View Live Logs</span>
-            <span className="text-[12px] text-[var(--color-text-secondary)]">Open CI/CD history logs</span>
-          </button>
-          <button
-            type="button"
-            className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-left"
-          >
-            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">Rollback</span>
-            <span className="text-[12px] text-[var(--color-text-secondary)]">Rollback to previous image</span>
-          </button>
-          <button
-            type="button"
-            className="flex items-center justify-between rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2.5 text-left"
-          >
-            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">Stop Pipeline</span>
-            <span className="text-[12px] text-[#fca5a5]">Cancel running pipeline</span>
+            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">View Deployment History</span>
+            <span className="text-[12px] text-[var(--color-text-secondary)]">Open CI/CD history for this pipeline</span>
           </button>
         </div>
       </DetailCard>
 
-      <DetailCard title="Action Scope">
+      <DetailCard title="Pipeline Scope">
         <div className="space-y-2 text-[13px] text-[var(--color-text-secondary)]">
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">Pipeline</div>
-            <div className="font-semibold text-[var(--color-text-primary)]">{pipeline.name}</div>
-          </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">Cluster</div>
-            <div className="font-semibold text-[var(--color-text-primary)]">{pipeline.clusterName}</div>
-          </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">Current Status</div>
-            <div className="font-semibold text-[var(--color-text-primary)]">{(STATUS_STYLES[pipeline.status] ?? STATUS_STYLES.pending).label}</div>
-          </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">Last Deployed</div>
-            <div className="font-semibold text-[var(--color-text-primary)]">{formatDate(pipeline.lastDeployedAt)}</div>
-          </div>
+          {[
+            { label: 'Pipeline', value: pipeline.name },
+            { label: 'Cluster', value: pipeline.clusterName },
+            { label: 'Namespace', value: pipeline.namespace },
+            { label: 'Status', value: (STATUS_STYLES[pipeline.status] ?? STATUS_STYLES.pending).label },
+            { label: 'Last Deployed', value: formatDate(pipeline.lastDeployedAt) },
+          ].map((item) => (
+            <div key={item.label} className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">{item.label}</div>
+              <div className="font-semibold text-[var(--color-text-primary)]">{item.value}</div>
+            </div>
+          ))}
         </div>
       </DetailCard>
     </div>
@@ -465,8 +406,8 @@ function PipelineDetailPanel({
 
       <div className="p-5">
         {innerTab === 'info' && <PipelineInfoTab pipeline={pipeline} />}
-        {innerTab === 'monitoring' && <PipelineMonitoringTab />}
-        {innerTab === 'history' && <PipelineHistoryTab />}
+        {innerTab === 'monitoring' && <PipelineMonitoringTab pipeline={pipeline} />}
+        {innerTab === 'history' && <PipelineHistoryTab pipeline={pipeline} />}
         {innerTab === 'actions' && <PipelineActionsTab pipeline={pipeline} onRun={onRun} onOpenLogs={onOpenLogs} />}
       </div>
     </div>
@@ -545,8 +486,6 @@ export function CicdListPage() {
     },
   ]
 
-  const expandedPipeline = filtered.find((pipeline) => pipeline.id === expandedPipelineId) ?? null
-
   return (
     <div>
       <Breadcrumb items={[{ label: 'CI/CD List' }]} />
@@ -583,6 +522,15 @@ export function CicdListPage() {
         columns={columns}
         data={filtered}
         getRowKey={(row) => row.id}
+        expandedRowId={expandedPipelineId}
+        renderExpanded={(pipeline) => (
+          <PipelineDetailPanel
+            key={pipeline.id}
+            pipeline={pipeline}
+            onRun={() => navigate(`/cicd/developer-deploy?pipeline=${pipeline.id}`)}
+            onOpenLogs={() => navigate(`/cicd/history?pipeline=${pipeline.id}`)}
+          />
+        )}
         emptyMessage="파이프라인이 없습니다."
         toolbar={
           <>
@@ -609,16 +557,6 @@ export function CicdListPage() {
           </>
         }
       />
-
-      {expandedPipeline && (
-        <PipelineDetailPanel
-          key={expandedPipeline.id}
-          pipeline={expandedPipeline}
-          onRun={() => navigate(`/cicd/developer-deploy?pipeline=${expandedPipeline.id}`)}
-          onOpenLogs={() => navigate(`/cicd/history?pipeline=${expandedPipeline.id}`)}
-        />
-      )}
-
     </div>
   )
 }

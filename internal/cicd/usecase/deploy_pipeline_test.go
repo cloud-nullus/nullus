@@ -54,13 +54,26 @@ func (m *mockDeployDeploymentRepo) Create(_ context.Context, d *domain.Deploymen
 	m.created = append(m.created, &copied)
 	return nil
 }
-func (m *mockDeployDeploymentRepo) GetByID(_ context.Context, _ string) (*domain.Deployment, error) {
-	return nil, nil
+func (m *mockDeployDeploymentRepo) GetByID(_ context.Context, id string) (*domain.Deployment, error) {
+	for _, d := range m.created {
+		if d.ID == id {
+			copied := *d
+			return &copied, nil
+		}
+	}
+	return nil, errors.New("deployment not found")
 }
 func (m *mockDeployDeploymentRepo) ListByPipelineID(_ context.Context, _ string) ([]*domain.Deployment, error) {
 	return nil, nil
 }
-func (m *mockDeployDeploymentRepo) Update(_ context.Context, _ *domain.Deployment) error {
+func (m *mockDeployDeploymentRepo) Update(_ context.Context, d *domain.Deployment) error {
+	for i, existing := range m.created {
+		if existing.ID == d.ID {
+			copied := *d
+			m.created[i] = &copied
+			return nil
+		}
+	}
 	return nil
 }
 
@@ -79,6 +92,11 @@ type mockManifestApplier struct {
 }
 
 func (m *mockManifestApplier) Apply(_ context.Context, _ []byte, manifests []string) error {
+	m.appliedManifests = append(m.appliedManifests, manifests)
+	return m.err
+}
+
+func (m *mockManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, manifests []string, _ string) error {
 	m.appliedManifests = append(m.appliedManifests, manifests)
 	return m.err
 }
@@ -196,7 +214,7 @@ func TestDeployPipeline_ApplierError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, out)
-	assert.Contains(t, err.Error(), "apply to cluster")
+	assert.Contains(t, err.Error(), "deployment failed")
 	require.Len(t, deploymentRepo.created, 1)
-	assert.Equal(t, domain.DeploymentStatusRunning, deploymentRepo.created[0].Status)
+	assert.Equal(t, domain.DeploymentStatusFailed, deploymentRepo.created[0].Status)
 }

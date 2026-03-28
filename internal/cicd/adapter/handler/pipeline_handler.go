@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/manifests"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
@@ -17,6 +19,7 @@ type PipelineHandler struct {
 	deployPipeline *usecase.DeployPipeline
 	pipelineRepo   port.PipelineRepository
 	deploymentRepo port.DeploymentRepository
+	stepTracker    *kube.StepTracker
 }
 
 // NewPipelineHandler constructs a PipelineHandler.
@@ -26,6 +29,7 @@ func NewPipelineHandler(
 	deployPipeline *usecase.DeployPipeline,
 	pipelineRepo port.PipelineRepository,
 	deploymentRepo port.DeploymentRepository,
+	stepTracker *kube.StepTracker,
 ) *PipelineHandler {
 	return &PipelineHandler{
 		createPipeline: createPipeline,
@@ -33,6 +37,7 @@ func NewPipelineHandler(
 		deployPipeline: deployPipeline,
 		pipelineRepo:   pipelineRepo,
 		deploymentRepo: deploymentRepo,
+		stepTracker:    stepTracker,
 	}
 }
 
@@ -42,6 +47,7 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/pipelines", h.CreatePipeline)
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
 	g.GET("/deployments", h.ListDeployments)
+	g.GET("/deployments/:id", h.GetDeployment)
 	g.GET("/app-templates", h.ListAppTemplates)
 	g.POST("/deploy-app", h.DeployApp)
 }
@@ -114,7 +120,7 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_DEPLOY_INVALID", err.Error())
 	}
 
-	out, err := h.deployPipeline.Execute(c.Request().Context(), usecase.DeployPipelineInput{
+	out, err := h.deployPipeline.Start(c.Request().Context(), usecase.DeployPipelineInput{
 		PipelineID: id,
 		Version:    req.Version,
 		DeployedBy: req.DeployedBy,
@@ -123,7 +129,28 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_DEPLOY_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"deploymentId": out.Deployment.ID})
+	depID := out.Deployment.ID
+	h.stepTracker.Init(depID, []string{"Namespace 생성", "Deployment 생성", "Service 생성"})
+
+	go func() {
+		h.deployPipeline.ApplyAsync(depID)
+		time.AfterFunc(30*time.Second, func() { h.stepTracker.Remove(depID) })
+	}()
+
+	return c.JSON(http.StatusAccepted, map[string]any{"deploymentId": depID})
+}
+
+// GetDeployment handles GET /api/v1/deployments/:id.
+func (h *PipelineHandler) GetDeployment(c echo.Context) error {
+	id := c.Param("id")
+	deployment, err := h.deploymentRepo.GetByID(c.Request().Context(), id)
+	if err != nil {
+		return errorResponse(c, http.StatusNotFound, "DEPLOYMENT_NOT_FOUND", err.Error())
+	}
+	if steps := h.stepTracker.Get(id); steps != nil {
+		deployment.Steps = steps
+	}
+	return c.JSON(http.StatusOK, deployment)
 }
 
 func (h *PipelineHandler) ListDeployments(c echo.Context) error {

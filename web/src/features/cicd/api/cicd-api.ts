@@ -80,8 +80,11 @@ const cicdApiCalls = {
       id: p.id,
       name: p.name,
       appType: (p.app_type ?? '') as Pipeline['appType'],
+      templateId: p.template_id ?? '',
+      gitRepoUrl: p.git_repo_url ?? '',
       clusterId: p.cluster_id ?? '',
       clusterName: clusterMap.get(p.cluster_id) ?? '',
+      namespace: p.namespace ?? 'default',
       status: (p.status ?? 'pending') as Pipeline['status'],
       lastDeployedAt: latestDeployByPipeline.get(p.id) ?? null,
       createdAt: p.created_at ?? '',
@@ -103,8 +106,11 @@ const cicdApiCalls = {
       id: raw.id,
       name: raw.name,
       appType: (raw.app_type ?? '') as Pipeline['appType'],
+      templateId: raw.template_id ?? '',
+      gitRepoUrl: raw.git_repo_url ?? '',
       clusterId: raw.cluster_id ?? '',
       clusterName: '',
+      namespace: raw.namespace ?? 'default',
       status: (raw.status ?? 'active') as Pipeline['status'],
       lastDeployedAt: null,
       createdAt: raw.created_at ?? '',
@@ -117,6 +123,17 @@ const cicdApiCalls = {
       version: `v0.1.${Date.now() % 1000}`,
       deployed_by: user?.email ?? '',
     }).then((r) => r.data)
+  },
+
+  getDeployment: async (deploymentId: string) => {
+    const raw: any = await api.get(`/cicd/deployments/${deploymentId}`).then((r) => r.data)
+    return {
+      id: raw.ID ?? raw.id ?? '',
+      status: (raw.Status ?? raw.status ?? 'running') as string,
+      steps: (raw.steps ?? raw.Steps ?? []) as Array<{ name: string; status: string; kind: string; message?: string; applied_at?: string; logs?: string[] }>,
+      startedAt: raw.StartedAt ?? raw.started_at ?? '',
+      completedAt: raw.CompletedAt ?? raw.completed_at ?? null,
+    }
   },
 
   getDeployments: async (filters?: { pipelineId?: string; status?: string }) => {
@@ -222,6 +239,45 @@ export function useDeployments(filters?: { pipelineId?: string; status?: string 
   return useQuery({
     queryKey: queryKeys.deployments(filters),
     queryFn: () => cicdApiCalls.getDeployments(filters),
+  })
+}
+
+export function useDeploymentStatus(deploymentId: string | null) {
+  return useQuery({
+    queryKey: ['cicd-deployment-status', deploymentId],
+    queryFn: () => cicdApiCalls.getDeployment(deploymentId!),
+    enabled: !!deploymentId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (status === 'success' || status === 'failed') return false
+      return 2000
+    },
+    staleTime: 0,
+  })
+}
+
+export function useTemplateById(templateId: string) {
+  return useQuery({
+    queryKey: ['cicd-template', templateId],
+    queryFn: () =>
+      api.get<any>(`/cicd/templates/${templateId}`).then((r) => {
+        const t = r.data
+        return {
+          id: t.id,
+          name: t.name,
+          stages: t.stages ?? [],
+          appType: t.app_type ?? '',
+        }
+      }),
+    enabled: !!templateId,
+  })
+}
+
+export function usePipelineDeployments(pipelineId: string) {
+  return useQuery({
+    queryKey: ['cicd-pipeline-deployments', pipelineId],
+    queryFn: () => cicdApiCalls.getDeployments({ pipelineId }),
+    enabled: !!pipelineId,
   })
 }
 

@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Rocket, Plus, Trash2, ChevronRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Rocket, Plus, Trash2, ChevronRight, Check, X, Loader2, Copy } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-import { useAppTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
+import { useAppTemplates, useCreatePipeline, useDeployPipeline, useDeploymentStatus } from '../api/cicd-api'
 import { useClusters } from '../../admin/api/admin-api'
 import { cn } from '../../../lib/utils'
+
+const TEMPLATE_GIT_REPOS: Record<string, string> = {
+  'go-web-api': 'https://github.com/cloud-nullus/sample-go-api',
+  'react-vite': 'https://github.com/cloud-nullus/sample-react-app',
+  'spring-boot': 'https://github.com/cloud-nullus/sample-spring-boot',
+}
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -124,7 +131,7 @@ const deploySchema = z.object({
 const DEFAULT_FORM: FormState = {
   template: 'go-web-api',
   appName: '',
-  gitUrl: '',
+  gitUrl: TEMPLATE_GIT_REPOS['go-web-api'] ?? '',
   clusterId: '',
   namespace: 'default',
   replicas: 2,
@@ -137,7 +144,10 @@ const DEFAULT_FORM: FormState = {
 
 export function DeveloperDeployPage() {
   const [step, setStep] = useState<Step>(1)
-  const [deployed, setDeployed] = useState(false)
+  const navigate = useNavigate()
+  const [deploymentId, setDeploymentId] = useState<string | null>(null)
+  const { data: deploymentStatus } = useDeploymentStatus(deploymentId)
+  const terminalRef = useRef<HTMLDivElement>(null)
   const { data: appTemplatesRaw } = useAppTemplates()
   const appTemplates = (appTemplatesRaw ?? []).map((t) => ({
     id: t.id,
@@ -180,6 +190,11 @@ export function DeveloperDeployPage() {
     }
   }, [firstClusterId, form.clusterId, setValue])
 
+  useEffect(() => {
+    const el = terminalRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  })
+
   const createPipelineMutation = useCreatePipeline()
   const deployPipelineMutation = useDeployPipeline()
 
@@ -198,8 +213,8 @@ export function DeveloperDeployPage() {
         namespace: data.namespace,
         templateId: 'web-backend-v1',
       })
-      await deployPipelineMutation.mutateAsync(pipeline.id)
-      setDeployed(true)
+      const result = await deployPipelineMutation.mutateAsync(pipeline.id)
+      setDeploymentId(result.deploymentId)
     } catch { /* react-query handles mutation errors */ }
   }
 
@@ -219,31 +234,152 @@ export function DeveloperDeployPage() {
     5: !errors.envVars,
   }
 
-  if (deployed) {
+  if (deploymentId) {
+    const status = deploymentStatus?.status ?? 'running'
+    const isComplete = status === 'success'
+    const isFailed = status === 'failed'
+    const isDone = isComplete || isFailed
+
+    const apiSteps = deploymentStatus?.steps ?? []
+    const hasSteps = apiSteps.length > 0
+    const allLogs = apiSteps.flatMap((s) => s.logs ?? [])
+    const deployedResources = allLogs
+      .filter((line) => !line.startsWith('$') && !line.startsWith('error'))
+      .map((line) => {
+        const match = line.match(/^(\w+)\/(\S+)\s+(\w+)$/)
+        return match ? { kind: match[1], name: match[2], action: match[3] } : null
+      })
+      .filter((r): r is { kind: string; name: string; action: string } => r !== null)
+
+    const progressSteps: Array<{ label: string; status: string; message?: string }> = hasSteps
+      ? [
+          { label: '파이프라인 생성', status: 'success' },
+          ...apiSteps.map((s) => ({ label: s.name, status: s.status, message: s.message })),
+          { label: isComplete ? '배포 완료' : isFailed ? '배포 실패' : '검증 대기', status: isDone ? (isComplete ? 'success' : 'failed') : 'pending' },
+        ]
+      : [
+          { label: '파이프라인 생성', status: 'success' },
+          { label: '클러스터에 배포 중', status: isDone ? 'success' : 'running' },
+          { label: isComplete ? '배포 완료' : isFailed ? '배포 실패' : '검증 대기', status: isDone ? (isComplete ? 'success' : 'failed') : 'pending' },
+        ]
+
     return (
-      <div className="flex h-[360px] flex-col items-center justify-center gap-4">
-        <div
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(34,197,94,0.15)] text-[#22c55e]"
-        >
-          <Rocket size={28} />
+      <div>
+        <Breadcrumb items={[{ label: 'CI/CD List', path: '/cicd/list' }, { label: '배포 진행' }]} />
+        <div className="mx-auto max-w-lg py-12">
+          <div className="mb-8 text-center">
+            <h2 className="m-0 text-xl font-bold text-[var(--color-text-primary)]">{form.appName}</h2>
+            <p className="m-0 mt-1 text-sm text-[var(--color-text-secondary)]">{form.namespace} 네임스페이스</p>
+          </div>
+
+          <div className="mb-8 flex flex-col gap-3">
+            {progressSteps.map((s, i) => (
+              <div key={`${s.label}-${i}`} className="flex items-center gap-3">
+                <div className={cn(
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                  s.status === 'success' ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' :
+                  s.status === 'failed' ? 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]' :
+                  s.status === 'running' ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]' :
+                  'bg-[rgba(100,116,139,0.1)] text-[var(--color-text-muted)]'
+                )}>
+                  {s.status === 'success' ? <Check size={14} /> :
+                   s.status === 'failed' ? <X size={14} /> :
+                   s.status === 'running' ? <Loader2 size={14} className="animate-spin" /> :
+                   <span>{i + 1}</span>}
+                </div>
+                <div className="flex flex-col">
+                  <span className={cn(
+                    'text-sm',
+                    s.status === 'success' || s.status === 'running' ? 'font-medium text-[var(--color-text-primary)]' :
+                    s.status === 'failed' ? 'font-medium text-[#ef4444]' :
+                    'text-[var(--color-text-muted)]'
+                  )}>{s.label}</span>
+                  {s.message && (
+                    <code className="mt-0.5 text-xs text-[var(--color-text-muted)] font-mono">{s.message}</code>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-6 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[#0d1117]">
+            <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-4 py-2">
+              <div className="flex gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+                <div className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
+                <div className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+              </div>
+              <span className="text-[11px] font-medium text-[rgba(255,255,255,0.4)]">Deploy Output</span>
+            </div>
+            <div ref={terminalRef} className="max-h-[240px] overflow-y-auto p-4">
+              {allLogs.length === 0 ? (
+                <span className="font-mono text-xs text-[#484f58]">Waiting for deployment output...</span>
+              ) : (
+                <pre className="m-0 whitespace-pre-wrap font-mono text-xs leading-5">
+                  {allLogs.map((line, i) => (
+                    <div key={`log-${i}`} className={
+                      line.startsWith('$') ? 'text-[#58a6ff]' :
+                      line.includes('created') ? 'text-[#3fb950]' :
+                      line.includes('configured') ? 'text-[#d29922]' :
+                      line.includes('error') || line.includes('failed') ? 'text-[#f85149]' :
+                      'text-[#c9d1d9]'
+                    }>{line}</div>
+                  ))}
+                </pre>
+              )}
+            </div>
+          </div>
+
+          {deploymentStatus?.startedAt && (
+            <div className="mb-6 text-center text-xs text-[var(--color-text-muted)]">
+              시작: {new Date(deploymentStatus.startedAt).toLocaleTimeString('ko-KR')}
+              {deploymentStatus.completedAt && ` · 완료: ${new Date(deploymentStatus.completedAt).toLocaleTimeString('ko-KR')}`}
+            </div>
+          )}
+
+          {isComplete && deployedResources.length > 0 && (() => {
+            const nsScoped = deployedResources.filter((r) => r.kind !== 'namespace')
+            const contextFlag = selectedCluster.name ? ` --context ${selectedCluster.name}` : ''
+            const cmd = nsScoped.length > 0
+              ? `kubectl get ${nsScoped.map((r) => `${r.kind.toLowerCase()}/${r.name}`).join(' ')} -n ${form.namespace}${contextFlag}`
+              : null
+            return (
+              <div className="mb-6 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+                <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  생성된 리소스
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {deployedResources.map((r) => (
+                    <div key={`${r.kind}-${r.name}`} className="flex items-center justify-between rounded-md bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded bg-[rgba(99,102,241,0.15)] px-1.5 py-0.5 text-[11px] font-bold text-[#818cf8]">
+                          {r.kind}
+                        </span>
+                        <span className="font-mono text-[13px] text-[var(--color-text-primary)]">{r.name}</span>
+                      </div>
+                      <span className={cn(
+                        'text-[11px] font-semibold',
+                        r.action === 'created' ? 'text-[#22c55e]' : 'text-[#d29922]'
+                      )}>{r.action}</span>
+                    </div>
+                  ))}
+                </div>
+                {cmd && <CopyableCommand command={cmd} />}
+              </div>
+            )
+          })()}
+
+          {isDone && (
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" size="md" onClick={() => { setDeploymentId(null); reset(DEFAULT_FORM); setStep(1) }}>
+                새 배포
+              </Button>
+              <Button variant="primary" size="md" onClick={() => navigate('/cicd/list')}>
+                CI/CD 목록 보기
+              </Button>
+            </div>
+          )}
         </div>
-        <h2 className="m-0 text-xl font-extrabold text-[var(--color-text-primary)]">
-          배포 요청 완료!
-        </h2>
-        <p className="m-0 text-sm text-[var(--color-text-secondary)]">
-          {form.appName} 앱이 {form.namespace} 네임스페이스에 배포 요청되었습니다.
-        </p>
-        <Button
-          variant="outline"
-          size="md"
-          onClick={() => {
-            setDeployed(false)
-            reset(DEFAULT_FORM)
-            setStep(1)
-          }}
-        >
-          새 배포
-        </Button>
       </div>
     )
   }
@@ -284,7 +420,11 @@ export function DeveloperDeployPage() {
             <button
               key={t.id}
               type="button"
-              onClick={() => setField('template', t.id)}
+              onClick={() => {
+                setField('template', t.id)
+                const repoUrl = TEMPLATE_GIT_REPOS[t.id]
+                if (repoUrl) setField('gitUrl', repoUrl)
+              }}
               className={cn(
                 'cursor-pointer rounded-[10px] border p-[14px] text-left transition-all duration-150',
                 form.template === t.id
@@ -595,6 +735,24 @@ function ResourceSlider({
           </span>
         ))}
       </div>
+    </div>
+  )
+}
+
+function CopyableCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="mt-3 flex items-center gap-2 rounded-md bg-[#0d1117] px-3 py-2">
+      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-[#c9d1d9]">
+        <span className="mr-1.5 text-[#484f58]">$</span>{command}
+      </code>
+      <button
+        type="button"
+        onClick={() => { void navigator.clipboard.writeText(command); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[rgba(255,255,255,0.4)] transition-colors hover:text-white"
+      >
+        {copied ? <Check size={14} className="text-[#3fb950]" /> : <Copy size={14} />}
+      </button>
     </div>
   )
 }

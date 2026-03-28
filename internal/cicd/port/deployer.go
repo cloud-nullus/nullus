@@ -4,6 +4,7 @@ import "context"
 
 type ManifestApplier interface {
 	Apply(ctx context.Context, kubeconfig []byte, manifests []string) error
+	ApplyWithTracking(ctx context.Context, kubeconfig []byte, manifests []string, deploymentID string) error
 }
 
 type KubeconfigProvider interface {

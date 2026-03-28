@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD 파이프라인이 kind 클러스터에 실제 K8s 리소스(Deployment, Service, Namespace)를 생성
 - CI/CD developer-deploy 위저드 5단계 전체 플로우 연결 (앱 이름 → Git → 클러스터 → 리소스 → 환경변수 → Deploy)
 - 위저드 Step 4에 Replicas 슬라이더 추가 (1~5, 기본값 2)
+- 배포 진행 화면에 Deploy Output 터미널 박스 추가 (kubectl 명령어 및 결과 실시간 표시, 색상 구분)
+- 배포 완료 시 생성된 K8s 리소스 목록 표시 및 `kubectl get` 확인 명령어 복사 기능 (`--context` 포함)
+- 앱 템플릿 선택 시 Git Repository URL 자동 입력 (`sample-go-api`, `sample-react-app`, `sample-spring-boot`)
+- `DeployStep`에 `Logs` 필드 추가, `StepTracker.AppendLog`로 스텝별 kubectl 로그 축적
+- 인메모리 `StepTracker`로 배포 단계별 진행 상태 추적 (30초 후 자동 정리)
+- GET `/cicd/deployments/:id` 엔드포인트 (배포 상태 + 스텝 로그 병합)
+- CI/CD List 상세 패널 4개 탭: Info (Pipeline + Target + Stages + Variables), Monitoring, History, Actions
+- `DataTable`에 `renderExpanded` prop 추가 (행 아래 인라인 상세 패널)
 - CI/CD History 페이지에서 특정 파이프라인 배포 이력만 필터링 (`?pipeline=<id>`)
 - CI/CD List 파이프라인 상세 패널의 Logs 버튼이 해당 파이프라인 이력으로 바로 이동
 - 배포 시 현재 로그인 사용자가 `deployed_by`로 자동 기록
@@ -20,7 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 시행착오 및 해결 방법 레퍼런스 (`docs/agent-reference.md`)
 
 ### Changed
-- `DeployPipeline` usecase가 시뮬레이션 대신 실제 K8s dynamic client로 배포
+- `DeployPipeline` usecase를 `Start`(동기, DB 저장) + `ApplyAsync`(비동기, K8s 배포)로 분리, HTTP 202 즉시 반환
+- `ManifestApplier.ApplyWithTracking`이 각 매니페스트 적용 결과와 로그를 `StepTracker`에 기록
+- CI/CD List/History 페이지가 각 항목 아래 인라인 상세 패널로 변경 (하단 패널 → 행 아래 인라인)
+- CI/CD History에서 Rollback 기능 전체 제거 (백엔드 미구현)
 - CI/CD List/History 페이지가 백엔드 API 응답을 정확히 매핑 (앱 타입, 클러스터명, 상태, 배포일)
 - CI/CD List 테이블에서 Deploy 버튼 제거 (상세 패널의 Run으로 통합)
 - `go-web-api` 템플릿 이미지를 빌드 이미지에서 런타임 서버로 변경 (`nginx:alpine`)

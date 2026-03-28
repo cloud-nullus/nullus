@@ -243,8 +243,11 @@ export interface Pipeline {
   id: string
   name: string
   appType: AppType
+  templateId: string
+  gitRepoUrl: string
   clusterId: string
   clusterName: string
+  namespace: string
   status: PipelineStatus
   lastDeployedAt: string | null
   createdAt: string

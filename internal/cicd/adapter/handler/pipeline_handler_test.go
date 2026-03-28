@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/usecase"
 	"github.com/labstack/echo/v4"
@@ -172,6 +173,9 @@ func (n *noopKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]b
 type noopManifestApplier struct{}
 
 func (n *noopManifestApplier) Apply(_ context.Context, _ []byte, _ []string) error { return nil }
+func (n *noopManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, _ []string, _ string) error {
+	return nil
+}
 
 func newPipelineEcho(t *testing.T, pipelineRepo *mockPipelineRepository, templateRepo *mockPipelineTemplateRepository, deploymentRepo *mockDeploymentRepository) *echo.Echo {
 	t.Helper()
@@ -180,7 +184,7 @@ func newPipelineEcho(t *testing.T, pipelineRepo *mockPipelineRepository, templat
 	createPipelineUC := usecase.NewCreatePipeline(pipelineRepo, templateRepo)
 	listPipelinesUC := usecase.NewListPipelines(pipelineRepo)
 	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, &noopManifestApplier{})
-	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo)
+	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, kube.NewStepTracker())
 
 	v1 := e.Group("/api/v1")
 	h.RegisterRoutes(v1)
@@ -273,7 +277,7 @@ func TestPipelineHandler_Deploy_Success(t *testing.T) {
 
 	e.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusAccepted, rec.Code)
 	require.Len(t, deploymentRepo.deployments, 1)
 	assert.Equal(t, "pip-1", deploymentRepo.deployments[0].PipelineID)
 
