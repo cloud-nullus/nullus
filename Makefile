@@ -2,6 +2,20 @@
 
 DB_URL := postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable
 
+ifeq ($(OS),Windows_NT)
+GO_BIN_DIR := $(USERPROFILE)/go/bin
+MIGRATE_FALLBACK := $(GO_BIN_DIR)/migrate.exe
+MIGRATE := $(if $(wildcard $(MIGRATE_FALLBACK)),$(MIGRATE_FALLBACK),migrate.exe)
+MIGRATE_CHECK := where migrate
+NULL_DEVICE := NUL
+else
+GO_BIN_DIR := $(HOME)/go/bin
+MIGRATE_FALLBACK := $(GO_BIN_DIR)/migrate
+MIGRATE := $(shell command -v migrate 2>/dev/null || echo $(MIGRATE_FALLBACK))
+MIGRATE_CHECK := command -v migrate
+NULL_DEVICE := /dev/null
+endif
+
 # ─── 개발 환경 ───
 dev-up:
 	docker compose -f docker-compose.dev.yaml up -d
@@ -74,10 +88,8 @@ lint:
 	golangci-lint run ./...
 
 # ─── DB ───
-MIGRATE := $(shell which migrate 2>/dev/null || echo $(HOME)/go/bin/migrate)
-
 migrate-up:
-	@which migrate > /dev/null 2>&1 || (echo "Installing golang-migrate..." && go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest)
+	@$(MIGRATE_CHECK) > $(NULL_DEVICE) 2>&1 || (echo "Installing golang-migrate..." && go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest)
 	$(MIGRATE) -path db/migrations -database "$(DB_URL)" up
 
 migrate-down:
