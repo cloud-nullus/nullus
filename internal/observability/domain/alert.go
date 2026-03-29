@@ -21,12 +21,13 @@ const (
 
 // AlertRule defines a condition that triggers an alert when met.
 type AlertRule struct {
-	ID        string       `json:"id"`
-	Name      string       `json:"name"`
-	Condition string       `json:"condition"`
-	Threshold float64      `json:"threshold"`
-	Channel   AlertChannel `json:"channel"`
-	Enabled   bool         `json:"enabled"`
+	ID         string       `json:"id"`
+	Name       string       `json:"name"`
+	MetricName string       `json:"metric_name"`
+	Condition  string       `json:"condition,omitempty"`
+	Threshold  float64      `json:"threshold"`
+	Channel    AlertChannel `json:"channel"`
+	Enabled    bool         `json:"enabled"`
 }
 
 // Alert represents a fired alert instance.

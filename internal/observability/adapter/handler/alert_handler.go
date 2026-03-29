@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/cloud-nullus/draft/internal/observability/domain"
-	"github.com/cloud-nullus/draft/internal/observability/port"
 	"github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/labstack/echo/v4"
 )
@@ -13,20 +12,26 @@ import (
 // AlertHandler handles HTTP requests for alert rule and history operations.
 type AlertHandler struct {
 	createAlertRule *usecase.CreateAlertRule
+	listAlertRules  *usecase.ListAlertRules
+	updateAlertRule *usecase.UpdateAlertRule
+	deleteAlertRule *usecase.DeleteAlertRule
 	listAlerts      *usecase.ListAlerts
-	alertRuleRepo   port.AlertRuleRepository
 }
 
 // NewAlertHandler constructs an AlertHandler.
 func NewAlertHandler(
 	createAlertRule *usecase.CreateAlertRule,
+	listAlertRules *usecase.ListAlertRules,
+	updateAlertRule *usecase.UpdateAlertRule,
+	deleteAlertRule *usecase.DeleteAlertRule,
 	listAlerts *usecase.ListAlerts,
-	alertRuleRepo port.AlertRuleRepository,
 ) *AlertHandler {
 	return &AlertHandler{
 		createAlertRule: createAlertRule,
+		listAlertRules:  listAlertRules,
+		updateAlertRule: updateAlertRule,
+		deleteAlertRule: deleteAlertRule,
 		listAlerts:      listAlerts,
-		alertRuleRepo:   alertRuleRepo,
 	}
 }
 
@@ -41,11 +46,12 @@ func (h *AlertHandler) RegisterRoutes(g *echo.Group) {
 
 // createAlertRuleRequest is the request body for POST /alerts/rules.
 type createAlertRuleRequest struct {
-	Name      string  `json:"name"`
-	Condition string  `json:"condition"`
-	Threshold float64 `json:"threshold"`
-	Channel   string  `json:"channel"`
-	Enabled   bool    `json:"enabled"`
+	Name       string  `json:"name"`
+	MetricName string  `json:"metric_name"`
+	Condition  string  `json:"condition"`
+	Threshold  float64 `json:"threshold"`
+	Channel    string  `json:"channel"`
+	Enabled    bool    `json:"enabled"`
 }
 
 // ListRules handles GET /api/v1/alerts/rules.
@@ -56,12 +62,12 @@ type createAlertRuleRequest struct {
 func (h *AlertHandler) ListRules(c echo.Context) error {
 	_ = c.QueryParam("scope")
 
-	rules, err := h.alertRuleRepo.List(c.Request().Context())
+	out, err := h.listAlertRules.Execute(c.Request().Context())
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"items": rules, "total": len(rules)})
+	return c.JSON(http.StatusOK, map[string]any{"items": out.Rules, "total": len(out.Rules)})
 }
 
 // CreateRule handles POST /api/v1/alerts/rules.
@@ -71,12 +77,17 @@ func (h *AlertHandler) CreateRule(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "ALERT_RULE_INVALID", err.Error())
 	}
 
+	metricName := req.MetricName
+	if metricName == "" {
+		metricName = req.Condition
+	}
+
 	out, err := h.createAlertRule.Execute(c.Request().Context(), usecase.CreateAlertRuleInput{
-		Name:      req.Name,
-		Condition: req.Condition,
-		Threshold: req.Threshold,
-		Channel:   domain.AlertChannel(req.Channel),
-		Enabled:   req.Enabled,
+		Name:       req.Name,
+		MetricName: metricName,
+		Threshold:  req.Threshold,
+		Channel:    domain.AlertChannel(req.Channel),
+		Enabled:    req.Enabled,
 	})
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "ALERT_RULE_CREATE_FAILED", err.Error())
@@ -86,11 +97,12 @@ func (h *AlertHandler) CreateRule(c echo.Context) error {
 }
 
 type updateAlertRuleRequest struct {
-	Name      *string  `json:"name"`
-	Condition *string  `json:"condition"`
-	Threshold *float64 `json:"threshold"`
-	Channel   *string  `json:"channel"`
-	Enabled   *bool    `json:"enabled"`
+	Name       *string  `json:"name"`
+	MetricName *string  `json:"metric_name"`
+	Condition  *string  `json:"condition"`
+	Threshold  *float64 `json:"threshold"`
+	Channel    *string  `json:"channel"`
+	Enabled    *bool    `json:"enabled"`
 }
 
 func (h *AlertHandler) UpdateRule(c echo.Context) error {
@@ -101,45 +113,40 @@ func (h *AlertHandler) UpdateRule(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "ALERT_RULE_INVALID", err.Error())
 	}
 
-	rule, err := h.alertRuleRepo.GetByID(c.Request().Context(), id)
-	if err != nil {
-		if errors.Is(err, domain.ErrAlertRuleNotFound) {
-			return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
-		}
-		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_FETCH_FAILED", err.Error())
-	}
-
-	updated := *rule
-	if req.Name != nil {
-		updated.Name = *req.Name
-	}
-	if req.Condition != nil {
-		updated.Condition = *req.Condition
-	}
-	if req.Threshold != nil {
-		updated.Threshold = *req.Threshold
-	}
+	var channel *domain.AlertChannel
 	if req.Channel != nil {
-		updated.Channel = domain.AlertChannel(*req.Channel)
-	}
-	if req.Enabled != nil {
-		updated.Enabled = *req.Enabled
+		v := domain.AlertChannel(*req.Channel)
+		channel = &v
 	}
 
-	if err := h.alertRuleRepo.Update(c.Request().Context(), &updated); err != nil {
+	metricName := req.MetricName
+	if metricName == nil {
+		metricName = req.Condition
+	}
+
+	out, err := h.updateAlertRule.Execute(c.Request().Context(), usecase.UpdateAlertRuleInput{
+		ID:         id,
+		Name:       req.Name,
+		MetricName: metricName,
+		Threshold:  req.Threshold,
+		Channel:    channel,
+		Enabled:    req.Enabled,
+	})
+	if err != nil {
 		if errors.Is(err, domain.ErrAlertRuleNotFound) {
 			return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
 		}
 		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_UPDATE_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, &updated)
+	return c.JSON(http.StatusOK, out.Rule)
 }
 
 func (h *AlertHandler) DeleteRule(c echo.Context) error {
 	id := c.Param("id")
 
-	if err := h.alertRuleRepo.Delete(c.Request().Context(), id); err != nil {
+	err := h.deleteAlertRule.Execute(c.Request().Context(), usecase.DeleteAlertRuleInput{ID: id})
+	if err != nil {
 		if errors.Is(err, domain.ErrAlertRuleNotFound) {
 			return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
 		}

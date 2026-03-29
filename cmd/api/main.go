@@ -154,9 +154,12 @@ func main() {
 	pgAlertRepo := obsrepo.NewPostgresAlertRepository(pool)
 	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
 	createAlertRuleUC := obsuc.NewCreateAlertRule(pgAlertRuleRepo)
+	listAlertRulesUC := obsuc.NewListAlertRules(pgAlertRuleRepo)
+	updateAlertRuleUC := obsuc.NewUpdateAlertRule(pgAlertRuleRepo)
+	deleteAlertRuleUC := obsuc.NewDeleteAlertRule(pgAlertRuleRepo)
 	listAlertsUC := obsuc.NewListAlerts(pgAlertRepo)
 	dashboardHandler := obshandler.NewDashboardHandler(getDashboardUC)
-	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, pgAlertRuleRepo)
+	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
 
 	// Echo
 	e := echo.New()

@@ -16,11 +16,11 @@ func TestCreateAlertRule_Execute_Success(t *testing.T) {
 	uc := NewCreateAlertRule(repo)
 
 	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
-		Name:      "High CPU",
-		Condition: "cpu_usage",
-		Threshold: 85,
-		Channel:   domain.AlertChannelSlack,
-		Enabled:   true,
+		Name:       "High CPU",
+		MetricName: "cpu_usage",
+		Threshold:  85,
+		Channel:    domain.AlertChannelSlack,
+		Enabled:    true,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, out)
@@ -41,10 +41,10 @@ func TestCreateAlertRule_Execute_ValidationError(t *testing.T) {
 	uc := NewCreateAlertRule(repo)
 
 	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
-		Condition: "cpu_usage",
-		Threshold: 80,
-		Channel:   domain.AlertChannelEmail,
-		Enabled:   true,
+		MetricName: "cpu_usage",
+		Threshold:  80,
+		Channel:    domain.AlertChannelEmail,
+		Enabled:    true,
 	})
 
 	require.Error(t, err)
@@ -52,16 +52,32 @@ func TestCreateAlertRule_Execute_ValidationError(t *testing.T) {
 	assert.Contains(t, err.Error(), "alert rule name is required")
 }
 
+func TestCreateAlertRule_Execute_MetricNameRequired(t *testing.T) {
+	repo := repository.NewMemoryAlertRuleRepository()
+	uc := NewCreateAlertRule(repo)
+
+	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
+		Name:      "High CPU",
+		Threshold: 85,
+		Channel:   domain.AlertChannelSlack,
+		Enabled:   true,
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, out)
+	assert.Contains(t, err.Error(), "metric_name is required")
+}
+
 func TestCreateAlertRule_Execute_RepositoryError(t *testing.T) {
 	repo := &failingAlertRuleRepository{createErr: errors.New("db unavailable")}
 	uc := NewCreateAlertRule(repo)
 
 	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
-		Name:      "High Memory",
-		Condition: "memory_usage",
-		Threshold: 90,
-		Channel:   domain.AlertChannelSlack,
-		Enabled:   true,
+		Name:       "High Memory",
+		MetricName: "memory_usage",
+		Threshold:  90,
+		Channel:    domain.AlertChannelSlack,
+		Enabled:    true,
 	})
 
 	require.Error(t, err)
