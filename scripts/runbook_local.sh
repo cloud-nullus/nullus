@@ -54,6 +54,27 @@ kind_print_status() {
   [[ "$has_cluster" == "true" ]] && echo ""
 }
 
+register_kind_cluster_endpoints() {
+  command -v kind >/dev/null 2>&1 || return 0
+
+  while IFS= read -r cluster_name; do
+    [[ -z "$cluster_name" ]] && continue
+    if ! kind_cluster_exists "$cluster_name"; then
+      continue
+    fi
+
+    local kind_endpoint
+    kind_endpoint="$(kubectl config view --context "kind-${cluster_name}" --minify --raw -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
+    if [[ -z "$kind_endpoint" ]]; then
+      continue
+    fi
+
+    echo "[nullus] registering kind cluster endpoint for kind-${cluster_name}: ${kind_endpoint}"
+    docker exec draft-postgres-1 psql -U nullus -d nullus -c \
+      "UPDATE clusters SET endpoint = '${kind_endpoint}' WHERE name = 'kind-${cluster_name}';" >/dev/null 2>&1 || true
+  done < <(kind_cluster_names)
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -357,10 +378,20 @@ do_info() {
   echo "  MinIO API          localhost:$MINIO_PORT"
   echo "  Redis              localhost:$REDIS_PORT"
   echo ""
-  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
-    echo -e "${CYAN}  ── Kubernetes ──${NC}"
-    echo "  Kind Cluster       kind-$KIND_CLUSTER_NAME ($(kubectl get nodes --context "kind-$KIND_CLUSTER_NAME" -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo 'unknown'))"
-    echo ""
+  local printed_k8s="false"
+  if command -v kind >/dev/null 2>&1; then
+    while IFS= read -r cluster_name; do
+      [[ -z "$cluster_name" ]] && continue
+      if ! kind_cluster_exists "$cluster_name"; then
+        continue
+      fi
+      if [[ "$printed_k8s" == "false" ]]; then
+        echo -e "${CYAN}  ── Kubernetes ──${NC}"
+        printed_k8s="true"
+      fi
+      echo "  Kind Cluster       kind-$cluster_name ($(kubectl get nodes --context "kind-$cluster_name" -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo 'unknown'))"
+    done < <(kind_cluster_names)
+    [[ "$printed_k8s" == "true" ]] && echo ""
   fi
   echo -e "${CYAN}  ── Commands ──${NC}"
   echo "  Logs               ./scripts/runbook_local.sh logs"
@@ -416,15 +447,7 @@ do_up() {
     echo "[nullus] migration failed (may already be applied, continuing...)"
   }
 
-  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
-    local KIND_ENDPOINT
-    KIND_ENDPOINT="$(kubectl config view --context "kind-${KIND_CLUSTER_NAME}" --minify --raw -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
-    if [[ -n "$KIND_ENDPOINT" ]]; then
-      echo "[nullus] registering kind cluster endpoint: $KIND_ENDPOINT"
-      docker exec draft-postgres-1 psql -U nullus -d nullus -c \
-        "UPDATE clusters SET endpoint = '${KIND_ENDPOINT}' WHERE name = 'kind-nullus-test';" >/dev/null 2>&1
-    fi
-  fi
+  register_kind_cluster_endpoints
 
   # 3. Build + start API (with ENCRYPTION_KEY)
   echo ""
