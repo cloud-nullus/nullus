@@ -7,6 +7,7 @@ import { Modal } from '../../../components/ui/modal'
 import type { CompatibilityMatrix, CompatibilityValidationResult } from '../api/stack-api'
 import { cn } from '../../../lib/utils'
 import { useState } from 'react'
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
 
 const STATUS_BADGE: Record<string, { className: string; key: string; defaultLabel: string }> = {
@@ -25,6 +26,7 @@ const rowClassName = 'border-t border-[var(--color-border-default)] px-[14px] py
 
 export function StackVersionPage() {
   const { t, i18n } = useTranslation()
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const [search, setSearch] = useState('')
   const [validationOpen, setValidationOpen] = useState(false)
   const [validating, setValidating] = useState(false)
@@ -164,7 +166,7 @@ export function StackVersionPage() {
               </span>
             </div>
 
-            <p className="m-0 text-xs text-[var(--color-text-secondary)]">{t('stackVersionPage.validation.checkedAt', 'Checked at')}: {new Date(validationResult.checkedAt).toLocaleString(i18n.resolvedLanguage || i18n.language || 'en-US')}</p>
+            <p className="m-0 text-xs text-[var(--color-text-secondary)]">{t('stackVersionPage.validation.checkedAt', 'Checked at')}: {formatDateTime(validationResult.checkedAt, locale)}</p>
           </div>
         )}
       </Modal>

@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { useAuthStore } from '../../../stores/auth-store'
 import type { StackTemplate } from '../api/stack-api'
 import type { TemplateToolDetail } from '../../../types'
+import { resolveLocale } from '../../../lib/locale'
 
 interface TemplateFormState {
   id: string
@@ -220,7 +221,7 @@ export function StackTemplatePage() {
 
   const templates = Array.isArray(apiTemplates) ? apiTemplates : []
 
-  const isKorean = i18n.resolvedLanguage?.startsWith('ko') ?? i18n.language.startsWith('ko')
+  const isKorean = resolveLocale(i18n.resolvedLanguage || i18n.language) === 'ko-KR'
   const resolveTemplateDescription = (template: StackTemplate) => {
     const localized = TEMPLATE_DESCRIPTION_I18N[template.id]
     if (!localized) return template.description

@@ -8,6 +8,8 @@ import { useAuthStore } from '../../../stores/auth-store'
 const mockCreateTemplateMutate = vi.fn()
 const mockUpdateTemplateMutate = vi.fn()
 const mockDeleteTemplateMutate = vi.fn()
+const SEARCH_PLACEHOLDER = /Search templates\.\.\.|템플릿 검색\.\.\./
+const EMPTY_RESULT_MESSAGE = /No templates found\.|No search results found\.|검색 결과가 없습니다\./
 
 const mockTemplates = [
   {
@@ -103,12 +105,12 @@ describe('StackTemplatePage', () => {
 
   it('renders search input', () => {
     renderWithProviders(<StackTemplatePage />)
-    expect(screen.getByPlaceholderText('템플릿 검색...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(SEARCH_PLACEHOLDER)).toBeInTheDocument()
   })
 
   it('filters cards when text is entered in search', async () => {
     renderWithProviders(<StackTemplatePage />)
-    const searchInput = screen.getByPlaceholderText('템플릿 검색...')
+    const searchInput = screen.getByPlaceholderText(SEARCH_PLACEHOLDER)
     fireEvent.change(searchInput, { target: { value: 'GitLab All' } })
     await waitFor(() => {
       expect(screen.getByText('GitLab All-in-One')).toBeInTheDocument()
@@ -119,16 +121,16 @@ describe('StackTemplatePage', () => {
 
   it('shows no results message when search yields nothing', async () => {
     renderWithProviders(<StackTemplatePage />)
-    const searchInput = screen.getByPlaceholderText('템플릿 검색...')
+    const searchInput = screen.getByPlaceholderText(SEARCH_PLACEHOLDER)
     fireEvent.change(searchInput, { target: { value: 'xyznonexistent' } })
     await waitFor(() => {
-      expect(screen.getByText('검색 결과가 없습니다.')).toBeInTheDocument()
+      expect(screen.getByText(EMPTY_RESULT_MESSAGE)).toBeInTheDocument()
     })
   })
 
   it('filters by tool name in search', async () => {
     renderWithProviders(<StackTemplatePage />)
-    const searchInput = screen.getByPlaceholderText('템플릿 검색...')
+    const searchInput = screen.getByPlaceholderText(SEARCH_PLACEHOLDER)
     fireEvent.change(searchInput, { target: { value: 'ArgoCD' } })
     await waitFor(() => {
       expect(screen.getByText('GitLab + ArgoCD')).toBeInTheDocument()

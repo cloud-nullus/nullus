@@ -15,6 +15,7 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
 type ActiveRoleTab = 'all' | MemberRole
 
@@ -184,7 +185,7 @@ const EXPIRY_OPTIONS = [
 
 export function UserManagementPage() {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { data: orgData } = useOrganization()
   const ORG_ID = orgData?.id ?? ''
   const { data: membersData, isLoading } = useMembers(ORG_ID)
@@ -704,7 +705,7 @@ export function UserManagementPage() {
                             </span>
                           </td>
                           <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
-                            {new Date(invite.expiresAt).toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            {formatDateTime(invite.expiresAt, locale)}
                           </td>
                           <td className="px-4 py-2.5">
                             {expired ? (

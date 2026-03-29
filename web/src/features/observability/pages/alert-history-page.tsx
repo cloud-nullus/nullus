@@ -10,17 +10,12 @@ import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
 const SEVERITY_BADGE: Record<AlertSeverity, { className: string }> = {
   critical: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
   warning: { className: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]' },
   info: { className: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]' },
-}
-
-
-function formatDate(iso: string | null, locale: string) {
-  if (!iso) return '-'
-  return new Date(iso).toLocaleString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function getSeverityLabel(t: (key: string, defaultValue?: string) => string, severity: AlertSeverity) {
@@ -31,7 +26,7 @@ function getSeverityLabel(t: (key: string, defaultValue?: string) => string, sev
 
 export function AlertHistoryPage() {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [selectedStackId, setSelectedStackId] = useState('')
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null)
@@ -108,14 +103,14 @@ export function AlertHistoryPage() {
     {
       accessorKey: 'firedAt',
       header: t('alertHistoryPage.table.firedAt', 'Fired At'),
-      cell: ({ row }) => <span className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.firedAt, locale)}</span>,
+      cell: ({ row }) => <span className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">{formatDateTime(row.original.firedAt, locale)}</span>,
     },
     {
       accessorKey: 'resolvedAt',
       header: t('alertHistoryPage.table.resolvedAt', 'Resolved At'),
       cell: ({ row }) =>
         row.original.resolvedAt ? (
-          <span className="whitespace-nowrap text-[13px] text-[#22c55e]">{formatDate(row.original.resolvedAt, locale)}</span>
+          <span className="whitespace-nowrap text-[13px] text-[#22c55e]">{formatDateTime(row.original.resolvedAt, locale)}</span>
         ) : (
           <span className="whitespace-nowrap text-[13px] text-[#f87171]">{t('alertHistoryPage.unresolved', 'Unresolved')}</span>
         ),
@@ -225,8 +220,8 @@ export function AlertHistoryPage() {
             {[
               { label: t('alertHistoryPage.detail.rule', 'Rule'), value: expandedAlert.ruleName },
               { label: t('alertHistoryPage.detail.severity', 'Severity'), value: expandedAlert.severity },
-              { label: t('alertHistoryPage.detail.firedAt', 'Fired At'), value: new Date(expandedAlert.firedAt).toLocaleString(locale) },
-              { label: t('alertHistoryPage.detail.resolvedAt', 'Resolved At'), value: expandedAlert.resolvedAt ? new Date(expandedAlert.resolvedAt).toLocaleString(locale) : t('alertHistoryPage.unresolved', 'Unresolved') },
+              { label: t('alertHistoryPage.detail.firedAt', 'Fired At'), value: formatDateTime(expandedAlert.firedAt, locale) },
+              { label: t('alertHistoryPage.detail.resolvedAt', 'Resolved At'), value: expandedAlert.resolvedAt ? formatDateTime(expandedAlert.resolvedAt, locale) : t('alertHistoryPage.unresolved', 'Unresolved') },
             ].map(({ label, value }) => (
               <div key={label} className="flex gap-2 text-[13px]">
                 <span className="w-[80px] shrink-0 text-[var(--color-text-muted)]">{label}</span>

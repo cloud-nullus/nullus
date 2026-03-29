@@ -11,28 +11,12 @@ import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
-
-function formatDate(iso: string, locale: string) {
-  if (!iso) {
-    return '-'
-  }
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) {
-    return '-'
-  }
-  return date.toLocaleString(locale, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
 
 export function StackHistoryPage() {
    const { t, i18n } = useTranslation()
-   const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
    const { data: stacksData } = useStacks()
    const stacks = stacksData?.items ?? []
    const navigate = useNavigate()
@@ -158,7 +142,7 @@ export function StackHistoryPage() {
     {
       accessorKey: 'changedAt',
       header: t('stackHistoryPage.table.changedAt', 'Changed At'),
-      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.changedAt, locale)}</span>,
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDateTime(row.original.changedAt, locale)}</span>,
     },
     {
       accessorKey: 'reason',

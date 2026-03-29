@@ -6,29 +6,12 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
 import { useDeploymentStatus, usePipelineDeployments, usePipelines } from '../api/cicd-api'
-
-const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  active: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Active' },
-  running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
-  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Success' },
-  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Failed' },
-  pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Pending' },
-  cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Cancelled' },
-}
-
-function formatDate(iso: string | null, locale: string) {
-  if (!iso) return '-'
-  return new Date(iso).toLocaleString(locale, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { getPipelineStatusLabel, getPipelineStatusStyle } from '../utils/pipeline-status'
 
 export function CicdPipelineLogsPage() {
   const { t, i18n } = useTranslation()
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { id: pipelineId = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -62,7 +45,8 @@ export function CicdPipelineLogsPage() {
   })
 
   const breadcrumbName = pipeline?.name ?? pipelineId
-  const currentStatus = STATUS_STYLES[pipeline?.status ?? 'pending'] ?? STATUS_STYLES.pending
+  const currentStatus = getPipelineStatusStyle(pipeline?.status ?? 'pending')
+  const currentStatusLabel = getPipelineStatusLabel(t, pipeline?.status ?? 'pending')
 
   return (
     <div>
@@ -96,7 +80,7 @@ export function CicdPipelineLogsPage() {
           className="rounded-md px-2.5 py-1 text-xs font-semibold"
           style={{ backgroundColor: currentStatus.bg, color: currentStatus.color }}
         >
-          {currentStatus.label}
+          {currentStatusLabel}
         </span>
         <span className="text-xs text-[var(--color-text-secondary)]">Cluster: {pipeline?.clusterName ?? '-'}</span>
         <span className="text-xs text-[var(--color-text-secondary)]">Namespace: {pipeline?.namespace ?? '-'}</span>
@@ -114,7 +98,7 @@ export function CicdPipelineLogsPage() {
               </div>
             )}
             {deployments.map((deployment) => {
-              const st = STATUS_STYLES[deployment.status] ?? STATUS_STYLES.pending
+              const st = getPipelineStatusStyle(deployment.status)
               const selected = deployment.id === selectedDeploymentId
               return (
                 <button
@@ -131,10 +115,10 @@ export function CicdPipelineLogsPage() {
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <span className="font-mono text-[12px] font-semibold text-[#a5b4fc]">{deployment.version}</span>
                     <span className="rounded px-1.5 py-[2px] text-[10px] font-semibold" style={{ backgroundColor: st.bg, color: st.color }}>
-                      {st.label}
+                      {getPipelineStatusLabel(t, deployment.status)}
                     </span>
                   </div>
-                  <div className="text-[12px] text-[var(--color-text-secondary)]">{formatDate(deployment.startedAt, i18n.resolvedLanguage || i18n.language || 'en-US')}</div>
+                  <div className="text-[12px] text-[var(--color-text-secondary)]">{formatDateTime(deployment.startedAt, locale)}</div>
                 </button>
               )
             })}

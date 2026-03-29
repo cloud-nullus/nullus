@@ -9,31 +9,11 @@ import type { Deployment, PipelineStatus } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
-
-const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
-  running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa' },
-  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
-  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444' },
-  pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' },
-  cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b' },
-}
-
-function formatDate(iso: string | null, locale = 'en-US') {
-  if (!iso) return '-'
-  return new Date(iso).toLocaleString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-function getPipelineStatusLabel(t: (key: string, defaultValue?: string) => string, status: string) {
-  if (status === 'running') return t('cicd.status.running', 'Running')
-  if (status === 'success') return t('cicd.status.success', 'Success')
-  if (status === 'failed') return t('cicd.status.failed', 'Failed')
-  if (status === 'pending') return t('cicd.status.pending', 'Pending')
-  if (status === 'cancelled') return t('cicd.status.cancelled', 'Cancelled')
-  return status
-}
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { getPipelineStatusLabel, getPipelineStatusStyle } from '../utils/pipeline-status'
 export function CicdHistoryPage() {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const [searchParams] = useSearchParams()
   const pipelineFilter = searchParams.get('pipeline') ?? ''
   const [statusFilter, setStatusFilter] = useState('')
@@ -92,7 +72,7 @@ export function CicdHistoryPage() {
       accessorKey: 'status',
       header: t('cicdHistoryPage.table.status', 'Status'),
       cell: ({ row }) => {
-        const st = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending
+        const st = getPipelineStatusStyle(row.original.status)
         return (
           <span className="rounded-md px-[9px] py-[3px] text-xs font-semibold" style={{ backgroundColor: st.bg, color: st.color }}>
             {getPipelineStatusLabel(t, row.original.status)}
@@ -108,12 +88,12 @@ export function CicdHistoryPage() {
     {
       accessorKey: 'startedAt',
       header: t('cicdHistoryPage.table.startedAt', 'Started At'),
-      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.startedAt, locale)}</span>,
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDateTime(row.original.startedAt, locale)}</span>,
     },
     {
       accessorKey: 'completedAt',
       header: t('cicdHistoryPage.table.completedAt', 'Completed At'),
-      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.completedAt, locale)}</span>,
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDateTime(row.original.completedAt, locale)}</span>,
     },
   ]
 
@@ -175,8 +155,8 @@ export function CicdHistoryPage() {
                 { label: 'Version', value: deployment.version },
                 { label: 'Triggered By', value: deployment.triggeredBy || '-' },
                 { label: 'Status', value: getPipelineStatusLabel(t, deployment.status) },
-                { label: 'Started At', value: formatDate(deployment.startedAt, locale) },
-                { label: 'Completed At', value: formatDate(deployment.completedAt, locale) },
+                { label: 'Started At', value: formatDateTime(deployment.startedAt, locale) },
+                { label: 'Completed At', value: formatDateTime(deployment.completedAt, locale) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex gap-2 text-[13px]">
                   <span className="w-[100px] shrink-0 text-[var(--color-text-muted)]">{label}</span>

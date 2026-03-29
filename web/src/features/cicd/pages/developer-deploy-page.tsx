@@ -17,6 +17,7 @@ import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
 import { useStacks } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
 import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-log'
+import { formatTime, resolveLocale } from '../../../lib/locale'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -195,7 +196,7 @@ const DEFAULT_FORM: FormState = {
 
 export function DeveloperDeployPage() {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const [step, setStep] = useState<Step>(1)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -407,7 +408,7 @@ export function DeveloperDeployPage() {
                   {logs.map((entry) => (
                     <div key={entry.id} className="flex gap-2 leading-5">
                       <span className="shrink-0 text-xs text-[#484f58]">
-                        {new Date(entry.timestamp).toLocaleTimeString(locale)}
+                        {formatTime(entry.timestamp, locale)}
                       </span>
                       <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold uppercase', LOG_LEVEL_STYLE[entry.level])}>
                         {entry.level}

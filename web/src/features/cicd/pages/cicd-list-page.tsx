@@ -26,30 +26,8 @@ import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-
-const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
-  active: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
-  running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa' },
-  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
-  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444' },
-  pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' },
-  cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b' },
-}
-
-function formatDate(iso: string | null, locale = 'en-US') {
-  if (!iso) return '-'
-  return new Date(iso).toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-function getPipelineStatusLabel(t: (key: string, defaultValue?: string) => string, status: string) {
-  if (status === 'running') return t('cicd.status.running', 'Running')
-  if (status === 'success') return t('cicd.status.success', 'Success')
-  if (status === 'failed') return t('cicd.status.failed', 'Failed')
-  if (status === 'pending') return t('cicd.status.pending', 'Pending')
-  if (status === 'cancelled') return t('cicd.status.cancelled', 'Cancelled')
-  if (status === 'active') return t('cicdListPage.status.active', 'Active')
-  return status
-}
+import { formatDate, formatDateTime, resolveLocale } from '../../../lib/locale'
+import { getPipelineStatusLabel, getPipelineStatusStyle } from '../utils/pipeline-status'
 
 
 type PipelineInnerTab = 'info' | 'monitoring' | 'history' | 'actions'
@@ -83,7 +61,7 @@ function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { data: template } = useTemplateById(pipeline.templateId)
   const [revealedVars, setRevealedVars] = useState<Set<string>>(new Set())
 
@@ -135,8 +113,8 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               label="Namespace"
               value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.namespace}</code>}
             />
-            <ConfigRow label="Created" value={formatDate(pipeline.createdAt, locale)} />
-            <ConfigRow label="Last Deployed" value={formatDate(pipeline.lastDeployedAt, locale)} />
+            <ConfigRow label="Created" value={formatDateTime(pipeline.createdAt, locale)} />
+            <ConfigRow label="Last Deployed" value={formatDateTime(pipeline.lastDeployedAt, locale)} />
           </div>
         </DetailCard>
       </div>
@@ -193,7 +171,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
 
 function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
   const deployments = deploymentsData?.items ?? []
 
@@ -217,7 +195,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
 
   const trendMap = new Map<string, { success: number; failed: number }>()
   for (const d of deployments) {
-    const date = new Date(d.startedAt).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' })
+    const date = formatDate(d.startedAt, locale, { month: 'numeric', day: 'numeric' })
     const entry = trendMap.get(date) ?? { success: 0, failed: 0 }
     if (d.status === 'success') {
       entry.success += 1
@@ -274,7 +252,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
 
 function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
   const deployments = deploymentsData?.items ?? []
 
@@ -285,7 +263,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   return (
     <div className="flex flex-col gap-2.5">
       {deployments.map((d) => {
-        const st = STATUS_STYLES[d.status] ?? STATUS_STYLES.pending
+        const st = getPipelineStatusStyle(d.status)
         const duration =
           d.completedAt && d.startedAt
             ? `${Math.round((new Date(d.completedAt).getTime() - new Date(d.startedAt).getTime()) / 1000)}s`
@@ -301,7 +279,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
             <span className="text-[13px] font-semibold text-[#a5b4fc]">{d.version}</span>
             <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{d.triggeredBy || '-'}</span>
             <span className="text-[12px] text-[var(--color-text-secondary)]">{duration}</span>
-            <span className="text-[12px] text-[var(--color-text-secondary)]">{formatDate(d.startedAt, locale)}</span>
+            <span className="text-[12px] text-[var(--color-text-secondary)]">{formatDateTime(d.startedAt, locale)}</span>
           </div>
         )
       })}
@@ -319,7 +297,7 @@ function PipelineActionsTab({
   onOpenLogs: () => void
 }) {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <DetailCard title="Actions">
@@ -350,7 +328,7 @@ function PipelineActionsTab({
             { label: 'Cluster', value: pipeline.clusterName },
             { label: 'Namespace', value: pipeline.namespace },
             { label: 'Status', value: getPipelineStatusLabel(t, pipeline.status) },
-            { label: 'Last Deployed', value: formatDate(pipeline.lastDeployedAt, locale) },
+            { label: 'Last Deployed', value: formatDateTime(pipeline.lastDeployedAt, locale) },
           ].map((item) => (
             <div key={item.label} className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
               <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">{item.label}</div>
@@ -373,9 +351,9 @@ function PipelineDetailPanel({
   onOpenLogs: () => void
 }) {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const [innerTab, setInnerTab] = useState<PipelineInnerTab>('info')
-  const statusStyle = STATUS_STYLES[pipeline.status] ?? STATUS_STYLES.pending
+  const statusStyle = getPipelineStatusStyle(pipeline.status)
 
   return (
     <div className="mt-2.5 overflow-hidden rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.3)] bg-[var(--color-surface-card)]">
@@ -389,7 +367,7 @@ function PipelineDetailPanel({
             {getPipelineStatusLabel(t, pipeline.status)}
           </span>
           <span className="text-[12px] text-[var(--color-text-secondary)]">
-            · {pipeline.appType} · {pipeline.clusterName} · {formatDate(pipeline.lastDeployedAt, locale)}
+            · {pipeline.appType} · {pipeline.clusterName} · {formatDateTime(pipeline.lastDeployedAt, locale)}
           </span>
         </div>
 
@@ -438,7 +416,7 @@ function PipelineDetailPanel({
 
 export function CicdListPage() {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('')
   const [clusterFilter, setClusterFilter] = useState('')
@@ -498,7 +476,7 @@ export function CicdListPage() {
       accessorKey: 'status',
       header: t('cicdListPage.table.status', 'Status'),
       cell: ({ row }) => {
-        const st = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending
+        const st = getPipelineStatusStyle(row.original.status)
         return (
           <span className="rounded-md px-[9px] py-[3px] text-xs font-semibold" style={{ backgroundColor: st.bg, color: st.color }}>
             {getPipelineStatusLabel(t, row.original.status)}
@@ -509,7 +487,7 @@ export function CicdListPage() {
     {
       accessorKey: 'lastDeployedAt',
       header: t('cicdListPage.table.lastDeployed', 'Last Deployed'),
-      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.lastDeployedAt, locale)}</span>,
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDateTime(row.original.lastDeployedAt, locale)}</span>,
     },
   ]
 
