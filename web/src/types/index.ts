@@ -311,11 +311,14 @@ export interface MonitoringDashboard {
 export interface AlertRule {
   id: string
   name: string
+  metric_name: string
   condition: string
-  threshold: string
+  warning_threshold: number
+  critical_threshold: number
+  threshold: number
   channel: AlertChannel
   enabled: boolean
-  createdAt: string
+  createdAt?: string
 }
 
 export interface AlertHistory {
@@ -410,9 +413,11 @@ export interface DeployAppResult {
 
 export interface CreateAlertRuleRequest {
   name: string
-  condition: string
-  threshold: string
+  metric_name: string
+  warning_threshold: number
+  critical_threshold: number
   channel: AlertChannel
+  enabled?: boolean
 }
 
 export type StackTemplate = Template

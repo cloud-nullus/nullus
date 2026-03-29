@@ -101,6 +101,36 @@ describe('observability-api hooks', () => {
     expect(apiPatchMock).toHaveBeenCalledWith('/observability/alert-rules/rule-99', { enabled: false })
   })
 
+  it('useCreateAlertRule mutation function posts warning and critical thresholds', async () => {
+    useCreateAlertRule()
+    const calls = useMutationMock.mock.calls
+    const options = calls[calls.length - 1]?.[0] as {
+      mutationFn: (variables: {
+        name: string
+        metric_name: string
+        warning_threshold: number
+        critical_threshold: number
+        channel: string
+      }) => Promise<unknown>
+    }
+
+    await options.mutationFn({
+      name: 'High CPU',
+      metric_name: 'cpu_usage',
+      warning_threshold: 70,
+      critical_threshold: 85,
+      channel: 'slack',
+    })
+
+    expect(apiPostMock).toHaveBeenCalledWith('/observability/alert-rules', {
+      name: 'High CPU',
+      metric_name: 'cpu_usage',
+      warning_threshold: 70,
+      critical_threshold: 85,
+      channel: 'slack',
+    })
+  })
+
   it('useDeleteAlertRule mutation function deletes alert rule by id', async () => {
     useDeleteAlertRule()
     const calls = useMutationMock.mock.calls

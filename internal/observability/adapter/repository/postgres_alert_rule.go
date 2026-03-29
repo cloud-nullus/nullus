@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/cloud-nullus/draft/internal/observability/domain"
 	"github.com/jackc/pgx/v5"
@@ -19,14 +20,16 @@ func NewPostgresAlertRuleRepository(pool *pgxpool.Pool) *PostgresAlertRuleReposi
 
 func (r *PostgresAlertRuleRepository) Create(ctx context.Context, rule *domain.AlertRule) error {
 	const q = `
-		INSERT INTO alert_rules (id, name, condition, threshold, channel, enabled)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO alert_rules (id, name, condition, threshold, warning_threshold, critical_threshold, channel, enabled)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err := r.pool.Exec(ctx, q,
 		rule.ID,
 		rule.Name,
-		rule.MetricName,
-		rule.Threshold,
+		normalizeAlertRuleCondition(rule),
+		rule.CriticalThreshold,
+		rule.WarningThreshold,
+		rule.CriticalThreshold,
 		string(rule.Channel),
 		rule.Enabled,
 	)
@@ -35,7 +38,7 @@ func (r *PostgresAlertRuleRepository) Create(ctx context.Context, rule *domain.A
 
 func (r *PostgresAlertRuleRepository) GetByID(ctx context.Context, id string) (*domain.AlertRule, error) {
 	const q = `
-		SELECT id, name, condition, threshold, channel, enabled
+		SELECT id, name, condition, threshold, warning_threshold, critical_threshold, channel, enabled
 		FROM alert_rules
 		WHERE id = $1`
 
@@ -47,8 +50,10 @@ func (r *PostgresAlertRuleRepository) GetByID(ctx context.Context, id string) (*
 	err := r.pool.QueryRow(ctx, q, id).Scan(
 		&rule.ID,
 		&rule.Name,
-		&rule.MetricName,
+		&rule.Condition,
 		&rule.Threshold,
+		&rule.WarningThreshold,
+		&rule.CriticalThreshold,
 		&channel,
 		&rule.Enabled,
 	)
@@ -60,14 +65,20 @@ func (r *PostgresAlertRuleRepository) GetByID(ctx context.Context, id string) (*
 	}
 
 	rule.Channel = domain.AlertChannel(channel)
-	rule.Condition = rule.MetricName
+	rule.MetricName = extractMetricName(rule.Condition)
+	if rule.CriticalThreshold == 0 {
+		rule.CriticalThreshold = rule.Threshold
+	}
+	if rule.WarningThreshold == 0 {
+		rule.WarningThreshold = rule.Threshold
+	}
 
 	return &rule, nil
 }
 
 func (r *PostgresAlertRuleRepository) List(ctx context.Context) ([]*domain.AlertRule, error) {
 	const q = `
-		SELECT id, name, condition, threshold, channel, enabled
+		SELECT id, name, condition, threshold, warning_threshold, critical_threshold, channel, enabled
 		FROM alert_rules
 		ORDER BY created_at DESC`
 
@@ -87,8 +98,10 @@ func (r *PostgresAlertRuleRepository) List(ctx context.Context) ([]*domain.Alert
 		if err := rows.Scan(
 			&r.ID,
 			&r.Name,
-			&r.MetricName,
+			&r.Condition,
 			&r.Threshold,
+			&r.WarningThreshold,
+			&r.CriticalThreshold,
 			&channel,
 			&r.Enabled,
 		); err != nil {
@@ -96,7 +109,13 @@ func (r *PostgresAlertRuleRepository) List(ctx context.Context) ([]*domain.Alert
 		}
 
 		r.Channel = domain.AlertChannel(channel)
-		r.Condition = r.MetricName
+		r.MetricName = extractMetricName(r.Condition)
+		if r.CriticalThreshold == 0 {
+			r.CriticalThreshold = r.Threshold
+		}
+		if r.WarningThreshold == 0 {
+			r.WarningThreshold = r.Threshold
+		}
 		rules = append(rules, &r)
 	}
 
@@ -106,13 +125,15 @@ func (r *PostgresAlertRuleRepository) List(ctx context.Context) ([]*domain.Alert
 func (r *PostgresAlertRuleRepository) Update(ctx context.Context, rule *domain.AlertRule) error {
 	const q = `
 		UPDATE alert_rules
-		SET name = $1, condition = $2, threshold = $3, channel = $4, enabled = $5, updated_at = NOW()
-		WHERE id = $6`
+		SET name = $1, condition = $2, threshold = $3, warning_threshold = $4, critical_threshold = $5, channel = $6, enabled = $7, updated_at = NOW()
+		WHERE id = $8`
 
 	result, err := r.pool.Exec(ctx, q,
 		rule.Name,
-		rule.MetricName,
-		rule.Threshold,
+		normalizeAlertRuleCondition(rule),
+		rule.CriticalThreshold,
+		rule.WarningThreshold,
+		rule.CriticalThreshold,
 		string(rule.Channel),
 		rule.Enabled,
 		rule.ID,
@@ -125,6 +146,20 @@ func (r *PostgresAlertRuleRepository) Update(ctx context.Context, rule *domain.A
 	}
 
 	return nil
+}
+
+func extractMetricName(condition string) string {
+	condition = strings.TrimSpace(condition)
+	if condition == "" {
+		return ""
+	}
+	for idx, r := range condition {
+		switch r {
+		case ' ', '>', '<', '=':
+			return strings.TrimSpace(condition[:idx])
+		}
+	}
+	return condition
 }
 
 func (r *PostgresAlertRuleRepository) Delete(ctx context.Context, id string) error {

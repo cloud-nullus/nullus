@@ -52,7 +52,7 @@ describe('AlertRulesPage', () => {
     renderWithProviders(<AlertRulesPage />)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Alert Rules' })).not.toBeNull()
-    expect(screen.queryByText('알림 규칙이 없습니다.')).not.toBeNull()
+    expect(screen.queryByText('No alert rules found.')).not.toBeNull()
   })
 
   it('renders rules when hook returns data', () => {
@@ -62,9 +62,11 @@ describe('AlertRulesPage', () => {
           {
             id: 'rule-1',
             name: 'High CPU',
-            severity: 'critical',
-            condition: 'cpu_usage > 80',
-            threshold: '80',
+            metric_name: 'cpu_usage',
+            condition: 'cpu_usage >= critical_threshold',
+            warning_threshold: 70,
+            critical_threshold: 80,
+            threshold: 80,
             channel: 'slack',
             enabled: true,
             createdAt: '2026-01-01T00:00:00Z',
@@ -77,7 +79,10 @@ describe('AlertRulesPage', () => {
     renderWithProviders(<AlertRulesPage />)
 
     expect(screen.queryByText('High CPU')).not.toBeNull()
-    expect(screen.queryByText('cpu_usage > 80')).not.toBeNull()
+    expect(screen.queryByText('cpu_usage')).not.toBeNull()
+    expect(screen.queryByText('cpu_usage >= critical_threshold')).not.toBeNull()
+    expect(screen.queryByText('Warning: 70')).not.toBeNull()
+    expect(screen.queryByText('Critical: 80')).not.toBeNull()
     expect(screen.queryByText('slack')).not.toBeNull()
   })
 
@@ -86,21 +91,23 @@ describe('AlertRulesPage', () => {
 
     renderWithProviders(<AlertRulesPage />)
 
-    expect(screen.queryByText('알림 규칙이 없습니다.')).not.toBeNull()
+    expect(screen.queryByText('No alert rules found.')).not.toBeNull()
   })
 
-  it('falls back missing severity to warning badge for malformed data', () => {
+  it('renders edit action button', () => {
     mockUseAlertRules.mockReturnValue({
       data: {
         items: [
           {
             id: 'rule-2',
-            name: 'No Severity Rule',
-            condition: 'memory_usage > 90',
-            threshold: '90',
+            name: 'Latency Alert',
+            metric_name: 'latency_p95',
+            condition: 'latency_p95 >= critical_threshold',
+            warning_threshold: 250,
+            critical_threshold: 300,
+            threshold: 300,
             channel: 'email',
             enabled: true,
-            createdAt: '2026-01-01T00:00:00Z',
           },
         ],
         total: 1,
@@ -109,8 +116,7 @@ describe('AlertRulesPage', () => {
 
     renderWithProviders(<AlertRulesPage />)
 
-    expect(screen.queryByText('No Severity Rule')).not.toBeNull()
-    expect(screen.queryByText('Warning')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull()
   })
 
   it('filters rules by search input', () => {
@@ -120,9 +126,11 @@ describe('AlertRulesPage', () => {
           {
             id: 'rule-1',
             name: 'High CPU',
-            severity: 'critical',
-            condition: 'cpu_usage > 80',
-            threshold: '80',
+            metric_name: 'cpu_usage',
+            condition: 'cpu_usage >= critical_threshold',
+            warning_threshold: 70,
+            critical_threshold: 80,
+            threshold: 80,
             channel: 'slack',
             enabled: true,
             createdAt: '2026-01-01T00:00:00Z',
@@ -130,9 +138,11 @@ describe('AlertRulesPage', () => {
           {
             id: 'rule-2',
             name: 'Disk Alert',
-            severity: 'warning',
-            condition: 'disk_usage > 90',
-            threshold: '90',
+            metric_name: 'disk_usage',
+            condition: 'disk_usage >= critical_threshold',
+            warning_threshold: 75,
+            critical_threshold: 90,
+            threshold: 90,
             channel: 'email',
             enabled: true,
             createdAt: '2026-01-01T00:00:00Z',
@@ -143,7 +153,7 @@ describe('AlertRulesPage', () => {
     })
 
     renderWithProviders(<AlertRulesPage />)
-    fireEvent.change(screen.getByPlaceholderText('규칙명 / 메트릭 검색...'), { target: { value: 'disk' } })
+    fireEvent.change(screen.getByPlaceholderText('Search by rule or metric...'), { target: { value: 'disk' } })
 
     expect(screen.queryByText('Disk Alert')).not.toBeNull()
     expect(screen.queryByText('High CPU')).toBeNull()

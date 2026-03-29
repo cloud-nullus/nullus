@@ -36,12 +36,15 @@ func TestPostgresRepositories_ObservabilityModuleIntegration(t *testing.T) {
 
 		ruleID := "rule-" + uuid.NewString()
 		rule := &domain.AlertRule{
-			ID:        ruleID,
-			Name:      "High CPU",
-			Condition: "cpu_usage > 80",
-			Threshold: 80,
-			Channel:   domain.AlertChannelSlack,
-			Enabled:   true,
+			ID:                ruleID,
+			Name:              "High CPU",
+			MetricName:        "cpu_usage",
+			Condition:         "cpu_usage >= critical_threshold",
+			WarningThreshold:  70,
+			CriticalThreshold: 80,
+			Threshold:         80,
+			Channel:           domain.AlertChannelSlack,
+			Enabled:           true,
 		}
 
 		require.NoError(t, repo.Create(ctx, rule))
@@ -51,7 +54,10 @@ func TestPostgresRepositories_ObservabilityModuleIntegration(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Equal(t, rule.ID, got.ID)
 		assert.Equal(t, rule.Name, got.Name)
+		assert.Equal(t, rule.MetricName, got.MetricName)
 		assert.Equal(t, rule.Condition, got.Condition)
+		assert.Equal(t, rule.WarningThreshold, got.WarningThreshold)
+		assert.Equal(t, rule.CriticalThreshold, got.CriticalThreshold)
 		assert.Equal(t, rule.Threshold, got.Threshold)
 		assert.Equal(t, rule.Channel, got.Channel)
 		assert.Equal(t, rule.Enabled, got.Enabled)
@@ -61,6 +67,8 @@ func TestPostgresRepositories_ObservabilityModuleIntegration(t *testing.T) {
 		assert.True(t, containsAlertRuleID(list, ruleID))
 
 		got.Name = "High CPU Updated"
+		got.WarningThreshold = 75
+		got.CriticalThreshold = 90
 		got.Channel = domain.AlertChannelEmail
 		got.Enabled = false
 		require.NoError(t, repo.Update(ctx, got))
@@ -69,6 +77,8 @@ func TestPostgresRepositories_ObservabilityModuleIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, updated)
 		assert.Equal(t, "High CPU Updated", updated.Name)
+		assert.Equal(t, 75.0, updated.WarningThreshold)
+		assert.Equal(t, 90.0, updated.CriticalThreshold)
 		assert.Equal(t, domain.AlertChannelEmail, updated.Channel)
 		assert.False(t, updated.Enabled)
 
@@ -84,12 +94,15 @@ func TestPostgresRepositories_ObservabilityModuleIntegration(t *testing.T) {
 
 		ruleID := "rule-" + uuid.NewString()
 		require.NoError(t, ruleRepo.Create(ctx, &domain.AlertRule{
-			ID:        ruleID,
-			Name:      "Error Rate",
-			Condition: "error_rate > 5",
-			Threshold: 5,
-			Channel:   domain.AlertChannelSlack,
-			Enabled:   true,
+			ID:                ruleID,
+			Name:              "Error Rate",
+			MetricName:        "error_rate",
+			Condition:         "error_rate >= critical_threshold",
+			WarningThreshold:  3,
+			CriticalThreshold: 5,
+			Threshold:         5,
+			Channel:           domain.AlertChannelSlack,
+			Enabled:           true,
 		}))
 
 		older := &domain.Alert{

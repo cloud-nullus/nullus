@@ -10,17 +10,23 @@ import (
 
 func TestAlertRule_ConstructWithExpectedFields(t *testing.T) {
 	rule := AlertRule{
-		ID:        "rule-1",
-		Name:      "High CPU",
-		Condition: "cpu_usage > 80",
-		Threshold: 80,
-		Channel:   AlertChannelSlack,
-		Enabled:   true,
+		ID:                "rule-1",
+		Name:              "High CPU",
+		MetricName:        "cpu_usage",
+		Condition:         "cpu_usage >= critical_threshold",
+		WarningThreshold:  70,
+		CriticalThreshold: 80,
+		Threshold:         80,
+		Channel:           AlertChannelSlack,
+		Enabled:           true,
 	}
 
 	assert.Equal(t, "rule-1", rule.ID)
 	assert.Equal(t, "High CPU", rule.Name)
-	assert.Equal(t, "cpu_usage > 80", rule.Condition)
+	assert.Equal(t, "cpu_usage", rule.MetricName)
+	assert.Equal(t, "cpu_usage >= critical_threshold", rule.Condition)
+	assert.Equal(t, 70.0, rule.WarningThreshold)
+	assert.Equal(t, 80.0, rule.CriticalThreshold)
 	assert.Equal(t, 80.0, rule.Threshold)
 	assert.Equal(t, AlertChannelSlack, rule.Channel)
 	assert.True(t, rule.Enabled)

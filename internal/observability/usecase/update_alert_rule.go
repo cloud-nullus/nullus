@@ -9,12 +9,13 @@ import (
 )
 
 type UpdateAlertRuleInput struct {
-	ID         string
-	Name       *string
-	MetricName *string
-	Threshold  *float64
-	Channel    *domain.AlertChannel
-	Enabled    *bool
+	ID                string
+	Name              *string
+	MetricName        *string
+	WarningThreshold  *float64
+	CriticalThreshold *float64
+	Channel           *domain.AlertChannel
+	Enabled           *bool
 }
 
 type UpdateAlertRuleOutput struct {
@@ -41,11 +42,24 @@ func (uc *UpdateAlertRule) Execute(ctx context.Context, input UpdateAlertRuleInp
 	}
 	if input.MetricName != nil {
 		updated.MetricName = *input.MetricName
-		updated.Condition = *input.MetricName
+		updated.Condition = fmt.Sprintf("%s >= critical_threshold", *input.MetricName)
 	}
-	if input.Threshold != nil {
-		updated.Threshold = *input.Threshold
+	if input.WarningThreshold != nil {
+		updated.WarningThreshold = *input.WarningThreshold
 	}
+	if input.CriticalThreshold != nil {
+		updated.CriticalThreshold = *input.CriticalThreshold
+	}
+	if updated.WarningThreshold <= 0 {
+		return nil, fmt.Errorf("update alert rule: warning_threshold must be greater than 0")
+	}
+	if updated.CriticalThreshold <= 0 {
+		return nil, fmt.Errorf("update alert rule: critical_threshold must be greater than 0")
+	}
+	if updated.CriticalThreshold < updated.WarningThreshold {
+		return nil, fmt.Errorf("update alert rule: critical_threshold must be greater than or equal to warning_threshold")
+	}
+	updated.Threshold = updated.CriticalThreshold
 	if input.Channel != nil {
 		updated.Channel = *input.Channel
 	}

@@ -19,6 +19,8 @@ func NewMemoryAlertRuleRepository() *MemoryAlertRuleRepository {
 func (r *MemoryAlertRuleRepository) Create(_ context.Context, rule *domain.AlertRule) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	rule.Condition = normalizeAlertRuleCondition(rule)
+	rule.Threshold = rule.CriticalThreshold
 	r.rules[rule.ID] = cloneAlertRule(rule)
 	return nil
 }
@@ -49,6 +51,8 @@ func (r *MemoryAlertRuleRepository) Update(_ context.Context, rule *domain.Alert
 	if _, ok := r.rules[rule.ID]; !ok {
 		return domain.ErrAlertRuleNotFound
 	}
+	rule.Condition = normalizeAlertRuleCondition(rule)
+	rule.Threshold = rule.CriticalThreshold
 	r.rules[rule.ID] = cloneAlertRule(rule)
 	return nil
 }
@@ -87,4 +91,14 @@ func (r *MemoryAlertRepository) List(_ context.Context) ([]*domain.Alert, error)
 		result[i] = cloneAlert(alert)
 	}
 	return result, nil
+}
+
+func normalizeAlertRuleCondition(rule *domain.AlertRule) string {
+	if rule == nil {
+		return ""
+	}
+	if rule.MetricName == "" {
+		return rule.Condition
+	}
+	return rule.MetricName + " >= critical_threshold"
 }

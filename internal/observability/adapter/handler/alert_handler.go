@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/cloud-nullus/draft/internal/observability/domain"
 	"github.com/cloud-nullus/draft/internal/observability/usecase"
@@ -46,12 +47,14 @@ func (h *AlertHandler) RegisterRoutes(g *echo.Group) {
 
 // createAlertRuleRequest is the request body for POST /alerts/rules.
 type createAlertRuleRequest struct {
-	Name       string  `json:"name"`
-	MetricName string  `json:"metric_name"`
-	Condition  string  `json:"condition"`
-	Threshold  float64 `json:"threshold"`
-	Channel    string  `json:"channel"`
-	Enabled    bool    `json:"enabled"`
+	Name              string  `json:"name"`
+	MetricName        string  `json:"metric_name"`
+	Condition         string  `json:"condition"`
+	Threshold         float64 `json:"threshold"`
+	WarningThreshold  float64 `json:"warning_threshold"`
+	CriticalThreshold float64 `json:"critical_threshold"`
+	Channel           string  `json:"channel"`
+	Enabled           bool    `json:"enabled"`
 }
 
 // ListRules handles GET /api/v1/alerts/rules.
@@ -77,17 +80,26 @@ func (h *AlertHandler) CreateRule(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "ALERT_RULE_INVALID", err.Error())
 	}
 
-	metricName := req.MetricName
+	metricName := strings.TrimSpace(req.MetricName)
 	if metricName == "" {
-		metricName = req.Condition
+		metricName = strings.TrimSpace(req.Condition)
+	}
+	warningThreshold := req.WarningThreshold
+	criticalThreshold := req.CriticalThreshold
+	if warningThreshold == 0 && req.Threshold > 0 {
+		warningThreshold = req.Threshold
+	}
+	if criticalThreshold == 0 && req.Threshold > 0 {
+		criticalThreshold = req.Threshold
 	}
 
 	out, err := h.createAlertRule.Execute(c.Request().Context(), usecase.CreateAlertRuleInput{
-		Name:       req.Name,
-		MetricName: metricName,
-		Threshold:  req.Threshold,
-		Channel:    domain.AlertChannel(req.Channel),
-		Enabled:    req.Enabled,
+		Name:              req.Name,
+		MetricName:        metricName,
+		WarningThreshold:  warningThreshold,
+		CriticalThreshold: criticalThreshold,
+		Channel:           domain.AlertChannel(req.Channel),
+		Enabled:           req.Enabled,
 	})
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "ALERT_RULE_CREATE_FAILED", err.Error())
@@ -97,12 +109,14 @@ func (h *AlertHandler) CreateRule(c echo.Context) error {
 }
 
 type updateAlertRuleRequest struct {
-	Name       *string  `json:"name"`
-	MetricName *string  `json:"metric_name"`
-	Condition  *string  `json:"condition"`
-	Threshold  *float64 `json:"threshold"`
-	Channel    *string  `json:"channel"`
-	Enabled    *bool    `json:"enabled"`
+	Name              *string  `json:"name"`
+	MetricName        *string  `json:"metric_name"`
+	Condition         *string  `json:"condition"`
+	Threshold         *float64 `json:"threshold"`
+	WarningThreshold  *float64 `json:"warning_threshold"`
+	CriticalThreshold *float64 `json:"critical_threshold"`
+	Channel           *string  `json:"channel"`
+	Enabled           *bool    `json:"enabled"`
 }
 
 func (h *AlertHandler) UpdateRule(c echo.Context) error {
@@ -123,14 +137,23 @@ func (h *AlertHandler) UpdateRule(c echo.Context) error {
 	if metricName == nil {
 		metricName = req.Condition
 	}
+	warningThreshold := req.WarningThreshold
+	criticalThreshold := req.CriticalThreshold
+	if warningThreshold == nil && req.Threshold != nil {
+		warningThreshold = req.Threshold
+	}
+	if criticalThreshold == nil && req.Threshold != nil {
+		criticalThreshold = req.Threshold
+	}
 
 	out, err := h.updateAlertRule.Execute(c.Request().Context(), usecase.UpdateAlertRuleInput{
-		ID:         id,
-		Name:       req.Name,
-		MetricName: metricName,
-		Threshold:  req.Threshold,
-		Channel:    channel,
-		Enabled:    req.Enabled,
+		ID:                id,
+		Name:              req.Name,
+		MetricName:        metricName,
+		WarningThreshold:  warningThreshold,
+		CriticalThreshold: criticalThreshold,
+		Channel:           channel,
+		Enabled:           req.Enabled,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrAlertRuleNotFound) {

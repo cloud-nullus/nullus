@@ -16,11 +16,12 @@ func TestCreateAlertRule_Execute_Success(t *testing.T) {
 	uc := NewCreateAlertRule(repo)
 
 	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
-		Name:       "High CPU",
-		MetricName: "cpu_usage",
-		Threshold:  85,
-		Channel:    domain.AlertChannelSlack,
-		Enabled:    true,
+		Name:              "High CPU",
+		MetricName:        "cpu_usage",
+		WarningThreshold:  70,
+		CriticalThreshold: 85,
+		Channel:           domain.AlertChannelSlack,
+		Enabled:           true,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, out)
@@ -29,6 +30,10 @@ func TestCreateAlertRule_Execute_Success(t *testing.T) {
 	assert.NotEmpty(t, out.Rule.ID)
 	assert.Contains(t, out.Rule.ID, "alr_")
 	assert.Equal(t, "High CPU", out.Rule.Name)
+	assert.Equal(t, "cpu_usage", out.Rule.MetricName)
+	assert.Equal(t, 70.0, out.Rule.WarningThreshold)
+	assert.Equal(t, 85.0, out.Rule.CriticalThreshold)
+	assert.Equal(t, 85.0, out.Rule.Threshold)
 	assert.Equal(t, domain.AlertChannelSlack, out.Rule.Channel)
 
 	persisted, getErr := repo.GetByID(context.Background(), out.Rule.ID)
@@ -41,10 +46,11 @@ func TestCreateAlertRule_Execute_ValidationError(t *testing.T) {
 	uc := NewCreateAlertRule(repo)
 
 	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
-		MetricName: "cpu_usage",
-		Threshold:  80,
-		Channel:    domain.AlertChannelEmail,
-		Enabled:    true,
+		MetricName:        "cpu_usage",
+		WarningThreshold:  60,
+		CriticalThreshold: 80,
+		Channel:           domain.AlertChannelEmail,
+		Enabled:           true,
 	})
 
 	require.Error(t, err)
@@ -57,10 +63,11 @@ func TestCreateAlertRule_Execute_MetricNameRequired(t *testing.T) {
 	uc := NewCreateAlertRule(repo)
 
 	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
-		Name:      "High CPU",
-		Threshold: 85,
-		Channel:   domain.AlertChannelSlack,
-		Enabled:   true,
+		Name:              "High CPU",
+		WarningThreshold:  70,
+		CriticalThreshold: 85,
+		Channel:           domain.AlertChannelSlack,
+		Enabled:           true,
 	})
 
 	require.Error(t, err)
@@ -68,16 +75,35 @@ func TestCreateAlertRule_Execute_MetricNameRequired(t *testing.T) {
 	assert.Contains(t, err.Error(), "metric_name is required")
 }
 
+func TestCreateAlertRule_Execute_InvalidThresholdOrder(t *testing.T) {
+	repo := repository.NewMemoryAlertRuleRepository()
+	uc := NewCreateAlertRule(repo)
+
+	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
+		Name:              "High CPU",
+		MetricName:        "cpu_usage",
+		WarningThreshold:  90,
+		CriticalThreshold: 80,
+		Channel:           domain.AlertChannelSlack,
+		Enabled:           true,
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, out)
+	assert.Contains(t, err.Error(), "critical_threshold")
+}
+
 func TestCreateAlertRule_Execute_RepositoryError(t *testing.T) {
 	repo := &failingAlertRuleRepository{createErr: errors.New("db unavailable")}
 	uc := NewCreateAlertRule(repo)
 
 	out, err := uc.Execute(context.Background(), CreateAlertRuleInput{
-		Name:       "High Memory",
-		MetricName: "memory_usage",
-		Threshold:  90,
-		Channel:    domain.AlertChannelSlack,
-		Enabled:    true,
+		Name:              "High Memory",
+		MetricName:        "memory_usage",
+		WarningThreshold:  75,
+		CriticalThreshold: 90,
+		Channel:           domain.AlertChannelSlack,
+		Enabled:           true,
 	})
 
 	require.Error(t, err)
