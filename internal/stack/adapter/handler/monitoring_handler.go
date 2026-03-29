@@ -234,9 +234,10 @@ func collectStackMonitoring(ctx context.Context, stack *domain.Stack, kubeconfig
 	podUsageMap, usageAvailable := collectPodUsageWithKubectl(ctx, kubeconfig, ns)
 	stackCfg := extractStackConfig(stack)
 	podStatuses, podStatusCounts, summary := toPodMonitoringStatuses(pods.Items, podUsageMap, pvcStatsByName)
+	selectedTools := selectedToolTypes(stackCfg)
+	podStatuses, podStatusCounts, summary = filterMonitoringToSelectedTools(selectedTools, podStatuses)
 	summary.UsageAvailable = usageAvailable
-	summary.StorageRequestGiB, summary.StorageLimitGiB, summary.StorageUsageGiB = sumPVCStorageStats(pvcStatsByName)
-	if len(pvcStatsByName) > 0 {
+	if summary.TotalPods > 0 {
 		summary.StorageUsageAvailable = true
 	}
 
@@ -246,8 +247,8 @@ func collectStackMonitoring(ctx context.Context, stack *domain.Stack, kubeconfig
 		Timestamp:         time.Now().UTC().Format(time.RFC3339),
 		Summary:           summary,
 		PodStatusCounts:   podStatusCounts,
-		InstalledResource: toInstalledResourceStatuses(deployments.Items, statefulSets.Items),
-		OSSStatuses:       toOSSStatuses(stackCfg, podStatuses),
+		InstalledResource: filterInstalledResourcesToSelectedTools(selectedTools, toInstalledResourceStatuses(deployments.Items, statefulSets.Items)),
+		OSSStatuses:       toOSSStatuses(selectedTools, podStatuses),
 	}
 
 	return out, nil
@@ -748,8 +749,7 @@ func toInstalledResourceStatuses(deployments []appsv1.Deployment, statefulSets [
 	return out
 }
 
-func toOSSStatuses(cfg domain.StackConfig, pods []podMonitoringStatus) []ossMonitoringStatus {
-	types := selectedToolTypes(cfg)
+func toOSSStatuses(types []selectedToolType, pods []podMonitoringStatus) []ossMonitoringStatus {
 	out := make([]ossMonitoringStatus, 0, len(types))
 
 	for _, t := range types {
@@ -798,12 +798,95 @@ func toOSSStatuses(cfg domain.StackConfig, pods []podMonitoringStatus) []ossMoni
 	return out
 }
 
+func filterMonitoringToSelectedTools(types []selectedToolType, pods []podMonitoringStatus) ([]podMonitoringStatus, []namedCount, monitoringSummary) {
+	if len(types) == 0 || len(pods) == 0 {
+		return []podMonitoringStatus{}, []namedCount{}, monitoringSummary{}
+	}
+
+	prefixes := make([]string, 0, len(types)*4)
+	for _, tool := range types {
+		prefixes = append(prefixes, tool.PodNamePrefixes...)
+	}
+
+	filtered := make([]podMonitoringStatus, 0, len(pods))
+	for _, pod := range pods {
+		if matchesAnyPrefix(strings.ToLower(pod.Name), prefixes) {
+			filtered = append(filtered, pod)
+		}
+	}
+
+	return summarizePodMonitoringStatuses(filtered)
+}
+
+func summarizePodMonitoringStatuses(pods []podMonitoringStatus) ([]podMonitoringStatus, []namedCount, monitoringSummary) {
+	if len(pods) == 0 {
+		return []podMonitoringStatus{}, []namedCount{}, monitoringSummary{}
+	}
+
+	out := append([]podMonitoringStatus(nil), pods...)
+	statusCountMap := make(map[string]int)
+	var summary monitoringSummary
+
+	for _, pod := range out {
+		summary.TotalPods++
+		if pod.Ready {
+			summary.ReadyPods++
+		}
+		summary.CPURequestMillicores += pod.CPURequestMillicores
+		summary.CPULimitMillicores += pod.CPULimitMillicores
+		summary.CPUUsageMillicores += pod.CPUUsageMillicores
+		summary.MemoryRequestMiB += pod.MemoryRequestMiB
+		summary.MemoryLimitMiB += pod.MemoryLimitMiB
+		summary.MemoryUsageMiB += pod.MemoryUsageMiB
+		summary.StorageRequestGiB += pod.StorageRequestGiB
+		summary.StorageLimitGiB += pod.StorageLimitGiB
+		summary.StorageUsageGiB += pod.StorageUsageGiB
+
+		statusKey := strings.TrimSpace(pod.Phase)
+		if statusKey == "" {
+			statusKey = "Unknown"
+		}
+		statusCountMap[statusKey]++
+	}
+
+	summary.StorageUsageGiB = math.Round(summary.StorageUsageGiB*100) / 100
+
+	counts := make([]namedCount, 0, len(statusCountMap))
+	for k, v := range statusCountMap {
+		counts = append(counts, namedCount{Name: k, Count: v})
+	}
+	sort.Slice(counts, func(i, j int) bool { return counts[i].Name < counts[j].Name })
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+
+	return out, counts, summary
+}
+
+func filterInstalledResourcesToSelectedTools(types []selectedToolType, resources []installedResourceStatus) []installedResourceStatus {
+	if len(types) == 0 || len(resources) == 0 {
+		return []installedResourceStatus{}
+	}
+
+	prefixes := make([]string, 0, len(types)*4)
+	for _, tool := range types {
+		prefixes = append(prefixes, tool.ResourceNamePrefixes...)
+	}
+
+	filtered := make([]installedResourceStatus, 0, len(resources))
+	for _, resource := range resources {
+		if matchesAnyPrefix(strings.ToLower(resource.Name), prefixes) {
+			filtered = append(filtered, resource)
+		}
+	}
+	return filtered
+}
+
 type selectedToolType struct {
-	Key             string
-	Name            string
-	Version         string
-	Enabled         bool
-	PodNamePrefixes []string
+	Key                  string
+	Name                 string
+	Version              string
+	Enabled              bool
+	PodNamePrefixes      []string
+	ResourceNamePrefixes []string
 }
 
 func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
@@ -830,18 +913,25 @@ func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
 		if version == "" {
 			version = "-"
 		}
-		return selectedToolType{Key: key, Name: name, Version: version, Enabled: sel.Enabled, PodNamePrefixes: prefixes}
+		return selectedToolType{
+			Key:                  key,
+			Name:                 name,
+			Version:              version,
+			Enabled:              sel.Enabled,
+			PodNamePrefixes:      prefixes,
+			ResourceNamePrefixes: prefixes,
+		}
 	}
 
 	out := []selectedToolType{
-		tool("source_repository", cfg.Artifacts.SourceRepository, "gitlab-"),
-		tool("cd_tool", cfg.Pipeline.CDTool, "argo-cd-argocd-"),
+		tool("source_repository", cfg.Artifacts.SourceRepository, "gitlab"),
+		tool("cd_tool", cfg.Pipeline.CDTool, "argo-cd-argocd"),
 		tool("collection", cfg.Monitoring.Collection, "prometheus", "kube-prometheus-stack", "alertmanager-kube-prometheus-stack"),
-		tool("visualization", cfg.Monitoring.Visualization, "grafana-"),
-		tool("logging_collection", cfg.Logging.Collection, "loki-"),
-		tool("logging_search", cfg.Logging.Search, "opensearch-", "elasticsearch-"),
-		tool("trace_layer", cfg.Logging.TraceLayer, "tempo-", "jaeger-"),
-		tool("storage_backend", cfg.Artifacts.StorageBackend, "nullus-minio", "minio-"),
+		tool("visualization", cfg.Monitoring.Visualization, "grafana"),
+		tool("logging_collection", cfg.Logging.Collection, "loki"),
+		tool("logging_search", cfg.Logging.Search, "opensearch", "elasticsearch"),
+		tool("trace_layer", cfg.Logging.TraceLayer, "tempo", "jaeger"),
+		tool("storage_backend", cfg.Artifacts.StorageBackend, "nullus-minio", "minio"),
 	}
 
 	filtered := make([]selectedToolType, 0, len(out))
