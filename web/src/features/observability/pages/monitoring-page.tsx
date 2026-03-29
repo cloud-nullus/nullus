@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useId } from 'react'
+import { useMemo, useState, useCallback, useId, useEffect, useRef } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -15,6 +15,7 @@ import type { ToolHealthStatus } from '../api/observability-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { StackMonitoringOverview } from '../components/stack-monitoring-overview'
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -475,120 +476,8 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
 }
 
 // ─── Default content: Stack view ─────────────────────────────────────────────
-function StackDefault({ stackName }: { stackName: string }) {
-  const [range, setRange] = useState<TimeRange>('24h')
-  const { data: apiData, isLoading, refetch } = useDashboard(5000)
-  const series = useMemo(() => makeSeries(range), [range])
-
-  const fallback = { kpi: { cpuUsage: 68, memoryUsage: 42, storageUsage: 31, podCount: 27, podRunning: 24 }, pipeline: { successRate: 97.3, totalRuns: 145, avgBuildSeconds: 154 }, tools: [{ name: 'GitLab', version: '16.7', status: 'running' as const }, { name: 'ArgoCD', version: '2.9.3', status: 'running' as const }, { name: 'Prometheus', version: '2.48.1', status: 'running' as const }, { name: 'Grafana', version: '10.3', status: 'warning' as const }, { name: 'Harbor', version: '2.8.2', status: 'running' as const }] }
-  const dash = (!isLoading && apiData && 'kpi' in apiData) ? apiData : fallback
-  const kpi = dash.kpi
-
-  const kpis = [
-    { label: 'CPU Usage', value: `${kpi.cpuUsage}%`, icon: <Cpu size={18} />, color: '#60a5fa', iconCls: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', bar: kpi.cpuUsage },
-    { label: 'Memory', value: `${kpi.memoryUsage}%`, icon: <MemoryStick size={18} />, color: '#a78bfa', iconCls: 'bg-[rgba(139,92,246,0.15)] text-[#a78bfa]', bar: kpi.memoryUsage },
-    { label: 'Storage', value: `${kpi.storageUsage}%`, icon: <HardDrive size={18} />, color: '#34d399', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]', bar: kpi.storageUsage },
-    { label: 'Running Pods', value: `${kpi.podRunning}/${kpi.podCount}`, icon: <Box size={18} />, color: '#fbbf24', iconCls: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', bar: kpi.podCount ? Math.round(kpi.podRunning / kpi.podCount * 100) : 0 },
-  ]
-
-  const podData = [
-    { name: 'Running', value: kpi.podRunning, color: '#22c55e' },
-    { name: 'Pending', value: Math.max(1, kpi.podCount - kpi.podRunning - 1), color: '#f59e0b' },
-    { name: 'Failed', value: 1, color: '#ef4444' },
-  ]
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)]">
-          Stack: <span className="font-semibold text-[var(--color-text-primary)]">{stackName}</span>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <button type="button" onClick={() => void refetch()}
-            className="flex items-center gap-1 rounded-lg border border-[var(--color-border-default)] px-2.5 py-[5px] text-xs text-[var(--color-text-secondary)] hover:bg-[rgba(255,255,255,0.06)]">
-            <RefreshCw size={11} className={cn(isLoading && 'animate-spin')} />Refresh
-          </button>
-          {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
-            <button key={r} type="button" onClick={() => setRange(r)}
-              className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
-                range === r ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        {kpis.map((c) => <KpiCard key={c.label} {...c} />)}
-      </div>
-
-      <div className="mb-5 grid grid-cols-2 gap-3.5">
-        <ChartPanel title="CPU Usage">
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={series}>
-              <defs><linearGradient id="scpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05} /></linearGradient></defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} /><YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#scpu)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Memory Usage">
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={series}>
-              <defs><linearGradient id="smem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05} /></linearGradient></defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} /><YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#smem)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Pipeline Success Rate">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={WEEK_BARS}>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="day" stroke="#94a3b8" tick={CHART_STYLE.tick} /><YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <Tooltip contentStyle={CHART_STYLE.tooltip} /><Legend wrapperStyle={{ color: '#e5e7eb' }} />
-              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} /><Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Pod Status">
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={podData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                {podData.map((e) => <Cell key={e.name} fill={e.color} />)}
-              </Pie>
-              <Tooltip contentStyle={CHART_STYLE.tooltip} /><Legend wrapperStyle={{ color: '#e5e7eb' }} />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-      </div>
-
-      <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]">
-        <h2 className="mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">Tool Health</h2>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-          {dash.tools.map((t) => {
-            const cfg = TOOL_STATUS[t.status]
-            return (
-              <div key={t.name} className="rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3.5">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-sm font-bold text-[var(--color-text-primary)]">{t.name}</span>
-                  <span className={cn('inline-flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', cfg.cls)}>
-                    {cfg.icon}{cfg.label}
-                  </span>
-                </div>
-                <div className="text-xs text-[var(--color-text-secondary)]">v{t.version}</div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
+function StackDefault({ stackId }: { stackId: string }) {
+  return <StackMonitoringOverview stackId={stackId} />
 }
 
 // ─── Default content: CI/CD view ─────────────────────────────────────────────
@@ -1069,8 +958,30 @@ export function MonitoringPage() {
   const [selectedStackId, setSelectedStackId] = useState('')
   const [activeView, setActiveView] = useState<ViewType | null>(null)
 
-  const { clusters, filteredStacks, selectedCluster, selectedStack, hasContext } =
+  const { clusters, stacks, filteredStacks, selectedCluster, selectedStack, hasContext } =
     useClusterStackFilterState(selectedClusterId, selectedStackId)
+
+  const didAutoSelectRef = useRef(false)
+
+  useEffect(() => {
+    if (didAutoSelectRef.current) return
+    if (clusters.length === 0) return
+
+    const firstCluster = clusters[0]
+    if (!firstCluster) return
+
+    setSelectedClusterId(firstCluster.id)
+
+    const firstStackForCluster = stacks.find((stack) => stack.clusterId === firstCluster.id)
+    if (firstStackForCluster) {
+      setSelectedStackId(firstStackForCluster.id)
+      setActiveView('stack')
+    } else {
+      setActiveView('cluster')
+    }
+
+    didAutoSelectRef.current = true
+  }, [clusters, stacks])
 
   // Auto-select initial view
   function handleClusterChange(id: string) {
@@ -1167,7 +1078,7 @@ export function MonitoringPage() {
                 <DashboardTabLayout
                   viewId="stack"
                   isAdmin={isAdmin}
-                  defaultContent={<StackDefault stackName={selectedStack?.name ?? selectedStackId} />}
+                  defaultContent={<StackDefault stackId={selectedStack?.id ?? selectedStackId} />}
                   firstTimePanel={(onConnect, onSkip) => (
                     <StackConnectPanel
                       stackName={selectedStack?.name ?? selectedStackId}

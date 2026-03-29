@@ -5,6 +5,8 @@ import { cn } from '../../../lib/utils'
 import { useStacks } from '../../stack/api/stack-api'
 import { useClusters } from '../../admin/api/admin-api'
 
+const formatStatusLabel = (status: string) => status.replace(/_/g, ' ')
+
 const statusDot = (status: string) => (
   <span
     className={cn(
@@ -112,13 +114,13 @@ export const ClusterStackFilter = ({
         >
           <option value="">— Select Stack —</option>
           {filteredStacks.map((stack) => (
-            <option key={stack.id} value={stack.id}>{stack.name}</option>
+            <option key={stack.id} value={stack.id}>{`${stack.name} (${formatStatusLabel(stack.status)})`}</option>
           ))}
         </NativeSelect>
         {selectedStack && (
           <div className="mb-[9px] flex items-center gap-1.5 text-xs">
             {statusDot(selectedStack.status)}
-            <span className="capitalize text-[var(--color-text-secondary)]">{selectedStack.status}</span>
+            <span className="capitalize text-[var(--color-text-secondary)]">{formatStatusLabel(selectedStack.status)}</span>
           </div>
         )}
       </div>

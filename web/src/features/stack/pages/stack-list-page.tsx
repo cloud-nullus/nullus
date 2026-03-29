@@ -49,6 +49,7 @@ import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
+import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
 import { useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
 
@@ -1409,6 +1410,8 @@ function isResourceLinkedToPods(resourceName: string, podNames: string[]): boole
 }
 
 function StackMonitoringTab({ stackId }: { stackId: string }) {
+	return <StackMonitoringOverview stackId={stackId} />;
+/*
 	const [range, setRange] = useState<MonitoringRange>("realtime");
 	const [scope, setScope] = useState<string>("all");
 	const [samples, setSamples] = useState<MonitoringSample[]>([]);
@@ -2218,7 +2221,7 @@ function StackMonitoringTab({ stackId }: { stackId: string }) {
 				</div>
 			</div>
 		</div>
-	);
+	);*/
 }
 
 function StackHistoryTab({ stack }: { stack: Stack }) {

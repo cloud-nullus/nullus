@@ -91,7 +91,7 @@ describe('ClusterStackFilter', () => {
     expect(screen.queryByLabelText('Cluster')).not.toBeNull()
     expect(screen.queryByLabelText('Stack')).not.toBeNull()
     expect(screen.queryByRole('option', { name: 'prod-cluster' })).not.toBeNull()
-    expect(screen.queryByRole('option', { name: 'stack-a' })).not.toBeNull()
+    expect(screen.queryByRole('option', { name: 'stack-a (running)' })).not.toBeNull()
   })
 
   it('calls handlers when selecting cluster/stack and clear action', () => {

@@ -7,6 +7,7 @@ import { MonitoringPage } from './monitoring-page'
 const mockUseDashboard = vi.hoisted(() => vi.fn())
 const mockUseAuthStore = vi.hoisted(() => vi.fn())
 const mockUseClusterStackFilterState = vi.hoisted(() => vi.fn())
+const mockStackMonitoringOverview = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/observability-api', async () => {
   const actual = await vi.importActual('../api/observability-api')
@@ -37,6 +38,13 @@ vi.mock('../components/cluster-stack-filter', () => ({
       <button type="button" onClick={() => onClear()}>Mock Clear</button>
     </div>
   ),
+}))
+
+vi.mock('../components/stack-monitoring-overview', () => ({
+  StackMonitoringOverview: ({ stackId }: { stackId: string }) => {
+    mockStackMonitoringOverview(stackId)
+    return <div>Mock Stack Monitoring Overview: {stackId}</div>
+  },
 }))
 
 vi.mock('recharts', () => {
@@ -79,6 +87,7 @@ describe('MonitoringPage', () => {
 
     mockUseClusterStackFilterState.mockReturnValue({
       clusters: [{ id: 'cluster-1', name: 'Prod Cluster', status: 'connected' }],
+      stacks: [{ id: 'stack-1', name: 'Main Stack', clusterId: 'cluster-1', status: 'running' }],
       filteredStacks: [{ id: 'stack-1', name: 'Main Stack', status: 'running' }],
       selectedCluster: { id: 'cluster-1', name: 'Prod Cluster', status: 'connected' },
       selectedStack: { id: 'stack-1', name: 'Main Stack', status: 'running' },
@@ -97,10 +106,8 @@ describe('MonitoringPage', () => {
     renderWithProviders(<MonitoringPage />)
     fireEvent.click(screen.getByText('Mock Select Stack'))
 
-    const refreshButton = screen.getByRole('button', { name: /Refresh/i })
-    const icon = refreshButton.querySelector('svg')
-    expect(icon).not.toBeNull()
-    expect(icon?.classList.contains('animate-spin')).toBe(true)
+    expect(screen.queryByText('Mock Stack Monitoring Overview: stack-1')).not.toBeNull()
+    expect(mockStackMonitoringOverview).toHaveBeenCalledWith('stack-1')
   })
 
   it('renders dashboard data in stack view when hook returns data', () => {
@@ -117,13 +124,14 @@ describe('MonitoringPage', () => {
     renderWithProviders(<MonitoringPage />)
     fireEvent.click(screen.getByText('Mock Select Stack'))
 
-    expect(screen.queryByText('88%')).not.toBeNull()
-    expect(screen.queryByText('Custom Tool')).not.toBeNull()
+    expect(screen.queryByText('Mock Stack Monitoring Overview: stack-1')).not.toBeNull()
+    expect(mockStackMonitoringOverview).toHaveBeenCalledWith('stack-1')
   })
 
   it('shows empty state when no cluster or stack is selected', () => {
     mockUseClusterStackFilterState.mockReturnValue({
       clusters: [],
+      stacks: [],
       filteredStacks: [],
       selectedCluster: undefined,
       selectedStack: undefined,
