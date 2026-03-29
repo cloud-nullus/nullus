@@ -64,6 +64,10 @@ const CicdHistoryPage = lazy(() =>
   import('../features/cicd/pages/cicd-history-page').then((m) => ({ default: m.CicdHistoryPage }))
 )
 
+const CicdPipelineLogsPage = lazy(() =>
+  import('../features/cicd/pages/cicd-pipeline-logs-page').then((m) => ({ default: m.CicdPipelineLogsPage }))
+)
+
 const MonitoringPage = lazy(() =>
   import('../features/observability/pages/monitoring-page').then((m) => ({ default: m.MonitoringPage }))
 )
@@ -143,6 +147,7 @@ export const router = createBrowserRouter([
           { path: 'cicd/create', element: withSuspense(<DeveloperDeployPage />) },
           { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
           { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },
+          { path: 'cicd/pipelines/:id/logs', element: withSuspense(<CicdPipelineLogsPage />) },
         ],
       },
       {

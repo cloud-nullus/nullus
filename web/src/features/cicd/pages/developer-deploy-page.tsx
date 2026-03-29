@@ -2,25 +2,22 @@ import { useEffect, useRef, useState } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
-import { Rocket, Plus, Trash2, ChevronRight, Check, X, Loader2, Copy } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Rocket, Plus, Trash2, ChevronRight, Check, Loader2, Copy, Terminal } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-import { useAppTemplates, useCreatePipeline, useDeployPipeline, useDeploymentStatus } from '../api/cicd-api'
-import { useClusters } from '../../admin/api/admin-api'
+import { useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
+import type { AppType } from '../api/cicd-api'
+import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
+import { useStacks } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
+import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-log'
 
-const TEMPLATE_GIT_REPOS: Record<string, string> = {
-  'go-web-api': 'https://github.com/cloud-nullus/sample-go-api',
-  'react-vite': 'https://github.com/cloud-nullus/sample-react-app',
-  'spring-boot': 'https://github.com/cloud-nullus/sample-spring-boot',
-}
-
-type Step = 1 | 2 | 3 | 4 | 5
+type Step = 1 | 2 | 3 | 4 | 5 | 6
 
 const STEP_LABELS: Record<Step, string> = {
   1: '앱 이름',
@@ -28,9 +25,65 @@ const STEP_LABELS: Record<Step, string> = {
   3: '클러스터 / 네임스페이스',
   4: '리소스 설정',
   5: '환경 변수',
+  6: '매니페스트 확인',
 }
 
-function generateYaml(form: Partial<FormState>): string {
+const PHASES = ['Namespace 생성', 'Deployment 생성', 'Service 생성']
+const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
+
+const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
+  info: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
+  success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
+  error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
+}
+
+function PhaseStep({ label, index, progress }: { label: string; index: number; progress: number }) {
+  const phaseProgress = 100 / PHASES.length
+  const phaseStart = index * phaseProgress
+  const isDone = progress >= phaseStart + phaseProgress
+  const isActive = progress >= phaseStart && !isDone
+
+  return (
+    <div className="flex flex-1 items-center gap-2">
+      <div
+        className={cn(
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300',
+          isDone
+            ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
+            : isActive
+              ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]'
+              : 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
+        )}
+      >
+        {isDone ? (
+          <Check size={14} />
+        ) : isActive ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <span className="text-xs font-bold">{index + 1}</span>
+        )}
+      </div>
+      <span
+        className={cn(
+          'text-[13px] font-semibold',
+          isDone ? 'text-[#22c55e]' : isActive ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
+        )}
+      >
+        {label}
+      </span>
+      {index < PHASES.length - 1 && (
+        <div
+          className={cn(
+            'mx-1 h-px flex-1 transition-colors duration-300',
+            isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
+          )}
+        />
+      )}
+    </div>
+  )
+}
+
+function generateYaml(form: Partial<FormState>, appType: string): string {
   const cpu = form.cpuLimit ?? '500m'
   const mem = form.memoryLimit ?? '512Mi'
   const replicas = form.replicas ?? 2
@@ -41,7 +94,7 @@ metadata:
   namespace: ${form.namespace ?? 'default'}
   labels:
     app: ${form.appName ?? 'my-app'}
-    template: ${form.template ?? 'go-web-api'}
+    template: ${appType || 'backend'}
 spec:
   replicas: ${replicas}
   selector:
@@ -84,7 +137,6 @@ spec:
 interface EnvVar { key: string; value: string }
 
 interface FormState {
-  template: string
   appName: string
   gitUrl: string
   clusterId: string
@@ -98,9 +150,8 @@ interface FormState {
 }
 
 const deploySchema = z.object({
-  template: z.string().min(1, 'Template is required'),
   appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
-  gitUrl: z.string().min(1, 'Git URL is required').url('Invalid Git URL'),
+  gitUrl: z.string().min(1, 'Git URL is required'),
   clusterId: z.string().min(1, 'Cluster is required'),
   namespace: z.string().min(1, 'Namespace is required'),
   replicas: z.number().min(1).max(10),
@@ -119,7 +170,7 @@ const deploySchema = z.object({
       envVars.forEach((env, index) => {
         if (env.value.trim() && !env.key.trim()) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: 'Key is required when value exists',
             path: [index, 'key'],
           })
@@ -129,9 +180,8 @@ const deploySchema = z.object({
 })
 
 const DEFAULT_FORM: FormState = {
-  template: 'go-web-api',
   appName: '',
-  gitUrl: TEMPLATE_GIT_REPOS['go-web-api'] ?? '',
+  gitUrl: '',
   clusterId: '',
   namespace: 'default',
   replicas: 2,
@@ -145,22 +195,23 @@ const DEFAULT_FORM: FormState = {
 export function DeveloperDeployPage() {
   const [step, setStep] = useState<Step>(1)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const appType = searchParams.get('appType') ?? 'backend'
   const [deploymentId, setDeploymentId] = useState<string | null>(null)
-  const { data: deploymentStatus } = useDeploymentStatus(deploymentId)
+  const [customManifest, setCustomManifest] = useState<string | null>(null)
+  const [selectedStackId, setSelectedStackId] = useState('')
+  const [repoName, setRepoName] = useState('')
+  const { logs, status, progress, isConnected } = useCicdDeployLog(deploymentId)
   const terminalRef = useRef<HTMLDivElement>(null)
-  const { data: appTemplatesRaw } = useAppTemplates()
-  const appTemplates = (appTemplatesRaw ?? []).map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description ?? t.runtime ?? '',
-    language: t.language ?? t.runtime ?? '',
-    color: '#6366f1',
+  const { data: stacksData } = useStacks()
+  const stacks = (stacksData?.items ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
   }))
   const { data: clustersData } = useClusters()
   const clusters = (clustersData?.items ?? []).map((c) => ({
     id: c.id,
     name: c.name,
-    namespaces: ['default', 'production', 'staging'],
   }))
   const {
     register,
@@ -181,7 +232,17 @@ export function DeveloperDeployPage() {
     name: 'envVars',
   })
 
+  const pipelineIdParam = searchParams.get('pipelineId') ?? ''
+  const clusterIdParam = searchParams.get('clusterId') ?? ''
+  const namespaceParam = searchParams.get('namespace') ?? ''
+  const appNameParam = searchParams.get('appName') ?? ''
+
   const form = watch()
+  const { data: namespacesData } = useClusterNamespaces(form.clusterId)
+  const namespaces = (namespacesData ?? []).map((ns) => ns.name)
+  const selectedStack = stacks.find((s) => s.id === selectedStackId)
+  const stackGitBaseUrl = selectedStack ? `http://${selectedStack.name}.internal/` : ''
+  const gitUrl = selectedStackId ? `${stackGitBaseUrl}${repoName}` : form.gitUrl
 
   const firstClusterId = clusters[0]?.id ?? ''
   useEffect(() => {
@@ -195,6 +256,28 @@ export function DeveloperDeployPage() {
     if (el) el.scrollTop = el.scrollHeight
   })
 
+  useEffect(() => {
+    if (!pipelineIdParam && !clusterIdParam && !namespaceParam && !appNameParam) {
+      return
+    }
+
+    if (clusterIdParam) {
+      setValue('clusterId', clusterIdParam, { shouldValidate: true })
+    }
+    if (namespaceParam) {
+      setValue('namespace', namespaceParam, { shouldValidate: true })
+    }
+    if (appNameParam) {
+      setValue('appName', appNameParam, { shouldValidate: true })
+    }
+  }, [pipelineIdParam, clusterIdParam, namespaceParam, appNameParam, setValue])
+
+  useEffect(() => {
+    if (namespaces[0]) {
+      setValue('namespace', namespaces[0], { shouldValidate: true })
+    }
+  }, [namespaces, setValue])
+
   const createPipelineMutation = useCreatePipeline()
   const deployPipelineMutation = useDeployPipeline()
 
@@ -202,16 +285,16 @@ export function DeveloperDeployPage() {
     setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
   }
 
-  const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '', namespaces: ['default'] }
+  const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '' }
 
   const onSubmit = async (data: FormState) => {
     try {
+      const parsedAppType = appType as AppType
       const pipeline = await createPipelineMutation.mutateAsync({
         name: data.appName,
-        appType: 'backend',
+        appType: parsedAppType,
         clusterId: data.clusterId,
         namespace: data.namespace,
-        templateId: 'web-backend-v1',
       })
       const result = await deployPipelineMutation.mutateAsync(pipeline.id)
       setDeploymentId(result.deploymentId)
@@ -220,30 +303,32 @@ export function DeveloperDeployPage() {
 
   const validateCurrentStep = async () => {
     if (step === 1) return trigger('appName')
-    if (step === 2) return trigger('gitUrl')
+    if (step === 2) {
+      setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
+      return trigger('gitUrl')
+    }
     if (step === 3) return trigger(['clusterId', 'namespace'])
     if (step === 4) return trigger(['replicas', 'cpuLimit', 'memoryLimit'])
-    return trigger('envVars')
+    if (step === 5) return true
+    return true
   }
 
   const canNext: Record<Step, boolean> = {
     1: form.appName.trim().length >= 2,
-    2: form.gitUrl.trim().length > 0 && !errors.gitUrl,
+    2: gitUrl.trim().length > 0 && !errors.gitUrl,
     3: !!form.clusterId && !!form.namespace,
     4: form.replicas >= 1 && !!form.cpuLimit && !!form.memoryLimit,
-    5: !errors.envVars,
+    5: true,
+    6: true,
   }
 
   if (deploymentId) {
-    const status = deploymentStatus?.status ?? 'running'
     const isComplete = status === 'success'
     const isFailed = status === 'failed'
     const isDone = isComplete || isFailed
 
-    const apiSteps = deploymentStatus?.steps ?? []
-    const hasSteps = apiSteps.length > 0
-    const allLogs = apiSteps.flatMap((s) => s.logs ?? [])
-    const deployedResources = allLogs
+    const deployedResources = logs
+      .map((entry) => entry.message)
       .filter((line) => !line.startsWith('$') && !line.startsWith('error'))
       .map((line) => {
         const match = line.match(/^(\w+)\/(\S+)\s+(\w+)$/)
@@ -251,55 +336,43 @@ export function DeveloperDeployPage() {
       })
       .filter((r): r is { kind: string; name: string; action: string } => r !== null)
 
-    const progressSteps: Array<{ label: string; status: string; message?: string }> = hasSteps
-      ? [
-          { label: '파이프라인 생성', status: 'success' },
-          ...apiSteps.map((s) => ({ label: s.name, status: s.status, message: s.message })),
-          { label: isComplete ? '배포 완료' : isFailed ? '배포 실패' : '검증 대기', status: isDone ? (isComplete ? 'success' : 'failed') : 'pending' },
-        ]
-      : [
-          { label: '파이프라인 생성', status: 'success' },
-          { label: '클러스터에 배포 중', status: isDone ? 'success' : 'running' },
-          { label: isComplete ? '배포 완료' : isFailed ? '배포 실패' : '검증 대기', status: isDone ? (isComplete ? 'success' : 'failed') : 'pending' },
-        ]
-
     return (
       <div>
         <Breadcrumb items={[{ label: 'CI/CD List', path: '/cicd/list' }, { label: '배포 진행' }]} />
-        <div className="mx-auto max-w-lg py-12">
+        <div className="mx-auto max-w-3xl py-12">
           <div className="mb-8 text-center">
             <h2 className="m-0 text-xl font-bold text-[var(--color-text-primary)]">{form.appName}</h2>
             <p className="m-0 mt-1 text-sm text-[var(--color-text-secondary)]">{form.namespace} 네임스페이스</p>
           </div>
 
-          <div className="mb-8 flex flex-col gap-3">
-            {progressSteps.map((s, i) => (
-              <div key={`${s.label}-${i}`} className="flex items-center gap-3">
-                <div className={cn(
-                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                  s.status === 'success' ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' :
-                  s.status === 'failed' ? 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]' :
-                  s.status === 'running' ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]' :
-                  'bg-[rgba(100,116,139,0.1)] text-[var(--color-text-muted)]'
-                )}>
-                  {s.status === 'success' ? <Check size={14} /> :
-                   s.status === 'failed' ? <X size={14} /> :
-                   s.status === 'running' ? <Loader2 size={14} className="animate-spin" /> :
-                   <span>{i + 1}</span>}
-                </div>
-                <div className="flex flex-col">
-                  <span className={cn(
-                    'text-sm',
-                    s.status === 'success' || s.status === 'running' ? 'font-medium text-[var(--color-text-primary)]' :
-                    s.status === 'failed' ? 'font-medium text-[#ef4444]' :
-                    'text-[var(--color-text-muted)]'
-                  )}>{s.label}</span>
-                  {s.message && (
-                    <code className="mt-0.5 text-xs text-[var(--color-text-muted)] font-mono">{s.message}</code>
+          <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6">
+            <div className="mb-5 flex items-center gap-2">
+              {PHASES.map((phase, idx) => (
+                <PhaseStep key={phase} label={phase} index={idx} progress={progress} />
+              ))}
+            </div>
+
+            <div className="mb-1 flex justify-between text-xs">
+              <span className="text-[var(--color-text-secondary)]">전체 진행률</span>
+              <span className={cn('font-semibold', isFailed ? 'text-[#ef4444]' : 'text-[var(--color-text-primary)]')}>{progress}%</span>
+            </div>
+            <div className="mb-6 flex gap-px">
+              {PROGRESS_SEGMENTS.map((segment) => (
+                <div
+                  key={segment}
+                  className={cn(
+                    'h-1 flex-1 rounded-full transition-colors duration-300',
+                    segment <= progress
+                      ? status === 'failed' ? 'bg-[#ef4444]' : 'bg-[#6366f1]'
+                      : 'bg-[rgba(255,255,255,0.06)]'
                   )}
-                </div>
-              </div>
-            ))}
+                />
+              ))}
+            </div>
+
+            <div className="text-center text-xs text-[var(--color-text-secondary)]">
+              Deployment ID: <span className="font-mono text-[var(--color-text-primary)]">{deploymentId}</span>
+            </div>
           </div>
 
           <div className="mb-6 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[#0d1117]">
@@ -309,33 +382,33 @@ export function DeveloperDeployPage() {
                 <div className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
                 <div className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
               </div>
-              <span className="text-[11px] font-medium text-[rgba(255,255,255,0.4)]">Deploy Output</span>
+              <Terminal size={12} className="text-[rgba(255,255,255,0.4)]" />
+              <span className="text-[11px] font-medium text-[rgba(255,255,255,0.4)]">
+                {isConnected ? 'Streaming...' : 'Connecting...'}
+              </span>
             </div>
-            <div ref={terminalRef} className="max-h-[240px] overflow-y-auto p-4">
-              {allLogs.length === 0 ? (
-                <span className="font-mono text-xs text-[#484f58]">Waiting for deployment output...</span>
+            <div ref={terminalRef} className="max-h-[400px] overflow-y-auto p-4">
+              {logs.length === 0 ? (
+                <span className="font-mono text-xs text-[#484f58]">
+                  {isFailed ? '배포 실패. 로그를 확인할 수 없습니다.' : 'Waiting for deployment output...'}
+                </span>
               ) : (
-                <pre className="m-0 whitespace-pre-wrap font-mono text-xs leading-5">
-                  {allLogs.map((line, i) => (
-                    <div key={`log-${i}`} className={
-                      line.startsWith('$') ? 'text-[#58a6ff]' :
-                      line.includes('created') ? 'text-[#3fb950]' :
-                      line.includes('configured') ? 'text-[#d29922]' :
-                      line.includes('error') || line.includes('failed') ? 'text-[#f85149]' :
-                      'text-[#c9d1d9]'
-                    }>{line}</div>
+                <div className="flex flex-col gap-1.5">
+                  {logs.map((entry) => (
+                    <div key={entry.id} className="flex gap-2 leading-5">
+                      <span className="shrink-0 text-xs text-[#484f58]">
+                        {new Date(entry.timestamp).toLocaleTimeString('ko-KR')}
+                      </span>
+                      <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold uppercase', LOG_LEVEL_STYLE[entry.level])}>
+                        {entry.level}
+                      </span>
+                      <span className="text-xs text-[#c9d1d9]">{entry.message}</span>
+                    </div>
                   ))}
-                </pre>
+                </div>
               )}
             </div>
           </div>
-
-          {deploymentStatus?.startedAt && (
-            <div className="mb-6 text-center text-xs text-[var(--color-text-muted)]">
-              시작: {new Date(deploymentStatus.startedAt).toLocaleTimeString('ko-KR')}
-              {deploymentStatus.completedAt && ` · 완료: ${new Date(deploymentStatus.completedAt).toLocaleTimeString('ko-KR')}`}
-            </div>
-          )}
 
           {isComplete && deployedResources.length > 0 && (() => {
             const nsScoped = deployedResources.filter((r) => r.kind !== 'namespace')
@@ -410,46 +483,9 @@ export function DeveloperDeployPage() {
         </div>
       </div>
 
-      {/* Template selection */}
-      <div className="mb-7">
-        <p className="mb-3 mt-0 text-[13px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-          앱 템플릿
-        </p>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5">
-          {appTemplates.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setField('template', t.id)
-                const repoUrl = TEMPLATE_GIT_REPOS[t.id]
-                if (repoUrl) setField('gitUrl', repoUrl)
-              }}
-              className={cn(
-                'cursor-pointer rounded-[10px] border p-[14px] text-left transition-all duration-150',
-                form.template === t.id
-                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.15)]'
-                  : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)]'
-              )}
-            >
-              <div
-                className="mb-2 h-2 w-2 rounded-full"
-                style={{ backgroundColor: t.color }}
-              />
-              <p className="mb-1 mt-0 text-[13px] font-bold text-[var(--color-text-primary)]">
-                {t.name}
-              </p>
-              <p className="m-0 text-[11px] text-[var(--color-text-secondary)]">
-                {t.language}
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Step indicator */}
       <div className="mb-6 flex flex-wrap items-center gap-1">
-        {([1, 2, 3, 4, 5] as Step[]).map((s, i) => (
+        {([1, 2, 3, 4, 5, 6] as Step[]).map((s, i) => (
           <div key={s} className="flex items-center gap-1">
             <button
               type="button"
@@ -477,7 +513,7 @@ export function DeveloperDeployPage() {
                 {STEP_LABELS[s]}
               </span>
             </button>
-            {i < 4 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
+            {i < 5 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
           </div>
         ))}
       </div>
@@ -503,11 +539,39 @@ export function DeveloperDeployPage() {
 
           {step === 2 && (
             <StepSection title="Git Repository URL">
-              <Input
-                placeholder="https://github.com/org/repo.git"
-                value={form.gitUrl}
-                onChange={(e) => setField('gitUrl', e.target.value)}
-              />
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label htmlFor="deploy-stack" className={labelStyleClass}>스택 (선택)</label>
+                  <NativeSelect
+                    id="deploy-stack"
+                    value={selectedStackId}
+                    onChange={(e) => setSelectedStackId(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">직접 입력</option>
+                    {stacks.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </NativeSelect>
+                </div>
+
+                {selectedStackId ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input value={stackGitBaseUrl} disabled />
+                    <Input
+                      placeholder="repo-name.git"
+                      value={repoName}
+                      onChange={(e) => setRepoName(e.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    placeholder="https://github.com/org/repo.git"
+                    value={form.gitUrl}
+                    onChange={(e) => setField('gitUrl', e.target.value)}
+                  />
+                )}
+              </div>
               {errors.gitUrl && <span className="text-xs text-[#ef4444]">{errors.gitUrl.message}</span>}
             </StepSection>
           )}
@@ -522,8 +586,7 @@ export function DeveloperDeployPage() {
                     value={form.clusterId}
                     onChange={(e) => {
                       setField('clusterId', e.target.value)
-                      const cl = clusters.find((c) => c.id === e.target.value)
-                      if (cl?.namespaces[0]) setField('namespace', cl.namespaces[0])
+                      if (namespaces[0]) setField('namespace', namespaces[0])
                     }}
                     className="w-full"
                   >
@@ -541,7 +604,7 @@ export function DeveloperDeployPage() {
                     onChange={(e) => setField('namespace', e.target.value)}
                     className="w-full"
                   >
-                    {selectedCluster.namespaces.map((ns) => (
+                    {namespaces.map((ns) => (
                       <option key={ns} value={ns}>{ns}</option>
                     ))}
                   </NativeSelect>
@@ -633,6 +696,23 @@ export function DeveloperDeployPage() {
             </StepSection>
           )}
 
+          {step === 6 && (
+            <StepSection title="매니페스트 확인 및 편집">
+              <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+                생성된 YAML 매니페스트를 확인하고 필요 시 수정하세요.
+              </p>
+              <textarea
+                value={customManifest ?? generateYaml(form, appType)}
+                onChange={(e) => setCustomManifest(e.target.value)}
+                className="h-[400px] w-full resize-none rounded-lg border border-[var(--color-border-default)] bg-[#0d1117] p-4 font-mono text-xs leading-5 text-[#c9d1d9] focus:outline-none focus:ring-1 focus:ring-[#6366f1]"
+                spellCheck={false}
+              />
+              <button type="button" onClick={() => setCustomManifest(null)} className="mt-2 cursor-pointer border-none bg-none text-xs text-[var(--color-text-secondary)] underline">
+                기본값으로 초기화
+              </button>
+            </StepSection>
+          )}
+
           {/* Navigation */}
           <div className="mt-6 flex justify-end gap-2.5">
             {step > 1 && (
@@ -640,7 +720,7 @@ export function DeveloperDeployPage() {
                 이전
               </Button>
             )}
-            {step < 5 ? (
+            {step < 6 ? (
               <Button
                 variant="primary"
                 size="md"
@@ -659,7 +739,10 @@ export function DeveloperDeployPage() {
                 size="md"
                 loading={createPipelineMutation.isPending || deployPipelineMutation.isPending}
                 disabled={isSubmitting || !!errors.envVars}
-                onClick={handleSubmit(onSubmit)}
+                onClick={handleSubmit((data) => {
+                  setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
+                  return onSubmit({ ...data, gitUrl })
+                })}
               >
                 <Rocket size={14} />
                 Deploy
@@ -669,17 +752,19 @@ export function DeveloperDeployPage() {
         </div>
 
         {/* YAML preview */}
+        {step !== 6 && (
         <div>
           <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
             YAML 매니페스트 미리보기
           </p>
           <CodePreview
-            code={generateYaml(form)}
+            code={generateYaml(form, appType)}
             language="yaml"
             title={`${form.appName || 'my-app'}.yaml`}
             maxHeight="600px"
           />
         </div>
+        )}
       </div>
     </div>
   )
@@ -708,23 +793,24 @@ function ResourceSlider({
   onChange: (v: string) => void
 }) {
   const idx = options.indexOf(value)
+  const isCustom = idx === -1
   const sliderId = `resource-${label.toLowerCase().replace(/\s+/g, '-')}`
   return (
     <div>
-      <div className="mb-1.5 flex justify-between">
+      <div className="mb-1.5 flex items-center justify-between">
         <label htmlFor={sliderId} className={cn(labelStyleClass, 'mb-0')}>{label}</label>
-        <span
-          className="font-mono text-[13px] font-semibold text-[#a5b4fc]"
-        >
-          {value}
-        </span>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-24 text-right font-mono text-[13px]"
+        />
       </div>
       <input
         id={sliderId}
         type="range"
         min={0}
         max={options.length - 1}
-        value={idx >= 0 ? idx : 0}
+        value={isCustom ? 0 : idx}
         onChange={(e) => onChange(options[Number(e.target.value)])}
         className="w-full accent-[#6366f1]"
       />
