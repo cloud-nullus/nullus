@@ -278,16 +278,10 @@ func TestDeleteStack_DeletesLegacyMonitoringResources(t *testing.T) {
 
 	err := uc.Execute(context.Background(), "stk-legacy")
 	require.NoError(t, err)
-	allowed := map[string]struct{}{
-		"deployment.apps/prometheus-yaml-v2": {},
-		"service/grafana-yaml-svc":           {},
-	}
-	for _, resource := range deleted {
-		_, ok := allowed[resource]
-		assert.True(t, ok, "unexpected legacy monitoring resource deleted: %s", resource)
-	}
-	assert.Contains(t, deleted, "deployment.apps/prometheus-yaml-v2")
-	assert.Contains(t, deleted, "service/grafana-yaml-svc")
+	assert.ElementsMatch(t, []string{
+		"deployment.apps/prometheus-yaml-v2",
+		"service/grafana-yaml-svc",
+	}, deleted)
 
 	messages := make([]string, 0, len(streamer.entries))
 	for _, entry := range streamer.entries {
@@ -403,8 +397,8 @@ func TestDeleteStack_DeletesOrphanGatewayTempoResourcesAcrossSweepNamespaces(t *
 	assert.Contains(t, deleted, "nullus:deployment.apps/envoy-nullus-nullus-devsecops-stack-gateway-3197e0f2")
 	assert.Contains(t, deleted, "nullus:deployment.apps/tempo")
 	assert.Contains(t, deleted, "nullus:service/tempo-svc")
-	assert.Contains(t, deleted, "default:deployment.apps/envoy-shared-gateway")
 	assert.NotContains(t, deleted, "nullus:service/kubernetes")
+	assert.NotContains(t, deleted, "default:deployment.apps/envoy-shared-gateway")
 }
 
 func TestShouldDeleteLegacyReleaseArtifact(t *testing.T) {

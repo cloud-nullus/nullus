@@ -386,11 +386,11 @@ const K8S_SECRET_REF_REGEX = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
 const SECRET_KEY_REGEX = /^[-._a-zA-Z0-9]+$/
 
 const TOOL_INSTALL_METHOD: Record<string, ManifestInstallType> = {
-  grafana: 'yaml',
-  prometheus: 'yaml',
-  tempo: 'yaml',
-  jaeger: 'yaml',
-  loki: 'yaml',
+  grafana: 'helm',
+  prometheus: 'helm',
+  tempo: 'helm',
+  jaeger: 'helm',
+  loki: 'helm',
 }
 
 const TOOL_BUNDLE_CANONICAL: Record<string, string> = {
@@ -514,11 +514,11 @@ function profileFactorByOption(profile: PlanningProfile, optionKey: string): num
   const isThroughput = /(calls|events|pulls|pushes|ops|deployments|commits|targets|spans|query|users|count)/i.test(optionKey)
 
   if (profile === 'startup') {
-    if (isRetention) return 0.6
-    if (isInterval) return 1.35
-    if (isConcurrency) return 0.55
-    if (isThroughput) return 0.6
-    return 0.7
+    if (isRetention) return 0.45
+    if (isInterval) return 1.7
+    if (isConcurrency) return 0.35
+    if (isThroughput) return 0.45
+    return 0.55
   }
 
   if (isRetention) return 1.8
@@ -534,43 +534,84 @@ function profileAdjustedBaseline(profile: PlanningProfile, def: PlanningOptionDe
   return Math.min(def.max, Math.max(def.min, ceil2(value)))
 }
 
-function calculateMultipliers(slot: PlanningSlot, optionValues: Record<string, number>): ResourceMultipliers {
-  const defs = PLANNING_OPTION_DEFS[slot]
-  const weighted = defs.reduce(
-    (sum, def) => {
-    const value = optionValues[def.key] ?? def.baseline
-      const delta = (value - def.baseline) / def.baseline
-      return {
-        cpu: sum.cpu + delta * def.weight * def.impact.cpu,
-        memory: sum.memory + delta * def.weight * def.impact.memory,
-        storage: sum.storage + delta * def.weight * def.impact.storage,
-      }
-    },
-    { cpu: 0, memory: 0, storage: 0 }
-  )
+function calculateMultipliers(profile: PlanningProfile, slot: PlanningSlot, optionValues: Record<string, number>): ResourceMultipliers {
+	const defs = PLANNING_OPTION_DEFS[slot]
+	const profileDamping: Record<PlanningProfile, number> = {
+		startup: 0.35,
+		standard: 0.7,
+		enterprise: 0.9,
+	}
+	const damping = profileDamping[profile]
+	const weighted = defs.reduce(
+		(sum, def) => {
+		const value = optionValues[def.key] ?? def.baseline
+			const delta = (value - def.baseline) / def.baseline
+			return {
+				cpu: sum.cpu + delta * def.weight * def.impact.cpu * damping,
+				memory: sum.memory + delta * def.weight * def.impact.memory * damping,
+				storage: sum.storage + delta * def.weight * def.impact.storage * damping,
+			}
+		},
+		{ cpu: 0, memory: 0, storage: 0 }
+	)
 
-  const clampMax =
-    slot === 'pipeline.cicdPlatform'
-      ? { cpu: 6, memory: 6, storage: 4 }
-      : { cpu: 3, memory: 3, storage: 3 }
+	const profileClampMax: Record<PlanningProfile, { cicd: { cpu: number; memory: number; storage: number }; default: { cpu: number; memory: number; storage: number } }> = {
+		startup: {
+			cicd: { cpu: 1.9, memory: 1.9, storage: 1.6 },
+			default: { cpu: 1.6, memory: 1.6, storage: 1.6 },
+		},
+		standard: {
+			cicd: { cpu: 3.2, memory: 3.2, storage: 2.4 },
+			default: { cpu: 2.4, memory: 2.4, storage: 2.2 },
+		},
+		enterprise: {
+			cicd: { cpu: 4.5, memory: 4.5, storage: 3.2 },
+			default: { cpu: 3.2, memory: 3.2, storage: 2.8 },
+		},
+	}
+
+	const clampMax = slot === 'pipeline.cicdPlatform'
+		? profileClampMax[profile].cicd
+		: profileClampMax[profile].default
 
   const clamp = (value: number, max: number) => Math.min(max, Math.max(0.5, value))
   let rawCpu = 1 + weighted.cpu
   let rawMemory = 1 + weighted.memory
   const rawStorage = 1 + weighted.storage
 
-  if (slot === 'pipeline.cicdPlatform') {
-    const runnerDef = defs.find((def) => def.key === 'concurrentRunners')
-    if (runnerDef) {
-      const runners = optionValues.concurrentRunners ?? runnerDef.baseline
-      const ratio = Math.max(0.25, runners / runnerDef.baseline)
-      const runnerCpuBoost = Math.pow(ratio, 0.6)
-      const runnerMemoryBoost = Math.pow(ratio, 0.55)
+	if (slot === 'pipeline.cicdPlatform') {
+		const runnerDef = defs.find((def) => def.key === 'concurrentRunners')
+		if (runnerDef) {
+			const runners = optionValues.concurrentRunners ?? runnerDef.baseline
+			const ratio = Math.max(0.25, runners / runnerDef.baseline)
+			const cpuExpByProfile: Record<PlanningProfile, number> = {
+				startup: 0.2,
+				standard: 0.35,
+				enterprise: 0.45,
+			}
+			const memExpByProfile: Record<PlanningProfile, number> = {
+				startup: 0.18,
+				standard: 0.3,
+				enterprise: 0.4,
+			}
+			const cpuBoostCapByProfile: Record<PlanningProfile, number> = {
+				startup: 1.15,
+				standard: 1.45,
+				enterprise: 1.75,
+			}
+			const memBoostCapByProfile: Record<PlanningProfile, number> = {
+				startup: 1.12,
+				standard: 1.4,
+				enterprise: 1.65,
+			}
 
-      rawCpu *= runnerCpuBoost
-      rawMemory *= runnerMemoryBoost
-    }
-  }
+			const runnerCpuBoost = Math.min(cpuBoostCapByProfile[profile], Math.pow(ratio, cpuExpByProfile[profile]))
+			const runnerMemoryBoost = Math.min(memBoostCapByProfile[profile], Math.pow(ratio, memExpByProfile[profile]))
+
+			rawCpu *= runnerCpuBoost
+			rawMemory *= runnerMemoryBoost
+		}
+	}
 
   return {
     cpu: clamp(rawCpu, clampMax.cpu),
@@ -608,7 +649,7 @@ function applyMultipliers(base: {
 }
 
 function buildFormulaTooltip(toolLabelValue: string, defs: PlanningOptionDefinition[]): string {
-  const clampText = '최종 배수는 최소 0.5배이며, 상한은 슬롯별로 적용됩니다(CI/CD CPU/MEM 최대 6배).' 
+	const clampText = '최종 배수는 최소 0.5배이며, 상한은 프로파일/슬롯별로 보수적으로 적용됩니다.' 
   const lines = [
     `${toolLabelValue} 리소스 산정 가이드`,
     '',
@@ -644,9 +685,9 @@ function buildFormulaTooltip(toolLabelValue: string, defs: PlanningOptionDefinit
   if (defs.some((def) => def.key === 'concurrentRunners')) {
     lines.push('')
     lines.push('추가 규칙(CI/CD): 동시 러너 수는 CPU/MEM에 배수 계수로 추가 반영됩니다.')
-    lines.push('CPU 추가 배수 = (동시러너 / 기준러너)^0.6')
-    lines.push('MEM 추가 배수 = (동시러너 / 기준러너)^0.55')
-  }
+	lines.push('CPU 추가 배수 = min(cap, (동시러너 / 기준러너)^exp)')
+	lines.push('MEM 추가 배수 = min(cap, (동시러너 / 기준러너)^exp)')
+	}
 
   return lines.join('\n')
 }
@@ -979,6 +1020,182 @@ function buildToolManifest(
 
   return [YAML.stringify(deployment, { indent: 2, lineWidth: 0 }), YAML.stringify(service, { indent: 2, lineWidth: 0 })]
     .join('\n---\n')
+}
+
+function cpuQuantityFromCores(cores: number): string {
+  if (!Number.isFinite(cores) || cores <= 0) return '0'
+  const milli = Math.round(cores * 1000)
+  if (milli <= 0) return '0'
+  if (milli % 1000 === 0) {
+    return `${milli / 1000}`
+  }
+  return `${milli}m`
+}
+
+function giQuantity(gi: number): string {
+  if (!Number.isFinite(gi) || gi <= 0) return '0Gi'
+  if (Math.abs(gi - Math.round(gi)) < 1e-9) {
+    return `${Math.round(gi)}Gi`
+  }
+  return `${gi.toFixed(2)}Gi`
+}
+
+function toK8sResources(resources: ResourceVector): Record<string, unknown> {
+  return {
+    requests: {
+      cpu: cpuQuantityFromCores(resources.cpuRequest),
+      memory: giQuantity(resources.memoryRequestGi),
+    },
+    limits: {
+      cpu: cpuQuantityFromCores(resources.cpuLimit),
+      memory: giQuantity(resources.memoryLimitGi),
+    },
+  }
+}
+
+function scaleResourceVector(resources: ResourceVector, ratio: number): ResourceVector {
+  const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1
+  return {
+    cpuRequest: round2(Math.max(0.05, resources.cpuRequest * safeRatio)),
+    cpuLimit: round2(Math.max(0.1, resources.cpuLimit * safeRatio)),
+    memoryRequestGi: round2(Math.max(0.08, resources.memoryRequestGi * safeRatio)),
+    memoryLimitGi: round2(Math.max(0.16, resources.memoryLimitGi * safeRatio)),
+    storageRequestGi: round2(Math.max(0, resources.storageRequestGi * safeRatio)),
+    storageLimitGi: round2(Math.max(0, resources.storageLimitGi * safeRatio)),
+  }
+}
+
+function buildHelmStepResourceOverride(toolId: string, resources: ResourceVector): { key: string; values: Record<string, unknown> } | null {
+  const k8sResources = toK8sResources(resources)
+  switch (getManifestBundleId(toolId)) {
+    case 'cert-manager':
+      return { key: 'installing_cert_manager', values: { resources: k8sResources } }
+    case 'minio':
+      return { key: 'installing_minio', values: { resources: k8sResources } }
+    case 'gitlab':
+      const gitlabWebVector = scaleResourceVector(resources, 0.22)
+      gitlabWebVector.cpuRequest = Math.max(gitlabWebVector.cpuRequest, 0.4)
+      gitlabWebVector.cpuLimit = Math.max(gitlabWebVector.cpuLimit, 0.8)
+      gitlabWebVector.memoryRequestGi = Math.max(gitlabWebVector.memoryRequestGi, 1)
+      gitlabWebVector.memoryLimitGi = Math.max(gitlabWebVector.memoryLimitGi, 2)
+      const gitlabWeb = toK8sResources(gitlabWebVector)
+
+      const gitlabSidekiqVector = scaleResourceVector(resources, 0.18)
+      gitlabSidekiqVector.cpuRequest = Math.max(gitlabSidekiqVector.cpuRequest, 0.35)
+      gitlabSidekiqVector.cpuLimit = Math.max(gitlabSidekiqVector.cpuLimit, 0.7)
+      gitlabSidekiqVector.memoryRequestGi = Math.max(gitlabSidekiqVector.memoryRequestGi, 1)
+      gitlabSidekiqVector.memoryLimitGi = Math.max(gitlabSidekiqVector.memoryLimitGi, 2)
+      const gitlabSidekiq = toK8sResources(gitlabSidekiqVector)
+      const gitlabToolboxVector = scaleResourceVector(resources, 0.08)
+      gitlabToolboxVector.cpuRequest = Math.max(gitlabToolboxVector.cpuRequest, 0.25)
+      gitlabToolboxVector.cpuLimit = Math.max(gitlabToolboxVector.cpuLimit, 0.5)
+      gitlabToolboxVector.memoryRequestGi = Math.max(gitlabToolboxVector.memoryRequestGi, 1)
+      gitlabToolboxVector.memoryLimitGi = Math.max(gitlabToolboxVector.memoryLimitGi, 2)
+      const gitlabToolbox = toK8sResources(gitlabToolboxVector)
+      const gitlabGitaly = toK8sResources(scaleResourceVector(resources, 0.2))
+      const gitlabKas = toK8sResources(scaleResourceVector(resources, 0.12))
+      const gitlabExporter = toK8sResources(scaleResourceVector(resources, 0.05))
+      const gitlabRegistry = toK8sResources(scaleResourceVector(resources, 0.12))
+      const gitlabRedis = toK8sResources(scaleResourceVector(resources, 0.12))
+      const gitlabProm = toK8sResources(scaleResourceVector(resources, 0.08))
+      return {
+        key: 'installing_gitlab',
+        values: {
+          gitlab: {
+            webservice: { resources: gitlabWeb },
+            sidekiq: { resources: gitlabSidekiq },
+            toolbox: { resources: gitlabToolbox },
+            gitaly: { resources: gitlabGitaly },
+            kas: { resources: gitlabKas },
+            'gitlab-exporter': { resources: gitlabExporter },
+          },
+          registry: { resources: gitlabRegistry },
+          redis: { master: { resources: gitlabRedis } },
+          prometheus: { server: { resources: gitlabProm } },
+        },
+      }
+    case 'argocd':
+      const argoController = toK8sResources(scaleResourceVector(resources, 0.24))
+      const argoRepo = toK8sResources(scaleResourceVector(resources, 0.2))
+      const argoServer = toK8sResources(scaleResourceVector(resources, 0.2))
+      const argoRedis = toK8sResources(scaleResourceVector(resources, 0.12))
+      const argoDex = toK8sResources(scaleResourceVector(resources, 0.1))
+      const argoAppSet = toK8sResources(scaleResourceVector(resources, 0.07))
+      const argoNotifications = toK8sResources(scaleResourceVector(resources, 0.07))
+      return {
+        key: 'installing_argocd',
+        values: {
+          controller: { resources: argoController },
+          repoServer: { resources: argoRepo },
+          server: { resources: argoServer },
+          redis: { resources: argoRedis },
+          dex: { resources: argoDex },
+          applicationSet: { resources: argoAppSet },
+          notifications: { resources: argoNotifications },
+        },
+      }
+    case 'gitlab-runner':
+      return { key: 'installing_runner', values: { resources: k8sResources } }
+    case 'prometheus':
+      return {
+        key: 'installing_prometheus',
+        values: {
+          prometheus: { prometheusSpec: { resources: k8sResources } },
+          alertmanager: { alertmanagerSpec: { resources: k8sResources } },
+          'kube-state-metrics': { resources: k8sResources },
+          prometheusOperator: { resources: k8sResources },
+          'prometheus-node-exporter': { resources: k8sResources },
+        },
+      }
+    case 'grafana':
+      return { key: 'installing_grafana', values: { resources: k8sResources } }
+    case 'loki':
+      return {
+        key: 'installing_logging',
+        values: {
+          resources: k8sResources,
+          loki: { resources: k8sResources },
+          singleBinary: { resources: k8sResources },
+          read: { resources: k8sResources },
+          write: { resources: k8sResources },
+          backend: { resources: k8sResources },
+          promtail: { resources: k8sResources },
+        },
+      }
+    case 'opensearch':
+    case 'elasticsearch':
+      return {
+        key: 'installing_log_search',
+        values: {
+          resources: k8sResources,
+          master: { resources: k8sResources },
+        },
+      }
+    case 'tempo':
+      return {
+        key: 'installing_opentelemetry',
+        values: {
+          resources: k8sResources,
+          tempo: { resources: k8sResources },
+          tempoQuery: { resources: k8sResources },
+        },
+      }
+    case 'jaeger':
+      return {
+        key: 'installing_opentelemetry',
+        values: {
+          resources: k8sResources,
+          allInOne: { resources: k8sResources },
+          agent: { resources: k8sResources },
+          collector: { resources: k8sResources },
+          query: { resources: k8sResources },
+        },
+      }
+    case 'opentelemetry':
+      return { key: 'installing_opentelemetry', values: { resources: k8sResources } }
+    default:
+      return null
+  }
 }
 
 function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestToolEntry[]): string {
@@ -1703,7 +1920,7 @@ export function StackInstallPage() {
       }
     }
 
-    const multipliers = calculateMultipliers(item.slot, optionValues)
+		const multipliers = calculateMultipliers(planningProfile, item.slot, optionValues)
     const recommended = applyMultipliers(baseDefault, multipliers)
     const applied = appliedResourceOverrides[rowKey] ?? recommended
     const units = planningRowUnits[rowKey] ?? { memory: 'Gi', storage: 'Gi' }
@@ -1870,6 +2087,21 @@ export function StackInstallPage() {
     acc[tool.toolId] = candidate
     return acc
   }, {})
+
+  manifestTools.forEach((tool) => {
+    if (tool.installType !== 'helm') {
+      return
+    }
+    const resources = resourceByTool.get(tool.toolId)
+    if (!resources) {
+      return
+    }
+    const override = buildHelmStepResourceOverride(tool.toolId, resources)
+    if (!override) {
+      return
+    }
+    yamlOverridesPayload[override.key] = YAML.stringify(override.values, { indent: 2, lineWidth: 0 })
+  })
 
   Object.entries(manifestOverridesByTool).forEach(([toolId, yamlText]) => {
     const trimmed = yamlText.trim()
@@ -3638,7 +3870,7 @@ export function StackInstallPage() {
                                 {row.multipliers.clamped.memory ? ' Memory' : ''}
                                 {row.multipliers.clamped.storage ? ' Storage' : ''}
                                 {' '} 
-                                (0.5x~3.0x 범위). 현재 입력에서는 추가 증가/감소가 추천값에 제한적으로 반영될 수 있습니다.
+                                (최소 0.5x, 프로파일/슬롯별 상한 적용). 현재 입력에서는 추가 증가/감소가 추천값에 제한적으로 반영될 수 있습니다.
                               </div>
                             )}
 

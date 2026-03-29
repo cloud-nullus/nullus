@@ -1,9 +1,22 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { screen, fireEvent, act } from '@testing-library/react'
+import { screen, fireEvent, act, within } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { StackInstallPage } from './stack-install-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import YAML from 'yaml'
+
+const mockResourceDefaults = {
+  items: [] as Array<{
+    tool_key: string
+    cpu_request: number
+    cpu_limit: number
+    memory_request_gi: number
+    memory_limit_gi: number
+    storage_request_gi: number
+    storage_limit_gi: number
+  }>,
+  total: 0,
+}
 
 // Mock API hooks
 vi.mock('../api/stack-api', () => ({
@@ -11,7 +24,7 @@ vi.mock('../api/stack-api', () => ({
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
   useClusters: () => ({ data: [{ id: 'cluster-1', name: 'test-cluster', connection_status: 'connected' }] }),
-  useResourceDefaults: () => ({ data: { items: [], total: 0 } }),
+  useResourceDefaults: () => ({ data: mockResourceDefaults }),
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
@@ -43,6 +56,8 @@ vi.mock('monaco-yaml', () => ({
 beforeEach(() => {
   useStackConfigStore.getState().resetConfig()
   mockNavigate.mockClear()
+  mockResourceDefaults.items = []
+  mockResourceDefaults.total = 0
   Object.assign(navigator, {
     clipboard: {
       writeText: vi.fn().mockResolvedValue(undefined),
@@ -145,7 +160,9 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Grafana/i }))
-    expect((screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement).value).toContain('apiVersion: apps/v1')
+    const grafanaEditor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
+    expect(grafanaEditor.value).toContain('chart:')
+    expect(grafanaEditor.value).toContain('name: grafana/grafana')
   })
 
   it('shows gateway button and auto-generated Gateway API yaml', () => {
@@ -183,12 +200,12 @@ describe('StackInstallPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Grafana/i }))
     const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
-    expect(editor.value).toContain('containerPort: 3000')
-    expect(editor.value).toContain('targetPort: 3000')
+    expect(editor.value).toContain('name: grafana/grafana')
+    expect(editor.value).toContain('repoUrl: https://grafana.github.io/helm-charts')
 
     fireEvent.click(screen.getByRole('button', { name: /Prometheus/i }))
-    expect(editor.value).toContain('containerPort: 9090')
-    expect(editor.value).toContain('targetPort: 9090')
+    expect(editor.value).toContain('name: prometheus-community/kube-prometheus-stack')
+    expect(editor.value).toContain('repoUrl: https://prometheus-community.github.io/helm-charts')
   })
 
   it('renders a runnable tempo manifest with config and service ports', () => {
@@ -198,12 +215,9 @@ describe('StackInstallPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Tempo/i }))
 
     const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
-    expect(editor.value).toContain('kind: ConfigMap')
-    expect(editor.value).toContain('name: tempo-config')
-    expect(editor.value).toContain('-config.file=/etc/tempo/tempo.yaml')
-    expect(editor.value).toContain('backend: local')
-    expect(editor.value).toContain('name: tempo-svc')
-    expect(editor.value).toContain('port: 3200')
+    expect(editor.value).toContain('chart:')
+    expect(editor.value).toContain('name: grafana/tempo')
+    expect(editor.value).toContain('repoUrl: https://grafana.github.io/helm-charts')
   })
 
   it('bundles gitlab-related selections into one install file with merged roles', () => {
@@ -310,8 +324,8 @@ describe('StackInstallPage', () => {
     expect(screen.getAllByText(/\.nullus\/generated-values\/gitlab\.values\.yaml/).length).toBeGreaterThan(0)
     expect(screen.getByText(/helm upgrade --install gitlab/)).toBeInTheDocument()
     expect(screen.getByText(/--version 9.5.1/)).toBeInTheDocument()
-    expect(screen.getAllByText(/cat <<'NULLUS_MANIFEST_EOF_/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/kubectl apply -n qa-namespace -f ".nullus\/generated-manifests\/grafana\.yaml"/)).toBeInTheDocument()
+    expect(screen.getByText(/helm upgrade --install grafana/)).toBeInTheDocument()
+    expect(screen.getAllByText(/\.nullus\/generated-values\/grafana\.values\.yaml/).length).toBeGreaterThan(0)
   })
 
   it('shows Dry Run checklist and updates last run timestamp', () => {
@@ -353,5 +367,46 @@ describe('StackInstallPage', () => {
   it('renders Configuration Summary sidebar', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getByText('Configuration Summary')).toBeTruthy()
+  })
+
+  it('applies lower startup sizing than enterprise for the same defaults', () => {
+    mockResourceDefaults.items = [
+      {
+        tool_key: 'gitlab',
+        cpu_request: 1,
+        cpu_limit: 2,
+        memory_request_gi: 2,
+        memory_limit_gi: 4,
+        storage_request_gi: 10,
+        storage_limit_gi: 20,
+      },
+    ]
+    mockResourceDefaults.total = 1
+
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
+
+    const cpuTotalLabel = screen.getByText('적용값 총 CPU (Req | Limit)')
+    const cpuTotalValueElement = cpuTotalLabel.parentElement?.querySelector('div.font-semibold')
+    expect(cpuTotalValueElement).toBeTruthy()
+
+    const parseCpuReq = () => {
+      const valueText = cpuTotalValueElement?.textContent ?? ''
+      const [reqText] = valueText.split('|')
+      return Number(reqText.trim())
+    }
+
+    const profileContainer = screen.getByText('Sizing Profile').parentElement
+    expect(profileContainer).toBeTruthy()
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
+
+    fireEvent.change(profileSelect, { target: { value: 'startup' } })
+    const startupCpuReq = parseCpuReq()
+
+    fireEvent.change(profileSelect, { target: { value: 'enterprise' } })
+    const enterpriseCpuReq = parseCpuReq()
+
+    expect(startupCpuReq).toBeGreaterThan(0)
+    expect(enterpriseCpuReq).toBeGreaterThan(startupCpuReq)
   })
 })

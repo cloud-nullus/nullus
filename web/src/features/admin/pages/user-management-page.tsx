@@ -183,7 +183,7 @@ export function UserManagementPage() {
     ? inviteLinksData!.items
     : MOCK_INVITES
 
-  const [activeMainTab, setActiveMainTab] = useState<'roles' | 'users'>('roles')
+  const [activeMainTab, setActiveMainTab] = useState<'roles' | 'users'>('users')
   const [activeRoleTab, setActiveRoleTab] = useState<ActiveRoleTab>('all')
   const [inviteModal, setInviteModal] = useState(false)
   const [inviteLinkModal, setInviteLinkModal] = useState(false)
@@ -405,7 +405,7 @@ export function UserManagementPage() {
       {/* Main tabs */}
       <div className="mb-6 flex items-center justify-between border-b border-[var(--color-border-default)]">
         <div className="flex">
-          {(['roles', 'users'] as const).map((tab) => {
+          {(['users', 'roles'] as const).map((tab) => {
             const active = activeMainTab === tab
             return (
               <button

@@ -2,6 +2,22 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 
 const apiBase = 'http://localhost:8090/api/v1'
 
+async function getConnectedPipelineClusterId(request: APIRequestContext): Promise<string> {
+  const res = await request.get(`${apiBase}/admin/clusters`)
+  expect(res.ok()).toBeTruthy()
+
+  const body = (await res.json()) as {
+    items?: Array<{ id: string; type?: string; connection_status?: string }>
+  }
+
+  const cluster = (body.items ?? []).find(
+    (item) => item.type === 'pipeline' && item.connection_status === 'connected',
+  )
+
+  expect(cluster).toBeTruthy()
+  return cluster!.id
+}
+
 async function pollStackState(request: APIRequestContext, stackId: string, timeoutMs = 180000): Promise<string> {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {
@@ -84,6 +100,7 @@ test.describe('Stack Workflow E2E', () => {
 
     const clustersRes = await request.get(`${apiBase}/clusters`)
     const clustersBody = (await clustersRes.json()) as { items?: Array<{ id: string }> }
+    //const clusterId = await getConnectedPipelineClusterId(request)
     const clusterId = clustersBody.items?.[0]?.id
     if (!clusterId) {
       test.skip(true, 'No clusters available — seed data required')
@@ -140,7 +157,7 @@ test.describe('Stack Workflow E2E', () => {
 
     await page.goto('/stack/list')
     await expect(page.locator('h1')).toContainText('Stack List', { timeout: 10000 })
-    await expect(page.getByText(stackName)).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(stackName).first()).toBeVisible({ timeout: 15000 })
 
     await page.goto(`/stack/logs/${stackId}`)
     await expect(page).toHaveURL(new RegExp(`/stack/logs/${stackId}`), { timeout: 10000 })

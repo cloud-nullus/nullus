@@ -67,7 +67,7 @@ export function StackOssResourceDefaultPage() {
           })
         },
         onError: (e) => {
-          const message = e instanceof Error ? e.message : 'OSS Resource Default 저장 중 오류가 발생했습니다.'
+          const message = e instanceof Error ? e.message : 'OSS Default Resource 저장 중 오류가 발생했습니다.'
           setError(message)
         },
       }
@@ -86,7 +86,7 @@ export function StackOssResourceDefaultPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'OSS Resource Default' }]} />
+      <Breadcrumb items={[{ label: 'OSS Default Resource' }]} />
 
       <div className="mb-7 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
@@ -94,7 +94,7 @@ export function StackOssResourceDefaultPage() {
             <Database size={18} />
           </div>
           <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OSS Resource Default</h1>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OSS Default Resource</h1>
             <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
               DevSecOps Stack OSS별 리소스 request/limit 기본값을 조회/수정/등록합니다.
             </p>
@@ -114,7 +114,7 @@ export function StackOssResourceDefaultPage() {
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="border-b border-[var(--color-border-default)] px-5 py-3 text-sm font-bold text-[var(--color-text-primary)]">
-          OSS Resource Request/Limit Defaults
+          OSS Default Resource Request/Limit Defaults
         </div>
 
         <table className="w-full border-collapse">
@@ -143,7 +143,7 @@ export function StackOssResourceDefaultPage() {
             {isLoading && (
               <tr>
                 <td colSpan={7} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
-                  Loading OSS resource defaults...
+                  Loading OSS default resources...
                 </td>
               </tr>
             )}
@@ -151,7 +151,7 @@ export function StackOssResourceDefaultPage() {
             {!isLoading && !hasData && (
               <tr>
                 <td colSpan={7} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
-                  등록된 OSS Resource Default가 없습니다.
+                  등록된 OSS Default Resource가 없습니다.
                 </td>
               </tr>
             )}

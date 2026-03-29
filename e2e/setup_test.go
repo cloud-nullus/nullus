@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	adminuc "github.com/cloud-nullus/draft/internal/admin/usecase"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
@@ -25,6 +27,22 @@ import (
 )
 
 var testServerURL string
+
+type noopKubeconfigProvider struct{}
+
+func (n *noopKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]byte, error) {
+	return []byte("fake-kubeconfig"), nil
+}
+
+type noopManifestApplier struct{}
+
+func (n *noopManifestApplier) Apply(_ context.Context, _ []byte, _ []string) error {
+	return nil
+}
+
+func (n *noopManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, _ []string, _ string) error {
+	return nil
+}
 
 func TestMain(m *testing.M) {
 	e := newEchoServer()
@@ -82,9 +100,9 @@ func newEchoServer() *echo.Echo {
 	deploymentRepo := cicdrepo.NewMemoryDeploymentRepository()
 	createPipelineUC := cicduc.NewCreatePipeline(pipelineRepo, cicdTemplateRepo)
 	listPipelinesUC := cicduc.NewListPipelines(pipelineRepo)
-	deployPipelineUC := cicduc.NewDeployPipeline(pipelineRepo, deploymentRepo)
+	deployPipelineUC := cicduc.NewDeployPipeline(pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, &noopManifestApplier{})
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(cicdTemplateRepo)
-	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo)
+	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, cicdkube.NewStepTracker())
 
 	// Observability
 	dashboardRepo := obsrepo.NewMemoryDashboardRepository()
@@ -92,9 +110,12 @@ func newEchoServer() *echo.Echo {
 	alertRepo := obsrepo.NewMemoryAlertRepository()
 	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
 	createAlertRuleUC := obsuc.NewCreateAlertRule(alertRuleRepo)
+	listAlertRulesUC := obsuc.NewListAlertRules(alertRuleRepo)
+	updateAlertRuleUC := obsuc.NewUpdateAlertRule(alertRuleRepo)
+	deleteAlertRuleUC := obsuc.NewDeleteAlertRule(alertRuleRepo)
 	listAlertsUC := obsuc.NewListAlerts(alertRepo)
 	dashboardHandler := obshandler.NewDashboardHandler(getDashboardUC)
-	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, alertRuleRepo)
+	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
 
 	// Echo setup
 	e := echo.New()

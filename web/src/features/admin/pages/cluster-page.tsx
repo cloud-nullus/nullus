@@ -188,10 +188,12 @@ export function ClusterPage() {
   })
 
   const handleRegister = (form: ClusterFormData) => {
+    const endpoint = form.endpoint?.trim() ?? ''
+
     if (editingClusterId) {
       const updatePayload = form.kubeconfig.trim()
-        ? { name: form.name, type: form.type, kubeconfig: form.kubeconfig }
-        : { name: form.name, type: form.type }
+        ? { name: form.name, type: form.type, endpoint, kubeconfig: form.kubeconfig }
+        : { name: form.name, type: form.type, endpoint }
 
       updateCluster.mutate(
         { id: editingClusterId, data: updatePayload },
@@ -206,7 +208,7 @@ export function ClusterPage() {
       return
     }
 
-    createCluster.mutate({ name: form.name, type: form.type, kubeconfig: form.kubeconfig }, {
+    createCluster.mutate({ name: form.name, type: form.type, endpoint, kubeconfig: form.kubeconfig }, {
       onSuccess: () => {
         setRegisterModal(false)
         reset(CLUSTER_DEFAULTS)

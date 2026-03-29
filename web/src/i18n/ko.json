@@ -6,7 +6,7 @@
     "stackList": "스택 목록",
     "stackHistory": "스택 이력",
     "stackVersion": "스택 버전",
-    "stackOssResourceDefault": "OSS Resource Default",
+    "stackOssResourceDefault": "OSS Default Resource",
     "cicd": "CI/CD",
     "cicdTemplate": "CI/CD 템플릿",
     "cicdList": "CI/CD 목록",
