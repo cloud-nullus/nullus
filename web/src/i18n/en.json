@@ -33,6 +33,463 @@
     "notFound": "Page not found",
     "notFoundDesc": "The page you are looking for does not exist or has been moved."
   },
+  "header": {
+    "roles": {
+      "admin": "Admin",
+      "devops": "DevOps",
+      "developer": "Developer"
+    },
+    "theme": {
+      "switchToLight": "Switch to light mode",
+      "switchToDark": "Switch to dark mode"
+    }
+  },
+  "knownIssuesPage": {
+    "breadcrumb": {
+      "current": "Known Issues"
+    },
+    "title": "Known Issues",
+    "description": "Check current version limitations and available workarounds.",
+    "table": {
+      "id": "ID",
+      "severity": "Severity",
+      "title": "Title",
+      "status": "Status",
+      "workaround": "Workaround"
+    }
+  },
+  "stackInstall": {
+    "actions": {
+      "saveDraft": "Save Draft",
+      "deploy": "Deploy",
+      "previewK8sObjects": "Preview K8s Objects"
+    },
+    "breadcrumb": {
+      "stackList": "Stack List",
+      "newStack": "New Stack",
+      "current": "Stack Install"
+    },
+    "page": {
+      "title": "Stack Install",
+      "description": "Configure your DevSecOps stack with a 5-step workflow."
+    },
+    "form": {
+      "stackName": "Stack Name",
+      "accessDomain": "Access domain",
+      "accessDomainTls": "Enable Access Domain TLS (cert-manager)",
+      "tlsSecretName": "TLS Secret Name",
+      "tlsSecretNamespace": "TLS Secret Namespace",
+      "certManagerIssuerName": "cert-manager Issuer Name",
+      "targetCluster": "Target Cluster",
+      "namespace": "Namespace",
+      "selectClusterPlaceholder": "Select a cluster",
+      "clusterRequired": "Required for deployment",
+      "finalAccessGuidePrefix": "Final access guide: each OSS is available at",
+      "finalAccessGuideSuffix": "."
+    },
+    "common": {
+      "unselected": "Not selected",
+      "notInstalled": "This item will not be installed."
+    },
+    "storagePlan": {
+      "mode": {
+        "none": {
+          "label": "Not selected",
+          "description": "Connection mode for DB and Object Storage is not decided yet."
+        },
+        "existingAll": {
+          "label": "Connect existing DB/Storage",
+          "description": "Reference DB and Object Storage that are already managed by your organization."
+        },
+        "integratedCreate": {
+          "label": "Create and connect integrated DB/Storage",
+          "description": "Create DB and Object Storage during installation and wire them automatically."
+        }
+      },
+      "badge": {
+        "existing": "Existing",
+        "create": "New"
+      }
+    },
+    "labels": {
+      "packageRegistry": "Package Registry",
+      "sourceRepository": "Source Repository",
+      "containerRegistry": "Container Registry",
+      "storageBackend": "Storage Backend",
+      "cicdPlatform": "CI/CD Platform",
+      "cdTool": "CD Tool",
+      "visualization": "Visualization",
+      "metrics": "Metrics",
+      "logs": "Logs",
+      "traces": "Traces"
+    },
+    "resourceTotal": {
+      "description": "Combined request/limit totals for {{count}} selected OSS"
+    },
+    "errors": {
+      "duplicateStackName": "A stack with this name already exists in the selected cluster"
+    }
+  },
+  "stackTemplatePage": {
+    "breadcrumb": {
+      "stackList": "Stack List",
+      "current": "Stack Template"
+    },
+    "title": "Stack Template",
+    "description": "Select a validated DevSecOps stack template to get started quickly.",
+    "searchPlaceholder": "Search templates...",
+    "empty": "No search results found.",
+    "actions": {
+      "createTemplate": "Create Template",
+      "edit": "Edit",
+      "delete": "Delete",
+      "useBaseTemplate": "Use Base Template",
+      "close": "Close",
+      "baseTemplate": "Base Template",
+      "create": "Create",
+      "removeSection": "Remove {{section}} section",
+      "add": "Add",
+      "addTool": "Add Tool",
+      "addSection": "Add Section"
+    },
+    "card": {
+      "estimatedMinutes": "{{minutes}} min"
+    },
+    "modal": {
+      "templateDetail": "Template Detail",
+      "description": "Description",
+      "includedTools": "Included Tools",
+      "estimatedDeployTime": "Estimated Deploy Time",
+      "minutes": "{{minutes}} minutes",
+      "resourceRequirements": "Resource Requirements",
+      "compatibility": "Compatibility",
+      "compatibilityFallback": "Compatibility details are managed in Stack Version.",
+      "editTitle": "Edit Template",
+      "createTitle": "Create Template",
+      "na": "N/A"
+    },
+    "form": {
+      "templateId": "Template ID",
+      "name": "Name",
+      "description": "Description",
+      "tools": "Tools",
+      "noToolsInSection": "No tools added in this section.",
+      "customCategory": "Custom Category",
+      "helmVersionPlaceholder": "Helm version",
+      "appVersionPlaceholder": "App version",
+      "sectionNamePlaceholder": "Section name (e.g. Security)",
+      "firstCategoryPlaceholder": "First category (e.g. Scanner)",
+      "toolOptionsPlaceholder": "Tool options (comma separated, e.g. Trivy, SonarQube)",
+      "estimatedInstallTimeAuto": "Estimated Install Time (Auto)",
+      "estimatedInstallTimeValue": "{{minutes}} min ({{nanoseconds}} ns)",
+      "recommendedUseCase": "Recommended Use Case",
+      "minimumResources": "Minimum Resources"
+    },
+    "errors": {
+      "updateFailed": "Failed to update template.",
+      "createFailed": "Failed to create template."
+    },
+    "confirm": {
+      "deleteTitle": "Delete Template",
+      "deleteDescription": "This template will no longer be shown in the list. Continue?",
+      "deleteConfirmLabel": "Delete Template"
+    }
+  },
+  "cicdTemplatePage": {
+    "breadcrumb": {
+      "list": "CI/CD List",
+      "current": "CI/CD Template"
+    },
+    "title": "CI/CD Template",
+    "description": "Choose a pipeline template to get started quickly.",
+    "searchPlaceholder": "Search templates...",
+    "empty": "No search results found.",
+    "actions": {
+      "createTemplate": "Create Template",
+      "edit": "Edit",
+      "delete": "Delete",
+      "useBaseTemplate": "Use Base Template",
+      "create": "Create"
+    },
+    "modal": {
+      "editTitle": "Edit Template",
+      "createTitle": "Create Template"
+    },
+    "form": {
+      "templateId": "Template ID",
+      "templateIdPlaceholder": "e.g. web-backend-standard",
+      "name": "Name",
+      "namePlaceholder": "e.g. Standard Web Backend",
+      "description": "Description",
+      "stages": "Stages"
+    },
+    "errors": {
+      "nameRequired": "Name is required.",
+      "stageRequired": "At least one stage is required.",
+      "updateFailed": "Failed to update template.",
+      "createFailed": "Failed to create template."
+    },
+    "confirm": {
+      "deleteTitle": "Delete Template",
+      "deleteDescription": "This template will no longer be shown in the list. Continue?",
+      "deleteConfirmLabel": "Delete Template"
+    }
+  },
+  "cicdPipelineSetupPage": {
+    "breadcrumb": {
+      "list": "CI/CD List",
+      "template": "CI/CD Template",
+      "current": "Pipeline Setup"
+    },
+    "title": "CI/CD Pipeline Setup",
+    "description": "Configure your CI/CD pipeline and create it after completing each step.",
+    "actions": {
+      "changeTemplate": "Change Template",
+      "createPipeline": "Create Pipeline"
+    },
+    "form": {
+      "pipelineName": "Pipeline Name",
+      "pipelineNamePlaceholder": "e.g. web-frontend-prod",
+      "selectedTemplate": "Selected Template",
+      "deployCluster": "Deploy Cluster"
+    },
+    "build": {
+      "description": "Select the Dockerfile to use in the build stage."
+    },
+    "deploy": {
+      "selectTemplateYaml": "Select Template YAML",
+      "writeCustomYaml": "Write Custom YAML"
+    },
+    "yamlPreview": {
+      "description": "Preview of the pipeline YAML generated from your current selections."
+    },
+    "summary": {
+      "title": "Setup Summary",
+      "template": "Template",
+      "pipeline": "Pipeline",
+      "appType": "App Type",
+      "cluster": "Cluster",
+      "dockerfile": "Dockerfile",
+      "deployMode": "Deploy Mode",
+      "templateYaml": "Template YAML",
+      "customYaml": "Custom YAML",
+      "deployYaml": "Deploy YAML"
+    },
+    "errors": {
+      "pipelineNameRequired": "Pipeline name is required.",
+      "clusterRequired": "Cluster selection is required."
+    }
+  },
+  "stackAddTools": {
+    "breadcrumb": {
+      "stackList": "Stack List",
+      "current": "Add Tools"
+    },
+    "title": "Add Tools",
+    "description": "Safely add required tools to an existing stack.",
+    "steps": {
+      "0": "1. Category Selection",
+      "1": "2. Tool Configuration",
+      "2": "3. Review & Deploy"
+    },
+    "loading": "Loading stack information...",
+    "notFound": "Target stack not found.",
+    "badge": {
+      "installed": "Installed",
+      "selected": "Selected"
+    },
+    "step0": {
+      "description": "Check installed status and select categories that are not added yet."
+    },
+    "step1": {
+      "selectCategoryFirst": "Please select categories first in Step 1."
+    },
+    "step2": {
+      "title": "Review & Deploy",
+      "noItems": "No new tools to add. Please review your category/tool selection."
+    },
+    "table": {
+      "category": "Category",
+      "slot": "Slot",
+      "tool": "Tool",
+      "version": "Version"
+    },
+    "actions": {
+      "backToList": "Back to List",
+      "previous": "Previous",
+      "next": "Next",
+      "confirmDeploy": "Confirm & Deploy"
+    },
+    "toast": {
+      "selectTools": "Please select tools to add.",
+      "deployStarted": "Tool addition deployment has started.",
+      "deployFailed": "Failed to add tools. Please try again later."
+    },
+    "categories": {
+      "artifacts": {
+        "label": "Artifacts",
+        "description": "Add package/source/container/storage tools."
+      },
+      "pipeline": {
+        "label": "Pipeline",
+        "description": "Add CI/CD pipeline tools."
+      },
+      "observability": {
+        "label": "Observability",
+        "description": "Add metrics/visualization/tracing tools."
+      },
+      "logging": {
+        "label": "Logging",
+        "description": "Add log search/analysis tools."
+      }
+    },
+    "slots": {
+      "package_registry": {
+        "label": "Package Registry"
+      },
+      "source_repository": {
+        "label": "Source Repository"
+      },
+      "container_registry": {
+        "label": "Container Registry"
+      },
+      "storage_backend": {
+        "label": "Storage Backend"
+      },
+      "ci_platform": {
+        "label": "CI Platform"
+      },
+      "cd_tool": {
+        "label": "CD Tool"
+      },
+      "metrics_collection": {
+        "label": "Metrics Collection"
+      },
+      "visualization": {
+        "label": "Visualization"
+      },
+      "trace_layer": {
+        "label": "Trace Layer"
+      },
+      "log_search": {
+        "label": "Log Search"
+      }
+    },
+    "tools": {
+      "gitlab": {
+        "label": "GitLab",
+        "description": "GitLab source code management"
+      },
+      "nexus": {
+        "label": "Nexus Repository",
+        "description": "General-purpose artifact repository"
+      },
+      "jfrog": {
+        "label": "JFrog Artifactory",
+        "description": "Enterprise-grade artifact management"
+      },
+      "github": {
+        "label": "GitHub",
+        "description": "GitHub source code management"
+      },
+      "gitea": {
+        "label": "Gitea",
+        "description": "Lightweight self-hosted Git service"
+      },
+      "gitlab-registry": {
+        "label": "GitLab Container Registry",
+        "description": "GitLab built-in container registry"
+      },
+      "harbor": {
+        "label": "Harbor",
+        "description": "Enterprise container registry"
+      },
+      "docker-hub": {
+        "label": "Docker Hub",
+        "description": "Official Docker registry"
+      },
+      "minio": {
+        "label": "MinIO",
+        "description": "S3-compatible object storage"
+      },
+      "s3": {
+        "label": "AWS S3",
+        "description": "Amazon S3 object storage"
+      },
+      "gcs": {
+        "label": "Google Cloud Storage",
+        "description": "GCP object storage"
+      },
+      "gitlab-ci": {
+        "label": "GitLab CI/CD",
+        "description": "GitLab built-in CI/CD pipeline"
+      },
+      "github-actions": {
+        "label": "GitHub Actions",
+        "description": "GitHub workflow-based CI/CD"
+      },
+      "jenkins": {
+        "label": "Jenkins",
+        "description": "Traditional open-source CI server"
+      },
+      "argocd": {
+        "label": "ArgoCD",
+        "description": "GitOps-based Kubernetes CD"
+      },
+      "flux": {
+        "label": "Flux CD",
+        "description": "GitOps toolkit"
+      },
+      "spinnaker": {
+        "label": "Spinnaker",
+        "description": "Multi-cloud CD platform"
+      },
+      "prometheus": {
+        "label": "Prometheus",
+        "description": "Time-series metrics collection"
+      },
+      "thanos": {
+        "label": "Thanos",
+        "description": "Long-term retention and global metrics aggregation"
+      },
+      "victoriametrics": {
+        "label": "VictoriaMetrics",
+        "description": "High-performance time-series database"
+      },
+      "grafana": {
+        "label": "Grafana",
+        "description": "Open-source metrics visualization"
+      },
+      "kibana": {
+        "label": "Kibana",
+        "description": "Elastic Stack visualization"
+      },
+      "opensearch-dashboards": {
+        "label": "OpenSearch Dashboards",
+        "description": "OpenSearch visualization dashboard"
+      },
+      "tempo": {
+        "label": "Tempo",
+        "description": "Distributed tracing backend"
+      },
+      "jaeger": {
+        "label": "Jaeger",
+        "description": "Distributed tracing and analysis"
+      },
+      "opensearch": {
+        "label": "OpenSearch",
+        "description": "Elasticsearch-compatible search/analytics"
+      },
+      "elasticsearch": {
+        "label": "Elasticsearch",
+        "description": "Distributed search/analytics engine"
+      },
+      "loki": {
+        "label": "Grafana Loki",
+        "description": "Prometheus-style log aggregation"
+      }
+    }
+  },
   "auth": {
     "signIn": "Sign in",
     "email": "Email",
@@ -116,19 +573,127 @@
       "cancelled": "Cancelled"
     }
   },
+  "cicdListPage": {
+    "title": "CI/CD List",
+    "description": "CI/CD Pipeline List",
+    "table": {
+      "name": "Name",
+      "appType": "App Type",
+      "cluster": "Cluster",
+      "status": "Status",
+      "lastDeployed": "Last Deployed"
+    },
+    "emptyPipelines": "No pipelines found.",
+    "emptyDeployments": "No deployment history.",
+    "searchPlaceholder": "Search pipelines...",
+    "filters": {
+      "allStatus": "All Status",
+      "allClusters": "All Clusters"
+    },
+    "status": {
+      "active": "Active"
+    }
+  },
+  "cicdHistoryPage": {
+    "title": "CI/CD History",
+    "description": "CI/CD Deployment History",
+    "table": {
+      "pipeline": "Pipeline",
+      "version": "Version",
+      "status": "Status",
+      "triggeredBy": "Deployer",
+      "startedAt": "Started At",
+      "completedAt": "Completed At"
+    },
+    "empty": "No deployment history.",
+    "searchPlaceholder": "Search pipeline / deployer...",
+    "filteredByPipeline": "Filtered by pipeline:",
+    "clearFilter": "Clear filter",
+    "filters": {
+      "allTypes": "All Types",
+      "allStatus": "All Status"
+    }
+  },
   "observability": {
     "monitoring": "Monitoring Dashboard",
-    "monitoringDesc": "Real-time cluster and tool monitoring (auto-refresh every 5s)",
+    "monitoringDesc": "Select a Cluster or Stack to start monitoring",
     "alertRules": "Alert Rules",
     "alertRulesDesc": "Alert rule list and management",
     "alertHistory": "Alert History",
     "alertHistoryDesc": "Alert occurrence history",
     "newRule": "New Rule",
+    "connectPanel": {
+      "title": "Connect Stack Components",
+      "descriptionPrefix": "Tools detected in",
+      "descriptionSuffix": "Enter their dashboard URLs to add monitoring tabs.",
+      "enterDashboardUrls": "Enter dashboard URLs for the components you want to monitor"
+    },
     "severity": {
       "critical": "Critical",
       "warning": "Warning",
       "info": "Info"
     }
+  },
+  "stackList": {
+    "toast": {
+      "upgradeInProgress": "This feature is under development."
+    },
+    "title": "Stack List",
+    "description": "Deployed DevSecOps stack list",
+    "actions": {
+      "newStack": "New Stack"
+    },
+    "table": {
+      "stackName": "Stack Name",
+      "template": "Template",
+      "status": "Status",
+      "createdAt": "Created At"
+    },
+    "filters": {
+      "allStatus": "All Status"
+    },
+    "searchPlaceholder": "Search stacks...",
+    "loading": "Loading stacks...",
+    "empty": "No stacks found.",
+    "listHint": "Selecting a stack from the list updates the detail panel immediately.",
+    "emptyDetail": "Select a stack from the list to view details here.",
+    "tabs": {
+      "info": "Info",
+      "monitoring": "Monitoring",
+      "history": "History",
+      "version-upgrade": "Version Upgrade"
+    },
+    "status": {
+      "pending": "Pending",
+      "validating": "Validating",
+      "installing": "Installing",
+      "configuring": "Configuring",
+      "healthCheck": "Health Check",
+      "completed": "Completed",
+      "failed": "Failed",
+      "rollingBack": "Rolling Back",
+      "rolledBack": "Rolled Back",
+      "running": "Running",
+      "success": "Success",
+      "cancelled": "Cancelled"
+    },
+    "confirm": {
+      "deleteTitle": "Delete Stack",
+      "deleteDescription": "Deleting this stack may affect related deployment data. Continue?"
+    },
+    "connection": {
+      "open": "Connection Info",
+      "openTitle": "View OSS login/DB/ObjectStorage connection info",
+      "gatewayCopyTitle": "Copy gateway port-forward command",
+      "hostsCopyTitle": "Copy /etc/hosts mappings",
+      "hostsCopyUnavailable": "Cannot build hosts mappings because access domain is missing",
+      "summary": "Deployed configuration summary and key actions",
+      "gatewayGuide": "After single-entry gateway port forwarding, access each OSS domain based on hosts mappings.",
+      "copied": "Copied",
+      "copyFailed": "Copy failed",
+      "copyAll": "Copy all"
+    },
+    "hiddenInstallCardsNotice": "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs."
   },
   "deploy": {
     "title": "Deployment Log",
@@ -146,5 +711,349 @@
     },
     "successMessage": "All phases completed successfully.",
     "failedMessage": "An error occurred during deployment. Check the logs."
+  },
+  "clusterStackFilter": {
+    "clusterLabel": "Cluster",
+    "selectCluster": "— Select Cluster —",
+    "stackLabel": "Stack",
+    "selectStack": "— Select Stack —",
+    "clear": "Clear"
+  },
+  "alertHistoryPage": {
+    "table": {
+      "ruleName": "Rule Name",
+      "severity": "Severity",
+      "message": "Message",
+      "firedAt": "Fired At",
+      "resolvedAt": "Resolved At"
+    },
+    "unresolved": "Unresolved",
+    "empty": "No alert history found.",
+    "filters": {
+      "allSeverity": "All Severity",
+      "last24h": "Last 24h",
+      "last7d": "Last 7d",
+      "last30d": "Last 30d",
+      "all": "All"
+    },
+    "searchPlaceholder": "Search rule name...",
+    "detail": {
+      "title": "Alert Detail",
+      "rule": "Rule",
+      "severity": "Severity",
+      "firedAt": "Fired At",
+      "resolvedAt": "Resolved At",
+      "message": "Message"
+    }
+  },
+  "alertRulesPage": {
+    "table": {
+      "active": "Active",
+      "name": "Name",
+      "metric": "Metric",
+      "condition": "Condition",
+      "thresholds": "Thresholds",
+      "channel": "Channel",
+      "actions": "Actions"
+    },
+    "switch": {
+      "on": "On",
+      "off": "Off"
+    },
+    "threshold": {
+      "warning": "Warning",
+      "critical": "Critical"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "create": "Create"
+    },
+    "empty": "No alert rules found.",
+    "searchPlaceholder": "Search by rule or metric...",
+    "modal": {
+      "editTitle": "Edit Alert Rule",
+      "newTitle": "New Alert Rule",
+      "loadingFromDb": "Loading latest alert rule from DB..."
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "ex) High CPU Alert",
+      "metricName": "Metric Name",
+      "metricNamePlaceholder": "ex) cpu_usage",
+      "warningThreshold": "Warning Threshold",
+      "warningThresholdPlaceholder": "ex) 70",
+      "criticalThreshold": "Critical Threshold",
+      "criticalThresholdPlaceholder": "ex) 85",
+      "channel": "Channel",
+      "active": "Active"
+    },
+    "confirm": {
+      "deleteTitle": "Delete Alert Rule",
+      "deleteDescription": "Deleting this rule stops future alerts from being triggered by it. Continue?"
+    }
+  },
+  "clusterPage": {
+    "description": "Register and manage Kubernetes clusters.",
+    "actions": {
+      "registerCluster": "Register Cluster",
+      "edit": "Edit",
+      "verifyConnection": "Verify Connection",
+      "register": "Register"
+    },
+    "list": {
+      "clusters": "Clusters",
+      "loading": "Loading clusters..."
+    },
+    "detail": {
+      "clusterName": "Cluster Name",
+      "type": "Type",
+      "namespace": "Namespace",
+      "notConfigured": "Not Configured",
+      "endpoint": "Endpoint",
+      "authMethod": "Auth Method"
+    },
+    "connection": {
+      "title": "Connection Status",
+      "connected": "Connected",
+      "authFailed": "Authentication failed. Recheck credentials/kubeconfig.",
+      "error": "Connection error. Check endpoint and network path.",
+      "unreachable": "Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.",
+      "pending": "Pending verification",
+      "inactive": "Inactive",
+      "verifySuccess": "Connection verified successfully.",
+      "verifyFailed": "Connection failed. Check endpoint/kubeconfig."
+    },
+    "status": {
+      "connected": "Connected",
+      "pending": "Pending",
+      "error": "Error",
+      "inactive": "Inactive",
+      "unreachable": "Unreachable",
+      "authFailed": "Auth Failed"
+    },
+    "organizationAccess": "Organization Access",
+    "emptyDetail": "Select a cluster.",
+    "modal": {
+      "editTitle": "Edit Cluster",
+      "registerTitle": "Register Cluster"
+    },
+    "form": {
+      "clusterName": "Cluster Name",
+      "clusterNamePlaceholder": "e.g. prod-cluster",
+      "clusterType": "Cluster Type",
+      "endpoint": "Endpoint",
+      "endpointPlaceholder": "e.g. https://prod.k8s.nullus.io",
+      "uploadKubeconfig": "Upload kubeconfig File",
+      "chooseFile": "Choose File",
+      "kubeconfigPlaceholder": "Paste kubeconfig content..."
+    },
+    "confirm": {
+      "deleteTitle": "Delete Cluster",
+      "deleteDescription": "Deleting this cluster may affect connected pipelines and deployment data. Continue?"
+    }
+  },
+  "userManagementPage": {
+    "description": "User list and role management",
+    "table": {
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "Active",
+      "pending": "Pending",
+      "inactive": "Inactive"
+    },
+    "actions": {
+      "deactivate": "Deactivate",
+      "edit": "Edit",
+      "generateInviteLink": "Generate Invite Link",
+      "inviteUser": "Invite User",
+      "revoke": "Revoke",
+      "addMember": "Add Member",
+      "sendInvite": "Send Invite",
+      "generate": "Generate"
+    },
+    "permissions": {
+      "menu": "Menu",
+      "buttons": "Buttons"
+    },
+    "searchPlaceholder": "Search name/email...",
+    "loadingUsers": "Loading users...",
+    "emptyUsers": "No users found.",
+    "pendingInvites": {
+      "title": "Pending Invites",
+      "table": {
+        "role": "Role",
+        "expiresAt": "Expires At",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "empty": "No pending invites.",
+      "expired": "Expired",
+      "active": "Active"
+    },
+    "modal": {
+      "addExistingMember": "Add Existing Member",
+      "inviteUser": "Invite User",
+      "generateInviteLink": "Generate Invite Link",
+      "editUser": "Edit User"
+    },
+    "form": {
+      "email": "Email",
+      "existingUser": "Existing user",
+      "inviteAsNew": "Will invite as a new user",
+      "name": "Name",
+      "role": "Role",
+      "expiryPeriod": "Expiry Period"
+    },
+    "confirm": {
+      "deactivateTitle": "Deactivate User",
+      "deactivateDescription": "Deactivating this user will restrict login and deployment actions. Continue?",
+      "revokeTitle": "Revoke Invite Link",
+      "revokeDescription": "Revoking this invite link will make it unusable. Continue?"
+    }
+  },
+  "developerDeployPage": {
+    "title": "Pipeline Setup & Deploy",
+    "description": "Proceed with pipeline template selection and developer deployment on a single screen.",
+    "steps": {
+      "1": "App Name",
+      "2": "Git Repository",
+      "3": "Cluster / Namespace",
+      "4": "Resource Configuration",
+      "5": "Environment Variables",
+      "6": "Manifest Review"
+    },
+    "sections": {
+      "appName": "Enter App Name",
+      "gitRepository": "Git Repository URL",
+      "clusterNamespace": "Cluster & Namespace",
+      "resources": "Resource Configuration",
+      "envVars": "Environment Variables",
+      "manifest": "Review and Edit Manifest"
+    },
+    "phases": {
+      "namespace": "Create Namespace",
+      "deployment": "Create Deployment",
+      "service": "Create Service"
+    },
+    "deployProgress": "Deploy Progress",
+    "namespaceSuffix": "namespace",
+    "totalProgress": "Total Progress",
+    "deploymentId": "Deployment ID",
+    "streaming": "Streaming...",
+    "connecting": "Connecting...",
+    "deployFailedNoLog": "Deployment failed. Logs are unavailable.",
+    "waitingLogs": "Waiting for deployment output...",
+    "createdResources": "Created resources",
+    "newDeployment": "New Deployment",
+    "viewCicdList": "View CI/CD List",
+    "appNameRule": "Only lowercase letters, numbers, and hyphens are allowed.",
+    "form": {
+      "stackOptional": "Stack (Optional)",
+      "manualInput": "Manual Input",
+      "cluster": "Cluster",
+      "namespace": "Namespace"
+    },
+    "actions": {
+      "addVariable": "Add Variable",
+      "resetDefault": "Reset to default",
+      "previous": "Previous",
+      "next": "Next",
+      "deploy": "Deploy"
+    },
+    "yamlPreview": "YAML Manifest Preview"
+  },
+  "stackHistoryPage": {
+    "title": "Stack History",
+    "description": "Stack change history and version management",
+    "current": "CURRENT",
+    "stackSelect": "Stack",
+    "searchPlaceholder": "Search by changed by / reason...",
+    "snapshot": "Configuration Snapshot",
+    "table": {
+      "stackName": "Stack Name",
+      "version": "Version",
+      "changedBy": "Changed By",
+      "changedAt": "Changed At",
+      "reason": "Reason",
+      "actions": "Actions"
+    },
+    "actions": {
+      "rollback": "Rollback",
+      "compareVersions": "Compare Versions"
+    },
+    "compare": {
+      "versionA": "Version A",
+      "versionB": "Version B"
+    },
+    "rollback": {
+      "description": "Rollback this stack to the selected version. Current configuration will change and this action cannot be undone.",
+      "dataRetention": "Data Retention Options",
+      "safeMode": "Safe Mode — Preserve data",
+      "cleanMode": "Clean Mode — Delete volumes",
+      "cleanWarning": "This action permanently deletes Persistent Volumes.",
+      "confirmDeletePlaceholder": "Type \"DELETE\" to confirm"
+    }
+  },
+  "stackOssDefault": {
+    "description": "View, edit, and register default OSS request/limit resources for DevSecOps Stack.",
+    "contract": {
+      "prefix": "Contract:",
+      "suffix": "is an idempotent upsert by",
+      "middle": "is an idempotent upsert by",
+      "end": ""
+    }
+  },
+  "monitoringPage": {
+    "customTabs": {
+      "defaultTab": "Default",
+      "newTab": "New Tab",
+      "manageTabs": "Manage Tabs",
+      "manageCustomTabs": "Manage Custom Tabs",
+      "addTab": "Add Tab",
+      "saveChanges": "Save Changes",
+      "empty": "No custom tabs yet. Click \"Add Tab\" to create one.",
+      "tabNamePlaceholder": "Tab name",
+      "embedUrlPlaceholder": "Embed URL",
+      "description": "Changes apply to all users after saving. Developer role has view-only access.",
+      "saved": "Tab configuration saved."
+    }
+  },
+  "stackVersionPage": {
+    "title": "Stack Version",
+    "description": "Manage compatibility based on validated version combinations.",
+    "actions": {
+      "validateCurrentStack": "Validate Current Stack"
+    },
+    "notice": "Only validated version combinations are shown. Unverified combinations will display warnings.",
+    "verifiedCombinations": "Verified Combinations",
+    "searchPlaceholder": "Search stacks or tools...",
+    "table": {
+      "gitlab": "GitLab",
+      "argocd": "Argo CD",
+      "prometheus": "Prometheus",
+      "grafana": "Grafana",
+      "opentelemetry": "OpenTelemetry",
+      "k8s": "K8s",
+      "status": "Status"
+    },
+    "status": {
+      "verified": "Verified",
+      "partial": "Partial",
+      "notSupported": "Not Supported"
+    },
+    "recommended": "Recommended",
+    "validation": {
+      "title": "Compatibility Validation Result",
+      "running": "Validating...",
+      "pass": "Compatibility validation passed",
+      "fail": "Compatibility issues found",
+      "checkedAt": "Checked at"
+    }
   }
 }
