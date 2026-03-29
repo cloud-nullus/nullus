@@ -1,0 +1,83 @@
+# Authentik OIDC Provider — 독립 실행용
+# 사용법:
+#   docker compose -f docker-compose.dev.yaml -f docker-compose.auth.yaml up -d
+#   ./scripts/runbook_local.sh up --authentik
+#
+# 포트:
+#   Authentik Server  : localhost:9090
+#   Authentik DB      : 내부 전용 (호스트 미노출)
+#   Authentik Redis   : 내부 전용 (호스트 미노출)
+
+services:
+  authentik-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: authentik_dev
+    volumes:
+      - authentik_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik -d authentik"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  authentik-redis:
+    image: redis:7-alpine
+    volumes:
+      - authentik_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2024.12
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: nullus-authentik-dev-secret-key
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: authentik_dev
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      # 초기 admin 계정 (최초 기동 시 자동 생성)
+      AUTHENTIK_BOOTSTRAP_EMAIL: admin@nullus.io
+      AUTHENTIK_BOOTSTRAP_PASSWORD: nullus123!
+      AUTHENTIK_BOOTSTRAP_TOKEN: nullus-authentik-bootstrap-token
+    ports:
+      - "9090:9000"
+      - "9443:9443"
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.12
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: nullus-authentik-dev-secret-key
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: authentik_dev
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+
+volumes:
+  authentik_db_data:
+  authentik_redis_data:
