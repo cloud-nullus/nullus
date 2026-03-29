@@ -110,9 +110,12 @@ func newEchoServer() *echo.Echo {
 	alertRepo := obsrepo.NewMemoryAlertRepository()
 	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
 	createAlertRuleUC := obsuc.NewCreateAlertRule(alertRuleRepo)
+	listAlertRulesUC := obsuc.NewListAlertRules(alertRuleRepo)
+	updateAlertRuleUC := obsuc.NewUpdateAlertRule(alertRuleRepo)
+	deleteAlertRuleUC := obsuc.NewDeleteAlertRule(alertRuleRepo)
 	listAlertsUC := obsuc.NewListAlerts(alertRepo)
 	dashboardHandler := obshandler.NewDashboardHandler(getDashboardUC)
-	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, alertRuleRepo)
+	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
 
 	// Echo setup
 	e := echo.New()
