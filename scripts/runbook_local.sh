@@ -23,6 +23,8 @@ KEYCLOAK_PORT=8180
 
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!}"
 KIND_CONFIG="$PROJECT_ROOT/scripts/kind-cluster.yaml"
+AUTHENTIK_PORT=9090
+COMPOSE_AUTH="$PROJECT_ROOT/docker-compose.auth.yaml"
 
 kind_cluster_exists() {
   local name="$1"
@@ -56,28 +58,30 @@ usage() {
   cat <<'EOF'
 Usage:
   ./scripts/runbook_local.sh preflight
-  ./scripts/runbook_local.sh up [--seed] [--kind]
+  ./scripts/runbook_local.sh up [--seed] [--kind] [--authentik]
   ./scripts/runbook_local.sh status
   ./scripts/runbook_local.sh info
   ./scripts/runbook_local.sh smoke
   ./scripts/runbook_local.sh logs [api|web|all]
-  ./scripts/runbook_local.sh down
-  ./scripts/runbook_local.sh all [--seed] [--kind]
+  ./scripts/runbook_local.sh down [--kind] [--authentik]
+  ./scripts/runbook_local.sh all [--seed] [--kind] [--authentik]
   ./scripts/runbook_local.sh kind-up
   ./scripts/runbook_local.sh kind-down
 
 Commands:
-  preflight     Validate toolchain prerequisites
-  up [--seed]   Start infra (PostgreSQL, Redis, MinIO, Keycloak) + migrate + API + frontend
-     [--kind]   Also create a kind K8s cluster
-  status        Show health of all services (including kind cluster)
-  info          Show access URLs and credentials
-  smoke         Run API smoke tests (13 endpoints)
-  logs [svc]    Tail logs for a service (api, web) or all
-  down [--kind] Stop API, frontend, docker infra (add --kind to also delete kind cluster)
-  all           Full lifecycle: up -> smoke -> keep running
-  kind-up       Create kind K8s cluster only
-  kind-down     Delete kind K8s cluster only
+  preflight         Validate toolchain prerequisites
+  up [--seed]       Start infra (PostgreSQL, Redis, MinIO, Keycloak) + migrate + API + frontend
+     [--kind]       Also create a kind K8s cluster
+     [--authentik]  Also start Authentik OIDC provider (localhost:9090) and run setup
+  status            Show health of all services (including kind cluster, Authentik)
+  info              Show access URLs and credentials
+  smoke             Run API smoke tests (13 endpoints)
+  logs [svc]        Tail logs for a service (api, web) or all
+  down [--kind]     Stop API, frontend, docker infra
+       [--authentik] Also stop Authentik services
+  all               Full lifecycle: up -> smoke -> keep running
+  kind-up           Create kind K8s cluster only
+  kind-down         Delete kind K8s cluster only
 
 Test Accounts (Frontend mock auth, development mode):
   admin@nullus.dev     / admin123       (admin)
@@ -368,11 +372,12 @@ do_info() {
 }
 
 do_up() {
-  local seed="false" with_kind="false"
+  local seed="false" with_kind="false" with_authentik="false"
   for arg in "$@"; do
     case "$arg" in
       --seed) seed="true" ;;
       --kind) with_kind="true" ;;
+      --authentik) with_authentik="true" ;;
       *) echo "[nullus] unknown option: $arg"; exit 1 ;;
     esac
   done
@@ -464,6 +469,22 @@ do_up() {
     do_kind_up || true
   fi
 
+  # 6. Authentik OIDC provider (optional)
+  if [[ "$with_authentik" == "true" ]]; then
+    echo ""
+    echo "[nullus] starting Authentik OIDC provider..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" -f "$COMPOSE_AUTH" up -d \
+      authentik-db authentik-redis authentik-server authentik-worker
+    echo "[nullus] waiting for Authentik (up to 180s)..."
+    if wait_for_http "http://localhost:${AUTHENTIK_PORT}/-/health/ready/" 60 3; then
+      echo "[nullus] Authentik is ready, running setup..."
+      "$PROJECT_ROOT/scripts/setup-authentik.sh"
+    else
+      echo "[nullus] Authentik did not start (non-blocking, continuing...)"
+      echo "[nullus] check: docker compose -f docker-compose.dev.yaml -f docker-compose.auth.yaml logs authentik-server"
+    fi
+  fi
+
   echo ""
   echo "══════════════════════════════════════════════════"
   echo "  Nullus Local Environment Ready"
@@ -479,6 +500,10 @@ do_up() {
   echo "  Redis         localhost:$REDIS_PORT"
   echo ""
   kind_print_status
+  if [[ "$with_authentik" == "true" ]]; then
+    echo "  Authentik     http://localhost:$AUTHENTIK_PORT  (admin@nullus.io/nullus123!)"
+    echo ""
+  fi
   echo "  Logs:         ./scripts/runbook_local.sh logs"
   echo "  Stop:         ./scripts/runbook_local.sh down"
   echo "══════════════════════════════════════════════════"
@@ -512,6 +537,10 @@ do_status() {
     echo "  minio: listening on :$MINIO_PORT (console :$MINIO_CONSOLE_PORT)"
   else
     echo "  minio: not running"
+  fi
+
+  if lsof -tiTCP:"$AUTHENTIK_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "  authentik: listening on :$AUTHENTIK_PORT"
   fi
   echo ""
 
@@ -601,9 +630,12 @@ do_logs() {
 }
 
 do_down() {
-  local with_kind="false"
+  local with_kind="false" with_authentik="false"
   for arg in "$@"; do
-    case "$arg" in --kind) with_kind="true" ;; esac
+    case "$arg" in
+      --kind) with_kind="true" ;;
+      --authentik) with_authentik="true" ;;
+    esac
   done
 
   echo "[nullus] stopping services..."
@@ -612,8 +644,14 @@ do_down() {
     stop_service "api" "$API_PORT"
     rm -f "$PID_FILE"
   fi
-  echo "[nullus] stopping docker infra..."
-  docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" down 2>/dev/null || true
+
+  if [[ "$with_authentik" == "true" ]]; then
+    echo "[nullus] stopping Authentik services..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" -f "$COMPOSE_AUTH" down 2>/dev/null || true
+  else
+    echo "[nullus] stopping docker infra..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" down 2>/dev/null || true
+  fi
 
   if [[ "$with_kind" == "true" ]]; then
     do_kind_down 2>/dev/null || true
@@ -639,7 +677,7 @@ do_all() {
   local extra_args=()
   for arg in "$@"; do
     case "$arg" in
-      --seed|--kind) extra_args+=("$arg") ;;
+      --seed|--kind|--authentik) extra_args+=("$arg") ;;
     esac
   done
 
