@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Alert Rules edit modal now loads the latest rule payload directly from the database through `GET /observability/alert-rules/:id` before editing.
 - Stack Install supports leaving Storage unselected for Empty Template flows by omitting the storage block from create requests when no storage plan is chosen.
 - Alert Rules edit modal now loads the latest rule payload directly from the database through `GET /observability/alert-rules/:id` before editing.
@@ -40,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 시행착오 및 해결 방법 레퍼런스 (`docs/agent-reference.md`)
 
 ### Changed
-- Stack create request mapping now translates UI storage modes (`existing-all`, `existing`) to the backend storage contract (`existing-connect`) before submission.
+
 - Stack create request mapping now translates UI storage modes (`existing-all`, `existing`) to the backend storage contract (`existing-connect`) before submission.
 - Deploy 위저드를 5단계에서 6단계로 재구성 (앱 이름 → Git → 클러스터 → 리소스 → 환경변수 → 매니페스트 확인)
 - 앱 템플릿 그리드 제거, CI/CD Template의 `app_type`으로 앱 타입 자동 결정
@@ -56,14 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration Job을 pre-install Hook에서 외부 마이그레이션 패턴으로 전환
 
 ### Fixed
+
 - Alert Rules edits now reflect immediately after Save by awaiting the update mutation, refetching the DB-backed list, and reopening the modal with fresh server data.
 - Empty Template에서 Observability만 선택해도 `storage.plan_mode` 검증 오류가 나지 않도록 storage payload 생성 조건을 수정했습니다.
 - Organization 화면의 `Add User` 버튼이 존재하지 않는 `/admin/user-management` 대신 실제 라우트인 `/admin/users`로 이동하도록 수정했습니다.
-- Home 화면에서 사용하지 않는 `Operation` 항목을 제거했습니다.
-- Alert Rules edits now reflect immediately after Save by awaiting the update mutation, refetching the DB-backed list, and reopening the modal with fresh server data.
-- Empty Template?? Observability? ???? `storage.plan_mode` ?? ??? ?? ??? storage payload ?? ??? ??????.
-- Organization ??? `Add User` ??? ???? ?? `/admin/user-management` ?? ?? ???? `/admin/users`? ????? ??????.
-- Home ???? ???? ?? `Operation` ??? ??????.
 - Stack gateway deploy now skips `BackendTLSPolicy` manifests when the cluster does not provide the `BackendTLSPolicy` CRD, so Gateway and HTTPRoute resources can still be applied.
 - Breadcrumb에서 동일한 key `/cicd/list`가 2회 사용되어 React 경고 발생하던 문제
 - Dockerfile Go 버전이 `go.mod`와 불일치 (`1.24` → `1.26`)
@@ -74,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0-alpha] - 2026-03-28
 
 ### Added
+
 - Stack Install 5단계 Wizard 완성 (Resource Planning, Storage Plan, YAML View, Deploy Script, Dry Run)
 - Stack List 상세 패널 (커넥션 정보, 상태, 인라인 디테일)
 - Helm Orchestrator 다중 Phase DAG 실행 및 실제 Helm install/upgrade/rollback
@@ -86,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DB 마이그레이션 000022-000028 (리소스 기본값, 템플릿 버전 정렬, 상태 enum 확장, 목업 스택)
 
 ### Changed
+
 - Stack Install 최종 배포 검토 흐름을 YAML View → Deploy Script → Dry Run 단계로 확장
 - Stack Name 하단에 Access Domain 입력란 추가 (`{StackName}.internal`)
 - OSS 버전 메타데이터가 템플릿 편집 시에도 보존되도록 API 정규화
@@ -95,6 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 마이그레이션 파일 번호 정리 및 중복 방지
 
 ### Fixed
+
 - Organization 생성 시 DB 미저장 (API 경로 `/admin/organizations` → `/admin/orgs`)
 - Mock auth ORG_ID/User ID가 DB 시드와 불일치하여 org 기반 API 실패
 - CORS `AllowHeaders`에 `X-Org-ID` 누락
@@ -107,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0-alpha] - 2026-03-15
 
 ### Added
+
 - Organization 설정 등록 — PostgreSQL Repository, CRUD API
 - K8s Cluster 등록/검증 — client-go 검증 어댑터, Kubeconfig AES-256-GCM 암호화
 - DevSecOps Stack 설정 5단계 Wizard — React Hook Form + Zod 검증
@@ -126,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 로컬 개발 환경 스크립트 (`runbook_local.sh`)
 
 ### Fixed
+
 - 프론트엔드-백엔드 호환성: 템플릿 tools 매핑, cluster status 필드 통일
 - PostgresOrgRepository NULL default_admin_id 스캔 오류
 - estimated_install_time 나노초→분 변환 오버플로우
