@@ -19,7 +19,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults, useStacks } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -1796,6 +1796,7 @@ export function StackInstallPage() {
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
   const { data: clusters } = useClusters()
+  const { data: stackListData } = useStacks()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
   const [createNewNs, setCreateNewNs] = useState(false)
   const [activeTab, setLocalTab] = useState<InstallTab>(draft.activeTab)
@@ -1824,6 +1825,8 @@ export function StackInstallPage() {
     control,
     trigger,
     setValue,
+    setError,
+    clearErrors,
     formState: { errors, isValid, isSubmitting },
   } = useForm<StackInstallFormData>({
     resolver: zodResolver(stackInstallSchema),
@@ -1834,6 +1837,46 @@ export function StackInstallPage() {
   })
 
   const effectiveNamespace = createNewNs ? draft.namespace.trim() : draft.namespace.trim() || 'nullus'
+  const normalizedDraftStackName = draft.stackName.trim().toLowerCase()
+  const isDuplicateStackNameInCluster = useMemo(() => {
+    if (!draft.clusterId || !normalizedDraftStackName) {
+      return false
+    }
+
+    return (stackListData?.items ?? []).some(
+      (stack) =>
+        stack.clusterId === draft.clusterId &&
+        stack.name.trim().toLowerCase() === normalizedDraftStackName
+    )
+  }, [draft.clusterId, normalizedDraftStackName, stackListData?.items])
+
+  useEffect(() => {
+    if (!draft.stackName.trim() || !draft.clusterId) {
+      if (errors.stackName?.type === 'duplicate') {
+        clearErrors('stackName')
+      }
+      return
+    }
+
+    if (isDuplicateStackNameInCluster) {
+      setError('stackName', {
+        type: 'duplicate',
+        message: 'A stack with this name already exists in the selected cluster',
+      })
+      return
+    }
+
+    if (errors.stackName?.type === 'duplicate') {
+      clearErrors('stackName')
+    }
+  }, [
+    clearErrors,
+    draft.clusterId,
+    draft.stackName,
+    errors.stackName?.type,
+    isDuplicateStackNameInCluster,
+    setError,
+  ])
 
   const k8sObjects = createK8sObjects(draft)
 
@@ -2536,6 +2579,16 @@ export function StackInstallPage() {
       return false
     }
 
+    if (isDuplicateStackNameInCluster) {
+      setError('stackName', {
+        type: 'duplicate',
+        message: 'A stack with this name already exists in the selected cluster',
+      })
+      setTabGuardError('A stack with the same name already exists in the selected cluster.')
+      stackNameInputRef.current?.focus()
+      return false
+    }
+
     if (!draft.clusterId) {
       setTabGuardError('YAML View 탭으로 이동하려면 Target Cluster 선택이 필요합니다.')
       setLocalTab('artifacts')
@@ -3234,6 +3287,7 @@ export function StackInstallPage() {
               deployStack.isPending ||
               !draft.stackName ||
               draft.stackName.length < 2 ||
+              isDuplicateStackNameInCluster ||
               !draft.clusterId ||
               (createNewNs && !draft.namespace.trim()) ||
               hasManifestValidationError

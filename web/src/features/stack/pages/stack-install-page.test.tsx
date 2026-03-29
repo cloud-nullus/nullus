@@ -18,12 +18,18 @@ const mockResourceDefaults = {
   total: 0,
 }
 
+const mockStacks = {
+  items: [] as Array<{ id: string; name: string; clusterId: string }>,
+  total: 0,
+}
+
 // Mock API hooks
 vi.mock('../api/stack-api', () => ({
   useCreateStack: () => ({ mutate: vi.fn(), isPending: false }),
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
   useClusters: () => ({ data: [{ id: 'cluster-1', name: 'test-cluster', connection_status: 'connected' }] }),
+  useStacks: () => ({ data: mockStacks }),
   useResourceDefaults: () => ({ data: mockResourceDefaults }),
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
 }))
@@ -58,6 +64,8 @@ beforeEach(() => {
   mockNavigate.mockClear()
   mockResourceDefaults.items = []
   mockResourceDefaults.total = 0
+  mockStacks.items = []
+  mockStacks.total = 0
   Object.assign(navigator, {
     clipboard: {
       writeText: vi.fn().mockResolvedValue(undefined),
@@ -97,6 +105,20 @@ describe('StackInstallPage', () => {
     renderWithProviders(<StackInstallPage />)
     const stackNameInput = screen.getByLabelText('Stack Name') as HTMLInputElement
     expect(stackNameInput.value).toMatch(/^nullus-devsecops-stack-\d{8}-\d{6}$/)
+  })
+
+  it('shows validation error when the same stack name already exists in the selected cluster', async () => {
+    mockStacks.items = [
+      { id: 'stack-1', name: 'duplicate-stack', clusterId: 'cluster-1' },
+    ]
+
+    renderWithProviders(<StackInstallPage />)
+
+    fireEvent.change(screen.getByLabelText('Target Cluster'), { target: { value: 'cluster-1' } })
+    fireEvent.change(screen.getByLabelText('Stack Name'), { target: { value: 'duplicate-stack' } })
+
+    expect(await screen.findByText('A stack with this name already exists in the selected cluster')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeDisabled()
   })
 
   it('default tab shows Artifacts content', () => {
