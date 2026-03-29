@@ -79,16 +79,16 @@ function StatusSummary({ status, latestFailureMessage }: { status: DeployStatus;
       {isSuccess ? <CheckCircle size={24} color="#22c55e" /> : <XCircle size={24} color="#f87171" />}
       <div>
         <div className={cn('mb-0.5 text-[15px] font-bold', isSuccess ? 'text-[#22c55e]' : 'text-[#f87171]')}>
-          {isSuccess ? '배포 완료' : '배포 실패'}
+          {isSuccess ? 'Deployment Completed' : 'Deployment Failed'}
         </div>
         <div className="text-[13px] text-[var(--color-text-secondary)]">
           {isSuccess
-            ? '모든 단계가 성공적으로 완료되었습니다.'
-            : '배포 중 오류가 발생했습니다. 하단 로그 콘솔(Logs)에서 ERROR/failed 라인을 확인하세요. 로그가 비어 있으면 Stack List > 해당 스택 > History 탭에서 최근 실패 이력을 확인할 수 있습니다.'}
+            ? 'All stages completed successfully.'
+            : 'An error occurred during deployment. Check ERROR/failed lines in the Logs console below. If logs are empty, check recent failures in Stack List > selected stack > History.'}
         </div>
         {!isSuccess && latestFailureMessage && (
           <div className="mt-2 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-2.5 py-2 text-[12px] text-[#fca5a5]">
-            최신 실패 원인: {latestFailureMessage}
+            Latest failure reason: {latestFailureMessage}
           </div>
         )}
       </div>
@@ -181,7 +181,7 @@ export function StackDeployPage() {
         {/* Progress bar */}
         <div>
           <div className="mb-1.5 flex justify-between">
-            <span className="text-xs text-[var(--color-text-secondary)]">전체 진행률</span>
+            <span className="text-xs text-[var(--color-text-secondary)]">Overall Progress</span>
             <span className="text-xs font-bold text-[var(--color-text-primary)]">{progress}%</span>
           </div>
           <div className="flex h-2 w-full overflow-hidden rounded bg-[rgba(255,255,255,0.08)]">
@@ -216,10 +216,10 @@ export function StackDeployPage() {
           {logs.length === 0 && (
             <div className="px-1 py-2 text-[var(--color-text-secondary)]">
               {status === 'failed'
-                ? '실시간 로그를 수신하지 못했습니다. Stack List > 해당 스택 > History 탭에서 최근 실패 이력을 확인해 주세요.'
+                ? 'Unable to receive live logs. Check recent failures in Stack List > selected stack > History.'
                 : isConnected
-                  ? '로그를 기다리는 중...'
-                  : 'WebSocket에 연결 중...'}
+                  ? 'Waiting for logs...'
+                  : 'Connecting to WebSocket...'}
             </div>
           )}
           {logs.map((log) => {

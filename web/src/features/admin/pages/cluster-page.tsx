@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -14,59 +15,62 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
-const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string; label: string }> = {
+const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string }> = {
   connected: {
     icon: <CheckCircle size={14} />,
     badgeClassName: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
     panelClassName: 'border-[#22c55e40] bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-    label: 'Connected',
   },
   pending: {
     icon: <Clock size={14} />,
     badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
     panelClassName: 'border-[#f59e0b40] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-    label: 'Pending',
   },
   error: {
     icon: <AlertCircle size={14} />,
     badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
     panelClassName: 'border-[#ef444440] bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
-    label: 'Error',
   },
   inactive: {
     icon: <MinusCircle size={14} />,
     badgeClassName: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]',
     panelClassName: 'border-[#64748b40] bg-[rgba(100,116,139,0.15)] text-[#64748b]',
-    label: 'Inactive',
   },
   unreachable: {
     icon: <AlertCircle size={14} />,
     badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
     panelClassName: 'border-[#f59e0b40] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-    label: 'Unreachable',
   },
   auth_failed: {
     icon: <AlertCircle size={14} />,
     badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
     panelClassName: 'border-[#ef444440] bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
-    label: 'Auth Failed',
   },
 }
 
-function getConnectionHint(status: ClusterStatus): { text: string; className: string } {
+function getStatusLabel(t: (key: string, defaultValue?: string) => string, status: ClusterStatus) {
+  if (status === 'connected') return t('clusterPage.status.connected', 'Connected')
+  if (status === 'pending') return t('clusterPage.status.pending', 'Pending')
+  if (status === 'error') return t('clusterPage.status.error', 'Error')
+  if (status === 'inactive') return t('clusterPage.status.inactive', 'Inactive')
+  if (status === 'unreachable') return t('clusterPage.status.unreachable', 'Unreachable')
+  return t('clusterPage.status.authFailed', 'Auth Failed')
+}
+
+function getConnectionHint(t: (key: string, defaultValue?: string) => string, status: ClusterStatus): { text: string; className: string } {
   switch (status) {
     case 'connected':
-      return { text: 'Connected', className: 'text-[#22c55e]' }
+      return { text: t('clusterPage.connection.connected', 'Connected'), className: 'text-[#22c55e]' }
     case 'auth_failed':
-      return { text: 'Authentication failed. Recheck credentials/kubeconfig.', className: 'text-[#ef4444]' }
+      return { text: t('clusterPage.connection.authFailed', 'Authentication failed. Recheck credentials/kubeconfig.'), className: 'text-[#ef4444]' }
     case 'error':
-      return { text: 'Connection error. Check endpoint and network path.', className: 'text-[#ef4444]' }
+      return { text: t('clusterPage.connection.error', 'Connection error. Check endpoint and network path.'), className: 'text-[#ef4444]' }
     case 'unreachable':
-      return { text: 'Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.', className: 'text-[#f59e0b]' }
+      return { text: t('clusterPage.connection.unreachable', 'Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.'), className: 'text-[#f59e0b]' }
     case 'pending':
-      return { text: 'Pending verification', className: 'text-[#f59e0b]' }
+      return { text: t('clusterPage.connection.pending', 'Pending verification'), className: 'text-[#f59e0b]' }
     case 'inactive':
-      return { text: 'Inactive', className: 'text-[#64748b]' }
+      return { text: t('clusterPage.connection.inactive', 'Inactive'), className: 'text-[#64748b]' }
   }
 }
 
@@ -147,6 +151,7 @@ const CLUSTER_DETAIL_META: Record<Cluster['type'], { purpose: string; namespace:
 }
 
 export function ClusterPage() {
+  const { t } = useTranslation()
   const { data: clustersData, isLoading } = useClusters()
   const clusters = clustersData?.items ?? []
   const createCluster = useCreateCluster()
@@ -311,7 +316,7 @@ export function ClusterPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Cluster Management' }]} />
+      <Breadcrumb items={[{ label: t('sidebar.clusterManagement', 'Cluster Management') }]} />
 
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
@@ -320,16 +325,16 @@ export function ClusterPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Cluster Management
+              {t('sidebar.clusterManagement', 'Cluster Management')}
             </h1>
             <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              쿠버네티스 클러스터를 등록하고 관리합니다.
+              {t('clusterPage.description', 'Register and manage Kubernetes clusters.')}
             </p>
           </div>
         </div>
         <Button variant="primary" size="md" onClick={openCreateModal} type="button">
           <Plus size={15} />
-          Register Cluster
+          {t('clusterPage.actions.registerCluster', 'Register Cluster')}
         </Button>
       </div>
 
@@ -339,11 +344,11 @@ export function ClusterPage() {
           listContent={
             <>
               <div className="border-b border-[var(--color-border-default)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                Clusters ({clusters.length})
+                {t('clusterPage.list.clusters', 'Clusters')} ({clusters.length})
               </div>
               {isLoading && (
                 <div className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">
-                  Loading clusters...
+                  {t('clusterPage.list.loading', 'Loading clusters...')}
                 </div>
               )}
               {!isLoading && clusters.map((cluster) => {
@@ -368,7 +373,7 @@ export function ClusterPage() {
                       </span>
                       <span className={cn('flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold', st.badgeClassName)}>
                         {st.icon}
-                        {st.label}
+                        {getStatusLabel(t, cluster.status)}
                       </span>
                     </div>
                     <div className="text-xs text-[var(--color-text-secondary)]">
@@ -384,7 +389,7 @@ export function ClusterPage() {
               <div className="min-w-0 p-4">
                 {(() => {
                   const detailMeta = CLUSTER_DETAIL_META[selected.type]
-                  const connectionHint = getConnectionHint(selected.status)
+                  const connectionHint = getConnectionHint(t, selected.status)
 
                   return (
                     <>
@@ -394,17 +399,17 @@ export function ClusterPage() {
                       {selected.name}
                     </h2>
                     <div className="flex gap-2">
-                      <Button variant="secondary" size="sm" onClick={openEditModal} type="button">Edit</Button>
-                      <Button variant="danger" size="sm" onClick={() => setDeleteClusterId(selected.id)} type="button">Delete</Button>
+                      <Button variant="secondary" size="sm" onClick={openEditModal} type="button">{t('clusterPage.actions.edit', 'Edit')}</Button>
+                      <Button variant="danger" size="sm" onClick={() => setDeleteClusterId(selected.id)} type="button">{t('common.delete', 'Delete')}</Button>
                     </div>
                   </div>
                     <div className="grid grid-cols-2 gap-4">
                       {[
-                        ['클러스터 이름', selected.name],
-                        ['유형', detailMeta?.purpose ?? selected.type.toUpperCase()],
-                        ['네임스페이스', detailMeta?.namespace ?? 'Not Configured'],
-                        ['엔드포인트', selected.endpoint],
-                        ['Auth Method', detailMeta?.authMethod ?? 'Kubeconfig'],
+                        [t('clusterPage.detail.clusterName', 'Cluster Name'), selected.name],
+                        [t('clusterPage.detail.type', 'Type'), detailMeta?.purpose ?? selected.type.toUpperCase()],
+                        [t('clusterPage.detail.namespace', 'Namespace'), detailMeta?.namespace ?? t('clusterPage.detail.notConfigured', 'Not Configured')],
+                        [t('clusterPage.detail.endpoint', 'Endpoint'), selected.endpoint],
+                        [t('clusterPage.detail.authMethod', 'Auth Method'), detailMeta?.authMethod ?? 'Kubeconfig'],
                       ].map(([label, val]) => (
                         <div key={label}>
                         <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
@@ -420,7 +425,7 @@ export function ClusterPage() {
 
                 <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
                   <h3 className="mb-3.5 mt-0 text-sm font-bold text-[var(--color-text-primary)]">
-                    연결 상태
+                    {t('clusterPage.connection.title', 'Connection Status')}
                   </h3>
                   {(() => {
                     const st = STATUS_CONFIG[selected.status]
@@ -428,7 +433,7 @@ export function ClusterPage() {
                       <div className="flex flex-wrap items-center justify-between gap-2.5">
                         <div className={cn('inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold', st.panelClassName)}>
                           {st.icon}
-                          {st.label}
+                          {getStatusLabel(t, selected.status)}
                         </div>
                         <Button
                           variant="outline"
@@ -437,11 +442,13 @@ export function ClusterPage() {
                           loading={isVerifyingConnection}
                           onClick={handleVerifyConnection}
                         >
-                          Verify Connection
+                          {t('clusterPage.actions.verifyConnection', 'Verify Connection')}
                         </Button>
                         {verifyConnectionResult && (
                           <span className={cn('text-xs', verifyConnectionResult === 'success' ? 'text-[#22c55e]' : 'text-[#ef4444]')}>
-                            {verifyConnectionResult === 'success' ? 'Connection verified successfully.' : 'Connection failed. Check endpoint/kubeconfig.'}
+                            {verifyConnectionResult === 'success'
+                              ? t('clusterPage.connection.verifySuccess', 'Connection verified successfully.')
+                              : t('clusterPage.connection.verifyFailed', 'Connection failed. Check endpoint/kubeconfig.')}
                           </span>
                         )}
                         {!verifyConnectionResult && !isVerifyingConnection && (
@@ -456,7 +463,7 @@ export function ClusterPage() {
 
                 <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
                   <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">
-                    Organization Access
+                    {t('clusterPage.organizationAccess', 'Organization Access')}
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
                     {selected.organizationIds.map((oid) => (
@@ -472,7 +479,7 @@ export function ClusterPage() {
               </div>
             ) : null
           }
-          emptyDetailMessage="클러스터를 선택하세요."
+          emptyDetailMessage={t('clusterPage.emptyDetail', 'Select a cluster.')}
         />
       </div>
 
@@ -483,7 +490,7 @@ export function ClusterPage() {
           setEditingClusterId(null)
           reset(CLUSTER_DEFAULTS)
         }}
-        title={editingClusterId ? 'Edit Cluster' : 'Register Cluster'}
+        title={editingClusterId ? t('clusterPage.modal.editTitle', 'Edit Cluster') : t('clusterPage.modal.registerTitle', 'Register Cluster')}
         footer={
           <>
             <Button
@@ -496,7 +503,7 @@ export function ClusterPage() {
               }}
               type="button"
             >
-              Cancel
+              {t('common.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -506,19 +513,19 @@ export function ClusterPage() {
               disabled={!isValid || isSubmitting}
               type="button"
             >
-              {editingClusterId ? 'Save' : 'Register'}
+              {editingClusterId ? t('common.save', 'Save') : t('clusterPage.actions.register', 'Register')}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3.5">
           <Input
-            label="클러스터 이름"
-            placeholder="예: prod-cluster"
+            label={t('clusterPage.form.clusterName', 'Cluster Name')}
+            placeholder={t('clusterPage.form.clusterNamePlaceholder', 'e.g. prod-cluster')}
             {...register('name')}
           />
           {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
-          <NativeSelect label="클러스터 타입" {...register('type')} className={selectClassName}>
+          <NativeSelect label={t('clusterPage.form.clusterType', 'Cluster Type')} {...register('type')} className={selectClassName}>
               <option value="kubernetes">Kubernetes</option>
               <option value="eks">AWS EKS</option>
               <option value="gke">GCP GKE</option>
@@ -528,14 +535,14 @@ export function ClusterPage() {
               <option value="target">Target Cluster</option>
             </NativeSelect>
           <Input
-            label="엔드포인트"
-            placeholder="예: https://prod.k8s.nullus.io"
+            label={t('clusterPage.form.endpoint', 'Endpoint')}
+            placeholder={t('clusterPage.form.endpointPlaceholder', 'e.g. https://prod.k8s.nullus.io')}
             {...register('endpoint')}
           />
            {errors.endpoint && <span className="text-xs text-[#ef4444]">{errors.endpoint.message}</span>}
            <div className="flex flex-col gap-1">
              <label htmlFor="kubeconfig-file" className="text-xs font-medium text-[var(--color-text-secondary)]">
-               Upload kubeconfig File
+               {t('clusterPage.form.uploadKubeconfig', 'Upload kubeconfig File')}
              </label>
              <div className="flex items-center gap-2">
                <input
@@ -552,7 +559,7 @@ export function ClusterPage() {
                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.08)]"
                >
                  <Upload size={14} />
-                 Choose File
+                 {t('clusterPage.form.chooseFile', 'Choose File')}
                </button>
                {fileInputRef.current?.files?.[0] && (
                  <span className="text-xs text-[var(--color-text-secondary)]">
@@ -569,7 +576,7 @@ export function ClusterPage() {
              <textarea
                id="cluster-kubeconfig"
                {...register('kubeconfig')}
-               placeholder="kubeconfig 내용을 붙여넣으세요..."
+               placeholder={t('clusterPage.form.kubeconfigPlaceholder', 'Paste kubeconfig content...')}
                rows={8}
                className="resize-y rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs text-[var(--color-text-primary)] outline-none [font-family:'Fira_Code',monospace]"
              />
@@ -585,9 +592,9 @@ export function ClusterPage() {
           setDeleteClusterError(null)
         }}
         onConfirm={handleDeleteCluster}
-        title="Delete Cluster"
-        description="선택한 클러스터를 삭제하면 연결된 파이프라인과 배포 정보가 영향을 받을 수 있습니다. 계속하시겠습니까?"
-        confirmLabel="Delete"
+        title={t('clusterPage.confirm.deleteTitle', 'Delete Cluster')}
+        description={t('clusterPage.confirm.deleteDescription', 'Deleting this cluster may affect connected pipelines and deployment data. Continue?')}
+        confirmLabel={t('common.delete', 'Delete')}
         loading={deleteCluster.isPending}
         customContent={
           deleteClusterError ? (

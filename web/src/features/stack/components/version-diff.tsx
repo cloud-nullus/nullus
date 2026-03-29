@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../../lib/utils'
 import type { StackVersionDiff } from '../api/stack-api'
 
@@ -133,6 +134,7 @@ function findCollapsedRegions(lines: DiffLine[], threshold = 3): CollapsedRegion
 }
 
 export function VersionDiff({ versionA, versionB, configA, configB, diff }: VersionDiffProps) {
+  const { t } = useTranslation()
   const lines = useMemo(() => computeUnifiedDiff(configA, configB, diff), [configA, configB, diff])
   const collapsedRegions = useMemo(() => findCollapsedRegions(lines), [lines])
   const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set())
@@ -179,7 +181,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
       <div className="max-h-[480px] overflow-auto">
         {lines.length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
-            설정 변경 사항이 없습니다.
+            {t('versionDiff.empty', 'No configuration changes found.')}
           </p>
         )}
 

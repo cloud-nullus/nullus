@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BellRing, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertHistory } from '../api/observability-api'
@@ -10,19 +11,27 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
 
-const SEVERITY_BADGE: Record<AlertSeverity, { className: string; label: string }> = {
-  critical: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]', label: 'Critical' },
-  warning: { className: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]', label: 'Warning' },
-  info: { className: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]', label: 'Info' },
+const SEVERITY_BADGE: Record<AlertSeverity, { className: string }> = {
+  critical: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
+  warning: { className: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]' },
+  info: { className: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]' },
 }
 
 
-function formatDate(iso: string | null) {
+function formatDate(iso: string | null, locale: string) {
   if (!iso) return '-'
-  return new Date(iso).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function getSeverityLabel(t: (key: string, defaultValue?: string) => string, severity: AlertSeverity) {
+  if (severity === 'critical') return t('observability.severity.critical', 'Critical')
+  if (severity === 'warning') return t('observability.severity.warning', 'Warning')
+  return t('observability.severity.info', 'Info')
 }
 
 export function AlertHistoryPage() {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [selectedStackId, setSelectedStackId] = useState('')
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null)
@@ -76,39 +85,39 @@ export function AlertHistoryPage() {
     },
     {
       accessorKey: 'ruleName',
-      header: '알림명',
+      header: t('alertHistoryPage.table.ruleName', 'Rule Name'),
       cell: ({ row }) => <span className="font-semibold">{row.original.ruleName}</span>,
     },
     {
       accessorKey: 'severity',
-      header: '심각도',
+      header: t('alertHistoryPage.table.severity', 'Severity'),
       cell: ({ row }) => {
         const sev = SEVERITY_BADGE[row.original.severity]
         return (
           <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', sev.className)}>
-            {sev.label}
+            {getSeverityLabel(t, row.original.severity)}
           </span>
         )
       },
     },
     {
       accessorKey: 'message',
-      header: '메시지',
+      header: t('alertHistoryPage.table.message', 'Message'),
       cell: ({ row }) => <span className="max-w-[360px] text-[13px] text-[var(--color-text-secondary)]">{row.original.message}</span>,
     },
     {
       accessorKey: 'firedAt',
-      header: '발생 시간',
-      cell: ({ row }) => <span className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.firedAt)}</span>,
+      header: t('alertHistoryPage.table.firedAt', 'Fired At'),
+      cell: ({ row }) => <span className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.firedAt, locale)}</span>,
     },
     {
       accessorKey: 'resolvedAt',
-      header: '해결 시간',
+      header: t('alertHistoryPage.table.resolvedAt', 'Resolved At'),
       cell: ({ row }) =>
         row.original.resolvedAt ? (
-          <span className="whitespace-nowrap text-[13px] text-[#22c55e]">{formatDate(row.original.resolvedAt)}</span>
+          <span className="whitespace-nowrap text-[13px] text-[#22c55e]">{formatDate(row.original.resolvedAt, locale)}</span>
         ) : (
-          <span className="whitespace-nowrap text-[13px] text-[#f87171]">미해결</span>
+          <span className="whitespace-nowrap text-[13px] text-[#f87171]">{t('alertHistoryPage.unresolved', 'Unresolved')}</span>
         ),
     },
   ]
@@ -124,7 +133,7 @@ export function AlertHistoryPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Alert History' }]} />
+      <Breadcrumb items={[{ label: t('observability.alertHistory', 'Alert History') }]} />
 
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
@@ -133,10 +142,10 @@ export function AlertHistoryPage() {
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            Alert History
+            {t('observability.alertHistory', 'Alert History')}
           </h1>
           <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            알림 발생 이력
+            {t('observability.alertHistoryDesc', 'Alert occurrence history')}
           </p>
         </div>
       </div>
@@ -157,21 +166,21 @@ export function AlertHistoryPage() {
         columns={columns}
         data={filtered}
         getRowKey={(row) => row.id}
-        emptyMessage="알림 이력이 없습니다."
+        emptyMessage={t('alertHistoryPage.empty', 'No alert history found.')}
         toolbar={
           <>
             <NativeSelect value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
-              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Severity</option>
-              <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Critical</option>
-              <option value="warning" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Warning</option>
-              <option value="info" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Info</option>
+              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('alertHistoryPage.filters.allSeverity', 'All Severity')}</option>
+              <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.critical', 'Critical')}</option>
+              <option value="warning" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.warning', 'Warning')}</option>
+              <option value="info" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.info', 'Info')}</option>
             </NativeSelect>
             <div className="flex gap-1.5">
               {[
-                { id: '24h', label: 'Last 24h' },
-                { id: '7d', label: 'Last 7d' },
-                { id: '30d', label: 'Last 30d' },
-                { id: 'all', label: 'All' },
+                { id: '24h', label: t('alertHistoryPage.filters.last24h', 'Last 24h') },
+                { id: '7d', label: t('alertHistoryPage.filters.last7d', 'Last 7d') },
+                { id: '30d', label: t('alertHistoryPage.filters.last30d', 'Last 30d') },
+                { id: 'all', label: t('alertHistoryPage.filters.all', 'All') },
               ].map((item) => {
                 const active = dateRange === item.id
                 return (
@@ -197,7 +206,7 @@ export function AlertHistoryPage() {
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
               />
               <input
-                placeholder="Rule name 검색..."
+                placeholder={t('alertHistoryPage.searchPlaceholder', 'Search rule name...')}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -210,14 +219,14 @@ export function AlertHistoryPage() {
       {expandedAlert && (
         <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-5 py-4">
           <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            Alert Detail
+            {t('alertHistoryPage.detail.title', 'Alert Detail')}
           </p>
           <div className="grid grid-cols-2 gap-x-8 gap-y-2">
             {[
-              { label: 'Rule', value: expandedAlert.ruleName },
-              { label: 'Severity', value: expandedAlert.severity },
-              { label: 'Fired At', value: new Date(expandedAlert.firedAt).toLocaleString('ko-KR') },
-              { label: 'Resolved At', value: expandedAlert.resolvedAt ? new Date(expandedAlert.resolvedAt).toLocaleString('ko-KR') : '미해결' },
+              { label: t('alertHistoryPage.detail.rule', 'Rule'), value: expandedAlert.ruleName },
+              { label: t('alertHistoryPage.detail.severity', 'Severity'), value: expandedAlert.severity },
+              { label: t('alertHistoryPage.detail.firedAt', 'Fired At'), value: new Date(expandedAlert.firedAt).toLocaleString(locale) },
+              { label: t('alertHistoryPage.detail.resolvedAt', 'Resolved At'), value: expandedAlert.resolvedAt ? new Date(expandedAlert.resolvedAt).toLocaleString(locale) : t('alertHistoryPage.unresolved', 'Unresolved') },
             ].map(({ label, value }) => (
               <div key={label} className="flex gap-2 text-[13px]">
                 <span className="w-[80px] shrink-0 text-[var(--color-text-muted)]">{label}</span>
@@ -225,7 +234,7 @@ export function AlertHistoryPage() {
               </div>
             ))}
             <div className="col-span-2 flex gap-2 text-[13px]">
-              <span className="w-[80px] shrink-0 text-[var(--color-text-muted)]">Message</span>
+              <span className="w-[80px] shrink-0 text-[var(--color-text-muted)]">{t('alertHistoryPage.detail.message', 'Message')}</span>
               <span className="text-[var(--color-text-primary)]">{expandedAlert.message}</span>
             </div>
           </div>

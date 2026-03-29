@@ -3,6 +3,7 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Download, Info, Rocket, Save, ShoppingCart } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
@@ -20,6 +21,7 @@ import type {
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
 import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults, useStacks } from '../api/stack-api'
+import type { CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -37,11 +39,12 @@ interface ToolOption {
   description: string
 }
 
-const NONE_TOOL_OPTION: ToolOption = {
-  id: '',
-  label: '미선택',
-  description: '이 항목은 설치하지 않습니다.',
-}
+const K8S_PREVIEW_TABS = [
+  { id: 'namespace', label: 'Namespace' },
+  { id: 'deployment', label: 'Deployment' },
+  { id: 'service', label: 'Service' },
+  { id: 'gateway', label: 'Gateway API' },
+] as const
 
 function toDeployErrorMessage(error: unknown): string {
   let code = ''
@@ -156,21 +159,33 @@ const LOGGING_OPTIONS: Record<string, ToolOption[]> = {
   ],
 }
 
-const STORAGE_PLAN_MODE_OPTIONS: Array<{ id: StoragePlanMode; label: string; description: string }> = [
+const STORAGE_PLAN_MODE_OPTIONS: Array<{
+  id: StoragePlanMode
+  labelKey: string
+  labelDefault: string
+  descriptionKey: string
+  descriptionDefault: string
+}> = [
   {
     id: 'none',
-    label: '미선택',
-    description: 'DB와 Object Storage 연결 방식을 아직 정하지 않습니다.',
+    labelKey: 'stackInstall.storagePlan.mode.none.label',
+    labelDefault: 'Not selected',
+    descriptionKey: 'stackInstall.storagePlan.mode.none.description',
+    descriptionDefault: 'Connection mode for DB and Object Storage is not decided yet.',
   },
   {
     id: 'existing-all',
-    label: '기존 DB/Storage 연결',
-    description: '조직에서 이미 운영 중인 DB와 Object Storage를 참조하여 연결합니다.',
+    labelKey: 'stackInstall.storagePlan.mode.existingAll.label',
+    labelDefault: 'Connect existing DB/Storage',
+    descriptionKey: 'stackInstall.storagePlan.mode.existingAll.description',
+    descriptionDefault: 'Reference DB and Object Storage that are already managed by your organization.',
   },
   {
     id: 'integrated-create',
-    label: '통합 DB/Storage 생성 연결',
-    description: '설치 시 DB와 Object Storage를 함께 신규 생성하고 자동 연동합니다.',
+    labelKey: 'stackInstall.storagePlan.mode.integratedCreate.label',
+    labelDefault: 'Create and connect integrated DB/Storage',
+    descriptionKey: 'stackInstall.storagePlan.mode.integratedCreate.description',
+    descriptionDefault: 'Create DB and Object Storage during installation and wire them automatically.',
   },
 ]
 
@@ -713,9 +728,9 @@ const stackInstallSchema = z.object({
 
 type StackInstallFormData = z.infer<typeof stackInstallSchema>
 
-function toolLabel(toolId: string): string {
+function toolLabel(toolId: string, noneLabel = 'Not selected'): string {
   if (!toolId) {
-    return '미선택'
+    return noneLabel
   }
   return TOOL_LABEL_MAP.get(toolId) ?? toolId
 }
@@ -1421,7 +1436,8 @@ function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestTo
 function createDeployScript(
   draft: StackConfigDraft,
   manifestTools: ManifestToolEntry[],
-  manifestByTool: Record<string, string>
+  manifestByTool: Record<string, string>,
+  noneLabel: string
 ): string {
   const stackName = draft.stackName || 'nullus-stack'
   const namespace = draft.namespace.trim() || 'nullus'
@@ -1433,7 +1449,7 @@ function createDeployScript(
   const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
 
   const deployBlocks = manifestTools.flatMap((tool, index) => {
-    const blockHeader = [`# ${index + 1}. ${toolLabel(tool.toolId)} (${tool.installType.toUpperCase()})`, `# roles: ${tool.roles.join(', ')}`]
+    const blockHeader = [`# ${index + 1}. ${toolLabel(tool.toolId, noneLabel)} (${tool.installType.toUpperCase()})`, `# roles: ${tool.roles.join(', ')}`]
     const manifestText = (manifestByTool[tool.toolId] ?? '').trimEnd()
 
     if (tool.installType === 'helm') {
@@ -1714,7 +1730,15 @@ interface ToolSelectorProps {
 }
 
 function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
-  const optionsWithNone = [NONE_TOOL_OPTION, ...options]
+  const { t } = useTranslation()
+  const optionsWithNone = [
+    {
+      id: '',
+      label: t('stackInstall.common.unselected', 'Not selected'),
+      description: t('stackInstall.common.notInstalled', 'This item will not be installed.'),
+    },
+    ...options,
+  ]
 
   return (
     <div className="mb-5">
@@ -1724,6 +1748,8 @@ function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
       <div className="flex flex-col gap-2">
         {optionsWithNone.map((opt) => {
           const selected = value.tool === opt.id
+          const displayLabel = opt.id ? t(`stackAddTools.tools.${opt.id}.label`, opt.label) : opt.label
+          const displayDescription = opt.id ? t(`stackAddTools.tools.${opt.id}.description`, opt.description) : opt.description
           return (
             <button
               key={opt.id}
@@ -1748,9 +1774,9 @@ function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
               </div>
               <div>
                 <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
-                  {opt.label}
+                  {displayLabel}
                 </div>
-                <div className="text-xs text-[var(--color-text-secondary)]">{opt.description}</div>
+                <div className="text-xs text-[var(--color-text-secondary)]">{displayDescription}</div>
               </div>
             </button>
           )
@@ -1777,6 +1803,7 @@ const TABS: { id: InstallTab; label: string }[] = [
 
 export function StackInstallPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const theme = useThemeStore((state) => state.theme)
   const isDarkMode = theme === 'dark'
   const {
@@ -1799,6 +1826,7 @@ export function StackInstallPage() {
   const { data: stackListData } = useStacks()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
   const [createNewNs, setCreateNewNs] = useState(false)
+  const [selectedClusterId, setSelectedClusterId] = useState(draft.clusterId ?? '')
   const [activeTab, setLocalTab] = useState<InstallTab>(draft.activeTab)
   const [k8sPreviewModalOpen, setK8sPreviewModalOpen] = useState(false)
   const [activeK8sPreviewTab, setActiveK8sPreviewTab] = useState<K8sPreviewTab>('namespace')
@@ -1827,6 +1855,7 @@ export function StackInstallPage() {
     setValue,
     setError,
     clearErrors,
+    watch,
     formState: { errors, isValid, isSubmitting },
   } = useForm<StackInstallFormData>({
     resolver: zodResolver(stackInstallSchema),
@@ -1837,21 +1866,32 @@ export function StackInstallPage() {
   })
 
   const effectiveNamespace = createNewNs ? draft.namespace.trim() : draft.namespace.trim() || 'nullus'
-  const normalizedDraftStackName = draft.stackName.trim().toLowerCase()
+  const watchedStackName = watch('stackName')
+  const effectiveClusterId = selectedClusterId || draft.clusterId
+  const normalizedDraftStackName = (watchedStackName || draft.stackName).trim().toLowerCase()
+  const duplicateStackNameMessage = t(
+    'stackInstall.errors.duplicateStackName',
+    'A stack with this name already exists in the selected cluster'
+  )
+  const noneLabel = t('stackInstall.common.unselected', 'Not selected')
   const isDuplicateStackNameInCluster = useMemo(() => {
-    if (!draft.clusterId || !normalizedDraftStackName) {
+    if (!effectiveClusterId || !normalizedDraftStackName) {
       return false
     }
 
     return (stackListData?.items ?? []).some(
       (stack) =>
-        stack.clusterId === draft.clusterId &&
+        stack.clusterId === effectiveClusterId &&
         stack.name.trim().toLowerCase() === normalizedDraftStackName
     )
-  }, [draft.clusterId, normalizedDraftStackName, stackListData?.items])
+  }, [effectiveClusterId, normalizedDraftStackName, stackListData?.items])
 
   useEffect(() => {
-    if (!draft.stackName.trim() || !draft.clusterId) {
+    setSelectedClusterId(draft.clusterId ?? '')
+  }, [draft.clusterId])
+
+  useEffect(() => {
+    if (!(watchedStackName || draft.stackName).trim() || !effectiveClusterId) {
       if (errors.stackName?.type === 'duplicate') {
         clearErrors('stackName')
       }
@@ -1861,7 +1901,7 @@ export function StackInstallPage() {
     if (isDuplicateStackNameInCluster) {
       setError('stackName', {
         type: 'duplicate',
-        message: 'A stack with this name already exists in the selected cluster',
+        message: duplicateStackNameMessage,
       })
       return
     }
@@ -1871,11 +1911,13 @@ export function StackInstallPage() {
     }
   }, [
     clearErrors,
-    draft.clusterId,
     draft.stackName,
+    duplicateStackNameMessage,
+    effectiveClusterId,
     errors.stackName?.type,
     isDuplicateStackNameInCluster,
     setError,
+    watchedStackName,
   ])
 
   const k8sObjects = createK8sObjects(draft)
@@ -1885,70 +1927,70 @@ export function StackInstallPage() {
       slot: 'artifacts.packageRegistry',
       category: 'Artifacts > Package Registry',
       toolKey: draft.artifacts.packageRegistry.tool,
-      toolLabel: toolLabel(draft.artifacts.packageRegistry.tool),
+      toolLabel: toolLabel(draft.artifacts.packageRegistry.tool, noneLabel),
       toolVersion: draft.artifacts.packageRegistry.version,
     },
     {
       slot: 'artifacts.sourceRepository',
       category: 'Artifacts > Source Repository',
       toolKey: draft.artifacts.sourceRepository.tool,
-      toolLabel: toolLabel(draft.artifacts.sourceRepository.tool),
+      toolLabel: toolLabel(draft.artifacts.sourceRepository.tool, noneLabel),
       toolVersion: draft.artifacts.sourceRepository.version,
     },
     {
       slot: 'artifacts.containerRegistry',
       category: 'Artifacts > Container Registry',
       toolKey: draft.artifacts.containerRegistry.tool,
-      toolLabel: toolLabel(draft.artifacts.containerRegistry.tool),
+      toolLabel: toolLabel(draft.artifacts.containerRegistry.tool, noneLabel),
       toolVersion: draft.artifacts.containerRegistry.version,
     },
     {
       slot: 'artifacts.storageBackend',
       category: 'Artifacts > Storage Backend',
       toolKey: draft.artifacts.storageBackend.tool,
-      toolLabel: toolLabel(draft.artifacts.storageBackend.tool),
+      toolLabel: toolLabel(draft.artifacts.storageBackend.tool, noneLabel),
       toolVersion: draft.artifacts.storageBackend.version,
     },
     {
       slot: 'pipeline.cicdPlatform',
       category: 'CI/CD > Platform',
       toolKey: draft.pipeline.cicdPlatform.tool,
-      toolLabel: toolLabel(draft.pipeline.cicdPlatform.tool),
+      toolLabel: toolLabel(draft.pipeline.cicdPlatform.tool, noneLabel),
       toolVersion: draft.pipeline.cicdPlatform.version,
     },
     {
       slot: 'pipeline.cdTool',
       category: 'CI/CD > CD Tool',
       toolKey: draft.pipeline.cdTool.tool,
-      toolLabel: toolLabel(draft.pipeline.cdTool.tool),
+      toolLabel: toolLabel(draft.pipeline.cdTool.tool, noneLabel),
       toolVersion: draft.pipeline.cdTool.version,
     },
     {
       slot: 'monitoring.collection',
       category: 'Observability > Metrics Collection',
       toolKey: draft.monitoring.collection.tool,
-      toolLabel: toolLabel(draft.monitoring.collection.tool),
+      toolLabel: toolLabel(draft.monitoring.collection.tool, noneLabel),
       toolVersion: draft.monitoring.collection.version,
     },
     {
       slot: 'monitoring.visualization',
       category: 'Observability > Visualization',
       toolKey: draft.monitoring.visualization.tool,
-      toolLabel: toolLabel(draft.monitoring.visualization.tool),
+      toolLabel: toolLabel(draft.monitoring.visualization.tool, noneLabel),
       toolVersion: draft.monitoring.visualization.version,
     },
     {
       slot: 'logging.search',
       category: 'Observability > Logging/Search',
       toolKey: draft.logging.search.tool,
-      toolLabel: toolLabel(draft.logging.search.tool),
+      toolLabel: toolLabel(draft.logging.search.tool, noneLabel),
       toolVersion: draft.logging.search.version,
     },
     {
       slot: 'logging.traceLayer',
       category: 'Observability > Trace Layer',
       toolKey: draft.logging.traceLayer.tool,
-      toolLabel: toolLabel(draft.logging.traceLayer.tool),
+      toolLabel: toolLabel(draft.logging.traceLayer.tool, noneLabel),
       toolVersion: draft.logging.traceLayer.version,
     },
   ] satisfies { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string; toolVersion: string }[]).filter(
@@ -2035,7 +2077,7 @@ export function StackInstallPage() {
         const appVersion = item.toolVersion || getToolAppVersion(bundleId)
         map.set(bundleId, {
           toolId: bundleId,
-          toolLabel: toolLabel(bundleId),
+          toolLabel: toolLabel(bundleId, noneLabel),
           installType: getInstallType(bundleId),
           toolVersion: appVersion,
           chartVersion: getInstallType(bundleId) === 'helm' ? (getToolChartVersion(bundleId) || appVersion) : undefined,
@@ -2178,7 +2220,7 @@ export function StackInstallPage() {
     yamlOverridesPayload[toolId] = yamlText
   })
 
-  const deployScript = createDeployScript(draft, allManifestTools, defaultManifestByTool)
+  const deployScript = createDeployScript(draft, allManifestTools, defaultManifestByTool, noneLabel)
 
   const dryRunChecks: DryRunCheck[] = (() => {
     const checks: DryRunCheck[] = []
@@ -2582,9 +2624,9 @@ export function StackInstallPage() {
     if (isDuplicateStackNameInCluster) {
       setError('stackName', {
         type: 'duplicate',
-        message: 'A stack with this name already exists in the selected cluster',
+        message: duplicateStackNameMessage,
       })
-      setTabGuardError('A stack with the same name already exists in the selected cluster.')
+      setTabGuardError(duplicateStackNameMessage)
       stackNameInputRef.current?.focus()
       return false
     }
@@ -3170,16 +3212,9 @@ export function StackInstallPage() {
     return true
   }
 
-  const handleDeploy = async () => {
-    const isFormValid = await validateCoreFields()
-    if (!isFormValid) return
-    const isStorageValid = validateStorageConfig()
-    if (!isStorageValid) {
-      switchTab('storage')
-      return
-    }
-
-    const request = {
+  const buildStackRequest = (): CreateStackRequest => {
+    const storageConfig = draft.storage.planMode === 'none' ? undefined : draft.storage
+    return {
       templateId: draft.selectedTemplateId,
       clusterId: draft.clusterId,
       namespace: effectiveNamespace,
@@ -3192,8 +3227,20 @@ export function StackInstallPage() {
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
-      storage: draft.storage,
+      storage: storageConfig,
     }
+  }
+
+  const handleDeploy = async () => {
+    const isFormValid = await validateCoreFields()
+    if (!isFormValid) return
+    const isStorageValid = validateStorageConfig()
+    if (!isStorageValid) {
+      switchTab('storage')
+      return
+    }
+
+    const request = buildStackRequest()
 
     try {
       const createRes = await createStack.mutateAsync(request)
@@ -3218,30 +3265,15 @@ export function StackInstallPage() {
       return
     }
 
-    saveDraft.mutate({
-      templateId: draft.selectedTemplateId,
-      clusterId: draft.clusterId,
-      namespace: effectiveNamespace,
-      stackName: draft.stackName,
-      accessDomain: draft.accessDomain,
-      accessDomainTls: draft.accessDomainTls,
-      yamlOverrides: yamlOverridesPayload,
-      artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
-      pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
-      monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
-      logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
-      resources: draft.resources,
-      storage: draft.storage,
-    })
+    saveDraft.mutate(buildStackRequest())
   }
 
   return (
     <div>
       <Breadcrumb items={[
-        { label: 'Stack List', path: '/stack/list' },
-        { label: 'New Stack', path: '/stack/templates' },
-        { label: 'Stack Template', path: '/stack/templates' },
-        { label: 'Stack Install' },
+        { label: t('stackInstall.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
+        { label: t('stackInstall.breadcrumb.newStack', 'New Stack'), path: '/stack/templates' },
+        { label: t('stackInstall.breadcrumb.current', 'Stack Install') },
       ]} />
 
       {/* Page header */}
@@ -3254,10 +3286,10 @@ export function StackInstallPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Stack Install
+              {t('stackInstall.page.title', 'Stack Install')}
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              5단계 워크플로우로 DevSecOps 스택을 구성하세요.
+              {t('stackInstall.page.description', 'Configure your DevSecOps stack with a 5-step workflow.')}
             </p>
           </div>
         </div>
@@ -3271,10 +3303,10 @@ export function StackInstallPage() {
             type="button"
           >
             <Save size={14} />
-            Save Draft
+            {t('stackInstall.actions.saveDraft', 'Save Draft')}
           </Button>
           <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
-            Preview K8s Objects
+            {t('stackInstall.actions.previewK8sObjects', 'Preview K8s Objects')}
           </Button>
           <Button
             variant="primary"
@@ -3295,7 +3327,7 @@ export function StackInstallPage() {
             type="button"
           >
             <Rocket size={14} />
-            Deploy
+            {t('stackInstall.actions.deploy', 'Deploy')}
           </Button>
         </div>
       </div>
@@ -3305,143 +3337,165 @@ export function StackInstallPage() {
         </div>
       )}
 
-      <div className="mb-5 flex flex-wrap items-start gap-4">
-        <div className="flex min-w-0 flex-1 flex-wrap items-start gap-4">
-          <div className="max-w-[400px] flex-1">
-            <Controller
-              control={control}
-              name="stackName"
-              render={({ field }) => (
-                <>
-                  <Input
-                    ref={stackNameInputRef}
-                    label="Stack Name"
-                    placeholder="예: nullus-devsecops-stack-20260324-193000"
-                    value={field.value}
-                    onChange={(e) => {
-                      field.onChange(e.target.value)
-                      setStackName(e.target.value)
-                    }}
-                    onBlur={field.onBlur}
-                  />
-                  {errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>}
-                </>
-              )}
-            />
-            <div className="mt-3">
+      <div className="mb-5 flex flex-col gap-4">
+        <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div>
+              <Controller
+                control={control}
+                name="stackName"
+                render={({ field }) => (
+                  <>
+                    <Input
+                      ref={stackNameInputRef}
+                      label={t('stackInstall.form.stackName', 'Stack Name')}
+                      placeholder="예: nullus-devsecops-stack-20260324-193000"
+                      value={field.value}
+                      onChange={(e) => {
+                        field.onChange(e.target.value)
+                        setStackName(e.target.value)
+                      }}
+                      onBlur={field.onBlur}
+                    />
+                    {isDuplicateStackNameInCluster ? (
+                      <span className="text-xs text-[#ef4444]">{duplicateStackNameMessage}</span>
+                    ) : (
+                      errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>
+                    )}
+                  </>
+                )}
+              />
+            </div>
+            <div>
               <Input
-                label="Access domain"
+                label={t('stackInstall.form.accessDomain', 'Access domain')}
                 placeholder="{stack-name}.internal"
                 value={draft.accessDomain || `${draft.stackName || 'nullus-stack'}.internal`}
                 onChange={(e) => setAccessDomain(e.target.value)}
               />
               <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-                최종 접근 가이드: 각 OSS는 <code>{`{OSS}.${draft.stackName || 'stack-name'}.internal`}</code> 형태로 접근합니다.
+                {t('stackInstall.form.finalAccessGuidePrefix', 'Final access guide: each OSS is available at')} <code>{`{OSS}.${draft.stackName || 'stack-name'}.internal`}</code> {t('stackInstall.form.finalAccessGuideSuffix', '.')}
               </p>
-              <label className="mt-2 inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-                <input
-                  type="checkbox"
-                  checked={draft.accessDomainTls.enabled}
-                  onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
-                />
-                Access Domain TLS 인증서 적용 (cert-manager)
-              </label>
-              {draft.accessDomainTls.enabled && (
-                <div className="mt-2 grid gap-2">
-                  <Input
-                    label="TLS Secret Name"
-                    placeholder="nullus-wildcard-tls"
-                    value={draft.accessDomainTls.secretName}
-                    onChange={(e) => updateAccessDomainTls({ secretName: e.target.value })}
-                  />
-                  <Input
-                    label="TLS Secret Namespace"
-                    placeholder="nullus"
-                    value={draft.accessDomainTls.secretNamespace}
-                    onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
-                  />
-                  <Input
-                    label="cert-manager Issuer Name"
-                    placeholder="nullus-ca-issuer"
-                    value={draft.accessDomainTls.issuerName}
-                    onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
-                  />
-                  <p className="text-[11px] text-[var(--color-text-secondary)]">
-                    Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
-                  </p>
-                </div>
-              )}
             </div>
           </div>
-          <div className="flex max-w-[300px] flex-1 flex-col gap-1">
-            <NativeSelect
-              ref={clusterSelectRef}
-              label="Target Cluster"
-              value={draft.clusterId ?? ''}
-              onChange={(e) => setCluster(e.target.value)}
-              className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-            >
-              <option value="">클러스터를 선택하세요</option>
-              {(clusters ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({formatConnectionStatusLabel(c.connection_status)})
-                </option>
-              ))}
-            </NativeSelect>
-            {!draft.clusterId && <span className="text-xs text-[#f59e0b]">배포에 필요합니다</span>}
+
+          <div className="mt-3">
+            <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+              <input
+                type="checkbox"
+                checked={draft.accessDomainTls.enabled}
+                onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
+              />
+              {t('stackInstall.form.accessDomainTls', 'Enable Access Domain TLS (cert-manager)')}
+            </label>
           </div>
-          {draft.clusterId && (
-            <div className="flex max-w-[300px] flex-1 flex-col gap-1">
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            {draft.accessDomainTls.enabled && (
+              <>
+                <Input
+                  label={t('stackInstall.form.tlsSecretName', 'TLS Secret Name')}
+                  placeholder="nullus-wildcard-tls"
+                  value={draft.accessDomainTls.secretName}
+                  onChange={(e) => updateAccessDomainTls({ secretName: e.target.value })}
+                />
+                <Input
+                  label={t('stackInstall.form.tlsSecretNamespace', 'TLS Secret Namespace')}
+                  placeholder="nullus"
+                  value={draft.accessDomainTls.secretNamespace}
+                  onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
+                />
+                <Input
+                  label={t('stackInstall.form.certManagerIssuerName', 'cert-manager Issuer Name')}
+                  placeholder="nullus-ca-issuer"
+                  value={draft.accessDomainTls.issuerName}
+                  onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
+                />
+              </>
+            )}
+          </div>
+
+          {draft.accessDomainTls.enabled && (
+            <p className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
+              Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
+            </p>
+          )}
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="flex flex-col gap-1">
               <NativeSelect
-                ref={namespaceSelectRef}
-                label="Namespace"
-                value={createNewNs ? '__new__' : draft.namespace}
+                ref={clusterSelectRef}
+                label={t('stackInstall.form.targetCluster', 'Target Cluster')}
+                value={draft.clusterId ?? ''}
                 onChange={(e) => {
-                  if (e.target.value === '__new__') {
-                    setCreateNewNs(true)
-                    setNamespace('')
-                  } else {
-                    setCreateNewNs(false)
-                    setNamespace(e.target.value)
-                  }
+                  setSelectedClusterId(e.target.value)
+                  setCluster(e.target.value)
                 }}
                 className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
               >
-                <option value="">기본 (nullus)</option>
-                {(namespaces ?? []).map((ns) => (
-                  <option key={ns.name} value={ns.name}>{ns.name}</option>
+                <option value="">{t('stackInstall.form.selectClusterPlaceholder', 'Select a cluster')}</option>
+                {(clusters ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({formatConnectionStatusLabel(c.connection_status)})
+                  </option>
                 ))}
-                <option value="__new__">새 네임스페이스 생성...</option>
               </NativeSelect>
-              {createNewNs && (
-                <input
-                  ref={newNamespaceInputRef}
-                  type="text"
-                  placeholder="my-namespace"
-                  value={draft.namespace}
-                  onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-                />
-              )}
-              <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
+              {!draft.clusterId && <span className="text-xs text-[#f59e0b]">{t('stackInstall.form.clusterRequired', 'Required for deployment')}</span>}
             </div>
-          )}
+
+            {draft.clusterId && (
+              <div className="flex flex-col gap-1">
+                <NativeSelect
+                  ref={namespaceSelectRef}
+                  label={t('stackInstall.form.namespace', 'Namespace')}
+                  value={createNewNs ? '__new__' : draft.namespace}
+                  onChange={(e) => {
+                    if (e.target.value === '__new__') {
+                      setCreateNewNs(true)
+                      setNamespace('')
+                    } else {
+                      setCreateNewNs(false)
+                      setNamespace(e.target.value)
+                    }
+                  }}
+                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                >
+                  <option value="">기본 (nullus)</option>
+                  {(namespaces ?? []).map((ns) => (
+                    <option key={ns.name} value={ns.name}>{ns.name}</option>
+                  ))}
+                  <option value="__new__">새 네임스페이스 생성...</option>
+                </NativeSelect>
+                {createNewNs && (
+                  <input
+                    ref={newNamespaceInputRef}
+                    type="text"
+                    placeholder="my-namespace"
+                    value={draft.namespace}
+                    onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                  />
+                )}
+                <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="w-full max-w-[860px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+        <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
           <div className="mb-3 flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(99,102,241,0.18)] text-[#a5b4fc]">
               <ShoppingCart size={16} />
             </div>
             <div>
-              <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Resource Total</h3>
-              <p className="m-0 text-xs text-[var(--color-text-secondary)]">
-                선택한 OSS {selectedToolKeys.length}개 적용값(request/limit) 총합
+            <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Resource Total</h3>
+            <p className="m-0 text-xs text-[var(--color-text-secondary)]">
+                {t('stackInstall.resourceTotal.description', 'Combined request/limit totals for {{count}} selected OSS', { count: selectedToolKeys.length })}
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-lg border border-[rgba(99,102,241,0.25)] bg-[rgba(99,102,241,0.08)] p-3">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Request Total</div>
               <div className="grid grid-cols-3 gap-2 text-sm">
@@ -3485,6 +3539,7 @@ export function StackInstallPage() {
             </div>
           )}
         </div>
+
       </div>
 
       <div className="flex items-start gap-5">
@@ -3522,25 +3577,25 @@ export function StackInstallPage() {
             {activeTab === 'artifacts' && (
               <>
                 <ToolSelector
-                  label="Package Registry"
+                  label={t('stackInstall.labels.packageRegistry', 'Package Registry')}
                   options={ARTIFACTS_OPTIONS.packageRegistry}
                   value={draft.artifacts.packageRegistry}
                   onChange={(v) => setTool('artifacts', 'packageRegistry', v)}
                 />
                 <ToolSelector
-                  label="Source Repository"
+                  label={t('stackInstall.labels.sourceRepository', 'Source Repository')}
                   options={ARTIFACTS_OPTIONS.sourceRepository}
                   value={draft.artifacts.sourceRepository}
                   onChange={(v) => setTool('artifacts', 'sourceRepository', v)}
                 />
                 <ToolSelector
-                  label="Container Registry"
+                  label={t('stackInstall.labels.containerRegistry', 'Container Registry')}
                   options={ARTIFACTS_OPTIONS.containerRegistry}
                   value={draft.artifacts.containerRegistry}
                   onChange={(v) => setTool('artifacts', 'containerRegistry', v)}
                 />
                 <ToolSelector
-                  label="Storage Backend"
+                  label={t('stackInstall.labels.storageBackend', 'Storage Backend')}
                   options={ARTIFACTS_OPTIONS.storageBackend}
                   value={draft.artifacts.storageBackend}
                   onChange={(v) => setTool('artifacts', 'storageBackend', v)}
@@ -3551,13 +3606,13 @@ export function StackInstallPage() {
             {activeTab === 'pipeline' && (
               <>
                 <ToolSelector
-                  label="CI/CD Platform"
+                  label={t('stackInstall.labels.cicdPlatform', 'CI/CD Platform')}
                   options={PIPELINE_OPTIONS.cicdPlatform}
                   value={draft.pipeline.cicdPlatform}
                   onChange={(v) => setTool('pipeline', 'cicdPlatform', v)}
                 />
                 <ToolSelector
-                  label="CD Tool"
+                  label={t('stackInstall.labels.cdTool', 'CD Tool')}
                   options={PIPELINE_OPTIONS.cdTool}
                   value={draft.pipeline.cdTool}
                   onChange={(v) => setTool('pipeline', 'cdTool', v)}
@@ -3568,25 +3623,25 @@ export function StackInstallPage() {
             {activeTab === 'monitoring' && (
               <>
                 <ToolSelector
-                  label="Visualization"
+                  label={t('stackInstall.labels.visualization', 'Visualization')}
                   options={MONITORING_OPTIONS.visualization}
                   value={draft.monitoring.visualization}
                   onChange={(v) => setTool('monitoring', 'visualization', v)}
                 />
                 <ToolSelector
-                  label="Metrics"
+                  label={t('stackInstall.labels.metrics', 'Metrics')}
                   options={MONITORING_OPTIONS.collection}
                   value={draft.monitoring.collection}
                   onChange={(v) => setTool('monitoring', 'collection', v)}
                 />
                 <ToolSelector
-                  label="Logs"
+                  label={t('stackInstall.labels.logs', 'Logs')}
                   options={LOGGING_OPTIONS.search}
                   value={draft.logging.search}
                   onChange={(v) => setTool('logging', 'search', v)}
                 />
                 <ToolSelector
-                  label="Traces"
+                  label={t('stackInstall.labels.traces', 'Traces')}
                   options={MONITORING_OPTIONS.traceLayer}
                   value={draft.logging.traceLayer}
                   onChange={(v) => setTool('logging', 'traceLayer', v)}
@@ -3679,7 +3734,7 @@ export function StackInstallPage() {
                             <div className="text-[var(--color-text-secondary)]">역할: {activeManifestInfo.roles.join(', ')}</div>
                             {activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (
                               <div className="mt-1 text-[var(--color-text-secondary)]">
-                                포함 OSS: {activeManifestInfo.sourceToolIds.map((id) => toolLabel(id)).join(', ')}
+                                포함 OSS: {activeManifestInfo.sourceToolIds.map((id) => toolLabel(id, noneLabel)).join(', ')}
                               </div>
                             )}
                             {activeManifestInfo.hasVersionConflict && activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (
@@ -3833,12 +3888,7 @@ export function StackInstallPage() {
                   </div>
 
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {([
-                      { id: 'namespace', label: 'Namespace' },
-                      { id: 'deployment', label: 'Deployment' },
-                      { id: 'service', label: 'Service' },
-                      { id: 'gateway', label: 'Gateway API' },
-                    ] as const).map((tab) => {
+                    {K8S_PREVIEW_TABS.map((tab) => {
                       const isActive = activeK8sPreviewTab === tab.id
                       return (
                         <button
@@ -4096,9 +4146,11 @@ export function StackInstallPage() {
                         )}
                       >
                         <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
-                          {option.label}
+                          {t(option.labelKey, option.labelDefault)}
                         </div>
-                        <div className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{option.description}</div>
+                        <div className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
+                          {t(option.descriptionKey, option.descriptionDefault)}
+                        </div>
                       </button>
                     )
                   })}
@@ -4128,7 +4180,11 @@ export function StackInstallPage() {
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h4>
                           <span className="rounded border border-[var(--color-border-default)] px-2 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
-                            {effectiveMode === 'existing' ? '기존 연결' : effectiveMode === 'create' ? '신규 생성' : '미선택'}
+                            {effectiveMode === 'existing'
+                              ? t('stackInstall.storagePlan.badge.existing', 'Existing')
+                              : effectiveMode === 'create'
+                                ? t('stackInstall.storagePlan.badge.create', 'New')
+                                : noneLabel}
                           </span>
                         </div>
 
@@ -4300,10 +4356,10 @@ export function StackInstallPage() {
             ['Metrics', draft.monitoring.collection.tool],
             ['Logs', draft.logging.search.tool],
             ['Traces', draft.logging.traceLayer.tool],
-            ['Storage Plan', draft.storage.planMode === 'none' ? '미선택' : draft.storage.planMode],
+            ['Storage Plan', draft.storage.planMode === 'none' ? noneLabel : draft.storage.planMode],
             [
               'Database',
-              `${draft.storage.database.mode}:${draft.storage.database.providerOrEngine || '미선택'}${draft.storage.database.mode === 'create' ? `/${draft.storage.database.size}` : ''}`,
+              `${draft.storage.database.mode}:${draft.storage.database.providerOrEngine || noneLabel}${draft.storage.database.mode === 'create' ? `/${draft.storage.database.size}` : ''}`,
             ],
             ['DB Ref', `${draft.storage.database.existingRef || '-'} @ ${draft.storage.database.endpoint || '-'}`],
             ['DB Auth', `${draft.storage.database.authId || '-'} (${draft.storage.database.authPasswordKey || '-'})`],
@@ -4320,7 +4376,7 @@ export function StackInstallPage() {
             >
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-semibold text-[var(--color-text-primary)]">
-                {typeof val === 'string' && val.length === 0 ? '미선택' : val}
+                {typeof val === 'string' && val.length === 0 ? noneLabel : val}
               </span>
             </div>
           ))}
@@ -4339,12 +4395,7 @@ export function StackInstallPage() {
         }
       >
         <div className="mb-[14px] flex flex-wrap gap-2">
-          {[
-            { id: 'namespace', label: 'Namespace' },
-            { id: 'deployment', label: 'Deployment' },
-            { id: 'service', label: 'Service' },
-            { id: 'gateway', label: 'Gateway API' },
-          ].map((tab) => {
+          {K8S_PREVIEW_TABS.map((tab) => {
             const isActive = activeK8sPreviewTab === tab.id
             return (
               <button

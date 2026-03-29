@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Cluster, Stack } from '../../../types'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { cn } from '../../../lib/utils'
@@ -81,18 +82,19 @@ export const ClusterStackFilter = ({
   selectedStack,
   className,
 }: ClusterStackFilterProps) => {
+  const { t } = useTranslation()
   const hasContext = selectedClusterId !== '' || selectedStackId !== ''
 
   return (
     <div className={cn('mb-5 flex flex-wrap items-end gap-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4', className)}>
       <div className="flex items-end gap-3">
         <NativeSelect
-          label="Cluster"
+          label={t('clusterStackFilter.clusterLabel', 'Cluster')}
           value={selectedClusterId}
           onChange={(event) => onClusterChange(event.target.value)}
           className="min-w-[200px]"
         >
-          <option value="">— Select Cluster —</option>
+          <option value="">{t('clusterStackFilter.selectCluster', '— Select Cluster —')}</option>
           {clusters.map((cluster) => (
             <option key={cluster.id} value={cluster.id}>{cluster.name}</option>
           ))}
@@ -107,12 +109,12 @@ export const ClusterStackFilter = ({
 
       <div className="flex items-end gap-3">
         <NativeSelect
-          label="Stack"
+          label={t('clusterStackFilter.stackLabel', 'Stack')}
           value={selectedStackId}
           onChange={(event) => onStackChange(event.target.value)}
           className="min-w-[200px]"
         >
-          <option value="">— Select Stack —</option>
+          <option value="">{t('clusterStackFilter.selectStack', '— Select Stack —')}</option>
           {filteredStacks.map((stack) => (
             <option key={stack.id} value={stack.id}>{`${stack.name} (${formatStatusLabel(stack.status)})`}</option>
           ))}
@@ -131,7 +133,7 @@ export const ClusterStackFilter = ({
           onClick={onClear}
           className="mb-[9px] text-xs text-[var(--color-text-secondary)] hover:text-red-400"
         >
-          Clear
+          {t('clusterStackFilter.clear', 'Clear')}
         </button>
       )}
     </div>

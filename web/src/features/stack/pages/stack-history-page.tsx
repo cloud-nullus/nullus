@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
@@ -11,7 +12,7 @@ import { DataTable } from '../../../components/shared/data-table'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
 
-function formatDate(iso: string) {
+function formatDate(iso: string, locale: string) {
   if (!iso) {
     return '-'
   }
@@ -19,7 +20,7 @@ function formatDate(iso: string) {
   if (Number.isNaN(date.getTime())) {
     return '-'
   }
-  return date.toLocaleString('ko-KR', {
+  return date.toLocaleString(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -30,6 +31,8 @@ function formatDate(iso: string) {
 
 
 export function StackHistoryPage() {
+   const { t, i18n } = useTranslation()
+   const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
    const { data: stacksData } = useStacks()
    const stacks = stacksData?.items ?? []
    const navigate = useNavigate()
@@ -122,7 +125,7 @@ export function StackHistoryPage() {
     },
     {
       id: 'stackName',
-      header: '스택 이름',
+      header: t('stackHistoryPage.table.stackName', 'Stack Name'),
       enableSorting: false,
       cell: ({ row }) => {
         const name = stacks.find((s) => s.id === row.original.stackId)?.name ?? row.original.stackId
@@ -131,7 +134,7 @@ export function StackHistoryPage() {
     },
     {
       accessorKey: 'version',
-      header: '버전',
+      header: t('stackHistoryPage.table.version', 'Version'),
       cell: ({ row }) => {
         const entry = row.original
         const isCurrent = entry.id === entries[0]?.id
@@ -140,7 +143,7 @@ export function StackHistoryPage() {
             v{entry.version}
             {isCurrent && (
               <span className="rounded bg-[rgba(34,197,94,0.15)] px-1.5 py-[1px] font-inherit text-[10px] text-[#22c55e]">
-                CURRENT
+                {t('stackHistoryPage.current', 'CURRENT')}
               </span>
             )}
           </span>
@@ -149,21 +152,21 @@ export function StackHistoryPage() {
     },
     {
       accessorKey: 'changedBy',
-      header: '변경자',
+      header: t('stackHistoryPage.table.changedBy', 'Changed By'),
       cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{row.original.changedBy}</span>,
     },
     {
       accessorKey: 'changedAt',
-      header: '변경 시간',
-      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.changedAt)}</span>,
+      header: t('stackHistoryPage.table.changedAt', 'Changed At'),
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.changedAt, locale)}</span>,
     },
     {
       accessorKey: 'reason',
-      header: '변경 사유',
+      header: t('stackHistoryPage.table.reason', 'Reason'),
     },
       {
         id: 'actions',
-        header: 'Actions',
+        header: t('stackHistoryPage.table.actions', 'Actions'),
         enableSorting: false,
         cell: ({ row }) => {
           const entry = row.original
@@ -181,7 +184,7 @@ export function StackHistoryPage() {
                 type="button"
               >
                 <RotateCcw size={13} />
-                Rollback
+                {t('stackHistoryPage.actions.rollback', 'Rollback')}
               </Button>
             )}
           </div>
@@ -194,7 +197,7 @@ export function StackHistoryPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Stack History' }]} />
+      <Breadcrumb items={[{ label: t('sidebar.stackHistory', 'Stack History') }]} />
 
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between">
@@ -206,22 +209,22 @@ export function StackHistoryPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Stack History
+              {t('stackHistoryPage.title', 'Stack History')}
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              스택 변경 이력 및 버전 관리
+              {t('stackHistoryPage.description', 'Stack change history and version management')}
             </p>
           </div>
         </div>
         <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
           <GitCompare size={15} />
-          Compare Versions
+          {t('stackHistoryPage.actions.compareVersions', 'Compare Versions')}
         </Button>
       </div>
 
       <div className="mb-4 max-w-[360px]">
         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
-          Stack
+          {t('stackHistoryPage.stackSelect', 'Stack')}
         </label>
         <NativeSelect
           value={stackId}
@@ -248,7 +251,7 @@ export function StackHistoryPage() {
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
             />
             <input
-              placeholder="변경자 / 변경 사유 검색..."
+              placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -260,7 +263,7 @@ export function StackHistoryPage() {
       {expandedEntry && (
         <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-5 py-4">
           <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            설정 스냅샷 (v{expandedEntry.version})
+            {t('stackHistoryPage.snapshot', 'Configuration Snapshot')} (v{expandedEntry.version})
           </p>
           <div className="flex flex-wrap gap-2.5">
             {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
@@ -279,13 +282,13 @@ export function StackHistoryPage() {
       <Modal
         open={compareOpen}
         onClose={() => setCompareOpen(false)}
-        title={`Compare Versions (v${versionA} ↔ v${versionB})`}
+        title={`${t('stackHistoryPage.actions.compareVersions', 'Compare Versions')} (v${versionA} ↔ v${versionB})`}
         wide
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-2 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
-              Version A
+              {t('stackHistoryPage.compare.versionA', 'Version A')}
               <NativeSelect
                 value={versionA}
                 onChange={(event) => setVersionA(Number(event.target.value))}
@@ -297,7 +300,7 @@ export function StackHistoryPage() {
               </NativeSelect>
             </label>
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
-              Version B
+              {t('stackHistoryPage.compare.versionB', 'Version B')}
               <NativeSelect
                 value={versionB}
                 onChange={(event) => setVersionB(Number(event.target.value))}
@@ -330,7 +333,7 @@ export function StackHistoryPage() {
            setPreservePVC(true)
            setDeleteConfirmText('')
          }}
-         title={`v${rollbackEntry?.version ?? ''}로 롤백`}
+         title={`${t('stackHistoryPage.actions.rollback', 'Rollback')} v${rollbackEntry?.version ?? ''}`}
          footer={
            <>
              <Button
@@ -343,7 +346,7 @@ export function StackHistoryPage() {
                }}
                disabled={rollbackMutation.isPending}
              >
-               Cancel
+               {t('common.cancel', 'Cancel')}
              </Button>
              <Button
                variant="danger"
@@ -352,7 +355,7 @@ export function StackHistoryPage() {
                disabled={!preservePVC && deleteConfirmText !== 'DELETE' || rollbackMutation.isPending}
                loading={rollbackMutation.isPending}
              >
-               Rollback
+               {t('stackHistoryPage.actions.rollback', 'Rollback')}
              </Button>
            </>
          }
@@ -363,12 +366,12 @@ export function StackHistoryPage() {
                <AlertTriangle size={20} />
              </div>
              <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
-               스택을 v{rollbackEntry?.version ?? ''}으로 롤백합니다. 현재 설정이 변경되며 이 작업은 되돌릴 수 없습니다.
+               {t('stackHistoryPage.rollback.description', 'Rollback this stack to the selected version. Current configuration will change and this action cannot be undone.')}
              </p>
            </div>
 
            <div className="mt-4">
-             <p className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">데이터 보존 옵션</p>
+             <p className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">{t('stackHistoryPage.rollback.dataRetention', 'Data Retention Options')}</p>
              <div className="flex flex-col gap-2">
                <label className="flex items-center gap-2 text-sm cursor-pointer">
                  <input
@@ -381,7 +384,7 @@ export function StackHistoryPage() {
                      setDeleteConfirmText('')
                    }}
                  />
-                 <span>Safe Mode — 데이터 보존</span>
+                 <span>{t('stackHistoryPage.rollback.safeMode', 'Safe Mode — Preserve data')}</span>
                </label>
                <label className="flex items-center gap-2 text-sm cursor-pointer">
                  <input
@@ -391,17 +394,17 @@ export function StackHistoryPage() {
                    checked={!preservePVC}
                    onChange={() => setPreservePVC(false)}
                  />
-                 <span>Clean Mode — 볼륨 삭제</span>
+                 <span>{t('stackHistoryPage.rollback.cleanMode', 'Clean Mode — Delete volumes')}</span>
                </label>
              </div>
              {!preservePVC && (
                <div className="mt-3">
                  <div className="rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-sm text-[#ef4444]">
-                   이 작업은 Persistent Volume을 영구 삭제합니다
+                   {t('stackHistoryPage.rollback.cleanWarning', 'This action permanently deletes Persistent Volumes.')}
                  </div>
                  <input
                    type="text"
-                   placeholder='확인하려면 "DELETE" 입력'
+                   placeholder={t('stackHistoryPage.rollback.confirmDeletePlaceholder', 'Type "DELETE" to confirm')}
                    value={deleteConfirmText}
                    onChange={(e) => setDeleteConfirmText(e.target.value)}
                    className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"

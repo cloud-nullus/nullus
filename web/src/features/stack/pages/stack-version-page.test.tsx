@@ -66,7 +66,7 @@ describe('StackVersionPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Validate Current Stack' }))
 
-    expect(screen.getByText('검증 중...')).not.toBeNull()
+    expect(screen.getByText(/Validating\.\.\.|검증 중\.\.\./)).not.toBeNull()
   })
 
   it('renders compatibility matrix data', () => {

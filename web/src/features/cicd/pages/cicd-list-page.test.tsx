@@ -46,7 +46,7 @@ describe('CicdListPage', () => {
     renderWithProviders(<CicdListPage />)
 
     expect(screen.getAllByText('CI/CD List').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('파이프라인이 없습니다.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('No pipelines found.').length).toBeGreaterThan(0)
   })
 
   it('renders pipeline data', () => {
@@ -65,16 +65,13 @@ describe('CicdListPage', () => {
 
     renderWithProviders(<CicdListPage />)
 
-    expect(screen.getByText('파이프라인이 없습니다.')).not.toBeNull()
+    expect(screen.getByText('No pipelines found.')).not.toBeNull()
   })
 
-  it('navigates to templates and deploy pages', () => {
+  it('navigates to templates page', () => {
     renderWithProviders(<CicdListPage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'New Pipeline' }))
     expect(mockNavigate).toHaveBeenCalledWith('/cicd/templates')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }))
-    expect(mockNavigate).toHaveBeenCalledWith('/cicd/developer-deploy?pipeline=pipeline-1')
   })
 })

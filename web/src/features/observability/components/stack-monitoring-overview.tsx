@@ -83,22 +83,33 @@ type ScopeMetrics = {
 }
 
 function toolLogoURL(toolName: string): string {
-  const key = toolName.toLowerCase()
+  const key = toolName.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
   const map: Record<string, string> = {
     gitlab: 'gitlab',
-    'gitlab-ci': 'gitlab',
-    'gitlab-registry': 'gitlab',
+    'gitlab ce': 'gitlab',
+    'gitlab ci': 'gitlab',
+    'gitlab registry': 'gitlab',
+    github: 'github',
+    'github actions': 'githubactions',
+    nexus: 'sonatype',
+    'nexus repository': 'sonatype',
+    'nexus repository manager': 'sonatype',
     argocd: 'argo',
-    'argo-cd': 'argo',
+    'argo cd': 'argo',
+    flux: 'flux',
+    'flux cd': 'flux',
+    fluxcd: 'flux',
     grafana: 'grafana',
     prometheus: 'prometheus',
+    thanos: 'thanos',
     loki: 'grafana',
     opensearch: 'opensearch',
     elasticsearch: 'elasticsearch',
-    'opentelemetry-collector': 'opentelemetry',
+    'opentelemetry collector': 'opentelemetry',
     tempo: 'grafana',
     jaeger: 'jaeger',
-    harbor: 'goharbor',
+    harbor: 'harbor',
+    'harbor registry': 'harbor',
     minio: 'minio',
   }
   const slug = map[key] ?? 'kubernetes'

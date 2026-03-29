@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { BookOpen, ChevronDown, ChevronRight, Clock, Pencil, Plus, Search, Trash2, User, Wrench, X } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../api/stack-api'
@@ -17,7 +18,6 @@ interface TemplateFormState {
   name: string
   description: string
   tools: ToolEntry[]
-  estimatedInstallTime: string
   recommendedUseCase: string
   minResources: string
 }
@@ -84,6 +84,48 @@ const TOOL_SECTION_LOOKUP = new Map<string, ToolSection>(
   TOOL_SECTIONS.flatMap((section) => section.categories.map((category) => [category.category, section] as const))
 )
 
+const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
+  'empty-template-v1': {
+    ko: '아직 도구가 선택되지 않은 빈 스택 템플릿입니다.',
+    en: 'An empty stack template with no tools selected yet.',
+  },
+  'gitlab-allinone-v1': {
+    ko: 'GitLab 올인원 기반으로 소스/CI/CD를 한 번에 구성하는 스택입니다.',
+    en: 'An all-in-one GitLab stack that configures source and CI/CD together.',
+  },
+  'gitlab-argocd-v1': {
+    ko: 'GitLab과 ArgoCD를 결합해 Git 기반 CI와 GitOps CD를 함께 구성합니다.',
+    en: 'Combines GitLab and ArgoCD to provide Git-based CI and GitOps CD together.',
+  },
+  'github-argocd-v1': {
+    ko: 'GitHub와 ArgoCD 조합으로 GitHub 중심 개발팀에 최적화된 GitOps 스택입니다.',
+    en: 'A GitOps stack optimized for GitHub-centric teams using GitHub and ArgoCD.',
+  },
+}
+
+const NS_PER_MINUTE = 60 * 1_000_000_000
+const ESTIMATE_BASE_MINUTES = 5
+const CATEGORY_MINUTES: Record<string, number> = {
+  package_registry: 7,
+  source_repository: 8,
+  container_registry: 6,
+  storage: 4,
+  ci_platform: 9,
+  cd_tool: 7,
+  monitoring: 6,
+  visualization: 3,
+  logging: 5,
+  log_search: 7,
+}
+const TOOL_BONUS_MINUTES: Record<string, number> = {
+  'gitlab ce': 2,
+  jenkins: 4,
+  thanos: 4,
+  'victoria metrics': 3,
+  opensearch: 3,
+  elasticsearch: 4,
+}
+
 const buildInitialSectionOpenState = () =>
   Object.fromEntries(TOOL_SECTIONS.map((section) => [section.id, true])) as Record<string, boolean>
 
@@ -113,12 +155,40 @@ const EMPTY_TEMPLATE_FORM: TemplateFormState = {
   name: '',
   description: '',
   tools: [],
-  estimatedInstallTime: String(30 * 60 * 1_000_000_000),
   recommendedUseCase: '',
   minResources: '',
 }
 
+const normalizeToolKey = (name: string) => name.trim().toLowerCase()
+
+const estimateInstallMinutesFromTools = (tools: ToolEntry[]): number => {
+  if (tools.length === 0) {
+    return ESTIMATE_BASE_MINUTES
+  }
+
+  const total = tools.reduce((sum, tool) => {
+    const categoryCost = CATEGORY_MINUTES[tool.category] ?? 6
+    const bonus = TOOL_BONUS_MINUTES[normalizeToolKey(tool.name)] ?? 0
+    return sum + categoryCost + bonus
+  }, ESTIMATE_BASE_MINUTES)
+
+  return Math.max(ESTIMATE_BASE_MINUTES, Math.round(total))
+}
+
+const estimateInstallMinutesForTemplate = (template: StackTemplate): number => {
+  const toolsFromDetails = (template.toolDetails ?? [])
+    .filter((tool) => tool.name && tool.name.trim().length > 0)
+    .map((tool) => toToolEntry(tool.name, tool))
+
+  const targetTools = toolsFromDetails.length > 0
+    ? toolsFromDetails
+    : template.tools.map((toolName) => toToolEntry(toolName))
+
+  return estimateInstallMinutesFromTools(targetTools)
+}
+
 export function StackTemplatePage() {
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { data: apiTemplates } = useTemplates()
   const createTemplate = useCreateTemplate()
@@ -141,6 +211,8 @@ export function StackTemplatePage() {
   const [newCategoryOptions, setNewCategoryOptions] = useState('')
 
   const allSections = [...TOOL_SECTIONS, ...customSections]
+  const estimatedInstallMinutes = useMemo(() => estimateInstallMinutesFromTools(form.tools), [form.tools])
+  const estimatedInstallTimeNs = estimatedInstallMinutes * NS_PER_MINUTE
 
   const [openToolSections, setOpenToolSections] = useState<Record<string, boolean>>(buildInitialSectionOpenState)
   const [addToolDrafts, setAddToolDrafts] = useState<Record<string, AddToolDraft>>(buildInitialAddToolDrafts)
@@ -148,20 +220,33 @@ export function StackTemplatePage() {
 
   const templates = Array.isArray(apiTemplates) ? apiTemplates : []
 
-  const filtered = templates.filter(
-    (t) =>
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.description.toLowerCase().includes(search.toLowerCase()) ||
-      t.tools.some((tool) => tool.toLowerCase().includes(search.toLowerCase()))
-  )
+  const isKorean = i18n.resolvedLanguage?.startsWith('ko') ?? i18n.language.startsWith('ko')
+  const resolveTemplateDescription = (template: StackTemplate) => {
+    const localized = TEMPLATE_DESCRIPTION_I18N[template.id]
+    if (!localized) return template.description
+    return isKorean ? localized.ko : localized.en
+  }
+
+  const filtered = templates.filter((template) => {
+    const localizedDescription = resolveTemplateDescription(template).toLowerCase()
+    const normalizedSearch = search.toLowerCase()
+    return (
+      template.name.toLowerCase().includes(normalizedSearch) ||
+      localizedDescription.includes(normalizedSearch) ||
+      template.tools.some((tool) => tool.toLowerCase().includes(normalizedSearch))
+    )
+  })
 
   const selectedTemplate = selectedTemplateId ? templates.find((template) => template.id === selectedTemplateId) ?? null : null
 
   const selectedDetail = selectedTemplate
     ? {
-      fullDescription: selectedTemplate.description,
-      resource: selectedTemplate.minResources ?? 'N/A',
-      compatibility: selectedTemplate.recommendedUseCase ?? 'Compatibility details are managed in Stack Version.',
+      fullDescription: resolveTemplateDescription(selectedTemplate),
+      resource: selectedTemplate.minResources ?? t('stackTemplatePage.modal.na', 'N/A'),
+      compatibility: selectedTemplate.recommendedUseCase ?? t(
+        'stackTemplatePage.modal.compatibilityFallback',
+        'Compatibility details are managed in Stack Version.'
+      ),
     }
     : null
 
@@ -199,9 +284,8 @@ export function StackTemplatePage() {
     setForm({
       id: template.id,
       name: template.name,
-      description: template.description,
+      description: resolveTemplateDescription(template),
       tools,
-      estimatedInstallTime: String(Math.max(1, Math.round(template.estimatedMinutes * 60 * 1_000_000_000))),
       recommendedUseCase: template.recommendedUseCase ?? '',
       minResources: template.minResources ?? '',
     })
@@ -306,18 +390,12 @@ export function StackTemplatePage() {
 
 
   const submitTemplate = () => {
-    const estimatedInstallTime = Number(form.estimatedInstallTime)
-    if (!Number.isFinite(estimatedInstallTime) || estimatedInstallTime < 0) {
-      setFormError('Estimated install time must be a non-negative number.')
-      return
-    }
-
     const payload = {
       id: form.id,
       name: form.name,
       description: form.description,
       tools: form.tools,
-      estimated_install_time: estimatedInstallTime,
+      estimated_install_time: estimatedInstallTimeNs,
       recommended_use_case: form.recommendedUseCase,
       min_resources: form.minResources,
     }
@@ -330,7 +408,7 @@ export function StackTemplatePage() {
             closeFormModal()
           },
           onError: () => {
-            setFormError('Failed to update template.')
+            setFormError(t('stackTemplatePage.errors.updateFailed', 'Failed to update template.'))
           },
         }
       )
@@ -342,7 +420,7 @@ export function StackTemplatePage() {
         closeFormModal()
       },
       onError: () => {
-        setFormError('Failed to create template.')
+        setFormError(t('stackTemplatePage.errors.createFailed', 'Failed to create template.'))
       },
     })
   }
@@ -360,8 +438,8 @@ export function StackTemplatePage() {
     <div>
       <Breadcrumb
         items={[
-          { label: 'Stack List', path: '/stack/list' },
-          { label: 'Stack Template' },
+          { label: t('stackTemplatePage.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
+          { label: t('stackTemplatePage.breadcrumb.current', 'Stack Template') },
         ]}
       />
 
@@ -373,17 +451,17 @@ export function StackTemplatePage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Stack Template
+              {t('stackTemplatePage.title', 'Stack Template')}
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              검증된 DevSecOps 스택 템플릿을 선택하여 빠르게 시작하세요.
+              {t('stackTemplatePage.description', 'Select a validated DevSecOps stack template to get started quickly.')}
             </p>
           </div>
         </div>
         {isAdmin && (
           <Button variant="primary" size="md" type="button" onClick={openCreateModal}>
             <Plus size={15} />
-            Create Template
+            {t('stackTemplatePage.actions.createTemplate', 'Create Template')}
           </Button>
         )}
       </div>
@@ -396,7 +474,7 @@ export function StackTemplatePage() {
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
           <input
-            placeholder="템플릿 검색..."
+            placeholder={t('stackTemplatePage.searchPlaceholder', 'Search templates...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -421,7 +499,7 @@ export function StackTemplatePage() {
                 {template.name}
               </h3>
               <p className="m-0 text-[13px] leading-[1.5] text-[var(--color-text-secondary)]">
-                {template.description}
+                {resolveTemplateDescription(template)}
               </p>
             </div>
 
@@ -442,7 +520,7 @@ export function StackTemplatePage() {
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-secondary)]">
                   <Clock size={13} />
-                  <span>약 {template.estimatedMinutes}분</span>
+                  <span>{t('stackTemplatePage.card.estimatedMinutes', '{{minutes}} min', { minutes: estimateInstallMinutesForTemplate(template) })}</span>
                 </div>
                 {template.createdBy && (
                   <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
@@ -464,7 +542,7 @@ export function StackTemplatePage() {
                       }}
                     >
                       <Pencil size={13} />
-                      Edit
+                      {t('stackTemplatePage.actions.edit', 'Edit')}
                     </Button>
                     <Button
                       variant="danger"
@@ -476,7 +554,7 @@ export function StackTemplatePage() {
                       }}
                     >
                       <Trash2 size={13} />
-                      Delete
+                      {t('stackTemplatePage.actions.delete', 'Delete')}
                     </Button>
                   </>
                 )}
@@ -490,7 +568,7 @@ export function StackTemplatePage() {
                     handleUseTemplate(template.id)
                   }}
                 >
-                  Use Base Template
+                  {t('stackTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
                 </Button>
               </div>
             </div>
@@ -500,19 +578,19 @@ export function StackTemplatePage() {
 
       {filtered.length === 0 && (
         <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
-          검색 결과가 없습니다.
+          {t('stackTemplatePage.empty', 'No search results found.')}
         </div>
       )}
 
       <Modal
         open={selectedTemplate !== null}
         onClose={() => setSelectedTemplateId(null)}
-        title={selectedTemplate?.name ?? 'Template Detail'}
+        title={selectedTemplate?.name ?? t('stackTemplatePage.modal.templateDetail', 'Template Detail')}
         wide
         footer={
           <>
             <Button variant="outline" size="sm" onClick={() => setSelectedTemplateId(null)} type="button">
-              Close
+              {t('stackTemplatePage.actions.close', 'Close')}
             </Button>
             {selectedTemplate && (
               <Button
@@ -524,7 +602,7 @@ export function StackTemplatePage() {
                   handleUseTemplate(selectedTemplate.id)
                 }}
               >
-                Base Template
+                {t('stackTemplatePage.actions.baseTemplate', 'Base Template')}
               </Button>
             )}
           </>
@@ -533,14 +611,14 @@ export function StackTemplatePage() {
         {selectedTemplate && selectedDetail && (
           <div className="flex flex-col gap-4">
             <div>
-              <div className="mb-1.5 text-[13px] text-[var(--color-text-secondary)]">Description</div>
+              <div className="mb-1.5 text-[13px] text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.description', 'Description')}</div>
               <p className="m-0 text-sm leading-[1.7] text-[var(--color-text-primary)]">
                 {selectedDetail.fullDescription}
               </p>
             </div>
 
             <div>
-              <div className="mb-2 text-[13px] text-[var(--color-text-secondary)]">Included Tools</div>
+              <div className="mb-2 text-[13px] text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.includedTools', 'Included Tools')}</div>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
                 {selectedTemplate.tools.map((tool) => (
                   <div
@@ -556,17 +634,19 @@ export function StackTemplatePage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg border border-[var(--color-border-default)] p-3">
-                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">Estimated Deploy Time</div>
-                <div className="text-base font-bold text-[#fcd34d]">{selectedTemplate.estimatedMinutes} minutes</div>
+                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.estimatedDeployTime', 'Estimated Deploy Time')}</div>
+                <div className="text-base font-bold text-[#fcd34d]">
+                  {t('stackTemplatePage.modal.minutes', '{{minutes}} minutes', { minutes: estimateInstallMinutesForTemplate(selectedTemplate) })}
+                </div>
               </div>
               <div className="rounded-lg border border-[var(--color-border-default)] p-3">
-                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">Resource Requirements</div>
+                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.resourceRequirements', 'Resource Requirements')}</div>
                 <div className="text-sm font-semibold text-[var(--color-text-primary)]">{selectedDetail.resource}</div>
               </div>
             </div>
 
             <div className="rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] p-3">
-              <div className="mb-1.5 text-xs font-bold text-[#86efac]">Compatibility</div>
+              <div className="mb-1.5 text-xs font-bold text-[#86efac]">{t('stackTemplatePage.modal.compatibility', 'Compatibility')}</div>
               <div className="text-[13px] text-[var(--color-text-primary)]">{selectedDetail.compatibility}</div>
             </div>
           </div>
@@ -576,11 +656,11 @@ export function StackTemplatePage() {
       <Modal
         open={formOpen}
         onClose={closeFormModal}
-        title={editingTemplateId ? 'Edit Template' : 'Create Template'}
+        title={editingTemplateId ? t('stackTemplatePage.modal.editTitle', 'Edit Template') : t('stackTemplatePage.modal.createTitle', 'Create Template')}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeFormModal} type="button">
-              Cancel
+              {t('common.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -589,31 +669,31 @@ export function StackTemplatePage() {
               onClick={submitTemplate}
               loading={createTemplate.isPending || updateTemplate.isPending}
             >
-              {editingTemplateId ? 'Save' : 'Create'}
+              {editingTemplateId ? t('common.save', 'Save') : t('stackTemplatePage.actions.create', 'Create')}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
           <Input
-            label="Template ID"
+            label={t('stackTemplatePage.form.templateId', 'Template ID')}
             value={editingTemplateId ?? form.id}
             onChange={(event) => handleFormChange('id', event.target.value)}
             disabled={editingTemplateId !== null}
           />
           <Input
-            label="Name"
+            label={t('stackTemplatePage.form.name', 'Name')}
             value={form.name}
             onChange={(event) => handleFormChange('name', event.target.value)}
           />
           <Input
-            label="Description"
+            label={t('stackTemplatePage.form.description', 'Description')}
             value={form.description}
             onChange={(event) => handleFormChange('description', event.target.value)}
           />
           <div className="flex flex-col gap-2">
             <div className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
-              Tools
+              {t('stackTemplatePage.form.tools', 'Tools')}
             </div>
             <div className="rounded-lg border border-[var(--color-border-default)]">
               {allSections.map((section) => {
@@ -644,7 +724,7 @@ export function StackTemplatePage() {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); removeSection(section.id) }}
                         className="mr-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-transparent text-[var(--color-text-muted)] transition-colors hover:border-[rgba(248,113,113,0.5)] hover:text-[#f87171]"
-                        title={`Remove ${section.label} section`}
+                        title={t('stackTemplatePage.actions.removeSection', 'Remove {{section}} section', { section: section.label })}
                       >
                         <Trash2 size={13} />
                       </button>
@@ -654,7 +734,7 @@ export function StackTemplatePage() {
                       <div className="flex flex-col gap-2 px-3 py-3">
                         {sectionTools.length === 0 && (
                           <div className="rounded-md border border-dashed border-[var(--color-border-default)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
-                            No tools added in this section.
+                            {t('stackTemplatePage.form.noToolsInSection', 'No tools added in this section.')}
                           </div>
                         )}
 
@@ -666,7 +746,7 @@ export function StackTemplatePage() {
                               className="flex flex-col gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-2"
                             >
                               <div className="text-xs font-medium text-[var(--color-text-secondary)]">
-                                {categoryMeta?.label ?? 'Custom Category'}
+                                {categoryMeta?.label ?? t('stackTemplatePage.form.customCategory', 'Custom Category')}
                               </div>
                               <div className="grid gap-2 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
                                 <select
@@ -684,14 +764,14 @@ export function StackTemplatePage() {
                                   type="text"
                                   value={tool.helm_version}
                                   onChange={(event) => updateTool(index, 'helm_version', event.target.value)}
-                                  placeholder="Helm version"
+                                  placeholder={t('stackTemplatePage.form.helmVersionPlaceholder', 'Helm version')}
                                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
                                 <input
                                   type="text"
                                   value={tool.app_version}
                                   onChange={(event) => updateTool(index, 'app_version', event.target.value)}
-                                  placeholder="App version"
+                                  placeholder={t('stackTemplatePage.form.appVersionPlaceholder', 'App version')}
                                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
                                 <button
@@ -732,10 +812,10 @@ export function StackTemplatePage() {
                               ))}
                             </select>
                             <Button variant="outline" size="sm" type="button" onClick={() => submitAddTool(section.id)}>
-                              Add
+                              {t('stackTemplatePage.actions.add', 'Add')}
                             </Button>
                             <Button variant="ghost" size="sm" type="button" onClick={() => setActiveAddToolSection(null)}>
-                              Cancel
+                              {t('common.cancel', 'Cancel')}
                             </Button>
                           </div>
                         ) : (
@@ -745,7 +825,7 @@ export function StackTemplatePage() {
                             className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-border-default)] px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-hover)] hover:text-[var(--color-text-primary)]"
                           >
                             <Plus size={14} />
-                            Add Tool
+                            {t('stackTemplatePage.actions.addTool', 'Add Tool')}
                           </button>
                         )}
                       </div>
@@ -761,26 +841,26 @@ export function StackTemplatePage() {
                   type="text"
                   value={newSectionLabel}
                   onChange={(e) => setNewSectionLabel(e.target.value)}
-                  placeholder="Section name (e.g. Security)"
+                  placeholder={t('stackTemplatePage.form.sectionNamePlaceholder', 'Section name (e.g. Security)')}
                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <input
                   type="text"
                   value={newCategoryLabel}
                   onChange={(e) => setNewCategoryLabel(e.target.value)}
-                  placeholder="First category (e.g. Scanner)"
+                  placeholder={t('stackTemplatePage.form.firstCategoryPlaceholder', 'First category (e.g. Scanner)')}
                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <input
                   type="text"
                   value={newCategoryOptions}
                   onChange={(e) => setNewCategoryOptions(e.target.value)}
-                  placeholder="Tool options (comma separated, e.g. Trivy, SonarQube)"
+                  placeholder={t('stackTemplatePage.form.toolOptionsPlaceholder', 'Tool options (comma separated, e.g. Trivy, SonarQube)')}
                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" type="button" onClick={addSection}>Add Section</Button>
-                  <Button variant="ghost" size="sm" type="button" onClick={() => setAddSectionOpen(false)}>Cancel</Button>
+                  <Button variant="outline" size="sm" type="button" onClick={addSection}>{t('stackTemplatePage.actions.addSection', 'Add Section')}</Button>
+                  <Button variant="ghost" size="sm" type="button" onClick={() => setAddSectionOpen(false)}>{t('common.cancel', 'Cancel')}</Button>
                 </div>
               </div>
             ) : (
@@ -790,23 +870,28 @@ export function StackTemplatePage() {
                 className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-border-default)] px-3 py-2.5 text-sm text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-hover)] hover:text-[var(--color-text-primary)]"
               >
                 <Plus size={14} />
-                Add Section
+                {t('stackTemplatePage.actions.addSection', 'Add Section')}
               </button>
             )}
           </div>
+          <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2.5">
+            <div className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
+              {t('stackTemplatePage.form.estimatedInstallTimeAuto', 'Estimated Install Time (Auto)')}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
+              {t('stackTemplatePage.form.estimatedInstallTimeValue', '{{minutes}} min ({{nanoseconds}} ns)', {
+                minutes: estimatedInstallMinutes,
+                nanoseconds: estimatedInstallTimeNs,
+              })}
+            </div>
+          </div>
           <Input
-            label="Estimated Install Time (ns)"
-            value={form.estimatedInstallTime}
-            onChange={(event) => handleFormChange('estimatedInstallTime', event.target.value)}
-            type="number"
-          />
-          <Input
-            label="Recommended Use Case"
+            label={t('stackTemplatePage.form.recommendedUseCase', 'Recommended Use Case')}
             value={form.recommendedUseCase}
             onChange={(event) => handleFormChange('recommendedUseCase', event.target.value)}
           />
           <Input
-            label="Minimum Resources"
+            label={t('stackTemplatePage.form.minimumResources', 'Minimum Resources')}
             value={form.minResources}
             onChange={(event) => handleFormChange('minResources', event.target.value)}
           />
@@ -818,9 +903,9 @@ export function StackTemplatePage() {
         open={deleteTemplateId !== null}
         onClose={() => setDeleteTemplateId(null)}
         onConfirm={handleDeleteTemplate}
-        title="Delete Template"
-        description="템플릿을 삭제하면 더 이상 목록에 표시되지 않습니다. 계속하시겠습니까?"
-        confirmLabel="Delete Template"
+        title={t('stackTemplatePage.confirm.deleteTitle', 'Delete Template')}
+        description={t('stackTemplatePage.confirm.deleteDescription', 'This template will no longer be shown in the list. Continue?')}
+        confirmLabel={t('stackTemplatePage.confirm.deleteConfirmLabel', 'Delete Template')}
         loading={deleteTemplate.isPending}
       />
     </div>

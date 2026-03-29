@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -19,16 +20,16 @@ import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-lo
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
-const STEP_LABELS: Record<Step, string> = {
-  1: '앱 이름',
+const STEP_LABEL_DEFAULTS: Record<Step, string> = {
+  1: 'App Name',
   2: 'Git Repository',
-  3: '클러스터 / 네임스페이스',
-  4: '리소스 설정',
-  5: '환경 변수',
-  6: '매니페스트 확인',
+  3: 'Cluster / Namespace',
+  4: 'Resource Configuration',
+  5: 'Environment Variables',
+  6: 'Manifest Review',
 }
 
-const PHASES = ['Namespace 생성', 'Deployment 생성', 'Service 생성']
+const PHASE_COUNT = 3
 const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
 
 const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
@@ -37,8 +38,8 @@ const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
   error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
 }
 
-function PhaseStep({ label, index, progress }: { label: string; index: number; progress: number }) {
-  const phaseProgress = 100 / PHASES.length
+function PhaseStep({ label, index, progress, total }: { label: string; index: number; progress: number; total: number }) {
+  const phaseProgress = 100 / total
   const phaseStart = index * phaseProgress
   const isDone = progress >= phaseStart + phaseProgress
   const isActive = progress >= phaseStart && !isDone
@@ -71,7 +72,7 @@ function PhaseStep({ label, index, progress }: { label: string; index: number; p
       >
         {label}
       </span>
-      {index < PHASES.length - 1 && (
+      {index < total - 1 && (
         <div
           className={cn(
             'mx-1 h-px flex-1 transition-colors duration-300',
@@ -193,6 +194,8 @@ const DEFAULT_FORM: FormState = {
 }
 
 export function DeveloperDeployPage() {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   const [step, setStep] = useState<Step>(1)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -288,6 +291,11 @@ export function DeveloperDeployPage() {
   }
 
   const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '' }
+  const phaseLabels = [
+    t('developerDeployPage.phases.namespace', 'Create Namespace'),
+    t('developerDeployPage.phases.deployment', 'Create Deployment'),
+    t('developerDeployPage.phases.service', 'Create Service'),
+  ]
 
   const onSubmit = async (data: FormState) => {
     try {
@@ -340,22 +348,22 @@ export function DeveloperDeployPage() {
 
     return (
       <div>
-        <Breadcrumb items={[{ label: 'CI/CD List', path: '/cicd/list' }, { label: '배포 진행' }]} />
+        <Breadcrumb items={[{ label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' }, { label: t('developerDeployPage.deployProgress', 'Deploy Progress') }]} />
         <div className="mx-auto max-w-3xl py-12">
           <div className="mb-8 text-center">
             <h2 className="m-0 text-xl font-bold text-[var(--color-text-primary)]">{form.appName}</h2>
-            <p className="m-0 mt-1 text-sm text-[var(--color-text-secondary)]">{form.namespace} 네임스페이스</p>
+            <p className="m-0 mt-1 text-sm text-[var(--color-text-secondary)]">{form.namespace} {t('developerDeployPage.namespaceSuffix', 'namespace')}</p>
           </div>
 
           <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6">
             <div className="mb-5 flex items-center gap-2">
-              {PHASES.map((phase, idx) => (
-                <PhaseStep key={phase} label={phase} index={idx} progress={progress} />
+              {phaseLabels.map((phase, idx) => (
+                <PhaseStep key={phase} label={phase} index={idx} progress={progress} total={PHASE_COUNT} />
               ))}
             </div>
 
             <div className="mb-1 flex justify-between text-xs">
-              <span className="text-[var(--color-text-secondary)]">전체 진행률</span>
+              <span className="text-[var(--color-text-secondary)]">{t('developerDeployPage.totalProgress', 'Total Progress')}</span>
               <span className={cn('font-semibold', isFailed ? 'text-[#ef4444]' : 'text-[var(--color-text-primary)]')}>{progress}%</span>
             </div>
             <div className="mb-6 flex gap-px">
@@ -373,7 +381,7 @@ export function DeveloperDeployPage() {
             </div>
 
             <div className="text-center text-xs text-[var(--color-text-secondary)]">
-              Deployment ID: <span className="font-mono text-[var(--color-text-primary)]">{deploymentId}</span>
+              {t('developerDeployPage.deploymentId', 'Deployment ID')}: <span className="font-mono text-[var(--color-text-primary)]">{deploymentId}</span>
             </div>
           </div>
 
@@ -386,20 +394,20 @@ export function DeveloperDeployPage() {
               </div>
               <Terminal size={12} className="text-[rgba(255,255,255,0.4)]" />
               <span className="text-[11px] font-medium text-[rgba(255,255,255,0.4)]">
-                {isConnected ? 'Streaming...' : 'Connecting...'}
+                {isConnected ? t('developerDeployPage.streaming', 'Streaming...') : t('developerDeployPage.connecting', 'Connecting...')}
               </span>
             </div>
             <div ref={terminalRef} className="max-h-[400px] overflow-y-auto p-4">
               {logs.length === 0 ? (
                 <span className="font-mono text-xs text-[#484f58]">
-                  {isFailed ? '배포 실패. 로그를 확인할 수 없습니다.' : 'Waiting for deployment output...'}
+                  {isFailed ? t('developerDeployPage.deployFailedNoLog', 'Deployment failed. Logs are unavailable.') : t('developerDeployPage.waitingLogs', 'Waiting for deployment output...')}
                 </span>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {logs.map((entry) => (
                     <div key={entry.id} className="flex gap-2 leading-5">
                       <span className="shrink-0 text-xs text-[#484f58]">
-                        {new Date(entry.timestamp).toLocaleTimeString('ko-KR')}
+                        {new Date(entry.timestamp).toLocaleTimeString(locale)}
                       </span>
                       <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold uppercase', LOG_LEVEL_STYLE[entry.level])}>
                         {entry.level}
@@ -421,7 +429,7 @@ export function DeveloperDeployPage() {
             return (
               <div className="mb-6 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
                 <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                  생성된 리소스
+                  {t('developerDeployPage.createdResources', 'Created resources')}
                 </p>
                 <div className="flex flex-col gap-1.5">
                   {deployedResources.map((r) => (
@@ -447,10 +455,10 @@ export function DeveloperDeployPage() {
           {isDone && (
             <div className="flex justify-center gap-3">
               <Button variant="outline" size="md" onClick={() => { setDeploymentId(null); reset(DEFAULT_FORM); setStep(1) }}>
-                새 배포
+                {t('developerDeployPage.newDeployment', 'New Deployment')}
               </Button>
               <Button variant="primary" size="md" onClick={() => navigate('/cicd/list')}>
-                CI/CD 목록 보기
+                {t('developerDeployPage.viewCicdList', 'View CI/CD List')}
               </Button>
             </div>
           )}
@@ -463,8 +471,8 @@ export function DeveloperDeployPage() {
     <div>
       <Breadcrumb
         items={[
-          { label: 'CI/CD List', path: '/cicd/list' },
-          { label: 'Pipeline Setup & Deploy' },
+          { label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' },
+          { label: t('developerDeployPage.title', 'Pipeline Setup & Deploy') },
         ]}
       />
 
@@ -477,10 +485,10 @@ export function DeveloperDeployPage() {
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            CI/CD Pipeline Setup & Developer Deploy
+            {t('developerDeployPage.title', 'CI/CD Pipeline Setup & Developer Deploy')}
           </h1>
           <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-            파이프라인 템플릿 선택과 개발자 배포를 하나의 화면에서 진행하세요.
+            {t('developerDeployPage.description', 'Proceed with pipeline template selection and developer deployment on a single screen.')}
           </p>
         </div>
       </div>
@@ -512,7 +520,7 @@ export function DeveloperDeployPage() {
                   s === step ? 'font-semibold text-[var(--color-text-primary)]' : 'font-normal text-[var(--color-text-secondary)]'
                 )}
               >
-                {STEP_LABELS[s]}
+                {t(`developerDeployPage.steps.${s}`, STEP_LABEL_DEFAULTS[s])}
               </span>
             </button>
             {i < 5 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
@@ -526,7 +534,7 @@ export function DeveloperDeployPage() {
           className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6"
         >
           {step === 1 && (
-            <StepSection title="앱 이름 입력">
+            <StepSection title={t('developerDeployPage.sections.appName', 'Enter App Name')}>
               <Input
                 placeholder="my-awesome-app"
                 value={form.appName}
@@ -534,23 +542,23 @@ export function DeveloperDeployPage() {
               />
               {errors.appName && <span className="text-xs text-[#ef4444]">{errors.appName.message}</span>}
               <p className="mb-0 mt-1.5 text-xs text-[var(--color-text-secondary)]">
-                소문자, 숫자, 하이픈만 사용 가능합니다.
+                {t('developerDeployPage.appNameRule', 'Only lowercase letters, numbers, and hyphens are allowed.')}
               </p>
             </StepSection>
           )}
 
           {step === 2 && (
-            <StepSection title="Git Repository URL">
+            <StepSection title={t('developerDeployPage.sections.gitRepository', 'Git Repository URL')}>
               <div className="flex flex-col gap-3">
                 <div>
-                  <label htmlFor="deploy-stack" className={labelStyleClass}>스택 (선택)</label>
+                  <label htmlFor="deploy-stack" className={labelStyleClass}>{t('developerDeployPage.form.stackOptional', 'Stack (Optional)')}</label>
                   <NativeSelect
                     id="deploy-stack"
                     value={selectedStackId}
                     onChange={(e) => setSelectedStackId(e.target.value)}
                     className="w-full"
                   >
-                    <option value="">직접 입력</option>
+                    <option value="">{t('developerDeployPage.form.manualInput', 'Manual Input')}</option>
                     {stacks.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
@@ -579,10 +587,10 @@ export function DeveloperDeployPage() {
           )}
 
           {step === 3 && (
-            <StepSection title="클러스터 & 네임스페이스">
+            <StepSection title={t('developerDeployPage.sections.clusterNamespace', 'Cluster & Namespace')}>
               <div className="flex flex-col gap-3">
                 <div>
-                  <label htmlFor="deploy-cluster" className={labelStyleClass}>클러스터</label>
+                  <label htmlFor="deploy-cluster" className={labelStyleClass}>{t('developerDeployPage.form.cluster', 'Cluster')}</label>
                   <NativeSelect
                     id="deploy-cluster"
                     value={form.clusterId}
@@ -599,7 +607,7 @@ export function DeveloperDeployPage() {
                   {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
                 </div>
                 <div>
-                  <label htmlFor="deploy-namespace" className={labelStyleClass}>네임스페이스</label>
+                  <label htmlFor="deploy-namespace" className={labelStyleClass}>{t('developerDeployPage.form.namespace', 'Namespace')}</label>
                   <NativeSelect
                     id="deploy-namespace"
                     value={form.namespace}
@@ -617,7 +625,7 @@ export function DeveloperDeployPage() {
           )}
 
           {step === 4 && (
-            <StepSection title="리소스 설정">
+            <StepSection title={t('developerDeployPage.sections.resources', 'Resource Configuration')}>
               <div className="flex flex-col gap-4">
                 <ResourceSlider
                   label="Replicas"
@@ -654,7 +662,7 @@ export function DeveloperDeployPage() {
           )}
 
           {step === 5 && (
-            <StepSection title="환경 변수">
+            <StepSection title={t('developerDeployPage.sections.envVars', 'Environment Variables')}>
               <div className="flex flex-col gap-2">
                 {fields.map((field, i) => (
                   <div key={field.id}>
@@ -692,16 +700,16 @@ export function DeveloperDeployPage() {
                   type="button"
                 >
                   <Plus size={13} />
-                  변수 추가
+                  {t('developerDeployPage.actions.addVariable', 'Add Variable')}
                 </Button>
               </div>
             </StepSection>
           )}
 
           {step === 6 && (
-            <StepSection title="매니페스트 확인 및 편집">
+            <StepSection title={t('developerDeployPage.sections.manifest', 'Review and Edit Manifest')}>
               <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
-                생성된 YAML 매니페스트를 확인하고 필요 시 수정하세요.
+                {t('developerDeployPage.manifestDescription', 'Review the generated YAML manifest and edit if needed.')}
               </p>
               <textarea
                 value={customManifest ?? generateYaml(form, appType)}
@@ -710,7 +718,7 @@ export function DeveloperDeployPage() {
                 spellCheck={false}
               />
               <button type="button" onClick={() => setCustomManifest(null)} className="mt-2 cursor-pointer border-none bg-none text-xs text-[var(--color-text-secondary)] underline">
-                기본값으로 초기화
+                {t('developerDeployPage.actions.resetDefault', 'Reset to default')}
               </button>
             </StepSection>
           )}
@@ -719,7 +727,7 @@ export function DeveloperDeployPage() {
           <div className="mt-6 flex justify-end gap-2.5">
             {step > 1 && (
               <Button variant="outline" size="md" onClick={() => setStep((s) => (s - 1) as Step)}>
-                이전
+                {t('developerDeployPage.actions.previous', 'Previous')}
               </Button>
             )}
             {step < 6 ? (
@@ -733,7 +741,7 @@ export function DeveloperDeployPage() {
                   setStep((s) => (s + 1) as Step)
                 }}
               >
-                다음
+                {t('developerDeployPage.actions.next', 'Next')}
               </Button>
             ) : (
               <Button
@@ -747,7 +755,7 @@ export function DeveloperDeployPage() {
                 })}
               >
                 <Rocket size={14} />
-                Deploy
+                {t('developerDeployPage.actions.deploy', 'Deploy')}
               </Button>
             )}
           </div>
@@ -757,7 +765,7 @@ export function DeveloperDeployPage() {
         {step !== 6 && (
         <div>
           <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            YAML 매니페스트 미리보기
+            {t('developerDeployPage.yamlPreview', 'YAML Manifest Preview')}
           </p>
           <CodePreview
             code={generateYaml(form, appType)}

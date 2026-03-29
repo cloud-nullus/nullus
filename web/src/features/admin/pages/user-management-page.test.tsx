@@ -103,7 +103,7 @@ describe('UserManagementPage', () => {
     renderWithProviders(<UserManagementPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Users' }))
 
-    expect(screen.queryAllByText('사용자가 없습니다.').length).toBeGreaterThan(0)
+    expect(screen.queryAllByText(/No users found\.|사용자가 없습니다\./).length).toBeGreaterThan(0)
   })
 
   it('renders edit action button in users table', () => {

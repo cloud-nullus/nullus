@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   BarChart2,
   ChevronDown,
@@ -26,18 +27,28 @@ import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  active: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Active' },
-  running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', label: 'Running' },
-  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Success' },
-  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Failed' },
-  pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', label: 'Pending' },
-  cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Cancelled' },
+const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
+  active: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
+  running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa' },
+  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
+  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444' },
+  pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' },
+  cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b' },
 }
 
-function formatDate(iso: string | null) {
+function formatDate(iso: string | null, locale = 'en-US') {
   if (!iso) return '-'
-  return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function getPipelineStatusLabel(t: (key: string, defaultValue?: string) => string, status: string) {
+  if (status === 'running') return t('cicd.status.running', 'Running')
+  if (status === 'success') return t('cicd.status.success', 'Success')
+  if (status === 'failed') return t('cicd.status.failed', 'Failed')
+  if (status === 'pending') return t('cicd.status.pending', 'Pending')
+  if (status === 'cancelled') return t('cicd.status.cancelled', 'Cancelled')
+  if (status === 'active') return t('cicdListPage.status.active', 'Active')
+  return status
 }
 
 
@@ -71,6 +82,8 @@ function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) 
 }
 
 function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   const { data: template } = useTemplateById(pipeline.templateId)
   const [revealedVars, setRevealedVars] = useState<Set<string>>(new Set())
 
@@ -111,7 +124,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                 )
               }
             />
-            <ConfigRow label="Status" value={(STATUS_STYLES[pipeline.status] ?? STATUS_STYLES.pending).label} />
+            <ConfigRow label="Status" value={getPipelineStatusLabel(t, pipeline.status)} />
           </div>
         </DetailCard>
 
@@ -122,8 +135,8 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               label="Namespace"
               value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.namespace}</code>}
             />
-            <ConfigRow label="Created" value={formatDate(pipeline.createdAt)} />
-            <ConfigRow label="Last Deployed" value={formatDate(pipeline.lastDeployedAt)} />
+            <ConfigRow label="Created" value={formatDate(pipeline.createdAt, locale)} />
+            <ConfigRow label="Last Deployed" value={formatDate(pipeline.lastDeployedAt, locale)} />
           </div>
         </DetailCard>
       </div>
@@ -179,6 +192,8 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
 }
 
 function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
   const deployments = deploymentsData?.items ?? []
 
@@ -202,7 +217,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
 
   const trendMap = new Map<string, { success: number; failed: number }>()
   for (const d of deployments) {
-    const date = new Date(d.startedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+    const date = new Date(d.startedAt).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' })
     const entry = trendMap.get(date) ?? { success: 0, failed: 0 }
     if (d.status === 'success') {
       entry.success += 1
@@ -250,7 +265,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
 
       {buildTrend.length === 0 && (
         <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-sm text-[var(--color-text-secondary)]">
-          배포 이력이 없습니다
+          {t('cicdListPage.emptyDeployments', 'No deployment history.')}
         </div>
       )}
     </div>
@@ -258,11 +273,13 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
 }
 
 function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
   const deployments = deploymentsData?.items ?? []
 
   if (deployments.length === 0) {
-    return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">배포 이력이 없습니다</div>
+    return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">{t('cicdListPage.emptyDeployments', 'No deployment history.')}</div>
   }
 
   return (
@@ -279,12 +296,12 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
         return (
           <div key={d.id} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3.5 py-3">
             <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: st.bg, color: st.color }}>
-              {st.label}
+              {getPipelineStatusLabel(t, d.status)}
             </span>
             <span className="text-[13px] font-semibold text-[#a5b4fc]">{d.version}</span>
             <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{d.triggeredBy || '-'}</span>
             <span className="text-[12px] text-[var(--color-text-secondary)]">{duration}</span>
-            <span className="text-[12px] text-[var(--color-text-secondary)]">{formatDate(d.startedAt)}</span>
+            <span className="text-[12px] text-[var(--color-text-secondary)]">{formatDate(d.startedAt, locale)}</span>
           </div>
         )
       })}
@@ -301,6 +318,8 @@ function PipelineActionsTab({
   onRun: () => void
   onOpenLogs: () => void
 }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <DetailCard title="Actions">
@@ -330,8 +349,8 @@ function PipelineActionsTab({
             { label: 'Pipeline', value: pipeline.name },
             { label: 'Cluster', value: pipeline.clusterName },
             { label: 'Namespace', value: pipeline.namespace },
-            { label: 'Status', value: (STATUS_STYLES[pipeline.status] ?? STATUS_STYLES.pending).label },
-            { label: 'Last Deployed', value: formatDate(pipeline.lastDeployedAt) },
+            { label: 'Status', value: getPipelineStatusLabel(t, pipeline.status) },
+            { label: 'Last Deployed', value: formatDate(pipeline.lastDeployedAt, locale) },
           ].map((item) => (
             <div key={item.label} className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
               <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">{item.label}</div>
@@ -353,6 +372,8 @@ function PipelineDetailPanel({
   onRun: () => void
   onOpenLogs: () => void
 }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   const [innerTab, setInnerTab] = useState<PipelineInnerTab>('info')
   const statusStyle = STATUS_STYLES[pipeline.status] ?? STATUS_STYLES.pending
 
@@ -365,10 +386,10 @@ function PipelineDetailPanel({
           </div>
           <h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">{pipeline.name}</h3>
           <span className="rounded-[10px] px-[9px] py-[3px] text-[11px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>
-            {statusStyle.label}
+            {getPipelineStatusLabel(t, pipeline.status)}
           </span>
           <span className="text-[12px] text-[var(--color-text-secondary)]">
-            · {pipeline.appType} · {pipeline.clusterName} · {formatDate(pipeline.lastDeployedAt)}
+            · {pipeline.appType} · {pipeline.clusterName} · {formatDate(pipeline.lastDeployedAt, locale)}
           </span>
         </div>
 
@@ -416,6 +437,8 @@ function PipelineDetailPanel({
 }
 
 export function CicdListPage() {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage?.startsWith('ko') ? 'ko-KR' : 'en-US'
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('')
   const [clusterFilter, setClusterFilter] = useState('')
@@ -458,41 +481,41 @@ export function CicdListPage() {
     },
     {
       accessorKey: 'name',
-      header: '이름',
+      header: t('cicdListPage.table.name', 'Name'),
       cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
     },
     {
       accessorKey: 'appType',
-      header: '앱 타입',
+      header: t('cicdListPage.table.appType', 'App Type'),
       cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.appType}</span>,
     },
     {
       accessorKey: 'clusterName',
-      header: '클러스터',
+      header: t('cicdListPage.table.cluster', 'Cluster'),
       cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.clusterName}</span>,
     },
     {
       accessorKey: 'status',
-      header: '상태',
+      header: t('cicdListPage.table.status', 'Status'),
       cell: ({ row }) => {
         const st = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending
         return (
           <span className="rounded-md px-[9px] py-[3px] text-xs font-semibold" style={{ backgroundColor: st.bg, color: st.color }}>
-            {st.label}
+            {getPipelineStatusLabel(t, row.original.status)}
           </span>
         )
       },
     },
     {
       accessorKey: 'lastDeployedAt',
-      header: '최근 배포',
-      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.lastDeployedAt)}</span>,
+      header: t('cicdListPage.table.lastDeployed', 'Last Deployed'),
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.lastDeployedAt, locale)}</span>,
     },
   ]
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'CI/CD List' }]} />
+      <Breadcrumb items={[{ label: t('sidebar.cicdList', 'CI/CD List') }]} />
 
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
@@ -504,10 +527,10 @@ export function CicdListPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              CI/CD List
+              {t('cicdListPage.title', 'CI/CD List')}
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              CI/CD 파이프라인 목록
+              {t('cicdListPage.description', 'CI/CD Pipeline List')}
             </p>
           </div>
         </div>
@@ -518,7 +541,7 @@ export function CicdListPage() {
           type="button"
         >
           <Plus size={15} />
-          New Pipeline
+          {t('cicd.newPipeline', 'New Pipeline')}
         </Button>
       </div>
 
@@ -535,19 +558,19 @@ export function CicdListPage() {
             onOpenLogs={() => navigate(`/cicd/pipelines/${pipeline.id}/logs`)}
           />
         )}
-        emptyMessage="파이프라인이 없습니다."
+        emptyMessage={t('cicdListPage.emptyPipelines', 'No pipelines found.')}
         toolbar={
           <>
             <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
-              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
-              <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
-              <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
-              <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
-              <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
-              <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicdListPage.filters.allStatus', 'All Status')}</option>
+              <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.success', 'Success')}</option>
+              <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.running', 'Running')}</option>
+              <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.pending', 'Pending')}</option>
+              <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.failed', 'Failed')}</option>
+              <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.cancelled', 'Cancelled')}</option>
             </NativeSelect>
             <NativeSelect value={clusterFilter} onChange={(e) => setClusterFilter(e.target.value)} className="w-auto">
-              <option value="">All Clusters</option>
+              <option value="">{t('cicdListPage.filters.allClusters', 'All Clusters')}</option>
               {(clustersData?.items ?? []).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -558,7 +581,7 @@ export function CicdListPage() {
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
               />
               <input
-                placeholder="파이프라인 검색..."
+                placeholder={t('cicdListPage.searchPlaceholder', 'Search pipelines...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"

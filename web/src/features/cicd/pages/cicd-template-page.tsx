@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { BookOpen, Pencil, Plus, Search, Trash2, User } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import {
@@ -39,6 +40,7 @@ const EMPTY_FORM: TemplateFormState = {
 
 
 export function CicdTemplatePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const role = useAuthStore((state) => state.role)
   const isAdmin = role === 'admin'
@@ -105,12 +107,12 @@ export function CicdTemplatePage() {
 
   const submitTemplate = () => {
     if (!form.name.trim()) {
-      setFormError('Name is required.')
+      setFormError(t('cicdTemplatePage.errors.nameRequired', 'Name is required.'))
       return
     }
 
     if (form.stages.length === 0) {
-      setFormError('At least one stage is required.')
+      setFormError(t('cicdTemplatePage.errors.stageRequired', 'At least one stage is required.'))
       return
     }
 
@@ -127,7 +129,7 @@ export function CicdTemplatePage() {
     if (editingTemplateId) {
       updateTemplate.mutate(payload, {
         onSuccess: () => closeFormModal(),
-        onError: () => setFormError('Failed to update template.'),
+        onError: () => setFormError(t('cicdTemplatePage.errors.updateFailed', 'Failed to update template.')),
       })
       return
     }
@@ -137,7 +139,7 @@ export function CicdTemplatePage() {
         closeFormModal()
         navigate('/cicd/developer-deploy')
       },
-      onError: () => setFormError('Failed to create template.'),
+      onError: () => setFormError(t('cicdTemplatePage.errors.createFailed', 'Failed to create template.')),
     })
   }
 
@@ -154,8 +156,8 @@ export function CicdTemplatePage() {
   return (
     <div>
       <Breadcrumb items={[
-        { label: 'CI/CD List', path: '/cicd/list' },
-        { label: 'CI/CD Template' },
+        { label: t('cicdTemplatePage.breadcrumb.list', 'CI/CD List'), path: '/cicd/list' },
+        { label: t('cicdTemplatePage.breadcrumb.current', 'CI/CD Template') },
       ]} />
 
       {/* Page header */}
@@ -168,17 +170,17 @@ export function CicdTemplatePage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              CI/CD Template
+              {t('cicdTemplatePage.title', 'CI/CD Template')}
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              파이프라인 템플릿을 선택하여 빠르게 시작하세요.
+              {t('cicdTemplatePage.description', 'Choose a pipeline template to get started quickly.')}
             </p>
           </div>
         </div>
         {isAdmin && (
           <Button variant="primary" size="md" type="button" onClick={openCreateModal}>
             <Plus size={15} />
-            Create Template
+            {t('cicdTemplatePage.actions.createTemplate', 'Create Template')}
           </Button>
         )}
       </div>
@@ -191,7 +193,7 @@ export function CicdTemplatePage() {
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
           <input
-            placeholder="템플릿 검색..."
+            placeholder={t('cicdTemplatePage.searchPlaceholder', 'Search templates...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -258,7 +260,7 @@ export function CicdTemplatePage() {
                         onClick={() => openEditModal(template)}
                       >
                         <Pencil size={13} />
-                        Edit
+                        {t('cicdTemplatePage.actions.edit', 'Edit')}
                       </Button>
                       <Button
                         variant="danger"
@@ -267,7 +269,7 @@ export function CicdTemplatePage() {
                         onClick={() => setDeleteTemplateId(template.id)}
                       >
                         <Trash2 size={13} />
-                        Delete
+                        {t('cicdTemplatePage.actions.delete', 'Delete')}
                       </Button>
                     </>
                   )}
@@ -278,7 +280,7 @@ export function CicdTemplatePage() {
                     className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
                     onClick={() => navigate('/cicd/developer-deploy')}
                   >
-                    Use Base Template
+                    {t('cicdTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
                   </Button>
                 </div>
               </div>
@@ -289,7 +291,7 @@ export function CicdTemplatePage() {
 
       {filtered.length === 0 && (
         <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
-          검색 결과가 없습니다.
+          {t('cicdTemplatePage.empty', 'No search results found.')}
         </div>
       )}
 
@@ -297,11 +299,11 @@ export function CicdTemplatePage() {
       <Modal
         open={formOpen}
         onClose={closeFormModal}
-        title={editingTemplateId ? 'Edit Template' : 'Create Template'}
+        title={editingTemplateId ? t('cicdTemplatePage.modal.editTitle', 'Edit Template') : t('cicdTemplatePage.modal.createTitle', 'Create Template')}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeFormModal} type="button">
-              Cancel
+              {t('common.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -310,33 +312,33 @@ export function CicdTemplatePage() {
               onClick={submitTemplate}
               loading={createTemplate.isPending || updateTemplate.isPending}
             >
-              {editingTemplateId ? 'Save' : 'Create'}
+              {editingTemplateId ? t('common.save', 'Save') : t('cicdTemplatePage.actions.create', 'Create')}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
           <Input
-            label="Template ID"
-            placeholder="예: web-backend-standard"
+            label={t('cicdTemplatePage.form.templateId', 'Template ID')}
+            placeholder={t('cicdTemplatePage.form.templateIdPlaceholder', 'e.g. web-backend-standard')}
             value={editingTemplateId ?? form.id}
             onChange={(e) => handleFormChange('id', e.target.value)}
             disabled={editingTemplateId !== null}
           />
           <Input
-            label="Name"
-            placeholder="예: Standard Web Backend"
+            label={t('cicdTemplatePage.form.name', 'Name')}
+            placeholder={t('cicdTemplatePage.form.namePlaceholder', 'e.g. Standard Web Backend')}
             value={form.name}
             onChange={(e) => handleFormChange('name', e.target.value)}
           />
           <Input
-            label="Description"
+            label={t('cicdTemplatePage.form.description', 'Description')}
             value={form.description}
             onChange={(e) => handleFormChange('description', e.target.value)}
           />
           <div className="flex flex-col gap-2">
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
-              Stages
+              {t('cicdTemplatePage.form.stages', 'Stages')}
             </span>
             <div className="flex flex-wrap gap-2">
               {STAGE_OPTIONS.map((stage) => {
@@ -370,9 +372,9 @@ export function CicdTemplatePage() {
         open={deleteTemplateId !== null}
         onClose={() => setDeleteTemplateId(null)}
         onConfirm={handleDeleteTemplate}
-        title="Delete Template"
-        description="템플릿을 삭제하면 더 이상 목록에 표시되지 않습니다. 계속하시겠습니까?"
-        confirmLabel="Delete Template"
+        title={t('cicdTemplatePage.confirm.deleteTitle', 'Delete Template')}
+        description={t('cicdTemplatePage.confirm.deleteDescription', 'This template will no longer be shown in the list. Continue?')}
+        confirmLabel={t('cicdTemplatePage.confirm.deleteConfirmLabel', 'Delete Template')}
         loading={deleteTemplate.isPending}
       />
     </div>

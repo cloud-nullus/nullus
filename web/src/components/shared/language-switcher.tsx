@@ -10,7 +10,7 @@ interface LanguageSwitcherProps {
 
 const LANGUAGE_OPTIONS = [
   { code: 'en', label: 'English', shortLabel: 'EN', flag: '🇺🇸' },
-  { code: 'ko', label: '한국어', shortLabel: 'KO', flag: '🇰🇷' },
+  { code: 'ko', label: 'Korean', shortLabel: 'KO', flag: '🇰🇷' },
 ]
 
 export function LanguageSwitcher({

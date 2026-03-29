@@ -11,6 +11,7 @@ import {
   type PaginationState,
 } from '@tanstack/react-table'
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 
@@ -33,12 +34,14 @@ export function DataTable<T>({
   getRowKey,
   onSort,
   onRowClick,
-  emptyMessage = '데이터가 없습니다.',
+  emptyMessage,
   pageSize = 20,
   toolbar,
   expandedRowId,
   renderExpanded,
 }: DataTableProps<T>) {
+  const { t } = useTranslation()
+  const resolvedEmptyMessage = emptyMessage ?? t('dataTable.empty', 'No data available.')
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
@@ -149,7 +152,7 @@ export function DataTable<T>({
 
       {table.getRowModel().rows.length === 0 && (
         <div className="py-12 text-center text-sm text-[var(--color-text-secondary)]">
-          {emptyMessage}
+          {resolvedEmptyMessage}
         </div>
       )}
 

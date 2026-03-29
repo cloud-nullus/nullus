@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useTranslation } from 'react-i18next'
 import { Bell, Pencil, Plus, Search } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertRule, useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
@@ -52,6 +53,7 @@ const ALERT_RULE_DEFAULTS: AlertRuleForm = {
 }
 
 export function AlertRulesPage() {
+  const { t } = useTranslation()
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [selectedStackId, setSelectedStackId] = useState('')
   const [search, setSearch] = useState('')
@@ -160,7 +162,7 @@ export function AlertRulesPage() {
   const columns: ColumnDef<AlertRule, unknown>[] = [
     {
       accessorKey: 'enabled',
-      header: 'Active',
+      header: t('alertRulesPage.table.active', 'Active'),
       cell: ({ row }) => {
         const rule = row.original
         return (
@@ -184,7 +186,7 @@ export function AlertRulesPage() {
               />
             </button>
             <span className={cn('text-xs', rule.enabled ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
-              {rule.enabled ? 'On' : 'Off'}
+              {rule.enabled ? t('alertRulesPage.switch.on', 'On') : t('alertRulesPage.switch.off', 'Off')}
             </span>
           </div>
         )
@@ -192,32 +194,32 @@ export function AlertRulesPage() {
     },
     {
       accessorKey: 'name',
-      header: 'Name',
+      header: t('alertRulesPage.table.name', 'Name'),
       cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
     },
     {
       accessorKey: 'metric_name',
-      header: 'Metric',
+      header: t('alertRulesPage.table.metric', 'Metric'),
       cell: ({ row }) => <span className="font-mono text-xs text-[var(--color-text-secondary)]">{row.original.metric_name}</span>,
     },
     {
       accessorKey: 'condition',
-      header: 'Condition',
+      header: t('alertRulesPage.table.condition', 'Condition'),
       cell: ({ row }) => <span className="font-mono text-xs text-[var(--color-text-secondary)]">{row.original.condition}</span>,
     },
     {
       id: 'thresholds',
-      header: 'Thresholds',
+      header: t('alertRulesPage.table.thresholds', 'Thresholds'),
       cell: ({ row }) => (
         <div className="flex flex-col text-[12px] [font-family:'Fira_Code',monospace]">
-          <span>Warning: {row.original.warning_threshold}</span>
-          <span>Critical: {row.original.critical_threshold}</span>
+          <span>{t('alertRulesPage.threshold.warning', 'Warning')}: {row.original.warning_threshold}</span>
+          <span>{t('alertRulesPage.threshold.critical', 'Critical')}: {row.original.critical_threshold}</span>
         </div>
       ),
     },
     {
       accessorKey: 'channel',
-      header: 'Channel',
+      header: t('alertRulesPage.table.channel', 'Channel'),
       cell: ({ row }) => {
         const ch = CHANNEL_BADGE[row.original.channel]
         return (
@@ -229,16 +231,16 @@ export function AlertRulesPage() {
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('alertRulesPage.table.actions', 'Actions'),
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" type="button" onClick={() => openEditModal(row.original)}>
             <Pencil size={12} />
-            Edit
+            {t('alertRulesPage.actions.edit', 'Edit')}
           </Button>
           <Button variant="danger" size="sm" type="button" onClick={() => setDeleteRuleId(row.original.id)}>
-            Delete
+            {t('alertRulesPage.actions.delete', 'Delete')}
           </Button>
         </div>
       ),
@@ -256,16 +258,16 @@ export function AlertRulesPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Alert Rules
+              {t('observability.alertRules', 'Alert Rules')}
             </h1>
             <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              Alert rule list and management
+              {t('observability.alertRulesDesc', 'Alert rule list and management')}
             </p>
           </div>
         </div>
         <Button variant="primary" size="md" onClick={openCreateModal} type="button">
           <Plus size={15} />
-          New Rule
+          {t('observability.newRule', 'New Rule')}
         </Button>
       </div>
 
@@ -289,7 +291,7 @@ export function AlertRulesPage() {
             || r.metric_name.toLowerCase().includes(search.toLowerCase()),
         )}
         getRowKey={(row) => row.id}
-        emptyMessage="No alert rules found."
+        emptyMessage={t('alertRulesPage.empty', 'No alert rules found.')}
         toolbar={(
           <div className="relative ml-auto">
             <Search
@@ -297,7 +299,7 @@ export function AlertRulesPage() {
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
             />
             <input
-              placeholder="Search by rule or metric..."
+              placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -312,7 +314,7 @@ export function AlertRulesPage() {
           setRuleModalOpen(false)
           resetForm()
         }}
-        title={editingRuleId ? 'Edit Alert Rule' : 'New Alert Rule'}
+        title={editingRuleId ? t('alertRulesPage.modal.editTitle', 'Edit Alert Rule') : t('alertRulesPage.modal.newTitle', 'New Alert Rule')}
         footer={(
           <>
             <Button
@@ -324,7 +326,7 @@ export function AlertRulesPage() {
               }}
               type="button"
             >
-              Cancel
+              {t('common.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -334,7 +336,7 @@ export function AlertRulesPage() {
               disabled={!isValid || isSubmitting || isFetchingEditingRule}
               type="button"
             >
-              {editingRuleId ? 'Save' : 'Create'}
+              {editingRuleId ? t('common.save', 'Save') : t('alertRulesPage.actions.create', 'Create')}
             </Button>
           </>
         )}
@@ -342,13 +344,13 @@ export function AlertRulesPage() {
         <div className="flex flex-col gap-3.5">
           {editingRuleId && isFetchingEditingRule ? (
             <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-              Loading latest alert rule from DB...
+              {t('alertRulesPage.modal.loadingFromDb', 'Loading latest alert rule from DB...')}
             </div>
           ) : null}
           <div>
             <Input
-              label="Name"
-              placeholder="ex) High CPU Alert"
+              label={t('alertRulesPage.form.name', 'Name')}
+              placeholder={t('alertRulesPage.form.namePlaceholder', 'ex) High CPU Alert')}
               {...register('name')}
             />
             {errors.name && <span className="mt-1 block text-xs text-[#ef4444]">{errors.name.message}</span>}
@@ -356,8 +358,8 @@ export function AlertRulesPage() {
 
           <div>
             <Input
-              label="Metric Name"
-              placeholder="ex) cpu_usage"
+              label={t('alertRulesPage.form.metricName', 'Metric Name')}
+              placeholder={t('alertRulesPage.form.metricNamePlaceholder', 'ex) cpu_usage')}
               {...register('metricName')}
             />
             {errors.metricName && <span className="mt-1 block text-xs text-[#ef4444]">{errors.metricName.message}</span>}
@@ -366,31 +368,31 @@ export function AlertRulesPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Input
-                label="Warning Threshold"
+                label={t('alertRulesPage.form.warningThreshold', 'Warning Threshold')}
                 type="number"
-                placeholder="ex) 70"
+                placeholder={t('alertRulesPage.form.warningThresholdPlaceholder', 'ex) 70')}
                 {...register('warningThreshold', { valueAsNumber: true })}
               />
               {errors.warningThreshold && <span className="mt-1 block text-xs text-[#ef4444]">{errors.warningThreshold.message}</span>}
             </div>
             <div>
               <Input
-                label="Critical Threshold"
+                label={t('alertRulesPage.form.criticalThreshold', 'Critical Threshold')}
                 type="number"
-                placeholder="ex) 85"
+                placeholder={t('alertRulesPage.form.criticalThresholdPlaceholder', 'ex) 85')}
                 {...register('criticalThreshold', { valueAsNumber: true })}
               />
               {errors.criticalThreshold && <span className="mt-1 block text-xs text-[#ef4444]">{errors.criticalThreshold.message}</span>}
             </div>
           </div>
 
-          <NativeSelect label="Channel" {...register('channel')}>
+          <NativeSelect label={t('alertRulesPage.form.channel', 'Channel')} {...register('channel')}>
             <option value="slack">Slack</option>
             <option value="email">Email</option>
           </NativeSelect>
 
           <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">Active</span>
+            <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">{t('alertRulesPage.form.active', 'Active')}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -408,7 +410,7 @@ export function AlertRulesPage() {
                 />
               </button>
               <span className={cn('text-sm', watch('enabled') ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
-                {watch('enabled') ? 'On' : 'Off'}
+                {watch('enabled') ? t('alertRulesPage.switch.on', 'On') : t('alertRulesPage.switch.off', 'Off')}
               </span>
             </div>
           </div>
@@ -419,9 +421,9 @@ export function AlertRulesPage() {
         open={deleteRuleId !== null}
         onClose={() => setDeleteRuleId(null)}
         onConfirm={handleDelete}
-        title="Delete Alert Rule"
-        description="Deleting this rule stops future alerts from being triggered by it. Continue?"
-        confirmLabel="Delete"
+        title={t('alertRulesPage.confirm.deleteTitle', 'Delete Alert Rule')}
+        description={t('alertRulesPage.confirm.deleteDescription', 'Deleting this rule stops future alerts from being triggered by it. Continue?')}
+        confirmLabel={t('common.delete', 'Delete')}
         loading={deleteRule.isPending}
       />
     </div>

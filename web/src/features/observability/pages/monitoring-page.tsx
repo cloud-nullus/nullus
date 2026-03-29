@@ -9,6 +9,7 @@ import {
   GripVertical, ChevronDown, ChevronUp, Check, RefreshCw, Lock,
   Activity, Clock, Package, TrendingUp, TrendingDown, Layers,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useDashboard } from '../api/observability-api'
 import type { ToolHealthStatus } from '../api/observability-api'
@@ -158,6 +159,7 @@ const isKnownNonEmbeddableHost = (rawUrl: string): boolean => {
 }
 
 function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTimePanel }: TabLayoutProps) {
+  const { t } = useTranslation()
   const uid = useId()
   const [activeId, setActiveId] = useState('default')
   const [tabs, setTabs] = useState<EmbedTab[]>(() => loadTabs(viewId, seedTabs))
@@ -169,7 +171,7 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
     try { return localStorage.getItem(SKIP_KEY(viewId)) === 'true' } catch { return false }
   })
 
-  const allTabs = [{ id: 'default', label: 'Default' }, ...tabs]
+  const allTabs = [{ id: 'default', label: t('monitoringPage.customTabs.defaultTab', 'Default') }, ...tabs]
   const activeCustom = tabs.find((t) => t.id === activeId)
   const activeEmbedUrl = activeCustom ? normalizeEmbedUrl(activeCustom.url) : ''
   const activeEmbedUrlValid = activeEmbedUrl ? isValidEmbedUrl(activeEmbedUrl) : false
@@ -184,8 +186,8 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
   }
 
   const addDraft = useCallback(() => {
-    setDrafts((p) => [...p, { id: `tab-${uid}-${Date.now()}`, label: 'New Tab', url: '', order: p.length }])
-  }, [uid])
+    setDrafts((p) => [...p, { id: `tab-${uid}-${Date.now()}`, label: t('monitoringPage.customTabs.newTab', 'New Tab'), url: '', order: p.length }])
+  }, [t, uid])
 
   function removeDraft(id: string) { setDrafts((p) => p.filter((d) => d.id !== id)) }
   function patchDraft(id: string, patch: Partial<EmbedTab>) { setDrafts((p) => p.map((d) => d.id === id ? { ...d, ...patch } : d)) }
@@ -236,7 +238,7 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
           <button type="button" onClick={isManaging ? cancelManage : openManage}
             className={cn('ml-auto flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors',
               isManaging ? 'border-b-amber-400 text-amber-400' : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]')}>
-            <Settings2 size={13} />{isManaging ? 'Cancel' : 'Manage Tabs'}
+            <Settings2 size={13} />{isManaging ? t('common.cancel', 'Cancel') : t('monitoringPage.customTabs.manageTabs', 'Manage Tabs')}
           </button>
         )}
       </div>
@@ -245,21 +247,21 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
       {isManaging && (
         <div className="w-full border-b border-[var(--color-border-default)] bg-amber-500/5 px-1 py-4 sm:px-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-[var(--color-text-primary)]">Manage Custom Tabs</span>
+            <span className="text-sm font-semibold text-[var(--color-text-primary)]">{t('monitoringPage.customTabs.manageCustomTabs', 'Manage Custom Tabs')}</span>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={addDraft}
                 className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-default)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
-                <Plus size={12} />Add Tab
+                <Plus size={12} />{t('monitoringPage.customTabs.addTab', 'Add Tab')}
               </button>
               <button type="button" onClick={saveManage}
                 className="flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-4 py-1.5 text-xs font-medium text-white hover:opacity-90">
-                <Save size={12} />Save Changes
+                <Save size={12} />{t('monitoringPage.customTabs.saveChanges', 'Save Changes')}
               </button>
             </div>
           </div>
 
           {drafts.length === 0 ? (
-            <p className="text-xs text-[var(--color-text-secondary)]">No custom tabs yet. Click "Add Tab" to create one.</p>
+            <p className="text-xs text-[var(--color-text-secondary)]">{t('monitoringPage.customTabs.empty', 'No custom tabs yet. Click \"Add Tab\" to create one.')}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {drafts.map((d, idx) => (
@@ -280,7 +282,7 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
                     <input
                       value={d.label}
                       onChange={(e) => patchDraft(d.id, { label: e.target.value })}
-                      placeholder="Tab name"
+                      placeholder={t('monitoringPage.customTabs.tabNamePlaceholder', 'Tab name')}
                       className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] outline-none focus:border-[#6366f1]"
                     />
                     <button type="button" onClick={() => removeDraft(d.id)}
@@ -293,7 +295,7 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
                     <input
                       value={d.url}
                       onChange={(e) => patchDraft(d.id, { url: e.target.value })}
-                      placeholder="Embed URL"
+                      placeholder={t('monitoringPage.customTabs.embedUrlPlaceholder', 'Embed URL')}
                       className="w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[#6366f1]"
                     />
                   </div>
@@ -302,14 +304,14 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
             </div>
           )}
           <p className="mt-2 text-[10px] text-[var(--color-text-secondary)]">
-            Changes apply to all users after saving. Developer role has view-only access.
+            {t('monitoringPage.customTabs.description', 'Changes apply to all users after saving. Developer role has view-only access.')}
           </p>
         </div>
       )}
 
       {saved && (
         <div className="flex items-center gap-2 border-b border-emerald-500/20 bg-emerald-500/5 px-1 py-2 text-xs text-emerald-400 sm:px-2">
-          <Check size={12} />Tab configuration saved.
+          <Check size={12} />{t('monitoringPage.customTabs.saved', 'Tab configuration saved.')}
         </div>
       )}
 
@@ -786,6 +788,7 @@ function StackConnectPanel({
   onConnect: (tabs: Pick<EmbedTab, 'label' | 'url'>[]) => void
   onSkip: () => void
 }) {
+  const { t } = useTranslation()
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
@@ -812,11 +815,15 @@ function StackConnectPanel({
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]">
               <Settings2 size={14} />
             </div>
-            <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">Connect Stack Components</h3>
+            <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">
+              {t('observability.connectPanel.title', 'Connect Stack Components')}
+            </h3>
           </div>
           <p className="text-xs text-[var(--color-text-secondary)]">
-            Tools detected in <span className="font-semibold text-[var(--color-text-primary)]">{stackName}</span>.
-            Enter their dashboard URLs to add monitoring tabs.
+            {t('observability.connectPanel.descriptionPrefix', 'Tools detected in')}{' '}
+            <span className="font-semibold text-[var(--color-text-primary)]">{stackName}</span>.
+            {' '}
+            {t('observability.connectPanel.descriptionSuffix', 'Enter their dashboard URLs to add monitoring tabs.')}
           </p>
         </div>
         <button
@@ -925,7 +932,7 @@ function StackConnectPanel({
         <p className="text-[11px] text-[var(--color-text-secondary)]">
           {readyItems.length > 0
             ? `${readyItems.length} component${readyItems.length > 1 ? 's' : ''} ready to connect`
-            : 'Enter dashboard URLs for the components you want to monitor'}
+            : t('observability.connectPanel.enterDashboardUrls', 'Enter dashboard URLs for the components you want to monitor')}
         </p>
         <div className="flex gap-2">
           <button
@@ -951,6 +958,7 @@ function StackConnectPanel({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export function MonitoringPage() {
+  const { t } = useTranslation()
   const role = useAuthStore((s) => s.role)
   const isAdmin = role === 'admin'
 
@@ -1006,7 +1014,7 @@ export function MonitoringPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Monitoring Dashboard' }]} />
+      <Breadcrumb items={[{ label: t('observability.monitoring', 'Monitoring Dashboard') }]} />
 
       {/* Page header */}
       <div className="mb-6 flex items-center gap-2.5">
@@ -1014,8 +1022,10 @@ export function MonitoringPage() {
           <BarChart3 size={18} />
         </div>
         <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">Monitoring Dashboard</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">Select a Cluster or Stack to start monitoring</p>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('observability.monitoring', 'Monitoring Dashboard')}</h1>
+          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+            {t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
+          </p>
         </div>
       </div>
 

@@ -187,7 +187,6 @@ describe('StackTemplatePage', () => {
     fireEvent.change(screen.getByLabelText('Template ID'), { target: { value: 'custom-template-v1' } })
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Custom Template' } })
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Custom description' } })
-    fireEvent.change(screen.getByLabelText('Estimated Install Time (ns)'), { target: { value: '1800000000000' } })
     fireEvent.change(screen.getByLabelText('Recommended Use Case'), { target: { value: '테스트' } })
     fireEvent.change(screen.getByLabelText('Minimum Resources'), { target: { value: '2 vCPU / 4Gi RAM / 20Gi Storage' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
@@ -195,6 +194,11 @@ describe('StackTemplatePage', () => {
     await waitFor(() => {
       expect(mockCreateTemplateMutate).toHaveBeenCalled()
     })
+
+    expect(mockCreateTemplateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ estimated_install_time: 300000000000 }),
+      expect.any(Object)
+    )
   })
 
   it('admin can update a template', async () => {

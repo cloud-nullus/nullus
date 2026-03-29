@@ -27,6 +27,7 @@ import {
 	XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
 	ArcElement,
@@ -42,6 +43,7 @@ import {
 	type ChartOptions,
 } from "chart.js";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
+import { toast } from "sonner";
 import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
@@ -172,6 +174,37 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
 	success: { bg: "rgba(34,197,94,0.15)", color: "#22c55e", label: "Success" },
 	cancelled: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Cancelled" },
 };
+
+function getStackStatusLabel(t: (key: string, defaultValue?: string) => string, status: string) {
+	switch (status) {
+		case "pending":
+			return t("stackList.status.pending", "Pending");
+		case "validating":
+			return t("stackList.status.validating", "Validating");
+		case "installing":
+			return t("stackList.status.installing", "Installing");
+		case "configuring":
+			return t("stackList.status.configuring", "Configuring");
+		case "health_check":
+			return t("stackList.status.healthCheck", "Health Check");
+		case "completed":
+			return t("stackList.status.completed", "Completed");
+		case "failed":
+			return t("stackList.status.failed", "Failed");
+		case "rolling_back":
+			return t("stackList.status.rollingBack", "Rolling Back");
+		case "rolled_back":
+			return t("stackList.status.rolledBack", "Rolled Back");
+		case "running":
+			return t("stackList.status.running", "Running");
+		case "success":
+			return t("stackList.status.success", "Success");
+		case "cancelled":
+			return t("stackList.status.cancelled", "Cancelled");
+		default:
+			return status;
+	}
+}
 
 function formatDate(iso: string) {
 	if (!iso) {
@@ -407,11 +440,11 @@ export function extractConnectionInfo(snapshot: unknown, namespace: string, acce
 }
 
 export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo): string {
-	const key = toolName.toLowerCase();
-	if (["argocd", "argo-cd"].includes(key)) {
+	const key = toolName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+	if (["argocd", "argo cd"].includes(key)) {
 		return "ID: admin / Password: kubectl -n nullus get secret argo-cd-argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d";
 	}
-	if (["gitlab", "gitlab-ci", "gitlab-registry"].includes(key)) {
+	if (["gitlab", "gitlab ce", "gitlab ci", "gitlab registry"].includes(key)) {
 		return "ID: root / Password: kubectl -n nullus get secret gitlab-gitlab-initial-root-password -o jsonpath='{.data.password}' | base64 -d";
 	}
 	if (key === "grafana") {
@@ -460,22 +493,33 @@ export function buildConnectionInfoText(stackName: string, conn: StackConnection
 }
 
 function toolLogoURL(toolName: string): string {
-	const key = toolName.toLowerCase();
+	const key = toolName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 	const map: Record<string, string> = {
 		gitlab: "gitlab",
-		"gitlab-ci": "gitlab",
-		"gitlab-registry": "gitlab",
+		"gitlab ce": "gitlab",
+		"gitlab ci": "gitlab",
+		"gitlab registry": "gitlab",
+		github: "github",
+		"github actions": "githubactions",
+		nexus: "sonatype",
+		"nexus repository": "sonatype",
+		"nexus repository manager": "sonatype",
 		argocd: "argo",
-		"argo-cd": "argo",
+		"argo cd": "argo",
+		flux: "flux",
+		"flux cd": "flux",
+		fluxcd: "flux",
 		grafana: "grafana",
 		prometheus: "prometheus",
+		thanos: "thanos",
 		loki: "grafana",
 		opensearch: "opensearch",
 		elasticsearch: "elasticsearch",
-		"opentelemetry-collector": "opentelemetry",
+		"opentelemetry collector": "opentelemetry",
 		tempo: "grafana",
 		jaeger: "jaeger",
-		harbor: "goharbor",
+		harbor: "harbor",
+		"harbor registry": "harbor",
 		minio: "minio",
 	};
 	const slug = map[key] ?? "kubernetes";
@@ -486,9 +530,9 @@ function toolLaunchURL(toolName: string, accessDomain: string): string | null {
   if (!accessDomain) {
     return null;
   }
-  const key = toolName.toLowerCase();
-	if (["gitlab", "gitlab-ci", "gitlab-registry"].includes(key)) return `http://gitlab.${accessDomain}`;
-	if (["argocd", "argo-cd"].includes(key)) return `http://argocd.${accessDomain}`;
+  const key = toolName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+	if (["gitlab", "gitlab ce", "gitlab ci", "gitlab registry"].includes(key)) return `http://gitlab.${accessDomain}`;
+	if (["argocd", "argo cd"].includes(key)) return `http://argocd.${accessDomain}`;
 	if (key === "grafana") return `http://grafana.${accessDomain}`;
 	if (key === "prometheus") return `http://prometheus.${accessDomain}`;
   if (key === "harbor") return `http://harbor.${accessDomain}`;
@@ -496,7 +540,7 @@ function toolLaunchURL(toolName: string, accessDomain: string): string | null {
   if (key === "opensearch") return `http://opensearch.${accessDomain}`;
   if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
   if (key === "jaeger") return `http://jaeger.${accessDomain}`;
-  if (["tempo", "loki", "opentelemetry-collector"].includes(key)) return `http://grafana.${accessDomain}`;
+  if (["tempo", "loki", "opentelemetry collector"].includes(key)) return `http://grafana.${accessDomain}`;
   return null;
 }
 
@@ -876,6 +920,7 @@ function ResourcesPanel() {
 }
 
 function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTools: () => void; onDelete: () => void }) {
+	const { t } = useTranslation();
 	const [hostsCopyState, setHostsCopyState] = useState<"idle" | "copied" | "failed">("idle");
 	const [gatewayCopyState, setGatewayCopyState] = useState<"idle" | "copied" | "failed">("idle");
 	const [connOpen, setConnOpen] = useState(false);
@@ -970,16 +1015,16 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 								size="sm"
 								type="button"
 								onClick={() => setConnOpen(true)}
-								title="OSS 로그인/DB/ObjectStorage 접속정보 확인"
+								title={t("stackList.connection.openTitle", "View OSS login/DB/ObjectStorage connection info")}
 							>
-								접속정보 조회
+								{t("stackList.connection.open", "Connection Info")}
 							</Button>
 							<Button
 								variant="ghost"
 								size="sm"
 								type="button"
 								onClick={handleCopyGatewayPF}
-								title="Gateway 포트포워드 명령 복사"
+								title={t("stackList.connection.gatewayCopyTitle", "Copy gateway port-forward command")}
 							>
 								<ClipboardList size={13} />
 								{gatewayCopyState === "copied"
@@ -994,7 +1039,9 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 								type="button"
 								onClick={handleCopyHosts}
 								disabled={!hostsText}
-								title={hostsText ? "/etc/hosts 복사용 매핑 복사" : "access domain이 없어 hosts 매핑을 만들 수 없습니다"}
+								title={hostsText
+									? t("stackList.connection.hostsCopyTitle", "Copy /etc/hosts mappings")
+									: t("stackList.connection.hostsCopyUnavailable", "Cannot build hosts mappings because access domain is missing")}
 							>
 								<ClipboardList size={13} />
 								{hostsCopyState === "copied"
@@ -1004,7 +1051,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 										: "/etc/hosts Copy"}
 							</Button>
 						</div>
-						<div className="text-[12px] text-[var(--color-text-secondary)]">배포된 구성 요약과 핵심 액션</div>
+						<div className="text-[12px] text-[var(--color-text-secondary)]">{t("stackList.connection.summary", "Deployed configuration summary and key actions")}</div>
 					</div>
 					<div className="flex items-center gap-2">
 						<Button variant="outline" size="sm" type="button" onClick={onAddTools}>
@@ -1030,7 +1077,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 					</div>
 					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
 						<div className="text-[11px] uppercase tracking-[0.04em]">Update Mode</div>
-						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{STATUS_STYLES[stack.status]?.label ?? stack.status}</div>
+						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{getStackStatusLabel(t, stack.status)}</div>
 					</div>
 				</div>
 				<div className="mt-3 border-t border-[var(--color-border-default)] pt-3">
@@ -1074,11 +1121,11 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 						))}
 					</div>
 					<div className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
-						Gateway 단일 진입 포트포워드 후 hosts 매핑 기준으로 각 OSS 도메인으로 접속하세요.
+						{t("stackList.connection.gatewayGuide", "After single-entry gateway port forwarding, access each OSS domain based on hosts mappings.")}
 					</div>
 					<div className="mt-3 flex justify-end">
 						<Button size="sm" variant="outline" type="button" onClick={() => setConnOpen(true)}>
-							접속정보 조회
+							{t("stackList.connection.open", "Connection Info")}
 						</Button>
 					</div>
 				</div>
@@ -1087,15 +1134,19 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 			<Modal
 				open={connOpen}
 				onClose={() => setConnOpen(false)}
-				title="접속정보 조회"
+				title={t("stackList.connection.open", "Connection Info")}
 				wide
 				footer={(
 					<>
 						<Button variant="ghost" size="sm" type="button" onClick={handleCopyConnectionInfo}>
-							{connCopyState === "copied" ? "복사됨" : connCopyState === "failed" ? "복사 실패" : "전체 복사"}
+							{connCopyState === "copied"
+								? t("stackList.connection.copied", "Copied")
+								: connCopyState === "failed"
+									? t("stackList.connection.copyFailed", "Copy failed")
+									: t("stackList.connection.copyAll", "Copy all")}
 						</Button>
 						<Button variant="secondary" size="sm" type="button" onClick={() => setConnOpen(false)}>
-							닫기
+							{t("common.cancel", "Close")}
 						</Button>
 					</>
 				)}
@@ -1183,12 +1234,12 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 						◉ Sync {degradedState ? "OutOfSync" : "Synced"}
 					</span>
 				</div>
-				<div className="relative">
-					<div className="relative z-10 grid gap-3 xl:grid-cols-6">
+				<div className="relative overflow-x-auto pb-1">
+					<div className="relative z-10 grid min-w-max grid-flow-col auto-cols-auto gap-3">
 						{runtimeNodes.map((node, idx) => (
 							<div key={node.category} className="relative rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]">
 								{idx < runtimeNodes.length - 1 && (
-									<div className="pointer-events-none absolute right-[-16px] top-3 hidden h-[2px] w-8 bg-gradient-to-r from-[rgba(148,163,184,0.25)] to-[rgba(148,163,184,0.62)] xl:block" aria-hidden="true">
+									<div className="pointer-events-none absolute right-[-16px] top-3 h-[2px] w-8 bg-gradient-to-r from-[rgba(148,163,184,0.25)] to-[rgba(148,163,184,0.62)]" aria-hidden="true">
 										<div className="absolute right-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[rgba(148,163,184,0.72)]" />
 									</div>
 								)}
@@ -1231,7 +1282,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 			</div>
 
 			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
-				상세 설치 카드는 숨김 처리되었습니다. 도구 상세 상태는 Monitoring / History 탭에서 확인할 수 있습니다.
+				{t("stackList.hiddenInstallCardsNotice", "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs.")}
 			</div>
 			<div className="hidden" aria-hidden="true">
 				<ArtifactsPanel />
@@ -2355,6 +2406,11 @@ const UPGRADE_ITEMS = [
 ];
 
 function StackVersionUpgradeTab() {
+	const { t } = useTranslation();
+	const handleUpgradeClick = () => {
+		toast.info(t("stackList.toast.upgradeInProgress", "개발중인 기능입니다."));
+	};
+
 	return (
 		<div>
 			<div className="mb-6 flex flex-wrap items-center gap-3">
@@ -2420,6 +2476,7 @@ function StackVersionUpgradeTab() {
 									</button>
 									<button
 										type="button"
+										onClick={handleUpgradeClick}
 										className="flex items-center gap-1.5 rounded-md bg-[linear-gradient(135deg,#6366f1,#8b5cf6)] px-2.5 py-1.5 text-[12px] font-semibold text-white"
 									>
 										<ArrowUpCircle size={12} /> Upgrade
@@ -2456,6 +2513,7 @@ function StackDetailPanel({
 	onDelete: () => void;
 	className?: string;
 }) {
+	const { t } = useTranslation();
 	const [innerTab, setInnerTab] = useState<InnerTab>("info");
 	const statusStyle = STATUS_STYLES[stack.status] ?? STATUS_STYLES.pending;
 
@@ -2472,7 +2530,7 @@ function StackDetailPanel({
 					className="rounded-[10px] px-[9px] py-[3px] text-[11px] font-bold"
 					style={{ background: statusStyle.bg, color: statusStyle.color }}
 				>
-					{statusStyle.label}
+					{getStackStatusLabel(t, stack.status)}
 				</span>
 				<span className="text-[12px] text-[var(--color-text-secondary)]">
 					· {stack.templateName} · {stack.clusterName}
@@ -2492,7 +2550,7 @@ function StackDetailPanel({
 								: "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[rgba(99,102,241,0.08)] hover:text-[var(--color-text-primary)]",
 						)}
 					>
-						{tab.icon} {tab.label}
+						{tab.icon} {t(`stackList.tabs.${tab.key}`, tab.label)}
 					</button>
 				))}
 			</div>
@@ -2508,6 +2566,7 @@ function StackDetailPanel({
 }
 
 export function StackListPage() {
+	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("");
@@ -2561,7 +2620,7 @@ export function StackListPage() {
 	const columns: ColumnDef<Stack, unknown>[] = [
 		{
 			accessorKey: "name",
-			header: "스택 이름",
+			header: t("stackList.table.stackName", "Stack Name"),
 			cell: ({ row }) => (
 				<div className="flex items-center gap-2">
 					{selectedStackId === row.original.id && (
@@ -2573,7 +2632,7 @@ export function StackListPage() {
 		},
 		{
 			accessorKey: "templateName",
-			header: "템플릿",
+			header: t("stackList.table.template", "Template"),
 			cell: ({ row }) => (
 				<span className="text-[var(--color-text-secondary)]">
 					{row.original.templateName}
@@ -2582,7 +2641,7 @@ export function StackListPage() {
 		},
 		{
 			accessorKey: "status",
-			header: "상태",
+			header: t("stackList.table.status", "Status"),
 			cell: ({ row }) => {
 				const s = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending;
 				return (
@@ -2590,14 +2649,14 @@ export function StackListPage() {
 						className="rounded-md px-[9px] py-[3px] text-xs font-semibold"
 						style={{ backgroundColor: s.bg, color: s.color }}
 					>
-						{s.label}
+						{getStackStatusLabel(t, row.original.status)}
 					</span>
 				);
 			},
 		},
 		{
 			accessorKey: "createdAt",
-			header: "생성일",
+			header: t("stackList.table.createdAt", "Created At"),
 			cell: ({ row }) => (
 				<span className="text-[13px] text-[var(--color-text-secondary)]">
 					{formatDate(row.original.createdAt)}
@@ -2608,7 +2667,7 @@ export function StackListPage() {
 
 	return (
 		<div>
-			<Breadcrumb items={[{ label: "Stack List" }]} />
+			<Breadcrumb items={[{ label: t("sidebar.stackList", "Stack List") }]} />
 
 			<div className="mb-6 flex items-start justify-between">
 				<div className="flex items-center gap-2.5">
@@ -2617,10 +2676,10 @@ export function StackListPage() {
 					</div>
 					<div>
 						<h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-							Stack List
+							{t("stackList.title", "Stack List")}
 						</h1>
 						<p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-							배포된 DevSecOps 스택 목록
+							{t("stackList.description", "Deployed DevSecOps stack list")}
 						</p>
 					</div>
 				</div>
@@ -2632,7 +2691,7 @@ export function StackListPage() {
 					}
 				>
 					<Plus size={15} />
-					New Stack
+					{t("stackList.actions.newStack", "New Stack")}
 				</Button>
 			</div>
 
@@ -2650,12 +2709,12 @@ export function StackListPage() {
 									onChange={(e) => setStatusFilter(e.target.value)}
 									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 								>
-									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
-									<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
-									<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
-									<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
-									<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
-									<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allStatus", "All Status")}</option>
+									<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.success", "Success")}</option>
+									<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.running", "Running")}</option>
+									<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.pending", "Pending")}</option>
+									<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.failed", "Failed")}</option>
+									<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.cancelled", "Cancelled")}</option>
 								</NativeSelect>
 								<div className="relative ml-auto">
 									<Search
@@ -2663,7 +2722,7 @@ export function StackListPage() {
 										className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
 									/>
 									<input
-										placeholder="스택 검색..."
+										placeholder={t("stackList.searchPlaceholder", "Search stacks...")}
 										value={search}
 										onChange={(e) => setSearch(e.target.value)}
 										className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -2673,10 +2732,10 @@ export function StackListPage() {
 						}
 						getRowKey={(row) => row.id}
 						onRowClick={(row) => setExpandedStackId(row.id)}
-						emptyMessage={isLoading ? "스택을 불러오는 중..." : "스택이 없습니다."}
+						emptyMessage={isLoading ? t("stackList.loading", "Loading stacks...") : t("stackList.empty", "No stacks found.")}
 					/>
 					<div className="mt-2 hidden text-[12px] text-[var(--color-text-secondary)] xl:block">
-						목록에서 스택을 선택하면 오른쪽 상세 패널이 즉시 갱신됩니다.
+						{t("stackList.listHint", "Selecting a stack from the list updates the detail panel immediately.")}
 					</div>
 				</div>
 
@@ -2692,7 +2751,7 @@ export function StackListPage() {
 						</div>
 					) : (
 						<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
-							리스트에서 스택을 선택하면 상세 정보가 여기에 표시됩니다.
+							{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
 						</div>
 					)}
 				</div>
@@ -2712,9 +2771,9 @@ export function StackListPage() {
 				open={deleteStackId !== null}
 				onClose={() => setDeleteStackId(null)}
 				onConfirm={handleDeleteStack}
-				title="Delete Stack"
-				description="이 스택을 삭제하면 관련 배포 정보가 영향을 받을 수 있습니다. 계속하시겠습니까?"
-				confirmLabel="Delete"
+				title={t("stackList.confirm.deleteTitle", "Delete Stack")}
+				description={t("stackList.confirm.deleteDescription", "Deleting this stack may affect related deployment data. Continue?")}
+				confirmLabel={t("common.delete", "Delete")}
 			/>
 		</div>
 	);

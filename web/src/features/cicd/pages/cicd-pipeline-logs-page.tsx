@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, CheckCircle2, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
@@ -15,9 +16,9 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
   cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Cancelled' },
 }
 
-function formatDate(iso: string | null) {
+function formatDate(iso: string | null, locale: string) {
   if (!iso) return '-'
-  return new Date(iso).toLocaleString('ko-KR', {
+  return new Date(iso).toLocaleString(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -27,6 +28,7 @@ function formatDate(iso: string | null) {
 }
 
 export function CicdPipelineLogsPage() {
+  const { t, i18n } = useTranslation()
   const { id: pipelineId = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -108,7 +110,7 @@ export function CicdPipelineLogsPage() {
           <div className="flex max-h-[520px] flex-col gap-2 overflow-y-auto pr-1">
             {deployments.length === 0 && (
               <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-                배포 이력이 없습니다
+                {t('cicdPipelineLogsPage.emptyDeployments', 'No deployment history.')}
               </div>
             )}
             {deployments.map((deployment) => {
@@ -132,7 +134,7 @@ export function CicdPipelineLogsPage() {
                       {st.label}
                     </span>
                   </div>
-                  <div className="text-[12px] text-[var(--color-text-secondary)]">{formatDate(deployment.startedAt)}</div>
+                  <div className="text-[12px] text-[var(--color-text-secondary)]">{formatDate(deployment.startedAt, i18n.resolvedLanguage || i18n.language || 'en-US')}</div>
                 </button>
               )
             })}

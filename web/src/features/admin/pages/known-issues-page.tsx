@@ -1,4 +1,5 @@
 import { AlertTriangle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useKnownIssues } from '../api/admin-api'
 import type { KnownIssueSeverity, KnownIssueStatus } from '../../../types'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
@@ -17,12 +18,20 @@ const STATUS_BADGE: Record<KnownIssueStatus, string> = {
 }
 
 export function KnownIssuesPage() {
+  const { t } = useTranslation()
   const { data, isLoading } = useKnownIssues()
   const items = data?.items ?? []
+  const tableHeaders = [
+    t('knownIssuesPage.table.id', 'ID'),
+    t('knownIssuesPage.table.severity', 'Severity'),
+    t('knownIssuesPage.table.title', 'Title'),
+    t('knownIssuesPage.table.status', 'Status'),
+    t('knownIssuesPage.table.workaround', 'Workaround'),
+  ]
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Known Issues' }]} />
+      <Breadcrumb items={[{ label: t('knownIssuesPage.breadcrumb.current', 'Known Issues') }]} />
 
       <div className="mb-7 flex items-center gap-2.5">
         <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]">
@@ -30,10 +39,10 @@ export function KnownIssuesPage() {
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            Known Issues
+            {t('knownIssuesPage.title', 'Known Issues')}
           </h1>
           <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            현재 버전의 제한사항과 우회 방법을 확인합니다.
+            {t('knownIssuesPage.description', 'Check current version limitations and available workarounds.')}
           </p>
         </div>
       </div>
@@ -42,7 +51,7 @@ export function KnownIssuesPage() {
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[rgba(255,255,255,0.02)]">
-              {['ID', 'Severity', 'Title', 'Status', 'Workaround'].map((header) => (
+              {tableHeaders.map((header) => (
                 <th
                   key={header}
                   className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]"

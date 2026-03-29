@@ -17,38 +17,38 @@ import type { Role } from '../../../types'
 
 const features = [
   {
-    title: 'DevSecOps Stack 자동 설치',
-    description: 'GitLab, ArgoCD, Prometheus 스택을 UI에서 바로 Kubernetes에 배포합니다.',
+    title: 'Automated DevSecOps Stack Installation',
+    description: 'Deploy GitLab, ArgoCD, and Prometheus stacks directly to Kubernetes from the UI.',
     icon: Box,
     iconClassName: 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]',
   },
   {
-    title: 'Golden Path 템플릿',
-    description: '검증된 조합(GitHub + ArgoCD, GitLab All-in-One)을 템플릿으로 제공합니다.',
+    title: 'Golden Path Templates',
+    description: 'Provides validated combinations (GitHub + ArgoCD, GitLab All-in-One) as templates.',
     icon: BookOpen,
     iconClassName: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]',
   },
   {
     title: 'CI/CD Pipeline 관리',
-    description: 'Web/API/Batch 템플릿으로 파이프라인 생성과 배포 이력을 관리합니다.',
+    description: 'Create pipelines and manage deployment history with Web/API/Batch templates.',
     icon: Code2,
     iconClassName: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',
   },
   {
-    title: '버전 호환성 보장',
-    description: '검증된 도구 버전 조합만 노출해 예측 불가능한 호환성 이슈를 줄입니다.',
+    title: 'Version Compatibility Assurance',
+    description: 'Expose only validated tool version combinations to reduce unpredictable compatibility issues.',
     icon: ShieldCheck,
     iconClassName: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
   },
   {
-    title: '통합 모니터링',
-    description: '클러스터, 파이프라인, 애플리케이션 상태를 하나의 대시보드로 확인합니다.',
+    title: 'Unified Monitoring',
+    description: 'Check cluster, pipeline, and application status from a single dashboard.',
     icon: ChartNoAxesColumn,
     iconClassName: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
   },
   {
-    title: 'Role 기반 권한 관리',
-    description: 'Admin, DevOps, Developer 역할별 기능 접근을 제어합니다.',
+    title: 'Role-based Access Control',
+    description: 'Control feature access by role: Admin, DevOps, and Developer.',
     icon: Users,
     iconClassName: 'bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]',
   },
@@ -58,19 +58,19 @@ const roadmap = [
   {
     phase: 'Phase 1 - DevOps',
     period: 'v0.1 · 2026 Q2',
-    description: 'DevSecOps Stack 자동 설치, CI/CD Pipeline 관리, 모니터링, 버전 호환성',
+    description: 'Automated DevSecOps stack install, CI/CD pipeline management, monitoring, and version compatibility',
     active: true,
   },
   {
     phase: 'Phase 2 - DevSecOps',
     period: 'v0.5 · 2026 Q3-Q4',
-    description: 'SAST/DAST 보안 스캔, 자동화 테스트, CLI 도구, Multi Cloud 확장',
+    description: 'SAST/DAST security scanning, automated tests, CLI tools, and multi-cloud expansion',
     active: false,
   },
   {
     phase: 'Phase 3 - InfraOps',
     period: 'v1.0 · 2027+',
-    description: 'Kubernetes 클러스터 프로비저닝, IaC 통합, CNCF Sandbox 추진',
+    description: 'Kubernetes cluster provisioning, IaC integration, and CNCF Sandbox initiatives',
     active: false,
   },
 ]
@@ -113,9 +113,9 @@ export function HomePage() {
           <Box size={36} />
         </div>
         <h1 className="m-0 mb-2.5 text-4xl font-extrabold text-[var(--color-text-primary)]">Nullus Platform</h1>
-        <p className="m-0 mb-2 text-base text-[var(--color-text-secondary)]">DevSecOps 인프라 자동화 플랫폼</p>
+        <p className="m-0 mb-2 text-base text-[var(--color-text-secondary)]">DevSecOps Infrastructure Automation Platform</p>
         <p className="mx-auto mb-8 max-w-[720px] text-sm leading-7 text-[var(--color-text-muted)]">
-          검증된 CI/CD Golden Path 조합을 선택하고, 노코드 UI 기반으로 Kubernetes DevSecOps 파이프라인을 빠르게 구축합니다.
+          Select validated CI/CD golden path combinations and quickly build Kubernetes DevSecOps pipelines with a no-code UI.
         </p>
 
         <div className="flex flex-wrap justify-center gap-3">
@@ -125,7 +125,7 @@ export function HomePage() {
             className="inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] px-6 py-3 text-sm font-bold text-[#1a1d29]"
           >
             <Rocket size={16} />
-            Stack 시작하기
+            Start Stack
           </button>
           <button
             type="button"
@@ -133,13 +133,13 @@ export function HomePage() {
             className="inline-flex cursor-pointer items-center gap-2 rounded-[10px] border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.15)] px-6 py-3 text-sm font-semibold text-[#a5b4fc]"
           >
             <Code2 size={16} />
-            CI/CD 파이프라인
+            CI/CD Pipeline
           </button>
         </div>
       </div>
 
       <div className="mb-8">
-        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">핵심 기능</h2>
+        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">Core Features</h2>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3.5">
           {features.map((feature) => {
             const Icon = feature.icon
@@ -157,7 +157,7 @@ export function HomePage() {
       </div>
 
       <div className="mb-8">
-        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">개발 로드맵</h2>
+        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">Roadmap</h2>
         <div className="flex flex-wrap gap-3.5">
           {roadmap.map((item) => (
             <div
@@ -190,7 +190,7 @@ export function HomePage() {
       </div>
 
       <div>
-        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">빠른 이동</h2>
+        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">Quick Links</h2>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
           {quickLinks.map((item) => {
             const Icon = item.icon

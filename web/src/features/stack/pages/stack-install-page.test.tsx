@@ -125,7 +125,7 @@ describe('StackInstallPage', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getAllByText('Package Registry')[0]).toBeTruthy()
     expect(screen.getAllByText('Source Repository')[0]).toBeTruthy()
-    expect(screen.getAllByText('미선택').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Not selected|미선택/).length).toBeGreaterThan(0)
   })
 
   it('clicking CI/CD tab shows CI/CD content', () => {
@@ -304,13 +304,15 @@ describe('StackInstallPage', () => {
   it('shows access domain input and default OSS access guide', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getByLabelText('Access domain')).toBeInTheDocument()
-    expect(screen.getByText(/최종 접근 가이드/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Final access guide|최종 접근 가이드/)
+    ).toBeInTheDocument()
   })
 
   it('enables access domain TLS and reflects HTTPS listener/cert-manager script', () => {
     renderWithProviders(<StackInstallPage />)
 
-    fireEvent.click(screen.getByLabelText(/Access Domain TLS 인증서 적용/))
+    fireEvent.click(screen.getByLabelText(/Access Domain TLS|TLS 인증서 적용/))
     fireEvent.change(screen.getByLabelText('TLS Secret Name'), { target: { value: 'corp-wildcard-tls' } })
     fireEvent.change(screen.getByLabelText('TLS Secret Namespace'), { target: { value: 'kube-system' } })
     fireEvent.change(screen.getByLabelText('cert-manager Issuer Name'), { target: { value: 'corp-cluster-issuer' } })
@@ -383,7 +385,7 @@ describe('StackInstallPage', () => {
 
     expect(useStackConfigStore.getState().draft.artifacts.packageRegistry.tool).toBe('')
     expect(screen.getByText('Configuration Summary')).toBeInTheDocument()
-    expect(screen.getAllByText(/미선택/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Not selected|미선택/).length).toBeGreaterThan(0)
   })
 
   it('allows clearing the storage plan selection', () => {
@@ -391,7 +393,7 @@ describe('StackInstallPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Storage' }))
 
-    fireEvent.click(screen.getByText('미선택'))
+    fireEvent.click(screen.getByText(/Not selected|미선택/))
 
     expect(useStackConfigStore.getState().draft.storage.planMode).toBe('none')
   })

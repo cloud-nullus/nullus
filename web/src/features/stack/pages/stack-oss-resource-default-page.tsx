@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Database, Plus, Save } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
@@ -21,6 +22,7 @@ const EMPTY_ROW: EditableRow = {
 }
 
 export function StackOssResourceDefaultPage() {
+  const { t } = useTranslation()
   const { data, isLoading } = useResourceDefaults()
   const upsertMutation = useUpsertResourceDefault()
   const [draftRows, setDraftRows] = useState<Record<string, EditableRow>>({})
@@ -96,14 +98,14 @@ export function StackOssResourceDefaultPage() {
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OSS Default Resource</h1>
             <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              DevSecOps Stack OSS별 리소스 request/limit 기본값을 조회/수정/등록합니다.
+              {t('stackOssDefault.description', 'View, edit, and register default OSS request/limit resources for DevSecOps Stack.')}
             </p>
           </div>
         </div>
       </div>
 
       <div className="mb-5 rounded-lg border border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.08)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-        계약: <code>POST /api/v1/stacks/resource-defaults</code> 는 <code>tool_key</code> 기준 업서트(idempotent)입니다.
+        {t('stackOssDefault.contract.prefix', 'Contract:')} <code>POST /api/v1/stacks/resource-defaults</code> {t('stackOssDefault.contract.middle', 'is an idempotent upsert by')} <code>tool_key</code>{t('stackOssDefault.contract.end', '.')}.
       </div>
 
       {error && (
