@@ -20,6 +20,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { usePipelineDeployments, usePipelines, useTemplateById } from '../api/cicd-api'
 import type { Pipeline } from '../api/cicd-api'
+import { useClusters } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
@@ -417,9 +418,11 @@ function PipelineDetailPanel({
 export function CicdListPage() {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('')
+  const [clusterFilter, setClusterFilter] = useState('')
   const [search, setSearch] = useState('')
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null)
 
+  const { data: clustersData } = useClusters()
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
   const pipelines = apiData?.items ?? []
 
@@ -427,7 +430,8 @@ export function CicdListPage() {
     const q = search.toLowerCase()
     const matchesSearch = !search || p.name.toLowerCase().includes(q) || p.clusterName.toLowerCase().includes(q)
     const matchesStatus = !statusFilter || p.status === statusFilter
-    return matchesSearch && matchesStatus
+    const matchesCluster = !clusterFilter || p.clusterId === clusterFilter
+    return matchesSearch && matchesStatus && matchesCluster
   })
 
   const columns: ColumnDef<Pipeline, unknown>[] = [
@@ -524,11 +528,11 @@ export function CicdListPage() {
         getRowKey={(row) => row.id}
         expandedRowId={expandedPipelineId}
         renderExpanded={(pipeline) => (
-          <PipelineDetailPanel
-            key={pipeline.id}
-            pipeline={pipeline}
-            onRun={() => navigate(`/cicd/developer-deploy?pipeline=${pipeline.id}`)}
-            onOpenLogs={() => navigate(`/cicd/history?pipeline=${pipeline.id}`)}
+            <PipelineDetailPanel
+              key={pipeline.id}
+              pipeline={pipeline}
+            onRun={() => navigate(`/cicd/developer-deploy?pipelineId=${pipeline.id}&clusterId=${pipeline.clusterId}&namespace=${pipeline.namespace}&appName=${pipeline.name}`)}
+            onOpenLogs={() => navigate(`/cicd/pipelines/${pipeline.id}/logs`)}
           />
         )}
         emptyMessage="파이프라인이 없습니다."
@@ -541,6 +545,12 @@ export function CicdListPage() {
               <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
               <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
               <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+            </NativeSelect>
+            <NativeSelect value={clusterFilter} onChange={(e) => setClusterFilter(e.target.value)} className="w-auto">
+              <option value="">All Clusters</option>
+              {(clustersData?.items ?? []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
             </NativeSelect>
             <div className="relative ml-auto">
               <Search

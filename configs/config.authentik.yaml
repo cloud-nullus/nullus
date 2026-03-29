@@ -1,0 +1,48 @@
+# Authentik OIDC 모드용 설정 파일
+# 사용법: cp configs/config.authentik.yaml configs/config.yaml && make run
+#
+# 기본 config.yaml과 동일하되 auth 섹션만 Authentik으로 변경됨
+
+server:
+  port: 8090
+  mode: development
+
+database:
+  host: localhost
+  port: 5433
+  name: nullus
+  user: nullus
+  password: nullus_dev
+  sslmode: disable
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 5m
+  conn_max_idle_time: 1m
+
+auth:
+  mode: oidc  # Authentik 사용 시 oidc 모드 필수
+  session:
+    secret: dev-secret-change-in-production
+    max_age: 86400
+  oidc:
+    provider: authentik
+    issuer_url: http://localhost:9090/application/o/nullus/
+    audience: nullus-app
+
+# Keycloak 설정은 Authentik 모드에서 사용되지 않지만, 구조 유지
+keycloak:
+  admin_url: http://localhost:8180
+  realm: nullus
+  admin_user: admin
+  admin_password: admin
+
+helm:
+  timeout: 600s
+  namespace_prefix: nullus-
+
+prometheus:
+  url: ""
+
+log:
+  level: debug
+  format: text

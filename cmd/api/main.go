@@ -230,6 +230,7 @@ func main() {
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
+	e.GET("/ws/cicd/deployments/:id/logs", pipelineHandler.StreamDeployLogs)
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
 

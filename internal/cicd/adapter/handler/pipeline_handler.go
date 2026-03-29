@@ -52,6 +52,10 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy-app", h.DeployApp)
 }
 
+func (h *PipelineHandler) StreamDeployLogs(c echo.Context) error {
+	return StreamCicdLogs(c, h.stepTracker)
+}
+
 // createPipelineRequest is the request body for POST /pipelines.
 type createPipelineRequest struct {
 	Name       string `json:"name"`

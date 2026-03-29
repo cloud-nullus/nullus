@@ -107,7 +107,7 @@ export function CicdHistoryPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'CI/CD History' }]} />
+      <Breadcrumb items={[{ label: 'CI/CD List', path: '/cicd/list' }, { label: 'Deployment History' }]} />
 
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
