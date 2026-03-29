@@ -13,6 +13,7 @@ import (
 // AlertHandler handles HTTP requests for alert rule and history operations.
 type AlertHandler struct {
 	createAlertRule *usecase.CreateAlertRule
+	getAlertRule    *usecase.GetAlertRule
 	listAlertRules  *usecase.ListAlertRules
 	updateAlertRule *usecase.UpdateAlertRule
 	deleteAlertRule *usecase.DeleteAlertRule
@@ -22,6 +23,7 @@ type AlertHandler struct {
 // NewAlertHandler constructs an AlertHandler.
 func NewAlertHandler(
 	createAlertRule *usecase.CreateAlertRule,
+	getAlertRule *usecase.GetAlertRule,
 	listAlertRules *usecase.ListAlertRules,
 	updateAlertRule *usecase.UpdateAlertRule,
 	deleteAlertRule *usecase.DeleteAlertRule,
@@ -29,6 +31,7 @@ func NewAlertHandler(
 ) *AlertHandler {
 	return &AlertHandler{
 		createAlertRule: createAlertRule,
+		getAlertRule:    getAlertRule,
 		listAlertRules:  listAlertRules,
 		updateAlertRule: updateAlertRule,
 		deleteAlertRule: deleteAlertRule,
@@ -39,6 +42,7 @@ func NewAlertHandler(
 // RegisterRoutes registers alert routes on the given Echo group.
 func (h *AlertHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/alert-rules", h.ListRules)
+	g.GET("/alert-rules/:id", h.GetRule)
 	g.POST("/alert-rules", h.CreateRule)
 	g.PATCH("/alert-rules/:id", h.UpdateRule)
 	g.DELETE("/alert-rules/:id", h.DeleteRule)
@@ -71,6 +75,20 @@ func (h *AlertHandler) ListRules(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"items": out.Rules, "total": len(out.Rules)})
+}
+
+func (h *AlertHandler) GetRule(c echo.Context) error {
+	id := c.Param("id")
+
+	out, err := h.getAlertRule.Execute(c.Request().Context(), usecase.GetAlertRuleInput{ID: id})
+	if err != nil {
+		if errors.Is(err, domain.ErrAlertRuleNotFound) {
+			return errorResponse(c, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", err.Error())
+		}
+		return errorResponse(c, http.StatusInternalServerError, "ALERT_RULE_GET_FAILED", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, out.Rule)
 }
 
 // CreateRule handles POST /api/v1/alerts/rules.

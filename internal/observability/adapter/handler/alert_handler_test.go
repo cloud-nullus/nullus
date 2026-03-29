@@ -109,17 +109,49 @@ func newAlertEcho(t *testing.T, ruleRepo *mockAlertRuleRepository) *echo.Echo {
 
 	e := echo.New()
 	createAlertRuleUC := usecase.NewCreateAlertRule(ruleRepo)
+	getAlertRuleUC := usecase.NewGetAlertRule(ruleRepo)
 	listAlertRulesUC := usecase.NewListAlertRules(ruleRepo)
 	updateAlertRuleUC := usecase.NewUpdateAlertRule(ruleRepo)
 	deleteAlertRuleUC := usecase.NewDeleteAlertRule(ruleRepo)
 	listAlertsUC := usecase.NewListAlerts(&mockAlertRepository{})
-	h := obshandler.NewAlertHandler(createAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
+	h := obshandler.NewAlertHandler(createAlertRuleUC, getAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
 
 	v1 := e.Group("/api/v1")
 	observability := v1.Group("/observability")
 	h.RegisterRoutes(observability)
 
 	return e
+}
+
+func TestAlertHandler_GetRule_Success(t *testing.T) {
+	repo := newMockAlertRuleRepository(&domain.AlertRule{
+		ID:                "alr-1",
+		Name:              "cpu",
+		MetricName:        "cpu_usage",
+		Condition:         "cpu_usage >= critical_threshold",
+		WarningThreshold:  70,
+		CriticalThreshold: 90,
+		Threshold:         90,
+		Channel:           domain.AlertChannelSlack,
+		Enabled:           true,
+	})
+	e := newAlertEcho(t, repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/observability/alert-rules/alr-1", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, 1, repo.getByIDCalls)
+
+	var resp domain.AlertRule
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "alr-1", resp.ID)
+	assert.Equal(t, "cpu", resp.Name)
+	assert.Equal(t, "cpu_usage", resp.MetricName)
+	assert.Equal(t, 70.0, resp.WarningThreshold)
+	assert.Equal(t, 90.0, resp.CriticalThreshold)
 }
 
 func TestAlertHandler_UpdateRule_Success(t *testing.T) {

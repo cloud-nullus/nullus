@@ -27,6 +27,7 @@ vi.mock('../../../lib/api', () => ({
 
 import {
   useDashboard,
+  useAlertRule,
   useAlertRules,
   useCreateAlertRule,
   useUpdateAlertRule,
@@ -67,6 +68,17 @@ describe('observability-api hooks', () => {
     )
   })
 
+  it('defines useAlertRule query key with id', () => {
+    useAlertRule('rule-1')
+
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['observability', 'alert-rules', 'rule-1'],
+        enabled: true,
+      })
+    )
+  })
+
   it('defines useAlertHistory query key with filters', () => {
     useAlertHistory({ severity: 'critical' })
 
@@ -99,6 +111,18 @@ describe('observability-api hooks', () => {
     await options.mutationFn({ id: 'rule-99', data: { enabled: false } })
 
     expect(apiPatchMock).toHaveBeenCalledWith('/observability/alert-rules/rule-99', { enabled: false })
+  })
+
+  it('useAlertRule query function gets alert rule by id', async () => {
+    useAlertRule('rule-42')
+    const calls = useQueryMock.mock.calls
+    const options = calls[calls.length - 1]?.[0] as {
+      queryFn: () => Promise<unknown>
+    }
+
+    await options.queryFn()
+
+    expect(apiGetMock).toHaveBeenCalledWith('/observability/alert-rules/rule-42')
   })
 
   it('useCreateAlertRule mutation function posts warning and critical thresholds', async () => {

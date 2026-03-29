@@ -361,6 +361,16 @@ function toBackendTool(sel: { tool: string; version: string }) {
   return { name: sel.tool, version: sel.version, enabled: true }
 }
 
+function toBackendStoragePlanMode(planMode: string): 'integrated-create' | 'existing-connect' | null {
+  if (planMode === 'integrated-create') return 'integrated-create'
+  if (planMode === 'existing-all') return 'existing-connect'
+  return null
+}
+
+function toBackendStorageTargetMode(mode: string): 'create' | 'existing-connect' {
+  return mode === 'existing' ? 'existing-connect' : 'create'
+}
+
 function toStorageSizeGi(target: 'database' | 'objectStorage', size: 'small' | 'medium' | 'large'): number {
   if (target === 'database') {
     if (size === 'small') return 20
@@ -378,6 +388,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
   const p = req.pipeline as Record<string, { tool: string; version: string }>
   const m = req.monitoring as Record<string, { tool: string; version: string }>
   const l = req.logging as Record<string, { tool: string; version: string }>
+  const backendStoragePlanMode = req.storage ? toBackendStoragePlanMode(req.storage.planMode) : null
   return {
     name: req.stackName,
     cluster_id: req.clusterId ?? '',
@@ -419,11 +430,11 @@ export function toCreateStackBody(req: CreateStackRequest) {
         weekly_commits: req.resources?.commitsPerDay ?? 0,
         build_frequency: req.resources?.buildFrequency ?? 'medium',
       },
-      storage: req.storage
+      storage: req.storage && backendStoragePlanMode
         ? {
-            plan_mode: req.storage.planMode,
+            plan_mode: backendStoragePlanMode,
             database: {
-              mode: req.storage.database.mode,
+              mode: toBackendStorageTargetMode(req.storage.database.mode),
               existing_ref: req.storage.database.existingRef,
               endpoint: req.storage.database.endpoint,
               resource_name: req.storage.database.resourceName,
@@ -438,7 +449,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
                   : undefined,
             },
             object_storage: {
-              mode: req.storage.objectStorage.mode,
+              mode: toBackendStorageTargetMode(req.storage.objectStorage.mode),
               existing_ref: req.storage.objectStorage.existingRef,
               endpoint: req.storage.objectStorage.endpoint,
               resource_name: req.storage.objectStorage.resourceName,

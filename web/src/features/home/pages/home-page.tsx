@@ -81,7 +81,6 @@ const stages = [
   { name: 'Security', icon: ShieldCheck, active: false },
   { name: 'Test', icon: FlaskConical, active: false },
   { name: 'Deploy', icon: Rocket, active: true },
-  { name: 'Operation', icon: Cog, active: false },
   { name: 'Monitoring', icon: ChartNoAxesColumn, active: true },
   { name: 'FinOps', icon: Coins, active: false },
 ]

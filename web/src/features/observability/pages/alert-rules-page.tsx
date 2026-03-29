@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Bell, Pencil, Plus, Search } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
+import { useAlertRule, useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
 import type { AlertRule, AlertChannel, CreateAlertRuleRequest } from '../api/observability-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -56,7 +56,7 @@ export function AlertRulesPage() {
   const [selectedStackId, setSelectedStackId] = useState('')
   const [search, setSearch] = useState('')
   const { clusters, filteredStacks, selectedCluster, selectedStack } = useClusterStackFilterState(selectedClusterId, selectedStackId)
-  const { data: apiData } = useAlertRules()
+  const { data: apiData, refetch: refetchAlertRules } = useAlertRules()
   const rules = useMemo<AlertRule[]>(() => apiData?.items ?? [], [apiData?.items])
 
   const createRule = useCreateAlertRule()
@@ -66,6 +66,7 @@ export function AlertRulesPage() {
   const [ruleModalOpen, setRuleModalOpen] = useState(false)
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
   const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
+  const { data: editingRule, isFetching: isFetchingEditingRule } = useAlertRule(editingRuleId, ruleModalOpen && editingRuleId !== null)
   const {
     register,
     handleSubmit,
@@ -91,18 +92,23 @@ export function AlertRulesPage() {
 
   const openEditModal = (rule: AlertRule) => {
     setEditingRuleId(rule.id)
-    reset({
-      name: rule.name,
-      metricName: rule.metric_name,
-      warningThreshold: Number(rule.warning_threshold) || 1,
-      criticalThreshold: Number(rule.critical_threshold ?? rule.threshold) || 1,
-      channel: rule.channel,
-      enabled: rule.enabled,
-    })
+    reset(ALERT_RULE_DEFAULTS)
     setRuleModalOpen(true)
   }
 
-  const submitRule = (form: AlertRuleForm) => {
+  useEffect(() => {
+    if (!editingRule) return
+    reset({
+      name: editingRule.name,
+      metricName: editingRule.metric_name,
+      warningThreshold: Number(editingRule.warning_threshold) || 1,
+      criticalThreshold: Number(editingRule.critical_threshold ?? editingRule.threshold) || 1,
+      channel: editingRule.channel,
+      enabled: editingRule.enabled,
+    })
+  }, [editingRule, reset])
+
+  const submitRule = async (form: AlertRuleForm) => {
     const payload: CreateAlertRuleRequest = {
       name: form.name,
       metric_name: form.metricName,
@@ -113,24 +119,17 @@ export function AlertRulesPage() {
     }
 
     if (editingRuleId) {
-      updateRule.mutate(
-        { id: editingRuleId, data: payload },
-        {
-          onSuccess: () => {
-            setRuleModalOpen(false)
-            resetForm()
-          },
-        },
-      )
+      await updateRule.mutateAsync({ id: editingRuleId, data: payload })
+      await refetchAlertRules()
+      setRuleModalOpen(false)
+      resetForm()
       return
     }
 
-    createRule.mutate(payload, {
-      onSuccess: () => {
-        setRuleModalOpen(false)
-        resetForm()
-      },
-    })
+    await createRule.mutateAsync(payload)
+    await refetchAlertRules()
+    setRuleModalOpen(false)
+    resetForm()
   }
 
   const handleDelete = () => {
@@ -332,7 +331,7 @@ export function AlertRulesPage() {
               size="sm"
               loading={createRule.isPending || updateRule.isPending || isSubmitting}
               onClick={handleSubmit(submitRule)}
-              disabled={!isValid || isSubmitting}
+              disabled={!isValid || isSubmitting || isFetchingEditingRule}
               type="button"
             >
               {editingRuleId ? 'Save' : 'Create'}
@@ -341,6 +340,11 @@ export function AlertRulesPage() {
         )}
       >
         <div className="flex flex-col gap-3.5">
+          {editingRuleId && isFetchingEditingRule ? (
+            <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+              Loading latest alert rule from DB...
+            </div>
+          ) : null}
           <div>
             <Input
               label="Name"

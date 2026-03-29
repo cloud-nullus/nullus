@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { AlertRulesPage } from './alert-rules-page'
 
 const mockUseAlertRules = vi.hoisted(() => vi.fn())
+const mockUseAlertRule = vi.hoisted(() => vi.fn())
 const mockUseCreateAlertRule = vi.hoisted(() => vi.fn())
 const mockUseUpdateAlertRule = vi.hoisted(() => vi.fn())
 const mockUseDeleteAlertRule = vi.hoisted(() => vi.fn())
@@ -14,6 +15,7 @@ vi.mock('../api/observability-api', async () => {
   return {
     ...actual,
     useAlertRules: mockUseAlertRules,
+    useAlertRule: mockUseAlertRule,
     useCreateAlertRule: mockUseCreateAlertRule,
     useUpdateAlertRule: mockUseUpdateAlertRule,
     useDeleteAlertRule: mockUseDeleteAlertRule,
@@ -29,9 +31,10 @@ describe('AlertRulesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    mockUseAlertRules.mockReturnValue({ data: { items: [], total: 0 } })
-    mockUseCreateAlertRule.mockReturnValue({ mutate: vi.fn(), isPending: false })
-    mockUseUpdateAlertRule.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mockUseAlertRules.mockReturnValue({ data: { items: [], total: 0 }, refetch: vi.fn().mockResolvedValue(undefined) })
+    mockUseAlertRule.mockReturnValue({ data: undefined, isFetching: false })
+    mockUseCreateAlertRule.mockReturnValue({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false })
+    mockUseUpdateAlertRule.mockReturnValue({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false })
     mockUseDeleteAlertRule.mockReturnValue({ mutate: vi.fn(), isPending: false })
     mockUseClusterStackFilterState.mockReturnValue({
       clusters: [],
@@ -157,5 +160,52 @@ describe('AlertRulesPage', () => {
 
     expect(screen.queryByText('Disk Alert')).not.toBeNull()
     expect(screen.queryByText('High CPU')).toBeNull()
+  })
+
+  it('loads latest alert rule data from DB when opening edit modal', async () => {
+    mockUseAlertRules.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 'rule-1',
+            name: 'Old CPU',
+            metric_name: 'cpu_old',
+            condition: 'cpu_old >= critical_threshold',
+            warning_threshold: 60,
+            critical_threshold: 70,
+            threshold: 70,
+            channel: 'slack',
+            enabled: true,
+          },
+        ],
+        total: 1,
+      },
+      refetch: vi.fn().mockResolvedValue(undefined),
+    })
+    mockUseAlertRule.mockImplementation((id: string | null) => ({
+      data: id === 'rule-1'
+        ? {
+            id: 'rule-1',
+            name: 'Fresh CPU',
+            metric_name: 'cpu_usage',
+            condition: 'cpu_usage >= critical_threshold',
+            warning_threshold: 75,
+            critical_threshold: 90,
+            threshold: 90,
+            channel: 'email',
+            enabled: false,
+          }
+        : undefined,
+      isFetching: false,
+    }))
+
+    renderWithProviders(<AlertRulesPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Fresh CPU')
+    })
+    expect((screen.getByLabelText('Metric Name') as HTMLInputElement).value).toBe('cpu_usage')
   })
 })

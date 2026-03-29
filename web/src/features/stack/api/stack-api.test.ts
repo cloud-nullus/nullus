@@ -87,4 +87,39 @@ describe('toCreateStackBody storage size mapping', () => {
     expect(storage?.database.size).toBeUndefined()
     expect(storage?.object_storage.size).toBeUndefined()
   })
+
+  it('maps existing-all storage mode to backend existing-connect contract', () => {
+    const request: CreateStackRequest = {
+      ...baseRequest,
+      storage: {
+        ...baseRequest.storage!,
+        planMode: 'existing-all',
+        database: { ...baseRequest.storage!.database, mode: 'existing' },
+        objectStorage: { ...baseRequest.storage!.objectStorage, mode: 'existing' },
+      },
+    }
+
+    const body = toCreateStackBody(request)
+    const storage = body.config.storage
+
+    expect(storage?.plan_mode).toBe('existing-connect')
+    expect(storage?.database.mode).toBe('existing-connect')
+    expect(storage?.object_storage.mode).toBe('existing-connect')
+  })
+
+  it('omits storage entirely when storage plan is unselected', () => {
+    const request = {
+      ...baseRequest,
+      storage: {
+        ...baseRequest.storage!,
+        planMode: 'none',
+      },
+    } as CreateStackRequest & {
+      storage: CreateStackRequest['storage'] & { planMode: 'none' }
+    }
+
+    const body = toCreateStackBody(request)
+
+    expect(body.config.storage).toBeUndefined()
+  })
 })

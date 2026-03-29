@@ -3,6 +3,16 @@ import { screen, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { OrganizationPage } from './organization-page'
 
+const mockNavigate = vi.hoisted(() => vi.fn())
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
+
 // Stable mock data (hoisted to avoid re-render loops from reference changes)
 const mockOrg = vi.hoisted(() => ({
   id: 'org-1',
@@ -79,6 +89,12 @@ describe('OrganizationPage', () => {
   it('renders Invite Member button', () => {
     renderWithProviders(<OrganizationPage />)
     expect(screen.getByText('Invite Member')).toBeInTheDocument()
+  })
+
+  it('clicking Add User navigates to user management', () => {
+    renderWithProviders(<OrganizationPage />)
+    fireEvent.click(screen.getByText('Add User'))
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/users')
   })
 
   it('clicking Invite Member shows the invite modal', () => {

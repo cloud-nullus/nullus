@@ -389,7 +389,7 @@ export function OrganizationPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => navigate('/admin/user-management')}
+                        onClick={() => navigate('/admin/users')}
                         type="button"
                       >
                         <Plus size={13} />
