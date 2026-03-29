@@ -279,3 +279,33 @@ func TestMemberHandler_SearchUser_RequiresEmailQuery(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "email query param required")
 }
+
+func TestMemberHandler_UpdateMember_Success(t *testing.T) {
+	now := time.Now().UTC()
+	repo := newMockMemberUserRepository(&domain.User{
+		ID:        "member-1",
+		Email:     "member@nullus.io",
+		Name:      "Member",
+		Role:      domain.RoleDeveloper,
+		OrgID:     "org-1",
+		IsActive:  true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	e := newMemberEcho(repo)
+
+	body := `{"name":"Member Updated","email":"member.updated@nullus.io","role":"devops"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/organizations/org-1/members/member-1", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	updated, exists := repo.users["member-1"]
+	require.True(t, exists)
+	assert.Equal(t, "Member Updated", updated.Name)
+	assert.Equal(t, "member.updated@nullus.io", updated.Email)
+	assert.Equal(t, domain.RoleDevOps, updated.Role)
+	assert.Equal(t, "org-1", updated.OrgID)
+}

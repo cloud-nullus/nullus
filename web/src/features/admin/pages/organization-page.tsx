@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import {
   useClusters,
   useCreateOrganization,
@@ -73,6 +74,7 @@ const selectClassName = 'rounded-lg border border-[var(--color-border-default)] 
 const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
 
 export function OrganizationPage() {
+  const navigate = useNavigate()
   const { data: orgData, isLoading: orgLoading } = useOrganization()
   const [localOrgs, setLocalOrgs] = useState<Organization[]>([])
   const organizations = useMemo(() => {
@@ -269,7 +271,7 @@ export function OrganizationPage() {
         </Button>
       </div>
 
-      <div className="h-[700px]">
+      <div className="h-[860px]">
         <ListDetailPanel
           listWidth={280}
           listContent={
@@ -383,18 +385,29 @@ export function OrganizationPage() {
                 <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
                   <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-[18px] py-4">
                     <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Member Management</h3>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        resetInvite({ name: '', email: '', role: 'developer' })
-                        setInviteModal(true)
-                      }}
-                      type="button"
-                    >
-                      <Plus size={13} />
-                      Invite Member
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate('/admin/user-management')}
+                        type="button"
+                      >
+                        <Plus size={13} />
+                        Add User
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          resetInvite({ name: '', email: '', role: 'developer' })
+                          setInviteModal(true)
+                        }}
+                        type="button"
+                      >
+                        <Plus size={13} />
+                        Invite Member
+                      </Button>
+                    </div>
                   </div>
 
                   <table className="w-full border-collapse">

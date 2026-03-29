@@ -81,6 +81,12 @@ const adminApiCalls = {
   updateMemberRole: (orgId: string, memberId: string, role: MemberRole) =>
     api.patch<Member>(`/admin/organizations/${orgId}/members/${memberId}`, { role }).then((r) => r.data),
 
+  updateMember: (
+    orgId: string,
+    memberId: string,
+    data: { name: string; email: string; role: MemberRole }
+  ) => api.patch<Member>(`/admin/organizations/${orgId}/members/${memberId}`, data).then((r) => r.data),
+
   deactivateMember: (orgId: string, memberId: string) =>
     api.post<Member>(`/admin/organizations/${orgId}/members/${memberId}/deactivate`).then((r) => r.data),
 
@@ -194,6 +200,43 @@ export function useUpdateUserRole(orgId: string) {
     mutationFn: ({ memberId, role }: { memberId: string; role: MemberRole }) =>
       adminApiCalls.updateMemberRole(orgId, memberId, role),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.members(orgId) })
+    },
+  })
+}
+
+export function useUpdateMember(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ memberId, data }: { memberId: string; data: { name: string; email: string; role: MemberRole } }) =>
+      adminApiCalls.updateMember(orgId, memberId, data),
+    onSuccess: (updatedMember, variables) => {
+      qc.setQueryData<{ items: Member[]; total: number } | undefined>(queryKeys.members(orgId), (prev) => {
+        if (!prev) {
+          return prev
+        }
+
+        const nextItems = prev.items.map((member) => {
+          if (member.id !== variables.memberId) {
+            return member
+          }
+
+          return {
+            ...member,
+            name: updatedMember?.name ?? variables.data.name,
+            email: updatedMember?.email ?? variables.data.email,
+            role: updatedMember?.role ?? variables.data.role,
+            status: updatedMember?.status ?? member.status,
+            joinedAt: updatedMember?.joinedAt ?? member.joinedAt,
+          }
+        })
+
+        return {
+          ...prev,
+          items: nextItems,
+          total: nextItems.length,
+        }
+      })
       void qc.invalidateQueries({ queryKey: queryKeys.members(orgId) })
     },
   })

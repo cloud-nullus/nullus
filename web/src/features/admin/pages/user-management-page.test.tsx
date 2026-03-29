@@ -9,6 +9,7 @@ const mockUseOrganization = vi.hoisted(() => vi.fn())
 const mockUseMembers = vi.hoisted(() => vi.fn())
 const mockUseInviteMember = vi.hoisted(() => vi.fn())
 const mockUseUpdateUserRole = vi.hoisted(() => vi.fn())
+const mockUseUpdateMember = vi.hoisted(() => vi.fn())
 const mockUseDeactivateUser = vi.hoisted(() => vi.fn())
 const mockUseCreateInviteLink = vi.hoisted(() => vi.fn())
 const mockUseInviteLinks = vi.hoisted(() => vi.fn())
@@ -33,6 +34,7 @@ vi.mock('../api/admin-api', () => ({
   useMembers: (...args: unknown[]) => mockUseMembers(...args),
   useInviteMember: (...args: unknown[]) => mockUseInviteMember(...args),
   useUpdateUserRole: (...args: unknown[]) => mockUseUpdateUserRole(...args),
+  useUpdateMember: (...args: unknown[]) => mockUseUpdateMember(...args),
   useDeactivateUser: (...args: unknown[]) => mockUseDeactivateUser(...args),
   useCreateInviteLink: (...args: unknown[]) => mockUseCreateInviteLink(...args),
   useInviteLinks: (...args: unknown[]) => mockUseInviteLinks(...args),
@@ -63,6 +65,7 @@ describe('UserManagementPage', () => {
     })
     mockUseInviteMember.mockReturnValue({ mutate: vi.fn(), isPending: false })
     mockUseUpdateUserRole.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mockUseUpdateMember.mockReturnValue({ mutate: vi.fn(), isPending: false })
     mockUseDeactivateUser.mockReturnValue({ mutate: vi.fn(), isPending: false })
     mockUseCreateInviteLink.mockReturnValue({ mutate: vi.fn(), isPending: false })
     mockUseInviteLinks.mockReturnValue({ data: { items: [] } })
@@ -101,5 +104,12 @@ describe('UserManagementPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Users' }))
 
     expect(screen.queryAllByText('사용자가 없습니다.').length).toBeGreaterThan(0)
+  })
+
+  it('renders edit action button in users table', () => {
+    renderWithProviders(<UserManagementPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Users' }))
+
+    expect(screen.getByRole('button', { name: /Edit/i })).toBeInTheDocument()
   })
 })

@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Check, Copy, Link2, Mail, Plus, Search, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
+import { GitBranch, Link2, Mail, Pencil, Plus, Search, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
+import { useMembers, useInviteMember, useUpdateUserRole, useUpdateMember, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
 import type { MemberRole, MemberStatus, InviteLink } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -148,6 +148,14 @@ const inviteUserSchema = z.object({
 
 type InviteUserFormData = z.infer<typeof inviteUserSchema>
 
+const editUserSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().min(1, 'Email is required').email('Invalid email format'),
+  role: z.enum(['admin', 'devops', 'developer']),
+})
+
+type EditUserFormData = z.infer<typeof editUserSchema>
+
 const INVITE_USER_DEFAULTS: InviteUserFormData = {
   name: '',
   email: '',
@@ -174,6 +182,7 @@ export function UserManagementPage() {
   const users = membersData?.items ?? []
   const inviteMember = useInviteMember(ORG_ID)
   const updateUserRole = useUpdateUserRole(ORG_ID)
+  const updateMember = useUpdateMember(ORG_ID)
   const deactivateUser = useDeactivateUser(ORG_ID)
   const createInviteLink = useCreateInviteLink(ORG_ID)
   const { data: inviteLinksData } = useInviteLinks(ORG_ID)
@@ -186,11 +195,11 @@ export function UserManagementPage() {
   const [activeMainTab, setActiveMainTab] = useState<'roles' | 'users'>('users')
   const [activeRoleTab, setActiveRoleTab] = useState<ActiveRoleTab>('all')
   const [inviteModal, setInviteModal] = useState(false)
+  const [editUserModal, setEditUserModal] = useState(false)
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const [inviteLinkModal, setInviteLinkModal] = useState(false)
   const [inviteLinkRole, setInviteLinkRole] = useState<MemberRole>('developer')
   const [inviteLinkExpiry, setInviteLinkExpiry] = useState(7)
-  const [generatedLink, setGeneratedLink] = useState<string | null>(null)
-  const [linkCopied, setLinkCopied] = useState(false)
   const [revokeToken, setRevokeToken] = useState<string | null>(null)
   const [menuAccessOverrides, setMenuAccessOverrides] = useState<
     Partial<Record<MemberRole, Record<string, 'View' | 'Edit'>>>
@@ -244,6 +253,16 @@ export function UserManagementPage() {
     defaultValues: INVITE_USER_DEFAULTS,
     mode: 'onChange',
   })
+  const {
+    register: registerEdit,
+    handleSubmit: handleEditSubmit,
+    reset: resetEdit,
+    formState: { errors: editErrors, isValid: isEditValid, isSubmitting: isEditSubmitting },
+  } = useForm<EditUserFormData>({
+    resolver: zodResolver(editUserSchema),
+    defaultValues: { name: '', email: '', role: 'developer' },
+    mode: 'onChange',
+  })
   const [search, setSearch] = useState('')
 
   const watchedEmail = watch('email')
@@ -294,32 +313,63 @@ export function UserManagementPage() {
     })
   }
 
-  const handleGenerateLink = () => {
-    createInviteLink.mutate(
-      { role: inviteLinkRole, expiresInDays: inviteLinkExpiry },
+  const handleOpenEditUser = (memberId: string) => {
+    const user = users.find((item) => item.id === memberId)
+    if (!user) {
+      return
+    }
+    setEditingUserId(memberId)
+    resetEdit({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    })
+    setEditUserModal(true)
+  }
+
+  const handleEditUser = (data: EditUserFormData) => {
+    if (!editingUserId) {
+      return
+    }
+    updateMember.mutate(
       {
-        onSuccess: (data) => {
-          setGeneratedLink(data.url ?? `${window.location.origin}/invite/${data.token}`)
+        memberId: editingUserId,
+        data: {
+          name: data.name,
+          email: data.email,
+          role: data.role,
         },
-        onError: () => {
-          const mockToken = `inv-${Date.now()}`
-          setGeneratedLink(`${window.location.origin}/invite/${mockToken}`)
+      },
+      {
+        onSuccess: () => {
+          setEditUserModal(false)
+          setEditingUserId(null)
+          resetEdit({ name: '', email: '', role: 'developer' })
         },
       }
     )
   }
 
-  const handleCopyLink = async () => {
-    if (!generatedLink) return
-    await navigator.clipboard.writeText(generatedLink)
-    setLinkCopied(true)
-    setTimeout(() => setLinkCopied(false), 2000)
+  const handleGenerateLink = () => {
+    createInviteLink.mutate(
+      { role: inviteLinkRole, expiresInDays: inviteLinkExpiry },
+      {
+        onSuccess: async (data) => {
+          const inviteURL = data.url ?? `${window.location.origin}/invite/${data.token}`
+          await navigator.clipboard.writeText(inviteURL)
+          handleCloseInviteLinkModal()
+        },
+        onError: async () => {
+          const mockToken = `inv-${Date.now()}`
+          await navigator.clipboard.writeText(`${window.location.origin}/invite/${mockToken}`)
+          handleCloseInviteLinkModal()
+        },
+      }
+    )
   }
 
   const handleCloseInviteLinkModal = () => {
     setInviteLinkModal(false)
-    setGeneratedLink(null)
-    setLinkCopied(false)
     setInviteLinkRole('developer')
     setInviteLinkExpiry(7)
   }
@@ -380,9 +430,15 @@ export function UserManagementPage() {
       header: 'Actions',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="danger" size="sm" type="button" onClick={() => setDeactivateUserId(row.original.id)}>
-          비활성화
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="danger" size="sm" type="button" onClick={() => setDeactivateUserId(row.original.id)}>
+            비활성화
+          </Button>
+          <Button variant="outline" size="sm" type="button" onClick={() => handleOpenEditUser(row.original.id)}>
+            <Pencil size={12} />
+            Edit
+          </Button>
+        </div>
       ),
     },
   ]
@@ -760,74 +816,100 @@ export function UserManagementPage() {
         onClose={handleCloseInviteLinkModal}
         title="Generate Invite Link"
         footer={
-          generatedLink ? (
+          <>
             <Button variant="outline" size="sm" onClick={handleCloseInviteLinkModal}>
-              Close
+              Cancel
             </Button>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={handleCloseInviteLinkModal}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                type="button"
-                loading={createInviteLink.isPending}
-                onClick={handleGenerateLink}
-              >
-                <Link2 size={13} />
-                Generate
-              </Button>
-            </>
-          )
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              loading={createInviteLink.isPending}
+              onClick={handleGenerateLink}
+            >
+              <Link2 size={13} />
+              Generate
+            </Button>
+          </>
         }
       >
-        {generatedLink ? (
-          <div className="flex flex-col gap-3">
-            <p className="m-0 text-sm text-[var(--color-text-secondary)]">
-              초대 링크가 생성되었습니다. 링크를 복사하여 공유하세요.
-            </p>
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2">
-              <code className="flex-1 truncate text-xs text-[var(--color-text-primary)]">{generatedLink}</code>
-              <Button variant="outline" size="sm" type="button" onClick={handleCopyLink}>
-                {linkCopied ? <><Check size={13} className="text-[#22c55e]" /> Copied!</> : <><Copy size={13} /> Copy Link</>}
-              </Button>
-            </div>
-            {linkCopied && (
-              <span className="text-xs text-[#22c55e]">클립보드에 복사되었습니다</span>
-            )}
+        <div className="flex flex-col gap-3.5">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="invite-link-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
+            <select
+              id="invite-link-role"
+              value={inviteLinkRole}
+              onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
+              className={selectClassName}
+            >
+              <option value="developer">Developer</option>
+              <option value="devops">DevOps</option>
+              <option value="admin">Admin</option>
+            </select>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3.5">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="invite-link-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
-              <select
-                id="invite-link-role"
-                value={inviteLinkRole}
-                onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
-                className={selectClassName}
-              >
-                <option value="developer">Developer</option>
-                <option value="devops">DevOps</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="invite-link-expiry" className="text-xs font-medium text-[var(--color-text-secondary)]">만료 기간</label>
-              <select
-                id="invite-link-expiry"
-                value={inviteLinkExpiry}
-                onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
-                className={selectClassName}
-              >
-                {EXPIRY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="invite-link-expiry" className="text-xs font-medium text-[var(--color-text-secondary)]">만료 기간</label>
+            <select
+              id="invite-link-expiry"
+              value={inviteLinkExpiry}
+              onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
+              className={selectClassName}
+            >
+              {EXPIRY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
-        )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={editUserModal}
+        onClose={() => {
+          setEditUserModal(false)
+          setEditingUserId(null)
+          resetEdit({ name: '', email: '', role: 'developer' })
+        }}
+        title="Edit User"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditUserModal(false)
+                setEditingUserId(null)
+                resetEdit({ name: '', email: '', role: 'developer' })
+              }}
+              type="button"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              loading={updateMember.isPending || isEditSubmitting}
+              onClick={handleEditSubmit(handleEditUser)}
+              disabled={!isEditValid || isEditSubmitting}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <Input label="이름" placeholder="User name" {...registerEdit('name')} />
+          {editErrors.name && <span className="text-xs text-[#ef4444]">{editErrors.name.message}</span>}
+          <Input label="이메일" type="email" placeholder="user@example.com" {...registerEdit('email')} />
+          {editErrors.email && <span className="text-xs text-[#ef4444]">{editErrors.email.message}</span>}
+          <NativeSelect label="역할" {...registerEdit('role')} className={selectClassName}>
+            <option value="developer">Developer</option>
+            <option value="devops">DevOps</option>
+            <option value="admin">Admin</option>
+          </NativeSelect>
+          {editErrors.role && <span className="text-xs text-[#ef4444]">{editErrors.role.message}</span>}
+        </div>
       </Modal>
 
       <ConfirmDialog
