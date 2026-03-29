@@ -351,6 +351,7 @@ export interface InviteMemberRequest {
 export interface CreateClusterRequest {
   name: string
   type: ClusterType
+  endpoint?: string
   kubeconfig: string
 }
 
