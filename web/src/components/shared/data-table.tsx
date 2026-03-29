@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { Fragment, type ReactNode, useMemo, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -23,6 +23,8 @@ interface DataTableProps<T> {
   emptyMessage?: string
   pageSize?: number
   toolbar?: ReactNode
+  expandedRowId?: string | null
+  renderExpanded?: (row: T) => ReactNode
 }
 
 export function DataTable<T>({
@@ -34,6 +36,8 @@ export function DataTable<T>({
   emptyMessage = '데이터가 없습니다.',
   pageSize = 20,
   toolbar,
+  expandedRowId,
+  renderExpanded,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -114,23 +118,31 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <tr
-              key={row.id}
-              className={cn(
-                'transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.02)]',
-                onRowClick ? 'cursor-pointer' : 'cursor-default'
+            <Fragment key={row.id}>
+              <tr
+                className={cn(
+                  'transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.02)]',
+                  onRowClick ? 'cursor-pointer' : 'cursor-default'
+                )}
+                onClick={() => onRowClick?.(row.original)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <td
+                    key={cell.id}
+                    className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]"
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+              {expandedRowId === row.id && renderExpanded && (
+                <tr>
+                  <td colSpan={columns.length} className="border-t border-[var(--color-border-default)] p-0">
+                    {renderExpanded(row.original)}
+                  </td>
+                </tr>
               )}
-              onClick={() => onRowClick?.(row.original)}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <td
-                  key={cell.id}
-                  className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]"
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>

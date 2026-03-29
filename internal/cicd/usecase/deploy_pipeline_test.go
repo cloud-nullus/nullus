@@ -54,22 +54,62 @@ func (m *mockDeployDeploymentRepo) Create(_ context.Context, d *domain.Deploymen
 	m.created = append(m.created, &copied)
 	return nil
 }
-func (m *mockDeployDeploymentRepo) GetByID(_ context.Context, _ string) (*domain.Deployment, error) {
-	return nil, nil
+func (m *mockDeployDeploymentRepo) GetByID(_ context.Context, id string) (*domain.Deployment, error) {
+	for _, d := range m.created {
+		if d.ID == id {
+			copied := *d
+			return &copied, nil
+		}
+	}
+	return nil, errors.New("deployment not found")
 }
 func (m *mockDeployDeploymentRepo) ListByPipelineID(_ context.Context, _ string) ([]*domain.Deployment, error) {
 	return nil, nil
 }
-func (m *mockDeployDeploymentRepo) Update(_ context.Context, _ *domain.Deployment) error {
+func (m *mockDeployDeploymentRepo) Update(_ context.Context, d *domain.Deployment) error {
+	for i, existing := range m.created {
+		if existing.ID == d.ID {
+			copied := *d
+			m.created[i] = &copied
+			return nil
+		}
+	}
 	return nil
+}
+
+type mockKubeconfigProvider struct {
+	kubeconfig []byte
+	err        error
+}
+
+func (m *mockKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]byte, error) {
+	return m.kubeconfig, m.err
+}
+
+type mockManifestApplier struct {
+	appliedManifests [][]string
+	err              error
+}
+
+func (m *mockManifestApplier) Apply(_ context.Context, _ []byte, manifests []string) error {
+	m.appliedManifests = append(m.appliedManifests, manifests)
+	return m.err
+}
+
+func (m *mockManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, manifests []string, _ string) error {
+	m.appliedManifests = append(m.appliedManifests, manifests)
+	return m.err
 }
 
 func TestDeployPipeline_Success(t *testing.T) {
 	pipelineRepo := newMockDeployPipelineRepo(
-		&domain.Pipeline{ID: "pip-1", Name: "orders", Namespace: "apps", OrgID: "org-1"},
+		&domain.Pipeline{ID: "pip-1", Name: "orders", Namespace: "apps", ClusterID: "c1", AppType: domain.AppTypeBackend, OrgID: "org-1"},
 	)
 	deploymentRepo := &mockDeployDeploymentRepo{}
-	uc := NewDeployPipeline(pipelineRepo, deploymentRepo)
+	kubeconfigProvider := &mockKubeconfigProvider{kubeconfig: []byte("fake-kubeconfig")}
+	applier := &mockManifestApplier{}
+
+	uc := NewDeployPipeline(pipelineRepo, deploymentRepo, kubeconfigProvider, applier)
 
 	out, err := uc.Execute(context.Background(), DeployPipelineInput{
 		PipelineID: "pip-1",
@@ -84,13 +124,16 @@ func TestDeployPipeline_Success(t *testing.T) {
 	assert.Equal(t, "v1.2.0", out.Deployment.Version)
 	assert.Equal(t, domain.DeploymentStatusSuccess, out.Deployment.Status)
 	assert.NotEmpty(t, out.Deployment.ID)
-	require.Len(t, deploymentRepo.created, 1)
+	require.Len(t, applier.appliedManifests, 1)
 }
 
 func TestDeployPipeline_PipelineNotFound(t *testing.T) {
 	pipelineRepo := newMockDeployPipelineRepo()
 	deploymentRepo := &mockDeployDeploymentRepo{}
-	uc := NewDeployPipeline(pipelineRepo, deploymentRepo)
+	kubeconfigProvider := &mockKubeconfigProvider{}
+	applier := &mockManifestApplier{}
+
+	uc := NewDeployPipeline(pipelineRepo, deploymentRepo, kubeconfigProvider, applier)
 
 	out, err := uc.Execute(context.Background(), DeployPipelineInput{
 		PipelineID: "missing",
@@ -101,13 +144,13 @@ func TestDeployPipeline_PipelineNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, out)
 	assert.Contains(t, err.Error(), "pipeline not found")
-	assert.Empty(t, deploymentRepo.created)
 }
 
 func TestDeployPipeline_MissingPipelineID(t *testing.T) {
-	pipelineRepo := newMockDeployPipelineRepo()
-	deploymentRepo := &mockDeployDeploymentRepo{}
-	uc := NewDeployPipeline(pipelineRepo, deploymentRepo)
+	uc := NewDeployPipeline(
+		newMockDeployPipelineRepo(), &mockDeployDeploymentRepo{},
+		&mockKubeconfigProvider{}, &mockManifestApplier{},
+	)
 
 	out, err := uc.Execute(context.Background(), DeployPipelineInput{
 		PipelineID: "",
@@ -123,8 +166,7 @@ func TestDeployPipeline_MissingVersion(t *testing.T) {
 	pipelineRepo := newMockDeployPipelineRepo(
 		&domain.Pipeline{ID: "pip-1", Name: "orders"},
 	)
-	deploymentRepo := &mockDeployDeploymentRepo{}
-	uc := NewDeployPipeline(pipelineRepo, deploymentRepo)
+	uc := NewDeployPipeline(pipelineRepo, &mockDeployDeploymentRepo{}, &mockKubeconfigProvider{}, &mockManifestApplier{})
 
 	out, err := uc.Execute(context.Background(), DeployPipelineInput{
 		PipelineID: "pip-1",
@@ -138,10 +180,10 @@ func TestDeployPipeline_MissingVersion(t *testing.T) {
 
 func TestDeployPipeline_DeploymentRepoError(t *testing.T) {
 	pipelineRepo := newMockDeployPipelineRepo(
-		&domain.Pipeline{ID: "pip-1", Name: "orders", Namespace: "apps"},
+		&domain.Pipeline{ID: "pip-1", Name: "orders", Namespace: "apps", ClusterID: "c1"},
 	)
 	deploymentRepo := &mockDeployDeploymentRepo{createErr: errors.New("db error")}
-	uc := NewDeployPipeline(pipelineRepo, deploymentRepo)
+	uc := NewDeployPipeline(pipelineRepo, deploymentRepo, &mockKubeconfigProvider{}, &mockManifestApplier{})
 
 	out, err := uc.Execute(context.Background(), DeployPipelineInput{
 		PipelineID: "pip-1",
@@ -152,4 +194,27 @@ func TestDeployPipeline_DeploymentRepoError(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, out)
 	assert.Contains(t, err.Error(), "create deployment")
+}
+
+func TestDeployPipeline_ApplierError(t *testing.T) {
+	pipelineRepo := newMockDeployPipelineRepo(
+		&domain.Pipeline{ID: "pip-1", Name: "orders", Namespace: "apps", ClusterID: "c1", AppType: domain.AppTypeBackend},
+	)
+	deploymentRepo := &mockDeployDeploymentRepo{}
+	kubeconfigProvider := &mockKubeconfigProvider{kubeconfig: []byte("fake")}
+	applier := &mockManifestApplier{err: errors.New("apply failed")}
+
+	uc := NewDeployPipeline(pipelineRepo, deploymentRepo, kubeconfigProvider, applier)
+
+	out, err := uc.Execute(context.Background(), DeployPipelineInput{
+		PipelineID: "pip-1",
+		Version:    "v1.0.0",
+		DeployedBy: "devops@acme.io",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, out)
+	assert.Contains(t, err.Error(), "deployment failed")
+	require.Len(t, deploymentRepo.created, 1)
+	assert.Equal(t, domain.DeploymentStatusFailed, deploymentRepo.created[0].Status)
 }

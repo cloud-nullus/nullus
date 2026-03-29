@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,13 +23,21 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type ManifestApplier struct{}
+// ManifestApplier applies K8s manifests using the dynamic client.
+type ManifestApplier struct {
+	Tracker *StepTracker
+}
 
 func NewManifestApplier() *ManifestApplier {
-	return &ManifestApplier{}
+	return &ManifestApplier{Tracker: NewStepTracker()}
 }
 
 func (a *ManifestApplier) Apply(ctx context.Context, kubeconfig []byte, manifests []string) error {
+	return a.ApplyWithTracking(ctx, kubeconfig, manifests, "")
+}
+
+// ApplyWithTracking applies manifests and reports step progress to the tracker.
+func (a *ManifestApplier) ApplyWithTracking(ctx context.Context, kubeconfig []byte, manifests []string, deploymentID string) error {
 	config, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
 	if err != nil {
 		return fmt.Errorf("parse kubeconfig: %w", err)
@@ -48,13 +57,48 @@ func (a *ManifestApplier) Apply(ctx context.Context, kubeconfig []byte, manifest
 
 	decoder := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 
-	for _, manifest := range manifests {
-		if err := applyManifestDocuments(ctx, dynClient, mapper, decoder, manifest); err != nil {
+	for i, manifest := range manifests {
+		tracking := deploymentID != "" && a.Tracker != nil
+		if tracking {
+			a.Tracker.MarkRunning(deploymentID, i, "")
+			a.Tracker.AppendLog(deploymentID, i, "$ kubectl apply -f -")
+		}
+		results, err := applyManifestDocuments(ctx, dynClient, mapper, decoder, manifest)
+
+		for _, r := range results {
+			if tracking {
+				a.Tracker.AppendLog(deploymentID, i, fmt.Sprintf("%s/%s %s", strings.ToLower(r.Kind), r.Name, r.Action))
+			}
+		}
+
+		if err != nil {
+			msg := err.Error()
+			if len(results) > 0 {
+				last := results[len(results)-1]
+				msg = fmt.Sprintf("%s/%s %s", strings.ToLower(last.Kind), last.Name, last.Action)
+			}
+			if tracking {
+				a.Tracker.AppendLog(deploymentID, i, fmt.Sprintf("error: %s", err.Error()))
+				a.Tracker.MarkFailed(deploymentID, i, msg)
+			}
 			return err
+		}
+		var msg string
+		for _, r := range results {
+			msg = fmt.Sprintf("%s/%s %s", strings.ToLower(r.Kind), r.Name, r.Action)
+		}
+		if tracking {
+			a.Tracker.MarkSuccess(deploymentID, i, msg)
 		}
 	}
 
 	return nil
+}
+
+type applyResult struct {
+	Kind   string
+	Name   string
+	Action string
 }
 
 func applyManifestDocuments(
@@ -63,24 +107,27 @@ func applyManifestDocuments(
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	decoder runtime.Decoder,
 	manifest string,
-) error {
+) ([]applyResult, error) {
 	reader := utilyaml.NewYAMLReader(bufio.NewReader(bytes.NewBufferString(manifest)))
+	var results []applyResult
 
 	for {
 		doc, err := reader.Read()
 		if err == io.EOF {
-			return nil
+			return results, nil
 		}
 		if err != nil {
-			return fmt.Errorf("read yaml document: %w", err)
+			return results, fmt.Errorf("read yaml document: %w", err)
 		}
 		if len(bytes.TrimSpace(doc)) == 0 {
 			continue
 		}
 
-		if err := applyManifest(ctx, dynClient, mapper, decoder, doc); err != nil {
-			return err
+		r, err := applyManifest(ctx, dynClient, mapper, decoder, doc)
+		if err != nil {
+			return results, err
 		}
+		results = append(results, r)
 	}
 }
 
@@ -90,17 +137,17 @@ func applyManifest(
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	decoder runtime.Decoder,
 	doc []byte,
-) error {
+) (applyResult, error) {
 	obj := &unstructured.Unstructured{}
 
 	_, gvk, err := decoder.Decode(doc, nil, obj)
 	if err != nil {
-		return fmt.Errorf("decode manifest: %w", err)
+		return applyResult{}, fmt.Errorf("decode manifest: %w", err)
 	}
 
 	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		return fmt.Errorf("resolve rest mapping for %s: %w", gvk.String(), err)
+		return applyResult{}, fmt.Errorf("resolve rest mapping for %s: %w", gvk.String(), err)
 	}
 
 	var resource dynamic.ResourceInterface
@@ -115,27 +162,28 @@ func applyManifest(
 	}
 
 	name := obj.GetName()
+	kind := gvk.Kind
 	if name == "" {
-		return fmt.Errorf("manifest missing metadata.name for %s", gvk.String())
+		return applyResult{}, fmt.Errorf("manifest missing metadata.name for %s", gvk.String())
 	}
 
 	_, err = resource.Create(ctx, obj, metav1.CreateOptions{})
 	if err == nil {
-		return nil
+		return applyResult{Kind: kind, Name: name, Action: "created"}, nil
 	}
 	if !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("create %s/%s: %w", gvk.Kind, name, err)
+		return applyResult{Kind: kind, Name: name, Action: "failed"}, fmt.Errorf("create %s/%s: %w", kind, name, err)
 	}
 
 	existing, getErr := resource.Get(ctx, name, metav1.GetOptions{})
 	if getErr != nil {
-		return fmt.Errorf("get existing %s/%s: %w", gvk.Kind, name, getErr)
+		return applyResult{Kind: kind, Name: name, Action: "failed"}, fmt.Errorf("get existing %s/%s: %w", kind, name, getErr)
 	}
 
 	obj.SetResourceVersion(existing.GetResourceVersion())
 	if _, updateErr := resource.Update(ctx, obj, metav1.UpdateOptions{}); updateErr != nil {
-		return fmt.Errorf("update %s/%s: %w", gvk.Kind, name, updateErr)
+		return applyResult{Kind: kind, Name: name, Action: "failed"}, fmt.Errorf("update %s/%s: %w", kind, name, updateErr)
 	}
 
-	return nil
+	return applyResult{Kind: kind, Name: name, Action: "configured"}, nil
 }

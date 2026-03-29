@@ -23,6 +23,18 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+      initContainers:
+      - name: wait-for-db
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for PostgreSQL..."
+          until nc -z {{ include "nullus.database.host" . }} {{ include "nullus.database.port" . }}; do
+            sleep 2
+          done
+          echo "PostgreSQL is reachable"
       containers:
       - name: api
         image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag | default .Chart.AppVersion }}"
@@ -111,9 +123,15 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
+        - name: config
+          mountPath: /configs
+          readOnly: true
       volumes:
       - name: tmp
         emptyDir: {}
+      - name: config
+        configMap:
+          name: {{ include "nullus.fullname" . }}-config
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -55,12 +55,23 @@ type PipelineTemplate struct {
 	CreatedBy   string   `json:"created_by,omitempty"`
 }
 
+// DeployStep tracks progress of a single resource application.
+type DeployStep struct {
+	Name      string   `json:"name"`
+	Status    string   `json:"status"`
+	Kind      string   `json:"kind"`
+	Message   string   `json:"message,omitempty"`
+	AppliedAt string   `json:"applied_at,omitempty"`
+	Logs      []string `json:"logs,omitempty"`
+}
+
 // Deployment represents a single deployment run of a pipeline.
 type Deployment struct {
 	ID          string           `json:"id"`
 	PipelineID  string           `json:"pipeline_id"`
 	Version     string           `json:"version"`
 	Status      DeploymentStatus `json:"status"`
+	Steps       []DeployStep     `json:"steps,omitempty"`
 	StartedAt   time.Time        `json:"started_at"`
 	CompletedAt *time.Time       `json:"completed_at,omitempty"`
 	DeployedBy  string           `json:"deployed_by"`
