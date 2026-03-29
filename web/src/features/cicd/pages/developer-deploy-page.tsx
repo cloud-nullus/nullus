@@ -252,9 +252,10 @@ export function DeveloperDeployPage() {
   }, [firstClusterId, form.clusterId, setValue])
 
   useEffect(() => {
+    if (logs.length === 0) return
     const el = terminalRef.current
     if (el) el.scrollTop = el.scrollHeight
-  })
+  }, [logs])
 
   useEffect(() => {
     if (!pipelineIdParam && !clusterIdParam && !namespaceParam && !appNameParam) {
@@ -272,11 +273,12 @@ export function DeveloperDeployPage() {
     }
   }, [pipelineIdParam, clusterIdParam, namespaceParam, appNameParam, setValue])
 
+  const firstNamespace = namespaces[0] ?? ''
   useEffect(() => {
-    if (namespaces[0]) {
-      setValue('namespace', namespaces[0], { shouldValidate: true })
+    if (firstNamespace) {
+      setValue('namespace', firstNamespace, { shouldValidate: true })
     }
-  }, [namespaces, setValue])
+  }, [firstNamespace, setValue])
 
   const createPipelineMutation = useCreatePipeline()
   const deployPipelineMutation = useDeployPipeline()
