@@ -169,6 +169,24 @@ describe('stack-config-store', () => {
       useStackConfigStore.getState().loadFromTemplate('tpl-003')
       expect(useStackConfigStore.getState().draft.pipeline.cdTool.tool).toBe('argocd')
     })
+
+    it('loads empty template with all tool selections cleared', () => {
+      useStackConfigStore.getState().loadFromTemplate('empty-template-v1')
+      const { draft } = useStackConfigStore.getState()
+
+      expect(draft.selectedTemplateId).toBe('empty-template-v1')
+      expect(draft.artifacts.packageRegistry.tool).toBe('')
+      expect(draft.artifacts.sourceRepository.tool).toBe('')
+      expect(draft.artifacts.containerRegistry.tool).toBe('')
+      expect(draft.artifacts.storageBackend.tool).toBe('')
+      expect(draft.pipeline.cicdPlatform.tool).toBe('')
+      expect(draft.pipeline.cdTool.tool).toBe('')
+      expect(draft.monitoring.collection.tool).toBe('')
+      expect(draft.monitoring.visualization.tool).toBe('')
+      expect(draft.logging.search.tool).toBe('')
+      expect(draft.logging.traceLayer.tool).toBe('')
+      expect(draft.storage.planMode).toBe('none')
+    })
   })
 
   describe('resetConfig', () => {

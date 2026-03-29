@@ -6,7 +6,7 @@ export type ResourceMode = 'auto' | 'manual'
 export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'storage' | 'manifests' | 'deploy-script' | 'dry-run'
 
 export type StorageMode = 'existing' | 'create'
-export type StoragePlanMode = 'existing-all' | 'integrated-create'
+export type StoragePlanMode = 'none' | 'existing-all' | 'integrated-create'
 
 export interface ToolSelection {
   tool: string
@@ -247,6 +247,46 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   activeTab: 'artifacts',
 }
 
+function emptyToolSelection(): ToolSelection {
+  return { tool: '', version: '' }
+}
+
+function buildTemplateDraft(templateId: string, overrides?: Partial<StackConfigDraft>): StackConfigDraft {
+  const baseDraft: StackConfigDraft = templateId === 'empty-template-v1'
+    ? {
+        ...DEFAULT_DRAFT,
+        selectedTemplateId: templateId,
+        artifacts: {
+          packageRegistry: emptyToolSelection(),
+          sourceRepository: emptyToolSelection(),
+          containerRegistry: emptyToolSelection(),
+          storageBackend: emptyToolSelection(),
+        },
+        pipeline: {
+          cicdPlatform: emptyToolSelection(),
+          cdTool: emptyToolSelection(),
+        },
+        monitoring: {
+          collection: emptyToolSelection(),
+          visualization: emptyToolSelection(),
+        },
+        logging: {
+          search: emptyToolSelection(),
+          traceLayer: emptyToolSelection(),
+        },
+        storage: {
+          ...DEFAULT_DRAFT.storage,
+          planMode: 'none',
+        },
+      }
+    : {
+        ...DEFAULT_DRAFT,
+        selectedTemplateId: templateId,
+      }
+
+  return migrateDraftToolVersions({ ...baseDraft, ...overrides })
+}
+
 function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {
   return {
     ...draft,
@@ -363,7 +403,7 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
 
   loadFromTemplate: (templateId, overrides) =>
     set(() => ({
-      draft: migrateDraftToolVersions({ ...DEFAULT_DRAFT, selectedTemplateId: templateId, ...overrides }),
+      draft: buildTemplateDraft(templateId, overrides),
       isDirty: false,
     })),
 

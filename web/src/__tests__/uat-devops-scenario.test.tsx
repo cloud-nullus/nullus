@@ -2,7 +2,7 @@
  * UAT-1: DevOps Engineer "미정" scenario
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent, within } from '@testing-library/react'
 import { renderWithProviders } from './test-utils'
 import { LoginPage } from '../features/auth/pages/login-page'
 import { HomePage } from '../features/home/pages/home-page'
@@ -14,6 +14,7 @@ import { useStackConfigStore } from '../features/stack/stores/stack-config-store
 import { useSidebarStore } from '../stores/sidebar-store'
 
 const MOCK_TEMPLATES = [
+  { id: 'empty-template-v1', name: 'Empty Template', description: 'Blank stack template.', tools: [], estimatedMinutes: 5, category: 'blank', createdBy: 'admin', recommendedUseCase: 'Custom', minResources: 'Decide later' },
   { id: 'gitlab-allinone-v1', name: 'GitLab All-in-One', description: 'GitLab CE 기반 단일 플랫폼.', tools: ['GitLab CE', 'GitLab CI'], estimatedMinutes: 90, category: 'gitlab', createdBy: 'admin', recommendedUseCase: '중견기업', minResources: '8 vCPU' },
   { id: 'gitlab-argocd-v1', name: 'GitLab + Argo CD', description: 'GitOps 패턴 구성.', tools: ['GitLab CE', 'Argo CD'], estimatedMinutes: 120, category: 'gitlab', createdBy: 'admin', recommendedUseCase: 'GitOps', minResources: '10 vCPU' },
   { id: 'github-argocd-v1', name: 'GitHub + Argo CD', description: 'GitHub Actions 사용.', tools: ['GitHub', 'Argo CD'], estimatedMinutes: 60, category: 'github', createdBy: 'admin', recommendedUseCase: 'GitHub', minResources: '6 vCPU' },
@@ -80,9 +81,10 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     expect(screen.getByText('CI/CD 파이프라인')).toBeInTheDocument()
   })
 
-  it('step 3: stack template page shows 3 cards', () => {
+  it('step 3: stack template page shows 4 cards', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
+    expect(screen.getByText('Empty Template')).toBeInTheDocument()
     expect(screen.getByText('GitLab All-in-One')).toBeInTheDocument()
     expect(screen.getByText('GitLab + Argo CD')).toBeInTheDocument()
     expect(screen.getByText('GitHub + Argo CD')).toBeInTheDocument()
@@ -92,8 +94,9 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    const buttons = screen.getAllByText('Use Base Template')
-    fireEvent.click(buttons[0]) // GitLab All-in-One is first
+    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
+    expect(templateCard).toBeTruthy()
+    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
 
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
     expect(useStackConfigStore.getState().draft.selectedTemplateId).toBe('gitlab-allinone-v1')

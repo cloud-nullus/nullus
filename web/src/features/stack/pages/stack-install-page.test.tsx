@@ -364,18 +364,14 @@ describe('StackInstallPage', () => {
     expect(screen.getAllByText(/미선택/).length).toBeGreaterThan(0)
   })
 
-  it('allows clearing the database engine selection in storage', () => {
+  it('allows clearing the storage plan selection', () => {
     renderWithProviders(<StackInstallPage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Storage' }))
 
-    const databaseCard = screen.getAllByText('Database')[0].parentElement?.parentElement
-    expect(databaseCard).toBeTruthy()
+    fireEvent.click(screen.getByText('미선택'))
 
-    const databaseEngineSelect = within(databaseCard as HTMLElement).getAllByRole('combobox')[0] as HTMLSelectElement
-    fireEvent.change(databaseEngineSelect, { target: { value: '' } })
-
-    expect(useStackConfigStore.getState().draft.storage.database.providerOrEngine).toBe('')
+    expect(useStackConfigStore.getState().draft.storage.planMode).toBe('none')
   })
 
   it('selecting a tool in Pipeline updates the store', () => {

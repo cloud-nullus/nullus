@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { StackTemplatePage } from './stack-template-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
@@ -10,6 +10,14 @@ const mockUpdateTemplateMutate = vi.fn()
 const mockDeleteTemplateMutate = vi.fn()
 
 const mockTemplates = [
+  {
+    id: 'empty-template-v1',
+    name: 'Empty Template',
+    description: 'Empty stack template',
+    tools: [],
+    estimatedMinutes: 5,
+    category: 'blank',
+  },
   {
     id: 'gitlab-allinone-v1',
     name: 'GitLab All-in-One',
@@ -79,17 +87,18 @@ describe('StackTemplatePage', () => {
     expect(screen.getAllByText('Stack Template')[0]).toBeInTheDocument()
   })
 
-  it('renders 3 Golden Path template cards', () => {
+  it('renders 4 Golden Path template cards', () => {
     renderWithProviders(<StackTemplatePage />)
+    expect(screen.getByText('Empty Template')).toBeInTheDocument()
     expect(screen.getByText('GitLab All-in-One')).toBeInTheDocument()
     expect(screen.getByText('GitLab + ArgoCD')).toBeInTheDocument()
     expect(screen.getByText('GitHub + ArgoCD')).toBeInTheDocument()
   })
 
-  it('renders 3 Use Base Template buttons', () => {
+  it('renders 4 Use Base Template buttons', () => {
     renderWithProviders(<StackTemplatePage />)
     const buttons = screen.getAllByText('Use Base Template')
-    expect(buttons).toHaveLength(3)
+    expect(buttons).toHaveLength(4)
   })
 
   it('renders search input', () => {
@@ -130,17 +139,33 @@ describe('StackTemplatePage', () => {
 
   it('clicking Use Base Template navigates to /stack/install', () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByText('Use Base Template')
-    fireEvent.click(buttons[0])
+    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
+    expect(templateCard).toBeTruthy()
+    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
   it('clicking Use Base Template sets template in store', () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByText('Use Base Template')
-    fireEvent.click(buttons[0])
+    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
+    expect(templateCard).toBeTruthy()
+    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
+  })
+
+  it('clicking Empty Template clears install selections in store', () => {
+    renderWithProviders(<StackTemplatePage />)
+    const templateCard = screen.getByText('Empty Template').closest('[role="button"]')
+    expect(templateCard).toBeTruthy()
+
+    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
+
+    const { draft } = useStackConfigStore.getState()
+    expect(draft.selectedTemplateId).toBe('empty-template-v1')
+    expect(draft.artifacts.packageRegistry.tool).toBe('')
+    expect(draft.pipeline.cicdPlatform.tool).toBe('')
+    expect(draft.storage.planMode).toBe('none')
   })
 
   it('shows create template button only for admin role', () => {
@@ -176,7 +201,9 @@ describe('StackTemplatePage', () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0])
+    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
+    expect(templateCard).toBeTruthy()
+    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Edit' }))
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GitLab All-in-One Updated' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -189,7 +216,9 @@ describe('StackTemplatePage', () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
+    const templateCard = screen.getByText('GitLab + ArgoCD').closest('[role="button"]')
+    expect(templateCard).toBeTruthy()
+    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Edit' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {

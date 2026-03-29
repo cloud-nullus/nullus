@@ -158,6 +158,11 @@ const LOGGING_OPTIONS: Record<string, ToolOption[]> = {
 
 const STORAGE_PLAN_MODE_OPTIONS: Array<{ id: StoragePlanMode; label: string; description: string }> = [
   {
+    id: 'none',
+    label: '미선택',
+    description: 'DB와 Object Storage 연결 방식을 아직 정하지 않습니다.',
+  },
+  {
     id: 'existing-all',
     label: '기존 DB/Storage 연결',
     description: '조직에서 이미 운영 중인 DB와 Object Storage를 참조하여 연결합니다.',
@@ -2422,6 +2427,15 @@ export function StackInstallPage() {
 
   const handleStoragePlanModeChange = (planMode: StoragePlanMode) => {
     setStorageValidationErrors({})
+    if (planMode === 'none') {
+      updateStorage({
+        planMode,
+        database: { ...draft.storage.database, mode: 'create' },
+        objectStorage: { ...draft.storage.objectStorage, mode: 'create' },
+      })
+      return
+    }
+
     if (planMode === 'existing-all') {
       updateStorage({
         planMode,
@@ -2447,7 +2461,10 @@ export function StackInstallPage() {
     })
   }
 
-  const getStorageEffectiveMode = (): StorageMode => {
+  const getStorageEffectiveMode = (): StorageMode | null => {
+    if (draft.storage.planMode === 'none') {
+      return null
+    }
     return draft.storage.planMode === 'existing-all' ? 'existing' : 'create'
   }
 
@@ -4039,7 +4056,7 @@ export function StackInstallPage() {
                     { key: 'objectStorage', title: 'Object Storage', target: draft.storage.objectStorage },
                   ] as const).map((item) => {
                     const targetKey = item.key
-                    const effectiveMode: StorageMode = getStorageEffectiveMode()
+                    const effectiveMode = getStorageEffectiveMode()
 
                     const providerOptions = STORAGE_PROVIDER_OPTIONS[targetKey]
                     const existingRefError = getStorageFieldError(targetKey, 'existingRef')
@@ -4057,11 +4074,15 @@ export function StackInstallPage() {
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h4>
                           <span className="rounded border border-[var(--color-border-default)] px-2 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
-                            {effectiveMode === 'existing' ? '기존 연결' : '신규 생성'}
+                            {effectiveMode === 'existing' ? '기존 연결' : effectiveMode === 'create' ? '신규 생성' : '미선택'}
                           </span>
                         </div>
 
-                        {effectiveMode === 'existing' && (
+                        {effectiveMode === null ? (
+                          <div className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+                            Storage Plan에서 연결 방식을 먼저 선택해 주세요.
+                          </div>
+                        ) : effectiveMode === 'existing' && (
                           <div className="mb-3 grid gap-2">
                             <div>
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">기존 리소스 참조 ID</label>
@@ -4142,6 +4163,7 @@ export function StackInstallPage() {
                           </div>
                         )}
 
+                        {effectiveMode !== null && (
                         <div className="mb-3">
                           <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 엔진' : 'Storage Provider'}</label>
                           <NativeSelect
@@ -4149,7 +4171,6 @@ export function StackInstallPage() {
                             onChange={(e) => updateStorageTarget(targetKey, { providerOrEngine: e.target.value })}
                             className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[7px] text-xs"
                           >
-                            {targetKey === 'database' && <option value="">미선택</option>}
                             {providerOptions.map((provider) => (
                               <option key={provider.id} value={provider.id}>
                                 {provider.label}
@@ -4157,7 +4178,9 @@ export function StackInstallPage() {
                             ))}
                           </NativeSelect>
                         </div>
+                        )}
 
+                        {effectiveMode !== null && (
                         <div className={cn('grid gap-2', effectiveMode === 'create' ? 'grid-cols-2' : 'grid-cols-1')}>
                           <div>
                             <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">버전</label>
@@ -4188,6 +4211,7 @@ export function StackInstallPage() {
                             </div>
                           )}
                         </div>
+                        )}
                       </div>
                     )
                   })}
@@ -4222,7 +4246,7 @@ export function StackInstallPage() {
             ['Metrics', draft.monitoring.collection.tool],
             ['Logs', draft.logging.search.tool],
             ['Traces', draft.logging.traceLayer.tool],
-            ['Storage Plan', draft.storage.planMode],
+            ['Storage Plan', draft.storage.planMode === 'none' ? '미선택' : draft.storage.planMode],
             [
               'Database',
               `${draft.storage.database.mode}:${draft.storage.database.providerOrEngine || '미선택'}${draft.storage.database.mode === 'create' ? `/${draft.storage.database.size}` : ''}`,

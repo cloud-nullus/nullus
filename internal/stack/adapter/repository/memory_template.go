@@ -9,13 +9,13 @@ import (
 )
 
 // MemoryTemplateRepository is an in-memory implementation of port.TemplateRepository
-// with three hard-coded Golden Path templates.
+// with canonical Golden Path templates.
 type MemoryTemplateRepository struct {
 	templates map[string]*domain.Template
 }
 
-// NewMemoryTemplateRepository constructs a MemoryTemplateRepository with the three
-// canonical Golden Path templates pre-loaded.
+// NewMemoryTemplateRepository constructs a MemoryTemplateRepository with canonical
+// Golden Path templates pre-loaded.
 func NewMemoryTemplateRepository() *MemoryTemplateRepository {
 	repo := &MemoryTemplateRepository{
 		templates: make(map[string]*domain.Template),
@@ -68,9 +68,18 @@ func (r *MemoryTemplateRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// goldenPathTemplates returns the three canonical Golden Path templates.
+// goldenPathTemplates returns the canonical Golden Path templates.
 func goldenPathTemplates() []*domain.Template {
 	return []*domain.Template{
+		{
+			ID:                   "empty-template-v1",
+			Name:                 "Empty Template",
+			Description:          "Start from an empty stack configuration with every tool left unselected.",
+			Tools:                []domain.ToolConfig{},
+			EstimatedInstallTime: 5 * time.Minute,
+			RecommendedUseCase:   "Blank starting point for custom stack composition",
+			MinResources:         "Decide resources after selecting the tools you need",
+		},
 		{
 			ID:          "gitlab-allinone-v1",
 			Name:        "GitLab All-in-One",
