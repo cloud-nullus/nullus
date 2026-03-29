@@ -103,6 +103,7 @@ describe('StackInstallPage', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getAllByText('Package Registry')[0]).toBeTruthy()
     expect(screen.getAllByText('Source Repository')[0]).toBeTruthy()
+    expect(screen.getAllByText('미선택').length).toBeGreaterThan(0)
   })
 
   it('clicking CI/CD tab shows CI/CD content', () => {
@@ -349,6 +350,32 @@ describe('StackInstallPage', () => {
     // Click Nexus option in Package Registry
     fireEvent.click(screen.getByText('Nexus Repository'))
     expect(useStackConfigStore.getState().draft.artifacts.packageRegistry.tool).toBe('nexus')
+  })
+
+  it('allows clearing a tool selection with the none option', () => {
+    renderWithProviders(<StackInstallPage />)
+
+    const packageRegistrySection = screen.getAllByText('Package Registry')[0].parentElement?.parentElement
+    expect(packageRegistrySection).toBeTruthy()
+    fireEvent.click(within(packageRegistrySection as HTMLElement).getAllByRole('button')[0])
+
+    expect(useStackConfigStore.getState().draft.artifacts.packageRegistry.tool).toBe('')
+    expect(screen.getByText('Configuration Summary')).toBeInTheDocument()
+    expect(screen.getAllByText(/미선택/).length).toBeGreaterThan(0)
+  })
+
+  it('allows clearing the database engine selection in storage', () => {
+    renderWithProviders(<StackInstallPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Storage' }))
+
+    const databaseCard = screen.getAllByText('Database')[0].parentElement?.parentElement
+    expect(databaseCard).toBeTruthy()
+
+    const databaseEngineSelect = within(databaseCard as HTMLElement).getAllByRole('combobox')[0] as HTMLSelectElement
+    fireEvent.change(databaseEngineSelect, { target: { value: '' } })
+
+    expect(useStackConfigStore.getState().draft.storage.database.providerOrEngine).toBe('')
   })
 
   it('selecting a tool in Pipeline updates the store', () => {

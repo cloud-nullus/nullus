@@ -59,6 +59,12 @@ export function getToolChartVersion(toolId: string): string | undefined {
 }
 
 function normalizeToolSelectionVersion(selection: ToolSelection): ToolSelection {
+  if (!selection.tool) {
+    return {
+      ...selection,
+      version: '',
+    }
+  }
   if (!selection.version || selection.version === 'latest') {
     return {
       ...selection,

@@ -1,9 +1,11 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"os"
@@ -26,6 +28,39 @@ const (
 )
 
 var installGatewayOCIRelease = installOCIChartWithHelmCLI
+var bootstrapInternalCAInstallation = func(ctx context.Context, o *Orchestrator, namespace string) error {
+	return o.bootstrapInternalCA(ctx, namespace)
+}
+var checkExistingCertManagerInstallation = func(ctx context.Context, o *Orchestrator) (bool, error) {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return false, nil
+	}
+
+	requiredCRDs := []string{
+		"certificaterequests.cert-manager.io",
+		"certificates.cert-manager.io",
+		"clusterissuers.cert-manager.io",
+		"issuers.cert-manager.io",
+	}
+	for _, crd := range requiredCRDs {
+		if _, err := o.runKubectl(ctx, "get", "crd", crd); err != nil {
+			return false, nil
+		}
+	}
+
+	deployments := []string{
+		"deployment/cert-manager",
+		"deployment/cert-manager-webhook",
+		"deployment/cert-manager-cainjector",
+	}
+	for _, deployment := range deployments {
+		if _, err := o.runKubectl(ctx, "get", "-n", "cert-manager", deployment); err != nil {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
 
 type Orchestrator struct {
 	installer           port.HelmInstaller
@@ -407,6 +442,20 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		o.markCompleted(stackID, order)
 		return nil
 	}
+	if step == "installing_cert_manager" {
+		installed, checkErr := checkExistingCertManagerInstallation(ctx, o)
+		if checkErr != nil {
+			return fmt.Errorf("detect existing cert-manager installation: %w", checkErr)
+		}
+		if installed {
+			slog.Info("reusing existing cert-manager installation", "namespace", namespace)
+			if err := bootstrapInternalCAInstallation(ctx, o, namespace); err != nil {
+				return fmt.Errorf("bootstrap internal ca: %w", err)
+			}
+			o.markCompleted(stackID, order)
+			return nil
+		}
+	}
 	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
 		if err := o.ensureGatewayAPICRDs(ctx); err != nil {
 			return fmt.Errorf("ensure gateway api crds: %w", err)
@@ -454,7 +503,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		o.rollback.Push(result.ReleaseName)
 	}
 	if step == "installing_cert_manager" {
-		if err := o.bootstrapInternalCA(ctx, namespace); err != nil {
+		if err := bootstrapInternalCAInstallation(ctx, o, namespace); err != nil {
 			return fmt.Errorf("bootstrap internal ca: %w", err)
 		}
 	}
@@ -469,6 +518,17 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		manifestNamespace := o.namespace
 		if strings.TrimSpace(manifestNamespace) == "" {
 			manifestNamespace = namespace
+		}
+		if looksLikeKubeconfig(o.kubeconfig) {
+			filteredManifest, skippedBackendTLSPolicy, filterErr := o.filterOptionalGatewayPolicies(ctx, manifest)
+			if filterErr != nil {
+				return fmt.Errorf("filter optional gateway policies: %w", filterErr)
+			}
+			if skippedBackendTLSPolicy {
+				slog.Warn("skipping BackendTLSPolicy manifest because the CRD is unavailable", "namespace", manifestNamespace)
+			}
+			manifest = filteredManifest
+			hasManifest = strings.TrimSpace(manifest) != ""
 		}
 		if err := o.applyManifest(ctx, manifestNamespace, manifest); err != nil {
 			return fmt.Errorf("apply yaml manifest for step %s: %w", step, err)
@@ -798,6 +858,82 @@ func (o *Orchestrator) ensureGatewayAPICRDs(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (o *Orchestrator) filterOptionalGatewayPolicies(ctx context.Context, manifest string) (string, bool, error) {
+	if strings.TrimSpace(manifest) == "" {
+		return manifest, false, nil
+	}
+	if _, err := o.runKubectl(ctx, "get", "crd", "backendtlspolicies.gateway.networking.k8s.io"); err == nil {
+		return manifest, false, nil
+	}
+	return filterGatewayManifestDocuments(manifest, func(apiVersion, kind string) bool {
+		return strings.HasPrefix(apiVersion, "gateway.networking.k8s.io/") && kind == "BackendTLSPolicy"
+	})
+}
+
+func filterGatewayManifestDocuments(manifest string, skip func(apiVersion, kind string) bool) (string, bool, error) {
+	decoder := yaml.NewDecoder(strings.NewReader(manifest))
+	kept := make([]string, 0)
+	skippedAny := false
+
+	for {
+		var doc any
+		if err := decoder.Decode(&doc); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", false, err
+		}
+		if doc == nil {
+			continue
+		}
+
+		apiVersion := yamlDocumentStringField(doc, "apiVersion")
+		kind := yamlDocumentStringField(doc, "kind")
+		if skip != nil && skip(apiVersion, kind) {
+			skippedAny = true
+			continue
+		}
+
+		encoded, err := yaml.Marshal(doc)
+		if err != nil {
+			return "", false, err
+		}
+		trimmed := strings.TrimSpace(string(encoded))
+		if trimmed != "" {
+			kept = append(kept, trimmed)
+		}
+	}
+
+	var buffer bytes.Buffer
+	for index, doc := range kept {
+		if index > 0 {
+			buffer.WriteString("\n---\n")
+		}
+		buffer.WriteString(doc)
+	}
+	return buffer.String(), skippedAny, nil
+}
+
+func yamlDocumentStringField(doc any, key string) string {
+	switch typed := doc.(type) {
+	case map[string]any:
+		if value, ok := typed[key].(string); ok {
+			return strings.TrimSpace(value)
+		}
+	case map[any]any:
+		for rawKey, rawValue := range typed {
+			keyString, ok := rawKey.(string)
+			if !ok || keyString != key {
+				continue
+			}
+			if value, ok := rawValue.(string); ok {
+				return strings.TrimSpace(value)
+			}
+		}
+	}
+	return ""
 }
 
 func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any {

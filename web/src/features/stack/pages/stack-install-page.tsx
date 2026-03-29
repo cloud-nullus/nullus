@@ -37,6 +37,12 @@ interface ToolOption {
   description: string
 }
 
+const NONE_TOOL_OPTION: ToolOption = {
+  id: '',
+  label: '미선택',
+  description: '이 항목은 설치하지 않습니다.',
+}
+
 function toDeployErrorMessage(error: unknown): string {
   let code = ''
   let backendMessage = ''
@@ -703,6 +709,9 @@ const stackInstallSchema = z.object({
 type StackInstallFormData = z.infer<typeof stackInstallSchema>
 
 function toolLabel(toolId: string): string {
+  if (!toolId) {
+    return '미선택'
+  }
   return TOOL_LABEL_MAP.get(toolId) ?? toolId
 }
 
@@ -1531,6 +1540,14 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
   const gatewayNamespace = 'nullus-stack'
   const accessDomain = normalizeAccessDomain(draft.accessDomain || `${appName}.internal`)
   const gatewayName = `${appName}-gateway`
+  const primaryRuntimeTool = draft.pipeline.cicdPlatform.tool || 'sample-app'
+  const primaryRuntimeVersion = draft.pipeline.cicdPlatform.tool
+    ? draft.pipeline.cicdPlatform.version || getToolAppVersion(draft.pipeline.cicdPlatform.tool)
+    : 'latest'
+  const metricsTool = draft.monitoring.collection.tool || 'metrics-sidecar'
+  const metricsToolVersion = draft.monitoring.collection.tool
+    ? draft.monitoring.collection.version || getToolAppVersion(draft.monitoring.collection.tool)
+    : 'latest'
   const tlsEnabled = draft.accessDomainTls.enabled
   const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${appName}-wildcard-tls`
   const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || gatewayNamespace
@@ -1566,12 +1583,12 @@ function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string
       `        app: ${appName}`,
       '    spec:',
       '      containers:',
-      `        - name: ${draft.pipeline.cicdPlatform.tool}`,
-      `          image: ghcr.io/nullus/${draft.pipeline.cicdPlatform.tool}:${draft.pipeline.cicdPlatform.version || getToolAppVersion(draft.pipeline.cicdPlatform.tool)}`,
+      `        - name: ${primaryRuntimeTool}`,
+      `          image: ghcr.io/nullus/${primaryRuntimeTool}:${primaryRuntimeVersion}`,
       '          ports:',
       '            - containerPort: 8080',
-      '        - name: metrics-sidecar',
-      `          image: ghcr.io/nullus/${draft.monitoring.collection.tool}:${draft.monitoring.collection.version || getToolAppVersion(draft.monitoring.collection.tool)}`,
+      `        - name: ${metricsTool}`,
+      `          image: ghcr.io/nullus/${metricsTool}:${metricsToolVersion}`,
       '          ports:',
       '            - containerPort: 9090',
     ].join('\n'),
@@ -1692,19 +1709,21 @@ interface ToolSelectorProps {
 }
 
 function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
+  const optionsWithNone = [NONE_TOOL_OPTION, ...options]
+
   return (
     <div className="mb-5">
       <div className="mb-2.5 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
         {label}
       </div>
       <div className="flex flex-col gap-2">
-        {options.map((opt) => {
+        {optionsWithNone.map((opt) => {
           const selected = value.tool === opt.id
           return (
             <button
               key={opt.id}
               type="button"
-              onClick={() => onChange({ tool: opt.id, version: 'latest' })}
+              onClick={() => onChange({ tool: opt.id, version: opt.id ? 'latest' : '' })}
               className={cn(
                 'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
                 selected
@@ -4130,6 +4149,7 @@ export function StackInstallPage() {
                             onChange={(e) => updateStorageTarget(targetKey, { providerOrEngine: e.target.value })}
                             className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[7px] text-xs"
                           >
+                            {targetKey === 'database' && <option value="">미선택</option>}
                             {providerOptions.map((provider) => (
                               <option key={provider.id} value={provider.id}>
                                 {provider.label}
@@ -4205,7 +4225,7 @@ export function StackInstallPage() {
             ['Storage Plan', draft.storage.planMode],
             [
               'Database',
-              `${draft.storage.database.mode}:${draft.storage.database.providerOrEngine}${draft.storage.database.mode === 'create' ? `/${draft.storage.database.size}` : ''}`,
+              `${draft.storage.database.mode}:${draft.storage.database.providerOrEngine || '미선택'}${draft.storage.database.mode === 'create' ? `/${draft.storage.database.size}` : ''}`,
             ],
             ['DB Ref', `${draft.storage.database.existingRef || '-'} @ ${draft.storage.database.endpoint || '-'}`],
             ['DB Auth', `${draft.storage.database.authId || '-'} (${draft.storage.database.authPasswordKey || '-'})`],
@@ -4222,7 +4242,7 @@ export function StackInstallPage() {
             >
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-semibold text-[var(--color-text-primary)]">
-                {val}
+                {typeof val === 'string' && val.length === 0 ? '미선택' : val}
               </span>
             </div>
           ))}

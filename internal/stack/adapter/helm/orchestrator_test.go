@@ -1,8 +1,10 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -248,6 +250,27 @@ func TestOrchestrator_SetNamespace_OverridesDefaultNamespace(t *testing.T) {
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_cert_manager", "A"))
 
 	assert.Equal(t, []string{"production"}, installer.namespaces)
+}
+
+func TestOrchestrator_ExecuteStep_ReusesExistingCertManagerInstallation(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("apiVersion: v1\nclusters:\n- name: test\n"), "nullus")
+
+	originalCheck := checkExistingCertManagerInstallation
+	originalBootstrap := bootstrapInternalCAInstallation
+	checkExistingCertManagerInstallation = func(_ context.Context, _ *Orchestrator) (bool, error) {
+		return true, nil
+	}
+	bootstrapInternalCAInstallation = func(_ context.Context, _ *Orchestrator, _ string) error {
+		return nil
+	}
+	defer func() {
+		checkExistingCertManagerInstallation = originalCheck
+		bootstrapInternalCAInstallation = originalBootstrap
+	}()
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_reuse_cert_manager", "installing_cert_manager", "A"))
+	assert.Empty(t, installer.installed)
 }
 
 func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
@@ -677,6 +700,49 @@ func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *t
 	assert.Contains(t, manifest, "name: gitlab-webservice-default")
 	assert.Contains(t, manifest, "name: kube-prometheus-stack-prometheus")
 	assert.Contains(t, manifest, "name: nullus-minio-console")
+}
+
+func TestFilterGatewayManifestDocuments_SkipsBackendTLSPolicy(t *testing.T) {
+	manifest := `apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: sample-gateway
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: opensearch-backend-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sample-route
+`
+
+	filtered, skipped, err := filterGatewayManifestDocuments(manifest, func(apiVersion, kind string) bool {
+		return strings.HasPrefix(apiVersion, "gateway.networking.k8s.io/") && kind == "BackendTLSPolicy"
+	})
+	require.NoError(t, err)
+	assert.True(t, skipped)
+	assert.NotContains(t, filtered, "kind: BackendTLSPolicy")
+	assert.Contains(t, filtered, "kind: Gateway")
+	assert.Contains(t, filtered, "kind: HTTPRoute")
+}
+
+func TestFilterGatewayManifestDocuments_LeavesManifestUntouchedWhenNoOptionalPolicyExists(t *testing.T) {
+	manifest := `apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: sample-gateway
+`
+
+	filtered, skipped, err := filterGatewayManifestDocuments(manifest, func(apiVersion, kind string) bool {
+		return strings.HasPrefix(apiVersion, "gateway.networking.k8s.io/") && kind == "BackendTLSPolicy"
+	})
+	require.NoError(t, err)
+	assert.False(t, skipped)
+	assert.Contains(t, filtered, "kind: Gateway")
+	assert.True(t, bytes.Contains([]byte(filtered), []byte("sample-gateway")))
 }
 
 func TestParseGitLabRunnerRegistrationTokenOutput(t *testing.T) {
