@@ -172,7 +172,6 @@ func cicdGoldenPaths() []*domain.CICDGoldenPath {
 				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"},
 				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "3.1.0"},
 				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: "8.5.0", AppVersion: "11.4.0"},
-				{Category: "log_aggregation", Name: "Loki", HelmVersion: "6.6.2", AppVersion: "3.0.0"},
 			},
 		},
 		{
@@ -190,7 +189,6 @@ func cicdGoldenPaths() []*domain.CICDGoldenPath {
 				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"},
 				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "3.1.0"},
 				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: "8.5.0", AppVersion: "11.4.0"},
-				{Category: "log_aggregation", Name: "Loki", HelmVersion: "6.6.2", AppVersion: "3.0.0"},
 			},
 		},
 		{
@@ -208,7 +206,6 @@ func cicdGoldenPaths() []*domain.CICDGoldenPath {
 				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"},
 				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "3.1.0"},
 				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: "8.5.0", AppVersion: "11.4.0"},
-				{Category: "log_aggregation", Name: "Loki", HelmVersion: "6.6.2", AppVersion: "3.0.0"},
 			},
 		},
 	}

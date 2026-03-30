@@ -24,7 +24,6 @@ export function CicdGoldenPathPage() {
   const [search, setSearch] = useState('')
   const [selectedPath, setSelectedPath] = useState<CICDGoldenPath | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-
   const filtered = useMemo(
     () =>
       (goldenPaths || []).filter(
@@ -189,6 +188,11 @@ export function CicdGoldenPathPage() {
         </div>
       )}
 
+      {filtered.length === 0 && !isLoading && (
+        <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
+          검색 결과가 없습니다.
+        </div>
+      )}
       {/* Detail Modal */}
       <Modal
         open={detailOpen}
