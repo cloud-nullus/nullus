@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createElement } from 'react'
+import '@testing-library/jest-dom/vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { Modal } from './modal'
 
 describe('Modal', () => {
@@ -44,5 +46,34 @@ describe('Modal', () => {
 
   it('Modal is a function component', () => {
     expect(typeof Modal).toBe('function')
+  })
+
+  it('closes when pointer down/up both happen on overlay', () => {
+    const onClose = vi.fn()
+    render(
+      <Modal open onClose={onClose} title="Test Modal">
+        <button type="button">Inner Button</button>
+      </Modal>
+    )
+
+    const overlay = screen.getByRole('dialog')
+    fireEvent.pointerDown(overlay)
+    fireEvent.pointerUp(overlay)
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not close when dragging from modal content to overlay', () => {
+    const onClose = vi.fn()
+    render(
+      <Modal open onClose={onClose} title="Test Modal">
+        <button type="button">Inner Button</button>
+      </Modal>
+    )
+
+    fireEvent.pointerDown(screen.getByText('Inner Button'))
+    fireEvent.pointerUp(screen.getByRole('dialog'))
+
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

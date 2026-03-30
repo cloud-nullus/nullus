@@ -81,6 +81,7 @@ export interface Cluster {
   endpoint: string
   status: ClusterStatus
   organizationIds: string[]
+  kubeconfig?: string
   createdAt: string
 }
 

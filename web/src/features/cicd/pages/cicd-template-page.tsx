@@ -15,6 +15,7 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { useAuthStore } from '../../../stores/auth-store'
+import { resolveLocale } from '../../../lib/locale'
 
 const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   'web-backend': { bg: 'rgba(99,102,241,0.12)', color: '#a5b4fc' },
@@ -23,6 +24,39 @@ const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 }
 
 const STAGE_OPTIONS = ['Production', 'QA', 'Development', 'Beta'] as const
+
+const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
+  'web-frontend': {
+    ko: 'React/Next.js 웹 프론트엔드 앱 템플릿',
+    en: 'React/Next.js web frontend app template',
+  },
+  'web-backend': {
+    ko: 'REST API 백엔드 서비스 템플릿',
+    en: 'REST API backend service template',
+  },
+  'batch-job': {
+    ko: '배치 잡 템플릿',
+    en: 'Batch job template',
+  },
+  'web-frontend-standard': {
+    ko: 'React/Next.js 웹 프론트엔드 앱 템플릿',
+    en: 'React/Next.js web frontend app template',
+  },
+  'web-backend-standard': {
+    ko: 'REST API 백엔드 서비스 템플릿',
+    en: 'REST API backend service template',
+  },
+  'batch-job-standard': {
+    ko: '배치 잡 템플릿',
+    en: 'Batch job template',
+  },
+}
+
+const TEMPLATE_DESCRIPTION_KO_TO_EN: Record<string, string> = {
+  'React/Next.js 웹 프론트엔드 앱 템플릿': 'React/Next.js web frontend app template',
+  'REST API 백엔드 서비스 템플릿': 'REST API backend service template',
+  '배치 잡 템플릿': 'Batch job template',
+}
 
 interface TemplateFormState {
   id: string
@@ -40,7 +74,7 @@ const EMPTY_FORM: TemplateFormState = {
 
 
 export function CicdTemplatePage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const role = useAuthStore((state) => state.role)
   const isAdmin = role === 'admin'
@@ -57,11 +91,28 @@ export function CicdTemplatePage() {
   const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null)
   const [form, setForm] = useState<TemplateFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
+  const isKorean = resolveLocale(i18n.resolvedLanguage || i18n.language) === 'ko-KR'
+
+  const resolveTemplateDescription = (template: CicdTemplate) => {
+    const localized = TEMPLATE_DESCRIPTION_I18N[template.id]
+    if (localized) {
+      return isKorean ? localized.ko : localized.en
+    }
+
+    if (!isKorean) {
+      const enFallback = TEMPLATE_DESCRIPTION_KO_TO_EN[template.description]
+      if (enFallback) {
+        return enFallback
+      }
+    }
+
+    return template.description
+  }
 
   const filtered = templates.filter(
-    (t) =>
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.description.toLowerCase().includes(search.toLowerCase())
+    (template) =>
+      template.name.toLowerCase().includes(search.toLowerCase()) ||
+      resolveTemplateDescription(template).toLowerCase().includes(search.toLowerCase())
   )
 
   const resetForm = () => {
@@ -224,7 +275,7 @@ export function CicdTemplatePage() {
                   </span>
                 </div>
                 <p className="m-0 text-[13px] leading-[1.5] text-[var(--color-text-secondary)]">
-                  {template.description}
+                  {resolveTemplateDescription(template)}
                 </p>
               </div>
 
@@ -245,12 +296,12 @@ export function CicdTemplatePage() {
               </div>
 
               {/* Footer */}
-              <div className="mt-auto flex items-center justify-between border-t border-[var(--color-border-default)] pt-2.5">
+              <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-default)] pt-2.5">
                 <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
                   {template.createdBy && <User size={12} />}
                   <span>{template.createdBy ?? ''}</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
                   {isAdmin && (
                     <>
                       <Button
@@ -277,7 +328,7 @@ export function CicdTemplatePage() {
                     variant="primary"
                     size="sm"
                     type="button"
-                    className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
+                    className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
                     onClick={() => navigate('/cicd/developer-deploy')}
                   >
                     {t('cicdTemplatePage.actions.useBaseTemplate', 'Use Base Template')}

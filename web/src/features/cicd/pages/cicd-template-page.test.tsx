@@ -40,6 +40,7 @@ const templates = [
     createdBy: 'admin',
   },
 ]
+const EMPTY_SEARCH_RESULT_LABEL = /No search results found\.|검색 결과가 없습니다\./
 
 describe('CicdTemplatePage', () => {
   beforeEach(() => {
@@ -61,14 +62,14 @@ describe('CicdTemplatePage', () => {
     renderWithProviders(<CicdTemplatePage />)
 
     expect(screen.getAllByText('CI/CD Template').length).toBeGreaterThan(0)
-    expect(screen.getByText('검색 결과가 없습니다.')).not.toBeNull()
+    expect(screen.getByText(EMPTY_SEARCH_RESULT_LABEL)).not.toBeNull()
   })
 
   it('renders template cards from API data', () => {
     renderWithProviders(<CicdTemplatePage />)
 
     expect(screen.getByText('Standard Web Backend')).not.toBeNull()
-    expect(screen.getByText('REST API 백엔드 서비스 템플릿')).not.toBeNull()
+    expect(screen.getByText(/REST API backend service template|REST API 백엔드 서비스 템플릿/)).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Create Template' })).not.toBeNull()
   })
 
@@ -77,7 +78,7 @@ describe('CicdTemplatePage', () => {
 
     renderWithProviders(<CicdTemplatePage />)
 
-    expect(screen.getByText('검색 결과가 없습니다.')).not.toBeNull()
+    expect(screen.getByText(EMPTY_SEARCH_RESULT_LABEL)).not.toBeNull()
   })
 
   it('navigates to developer deploy when using base template', () => {

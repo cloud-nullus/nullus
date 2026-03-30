@@ -1011,7 +1011,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 						<div className="flex items-center gap-2">
 							<div className="text-[14px] font-bold text-[var(--color-text-primary)]">Installed Stack Summary</div>
 							<Button
-								variant="ghost"
+								variant="outline"
 								size="sm"
 								type="button"
 								onClick={() => setConnOpen(true)}
@@ -1020,7 +1020,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 								{t("stackList.connection.open", "Connection Info")}
 							</Button>
 							<Button
-								variant="ghost"
+								variant="outline"
 								size="sm"
 								type="button"
 								onClick={handleCopyGatewayPF}
@@ -1034,7 +1034,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 										: "Gateway PF Copy"}
 							</Button>
 							<Button
-								variant="ghost"
+								variant="outline"
 								size="sm"
 								type="button"
 								onClick={handleCopyHosts}

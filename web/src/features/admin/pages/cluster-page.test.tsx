@@ -23,6 +23,21 @@ vi.mock('../api/admin-api', () => ({
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useVerifyCluster: () => ({ mutate: verifyMutate }),
+  useCluster: (id: string) => ({
+    data: id
+      ? {
+        id,
+        name: id === 'c1' ? 'prod-cluster' : 'staging-cluster',
+        type: id === 'c1' ? 'eks' : 'kubernetes',
+        endpoint: id === 'c1' ? 'https://prod.k8s.nullus.io' : 'https://staging.k8s.nullus.io',
+        status: 'connected',
+        organizationIds: ['org-1'],
+        kubeconfig: 'apiVersion: v1\nkind: Config\nclusters: []',
+        createdAt: '2026-01-01T00:00:00Z',
+      }
+      : undefined,
+    isFetching: false,
+  }),
 }))
 
 beforeEach(() => {
@@ -73,7 +88,7 @@ describe('ClusterPage', () => {
 
   it('detail panel shows connection status', () => {
     renderWithProviders(<ClusterPage />)
-    expect(screen.getByText('연결 상태')).toBeInTheDocument()
+    expect(screen.getByText('Connection Status')).toBeInTheDocument()
   })
 
   it('renders Register Cluster button', () => {
@@ -85,25 +100,32 @@ describe('ClusterPage', () => {
     renderWithProviders(<ClusterPage />)
     fireEvent.click(screen.getByText('Register Cluster'))
     expect(screen.getByText('Register')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('예: prod-cluster')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('e.g. prod-cluster')).toBeInTheDocument()
   })
 
   it('Register modal has cluster type select', () => {
     renderWithProviders(<ClusterPage />)
     fireEvent.click(screen.getByText('Register Cluster'))
-    expect(screen.getByText('클러스터 타입')).toBeInTheDocument()
+    expect(screen.getByText('Cluster Type')).toBeInTheDocument()
   })
 
   it('closing register modal hides form', () => {
     renderWithProviders(<ClusterPage />)
     fireEvent.click(screen.getByText('Register Cluster'))
     fireEvent.click(screen.getByText('Cancel'))
-    expect(screen.queryByPlaceholderText('예: prod-cluster')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('e.g. prod-cluster')).not.toBeInTheDocument()
   })
 
   it('calls verify cluster API for selected cluster', () => {
     renderWithProviders(<ClusterPage />)
     fireEvent.click(screen.getByText('Verify Connection'))
     expect(verifyMutate).toHaveBeenCalledWith('c1', expect.any(Object))
+  })
+
+  it('prefills existing kubeconfig when editing a cluster', () => {
+    renderWithProviders(<ClusterPage />)
+    fireEvent.click(screen.getByText('Edit'))
+    const kubeconfigInput = screen.getByLabelText('kubeconfig (YAML)') as HTMLTextAreaElement
+    expect(kubeconfigInput.value).toContain('apiVersion: v1')
   })
 })

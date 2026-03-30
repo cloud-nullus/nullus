@@ -816,11 +816,13 @@
     "connection": {
       "title": "Connection Status",
       "connected": "Connected",
+      "connectedDetail": "Cluster API is reachable and authentication is valid.",
       "authFailed": "Authentication failed. Recheck credentials/kubeconfig.",
       "error": "Connection error. Check endpoint and network path.",
       "unreachable": "Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.",
       "pending": "Pending verification",
       "inactive": "Inactive",
+      "verifying": "Verifying connection...",
       "verifySuccess": "Connection verified successfully.",
       "verifyFailed": "Connection failed. Check endpoint/kubeconfig."
     },
@@ -846,11 +848,87 @@
       "endpointPlaceholder": "e.g. https://prod.k8s.nullus.io",
       "uploadKubeconfig": "Upload kubeconfig File",
       "chooseFile": "Choose File",
+      "loadingCurrentKubeconfig": "Loading current kubeconfig...",
       "kubeconfigPlaceholder": "Paste kubeconfig content..."
     },
     "confirm": {
       "deleteTitle": "Delete Cluster",
       "deleteDescription": "Deleting this cluster may affect connected pipelines and deployment data. Continue?"
+    }
+  },
+  "organizationPage": {
+    "description": "Manage organization settings, access scope, and members in one place.",
+    "actions": {
+      "newOrganization": "New Organization",
+      "saveChanges": "Save Changes",
+      "addUser": "Add User",
+      "inviteMember": "Invite Member",
+      "remove": "Remove",
+      "cancel": "Cancel",
+      "sendInvite": "Send Invite",
+      "createOrganization": "Create Organization"
+    },
+    "list": {
+      "organizations": "Organizations"
+    },
+    "detail": {
+      "organizationDetail": "Organization Detail",
+      "clusterAccessScope": "Cluster Access Scope",
+      "memberManagement": "Member Management",
+      "selectOrganization": "Select an organization to view details"
+    },
+    "table": {
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "actions": "Actions",
+      "owner": "Owner"
+    },
+    "form": {
+      "organizationName": "Organization Name",
+      "organizationNamePlaceholder": "e.g. Acme Corp",
+      "slug": "Slug",
+      "slugPlaceholder": "e.g. acme-corp",
+      "domain": "Domain",
+      "domainOptional": "Domain (optional)",
+      "domainPlaceholder": "e.g. acme.com",
+      "status": "Status",
+      "name": "Name",
+      "namePlaceholder": "e.g. Hong Gil-dong",
+      "email": "Email",
+      "role": "Role"
+    },
+    "role": {
+      "admin": "Admin",
+      "devops": "DevOps",
+      "developer": "Developer"
+    },
+    "memberStatus": {
+      "active": "Active",
+      "pending": "Pending",
+      "inactive": "Inactive"
+    },
+    "orgStatus": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "suspended": "Suspended"
+    },
+    "clusterStatus": {
+      "connected": "Connected",
+      "pending": "Pending",
+      "error": "Error",
+      "inactive": "Inactive",
+      "unreachable": "Unreachable",
+      "authFailed": "Auth Failed"
+    },
+    "modal": {
+      "inviteMember": "Invite Member",
+      "newOrganization": "New Organization"
+    },
+    "confirm": {
+      "removeMemberTitle": "Remove Member",
+      "removeMemberDescription": "Remove the selected member from this organization. Continue?"
     }
   },
   "userManagementPage": {

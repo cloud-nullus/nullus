@@ -47,6 +47,14 @@ const queryKeys = {
   inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
 }
 
+type ClusterApiShape = Cluster & { connection_status?: Cluster['status']; org_id?: string }
+
+const normalizeCluster = (cluster: ClusterApiShape): Cluster => ({
+  ...cluster,
+  status: cluster.status ?? cluster.connection_status ?? 'pending',
+  organizationIds: cluster.organizationIds ?? (cluster.org_id ? [cluster.org_id] : []),
+})
+
 // --- API functions ---
 
 const adminApiCalls = {
@@ -93,18 +101,11 @@ const adminApiCalls = {
   getClusters: () =>
     api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => ({
       ...r.data,
-      items: (r.data.items ?? []).map((c) => {
-        const raw = c as Cluster & { connection_status?: Cluster['status']; org_id?: string }
-        return {
-          ...c,
-          status: raw.status ?? raw.connection_status ?? 'pending',
-          organizationIds: c.organizationIds ?? (raw.org_id ? [raw.org_id] : []),
-        }
-      }),
+      items: (r.data.items ?? []).map((c) => normalizeCluster(c as ClusterApiShape)),
     })),
 
   getCluster: (id: string) =>
-    api.get<Cluster>(`/admin/clusters/${id}`).then((r) => r.data),
+    api.get<ClusterApiShape>(`/admin/clusters/${id}`).then((r) => normalizeCluster(r.data)),
 
   createCluster: (data: CreateClusterRequest) =>
     api.post<Cluster>('/admin/clusters', data).then((r) => r.data),
@@ -256,6 +257,14 @@ export function useClusters() {
   return useQuery({
     queryKey: queryKeys.clusters(),
     queryFn: adminApiCalls.getClusters,
+  })
+}
+
+export function useCluster(id: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.cluster(id),
+    queryFn: () => adminApiCalls.getCluster(id),
+    enabled: enabled && !!id,
   })
 }
 

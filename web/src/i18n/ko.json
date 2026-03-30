@@ -816,11 +816,13 @@
     "connection": {
       "title": "연결 상태",
       "connected": "연결됨",
+      "connectedDetail": "클러스터 API에 접근 가능하며 인증이 유효합니다.",
       "authFailed": "인증에 실패했습니다. credentials/kubeconfig를 다시 확인하세요.",
       "error": "연결 오류가 발생했습니다. 엔드포인트와 네트워크 경로를 확인하세요.",
       "unreachable": "엔드포인트에 도달할 수 없습니다. DNS/방화벽/클러스터 API 접근성을 확인하세요.",
       "pending": "검증 대기 중",
       "inactive": "비활성",
+      "verifying": "연결을 검증하는 중...",
       "verifySuccess": "연결 검증에 성공했습니다.",
       "verifyFailed": "연결 검증에 실패했습니다. endpoint/kubeconfig를 확인하세요."
     },
@@ -846,11 +848,87 @@
       "endpointPlaceholder": "예: https://prod.k8s.nullus.io",
       "uploadKubeconfig": "kubeconfig 파일 업로드",
       "chooseFile": "파일 선택",
+      "loadingCurrentKubeconfig": "현재 kubeconfig를 불러오는 중...",
       "kubeconfigPlaceholder": "kubeconfig 내용을 붙여넣으세요..."
     },
     "confirm": {
       "deleteTitle": "클러스터 삭제",
       "deleteDescription": "선택한 클러스터를 삭제하면 연결된 파이프라인 및 배포 데이터에 영향이 있을 수 있습니다. 계속하시겠습니까?"
+    }
+  },
+  "organizationPage": {
+    "description": "조직 설정, 접근 범위, 멤버를 통합 관리합니다.",
+    "actions": {
+      "newOrganization": "새 조직",
+      "saveChanges": "변경 사항 저장",
+      "addUser": "사용자 추가",
+      "inviteMember": "멤버 초대",
+      "remove": "제거",
+      "cancel": "취소",
+      "sendInvite": "초대 발송",
+      "createOrganization": "조직 생성"
+    },
+    "list": {
+      "organizations": "조직 목록"
+    },
+    "detail": {
+      "organizationDetail": "조직 상세",
+      "clusterAccessScope": "클러스터 접근 범위",
+      "memberManagement": "멤버 관리",
+      "selectOrganization": "상세를 보려면 조직을 선택하세요"
+    },
+    "table": {
+      "name": "이름",
+      "email": "이메일",
+      "role": "역할",
+      "status": "상태",
+      "actions": "작업",
+      "owner": "소유자"
+    },
+    "form": {
+      "organizationName": "조직 이름",
+      "organizationNamePlaceholder": "예: Acme Corp",
+      "slug": "슬러그",
+      "slugPlaceholder": "예: acme-corp",
+      "domain": "도메인",
+      "domainOptional": "도메인 (선택)",
+      "domainPlaceholder": "예: acme.com",
+      "status": "상태",
+      "name": "이름",
+      "namePlaceholder": "예: 홍길동",
+      "email": "이메일",
+      "role": "역할"
+    },
+    "role": {
+      "admin": "관리자",
+      "devops": "DevOps",
+      "developer": "개발자"
+    },
+    "memberStatus": {
+      "active": "활성",
+      "pending": "대기",
+      "inactive": "비활성"
+    },
+    "orgStatus": {
+      "active": "활성",
+      "inactive": "비활성",
+      "suspended": "정지"
+    },
+    "clusterStatus": {
+      "connected": "연결됨",
+      "pending": "대기",
+      "error": "오류",
+      "inactive": "비활성",
+      "unreachable": "접근 불가",
+      "authFailed": "인증 실패"
+    },
+    "modal": {
+      "inviteMember": "멤버 초대",
+      "newOrganization": "새 조직"
+    },
+    "confirm": {
+      "removeMemberTitle": "멤버 제거",
+      "removeMemberDescription": "선택한 멤버를 조직에서 제거합니다. 계속하시겠습니까?"
     }
   },
   "userManagementPage": {

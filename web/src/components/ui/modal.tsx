@@ -13,6 +13,7 @@ interface ModalProps {
 
 export function Modal({ open, onClose, title, children, wide = false, footer }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
+  const pointerDownOnOverlayRef = useRef(false)
 
   useEffect(() => {
     if (!open) return
@@ -33,8 +34,18 @@ export function Modal({ open, onClose, title, children, wide = false, footer }: 
       aria-modal="true"
       aria-label={title}
       tabIndex={-1}
-      onClick={(e) => {
-        if (e.target === overlayRef.current) onClose()
+      onPointerDown={(e) => {
+        pointerDownOnOverlayRef.current = e.target === overlayRef.current
+      }}
+      onPointerUp={(e) => {
+        const releasedOnOverlay = e.target === overlayRef.current
+        if (pointerDownOnOverlayRef.current && releasedOnOverlay) {
+          onClose()
+        }
+        pointerDownOnOverlayRef.current = false
+      }}
+      onPointerCancel={() => {
+        pointerDownOnOverlayRef.current = false
       }}
       onKeyDown={(e) => {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === overlayRef.current) {

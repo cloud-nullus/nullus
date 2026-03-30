@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } from 'lucide-react'
-import { useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster } from '../api/admin-api'
+import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster } from '../api/admin-api'
 import type { Cluster, ClusterStatus } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -60,7 +60,7 @@ function getStatusLabel(t: (key: string, defaultValue?: string) => string, statu
 function getConnectionHint(t: (key: string, defaultValue?: string) => string, status: ClusterStatus): { text: string; className: string } {
   switch (status) {
     case 'connected':
-      return { text: t('clusterPage.connection.connected', 'Connected'), className: 'text-[#22c55e]' }
+      return { text: t('clusterPage.connection.connectedDetail', 'Cluster API is reachable and authentication is valid.'), className: 'text-[#22c55e]' }
     case 'auth_failed':
       return { text: t('clusterPage.connection.authFailed', 'Authentication failed. Recheck credentials/kubeconfig.'), className: 'text-[#ef4444]' }
     case 'error':
@@ -72,6 +72,17 @@ function getConnectionHint(t: (key: string, defaultValue?: string) => string, st
     case 'inactive':
       return { text: t('clusterPage.connection.inactive', 'Inactive'), className: 'text-[#64748b]' }
   }
+}
+
+function normalizeClusterStatus(rawStatus: string | undefined | null, fallback: ClusterStatus = 'pending'): ClusterStatus {
+  const normalized = (rawStatus ?? '').trim().toLowerCase()
+  if (normalized === 'connected') return 'connected'
+  if (normalized === 'pending') return 'pending'
+  if (normalized === 'error') return 'error'
+  if (normalized === 'inactive') return 'inactive'
+  if (normalized === 'unreachable') return 'unreachable'
+  if (normalized === 'auth_failed' || normalized === 'auth-failed' || normalized === 'authfailed') return 'auth_failed'
+  return fallback
 }
 
 const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
@@ -166,8 +177,11 @@ export function ClusterPage() {
   const [deleteClusterError, setDeleteClusterError] = useState<string | null>(null)
   const [isVerifyingConnection, setIsVerifyingConnection] = useState(false)
   const [verifyConnectionResult, setVerifyConnectionResult] = useState<'success' | 'error' | null>(null)
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, ClusterStatus>>({})
   const [fileUploadError, setFileUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editPrefilledClusterIdRef = useRef<string | null>(null)
+  const { data: editingClusterDetail, isFetching: isFetchingEditingCluster } = useCluster(editingClusterId ?? '', registerModal && !!editingClusterId)
 
   useEffect(() => {
     if (clusters.length === 0) {
@@ -180,6 +194,43 @@ export function ClusterPage() {
     }
   }, [clusters, selected])
 
+  useEffect(() => {
+    setVerifyConnectionResult(null)
+  }, [selected?.id])
+
+  useEffect(() => {
+    if (clusters.length === 0) {
+      if (Object.keys(statusOverrides).length > 0) {
+        setStatusOverrides({})
+      }
+      return
+    }
+
+    setStatusOverrides((prev) => {
+      if (Object.keys(prev).length === 0) return prev
+      let changed = false
+      const next = { ...prev }
+
+      Object.entries(prev).forEach(([clusterId, overriddenStatus]) => {
+        const cluster = clusters.find((item) => item.id === clusterId)
+        if (!cluster) {
+          delete next[clusterId]
+          changed = true
+          return
+        }
+        if (cluster.status === overriddenStatus) {
+          delete next[clusterId]
+          changed = true
+        }
+      })
+
+      return changed ? next : prev
+    })
+  }, [clusters])
+
+  const getEffectiveStatus = (cluster: Pick<Cluster, 'id' | 'status'>): ClusterStatus => statusOverrides[cluster.id] ?? cluster.status
+  const selectedCluster = selected ? clusters.find((cluster) => cluster.id === selected.id) ?? selected : null
+
   const {
     register,
     handleSubmit,
@@ -191,6 +242,20 @@ export function ClusterPage() {
     defaultValues: CLUSTER_DEFAULTS,
     mode: 'onChange',
   })
+
+  useEffect(() => {
+    if (!registerModal || !editingClusterId || !editingClusterDetail) return
+    if (editPrefilledClusterIdRef.current === editingClusterId) return
+
+    reset({
+      name: editingClusterDetail.name,
+      type: editingClusterDetail.type,
+      endpoint: editingClusterDetail.endpoint,
+      kubeconfig: editingClusterDetail.kubeconfig ?? '',
+      isEdit: true,
+    })
+    editPrefilledClusterIdRef.current = editingClusterId
+  }, [registerModal, editingClusterId, editingClusterDetail, reset])
 
   const handleRegister = (form: ClusterFormData) => {
     const endpoint = form.endpoint?.trim() ?? ''
@@ -206,6 +271,7 @@ export function ClusterPage() {
           onSuccess: () => {
             setRegisterModal(false)
             setEditingClusterId(null)
+            editPrefilledClusterIdRef.current = null
             reset(CLUSTER_DEFAULTS)
           },
         }
@@ -216,6 +282,7 @@ export function ClusterPage() {
     createCluster.mutate({ name: form.name, type: form.type, endpoint, kubeconfig: form.kubeconfig }, {
       onSuccess: () => {
         setRegisterModal(false)
+        editPrefilledClusterIdRef.current = null
         reset(CLUSTER_DEFAULTS)
       },
     })
@@ -223,18 +290,20 @@ export function ClusterPage() {
 
   const openCreateModal = () => {
     setEditingClusterId(null)
+    editPrefilledClusterIdRef.current = null
     reset(CLUSTER_DEFAULTS)
     setRegisterModal(true)
   }
 
   const openEditModal = () => {
-    if (!selected) return
-    setEditingClusterId(selected.id)
+    if (!selectedCluster) return
+    setEditingClusterId(selectedCluster.id)
+    editPrefilledClusterIdRef.current = null
     reset({
-      name: selected.name,
-      type: selected.type,
-      endpoint: selected.endpoint,
-      kubeconfig: '',
+      name: selectedCluster.name,
+      type: selectedCluster.type,
+      endpoint: selectedCluster.endpoint,
+      kubeconfig: selectedCluster.kubeconfig ?? '',
       isEdit: true,
     })
     setRegisterModal(true)
@@ -262,15 +331,20 @@ export function ClusterPage() {
   }
 
   const handleVerifyConnection = () => {
-    if (!selected || isVerifyingConnection) return
+    if (!selectedCluster || isVerifyingConnection) return
+    const selectedClusterId = selectedCluster.id
+    const selectedClusterStatus = getEffectiveStatus(selectedCluster)
     setIsVerifyingConnection(true)
     setVerifyConnectionResult(null)
-    verifyCluster.mutate(selected.id, {
-      onSuccess: () => {
+    verifyCluster.mutate(selectedClusterId, {
+      onSuccess: (result) => {
+        const verifiedStatus = normalizeClusterStatus(result?.status, selectedClusterStatus)
+        setStatusOverrides((prev) => ({ ...prev, [selectedClusterId]: verifiedStatus }))
         setVerifyConnectionResult('success')
         setIsVerifyingConnection(false)
       },
       onError: () => {
+        setStatusOverrides((prev) => ({ ...prev, [selectedClusterId]: 'error' }))
         setVerifyConnectionResult('error')
         setIsVerifyingConnection(false)
       },
@@ -352,7 +426,8 @@ export function ClusterPage() {
                 </div>
               )}
               {!isLoading && clusters.map((cluster) => {
-                const st = STATUS_CONFIG[cluster.status]
+                const effectiveStatus = getEffectiveStatus(cluster)
+                const st = STATUS_CONFIG[effectiveStatus]
                 const isSelected = selected?.id === cluster.id
                 const meta = CLUSTER_DETAIL_META[cluster.type]
                 return (
@@ -373,7 +448,7 @@ export function ClusterPage() {
                       </span>
                       <span className={cn('flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold', st.badgeClassName)}>
                         {st.icon}
-                        {getStatusLabel(t, cluster.status)}
+                        {getStatusLabel(t, effectiveStatus)}
                       </span>
                     </div>
                     <div className="text-xs text-[var(--color-text-secondary)]">
@@ -385,30 +460,32 @@ export function ClusterPage() {
             </>
           }
           detailContent={
-            selected ? (
+            selectedCluster ? (
               <div className="min-w-0 p-4">
                 {(() => {
-                  const detailMeta = CLUSTER_DETAIL_META[selected.type]
-                  const connectionHint = getConnectionHint(t, selected.status)
+                  const detailMeta = CLUSTER_DETAIL_META[selectedCluster.type]
+                  const effectiveSelectedStatus = getEffectiveStatus(selectedCluster)
+                  const connectionHint = getConnectionHint(t, effectiveSelectedStatus)
+                  const showBaseHint = !verifyConnectionResult && !isVerifyingConnection && effectiveSelectedStatus !== 'connected'
 
                   return (
                     <>
                 <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
                   <div className="mb-[18px] flex flex-wrap items-center justify-between gap-2.5">
                     <h2 className="m-0 text-base font-bold text-[var(--color-text-primary)]">
-                      {selected.name}
+                      {selectedCluster.name}
                     </h2>
                     <div className="flex gap-2">
                       <Button variant="secondary" size="sm" onClick={openEditModal} type="button">{t('clusterPage.actions.edit', 'Edit')}</Button>
-                      <Button variant="danger" size="sm" onClick={() => setDeleteClusterId(selected.id)} type="button">{t('common.delete', 'Delete')}</Button>
+                      <Button variant="danger" size="sm" onClick={() => setDeleteClusterId(selectedCluster.id)} type="button">{t('common.delete', 'Delete')}</Button>
                     </div>
                   </div>
                     <div className="grid grid-cols-2 gap-4">
                       {[
-                        [t('clusterPage.detail.clusterName', 'Cluster Name'), selected.name],
-                        [t('clusterPage.detail.type', 'Type'), detailMeta?.purpose ?? selected.type.toUpperCase()],
+                        [t('clusterPage.detail.clusterName', 'Cluster Name'), selectedCluster.name],
+                        [t('clusterPage.detail.type', 'Type'), detailMeta?.purpose ?? selectedCluster.type.toUpperCase()],
                         [t('clusterPage.detail.namespace', 'Namespace'), detailMeta?.namespace ?? t('clusterPage.detail.notConfigured', 'Not Configured')],
-                        [t('clusterPage.detail.endpoint', 'Endpoint'), selected.endpoint],
+                        [t('clusterPage.detail.endpoint', 'Endpoint'), selectedCluster.endpoint],
                         [t('clusterPage.detail.authMethod', 'Auth Method'), detailMeta?.authMethod ?? 'Kubeconfig'],
                       ].map(([label, val]) => (
                         <div key={label}>
@@ -428,12 +505,31 @@ export function ClusterPage() {
                     {t('clusterPage.connection.title', 'Connection Status')}
                   </h3>
                   {(() => {
-                    const st = STATUS_CONFIG[selected.status]
+                    const st = STATUS_CONFIG[effectiveSelectedStatus]
+                    const baseHintMessage = showBaseHint ? connectionHint.text : ''
+                    const statusMessage = isVerifyingConnection
+                      ? t('clusterPage.connection.verifying', 'Verifying connection...')
+                      : verifyConnectionResult === 'success'
+                        ? t('clusterPage.connection.verifySuccess', 'Connection verified successfully.')
+                        : verifyConnectionResult === 'error'
+                          ? t('clusterPage.connection.verifyFailed', 'Connection failed. Check endpoint/kubeconfig.')
+                          : baseHintMessage
+                    const statusMessageClass = isVerifyingConnection
+                      ? 'text-[var(--color-text-secondary)]'
+                      : verifyConnectionResult === 'success'
+                        ? 'text-[#22c55e]'
+                        : verifyConnectionResult === 'error'
+                          ? 'text-[#ef4444]'
+                          : connectionHint.className
+
                     return (
-                      <div className="flex flex-wrap items-center justify-between gap-2.5">
-                        <div className={cn('inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold', st.panelClassName)}>
-                          {st.icon}
-                          {getStatusLabel(t, selected.status)}
+                      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                          <div className={cn('inline-flex w-fit items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold', st.panelClassName)}>
+                            {st.icon}
+                            {getStatusLabel(t, effectiveSelectedStatus)}
+                          </div>
+                          {statusMessage && <span className={cn('text-xs', statusMessageClass)}>{statusMessage}</span>}
                         </div>
                         <Button
                           variant="outline"
@@ -444,18 +540,6 @@ export function ClusterPage() {
                         >
                           {t('clusterPage.actions.verifyConnection', 'Verify Connection')}
                         </Button>
-                        {verifyConnectionResult && (
-                          <span className={cn('text-xs', verifyConnectionResult === 'success' ? 'text-[#22c55e]' : 'text-[#ef4444]')}>
-                            {verifyConnectionResult === 'success'
-                              ? t('clusterPage.connection.verifySuccess', 'Connection verified successfully.')
-                              : t('clusterPage.connection.verifyFailed', 'Connection failed. Check endpoint/kubeconfig.')}
-                          </span>
-                        )}
-                        {!verifyConnectionResult && !isVerifyingConnection && (
-                          <span className={cn('text-xs', connectionHint.className)}>
-                            {connectionHint.text}
-                          </span>
-                        )}
                       </div>
                     )
                   })()}
@@ -466,7 +550,7 @@ export function ClusterPage() {
                     {t('clusterPage.organizationAccess', 'Organization Access')}
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
-                    {selected.organizationIds.map((oid) => (
+                    {selectedCluster.organizationIds.map((oid) => (
                       <span key={oid} className="rounded-md bg-[rgba(139,92,246,0.12)] px-2.5 py-1 text-xs font-medium text-[#c4b5fd]">
                         {oid}
                       </span>
@@ -488,6 +572,7 @@ export function ClusterPage() {
         onClose={() => {
           setRegisterModal(false)
           setEditingClusterId(null)
+          editPrefilledClusterIdRef.current = null
           reset(CLUSTER_DEFAULTS)
         }}
         title={editingClusterId ? t('clusterPage.modal.editTitle', 'Edit Cluster') : t('clusterPage.modal.registerTitle', 'Register Cluster')}
@@ -499,6 +584,7 @@ export function ClusterPage() {
               onClick={() => {
                 setRegisterModal(false)
                 setEditingClusterId(null)
+                editPrefilledClusterIdRef.current = null
                 reset(CLUSTER_DEFAULTS)
               }}
               type="button"
@@ -573,6 +659,11 @@ export function ClusterPage() {
              <label htmlFor="cluster-kubeconfig" className="text-xs font-medium text-[var(--color-text-secondary)]">
                kubeconfig (YAML)
              </label>
+             {editingClusterId && isFetchingEditingCluster && (
+               <span className="text-xs text-[var(--color-text-secondary)]">
+                 {t('clusterPage.form.loadingCurrentKubeconfig', 'Loading current kubeconfig...')}
+               </span>
+             )}
              <textarea
                id="cluster-kubeconfig"
                {...register('kubeconfig')}

@@ -2067,6 +2067,10 @@ export function StackInstallPage() {
       storageLimitGi: 0,
     }
   )
+  const isRequestTotalZero =
+    planningAppliedTotal.cpuRequest <= 0 &&
+    planningAppliedTotal.memoryRequestGi <= 0 &&
+    planningAppliedTotal.storageRequestGi <= 0
 
   const manifestTools = (() => {
     const map = new Map<string, ManifestToolEntry>()
@@ -3305,7 +3309,7 @@ export function StackInstallPage() {
             <Save size={14} />
             {t('stackInstall.actions.saveDraft', 'Save Draft')}
           </Button>
-          <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
+          <Button variant="outline" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
             {t('stackInstall.actions.previewK8sObjects', 'Preview K8s Objects')}
           </Button>
           <Button
@@ -3322,7 +3326,8 @@ export function StackInstallPage() {
               isDuplicateStackNameInCluster ||
               !draft.clusterId ||
               (createNewNs && !draft.namespace.trim()) ||
-              hasManifestValidationError
+              hasManifestValidationError ||
+              isRequestTotalZero
             }
             type="button"
           >
@@ -3379,48 +3384,6 @@ export function StackInstallPage() {
             </div>
           </div>
 
-          <div className="mt-3">
-            <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-              <input
-                type="checkbox"
-                checked={draft.accessDomainTls.enabled}
-                onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
-              />
-              {t('stackInstall.form.accessDomainTls', 'Enable Access Domain TLS (cert-manager)')}
-            </label>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-            {draft.accessDomainTls.enabled && (
-              <>
-                <Input
-                  label={t('stackInstall.form.tlsSecretName', 'TLS Secret Name')}
-                  placeholder="nullus-wildcard-tls"
-                  value={draft.accessDomainTls.secretName}
-                  onChange={(e) => updateAccessDomainTls({ secretName: e.target.value })}
-                />
-                <Input
-                  label={t('stackInstall.form.tlsSecretNamespace', 'TLS Secret Namespace')}
-                  placeholder="nullus"
-                  value={draft.accessDomainTls.secretNamespace}
-                  onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
-                />
-                <Input
-                  label={t('stackInstall.form.certManagerIssuerName', 'cert-manager Issuer Name')}
-                  placeholder="nullus-ca-issuer"
-                  value={draft.accessDomainTls.issuerName}
-                  onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
-                />
-              </>
-            )}
-          </div>
-
-          {draft.accessDomainTls.enabled && (
-            <p className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
-              Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
-            </p>
-          )}
-
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1">
               <NativeSelect
@@ -3441,6 +3404,14 @@ export function StackInstallPage() {
                 ))}
               </NativeSelect>
               {!draft.clusterId && <span className="text-xs text-[#f59e0b]">{t('stackInstall.form.clusterRequired', 'Required for deployment')}</span>}
+              <label className="mt-1 inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={draft.accessDomainTls.enabled}
+                  onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
+                />
+                {t('stackInstall.form.accessDomainTls', 'Enable Access Domain TLS (cert-manager)')}
+              </label>
             </div>
 
             {draft.clusterId && (
@@ -3480,6 +3451,37 @@ export function StackInstallPage() {
               </div>
             )}
           </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            {draft.accessDomainTls.enabled && (
+              <>
+                <Input
+                  label={t('stackInstall.form.tlsSecretName', 'TLS Secret Name')}
+                  placeholder="nullus-wildcard-tls"
+                  value={draft.accessDomainTls.secretName}
+                  onChange={(e) => updateAccessDomainTls({ secretName: e.target.value })}
+                />
+                <Input
+                  label={t('stackInstall.form.tlsSecretNamespace', 'TLS Secret Namespace')}
+                  placeholder="nullus"
+                  value={draft.accessDomainTls.secretNamespace}
+                  onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
+                />
+                <Input
+                  label={t('stackInstall.form.certManagerIssuerName', 'cert-manager Issuer Name')}
+                  placeholder="nullus-ca-issuer"
+                  value={draft.accessDomainTls.issuerName}
+                  onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
+                />
+              </>
+            )}
+          </div>
+
+          {draft.accessDomainTls.enabled && (
+            <p className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
+              Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
+            </p>
+          )}
         </div>
 
         <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">

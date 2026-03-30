@@ -1,6 +1,7 @@
 .PHONY: dev dev-up dev-down dev-status dev-logs build test test-cover test-integration lint migrate-up migrate-down migrate-status web-dev web-build web-test all clean db-shell
 
 DB_URL := postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable
+DOCKER_COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo ""; fi)
 
 ifeq ($(OS),Windows_NT)
 GO_BIN_DIR := $(USERPROFILE)/go/bin
@@ -18,23 +19,28 @@ endif
 
 # ─── 개발 환경 ───
 dev-up:
-	docker compose -f docker-compose.dev.yaml up -d
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml up -d
 	@echo "Waiting for services..."
 	@sleep 3
-	@docker compose -f docker-compose.dev.yaml ps
+	@$(DOCKER_COMPOSE) -f docker-compose.dev.yaml ps
 
 dev-down:
-	docker compose -f docker-compose.dev.yaml down
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml down
 
 dev-clean:
-	docker compose -f docker-compose.dev.yaml down -v
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml down -v
 	@echo "Volumes removed"
 
 dev-status:
-	docker compose -f docker-compose.dev.yaml ps
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml ps
 
 dev-logs:
-	docker compose -f docker-compose.dev.yaml logs -f --tail=50
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml logs -f --tail=50
 
 dev: dev-up migrate-up
 	@echo ""
@@ -99,7 +105,8 @@ migrate-status:
 	$(MIGRATE) -path db/migrations -database "$(DB_URL)" version
 
 db-shell:
-	docker compose -f docker-compose.dev.yaml exec postgres psql -U nullus -d nullus
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml exec postgres psql -U nullus -d nullus
 
 # ─── 프론트엔드 ───
 web-dev:

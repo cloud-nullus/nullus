@@ -29,7 +29,7 @@ const features = [
     iconClassName: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]',
   },
   {
-    title: 'CI/CD Pipeline 관리',
+    title: 'CI/CD Pipeline Management',
     description: 'Create pipelines and manage deployment history with Web/API/Batch templates.',
     icon: Code2,
     iconClassName: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',

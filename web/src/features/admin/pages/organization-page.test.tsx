@@ -126,8 +126,8 @@ describe('OrganizationPage', () => {
 
   it('renders member roles as badges', () => {
     renderWithProviders(<OrganizationPage />)
-    expect(screen.getByText('admin')).toBeInTheDocument()
-    expect(screen.getByText('devops')).toBeInTheDocument()
-    expect(screen.getByText('developer')).toBeInTheDocument()
+    expect(screen.getByText(/Admin|관리자/)).toBeInTheDocument()
+    expect(screen.getByText(/DevOps/)).toBeInTheDocument()
+    expect(screen.getByText(/Developer|개발자/)).toBeInTheDocument()
   })
 })
