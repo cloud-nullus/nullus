@@ -63,6 +63,7 @@ const navGroups: NavGroup[] = [
     roles: ['admin', 'devops', 'developer'],
     items: [
       { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
+      { key: 'cicdGoldenPath', label: 'CI/CD Golden Path', path: '/cicd/golden-paths', icon: <BookOpen size={16} />, roles: ['admin', 'devops', 'developer'] },
       { key: 'cicdList', label: 'sidebar.cicdList', path: '/cicd/list', icon: <List size={16} />, roles: ['admin', 'devops', 'developer'] },
       { key: 'cicdHistory', label: 'sidebar.cicdHistory', path: '/cicd/history', icon: <History size={16} />, roles: ['admin', 'devops', 'developer'] },
     ],

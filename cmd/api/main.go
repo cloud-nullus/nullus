@@ -127,10 +127,12 @@ func main() {
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
 	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
+	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
 	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
+	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo)
 
 	// Observability: Prometheus with in-memory fallback
@@ -219,6 +221,7 @@ func main() {
 	historyHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
+	cicdGoldenPathHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)

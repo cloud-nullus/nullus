@@ -25,10 +25,31 @@ export type {
   PipelineStatus,
 } from '../../../types'
 
+// --- Types ---
+
+export interface CICDTool {
+  category: string
+  name: string
+  helm_version: string
+  app_version: string
+}
+
+export interface CICDGoldenPath {
+  id: string
+  name: string
+  description: string
+  tools: CICDTool[]
+  estimated_install_time: number
+  recommended_use_case: string
+  min_resources: string
+  created_at?: string
+}
+
 // --- Query keys ---
 
 const queryKeys = {
   templates: () => ['cicd', 'templates'] as const,
+  goldenPaths: () => ['cicd', 'golden-paths'] as const,
   pipelines: (filters?: Record<string, unknown>) => ['cicd', 'pipelines', filters] as const,
   deployments: (filters?: Record<string, unknown>) => ['cicd', 'deployments', filters] as const,
   appTemplates: () => ['cicd', 'appTemplates'] as const,
@@ -48,6 +69,21 @@ const cicdApiCalls = {
 
   deleteTemplate: (id: string) =>
     api.delete<void>(`/cicd/templates/${id}`).then((r) => r.data),
+
+  getGoldenPaths: () =>
+    api.get<CICDGoldenPath[]>('/cicd/golden-paths').then((r) => r.data),
+
+  getGoldenPathById: (id: string) =>
+    api.get<CICDGoldenPath>(`/cicd/golden-paths/${id}`).then((r) => r.data),
+
+  createGoldenPath: (data: CICDGoldenPath) =>
+    api.post<CICDGoldenPath>('/cicd/golden-paths', data).then((r) => r.data),
+
+  updateGoldenPath: (id: string, data: CICDGoldenPath) =>
+    api.put<CICDGoldenPath>(`/cicd/golden-paths/${id}`, data).then((r) => r.data),
+
+  deleteGoldenPath: (id: string) =>
+    api.delete<void>(`/cicd/golden-paths/${id}`).then((r) => r.data),
 
   getPipelines: (filters?: { status?: string; search?: string }) =>
     api.get<{ items: Pipeline[]; total: number }>('/cicd/pipelines', { params: filters }).then((r) => r.data),
@@ -171,3 +207,51 @@ export function useRollbackDeployment() {
      },
    })
  }
+
+// --- Golden Path Hooks ---
+
+export function useGoldenPaths() {
+  return useQuery({
+    queryKey: queryKeys.goldenPaths(),
+    queryFn: cicdApiCalls.getGoldenPaths,
+  })
+}
+
+export function useGoldenPathById(id: string) {
+  return useQuery({
+    queryKey: ['cicd', 'golden-paths', id] as const,
+    queryFn: () => cicdApiCalls.getGoldenPathById(id),
+    enabled: !!id,
+  })
+}
+
+export function useCreateGoldenPath() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: cicdApiCalls.createGoldenPath,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.goldenPaths() })
+    },
+  })
+}
+
+export function useUpdateGoldenPath() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CICDGoldenPath }) =>
+      cicdApiCalls.updateGoldenPath(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.goldenPaths() })
+    },
+  })
+}
+
+export function useDeleteGoldenPath() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: cicdApiCalls.deleteGoldenPath,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.goldenPaths() })
+    },
+  })
+}

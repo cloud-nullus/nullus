@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -9,7 +10,7 @@ import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-import { useAppTemplates, useDeployApp } from '../api/cicd-api'
+import { useAppTemplates, useDeployApp, useGoldenPathById } from '../api/cicd-api'
 import { useClusters } from '../../admin/api/admin-api'
 import type { AppTemplate, DeployAppRequest } from '../api/cicd-api'
 import { cn } from '../../../lib/utils'
@@ -133,9 +134,13 @@ const DEFAULT_FORM: FormState = {
 }
 
 export function DeveloperDeployPage() {
+  const [searchParams] = useSearchParams()
+  const goldenPathId = searchParams.get('goldenPath')
+  
   const [step, setStep] = useState<Step>(1)
   const [deployed, setDeployed] = useState(false)
   const { data: appTemplatesRaw } = useAppTemplates()
+  const { data: goldenPath } = useGoldenPathById(goldenPathId ?? '')
   const appTemplates = (appTemplatesRaw ?? []).map((t) => ({
     id: t.id,
     name: t.name,
@@ -269,6 +274,25 @@ export function DeveloperDeployPage() {
           </p>
         </div>
       </div>
+
+      {/* Golden Path Info Banner */}
+      {goldenPath && (
+        <div className="mb-6 rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="m-0 text-sm font-semibold text-[#22c55e]">
+                Golden Path 선택됨
+              </p>
+              <p className="m-0 mt-1 text-[13px] text-[var(--color-text-primary)]">
+                <strong>{goldenPath.name}</strong> - {goldenPath.description}
+              </p>
+              <p className="m-0 mt-2 text-xs text-[var(--color-text-secondary)]">
+                설치 시간: {goldenPath.estimated_install_time}분 | 최소 리소스: {goldenPath.min_resources}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Template selection */}
       <div className="mb-7">
