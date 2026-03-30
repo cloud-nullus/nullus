@@ -143,6 +143,7 @@
       "createTemplate": "Create Template",
       "edit": "Edit",
       "delete": "Delete",
+      "duplicateTemplate": "Duplicate Template",
       "useBaseTemplate": "Use Base Template",
       "close": "Close",
       "baseTemplate": "Base Template",
@@ -187,7 +188,11 @@
     },
     "errors": {
       "updateFailed": "Failed to update template.",
-      "createFailed": "Failed to create template."
+      "createFailed": "Failed to create template.",
+      "duplicateFailed": "Failed to duplicate template."
+    },
+    "duplicate": {
+      "suffix": "Duplicate"
     },
     "confirm": {
       "deleteTitle": "Delete Template",
@@ -647,10 +652,12 @@
       "stackName": "Stack Name",
       "template": "Template",
       "status": "Status",
-      "createdAt": "Created At"
+      "createdAt": "Created At",
+      "cluster": "Cluster"
     },
     "filters": {
-      "allStatus": "All Status"
+      "allStatus": "All Status",
+      "allClusters": "All Clusters"
     },
     "searchPlaceholder": "Search stacks...",
     "loading": "Loading stacks...",
@@ -675,7 +682,8 @@
       "rolledBack": "Rolled Back",
       "running": "Running",
       "success": "Success",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "healthy": "Running"
     },
     "confirm": {
       "deleteTitle": "Delete Stack",
@@ -981,11 +989,13 @@
       "changedBy": "Changed By",
       "changedAt": "Changed At",
       "reason": "Reason",
-      "actions": "Actions"
+      "actions": "Actions",
+      "cluster": "Cluster"
     },
     "actions": {
       "rollback": "Rollback",
-      "compareVersions": "Compare Versions"
+      "compareVersions": "Compare Versions",
+      "log": "Log"
     },
     "compare": {
       "versionA": "Version A",
@@ -998,6 +1008,9 @@
       "cleanMode": "Clean Mode — Delete volumes",
       "cleanWarning": "This action permanently deletes Persistent Volumes.",
       "confirmDeletePlaceholder": "Type \"DELETE\" to confirm"
+    },
+    "filters": {
+      "allClusters": "All Clusters"
     }
   },
   "stackOssDefault": {

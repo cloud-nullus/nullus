@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { CheckCircle, XCircle, Loader, Terminal } from 'lucide-react'
 import { useDeployLog } from '../hooks/use-deploy-log'
 import type { LogLevel, DeployStatus } from '../hooks/use-deploy-log'
@@ -114,10 +114,13 @@ const STATE_TO_PROGRESS: Record<string, number> = {
 
 export function StackDeployPage() {
   const params = useParams<{ id?: string; deploymentId?: string }>()
+  const navigate = useNavigate()
   const id = params.id ?? params.deploymentId ?? ''
   const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
   const logEndRef = useRef<HTMLDivElement>(null)
   const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number } | null>(null)
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
+  const [sessionOnly, setSessionOnly] = useState(true)
 
   useEffect(() => {
     if (!id) return
@@ -132,10 +135,28 @@ export function StackDeployPage() {
     }).catch(() => {})
   }, [id])
 
-  const hasWsData = logs.length > 0 || (wsStatus !== 'connecting' && wsStatus !== 'running')
-  const status = hasWsData ? wsStatus : (apiState?.status ?? wsStatus)
-  const progress = wsProgress > 0 ? wsProgress : (apiState?.progress ?? 0)
-  const latestFailureLog = [...logs].reverse().find((log) => {
+  const hasTerminalWsStatus = wsStatus === 'success' || wsStatus === 'failed'
+  const hasLiveLogSignal = logs.length > 0 || hasTerminalWsStatus
+
+  const status: DeployStatus = hasTerminalWsStatus
+    ? wsStatus
+    : (apiState?.status === 'success' || apiState?.status === 'failed')
+      ? apiState.status
+      : hasLiveLogSignal
+        ? (wsStatus === 'connecting' ? 'running' : wsStatus)
+        : (apiState?.status === 'running' ? 'running' : 'connecting')
+
+  const progress = wsProgress > 0
+    ? wsProgress
+    : Math.min(apiState?.progress ?? 0, status === 'success' ? 100 : 99)
+  const visibleLogs = useMemo(() => {
+    if (!sessionOnly) return logs
+    const lastValidateIndex = logs.map((entry) => entry.message).lastIndexOf('validation complete')
+    if (lastValidateIndex < 0) return logs
+    return logs.slice(lastValidateIndex)
+  }, [logs, sessionOnly])
+
+  const latestFailureLog = [...visibleLogs].reverse().find((log) => {
     if (log.level === 'error') return true
     const normalized = log.message.toLowerCase()
     return normalized.includes('failed') || normalized.includes('error')
@@ -143,7 +164,32 @@ export function StackDeployPage() {
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  })
+  }, [visibleLogs.length])
+
+  useEffect(() => {
+    const shouldRedirect = status === 'success' && (visibleLogs.length > 0 || apiState?.status === 'success')
+    if (!shouldRedirect) {
+      setRedirectCountdown(null)
+      return
+    }
+
+    setRedirectCountdown(5)
+    const timer = window.setTimeout(() => {
+      navigate('/stack/list')
+    }, 5000)
+
+    const countdown = window.setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev === null) return null
+        return prev <= 1 ? 1 : prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      window.clearTimeout(timer)
+      window.clearInterval(countdown)
+    }
+  }, [status, visibleLogs.length, apiState?.status, navigate])
 
   return (
     <div>
@@ -204,25 +250,36 @@ export function StackDeployPage() {
 
       {/* Log console */}
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
-        <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
-          <Terminal size={14} color="var(--color-text-secondary)" />
-          <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            Logs ({logs.length})
-          </span>
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <Terminal size={14} color="var(--color-text-secondary)" />
+            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+              Logs ({visibleLogs.length})
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSessionOnly((prev) => !prev)}
+            className="rounded border border-[var(--color-border-default)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
+          >
+            {sessionOnly ? 'Current session only' : 'Show all buffered logs'}
+          </button>
         </div>
         <div
-          className="h-[400px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
+          className="h-[560px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
         >
-          {logs.length === 0 && (
+          {visibleLogs.length === 0 && (
             <div className="px-1 py-2 text-[var(--color-text-secondary)]">
               {status === 'failed'
-                ? 'Unable to receive live logs. Check recent failures in Stack List > selected stack > History.'
-                : isConnected
-                  ? 'Waiting for logs...'
-                  : 'Connecting to WebSocket...'}
+                ? 'Deployment failed, but no in-memory live logs are available. Check Stack List > selected stack > History.'
+                : status === 'success'
+                  ? 'Deployment completed. No buffered live logs were retained for this session.'
+                  : isConnected
+                    ? 'Waiting for logs...'
+                    : 'Connecting to WebSocket...'}
             </div>
           )}
-          {logs.map((log) => {
+          {visibleLogs.map((log) => {
             const lvl = LOG_LEVEL_STYLE[log.level]
             return (
               <div key={log.id} className="flex items-start gap-2.5 px-1 py-0.5">
@@ -234,7 +291,7 @@ export function StackDeployPage() {
                 >
                   {log.level.toUpperCase()}
                 </span>
-                <span className="break-words text-[#e2e8f0]">{log.message}</span>
+                <span className="break-words whitespace-pre-wrap text-[#e2e8f0]">{log.message}</span>
               </div>
             )
           })}
@@ -244,6 +301,12 @@ export function StackDeployPage() {
 
       {/* Result summary */}
       <StatusSummary status={status} latestFailureMessage={latestFailureLog?.message} />
+
+      {status === 'success' && redirectCountdown !== null && (
+        <div className="mt-3 rounded-[var(--card-radius)] border border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.1)] px-4 py-3 text-[13px] text-[var(--color-text-primary)]">
+          Deployment completed. Returning to Stack List in {redirectCountdown}s...
+        </div>
+      )}
     </div>
   )
 }
