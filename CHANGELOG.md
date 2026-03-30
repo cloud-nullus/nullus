@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- v0.1 아키텍처 설계와 실제 구현 코드를 비교 분석한 v0.2 아키텍처 문서 추가 (`docs/20_아키텍처/Nullus 상세 기능 명세 및 시스템 아키텍처_v0.2_claude.md`)
+  - 설계-구현 차이 분석표 (아키텍처 변경, 기능 상태, 미구현 항목)
+  - Clean Architecture + DDD 기반 실제 코드 구조 문서화
+  - 5개 Bounded Context별 도메인 모델, API, 상태 머신 상세
+  - 3-Phase Helm DAG Orchestrator 구현 기준 명세
+  - 전체 API 엔드포인트 목록 (v0.1 대비 경로 변경 추적)
+  - 데이터 모델 ERD (구현 기준 15+ 테이블)
+  - 보안 아키텍처 (AES-256-GCM, Dual Auth, RBAC) 상세
+  - ADR 16건 (v0.1 10건 + 신규 6건)
+  - 로드맵 (v0.2-alpha → v0.2-beta → v1.0 GA)
+- Nullus 설계 대비 미구현 항목만 정리한 문서 추가 (`docs/20_아키텍처/Nullus_설계_대비_미구현_항목.md`)
+- 현재 `draft` 구현 기준 As-Is 아키텍처 다이어그램 문서 추가 (`docs/20_아키텍처/Nullus_As-Is_아키텍처_다이어그램.md`)
+- 기존 v0.1 설계 문서를 현재 구현 기준으로 재구성한 `Nullus 상세 기능 명세 및 시스템 아키텍처_v0.2.md` 추가
 - Alert Rules edit modal now loads the latest rule payload directly from the database through `GET /observability/alert-rules/:id` before editing.
 - Stack Install supports leaving Storage unselected for Empty Template flows by omitting the storage block from create requests when no storage plan is chosen.
 - Alert Rules edit modal now loads the latest rule payload directly from the database through `GET /observability/alert-rules/:id` before editing.
