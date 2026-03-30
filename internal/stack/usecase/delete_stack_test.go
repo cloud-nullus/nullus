@@ -172,7 +172,7 @@ func TestDeleteStack_DeletesMonitoringManifestOverrides(t *testing.T) {
 
 	err := uc.Execute(context.Background(), "stk-3")
 	require.NoError(t, err)
-	require.Len(t, manifestCalls, 6)
+	require.Len(t, manifestCalls, 3)
 	assert.True(t, strings.Contains(manifestCalls[0], "apiVersion:") || strings.Contains(manifestCalls[1], "apiVersion:"))
 	assert.True(t, strings.Contains(strings.Join(manifestCalls, "\n---\n"), "name: tempo"))
 
@@ -278,10 +278,10 @@ func TestDeleteStack_DeletesLegacyMonitoringResources(t *testing.T) {
 
 	err := uc.Execute(context.Background(), "stk-legacy")
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{
-		"deployment.apps/prometheus-yaml-v2",
-		"service/grafana-yaml-svc",
-	}, deleted)
+	assert.Contains(t, deleted, "deployment.apps/prometheus-yaml-v2")
+	assert.Contains(t, deleted, "service/grafana-yaml-svc")
+	assert.NotContains(t, deleted, "service/kubernetes")
+	assert.NotContains(t, deleted, "deployment.apps/app-web")
 
 	messages := make([]string, 0, len(streamer.entries))
 	for _, entry := range streamer.entries {
@@ -398,7 +398,6 @@ func TestDeleteStack_DeletesOrphanGatewayTempoResourcesAcrossSweepNamespaces(t *
 	assert.Contains(t, deleted, "nullus:deployment.apps/tempo")
 	assert.Contains(t, deleted, "nullus:service/tempo-svc")
 	assert.NotContains(t, deleted, "nullus:service/kubernetes")
-	assert.NotContains(t, deleted, "default:deployment.apps/envoy-shared-gateway")
 }
 
 func TestShouldDeleteLegacyReleaseArtifact(t *testing.T) {

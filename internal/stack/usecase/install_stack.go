@@ -70,6 +70,18 @@ type deploymentVerifiableExecutor interface {
 	VerifyDeployment(ctx context.Context, stackID string) error
 }
 
+type stepRuntimeReporter interface {
+	StepRuntimeLogs(ctx context.Context, stackID, step string) (infos []string, warns []string)
+}
+
+type stepRuntimeTailer interface {
+	StartStepRuntimeTail(ctx context.Context, stackID, step string, emit func(level, message string)) (stop func())
+}
+
+type deploymentLogResetter interface {
+	ClearHistory(deploymentID string)
+}
+
 type InstallStackOption func(*InstallStack)
 
 func WithExecutor(executor port.StepExecutor) InstallStackOption {
@@ -188,6 +200,10 @@ func stackConfigFromInterface(rawConfig any) (domain.StackConfig, bool) {
 func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) {
 	deploymentID := stack.ID
 
+	if resetter, ok := uc.streamer.(deploymentLogResetter); ok {
+		resetter.ClearHistory(deploymentID)
+	}
+
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
 
 	// Transition: Validating → Installing
@@ -260,11 +276,38 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
 				fmt.Sprintf("starting %s", step.name))
 
+			var stopTail func()
+			if tailer, ok := executor.(stepRuntimeTailer); ok {
+				stopTail = tailer.StartStepRuntimeTail(ctx, stack.ID, step.name, func(level, message string) {
+					normalized := strings.TrimSpace(strings.ToLower(level))
+					if normalized != "warn" && normalized != "error" {
+						normalized = "info"
+					}
+					uc.emit(ctx, stack.ID, normalized, step.name, step.phase, message)
+				})
+			}
+
 			if err := uc.executeStep(ctx, stack.ID, step, executor); err != nil {
+				if stopTail != nil {
+					stopTail()
+				}
 				return fmt.Errorf("step %s: %w", step.name, err)
+			}
+			if stopTail != nil {
+				stopTail()
 			}
 			if err := uc.ensureDeploymentActive(ctx, stack.ID); err != nil {
 				return err
+			}
+
+			if reporter, ok := executor.(stepRuntimeReporter); ok {
+				infos, warns := reporter.StepRuntimeLogs(ctx, stack.ID, step.name)
+				for _, message := range infos {
+					uc.emit(ctx, stack.ID, "info", step.name, step.phase, message)
+				}
+				for _, message := range warns {
+					uc.emit(ctx, stack.ID, "warn", step.name, step.phase, message)
+				}
 			}
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,

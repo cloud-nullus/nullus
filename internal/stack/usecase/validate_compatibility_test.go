@@ -25,6 +25,10 @@ func TestValidateCompatibility_MatchFound(t *testing.T) {
 	assert.True(t, out.Compatible)
 	assert.NotNil(t, out.Matrix)
 	assert.NotEmpty(t, out.Message)
+	assert.Equal(t, "pass", out.Overall.State)
+	assert.Equal(t, 100, out.Overall.Score)
+	assert.Empty(t, out.Issues)
+	assert.False(t, out.CheckedAt.IsZero())
 }
 
 func TestValidateCompatibility_NoMatch(t *testing.T) {
@@ -41,6 +45,10 @@ func TestValidateCompatibility_NoMatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, out.Compatible)
 	assert.Nil(t, out.Matrix)
+	assert.Equal(t, "fail", out.Overall.State)
+	assert.NotEmpty(t, out.Issues)
+	assert.Equal(t, "MATRIX_NOT_FOUND", out.Issues[0].Code)
+	assert.False(t, out.CheckedAt.IsZero())
 }
 
 func TestValidateCompatibility_EmptyTools(t *testing.T) {
@@ -71,4 +79,9 @@ func TestValidateCompatibility_GitHubArgoCD(t *testing.T) {
 	assert.True(t, out.Compatible)
 	assert.NotNil(t, out.Matrix)
 	assert.Equal(t, "untested", out.Matrix.Status)
+	assert.Equal(t, "warn", out.Overall.State)
+	assert.Equal(t, 70, out.Overall.Score)
+	assert.NotEmpty(t, out.Issues)
+	assert.Equal(t, "MATRIX_UNTESTED", out.Issues[0].Code)
+	assert.False(t, out.CheckedAt.IsZero())
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
@@ -64,5 +65,8 @@ func (h *CompatibilityHandler) Validate(c echo.Context) error {
 		"compatible": out.Compatible,
 		"matrix":     out.Matrix,
 		"message":    out.Message,
+		"overall":    out.Overall,
+		"issues":     out.Issues,
+		"checkedAt":  out.CheckedAt.Format(time.RFC3339),
 	})
 }

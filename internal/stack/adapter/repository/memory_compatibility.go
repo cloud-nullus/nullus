@@ -90,8 +90,8 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Status: "verified",
 			Kubernetes: domain.KubernetesCompat{
 				Min:         "1.27",
-				Max:         "1.32",
-				Recommended: "1.30",
+				Max:         "1.35",
+				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":        {Name: "GitLab CE", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
@@ -109,8 +109,8 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Status: "verified",
 			Kubernetes: domain.KubernetesCompat{
 				Min:         "1.27",
-				Max:         "1.32",
-				Recommended: "1.30",
+				Max:         "1.35",
+				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":        {Name: "GitLab CE", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
@@ -128,8 +128,8 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Status: "untested",
 			Kubernetes: domain.KubernetesCompat{
 				Min:         "1.27",
-				Max:         "1.32",
-				Recommended: "1.29",
+				Max:         "1.35",
+				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":        {Name: "GitHub", HelmVersion: "external", AppVersion: "external"},
