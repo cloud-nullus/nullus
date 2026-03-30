@@ -125,8 +125,8 @@ sequenceDiagram
 ### 특징
 
 - 배포는 비동기 goroutine으로 시작된다.
-- Stack 배포 로그는 인메모리 스트리머에서 구독자에게 fan-out 된다.
-- Stack 설정 이력은 버전 테이블에 저장되지만, Stack 배포 로그 자체는 DB 영속화되지 않는다.
+- Stack 배포 로그는 `PostgresStreamer`가 구독자에게 fan-out 하며 DB(`deployment_logs`)에도 저장된다.
+- Stack 설정 이력은 `stack_config_versions`, 배포 로그는 `deployment_logs`에 각각 분리 저장된다.
 
 ---
 
