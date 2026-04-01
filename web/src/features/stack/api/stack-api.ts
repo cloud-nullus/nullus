@@ -48,6 +48,11 @@ interface RawClusterSummary {
   status?: ClusterStatus
 }
 
+interface RawClusterVerifyResult {
+  status?: string
+  version?: string
+}
+
 const queryKeys = {
   templates: () => ['stacks', 'templates'] as const,
   template: (id: string) => ['stacks', 'templates', id] as const,
@@ -220,6 +225,25 @@ interface RawStackHistoryEntry {
   Config?: Record<string, unknown>
 }
 
+interface RawCompatibilityIssue {
+  tool?: string
+  message?: string
+  severity?: string
+  code?: string
+}
+
+interface RawCompatibilityOverall {
+  state?: string
+  score?: number
+}
+
+interface RawCompatibilityValidationResult {
+  compatible?: boolean
+  overall?: RawCompatibilityOverall
+  issues?: RawCompatibilityIssue[]
+  checkedAt?: string
+}
+
 const toToolName = (tool: unknown): string => {
   if (typeof tool === 'string') {
     return tool
@@ -318,7 +342,7 @@ const normalizeCompatibilityMatrix = (raw: RawCompatibilityMatrix): Compatibilit
     : Object.values(rawTools ?? {}).map(normalizeCompatibilityTool)
 
   const status = raw.status ?? raw.Status
-  const normalizedStatus: CompatibilityMatrix['status'] = status === 'verified' ? 'verified' : 'untested'
+  const normalizedStatus: CompatibilityMatrix['status'] = status === 'verified' || status === 'unsupported' ? status : 'untested'
 
   return {
     id: raw.id ?? raw.ID ?? '',
@@ -355,10 +379,39 @@ const normalizeStackHistoryEntry = (raw: RawStackHistoryEntry): StackHistoryEntr
   snapshot: raw.snapshot ?? raw.config ?? raw.Config ?? {},
 })
 
+
+const normalizeCompatibilityValidationResult = (raw: RawCompatibilityValidationResult): CompatibilityValidationResult => {
+  const state = raw.overall?.state
+  const normalizedState: CompatibilityValidationResult['overall']['state'] =
+    state === 'pass' || state === 'warn' || state === 'fail'
+      ? state
+      : (raw.compatible ? 'pass' : 'fail')
+
+  return {
+    compatible: raw.compatible ?? (normalizedState !== 'fail'),
+    overall: {
+      state: normalizedState,
+      score: typeof raw.overall?.score === 'number'
+        ? raw.overall.score
+        : (normalizedState === 'pass' ? 100 : (normalizedState === 'warn' ? 70 : 0)),
+    },
+    issues: Array.isArray(raw.issues)
+      ? raw.issues.map((issue) => ({
+          tool: issue.tool ?? 'matrix',
+          message: issue.message ?? 'Compatibility issue detected',
+          severity: issue.severity === 'error' ? 'error' : 'warning',
+          code: issue.code,
+        }))
+      : [],
+    checkedAt: raw.checkedAt ?? new Date().toISOString(),
+  }
+}
+
 // --- API functions ---
 
 function toBackendTool(sel: { tool: string; version: string }) {
-  return { name: sel.tool, version: sel.version, enabled: true }
+  const name = (sel.tool ?? '').trim()
+  return { name, version: sel.version, enabled: name.length > 0 }
 }
 
 function toBackendStoragePlanMode(planMode: string): 'integrated-create' | 'existing-connect' | null {
@@ -389,6 +442,12 @@ export function toCreateStackBody(req: CreateStackRequest) {
   const m = req.monitoring as Record<string, { tool: string; version: string }>
   const l = req.logging as Record<string, { tool: string; version: string }>
   const backendStoragePlanMode = req.storage ? toBackendStoragePlanMode(req.storage.planMode) : null
+  const storageBackendFromStorageTab = req.storage?.objectStorage?.providerOrEngine
+    ? {
+        tool: req.storage.objectStorage.providerOrEngine,
+        version: req.storage.objectStorage.version || 'latest',
+      }
+    : (a.storageBackend ?? a.storage_backend ?? { tool: '', version: '' })
   return {
     name: req.stackName,
     cluster_id: req.clusterId ?? '',
@@ -409,7 +468,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
         source_repository: toBackendTool(a.sourceRepository ?? a.source_repository ?? { tool: '', version: '' }),
         container_registry: toBackendTool(a.containerRegistry ?? a.container_registry ?? { tool: '', version: '' }),
-        storage_backend: toBackendTool(a.storageBackend ?? a.storage_backend ?? { tool: '', version: '' }),
+        storage_backend: toBackendTool(storageBackendFromStorageTab),
       },
       pipeline: {
         ci_platform: toBackendTool(p.cicdPlatform ?? p.ci_platform ?? { tool: '', version: '' }),
@@ -520,7 +579,7 @@ const stackApiCalls = {
     api.get<RawCompatibilityMatrix[]>('/stacks/compatibility').then((r) => (r.data ?? []).map(normalizeCompatibilityMatrix)),
 
   validateCompatibility: (stackId: string) =>
-    api.post<CompatibilityValidationResult>(`/stacks/${stackId}/validate`).then((r) => r.data),
+    api.post<RawCompatibilityValidationResult>(`/stacks/${stackId}/validate`).then((r) => normalizeCompatibilityValidationResult(r.data ?? {})),
 
   createTemplate: (request: TemplateMutationRequest) =>
     api.post<StackTemplate>('/stacks/templates', request).then((r) => r.data),
@@ -540,6 +599,9 @@ const stackApiCalls = {
       }))
     ),
 
+  getClusterK8sVersion: (clusterId: string) =>
+    api.post<RawClusterVerifyResult>(`/admin/clusters/${clusterId}/verify`).then((r) => (r.data?.version ?? '').trim()),
+
   deployStack: (stackId: string) =>
     api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
 }
@@ -557,6 +619,12 @@ export function useClusters() {
   return useQuery({
     queryKey: queryKeys.clusters(),
     queryFn: stackApiCalls.getClusters,
+  })
+}
+
+export function useClusterK8sVersion() {
+  return useMutation({
+    mutationFn: (clusterId: string) => stackApiCalls.getClusterK8sVersion(clusterId),
   })
 }
 
@@ -681,10 +749,10 @@ export function useCompatibilityMatrix() {
   })
 }
 
-export function useValidateCompatibility(stackId: string) {
+export function useValidateCompatibility() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => stackApiCalls.validateCompatibility(stackId),
+    mutationFn: (stackId: string) => stackApiCalls.validateCompatibility(stackId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
     },

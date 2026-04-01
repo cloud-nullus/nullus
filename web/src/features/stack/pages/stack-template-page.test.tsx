@@ -103,6 +103,18 @@ describe('StackTemplatePage', () => {
     expect(buttons).toHaveLength(4)
   })
 
+
+  it('prefers persisted custom description over seeded localized copy', () => {
+    const original = mockTemplates[1].description
+    mockTemplates[1].description = 'Custom persisted description from API'
+
+    renderWithProviders(<StackTemplatePage />)
+
+    expect(screen.getByText('Custom persisted description from API')).toBeInTheDocument()
+
+    mockTemplates[1].description = original
+  })
+
   it('renders search input', () => {
     renderWithProviders(<StackTemplatePage />)
     expect(screen.getByPlaceholderText(SEARCH_PLACEHOLDER)).toBeInTheDocument()
@@ -147,13 +159,15 @@ describe('StackTemplatePage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
-  it('clicking Use Base Template sets template in store', () => {
+  it('clicking Use Base Template sets template in store and clears unselected slots', () => {
     renderWithProviders(<StackTemplatePage />)
     const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
     expect(templateCard).toBeTruthy()
     fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
+    expect(draft.logging.search.tool).toBe('')
+    expect(draft.logging.traceLayer.tool).toBe('')
   })
 
   it('clicking Empty Template clears install selections in store', () => {
@@ -181,12 +195,36 @@ describe('StackTemplatePage', () => {
     expect(screen.getByRole('button', { name: 'Create Template' })).toBeInTheDocument()
   })
 
+  it('shows full Artifact, CI/CD, and Observability categories in create modal tool picker', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Template' }))
+
+    expect(screen.getByText('Artifacts')).toBeInTheDocument()
+    expect(screen.getByText('CI/CD')).toBeInTheDocument()
+    expect(screen.getByText('Observability')).toBeInTheDocument()
+
+    expect(screen.getByText('Package Registry')).toBeInTheDocument()
+    expect(screen.getByText('Source Repository')).toBeInTheDocument()
+    expect(screen.getByText('Container Registry')).toBeInTheDocument()
+    expect(screen.getByText('CI Platform')).toBeInTheDocument()
+    expect(screen.getByText('CD Tool')).toBeInTheDocument()
+    expect(screen.getByText('Metrics')).toBeInTheDocument()
+    expect(screen.getByText('Visualization')).toBeInTheDocument()
+    expect(screen.getByText('Logs')).toBeInTheDocument()
+    expect(screen.getByText('Agent')).toBeInTheDocument()
+    expect(screen.getByText('Traces')).toBeInTheDocument()
+
+
+    expect(screen.getAllByRole('button', { name: 'Add Tool' }).length).toBeGreaterThanOrEqual(3)
+  })
+
   it('admin can create a template', async () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Create Template' }))
-    fireEvent.change(screen.getByLabelText('Template ID'), { target: { value: 'custom-template-v1' } })
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Custom Template' } })
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Custom description' } })
     fireEvent.change(screen.getByLabelText('Recommended Use Case'), { target: { value: '테스트' } })
@@ -198,7 +236,10 @@ describe('StackTemplatePage', () => {
     })
 
     expect(mockCreateTemplateMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ estimated_install_time: 300000000000 }),
+      expect.objectContaining({
+        id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+        estimated_install_time: 300000000000,
+      }),
       expect.any(Object)
     )
   })
@@ -240,6 +281,8 @@ describe('StackTemplatePage', () => {
     )
   })
 
+
+
   it('admin can delete a template', async () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
@@ -250,5 +293,29 @@ describe('StackTemplatePage', () => {
     await waitFor(() => {
       expect(mockDeleteTemplateMutate).toHaveBeenCalled()
     })
+  })
+
+  it('renders duplicate buttons for admin and duplicates template with localized suffix', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    const duplicateButtons = screen.getAllByRole('button', { name: 'Duplicate Template' })
+    expect(duplicateButtons).toHaveLength(4)
+
+    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
+    expect(templateCard).toBeTruthy()
+    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Duplicate Template' }))
+
+    await waitFor(() => {
+      expect(mockCreateTemplateMutate).toHaveBeenCalled()
+    })
+
+    expect(mockCreateTemplateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'gitlab-allinone-v1-copy',
+        name: 'GitLab All-in-One Duplicate',
+      }),
+      expect.any(Object)
+    )
   })
 })

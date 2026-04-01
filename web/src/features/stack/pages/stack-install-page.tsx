@@ -20,8 +20,8 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults, useStacks } from '../api/stack-api'
-import type { CreateStackRequest } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults, useStacks, useCompatibilityMatrix } from '../api/stack-api'
+import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -112,11 +112,6 @@ const ARTIFACTS_OPTIONS: Record<string, ToolOption[]> = {
     { id: 'gitlab-registry', label: 'GitLab Container Registry', description: 'GitLab 내장 컨테이너 레지스트리' },
     { id: 'harbor', label: 'Harbor', description: '엔터프라이즈 컨테이너 레지스트리' },
     { id: 'docker-hub', label: 'Docker Hub', description: 'Docker 공식 레지스트리' },
-  ],
-  storageBackend: [
-    { id: 'minio', label: 'MinIO', description: 'S3 호환 오브젝트 스토리지' },
-    { id: 's3', label: 'AWS S3', description: 'Amazon S3 오브젝트 스토리지' },
-    { id: 'gcs', label: 'Google Cloud Storage', description: 'GCP 오브젝트 스토리지' },
   ],
 }
 
@@ -229,6 +224,78 @@ const TOOL_OPTIONS_ALL = [
 ]
 
 const TOOL_LABEL_MAP = new Map(TOOL_OPTIONS_ALL.map((opt) => [opt.id, opt.label]))
+
+
+const MATRIX_CATEGORY_BY_SLOT: Record<PlanningSlot, string | null> = {
+  'artifacts.packageRegistry': null,
+  'artifacts.sourceRepository': 'source_repository',
+  'artifacts.containerRegistry': 'container_registry',
+  'artifacts.storageBackend': 'storage_backend',
+  'pipeline.cicdPlatform': 'ci_platform',
+  'pipeline.cdTool': 'cd_tool',
+  'monitoring.collection': 'monitoring_collection',
+  'monitoring.visualization': 'monitoring_visualization',
+  'logging.search': null,
+  'logging.traceLayer': null,
+}
+
+const TOOL_ID_TO_MATRIX_NAME: Record<string, string> = {
+  gitlab: 'GitLab CE',
+  'gitlab-ci': 'GitLab CI',
+  argocd: 'Argo CD',
+  prometheus: 'Prometheus',
+  grafana: 'Grafana',
+  minio: 'MinIO',
+  'gitlab-registry': 'GitLab Registry',
+  github: 'GitHub',
+  'github-actions': 'GitHub Actions',
+  harbor: 'Harbor',
+  'opentelemetry-collector': 'OpenTelemetry Collector',
+}
+
+type PreDeployCompatibilityState = 'pass' | 'warn' | 'fail'
+
+type PreDeployCompatibilityIssue = {
+  severity: 'warning' | 'error'
+  message: string
+}
+
+type PreDeployCompatibilityReport = {
+  state: PreDeployCompatibilityState
+  reason: string
+  score: number
+  issues: PreDeployCompatibilityIssue[]
+  matchedMatrix?: CompatibilityMatrix
+  baseline: {
+    k8s: string
+    minio: string
+    postgres: string
+    setupType: 'Helm' | 'Deployment' | 'Mixed'
+  }
+}
+
+function normalizeText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function resolveMatrixToolName(toolKey: string): string {
+  if (TOOL_ID_TO_MATRIX_NAME[toolKey]) {
+    return TOOL_ID_TO_MATRIX_NAME[toolKey]
+  }
+
+  const label = TOOL_LABEL_MAP.get(toolKey) ?? toolKey
+  return label
+    .replace('CI/CD', 'CI')
+    .replace('ArgoCD', 'Argo CD')
+    .replace('Container Registry', 'Registry')
+}
+
+function findMatrixToolVersion(matrix: CompatibilityMatrix | undefined, keyword: string): string {
+  if (!matrix) return '-'
+  const target = normalizeText(keyword)
+  const tool = matrix.tools.find((item) => normalizeText(item.name).includes(target))
+  return tool?.appVersion ?? '-'
+}
 
 const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   gitlab: { repoUrl: 'https://charts.gitlab.io', chartName: 'gitlab/gitlab' },
@@ -1824,6 +1891,7 @@ export function StackInstallPage() {
   const { data: resourceDefaultsData } = useResourceDefaults()
   const { data: clusters } = useClusters()
   const { data: stackListData } = useStacks()
+  const { data: compatibilityMatrixData } = useCompatibilityMatrix()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
   const [createNewNs, setCreateNewNs] = useState(false)
   const [selectedClusterId, setSelectedClusterId] = useState(draft.clusterId ?? '')
@@ -1922,6 +1990,9 @@ export function StackInstallPage() {
 
   const k8sObjects = createK8sObjects(draft)
 
+  const objectStorageBackendTool = draft.storage.objectStorage.providerOrEngine || draft.artifacts.storageBackend.tool || 'minio'
+  const objectStorageBackendVersion = draft.storage.objectStorage.version || draft.artifacts.storageBackend.version || getToolAppVersion(objectStorageBackendTool)
+
   const selectedInstallItems = ([
     {
       slot: 'artifacts.packageRegistry',
@@ -1946,10 +2017,10 @@ export function StackInstallPage() {
     },
     {
       slot: 'artifacts.storageBackend',
-      category: 'Artifacts > Storage Backend',
-      toolKey: draft.artifacts.storageBackend.tool,
-      toolLabel: toolLabel(draft.artifacts.storageBackend.tool, noneLabel),
-      toolVersion: draft.artifacts.storageBackend.version,
+      category: 'Storage > Object Storage Backend',
+      toolKey: objectStorageBackendTool,
+      toolLabel: toolLabel(objectStorageBackendTool, noneLabel),
+      toolVersion: objectStorageBackendVersion,
     },
     {
       slot: 'pipeline.cicdPlatform',
@@ -1997,6 +2068,132 @@ export function StackInstallPage() {
     (item) => item.toolKey.length > 0
   )
 
+
+
+  const compatibilityGate = useMemo<PreDeployCompatibilityReport>(() => {
+    const requestedTools = selectedInstallItems.reduce<Record<string, string>>((acc, item) => {
+      const category = MATRIX_CATEGORY_BY_SLOT[item.slot]
+      if (!category || !item.toolKey) {
+        return acc
+      }
+      acc[category] = resolveMatrixToolName(item.toolKey)
+      return acc
+    }, {})
+
+    const setupKinds = new Set(selectedInstallItems.map((item) => getInstallType(getManifestBundleId(item.toolKey))))
+    const setupType: 'Helm' | 'Deployment' | 'Mixed' =
+      setupKinds.size > 1
+        ? 'Mixed'
+        : (setupKinds.has('helm') ? 'Helm' : 'Deployment')
+
+    const matrices = Array.isArray(compatibilityMatrixData) ? compatibilityMatrixData : []
+    if (matrices.length === 0) {
+      return {
+        state: 'fail',
+        reason: 'Compatibility matrix not available',
+        score: 0,
+        issues: [{ severity: 'error', message: '호환성 매트릭스를 가져오지 못했습니다. 배포를 잠시 중단해 주세요.' }],
+        baseline: {
+          k8s: 'Unknown',
+          minio: objectStorageBackendVersion,
+          postgres: draft.storage.database.version || draft.storage.database.providerOrEngine || 'N/A',
+          setupType,
+        },
+      }
+    }
+
+    const matchedCandidates = matrices.filter((matrix) =>
+      Object.entries(requestedTools).every(([category, expectedName]) => {
+        const matrixTool = matrix.tools.find((tool) => normalizeText(tool.name) === normalizeText(expectedName))
+        if (!matrixTool) {
+          return false
+        }
+        return category !== ''
+      })
+    )
+
+    const matched = matchedCandidates.find((matrix) => matrix.id === draft.selectedTemplateId)
+      ?? matchedCandidates[0]
+
+    if (!matched) {
+      return {
+        state: 'fail',
+        reason: 'No matching matrix',
+        score: 0,
+        issues: [{ severity: 'error', message: '선택한 OSS 조합과 일치하는 호환성 매트릭스가 없습니다.' }],
+        baseline: {
+          k8s: 'Unknown',
+          minio: objectStorageBackendVersion,
+          postgres: draft.storage.database.version || draft.storage.database.providerOrEngine || 'N/A',
+          setupType,
+        },
+      }
+    }
+
+    const minioFromMatrix = findMatrixToolVersion(matched, 'minio')
+    const postgresFromDraft = draft.storage.database.version || draft.storage.database.providerOrEngine || 'N/A'
+
+    if (matched.status === 'unsupported') {
+      return {
+        state: 'fail',
+        reason: 'Matched matrix is unsupported',
+        score: 0,
+        issues: [{ severity: 'error', message: '현재 조합은 unsupported 매트릭스로 분류되어 배포할 수 없습니다.' }],
+        matchedMatrix: matched,
+        baseline: {
+          k8s: matched.k8sRange,
+          minio: minioFromMatrix,
+          postgres: postgresFromDraft,
+          setupType,
+        },
+      }
+    }
+
+    if (matched.status === 'untested') {
+      return {
+        state: 'warn',
+        reason: 'Matched matrix is untested',
+        score: 70,
+        issues: [{ severity: 'warning', message: '현재 조합은 untested 매트릭스입니다. 검증 리스크를 인지하고 진행하세요.' }],
+        matchedMatrix: matched,
+        baseline: {
+          k8s: matched.k8sRange,
+          minio: minioFromMatrix,
+          postgres: postgresFromDraft,
+          setupType,
+        },
+      }
+    }
+
+    return {
+      state: 'pass',
+      reason: 'Matched verified matrix',
+      score: 100,
+      issues: [],
+      matchedMatrix: matched,
+      baseline: {
+        k8s: matched.k8sRange,
+        minio: minioFromMatrix,
+        postgres: postgresFromDraft,
+        setupType,
+      },
+    }
+  }, [
+    compatibilityMatrixData,
+    objectStorageBackendVersion,
+    draft.storage.database.providerOrEngine,
+    draft.storage.database.version,
+    draft.selectedTemplateId,
+    selectedInstallItems,
+  ])
+
+  const [compatWarnAcknowledged, setCompatWarnAcknowledged] = useState(false)
+
+  useEffect(() => {
+    if (compatibilityGate.state !== 'warn') {
+      setCompatWarnAcknowledged(false)
+    }
+  }, [compatibilityGate.state])
   const selectedToolKeys = Array.from(new Set(selectedInstallItems.map((item) => item.toolKey)))
 
   const defaultByTool = useMemo(
@@ -2067,10 +2264,6 @@ export function StackInstallPage() {
       storageLimitGi: 0,
     }
   )
-  const isRequestTotalZero =
-    planningAppliedTotal.cpuRequest <= 0 &&
-    planningAppliedTotal.memoryRequestGi <= 0 &&
-    planningAppliedTotal.storageRequestGi <= 0
 
   const manifestTools = (() => {
     const map = new Map<string, ManifestToolEntry>()
@@ -3244,6 +3437,16 @@ export function StackInstallPage() {
       return
     }
 
+    if (compatibilityGate.state === 'fail') {
+      setTabGuardError('호환성 검사 결과 fail 상태입니다. 조합을 수정한 후 다시 시도해 주세요.')
+      return
+    }
+
+    if (compatibilityGate.state === 'warn' && !compatWarnAcknowledged) {
+      setTabGuardError('호환성 경고를 확인하고 승인 체크를 완료해 주세요.')
+      return
+    }
+
     const request = buildStackRequest()
 
     try {
@@ -3309,7 +3512,7 @@ export function StackInstallPage() {
             <Save size={14} />
             {t('stackInstall.actions.saveDraft', 'Save Draft')}
           </Button>
-          <Button variant="outline" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
+          <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
             {t('stackInstall.actions.previewK8sObjects', 'Preview K8s Objects')}
           </Button>
           <Button
@@ -3327,7 +3530,8 @@ export function StackInstallPage() {
               !draft.clusterId ||
               (createNewNs && !draft.namespace.trim()) ||
               hasManifestValidationError ||
-              isRequestTotalZero
+              compatibilityGate.state === 'fail' ||
+              (compatibilityGate.state === 'warn' && !compatWarnAcknowledged)
             }
             type="button"
           >
@@ -3384,6 +3588,48 @@ export function StackInstallPage() {
             </div>
           </div>
 
+          <div className="mt-3">
+            <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+              <input
+                type="checkbox"
+                checked={draft.accessDomainTls.enabled}
+                onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
+              />
+              {t('stackInstall.form.accessDomainTls', 'Enable Access Domain TLS (cert-manager)')}
+            </label>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            {draft.accessDomainTls.enabled && (
+              <>
+                <Input
+                  label={t('stackInstall.form.tlsSecretName', 'TLS Secret Name')}
+                  placeholder="nullus-wildcard-tls"
+                  value={draft.accessDomainTls.secretName}
+                  onChange={(e) => updateAccessDomainTls({ secretName: e.target.value })}
+                />
+                <Input
+                  label={t('stackInstall.form.tlsSecretNamespace', 'TLS Secret Namespace')}
+                  placeholder="nullus"
+                  value={draft.accessDomainTls.secretNamespace}
+                  onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
+                />
+                <Input
+                  label={t('stackInstall.form.certManagerIssuerName', 'cert-manager Issuer Name')}
+                  placeholder="nullus-ca-issuer"
+                  value={draft.accessDomainTls.issuerName}
+                  onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
+                />
+              </>
+            )}
+          </div>
+
+          {draft.accessDomainTls.enabled && (
+            <p className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
+              Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
+            </p>
+          )}
+
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1">
               <NativeSelect
@@ -3404,14 +3650,6 @@ export function StackInstallPage() {
                 ))}
               </NativeSelect>
               {!draft.clusterId && <span className="text-xs text-[#f59e0b]">{t('stackInstall.form.clusterRequired', 'Required for deployment')}</span>}
-              <label className="mt-1 inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-                <input
-                  type="checkbox"
-                  checked={draft.accessDomainTls.enabled}
-                  onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
-                />
-                {t('stackInstall.form.accessDomainTls', 'Enable Access Domain TLS (cert-manager)')}
-              </label>
             </div>
 
             {draft.clusterId && (
@@ -3451,37 +3689,6 @@ export function StackInstallPage() {
               </div>
             )}
           </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-            {draft.accessDomainTls.enabled && (
-              <>
-                <Input
-                  label={t('stackInstall.form.tlsSecretName', 'TLS Secret Name')}
-                  placeholder="nullus-wildcard-tls"
-                  value={draft.accessDomainTls.secretName}
-                  onChange={(e) => updateAccessDomainTls({ secretName: e.target.value })}
-                />
-                <Input
-                  label={t('stackInstall.form.tlsSecretNamespace', 'TLS Secret Namespace')}
-                  placeholder="nullus"
-                  value={draft.accessDomainTls.secretNamespace}
-                  onChange={(e) => updateAccessDomainTls({ secretNamespace: e.target.value })}
-                />
-                <Input
-                  label={t('stackInstall.form.certManagerIssuerName', 'cert-manager Issuer Name')}
-                  placeholder="nullus-ca-issuer"
-                  value={draft.accessDomainTls.issuerName}
-                  onChange={(e) => updateAccessDomainTls({ issuerName: e.target.value })}
-                />
-              </>
-            )}
-          </div>
-
-          {draft.accessDomainTls.enabled && (
-            <p className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
-              Preview Deploy Script와 Gateway YAML에 cert-manager <code>Certificate</code> 리소스가 포함되며, Secret은 cert-manager가 관리합니다.
-            </p>
-          )}
         </div>
 
         <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
@@ -3542,6 +3749,53 @@ export function StackInstallPage() {
           )}
         </div>
 
+
+      <div
+        className={cn(
+          'mb-3 rounded border px-3 py-3 text-xs',
+          compatibilityGate.state === 'pass'
+            ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] text-[#86efac]'
+            : compatibilityGate.state === 'warn'
+              ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
+              : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]'
+        )}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="font-semibold">Pre-Deploy Compatibility Gate ({compatibilityGate.state.toUpperCase()})</span>
+          <span>Score: {compatibilityGate.score}</span>
+        </div>
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-4">
+          <span><strong>K8s:</strong> {compatibilityGate.baseline.k8s}</span>
+          <span><strong>MinIO:</strong> {compatibilityGate.baseline.minio}</span>
+          <span><strong>Postgres:</strong> {compatibilityGate.baseline.postgres}</span>
+          <span><strong>Setup:</strong> {compatibilityGate.baseline.setupType}</span>
+        </div>
+        {compatibilityGate.matchedMatrix && (
+          <p className="mt-2 mb-0 text-[11px] text-[var(--color-text-secondary)]">
+            Matched matrix: {compatibilityGate.matchedMatrix.name} ({compatibilityGate.matchedMatrix.status})
+          </p>
+        )}
+        {compatibilityGate.issues.length > 0 && (
+          <ul className="mb-0 mt-2 pl-4 text-[11px]">
+            {compatibilityGate.issues.map((issue, index) => (
+              <li key={`${issue.severity}-${index}`}>{issue.message}</li>
+            ))}
+          </ul>
+        )}
+        {compatibilityGate.state === 'warn' && (
+          <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
+            <input
+              type="checkbox"
+              checked={compatWarnAcknowledged}
+              onChange={(e) => setCompatWarnAcknowledged(e.target.checked)}
+            />
+            경고를 확인했고, untested 조합 리스크를 인지한 상태로 배포를 진행합니다.
+          </label>
+        )}
+      </div>
+
+      
+
       </div>
 
       <div className="flex items-start gap-5">
@@ -3595,12 +3849,6 @@ export function StackInstallPage() {
                   options={ARTIFACTS_OPTIONS.containerRegistry}
                   value={draft.artifacts.containerRegistry}
                   onChange={(v) => setTool('artifacts', 'containerRegistry', v)}
-                />
-                <ToolSelector
-                  label={t('stackInstall.labels.storageBackend', 'Storage Backend')}
-                  options={ARTIFACTS_OPTIONS.storageBackend}
-                  value={draft.artifacts.storageBackend}
-                  onChange={(v) => setTool('artifacts', 'storageBackend', v)}
                 />
               </>
             )}
@@ -4351,7 +4599,7 @@ export function StackInstallPage() {
             ['Package Registry', draft.artifacts.packageRegistry.tool],
             ['Source Repo', draft.artifacts.sourceRepository.tool],
             ['Container Registry', draft.artifacts.containerRegistry.tool],
-            ['Storage', draft.artifacts.storageBackend.tool],
+            ['Storage', objectStorageBackendTool],
             ['CI/CD', draft.pipeline.cicdPlatform.tool],
             ['CD Tool', draft.pipeline.cdTool.tool],
             ['Visualization', draft.monitoring.visualization.tool],

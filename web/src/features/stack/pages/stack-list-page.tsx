@@ -53,7 +53,7 @@ import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
-import { useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
+import { useClusters, useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
 
 ChartJS.register(
 	CategoryScale,
@@ -171,7 +171,8 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
 	rolling_back: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Rolling Back" },
 	rolled_back: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Rolled Back" },
 	running: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Running" },
-	success: { bg: "rgba(34,197,94,0.15)", color: "#22c55e", label: "Success" },
+	success: { bg: "rgba(16,185,129,0.18)", color: "#10b981", label: "Healthy" },
+	healthy: { bg: "rgba(16,185,129,0.18)", color: "#10b981", label: "Healthy" },
 	cancelled: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Cancelled" },
 };
 
@@ -198,12 +199,34 @@ function getStackStatusLabel(t: (key: string, defaultValue?: string) => string, 
 		case "running":
 			return t("stackList.status.running", "Running");
 		case "success":
-			return t("stackList.status.success", "Success");
+		case "healthy":
+			return t("stackList.status.healthy", "Running");
 		case "cancelled":
 			return t("stackList.status.cancelled", "Cancelled");
 		default:
 			return status;
 	}
+}
+
+
+function normalizeStackStatus(status: string, clusterConnectionStatus?: string): string {
+	if (status === "success" || status === "running") return "healthy";
+	if (status === "completed" && clusterConnectionStatus === "connected") return "healthy";
+	return status;
+}
+
+function isHealthyStatus(status: string, clusterConnectionStatus?: string): boolean {
+	const normalized = normalizeStackStatus(status, clusterConnectionStatus);
+	return normalized === "healthy";
+}
+
+function matchesStackStatusFilter(status: string, filter: string, clusterConnectionStatus?: string): boolean {
+	if (!filter) return true;
+	const normalized = normalizeStackStatus(status, clusterConnectionStatus);
+	if (filter === "healthy") return normalized === "healthy";
+	if (filter === "running") return status === "running";
+	if (filter === "completed") return status === "completed" && clusterConnectionStatus !== "connected";
+	return normalized === filter;
 }
 
 function formatDate(iso: string) {
@@ -919,7 +942,7 @@ function ResourcesPanel() {
 	);
 }
 
-function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTools: () => void; onDelete: () => void }) {
+function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }: { stack: Stack; displayStatus: string; isDeleting: boolean; onAddTools: () => void; onDelete: () => void }) {
 	const { t } = useTranslation();
 	const [hostsCopyState, setHostsCopyState] = useState<"idle" | "copied" | "failed">("idle");
 	const [gatewayCopyState, setGatewayCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -1048,15 +1071,15 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 						<Button variant="outline" size="sm" type="button" onClick={onAddTools}>
 							<Plus size={13} /> Add Tools
 						</Button>
-						<Button variant="danger" size="sm" type="button" onClick={onDelete}>
+						<Button variant="danger" size="sm" type="button" onClick={onDelete} disabled={isDeleting} loading={isDeleting}>
 							Delete
 						</Button>
 					</div>
 				</div>
 				<div className="grid grid-cols-2 gap-3 text-[12px] text-[var(--color-text-secondary)] lg:grid-cols-4">
 					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
-						<div className="text-[11px] uppercase tracking-[0.04em]">Category</div>
-						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{stack.templateName}</div>
+						<div className="text-[11px] uppercase tracking-[0.04em]">Stack Name</div>
+						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{stack.name}</div>
 					</div>
 					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
 						<div className="text-[11px] uppercase tracking-[0.04em]">Runtime</div>
@@ -1068,7 +1091,7 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 					</div>
 					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
 						<div className="text-[11px] uppercase tracking-[0.04em]">Update Mode</div>
-						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{getStackStatusLabel(t, stack.status)}</div>
+						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{getStackStatusLabel(t, displayStatus)}</div>
 					</div>
 				</div>
 				<div className="mt-3 border-t border-[var(--color-border-default)] pt-3">
@@ -2273,7 +2296,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 	const latestEntryID = entries[entries.length - 1]?.id;
 
 	return (
-		<div>
+		<div className="flex h-full flex-col">
 			<div className="mb-4 flex items-center justify-between gap-3">
 				<div className="flex items-center gap-3">
 					<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,#10b981,#059669)]" />
@@ -2298,7 +2321,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 					No history found for this stack yet.
 				</div>
 			)}
-			<div className="flex flex-col gap-3">
+			<div className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
 				{entries.map((entry) => {
 					const isCurrent = entry.id === latestEntryID;
 					return (
@@ -2482,9 +2505,8 @@ function StackVersionUpgradeTab() {
 	);
 }
 
-const INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
+const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
 	{ key: "info", label: "Info", icon: <Info size={13} /> },
-	{ key: "monitoring", label: "Monitoring", icon: <BarChart2 size={13} /> },
 	{ key: "history", label: "History", icon: <History size={13} /> },
 	{
 		key: "version-upgrade",
@@ -2495,21 +2517,36 @@ const INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
 
 function StackDetailPanel({
 	stack,
+	clusterConnectionStatus,
+	isDeleting,
 	onAddTools,
 	onDelete,
 	className,
 }: {
 	stack: Stack;
+	clusterConnectionStatus?: string;
+	isDeleting: boolean;
 	onAddTools: () => void;
 	onDelete: () => void;
 	className?: string;
 }) {
 	const { t } = useTranslation();
 	const [innerTab, setInnerTab] = useState<InnerTab>("info");
-	const statusStyle = STATUS_STYLES[stack.status] ?? STATUS_STYLES.pending;
+	const normalizedStatus = normalizeStackStatus(stack.status, clusterConnectionStatus);
+	const canShowMonitoring = isHealthyStatus(stack.status, clusterConnectionStatus);
+	const innerTabs = canShowMonitoring
+		? [BASE_INNER_TABS[0], { key: "monitoring" as const, label: "Monitoring", icon: <BarChart2 size={13} /> }, ...BASE_INNER_TABS.slice(1)]
+		: BASE_INNER_TABS;
+	const statusStyle = STATUS_STYLES[normalizedStatus] ?? STATUS_STYLES.pending;
+
+	useEffect(() => {
+		if (!canShowMonitoring && innerTab === "monitoring") {
+			setInnerTab("info");
+		}
+	}, [canShowMonitoring, innerTab]);
 
 	return (
-		<div className={cn("overflow-hidden rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.3)] bg-[var(--color-surface-card)]", className)}>
+		<div className={cn("flex h-full flex-col overflow-hidden rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.3)] bg-[var(--color-surface-card)]", className)}>
 			<div className="flex items-center gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
 				<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
 					<Layers size={16} />
@@ -2521,7 +2558,7 @@ function StackDetailPanel({
 					className="rounded-[10px] px-[9px] py-[3px] text-[11px] font-bold"
 					style={{ background: statusStyle.bg, color: statusStyle.color }}
 				>
-					{getStackStatusLabel(t, stack.status)}
+					{getStackStatusLabel(t, normalizedStatus)}
 				</span>
 				<span className="text-[12px] text-[var(--color-text-secondary)]">
 					· {stack.templateName} · {stack.clusterName}
@@ -2529,7 +2566,7 @@ function StackDetailPanel({
 			</div>
 
 			<div className="flex border-b border-[var(--color-border-default)]">
-				{INNER_TABS.map((tab) => (
+				{innerTabs.map((tab) => (
 					<button
 						key={tab.key}
 						type="button"
@@ -2546,9 +2583,9 @@ function StackDetailPanel({
 				))}
 			</div>
 
-			<div className="p-5">
-				{innerTab === "info" && <StackInfoTab stack={stack} onAddTools={onAddTools} onDelete={onDelete} />}
-				{innerTab === "monitoring" && <StackMonitoringTab stackId={stack.id} />}
+			<div className="flex-1 overflow-auto p-5">
+				{innerTab === "info" && <StackInfoTab stack={stack} displayStatus={normalizedStatus} isDeleting={isDeleting} onAddTools={onAddTools} onDelete={onDelete} />}
+				{innerTab === "monitoring" && canShowMonitoring && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
 			</div>
@@ -2561,6 +2598,7 @@ export function StackListPage() {
 	const navigate = useNavigate();
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("");
+	const [clusterFilter, setClusterFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
 	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
 	const [viewportHeight, setViewportHeight] = useState(() =>
@@ -2578,11 +2616,31 @@ export function StackListPage() {
 		return () => window.removeEventListener("resize", onResize);
 	}, []);
 
+	const normalizedStatusFilter = statusFilter === "healthy" ? "success" : statusFilter;
+	const { data: clusters } = useClusters();
 	const { data: apiData, isLoading } = useStacks({
 		search,
-		status: statusFilter || undefined,
+		status: normalizedStatusFilter || undefined,
 	});
-	const stacks = apiData?.items ?? [];
+	const clusterNameByID = useMemo(
+		() => new Map((clusters ?? []).map((cluster) => [cluster.id, cluster.name])),
+		[clusters],
+	);
+	const clusterConnectionByID = useMemo(
+		() => new Map((clusters ?? []).map((cluster) => [cluster.id, cluster.connection_status])),
+		[clusters],
+	);
+	const stacks = useMemo(
+		() => (apiData?.items ?? []).map((item) => {
+			const resolvedClusterName = clusterNameByID.get(item.clusterId);
+			return {
+				...item,
+				clusterName: resolvedClusterName || item.clusterName || item.clusterId || "-",
+			};
+		}),
+		[apiData?.items, clusterNameByID],
+	);
+	const clusterOptions = useMemo(() => Array.from(new Set(stacks.map((item) => item.clusterName).filter((name) => !!name))).sort(), [stacks]);
 
 	const filtered = stacks.filter((s) => {
 		const q = search.toLowerCase();
@@ -2591,8 +2649,9 @@ export function StackListPage() {
 			s.name.toLowerCase().includes(q) ||
 			s.templateName.toLowerCase().includes(q) ||
 			s.clusterName.toLowerCase().includes(q);
-		const matchesStatus = !statusFilter || s.status === statusFilter;
-		return matchesSearch && matchesStatus;
+		const matchesStatus = matchesStackStatusFilter(s.status, statusFilter, clusterConnectionByID.get(s.clusterId));
+		const matchesCluster = !clusterFilter || s.clusterName === clusterFilter;
+		return matchesSearch && matchesStatus && matchesCluster;
 	});
 	const selectedStackId = expandedStackId && filtered.some((stack) => stack.id === expandedStackId)
 		? expandedStackId
@@ -2621,35 +2680,36 @@ export function StackListPage() {
 				</div>
 			),
 		},
-		{
-			accessorKey: "templateName",
-			header: t("stackList.table.template", "Template"),
+				{
+			accessorKey: "clusterName",
+			header: t("stackList.table.cluster", "Cluster"),
 			cell: ({ row }) => (
 				<span className="text-[var(--color-text-secondary)]">
-					{row.original.templateName}
+					{row.original.clusterName}
 				</span>
 			),
 		},
 		{
 			accessorKey: "status",
-			header: t("stackList.table.status", "Status"),
+			header: () => <span className="whitespace-nowrap">{t("stackList.table.status", "Status")}</span>,
 			cell: ({ row }) => {
-				const s = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending;
+				const normalizedRowStatus = normalizeStackStatus(row.original.status, clusterConnectionByID.get(row.original.clusterId));
+				const s = STATUS_STYLES[normalizedRowStatus] ?? STATUS_STYLES.pending;
 				return (
 					<span
-						className="rounded-md px-[9px] py-[3px] text-xs font-semibold"
+						className="inline-block min-w-[72px] whitespace-nowrap rounded-md px-[9px] py-[3px] text-center text-xs font-semibold"
 						style={{ backgroundColor: s.bg, color: s.color }}
 					>
-						{getStackStatusLabel(t, row.original.status)}
+						{getStackStatusLabel(t, normalizedRowStatus)}
 					</span>
 				);
 			},
 		},
 		{
 			accessorKey: "createdAt",
-			header: t("stackList.table.createdAt", "Created At"),
+			header: () => <span className="whitespace-nowrap">{t("stackList.table.createdAt", "Created At")}</span>,
 			cell: ({ row }) => (
-				<span className="text-[13px] text-[var(--color-text-secondary)]">
+				<span className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">
 					{formatDate(row.original.createdAt)}
 				</span>
 			),
@@ -2701,11 +2761,24 @@ export function StackListPage() {
 									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 								>
 									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allStatus", "All Status")}</option>
-									<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.success", "Success")}</option>
+									<option value="healthy" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.healthy", "Running")}</option>
+									<option value="completed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.completed", "Completed")}</option>
 									<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.running", "Running")}</option>
 									<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.pending", "Pending")}</option>
 									<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.failed", "Failed")}</option>
 									<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.cancelled", "Cancelled")}</option>
+								</NativeSelect>
+								<NativeSelect
+									value={clusterFilter}
+									onChange={(e) => setClusterFilter(e.target.value)}
+									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+								>
+									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allClusters", "All Clusters")}</option>
+									{clusterOptions.map((clusterName) => (
+										<option key={clusterName} value={clusterName} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
+											{clusterName}
+										</option>
+									))}
 								</NativeSelect>
 								<div className="relative ml-auto">
 									<Search
@@ -2732,10 +2805,12 @@ export function StackListPage() {
 
 				<div className="hidden xl:block">
 					{expandedStack ? (
-						<div className="sticky top-4 max-h-[calc(100vh-110px)] overflow-auto pr-1">
+						<div className="h-full pr-1">
 							<StackDetailPanel
 								key={expandedStack.id}
 								stack={expandedStack}
+								clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
+								isDeleting={deleteStack.isPending}
 								onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
 								onDelete={() => setDeleteStackId(expandedStack.id)}
 							/>
@@ -2752,6 +2827,8 @@ export function StackListPage() {
 				<StackDetailPanel
 					key={`${expandedStack.id}-mobile`}
 					stack={expandedStack}
+					clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
+					isDeleting={deleteStack.isPending}
 					onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
 					onDelete={() => setDeleteStackId(expandedStack.id)}
 					className="mt-4 xl:hidden"
@@ -2765,6 +2842,7 @@ export function StackListPage() {
 				title={t("stackList.confirm.deleteTitle", "Delete Stack")}
 				description={t("stackList.confirm.deleteDescription", "Deleting this stack may affect related deployment data. Continue?")}
 				confirmLabel={t("common.delete", "Delete")}
+				loading={deleteStack.isPending}
 			/>
 		</div>
 	);

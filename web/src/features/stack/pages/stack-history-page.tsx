@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle } from 'lucide-react'
+import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle, Terminal } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
@@ -13,17 +13,23 @@ import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
+
 export function StackHistoryPage() {
    const { t, i18n } = useTranslation()
    const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
    const { data: stacksData } = useStacks()
-   const stacks = stacksData?.items ?? []
    const navigate = useNavigate()
    const { stackId: routeStackId } = useParams<{ stackId?: string }>()
-   const isKnownStackId = !!routeStackId && stacks.some((stack) => stack.id === routeStackId)
-   const stackId = isKnownStackId ? routeStackId : (stacks[0]?.id ?? '')
    const [expandedId, setExpandedId] = useState<string | null>(null)
    const [search, setSearch] = useState('')
+   const [clusterFilter, setClusterFilter] = useState('')
+
+   const stacks = stacksData?.items ?? []
+   const clusterOptions = Array.from(new Set(stacks.map((stack) => stack.clusterName).filter(Boolean))).sort()
+   const visibleStacks = clusterFilter ? stacks.filter((stack) => stack.clusterName === clusterFilter) : stacks
+   const fallbackStackId = visibleStacks[0]?.id ?? ''
+   const stackId = routeStackId ?? fallbackStackId
+   const currentRouteMissingFromOptions = !!routeStackId && !visibleStacks.some((stack) => stack.id === routeStackId)
    const [compareOpen, setCompareOpen] = useState(false)
    const [versionA, setVersionA] = useState(0)
    const [versionB, setVersionB] = useState(0)
@@ -32,13 +38,20 @@ export function StackHistoryPage() {
    const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
   useEffect(() => {
-    if (stacks.length === 0) {
+    if (!routeStackId && fallbackStackId) {
+      navigate(`/stack/history/${fallbackStackId}`, { replace: true })
       return
     }
-    if (!routeStackId || !stacks.some((stack) => stack.id === routeStackId)) {
-      navigate(`/stack/history/${stacks[0].id}`, { replace: true })
+
+    if (
+      routeStackId &&
+      clusterFilter &&
+      visibleStacks.length > 0 &&
+      !visibleStacks.some((stack) => stack.id === routeStackId)
+    ) {
+      navigate(`/stack/history/${visibleStacks[0].id}`, { replace: true })
     }
-  }, [stacks, routeStackId, navigate])
+  }, [clusterFilter, fallbackStackId, routeStackId, visibleStacks, navigate])
 
   useEffect(() => {
     setVersionA(0)
@@ -116,6 +129,15 @@ export function StackHistoryPage() {
       },
     },
     {
+      id: 'cluster',
+      header: t('stackHistoryPage.table.cluster', 'Cluster'),
+      enableSorting: false,
+      cell: ({ row }) => {
+        const cluster = stacks.find((s) => s.id === row.original.stackId)?.clusterName ?? '-'
+        return <span className="text-[13px] text-[var(--color-text-secondary)]">{cluster}</span>
+      },
+    },
+    {
       accessorKey: 'version',
       header: t('stackHistoryPage.table.version', 'Version'),
       cell: ({ row }) => {
@@ -156,6 +178,18 @@ export function StackHistoryPage() {
           const index = entries.findIndex((item) => item.id === entry.id)
           return (
             <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  navigate(`/stack/logs/${entry.stackId}`)
+                }}
+                type="button"
+              >
+                <Terminal size={13} />
+                {t('stackHistoryPage.actions.log', 'Log')}
+              </Button>
               {index !== 0 && (
                 <Button
                 variant="danger"
@@ -205,27 +239,43 @@ export function StackHistoryPage() {
         </Button>
       </div>
 
+      <div className="mb-4 max-w-[360px]">
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+          {t('stackHistoryPage.stackSelect', 'Stack')}
+        </label>
+        <NativeSelect
+          value={stackId}
+          onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
+          disabled={!stackId && visibleStacks.length === 0}
+          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+        >
+          {currentRouteMissingFromOptions && routeStackId && (
+            <option value={routeStackId}>{routeStackId}</option>
+          )}
+          {visibleStacks.map((stack) => (
+            <option key={stack.id} value={stack.id}>
+              {stack.name}
+            </option>
+          ))}
+        </NativeSelect>
+      </div>
+
       <DataTable
         columns={columns}
         data={entries}
         getRowKey={(row) => row.id}
-        emptyMessage={t('dataTable.empty', 'No data available.')}
         toolbar={
-          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <>
             <NativeSelect
-              aria-label={t('stackHistoryPage.stackSelect', 'Stack')}
-              value={stackId}
-              onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
-              disabled={stacks.length === 0}
-              className="min-w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)]"
+              value={clusterFilter}
+              onChange={(event) => setClusterFilter(event.target.value)}
+              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
             >
-              {stacks.map((stack) => (
-                <option key={stack.id} value={stack.id}>
-                  {stack.name}
-                </option>
+              <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
+              {clusterOptions.map((clusterName) => (
+                <option key={clusterName} value={clusterName}>{clusterName}</option>
               ))}
             </NativeSelect>
-
             <div className="relative ml-auto">
               <Search
                 size={13}
@@ -238,7 +288,7 @@ export function StackHistoryPage() {
                 className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
-          </div>
+          </>
         }
       />
 

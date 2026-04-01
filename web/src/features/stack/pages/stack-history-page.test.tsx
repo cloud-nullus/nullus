@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/test-utils'
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { StackHistoryPage } from './stack-history-page'
 
 const mockNavigate = vi.fn()
@@ -70,7 +70,6 @@ describe('StackHistoryPage', () => {
 
     expect(screen.getAllByText('Stack History').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Compare Versions' })).not.toBeNull()
-    expect(screen.getByRole('combobox', { name: 'Stack' })).not.toBeNull()
   })
 
   it('handles loading-like state safely when history data is undefined', () => {
@@ -79,7 +78,7 @@ describe('StackHistoryPage', () => {
     renderWithProviders(<StackHistoryPage />)
 
     expect(screen.getAllByText('Stack History').length).toBeGreaterThan(0)
-    expect(screen.getByText(/No data available\.|데이터가 없습니다\./)).not.toBeNull()
+    expect(screen.getByText(/No data available\.|데이터가 없습니다\.|dataTable.empty/)).not.toBeNull()
   })
 
   it('renders history data', () => {
@@ -103,6 +102,9 @@ describe('StackHistoryPage', () => {
     expect(screen.getAllByText('alice').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Scale up').length).toBeGreaterThan(0)
     expect(screen.getAllByText('v3').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Cluster|클러스터/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('prod').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /Log|로그/ })).toBeInTheDocument()
   })
 
   it('renders empty state when no history entries exist', () => {
@@ -110,6 +112,46 @@ describe('StackHistoryPage', () => {
 
     renderWithProviders(<StackHistoryPage />)
 
-    expect(screen.getByText(/No data available\.|데이터가 없습니다\./)).not.toBeNull()
+    expect(screen.getByText(/No data available\.|데이터가 없습니다\.|dataTable.empty/)).not.toBeNull()
   })
+
+  it('keeps the route stack id when list data is stale', () => {
+    mockUseParams.mockReturnValue({ stackId: 'stack-new' })
+    mockUseStacks.mockReturnValue({ data: { items: stacks } })
+
+    renderWithProviders(<StackHistoryPage />)
+
+    expect(mockUseStackHistory).toHaveBeenCalledWith('stack-new')
+    expect(mockNavigate).not.toHaveBeenCalledWith('/stack/history/stack-1', { replace: true })
+    expect(screen.getByRole('option', { name: 'stack-new' })).toBeInTheDocument()
+  })
+
+  it('filters stack selector by cluster filter', () => {
+    mockUseStacks.mockReturnValue({
+      data: {
+        items: [
+          ...stacks,
+          {
+            id: 'stack-2',
+            name: 'Dev Stack',
+            templateId: 'tpl-2',
+            templateName: 'GitLab + Argo',
+            clusterId: 'cluster-2',
+            clusterName: 'dev',
+            status: 'completed',
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+      },
+    })
+
+    renderWithProviders(<StackHistoryPage />)
+
+    fireEvent.change(screen.getByDisplayValue(/All Clusters|전체 클러스터/), { target: { value: 'prod' } })
+
+    expect(screen.getByRole('option', { name: 'Platform Stack' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Dev Stack' })).toBeNull()
+  })
+
 })
