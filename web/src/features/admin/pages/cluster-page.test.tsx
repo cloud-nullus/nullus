@@ -11,9 +11,9 @@ vi.mock('../api/admin-api', () => ({
   useClusters: () => ({
     data: {
       items: [
-        { id: 'c1', name: 'prod-cluster', type: 'eks', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
-        { id: 'c2', name: 'staging-cluster', type: 'kubernetes', endpoint: 'https://staging.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-15T00:00:00Z' },
-        { id: 'c3', name: 'dev-cluster', type: 'k3s', endpoint: 'https://dev.k8s.nullus.io', status: 'pending', organizationIds: ['org-1'], createdAt: '2026-03-01T00:00:00Z' },
+        { id: 'c1', name: 'prod-cluster', type: 'target', types: ['target'], cloudProvider: 'aws', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
+        { id: 'c2', name: 'staging-cluster', type: 'pipeline', types: ['pipeline'], cloudProvider: 'on_premise', endpoint: 'https://staging.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-15T00:00:00Z' },
+        { id: 'c3', name: 'dev-cluster', type: 'pipeline', types: ['target', 'pipeline'], cloudProvider: 'on_premise', endpoint: 'https://dev.k8s.nullus.io', status: 'pending', organizationIds: ['org-1'], createdAt: '2026-03-01T00:00:00Z' },
       ],
       total: 3,
     },
@@ -28,7 +28,9 @@ vi.mock('../api/admin-api', () => ({
       ? {
         id,
         name: id === 'c1' ? 'prod-cluster' : 'staging-cluster',
-        type: id === 'c1' ? 'eks' : 'kubernetes',
+        type: id === 'c1' ? 'target' : 'pipeline',
+        types: id === 'c1' ? ['target'] : ['pipeline'],
+        cloudProvider: id === 'c1' ? 'aws' : 'on_premise',
         endpoint: id === 'c1' ? 'https://prod.k8s.nullus.io' : 'https://staging.k8s.nullus.io',
         status: 'connected',
         organizationIds: ['org-1'],
@@ -107,6 +109,7 @@ describe('ClusterPage', () => {
     renderWithProviders(<ClusterPage />)
     fireEvent.click(screen.getByText('Register Cluster'))
     expect(screen.getByText('Cluster Type')).toBeInTheDocument()
+    expect(screen.getByText('DevSecOps Stack Cluster')).toBeInTheDocument()
   })
 
   it('closing register modal hides form', () => {

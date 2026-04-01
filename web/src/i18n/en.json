@@ -808,6 +808,7 @@
     "detail": {
       "clusterName": "Cluster Name",
       "type": "Type",
+      "cloudProvider": "Cloud Provider",
       "namespace": "Namespace",
       "notConfigured": "Not Configured",
       "endpoint": "Endpoint",
@@ -840,10 +841,15 @@
       "editTitle": "Edit Cluster",
       "registerTitle": "Register Cluster"
     },
+    "type": {
+      "target": "Target Cluster",
+      "pipeline": "DevSecOps Stack Cluster"
+    },
     "form": {
       "clusterName": "Cluster Name",
       "clusterNamePlaceholder": "e.g. prod-cluster",
       "clusterType": "Cluster Type",
+      "cloudProvider": "Cloud Provider",
       "endpoint": "Endpoint",
       "endpointPlaceholder": "e.g. https://prod.k8s.nullus.io",
       "uploadKubeconfig": "Upload kubeconfig File",

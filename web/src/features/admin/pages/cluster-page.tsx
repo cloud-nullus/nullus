@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } from 'lucide-react'
 import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster } from '../api/admin-api'
-import type { Cluster, ClusterStatus } from '../api/admin-api'
+import type { Cluster, ClusterStatus, ClusterType, CloudProvider } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
@@ -90,7 +90,8 @@ const selectClassName = 'rounded-lg border border-[var(--color-border-default)] 
 const clusterSchema = z
   .object({
     name: z.string().min(2, 'Name must be at least 2 characters'),
-    type: z.enum(['kubernetes', 'eks', 'gke', 'aks', 'k3s', 'pipeline', 'target']),
+    types: z.array(z.enum(['pipeline', 'target'])).min(1, 'Select at least one cluster type'),
+    cloudProvider: z.enum(['aws', 'azure', 'gcp', 'oci', 'ibm_cloud', 'alibaba_cloud', 'tencent_cloud', 'naver_cloud', 'kt_cloud', 'nhn_cloud', 'on_premise']),
     endpoint: z.string().optional().refine((value) => !value || z.url().safeParse(value).success, 'Invalid URL'),
     kubeconfig: z.string(),
     isEdit: z.boolean(),
@@ -117,48 +118,71 @@ type ClusterFormData = z.infer<typeof clusterSchema>
 
 const CLUSTER_DEFAULTS: ClusterFormData = {
   name: '',
-  type: 'kubernetes',
+  types: [],
+  cloudProvider: 'on_premise',
   endpoint: '',
   kubeconfig: '',
   isEdit: false,
 }
 
-const CLUSTER_DETAIL_META: Record<Cluster['type'], { purpose: string; namespace: string; authMethod: string }> = {
-  kubernetes: {
-    purpose: 'Pipeline',
-    namespace: 'nullus-system',
-    authMethod: 'Kubeconfig (ServiceAccount)',
-  },
-  eks: {
-    purpose: 'Application',
-    namespace: 'default',
-    authMethod: 'IAM + Kubeconfig',
-  },
-  gke: {
-    purpose: 'Application',
-    namespace: 'default',
-    authMethod: 'Workload Identity',
-  },
-  aks: {
-    purpose: 'Application',
-    namespace: 'default',
-    authMethod: 'AAD + Kubeconfig',
-  },
-  k3s: {
-    purpose: 'Edge / Lightweight',
-    namespace: 'default',
-    authMethod: 'Kubeconfig',
-  },
+const CLUSTER_DETAIL_META: Record<ClusterType, { namespace: string; authMethod: string }> = {
   pipeline: {
-    purpose: 'Pipeline',
     namespace: 'nullus-system',
     authMethod: 'Kubeconfig (ServiceAccount)',
   },
   target: {
-    purpose: 'Application',
     namespace: 'default',
     authMethod: 'Kubeconfig',
   },
+}
+
+const CLUSTER_TYPE_OPTIONS: Array<{ value: ClusterType; key: string; fallback: string }> = [
+  { value: 'target', key: 'clusterPage.type.target', fallback: 'Target Cluster' },
+  { value: 'pipeline', key: 'clusterPage.type.pipeline', fallback: 'DevSecOps Stack Cluster' },
+]
+
+const CLOUD_PROVIDER_OPTIONS: Array<{ value: CloudProvider; label: string }> = [
+  { value: 'aws', label: 'AWS' },
+  { value: 'azure', label: 'Azure' },
+  { value: 'gcp', label: 'GCP' },
+  { value: 'oci', label: 'OCI' },
+  { value: 'ibm_cloud', label: 'IBM Cloud' },
+  { value: 'alibaba_cloud', label: 'Alibaba Cloud' },
+  { value: 'tencent_cloud', label: 'Tencent Cloud' },
+  { value: 'naver_cloud', label: 'Naver Cloud' },
+  { value: 'kt_cloud', label: 'KT Cloud' },
+  { value: 'nhn_cloud', label: 'NHN Cloud' },
+  { value: 'on_premise', label: 'On-Premise' },
+]
+
+function resolveClusterTypes(cluster: Pick<Cluster, 'type' | 'types'>): ClusterType[] {
+  const types = Array.isArray(cluster.types) && cluster.types.length > 0 ? cluster.types : (cluster.type ? [cluster.type] : [])
+  return Array.from(new Set(types))
+}
+
+function getPrimaryClusterType(types: ClusterType[]): ClusterType {
+  return types.includes('pipeline') ? 'pipeline' : 'target'
+}
+
+function getClusterTypeLabel(t: (key: string, defaultValue?: string) => string, type: ClusterType) {
+  const option = CLUSTER_TYPE_OPTIONS.find((item) => item.value === type)
+  return t(option?.key ?? 'clusterPage.type.target', option?.fallback ?? 'Target Cluster')
+}
+
+function formatClusterTypes(t: (key: string, defaultValue?: string) => string, types: ClusterType[]) {
+  return types.map((type) => getClusterTypeLabel(t, type)).join(' / ')
+}
+
+function formatCloudProvider(provider: CloudProvider | undefined) {
+  return CLOUD_PROVIDER_OPTIONS.find((item) => item.value === provider)?.label ?? 'On-Premise'
+}
+
+function getClusterNamespaces(types: ClusterType[]) {
+  return Array.from(new Set(types.map((type) => CLUSTER_DETAIL_META[type].namespace))).join(' / ')
+}
+
+function getClusterAuthMethods(types: ClusterType[]) {
+  return Array.from(new Set(types.map((type) => CLUSTER_DETAIL_META[type].authMethod))).join(' / ')
 }
 
 export function ClusterPage() {
@@ -236,6 +260,7 @@ export function ClusterPage() {
     handleSubmit,
     reset,
     setValue,
+    watch,
     formState: { errors, isValid, isSubmitting },
   } = useForm<ClusterFormData>({
     resolver: zodResolver(clusterSchema),
@@ -249,7 +274,8 @@ export function ClusterPage() {
 
     reset({
       name: editingClusterDetail.name,
-      type: editingClusterDetail.type,
+      types: resolveClusterTypes(editingClusterDetail),
+      cloudProvider: editingClusterDetail.cloudProvider,
       endpoint: editingClusterDetail.endpoint,
       kubeconfig: editingClusterDetail.kubeconfig ?? '',
       isEdit: true,
@@ -259,11 +285,19 @@ export function ClusterPage() {
 
   const handleRegister = (form: ClusterFormData) => {
     const endpoint = form.endpoint?.trim() ?? ''
+    const types = Array.from(new Set(form.types))
+    const payload = {
+      name: form.name,
+      type: getPrimaryClusterType(types),
+      types,
+      cloudProvider: form.cloudProvider,
+      endpoint,
+    }
 
     if (editingClusterId) {
       const updatePayload = form.kubeconfig.trim()
-        ? { name: form.name, type: form.type, endpoint, kubeconfig: form.kubeconfig }
-        : { name: form.name, type: form.type, endpoint }
+        ? { ...payload, kubeconfig: form.kubeconfig }
+        : payload
 
       updateCluster.mutate(
         { id: editingClusterId, data: updatePayload },
@@ -279,7 +313,7 @@ export function ClusterPage() {
       return
     }
 
-    createCluster.mutate({ name: form.name, type: form.type, endpoint, kubeconfig: form.kubeconfig }, {
+    createCluster.mutate({ ...payload, kubeconfig: form.kubeconfig }, {
       onSuccess: () => {
         setRegisterModal(false)
         editPrefilledClusterIdRef.current = null
@@ -301,13 +335,16 @@ export function ClusterPage() {
     editPrefilledClusterIdRef.current = null
     reset({
       name: selectedCluster.name,
-      type: selectedCluster.type,
+      types: resolveClusterTypes(selectedCluster),
+      cloudProvider: selectedCluster.cloudProvider,
       endpoint: selectedCluster.endpoint,
       kubeconfig: selectedCluster.kubeconfig ?? '',
       isEdit: true,
     })
     setRegisterModal(true)
   }
+
+  const selectedTypes = watch('types') ?? []
 
   const handleDeleteCluster = () => {
     if (!deleteClusterId) return
@@ -429,7 +466,7 @@ export function ClusterPage() {
                 const effectiveStatus = getEffectiveStatus(cluster)
                 const st = STATUS_CONFIG[effectiveStatus]
                 const isSelected = selected?.id === cluster.id
-                const meta = CLUSTER_DETAIL_META[cluster.type]
+                const clusterTypes = resolveClusterTypes(cluster)
                 return (
                   <button
                     key={cluster.id}
@@ -452,7 +489,7 @@ export function ClusterPage() {
                       </span>
                     </div>
                     <div className="text-xs text-[var(--color-text-secondary)]">
-                      {meta ? `${meta.purpose} · ${meta.namespace}` : cluster.type.toUpperCase()}
+                      {formatClusterTypes(t, clusterTypes)} · {formatCloudProvider(cluster.cloudProvider)}
                     </div>
                   </button>
                 )
@@ -463,7 +500,7 @@ export function ClusterPage() {
             selectedCluster ? (
               <div className="min-w-0 p-4">
                 {(() => {
-                  const detailMeta = CLUSTER_DETAIL_META[selectedCluster.type]
+                  const selectedClusterTypes = resolveClusterTypes(selectedCluster)
                   const effectiveSelectedStatus = getEffectiveStatus(selectedCluster)
                   const connectionHint = getConnectionHint(t, effectiveSelectedStatus)
                   const showBaseHint = !verifyConnectionResult && !isVerifyingConnection && effectiveSelectedStatus !== 'connected'
@@ -483,10 +520,11 @@ export function ClusterPage() {
                     <div className="grid grid-cols-2 gap-4">
                       {[
                         [t('clusterPage.detail.clusterName', 'Cluster Name'), selectedCluster.name],
-                        [t('clusterPage.detail.type', 'Type'), detailMeta?.purpose ?? selectedCluster.type.toUpperCase()],
-                        [t('clusterPage.detail.namespace', 'Namespace'), detailMeta?.namespace ?? t('clusterPage.detail.notConfigured', 'Not Configured')],
+                        [t('clusterPage.detail.type', 'Type'), formatClusterTypes(t, selectedClusterTypes)],
+                        [t('clusterPage.detail.cloudProvider', 'Cloud Provider'), formatCloudProvider(selectedCluster.cloudProvider)],
+                        [t('clusterPage.detail.namespace', 'Namespace'), getClusterNamespaces(selectedClusterTypes)],
                         [t('clusterPage.detail.endpoint', 'Endpoint'), selectedCluster.endpoint],
-                        [t('clusterPage.detail.authMethod', 'Auth Method'), detailMeta?.authMethod ?? 'Kubeconfig'],
+                        [t('clusterPage.detail.authMethod', 'Auth Method'), getClusterAuthMethods(selectedClusterTypes)],
                       ].map(([label, val]) => (
                         <div key={label}>
                         <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
@@ -611,15 +649,38 @@ export function ClusterPage() {
             {...register('name')}
           />
           {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
-          <NativeSelect label={t('clusterPage.form.clusterType', 'Cluster Type')} {...register('type')} className={selectClassName}>
-              <option value="kubernetes">Kubernetes</option>
-              <option value="eks">AWS EKS</option>
-              <option value="gke">GCP GKE</option>
-              <option value="aks">Azure AKS</option>
-              <option value="k3s">K3s</option>
-              <option value="pipeline">Pipeline Cluster</option>
-              <option value="target">Target Cluster</option>
-            </NativeSelect>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+              {t('clusterPage.form.clusterType', 'Cluster Type')}
+            </span>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {CLUSTER_TYPE_OPTIONS.map((option) => {
+                const checked = selectedTypes.includes(option.value)
+                return (
+                  <label
+                    key={option.value}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors',
+                      checked
+                        ? 'border-[rgba(99,102,241,0.45)] bg-[rgba(99,102,241,0.12)] text-[var(--color-text-primary)]'
+                        : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] text-[var(--color-text-secondary)]'
+                    )}
+                  >
+                    <input type="checkbox" value={option.value} {...register('types')} className="h-4 w-4" />
+                    <span>{t(option.key, option.fallback)}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+          {errors.types && <span className="text-xs text-[#ef4444]">{errors.types.message}</span>}
+          <NativeSelect label={t('clusterPage.form.cloudProvider', 'Cloud Provider')} {...register('cloudProvider')} className={selectClassName}>
+            {CLOUD_PROVIDER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </NativeSelect>
           <Input
             label={t('clusterPage.form.endpoint', 'Endpoint')}
             placeholder={t('clusterPage.form.endpointPlaceholder', 'e.g. https://prod.k8s.nullus.io')}

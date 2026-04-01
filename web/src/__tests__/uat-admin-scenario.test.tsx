@@ -44,9 +44,9 @@ vi.mock('../features/admin/api/admin-api', () => ({
   useClusters: () => ({
     data: {
       items: [
-        { id: 'c1', name: 'prod-cluster', type: 'eks', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
-        { id: 'c2', name: 'staging-cluster', type: 'kubernetes', endpoint: 'https://staging.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-15T00:00:00Z' },
-        { id: 'c3', name: 'dev-cluster', type: 'k3s', endpoint: 'https://dev.k8s.nullus.io', status: 'pending', organizationIds: ['org-1'], createdAt: '2026-03-01T00:00:00Z' },
+        { id: 'c1', name: 'prod-cluster', type: 'target', types: ['target'], cloudProvider: 'aws', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
+        { id: 'c2', name: 'staging-cluster', type: 'pipeline', types: ['pipeline'], cloudProvider: 'on_premise', endpoint: 'https://staging.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-15T00:00:00Z' },
+        { id: 'c3', name: 'dev-cluster', type: 'pipeline', types: ['target', 'pipeline'], cloudProvider: 'on_premise', endpoint: 'https://dev.k8s.nullus.io', status: 'pending', organizationIds: ['org-1'], createdAt: '2026-03-01T00:00:00Z' },
       ],
       total: 3,
     },
@@ -56,6 +56,7 @@ vi.mock('../features/admin/api/admin-api', () => ({
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useVerifyCluster: () => ({ mutate: vi.fn() }),
+  useCluster: () => ({ data: undefined, isFetching: false }),
 }))
 
 const mockNavigate = vi.fn()

@@ -808,6 +808,7 @@
     "detail": {
       "clusterName": "클러스터 이름",
       "type": "유형",
+      "cloudProvider": "클라우드 제공자",
       "namespace": "네임스페이스",
       "notConfigured": "설정 안 됨",
       "endpoint": "엔드포인트",
@@ -840,10 +841,15 @@
       "editTitle": "클러스터 수정",
       "registerTitle": "클러스터 등록"
     },
+    "type": {
+      "target": "타겟 클러스터",
+      "pipeline": "DevSecOps Stack 클러스터"
+    },
     "form": {
       "clusterName": "클러스터 이름",
       "clusterNamePlaceholder": "예: prod-cluster",
       "clusterType": "클러스터 타입",
+      "cloudProvider": "클라우드 제공자",
       "endpoint": "엔드포인트",
       "endpointPlaceholder": "예: https://prod.k8s.nullus.io",
       "uploadKubeconfig": "kubeconfig 파일 업로드",

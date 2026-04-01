@@ -1,0 +1,14 @@
+ALTER TABLE clusters
+    ADD COLUMN IF NOT EXISTS cloud_provider VARCHAR(64) NOT NULL DEFAULT 'on_premise';
+
+UPDATE clusters
+SET cloud_provider = 'on_premise'
+WHERE cloud_provider IS NULL
+   OR cloud_provider = ''
+   OR id IN (
+        '31111111-1111-1111-1111-111111111111',
+        '32222222-2222-2222-2222-222222222222',
+        '35555555-5555-5555-5555-555555555555',
+        '36666666-6666-6666-6666-666666666666',
+        '37777777-7777-7777-7777-777777777777'
+   );

@@ -16,6 +16,7 @@ export type {
   Cluster,
   ClusterStatus,
   ClusterType,
+  CloudProvider,
   CreateClusterRequest,
   CreateOrgRequest,
   InviteMemberRequest,
@@ -47,13 +48,35 @@ const queryKeys = {
   inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
 }
 
-type ClusterApiShape = Cluster & { connection_status?: Cluster['status']; org_id?: string }
+type ClusterApiShape = Cluster & {
+  connection_status?: Cluster['status']
+  org_id?: string
+  cloud_provider?: Cluster['cloudProvider']
+}
+
+const normalizeClusterTypes = (types: Cluster['types'] | undefined, type: Cluster['type'] | undefined): Cluster['types'] => {
+  if (Array.isArray(types) && types.length > 0) {
+    return Array.from(new Set(types))
+  }
+  return type ? [type] : []
+}
 
 const normalizeCluster = (cluster: ClusterApiShape): Cluster => ({
   ...cluster,
+  type: cluster.type ?? 'target',
+  types: normalizeClusterTypes(cluster.types, cluster.type),
+  cloudProvider: cluster.cloudProvider ?? cluster.cloud_provider ?? 'on_premise',
   status: cluster.status ?? cluster.connection_status ?? 'pending',
   organizationIds: cluster.organizationIds ?? (cluster.org_id ? [cluster.org_id] : []),
 })
+
+const toClusterRequestPayload = (data: Partial<CreateClusterRequest>) => {
+  const { cloudProvider, ...rest } = data
+  return {
+    ...rest,
+    cloud_provider: cloudProvider,
+  }
+}
 
 // --- API functions ---
 
@@ -108,10 +131,10 @@ const adminApiCalls = {
     api.get<ClusterApiShape>(`/admin/clusters/${id}`).then((r) => normalizeCluster(r.data)),
 
   createCluster: (data: CreateClusterRequest) =>
-    api.post<Cluster>('/admin/clusters', data).then((r) => r.data),
+    api.post<ClusterApiShape>('/admin/clusters', toClusterRequestPayload(data)).then((r) => normalizeCluster(r.data)),
 
   updateCluster: (id: string, data: Partial<CreateClusterRequest>) =>
-    api.patch<Cluster>(`/admin/clusters/${id}`, data).then((r) => r.data),
+    api.patch<ClusterApiShape>(`/admin/clusters/${id}`, toClusterRequestPayload(data)).then((r) => normalizeCluster(r.data)),
 
   deleteCluster: (id: string) =>
     api.delete(`/admin/clusters/${id}`).then((r) => r.data),

@@ -48,30 +48,41 @@ func (uc *ClusterUseCase) GetFirstOrgID(ctx context.Context) (string, error) {
 
 // RegisterClusterInput holds the input for registering a cluster.
 type RegisterClusterInput struct {
-	Name     string
-	Type     domain.ClusterType
-	Endpoint string
-	OrgID    string
+	Name          string
+	Type          domain.ClusterType
+	Types         []domain.ClusterType
+	CloudProvider domain.CloudProvider
+	Endpoint      string
+	OrgID         string
 }
 
 // UpdateClusterInput holds the input for updating a cluster.
 type UpdateClusterInput struct {
-	Name     string
-	Endpoint string
+	Name          string
+	Type          domain.ClusterType
+	Types         []domain.ClusterType
+	CloudProvider domain.CloudProvider
+	Endpoint      string
 }
 
 // RegisterCluster registers a new cluster with pending connection status.
 func (uc *ClusterUseCase) RegisterCluster(ctx context.Context, input RegisterClusterInput) (*domain.Cluster, error) {
 	now := time.Now().UTC()
+	clusterTypes := domain.NormalizeClusterTypes(input.Types, input.Type)
 	cluster := &domain.Cluster{
 		ID:               uuid.New().String(),
 		Name:             input.Name,
-		Type:             input.Type,
+		Type:             domain.ResolvePrimaryClusterType(clusterTypes, input.Type),
+		Types:            clusterTypes,
+		CloudProvider:    input.CloudProvider,
 		Endpoint:         input.Endpoint,
 		ConnectionStatus: domain.ConnectionStatusPending,
 		OrgID:            input.OrgID,
 		CreatedAt:        now,
 		UpdatedAt:        now,
+	}
+	if cluster.CloudProvider == "" {
+		cluster.CloudProvider = domain.CloudProviderOnPremise
 	}
 
 	if err := uc.clusterRepo.Create(ctx, cluster); err != nil {
@@ -96,6 +107,11 @@ func (uc *ClusterUseCase) GetCluster(ctx context.Context, id string) (*domain.Cl
 			Retryable:  false,
 		}
 	}
+	cluster.Types = domain.NormalizeClusterTypes(cluster.Types, cluster.Type)
+	cluster.Type = domain.ResolvePrimaryClusterType(cluster.Types, cluster.Type)
+	if cluster.CloudProvider == "" {
+		cluster.CloudProvider = domain.CloudProviderOnPremise
+	}
 	return cluster, nil
 }
 
@@ -104,6 +120,13 @@ func (uc *ClusterUseCase) ListClusters(ctx context.Context, orgID string) ([]*do
 	clusters, err := uc.clusterRepo.List(ctx, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("listing clusters: %w", err)
+	}
+	for _, cluster := range clusters {
+		cluster.Types = domain.NormalizeClusterTypes(cluster.Types, cluster.Type)
+		cluster.Type = domain.ResolvePrimaryClusterType(cluster.Types, cluster.Type)
+		if cluster.CloudProvider == "" {
+			cluster.CloudProvider = domain.CloudProviderOnPremise
+		}
 	}
 	return clusters, nil
 }
@@ -116,6 +139,13 @@ func (uc *ClusterUseCase) UpdateCluster(ctx context.Context, id string, input Up
 	}
 
 	cluster.Name = input.Name
+	if input.Type != "" || len(input.Types) > 0 {
+		cluster.Types = domain.NormalizeClusterTypes(input.Types, input.Type)
+		cluster.Type = domain.ResolvePrimaryClusterType(cluster.Types, input.Type)
+	}
+	if input.CloudProvider != "" {
+		cluster.CloudProvider = input.CloudProvider
+	}
 	cluster.Endpoint = input.Endpoint
 	cluster.UpdatedAt = time.Now().UTC()
 

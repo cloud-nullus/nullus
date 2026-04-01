@@ -45,8 +45,8 @@ vi.mock('../api/admin-api', () => ({
   useClusters: () => ({
     data: {
       items: [
-        { id: 'c1', name: 'prod-cluster', type: 'eks', status: 'connected' },
-        { id: 'c2', name: 'staging-cluster', type: 'kubernetes', status: 'connected' },
+        { id: 'c1', name: 'prod-cluster', type: 'target', types: ['target'], cloudProvider: 'aws', endpoint: 'https://prod.example.com', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
+        { id: 'c2', name: 'staging-cluster', type: 'pipeline', types: ['pipeline'], cloudProvider: 'on_premise', endpoint: 'https://staging.example.com', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
       ],
       total: 2,
     },

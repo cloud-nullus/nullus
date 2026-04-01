@@ -41,23 +41,30 @@ func NewClusterHandler(clusterUC *usecase.ClusterUseCase, auditLogger ...*audit.
 }
 
 type registerClusterRequest struct {
-	Name       string             `json:"name"`
-	Type       domain.ClusterType `json:"type"`
-	Endpoint   string             `json:"endpoint"`
-	OrgID      string             `json:"org_id"`
-	Kubeconfig string             `json:"kubeconfig"`
+	Name          string               `json:"name"`
+	Type          domain.ClusterType   `json:"type"`
+	Types         []domain.ClusterType `json:"types"`
+	CloudProvider domain.CloudProvider `json:"cloud_provider"`
+	Endpoint      string               `json:"endpoint"`
+	OrgID         string               `json:"org_id"`
+	Kubeconfig    string               `json:"kubeconfig"`
 }
 
 type updateClusterRequest struct {
-	Name       string `json:"name"`
-	Endpoint   string `json:"endpoint"`
-	Kubeconfig string `json:"kubeconfig,omitempty"`
+	Name          string               `json:"name"`
+	Type          domain.ClusterType   `json:"type,omitempty"`
+	Types         []domain.ClusterType `json:"types,omitempty"`
+	CloudProvider domain.CloudProvider `json:"cloud_provider,omitempty"`
+	Endpoint      string               `json:"endpoint"`
+	Kubeconfig    string               `json:"kubeconfig,omitempty"`
 }
 
 type clusterResponse struct {
 	ID               string                  `json:"id"`
 	Name             string                  `json:"name"`
 	Type             domain.ClusterType      `json:"type"`
+	Types            []domain.ClusterType    `json:"types"`
+	CloudProvider    domain.CloudProvider    `json:"cloud_provider"`
 	Endpoint         string                  `json:"endpoint"`
 	ConnectionStatus domain.ConnectionStatus `json:"connection_status"`
 	OrgID            string                  `json:"org_id"`
@@ -75,6 +82,8 @@ func toClusterResponse(cluster *domain.Cluster, kubeconfig string) clusterRespon
 		ID:               cluster.ID,
 		Name:             cluster.Name,
 		Type:             cluster.Type,
+		Types:            domain.NormalizeClusterTypes(cluster.Types, cluster.Type),
+		CloudProvider:    cluster.CloudProvider,
 		Endpoint:         cluster.Endpoint,
 		ConnectionStatus: cluster.ConnectionStatus,
 		OrgID:            cluster.OrgID,
@@ -119,10 +128,12 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 	}
 
 	cluster, err := h.clusterUC.RegisterCluster(c.Request().Context(), usecase.RegisterClusterInput{
-		Name:     req.Name,
-		Type:     req.Type,
-		Endpoint: req.Endpoint,
-		OrgID:    orgID,
+		Name:          req.Name,
+		Type:          req.Type,
+		Types:         req.Types,
+		CloudProvider: req.CloudProvider,
+		Endpoint:      req.Endpoint,
+		OrgID:         orgID,
 	})
 	if err != nil {
 		return err
@@ -142,10 +153,12 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 			ResourceType: "cluster",
 			ResourceID:   cluster.ID,
 			Details: map[string]any{
-				"name":     req.Name,
-				"type":     req.Type,
-				"endpoint": req.Endpoint,
-				"org_id":   req.OrgID,
+				"name":           req.Name,
+				"type":           req.Type,
+				"types":          req.Types,
+				"cloud_provider": req.CloudProvider,
+				"endpoint":       req.Endpoint,
+				"org_id":         req.OrgID,
 			},
 			IPAddress: c.RealIP(),
 		})
@@ -209,8 +222,11 @@ func (h *ClusterHandler) UpdateCluster(c echo.Context) error {
 	}
 
 	cluster, err := h.clusterUC.UpdateCluster(c.Request().Context(), id, usecase.UpdateClusterInput{
-		Name:     req.Name,
-		Endpoint: req.Endpoint,
+		Name:          req.Name,
+		Type:          req.Type,
+		Types:         req.Types,
+		CloudProvider: req.CloudProvider,
+		Endpoint:      req.Endpoint,
 	})
 	if err != nil {
 		return err
@@ -240,8 +256,11 @@ func (h *ClusterHandler) UpdateCluster(c echo.Context) error {
 			ResourceType: "cluster",
 			ResourceID:   cluster.ID,
 			Details: map[string]any{
-				"name":     req.Name,
-				"endpoint": req.Endpoint,
+				"name":           req.Name,
+				"type":           req.Type,
+				"types":          req.Types,
+				"cloud_provider": req.CloudProvider,
+				"endpoint":       req.Endpoint,
 			},
 			IPAddress: c.RealIP(),
 		})

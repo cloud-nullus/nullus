@@ -8,7 +8,20 @@ export type MemberRole = Role
 
 export type MemberStatus = 'active' | 'pending' | 'inactive'
 
-export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s' | 'pipeline' | 'target'
+export type ClusterType = 'pipeline' | 'target'
+
+export type CloudProvider =
+  | 'aws'
+  | 'azure'
+  | 'gcp'
+  | 'oci'
+  | 'ibm_cloud'
+  | 'alibaba_cloud'
+  | 'tencent_cloud'
+  | 'naver_cloud'
+  | 'kt_cloud'
+  | 'nhn_cloud'
+  | 'on_premise'
 
 export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive' | 'unreachable' | 'auth_failed'
 
@@ -78,6 +91,8 @@ export interface Cluster {
   id: string
   name: string
   type: ClusterType
+  types: ClusterType[]
+  cloudProvider: CloudProvider
   endpoint: string
   status: ClusterStatus
   organizationIds: string[]
@@ -354,7 +369,9 @@ export interface InviteMemberRequest {
 
 export interface CreateClusterRequest {
   name: string
-  type: ClusterType
+  type?: ClusterType
+  types: ClusterType[]
+  cloudProvider: CloudProvider
   endpoint?: string
   kubeconfig: string
 }
