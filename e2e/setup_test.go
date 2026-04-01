@@ -142,6 +142,7 @@ func newEchoServer() *echo.Echo {
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
+	pipelineHandler.RegisterStackRoutes(stacks)
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
 

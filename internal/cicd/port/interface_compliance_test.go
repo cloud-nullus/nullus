@@ -13,3 +13,5 @@ var _ port.PipelineTemplateRepository = (*cicdrepo.MemoryCICDTemplateRepository)
 
 var _ port.DeploymentRepository = (*cicdrepo.PostgresDeploymentRepository)(nil)
 var _ port.DeploymentRepository = (*cicdrepo.MemoryDeploymentRepository)(nil)
+
+var _ port.StackReader = (*cicdrepo.PostgresStackReader)(nil)

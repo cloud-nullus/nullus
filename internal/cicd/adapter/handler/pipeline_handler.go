@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -52,6 +53,13 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy-app", h.DeployApp)
 }
 
+// RegisterStackRoutes registers pipeline routes under the /stacks group.
+// This allows GET /api/v1/stacks/:stackId/pipelines without the Stack
+// module importing the CI/CD module.
+func (h *PipelineHandler) RegisterStackRoutes(g *echo.Group) {
+	g.GET("/:stackId/pipelines", h.ListPipelinesByStack)
+}
+
 func (h *PipelineHandler) StreamDeployLogs(c echo.Context) error {
 	return StreamCicdLogs(c, h.stepTracker)
 }
@@ -61,6 +69,7 @@ type createPipelineRequest struct {
 	Name       string `json:"name"`
 	TemplateID string `json:"template_id"`
 	ClusterID  string `json:"cluster_id"`
+	StackID    string `json:"stack_id,omitempty"` // optional — links to a stack
 	Namespace  string `json:"namespace"`
 	AppType    string `json:"app_type"`
 	GitRepoURL string `json:"git_repo_url"`
@@ -83,30 +92,61 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		TemplateID: req.TemplateID,
 		OrgID:      orgID,
 		ClusterID:  req.ClusterID,
+		StackID:    req.StackID,
 		Namespace:  req.Namespace,
 		AppType:    domain.AppType(req.AppType),
 		GitRepoURL: req.GitRepoURL,
 	})
 	if err != nil {
+		if errors.Is(err, usecase.ErrStackNotFound) {
+			return errorResponse(c, http.StatusBadRequest, "STACK_NOT_FOUND", err.Error())
+		}
+		if errors.Is(err, usecase.ErrStackOrgMismatch) {
+			return errorResponse(c, http.StatusForbidden, "STACK_ORG_MISMATCH", err.Error())
+		}
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_CONFIG_INVALID", err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, out.Pipeline)
+	resp := map[string]any{"pipeline": out.Pipeline}
+	if out.StackWarning != "" {
+		resp["warning"] = out.StackWarning
+	}
+	return c.JSON(http.StatusCreated, resp)
 }
 
 // ListPipelines handles GET /api/v1/pipelines.
+// Supports optional ?stack_id= query parameter to filter by stack.
 func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
 		orgID = "11111111-1111-1111-1111-111111111111"
 	}
 
-	out, err := h.listPipelines.Execute(c.Request().Context(), usecase.ListPipelinesInput{OrgID: orgID})
+	out, err := h.listPipelines.Execute(c.Request().Context(), usecase.ListPipelinesInput{
+		OrgID:   orgID,
+		StackID: c.QueryParam("stack_id"),
+	})
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"items": out.Pipelines, "total": len(out.Pipelines)})
+}
+
+// ListPipelinesByStack handles GET /api/v1/stacks/:stackId/pipelines.
+// Returns all pipelines linked to the given stack.
+func (h *PipelineHandler) ListPipelinesByStack(c echo.Context) error {
+	stackID := c.Param("stackId")
+	if stackID == "" {
+		return errorResponse(c, http.StatusBadRequest, "STACK_ID_REQUIRED", "stack_id path parameter is required")
+	}
+
+	pipelines, err := h.pipelineRepo.ListByStackID(c.Request().Context(), stackID)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{"items": pipelines, "total": len(pipelines)})
 }
 
 // deployRequest is the request body for POST /pipelines/:id/deploy.

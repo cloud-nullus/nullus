@@ -36,7 +36,10 @@ func (m *mockDeployPipelineRepo) GetByID(_ context.Context, id string) (*domain.
 	copied := *p
 	return &copied, nil
 }
-func (m *mockDeployPipelineRepo) List(_ context.Context, _ string) ([]*domain.Pipeline, error) {
+func (m *mockDeployPipelineRepo) List(_ context.Context, _ string, _ ...string) ([]*domain.Pipeline, error) {
+	return nil, nil
+}
+func (m *mockDeployPipelineRepo) ListByStackID(_ context.Context, _ string) ([]*domain.Pipeline, error) {
 	return nil, nil
 }
 func (m *mockDeployPipelineRepo) Update(_ context.Context, _ *domain.Pipeline) error { return nil }

@@ -10,7 +10,8 @@ import (
 
 // ListPipelinesInput holds the parameters for listing pipelines.
 type ListPipelinesInput struct {
-	OrgID string
+	OrgID   string
+	StackID string // optional — filters to pipelines linked to this stack
 }
 
 // ListPipelinesOutput holds the result of listing pipelines.
@@ -29,8 +30,9 @@ func NewListPipelines(pipelineRepo port.PipelineRepository) *ListPipelines {
 }
 
 // Execute returns all pipelines for the given organization.
+// When StackID is set, results are filtered to that stack.
 func (uc *ListPipelines) Execute(ctx context.Context, input ListPipelinesInput) (*ListPipelinesOutput, error) {
-	pipelines, err := uc.pipelineRepo.List(ctx, input.OrgID)
+	pipelines, err := uc.pipelineRepo.List(ctx, input.OrgID, input.StackID)
 	if err != nil {
 		return nil, fmt.Errorf("list pipelines: %w", err)
 	}

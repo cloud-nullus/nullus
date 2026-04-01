@@ -113,7 +113,9 @@ func TestUAT2_Jieun_Developer(t *testing.T) {
 		"git_repo_url": "https://gitlab.example.com/jieun/backend",
 	})
 	require.Equal(t, http.StatusCreated, status, "파이프라인 생성 실패")
-	pipelineData := parseData(t, resp)
+	pipelineResp := parseData(t, resp)
+	pipelineData, ok := pipelineResp["pipeline"].(map[string]any)
+	require.True(t, ok, "response should contain 'pipeline' key")
 	pipelineID := getString(t, pipelineData, "id")
 	assert.Equal(t, "jieun-backend-pipeline", pipelineData["name"])
 
@@ -122,7 +124,7 @@ func TestUAT2_Jieun_Developer(t *testing.T) {
 		"version":     "v2.1.0",
 		"deployed_by": "jieun",
 	})
-	require.Equal(t, http.StatusOK, status, "파이프라인 배포 실패")
+	require.Equal(t, http.StatusAccepted, status, "파이프라인 배포 실패")
 	require.NotNil(t, resp)
 
 	// 4. 배포 이력 확인

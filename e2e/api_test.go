@@ -68,11 +68,11 @@ func TestScenario1_OrgAndCluster(t *testing.T) {
 
 // Scenario 2: Stack 템플릿 → 설정 → 배포 흐름
 func TestScenario2_StackDeployFlow(t *testing.T) {
-	// 1. GET /api/v1/stacks/templates → 200, 3개
+	// 1. GET /api/v1/stacks/templates → 200, 4개 (Golden Path)
 	status, resp := doRequest(t, http.MethodGet, "/api/v1/stacks/templates", nil)
 	assertStatus(t, status, http.StatusOK)
 	templates := parseDataSlice(t, resp)
-	assert.Len(t, templates, 3)
+	assert.Len(t, templates, 4)
 
 	// 2. GET /api/v1/stacks/templates/gitlab-allinone-v1 → 200
 	status, resp = doRequest(t, http.MethodGet, "/api/v1/stacks/templates/gitlab-allinone-v1", nil)
@@ -232,7 +232,9 @@ func TestScenario4_CICDPipelineFlow(t *testing.T) {
 		"git_repo_url": "https://gitlab.example.com/my-app",
 	})
 	assertStatus(t, status, http.StatusCreated)
-	pipelineData := parseData(t, resp)
+	pipelineResp := parseData(t, resp)
+	pipelineData, ok := pipelineResp["pipeline"].(map[string]any)
+	require.True(t, ok, "response should contain 'pipeline' key")
 	pipelineID := getString(t, pipelineData, "id")
 	assert.Equal(t, "my-pipeline", pipelineData["name"])
 
@@ -242,12 +244,12 @@ func TestScenario4_CICDPipelineFlow(t *testing.T) {
 	pipelines := parseDataSlice(t, resp)
 	assert.GreaterOrEqual(t, len(pipelines), 1)
 
-	// 4. POST /api/v1/cicd/pipelines/:id/deploy → 200
+	// 4. POST /api/v1/cicd/pipelines/:id/deploy → 202
 	status, resp = doRequest(t, http.MethodPost, "/api/v1/cicd/pipelines/"+pipelineID+"/deploy", map[string]any{
 		"version":     "v1.0.0",
 		"deployed_by": "ci-bot",
 	})
-	assertStatus(t, status, http.StatusOK)
+	assertStatus(t, status, http.StatusAccepted)
 	require.NotNil(t, resp)
 
 	// 5. GET /api/v1/cicd/deployments → 200

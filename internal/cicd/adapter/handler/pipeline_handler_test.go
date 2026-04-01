@@ -61,13 +61,28 @@ func (m *mockPipelineRepository) GetByID(_ context.Context, id string) (*domain.
 	return &copied, nil
 }
 
-func (m *mockPipelineRepository) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
+func (m *mockPipelineRepository) List(_ context.Context, orgID string, stackID ...string) ([]*domain.Pipeline, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
+	filterStack := len(stackID) > 0 && stackID[0] != ""
 	result := make([]*domain.Pipeline, 0, len(m.pipelines))
 	for _, p := range m.pipelines {
 		if p.OrgID == orgID {
+			if filterStack && p.StackID != stackID[0] {
+				continue
+			}
+			copied := *p
+			result = append(result, &copied)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockPipelineRepository) ListByStackID(_ context.Context, stackID string) ([]*domain.Pipeline, error) {
+	result := make([]*domain.Pipeline, 0)
+	for _, p := range m.pipelines {
+		if p.StackID == stackID {
 			copied := *p
 			result = append(result, &copied)
 		}
@@ -209,12 +224,16 @@ func TestPipelineHandler_Create_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code)
 	assert.Equal(t, 1, pipelineRepo.created)
 
-	var resp domain.Pipeline
+	var resp struct {
+		Pipeline domain.Pipeline `json:"pipeline"`
+		Warning  string          `json:"warning,omitempty"`
+	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Equal(t, "orders", resp.Name)
-	assert.Equal(t, "org-1", resp.OrgID)
-	assert.Equal(t, domain.PipelineStatusActive, resp.Status)
-	assert.NotEmpty(t, resp.ID)
+	assert.Equal(t, "orders", resp.Pipeline.Name)
+	assert.Equal(t, "org-1", resp.Pipeline.OrgID)
+	assert.Equal(t, domain.PipelineStatusActive, resp.Pipeline.Status)
+	assert.NotEmpty(t, resp.Pipeline.ID)
+	assert.Empty(t, resp.Warning)
 }
 
 func TestPipelineHandler_Create_InvalidBody(t *testing.T) {

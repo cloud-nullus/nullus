@@ -27,7 +27,10 @@ func (m *mockCreatePipelineRepo) Create(_ context.Context, pipeline *domain.Pipe
 func (m *mockCreatePipelineRepo) GetByID(_ context.Context, _ string) (*domain.Pipeline, error) {
 	return nil, nil
 }
-func (m *mockCreatePipelineRepo) List(_ context.Context, _ string) ([]*domain.Pipeline, error) {
+func (m *mockCreatePipelineRepo) List(_ context.Context, _ string, _ ...string) ([]*domain.Pipeline, error) {
+	return nil, nil
+}
+func (m *mockCreatePipelineRepo) ListByStackID(_ context.Context, _ string) ([]*domain.Pipeline, error) {
 	return nil, nil
 }
 func (m *mockCreatePipelineRepo) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
