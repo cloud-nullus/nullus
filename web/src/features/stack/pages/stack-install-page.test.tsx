@@ -23,6 +23,39 @@ const mockStacks = {
   total: 0,
 }
 
+const mockCompatibilityMatrices = [
+  {
+    id: 'gitlab-allinone-v1',
+    name: 'GitLab All-in-One',
+    status: 'verified',
+    k8sRange: '1.27-1.32',
+    tools: [
+      { name: 'GitLab CE', helmVersion: '9.5.1', appVersion: '18.5.1' },
+      { name: 'GitLab CI', helmVersion: '9.5.1', appVersion: '18.5.1' },
+      { name: 'GitLab Registry', helmVersion: '9.5.1', appVersion: '18.5.1' },
+      { name: 'MinIO', helmVersion: '5.2.0', appVersion: 'RELEASE.2024-08-03T04-33-23Z' },
+      { name: 'Argo CD', helmVersion: '6.8.0', appVersion: 'v2.8.3' },
+      { name: 'Prometheus', helmVersion: '24.0.0', appVersion: 'v2.54.1' },
+      { name: 'Grafana', helmVersion: '8.6.0', appVersion: '11.1.0' },
+    ],
+  },
+  {
+    id: 'gitlab-argocd-v1',
+    name: 'GitLab + Argo CD',
+    status: 'verified',
+    k8sRange: '1.27-1.32',
+    tools: [
+      { name: 'GitLab CE', helmVersion: '9.5.1', appVersion: '18.5.1' },
+      { name: 'GitLab CI', helmVersion: '9.5.1', appVersion: '18.5.1' },
+      { name: 'GitLab Registry', helmVersion: '9.5.1', appVersion: '18.5.1' },
+      { name: 'MinIO', helmVersion: '5.2.0', appVersion: 'RELEASE.2024-08-03T04-33-23Z' },
+      { name: 'Argo CD', helmVersion: '6.8.0', appVersion: 'v2.8.3' },
+      { name: 'Prometheus', helmVersion: '24.0.0', appVersion: 'v2.54.1' },
+      { name: 'Grafana', helmVersion: '8.6.0', appVersion: '11.1.0' },
+    ],
+  },
+]
+
 // Mock API hooks
 vi.mock('../api/stack-api', () => ({
   useCreateStack: () => ({ mutate: vi.fn(), isPending: false }),
@@ -32,6 +65,7 @@ vi.mock('../api/stack-api', () => ({
   useStacks: () => ({ data: mockStacks }),
   useResourceDefaults: () => ({ data: mockResourceDefaults }),
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
+  useCompatibilityMatrix: () => ({ data: mockCompatibilityMatrices }),
 }))
 
 vi.mock('../../admin/api/admin-api', () => ({
@@ -61,6 +95,7 @@ vi.mock('monaco-yaml', () => ({
 
 beforeEach(() => {
   useStackConfigStore.getState().resetConfig()
+  useStackConfigStore.getState().setTemplate('gitlab-argocd-v1')
   mockNavigate.mockClear()
   mockResourceDefaults.items = []
   mockResourceDefaults.total = 0
@@ -409,6 +444,22 @@ describe('StackInstallPage', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getByText('Save Draft')).toBeTruthy()
     expect(screen.getByText('Deploy')).toBeTruthy()
+  })
+
+
+  it('shows compatibility gate baseline in k8s/minio/postgres/setup order', () => {
+    renderWithProviders(<StackInstallPage />)
+    expect(screen.getByText(/Pre-Deploy Compatibility Gate/i)).toBeInTheDocument()
+    expect(screen.getByText(/K8s:/)).toBeInTheDocument()
+    expect(screen.getByText(/MinIO:/)).toBeInTheDocument()
+    expect(screen.getByText(/Postgres:/)).toBeInTheDocument()
+    expect(screen.getByText(/Setup:/)).toBeInTheDocument()
+  })
+
+
+  it('prefers selected template matrix when multiple candidates match', () => {
+    renderWithProviders(<StackInstallPage />)
+    expect(screen.getByText(/Matched matrix: GitLab \+ Argo CD/i)).toBeInTheDocument()
   })
 
   it('renders Configuration Summary sidebar', () => {

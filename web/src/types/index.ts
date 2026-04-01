@@ -201,7 +201,7 @@ export interface CompatibilityTool {
 export interface CompatibilityMatrix {
   id: string
   name: string
-  status: 'verified' | 'untested'
+  status: 'verified' | 'untested' | 'unsupported'
   k8sRange: string
   tools: CompatibilityTool[]
 }
@@ -210,10 +210,17 @@ export interface CompatibilityIssue {
   tool: string
   message: string
   severity: 'error' | 'warning'
+  code?: string
+}
+
+export interface CompatibilityValidationOverall {
+  state: 'pass' | 'warn' | 'fail'
+  score: number
 }
 
 export interface CompatibilityValidationResult {
   compatible: boolean
+  overall: CompatibilityValidationOverall
   issues: CompatibilityIssue[]
   checkedAt: string
 }

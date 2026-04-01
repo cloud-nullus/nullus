@@ -33,7 +33,7 @@ test.describe('Stack Monitoring E2E', () => {
     await page.goto('/stack/list')
     await expect(page.locator('h1')).toContainText('Stack List', { timeout: 10000 })
 
-    await page.fill('input[placeholder="스택 검색..."]', target.name)
+    await page.getByRole('textbox').first().fill(target.name)
     await expect(page.getByText(target.name).first()).toBeVisible({ timeout: 10000 })
     await page.getByText(target.name).first().click()
 

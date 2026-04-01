@@ -60,6 +60,6 @@ func TestMemoryCompatibilityRepository_KubernetesCompat(t *testing.T) {
 	m, err := repo.GetByID(context.Background(), "github-argocd-v1")
 	require.NoError(t, err)
 	assert.Equal(t, "1.27", m.Kubernetes.Min)
-	assert.Equal(t, "1.32", m.Kubernetes.Max)
-	assert.Equal(t, "1.29", m.Kubernetes.Recommended)
+	assert.Equal(t, "1.35", m.Kubernetes.Max)
+	assert.Equal(t, "1.35", m.Kubernetes.Recommended)
 }

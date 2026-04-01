@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { BookOpen, ChevronDown, ChevronRight, Clock, Pencil, Plus, Search, Trash2, User, Wrench, X } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../api/stack-api'
-import { useStackConfigStore } from '../stores/stack-config-store'
+import { getToolAppVersion, getToolChartVersion, useStackConfigStore } from '../stores/stack-config-store'
+import type { StackConfigDraft } from '../stores/stack-config-store'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
@@ -50,7 +51,6 @@ const TOOL_SECTIONS: ToolSectionDefinition[] = [
       { category: 'package_registry', label: 'Package Registry', options: ['Nexus', 'GitLab Package Registry', 'JFrog Artifactory'] },
       { category: 'source_repository', label: 'Source Repository', options: ['GitLab CE', 'Gitea', 'GitHub'] },
       { category: 'container_registry', label: 'Container Registry', options: ['Harbor', 'GitLab Registry', 'Docker Registry'] },
-      { category: 'storage', label: 'Storage Backend', options: ['MinIO', 'AWS S3'] },
     ],
   },
   {
@@ -65,17 +65,18 @@ const TOOL_SECTIONS: ToolSectionDefinition[] = [
     id: 'observability',
     label: 'Observability',
     categories: [
-      { category: 'monitoring', label: 'Monitoring', options: ['Prometheus', 'Thanos', 'Victoria Metrics'] },
-      { category: 'visualization', label: 'Visualization', options: ['Grafana'] },
-      { category: 'logging', label: 'Logging', options: ['Loki', 'OpenTelemetry', 'Fluentd'] },
-      { category: 'log_search', label: 'Log Search', options: ['OpenSearch', 'Elasticsearch'] },
+      { category: 'monitoring_collection', label: 'Metrics', options: ['Prometheus', 'Thanos', 'Victoria Metrics'] },
+      { category: 'monitoring_visualization', label: 'Visualization', options: ['Grafana', 'Kibana', 'OpenSearch Dashboards'] },
+      { category: 'log_search', label: 'Logs', options: ['Loki', 'OpenSearch', 'Elasticsearch', 'Fluentd'] },
+      { category: 'agent', label: 'Agent', options: ['OpenTelemetry Collector'] },
+      { category: 'trace_layer', label: 'Traces', options: ['Tempo', 'Jaeger'] },
     ],
   },
 ]
 
 type ToolSection = ToolSectionDefinition
 type ToolCategory = ToolCategoryDefinition
-type AddToolDraft = { category: string; name: string }
+type AddToolDraft = { category: string; name: string; helm_version: string; app_version: string }
 
 const TOOL_CATEGORY_LOOKUP = new Map<string, ToolCategory>(
   TOOL_SECTIONS.flatMap((section) => section.categories.map((category) => [category.category, category] as const))
@@ -84,6 +85,47 @@ const TOOL_CATEGORY_LOOKUP = new Map<string, ToolCategory>(
 const TOOL_SECTION_LOOKUP = new Map<string, ToolSection>(
   TOOL_SECTIONS.flatMap((section) => section.categories.map((category) => [category.category, section] as const))
 )
+
+
+const TOOL_ID_BY_NAME: Record<string, string> = {
+  'gitlab ce': 'gitlab',
+  'gitlab package registry': 'gitlab',
+  'gitlab registry': 'gitlab-registry',
+  'gitlab ci': 'gitlab-ci',
+  'argo cd': 'argocd',
+  minio: 'minio',
+  prometheus: 'prometheus',
+  grafana: 'grafana',
+  opensearch: 'opensearch',
+  tempo: 'tempo',
+  nexus: 'nexus',
+  'jfrog artifactory': 'jfrog',
+  github: 'github',
+  gitea: 'gitea',
+  harbor: 'harbor',
+  'docker registry': 'docker-hub',
+  'github actions': 'github-actions',
+  jenkins: 'jenkins',
+  flux: 'flux',
+  thanos: 'thanos',
+  'victoria metrics': 'victoriametrics',
+  kibana: 'kibana',
+  'opensearch dashboards': 'opensearch-dashboards',
+  jaeger: 'jaeger',
+  'opentelemetry collector': 'opentelemetry-collector',
+  elasticsearch: 'elasticsearch',
+  loki: 'loki',
+}
+
+const resolveToolIdByName = (name: string) => TOOL_ID_BY_NAME[normalizeToolKey(name)] ?? normalizeToolKey(name)
+
+const defaultVersionsForTool = (toolName: string) => {
+  const toolId = resolveToolIdByName(toolName)
+  return {
+    helm_version: getToolChartVersion(toolId) ?? '',
+    app_version: getToolAppVersion(toolId),
+  }
+}
 
 const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
   'empty-template-v1': {
@@ -110,13 +152,13 @@ const CATEGORY_MINUTES: Record<string, number> = {
   package_registry: 7,
   source_repository: 8,
   container_registry: 6,
-  storage: 4,
   ci_platform: 9,
   cd_tool: 7,
-  monitoring: 6,
-  visualization: 3,
-  logging: 5,
+  monitoring_collection: 6,
+  monitoring_visualization: 3,
   log_search: 7,
+  agent: 4,
+  trace_layer: 5,
 }
 const TOOL_BONUS_MINUTES: Record<string, number> = {
   'gitlab ce': 2,
@@ -130,11 +172,37 @@ const TOOL_BONUS_MINUTES: Record<string, number> = {
 const buildInitialSectionOpenState = () =>
   Object.fromEntries(TOOL_SECTIONS.map((section) => [section.id, true])) as Record<string, boolean>
 
+
+
+
+
+
+
+const OBSERVABILITY_CATEGORY_ORDER = ['monitoring_collection', 'monitoring_visualization', 'log_search', 'agent', 'trace_layer']
+
+const getSectionCategories = (section: ToolSectionDefinition): ToolCategoryDefinition[] => {
+  if (section.id !== 'observability') {
+    return section.categories
+  }
+
+  const orderMap = new Map(OBSERVABILITY_CATEGORY_ORDER.map((category, index) => [category, index]))
+  return [...section.categories].sort((a, b) => (orderMap.get(a.category) ?? 99) - (orderMap.get(b.category) ?? 99))
+}
+
+const addToolDraftKey = (sectionId: string, category: string) => `${sectionId}:${category}`
+
 const buildInitialAddToolDrafts = () =>
   Object.fromEntries(
-    TOOL_SECTIONS.map((section) => {
-      const firstCategory = section.categories[0]
-      return [section.id, { category: firstCategory.category, name: firstCategory.options[0] ?? '' }]
+    TOOL_SECTIONS.flatMap((section) => {
+      const orderedCategories = getSectionCategories(section)
+      return orderedCategories.map((category) => {
+        const defaultName = category.options[0] ?? ''
+        const defaults = defaultVersionsForTool(defaultName)
+        return [
+          addToolDraftKey(section.id, category.category),
+          { category: category.category, name: defaultName, ...defaults },
+        ]
+      })
     })
   ) as Record<string, AddToolDraft>
 
@@ -162,6 +230,22 @@ const EMPTY_TEMPLATE_FORM: TemplateFormState = {
 
 const normalizeToolKey = (name: string) => name.trim().toLowerCase()
 
+const toTemplateSlug = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+const createTemplateUUID = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}-${Math.random().toString(16).slice(2, 10)}`
+}
+
 const estimateInstallMinutesFromTools = (tools: ToolEntry[]): number => {
   if (tools.length === 0) {
     return ESTIMATE_BASE_MINUTES
@@ -183,9 +267,87 @@ const estimateInstallMinutesForTemplate = (template: StackTemplate): number => {
 
   const targetTools = toolsFromDetails.length > 0
     ? toolsFromDetails
-    : template.tools.map((toolName) => toToolEntry(toolName))
+    : (Array.isArray(template.tools) ? template.tools : []).map((toolName) => toToolEntry(toolName))
 
   return estimateInstallMinutesFromTools(targetTools)
+}
+
+
+const buildInstallOverridesFromTemplate = (template: StackTemplate): Partial<StackConfigDraft> => {
+  const toolsFromDetails = (template.toolDetails ?? [])
+    .filter((tool) => tool.name && tool.name.trim().length > 0)
+    .map((tool) => toToolEntry(tool.name, tool))
+
+  const tools = toolsFromDetails.length > 0
+    ? toolsFromDetails
+    : (Array.isArray(template.tools) ? template.tools : []).map((toolName) => toToolEntry(toolName))
+
+  const overrides: Partial<StackConfigDraft> = {
+    artifacts: {
+      packageRegistry: { tool: '', version: '' },
+      sourceRepository: { tool: '', version: '' },
+      containerRegistry: { tool: '', version: '' },
+      storageBackend: { tool: '', version: '' },
+    },
+    pipeline: {
+      cicdPlatform: { tool: '', version: '' },
+      cdTool: { tool: '', version: '' },
+    },
+    monitoring: {
+      collection: { tool: '', version: '' },
+      visualization: { tool: '', version: '' },
+    },
+    logging: {
+      search: { tool: '', version: '' },
+      traceLayer: { tool: '', version: '' },
+    },
+  }
+
+  const apply = (category: string, target: 'artifacts' | 'pipeline' | 'monitoring' | 'logging', field: string, name: string, appVersion?: string) => {
+    const toolId = resolveToolIdByName(name)
+    const version = appVersion || getToolAppVersion(toolId)
+    ;(overrides[target] as unknown as Record<string, { tool: string; version: string }>)[field] = { tool: toolId, version }
+  }
+
+  for (const tool of tools) {
+    switch (tool.category) {
+      case 'package_registry':
+        apply(tool.category, 'artifacts', 'packageRegistry', tool.name, tool.app_version)
+        break
+      case 'source_repository':
+        apply(tool.category, 'artifacts', 'sourceRepository', tool.name, tool.app_version)
+        break
+      case 'container_registry':
+        apply(tool.category, 'artifacts', 'containerRegistry', tool.name, tool.app_version)
+        break
+      case 'storage_backend':
+        apply(tool.category, 'artifacts', 'storageBackend', tool.name, tool.app_version)
+        break
+      case 'ci_platform':
+        apply(tool.category, 'pipeline', 'cicdPlatform', tool.name, tool.app_version)
+        break
+      case 'cd_tool':
+        apply(tool.category, 'pipeline', 'cdTool', tool.name, tool.app_version)
+        break
+      case 'monitoring_collection':
+        apply(tool.category, 'monitoring', 'collection', tool.name, tool.app_version)
+        break
+      case 'monitoring_visualization':
+        apply(tool.category, 'monitoring', 'visualization', tool.name, tool.app_version)
+        break
+      case 'log_search':
+        apply(tool.category, 'logging', 'search', tool.name, tool.app_version)
+        break
+      case 'trace_layer':
+      case 'agent':
+        apply(tool.category, 'logging', 'traceLayer', tool.name, tool.app_version)
+        break
+      default:
+        break
+    }
+  }
+
+  return overrides
 }
 
 export function StackTemplatePage() {
@@ -206,25 +368,69 @@ export function StackTemplatePage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [form, setForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM)
   const [customSections, setCustomSections] = useState<ToolSectionDefinition[]>([])
+  const [removedBaseSectionIds, setRemovedBaseSectionIds] = useState<string[]>([])
   const [addSectionOpen, setAddSectionOpen] = useState(false)
   const [newSectionLabel, setNewSectionLabel] = useState('')
   const [newCategoryLabel, setNewCategoryLabel] = useState('')
   const [newCategoryOptions, setNewCategoryOptions] = useState('')
 
-  const allSections = [...TOOL_SECTIONS, ...customSections]
+  const visibleBaseSections = useMemo(() => {
+    if (!editingTemplateId) {
+      return TOOL_SECTIONS.filter((section) => !removedBaseSectionIds.includes(section.id))
+    }
+
+    return TOOL_SECTIONS.filter((section) => {
+      if (removedBaseSectionIds.includes(section.id)) {
+        return false
+      }
+      const categoryIds = new Set(section.categories.map((category) => category.category))
+      return form.tools.some((tool) => categoryIds.has(tool.category))
+    })
+  }, [editingTemplateId, form.tools, removedBaseSectionIds])
+
+  const allSections = [...visibleBaseSections, ...customSections]
   const estimatedInstallMinutes = useMemo(() => estimateInstallMinutesFromTools(form.tools), [form.tools])
   const estimatedInstallTimeNs = estimatedInstallMinutes * NS_PER_MINUTE
 
   const [openToolSections, setOpenToolSections] = useState<Record<string, boolean>>(buildInitialSectionOpenState)
   const [addToolDrafts, setAddToolDrafts] = useState<Record<string, AddToolDraft>>(buildInitialAddToolDrafts)
-  const [activeAddToolSection, setActiveAddToolSection] = useState<string | null>(null)
+
+  const seedAddToolDraftsFromTools = (tools: ToolEntry[]) => {
+    setAddToolDrafts((prev) => {
+      const next = { ...buildInitialAddToolDrafts(), ...prev }
+      for (const tool of tools) {
+        const section = TOOL_SECTION_LOOKUP.get(tool.category)
+        if (!section) continue
+        const key = addToolDraftKey(section.id, tool.category)
+        const defaults = defaultVersionsForTool(tool.name)
+        next[key] = {
+          category: tool.category,
+          name: tool.name,
+          helm_version: tool.helm_version || defaults.helm_version,
+          app_version: tool.app_version || defaults.app_version,
+        }
+      }
+      return next
+    })
+  }
 
   const templates = Array.isArray(apiTemplates) ? apiTemplates : []
 
   const isKorean = resolveLocale(i18n.resolvedLanguage || i18n.language) === 'ko-KR'
   const resolveTemplateDescription = (template: StackTemplate) => {
     const localized = TEMPLATE_DESCRIPTION_I18N[template.id]
+    const rawDescription = (template.description ?? '').trim()
+
     if (!localized) return template.description
+
+    if (
+      rawDescription.length > 0
+      && rawDescription !== localized.en
+      && rawDescription !== localized.ko
+    ) {
+      return rawDescription
+    }
+
     return isKorean ? localized.ko : localized.en
   }
 
@@ -251,10 +457,59 @@ export function StackTemplatePage() {
     }
     : null
 
-  const handleUseTemplate = (templateId: string) => {
-    setTemplate(templateId)
-    loadFromTemplate(templateId)
-    navigate(`/stack/install?template=${templateId}`)
+  const handleUseTemplate = (template: StackTemplate) => {
+    const overrides = buildInstallOverridesFromTemplate(template)
+    setTemplate(template.id)
+    loadFromTemplate(template.id, overrides)
+    navigate(`/stack/install?template=${template.id}`)
+  }
+
+  const nextDuplicateTemplateId = (templateId: string) => {
+    const existing = new Set(templates.map((item) => item.id))
+    const base = `${toTemplateSlug(templateId) || 'template'}-copy`
+
+    if (!existing.has(base)) {
+      return base
+    }
+
+    let index = 2
+    while (existing.has(`${base}-${index}`)) {
+      index += 1
+    }
+
+    return `${base}-${index}`
+  }
+
+  const handleDuplicateTemplate = (template: StackTemplate) => {
+    const duplicateName = `${template.name} ${t('stackTemplatePage.duplicate.suffix', 'Duplicate')}`
+    const duplicateId = nextDuplicateTemplateId(template.id)
+    const duplicateMinutes = estimateInstallMinutesForTemplate(template)
+    const duplicateNs = duplicateMinutes * NS_PER_MINUTE
+    const duplicatedTools = (template.toolDetails && template.toolDetails.length > 0)
+      ? template.toolDetails.map((tool) => ({
+        category: tool.category,
+        name: tool.name,
+        helm_version: tool.helm_version,
+        app_version: tool.app_version,
+      }))
+      : (Array.isArray(template.tools) ? template.tools : []).map((toolName) => toToolEntry(toolName))
+
+    createTemplate.mutate(
+      {
+        id: duplicateId,
+        name: duplicateName,
+        description: resolveTemplateDescription(template),
+        tools: duplicatedTools,
+        estimated_install_time: duplicateNs,
+        recommended_use_case: template.recommendedUseCase ?? '',
+        min_resources: template.minResources ?? '',
+      },
+      {
+        onError: () => {
+          setFormError(t('stackTemplatePage.errors.duplicateFailed', 'Failed to duplicate template.'))
+        },
+      }
+    )
   }
 
   const resetForm = () => {
@@ -263,11 +518,12 @@ export function StackTemplatePage() {
     setEditingTemplateId(null)
     setOpenToolSections(buildInitialSectionOpenState)
     setAddToolDrafts(buildInitialAddToolDrafts)
-    setActiveAddToolSection(null)
+    setRemovedBaseSectionIds([])
   }
 
   const openCreateModal = () => {
     resetForm()
+    setForm((prev) => ({ ...prev, id: createTemplateUUID() }))
     setFormOpen(true)
   }
 
@@ -278,8 +534,14 @@ export function StackTemplatePage() {
 
     const tools = toolsFromDetail.length > 0
       ? toolsFromDetail
-      : template.tools.map((toolName) => toToolEntry(toolName))
+      : (Array.isArray(template.tools) ? template.tools : []).map((toolName) => toToolEntry(toolName))
 
+    const toolCategoryIds = new Set(tools.map((tool) => tool.category))
+    const removedInTemplate = TOOL_SECTIONS
+      .filter((section) => !section.categories.some((category) => toolCategoryIds.has(category.category)))
+      .map((section) => section.id)
+
+    setRemovedBaseSectionIds(removedInTemplate)
     setEditingTemplateId(template.id)
     setFormError(null)
     setForm({
@@ -306,56 +568,67 @@ export function StackTemplatePage() {
     setOpenToolSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }))
   }
 
-  const addTool = (category: string, name: string) => {
-    setForm((prev) => ({
-      ...prev,
-      tools: [...prev.tools, { category, name, helm_version: '', app_version: '' }],
-    }))
+
+
+
+  const updateAddToolDraft = (draftKey: string, patch: Partial<AddToolDraft>) => {
+    setAddToolDrafts((prev) => {
+      const current = prev[draftKey]
+      if (!current) return prev
+      return {
+        ...prev,
+        [draftKey]: {
+          ...current,
+          ...patch,
+        },
+      }
+    })
   }
 
-  const removeTool = (index: number) => {
-    setForm((prev) => ({
-      ...prev,
-      tools: prev.tools.filter((_, i) => i !== index),
-    }))
-  }
-
-  const updateTool = (index: number, field: keyof ToolEntry, value: string) => {
-    setForm((prev) => ({
-      ...prev,
-      tools: prev.tools.map((tool, i) => (i === index ? { ...tool, [field]: value } : tool)),
-    }))
-  }
-
-  const updateAddToolCategory = (sectionId: string, category: string) => {
-    const categoryMeta = TOOL_CATEGORY_LOOKUP.get(category)
-    setAddToolDrafts((prev) => ({
-      ...prev,
-      [sectionId]: {
-        category,
-        name: categoryMeta?.options[0] ?? '',
-      },
-    }))
-  }
-
-  const updateAddToolName = (sectionId: string, name: string) => {
-    setAddToolDrafts((prev) => ({
-      ...prev,
-      [sectionId]: {
-        ...prev[sectionId],
-        name,
-      },
-    }))
-  }
-
-  const submitAddTool = (sectionId: string) => {
-    const draft = addToolDrafts[sectionId]
+  const submitAddTool = (draftKey: string) => {
+    const draft = addToolDrafts[draftKey]
     if (!draft?.category || !draft.name) {
       return
     }
 
-    addTool(draft.category, draft.name)
-    setActiveAddToolSection(null)
+    setForm((prev) => {
+      const existingIndex = prev.tools.findIndex((tool) => tool.category === draft.category)
+      const nextEntry: ToolEntry = {
+        category: draft.category,
+        name: draft.name,
+        helm_version: draft.helm_version,
+        app_version: draft.app_version,
+      }
+
+      if (existingIndex >= 0) {
+        return {
+          ...prev,
+          tools: prev.tools.map((tool, index) => (index === existingIndex ? nextEntry : tool)),
+        }
+      }
+
+      return {
+        ...prev,
+        tools: [...prev.tools, nextEntry],
+      }
+    })
+  }
+
+  const removeCategoryTool = (sectionId: string, category: string) => {
+    setForm((prev) => ({
+      ...prev,
+      tools: prev.tools.filter((tool) => tool.category !== category),
+    }))
+
+    const categoryMeta = TOOL_CATEGORY_LOOKUP.get(category)
+    const defaultName = categoryMeta?.options[0] ?? ''
+    const defaults = defaultVersionsForTool(defaultName)
+    const draftKey = addToolDraftKey(sectionId, category)
+    updateAddToolDraft(draftKey, {
+      category,
+      name: defaultName,
+      ...defaults,
+    })
   }
 
   const addSection = () => {
@@ -371,7 +644,7 @@ export function StackTemplatePage() {
     }
     setCustomSections((prev) => [...prev, newSection])
     setOpenToolSections((prev) => ({ ...prev, [sectionId]: true }))
-    setAddToolDrafts((prev) => ({ ...prev, [sectionId]: { category: categoryId, name: options[0] ?? 'Custom Tool' } }))
+    setAddToolDrafts((prev) => { const defaultName = options[0] ?? 'Custom Tool'; const defaults = defaultVersionsForTool(defaultName); return { ...prev, [addToolDraftKey(sectionId, categoryId)]: { category: categoryId, name: defaultName, ...defaults } } })
     setNewSectionLabel('')
     setNewCategoryLabel('')
     setNewCategoryOptions('')
@@ -379,20 +652,27 @@ export function StackTemplatePage() {
   }
 
   const removeSection = (sectionId: string) => {
-    const section = allSections.find((s) => s.id === sectionId)
+    const section = allSections.find((s) => s.id === sectionId) ?? TOOL_SECTIONS.find((s) => s.id === sectionId)
     if (!section) return
     const categoryIds = new Set(section.categories.map((c) => c.category))
     setForm((prev) => ({ ...prev, tools: prev.tools.filter((t) => !categoryIds.has(t.category)) }))
-    setCustomSections((prev) => prev.filter((s) => s.id !== sectionId))
-    setOpenToolSections((prev) => { const next = { ...prev }; delete next[sectionId]; return next })
-    setAddToolDrafts((prev) => { const next = { ...prev }; delete next[sectionId]; return next })
+
+    if (TOOL_SECTIONS.some((base) => base.id === sectionId)) {
+      setRemovedBaseSectionIds((prev) => (prev.includes(sectionId) ? prev : [...prev, sectionId]))
+    } else {
+      setCustomSections((prev) => prev.filter((s) => s.id !== sectionId))
+      setOpenToolSections((prev) => { const next = { ...prev }; delete next[sectionId]; return next })
+      setAddToolDrafts((prev) => { const next = { ...prev }; Object.keys(next).forEach((key) => { if (key.startsWith(`${sectionId}:`)) delete next[key] }); return next })
+    }
   }
 
 
 
   const submitTemplate = () => {
+    const templateId = editingTemplateId ?? (form.id || createTemplateUUID())
+
     const payload = {
-      id: form.id,
+      id: templateId,
       name: form.name,
       description: form.description,
       tools: form.tools,
@@ -530,9 +810,9 @@ export function StackTemplatePage() {
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-1.5">
-                {isAdmin && (
-                  <>
+                <div className="flex items-center gap-1.5">
+                  {isAdmin && (
+                    <>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -557,6 +837,17 @@ export function StackTemplatePage() {
                       <Trash2 size={13} />
                       {t('stackTemplatePage.actions.delete', 'Delete')}
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleDuplicateTemplate(template)
+                      }}
+                    >
+                      {t('stackTemplatePage.actions.duplicateTemplate', 'Duplicate Template')}
+                    </Button>
                   </>
                 )}
                 <Button
@@ -566,7 +857,7 @@ export function StackTemplatePage() {
                   className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
                   onClick={(event) => {
                     event.stopPropagation()
-                    handleUseTemplate(template.id)
+                    handleUseTemplate(template)
                   }}
                 >
                   {t('stackTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
@@ -600,7 +891,7 @@ export function StackTemplatePage() {
                 type="button"
                 onClick={() => {
                   setSelectedTemplateId(null)
-                  handleUseTemplate(selectedTemplate.id)
+                  handleUseTemplate(selectedTemplate)
                 }}
               >
                 {t('stackTemplatePage.actions.baseTemplate', 'Base Template')}
@@ -658,6 +949,7 @@ export function StackTemplatePage() {
         open={formOpen}
         onClose={closeFormModal}
         title={editingTemplateId ? t('stackTemplatePage.modal.editTitle', 'Edit Template') : t('stackTemplatePage.modal.createTitle', 'Create Template')}
+        wide
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeFormModal} type="button">
@@ -676,17 +968,19 @@ export function StackTemplatePage() {
         }
       >
         <div className="flex flex-col gap-3">
-          <Input
-            label={t('stackTemplatePage.form.templateId', 'Template ID')}
-            value={editingTemplateId ?? form.id}
-            onChange={(event) => handleFormChange('id', event.target.value)}
-            disabled={editingTemplateId !== null}
-          />
-          <Input
-            label={t('stackTemplatePage.form.name', 'Name')}
-            value={form.name}
-            onChange={(event) => handleFormChange('name', event.target.value)}
-          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input
+              label={t('stackTemplatePage.form.templateId', 'Template ID')}
+              value={editingTemplateId ?? form.id}
+              onChange={(event) => handleFormChange('id', event.target.value)}
+              disabled={editingTemplateId !== null}
+            />
+            <Input
+              label={t('stackTemplatePage.form.name', 'Name')}
+              value={form.name}
+              onChange={(event) => handleFormChange('name', event.target.value)}
+            />
+          </div>
           <Input
             label={t('stackTemplatePage.form.description', 'Description')}
             value={form.description}
@@ -696,15 +990,14 @@ export function StackTemplatePage() {
             <div className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
               {t('stackTemplatePage.form.tools', 'Tools')}
             </div>
+            <div className="text-[11px] text-[var(--color-text-muted)]">
+              {t('stackTemplatePage.form.toolsHint', 'Create the template scaffold first, then add or refine tools by section.')}
+            </div>
             <div className="rounded-lg border border-[var(--color-border-default)]">
               {allSections.map((section) => {
                 const isOpen = openToolSections[section.id]
-                const sectionCategoryIds = new Set(section.categories.map((c) => c.category))
-                const sectionTools = form.tools
-                  .map((tool, index) => ({ tool, index }))
-                  .filter(({ tool }) => sectionCategoryIds.has(tool.category) || TOOL_SECTION_LOOKUP.get(tool.category)?.id === section.id)
-                const addDraft = addToolDrafts[section.id]
-                const addCategoryMeta = TOOL_CATEGORY_LOOKUP.get(addDraft?.category ?? '')
+                const sectionCategories = getSectionCategories(section)
+                const sectionCategoryIds = new Set(sectionCategories.map((c) => c.category))
 
                 return (
                   <div key={section.id} className="border-b border-[var(--color-border-default)] last:border-b-0">
@@ -733,29 +1026,37 @@ export function StackTemplatePage() {
 
                     {isOpen && (
                       <div className="flex flex-col gap-2 px-3 py-3">
-                        {sectionTools.length === 0 && (
-                          <div className="rounded-md border border-dashed border-[var(--color-border-default)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
-                            {t('stackTemplatePage.form.noToolsInSection', 'No tools added in this section.')}
-                          </div>
-                        )}
-
-                        {sectionTools.map(({ tool, index }) => {
-                          const categoryMeta = TOOL_CATEGORY_LOOKUP.get(tool.category)
-                          return (
-                            <div
-                              key={`${tool.category}-${index}`}
-                              className="flex flex-col gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-2"
-                            >
-                              <div className="text-xs font-medium text-[var(--color-text-secondary)]">
-                                {categoryMeta?.label ?? t('stackTemplatePage.form.customCategory', 'Custom Category')}
-                              </div>
-                              <div className="grid gap-2 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-2">
+                          {sectionCategories.map((category) => {
+                            const draftKey = addToolDraftKey(section.id, category.category)
+                            const existing = form.tools.find((tool) => tool.category === category.category)
+                            const baseDraft = addToolDrafts[draftKey]
+                            const defaultName = category.options[0] ?? ''
+                            const name = existing?.name || baseDraft?.name || defaultName
+                            const defaults = defaultVersionsForTool(name)
+                            const helmVersion = existing?.helm_version || baseDraft?.helm_version || defaults.helm_version
+                            const appVersion = existing?.app_version || baseDraft?.app_version || defaults.app_version
+                            const hasApplied = !!existing
+                            return (
+                              <div key={draftKey} className="grid gap-2 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto_auto]">
+                                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-[9px] text-sm text-[var(--color-text-secondary)]">
+                                  {category.label}
+                                </div>
                                 <select
-                                  value={tool.name}
-                                  onChange={(event) => updateTool(index, 'name', event.target.value)}
+                                  value={name}
+                                  onChange={(event) => {
+                                    const nextName = event.target.value
+                                    const nextDefaults = defaultVersionsForTool(nextName)
+                                    updateAddToolDraft(draftKey, {
+                                      category: category.category,
+                                      name: nextName,
+                                      helm_version: nextDefaults.helm_version,
+                                      app_version: nextDefaults.app_version,
+                                    })
+                                  }}
                                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                                 >
-                                  {(categoryMeta?.options.length ? categoryMeta.options : [tool.name]).map((option) => (
+                                  {category.options.map((option) => (
                                     <option key={option} value={option}>
                                       {option}
                                     </option>
@@ -763,72 +1064,33 @@ export function StackTemplatePage() {
                                 </select>
                                 <input
                                   type="text"
-                                  value={tool.helm_version}
-                                  onChange={(event) => updateTool(index, 'helm_version', event.target.value)}
+                                  value={helmVersion}
+                                  onChange={(event) => updateAddToolDraft(draftKey, { category: category.category, name, helm_version: event.target.value, app_version: appVersion })}
                                   placeholder={t('stackTemplatePage.form.helmVersionPlaceholder', 'Helm version')}
                                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
                                 <input
                                   type="text"
-                                  value={tool.app_version}
-                                  onChange={(event) => updateTool(index, 'app_version', event.target.value)}
+                                  value={appVersion}
+                                  onChange={(event) => updateAddToolDraft(draftKey, { category: category.category, name, helm_version: helmVersion, app_version: event.target.value })}
                                   placeholder={t('stackTemplatePage.form.appVersionPlaceholder', 'App version')}
                                   className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
+                                <Button variant="outline" size="sm" type="button" onClick={() => submitAddTool(draftKey)}>
+                                  {hasApplied ? t('stackTemplatePage.actions.updateTool', 'Update Tool') : t('stackTemplatePage.actions.addTool', 'Add Tool')}
+                                </Button>
                                 <button
                                   type="button"
-                                  aria-label={`Remove ${tool.name}`}
-                                  onClick={() => removeTool(index)}
+                                  aria-label={`Remove ${name}`}
+                                  onClick={() => removeCategoryTool(section.id, category.category)}
                                   className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--color-border-default)] text-[var(--color-text-secondary)] transition-colors hover:border-[rgba(248,113,113,0.5)] hover:text-[#f87171]"
                                 >
                                   <X size={15} />
                                 </button>
                               </div>
-                            </div>
-                          )
-                        })}
-
-                        {activeAddToolSection === section.id ? (
-                          <div className="grid gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-                            <select
-                              value={addDraft?.category ?? section.categories[0].category}
-                              onChange={(event) => updateAddToolCategory(section.id, event.target.value)}
-                              className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-                            >
-                              {section.categories.map((category) => (
-                                <option key={category.category} value={category.category}>
-                                  {category.label}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              value={addDraft?.name ?? addCategoryMeta?.options[0] ?? ''}
-                              onChange={(event) => updateAddToolName(section.id, event.target.value)}
-                              className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-                            >
-                              {(addCategoryMeta?.options ?? []).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                            <Button variant="outline" size="sm" type="button" onClick={() => submitAddTool(section.id)}>
-                              {t('stackTemplatePage.actions.add', 'Add')}
-                            </Button>
-                            <Button variant="ghost" size="sm" type="button" onClick={() => setActiveAddToolSection(null)}>
-                              {t('common.cancel', 'Cancel')}
-                            </Button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setActiveAddToolSection(section.id)}
-                            className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-border-default)] px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-hover)] hover:text-[var(--color-text-primary)]"
-                          >
-                            <Plus size={14} />
-                            {t('stackTemplatePage.actions.addTool', 'Add Tool')}
-                          </button>
-                        )}
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -886,16 +1148,18 @@ export function StackTemplatePage() {
               })}
             </div>
           </div>
-          <Input
-            label={t('stackTemplatePage.form.recommendedUseCase', 'Recommended Use Case')}
-            value={form.recommendedUseCase}
-            onChange={(event) => handleFormChange('recommendedUseCase', event.target.value)}
-          />
-          <Input
-            label={t('stackTemplatePage.form.minimumResources', 'Minimum Resources')}
-            value={form.minResources}
-            onChange={(event) => handleFormChange('minResources', event.target.value)}
-          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input
+              label={t('stackTemplatePage.form.recommendedUseCase', 'Recommended Use Case')}
+              value={form.recommendedUseCase}
+              onChange={(event) => handleFormChange('recommendedUseCase', event.target.value)}
+            />
+            <Input
+              label={t('stackTemplatePage.form.minimumResources', 'Minimum Resources')}
+              value={form.minResources}
+              onChange={(event) => handleFormChange('minResources', event.target.value)}
+            />
+          </div>
           {formError && <div className="text-xs text-[#f87171]">{formError}</div>}
         </div>
       </Modal>

@@ -107,16 +107,17 @@
   - `internal/stack/adapter/handler/deploy_handler.go`
   - `internal/stack/adapter/handler/history_handler.go`
 
-#### D. 배포 로그 DB 영속화 미구현
+#### D. 로그 보존 정책/조회 API 세분화 미구현
 
-설계 문서는 설치 로그를 WebSocket 전송과 함께 DB에도 저장한다고 적고 있다.
-현재 Stack 로그 스트리밍은 `MemoryStreamer` 기반 인메모리 버퍼로만 유지된다.
+Stack 배포 로그의 DB 영속화(`deployment_logs`) 자체는 구현되었지만, 장기 보관 정책과 페이지네이션 기반 전용 조회 API는 아직 분리 설계 수준에 미치지 않는다.
 
 - 설계 근거: 5.2 Log Streamer
 - 현재 구현:
-  - `internal/stack/adapter/log/memory_streamer.go`
-- 참고:
-  - Stack 버전 이력은 `stack_config_versions`로 저장되지만, 배포 로그 전용 테이블은 없음
+  - `db/migrations/000034_deployment_logs.up.sql`
+  - `internal/stack/adapter/log/postgres_streamer.go`
+- 미구현 범위:
+  - 기간 기반 아카이빙/삭제 정책
+  - 대용량 로그 전용 조회 API(page/filter/search)
 
 #### E. 파일 기반 Compatibility / Known Issues 카탈로그 엔진 미구현
 
@@ -145,15 +146,16 @@
 
 ### 3.3 데이터 모델 및 저장소
 
-#### A. Stack 배포 전용 `deployments`, `deployment_logs` 테이블 미구현
+#### A. Stack 배포 전용 `deployments` 테이블 미구현 (부분 해소)
 
 설계 문서는 Stack 배포 이력과 로그를 별도 `deployments`, `deployment_logs` 테이블로 분리한다.
-현재 Stack 영역은 `stacks`와 `stack_config_versions` 중심이고, Stack 배포 로그는 DB에 저장되지 않는다.
+현재는 `deployment_logs` 테이블이 추가되어 로그 영속화는 구현되었지만, 배포 실행 메타데이터 전용 `deployments` 테이블은 아직 없다.
 
 - 설계 근거: 6.1 ERD
 - 현재 구현:
   - `db/migrations/000001_init.up.sql`
   - `db/migrations/000005_history.up.sql`
+  - `db/migrations/000034_deployment_logs.up.sql`
 
 #### B. `sessions`, `rbac_policies`, `menu_permissions` 테이블 미구현
 
