@@ -4,14 +4,13 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import {
-  Cpu, HardDrive, MemoryStick, Box, CheckCircle, AlertCircle, XCircle,
+  Cpu, MemoryStick, Box, CheckCircle, AlertCircle, XCircle,
   Server, GitBranch, BarChart3, Settings2, Plus, Trash2, Save,
-  GripVertical, ChevronDown, ChevronUp, Check, RefreshCw, Lock,
+  GripVertical, ChevronDown, ChevronUp, Check, Lock,
   Activity, Clock, Package, TrendingUp, TrendingDown, Layers,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-import { useDashboard } from '../api/observability-api'
 import type { ToolHealthStatus } from '../api/observability-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
@@ -64,13 +63,6 @@ function makeSeries(range: TimeRange) {
     }
   })
 }
-
-const WEEK_BARS = [
-  { day: 'Mon', success: 16, failed: 2 }, { day: 'Tue', success: 19, failed: 3 },
-  { day: 'Wed', success: 15, failed: 4 }, { day: 'Thu', success: 21, failed: 2 },
-  { day: 'Fri', success: 24, failed: 3 }, { day: 'Sat', success: 11, failed: 2 },
-  { day: 'Sun', success: 9, failed: 1 },
-]
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────
 function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
@@ -393,6 +385,15 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
 function ClusterDefault({ clusterId }: { clusterId: string }) {
   const [range, setRange] = useState<TimeRange>('24h')
   const series = useMemo(() => makeSeries(range), [range])
+  const weekBars = useMemo(() => ([
+    { day: 'Mon', success: 16, failed: 2 },
+    { day: 'Tue', success: 19, failed: 3 },
+    { day: 'Wed', success: 15, failed: 4 },
+    { day: 'Thu', success: 21, failed: 2 },
+    { day: 'Fri', success: 24, failed: 3 },
+    { day: 'Sat', success: 11, failed: 2 },
+    { day: 'Sun', success: 9, failed: 1 },
+  ]), [])
   const pods = [
     { name: 'Running', value: 22, color: '#22c55e' },
     { name: 'Pending', value: 1, color: '#f59e0b' },
@@ -461,7 +462,7 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
         </ChartPanel>
         <ChartPanel title="Pipeline Success (this week)">
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={WEEK_BARS}>
+            <BarChart data={weekBars}>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
               <XAxis dataKey="day" stroke="#94a3b8" tick={CHART_STYLE.tick} />
               <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />

@@ -99,7 +99,7 @@ describe('StackListPage', () => {
 
     renderWithProviders(<StackListPage />)
 
-    expect(screen.getByText('스택을 불러오는 중...')).not.toBeNull()
+    expect(screen.getByText('Loading stacks...')).not.toBeNull()
   })
 
   it('renders stack data rows', () => {
@@ -110,6 +110,12 @@ describe('StackListPage', () => {
     expect(screen.getAllByText('Success').length).toBeGreaterThan(0)
   })
 
+  it('keeps a single connection info trigger per detail panel', () => {
+    renderWithProviders(<StackListPage />)
+
+    expect(screen.getAllByRole('button', { name: 'Connection Info' })).toHaveLength(2)
+  })
+
   it('renders empty state when no stacks exist', () => {
     mockUseStacks.mockReturnValue({
       data: { items: [], total: 0 },
@@ -118,6 +124,6 @@ describe('StackListPage', () => {
 
     renderWithProviders(<StackListPage />)
 
-    expect(screen.getByText('스택이 없습니다.')).not.toBeNull()
+    expect(screen.getByText('No stacks found.')).not.toBeNull()
   })
 })

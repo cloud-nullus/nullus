@@ -57,7 +57,9 @@ describe('ClusterStackFilter', () => {
   const clusters: Cluster[] = [{
     id: 'c1',
     name: 'prod-cluster',
-    type: 'kubernetes',
+    type: 'target',
+    types: ['target'],
+    cloudProvider: 'aws',
     endpoint: 'https://prod.example.com',
     status: 'connected',
     organizationIds: ['org-1'],

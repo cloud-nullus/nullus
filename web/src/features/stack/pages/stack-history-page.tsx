@@ -13,7 +13,6 @@ import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
-
 export function StackHistoryPage() {
    const { t, i18n } = useTranslation()
    const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
@@ -206,40 +205,39 @@ export function StackHistoryPage() {
         </Button>
       </div>
 
-      <div className="mb-4 max-w-[360px]">
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
-          {t('stackHistoryPage.stackSelect', 'Stack')}
-        </label>
-        <NativeSelect
-          value={stackId}
-          onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
-          disabled={stacks.length === 0}
-          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
-        >
-          {stacks.map((stack) => (
-            <option key={stack.id} value={stack.id}>
-              {stack.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-
       <DataTable
         columns={columns}
         data={entries}
         getRowKey={(row) => row.id}
+        emptyMessage={t('dataTable.empty', 'No data available.')}
         toolbar={
-          <div className="relative ml-auto">
-            <Search
-              size={13}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-            />
-            <input
-              placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-            />
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <NativeSelect
+              aria-label={t('stackHistoryPage.stackSelect', 'Stack')}
+              value={stackId}
+              onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
+              disabled={stacks.length === 0}
+              className="min-w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)]"
+            >
+              {stacks.map((stack) => (
+                <option key={stack.id} value={stack.id}>
+                  {stack.name}
+                </option>
+              ))}
+            </NativeSelect>
+
+            <div className="relative ml-auto">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <input
+                placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              />
+            </div>
           </div>
         }
       />

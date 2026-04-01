@@ -70,6 +70,7 @@ describe('StackHistoryPage', () => {
 
     expect(screen.getAllByText('Stack History').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Compare Versions' })).not.toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Stack' })).not.toBeNull()
   })
 
   it('handles loading-like state safely when history data is undefined', () => {
@@ -78,7 +79,7 @@ describe('StackHistoryPage', () => {
     renderWithProviders(<StackHistoryPage />)
 
     expect(screen.getAllByText('Stack History').length).toBeGreaterThan(0)
-    expect(screen.getByText('데이터가 없습니다.')).not.toBeNull()
+    expect(screen.getByText(/No data available\.|데이터가 없습니다\./)).not.toBeNull()
   })
 
   it('renders history data', () => {
@@ -109,6 +110,6 @@ describe('StackHistoryPage', () => {
 
     renderWithProviders(<StackHistoryPage />)
 
-    expect(screen.getByText('데이터가 없습니다.')).not.toBeNull()
+    expect(screen.getByText(/No data available\.|데이터가 없습니다\./)).not.toBeNull()
   })
 })

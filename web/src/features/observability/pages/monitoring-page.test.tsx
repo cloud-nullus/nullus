@@ -100,6 +100,16 @@ describe('MonitoringPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Monitoring Dashboard' })).not.toBeNull()
   })
 
+  it('renders cluster dashboard widgets after selecting a cluster', () => {
+    renderWithProviders(<MonitoringPage />)
+
+    fireEvent.click(screen.getByText('Mock Select Cluster'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cluster' }))
+
+    expect(screen.queryByText('Pipeline Success (this week)')).not.toBeNull()
+    expect(screen.queryByText('Nodes')).not.toBeNull()
+  })
+
   it('shows loading state in stack view while dashboard data is loading', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: true, refetch: vi.fn() })
 

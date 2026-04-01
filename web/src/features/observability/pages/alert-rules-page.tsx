@@ -15,7 +15,7 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
-import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { useClusterStackFilterState } from '../components/cluster-stack-filter'
 
 const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
   slack: { className: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' },
@@ -57,7 +57,7 @@ export function AlertRulesPage() {
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [selectedStackId, setSelectedStackId] = useState('')
   const [search, setSearch] = useState('')
-  const { clusters, filteredStacks, selectedCluster, selectedStack } = useClusterStackFilterState(selectedClusterId, selectedStackId)
+  const { clusters, filteredStacks } = useClusterStackFilterState(selectedClusterId, selectedStackId)
   const { data: apiData, refetch: refetchAlertRules } = useAlertRules()
   const rules = useMemo<AlertRule[]>(() => apiData?.items ?? [], [apiData?.items])
 
@@ -271,18 +271,6 @@ export function AlertRulesPage() {
         </Button>
       </div>
 
-      <ClusterStackFilter
-        selectedClusterId={selectedClusterId}
-        selectedStackId={selectedStackId}
-        onClusterChange={handleClusterChange}
-        onStackChange={handleStackChange}
-        onClear={() => { setSelectedClusterId(''); setSelectedStackId('') }}
-        clusters={clusters}
-        filteredStacks={filteredStacks}
-        selectedCluster={selectedCluster}
-        selectedStack={selectedStack}
-      />
-
       <DataTable
         columns={columns}
         data={rules.filter(
@@ -293,17 +281,56 @@ export function AlertRulesPage() {
         getRowKey={(row) => row.id}
         emptyMessage={t('alertRulesPage.empty', 'No alert rules found.')}
         toolbar={(
-          <div className="relative ml-auto">
-            <Search
-              size={13}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-            />
-            <input
-              placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-            />
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <NativeSelect
+                aria-label={t('clusterStackFilter.clusterLabel', 'Cluster')}
+                value={selectedClusterId}
+                onChange={(event) => handleClusterChange(event.target.value)}
+                className="min-w-[200px]"
+              >
+                <option value="">{t('clusterStackFilter.selectCluster', '— Select Cluster —')}</option>
+                {clusters.map((cluster) => (
+                  <option key={cluster.id} value={cluster.id}>{cluster.name}</option>
+                ))}
+              </NativeSelect>
+              <NativeSelect
+                aria-label={t('clusterStackFilter.stackLabel', 'Stack')}
+                value={selectedStackId}
+                onChange={(event) => handleStackChange(event.target.value)}
+                className="min-w-[200px]"
+              >
+                <option value="">{t('clusterStackFilter.selectStack', '— Select Stack —')}</option>
+                {filteredStacks.map((stack) => (
+                  <option key={stack.id} value={stack.id}>{stack.name}</option>
+                ))}
+              </NativeSelect>
+              {(selectedClusterId || selectedStackId) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedClusterId('')
+                    setSelectedStackId('')
+                  }}
+                  className="text-xs text-[var(--color-text-secondary)] hover:text-red-400"
+                >
+                  {t('clusterStackFilter.clear', 'Clear')}
+                </button>
+              )}
+            </div>
+
+            <div className="relative ml-auto">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <input
+                placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              />
+            </div>
           </div>
         )}
       />

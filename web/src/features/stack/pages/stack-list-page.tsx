@@ -1006,54 +1006,45 @@ function StackInfoTab({ stack, onAddTools, onDelete }: { stack: Stack; onAddTool
 	return (
 		<div className="flex flex-col gap-6">
 			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
-				<div className="mb-3 flex items-center justify-between gap-3">
+				<div className="mb-3 flex flex-col gap-3">
 					<div>
 						<div className="flex items-center gap-2">
 							<div className="text-[14px] font-bold text-[var(--color-text-primary)]">Installed Stack Summary</div>
-							<Button
-								variant="outline"
-								size="sm"
-								type="button"
-								onClick={() => setConnOpen(true)}
-								title={t("stackList.connection.openTitle", "View OSS login/DB/ObjectStorage connection info")}
-							>
-								{t("stackList.connection.open", "Connection Info")}
-							</Button>
-							<Button
-								variant="outline"
-								size="sm"
-								type="button"
-								onClick={handleCopyGatewayPF}
-								title={t("stackList.connection.gatewayCopyTitle", "Copy gateway port-forward command")}
-							>
-								<ClipboardList size={13} />
-								{gatewayCopyState === "copied"
-									? "Copied"
-									: gatewayCopyState === "failed"
-										? "Copy Failed"
-										: "Gateway PF Copy"}
-							</Button>
-							<Button
-								variant="outline"
-								size="sm"
-								type="button"
-								onClick={handleCopyHosts}
-								disabled={!hostsText}
-								title={hostsText
-									? t("stackList.connection.hostsCopyTitle", "Copy /etc/hosts mappings")
-									: t("stackList.connection.hostsCopyUnavailable", "Cannot build hosts mappings because access domain is missing")}
-							>
-								<ClipboardList size={13} />
-								{hostsCopyState === "copied"
-									? "Copied"
-									: hostsCopyState === "failed"
-										? "Copy Failed"
-										: "/etc/hosts Copy"}
-							</Button>
 						</div>
 						<div className="text-[12px] text-[var(--color-text-secondary)]">{t("stackList.connection.summary", "Deployed configuration summary and key actions")}</div>
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex flex-wrap items-center gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							type="button"
+							onClick={handleCopyGatewayPF}
+							title={t("stackList.connection.gatewayCopyTitle", "Copy gateway port-forward command")}
+						>
+							<ClipboardList size={13} />
+							{gatewayCopyState === "copied"
+								? "Copied"
+								: gatewayCopyState === "failed"
+									? "Copy Failed"
+									: "Gateway PF Copy"}
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							type="button"
+							onClick={handleCopyHosts}
+							disabled={!hostsText}
+							title={hostsText
+								? t("stackList.connection.hostsCopyTitle", "Copy /etc/hosts mappings")
+								: t("stackList.connection.hostsCopyUnavailable", "Cannot build hosts mappings because access domain is missing")}
+						>
+							<ClipboardList size={13} />
+							{hostsCopyState === "copied"
+								? "Copied"
+								: hostsCopyState === "failed"
+									? "Copy Failed"
+									: "/etc/hosts Copy"}
+						</Button>
 						<Button variant="outline" size="sm" type="button" onClick={onAddTools}>
 							<Plus size={13} /> Add Tools
 						</Button>
