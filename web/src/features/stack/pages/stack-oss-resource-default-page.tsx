@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Database, Plus, Save } from 'lucide-react'
+import { Database, Plus, Save, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -21,6 +21,46 @@ const EMPTY_ROW: EditableRow = {
   is_default: true,
 }
 
+const TOOL_CATEGORY_MAP: Record<string, 'Artifacts' | 'CI/CD' | 'Observability'> = {
+  gitlab: 'Artifacts',
+  nexus: 'Artifacts',
+  jfrog: 'Artifacts',
+  github: 'Artifacts',
+  gitea: 'Artifacts',
+  'gitlab-registry': 'Artifacts',
+  harbor: 'Artifacts',
+  'docker-hub': 'Artifacts',
+  minio: 'Artifacts',
+  s3: 'Artifacts',
+  gcs: 'Artifacts',
+  'gitlab-ci': 'CI/CD',
+  'github-actions': 'CI/CD',
+  jenkins: 'CI/CD',
+  argocd: 'CI/CD',
+  flux: 'CI/CD',
+  spinnaker: 'CI/CD',
+  prometheus: 'Observability',
+  thanos: 'Observability',
+  victoriametrics: 'Observability',
+  grafana: 'Observability',
+  kibana: 'Observability',
+  'opensearch-dashboards': 'Observability',
+  opensearch: 'Observability',
+  elasticsearch: 'Observability',
+  loki: 'Observability',
+  tempo: 'Observability',
+  jaeger: 'Observability',
+  'opentelemetry-collector': 'Observability',
+}
+
+const CATEGORY_BADGE_CLASSNAME: Record<'Artifacts' | 'CI/CD' | 'Observability', string> = {
+  Artifacts: 'bg-[rgba(99,102,241,0.14)] text-[#a5b4fc]',
+  'CI/CD': 'bg-[rgba(16,185,129,0.14)] text-[#6ee7b7]',
+  Observability: 'bg-[rgba(245,158,11,0.14)] text-[#fbbf24]',
+}
+
+const getToolCategory = (toolKey: string) => TOOL_CATEGORY_MAP[toolKey.trim().toLowerCase()]
+
 export function StackOssResourceDefaultPage() {
   const { t } = useTranslation()
   const { data, isLoading } = useResourceDefaults()
@@ -28,6 +68,7 @@ export function StackOssResourceDefaultPage() {
   const [draftRows, setDraftRows] = useState<Record<string, EditableRow>>({})
   const [newRow, setNewRow] = useState<EditableRow>(EMPTY_ROW)
   const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   const rows = useMemo(
     () => (data?.items ?? []).map((row) => draftRows[row.tool_key] ?? row),
@@ -35,6 +76,18 @@ export function StackOssResourceDefaultPage() {
   )
 
   const hasData = useMemo(() => rows.length > 0, [rows])
+  const filteredRows = useMemo(() => {
+    const keyword = search.trim().toLowerCase()
+    if (!keyword) return rows
+    return rows.filter((row) => {
+      const category = getToolCategory(row.tool_key) ?? ''
+      return [
+        row.tool_key,
+        row.display_name,
+        category,
+      ].some((value) => value.toLowerCase().includes(keyword))
+    })
+  }, [rows, search])
 
   const updateRow = (toolKey: string, patch: Partial<EditableRow>) => {
     setDraftRows((prev) => ({
@@ -115,8 +168,22 @@ export function StackOssResourceDefaultPage() {
       )}
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-        <div className="border-b border-[var(--color-border-default)] px-5 py-3 text-sm font-bold text-[var(--color-text-primary)]">
-          OSS Default Resource Request/Limit Defaults
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3">
+          <div className="text-sm font-bold text-[var(--color-text-primary)]">
+            OSS Default Resource Request/Limit Defaults
+          </div>
+          <div className="relative">
+            <Search
+              size={13}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+            />
+            <input
+              placeholder="Search by category / tool / name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-[240px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            />
+          </div>
         </div>
 
         <table className="w-full border-collapse">
@@ -158,10 +225,27 @@ export function StackOssResourceDefaultPage() {
               </tr>
             )}
 
-            {rows.map((row) => (
+            {!isLoading && hasData && filteredRows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
+                  검색 조건에 맞는 OSS Default Resource가 없습니다.
+                </td>
+              </tr>
+            )}
+
+            {filteredRows.map((row) => {
+              const category = getToolCategory(row.tool_key)
+              return (
               <tr key={row.tool_key}>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                  <Input value={row.tool_key} onChange={(e) => updateRow(row.tool_key, { tool_key: e.target.value })} className="w-[150px]" />
+                  <div className="flex items-center gap-2">
+                    {category && (
+                      <span className={`rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[category]}`}>
+                        {category}
+                      </span>
+                    )}
+                    <Input value={row.tool_key} onChange={(e) => updateRow(row.tool_key, { tool_key: e.target.value })} className="w-[150px]" />
+                  </div>
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                   <Input value={row.display_name} onChange={(e) => updateRow(row.tool_key, { display_name: e.target.value })} className="w-[180px]" />
@@ -184,11 +268,18 @@ export function StackOssResourceDefaultPage() {
                   </Button>
                 </td>
               </tr>
-            ))}
+            )})}
 
             <tr>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                <Input value={newRow.tool_key} onChange={(e) => setNewRow((prev) => ({ ...prev, tool_key: e.target.value }))} placeholder="tool key" className="w-[150px]" />
+                <div className="flex items-center gap-2">
+                  {getToolCategory(newRow.tool_key) && (
+                    <span className={`rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[getToolCategory(newRow.tool_key)!]}`}>
+                      {getToolCategory(newRow.tool_key)}
+                    </span>
+                  )}
+                  <Input value={newRow.tool_key} onChange={(e) => setNewRow((prev) => ({ ...prev, tool_key: e.target.value }))} placeholder="tool key" className="w-[150px]" />
+                </div>
               </td>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                 <Input value={newRow.display_name} onChange={(e) => setNewRow((prev) => ({ ...prev, display_name: e.target.value }))} placeholder="display name" className="w-[180px]" />
