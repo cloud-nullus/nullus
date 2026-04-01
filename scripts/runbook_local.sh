@@ -182,7 +182,7 @@ run_bg() {
   local name="$1" workdir="$2" cmd="$3" port="$4"
   local logfile="$LOG_DIR/${name}.log"
   : >"$logfile"
-  nohup bash -lc "cd '$workdir' && exec $cmd" >"$logfile" 2>&1 &
+  nohup bash -lc "cd '$workdir' && exec $cmd </dev/null" >"$logfile" 2>&1 &
   local pid=$!
   sleep 3
   if ! kill -0 "$pid" >/dev/null 2>&1; then
