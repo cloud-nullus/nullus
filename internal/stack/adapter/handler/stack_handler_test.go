@@ -10,7 +10,6 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
-	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -131,11 +130,7 @@ func TestStackHandler_DeleteStack_204(t *testing.T) {
 	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listResp))
 	items, ok := listResp["items"].([]any)
 	require.True(t, ok)
-	require.Len(t, items, 1)
-	deletedItem, ok := items[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, stackID, deletedItem["id"])
-	assert.Equal(t, string(domain.StateCancelled), deletedItem["state"])
+	require.Len(t, items, 0)
 }
 
 func TestStackHandler_DeleteStack_404WhenNotFound(t *testing.T) {

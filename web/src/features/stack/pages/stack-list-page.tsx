@@ -2602,17 +2602,25 @@ export function StackListPage() {
 	const [clusterFilter, setClusterFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
 	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
+	const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
 	const [viewportHeight, setViewportHeight] = useState(() =>
 		typeof window !== "undefined" ? window.innerHeight : 960,
 	);
+	const [viewportWidth, setViewportWidth] = useState(() =>
+		typeof window !== "undefined" ? window.innerWidth : 1440,
+	);
 	const deleteStack = useDeleteStack();
 	const tablePageSize = Math.max(6, Math.min(14, Math.floor((viewportHeight - 340) / 52)));
+	const isDesktopLayout = viewportWidth >= 1280;
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
 			return;
 		}
-		const onResize = () => setViewportHeight(window.innerHeight);
+		const onResize = () => {
+			setViewportHeight(window.innerHeight);
+			setViewportWidth(window.innerWidth);
+		};
 		window.addEventListener("resize", onResize);
 		return () => window.removeEventListener("resize", onResize);
 	}, []);
@@ -2645,6 +2653,9 @@ export function StackListPage() {
 	const clusterOptions = useMemo(() => Array.from(new Set(stacks.map((item) => item.clusterName).filter((name) => !!name))).sort(), [stacks]);
 
 	const filtered = stacks.filter((s) => {
+		if (pendingDeleteIds.includes(s.id)) {
+			return false;
+		}
 		const q = search.toLowerCase();
 		const matchesSearch =
 			!search ||
@@ -2664,8 +2675,16 @@ export function StackListPage() {
 
 	const handleDeleteStack = () => {
 		if (!deleteStackId) return;
-		deleteStack.mutate(deleteStackId, {
-			onSuccess: () => setDeleteStackId(null),
+		const targetID = deleteStackId;
+		setPendingDeleteIds((prev) => (prev.includes(targetID) ? prev : [...prev, targetID]));
+		deleteStack.mutate(targetID, {
+			onSuccess: () => {
+				setDeleteStackId(null);
+				setExpandedStackId((prev) => (prev === targetID ? null : prev));
+			},
+			onError: () => {
+				setPendingDeleteIds((prev) => prev.filter((id) => id !== targetID));
+			},
 		});
 	};
 
@@ -2805,27 +2824,29 @@ export function StackListPage() {
 					</div>
 				</div>
 
-				<div className="hidden xl:block">
-					{expandedStack ? (
-						<div className="h-full pr-1">
-							<StackDetailPanel
-								key={expandedStack.id}
-								stack={expandedStack}
-								clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
-								isDeleting={deleteStack.isPending}
-								onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
-								onDelete={() => setDeleteStackId(expandedStack.id)}
-							/>
-						</div>
-					) : (
-						<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
-							{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
-						</div>
-					)}
-				</div>
+				{isDesktopLayout && (
+					<div>
+						{expandedStack ? (
+							<div className="h-full pr-1">
+								<StackDetailPanel
+									key={expandedStack.id}
+									stack={expandedStack}
+									clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
+									isDeleting={deleteStack.isPending}
+									onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
+									onDelete={() => setDeleteStackId(expandedStack.id)}
+								/>
+							</div>
+						) : (
+							<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
+								{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
+							</div>
+						)}
+					</div>
+				)}
 			</div>
 
-			{expandedStack && (
+			{!isDesktopLayout && expandedStack && (
 				<StackDetailPanel
 					key={`${expandedStack.id}-mobile`}
 					stack={expandedStack}
@@ -2833,7 +2854,7 @@ export function StackListPage() {
 					isDeleting={deleteStack.isPending}
 					onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
 					onDelete={() => setDeleteStackId(expandedStack.id)}
-					className="mt-4 xl:hidden"
+					className="mt-4"
 				/>
 			)}
 

@@ -159,9 +159,28 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteGatewayCRDs(ctx, kubeconfig, stackID)
 
+	if err := uc.stackRepo.Delete(ctx, stackID); err != nil {
+		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
+		return fmt.Errorf("delete stack: %w", err)
+	}
+
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
+	uc.clearStreamHistory(stackID)
 
 	return nil
+}
+
+type historyClearer interface {
+	ClearHistory(deploymentID string)
+}
+
+func (uc *DeleteStack) clearStreamHistory(stackID string) {
+	if stackID == "" || uc.streamer == nil {
+		return
+	}
+	if clearer, ok := uc.streamer.(historyClearer); ok {
+		clearer.ClearHistory(stackID)
+	}
 }
 
 func (uc *DeleteStack) loadKubeconfig(ctx context.Context, clusterID string) []byte {
