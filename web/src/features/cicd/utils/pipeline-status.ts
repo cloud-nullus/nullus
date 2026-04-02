@@ -1,4 +1,4 @@
-type Translate = (key: string, defaultValue?: string) => string
+import type { TFunction } from 'i18next'
 
 export type PipelineStatusKey =
   | 'active'
@@ -21,7 +21,7 @@ export function getPipelineStatusStyle(status: string) {
   return PIPELINE_STATUS_STYLES[(status as PipelineStatusKey)] ?? PIPELINE_STATUS_STYLES.pending
 }
 
-export function getPipelineStatusLabel(t: Translate, status: string) {
+export function getPipelineStatusLabel(t: TFunction, status: string) {
   if (status === 'active') return t('cicdListPage.status.active', 'Active')
   if (status === 'running') return t('cicd.status.running', 'Running')
   if (status === 'success') return t('cicd.status.success', 'Success')

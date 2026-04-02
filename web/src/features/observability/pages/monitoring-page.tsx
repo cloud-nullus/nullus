@@ -7,11 +7,12 @@ import {
   Cpu, MemoryStick, Box, CheckCircle, AlertCircle, XCircle,
   Server, GitBranch, BarChart3, Settings2, Plus, Trash2, Save,
   GripVertical, ChevronDown, ChevronUp, Check, Lock,
-  Activity, Clock, Package, TrendingUp, TrendingDown, Layers,
+  Activity, Clock, Package, Layers,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-import type { ToolHealthStatus } from '../api/observability-api'
+import { useDashboard, type ToolHealthStatus } from '../api/observability-api'
+import { useDeployments, usePipelines } from '../../cicd/api/cicd-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
@@ -43,25 +44,49 @@ const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string
   error: { icon: <XCircle size={13} />, cls: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Error' },
 }
 
-// ─── Time series generator ────────────────────────────────────────────────────
-function makeSeries(range: TimeRange) {
-  const cfg: Record<TimeRange, [number, number]> = {
-    '1h': [12, 5], '6h': [12, 30], '24h': [24, 60], '7d': [14, 1440],
-  }
-  const [pts, stepMin] = cfg[range]
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return '—'
+  const ms = Date.now() - new Date(dateStr).getTime()
+  if (ms < 60_000) return 'just now'
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`
+  return `${Math.floor(ms / 86_400_000)}d ago`
+}
+
+function selectSeries<T extends { ts: number }>(samples: T[], range: TimeRange): T[] {
+  if (samples.length === 0) return []
   const now = Date.now()
-  return Array.from({ length: pts }, (_, i) => {
-    const t = new Date(now - (pts - 1 - i) * stepMin * 60_000)
-    const label = range === '7d'
-      ? t.toLocaleDateString('en', { weekday: 'short' })
-      : t.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false })
-    return {
-      time: label,
-      cpu: Math.max(12, Math.min(96, Math.round(56 + Math.sin(i / 2.5) * 16 + (i % 3) * 2))),
-      memory: Math.max(24, Math.min(97, Math.round(63 + Math.cos(i / 3.2) * 10 + (i % 4) * 2))),
-      success: Math.round(89 + Math.random() * 10),
-    }
-  })
+  const windowMs: Record<TimeRange, number> = {
+    '1h': 60 * 60 * 1000,
+    '6h': 6 * 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+  }
+  const cutoff = now - windowMs[range]
+  const ranged = samples.filter((s) => s.ts >= cutoff)
+  if (ranged.length <= 120) return ranged
+  const stride = Math.ceil(ranged.length / 120)
+  return ranged.filter((_, idx) => idx % stride === 0)
+}
+
+function formatRangeLabel(ts: number, range: TimeRange): string {
+  const date = new Date(ts)
+  if (range === '7d') {
+    return date.toLocaleDateString('en', { weekday: 'short' })
+  }
+  return date.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function formatDuration(startedAt: string | null, completedAt: string | null): string {
+  if (!startedAt) return '—'
+  const start = new Date(startedAt).getTime()
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now()
+  const ms = Math.max(0, end - start)
+  const totalSec = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSec / 60)
+  const seconds = totalSec % 60
+  if (minutes === 0) return `${seconds}s`
+  return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
 }
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────
@@ -384,21 +409,66 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
 // ─── Default content: Cluster view ───────────────────────────────────────────
 function ClusterDefault({ clusterId }: { clusterId: string }) {
   const [range, setRange] = useState<TimeRange>('24h')
-  const series = useMemo(() => makeSeries(range), [range])
-  const weekBars = useMemo(() => ([
-    { day: 'Mon', success: 16, failed: 2 },
-    { day: 'Tue', success: 19, failed: 3 },
-    { day: 'Wed', success: 15, failed: 4 },
-    { day: 'Thu', success: 21, failed: 2 },
-    { day: 'Fri', success: 24, failed: 3 },
-    { day: 'Sat', success: 11, failed: 2 },
-    { day: 'Sun', success: 9, failed: 1 },
-  ]), [])
+  const { data: dashboard } = useDashboard()
+  const { data: deploymentsData } = useDeployments()
+  const [samples, setSamples] = useState<Array<{ ts: number; cpu: number; memory: number }>>([])
+
+  useEffect(() => {
+    if (!dashboard?.kpi) return
+    setSamples((prev) => [
+      ...prev,
+      {
+        ts: Date.now(),
+        cpu: dashboard.kpi.cpuUsage,
+        memory: dashboard.kpi.memoryUsage,
+      },
+    ].slice(-4000))
+  }, [dashboard])
+
+  const selected = useMemo(() => selectSeries(samples, range), [samples, range])
+  const series = useMemo(
+    () => selected.map((s) => ({ time: formatRangeLabel(s.ts, range), cpu: s.cpu, memory: s.memory })),
+    [selected, range],
+  )
+
+  const weekBars = useMemo(() => {
+    const deployments = deploymentsData?.items ?? []
+    const now = new Date()
+    const dayKeys = Array.from({ length: 7 }, (_, idx) => {
+      const d = new Date(now)
+      d.setDate(now.getDate() - (6 - idx))
+      return d.toLocaleDateString('en-CA')
+    })
+
+    const byDay = dayKeys.reduce<Record<string, { day: string; success: number; failed: number }>>((acc, key) => {
+      const dayDate = new Date(key)
+      acc[key] = { day: dayDate.toLocaleDateString('en', { weekday: 'short' }), success: 0, failed: 0 }
+      return acc
+    }, {})
+
+    deployments.forEach((deployment) => {
+      const key = deployment.startedAt ? new Date(deployment.startedAt).toLocaleDateString('en-CA') : ''
+      const bucket = byDay[key]
+      if (!bucket) return
+      if (deployment.status === 'success') bucket.success += 1
+      if (deployment.status === 'failed') bucket.failed += 1
+    })
+
+    return dayKeys.map((key) => byDay[key])
+  }, [deploymentsData?.items])
+
+  const podCount = dashboard?.kpi.podCount ?? 0
+  const podRunning = dashboard?.kpi.podRunning ?? 0
+  const cpuUsage = dashboard?.kpi.cpuUsage ?? 0
+  const memoryUsage = dashboard?.kpi.memoryUsage ?? 0
+
   const pods = [
-    { name: 'Running', value: 22, color: '#22c55e' },
-    { name: 'Pending', value: 1, color: '#f59e0b' },
-    { name: 'Failed', value: 1, color: '#ef4444' },
+    { name: 'Running', value: podRunning, color: '#22c55e' },
+    { name: 'Other', value: Math.max(0, podCount - podRunning), color: '#f59e0b' },
   ]
+
+  const runningPodsPercent = podCount > 0 ? Math.round((podRunning / podCount) * 100) : 0
+
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
@@ -419,10 +489,10 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
         </div>
       </div>
       <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        <KpiCard label="Nodes" value="3/4" icon={<Server size={18} />} color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]" bar={75} />
-        <KpiCard label="Pods" value="22/24" icon={<Box size={18} />} color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]" bar={92} />
-        <KpiCard label="CPU" value="62%" icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={62} />
-        <KpiCard label="Memory" value="71%" icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={71} />
+        <KpiCard label="Running Pods" value={`${podRunning}/${podCount}`} icon={<Server size={18} />} color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]" bar={runningPodsPercent} />
+        <KpiCard label="Pods" value={String(podCount)} icon={<Box size={18} />} color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]" bar={runningPodsPercent} />
+        <KpiCard label="CPU" value={`${Math.round(cpuUsage)}%`} icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={cpuUsage} />
+        <KpiCard label="Memory" value={`${Math.round(memoryUsage)}%`} icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={memoryUsage} />
       </div>
       <div className="grid grid-cols-2 gap-3.5">
         <ChartPanel title="CPU Usage">
@@ -486,63 +556,23 @@ function StackDefault({ stackId }: { stackId: string }) {
 // ─── Default content: CI/CD view ─────────────────────────────────────────────
 // ─── CI/CD Application monitoring data ───────────────────────────────────────
 type AppStatus = 'healthy' | 'degraded' | 'down'
-type AppEnv = 'prod' | 'staging' | 'dev'
 
-interface DeployedApp {
-  name: string; version: string; pipeline: string; env: AppEnv
-  status: AppStatus; pods: [number, number]; respMs: number
-  errRate: number; lastDeploy: string; reqRate: number
+interface DeployedAppRow {
+  name: string
+  version: string
+  pipeline: string
+  status: AppStatus
+  pods: [number, number]
+  cluster: string
+  namespace: string
+  duration: string
+  lastDeploy: string
 }
-
-
-const MOCK_APPS: DeployedApp[] = [
-  { name: 'app-frontend', version: 'v2.3.1', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [3, 3], respMs: 125, errRate: 0.1, lastDeploy: '2m ago', reqRate: 1240 },
-  { name: 'app-backend', version: 'v1.8.0', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [5, 5], respMs: 89, errRate: 0.0, lastDeploy: '15m ago', reqRate: 3870 },
-  { name: 'auth-service', version: 'v0.9.2', pipeline: 'GitLab CI', env: 'prod', status: 'degraded', pods: [1, 3], respMs: 450, errRate: 3.2, lastDeploy: '1h ago', reqRate: 580 },
-  { name: 'payment-api', version: 'v3.1.0', pipeline: 'ArgoCD', env: 'prod', status: 'healthy', pods: [2, 2], respMs: 201, errRate: 0.2, lastDeploy: '3h ago', reqRate: 920 },
-  { name: 'notification-svc', version: 'v0.4.1', pipeline: 'ArgoCD', env: 'prod', status: 'healthy', pods: [2, 2], respMs: 67, errRate: 0.0, lastDeploy: '5h ago', reqRate: 430 },
-  { name: 'worker-jobs', version: 'v1.2.3', pipeline: 'GitLab CI', env: 'prod', status: 'healthy', pods: [3, 3], respMs: 0, errRate: 0.0, lastDeploy: '1d ago', reqRate: 0 },
-  { name: 'data-pipeline', version: 'v2.0.0', pipeline: 'ArgoCD', env: 'staging', status: 'healthy', pods: [1, 1], respMs: 312, errRate: 0.5, lastDeploy: '2d ago', reqRate: 140 },
-  { name: 'admin-ui', version: 'v1.5.0', pipeline: 'GitLab CI', env: 'staging', status: 'down', pods: [0, 2], respMs: 0, errRate: 100, lastDeploy: '2d ago', reqRate: 0 },
-]
-
-const RECENT_DEPLOYS = [
-  { app: 'app-frontend', version: 'v2.3.1', env: 'prod', pipeline: 'GitLab CI', status: 'success', time: '2m ago', duration: '1m 42s' },
-  { app: 'app-backend', version: 'v1.8.0', env: 'prod', pipeline: 'GitLab CI', status: 'success', time: '15m ago', duration: '2m 11s' },
-  { app: 'auth-service', version: 'v0.9.2', env: 'prod', pipeline: 'GitLab CI', status: 'failed', time: '1h ago', duration: '3m 05s' },
-  { app: 'payment-api', version: 'v3.1.0', env: 'prod', pipeline: 'ArgoCD', status: 'success', time: '3h ago', duration: '58s' },
-  { app: 'admin-ui', version: 'v1.5.0', env: 'staging', pipeline: 'GitLab CI', status: 'failed', time: '2d ago', duration: '4m 22s' },
-]
-
-const REQ_SERIES = [
-  { time: '00:00', frontend: 980, backend: 3200, auth: 620 },
-  { time: '04:00', frontend: 420, backend: 1800, auth: 310 },
-  { time: '08:00', frontend: 1100, backend: 3900, auth: 740 },
-  { time: '12:00', frontend: 1560, backend: 4800, auth: 890 },
-  { time: '16:00', frontend: 1380, backend: 4200, auth: 710 },
-  { time: '20:00', frontend: 1240, backend: 3870, auth: 580 },
-  { time: 'now', frontend: 1240, backend: 3870, auth: 580 },
-]
-
-const ERR_SERIES = [
-  { time: '00:00', frontend: 0.0, backend: 0.0, auth: 0.8 },
-  { time: '04:00', frontend: 0.1, backend: 0.0, auth: 1.2 },
-  { time: '08:00', frontend: 0.0, backend: 0.1, auth: 2.0 },
-  { time: '12:00', frontend: 0.2, backend: 0.0, auth: 2.8 },
-  { time: '16:00', frontend: 0.1, backend: 0.1, auth: 3.0 },
-  { time: '20:00', frontend: 0.1, backend: 0.0, auth: 3.2 },
-  { time: 'now', frontend: 0.1, backend: 0.0, auth: 3.2 },
-]
 
 const APP_STATUS_CFG: Record<AppStatus, { label: string; cls: string; dot: string }> = {
   healthy: { label: 'Healthy', cls: 'bg-emerald-500/15 text-emerald-400', dot: 'bg-emerald-400' },
   degraded: { label: 'Degraded', cls: 'bg-amber-500/15 text-amber-400', dot: 'bg-amber-400' },
   down: { label: 'Down', cls: 'bg-red-500/15 text-red-400', dot: 'bg-red-400' },
-}
-const ENV_CFG: Record<AppEnv, { cls: string }> = {
-  prod: { cls: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' },
-  staging: { cls: 'bg-[rgba(245,158,11,0.12)] text-[#fbbf24]' },
-  dev: { cls: 'bg-[rgba(148,163,184,0.12)] text-[#94a3b8]' },
 }
 
 /** Sample Grafana tab pre-seeded into CI/CD localStorage */
@@ -556,39 +586,120 @@ export const CICD_DEFAULT_TABS: EmbedTab[] = [
 ]
 
 function CicdDefault() {
-  const [envFilter, setEnvFilter] = useState<AppEnv | 'all'>('all')
   const [range, setRange] = useState<TimeRange>('24h')
+  const { data: pipelinesData } = usePipelines()
+  const { data: deploymentsData } = useDeployments()
 
-  const filtered = envFilter === 'all' ? MOCK_APPS : MOCK_APPS.filter((a) => a.env === envFilter)
+  const pipelines = pipelinesData?.items ?? []
+  const deployments = deploymentsData?.items ?? []
 
-  const healthy = filtered.filter((a) => a.status === 'healthy').length
-  const degraded = filtered.filter((a) => a.status === 'degraded').length
-  const down = filtered.filter((a) => a.status === 'down').length
-  const totalPods = filtered.reduce((s, a) => s + a.pods[0], 0)
+  const latestByPipeline = useMemo(() => {
+    const map = new Map<string, (typeof deployments)[number]>()
+    deployments.forEach((deployment) => {
+      const prev = map.get(deployment.pipelineId)
+      if (!prev || new Date(deployment.startedAt).getTime() > new Date(prev.startedAt).getTime()) {
+        map.set(deployment.pipelineId, deployment)
+      }
+    })
+    return map
+  }, [deployments])
+
+  const rows = useMemo<DeployedAppRow[]>(() => pipelines.map((pipeline) => {
+    const latest = latestByPipeline.get(pipeline.id)
+    const status: AppStatus = latest?.status === 'failed' ? 'down' : latest?.status === 'running' ? 'degraded' : 'healthy'
+
+    return {
+      name: pipeline.name,
+      version: latest?.version || '—',
+      pipeline: pipeline.appType,
+      status,
+      pods: [1, 1],
+      cluster: pipeline.clusterName || '—',
+      namespace: pipeline.namespace || 'default',
+      duration: formatDuration(latest?.startedAt ?? null, latest?.completedAt ?? null),
+      lastDeploy: timeAgo(latest?.startedAt ?? null),
+    }
+  }), [pipelines, latestByPipeline])
+
+  const latestDeployments = useMemo(
+    () => [...deployments].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()).slice(0, 8),
+    [deployments],
+  )
+
+  const timeline = useMemo(() => {
+    const now = new Date()
+    const isDaily = range === '7d'
+    const windowMs: Record<TimeRange, number> = {
+      '1h': 60 * 60 * 1000,
+      '6h': 6 * 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+    }
+    const cutoff = now.getTime() - windowMs[range]
+
+    const keys: string[] = []
+    if (isDaily) {
+      for (let i = 6; i >= 0; i -= 1) {
+        const day = new Date(now)
+        day.setDate(now.getDate() - i)
+        keys.push(day.toLocaleDateString('en-CA'))
+      }
+    } else {
+      const start = new Date(cutoff)
+      start.setMinutes(0, 0, 0)
+      const cur = new Date(start)
+      while (cur.getTime() <= now.getTime()) {
+        const key = `${cur.toLocaleDateString('en-CA')} ${cur.getHours().toString().padStart(2, '0')}:00`
+        keys.push(key)
+        cur.setHours(cur.getHours() + 1)
+      }
+    }
+
+    const byKey = keys.reduce<Record<string, { time: string; success: number; failed: number }>>((acc, key) => {
+      const label = isDaily
+        ? new Date(key).toLocaleDateString('en', { weekday: 'short' })
+        : key.slice(-5)
+      acc[key] = { time: label, success: 0, failed: 0 }
+      return acc
+    }, {})
+
+    deployments.forEach((deployment) => {
+      const started = new Date(deployment.startedAt).getTime()
+      if (Number.isNaN(started) || started < cutoff) return
+      const date = new Date(started)
+      const key = isDaily
+        ? date.toLocaleDateString('en-CA')
+        : `${date.toLocaleDateString('en-CA')} ${date.getHours().toString().padStart(2, '0')}:00`
+      const bucket = byKey[key]
+      if (!bucket) return
+      if (deployment.status === 'success') bucket.success += 1
+      if (deployment.status === 'failed') bucket.failed += 1
+    })
+
+    return keys.map((k) => byKey[k])
+  }, [deployments, range])
+
+  const successPipelines = pipelines.reduce((count, pipeline) => {
+    const status = latestByPipeline.get(pipeline.id)?.status
+    return status === 'success' ? count + 1 : count
+  }, 0)
+  const failedPipelines = pipelines.reduce((count, pipeline) => {
+    const status = latestByPipeline.get(pipeline.id)?.status
+    return status === 'failed' ? count + 1 : count
+  }, 0)
+  const runningDeployments = deployments.filter((d) => ['running', 'pending', 'validating', 'installing', 'configuring', 'health_check', 'rolling_back'].includes(d.status)).length
 
   const appKpis = [
-    { label: 'Total Apps', value: String(filtered.length), icon: <Layers size={18} />, color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 100 },
-    { label: 'Healthy', value: String(healthy), icon: <CheckCircle size={18} />, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: Math.round(healthy / filtered.length * 100) || 0 },
-    { label: 'Degraded / Down', value: `${degraded} / ${down}`, icon: <AlertCircle size={18} />, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400', bar: Math.round((degraded + down) / filtered.length * 100) || 0 },
-    { label: 'Running Pods', value: String(totalPods), icon: <Box size={18} />, color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: 80 },
+    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 100 },
+    { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CheckCircle size={18} />, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
+    { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch size={18} />, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400', bar: 100 },
+    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
   ]
 
   return (
     <div>
       {/* Toolbar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[var(--color-text-secondary)]">Environment</span>
-          {(['all', 'prod', 'staging', 'dev'] as const).map((e) => (
-            <button key={e} type="button" onClick={() => setEnvFilter(e)}
-              className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold capitalize',
-                envFilter === e
-                  ? 'border-[rgba(99,102,241,0.6)] bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
-              {e === 'all' ? 'All' : e}
-            </button>
-          ))}
-        </div>
         <div className="ml-auto flex items-center gap-2">
           {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
             <button key={r} type="button" onClick={() => setRange(r)}
@@ -608,41 +719,18 @@ function CicdDefault() {
       </div>
 
       {/* Charts */}
-      <div className="mb-5 grid grid-cols-2 gap-3.5">
-        <ChartPanel title="Request Rate (req/min)">
+      <div className="mb-5 grid grid-cols-1 gap-3.5">
+        <ChartPanel title="Deployment Timeline">
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={REQ_SERIES}>
-              <defs>
-                <linearGradient id="rr-fe" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={.4} /><stop offset="95%" stopColor="#6366f1" stopOpacity={.02} /></linearGradient>
-                <linearGradient id="rr-be" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={.4} /><stop offset="95%" stopColor="#22c55e" stopOpacity={.02} /></linearGradient>
-                <linearGradient id="rr-au" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.4} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.02} /></linearGradient>
-              </defs>
+            <BarChart data={timeline}>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
               <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
               <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
               <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }} />
-              <Area type="monotone" dataKey="frontend" name="app-frontend" stroke="#6366f1" strokeWidth={2} fill="url(#rr-fe)" />
-              <Area type="monotone" dataKey="backend" name="app-backend" stroke="#22c55e" strokeWidth={2} fill="url(#rr-be)" />
-              <Area type="monotone" dataKey="auth" name="auth-service" stroke="#f59e0b" strokeWidth={2} fill="url(#rr-au)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Error Rate (%)">
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={ERR_SERIES}>
-              <defs>
-                <linearGradient id="er-fe" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={.3} /><stop offset="95%" stopColor="#6366f1" stopOpacity={.02} /></linearGradient>
-                <linearGradient id="er-au" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={.4} /><stop offset="95%" stopColor="#ef4444" stopOpacity={.02} /></linearGradient>
-              </defs>
-              <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }} />
-              <Area type="monotone" dataKey="frontend" name="app-frontend" stroke="#6366f1" strokeWidth={2} fill="url(#er-fe)" />
-              <Area type="monotone" dataKey="auth" name="auth-service" stroke="#ef4444" strokeWidth={2} fill="url(#er-au)" />
-            </AreaChart>
+              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </ChartPanel>
       </div>
@@ -654,22 +742,21 @@ function CicdDefault() {
             <Package size={15} className="text-[#a5b4fc]" />
             Deployed Applications
           </h2>
-          <span className="text-xs text-[var(--color-text-secondary)]">{filtered.length} apps</span>
+          <span className="text-xs text-[var(--color-text-secondary)]">{rows.length} apps</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-[var(--color-border-default)] text-[11px] text-[var(--color-text-secondary)]">
-                {['Application', 'Version', 'Pipeline', 'Env', 'Status', 'Pods', 'Resp. Time', 'Error Rate', 'Req/min', 'Last Deploy'].map((h) => (
+                {['Application', 'Version', 'Pipeline', 'Status', 'Pods', 'Cluster', 'Namespace', 'Duration', 'Last Deploy'].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold tracking-[0.03em]">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((app, i) => {
+              {rows.map((app, i) => {
                 const sc = APP_STATUS_CFG[app.status]
-                const ec = ENV_CFG[app.env]
-                const isLast = i === filtered.length - 1
+                const isLast = i === rows.length - 1
                 return (
                   <tr key={app.name}
                     className={cn('transition-colors hover:bg-[rgba(255,255,255,0.02)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
@@ -686,9 +773,6 @@ function CicdDefault() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn('rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase', ec.cls)}>{app.env}</span>
-                    </td>
-                    <td className="px-4 py-3">
                       <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', sc.cls)}>{sc.label}</span>
                     </td>
                     <td className="px-4 py-3">
@@ -696,26 +780,9 @@ function CicdDefault() {
                         {app.pods[0]}/{app.pods[1]}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={cn('font-mono', app.respMs > 300 ? 'text-amber-400' : app.respMs === 0 ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-primary)]')}>
-                        {app.respMs ? `${app.respMs}ms` : '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 font-mono">
-                        {app.errRate > 1
-                          ? <><TrendingUp size={11} className="text-red-400" /><span className="text-red-400">{app.errRate}%</span></>
-                          : app.errRate > 0
-                            ? <><TrendingUp size={11} className="text-amber-400" /><span className="text-amber-400">{app.errRate}%</span></>
-                            : <><TrendingDown size={11} className="text-emerald-400" /><span className="text-emerald-400">0%</span></>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
-                        <Activity size={11} />
-                        <span className="font-mono">{app.reqRate > 0 ? app.reqRate.toLocaleString() : '—'}</span>
-                      </div>
-                    </td>
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.cluster}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.namespace}</td>
+                    <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">{app.duration}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
                         <Clock size={11} />{app.lastDeploy}
@@ -738,23 +805,21 @@ function CicdDefault() {
           </h2>
         </div>
         <div className="divide-y divide-[var(--color-border-default)]">
-          {RECENT_DEPLOYS.map((d) => (
-            <div key={`${d.app}-${d.time}`} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3">
+          {latestDeployments.map((d) => (
+            <div key={`${d.pipelineName}-${d.startedAt}`} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3">
               <div className="flex items-center gap-2">
                 {d.status === 'success'
                   ? <CheckCircle size={13} className="text-emerald-400" />
-                  : <XCircle size={13} className="text-red-400" />}
-                <span className="font-semibold text-[var(--color-text-primary)]">{d.app}</span>
+                  : d.status === 'failed'
+                    ? <XCircle size={13} className="text-red-400" />
+                    : <AlertCircle size={13} className="text-amber-400" />}
+                <span className="font-semibold text-[var(--color-text-primary)]">{d.pipelineName}</span>
               </div>
               <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">{d.version}</span>
-              <span className={cn('rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase', ENV_CFG[d.env as AppEnv].cls)}>{d.env}</span>
               <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
-                <GitBranch size={10} />{d.pipeline}
+                <Clock size={10} />{formatDuration(d.startedAt, d.completedAt)}
               </div>
-              <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
-                <Clock size={10} />{d.duration}
-              </div>
-              <span className="ml-auto text-[11px] text-[var(--color-text-secondary)]">{d.time}</span>
+              <span className="ml-auto text-[11px] text-[var(--color-text-secondary)]">{timeAgo(d.startedAt)}</span>
             </div>
           ))}
         </div>

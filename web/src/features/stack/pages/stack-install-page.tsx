@@ -20,7 +20,8 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useScopedClusters as useClusters, useResourceDefaults, useStacks, useCompatibilityMatrix } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix } from '../api/stack-api'
+import { useScopedClusters } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -1889,7 +1890,8 @@ export function StackInstallPage() {
   const deployStack = useDeployStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
-  const { data: clusters } = useClusters()
+  const { data: clustersData } = useScopedClusters()
+  const clusters = clustersData?.items ?? []
   const { data: stackListData } = useStacks()
   const { data: compatibilityMatrixData } = useCompatibilityMatrix()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
@@ -3645,7 +3647,7 @@ export function StackInstallPage() {
                 <option value="">{t('stackInstall.form.selectClusterPlaceholder', 'Select a cluster')}</option>
                 {(clusters ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({formatConnectionStatusLabel(c.connection_status)})
+                    {c.name} ({formatConnectionStatusLabel(c.status)})
                   </option>
                 ))}
               </NativeSelect>

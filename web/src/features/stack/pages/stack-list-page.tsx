@@ -53,7 +53,8 @@ import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
-import { useScopedClusters as useClusters, useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
+import { useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
+import { useScopedClusters } from "../../admin/api/admin-api";
 
 ChartJS.register(
 	CategoryScale,
@@ -2617,17 +2618,18 @@ export function StackListPage() {
 	}, []);
 
 	const normalizedStatusFilter = statusFilter === "healthy" ? "success" : statusFilter;
-	const { data: clusters } = useClusters();
+	const { data: clustersData } = useScopedClusters();
+	const clusters = clustersData?.items ?? [];
 	const { data: apiData, isLoading } = useStacks({
 		search,
 		status: normalizedStatusFilter || undefined,
 	});
 	const clusterNameByID = useMemo(
-		() => new Map((clusters ?? []).map((cluster) => [cluster.id, cluster.name])),
+		() => new Map(clusters.map((cluster) => [cluster.id, cluster.name])),
 		[clusters],
 	);
 	const clusterConnectionByID = useMemo(
-		() => new Map((clusters ?? []).map((cluster) => [cluster.id, cluster.connection_status])),
+		() => new Map(clusters.map((cluster) => [cluster.id, cluster.status])),
 		[clusters],
 	);
 	const stacks = useMemo(
