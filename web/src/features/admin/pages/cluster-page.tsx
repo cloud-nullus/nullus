@@ -137,8 +137,8 @@ const CLUSTER_DETAIL_META: Record<ClusterType, { namespace: string; authMethod: 
 }
 
 const CLUSTER_TYPE_OPTIONS: Array<{ value: ClusterType; key: string; fallback: string }> = [
-  { value: 'target', key: 'clusterPage.type.target', fallback: 'Target Cluster' },
   { value: 'pipeline', key: 'clusterPage.type.pipeline', fallback: 'DevSecOps Stack Cluster' },
+  { value: 'target', key: 'clusterPage.type.target', fallback: 'Target Cluster' },
 ]
 
 const CLOUD_PROVIDER_OPTIONS: Array<{ value: CloudProvider; label: string }> = [
