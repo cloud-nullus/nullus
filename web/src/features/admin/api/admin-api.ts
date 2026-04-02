@@ -283,6 +283,19 @@ export function useClusters() {
   })
 }
 
+export function useScopedClusters() {
+  const { data: clustersData, ...rest } = useClusters()
+  const { data: org } = useOrganization()
+  const scope = org?.clusterAccessScope ?? []
+
+  const items = clustersData?.items ?? []
+  const filtered = scope.length > 0
+    ? items.filter((c) => scope.includes(c.name))
+    : items
+
+  return { ...rest, data: clustersData ? { ...clustersData, items: filtered, total: filtered.length } : clustersData }
+}
+
 export function useCluster(id: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.cluster(id),

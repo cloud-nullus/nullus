@@ -13,7 +13,7 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
 import { useCicdTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
 import type { AppType } from '../api/cicd-api'
-import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
+import { useClusterNamespaces, useScopedClusters as useClusters } from '../../admin/api/admin-api'
 import { useStacks } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
 import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-log'

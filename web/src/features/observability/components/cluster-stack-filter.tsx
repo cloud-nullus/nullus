@@ -4,7 +4,7 @@ import type { Cluster, Stack } from '../../../types'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { cn } from '../../../lib/utils'
 import { useStacks } from '../../stack/api/stack-api'
-import { useClusters } from '../../admin/api/admin-api'
+import { useScopedClusters as useClusters } from '../../admin/api/admin-api'
 
 const formatStatusLabel = (status: string) => status.replace(/_/g, ' ')
 

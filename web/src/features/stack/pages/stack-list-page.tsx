@@ -53,7 +53,7 @@ import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
-import { useClusters, useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
+import { useScopedClusters as useClusters, useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
 
 ChartJS.register(
 	CategoryScale,

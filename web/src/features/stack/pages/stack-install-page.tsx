@@ -20,7 +20,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useClusters, useResourceDefaults, useStacks, useCompatibilityMatrix } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useScopedClusters as useClusters, useResourceDefaults, useStacks, useCompatibilityMatrix } from '../api/stack-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'

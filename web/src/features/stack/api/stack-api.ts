@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import { useOrganization } from '../../admin/api/admin-api'
 import type {
   ClusterStatus,
   CompatibilityMatrix,
@@ -620,6 +621,18 @@ export function useClusters() {
     queryKey: queryKeys.clusters(),
     queryFn: stackApiCalls.getClusters,
   })
+}
+
+export function useScopedClusters() {
+  const { data: clusters, ...rest } = useClusters()
+  const { data: org } = useOrganization()
+  const scope = org?.clusterAccessScope ?? []
+
+  const filtered = scope.length > 0
+    ? (clusters ?? []).filter((c) => scope.includes(c.name))
+    : (clusters ?? [])
+
+  return { ...rest, data: filtered }
 }
 
 export function useClusterK8sVersion() {
