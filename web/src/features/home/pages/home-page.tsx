@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import {
   BookOpen,
   Box,
@@ -64,18 +65,19 @@ const roadmap = [
   {
     phase: 'Phase 2 - DevSecOps',
     period: 'v0.5 · 2026 Q3-Q4',
-    description: 'SAST/DAST security scanning, automated tests, CLI tools, and multi-cloud expansion',
+    description: 'Nullus CLI, Security scanning, Automated Tests, Customization, Air-Gap (Offline Mode)',
     active: false,
   },
   {
     phase: 'Phase 3 - InfraOps',
     period: 'v1.0 · 2027+',
-    description: 'Kubernetes cluster provisioning, IaC integration, and CNCF Sandbox initiatives',
+    description: 'Kubernetes Cluster Provisioning, IaC integration, FinOps',
     active: false,
   },
 ]
 
 const stages = [
+  { name: 'Cluster Provisioning', icon: Cog, active: false },
   { name: 'Develop', icon: Code2, active: true },
   { name: 'Build', icon: Hammer, active: true },
   { name: 'Security', icon: ShieldCheck, active: false },
@@ -84,6 +86,12 @@ const stages = [
   { name: 'Monitoring', icon: ChartNoAxesColumn, active: true },
   { name: 'FinOps', icon: Coins, active: false },
 ]
+
+const ROADMAP_STAGE_ACTIVATIONS: Record<string, string[]> = {
+  'Phase 1 - DevOps': ['Develop', 'Build', 'Deploy', 'Monitoring'],
+  'Phase 2 - DevSecOps': ['Develop', 'Build', 'Security', 'Test', 'Deploy', 'Monitoring'],
+  'Phase 3 - InfraOps': ['Cluster Provisioning', 'Develop', 'Build', 'Security', 'Test', 'Deploy', 'Monitoring', 'FinOps'],
+}
 
 const quickLinks = [
   { label: 'DevSecOps Stack Install', path: '/stack/templates', icon: Box, iconClassName: 'text-[#818cf8]' },
@@ -97,6 +105,10 @@ const quickLinks = [
 export function HomePage() {
   const navigate = useNavigate()
   const { role } = useAuthStore()
+  const [selectedRoadmapPhase, setSelectedRoadmapPhase] = useState(roadmap[0].phase)
+  const isAdmin = role === 'admin'
+  const isDevops = role === 'devops'
+  const isDeveloper = role === 'developer'
 
   const getRoleLandingPath = (currentRole: Role): string => {
     if (currentRole === 'developer') {
@@ -106,6 +118,15 @@ export function HomePage() {
     return '/stack/templates'
   }
 
+  const enabledButtonClassName =
+    'inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] px-6 py-3 text-sm font-bold text-[#1a1d29]'
+  const disabledButtonClassName =
+    'inline-flex cursor-not-allowed items-center gap-2 rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(148,163,184,0.12)] px-6 py-3 text-sm font-semibold text-[var(--color-text-muted)] opacity-60'
+
+  const canRegisterCluster = isAdmin
+  const canStartStack = isAdmin || isDevops
+  const canUseCicdPipeline = isAdmin || isDevops || isDeveloper
+
   return (
     <div>
       <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-home-hero-bg)] p-8 text-center">
@@ -114,23 +135,34 @@ export function HomePage() {
         </div>
         <h1 className="m-0 mb-2.5 text-4xl font-extrabold text-[var(--color-text-primary)]">Nullus Platform</h1>
         <p className="m-0 mb-2 text-base text-[var(--color-text-secondary)]">DevSecOps Infrastructure Automation Platform</p>
-        <p className="mx-auto mb-8 max-w-[720px] text-sm leading-7 text-[var(--color-text-muted)]">
+        <p className="mx-auto mb-8 max-w-[900px] text-sm leading-7 text-[var(--color-text-muted)]">
           Select validated CI/CD golden path combinations and quickly build Kubernetes DevSecOps pipelines with a no-code UI.
         </p>
 
         <div className="flex flex-wrap justify-center gap-3">
           <button
             type="button"
+            disabled={!canRegisterCluster}
+            onClick={() => navigate('/admin/clusters')}
+            className={canRegisterCluster ? enabledButtonClassName : disabledButtonClassName}
+          >
+            <Cog size={16} />
+            Register Cluster
+          </button>
+          <button
+            type="button"
+            disabled={!canStartStack}
             onClick={() => navigate(getRoleLandingPath(role))}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] px-6 py-3 text-sm font-bold text-[#1a1d29]"
+            className={canStartStack ? enabledButtonClassName : disabledButtonClassName}
           >
             <Rocket size={16} />
             Start Stack
           </button>
           <button
             type="button"
+            disabled={!canUseCicdPipeline}
             onClick={() => navigate('/cicd/templates')}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-[10px] border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.15)] px-6 py-3 text-sm font-semibold text-[#a5b4fc]"
+            className={canUseCicdPipeline ? enabledButtonClassName : disabledButtonClassName}
           >
             <Code2 size={16} />
             CI/CD Pipeline
@@ -159,28 +191,34 @@ export function HomePage() {
       <div className="mb-8">
         <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">Roadmap</h2>
         <div className="flex flex-wrap gap-3.5">
-          {roadmap.map((item) => (
-            <div
+          {roadmap.map((item) => {
+            const isSelected = selectedRoadmapPhase === item.phase
+            return (
+            <button
               key={item.phase}
-              className={`min-w-[220px] flex-1 rounded-[12px] border p-[18px] ${item.active ? 'border-[rgba(255,215,0,0.35)] bg-[rgba(255,215,0,0.06)]' : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)]'}`}
+              type="button"
+              onClick={() => setSelectedRoadmapPhase(item.phase)}
+              className={`min-w-[220px] flex-1 cursor-pointer rounded-[12px] border p-[18px] text-left transition-all duration-150 ${isSelected ? 'border-[rgba(255,215,0,0.55)] bg-[rgba(255,215,0,0.1)] shadow-[0_0_0_1px_rgba(255,215,0,0.35),0_8px_26px_rgba(255,215,0,0.2)]' : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] hover:border-[rgba(255,215,0,0.35)] hover:bg-[rgba(255,215,0,0.04)]'}`}
             >
-              <div className={`mb-2 inline-flex rounded-[999px] px-2.5 py-1 text-[11px] font-bold ${item.active ? 'bg-[rgba(255,215,0,0.14)] text-[#ffd700]' : 'bg-[rgba(148,163,184,0.12)] text-[#94a3b8]'}`}>
+              <div className={`mb-2 inline-flex rounded-[999px] px-2.5 py-1 text-[11px] font-bold ${isSelected ? 'bg-[rgba(255,215,0,0.14)] text-[#ffd700]' : 'bg-[rgba(148,163,184,0.12)] text-[#94a3b8]'}`}>
                 {item.period}
               </div>
-              <div className={`mb-1.5 text-sm font-bold ${item.active ? 'text-[#ffd700]' : 'text-[#94a3b8]'}`}>{item.phase}</div>
+              <div className={`mb-1.5 text-sm font-bold ${isSelected ? 'text-[#ffd700]' : 'text-[#94a3b8]'}`}>{item.phase}</div>
               <div className="text-xs leading-6 text-[var(--color-text-secondary)]">{item.description}</div>
-            </div>
-          ))}
+            </button>
+          )})}
         </div>
       </div>
 
       <div className="mb-8 flex flex-wrap gap-2 rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
         {stages.map((stage) => {
           const Icon = stage.icon
+          const activeStages = ROADMAP_STAGE_ACTIVATIONS[selectedRoadmapPhase] ?? []
+          const isActiveForSelectedRoadmap = activeStages.includes(stage.name)
           return (
             <div
               key={stage.name}
-              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold ${stage.active ? 'border-[rgba(99,102,241,0.35)] bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' : 'border-[var(--color-border-default)] bg-[rgba(148,163,184,0.08)] text-[var(--color-text-secondary)]'}`}
+              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[rgba(255,215,0,0.8)] bg-[linear-gradient(135deg,rgba(255,215,0,0.22),rgba(245,158,11,0.2))] text-[#ffe38a] shadow-[0_0_0_1px_rgba(255,215,0,0.4),0_0_18px_rgba(255,215,0,0.3)]' : 'border-[var(--color-border-default)] bg-[rgba(148,163,184,0.08)] text-[var(--color-text-secondary)] opacity-75'}`}
             >
               <Icon size={14} />
               {stage.name}
