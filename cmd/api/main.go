@@ -16,6 +16,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
+	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
@@ -137,7 +138,13 @@ func main() {
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, pgStackReader)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
 	cicdApplier := cicdkube.NewManifestApplier()
-	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, cicdApplier)
+	cicdBuilder := cicddocker.NewBuilder(cicdApplier.Tracker)
+	cicdClusterTarget := cicdrepo.NewPostgresClusterTargetProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
+	deployPipelineUC := cicduc.NewDeployPipeline(
+		pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, cicdApplier,
+		cicduc.WithImagePreparer(cicdBuilder),
+		cicduc.WithClusterTargetProvider(cicdClusterTarget),
+	)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, cicdApplier.Tracker)
 

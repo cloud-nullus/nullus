@@ -7,19 +7,19 @@ test('배포 완료 후 메뉴 전환 가능 확인', async ({ page }) => {
   await page.waitForLoadState('networkidle')
 
   await page.fill('input[placeholder*="app"]', 'nav-test')
-  await page.getByRole('button', { name: '다음' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.waitForTimeout(300)
 
   const gitInput = page.locator('input[placeholder*="github"], input[placeholder*="repo"]').first()
   if (await gitInput.isVisible()) await gitInput.fill('https://github.com/cloud-nullus/sample-go-api')
-  await page.getByRole('button', { name: '다음' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.waitForTimeout(300)
 
-  await page.getByRole('button', { name: '다음' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.waitForTimeout(300)
-  await page.getByRole('button', { name: '다음' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.waitForTimeout(300)
-  await page.getByRole('button', { name: '다음' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.waitForTimeout(300)
 
   await page.getByRole('button', { name: /Deploy/i }).click()

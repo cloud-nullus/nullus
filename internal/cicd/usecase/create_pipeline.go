@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
@@ -12,20 +13,23 @@ import (
 
 // Sentinel errors for cross-context validation.
 var (
-	ErrStackNotFound   = errors.New("referenced stack does not exist")
+	ErrStackNotFound    = errors.New("referenced stack does not exist")
 	ErrStackOrgMismatch = errors.New("stack belongs to a different organization")
 )
 
 // CreatePipelineInput holds the parameters for creating a new pipeline.
 type CreatePipelineInput struct {
-	Name       string
-	TemplateID string
-	OrgID      string
-	ClusterID  string
-	StackID    string // optional — links pipeline to a stack
-	Namespace  string
-	AppType    domain.AppType
-	GitRepoURL string
+	Name           string
+	TemplateID     string
+	OrgID          string
+	ClusterID      string
+	StackID        string // optional — links pipeline to a stack
+	Namespace      string
+	AppType        domain.AppType
+	GitRepoURL     string
+	DockerfilePath string
+	DockerContext  string
+	EnvVars        map[string]string
 }
 
 // CreatePipelineOutput holds the result of creating a pipeline.
@@ -68,11 +72,20 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	if input.ClusterID == "" {
 		return nil, fmt.Errorf("cluster_id is required")
 	}
+	var tmpl *domain.PipelineTemplate
 	if input.TemplateID != "" {
-		if _, err := uc.templateRepo.GetByID(ctx, input.TemplateID); err != nil {
+		var err error
+		tmpl, err = uc.templateRepo.GetByID(ctx, input.TemplateID)
+		if err != nil {
 			return nil, fmt.Errorf("template not found: %w", err)
 		}
 	}
+
+	envVars := make(map[string]string)
+	if tmpl != nil {
+		maps.Copy(envVars, tmpl.EnvVars)
+	}
+	maps.Copy(envVars, input.EnvVars)
 
 	// --- Cross-context validation: Stack reference ---
 	var stackWarning string
@@ -97,17 +110,20 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	}
 
 	pipeline := &domain.Pipeline{
-		ID:         generateID("pip"),
-		Name:       input.Name,
-		TemplateID: input.TemplateID,
-		OrgID:      input.OrgID,
-		ClusterID:  input.ClusterID,
-		StackID:    input.StackID,
-		Namespace:  input.Namespace,
-		AppType:    input.AppType,
-		GitRepoURL: input.GitRepoURL,
-		Status:     domain.PipelineStatusActive,
-		CreatedAt:  time.Now(),
+		ID:             generateID("pip"),
+		Name:           input.Name,
+		TemplateID:     input.TemplateID,
+		OrgID:          input.OrgID,
+		ClusterID:      input.ClusterID,
+		StackID:        input.StackID,
+		Namespace:      input.Namespace,
+		AppType:        input.AppType,
+		GitRepoURL:     input.GitRepoURL,
+		DockerfilePath: input.DockerfilePath,
+		DockerContext:  input.DockerContext,
+		EnvVars:        envVars,
+		Status:         domain.PipelineStatusActive,
+		CreatedAt:      time.Now(),
 	}
 
 	if err := uc.pipelineRepo.Create(ctx, pipeline); err != nil {

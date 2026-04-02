@@ -11,7 +11,7 @@ import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-import { useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
+import { useCicdTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
 import type { AppType } from '../api/cicd-api'
 import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
 import { useStacks } from '../../stack/api/stack-api'
@@ -141,6 +141,8 @@ interface EnvVar { key: string; value: string }
 interface FormState {
   appName: string
   gitUrl: string
+  dockerfilePath: string
+  dockerContext: string
   clusterId: string
   namespace: string
   replicas: number
@@ -154,6 +156,8 @@ interface FormState {
 const deploySchema = z.object({
   appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
   gitUrl: z.string().min(1, 'Git URL is required'),
+  dockerfilePath: z.string(),
+  dockerContext: z.string(),
   clusterId: z.string().min(1, 'Cluster is required'),
   namespace: z.string().min(1, 'Namespace is required'),
   replicas: z.number().min(1).max(10),
@@ -184,6 +188,8 @@ const deploySchema = z.object({
 const DEFAULT_FORM: FormState = {
   appName: '',
   gitUrl: '',
+  dockerfilePath: '',
+  dockerContext: '',
   clusterId: '',
   namespace: 'default',
   replicas: 2,
@@ -200,11 +206,13 @@ export function DeveloperDeployPage() {
   const [step, setStep] = useState<Step>(1)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const appType = searchParams.get('appType') ?? 'backend'
+  const appTypeParam = (searchParams.get('appType') ?? 'backend') as AppType
   const [deploymentId, setDeploymentId] = useState<string | null>(null)
   const [customManifest, setCustomManifest] = useState<string | null>(null)
   const [selectedStackId, setSelectedStackId] = useState('')
   const [repoName, setRepoName] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [selectedAppType, setSelectedAppType] = useState<AppType>(appTypeParam)
   const { logs, status, progress, isConnected } = useCicdDeployLog(deploymentId)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { data: stacksData } = useStacks()
@@ -213,6 +221,11 @@ export function DeveloperDeployPage() {
     name: s.name,
   }))
   const { data: clustersData } = useClusters()
+  const { data: templatesData } = useCicdTemplates()
+  const templates = templatesData ?? []
+  const quickStartTemplates = templates.filter((template) =>
+    !!(template.gitRepoUrl?.trim() || template.dockerfilePath?.trim() || template.dockerContext?.trim())
+  )
   const clusters = (clustersData?.items ?? []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -292,20 +305,39 @@ export function DeveloperDeployPage() {
   }
 
   const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '' }
-  const phaseLabels = [
-    t('developerDeployPage.phases.namespace', 'Create Namespace'),
-    t('developerDeployPage.phases.deployment', 'Create Deployment'),
-    t('developerDeployPage.phases.service', 'Create Service'),
-  ]
+  const hasBuildPipeline = form.dockerfilePath.trim() !== ''
+  const phaseLabels = hasBuildPipeline
+    ? [
+        t('developerDeployPage.phases.gitClone', 'Git Clone'),
+        t('developerDeployPage.phases.dockerBuild', 'Docker Build'),
+        t('developerDeployPage.phases.imageLoad', 'Image Load'),
+        t('developerDeployPage.phases.namespace', 'Create Namespace'),
+        t('developerDeployPage.phases.deployment', 'Create Deployment'),
+        t('developerDeployPage.phases.service', 'Create Service'),
+      ]
+    : [
+        t('developerDeployPage.phases.namespace', 'Create Namespace'),
+        t('developerDeployPage.phases.deployment', 'Create Deployment'),
+        t('developerDeployPage.phases.service', 'Create Service'),
+      ]
 
   const onSubmit = async (data: FormState) => {
     try {
-      const parsedAppType = appType as AppType
+      const envVarsMap: Record<string, string> = {}
+      data.envVars.forEach(({ key, value }) => {
+        if (key.trim()) envVarsMap[key.trim()] = value
+      })
+
       const pipeline = await createPipelineMutation.mutateAsync({
         name: data.appName,
-        appType: parsedAppType,
+        appType: selectedAppType,
         clusterId: data.clusterId,
         namespace: data.namespace,
+        templateId: selectedTemplateId || undefined,
+        gitRepoUrl: data.gitUrl,
+        dockerfilePath: data.dockerfilePath,
+        dockerContext: data.dockerContext,
+        envVars: envVarsMap,
       })
       const result = await deployPipelineMutation.mutateAsync(pipeline.id)
       setDeploymentId(result.deploymentId)
@@ -494,6 +526,47 @@ export function DeveloperDeployPage() {
         </div>
       </div>
 
+      {quickStartTemplates.length > 0 && (
+        <div className="mb-6 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+          <p className="mb-2 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+            {t('developerDeployPage.quickStart.title', 'Quick Start — Select a Template')}
+          </p>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {quickStartTemplates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => {
+                  const suggestedAppName = template.id.replace(/-v\d+$/, '').replace(/^nullus-/, '')
+                  setSelectedTemplateId(template.id)
+                  setSelectedAppType(template.appType)
+                  setSelectedStackId('')
+                  setRepoName('')
+                  setValue('appName', suggestedAppName, { shouldValidate: true, shouldDirty: true })
+                  setValue('gitUrl', template.gitRepoUrl ?? '', { shouldValidate: true, shouldDirty: true })
+                  setValue('dockerfilePath', template.dockerfilePath ?? '', { shouldValidate: true, shouldDirty: true })
+                  setValue('dockerContext', template.dockerContext ?? '', { shouldValidate: true, shouldDirty: true })
+                  if (template.envVars && Object.keys(template.envVars).length > 0) {
+                    const envArray = Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
+                    setValue('envVars', [...envArray, { key: '', value: '' }], { shouldValidate: true, shouldDirty: true })
+                  }
+                  setStep(3)
+                }}
+                className={cn(
+                  'rounded-lg border bg-[rgba(255,255,255,0.03)] px-4 py-3 text-left transition-colors hover:border-[#6366f1] hover:bg-[rgba(99,102,241,0.05)]',
+                  selectedTemplateId === template.id
+                    ? 'border-[#6366f1] bg-[rgba(99,102,241,0.08)]'
+                    : 'border-[var(--color-border-default)]'
+                )}
+              >
+                <span className="block text-sm font-medium text-[var(--color-text-primary)]">{template.name}</span>
+                <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">{template.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Step indicator */}
       <div className="mb-6 flex flex-wrap items-center gap-1">
         {([1, 2, 3, 4, 5, 6] as Step[]).map((s, i) => (
@@ -584,6 +657,41 @@ export function DeveloperDeployPage() {
                 )}
               </div>
               {errors.gitUrl && <span className="text-xs text-[#ef4444]">{errors.gitUrl.message}</span>}
+              <div className="mt-4 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4">
+                <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  {t('developerDeployPage.form.buildConfig', 'Build Configuration (Optional)')}
+                </p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label htmlFor="deploy-dockerfile" className={labelStyleClass}>
+                      {t('developerDeployPage.form.dockerfilePath', 'Dockerfile Path')}
+                    </label>
+                    <Input
+                      id="deploy-dockerfile"
+                      placeholder="backend/Dockerfile"
+                      value={form.dockerfilePath}
+                      onChange={(e) => setField('dockerfilePath', e.target.value)}
+                    />
+                    <p className="mb-0 mt-1 text-[11px] text-[var(--color-text-muted)]">
+                      {t('developerDeployPage.form.dockerfileHint', 'Relative path to Dockerfile in the repository. Leave empty to use a default base image.')}
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="deploy-context" className={labelStyleClass}>
+                      {t('developerDeployPage.form.dockerContext', 'Docker Build Context')}
+                    </label>
+                    <Input
+                      id="deploy-context"
+                      placeholder="backend/"
+                      value={form.dockerContext}
+                      onChange={(e) => setField('dockerContext', e.target.value)}
+                    />
+                    <p className="mb-0 mt-1 text-[11px] text-[var(--color-text-muted)]">
+                      {t('developerDeployPage.form.contextHint', 'Directory to use as Docker build context. Defaults to repository root.')}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </StepSection>
           )}
 
@@ -713,7 +821,7 @@ export function DeveloperDeployPage() {
                 {t('developerDeployPage.manifestDescription', 'Review the generated YAML manifest and edit if needed.')}
               </p>
               <textarea
-                value={customManifest ?? generateYaml(form, appType)}
+                value={customManifest ?? generateYaml(form, selectedAppType)}
                 onChange={(e) => setCustomManifest(e.target.value)}
                 className="h-[400px] w-full resize-none rounded-lg border border-[var(--color-border-default)] bg-[#0d1117] p-4 font-mono text-xs leading-5 text-[#c9d1d9] focus:outline-none focus:ring-1 focus:ring-[#6366f1]"
                 spellCheck={false}
@@ -769,7 +877,7 @@ export function DeveloperDeployPage() {
             {t('developerDeployPage.yamlPreview', 'YAML Manifest Preview')}
           </p>
           <CodePreview
-            code={generateYaml(form, appType)}
+            code={generateYaml(form, selectedAppType)}
             language="yaml"
             title={`${form.appName || 'my-app'}.yaml`}
             maxHeight="600px"

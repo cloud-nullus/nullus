@@ -22,10 +22,12 @@ type DeployPipelineOutput struct {
 }
 
 type DeployPipeline struct {
-	pipelineRepo       port.PipelineRepository
-	deploymentRepo     port.DeploymentRepository
-	kubeconfigProvider port.KubeconfigProvider
-	applier            port.ManifestApplier
+	pipelineRepo          port.PipelineRepository
+	deploymentRepo        port.DeploymentRepository
+	kubeconfigProvider    port.KubeconfigProvider
+	applier               port.ManifestApplier
+	imagePreparer         port.ImagePreparer
+	clusterTargetProvider port.ClusterTargetProvider
 }
 
 func NewDeployPipeline(
@@ -33,13 +35,35 @@ func NewDeployPipeline(
 	deploymentRepo port.DeploymentRepository,
 	kubeconfigProvider port.KubeconfigProvider,
 	applier port.ManifestApplier,
+	opts ...DeployOption,
 ) *DeployPipeline {
-	return &DeployPipeline{
+	dp := &DeployPipeline{
 		pipelineRepo:       pipelineRepo,
 		deploymentRepo:     deploymentRepo,
 		kubeconfigProvider: kubeconfigProvider,
 		applier:            applier,
 	}
+	for _, opt := range opts {
+		opt(dp)
+	}
+	return dp
+}
+
+type DeployOption func(*DeployPipeline)
+
+func WithImagePreparer(p port.ImagePreparer) DeployOption {
+	return func(dp *DeployPipeline) { dp.imagePreparer = p }
+}
+
+func WithClusterTargetProvider(p port.ClusterTargetProvider) DeployOption {
+	return func(dp *DeployPipeline) { dp.clusterTargetProvider = p }
+}
+
+func BuildStepPlan(pipeline *domain.Pipeline) []string {
+	if pipeline != nil && pipeline.DockerfilePath != "" {
+		return []string{"Git Clone", "Docker Build", "Image Load", "Namespace 생성", "Deployment 생성", "Service 생성"}
+	}
+	return []string{"Namespace 생성", "Deployment 생성", "Service 생성"}
 }
 
 // Start creates a Deployment record with status=running and returns immediately.
@@ -122,6 +146,7 @@ func (uc *DeployPipeline) Execute(ctx context.Context, input DeployPipelineInput
 }
 
 func (uc *DeployPipeline) failDeployment(ctx context.Context, deployment *domain.Deployment, reason error) {
+	_ = reason
 	completed := time.Now()
 	deployment.CompletedAt = &completed
 	deployment.Status = domain.DeploymentStatusFailed
@@ -134,16 +159,54 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 		namespace = "default"
 	}
 
+	var imageRef string
+	stepOffset := 0
+
+	if pipeline.DockerfilePath != "" && uc.imagePreparer != nil && uc.clusterTargetProvider != nil {
+		target, err := uc.clusterTargetProvider.GetTarget(ctx, pipeline.ClusterID)
+		if err != nil {
+			return fmt.Errorf("get cluster target: %w", err)
+		}
+
+		suffixStart := max(len(deploymentID)-8, 0)
+		imageName := fmt.Sprintf("%s:%s", pipeline.Name, deploymentID[suffixStart:])
+
+		builtRef, err := uc.imagePreparer.PrepareImage(ctx, port.PrepareImageOpts{
+			GitRepoURL:     pipeline.GitRepoURL,
+			DockerfilePath: pipeline.DockerfilePath,
+			DockerContext:  pipeline.DockerContext,
+			ImageName:      imageName,
+			ClusterName:    target.ClusterName,
+			DeploymentID:   deploymentID,
+		})
+		if err != nil {
+			return fmt.Errorf("prepare image: %w", err)
+		}
+		imageRef = builtRef
+		stepOffset = 3
+	}
+
 	kubeconfig, err := uc.kubeconfigProvider.GetKubeconfig(ctx, pipeline.ClusterID)
 	if err != nil {
 		return fmt.Errorf("get kubeconfig for cluster %s: %w", pipeline.ClusterID, err)
 	}
 
 	template := "go-web-api"
-	if pipeline.AppType == domain.AppTypeWeb {
+	switch pipeline.AppType {
+	case domain.AppTypeWeb:
 		template = "react-spa"
-	} else if pipeline.AppType == domain.AppTypeBatch {
+	case domain.AppTypeBatch:
 		template = "python-fastapi"
+	}
+
+	var port int32
+	if imageRef != "" {
+		switch pipeline.AppType {
+		case domain.AppTypeBackend:
+			port = 8080
+		case domain.AppTypeBatch:
+			port = 8000
+		}
 	}
 
 	generated, err := manifests.Generate(manifests.DeployAppRequest{
@@ -151,7 +214,10 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 		GitURL:    pipeline.GitRepoURL,
 		Namespace: namespace,
 		Template:  template,
+		ImageRef:  imageRef,
 		Replicas:  1,
+		Port:      port,
+		EnvVars:   pipeline.EnvVars,
 		Resources: manifests.ResourceSpec{
 			CPURequest: "100m",
 			CPULimit:   "500m",
@@ -169,5 +235,5 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 		generated.Service,
 	}
 
-	return uc.applier.ApplyWithTracking(ctx, kubeconfig, yamlDocs, deploymentID)
+	return uc.applier.ApplyWithTracking(ctx, kubeconfig, yamlDocs, deploymentID, stepOffset)
 }

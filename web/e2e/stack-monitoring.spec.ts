@@ -28,7 +28,16 @@ test.describe('Stack Monitoring E2E', () => {
 
   test('@stack-critical completed stack monitoring renders live values', async ({ page, request }) => {
     test.setTimeout(90000)
-    const target = await getCompletedStack(request)
+    const healthCheck = await request.get('http://localhost:8090/health').catch(() => null)
+    test.skip(!healthCheck?.ok(), 'Requires running Go backend on port 8090')
+    const stackListRes = await request.get(`${apiBase}/stacks`).catch(() => null)
+    test.skip(!stackListRes?.ok(), 'Requires access to the stacks API')
+
+    const stackList = (await stackListRes.json()) as {
+      items?: Array<{ id: string; name: string; state?: string; namespace?: string }>
+    }
+    const target = (stackList.items ?? []).find((item) => item.state === 'completed' && item.namespace === 'nullus')
+    test.skip(!target, 'Requires a completed stack in the nullus namespace')
 
     await page.goto('/stack/list')
     await expect(page.locator('h1')).toContainText('Stack List', { timeout: 10000 })

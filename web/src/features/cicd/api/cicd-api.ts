@@ -48,6 +48,10 @@ const cicdApiCalls = {
       appType: (t.app_type ?? '') as CicdTemplate['appType'],
       stages: t.stages ?? [],
       createdBy: t.created_by,
+      gitRepoUrl: t.git_repo_url ?? '',
+      dockerfilePath: t.dockerfile_path ?? '',
+      dockerContext: t.docker_context ?? '',
+      envVars: t.env_vars ?? {},
     })) as CicdTemplate[]
   },
 
@@ -94,13 +98,19 @@ const cicdApiCalls = {
   },
 
   createPipeline: async (data: CreatePipelineRequest) => {
-    const raw: any = await api.post('/cicd/pipelines', {
+    const res: any = await api.post('/cicd/pipelines', {
       name: data.name,
       app_type: data.appType,
       cluster_id: data.clusterId,
       namespace: data.namespace ?? 'default',
       template_id: data.templateId ?? '',
+      git_repo_url: data.gitRepoUrl ?? '',
+      dockerfile_path: data.dockerfilePath ?? '',
+      docker_context: data.dockerContext ?? '',
+      env_vars: data.envVars ?? {},
     }).then((r) => r.data)
+
+    const raw = res.pipeline ?? res
 
     return {
       id: raw.id,
@@ -117,12 +127,13 @@ const cicdApiCalls = {
     } as Pipeline
   },
 
-  deployPipeline: (pipelineId: string) => {
+  deployPipeline: async (pipelineId: string) => {
     const user = useAuthStore.getState().user
-    return api.post<{ deploymentId: string }>(`/cicd/pipelines/${pipelineId}/deploy`, {
+    const response = await api.post<{ deploymentId: string }>(`/cicd/pipelines/${pipelineId}/deploy`, {
       version: `v0.1.${Date.now() % 1000}`,
       deployed_by: user?.email ?? '',
-    }).then((r) => r.data)
+    })
+    return response.data
   },
 
   getDeployment: async (deploymentId: string) => {

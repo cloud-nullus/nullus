@@ -48,7 +48,7 @@ test.describe('CI/CD UX 개선 검증', () => {
     await page.waitForLoadState('networkidle')
 
     // Step 1: 앱 이름 (템플릿 그리드가 없어야 함)
-    await expect(page.getByText('앱 이름 입력')).toBeVisible()
+    await expect(page.getByText('Enter App Name')).toBeVisible()
     // 앱 템플릿 그리드가 없는지 확인
     const templateGrid = page.locator('text=앱 템플릿')
     await expect(templateGrid).toHaveCount(0)
@@ -58,7 +58,7 @@ test.describe('CI/CD UX 개선 검증', () => {
     await page.screenshot({ path: 'e2e/screenshots/wizard-step1-app-name.png' })
 
     // Step 2로 이동
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 2: Git Repository (Stack 선택 드롭다운 확인)
@@ -70,31 +70,31 @@ test.describe('CI/CD UX 개선 검증', () => {
     if (await gitInput.isVisible()) {
       await gitInput.fill('https://github.com/cloud-nullus/sample-go-api')
     }
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 3: 클러스터 & 네임스페이스
-    await expect(page.getByText('클러스터 & 네임스페이스')).toBeVisible()
+    await expect(page.getByText('Cluster & Namespace')).toBeVisible()
     await page.screenshot({ path: 'e2e/screenshots/wizard-step3-cluster.png' })
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 4: 리소스 설정 (Input + Slider)
-    await expect(page.getByRole('paragraph').filter({ hasText: '리소스 설정' })).toBeVisible()
+    await expect(page.getByRole('paragraph').filter({ hasText: 'Resource Configuration' })).toBeVisible()
     // Input 필드 확인 (슬라이더 옆 직접 입력)
     const resourceInputs = page.locator('input[type="text"], input:not([type="range"])')
     await page.screenshot({ path: 'e2e/screenshots/wizard-step4-resources.png' })
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 5: 환경 변수
-    await expect(page.getByRole('paragraph').filter({ hasText: '환경 변수' })).toBeVisible()
+    await expect(page.getByRole('paragraph').filter({ hasText: 'Environment Variables' })).toBeVisible()
     await page.screenshot({ path: 'e2e/screenshots/wizard-step5-envvars.png' })
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 6: 매니페스트 확인 (textarea 존재)
-    await expect(page.getByRole('paragraph').filter({ hasText: '매니페스트 확인' })).toBeVisible()
+    await expect(page.getByRole('paragraph').filter({ hasText: /Review.*Manifest|Manifest/ })).toBeVisible()
     const manifestEditor = page.locator('textarea')
     await expect(manifestEditor).toBeVisible()
     // YAML 내용에 verify-test 포함 확인
@@ -113,7 +113,7 @@ test.describe('CI/CD UX 개선 검증', () => {
     // 빠르게 6단계까지 진행
     // Step 1: 앱 이름
     await page.fill('input[placeholder*="app"]', 'ws-verify')
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 2: Git URL
@@ -121,19 +121,19 @@ test.describe('CI/CD UX 개선 검증', () => {
     if (await gitInput.isVisible()) {
       await gitInput.fill('https://github.com/cloud-nullus/sample-go-api')
     }
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 3: 클러스터 (기본값 사용)
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 4: 리소스 (기본값)
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 5: 환경 변수 (스킵)
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.waitForTimeout(300)
 
     // Step 6: 매니페스트 확인 → Deploy

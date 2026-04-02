@@ -40,7 +40,7 @@ func (n *noopManifestApplier) Apply(_ context.Context, _ []byte, _ []string) err
 	return nil
 }
 
-func (n *noopManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, _ []string, _ string) error {
+func (n *noopManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, _ []string, _ string, _ ...int) error {
 	return nil
 }
 

@@ -37,7 +37,12 @@ func (a *ManifestApplier) Apply(ctx context.Context, kubeconfig []byte, manifest
 }
 
 // ApplyWithTracking applies manifests and reports step progress to the tracker.
-func (a *ManifestApplier) ApplyWithTracking(ctx context.Context, kubeconfig []byte, manifests []string, deploymentID string) error {
+func (a *ManifestApplier) ApplyWithTracking(ctx context.Context, kubeconfig []byte, manifests []string, deploymentID string, stepOffset ...int) error {
+	offset := 0
+	if len(stepOffset) > 0 {
+		offset = stepOffset[0]
+	}
+
 	config, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
 	if err != nil {
 		return fmt.Errorf("parse kubeconfig: %w", err)
@@ -58,16 +63,17 @@ func (a *ManifestApplier) ApplyWithTracking(ctx context.Context, kubeconfig []by
 	decoder := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 
 	for i, manifest := range manifests {
+		stepIndex := i + offset
 		tracking := deploymentID != "" && a.Tracker != nil
 		if tracking {
-			a.Tracker.MarkRunning(deploymentID, i, "")
-			a.Tracker.AppendLog(deploymentID, i, "$ kubectl apply -f -")
+			a.Tracker.MarkRunning(deploymentID, stepIndex, "")
+			a.Tracker.AppendLog(deploymentID, stepIndex, "$ kubectl apply -f -")
 		}
 		results, err := applyManifestDocuments(ctx, dynClient, mapper, decoder, manifest)
 
 		for _, r := range results {
 			if tracking {
-				a.Tracker.AppendLog(deploymentID, i, fmt.Sprintf("%s/%s %s", strings.ToLower(r.Kind), r.Name, r.Action))
+				a.Tracker.AppendLog(deploymentID, stepIndex, fmt.Sprintf("%s/%s %s", strings.ToLower(r.Kind), r.Name, r.Action))
 			}
 		}
 
@@ -78,8 +84,8 @@ func (a *ManifestApplier) ApplyWithTracking(ctx context.Context, kubeconfig []by
 				msg = fmt.Sprintf("%s/%s %s", strings.ToLower(last.Kind), last.Name, last.Action)
 			}
 			if tracking {
-				a.Tracker.AppendLog(deploymentID, i, fmt.Sprintf("error: %s", err.Error()))
-				a.Tracker.MarkFailed(deploymentID, i, msg)
+				a.Tracker.AppendLog(deploymentID, stepIndex, fmt.Sprintf("error: %s", err.Error()))
+				a.Tracker.MarkFailed(deploymentID, stepIndex, msg)
 			}
 			return err
 		}
@@ -88,7 +94,7 @@ func (a *ManifestApplier) ApplyWithTracking(ctx context.Context, kubeconfig []by
 			msg = fmt.Sprintf("%s/%s %s", strings.ToLower(r.Kind), r.Name, r.Action)
 		}
 		if tracking {
-			a.Tracker.MarkSuccess(deploymentID, i, msg)
+			a.Tracker.MarkSuccess(deploymentID, stepIndex, msg)
 		}
 	}
 

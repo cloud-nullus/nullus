@@ -43,10 +43,10 @@ test.describe('Stack Workflow E2E', () => {
     await page.waitForURL('**/stack/templates')
   })
 
-  test('Stack Templates 페이지 → 3개 카드 표시', async ({ page }) => {
+  test('Stack Templates 페이지 → 4개 카드 표시', async ({ page }) => {
     await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
     const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
-    await expect(cards).toHaveCount(3)
+    await expect(cards).toHaveCount(4)
   })
 
   test('"Use Template" 클릭 → Install 페이지 이동', async ({ page }) => {

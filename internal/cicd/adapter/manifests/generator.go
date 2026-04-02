@@ -18,6 +18,7 @@ type DeployAppRequest struct {
 	GitURL    string
 	Namespace string
 	Template  string
+	ImageRef  string
 	Replicas  int32
 	Port      int32
 	Resources ResourceSpec
@@ -105,7 +106,7 @@ func Generate(req DeployAppRequest) (*GeneratedManifests, error) {
 					Containers: []corev1.Container{
 						{
 							Name:            req.AppName,
-							Image:           tpl.image,
+							Image:           imageForContainer(req.ImageRef, tpl.image),
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Ports: []corev1.ContainerPort{
 								{ContainerPort: port, Name: "http"},
@@ -261,4 +262,11 @@ func firstNonEmpty(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func imageForContainer(imageRef, templateImage string) string {
+	if imageRef != "" {
+		return imageRef
+	}
+	return templateImage
 }

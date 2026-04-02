@@ -122,7 +122,7 @@ export interface StackResourcesInput {
 
 export type StorageMode = 'existing' | 'create'
 
-export type StoragePlanMode = 'existing-all' | 'integrated-create'
+export type StoragePlanMode = 'existing-all' | 'integrated-create' | 'none'
 
 export interface StorageTargetInput {
   mode: StorageMode
@@ -294,6 +294,10 @@ export interface CICDTemplate {
   appType: AppType
   stages: string[]
   createdBy?: string
+  gitRepoUrl?: string
+  dockerfilePath?: string
+  dockerContext?: string
+  envVars?: Record<string, string>
 }
 
 export interface AppTemplateInfo {
@@ -404,6 +408,10 @@ export interface CreatePipelineRequest {
   clusterId: string
   namespace?: string
   templateId?: string
+  gitRepoUrl?: string
+  dockerfilePath?: string
+  dockerContext?: string
+  envVars?: Record<string, string>
 }
 
 export interface CreateCicdTemplateRequest {

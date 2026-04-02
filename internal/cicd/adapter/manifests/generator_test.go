@@ -54,6 +54,27 @@ func TestGenerate_SpringBootTemplateUsesTemurinImage(t *testing.T) {
 	}
 }
 
+func TestGenerate_ImageRefOverridesTemplateImage(t *testing.T) {
+	got, err := Generate(DeployAppRequest{
+		AppName:   "orders",
+		Namespace: "apps",
+		Template:  "go-web-api",
+		ImageRef:  "orders:abc12345",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	var dep appsv1.Deployment
+	if err := yaml.Unmarshal([]byte(got.Deployment), &dep); err != nil {
+		t.Fatalf("unmarshal deployment: %v", err)
+	}
+
+	if dep.Spec.Template.Spec.Containers[0].Image != "orders:abc12345" {
+		t.Fatalf("image = %q, want %q", dep.Spec.Template.Spec.Containers[0].Image, "orders:abc12345")
+	}
+}
+
 func TestGenerate_DefaultResourcesApplied(t *testing.T) {
 	got, err := Generate(DeployAppRequest{
 		AppName:   "api",

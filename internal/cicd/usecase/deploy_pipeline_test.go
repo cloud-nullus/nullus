@@ -99,7 +99,7 @@ func (m *mockManifestApplier) Apply(_ context.Context, _ []byte, manifests []str
 	return m.err
 }
 
-func (m *mockManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, manifests []string, _ string) error {
+func (m *mockManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, manifests []string, _ string, _ ...int) error {
 	m.appliedManifests = append(m.appliedManifests, manifests)
 	return m.err
 }

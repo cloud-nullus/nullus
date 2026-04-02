@@ -66,13 +66,16 @@ func (h *PipelineHandler) StreamDeployLogs(c echo.Context) error {
 
 // createPipelineRequest is the request body for POST /pipelines.
 type createPipelineRequest struct {
-	Name       string `json:"name"`
-	TemplateID string `json:"template_id"`
-	ClusterID  string `json:"cluster_id"`
-	StackID    string `json:"stack_id,omitempty"` // optional — links to a stack
-	Namespace  string `json:"namespace"`
-	AppType    string `json:"app_type"`
-	GitRepoURL string `json:"git_repo_url"`
+	Name           string            `json:"name"`
+	TemplateID     string            `json:"template_id"`
+	ClusterID      string            `json:"cluster_id"`
+	StackID        string            `json:"stack_id,omitempty"` // optional — links to a stack
+	Namespace      string            `json:"namespace"`
+	AppType        string            `json:"app_type"`
+	GitRepoURL     string            `json:"git_repo_url"`
+	DockerfilePath string            `json:"dockerfile_path"`
+	DockerContext  string            `json:"docker_context"`
+	EnvVars        map[string]string `json:"env_vars"`
 }
 
 // CreatePipeline handles POST /api/v1/pipelines.
@@ -88,14 +91,17 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 	}
 
 	out, err := h.createPipeline.Execute(c.Request().Context(), usecase.CreatePipelineInput{
-		Name:       req.Name,
-		TemplateID: req.TemplateID,
-		OrgID:      orgID,
-		ClusterID:  req.ClusterID,
-		StackID:    req.StackID,
-		Namespace:  req.Namespace,
-		AppType:    domain.AppType(req.AppType),
-		GitRepoURL: req.GitRepoURL,
+		Name:           req.Name,
+		TemplateID:     req.TemplateID,
+		OrgID:          orgID,
+		ClusterID:      req.ClusterID,
+		StackID:        req.StackID,
+		Namespace:      req.Namespace,
+		AppType:        domain.AppType(req.AppType),
+		GitRepoURL:     req.GitRepoURL,
+		DockerfilePath: req.DockerfilePath,
+		DockerContext:  req.DockerContext,
+		EnvVars:        req.EnvVars,
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrStackNotFound) {
@@ -174,11 +180,15 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 	}
 
 	depID := out.Deployment.ID
-	h.stepTracker.Init(depID, []string{"Namespace 생성", "Deployment 생성", "Service 생성"})
+	steps := []string{"Namespace 생성", "Deployment 생성", "Service 생성"}
+	if pipeline, getErr := h.pipelineRepo.GetByID(c.Request().Context(), id); getErr == nil {
+		steps = usecase.BuildStepPlan(pipeline)
+	}
+	h.stepTracker.Init(depID, steps)
 
 	go func() {
 		h.deployPipeline.ApplyAsync(depID)
-		time.AfterFunc(30*time.Second, func() { h.stepTracker.Remove(depID) })
+		time.AfterFunc(5*time.Minute, func() { h.stepTracker.Remove(depID) })
 	}()
 
 	return c.JSON(http.StatusAccepted, map[string]any{"deploymentId": depID})

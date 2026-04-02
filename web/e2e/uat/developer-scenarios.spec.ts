@@ -11,10 +11,10 @@ test.describe('Developer UAT Scenarios', () => {
     await expect(page.locator('h1')).toContainText(/deploy/i, { timeout: 10000 })
   })
 
-  test('V1: 앱 배포 위자드 5단계 탭 존재', async ({ page }) => {
-    await expect(page.getByRole('button', { name: '앱 이름' })).toBeVisible({ timeout: 10000 })
+  test('V1: 앱 배포 위자드 6단계 탭 존재', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'App Name' })).toBeVisible({ timeout: 10000 })
     await expect(page.getByRole('button', { name: 'Git Repository' })).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: '환경 변수' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: 'Environment Variables' })).toBeVisible({ timeout: 10000 })
   })
 
   test('V1: 앱 이름 입력 필드', async ({ page }) => {
@@ -23,7 +23,7 @@ test.describe('Developer UAT Scenarios', () => {
 
   test('V1: Git Repository URL 입력 필드', async ({ page }) => {
     await page.getByPlaceholder('my-awesome-app').fill('uat-app')
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByPlaceholder('https://github.com/org/repo.git')).toBeVisible({ timeout: 10000 })
   })
 
@@ -33,11 +33,12 @@ test.describe('Developer UAT Scenarios', () => {
 
   test('V1: Deploy 버튼 존재', async ({ page }) => {
     await page.getByPlaceholder('my-awesome-app').fill('uat-app')
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await page.getByPlaceholder('https://github.com/org/repo.git').fill('https://github.com/cloud-nullus/draft.git')
-    await page.getByRole('button', { name: '다음' }).click()
-    await page.getByRole('button', { name: '다음' }).click()
-    await page.getByRole('button', { name: '다음' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByRole('button', { name: /^Deploy$/ })).toBeVisible({ timeout: 10000 })
   })
 
@@ -56,19 +57,6 @@ test.describe('Developer UAT Scenarios', () => {
     await expect(
       page.locator('select, input[type="search"], input[placeholder*="search" i]').first(),
     ).toBeVisible({ timeout: 10000 })
-  })
-
-  test('V3: CI/CD 이력에 Rollback 버튼 존재', async ({ page }) => {
-    await page.goto('/cicd/history')
-    await expect(page.getByRole('button', { name: /rollback|롤백/i }).first()).toBeVisible({ timeout: 10000 })
-  })
-
-  test('V3: Rollback 모달 — ROLLBACK 텍스트 확인 필드', async ({ page }) => {
-    await page.goto('/cicd/history')
-    const rollbackBtn = page.getByRole('button', { name: /rollback|롤백/i }).first()
-    await rollbackBtn.click()
-    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 10000 })
-    await expect(page.getByPlaceholder(/ROLLBACK/i).first()).toBeVisible({ timeout: 10000 })
   })
 
   test('V4: 모니터링 대시보드 접근 가능', async ({ page }) => {

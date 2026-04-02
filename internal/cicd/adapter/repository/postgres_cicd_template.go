@@ -21,7 +21,8 @@ func NewPostgresCICDTemplateRepository(pool *pgxpool.Pool) *PostgresCICDTemplate
 
 func (r *PostgresCICDTemplateRepository) GetByID(ctx context.Context, id string) (*domain.PipelineTemplate, error) {
 	const q = `
-		SELECT id, name, description, app_type, stages
+		SELECT id, name, description, app_type, stages,
+		       COALESCE(git_repo_url, ''), COALESCE(dockerfile_path, ''), COALESCE(docker_context, ''), COALESCE(env_vars, '{}'::jsonb)
 		FROM pipeline_templates
 		WHERE id = $1`
 
@@ -38,7 +39,8 @@ func (r *PostgresCICDTemplateRepository) GetByID(ctx context.Context, id string)
 
 func (r *PostgresCICDTemplateRepository) List(ctx context.Context) ([]*domain.PipelineTemplate, error) {
 	const q = `
-		SELECT id, name, description, app_type, stages
+		SELECT id, name, description, app_type, stages,
+		       COALESCE(git_repo_url, ''), COALESCE(dockerfile_path, ''), COALESCE(docker_context, ''), COALESCE(env_vars, '{}'::jsonb)
 		FROM pipeline_templates
 		ORDER BY id ASC`
 
@@ -93,6 +95,7 @@ func scanPipelineTemplate(row pipelineTemplateScanner) (*domain.PipelineTemplate
 		t          domain.PipelineTemplate
 		appType    string
 		stagesJSON []byte
+		envJSON    []byte
 	)
 
 	err := row.Scan(
@@ -101,6 +104,10 @@ func scanPipelineTemplate(row pipelineTemplateScanner) (*domain.PipelineTemplate
 		&t.Description,
 		&appType,
 		&stagesJSON,
+		&t.GitRepoURL,
+		&t.DockerfilePath,
+		&t.DockerContext,
+		&envJSON,
 	)
 	if err != nil {
 		return nil, err
@@ -108,6 +115,9 @@ func scanPipelineTemplate(row pipelineTemplateScanner) (*domain.PipelineTemplate
 
 	if err := json.Unmarshal(stagesJSON, &t.Stages); err != nil {
 		return nil, fmt.Errorf("unmarshal stages: %w", err)
+	}
+	if len(envJSON) > 0 {
+		_ = json.Unmarshal(envJSON, &t.EnvVars)
 	}
 	t.AppType = domain.AppType(appType)
 
