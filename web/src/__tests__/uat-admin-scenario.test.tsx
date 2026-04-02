@@ -82,7 +82,7 @@ describe('UAT-3: Admin scenario', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
     })
     expect(useAuthStore.getState().role).toBe('admin')
-    expect(mockNavigate).toHaveBeenCalledWith('/admin/organization')
+    expect(mockNavigate).toHaveBeenCalledWith('/')
   })
 
   it('step 2: admin sidebar shows Admin group', () => {

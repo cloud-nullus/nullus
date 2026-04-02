@@ -7,9 +7,9 @@ const SESSION_TOKEN_KEY = 'nullus-token'
 const SESSION_USER_KEY = 'nullus-user'
 
 export const ROLE_HOME: Record<Role, string> = {
-  admin: '/admin/organization',
-  devops: '/stack/templates',
-  developer: '/cicd/developer-deploy',
+  admin: '/',
+  devops: '/',
+  developer: '/',
 }
 
 export function getHomePathForRole(role: Role): string {

@@ -71,7 +71,7 @@ describe('UAT-1: DevOps Engineer scenario', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
     })
     expect(useAuthStore.getState().role).toBe('devops')
-    expect(mockNavigate).toHaveBeenCalledWith('/stack/templates')
+    expect(mockNavigate).toHaveBeenCalledWith('/')
   })
 
   it('step 2: home page shows CTA buttons for devops', () => {
