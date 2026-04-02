@@ -86,6 +86,7 @@ Usage:
   ./scripts/runbook_local.sh logs [api|web|all]
   ./scripts/runbook_local.sh down [--kind] [--authentik]
   ./scripts/runbook_local.sh all [--seed] [--kind] [--authentik]
+  ./scripts/runbook_local.sh refresh
   ./scripts/runbook_local.sh kind-up
   ./scripts/runbook_local.sh kind-down
 
@@ -101,6 +102,7 @@ Commands:
   down [--kind]     Stop API, frontend, docker infra
        [--authentik] Also stop Authentik services
   all               Full lifecycle: up -> smoke -> keep running
+  refresh           Rebuild backend + frontend, run pending migrations, restart
   kind-up           Create kind K8s cluster only
   kind-down         Delete kind K8s cluster only
 
@@ -696,6 +698,68 @@ do_down() {
   fi
 }
 
+do_refresh() {
+  ensure_dirs
+
+  echo "[nullus] refreshing backend + frontend..."
+  echo ""
+
+  # 1. Stop running API and web
+  stop_service "api" "$API_PORT"
+  stop_service "web" "$WEB_PORT"
+
+  # 2. Run pending migrations
+  echo "[nullus] running pending migrations..."
+  install_migrate
+  local MIGRATE
+  MIGRATE="$(command -v migrate || echo "$HOME/go/bin/migrate")"
+  "$MIGRATE" -path "$PROJECT_ROOT/db/migrations" -database "$DB_URL" up 2>/dev/null || true
+
+  register_kind_cluster_endpoints
+
+  # 3. Rebuild + restart API
+  echo "[nullus] rebuilding API server..."
+  (cd "$PROJECT_ROOT" && go build -o bin/api ./cmd/api)
+
+  echo "[nullus] starting API server on :$API_PORT..."
+  export ENCRYPTION_KEY
+  export NULLUS_DATABASE_HOST=localhost
+  export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
+  export NULLUS_SERVER_MODE=development
+  run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
+
+  echo "[nullus] waiting for API health (up to 30s)..."
+  if wait_for_http "http://localhost:${API_PORT}/health" 30 1; then
+    echo "[nullus] API is healthy"
+  else
+    echo "[nullus] API health check failed; check $LOG_DIR/api.log"
+    tail -10 "$LOG_DIR/api.log" 2>/dev/null
+    exit 1
+  fi
+
+  # 4. Restart frontend
+  echo ""
+  echo "[nullus] starting frontend dev server on :$WEB_PORT..."
+  run_bg "web" "$PROJECT_ROOT/web" "npx vite --port $WEB_PORT" "$WEB_PORT"
+
+  echo "[nullus] waiting for frontend (up to 30s)..."
+  if wait_for_port_listen "$WEB_PORT" 30; then
+    echo "[nullus] frontend is ready"
+  else
+    echo "[nullus] frontend did not start; check $LOG_DIR/web.log"
+    tail -10 "$LOG_DIR/web.log" 2>/dev/null
+    exit 1
+  fi
+
+  echo ""
+  echo "══════════════════════════════════════════════════"
+  echo "  Nullus Refreshed"
+  echo "══════════════════════════════════════════════════"
+  echo "  Frontend      http://localhost:$WEB_PORT"
+  echo "  API           http://localhost:$API_PORT"
+  echo "══════════════════════════════════════════════════"
+}
+
 do_all() {
   local extra_args=()
   for arg in "$@"; do
@@ -725,6 +789,7 @@ main() {
     logs) do_logs "${1:-all}" ;;
     down) do_down "$@" ;;
     all) do_all "$@" ;;
+    refresh) do_refresh ;;
     kind-up) do_kind_up ;;
     kind-down) do_kind_down ;;
     *) usage; exit 1 ;;
