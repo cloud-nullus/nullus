@@ -23,6 +23,7 @@ vi.mock('../api/admin-api', () => ({
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useVerifyCluster: () => ({ mutate: verifyMutate }),
+  useVerifyClusterDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useCluster: (id: string) => ({
     data: id
       ? {

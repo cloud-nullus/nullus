@@ -56,6 +56,7 @@ vi.mock('../features/admin/api/admin-api', () => ({
   useUpdateCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useVerifyCluster: () => ({ mutate: vi.fn() }),
+  useVerifyClusterDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useCluster: () => ({ data: undefined, isFetching: false }),
 }))
 
@@ -144,7 +145,7 @@ describe('UAT-3: Admin scenario', () => {
     renderWithProviders(<ClusterPage />)
     // prod-cluster is selected by default
     expect(screen.getByText('https://prod.k8s.nullus.io')).toBeInTheDocument()
-    expect(screen.getByText('연결 상태')).toBeInTheDocument()
+    expect(screen.getByText('Connection Status')).toBeInTheDocument()
   })
 
   it('step 5: admin can switch to different cluster and see its detail', () => {

@@ -21,7 +21,14 @@ const EMPTY_ROW: EditableRow = {
   is_default: true,
 }
 
-const TOOL_CATEGORY_MAP: Record<string, 'Artifacts' | 'CI/CD' | 'Observability'> = {
+type ToolCategory = 'nullus' | 'Artifacts' | 'Storage' | 'CI/CD' | 'Observability'
+
+const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
+  'cert-manager': 'nullus',
+  certmanager: 'nullus',
+  cloudnativepg: 'nullus',
+  'cloudnative-pg': 'nullus',
+  cnpg: 'nullus',
   gitlab: 'Artifacts',
   nexus: 'Artifacts',
   jfrog: 'Artifacts',
@@ -30,9 +37,10 @@ const TOOL_CATEGORY_MAP: Record<string, 'Artifacts' | 'CI/CD' | 'Observability'>
   'gitlab-registry': 'Artifacts',
   harbor: 'Artifacts',
   'docker-hub': 'Artifacts',
-  minio: 'Artifacts',
-  s3: 'Artifacts',
-  gcs: 'Artifacts',
+  minio: 'Storage',
+  s3: 'Storage',
+  gcs: 'Storage',
+  'azure-blob': 'Storage',
   'gitlab-ci': 'CI/CD',
   'github-actions': 'CI/CD',
   jenkins: 'CI/CD',
@@ -53,13 +61,59 @@ const TOOL_CATEGORY_MAP: Record<string, 'Artifacts' | 'CI/CD' | 'Observability'>
   'opentelemetry-collector': 'Observability',
 }
 
-const CATEGORY_BADGE_CLASSNAME: Record<'Artifacts' | 'CI/CD' | 'Observability', string> = {
+const CATEGORY_BADGE_CLASSNAME: Record<ToolCategory, string> = {
+  nullus: 'bg-[rgba(14,165,233,0.14)] text-[#7dd3fc]',
   Artifacts: 'bg-[rgba(99,102,241,0.14)] text-[#a5b4fc]',
+  Storage: 'bg-[rgba(249,115,22,0.14)] text-[#fdba74]',
   'CI/CD': 'bg-[rgba(16,185,129,0.14)] text-[#6ee7b7]',
   Observability: 'bg-[rgba(245,158,11,0.14)] text-[#fbbf24]',
 }
 
-const getToolCategory = (toolKey: string) => TOOL_CATEGORY_MAP[toolKey.trim().toLowerCase()]
+const CATEGORY_ORDER: Record<ToolCategory, number> = {
+  nullus: 0,
+  Artifacts: 1,
+  Storage: 2,
+  'CI/CD': 3,
+  Observability: 4,
+}
+
+const CATEGORY_HINTS: Array<{ category: ToolCategory; patterns: RegExp[] }> = [
+  {
+    category: 'nullus',
+    patterns: [/cert[- ]?manager/, /cloudnative[- ]?pg/, /\bcnpg\b/],
+  },
+  {
+    category: 'CI/CD',
+    patterns: [/argocd/, /\bargo\b/, /\bci\b/, /\bcd\b/, /pipeline/, /jenkins/, /tekton/, /github-actions/, /gitlab-ci/, /flux/, /spinnaker/],
+  },
+  {
+    category: 'Storage',
+    patterns: [/storage/, /object/, /bucket/, /minio/, /\bs3\b/, /\bgcs\b/, /azure[- ]blob/],
+  },
+  {
+    category: 'Observability',
+    patterns: [/prometheus/, /grafana/, /kibana/, /opensearch/, /elastic/, /loki/, /tempo/, /jaeger/, /otel/, /opentelemetry/, /thanos/, /victoriametrics/, /monitor/, /trace/, /log/],
+  },
+  {
+    category: 'Artifacts',
+    patterns: [/registry/, /repo/, /repository/, /artifact/, /gitlab/, /github/, /gitea/, /harbor/, /docker/, /nexus/, /jfrog/, /postgres/, /mysql/, /mariadb/, /database/],
+  },
+]
+
+const getToolCategory = (toolKey: string, displayName = ''): ToolCategory => {
+  const normalizedToolKey = toolKey.trim().toLowerCase()
+  const mapped = TOOL_CATEGORY_MAP[normalizedToolKey]
+  if (mapped) return mapped
+
+  const candidate = `${normalizedToolKey} ${displayName.trim().toLowerCase()}`
+  for (const hint of CATEGORY_HINTS) {
+    if (hint.patterns.some((pattern) => pattern.test(candidate))) {
+      return hint.category
+    }
+  }
+
+  return 'Artifacts'
+}
 
 export function StackOssResourceDefaultPage() {
   const { t } = useTranslation()
@@ -78,14 +132,24 @@ export function StackOssResourceDefaultPage() {
   const hasData = useMemo(() => rows.length > 0, [rows])
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase()
-    if (!keyword) return rows
-    return rows.filter((row) => {
-      const category = getToolCategory(row.tool_key) ?? ''
+    const matchedRows = keyword
+      ? rows.filter((row) => {
+      const category = getToolCategory(row.tool_key, row.display_name)
       return [
         row.tool_key,
         row.display_name,
         category,
       ].some((value) => value.toLowerCase().includes(keyword))
+    })
+      : rows
+
+    return matchedRows.slice().sort((a, b) => {
+      const aCategory = getToolCategory(a.tool_key, a.display_name)
+      const bCategory = getToolCategory(b.tool_key, b.display_name)
+      if (CATEGORY_ORDER[aCategory] !== CATEGORY_ORDER[bCategory]) {
+        return CATEGORY_ORDER[aCategory] - CATEGORY_ORDER[bCategory]
+      }
+      return a.tool_key.localeCompare(b.tool_key)
     })
   }, [rows, search])
 
@@ -190,6 +254,7 @@ export function StackOssResourceDefaultPage() {
           <thead>
             <tr className="bg-[rgba(255,255,255,0.02)]">
               {[
+                'Category',
                 'Tool Key',
                 'Display Name',
                 'CPU Request',
@@ -211,7 +276,7 @@ export function StackOssResourceDefaultPage() {
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={7} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
+                <td colSpan={8} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
                   Loading OSS default resources...
                 </td>
               </tr>
@@ -219,7 +284,7 @@ export function StackOssResourceDefaultPage() {
 
             {!isLoading && !hasData && (
               <tr>
-                <td colSpan={7} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
+                <td colSpan={8} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
                   등록된 OSS Default Resource가 없습니다.
                 </td>
               </tr>
@@ -227,25 +292,23 @@ export function StackOssResourceDefaultPage() {
 
             {!isLoading && hasData && filteredRows.length === 0 && (
               <tr>
-                <td colSpan={7} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
+                <td colSpan={8} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
                   검색 조건에 맞는 OSS Default Resource가 없습니다.
                 </td>
               </tr>
             )}
 
             {filteredRows.map((row) => {
-              const category = getToolCategory(row.tool_key)
+              const category = getToolCategory(row.tool_key, row.display_name)
               return (
               <tr key={row.tool_key}>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                  <div className="flex items-center gap-2">
-                    {category && (
-                      <span className={`rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[category]}`}>
-                        {category}
-                      </span>
-                    )}
-                    <Input value={row.tool_key} onChange={(e) => updateRow(row.tool_key, { tool_key: e.target.value })} className="w-[150px]" />
-                  </div>
+                  <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[category]}`}>
+                    {category}
+                  </span>
+                </td>
+                <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
+                  <Input value={row.tool_key} onChange={(e) => updateRow(row.tool_key, { tool_key: e.target.value })} className="w-[150px]" />
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                   <Input value={row.display_name} onChange={(e) => updateRow(row.tool_key, { display_name: e.target.value })} className="w-[180px]" />
@@ -272,14 +335,12 @@ export function StackOssResourceDefaultPage() {
 
             <tr>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                <div className="flex items-center gap-2">
-                  {getToolCategory(newRow.tool_key) && (
-                    <span className={`rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[getToolCategory(newRow.tool_key)!]}`}>
-                      {getToolCategory(newRow.tool_key)}
-                    </span>
-                  )}
-                  <Input value={newRow.tool_key} onChange={(e) => setNewRow((prev) => ({ ...prev, tool_key: e.target.value }))} placeholder="tool key" className="w-[150px]" />
-                </div>
+                <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[getToolCategory(newRow.tool_key, newRow.display_name)]}`}>
+                  {getToolCategory(newRow.tool_key, newRow.display_name)}
+                </span>
+              </td>
+              <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
+                <Input value={newRow.tool_key} onChange={(e) => setNewRow((prev) => ({ ...prev, tool_key: e.target.value }))} placeholder="tool key" className="w-[150px]" />
               </td>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                 <Input value={newRow.display_name} onChange={(e) => setNewRow((prev) => ({ ...prev, display_name: e.target.value }))} placeholder="display name" className="w-[180px]" />

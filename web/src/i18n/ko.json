@@ -332,52 +332,52 @@
     },
     "categories": {
       "artifacts": {
-        "label": "Artifacts",
-        "description": "Package/Source/Container/Storage 도구를 추가합니다."
+        "label": "아티팩트",
+        "description": "패키지/소스/컨테이너/스토리지 도구를 추가합니다."
       },
       "pipeline": {
-        "label": "Pipeline",
+        "label": "파이프라인",
         "description": "CI/CD 파이프라인 도구를 추가합니다."
       },
       "observability": {
-        "label": "Observability",
+        "label": "관측성",
         "description": "메트릭/시각화/트레이싱 도구를 추가합니다."
       },
       "logging": {
-        "label": "Logging",
+        "label": "로깅",
         "description": "로그 검색/분석 도구를 추가합니다."
       }
     },
     "slots": {
       "package_registry": {
-        "label": "Package Registry"
+        "label": "패키지 레지스트리"
       },
       "source_repository": {
-        "label": "Source Repository"
+        "label": "소스 저장소"
       },
       "container_registry": {
-        "label": "Container Registry"
+        "label": "컨테이너 레지스트리"
       },
       "storage_backend": {
-        "label": "Storage Backend"
+        "label": "스토리지 백엔드"
       },
       "ci_platform": {
-        "label": "CI Platform"
+        "label": "CI 플랫폼"
       },
       "cd_tool": {
-        "label": "CD Tool"
+        "label": "CD 도구"
       },
       "metrics_collection": {
-        "label": "Metrics Collection"
+        "label": "메트릭 수집"
       },
       "visualization": {
-        "label": "Visualization"
+        "label": "시각화"
       },
       "trace_layer": {
-        "label": "Trace Layer"
+        "label": "트레이스 레이어"
       },
       "log_search": {
-        "label": "Log Search"
+        "label": "로그 검색"
       }
     },
     "tools": {
@@ -519,7 +519,7 @@
     "changedAt": "변경 시간",
     "reason": "변경 사유",
     "snapshot": "설정 스냅샷",
-    "diff": "Diff",
+    "diff": "차이",
     "rollback": "롤백",
     "rollbackConfirm": "이 버전으로 롤백합니다. 이 작업은 되돌릴 수 없습니다.",
     "current": "현재"
@@ -544,12 +544,12 @@
     "desc": "앱 템플릿을 선택하고 배포 위자드를 따라 배포하세요.",
     "selectTemplate": "앱 템플릿",
     "step1": "앱 이름",
-    "step2": "Git Repository",
+    "step2": "Git 저장소",
     "step3": "클러스터 / 네임스페이스",
     "step4": "리소스 설정",
     "step5": "환경 변수",
     "appName": "앱 이름",
-    "gitUrl": "Git Repository URL",
+    "gitUrl": "Git 저장소 URL",
     "cluster": "클러스터",
     "namespace": "네임스페이스",
     "resources": "리소스 설정",
@@ -851,7 +851,7 @@
     },
     "type": {
       "target": "타겟 클러스터",
-      "pipeline": "DevSecOps Stack 클러스터"
+      "pipeline": "DevSecOps Stack\n클러스터"
     },
     "form": {
       "clusterName": "클러스터 이름",
@@ -915,7 +915,7 @@
     },
     "role": {
       "admin": "관리자",
-      "devops": "DevOps",
+      "devops": "데브옵스",
       "developer": "개발자"
     },
     "memberStatus": {
@@ -1022,7 +1022,7 @@
     },
     "sections": {
       "appName": "앱 이름 입력",
-      "gitRepository": "Git Repository URL",
+      "gitRepository": "Git 저장소 URL",
       "clusterNamespace": "클러스터 & 네임스페이스",
       "resources": "리소스 설정",
       "envVars": "환경 변수",

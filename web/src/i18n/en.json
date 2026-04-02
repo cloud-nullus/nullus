@@ -851,7 +851,7 @@
     },
     "type": {
       "target": "Target Cluster",
-      "pipeline": "DevSecOps Stack Cluster"
+      "pipeline": "DevSecOps Stack\nCluster"
     },
     "form": {
       "clusterName": "Cluster Name",

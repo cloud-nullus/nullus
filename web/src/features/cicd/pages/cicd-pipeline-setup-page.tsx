@@ -12,6 +12,7 @@ import { useScopedClusters as useClusters } from '../../admin/api/admin-api'
 import type { CicdTemplate } from '../api/cicd-api'
 import type { AppType } from '../../../types'
 import { cn } from '../../../lib/utils'
+import { resolveLocale } from '../../../lib/locale'
 
 type SetupTab = 'cluster' | 'build' | 'deploy' | 'yaml'
 type DeployMode = 'template' | 'custom'
@@ -197,6 +198,21 @@ const DEPLOY_YAML_PRESETS: DeployYamlPreset[] = [
   },
 ]
 
+const DEPLOY_PRESET_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
+  'k8s-deployment': {
+    ko: 'Deployment + Service 기본 매니페스트',
+    en: 'Default Deployment + Service manifest',
+  },
+  'k8s-cronjob': {
+    ko: '배치/스케줄 작업용 CronJob 매니페스트',
+    en: 'CronJob manifest for batch/scheduled tasks',
+  },
+  kustomize: {
+    ko: 'Kustomization 기반 배포 구성',
+    en: 'Kustomization-based deployment config',
+  },
+}
+
 const appTypeOptionClassName =
   'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
 
@@ -238,7 +254,8 @@ const getPipelineYaml = (input: {
 }
 
 export function CicdPipelineSetupPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const isKorean = resolveLocale(i18n.resolvedLanguage || i18n.language) === 'ko-KR'
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const selectedTemplateId = searchParams.get('template')
@@ -508,7 +525,11 @@ export function CicdPipelineSetupPage() {
                             <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
                               {preset.label}
                             </div>
-                            <div className="mt-1 text-xs text-[var(--color-text-secondary)]">{preset.description}</div>
+                            <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                              {(DEPLOY_PRESET_DESCRIPTION_I18N[preset.id] && isKorean)
+                                ? DEPLOY_PRESET_DESCRIPTION_I18N[preset.id].ko
+                                : (DEPLOY_PRESET_DESCRIPTION_I18N[preset.id]?.en ?? preset.description)}
+                            </div>
                           </button>
                         )
                       })}

@@ -59,6 +59,11 @@ type updateClusterRequest struct {
 	Kubeconfig    string               `json:"kubeconfig,omitempty"`
 }
 
+type verifyClusterDraftRequest struct {
+	Endpoint   string `json:"endpoint"`
+	Kubeconfig string `json:"kubeconfig"`
+}
+
 type clusterResponse struct {
 	ID               string                  `json:"id"`
 	Name             string                  `json:"name"`
@@ -334,6 +339,30 @@ func (h *ClusterHandler) VerifyCluster(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func (h *ClusterHandler) VerifyClusterDraft(c echo.Context) error {
+	var req verifyClusterDraftRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	kubeconfigText := strings.TrimSpace(req.Kubeconfig)
+	if kubeconfigText == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "kubeconfig is required")
+	}
+
+	kubeconfigBytes := []byte(kubeconfigText)
+	if decoded, err := base64.StdEncoding.DecodeString(kubeconfigText); err == nil {
+		kubeconfigBytes = decoded
+	}
+
+	result, err := kube.VerifyCluster(kubeconfigBytes)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
 func (h *ClusterHandler) ListNamespaces(c echo.Context) error {
 	id := c.Param("id")
 
@@ -402,6 +431,7 @@ func listNamespacesFromKubeconfig(kubeconfig []byte) ([]string, error) {
 // RegisterRoutes registers cluster routes on the given group.
 func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/clusters", h.RegisterCluster)
+	g.POST("/clusters/verify", h.VerifyClusterDraft)
 	g.GET("/clusters", h.ListClusters)
 	g.GET("/clusters/:id", h.GetCluster)
 	g.GET("/clusters/:id/namespaces", h.ListNamespaces)

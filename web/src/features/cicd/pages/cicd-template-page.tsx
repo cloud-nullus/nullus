@@ -24,6 +24,7 @@ const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 }
 
 const STAGE_OPTIONS = ['Production', 'QA', 'Development', 'Beta'] as const
+const PRIORITY_TEMPLATE_IDS = ['nullus-sample-backend-v1', 'nullus-sample-frontend-v1'] as const
 
 const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
   'web-frontend': {
@@ -50,13 +51,47 @@ const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
     ko: '배치 잡 템플릿',
     en: 'Batch job template',
   },
+  'web-backend-v1': {
+    ko: '백엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 이미지 빌드, 배포 단계를 포함합니다.',
+    en: 'CI/CD pipeline for backend services. Includes build, test, image build, and deploy stages.',
+  },
+  'web-frontend-v1': {
+    ko: '프론트엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 정적 빌드, 배포 단계를 포함합니다.',
+    en: 'CI/CD pipeline for frontend services. Includes build, test, static build, and deploy stages.',
+  },
+  'batch-job-v1': {
+    ko: '배치 작업을 위한 CI/CD 파이프라인. 빌드, 이미지 빌드, CronJob 배포 단계를 포함합니다.',
+    en: 'CI/CD pipeline for batch workloads. Includes build, image build, and CronJob deploy stages.',
+  },
+  'nullus-sample-backend-v1': {
+    ko: 'Nullus 플랫폼 데모용 Go API 서버입니다. backend/Dockerfile로 빌드하고 Kubernetes에 배포합니다.',
+    en: 'Go API server for the Nullus platform demo. Builds from backend/Dockerfile and deploys to Kubernetes.',
+  },
+  'nullus-sample-frontend-v1': {
+    ko: 'Nullus 플랫폼 데모용 React SPA입니다. frontend/Dockerfile(Nginx)로 빌드하고 Kubernetes에 배포합니다.',
+    en: 'React SPA for the Nullus platform demo. Builds from frontend/Dockerfile (Nginx) and deploys to Kubernetes.',
+  },
 }
 
 const TEMPLATE_DESCRIPTION_KO_TO_EN: Record<string, string> = {
   'React/Next.js 웹 프론트엔드 앱 템플릿': 'React/Next.js web frontend app template',
   'REST API 백엔드 서비스 템플릿': 'REST API backend service template',
   '배치 잡 템플릿': 'Batch job template',
+  '백엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 이미지 빌드, 배포 단계를 포함합니다.':
+    'CI/CD pipeline for backend services. Includes build, test, image build, and deploy stages.',
+  '프론트엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 정적 빌드, 배포 단계를 포함합니다.':
+    'CI/CD pipeline for frontend services. Includes build, test, static build, and deploy stages.',
+  '배치 작업을 위한 CI/CD 파이프라인. 빌드, 이미지 빌드, CronJob 배포 단계를 포함합니다.':
+    'CI/CD pipeline for batch workloads. Includes build, image build, and CronJob deploy stages.',
+  'Nullus 플랫폼 데모용 Go API 서버입니다. backend/Dockerfile로 빌드하고 Kubernetes에 배포합니다.':
+    'Go API server for the Nullus platform demo. Builds from backend/Dockerfile and deploys to Kubernetes.',
+  'Nullus 플랫폼 데모용 React SPA입니다. frontend/Dockerfile(Nginx)로 빌드하고 Kubernetes에 배포합니다.':
+    'React SPA for the Nullus platform demo. Builds from frontend/Dockerfile (Nginx) and deploys to Kubernetes.',
 }
+
+const TEMPLATE_DESCRIPTION_EN_TO_KO = Object.fromEntries(
+  Object.entries(TEMPLATE_DESCRIPTION_KO_TO_EN).map(([ko, en]) => [en, ko])
+) as Record<string, string>
 
 interface TemplateFormState {
   id: string
@@ -101,9 +136,10 @@ export function CicdTemplatePage() {
 
     if (!isKorean) {
       const enFallback = TEMPLATE_DESCRIPTION_KO_TO_EN[template.description]
-      if (enFallback) {
-        return enFallback
-      }
+      if (enFallback) return enFallback
+    } else {
+      const koFallback = TEMPLATE_DESCRIPTION_EN_TO_KO[template.description]
+      if (koFallback) return koFallback
     }
 
     return template.description
@@ -114,6 +150,12 @@ export function CicdTemplatePage() {
       template.name.toLowerCase().includes(search.toLowerCase()) ||
       resolveTemplateDescription(template).toLowerCase().includes(search.toLowerCase())
   )
+  const prioritizedFiltered = filtered.slice().sort((a, b) => {
+    const aPriority = PRIORITY_TEMPLATE_IDS.includes(a.id as (typeof PRIORITY_TEMPLATE_IDS)[number])
+    const bPriority = PRIORITY_TEMPLATE_IDS.includes(b.id as (typeof PRIORITY_TEMPLATE_IDS)[number])
+    if (aPriority === bPriority) return 0
+    return aPriority ? -1 : 1
+  })
 
   const resetForm = () => {
     setForm(EMPTY_FORM)
@@ -254,7 +296,7 @@ export function CicdTemplatePage() {
 
       {/* Template cards */}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
-        {filtered.map((template) => {
+        {prioritizedFiltered.map((template) => {
           const typeColor = APP_TYPE_COLOR[template.appType] ?? APP_TYPE_COLOR['web-backend']
           return (
             <div
