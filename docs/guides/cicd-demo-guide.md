@@ -94,7 +94,7 @@ kubectl --context kind-nullus-develop port-forward -n default svc/sample-fronten
   6. Deployment Info: Pod 이름, Go 버전 등 실시간 메타데이터
 
 ### Step 5: CI/CD History 확인
-- Nullus UI에서 CI/CD History 페이지로 이동합니다.
+- 사이드바에서 CI/CD History 페이지로 이동합니다.
 - sample-backend와 sample-frontend 두 건의 배포 이력을 확인합니다.
 - 각 배포의 상태, 버전, 배포자, 소요 시간을 체크합니다.
 
