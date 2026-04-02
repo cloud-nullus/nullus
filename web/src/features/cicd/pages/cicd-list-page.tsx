@@ -78,11 +78,8 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
   }
 
   const stages = (template?.stages ?? []) as string[]
-  const pipelineVariables = [
-    { key: 'TEMPLATE_ID', value: pipeline.templateId || '-', masked: false },
-    { key: 'NAMESPACE', value: pipeline.namespace || 'default', masked: false },
-    { key: 'GIT_REPOSITORY', value: pipeline.gitRepoUrl || '-', masked: true },
-  ]
+  const hasBuildConfig = !!pipeline.dockerfilePath
+  const envEntries = Object.entries(pipeline.envVars ?? {})
 
   return (
     <div className="flex flex-col gap-4">
@@ -119,6 +116,21 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
         </DetailCard>
       </div>
 
+      {hasBuildConfig && (
+        <DetailCard title="Build Configuration">
+          <div className="flex flex-col gap-2.5">
+            <ConfigRow
+              label="Dockerfile"
+              value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.dockerfilePath}</code>}
+            />
+            <ConfigRow
+              label="Build Context"
+              value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.dockerContext || '.'}</code>}
+            />
+          </div>
+        </DetailCard>
+      )}
+
       {stages.length > 0 && (
         <DetailCard title="Pipeline Stages">
           <div className="flex flex-wrap items-center gap-2">
@@ -135,36 +147,32 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
         </DetailCard>
       )}
 
-      <DetailCard title="Pipeline Variables">
-        <div className="flex flex-col gap-2">
-          {pipelineVariables.map((variable) => {
-            const isRevealed = revealedVars.has(variable.key)
-            const displayValue = variable.masked && !isRevealed ? '********' : variable.value
-
-            return (
-              <div
-                key={variable.key}
-                className="grid grid-cols-[1fr_1fr_88px] items-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[12px]"
-              >
-                <span className="font-mono text-[var(--color-text-primary)]">{variable.key}</span>
-                <span className="font-mono text-[var(--color-text-secondary)]">{displayValue}</span>
-                {variable.masked ? (
+      {envEntries.length > 0 && (
+        <DetailCard title="Environment Variables">
+          <div className="flex flex-col gap-2">
+            {envEntries.map(([key, value]) => {
+              const isRevealed = revealedVars.has(key)
+              return (
+                <div
+                  key={key}
+                  className="grid grid-cols-[1fr_1fr_88px] items-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[12px]"
+                >
+                  <span className="font-mono text-[var(--color-text-primary)]">{key}</span>
+                  <span className="truncate font-mono text-[var(--color-text-secondary)]">{isRevealed ? value : '••••••••'}</span>
                   <button
                     type="button"
-                    onClick={() => toggleReveal(variable.key)}
+                    onClick={() => toggleReveal(key)}
                     className="inline-flex items-center justify-center gap-1 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
                   >
                     {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
                     {isRevealed ? 'Hide' : 'Show'}
                   </button>
-                ) : (
-                  <span className="rounded px-2 py-[2px] text-center text-[11px] bg-[rgba(148,163,184,0.2)] text-[var(--color-text-secondary)]">plain</span>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </DetailCard>
+                </div>
+              )
+            })}
+          </div>
+        </DetailCard>
+      )}
     </div>
   )
 }
@@ -172,8 +180,12 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
 function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
-  const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
+  const { data: deploymentsData, isLoading } = usePipelineDeployments(pipeline.id)
   const deployments = deploymentsData?.items ?? []
+
+  if (isLoading) {
+    return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">Loading deployment metrics...</div>
+  }
 
   const total = deployments.length
   const successCount = deployments.filter((d) => d.status === 'success').length
@@ -253,8 +265,12 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
 function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
-  const { data: deploymentsData } = usePipelineDeployments(pipeline.id)
+  const { data: deploymentsData, isLoading } = usePipelineDeployments(pipeline.id)
   const deployments = deploymentsData?.items ?? []
+
+  if (isLoading) {
+    return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">Loading deployment history...</div>
+  }
 
   if (deployments.length === 0) {
     return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">{t('cicdListPage.emptyDeployments', 'No deployment history.')}</div>
@@ -264,9 +280,15 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     <div className="flex flex-col gap-2.5">
       {deployments.map((d) => {
         const st = getPipelineStatusStyle(d.status)
-        const duration =
+        const durationMs =
           d.completedAt && d.startedAt
-            ? `${Math.round((new Date(d.completedAt).getTime() - new Date(d.startedAt).getTime()) / 1000)}s`
+            ? new Date(d.completedAt).getTime() - new Date(d.startedAt).getTime()
+            : 0
+        const duration =
+          durationMs > 0
+            ? durationMs >= 60000
+              ? `${Math.floor(durationMs / 60000)}m ${Math.round((durationMs % 60000) / 1000)}s`
+              : `${Math.round(durationMs / 1000)}s`
             : d.status === 'running'
               ? 'running'
               : '-'
