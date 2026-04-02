@@ -271,6 +271,9 @@ export interface Pipeline {
   clusterId: string
   clusterName: string
   namespace: string
+  dockerfilePath: string
+  dockerContext: string
+  envVars: Record<string, string>
   status: PipelineStatus
   lastDeployedAt: string | null
   createdAt: string
