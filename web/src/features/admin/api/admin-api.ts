@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import { useAuthStore } from '../../../stores/auth-store'
 import type {
   Cluster,
   CreateClusterRequest,
@@ -37,6 +38,15 @@ export interface InviteLink {
   status: 'active' | 'expired'
 }
 
+export interface ClusterMonitoringSummary {
+  total_pods: number
+  ready_pods: number
+  cpu_request_millicores: number
+  cpu_limit_millicores: number
+  memory_request_mib: number
+  memory_limit_mib: number
+}
+
 // --- Query keys ---
 
 const queryKeys = {
@@ -44,6 +54,7 @@ const queryKeys = {
   members: (orgId: string) => ['admin', 'members', orgId] as const,
   clusters: () => ['admin', 'clusters'] as const,
   cluster: (id: string) => ['admin', 'clusters', id] as const,
+  clusterMonitoringSummary: (id: string) => ['admin', 'clusters', id, 'monitoring-summary'] as const,
   knownIssues: () => ['admin', 'known-issues'] as const,
   inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
 }
@@ -122,7 +133,14 @@ const adminApiCalls = {
     api.post<Member>(`/admin/organizations/${orgId}/members/${memberId}/deactivate`).then((r) => r.data),
 
   getClusters: () =>
-    api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => ({
+    api.get<{ items: Cluster[]; total: number }>('/admin/clusters', {
+      params: {
+        page: 1,
+        page_size: 500,
+        per_page: 500,
+        limit: 500,
+      },
+    }).then((r) => ({
       ...r.data,
       items: (r.data.items ?? []).map((c) => normalizeCluster(c as ClusterApiShape)),
     })),
@@ -153,6 +171,9 @@ const adminApiCalls = {
 
   getClusterNamespaces: (clusterId: string) =>
     api.get<{ items: { name: string }[] }>(`/admin/clusters/${clusterId}/namespaces`).then((r) => r.data?.items ?? []),
+
+  getClusterMonitoringSummary: (clusterId: string) =>
+    api.get<ClusterMonitoringSummary>(`/admin/clusters/${clusterId}/monitoring-summary`).then((r) => r.data),
 
   createInviteLink: (orgId: string, data: { role: MemberRole; expiresInDays: number }) =>
     api.post<{ token: string; url: string; role: MemberRole; expiresAt: string }>(`/admin/organizations/${orgId}/invites`, data).then((r) => r.data),
@@ -289,12 +310,25 @@ export function useClusters() {
 export function useScopedClusters() {
   const { data: clustersData, ...rest } = useClusters()
   const { data: org } = useOrganization()
+  const role = useAuthStore((s) => s.role)
+  const userOrgId = useAuthStore((s) => s.user?.orgId ?? '')
   const scope = org?.clusterAccessScope ?? []
 
+  const normalizeKey = (value: string) => value.trim().toLowerCase()
+  const scopeSet = new Set(scope.map((value) => normalizeKey(value)))
+
   const items = clustersData?.items ?? []
-  const filtered = scope.length > 0
-    ? items.filter((c) => scope.includes(c.name))
+  if (role === 'admin') {
+    return { ...rest, data: clustersData ? { ...clustersData, items, total: items.length } : clustersData }
+  }
+
+  const filteredByScope = scope.length > 0
+    ? items.filter((c) => scopeSet.has(normalizeKey(c.name)) || scopeSet.has(normalizeKey(c.id)))
     : items
+
+  const filtered = userOrgId
+    ? filteredByScope.filter((c) => c.organizationIds.length === 0 || c.organizationIds.includes(userOrgId))
+    : filteredByScope
 
   return { ...rest, data: clustersData ? { ...clustersData, items: filtered, total: filtered.length } : clustersData }
 }
@@ -371,6 +405,15 @@ export function useClusterNamespaces(clusterId: string) {
     queryKey: ['admin', 'clusters', clusterId, 'namespaces'],
     queryFn: () => adminApiCalls.getClusterNamespaces(clusterId),
     enabled: !!clusterId,
+  })
+}
+
+export function useClusterMonitoringSummary(clusterId: string) {
+  return useQuery({
+    queryKey: queryKeys.clusterMonitoringSummary(clusterId),
+    queryFn: () => adminApiCalls.getClusterMonitoringSummary(clusterId),
+    enabled: !!clusterId,
+    refetchInterval: 5000,
   })
 }
 

@@ -1,11 +1,8 @@
 import {
-  AlertCircle,
   Box,
-  CheckCircle,
   Cpu,
   HardDrive,
   MemoryStick,
-  XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -38,28 +35,6 @@ ChartJS.register(
 )
 
 type MonitoringRange = 'realtime' | '1h' | '6h' | '24h' | '7d'
-type ToolHealthStatus = 'running' | 'warning' | 'error'
-
-const TOOL_STATUS_CONFIG: Record<
-  ToolHealthStatus,
-  { icon: React.ReactNode; badgeClassName: string; label: string }
-> = {
-  running: {
-    icon: <CheckCircle size={13} />,
-    badgeClassName: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-    label: 'Running',
-  },
-  warning: {
-    icon: <AlertCircle size={13} />,
-    badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-    label: 'Warning',
-  },
-  error: {
-    icon: <XCircle size={13} />,
-    badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
-    label: 'Error',
-  },
-}
 
 type MonitoringSample = {
   ts: number
@@ -519,12 +494,6 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
     ]
   }, [monitoring, currentMetrics, cpuMaxInWindow, memoryMaxInWindow])
 
-  const tools: { name: string; version: string; status: ToolHealthStatus }[] = useMemo(() => {
-    const all = monitoring?.oss_statuses ?? []
-    const filtered = scope === 'all' ? all : all.filter((tool) => tool.key === scope)
-    return filtered.map((tool) => ({ name: tool.name, version: tool.version, status: tool.status }))
-  }, [monitoring, scope])
-
   const cpuChartOptions: ChartOptions<'line'> = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
@@ -707,69 +676,6 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
 
   return (
     <div>
-      <div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        {kpiCards.map((card) => (
-          <div key={card.label} className={cardClassName}>
-            <div className="mb-2.5 flex items-center gap-2.5">
-              <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', card.iconWrapClassName)}>
-                {card.icon}
-              </div>
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">
-                {card.label}
-              </span>
-            </div>
-            <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">
-              {card.value}
-            </div>
-            {card.metricScale ? (
-              <div className="mt-2">
-                {(() => {
-                  const showLimit = card.metricScale.showLimit !== false
-                  const scaleLimit = showLimit ? card.metricScale.limit : card.metricScale.request
-                  const scaleMax = Math.max(scaleLimit, 0.000001)
-                  const reqPos = Math.max(0, Math.min(100, (card.metricScale.request / scaleMax) * 100))
-                  const limPos = showLimit ? 100 : reqPos
-                  const curPos = card.metricScale.current === null
-                    ? null
-                    : Math.max(0, Math.min(100, (card.metricScale.current / scaleMax) * 100))
-
-                  const reqLabelShift = reqPos < 8 ? 'translate-x-0' : reqPos > 92 ? '-translate-x-full' : '-translate-x-1/2'
-                  const limLabelShift = limPos < 8 ? 'translate-x-0' : limPos > 92 ? '-translate-x-full' : '-translate-x-1/2'
-
-                  return (
-                    <>
-                      <div className="relative h-4">
-                        <div className="absolute left-0 right-0 top-1 h-2 rounded-full bg-[rgba(148,163,184,0.22)]" />
-                        {curPos !== null && (
-                          <div className="absolute left-0 top-1 h-2 rounded-full" style={{ width: `${curPos}%`, backgroundColor: card.color }} />
-                        )}
-                        <div className="absolute top-0.5 h-[10px] w-px bg-[#60a5fa]" style={{ left: `${reqPos}%` }} />
-                        {showLimit && (
-                          <div className="absolute top-0.5 h-[10px] w-px bg-[#f59e0b]" style={{ left: `${limPos}%` }} />
-                        )}
-                      </div>
-                      <div className="relative mt-1 h-8 text-[10px] font-semibold text-[var(--color-text-secondary)]">
-                        <span className="absolute left-0 top-0 whitespace-nowrap">0</span>
-                        <span className={`absolute top-0 whitespace-nowrap ${reqLabelShift}`} style={{ left: `${reqPos}%` }}>{card.metricScale.request.toFixed(2)}</span>
-                        <span className={`absolute top-4 whitespace-nowrap ${reqLabelShift}`} style={{ left: `${reqPos}%` }}>(Req)</span>
-                        {showLimit && (
-                          <>
-                            <span className={`absolute top-0 whitespace-nowrap ${limLabelShift}`} style={{ left: `${limPos}%` }}>{card.metricScale.limit.toFixed(2)}</span>
-                            <span className={`absolute top-4 whitespace-nowrap ${limLabelShift}`} style={{ left: `${limPos}%` }}>(Lim)</span>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )
-                })()}
-              </div>
-            ) : (
-              <UsageBar value={card.bar} color={card.color} />
-            )}
-          </div>
-        ))}
-      </div>
-
       <div className={cn(cardClassName, 'mb-6')}>
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -825,6 +731,68 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               })}
             </div>
           </div>
+        </div>
+        <div className="mb-4 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+          {kpiCards.map((card) => (
+            <div key={card.label} className={cardClassName}>
+              <div className="mb-2.5 flex items-center gap-2.5">
+                <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', card.iconWrapClassName)}>
+                  {card.icon}
+                </div>
+                <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                  {card.label}
+                </span>
+              </div>
+              <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">
+                {card.value}
+              </div>
+              {card.metricScale ? (
+                <div className="mt-2">
+                  {(() => {
+                    const showLimit = card.metricScale.showLimit !== false
+                    const scaleLimit = showLimit ? card.metricScale.limit : card.metricScale.request
+                    const scaleMax = Math.max(scaleLimit, 0.000001)
+                    const reqPos = Math.max(0, Math.min(100, (card.metricScale.request / scaleMax) * 100))
+                    const limPos = showLimit ? 100 : reqPos
+                    const curPos = card.metricScale.current === null
+                      ? null
+                      : Math.max(0, Math.min(100, (card.metricScale.current / scaleMax) * 100))
+
+                    const reqLabelShift = reqPos < 8 ? 'translate-x-0' : reqPos > 92 ? '-translate-x-full' : '-translate-x-1/2'
+                    const limLabelShift = limPos < 8 ? 'translate-x-0' : limPos > 92 ? '-translate-x-full' : '-translate-x-1/2'
+
+                    return (
+                      <>
+                        <div className="relative h-4">
+                          <div className="absolute left-0 right-0 top-1 h-2 rounded-full bg-[rgba(148,163,184,0.22)]" />
+                          {curPos !== null && (
+                            <div className="absolute left-0 top-1 h-2 rounded-full" style={{ width: `${curPos}%`, backgroundColor: card.color }} />
+                          )}
+                          <div className="absolute top-0.5 h-[10px] w-px bg-[#60a5fa]" style={{ left: `${reqPos}%` }} />
+                          {showLimit && (
+                            <div className="absolute top-0.5 h-[10px] w-px bg-[#f59e0b]" style={{ left: `${limPos}%` }} />
+                          )}
+                        </div>
+                        <div className="relative mt-1 h-8 text-[10px] font-semibold text-[var(--color-text-secondary)]">
+                          <span className="absolute left-0 top-0 whitespace-nowrap">0</span>
+                          <span className={`absolute top-0 whitespace-nowrap ${reqLabelShift}`} style={{ left: `${reqPos}%` }}>{card.metricScale.request.toFixed(2)}</span>
+                          <span className={`absolute top-4 whitespace-nowrap ${reqLabelShift}`} style={{ left: `${reqPos}%` }}>(Req)</span>
+                          {showLimit && (
+                            <>
+                              <span className={`absolute top-0 whitespace-nowrap ${limLabelShift}`} style={{ left: `${limPos}%` }}>{card.metricScale.limit.toFixed(2)}</span>
+                              <span className={`absolute top-4 whitespace-nowrap ${limLabelShift}`} style={{ left: `${limPos}%` }}>(Lim)</span>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )
+                  })()}
+                </div>
+              ) : (
+                <UsageBar value={card.bar} color={card.color} />
+              )}
+            </div>
+          ))}
         </div>
         <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
           <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
@@ -924,27 +892,6 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               ))}
             </tbody>
           </table>
-        </div>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-          {tools.map((tool) => {
-            const cfg = TOOL_STATUS_CONFIG[tool.status]
-            return (
-              <div key={tool.name} className="rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3.5">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-sm font-bold text-[var(--color-text-primary)]">
-                    {tool.name}
-                  </span>
-                  <span className={cn('inline-flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', cfg.badgeClassName)}>
-                    {cfg.icon}
-                    {cfg.label}
-                  </span>
-                </div>
-                <div className="text-xs text-[var(--color-text-secondary)]">
-                  v{tool.version}
-                </div>
-              </div>
-            )
-          })}
         </div>
         <div className="mt-4 space-y-2">
           {(scope === 'all' ? (monitoring?.oss_statuses ?? []) : (activeTool ? [activeTool] : [])).map((tool) => (

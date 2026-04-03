@@ -121,3 +121,30 @@ func TestFilterInstalledResourcesToSelectedTools_KeepsOnlySelectedPrefixes(t *te
 		assert.Equal(t, "grafana", filtered[1].Name)
 	}
 }
+
+func TestToOSSStatuses_ExcludesSucceededMigrationPodsFromHealth(t *testing.T) {
+	types := []selectedToolType{
+		{
+			Key:                  "source_repository",
+			Name:                 "gitlab",
+			Version:              "18.5.1",
+			Enabled:              true,
+			PodNamePrefixes:      []string{"gitlab"},
+			ResourceNamePrefixes: []string{"gitlab"},
+		},
+	}
+
+	pods := []podMonitoringStatus{
+		{Name: "gitlab-webservice-default-0", Phase: "Running", Ready: true, Status: "running"},
+		{Name: "gitlab-migrations-a8d695e-fg7tp", Phase: "Succeeded", Ready: false, Status: "running"},
+	}
+
+	statuses := toOSSStatuses(types, pods)
+	if assert.Len(t, statuses, 1) {
+		assert.Equal(t, "running", statuses[0].Status)
+		assert.Equal(t, 1, statuses[0].PodCount)
+		assert.Equal(t, 1, statuses[0].ReadyPods)
+		assert.Len(t, statuses[0].Pods, 1)
+		assert.Equal(t, "gitlab-webservice-default-0", statuses[0].Pods[0].Name)
+	}
+}
