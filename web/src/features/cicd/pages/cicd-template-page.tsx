@@ -371,7 +371,7 @@ export function CicdTemplatePage() {
                     size="sm"
                     type="button"
                     className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
-                    onClick={() => navigate('/cicd/developer-deploy')}
+                    onClick={() => navigate(`/cicd/developer-deploy?template=${encodeURIComponent(template.id)}&appType=${encodeURIComponent(template.appType)}`)}
                   >
                     {t('cicdTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
                   </Button>

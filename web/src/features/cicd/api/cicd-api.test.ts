@@ -25,8 +25,10 @@ import {
   useCicdTemplates,
   useCreateCicdTemplate,
   useCreatePipeline,
+  useDeletePipeline,
   useDeleteCicdTemplate,
   useDeployApp,
+  useDeploymentStatus,
   useDeployments,
   useDeployPipeline,
   usePipelines,
@@ -64,6 +66,7 @@ describe('cicd-api hooks and exports', () => {
     expect(typeof useDeleteCicdTemplate).toBe('function')
     expect(typeof usePipelines).toBe('function')
     expect(typeof useCreatePipeline).toBe('function')
+    expect(typeof useDeletePipeline).toBe('function')
     expect(typeof useDeployPipeline).toBe('function')
     expect(typeof useDeployments).toBe('function')
     expect(typeof useAppTemplates).toBe('function')
@@ -113,6 +116,10 @@ describe('cicd-api hooks and exports', () => {
     const deployPipelineConfig = latestMutationConfig()
     deployPipelineConfig.onSuccess()
 
+    useDeletePipeline()
+    const deletePipelineConfig = latestMutationConfig()
+    deletePipelineConfig.onSuccess()
+
     useDeployApp()
     const deployAppConfig = latestMutationConfig()
     deployAppConfig.onSuccess()
@@ -135,5 +142,37 @@ describe('cicd-api hooks and exports', () => {
       '/api/v1/cicd/pipelines/pipeline-1/rollback/deploy-1',
       { preservePVC: true }
     )
+  })
+
+  it('normalizes deployment step fields for pipeline logs output', async () => {
+    vi.mocked(mockApi.get).mockResolvedValueOnce({
+      data: {
+        ID: 'dep-1',
+        Status: 'success',
+        Steps: [
+          {
+            Name: 'Deploy',
+            Status: 'success',
+            Kind: 'Deployment',
+            Message: 'deployment completed',
+            Logs: ['line-1', 'line-2'],
+          },
+        ],
+      },
+    } as any)
+
+    useDeploymentStatus('dep-1')
+    const config = mockUseQuery.mock.calls[mockUseQuery.mock.calls.length - 1]?.[0]
+    const result = await config.queryFn()
+
+    expect(result.steps).toEqual([
+      expect.objectContaining({
+        name: 'Deploy',
+        status: 'success',
+        kind: 'Deployment',
+        message: 'deployment completed',
+        logs: ['line-1', 'line-2'],
+      }),
+    ])
   })
 })

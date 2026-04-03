@@ -5,7 +5,6 @@ import { BookOpen, ChevronDown, ChevronRight, Clock, Pencil, Plus, Search, Trash
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../api/stack-api'
 import { getToolAppVersion, getToolChartVersion, useStackConfigStore } from '../stores/stack-config-store'
-import type { StackConfigDraft } from '../stores/stack-config-store'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
@@ -14,6 +13,7 @@ import { useAuthStore } from '../../../stores/auth-store'
 import type { StackTemplate } from '../api/stack-api'
 import type { TemplateToolDetail } from '../../../types'
 import { resolveLocale } from '../../../lib/locale'
+import { buildInstallOverridesFromTemplate, resolveToolIdByName } from '../utils/template-overrides'
 
 interface TemplateFormState {
   id: string
@@ -85,39 +85,6 @@ const TOOL_CATEGORY_LOOKUP = new Map<string, ToolCategory>(
 const TOOL_SECTION_LOOKUP = new Map<string, ToolSection>(
   TOOL_SECTIONS.flatMap((section) => section.categories.map((category) => [category.category, section] as const))
 )
-
-
-const TOOL_ID_BY_NAME: Record<string, string> = {
-  'gitlab ce': 'gitlab',
-  'gitlab package registry': 'gitlab',
-  'gitlab registry': 'gitlab-registry',
-  'gitlab ci': 'gitlab-ci',
-  'argo cd': 'argocd',
-  minio: 'minio',
-  prometheus: 'prometheus',
-  grafana: 'grafana',
-  opensearch: 'opensearch',
-  tempo: 'tempo',
-  nexus: 'nexus',
-  'jfrog artifactory': 'jfrog',
-  github: 'github',
-  gitea: 'gitea',
-  harbor: 'harbor',
-  'docker registry': 'docker-hub',
-  'github actions': 'github-actions',
-  jenkins: 'jenkins',
-  flux: 'flux',
-  thanos: 'thanos',
-  'victoria metrics': 'victoriametrics',
-  kibana: 'kibana',
-  'opensearch dashboards': 'opensearch-dashboards',
-  jaeger: 'jaeger',
-  'opentelemetry collector': 'opentelemetry-collector',
-  elasticsearch: 'elasticsearch',
-  loki: 'loki',
-}
-
-const resolveToolIdByName = (name: string) => TOOL_ID_BY_NAME[normalizeToolKey(name)] ?? normalizeToolKey(name)
 
 const defaultVersionsForTool = (toolName: string) => {
   const toolId = resolveToolIdByName(toolName)
@@ -309,85 +276,6 @@ const estimateInstallMinutesForTemplate = (template: StackTemplate): number => {
 
   return estimateInstallMinutesFromTools(targetTools)
 }
-
-
-const buildInstallOverridesFromTemplate = (template: StackTemplate): Partial<StackConfigDraft> => {
-  const toolsFromDetails = (template.toolDetails ?? [])
-    .filter((tool) => tool.name && tool.name.trim().length > 0)
-    .map((tool) => toToolEntry(tool.name, tool))
-
-  const tools = toolsFromDetails.length > 0
-    ? toolsFromDetails
-    : (Array.isArray(template.tools) ? template.tools : []).map((toolName) => toToolEntry(toolName))
-
-  const overrides: Partial<StackConfigDraft> = {
-    artifacts: {
-      packageRegistry: { tool: '', version: '' },
-      sourceRepository: { tool: '', version: '' },
-      containerRegistry: { tool: '', version: '' },
-      storageBackend: { tool: '', version: '' },
-    },
-    pipeline: {
-      cicdPlatform: { tool: '', version: '' },
-      cdTool: { tool: '', version: '' },
-    },
-    monitoring: {
-      collection: { tool: '', version: '' },
-      visualization: { tool: '', version: '' },
-    },
-    logging: {
-      search: { tool: '', version: '' },
-      traceLayer: { tool: '', version: '' },
-    },
-  }
-
-  const apply = (category: string, target: 'artifacts' | 'pipeline' | 'monitoring' | 'logging', field: string, name: string, appVersion?: string) => {
-    const toolId = resolveToolIdByName(name)
-    const version = appVersion || getToolAppVersion(toolId)
-    ;(overrides[target] as unknown as Record<string, { tool: string; version: string }>)[field] = { tool: toolId, version }
-  }
-
-  for (const tool of tools) {
-    switch (tool.category) {
-      case 'package_registry':
-        apply(tool.category, 'artifacts', 'packageRegistry', tool.name, tool.app_version)
-        break
-      case 'source_repository':
-        apply(tool.category, 'artifacts', 'sourceRepository', tool.name, tool.app_version)
-        break
-      case 'container_registry':
-        apply(tool.category, 'artifacts', 'containerRegistry', tool.name, tool.app_version)
-        break
-      case 'storage_backend':
-        apply(tool.category, 'artifacts', 'storageBackend', tool.name, tool.app_version)
-        break
-      case 'ci_platform':
-        apply(tool.category, 'pipeline', 'cicdPlatform', tool.name, tool.app_version)
-        break
-      case 'cd_tool':
-        apply(tool.category, 'pipeline', 'cdTool', tool.name, tool.app_version)
-        break
-      case 'monitoring_collection':
-        apply(tool.category, 'monitoring', 'collection', tool.name, tool.app_version)
-        break
-      case 'monitoring_visualization':
-        apply(tool.category, 'monitoring', 'visualization', tool.name, tool.app_version)
-        break
-      case 'log_search':
-        apply(tool.category, 'logging', 'search', tool.name, tool.app_version)
-        break
-      case 'trace_layer':
-      case 'agent':
-        apply(tool.category, 'logging', 'traceLayer', tool.name, tool.app_version)
-        break
-      default:
-        break
-    }
-  }
-
-  return overrides
-}
-
 export function StackTemplatePage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()

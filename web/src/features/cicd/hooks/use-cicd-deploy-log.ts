@@ -66,7 +66,9 @@ export function useCicdDeployLog(deploymentId: string | null): {
       },
       onStatusChange: (connected) => {
         setIsConnected(connected)
-        if (connected) setStatus('running')
+        if (connected) {
+          setStatus((prev) => (prev === 'success' || prev === 'failed' ? prev : 'running'))
+        }
       },
     })
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
@@ -8,7 +8,7 @@ import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
 import { useCicdTemplates, useCreatePipeline } from '../api/cicd-api'
-import { useScopedClusters as useClusters } from '../../admin/api/admin-api'
+import { useClusters } from '../../admin/api/admin-api'
 import type { CicdTemplate } from '../api/cicd-api'
 import type { AppType } from '../../../types'
 import { cn } from '../../../lib/utils'
@@ -266,8 +266,23 @@ export function CicdPipelineSetupPage() {
 
   const { data: clustersData } = useClusters()
   const clusterList = clustersData?.items ?? []
-  const clusterOptions = clusterList.length > 0
-    ? clusterList.map((cluster) => ({ id: cluster.id, name: cluster.name }))
+  const getNormalizedClusterTypes = (cluster: { type?: string; types?: string[] }) => {
+    const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
+      ? cluster.types
+      : (cluster.type ? [cluster.type] : [])
+
+    return rawTypes
+      .flatMap((type) => type.split(','))
+      .map((type) => type.trim().toLowerCase())
+      .filter((type) => type.length > 0)
+  }
+
+  const targetClusters = clusterList.filter((cluster) => getNormalizedClusterTypes(cluster).includes('target'))
+
+  const clusterOptions = targetClusters.length > 0
+    ? [...targetClusters]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((cluster) => ({ id: cluster.id, name: cluster.name }))
     : [
       { id: 'c1', name: 'prod-k8s' },
       { id: 'c2', name: 'dev-k8s' },
@@ -285,6 +300,13 @@ export function CicdPipelineSetupPage() {
   const [formError, setFormError] = useState<string | null>(null)
 
   const selectedAppType = template?.appType ?? 'web-backend'
+
+  useEffect(() => {
+    if (clusterOptions.some((cluster) => cluster.id === clusterId)) {
+      return
+    }
+    setClusterId(clusterOptions[0]?.id ?? '')
+  }, [clusterId, clusterOptions])
 
   const selectedDockerfile = DOCKERFILE_PRESETS.find((preset) => preset.id === dockerfileId) ?? DOCKERFILE_PRESETS[0]
   const selectedDeployYaml = DEPLOY_YAML_PRESETS.find((preset) => preset.id === deployYamlId) ?? DEPLOY_YAML_PRESETS[0]

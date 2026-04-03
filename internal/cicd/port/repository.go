@@ -16,6 +16,7 @@ type PipelineRepository interface {
 	// ListByStackID returns all pipelines linked to a specific stack.
 	ListByStackID(ctx context.Context, stackID string) ([]*domain.Pipeline, error)
 	Update(ctx context.Context, pipeline *domain.Pipeline) error
+	Delete(ctx context.Context, id string) error
 }
 
 // PipelineTemplateRepository defines the interface for pipeline template persistence.

@@ -5,6 +5,7 @@ import { CicdListPage } from './cicd-list-page'
 
 const mockNavigate = vi.fn()
 const mockUsePipelines = vi.fn()
+const mockUseDeletePipeline = vi.fn()
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -16,6 +17,7 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('../api/cicd-api', () => ({
   usePipelines: (...args: unknown[]) => mockUsePipelines(...args),
+  useDeletePipeline: (...args: unknown[]) => mockUseDeletePipeline(...args),
 }))
 
 const pipelines = [
@@ -34,9 +36,14 @@ describe('CicdListPage', () => {
   beforeEach(() => {
     mockNavigate.mockReset()
     mockUsePipelines.mockReset()
+    mockUseDeletePipeline.mockReset()
     mockUsePipelines.mockReturnValue({
       data: { items: pipelines, total: pipelines.length },
       isLoading: false,
+    })
+    mockUseDeletePipeline.mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue(undefined),
+      isPending: false,
     })
   })
 

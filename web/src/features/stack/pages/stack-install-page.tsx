@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Download, Info, Rocket, Save, ShoppingCart } from 'lucide-react'
 import Editor from '@monaco-editor/react'
@@ -20,7 +20,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates } from '../api/stack-api'
 import { useClusters } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
@@ -31,6 +31,7 @@ import { Modal } from '../../../components/ui/modal'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { cn } from '../../../lib/utils'
 import { useThemeStore } from '../../../stores/theme-store'
+import { buildInstallOverridesFromTemplate } from '../utils/template-overrides'
 
 // --- Tool option types ---
 
@@ -1871,6 +1872,7 @@ const TABS: { id: InstallTab; label: string }[] = [
 
 export function StackInstallPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const theme = useThemeStore((state) => state.theme)
   const isDarkMode = theme === 'dark'
@@ -1882,6 +1884,7 @@ export function StackInstallPage() {
     setAccessDomain,
     setCluster,
     setNamespace,
+    loadFromTemplate,
     updateStorage,
     updateStorageTarget,
     updateAccessDomainTls,
@@ -1890,8 +1893,10 @@ export function StackInstallPage() {
   const deployStack = useDeployStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
+  const { data: templatesData, isFetched: isTemplatesFetched } = useTemplates()
   const { data: clustersData } = useClusters()
   const clusters = clustersData?.items ?? []
+  const templates = templatesData ?? []
   const { data: stackListData } = useStacks()
   const { data: compatibilityMatrixData } = useCompatibilityMatrix()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
@@ -1914,6 +1919,7 @@ export function StackInstallPage() {
   const [dryRunExecutedAt, setDryRunExecutedAt] = useState<string | null>(null)
   const manifestSyncTimerRef = useRef<number | null>(null)
   const monacoConfiguredRef = useRef(false)
+  const initializedTemplateRef = useRef<string | null>(null)
   const initializedDefaultStackNameRef = useRef(false)
   const stackNameInputRef = useRef<HTMLInputElement | null>(null)
   const clusterSelectRef = useRef<HTMLSelectElement | null>(null)
@@ -1937,6 +1943,7 @@ export function StackInstallPage() {
 
   const effectiveNamespace = createNewNs ? draft.namespace.trim() : draft.namespace.trim() || 'nullus'
   const watchedStackName = watch('stackName')
+  const templateIdFromQuery = searchParams.get('template')?.trim() || null
   const effectiveClusterId = selectedClusterId || draft.clusterId
   const normalizedDraftStackName = (watchedStackName || draft.stackName).trim().toLowerCase()
   const duplicateStackNameMessage = t(
@@ -1959,6 +1966,24 @@ export function StackInstallPage() {
   useEffect(() => {
     setSelectedClusterId(draft.clusterId ?? '')
   }, [draft.clusterId])
+
+  useEffect(() => {
+    if (!templateIdFromQuery) {
+      return
+    }
+    if (initializedTemplateRef.current === templateIdFromQuery) {
+      return
+    }
+
+    const matchedTemplate = templates.find((template) => template.id === templateIdFromQuery)
+    if (!matchedTemplate && !isTemplatesFetched) {
+      return
+    }
+
+    const overrides = matchedTemplate ? buildInstallOverridesFromTemplate(matchedTemplate) : undefined
+    loadFromTemplate(templateIdFromQuery, overrides)
+    initializedTemplateRef.current = templateIdFromQuery
+  }, [isTemplatesFetched, loadFromTemplate, templateIdFromQuery, templates])
 
   useEffect(() => {
     if (!(watchedStackName || draft.stackName).trim() || !effectiveClusterId) {

@@ -28,7 +28,7 @@ vi.mock('../api/cicd-api', () => ({
 }))
 
 vi.mock('../../admin/api/admin-api', () => ({
-  useScopedClusters: () => mockUseClusters(),
+  useClusters: () => mockUseClusters(),
 }))
 
 const templates = [
@@ -44,10 +44,11 @@ const templates = [
 
 const clusters = {
   items: [
-    { id: 'c1', name: 'prod-k8s' },
-    { id: 'c2', name: 'dev-k8s' },
+    { id: 'c1', name: 'prod-k8s', type: 'target', types: ['target'] },
+    { id: 'c2', name: 'nullus-develop', type: 'pipeline', types: [' TARGET '] },
+    { id: 'c3', name: 'pipeline-only-k8s', type: 'pipeline', types: ['pipeline'] },
   ],
-  total: 2,
+  total: 3,
 }
 
 describe('CicdPipelineSetupPage', () => {
@@ -78,6 +79,8 @@ describe('CicdPipelineSetupPage', () => {
 
     expect(screen.getAllByText('Backend API').length).toBeGreaterThan(0)
     expect(screen.getAllByText('prod-k8s').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('nullus-develop').length).toBeGreaterThan(0)
+    expect(screen.queryByText('pipeline-only-k8s')).toBeNull()
   })
 
   it('uses fallback options when API returns empty arrays', () => {

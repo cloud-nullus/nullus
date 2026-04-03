@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -13,7 +13,7 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
 import { useCicdTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
 import type { AppType } from '../api/cicd-api'
-import { useClusterNamespaces, useScopedClusters as useClusters } from '../../admin/api/admin-api'
+import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
 import { useStacks } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
 import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-log'
@@ -30,7 +30,6 @@ const STEP_LABEL_DEFAULTS: Record<Step, string> = {
   6: 'Manifest Review',
 }
 
-const PHASE_COUNT = 3
 const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
 
 const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
@@ -213,6 +212,7 @@ export function DeveloperDeployPage() {
   const [repoName, setRepoName] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [selectedAppType, setSelectedAppType] = useState<AppType>(appTypeParam)
+  const [createNewNamespace, setCreateNewNamespace] = useState(false)
   const { logs, status, progress, isConnected } = useCicdDeployLog(deploymentId)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { data: stacksData } = useStacks()
@@ -226,10 +226,21 @@ export function DeveloperDeployPage() {
   const quickStartTemplates = templates.filter((template) =>
     !!(template.gitRepoUrl?.trim() || template.dockerfilePath?.trim() || template.dockerContext?.trim())
   )
-  const clusters = (clustersData?.items ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-  }))
+  const clusters = (clustersData?.items ?? [])
+    .filter((cluster) => {
+      const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
+        ? cluster.types
+        : (cluster.type ? [cluster.type] : [])
+      const normalizedTypes = rawTypes
+        .flatMap((type) => type.split(','))
+        .map((type) => type.trim().toLowerCase())
+        .filter((type) => type.length > 0)
+      return normalizedTypes.includes('target')
+    })
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+    }))
   const {
     register,
     control,
@@ -253,10 +264,15 @@ export function DeveloperDeployPage() {
   const clusterIdParam = searchParams.get('clusterId') ?? ''
   const namespaceParam = searchParams.get('namespace') ?? ''
   const appNameParam = searchParams.get('appName') ?? ''
+  const templateIdParam = searchParams.get('template') ?? ''
 
   const form = watch()
   const { data: namespacesData } = useClusterNamespaces(form.clusterId)
-  const namespaces = (namespacesData ?? []).map((ns) => ns.name)
+  const namespaces = useMemo(() => (namespacesData ?? []).map((ns) => ns.name), [namespacesData])
+  const namespaceOptions = useMemo(
+    () => Array.from(new Set(['default', ...namespaces.filter((ns) => ns && ns !== 'default')])),
+    [namespaces]
+  )
   const selectedStack = stacks.find((s) => s.id === selectedStackId)
   const stackGitBaseUrl = selectedStack ? `http://${selectedStack.name}.internal/` : ''
   const gitUrl = selectedStackId ? `${stackGitBaseUrl}${repoName}` : form.gitUrl
@@ -284,18 +300,52 @@ export function DeveloperDeployPage() {
     }
     if (namespaceParam) {
       setValue('namespace', namespaceParam, { shouldValidate: true })
+      setCreateNewNamespace(!namespaceOptions.includes(namespaceParam))
     }
     if (appNameParam) {
       setValue('appName', appNameParam, { shouldValidate: true })
     }
-  }, [pipelineIdParam, clusterIdParam, namespaceParam, appNameParam, setValue])
+  }, [appNameParam, clusterIdParam, namespaceOptions, namespaceParam, pipelineIdParam, setValue])
 
-  const firstNamespace = namespaces[0] ?? ''
   useEffect(() => {
-    if (firstNamespace) {
-      setValue('namespace', firstNamespace, { shouldValidate: true })
+    if (!templateIdParam || templates.length === 0) {
+      return
     }
-  }, [firstNamespace, setValue])
+    if (selectedTemplateId === templateIdParam) {
+      return
+    }
+
+    const template = templates.find((item) => item.id === templateIdParam)
+    if (!template) {
+      return
+    }
+
+    const suggestedAppName = template.id.replace(/-v\d+$/, '').replace(/^nullus-/, '')
+    setSelectedTemplateId(template.id)
+    setSelectedAppType(template.appType)
+    setSelectedStackId('')
+    setRepoName('')
+    setValue('appName', suggestedAppName, { shouldValidate: true, shouldDirty: true })
+    setValue('gitUrl', template.gitRepoUrl ?? '', { shouldValidate: true, shouldDirty: true })
+    setValue('dockerfilePath', template.dockerfilePath ?? '', { shouldValidate: true, shouldDirty: true })
+    setValue('dockerContext', template.dockerContext ?? '', { shouldValidate: true, shouldDirty: true })
+    if (template.envVars && Object.keys(template.envVars).length > 0) {
+      const envArray = Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
+      setValue('envVars', [...envArray, { key: '', value: '' }], { shouldValidate: true, shouldDirty: true })
+    }
+    setStep(3)
+  }, [selectedTemplateId, setValue, templateIdParam, templates])
+
+  const firstNamespace = namespaceOptions[0] ?? 'default'
+  useEffect(() => {
+    if (createNewNamespace) {
+      return
+    }
+    if (form.namespace && namespaceOptions.includes(form.namespace)) {
+      return
+    }
+    setValue('namespace', firstNamespace, { shouldValidate: true })
+  }, [createNewNamespace, firstNamespace, form.namespace, namespaceOptions, setValue])
 
   const createPipelineMutation = useCreatePipeline()
   const deployPipelineMutation = useDeployPipeline()
@@ -370,7 +420,7 @@ export function DeveloperDeployPage() {
     const isFailed = status === 'failed'
     const isDone = isComplete || isFailed
 
-    const deployedResources = logs
+    const parsedResources = logs
       .map((entry) => entry.message)
       .filter((line) => !line.startsWith('$') && !line.startsWith('error'))
       .map((line) => {
@@ -378,6 +428,16 @@ export function DeveloperDeployPage() {
         return match ? { kind: match[1], name: match[2], action: match[3] } : null
       })
       .filter((r): r is { kind: string; name: string; action: string } => r !== null)
+    const deployedResources = Array.from(
+      parsedResources.reduce((acc, item) => {
+        const key = `${item.kind}/${item.name}`
+        const prev = acc.get(key)
+        if (!prev || (prev.action !== 'created' && item.action === 'created')) {
+          acc.set(key, item)
+        }
+        return acc
+      }, new Map<string, { kind: string; name: string; action: string }>()).values()
+    )
 
     return (
       <div>
@@ -391,7 +451,7 @@ export function DeveloperDeployPage() {
           <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6">
             <div className="mb-5 flex items-center gap-2">
               {phaseLabels.map((phase, idx) => (
-                <PhaseStep key={phase} label={phase} index={idx} progress={progress} total={PHASE_COUNT} />
+                <PhaseStep key={phase} label={phase} index={idx} progress={progress} total={phaseLabels.length} />
               ))}
             </div>
 
@@ -705,7 +765,8 @@ export function DeveloperDeployPage() {
                     value={form.clusterId}
                     onChange={(e) => {
                       setField('clusterId', e.target.value)
-                      if (namespaces[0]) setField('namespace', namespaces[0])
+                      setCreateNewNamespace(false)
+                      setField('namespace', 'default')
                     }}
                     className="w-full"
                   >
@@ -719,14 +780,31 @@ export function DeveloperDeployPage() {
                   <label htmlFor="deploy-namespace" className={labelStyleClass}>{t('developerDeployPage.form.namespace', 'Namespace')}</label>
                   <NativeSelect
                     id="deploy-namespace"
-                    value={form.namespace}
-                    onChange={(e) => setField('namespace', e.target.value)}
+                    value={createNewNamespace ? '__new__' : (form.namespace || 'default')}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setCreateNewNamespace(true)
+                        setField('namespace', '')
+                        return
+                      }
+                      setCreateNewNamespace(false)
+                      setField('namespace', e.target.value)
+                    }}
                     className="w-full"
                   >
-                    {namespaces.map((ns) => (
+                    {namespaceOptions.map((ns) => (
                       <option key={ns} value={ns}>{ns}</option>
                     ))}
+                    <option value="__new__">{t('developerDeployPage.form.newNamespace', 'New Namespace')}</option>
                   </NativeSelect>
+                  {createNewNamespace && (
+                    <Input
+                      className="mt-2"
+                      placeholder={t('developerDeployPage.form.newNamespacePlaceholder', 'my-namespace')}
+                      value={form.namespace}
+                      onChange={(e) => setField('namespace', e.target.value)}
+                    />
+                  )}
                   {errors.namespace && <span className="text-xs text-[#ef4444]">{errors.namespace.message}</span>}
                 </div>
               </div>

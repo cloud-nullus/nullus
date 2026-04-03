@@ -35,6 +35,7 @@ func (m *mockListPipelinesRepo) ListByStackID(_ context.Context, _ string) ([]*d
 	return nil, nil
 }
 func (m *mockListPipelinesRepo) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
+func (m *mockListPipelinesRepo) Delete(_ context.Context, _ string) error            { return nil }
 
 func TestListPipelines_Success(t *testing.T) {
 	repo := &mockListPipelinesRepo{listResp: []*domain.Pipeline{

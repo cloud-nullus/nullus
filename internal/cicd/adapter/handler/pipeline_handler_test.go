@@ -24,6 +24,8 @@ type mockPipelineRepository struct {
 	listErr   error
 	getErr    map[string]error
 	created   int
+	deleteErr error
+	deleted   []string
 }
 
 func newMockPipelineRepository(seed ...*domain.Pipeline) *mockPipelineRepository {
@@ -91,6 +93,18 @@ func (m *mockPipelineRepository) ListByStackID(_ context.Context, stackID string
 }
 
 func (m *mockPipelineRepository) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
+
+func (m *mockPipelineRepository) Delete(_ context.Context, id string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.pipelines[id]; !ok {
+		return errors.New("pipeline not found")
+	}
+	delete(m.pipelines, id)
+	m.deleted = append(m.deleted, id)
+	return nil
+}
 
 type mockPipelineTemplateRepository struct {
 	templates map[string]*domain.PipelineTemplate
@@ -325,6 +339,39 @@ func TestPipelineHandler_Deploy_NotFound(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.Equal(t, "PIPELINE_DEPLOY_FAILED", resp["error"]["code"])
 	assert.Contains(t, resp["error"]["message"], "pipeline not found")
+}
+
+func TestPipelineHandler_Delete_Success(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "org-1"})
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/pipelines/pip-1", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Len(t, pipelineRepo.deleted, 1)
+	assert.Equal(t, "pip-1", pipelineRepo.deleted[0])
+}
+
+func TestPipelineHandler_Delete_NotFound(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository()
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/pipelines/missing", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	var resp map[string]map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "PIPELINE_NOT_FOUND", resp["error"]["code"])
 }
 
 func TestPipelineHandler_List_NoOrgHeader(t *testing.T) {
