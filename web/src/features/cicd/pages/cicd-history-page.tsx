@@ -17,7 +17,6 @@ export function CicdHistoryPage() {
   const [searchParams] = useSearchParams()
   const pipelineFilter = searchParams.get('pipeline') ?? ''
   const [statusFilter, setStatusFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
   const [expandedDeploymentId, setExpandedDeploymentId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
@@ -30,9 +29,8 @@ export function CicdHistoryPage() {
   const filtered = deployments.filter((d) => {
     const matchesPipeline = !pipelineFilter || d.pipelineId === pipelineFilter
     const matchesStatus = !statusFilter || d.status === statusFilter
-    const matchesType = !typeFilter || d.pipelineName.includes(typeFilter)
     const matchesSearch = !search || d.pipelineName.toLowerCase().includes(search.toLowerCase()) || d.triggeredBy.toLowerCase().includes(search.toLowerCase())
-    return matchesPipeline && matchesStatus && matchesType && matchesSearch
+    return matchesPipeline && matchesStatus && matchesSearch
   })
   const columns: ColumnDef<Deployment, unknown>[] = [
     {
@@ -169,12 +167,6 @@ export function CicdHistoryPage() {
         emptyMessage={t('cicdHistoryPage.empty', 'No deployment history.')}
         toolbar={
           <>
-            <NativeSelect value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
-              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicdHistoryPage.filters.allTypes', 'All Types')}</option>
-              <option value="api" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">API</option>
-              <option value="frontend" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Frontend</option>
-              <option value="batch" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Batch</option>
-            </NativeSelect>
             <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicdHistoryPage.filters.allStatus', 'All Status')}</option>
               <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.success', 'Success')}</option>

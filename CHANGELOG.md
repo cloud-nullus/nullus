@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cluster 모니터링 실집계 API 추가: `GET /api/v1/admin/clusters/:id/monitoring-summary` (kubeconfig 기반 전체 Pod/Ready Pod 및 CPU/Memory request/limit 요약)
+- CI/CD 파이프라인 삭제 API 및 UI 추가: `DELETE /api/v1/cicd/pipelines/:id`, CI/CD List 상세 패널 `Delete` 버튼
+- Stack Template → Install 오버라이드 공통 유틸 추가 (`web/src/features/stack/utils/template-overrides.ts`)
+- CI/CD History 샘플 데이터 보강 마이그레이션 추가: `000040_seed_ml_service_history` (ML Prediction Service 배포 이력 10건)
 - `runbook_local.sh`에 `refresh` 커맨드 추가 — 마이그레이션 포함 백엔드 + 프론트엔드 재빌드/재시작
 - Home CTA 권한 상태와 Roadmap 연동 개선 — 로그인 사용자의 역할/권한 기반 CTA 동적 표시 및 Roadmap 페이지 연동
 - 풀 CI/CD 빌드 파이프라인: Git Clone → Docker Build → Kind Load → K8s Deploy 6단계 자동화
@@ -80,6 +84,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Monitoring Dashboard Cluster 뷰를 선택 클러스터 기준으로 재구성: Stack 모니터링 합산 + Stack 매핑이 없을 때 클러스터 실집계 자동 fallback
+- Monitoring Dashboard의 CI/CD 탭 표시 정책 변경: 탭은 항상 노출하고, 클러스터 타입이 `target`이 아닐 때 비활성화
+- CI/CD List 레이아웃을 Stack List 패턴으로 통일: 하단 확장 행 제거, 좌측 목록 + 우측 상세 패널(모바일은 하단)
+- CI/CD List 상세 탭 구조 단순화: `Actions` 탭 제거, 주요 액션은 상세 헤더 버튼으로 통합
+- CI/CD Pipeline Setup/Developer Deploy의 클러스터 선택을 Target Cluster 타입으로 제한
+- Developer Deploy 네임스페이스 UX 개선: `default` 기본 제공 + `New Namespace` 직접 입력 지원
+- Pipeline Logs 화면 상태 문구 개선: 배포 종료 후 로그 없음 상태를 명확히 안내
+- Kind 로컬 클러스터 구성 조정: `scripts/kind-cluster.yaml`에 worker 노드 1대 추가
 - 로그인 후 기본 진입 경로를 Home으로 통일 (모든 역할에서 로그인 완료 시 Home 페이지로 리다이렉트)
 - 매니페스트 생성기: `ImageRef` 필드 추가 — 설정 시 템플릿 하드코딩 이미지 대신 빌드된 이미지 사용
 - `ManifestApplier.ApplyWithTracking`에 `stepOffset` variadic 파라미터 추가 (빌드 단계 이후 인덱스 보정)
@@ -112,6 +124,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Stack 모니터링 OSS 상태 계산에서 one-shot 완료 Job Pod(`*-migrations*`, `*-job*`)를 제외해 GitLab migration 완료 Pod로 인한 `warning` 오탐을 방지
+- Developer Deploy 진행 화면의 Created Resources 중복 노출 이슈를 리소스 dedupe 로직으로 보정
+- CI/CD Deployment 상세 파싱 보강: step 로그가 없는 응답 형식도 fallback 로그로 표시
 - Use Base Template 진입 시 선택하지 않은 리소스가 자동 선택되던 문제를 수정해 실제 템플릿 선택 상태가 그대로 반영되도록 했습니다.
 - Stack List 상태/클러스터 표시 정합성을 수정해 `connected + completed` 케이스가 `Running`으로 노출되고 모니터링 탭 조건이 일관되게 동작하도록 보정했습니다.
 - Stack Compatibility 검증 시 스택이 실제 배포된 클러스터의 Kubernetes 버전을 기준으로 평가되도록 수정했습니다.

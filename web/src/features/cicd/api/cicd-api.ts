@@ -64,6 +64,9 @@ const cicdApiCalls = {
   deleteTemplate: (id: string) =>
     api.delete<void>(`/cicd/templates/${id}`).then((r) => r.data),
 
+  deletePipeline: (id: string) =>
+    api.delete<void>(`/cicd/pipelines/${id}`).then((r) => r.data),
+
   getPipelines: async (filters?: { status?: string; search?: string }) => {
     const raw = await api.get<any>('/cicd/pipelines', { params: filters }).then((r) => r.data)
     const clustersRes = await api.get<any>('/admin/clusters').then((r) => r.data)
@@ -144,10 +147,45 @@ const cicdApiCalls = {
 
   getDeployment: async (deploymentId: string) => {
     const raw: any = await api.get(`/cicd/deployments/${deploymentId}`).then((r) => r.data)
+    const rawSteps = (raw.steps ?? raw.Steps ?? []) as any[]
+    const normalizedSteps = rawSteps.map((step, index) => {
+      const rawLogs = step.logs ?? step.Logs ?? []
+      const normalizedLogs = Array.isArray(rawLogs) ? rawLogs.map((line: unknown) => String(line)) : []
+      const message = step.message ?? step.Message
+      const name = step.name ?? step.Name ?? `Step ${index + 1}`
+
+      // Some environments only return step-level message without explicit logs.
+      const logs = normalizedLogs.length > 0 ? normalizedLogs : (typeof message === 'string' && message ? [message] : [])
+
+      return {
+        name: String(name),
+        status: String(step.status ?? step.Status ?? ''),
+        kind: String(step.kind ?? step.Kind ?? ''),
+        message: typeof message === 'string' ? message : undefined,
+        applied_at: String(step.applied_at ?? step.AppliedAt ?? ''),
+        logs,
+      }
+    })
+
+    const topLevelLogs = raw.logs ?? raw.Logs
+    const fallbackStep =
+      normalizedSteps.length === 0 && Array.isArray(topLevelLogs) && topLevelLogs.length > 0
+        ? [
+            {
+              name: 'Output',
+              status: 'completed',
+              kind: 'log',
+              message: '',
+              applied_at: '',
+              logs: topLevelLogs.map((line: unknown) => String(line)),
+            },
+          ]
+        : []
+
     return {
       id: raw.ID ?? raw.id ?? '',
       status: (raw.Status ?? raw.status ?? 'running') as string,
-      steps: (raw.steps ?? raw.Steps ?? []) as Array<{ name: string; status: string; kind: string; message?: string; applied_at?: string; logs?: string[] }>,
+      steps: [...normalizedSteps, ...fallbackStep] as Array<{ name: string; status: string; kind: string; message?: string; applied_at?: string; logs?: string[] }>,
       startedAt: raw.StartedAt ?? raw.started_at ?? '',
       completedAt: raw.CompletedAt ?? raw.completed_at ?? null,
     }
@@ -164,7 +202,7 @@ const cicdApiCalls = {
       pipelineNameMap.set(p.id, p.name)
     }
 
-    const items: Deployment[] = (raw.items ?? []).map((d: any) => ({
+    const mappedItems: Deployment[] = (raw.items ?? []).map((d: any) => ({
       id: d.id,
       pipelineId: d.pipeline_id ?? '',
       pipelineName: pipelineNameMap.get(d.pipeline_id) ?? '',
@@ -175,7 +213,16 @@ const cicdApiCalls = {
       completedAt: d.completed_at ?? null,
     }))
 
-    return { items, total: raw.total ?? items.length }
+    const items = mappedItems
+      .filter((item) => !filters?.pipelineId || item.pipelineId === filters.pipelineId)
+      .filter((item) => !filters?.status || item.status === filters.status)
+      .sort((a, b) => {
+        const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0
+        const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0
+        return bTime - aTime
+      })
+
+    return { items, total: items.length }
   },
 
   getAppTemplates: () =>
@@ -237,6 +284,17 @@ export function useCreatePipeline() {
     mutationFn: cicdApiCalls.createPipeline,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['cicd', 'pipelines'] })
+    },
+  })
+}
+
+export function useDeletePipeline() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: cicdApiCalls.deletePipeline,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cicd', 'pipelines'] })
+      void qc.invalidateQueries({ queryKey: ['cicd', 'deployments'] })
     },
   })
 }

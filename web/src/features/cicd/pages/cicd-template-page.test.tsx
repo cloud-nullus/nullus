@@ -86,6 +86,6 @@ describe('CicdTemplatePage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Use Base Template' }))
 
-    expect(mockNavigate).toHaveBeenCalledWith('/cicd/developer-deploy')
+    expect(mockNavigate).toHaveBeenCalledWith('/cicd/developer-deploy?template=web-backend-standard&appType=web-backend')
   })
 })

@@ -56,11 +56,29 @@ const mockCompatibilityMatrices = [
   },
 ]
 
+const mockTemplates = [
+  {
+    id: 'github-argocd-v1',
+    name: 'GitHub + ArgoCD',
+    description: 'mock',
+    tools: ['GitHub', 'Argo CD'],
+    estimatedMinutes: 30,
+    category: 'default',
+    toolDetails: [
+      { category: 'source_repository', name: 'GitHub', helm_version: '', app_version: '2.45.0' },
+      { category: 'ci_platform', name: 'GitHub Actions', helm_version: '', app_version: 'v0.9.0' },
+      { category: 'cd_tool', name: 'Argo CD', helm_version: '', app_version: 'v2.8.3' },
+      { category: 'container_registry', name: 'Harbor', helm_version: '', app_version: '2.11.0' },
+    ],
+  },
+]
+
 // Mock API hooks
 vi.mock('../api/stack-api', () => ({
   useCreateStack: () => ({ mutate: vi.fn(), isPending: false }),
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
+  useTemplates: () => ({ data: mockTemplates, isFetched: true }),
   useStacks: () => ({ data: mockStacks }),
   useResourceDefaults: () => ({ data: mockResourceDefaults }),
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
@@ -137,6 +155,15 @@ describe('StackInstallPage', () => {
     const select = screen.getByLabelText('Target Cluster')
     expect(within(select).getByRole('option', { name: 'test-cluster (Connected)' })).toBeInTheDocument()
     expect(within(select).getByRole('option', { name: 'dev-cluster (Pending)' })).toBeInTheDocument()
+  })
+
+  it('applies template overrides from query parameter on first load', () => {
+    renderWithProviders(<StackInstallPage />, { route: '/stack/install?template=github-argocd-v1' })
+    const draft = useStackConfigStore.getState().draft
+    expect(draft.selectedTemplateId).toBe('github-argocd-v1')
+    expect(draft.artifacts.sourceRepository.tool).toBe('github')
+    expect(draft.pipeline.cicdPlatform.tool).toBe('github-actions')
+    expect(draft.artifacts.containerRegistry.tool).toBe('harbor')
   })
 
   it('renders install tabs including storage and YAML view', () => {

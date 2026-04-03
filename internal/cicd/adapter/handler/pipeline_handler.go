@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
@@ -46,6 +47,7 @@ func NewPipelineHandler(
 func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/pipelines", h.ListPipelines)
 	g.POST("/pipelines", h.CreatePipeline)
+	g.DELETE("/pipelines/:id", h.DeletePipeline)
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
@@ -192,6 +194,24 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 	}()
 
 	return c.JSON(http.StatusAccepted, map[string]any{"deploymentId": depID})
+}
+
+// DeletePipeline handles DELETE /api/v1/pipelines/:id.
+func (h *PipelineHandler) DeletePipeline(c echo.Context) error {
+	id := c.Param("id")
+	if id == "" {
+		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
+	}
+
+	if err := h.pipelineRepo.Delete(c.Request().Context(), id); err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "not found") || strings.Contains(msg, "no rows") {
+			return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+		}
+		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_DELETE_FAILED", err.Error())
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }
 
 // GetDeployment handles GET /api/v1/deployments/:id.

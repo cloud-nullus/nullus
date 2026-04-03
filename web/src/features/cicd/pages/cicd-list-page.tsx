@@ -1,25 +1,23 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart2,
-  ChevronDown,
-  ChevronUp,
   Eye,
   EyeOff,
   GitBranch,
   History,
   Info,
   List,
-  Play,
   Plus,
   Rocket,
   Search,
   Terminal,
+  Trash2,
 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { usePipelineDeployments, usePipelines, useTemplateById } from '../api/cicd-api'
+import { useDeletePipeline, usePipelineDeployments, usePipelines, useTemplateById } from '../api/cicd-api'
 import type { Pipeline } from '../api/cicd-api'
 import { useScopedClusters as useClusters } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -30,13 +28,12 @@ import { formatDate, formatDateTime, resolveLocale } from '../../../lib/locale'
 import { getPipelineStatusLabel, getPipelineStatusStyle } from '../utils/pipeline-status'
 
 
-type PipelineInnerTab = 'info' | 'monitoring' | 'history' | 'actions'
+type PipelineInnerTab = 'info' | 'monitoring' | 'history'
 
 const INNER_TABS: Array<{ key: PipelineInnerTab; label: string; icon: React.ReactNode }> = [
   { key: 'info', label: 'Info', icon: <Info size={13} /> },
   { key: 'monitoring', label: 'Monitoring', icon: <BarChart2 size={13} /> },
   { key: 'history', label: 'History', icon: <History size={13} /> },
-  { key: 'actions', label: 'Actions', icon: <Play size={13} /> },
 ]
 
 function DetailCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -309,68 +306,18 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   )
 }
 
-function PipelineActionsTab({
-  pipeline,
-  onRun,
-  onOpenLogs,
-}: {
-  pipeline: Pipeline
-  onRun: () => void
-  onOpenLogs: () => void
-}) {
-  const { t, i18n } = useTranslation()
-  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
-  return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <DetailCard title="Actions">
-        <div className="flex flex-col gap-2.5">
-          <button
-            type="button"
-            onClick={onRun}
-            className="flex items-center justify-between rounded-lg border border-[rgba(99,102,241,0.4)] bg-[rgba(99,102,241,0.12)] px-3 py-2.5 text-left"
-          >
-            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">Run Pipeline</span>
-            <span className="text-[12px] text-[#a5b4fc]">Deploy latest commit</span>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenLogs}
-            className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-left"
-          >
-            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">View Deployment History</span>
-            <span className="text-[12px] text-[var(--color-text-secondary)]">Open CI/CD history for this pipeline</span>
-          </button>
-        </div>
-      </DetailCard>
-
-      <DetailCard title="Pipeline Scope">
-        <div className="space-y-2 text-[13px] text-[var(--color-text-secondary)]">
-          {[
-            { label: 'Pipeline', value: pipeline.name },
-            { label: 'Cluster', value: pipeline.clusterName },
-            { label: 'Namespace', value: pipeline.namespace },
-            { label: 'Status', value: getPipelineStatusLabel(t, pipeline.status) },
-            { label: 'Last Deployed', value: formatDateTime(pipeline.lastDeployedAt, locale) },
-          ].map((item) => (
-            <div key={item.label} className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
-              <div className="text-[11px] uppercase tracking-[0.03em] text-[var(--color-text-muted)]">{item.label}</div>
-              <div className="font-semibold text-[var(--color-text-primary)]">{item.value}</div>
-            </div>
-          ))}
-        </div>
-      </DetailCard>
-    </div>
-  )
-}
-
 function PipelineDetailPanel({
   pipeline,
   onRun,
   onOpenLogs,
+  onDelete,
+  isDeleting,
 }: {
   pipeline: Pipeline
   onRun: () => void
   onOpenLogs: () => void
+  onDelete: () => void
+  isDeleting: boolean
 }) {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
@@ -394,6 +341,17 @@ function PipelineDetailPanel({
         </div>
 
         <div className="flex items-center gap-1.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            className="border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.15)] text-[#fecaca] hover:bg-[rgba(239,68,68,0.25)]"
+            onClick={onDelete}
+            disabled={isDeleting}
+          >
+            <Trash2 size={12} />
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
           <Button variant="secondary" size="sm" type="button" onClick={onOpenLogs}>
             <Terminal size={12} />
             Logs
@@ -430,7 +388,6 @@ function PipelineDetailPanel({
         {innerTab === 'info' && <PipelineInfoTab pipeline={pipeline} />}
         {innerTab === 'monitoring' && <PipelineMonitoringTab pipeline={pipeline} />}
         {innerTab === 'history' && <PipelineHistoryTab pipeline={pipeline} />}
-        {innerTab === 'actions' && <PipelineActionsTab pipeline={pipeline} onRun={onRun} onOpenLogs={onOpenLogs} />}
       </div>
     </div>
   )
@@ -444,9 +401,22 @@ export function CicdListPage() {
   const [clusterFilter, setClusterFilter] = useState('')
   const [search, setSearch] = useState('')
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null)
+  const [deletingPipelineId, setDeletingPipelineId] = useState<string | null>(null)
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1440,
+  )
+  const isDesktopLayout = viewportWidth >= 1280
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const { data: clustersData } = useClusters()
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
+  const deletePipelineMutation = useDeletePipeline()
   const pipelines = apiData?.items ?? []
 
   const filtered = pipelines.filter((p) => {
@@ -457,32 +427,25 @@ export function CicdListPage() {
     return matchesSearch && matchesStatus && matchesCluster
   })
 
+  const selectedPipelineId = expandedPipelineId && filtered.some((pipeline) => pipeline.id === expandedPipelineId)
+    ? expandedPipelineId
+    : (filtered[0]?.id ?? null)
+  const expandedPipeline = selectedPipelineId
+    ? filtered.find((pipeline) => pipeline.id === selectedPipelineId) ?? null
+    : null
+
   const columns: ColumnDef<Pipeline, unknown>[] = [
-    {
-      id: 'expand',
-      header: '',
-      enableSorting: false,
-      cell: ({ row }) => {
-        const isExpanded = expandedPipelineId === row.original.id
-        return (
-          <Button
-            variant={isExpanded ? 'secondary' : 'ghost'}
-            size="sm"
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setExpandedPipelineId((prev) => (prev === row.original.id ? null : row.original.id))
-            }}
-          >
-            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          </Button>
-        )
-      },
-    },
     {
       accessorKey: 'name',
       header: t('cicdListPage.table.name', 'Name'),
-      cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          {selectedPipelineId === row.original.id && (
+            <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#6366f1]" />
+          )}
+          <span className="font-semibold">{row.original.name}</span>
+        </div>
+      ),
     },
     {
       accessorKey: 'appType',
@@ -512,6 +475,21 @@ export function CicdListPage() {
       cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDateTime(row.original.lastDeployedAt, locale)}</span>,
     },
   ]
+
+  const handleDeletePipeline = async (pipeline: Pipeline) => {
+    const confirmed = window.confirm(`Delete pipeline "${pipeline.name}"?\nThis also removes deployment history.`)
+    if (!confirmed) return
+
+    try {
+      setDeletingPipelineId(pipeline.id)
+      await deletePipelineMutation.mutateAsync(pipeline.id)
+      if (selectedPipelineId === pipeline.id) {
+        setExpandedPipelineId(null)
+      }
+    } finally {
+      setDeletingPipelineId(null)
+    }
+  }
 
   return (
     <div>
@@ -545,51 +523,82 @@ export function CicdListPage() {
         </Button>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={filtered}
-        getRowKey={(row) => row.id}
-        expandedRowId={expandedPipelineId}
-        renderExpanded={(pipeline) => (
-            <PipelineDetailPanel
-              key={pipeline.id}
-              pipeline={pipeline}
-            onRun={() => navigate(`/cicd/developer-deploy?pipelineId=${pipeline.id}&clusterId=${pipeline.clusterId}&namespace=${pipeline.namespace}&appName=${pipeline.name}`)}
-            onOpenLogs={() => navigate(`/cicd/pipelines/${pipeline.id}/logs`)}
+      <div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
+        <div className="min-w-0">
+          <DataTable
+            columns={columns}
+            data={filtered}
+            getRowKey={(row) => row.id}
+            onRowClick={(row) => setExpandedPipelineId(row.id)}
+            emptyMessage={t('cicdListPage.emptyPipelines', 'No pipelines found.')}
+            toolbar={
+              <>
+                <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
+                  <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicdListPage.filters.allStatus', 'All Status')}</option>
+                  <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.success', 'Success')}</option>
+                  <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.running', 'Running')}</option>
+                  <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.pending', 'Pending')}</option>
+                  <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.failed', 'Failed')}</option>
+                  <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.cancelled', 'Cancelled')}</option>
+                </NativeSelect>
+                <NativeSelect value={clusterFilter} onChange={(e) => setClusterFilter(e.target.value)} className="w-auto">
+                  <option value="">{t('cicdListPage.filters.allClusters', 'All Clusters')}</option>
+                  {(clustersData?.items ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </NativeSelect>
+                <div className="relative ml-auto">
+                  <Search
+                    size={13}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+                  />
+                  <input
+                    placeholder={t('cicdListPage.searchPlaceholder', 'Search pipelines...')}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                  />
+                </div>
+              </>
+            }
           />
+          <div className="mt-2 hidden text-[12px] text-[var(--color-text-secondary)] xl:block">
+            {t('cicdListPage.listHint', 'Selecting a pipeline from the list updates the detail panel immediately.')}
+          </div>
+        </div>
+
+        {isDesktopLayout && (
+          <div>
+            {expandedPipeline ? (
+              <div className="h-full pr-1">
+                <PipelineDetailPanel
+                  key={expandedPipeline.id}
+                  pipeline={expandedPipeline}
+                  onDelete={() => void handleDeletePipeline(expandedPipeline)}
+                  isDeleting={deletingPipelineId === expandedPipeline.id}
+                  onRun={() => navigate(`/cicd/developer-deploy?pipelineId=${expandedPipeline.id}&clusterId=${expandedPipeline.clusterId}&namespace=${expandedPipeline.namespace}&appName=${expandedPipeline.name}`)}
+                  onOpenLogs={() => navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)}
+                />
+              </div>
+            ) : (
+              <div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
+                {t('cicdListPage.emptyDetail', 'Select a pipeline from the list to view details here.')}
+              </div>
+            )}
+          </div>
         )}
-        emptyMessage={t('cicdListPage.emptyPipelines', 'No pipelines found.')}
-        toolbar={
-          <>
-            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
-              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicdListPage.filters.allStatus', 'All Status')}</option>
-              <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.success', 'Success')}</option>
-              <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.running', 'Running')}</option>
-              <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.pending', 'Pending')}</option>
-              <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.failed', 'Failed')}</option>
-              <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.cancelled', 'Cancelled')}</option>
-            </NativeSelect>
-            <NativeSelect value={clusterFilter} onChange={(e) => setClusterFilter(e.target.value)} className="w-auto">
-              <option value="">{t('cicdListPage.filters.allClusters', 'All Clusters')}</option>
-              {(clustersData?.items ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </NativeSelect>
-            <div className="relative ml-auto">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('cicdListPage.searchPlaceholder', 'Search pipelines...')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
-          </>
-        }
-      />
+      </div>
+
+      {!isDesktopLayout && expandedPipeline && (
+        <PipelineDetailPanel
+          key={`${expandedPipeline.id}-mobile`}
+          pipeline={expandedPipeline}
+          onDelete={() => void handleDeletePipeline(expandedPipeline)}
+          isDeleting={deletingPipelineId === expandedPipeline.id}
+          onRun={() => navigate(`/cicd/developer-deploy?pipelineId=${expandedPipeline.id}&clusterId=${expandedPipeline.clusterId}&namespace=${expandedPipeline.namespace}&appName=${expandedPipeline.name}`)}
+          onOpenLogs={() => navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)}
+        />
+      )}
     </div>
   )
 }

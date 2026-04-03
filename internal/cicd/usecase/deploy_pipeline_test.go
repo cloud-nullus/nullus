@@ -43,6 +43,7 @@ func (m *mockDeployPipelineRepo) ListByStackID(_ context.Context, _ string) ([]*
 	return nil, nil
 }
 func (m *mockDeployPipelineRepo) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
+func (m *mockDeployPipelineRepo) Delete(_ context.Context, _ string) error            { return nil }
 
 type mockDeployDeploymentRepo struct {
 	created   []*domain.Deployment

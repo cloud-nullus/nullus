@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
 import { useDeploymentStatus, usePipelineDeployments, usePipelines } from '../api/cicd-api'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
@@ -13,7 +12,6 @@ export function CicdPipelineLogsPage() {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { id: pipelineId = '' } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const terminalRef = useRef<HTMLDivElement>(null)
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null)
 
@@ -38,6 +36,8 @@ export function CicdPipelineLogsPage() {
   const { data: deploymentStatus } = useDeploymentStatus(selectedDeploymentId)
   const steps = deploymentStatus?.steps ?? []
   const lines = steps.flatMap((step) => step.logs ?? [])
+  const deploymentState = deploymentStatus?.status ?? ''
+  const isDeploying = deploymentState === 'running' || deploymentState === 'pending'
 
   useEffect(() => {
     const el = terminalRef.current
@@ -69,10 +69,6 @@ export function CicdPipelineLogsPage() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="md" type="button" onClick={() => navigate('/cicd/list')}>
-          <ArrowLeft size={14} />
-          Back to CI/CD List
-        </Button>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -156,8 +152,11 @@ export function CicdPipelineLogsPage() {
           </div>
 
           <div ref={terminalRef} className="h-[520px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
-            {selectedDeploymentId && lines.length === 0 && (
+            {selectedDeploymentId && lines.length === 0 && isDeploying && (
               <p className="text-[#8b949e]">Waiting for deployment output...</p>
+            )}
+            {selectedDeploymentId && lines.length === 0 && deploymentState && !isDeploying && (
+              <p className="text-[#8b949e]">No output is available for this deployment.</p>
             )}
             {!selectedDeploymentId && <p className="text-[#8b949e]">Select a deployment to view logs.</p>}
 

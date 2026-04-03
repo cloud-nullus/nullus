@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/admin/domain"
@@ -13,6 +14,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/labstack/echo/v4"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -80,6 +82,15 @@ type clusterResponse struct {
 
 type clusterNamespaceResponseItem struct {
 	Name string `json:"name"`
+}
+
+type clusterMonitoringSummaryResponse struct {
+	TotalPods            int   `json:"total_pods"`
+	ReadyPods            int   `json:"ready_pods"`
+	CPURequestMillicores int64 `json:"cpu_request_millicores"`
+	CPULimitMillicores   int64 `json:"cpu_limit_millicores"`
+	MemoryRequestMiB     int64 `json:"memory_request_mib"`
+	MemoryLimitMiB       int64 `json:"memory_limit_mib"`
 }
 
 func toClusterResponse(cluster *domain.Cluster, kubeconfig string) clusterResponse {
@@ -405,6 +416,33 @@ func (h *ClusterHandler) ListNamespaces(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"items": items})
 }
 
+func (h *ClusterHandler) GetMonitoringSummary(c echo.Context) error {
+	id := c.Param("id")
+
+	encryptedConfig, err := h.clusterUC.GetKubeconfig(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if len(encryptedConfig) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "kubeconfig is not registered for this cluster")
+	}
+	if len(h.encryptionKey) != 32 {
+		return echo.NewHTTPError(http.StatusInternalServerError, "ENCRYPTION_KEY must be 32 bytes")
+	}
+
+	decrypted, err := crypto.Decrypt(h.encryptionKey, string(encryptedConfig))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to decrypt kubeconfig")
+	}
+
+	summary, err := getClusterMonitoringSummary(c.Request().Context(), decrypted)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, summary)
+}
+
 func listNamespacesFromKubeconfig(kubeconfig []byte) ([]string, error) {
 	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
 	if err != nil {
@@ -428,6 +466,64 @@ func listNamespacesFromKubeconfig(kubeconfig []byte) ([]string, error) {
 	return items, nil
 }
 
+func getClusterMonitoringSummary(ctx context.Context, kubeconfig []byte) (*clusterMonitoringSummaryResponse, error) {
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	restConfig.Timeout = 10 * time.Second
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	podCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	podList, err := clientset.CoreV1().Pods("").List(podCtx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &clusterMonitoringSummaryResponse{}
+	for _, pod := range podList.Items {
+		summary.TotalPods++
+		if isClusterPodReady(pod) {
+			summary.ReadyPods++
+		}
+
+		for _, container := range pod.Spec.Containers {
+			if req, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
+				summary.CPURequestMillicores += req.MilliValue()
+			}
+			if lim, ok := container.Resources.Limits[corev1.ResourceCPU]; ok {
+				summary.CPULimitMillicores += lim.MilliValue()
+			}
+			if req, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
+				summary.MemoryRequestMiB += req.Value() / (1024 * 1024)
+			}
+			if lim, ok := container.Resources.Limits[corev1.ResourceMemory]; ok {
+				summary.MemoryLimitMiB += lim.Value() / (1024 * 1024)
+			}
+		}
+	}
+
+	return summary, nil
+}
+
+func isClusterPodReady(pod corev1.Pod) bool {
+	if pod.Status.Phase != corev1.PodRunning {
+		return false
+	}
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
 // RegisterRoutes registers cluster routes on the given group.
 func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/clusters", h.RegisterCluster)
@@ -435,6 +531,7 @@ func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/clusters", h.ListClusters)
 	g.GET("/clusters/:id", h.GetCluster)
 	g.GET("/clusters/:id/namespaces", h.ListNamespaces)
+	g.GET("/clusters/:id/monitoring-summary", h.GetMonitoringSummary)
 	g.PATCH("/clusters/:id", h.UpdateCluster)
 	g.DELETE("/clusters/:id", h.DeleteCluster)
 	g.POST("/clusters/:id/verify", h.VerifyCluster)

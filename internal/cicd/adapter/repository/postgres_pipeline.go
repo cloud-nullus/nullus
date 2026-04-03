@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -155,6 +156,20 @@ func (r *PostgresPipelineRepository) Update(ctx context.Context, p *domain.Pipel
 	}
 	if res.RowsAffected() == 0 {
 		return fmt.Errorf("pipeline %q not found", p.ID)
+	}
+	return nil
+}
+
+// Delete removes a pipeline by ID.
+func (r *PostgresPipelineRepository) Delete(ctx context.Context, id string) error {
+	const q = `DELETE FROM pipelines WHERE id = $1`
+
+	res, err := r.pool.Exec(ctx, q, id)
+	if err != nil {
+		return fmt.Errorf("delete pipeline: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return pgx.ErrNoRows
 	}
 	return nil
 }

@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useId, useEffect, useRef } from 'react'
+import { useQueries } from '@tanstack/react-query'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -11,12 +12,15 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-import { useDashboard, type ToolHealthStatus } from '../api/observability-api'
+import { type ToolHealthStatus } from '../api/observability-api'
 import { useDeployments, usePipelines } from '../../cicd/api/cicd-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
 import { StackMonitoringOverview } from '../components/stack-monitoring-overview'
+import { api } from '../../../lib/api'
+import type { StackMonitoringSnapshot } from '../../stack/api/stack-api'
+import { useClusterMonitoringSummary } from '../../admin/api/admin-api'
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -407,23 +411,95 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
 }
 
 // ─── Default content: Cluster view ───────────────────────────────────────────
-function ClusterDefault({ clusterId }: { clusterId: string }) {
+function ClusterDefault({
+  clusterId,
+  clusterName,
+  stackIds,
+}: {
+  clusterId: string
+  clusterName: string
+  stackIds: string[]
+}) {
   const [range, setRange] = useState<TimeRange>('24h')
-  const { data: dashboard } = useDashboard()
+  const { data: pipelinesData } = usePipelines()
   const { data: deploymentsData } = useDeployments()
+  const { data: clusterSummary } = useClusterMonitoringSummary(clusterId)
   const [samples, setSamples] = useState<Array<{ ts: number; cpu: number; memory: number }>>([])
 
+  const monitoringQueries = useQueries({
+    queries: stackIds.map((stackId) => ({
+      queryKey: ['stacks', 'monitoring', stackId],
+      queryFn: () => api.get<StackMonitoringSnapshot>(`/stacks/${stackId}/monitoring`).then((r) => r.data),
+      enabled: !!stackId,
+      refetchInterval: 5000,
+      staleTime: 0,
+    })),
+  })
+
+  const snapshots = useMemo(
+    () =>
+      monitoringQueries
+        .map((query) => query.data)
+        .filter((snapshot): snapshot is StackMonitoringSnapshot => !!snapshot),
+    [monitoringQueries],
+  )
+
+  const aggregatedFromStacks = useMemo(() => {
+    const totals = snapshots.reduce(
+      (acc, snapshot) => {
+        acc.totalPods += snapshot.summary.total_pods ?? 0
+        acc.readyPods += snapshot.summary.ready_pods ?? 0
+        acc.cpuRequest += snapshot.summary.cpu_request_millicores ?? 0
+        acc.cpuUsage += snapshot.summary.cpu_usage_millicores ?? 0
+        acc.memoryRequest += snapshot.summary.memory_request_mib ?? 0
+        acc.memoryUsage += snapshot.summary.memory_usage_mib ?? 0
+        return acc
+      },
+      {
+        totalPods: 0,
+        readyPods: 0,
+        cpuRequest: 0,
+        cpuUsage: 0,
+        memoryRequest: 0,
+        memoryUsage: 0,
+      },
+    )
+
+    const cpuPercent = totals.cpuRequest > 0 ? Math.max(0, Math.round((totals.cpuUsage / totals.cpuRequest) * 100)) : 0
+    const memoryPercent = totals.memoryRequest > 0 ? Math.max(0, Math.round((totals.memoryUsage / totals.memoryRequest) * 100)) : 0
+
+    return {
+      podCount: totals.totalPods,
+      podRunning: totals.readyPods,
+      cpuUsage: cpuPercent,
+      memoryUsage: memoryPercent,
+    }
+  }, [snapshots])
+
+  const aggregated = useMemo(() => {
+    if (aggregatedFromStacks.podCount > 0) {
+      return aggregatedFromStacks
+    }
+
+    return {
+      podCount: clusterSummary?.total_pods ?? 0,
+      podRunning: clusterSummary?.ready_pods ?? 0,
+      cpuUsage: 0,
+      memoryUsage: 0,
+    }
+  }, [aggregatedFromStacks, clusterSummary])
+
   useEffect(() => {
-    if (!dashboard?.kpi) return
+    if (!clusterId) return
     setSamples((prev) => [
       ...prev,
       {
         ts: Date.now(),
-        cpu: dashboard.kpi.cpuUsage,
-        memory: dashboard.kpi.memoryUsage,
+        cpu: aggregated.cpuUsage,
+        memory: aggregated.memoryUsage,
       },
     ].slice(-4000))
-  }, [dashboard])
+  }, [clusterId, aggregated.cpuUsage, aggregated.memoryUsage])
 
   const selected = useMemo(() => selectSeries(samples, range), [samples, range])
   const series = useMemo(
@@ -433,6 +509,13 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
 
   const weekBars = useMemo(() => {
     const deployments = deploymentsData?.items ?? []
+    const pipelineIds = new Set(
+      (pipelinesData?.items ?? [])
+        .filter((pipeline) => pipeline.clusterId === clusterId)
+        .map((pipeline) => pipeline.id),
+    )
+
+    const deploymentsForCluster = deployments.filter((deployment) => pipelineIds.has(deployment.pipelineId))
     const now = new Date()
     const dayKeys = Array.from({ length: 7 }, (_, idx) => {
       const d = new Date(now)
@@ -446,7 +529,7 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
       return acc
     }, {})
 
-    deployments.forEach((deployment) => {
+    deploymentsForCluster.forEach((deployment) => {
       const key = deployment.startedAt ? new Date(deployment.startedAt).toLocaleDateString('en-CA') : ''
       const bucket = byDay[key]
       if (!bucket) return
@@ -455,12 +538,12 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
     })
 
     return dayKeys.map((key) => byDay[key])
-  }, [deploymentsData?.items])
+  }, [deploymentsData?.items, pipelinesData?.items, clusterId])
 
-  const podCount = dashboard?.kpi.podCount ?? 0
-  const podRunning = dashboard?.kpi.podRunning ?? 0
-  const cpuUsage = dashboard?.kpi.cpuUsage ?? 0
-  const memoryUsage = dashboard?.kpi.memoryUsage ?? 0
+  const podCount = aggregated.podCount
+  const podRunning = aggregated.podRunning
+  const cpuUsage = aggregated.cpuUsage
+  const memoryUsage = aggregated.memoryUsage
 
   const pods = [
     { name: 'Running', value: podRunning, color: '#22c55e' },
@@ -474,7 +557,7 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
       <div className="mb-4 flex items-center gap-3">
         <div className={cn('flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium',
           'border-emerald-500/20 bg-emerald-500/5 text-emerald-400')}>
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />{clusterId}
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />{clusterName || clusterId}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-[var(--color-text-secondary)]">Range:</span>
@@ -501,7 +584,7 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
               <defs><linearGradient id="ccpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05} /></linearGradient></defs>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
               <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
               <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#ccpu)" />
             </AreaChart>
@@ -513,7 +596,7 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
               <defs><linearGradient id="cmem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05} /></linearGradient></defs>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
               <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
               <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#cmem)" />
             </AreaChart>
@@ -562,7 +645,7 @@ interface DeployedAppRow {
   version: string
   pipeline: string
   status: AppStatus
-  pods: [number, number]
+  pods: [number | null, number | null]
   cluster: string
   namespace: string
   duration: string
@@ -585,13 +668,21 @@ export const CICD_DEFAULT_TABS: EmbedTab[] = [
   },
 ]
 
-function CicdDefault() {
+function CicdDefault({ selectedClusterId }: { selectedClusterId: string }) {
   const [range, setRange] = useState<TimeRange>('24h')
   const { data: pipelinesData } = usePipelines()
   const { data: deploymentsData } = useDeployments()
 
-  const pipelines = pipelinesData?.items ?? []
-  const deployments = deploymentsData?.items ?? []
+  const pipelines = useMemo(
+    () => (pipelinesData?.items ?? []).filter((pipeline) => !selectedClusterId || pipeline.clusterId === selectedClusterId),
+    [pipelinesData?.items, selectedClusterId],
+  )
+
+  const deployments = useMemo(() => {
+    const allDeployments = deploymentsData?.items ?? []
+    const pipelineIds = new Set(pipelines.map((pipeline) => pipeline.id))
+    return allDeployments.filter((deployment) => pipelineIds.has(deployment.pipelineId))
+  }, [deploymentsData?.items, pipelines])
 
   const latestByPipeline = useMemo(() => {
     const map = new Map<string, (typeof deployments)[number]>()
@@ -613,7 +704,7 @@ function CicdDefault() {
       version: latest?.version || '—',
       pipeline: pipeline.appType,
       status,
-      pods: [1, 1],
+      pods: [null, null],
       cluster: pipeline.clusterName || '—',
       namespace: pipeline.namespace || 'default',
       duration: formatDuration(latest?.startedAt ?? null, latest?.completedAt ?? null),
@@ -776,8 +867,13 @@ function CicdDefault() {
                       <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', sc.cls)}>{sc.label}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn('font-mono', app.pods[0] < app.pods[1] ? 'text-amber-400' : 'text-[var(--color-text-primary)]')}>
-                        {app.pods[0]}/{app.pods[1]}
+                      <span className={cn(
+                        'font-mono',
+                        typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number' && app.pods[0] < app.pods[1]
+                          ? 'text-amber-400'
+                          : 'text-[var(--color-text-primary)]',
+                      )}>
+                        {typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number' ? `${app.pods[0]}/${app.pods[1]}` : '—'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.cluster}</td>
@@ -1072,10 +1168,25 @@ export function MonitoringPage() {
     if (id && !activeView) setActiveView('stack')
   }
 
+  const supportsCicd = useMemo(() => {
+    if (!selectedCluster) return false
+    const types = Array.isArray(selectedCluster.types) && selectedCluster.types.length > 0
+      ? selectedCluster.types
+      : (selectedCluster.type ? [selectedCluster.type] : [])
+    const normalizedTypes = Array.from(new Set(types))
+    return normalizedTypes.includes('target')
+  }, [selectedCluster])
+
+  useEffect(() => {
+    if (activeView === 'cicd' && !supportsCicd) {
+      setActiveView(selectedClusterId ? 'cluster' : null)
+    }
+  }, [activeView, supportsCicd, selectedClusterId])
+
   const views: { id: ViewType; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
     { id: 'cluster', label: 'Cluster', icon: <Server size={15} />, disabled: !selectedClusterId },
     { id: 'stack', label: 'Stack', icon: <BarChart3 size={15} />, disabled: !selectedStackId },
-    { id: 'cicd', label: 'CI/CD', icon: <GitBranch size={15} /> },
+    { id: 'cicd', label: 'CI/CD', icon: <GitBranch size={15} />, disabled: !selectedClusterId || !supportsCicd },
   ]
 
   return (
@@ -1147,7 +1258,13 @@ export function MonitoringPage() {
                 <DashboardTabLayout
                   viewId="cluster"
                   isAdmin={isAdmin}
-                  defaultContent={<ClusterDefault clusterId={selectedCluster?.name ?? selectedClusterId} />}
+                  defaultContent={
+                    <ClusterDefault
+                      clusterId={selectedClusterId}
+                      clusterName={selectedCluster?.name ?? ''}
+                      stackIds={stacks.filter((stack) => stack.clusterId === selectedClusterId).map((stack) => stack.id)}
+                    />
+                  }
                 />
               )}
               {activeView === 'stack' && (
@@ -1168,7 +1285,7 @@ export function MonitoringPage() {
                 <DashboardTabLayout
                   viewId="cicd"
                   isAdmin={isAdmin}
-                  defaultContent={<CicdDefault />}
+                  defaultContent={<CicdDefault selectedClusterId={selectedClusterId} />}
                   seedTabs={CICD_DEFAULT_TABS}
                 />
               )}

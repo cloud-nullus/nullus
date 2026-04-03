@@ -753,11 +753,21 @@ func toOSSStatuses(types []selectedToolType, pods []podMonitoringStatus) []ossMo
 	out := make([]ossMonitoringStatus, 0, len(types))
 
 	for _, t := range types {
-		matched := make([]podMonitoringStatus, 0)
+		allMatched := make([]podMonitoringStatus, 0)
 		for _, pod := range pods {
 			if matchesAnyPrefix(strings.ToLower(pod.Name), t.PodNamePrefixes) {
-				matched = append(matched, pod)
+				allMatched = append(allMatched, pod)
 			}
+		}
+
+		// Exclude one-shot completed Job pods (e.g. gitlab-migrations) from health status calculation.
+		// These pods finish with Succeeded and should not degrade OSS status.
+		matched := make([]podMonitoringStatus, 0, len(allMatched))
+		for _, pod := range allMatched {
+			if isOneShotCompletedPod(pod) {
+				continue
+			}
+			matched = append(matched, pod)
 		}
 
 		ready := 0
@@ -773,6 +783,8 @@ func toOSSStatuses(types []selectedToolType, pods []podMonitoringStatus) []ossMo
 
 		status := "warning"
 		switch {
+		case len(matched) == 0 && len(allMatched) > 0:
+			status = "running"
 		case len(matched) == 0:
 			status = "warning"
 		case hasError:
@@ -796,6 +808,15 @@ func toOSSStatuses(types []selectedToolType, pods []podMonitoringStatus) []ossMo
 	}
 
 	return out
+}
+
+func isOneShotCompletedPod(pod podMonitoringStatus) bool {
+	phase := strings.ToLower(strings.TrimSpace(pod.Phase))
+	if phase != "succeeded" {
+		return false
+	}
+	name := strings.ToLower(strings.TrimSpace(pod.Name))
+	return strings.Contains(name, "migrations") || strings.Contains(name, "job")
 }
 
 func filterMonitoringToSelectedTools(types []selectedToolType, pods []podMonitoringStatus) ([]podMonitoringStatus, []namedCount, monitoringSummary) {
