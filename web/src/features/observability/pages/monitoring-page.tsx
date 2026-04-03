@@ -465,8 +465,8 @@ function ClusterDefault({
       },
     )
 
-    const cpuPercent = totals.cpuRequest > 0 ? Math.min(100, Math.max(0, Math.round((totals.cpuUsage / totals.cpuRequest) * 100))) : 0
-    const memoryPercent = totals.memoryRequest > 0 ? Math.min(100, Math.max(0, Math.round((totals.memoryUsage / totals.memoryRequest) * 100))) : 0
+    const cpuPercent = totals.cpuRequest > 0 ? Math.max(0, Math.round((totals.cpuUsage / totals.cpuRequest) * 100)) : 0
+    const memoryPercent = totals.memoryRequest > 0 ? Math.max(0, Math.round((totals.memoryUsage / totals.memoryRequest) * 100)) : 0
 
     return {
       podCount: totals.totalPods,
@@ -584,7 +584,7 @@ function ClusterDefault({
               <defs><linearGradient id="ccpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05} /></linearGradient></defs>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
               <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
               <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#ccpu)" />
             </AreaChart>
@@ -596,7 +596,7 @@ function ClusterDefault({
               <defs><linearGradient id="cmem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05} /></linearGradient></defs>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
               <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis domain={[0, 100]} stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
               <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#cmem)" />
             </AreaChart>
