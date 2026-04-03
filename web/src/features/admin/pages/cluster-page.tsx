@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } from 'lucide-react'
-import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster } from '../api/admin-api'
+import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster, useVerifyClusterDraft } from '../api/admin-api'
 import type { Cluster, ClusterStatus, ClusterType, CloudProvider } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -137,8 +137,8 @@ const CLUSTER_DETAIL_META: Record<ClusterType, { namespace: string; authMethod: 
 }
 
 const CLUSTER_TYPE_OPTIONS: Array<{ value: ClusterType; key: string; fallback: string }> = [
-  { value: 'target', key: 'clusterPage.type.target', fallback: 'Target Cluster' },
   { value: 'pipeline', key: 'clusterPage.type.pipeline', fallback: 'DevSecOps Stack Cluster' },
+  { value: 'target', key: 'clusterPage.type.target', fallback: 'Target Cluster' },
 ]
 
 const CLOUD_PROVIDER_OPTIONS: Array<{ value: CloudProvider; label: string }> = [
@@ -193,6 +193,7 @@ export function ClusterPage() {
   const updateCluster = useUpdateCluster()
   const deleteCluster = useDeleteCluster()
   const verifyCluster = useVerifyCluster()
+  const verifyClusterDraft = useVerifyClusterDraft()
 
   const [selected, setSelected] = useState<Cluster | null>(clusters[0] ?? null)
   const [registerModal, setRegisterModal] = useState(false)
@@ -201,6 +202,8 @@ export function ClusterPage() {
   const [deleteClusterError, setDeleteClusterError] = useState<string | null>(null)
   const [isVerifyingConnection, setIsVerifyingConnection] = useState(false)
   const [verifyConnectionResult, setVerifyConnectionResult] = useState<'success' | 'error' | null>(null)
+  const [draftVerifyStatus, setDraftVerifyStatus] = useState<ClusterStatus | 'error' | null>(null)
+  const [draftVerifyMessage, setDraftVerifyMessage] = useState<string | null>(null)
   const [statusOverrides, setStatusOverrides] = useState<Record<string, ClusterStatus>>({})
   const [fileUploadError, setFileUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -261,6 +264,7 @@ export function ClusterPage() {
     reset,
     setValue,
     watch,
+    getValues,
     formState: { errors, isValid, isSubmitting },
   } = useForm<ClusterFormData>({
     resolver: zodResolver(clusterSchema),
@@ -283,6 +287,32 @@ export function ClusterPage() {
     editPrefilledClusterIdRef.current = editingClusterId
   }, [registerModal, editingClusterId, editingClusterDetail, reset])
 
+  const closeRegisterModal = () => {
+    setRegisterModal(false)
+    setEditingClusterId(null)
+    editPrefilledClusterIdRef.current = null
+    reset(CLUSTER_DEFAULTS)
+    setDraftVerifyStatus(null)
+    setDraftVerifyMessage(null)
+  }
+
+  const verifySavedClusterAndClose = (clusterId: string | null | undefined) => {
+    if (!clusterId) {
+      closeRegisterModal()
+      return
+    }
+
+    verifyCluster.mutate(clusterId, {
+      onSuccess: () => {
+        setStatusOverrides((prev) => ({ ...prev, [clusterId]: 'connected' }))
+        closeRegisterModal()
+      },
+      onError: () => {
+        closeRegisterModal()
+      },
+    })
+  }
+
   const handleRegister = (form: ClusterFormData) => {
     const endpoint = form.endpoint?.trim() ?? ''
     const types = Array.from(new Set(form.types))
@@ -303,10 +333,7 @@ export function ClusterPage() {
         { id: editingClusterId, data: updatePayload },
         {
           onSuccess: () => {
-            setRegisterModal(false)
-            setEditingClusterId(null)
-            editPrefilledClusterIdRef.current = null
-            reset(CLUSTER_DEFAULTS)
+            verifySavedClusterAndClose(editingClusterId)
           },
         }
       )
@@ -314,10 +341,8 @@ export function ClusterPage() {
     }
 
     createCluster.mutate({ ...payload, kubeconfig: form.kubeconfig }, {
-      onSuccess: () => {
-        setRegisterModal(false)
-        editPrefilledClusterIdRef.current = null
-        reset(CLUSTER_DEFAULTS)
+      onSuccess: (createdCluster) => {
+        verifySavedClusterAndClose(createdCluster?.id)
       },
     })
   }
@@ -326,6 +351,8 @@ export function ClusterPage() {
     setEditingClusterId(null)
     editPrefilledClusterIdRef.current = null
     reset(CLUSTER_DEFAULTS)
+    setDraftVerifyStatus(null)
+    setDraftVerifyMessage(null)
     setRegisterModal(true)
   }
 
@@ -341,10 +368,22 @@ export function ClusterPage() {
       kubeconfig: selectedCluster.kubeconfig ?? '',
       isEdit: true,
     })
+    setDraftVerifyStatus(null)
+    setDraftVerifyMessage(null)
     setRegisterModal(true)
   }
 
   const selectedTypes = watch('types') ?? []
+  const watchedEndpoint = watch('endpoint')
+  const watchedKubeconfig = watch('kubeconfig')
+  const selectedTypesKey = selectedTypes.join('|')
+  const isSubmitBlockedByVerification = draftVerifyStatus !== 'connected'
+
+  useEffect(() => {
+    if (!registerModal) return
+    setDraftVerifyStatus(null)
+    setDraftVerifyMessage(null)
+  }, [registerModal, watchedEndpoint, watchedKubeconfig, selectedTypesKey])
 
   const handleDeleteCluster = () => {
     if (!deleteClusterId) return
@@ -386,6 +425,41 @@ export function ClusterPage() {
         setIsVerifyingConnection(false)
       },
     })
+  }
+
+  const handleVerifyConnectionInModal = () => {
+    if (!registerModal || verifyClusterDraft.isPending) return
+
+    const form = getValues()
+    const endpoint = form.endpoint?.trim() ?? ''
+    const kubeconfig = form.kubeconfig?.trim() ?? ''
+
+    if (!kubeconfig) {
+      setDraftVerifyStatus('error')
+      setDraftVerifyMessage(t('clusterPage.connection.verifyDraftRequired', 'Kubeconfig is required before verification.'))
+      return
+    }
+
+    setDraftVerifyStatus(null)
+    setDraftVerifyMessage(null)
+    verifyClusterDraft.mutate(
+      { endpoint, kubeconfig },
+      {
+        onSuccess: (result) => {
+          const verifiedStatus = normalizeClusterStatus(result?.status, 'pending')
+          setDraftVerifyStatus(verifiedStatus)
+          if (verifiedStatus === 'connected') {
+            setDraftVerifyMessage(t('clusterPage.connection.verifySuccess', 'Connection verified successfully.'))
+            return
+          }
+          setDraftVerifyMessage(t('clusterPage.connection.verifyFailed', 'Connection failed. Check endpoint/kubeconfig.'))
+        },
+        onError: () => {
+          setDraftVerifyStatus('error')
+          setDraftVerifyMessage(t('clusterPage.connection.verifyFailed', 'Connection failed. Check endpoint/kubeconfig.'))
+        },
+      }
+    )
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -607,24 +681,14 @@ export function ClusterPage() {
 
       <Modal
         open={registerModal}
-        onClose={() => {
-          setRegisterModal(false)
-          setEditingClusterId(null)
-          editPrefilledClusterIdRef.current = null
-          reset(CLUSTER_DEFAULTS)
-        }}
+        onClose={closeRegisterModal}
         title={editingClusterId ? t('clusterPage.modal.editTitle', 'Edit Cluster') : t('clusterPage.modal.registerTitle', 'Register Cluster')}
         footer={
           <>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                setRegisterModal(false)
-                setEditingClusterId(null)
-                editPrefilledClusterIdRef.current = null
-                reset(CLUSTER_DEFAULTS)
-              }}
+              onClick={closeRegisterModal}
               type="button"
             >
               {t('common.cancel', 'Cancel')}
@@ -632,9 +696,9 @@ export function ClusterPage() {
             <Button
               variant="primary"
               size="sm"
-              loading={createCluster.isPending || updateCluster.isPending || isSubmitting}
+              loading={createCluster.isPending || updateCluster.isPending || verifyCluster.isPending || isSubmitting}
               onClick={handleSubmit(handleRegister)}
-              disabled={!isValid || isSubmitting}
+              disabled={!isValid || isSubmitting || isSubmitBlockedByVerification}
               type="button"
             >
               {editingClusterId ? t('common.save', 'Save') : t('clusterPage.actions.register', 'Register')}
@@ -667,7 +731,7 @@ export function ClusterPage() {
                     )}
                   >
                     <input type="checkbox" value={option.value} {...register('types')} className="h-4 w-4" />
-                    <span>{t(option.key, option.fallback)}</span>
+                    <span className="whitespace-pre-line">{t(option.key, option.fallback)}</span>
                   </label>
                 )
               })}
@@ -734,6 +798,52 @@ export function ClusterPage() {
              />
            </div>
            {errors.kubeconfig && <span className="text-xs text-[#ef4444]">{errors.kubeconfig.message}</span>}
+
+          <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[var(--color-text-primary)]">
+                {t('clusterPage.connection.title', 'Connection Status')}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                loading={verifyClusterDraft.isPending}
+                onClick={handleVerifyConnectionInModal}
+              >
+                {t('clusterPage.actions.verifyConnection', 'Verify Connection')}
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-md border px-2 py-1 font-semibold',
+                  draftVerifyStatus === 'connected'
+                    ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.12)] text-[#22c55e]'
+                    : draftVerifyStatus === 'error'
+                      ? 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.12)] text-[#ef4444]'
+                      : 'border-[var(--color-border-default)] bg-[rgba(148,163,184,0.1)] text-[var(--color-text-secondary)]'
+                )}
+              >
+                {draftVerifyStatus === 'connected'
+                  ? t('clusterPage.status.connected', 'Connected')
+                  : draftVerifyStatus === 'error'
+                    ? t('clusterPage.status.error', 'Error')
+                    : t('clusterPage.status.pending', 'Pending')}
+              </span>
+              <span
+                className={cn(
+                  draftVerifyStatus === 'connected'
+                    ? 'text-[#22c55e]'
+                    : draftVerifyStatus === 'error'
+                      ? 'text-[#ef4444]'
+                      : 'text-[var(--color-text-secondary)]'
+                )}
+              >
+                {draftVerifyMessage ?? t('clusterPage.connection.verifyBeforeSubmit', 'Verify connection at the final step before saving.')}
+              </span>
+            </div>
+          </div>
         </div>
       </Modal>
 

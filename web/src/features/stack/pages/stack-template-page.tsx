@@ -146,8 +146,29 @@ const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
   },
 }
 
+const TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES: Record<string, { ko: string; en: string }> = {
+  'Start from an empty stack configuration with every tool left unselected.': {
+    ko: '아직 도구가 선택되지 않은 빈 스택 템플릿입니다.',
+    en: 'An empty stack template with no tools selected yet.',
+  },
+  'GitLab CE 기반 단일 플랫폼. 소스코드 관리, CI/CD, 컨테이너 레지스트리를 GitLab에서 통합 제공합니다.': {
+    ko: 'GitLab CE 기반 단일 플랫폼. 소스코드 관리, CI/CD, 컨테이너 레지스트리를 GitLab에서 통합 제공합니다.',
+    en: 'Single-platform stack based on GitLab CE. It provides source code management, CI/CD, and container registry in one integrated GitLab setup.',
+  },
+  'GitLab CI와 GitLab Registry를 사용하고 Argo CD로 GitOps 패턴을 강화한 구성입니다.': {
+    ko: 'GitLab CI와 GitLab Registry를 사용하고 Argo CD로 GitOps 패턴을 강화한 구성입니다.',
+    en: 'Uses GitLab CI and GitLab Registry, and strengthens the setup with Argo CD for a GitOps workflow.',
+  },
+  'GitHub와 GitHub Actions를 외부 서비스로 사용하고, 클러스터 내에는 Harbor + Argo CD + 모니터링만 설치합니다.': {
+    ko: 'GitHub와 GitHub Actions를 외부 서비스로 사용하고, 클러스터 내에는 Harbor + Argo CD + 모니터링만 설치합니다.',
+    en: 'Use GitHub and GitHub Actions as external services, and install only Harbor + Argo CD + monitoring in the cluster.',
+  },
+}
+
 const NS_PER_MINUTE = 60 * 1_000_000_000
 const ESTIMATE_BASE_MINUTES = 5
+const DISPLAY_ESTIMATE_MIN_MINUTES = 10
+const DISPLAY_ESTIMATE_MAX_MINUTES = 19
 const CATEGORY_MINUTES: Record<string, number> = {
   package_registry: 7,
   source_repository: 8,
@@ -167,6 +188,22 @@ const TOOL_BONUS_MINUTES: Record<string, number> = {
   'victoria metrics': 3,
   opensearch: 3,
   elasticsearch: 4,
+}
+
+const normalizeDisplayEstimateMinutes = (minutes: number): number => {
+  if (minutes <= DISPLAY_ESTIMATE_MIN_MINUTES) {
+    return DISPLAY_ESTIMATE_MIN_MINUTES
+  }
+
+  if (minutes <= DISPLAY_ESTIMATE_MAX_MINUTES) {
+    return minutes
+  }
+
+  const compressed =
+    DISPLAY_ESTIMATE_MIN_MINUTES +
+    Math.floor((minutes - DISPLAY_ESTIMATE_MAX_MINUTES) / 4)
+
+  return Math.min(DISPLAY_ESTIMATE_MAX_MINUTES, compressed)
 }
 
 const buildInitialSectionOpenState = () =>
@@ -248,7 +285,7 @@ const createTemplateUUID = () => {
 
 const estimateInstallMinutesFromTools = (tools: ToolEntry[]): number => {
   if (tools.length === 0) {
-    return ESTIMATE_BASE_MINUTES
+    return DISPLAY_ESTIMATE_MIN_MINUTES
   }
 
   const total = tools.reduce((sum, tool) => {
@@ -257,7 +294,8 @@ const estimateInstallMinutesFromTools = (tools: ToolEntry[]): number => {
     return sum + categoryCost + bonus
   }, ESTIMATE_BASE_MINUTES)
 
-  return Math.max(ESTIMATE_BASE_MINUTES, Math.round(total))
+  const rounded = Math.max(ESTIMATE_BASE_MINUTES, Math.round(total))
+  return normalizeDisplayEstimateMinutes(rounded)
 }
 
 const estimateInstallMinutesForTemplate = (template: StackTemplate): number => {
@@ -420,6 +458,11 @@ export function StackTemplatePage() {
   const resolveTemplateDescription = (template: StackTemplate) => {
     const localized = TEMPLATE_DESCRIPTION_I18N[template.id]
     const rawDescription = (template.description ?? '').trim()
+    const override = TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES[rawDescription]
+
+    if (override) {
+      return isKorean ? override.ko : override.en
+    }
 
     if (!localized) return template.description
 

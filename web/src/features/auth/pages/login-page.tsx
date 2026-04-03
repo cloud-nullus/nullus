@@ -31,12 +31,6 @@ const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   },
 }
 
-const ROLE_HOME: Record<string, string> = {
-  admin: '/admin/organization',
-  devops: '/stack/templates',
-  developer: '/cicd/developer-deploy',
-}
-
 function OidcLoginContent() {
   const providerLabel = getProviderConfig().type === 'authentik' ? 'Authentik' : 'Keycloak'
 
@@ -82,7 +76,7 @@ function MockLoginContent() {
     }
 
     login(account.user)
-    navigate(ROLE_HOME[account.user.role] ?? '/')
+    navigate('/')
   }
 
   return (

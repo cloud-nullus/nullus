@@ -331,12 +331,36 @@ do_preflight() {
   fi
   echo ""
 
-  if ! docker info >/dev/null 2>&1; then
-    echo "[nullus] ERROR: Docker daemon is not running."
-    echo "[nullus]   Start Docker Desktop or run 'sudo systemctl start docker'"
-    exit 1
-  fi
-  echo "[nullus] docker daemon: running"
+if ! docker info >/dev/null 2>&1; then
+  echo "[nullus] ERROR: Docker daemon is not running."
+
+  os="$(uname -s 2>/dev/null || echo unknown)"
+  case "$os" in
+    Darwin)
+      echo "[nullus]   macOS: Start your Docker runtime (Docker Desktop / Colima / OrbStack / Rancher Desktop)"
+      echo "[nullus]   e.g. Docker Desktop: 'open -a Docker', Colima: 'colima start'"
+      ;;
+    Linux)
+      # WSL 감지
+      if grep -qi microsoft /proc/version 2>/dev/null; then
+        echo "[nullus]   WSL: Start Docker Desktop on Windows and enable WSL integration"
+      else
+        echo "[nullus]   Linux: Run 'sudo systemctl start docker' (or your distro equivalent)"
+      fi
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      echo "[nullus]   Windows: Start Docker Desktop"
+      echo "[nullus]   (PowerShell as Admin: Start-Service com.docker.service)"
+      ;;
+    *)
+      echo "[nullus]   Start Docker Desktop (or Docker Engine) for your OS"
+      ;;
+  esac
+
+  exit 1
+fi
+
+echo "[nullus] docker daemon: running"
 
   echo ""
   echo "[nullus] resource requirements:"

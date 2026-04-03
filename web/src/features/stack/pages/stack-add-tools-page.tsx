@@ -181,12 +181,14 @@ function ToolSelector({
   options,
   value,
   installedToolNames,
+  installedLabel,
   onChange,
 }: {
   label: string
   options: ToolOption[]
   value: { tool: string; version: string }
   installedToolNames: Set<string>
+  installedLabel: string
   onChange: (v: { tool: string; version: string }) => void
 }) {
   return (
@@ -232,7 +234,7 @@ function ToolSelector({
                 </div>
                 {installed && (
                   <span className="shrink-0 rounded bg-[rgba(148,163,184,0.2)] px-2 py-0.5 text-[11px] font-semibold text-[#cbd5e1]">
-                    installed
+                    {installedLabel}
                   </span>
                 )}
               </div>
@@ -281,7 +283,7 @@ export function StackAddToolsPage() {
   }, [installedToolsByCategory])
 
   const reviewItems = useMemo(() => {
-    const items: Array<{ category: string; categoryLabel: string; slotLabel: string; tool: string; version: string }> = []
+    const items: Array<{ category: string; categoryLabel: string; slotLabel: string; tool: string; toolLabel: string; version: string }> = []
     TOOL_CATEGORIES.forEach((category) => {
       if (!selectedCategories.includes(category.id)) return
       category.slots.forEach((slot) => {
@@ -291,15 +293,16 @@ export function StackAddToolsPage() {
         if (installedForSlot.has(selected.tool)) return
         items.push({
           category: slot.id,
-          categoryLabel: category.label,
-          slotLabel: slot.label,
+          categoryLabel: t(`stackAddTools.categories.${category.id}.label`, category.label),
+          slotLabel: t(`stackAddTools.slots.${slot.id}.label`, slot.label),
           tool: selected.tool,
+          toolLabel: t(`stackAddTools.tools.${selected.tool}.label`, selected.tool),
           version: selected.version,
         })
       })
     })
     return items
-  }, [installedToolsByCategory, selectedCategories, selectedTools])
+  }, [installedToolsByCategory, selectedCategories, selectedTools, t])
 
   const initializeSelections = (category: ToolCategory) => {
     setSelectedTools((prev) => {
@@ -470,6 +473,7 @@ export function StackAddToolsPage() {
                       <ToolSelector
                         key={slot.id}
                         label={t(`stackAddTools.slots.${slot.id}.label`, slot.label)}
+                        installedLabel={t('stackAddTools.badge.installed', 'Installed')}
                         options={slot.options.map((option) => ({
                           ...option,
                           label: t(`stackAddTools.tools.${option.id}.label`, option.label),
@@ -512,7 +516,7 @@ export function StackAddToolsPage() {
                       <tr key={`${item.category}-${item.tool}`} className="border-t border-[var(--color-border-default)]">
                         <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{item.categoryLabel}</td>
                         <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{item.slotLabel}</td>
-                        <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{item.tool}</td>
+                        <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{item.toolLabel}</td>
                         <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{item.version}</td>
                       </tr>
                     ))}

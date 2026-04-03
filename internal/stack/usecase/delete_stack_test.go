@@ -13,7 +13,8 @@ import (
 )
 
 type captureStreamer struct {
-	entries []port.LogEntry
+	entries          []port.LogEntry
+	clearedHistoryID []string
 }
 
 func (c *captureStreamer) Stream(_ context.Context, _ string, entry port.LogEntry) {
@@ -26,6 +27,10 @@ func (c *captureStreamer) Subscribe(_ string) <-chan port.LogEntry {
 }
 
 func (c *captureStreamer) Unsubscribe(_ string, _ <-chan port.LogEntry) {}
+
+func (c *captureStreamer) ClearHistory(deploymentID string) {
+	c.clearedHistoryID = append(c.clearedHistoryID, deploymentID)
+}
 
 type fakeHelmInstaller struct {
 	uninstallCalls []string
@@ -76,8 +81,8 @@ func TestDeleteStack_UninstallsKnownReleasesThenDeletesStack(t *testing.T) {
 	require.NoError(t, err)
 
 	s, getErr := repo.GetByID(context.Background(), "stk-1")
-	require.NoError(t, getErr)
-	assert.Equal(t, domain.StateCancelled, s.State)
+	require.Error(t, getErr)
+	assert.Nil(t, s)
 	assert.Contains(t, installer.uninstallCalls, "cert-manager@devsecops")
 	assert.Contains(t, installer.uninstallCalls, "cert-manager@default")
 	assert.Contains(t, installer.uninstallCalls, "opensearch@devsecops")
@@ -96,6 +101,7 @@ func TestDeleteStack_UninstallsKnownReleasesThenDeletesStack(t *testing.T) {
 	}
 	assert.Contains(t, steps, "deleting_started")
 	assert.Contains(t, steps, "deleted")
+	assert.Equal(t, []string{"stk-1"}, streamer.clearedHistoryID)
 }
 
 func TestUninstallNamespacesForRelease_GatewayIncludesFallbackNamespaces(t *testing.T) {
@@ -135,8 +141,8 @@ func TestDeleteStack_DeletesStackWhenKubeconfigAndUninstallFail(t *testing.T) {
 	require.NoError(t, err)
 
 	s, getErr := repo.GetByID(context.Background(), "stk-2")
-	require.NoError(t, getErr)
-	assert.Equal(t, domain.StateCancelled, s.State)
+	require.Error(t, getErr)
+	assert.Nil(t, s)
 }
 
 func TestDeleteStack_DeletesMonitoringManifestOverrides(t *testing.T) {

@@ -143,7 +143,7 @@ describe('StackAddToolsPage', () => {
   it('step 2 shows empty state when no categories selected', () => {
     renderWithProviders(<StackAddToolsPage />)
     fireEvent.click(screen.getByText('2. Tool Configuration'))
-    expect(screen.getByText('먼저 Step 1에서 카테고리를 선택해 주세요.')).toBeInTheDocument()
+    expect(screen.getByText('Please select categories first in Step 1.')).toBeInTheDocument()
   })
 
   it('step 3 shows review table with selected tools', () => {

@@ -32,7 +32,7 @@ describe('UAT-2: Developer scenario', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
     })
     expect(useAuthStore.getState().role).toBe('developer')
-    expect(mockNavigate).toHaveBeenCalledWith('/cicd/developer-deploy')
+    expect(mockNavigate).toHaveBeenCalledWith('/')
   })
 
   it('step 2: developer sidebar does not show DevSecOps Stack menu', () => {

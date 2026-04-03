@@ -463,7 +463,7 @@ export function extractConnectionInfo(snapshot: unknown, namespace: string, acce
 	};
 }
 
-export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo): string {
+export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo, isKorean = false): string {
 	const key = toolName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 	if (["argocd", "argo cd"].includes(key)) {
 		return "ID: admin / Password: kubectl -n nullus get secret argo-cd-argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d";
@@ -472,23 +472,23 @@ export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo): 
 		return "ID: root / Password: kubectl -n nullus get secret gitlab-gitlab-initial-root-password -o jsonpath='{.data.password}' | base64 -d";
 	}
 	if (key === "grafana") {
-		return "Default: admin / admin (또는 values override 확인)";
+		return isKorean ? "기본값: admin / admin (또는 values override 확인)" : "Default: admin / admin (or check values override)";
 	}
 	if (key === "minio") {
 		return `ID: ${conn.objectStorage.authId} / SecretRef: ${conn.objectStorage.accessSecretRef} (key: ${conn.objectStorage.authPasswordKey})`;
 	}
 	if (key === "opensearch") {
-		return "ID: admin / Password: NullusAdmin123! (기본값, 변경 시 values 확인)";
+		return isKorean ? "ID: admin / 비밀번호: NullusAdmin123! (기본값, 변경 시 values 확인)" : "ID: admin / Password: NullusAdmin123! (default value, check values if changed)";
 	}
 	if (key === "prometheus") {
-		return "No login required (기본 설정)";
+		return isKorean ? "로그인 불필요 (기본 설정)" : "No login required (default setting)";
 	}
-	return "도구별 기본 인증정보를 확인하세요.";
+	return isKorean ? "도구별 기본 인증정보를 확인하세요." : "Check the default credentials for each tool.";
 }
 
-export function buildConnectionInfoText(stackName: string, conn: StackConnectionInfo, launchTools: LaunchTool[]): string {
+export function buildConnectionInfoText(stackName: string, conn: StackConnectionInfo, launchTools: LaunchTool[], isKorean = false): string {
 	const ossLines = launchTools
-		.map((tool) => `- ${tool.name}: ${tool.url ?? "(URL 없음)"} | ${buildOssLoginHint(tool.name, conn)}`)
+		.map((tool) => `- ${tool.name}: ${tool.url ?? (isKorean ? "(URL 없음)" : "(No URL)") } | ${buildOssLoginHint(tool.name, conn, isKorean)}`)
 		.join("\n");
 
 	return [
@@ -944,7 +944,8 @@ function ResourcesPanel() {
 }
 
 function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }: { stack: Stack; displayStatus: string; isDeleting: boolean; onAddTools: () => void; onDelete: () => void }) {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isKorean = (i18n.resolvedLanguage ?? i18n.language ?? "").toLowerCase().startsWith("ko");
 	const [hostsCopyState, setHostsCopyState] = useState<"idle" | "copied" | "failed">("idle");
 	const [gatewayCopyState, setGatewayCopyState] = useState<"idle" | "copied" | "failed">("idle");
 	const [connOpen, setConnOpen] = useState(false);
@@ -976,19 +977,27 @@ function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }
 	}));
 	const hostsText = buildHostsText(stack.name, accessDomain, launchTools);
 	const connectionInfo = extractConnectionInfo(latestSnapshot, stack.namespace?.trim() || "nullus", accessDomain);
-	const connectionInfoText = buildConnectionInfoText(stack.name, connectionInfo, launchTools);
+	const connectionInfoText = buildConnectionInfoText(stack.name, connectionInfo, launchTools, isKorean);
 	const stackNamespace = stack.namespace?.trim() || "nullus";
 	const stackNamespaceArg = toShellSingleQuoted(stackNamespace);
 	const gatewayPFCommand = [
-		"# Gateway 데이터플레인 서비스 자동 선택 후 포트포워드",
+		isKorean ? "# Gateway 데이터플레인 서비스 자동 선택 후 포트포워드" : "# Auto-select Gateway data-plane service and run port-forward",
 		`STACK_NAMESPACE=${stackNamespaceArg}`,
 		"KUBECONFIG_PATH=${KUBECONFIG:-$HOME/.kube/config}",
-		"if [ ! -f \"$KUBECONFIG_PATH\" ]; then echo \"kubeconfig 파일이 없습니다: $KUBECONFIG_PATH\"; return 1 2>/dev/null || exit 1; fi",
+		isKorean
+			? "if [ ! -f \"$KUBECONFIG_PATH\" ]; then echo \"kubeconfig 파일이 없습니다: $KUBECONFIG_PATH\"; return 1 2>/dev/null || exit 1; fi"
+			: "if [ ! -f \"$KUBECONFIG_PATH\" ]; then echo \"kubeconfig file not found: $KUBECONFIG_PATH\"; return 1 2>/dev/null || exit 1; fi",
 		"KUBE_CONTEXT=${KUBE_CONTEXT:-$(kubectl --kubeconfig \"$KUBECONFIG_PATH\" config current-context 2>/dev/null)}",
-		"if [ -z \"$KUBE_CONTEXT\" ]; then echo 'kubectl context가 없습니다. 먼저 kubectl config use-context <context> 실행하세요.'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
-		"if ! kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" get ns \"$STACK_NAMESPACE\" >/dev/null 2>&1; then echo \"kubectl context 연결 실패: $KUBE_CONTEXT\"; echo '올바른 컨텍스트를 지정하세요. 예) export KUBE_CONTEXT=kind-nullus-platform'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
+		isKorean
+			? "if [ -z \"$KUBE_CONTEXT\" ]; then echo 'kubectl context가 없습니다. 먼저 kubectl config use-context <context> 실행하세요.'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi"
+			: "if [ -z \"$KUBE_CONTEXT\" ]; then echo 'kubectl context not found. Run kubectl config use-context <context> first.'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
+		isKorean
+			? "if ! kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" get ns \"$STACK_NAMESPACE\" >/dev/null 2>&1; then echo \"kubectl context 연결 실패: $KUBE_CONTEXT\"; echo '올바른 컨텍스트를 지정하세요. 예) export KUBE_CONTEXT=kind-nullus-platform'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi"
+			: "if ! kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" get ns \"$STACK_NAMESPACE\" >/dev/null 2>&1; then echo \"kubectl context connection failed: $KUBE_CONTEXT\"; echo 'Set a valid context, e.g.) export KUBE_CONTEXT=kind-nullus-platform'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
 		"GW_SVC=$(kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" -n \"$STACK_NAMESPACE\" get svc -l gateway.envoyproxy.io/owning-gateway-namespace=$STACK_NAMESPACE -o name | head -n1 | cut -d'/' -f2)",
-		"if [ -z \"$GW_SVC\" ]; then echo 'Gateway 서비스가 없습니다. deploy에서 installing_gateway/route 생성 여부를 확인하세요.'; return 1 2>/dev/null || exit 1; fi",
+		isKorean
+			? "if [ -z \"$GW_SVC\" ]; then echo 'Gateway 서비스가 없습니다. deploy에서 installing_gateway/route 생성 여부를 확인하세요.'; return 1 2>/dev/null || exit 1; fi"
+			: "if [ -z \"$GW_SVC\" ]; then echo 'Gateway service not found. Check if installing_gateway/route was created in deploy.'; return 1 2>/dev/null || exit 1; fi",
 		"sudo kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" -n \"$STACK_NAMESPACE\" port-forward \"svc/$GW_SVC\" 80:80",
 	].join("\n");
 
@@ -1187,10 +1196,10 @@ function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }
 											}}
 											className={cn("text-[12px] underline", tool.url ? "text-[#93c5fd]" : "pointer-events-none text-[var(--color-text-muted)]")}
 										>
-											{tool.url || "URL 없음"}
-										</a>
-									</div>
-									<div className="mt-1 text-[12px] text-[var(--color-text-secondary)]">{buildOssLoginHint(tool.name, connectionInfo)}</div>
+									{tool.url || (isKorean ? "URL 없음" : "No URL")}
+								</a>
+							</div>
+									<div className="mt-1 text-[12px] text-[var(--color-text-secondary)]">{buildOssLoginHint(tool.name, connectionInfo, isKorean)}</div>
 								</div>
 							))}
 						</div>
@@ -2602,17 +2611,25 @@ export function StackListPage() {
 	const [clusterFilter, setClusterFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
 	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
+	const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
 	const [viewportHeight, setViewportHeight] = useState(() =>
 		typeof window !== "undefined" ? window.innerHeight : 960,
 	);
+	const [viewportWidth, setViewportWidth] = useState(() =>
+		typeof window !== "undefined" ? window.innerWidth : 1440,
+	);
 	const deleteStack = useDeleteStack();
 	const tablePageSize = Math.max(6, Math.min(14, Math.floor((viewportHeight - 340) / 52)));
+	const isDesktopLayout = viewportWidth >= 1280;
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
 			return;
 		}
-		const onResize = () => setViewportHeight(window.innerHeight);
+		const onResize = () => {
+			setViewportHeight(window.innerHeight);
+			setViewportWidth(window.innerWidth);
+		};
 		window.addEventListener("resize", onResize);
 		return () => window.removeEventListener("resize", onResize);
 	}, []);
@@ -2645,6 +2662,9 @@ export function StackListPage() {
 	const clusterOptions = useMemo(() => Array.from(new Set(stacks.map((item) => item.clusterName).filter((name) => !!name))).sort(), [stacks]);
 
 	const filtered = stacks.filter((s) => {
+		if (pendingDeleteIds.includes(s.id)) {
+			return false;
+		}
 		const q = search.toLowerCase();
 		const matchesSearch =
 			!search ||
@@ -2664,8 +2684,16 @@ export function StackListPage() {
 
 	const handleDeleteStack = () => {
 		if (!deleteStackId) return;
-		deleteStack.mutate(deleteStackId, {
-			onSuccess: () => setDeleteStackId(null),
+		const targetID = deleteStackId;
+		setPendingDeleteIds((prev) => (prev.includes(targetID) ? prev : [...prev, targetID]));
+		deleteStack.mutate(targetID, {
+			onSuccess: () => {
+				setDeleteStackId(null);
+				setExpandedStackId((prev) => (prev === targetID ? null : prev));
+			},
+			onError: () => {
+				setPendingDeleteIds((prev) => prev.filter((id) => id !== targetID));
+			},
 		});
 	};
 
@@ -2805,27 +2833,29 @@ export function StackListPage() {
 					</div>
 				</div>
 
-				<div className="hidden xl:block">
-					{expandedStack ? (
-						<div className="h-full pr-1">
-							<StackDetailPanel
-								key={expandedStack.id}
-								stack={expandedStack}
-								clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
-								isDeleting={deleteStack.isPending}
-								onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
-								onDelete={() => setDeleteStackId(expandedStack.id)}
-							/>
-						</div>
-					) : (
-						<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
-							{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
-						</div>
-					)}
-				</div>
+				{isDesktopLayout && (
+					<div>
+						{expandedStack ? (
+							<div className="h-full pr-1">
+								<StackDetailPanel
+									key={expandedStack.id}
+									stack={expandedStack}
+									clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
+									isDeleting={deleteStack.isPending}
+									onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
+									onDelete={() => setDeleteStackId(expandedStack.id)}
+								/>
+							</div>
+						) : (
+							<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
+								{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
+							</div>
+						)}
+					</div>
+				)}
 			</div>
 
-			{expandedStack && (
+			{!isDesktopLayout && expandedStack && (
 				<StackDetailPanel
 					key={`${expandedStack.id}-mobile`}
 					stack={expandedStack}
@@ -2833,7 +2863,7 @@ export function StackListPage() {
 					isDeleting={deleteStack.isPending}
 					onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
 					onDelete={() => setDeleteStackId(expandedStack.id)}
-					className="mt-4 xl:hidden"
+					className="mt-4"
 				/>
 			)}
 

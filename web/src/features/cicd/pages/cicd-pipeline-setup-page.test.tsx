@@ -28,7 +28,7 @@ vi.mock('../api/cicd-api', () => ({
 }))
 
 vi.mock('../../admin/api/admin-api', () => ({
-  useClusters: () => mockUseClusters(),
+  useScopedClusters: () => mockUseClusters(),
 }))
 
 const templates = [
