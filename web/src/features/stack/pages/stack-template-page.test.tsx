@@ -99,7 +99,7 @@ describe('StackTemplatePage', () => {
 
   it('renders 4 Use Base Template buttons', () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByText('Use Base Template')
+    const buttons = screen.getAllByText('Use As Base')
     expect(buttons).toHaveLength(4)
   })
 
@@ -155,7 +155,7 @@ describe('StackTemplatePage', () => {
     renderWithProviders(<StackTemplatePage />)
     const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
     expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
+    fireEvent.click(within(templateCard as HTMLElement).getByText('Use As Base'))
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
@@ -163,7 +163,7 @@ describe('StackTemplatePage', () => {
     renderWithProviders(<StackTemplatePage />)
     const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
     expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
+    fireEvent.click(within(templateCard as HTMLElement).getByText('Use As Base'))
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
     expect(draft.logging.search.tool).toBe('')
@@ -175,7 +175,7 @@ describe('StackTemplatePage', () => {
     const templateCard = screen.getByText('Empty Template').closest('[role="button"]')
     expect(templateCard).toBeTruthy()
 
-    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
+    fireEvent.click(within(templateCard as HTMLElement).getByText('Use As Base'))
 
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('empty-template-v1')
@@ -238,7 +238,7 @@ describe('StackTemplatePage', () => {
     expect(mockCreateTemplateMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
-        estimated_install_time: 300000000000,
+        estimated_install_time: 600000000000,
       }),
       expect.any(Object)
     )
@@ -299,12 +299,12 @@ describe('StackTemplatePage', () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    const duplicateButtons = screen.getAllByRole('button', { name: 'Duplicate Template' })
+    const duplicateButtons = screen.getAllByRole('button', { name: 'Duplicate' })
     expect(duplicateButtons).toHaveLength(4)
 
     const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
     expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Duplicate Template' }))
+    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Duplicate' }))
 
     await waitFor(() => {
       expect(mockCreateTemplateMutate).toHaveBeenCalled()

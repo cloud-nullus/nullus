@@ -61,7 +61,6 @@ vi.mock('../api/stack-api', () => ({
   useCreateStack: () => ({ mutate: vi.fn(), isPending: false }),
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
-  useClusters: () => ({ data: [{ id: 'cluster-1', name: 'test-cluster', connection_status: 'connected' }] }),
   useStacks: () => ({ data: mockStacks }),
   useResourceDefaults: () => ({ data: mockResourceDefaults }),
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
@@ -69,6 +68,15 @@ vi.mock('../api/stack-api', () => ({
 }))
 
 vi.mock('../../admin/api/admin-api', () => ({
+  useClusters: () => ({
+    data: {
+      items: [
+        { id: 'cluster-1', name: 'test-cluster', status: 'connected' },
+        { id: 'cluster-2', name: 'dev-cluster', status: 'pending' },
+      ],
+      total: 2,
+    },
+  }),
   useClusterNamespaces: () => ({ data: [] }),
 }))
 
@@ -122,6 +130,13 @@ describe('StackInstallPage', () => {
   it('renders the page heading', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getAllByText('Stack Install')[0]).toBeInTheDocument()
+  })
+
+  it('shows all clusters from Cluster Management in target cluster select', () => {
+    renderWithProviders(<StackInstallPage />)
+    const select = screen.getByLabelText('Target Cluster')
+    expect(within(select).getByRole('option', { name: 'test-cluster (Connected)' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'dev-cluster (Pending)' })).toBeInTheDocument()
   })
 
   it('renders install tabs including storage and YAML view', () => {

@@ -434,9 +434,9 @@ export function ClusterPage() {
     const endpoint = form.endpoint?.trim() ?? ''
     const kubeconfig = form.kubeconfig?.trim() ?? ''
 
-    if (!endpoint || !kubeconfig) {
+    if (!kubeconfig) {
       setDraftVerifyStatus('error')
-      setDraftVerifyMessage(t('clusterPage.connection.verifyDraftRequired', 'Endpoint and kubeconfig are required before verification.'))
+      setDraftVerifyMessage(t('clusterPage.connection.verifyDraftRequired', 'Kubeconfig is required before verification.'))
       return
     }
 

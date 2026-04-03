@@ -167,6 +167,8 @@ const TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES: Record<string, { ko: string; en: st
 
 const NS_PER_MINUTE = 60 * 1_000_000_000
 const ESTIMATE_BASE_MINUTES = 5
+const DISPLAY_ESTIMATE_MIN_MINUTES = 10
+const DISPLAY_ESTIMATE_MAX_MINUTES = 19
 const CATEGORY_MINUTES: Record<string, number> = {
   package_registry: 7,
   source_repository: 8,
@@ -186,6 +188,22 @@ const TOOL_BONUS_MINUTES: Record<string, number> = {
   'victoria metrics': 3,
   opensearch: 3,
   elasticsearch: 4,
+}
+
+const normalizeDisplayEstimateMinutes = (minutes: number): number => {
+  if (minutes <= DISPLAY_ESTIMATE_MIN_MINUTES) {
+    return DISPLAY_ESTIMATE_MIN_MINUTES
+  }
+
+  if (minutes <= DISPLAY_ESTIMATE_MAX_MINUTES) {
+    return minutes
+  }
+
+  const compressed =
+    DISPLAY_ESTIMATE_MIN_MINUTES +
+    Math.floor((minutes - DISPLAY_ESTIMATE_MAX_MINUTES) / 4)
+
+  return Math.min(DISPLAY_ESTIMATE_MAX_MINUTES, compressed)
 }
 
 const buildInitialSectionOpenState = () =>
@@ -267,7 +285,7 @@ const createTemplateUUID = () => {
 
 const estimateInstallMinutesFromTools = (tools: ToolEntry[]): number => {
   if (tools.length === 0) {
-    return ESTIMATE_BASE_MINUTES
+    return DISPLAY_ESTIMATE_MIN_MINUTES
   }
 
   const total = tools.reduce((sum, tool) => {
@@ -276,7 +294,8 @@ const estimateInstallMinutesFromTools = (tools: ToolEntry[]): number => {
     return sum + categoryCost + bonus
   }, ESTIMATE_BASE_MINUTES)
 
-  return Math.max(ESTIMATE_BASE_MINUTES, Math.round(total))
+  const rounded = Math.max(ESTIMATE_BASE_MINUTES, Math.round(total))
+  return normalizeDisplayEstimateMinutes(rounded)
 }
 
 const estimateInstallMinutesForTemplate = (template: StackTemplate): number => {

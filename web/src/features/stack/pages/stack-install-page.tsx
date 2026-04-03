@@ -21,7 +21,7 @@ import type {
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
 import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix } from '../api/stack-api'
-import { useScopedClusters } from '../../admin/api/admin-api'
+import { useClusters } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -1890,7 +1890,7 @@ export function StackInstallPage() {
   const deployStack = useDeployStack()
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
-  const { data: clustersData } = useScopedClusters()
+  const { data: clustersData } = useClusters()
   const clusters = clustersData?.items ?? []
   const { data: stackListData } = useStacks()
   const { data: compatibilityMatrixData } = useCompatibilityMatrix()

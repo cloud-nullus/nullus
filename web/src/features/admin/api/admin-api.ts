@@ -142,7 +142,7 @@ const adminApiCalls = {
   verifyCluster: (id: string) =>
     api.post<{ status: string; version?: string }>(`/admin/clusters/${id}/verify`).then((r) => r.data),
 
-  verifyClusterDraft: (data: { endpoint: string; kubeconfig: string }) =>
+  verifyClusterDraft: (data: { endpoint?: string; kubeconfig: string }) =>
     api.post<{ status: string; version?: string }>('/admin/clusters/verify', data).then((r) => r.data),
 
   getKnownIssues: () =>
@@ -354,7 +354,7 @@ export function useVerifyCluster() {
 
 export function useVerifyClusterDraft() {
   return useMutation({
-    mutationFn: (data: { endpoint: string; kubeconfig: string }) => adminApiCalls.verifyClusterDraft(data),
+    mutationFn: (data: { endpoint?: string; kubeconfig: string }) => adminApiCalls.verifyClusterDraft(data),
   })
 }
 
