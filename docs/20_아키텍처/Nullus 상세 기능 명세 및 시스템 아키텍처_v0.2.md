@@ -391,6 +391,7 @@ erDiagram
     string cluster_id
     string state
     jsonb config
+    timestamptz deleted_at
   }
   stack_config_versions {
     string id
@@ -450,7 +451,7 @@ erDiagram
 |---|---|---|
 | 조직/사용자 | `organizations`, `users`, `org_members` | 조직 및 멤버 관리 |
 | 클러스터 | `clusters` | 등록 대상 클러스터 |
-| Stack | `stacks`, `stack_config_versions` | 본문 설정 + 버전 이력 |
+| Stack | `stacks`(soft delete), `stack_config_versions` | 본문 설정 + 버전 이력(삭제 후 보존) |
 | Stack 카탈로그 | `golden_path_templates`, `compatibility_matrices`, `stack_resource_defaults`, `known_issues` | DB 중심 카탈로그 |
 | CI/CD | `pipeline_templates`, `pipelines`, `pipeline_deployments` | 파이프라인 정의/실행 |
 | Observability | `alert_rules`, `alerts` | 규칙/이력 |
@@ -838,6 +839,11 @@ flowchart LR
 - 현재 설정: `stacks`
 - 버전 이력: `stack_config_versions`
 - 배포 로그: `deployment_logs` + `PostgresStreamer`(live fan-out + replay)
+
+#### 삭제 정책
+
+- `DELETE /api/v1/stacks/:id`는 `stacks.deleted_at`을 설정하는 soft delete로 동작한다.
+- soft delete된 스택은 목록/조회에서 제외되며, `stack_config_versions` 이력은 보존된다.
 
 #### 현재 제약
 
