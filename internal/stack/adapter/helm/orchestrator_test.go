@@ -214,6 +214,75 @@ func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 	assert.Equal(t, "8Gi", runnerLimits["memory"])
 }
 
+func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsWebserviceAndSidekiqForStartup(t *testing.T) {
+	installer := &mockInstaller{}
+	resourceRepo := &mockResourceDefaultRepo{items: []*domain.ResourceDefault{{
+		ToolKey:         "gitlab-ce",
+		CPURequest:      8.8,
+		CPULimit:        17.6,
+		MemoryRequestGi: 19.2,
+		MemoryLimitGi:   38.4,
+	}}}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus", WithResourceDefaultRepository(resourceRepo))
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{SourceRepository: domain.ToolSelection{Enabled: true}},
+	})
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_metrics_server", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_postgresql", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_minio", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_object_storage_secret", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_gitlab", "B"))
+
+	gitlabValues := installer.valuesByRelease["gitlab"]
+	require.NotNil(t, gitlabValues)
+
+	gitlabMap, ok := gitlabValues["gitlab"].(map[string]any)
+	require.True(t, ok)
+
+	webservice, ok := gitlabMap["webservice"].(map[string]any)
+	require.True(t, ok)
+	webResources, ok := webservice["resources"].(map[string]any)
+	require.True(t, ok)
+	webReq, ok := webResources["requests"].(map[string]any)
+	require.True(t, ok)
+	webLim, ok := webResources["limits"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "1", webReq["cpu"])
+	assert.Equal(t, "2Gi", webReq["memory"])
+	assert.Equal(t, "2", webLim["cpu"])
+	assert.Equal(t, "4Gi", webLim["memory"])
+
+	sidekiq, ok := gitlabMap["sidekiq"].(map[string]any)
+	require.True(t, ok)
+	sidekiqResources, ok := sidekiq["resources"].(map[string]any)
+	require.True(t, ok)
+	sidekiqReq, ok := sidekiqResources["requests"].(map[string]any)
+	require.True(t, ok)
+	sidekiqLim, ok := sidekiqResources["limits"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "800m", sidekiqReq["cpu"])
+	assert.Equal(t, "1.5Gi", sidekiqReq["memory"])
+	assert.Equal(t, "1600m", sidekiqLim["cpu"])
+	assert.Equal(t, "3Gi", sidekiqLim["memory"])
+
+	redis, ok := gitlabValues["redis"].(map[string]any)
+	require.True(t, ok)
+	redisMaster, ok := redis["master"].(map[string]any)
+	require.True(t, ok)
+	redisResources, ok := redisMaster["resources"].(map[string]any)
+	require.True(t, ok)
+	redisReq, ok := redisResources["requests"].(map[string]any)
+	require.True(t, ok)
+	redisLim, ok := redisResources["limits"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "500m", redisReq["cpu"])
+	assert.Equal(t, "1Gi", redisReq["memory"])
+	assert.Equal(t, "1", redisLim["cpu"])
+	assert.Equal(t, "2Gi", redisLim["memory"])
+}
+
 func TestOrchestrator_ExecuteStep_UnknownStepReturnsError(t *testing.T) {
 	installer := &mockInstaller{}
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")

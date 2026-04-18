@@ -24,6 +24,8 @@ const (
 	defaultInternalCAIssuer          = "nullus-internal-ca-issuer"
 	defaultInternalCASecretName      = "nullus-internal-ca"
 	defaultInternalCACertName        = "nullus-internal-ca-cert"
+	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
+	defaultEnvoyDataPlaneTLSSecret   = "envoy"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
 )
 
@@ -397,6 +399,15 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 
 	if step == "integration_check" {
+		if looksLikeKubeconfig(o.kubeconfig) {
+			targetNamespace := strings.TrimSpace(o.namespace)
+			if targetNamespace == "" {
+				targetNamespace = "nullus"
+			}
+			if err := o.tryReconcileGatewayDataPlaneTLSSecret(ctx, targetNamespace); err != nil {
+				return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
+			}
+		}
 		o.markCompleted(stackID, order)
 		return nil
 	}
@@ -509,9 +520,17 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 	if step == "installing_gateway" {
 		if looksLikeKubeconfig(o.kubeconfig) {
+			if err := o.tryReconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
+				return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
+			}
 			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
 				return fmt.Errorf("apply default gatewayclass manifest: %w", err)
 			}
+		}
+	}
+	if step == "installing_route" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.tryReconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
+			return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
 		}
 	}
 	if step == "installing_gateway" && hasManifest {
@@ -1027,6 +1046,36 @@ func (o *Orchestrator) runKubectl(ctx context.Context, args ...string) ([]byte, 
 	return output, nil
 }
 
+func (o *Orchestrator) waitForKubectlGet(ctx context.Context, args ...string) error {
+	const (
+		maxAttempts = 60
+		retryDelay  = 2 * time.Second
+	)
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if _, err := o.runKubectl(ctx, append([]string{"get"}, args...)...); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if attempt == maxAttempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryDelay):
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("kubectl get %s failed", strings.Join(args, " "))
+	}
+	return lastErr
+}
+
 func (o *Orchestrator) ensureGatewayAPICRDs(ctx context.Context) error {
 	if _, err := o.runKubectl(ctx, "get", "crd", "gatewayclasses.gateway.networking.k8s.io"); err == nil {
 		return nil
@@ -1051,6 +1100,188 @@ func (o *Orchestrator) filterOptionalGatewayPolicies(ctx context.Context, manife
 	return filterGatewayManifestDocuments(manifest, func(apiVersion, kind string) bool {
 		return strings.HasPrefix(apiVersion, "gateway.networking.k8s.io/") && kind == "BackendTLSPolicy"
 	})
+}
+
+func (o *Orchestrator) reconcileGatewayDataPlaneTLSSecret(ctx context.Context, namespace string) error {
+	if strings.TrimSpace(namespace) == "" {
+		namespace = "nullus"
+	}
+	if err := o.waitForKubectlGet(ctx, "-n", namespace, "secret/"+defaultEnvoyControlPlaneSecret); err != nil {
+		return err
+	}
+
+	caCRT, err := o.secretDataField(ctx, namespace, defaultEnvoyControlPlaneSecret, "ca.crt")
+	if err != nil {
+		return err
+	}
+	tlsCRT, err := o.secretDataField(ctx, namespace, defaultEnvoyControlPlaneSecret, "tls.crt")
+	if err != nil {
+		return err
+	}
+	tlsKey, err := o.secretDataField(ctx, namespace, defaultEnvoyControlPlaneSecret, "tls.key")
+	if err != nil {
+		return err
+	}
+
+	matches, err := o.secretDataMatches(ctx, namespace, defaultEnvoyDataPlaneTLSSecret, map[string]string{
+		"ca.crt":  caCRT,
+		"tls.crt": tlsCRT,
+		"tls.key": tlsKey,
+	})
+	if err != nil {
+		matches = false
+	}
+
+	secretManifest := fmt.Sprintf(`apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    control-plane: envoy-gateway
+type: kubernetes.io/tls
+data:
+  ca.crt: %s
+  tls.crt: %s
+  tls.key: %s
+`, defaultEnvoyDataPlaneTLSSecret, namespace, caCRT, tlsCRT, tlsKey)
+
+	if err := o.applyManifest(ctx, namespace, secretManifest); err != nil {
+		return err
+	}
+
+	if !matches {
+		_, _ = o.runKubectl(ctx, "delete", "pod", "-n", namespace, "-l", "app.kubernetes.io/name=envoy", "--ignore-not-found=true")
+	}
+
+	return nil
+}
+
+func (o *Orchestrator) tryReconcileGatewayDataPlaneTLSSecret(ctx context.Context, namespace string) error {
+	if strings.TrimSpace(namespace) == "" {
+		namespace = "nullus"
+	}
+	if _, err := o.runKubectl(ctx, "get", "secret", defaultEnvoyControlPlaneSecret, "-n", namespace, "-o", "name"); err != nil {
+		return nil
+	}
+	return o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace)
+}
+
+func (o *Orchestrator) secretDataField(ctx context.Context, namespace, secretName, key string) (string, error) {
+	jsonPath := fmt.Sprintf("jsonpath={.data.%s}", strings.ReplaceAll(key, ".", `\\.`))
+	output, err := o.runKubectl(ctx, "get", "secret", secretName, "-n", namespace, "-o", jsonPath)
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(string(output))
+	if value == "" {
+		return "", fmt.Errorf("secret %s/%s missing data key %s", namespace, secretName, key)
+	}
+	return value, nil
+}
+
+func (o *Orchestrator) secretDataMatches(ctx context.Context, namespace, secretName string, expected map[string]string) (bool, error) {
+	if len(expected) == 0 {
+		return true, nil
+	}
+	for key, expectedValue := range expected {
+		actual, err := o.secretDataField(ctx, namespace, secretName, key)
+		if err != nil {
+			return false, err
+		}
+		if actual != strings.TrimSpace(expectedValue) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func normalizeGatewayBackendServiceAliases(manifest string) (string, bool, error) {
+	aliasByService := map[string]string{
+		"grafana-svc":    "grafana",
+		"prometheus-svc": "kube-prometheus-stack-prometheus",
+	}
+
+	decoder := yaml.NewDecoder(strings.NewReader(manifest))
+	docs := make([]string, 0)
+	normalizedAny := false
+
+	for {
+		var doc any
+		if err := decoder.Decode(&doc); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", false, err
+		}
+		if doc == nil {
+			continue
+		}
+
+		apiVersion := yamlDocumentStringField(doc, "apiVersion")
+		kind := yamlDocumentStringField(doc, "kind")
+		if strings.HasPrefix(apiVersion, "gateway.networking.k8s.io/") && kind == "HTTPRoute" {
+			if normalizeHTTPRouteBackendRefs(doc, aliasByService) {
+				normalizedAny = true
+			}
+		}
+
+		encoded, err := yaml.Marshal(doc)
+		if err != nil {
+			return "", false, err
+		}
+		trimmed := strings.TrimSpace(string(encoded))
+		if trimmed != "" {
+			docs = append(docs, trimmed)
+		}
+	}
+
+	return strings.Join(docs, "\n---\n"), normalizedAny, nil
+}
+
+func normalizeHTTPRouteBackendRefs(doc any, aliasByService map[string]string) bool {
+	root, ok := doc.(map[string]any)
+	if !ok {
+		return false
+	}
+	spec, ok := root["spec"].(map[string]any)
+	if !ok {
+		return false
+	}
+	rules, ok := spec["rules"].([]any)
+	if !ok {
+		return false
+	}
+
+	normalized := false
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok {
+			continue
+		}
+		backendRefs, ok := rule["backendRefs"].([]any)
+		if !ok {
+			continue
+		}
+		for _, rawBackendRef := range backendRefs {
+			backendRef, ok := rawBackendRef.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, ok := backendRef["name"].(string)
+			if !ok {
+				continue
+			}
+			replacement, ok := aliasByService[strings.TrimSpace(name)]
+			if !ok {
+				continue
+			}
+			backendRef["name"] = replacement
+			normalized = true
+		}
+	}
+
+	return normalized
 }
 
 func filterGatewayManifestDocuments(manifest string, skip func(apiVersion, kind string) bool) (string, bool, error) {
@@ -1241,59 +1472,126 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		return toK8sResourceValues(scaleResourceDefault(item, ratio))
 	}
 	webScaled := func() map[string]any {
-		v := scaleResourceDefault(item, 0.22)
+		v := scaleResourceDefault(item, 0.12)
 		if v == nil {
 			return map[string]any{}
 		}
 		if v.CPURequest < 0.4 {
 			v.CPURequest = 0.4
 		}
+		if v.CPURequest > 1.0 {
+			v.CPURequest = 1.0
+		}
 		if v.CPULimit < 0.8 {
 			v.CPULimit = 0.8
+		}
+		if v.CPULimit > 2.0 {
+			v.CPULimit = 2.0
 		}
 		if v.MemoryRequestGi < 1 {
 			v.MemoryRequestGi = 1
 		}
+		if v.MemoryRequestGi > 2 {
+			v.MemoryRequestGi = 2
+		}
 		if v.MemoryLimitGi < 2 {
 			v.MemoryLimitGi = 2
+		}
+		if v.MemoryLimitGi > 4 {
+			v.MemoryLimitGi = 4
 		}
 		return toK8sResourceValues(v)
 	}
 	sidekiqScaled := func() map[string]any {
-		v := scaleResourceDefault(item, 0.18)
+		v := scaleResourceDefault(item, 0.10)
 		if v == nil {
 			return map[string]any{}
 		}
 		if v.CPURequest < 0.35 {
 			v.CPURequest = 0.35
 		}
+		if v.CPURequest > 0.8 {
+			v.CPURequest = 0.8
+		}
 		if v.CPULimit < 0.7 {
 			v.CPULimit = 0.7
+		}
+		if v.CPULimit > 1.6 {
+			v.CPULimit = 1.6
 		}
 		if v.MemoryRequestGi < 1 {
 			v.MemoryRequestGi = 1
 		}
+		if v.MemoryRequestGi > 1.5 {
+			v.MemoryRequestGi = 1.5
+		}
 		if v.MemoryLimitGi < 2 {
 			v.MemoryLimitGi = 2
+		}
+		if v.MemoryLimitGi > 3 {
+			v.MemoryLimitGi = 3
+		}
+		return toK8sResourceValues(v)
+	}
+	redisMasterScaled := func() map[string]any {
+		v := scaleResourceDefault(item, 0.06)
+		if v == nil {
+			return map[string]any{}
+		}
+		if v.CPURequest < 0.2 {
+			v.CPURequest = 0.2
+		}
+		if v.CPURequest > 0.5 {
+			v.CPURequest = 0.5
+		}
+		if v.CPULimit < 0.4 {
+			v.CPULimit = 0.4
+		}
+		if v.CPULimit > 1.0 {
+			v.CPULimit = 1.0
+		}
+		if v.MemoryRequestGi < 0.5 {
+			v.MemoryRequestGi = 0.5
+		}
+		if v.MemoryRequestGi > 1.0 {
+			v.MemoryRequestGi = 1.0
+		}
+		if v.MemoryLimitGi < 1.0 {
+			v.MemoryLimitGi = 1.0
+		}
+		if v.MemoryLimitGi > 2.0 {
+			v.MemoryLimitGi = 2.0
 		}
 		return toK8sResourceValues(v)
 	}
 	toolboxScaled := func() map[string]any {
-		v := scaleResourceDefault(item, 0.08)
+		v := scaleResourceDefault(item, 0.05)
 		if v == nil {
 			return map[string]any{}
 		}
 		if v.CPURequest < 0.25 {
 			v.CPURequest = 0.25
 		}
+		if v.CPURequest > 0.5 {
+			v.CPURequest = 0.5
+		}
 		if v.CPULimit < 0.50 {
 			v.CPULimit = 0.50
+		}
+		if v.CPULimit > 1.0 {
+			v.CPULimit = 1.0
 		}
 		if v.MemoryRequestGi < 1 {
 			v.MemoryRequestGi = 1
 		}
+		if v.MemoryRequestGi > 1.5 {
+			v.MemoryRequestGi = 1.5
+		}
 		if v.MemoryLimitGi < 2 {
 			v.MemoryLimitGi = 2
+		}
+		if v.MemoryLimitGi > 3 {
+			v.MemoryLimitGi = 3
 		}
 		return toK8sResourceValues(v)
 	}
@@ -1321,7 +1619,7 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 				"resources": scaled(0.12),
 			},
 			"redis": map[string]any{
-				"master": map[string]any{"resources": scaled(0.12)},
+				"master": map[string]any{"resources": redisMasterScaled()},
 			},
 			"prometheus": map[string]any{
 				"server": map[string]any{"resources": scaled(0.08)},

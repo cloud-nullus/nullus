@@ -396,9 +396,6 @@ func (uc *DeleteStack) collectGatewayNames(ctx context.Context, kubeconfig []byt
 				if name == "" {
 					continue
 				}
-				if stack.Name != "" && !strings.Contains(name, stack.Name) {
-					continue
-				}
 				set[name] = struct{}{}
 			}
 		}
@@ -458,7 +455,7 @@ func parseGatewayNamesFromManifest(manifest string) []string {
 	return names
 }
 
-func parseGatewayNamesFromManagedResourceJSON(raw string, stackName string) []string {
+func parseGatewayNamesFromManagedResourceJSON(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return nil
@@ -476,7 +473,6 @@ func parseGatewayNamesFromManagedResourceJSON(raw string, stackName string) []st
 		return nil
 	}
 
-	stackName = strings.ToLower(strings.TrimSpace(stackName))
 	set := make(map[string]struct{})
 	for _, item := range payload.Items {
 		labels := item.Metadata.Labels
@@ -485,9 +481,6 @@ func parseGatewayNamesFromManagedResourceJSON(raw string, stackName string) []st
 		}
 		gatewayName := strings.TrimSpace(labels["gateway.envoyproxy.io/owning-gateway-name"])
 		if gatewayName == "" {
-			continue
-		}
-		if stackName != "" && !strings.Contains(strings.ToLower(gatewayName), stackName) {
 			continue
 		}
 		set[gatewayName] = struct{}{}
@@ -518,7 +511,7 @@ func (uc *DeleteStack) collectGatewayNamesFromManagedResources(ctx context.Conte
 		if err != nil {
 			continue
 		}
-		for _, name := range parseGatewayNamesFromManagedResourceJSON(output, stack.Name) {
+		for _, name := range parseGatewayNamesFromManagedResourceJSON(output) {
 			set[name] = struct{}{}
 		}
 	}
