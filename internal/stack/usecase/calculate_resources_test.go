@@ -150,3 +150,21 @@ func TestCalculateResources_ArtifactStorageFromCommits(t *testing.T) {
 	assert.Greater(t, highCommits.Summary.StorageGi, lowCommits.Summary.StorageGi,
 		"more weekly commits should result in more storage")
 }
+
+func TestCalculateResources_UsesRaisedStartupBaselines(t *testing.T) {
+	uc := NewCalculateResources()
+
+	out, err := uc.Execute(context.Background(), EstimateResourcesInput{
+		Tools: []ToolInstance{{Name: "cert-manager", Instances: 1}, {Name: "minio", Instances: 1}},
+		Workload: WorkloadInput{
+			Developers: 1, ConcurrentRunners: 1, WeeklyCommits: 1, BuildFrequency: "on-push",
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, out.PerTool, 2)
+
+	assert.Equal(t, 0.51, out.PerTool[0].CPUCores)
+	assert.Equal(t, 0.51, out.PerTool[0].MemoryGi)
+	assert.Equal(t, 1.01, out.PerTool[1].CPUCores)
+	assert.Equal(t, 2.02, out.PerTool[1].MemoryGi)
+}

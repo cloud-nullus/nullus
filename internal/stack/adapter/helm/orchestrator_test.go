@@ -326,20 +326,102 @@ func TestOrchestrator_ExecuteStep_ReusesExistingCertManagerInstallation(t *testi
 	orch := NewOrchestrator(installer, []byte("apiVersion: v1\nclusters:\n- name: test\n"), "nullus")
 
 	originalCheck := checkExistingCertManagerInstallation
+	originalWait := waitForCertManagerInstallation
 	originalBootstrap := bootstrapInternalCAInstallation
 	checkExistingCertManagerInstallation = func(_ context.Context, _ *Orchestrator) (bool, error) {
 		return true, nil
+	}
+	waitCalled := false
+	waitForCertManagerInstallation = func(_ context.Context, _ *Orchestrator) error {
+		waitCalled = true
+		return nil
 	}
 	bootstrapInternalCAInstallation = func(_ context.Context, _ *Orchestrator, _ string) error {
 		return nil
 	}
 	defer func() {
 		checkExistingCertManagerInstallation = originalCheck
+		waitForCertManagerInstallation = originalWait
 		bootstrapInternalCAInstallation = originalBootstrap
 	}()
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_reuse_cert_manager", "installing_cert_manager", "A"))
 	assert.Empty(t, installer.installed)
+	assert.True(t, waitCalled)
+}
+
+func TestOrchestrator_ExecuteStep_WaitsForCertManagerReadinessAfterInstall(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("apiVersion: v1\nclusters:\n- name: test\n"), "nullus")
+
+	originalCheck := checkExistingCertManagerInstallation
+	originalWait := waitForCertManagerInstallation
+	originalBootstrap := bootstrapInternalCAInstallation
+	checkExistingCertManagerInstallation = func(_ context.Context, _ *Orchestrator) (bool, error) {
+		return false, nil
+	}
+	callOrder := make([]string, 0, 2)
+	waitForCertManagerInstallation = func(_ context.Context, _ *Orchestrator) error {
+		callOrder = append(callOrder, "wait")
+		return nil
+	}
+	bootstrapInternalCAInstallation = func(_ context.Context, _ *Orchestrator, _ string) error {
+		callOrder = append(callOrder, "bootstrap")
+		return nil
+	}
+	t.Cleanup(func() {
+		checkExistingCertManagerInstallation = originalCheck
+		waitForCertManagerInstallation = originalWait
+		bootstrapInternalCAInstallation = originalBootstrap
+	})
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_cert_manager_wait", "installing_cert_manager", "A"))
+	assert.Equal(t, []string{"wait", "bootstrap"}, callOrder)
+	assert.Equal(t, []string{"cert-manager"}, installer.installed)
+}
+
+func TestOrchestrator_RollbackDeployment_UninstallsTrackedReleases(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.rollback.Push("cert-manager")
+	orch.rollback.Push("nullus-minio")
+	orch.rollback.Push("gitlab")
+
+	require.NoError(t, orch.RollbackDeployment(context.Background(), "stk_rollback"))
+	assert.Equal(t, []string{"gitlab", "nullus-minio", "cert-manager"}, installer.uninstalled)
+}
+
+func TestOrchestrator_ResourceDefaultsApplyToCertManagerWebhookAndCainjector(t *testing.T) {
+	installer := &mockInstaller{}
+	resourceRepo := &mockResourceDefaultRepo{items: []*domain.ResourceDefault{{
+		ToolKey:         "cert-manager",
+		CPURequest:      0.5,
+		CPULimit:        1.0,
+		MemoryRequestGi: 0.5,
+		MemoryLimitGi:   1.0,
+	}}}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus", WithResourceDefaultRepository(resourceRepo))
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_cert_manager_resources", "installing_cert_manager", "A"))
+
+	values := installer.valuesByRelease["cert-manager"]
+	require.NotNil(t, values)
+
+	webhook, ok := values["webhook"].(map[string]any)
+	require.True(t, ok)
+	webhookResources, ok := webhook["resources"].(map[string]any)
+	require.True(t, ok)
+
+	cainjector, ok := values["cainjector"].(map[string]any)
+	require.True(t, ok)
+	cainjectorResources, ok := cainjector["resources"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, webhookResources, cainjectorResources)
+	requests, ok := webhookResources["requests"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "500m", requests["cpu"])
+	assert.Equal(t, "0.5Gi", requests["memory"])
 }
 
 func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
@@ -402,6 +484,46 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 	err := orch.VerifyDeployment(context.Background(), "stk_verify_fail")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not healthy")
+}
+
+func TestOrchestrator_VerifyDeployment_InvokesRuntimeReadinessChecks(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("apiVersion: v1\nclusters:\n- name: kind\n"), "nullus")
+
+	originalVerify := verifyReleaseRuntimeReadiness
+	var checked []string
+	verifyReleaseRuntimeReadiness = func(_ context.Context, _ *Orchestrator, step, releaseName, namespace string) error {
+		checked = append(checked, step+"@"+releaseName+"@"+namespace)
+		return nil
+	}
+	t.Cleanup(func() {
+		verifyReleaseRuntimeReadiness = originalVerify
+	})
+
+	require.NoError(t, orch.VerifyDeployment(context.Background(), "stk_verify_runtime"))
+	assert.Contains(t, checked, "installing_gitlab@gitlab@nullus")
+	assert.Contains(t, checked, "installing_cert_manager@cert-manager@nullus")
+}
+
+func TestOrchestrator_VerifyDeployment_FailsWhenRuntimeReadinessFails(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("apiVersion: v1\nclusters:\n- name: kind\n"), "nullus")
+
+	originalVerify := verifyReleaseRuntimeReadiness
+	verifyReleaseRuntimeReadiness = func(_ context.Context, _ *Orchestrator, step, releaseName, namespace string) error {
+		if step == "installing_cert_manager" {
+			return fmt.Errorf("pod cert-manager-webhook-abc container webhook not ready")
+		}
+		return nil
+	}
+	t.Cleanup(func() {
+		verifyReleaseRuntimeReadiness = originalVerify
+	})
+
+	err := orch.VerifyDeployment(context.Background(), "stk_verify_runtime_fail")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runtime readiness failed")
+	assert.Contains(t, err.Error(), "not ready")
 }
 
 func TestOrchestrator_VerifyDeployment_RepairsMissingGatewayRelease(t *testing.T) {
@@ -588,7 +710,7 @@ func TestOrchestrator_InternalCAManifest_Defaults(t *testing.T) {
 	assert.Contains(t, manifest, "namespace: nullus")
 }
 
-func TestOrchestrator_InternalCAManifest_UsesTLSOverrides(t *testing.T) {
+func TestOrchestrator_InternalCAManifest_DoesNotReuseAccessDomainTLSOverrides(t *testing.T) {
 	orch := NewOrchestrator(&mockInstaller{}, []byte("apiVersion: v1\nclusters:\n- name: kind\n"), "nullus")
 	orch.SetStackConfig(domain.StackConfig{
 		AccessDomainTLS: &domain.AccessDomainTLSConfig{
@@ -599,9 +721,11 @@ func TestOrchestrator_InternalCAManifest_UsesTLSOverrides(t *testing.T) {
 	})
 
 	manifest := orch.internalCAManifest("nullus")
-	assert.Contains(t, manifest, "name: corp-offline-ca")
-	assert.Contains(t, manifest, "secretName: corp-ca-secret")
-	assert.Contains(t, manifest, "name: corp-ca-secret-cert")
+	assert.Contains(t, manifest, "name: nullus-internal-ca-issuer")
+	assert.Contains(t, manifest, "secretName: nullus-internal-ca")
+	assert.Contains(t, manifest, "name: nullus-internal-ca-cert")
+	assert.NotContains(t, manifest, "corp-offline-ca")
+	assert.NotContains(t, manifest, "corp-ca-secret")
 }
 
 func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
@@ -812,6 +936,42 @@ metadata:
 	assert.False(t, skipped)
 	assert.Contains(t, filtered, "kind: Gateway")
 	assert.True(t, bytes.Contains([]byte(filtered), []byte("sample-gateway")))
+}
+
+func TestNormalizeGatewayBackendServiceAliases_RewritesLegacyServiceNames(t *testing.T) {
+	manifest := `apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sample-route
+spec:
+  rules:
+    - backendRefs:
+        - name: grafana-svc
+          port: 80
+        - name: prometheus-svc
+          port: 9090
+`
+
+	normalized, changed, err := normalizeGatewayBackendServiceAliases(manifest)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.Contains(t, normalized, "name: grafana")
+	assert.Contains(t, normalized, "name: kube-prometheus-stack-prometheus")
+	assert.NotContains(t, normalized, "name: grafana-svc")
+	assert.NotContains(t, normalized, "name: prometheus-svc")
+}
+
+func TestNormalizeGatewayBackendServiceAliases_IgnoresNonHTTPRouteDocs(t *testing.T) {
+	manifest := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sample
+`
+
+	normalized, changed, err := normalizeGatewayBackendServiceAliases(manifest)
+	require.NoError(t, err)
+	assert.False(t, changed)
+	assert.Contains(t, normalized, "kind: ConfigMap")
 }
 
 func TestParseGitLabRunnerRegistrationTokenOutput(t *testing.T) {

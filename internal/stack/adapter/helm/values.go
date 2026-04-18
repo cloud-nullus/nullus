@@ -5,12 +5,56 @@ func DefaultValues(stepName string) map[string]any {
 	case "installing_cert_manager":
 		return map[string]any{
 			"installCRDs": true,
+			"resources": map[string]any{
+				"requests": map[string]any{
+					"cpu":    "500m",
+					"memory": "512Mi",
+				},
+				"limits": map[string]any{
+					"cpu":    "1",
+					"memory": "1Gi",
+				},
+			},
+			"webhook": map[string]any{
+				"resources": map[string]any{
+					"requests": map[string]any{
+						"cpu":    "250m",
+						"memory": "256Mi",
+					},
+					"limits": map[string]any{
+						"cpu":    "500m",
+						"memory": "512Mi",
+					},
+				},
+			},
+			"cainjector": map[string]any{
+				"resources": map[string]any{
+					"requests": map[string]any{
+						"cpu":    "250m",
+						"memory": "256Mi",
+					},
+					"limits": map[string]any{
+						"cpu":    "500m",
+						"memory": "512Mi",
+					},
+				},
+			},
 		}
 	case "installing_metrics_server":
 		return map[string]any{
 			"args": []string{
 				"--kubelet-insecure-tls",
 				"--kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP",
+			},
+			"resources": map[string]any{
+				"requests": map[string]any{
+					"cpu":    "250m",
+					"memory": "256Mi",
+				},
+				"limits": map[string]any{
+					"cpu":    "500m",
+					"memory": "512Mi",
+				},
 			},
 		}
 	case "installing_postgresql":
@@ -23,6 +67,16 @@ func DefaultValues(stepName string) map[string]any {
 				"postgresPassword": "nullus-postgres-admin",
 			},
 			"primary": map[string]any{
+				"resources": map[string]any{
+					"requests": map[string]any{
+						"cpu":    "1",
+						"memory": "2Gi",
+					},
+					"limits": map[string]any{
+						"cpu":    "2",
+						"memory": "4Gi",
+					},
+				},
 				"persistence": map[string]any{
 					"enabled": true,
 					"size":    "20Gi",
@@ -42,7 +96,12 @@ func DefaultValues(stepName string) map[string]any {
 			},
 			"resources": map[string]any{
 				"requests": map[string]any{
+					"cpu":    "500m",
 					"memory": "512Mi",
+				},
+				"limits": map[string]any{
+					"cpu":    "1",
+					"memory": "2Gi",
 				},
 			},
 		}
@@ -69,6 +128,7 @@ func DefaultValues(stepName string) map[string]any {
 				},
 				"hosts": map[string]any{
 					"domain": "nullus.internal",
+					"https":  false,
 				},
 				"ingress": map[string]any{
 					"enabled":              false,

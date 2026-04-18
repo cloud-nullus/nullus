@@ -24,14 +24,20 @@ const (
 	defaultInternalCAIssuer          = "nullus-internal-ca-issuer"
 	defaultInternalCASecretName      = "nullus-internal-ca"
 	defaultInternalCACertName        = "nullus-internal-ca-cert"
-	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	defaultEnvoyDataPlaneTLSSecret   = "envoy"
+	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
 )
 
 var installGatewayOCIRelease = installOCIChartWithHelmCLI
 var bootstrapInternalCAInstallation = func(ctx context.Context, o *Orchestrator, namespace string) error {
 	return o.bootstrapInternalCA(ctx, namespace)
+}
+var waitForCertManagerInstallation = func(ctx context.Context, o *Orchestrator) error {
+	return o.waitForCertManagerInstallation(ctx)
+}
+var verifyReleaseRuntimeReadiness = func(ctx context.Context, o *Orchestrator, step, releaseName, namespace string) error {
+	return o.verifyReleaseRuntimeReadiness(ctx, step, releaseName, namespace)
 }
 var checkExistingCertManagerInstallation = func(ctx context.Context, o *Orchestrator) (bool, error) {
 	if !looksLikeKubeconfig(o.kubeconfig) {
@@ -135,8 +141,55 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 		if !strings.EqualFold(status.Status, "deployed") {
 			return fmt.Errorf("release %s is not healthy: status=%s", releaseName, status.Status)
 		}
+		if err := verifyReleaseRuntimeReadiness(ctx, o, step, releaseName, namespace); err != nil {
+			return fmt.Errorf("runtime readiness failed for %s: %w", releaseName, err)
+		}
 	}
 
+	return nil
+}
+
+func (o *Orchestrator) RollbackDeployment(ctx context.Context, stackID string) error {
+	_ = stackID
+	return o.rollback.RollbackAll(ctx, o.installer, o.namespace)
+}
+
+func (o *Orchestrator) verifyReleaseRuntimeReadiness(ctx context.Context, step, releaseName, namespace string) error {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+
+	if err := o.waitForReleaseRollouts(ctx, releaseName, namespace); err != nil {
+		return err
+	}
+
+	snapshot, err := o.releasePodSnapshot(ctx, releaseName, namespace)
+	if err != nil {
+		return err
+	}
+	if len(snapshot.Items) == 0 {
+		return fmt.Errorf("no pods found for release %s in namespace %s", releaseName, namespace)
+	}
+
+	for _, pod := range snapshot.Items {
+		phase := strings.TrimSpace(strings.ToLower(pod.Status.Phase))
+		if phase == "succeeded" {
+			continue
+		}
+		if phase != "running" {
+			return fmt.Errorf("pod %s phase=%s", pod.Metadata.Name, strings.TrimSpace(pod.Status.Phase))
+		}
+		if len(pod.Status.ContainerStatuses) == 0 {
+			return fmt.Errorf("pod %s has no container status yet", pod.Metadata.Name)
+		}
+		for _, container := range pod.Status.ContainerStatuses {
+			if !container.Ready {
+				return fmt.Errorf("pod %s container %s not ready", pod.Metadata.Name, container.Name)
+			}
+		}
+	}
+
+	_ = step
 	return nil
 }
 
@@ -460,6 +513,9 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		}
 		if installed {
 			slog.Info("reusing existing cert-manager installation", "namespace", namespace)
+			if err := waitForCertManagerInstallation(ctx, o); err != nil {
+				return fmt.Errorf("wait for cert-manager readiness: %w", err)
+			}
 			if err := bootstrapInternalCAInstallation(ctx, o, namespace); err != nil {
 				return fmt.Errorf("bootstrap internal ca: %w", err)
 			}
@@ -478,12 +534,12 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		if looksLikeKubeconfig(o.kubeconfig) {
 			runnerToken, tokenErr := o.discoverGitLabRunnerRegistrationToken(ctx, namespace)
 			if tokenErr != nil {
-				slog.Warn("gitlab runner installation skipped: registration token discovery failed", "namespace", namespace, "error", tokenErr)
+				slog.Warn("gitlab runner installation skipped: runner token discovery failed", "namespace", namespace, "error", tokenErr)
 				o.markCompleted(stackID, order)
 				return nil
 			}
 			values = mergeMaps(values, map[string]any{
-				"runnerRegistrationToken": runnerToken,
+				"runnerToken": runnerToken,
 			})
 		} else {
 			slog.Warn("kubeconfig unavailable; skipping gitlab runner token discovery", "namespace", namespace)
@@ -514,13 +570,16 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		o.rollback.Push(result.ReleaseName)
 	}
 	if step == "installing_cert_manager" {
+		if err := waitForCertManagerInstallation(ctx, o); err != nil {
+			return fmt.Errorf("wait for cert-manager readiness: %w", err)
+		}
 		if err := bootstrapInternalCAInstallation(ctx, o, namespace); err != nil {
 			return fmt.Errorf("bootstrap internal ca: %w", err)
 		}
 	}
 	if step == "installing_gateway" {
 		if looksLikeKubeconfig(o.kubeconfig) {
-			if err := o.tryReconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
+			if err := o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
 				return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
 			}
 			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
@@ -547,6 +606,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 				slog.Warn("skipping BackendTLSPolicy manifest because the CRD is unavailable", "namespace", manifestNamespace)
 			}
 			manifest = filteredManifest
+			normalizedManifest, normalizedAny, normalizeErr := normalizeGatewayBackendServiceAliases(manifest)
+			if normalizeErr != nil {
+				return fmt.Errorf("normalize gateway backend aliases: %w", normalizeErr)
+			}
+			if normalizedAny {
+				slog.Warn("normalized gateway backend service aliases to installed service names", "namespace", manifestNamespace)
+			}
+			manifest = normalizedManifest
 			hasManifest = strings.TrimSpace(manifest) != ""
 		}
 		if err := o.applyManifest(ctx, manifestNamespace, manifest); err != nil {
@@ -690,19 +757,9 @@ func (o *Orchestrator) StepRuntimeLogs(ctx context.Context, stackID, step string
 		return nil, nil
 	}
 
-	output, err := o.runKubectl(ctx,
-		"get", "pods",
-		"-n", namespace,
-		"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
-		"-o", "json",
-	)
+	snapshot, err := o.releasePodSnapshot(ctx, releaseName, namespace)
 	if err != nil {
 		return nil, []string{fmt.Sprintf("pod snapshot unavailable for release %s: %v", releaseName, err)}
-	}
-
-	var snapshot podListSnapshot
-	if err := json.Unmarshal(output, &snapshot); err != nil {
-		return nil, []string{fmt.Sprintf("pod snapshot parse failed for release %s: %v", releaseName, err)}
 	}
 
 	if len(snapshot.Items) == 0 {
@@ -738,6 +795,50 @@ func (o *Orchestrator) StepRuntimeLogs(ctx context.Context, stackID, step string
 	return infos, nil
 }
 
+func (o *Orchestrator) releasePodSnapshot(ctx context.Context, releaseName, namespace string) (*podListSnapshot, error) {
+	output, err := o.runKubectl(ctx,
+		"get", "pods",
+		"-n", namespace,
+		"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
+		"-o", "json",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var snapshot podListSnapshot
+	if err := json.Unmarshal(output, &snapshot); err != nil {
+		return nil, err
+	}
+	return &snapshot, nil
+}
+
+func (o *Orchestrator) waitForReleaseRollouts(ctx context.Context, releaseName, namespace string) error {
+	resources := []string{"deployments", "statefulsets", "daemonsets"}
+	for _, resourceType := range resources {
+		output, err := o.runKubectl(ctx,
+			"get", resourceType,
+			"-n", namespace,
+			"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
+			"-o", "jsonpath={range .items[*]}{.metadata.name}{"+"\n"+"}{end}",
+		)
+		if err != nil {
+			return err
+		}
+		for _, rawName := range strings.Split(string(output), "\n") {
+			name := strings.TrimSpace(rawName)
+			if name == "" {
+				continue
+			}
+			resource := strings.TrimSuffix(resourceType, "s") + "/" + name
+			if _, err := o.runKubectl(ctx, "rollout", "status", "-n", namespace, resource, "--timeout=180s"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func looksLikeKubeconfig(kubeconfig []byte) bool {
 	if len(kubeconfig) == 0 {
 		return false
@@ -765,6 +866,152 @@ func (o *Orchestrator) bootstrapInternalCA(ctx context.Context, namespace string
 	return o.applyManifest(ctx, namespace, manifest)
 }
 
+func (o *Orchestrator) waitForCertManagerInstallation(ctx context.Context) error {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+
+	requiredCRDs := []string{
+		"certificaterequests.cert-manager.io",
+		"certificates.cert-manager.io",
+		"clusterissuers.cert-manager.io",
+		"issuers.cert-manager.io",
+	}
+	for _, crd := range requiredCRDs {
+		if err := o.waitForKubectlGet(ctx, "crd", crd); err != nil {
+			return fmt.Errorf("cert-manager crd %s not ready: %w", crd, err)
+		}
+	}
+
+	deployments := []string{
+		"deployment/cert-manager",
+		"deployment/cert-manager-webhook",
+		"deployment/cert-manager-cainjector",
+	}
+	for _, deployment := range deployments {
+		if err := o.waitForKubectlGet(ctx, "-n", "cert-manager", deployment); err != nil {
+			return fmt.Errorf("cert-manager deployment %s not found: %w", deployment, err)
+		}
+		if _, err := o.runKubectl(ctx, "rollout", "status", "-n", "cert-manager", deployment, "--timeout=180s"); err != nil {
+			return fmt.Errorf("cert-manager deployment %s not ready: %w", deployment, err)
+		}
+	}
+
+	if err := o.waitForCertManagerWebhookTrust(ctx); err != nil {
+		return fmt.Errorf("cert-manager webhook trust not stabilized: %w", err)
+	}
+
+	if err := o.waitForCertManagerStartupAPICheck(ctx); err != nil {
+		return fmt.Errorf("cert-manager startup API check not complete: %w", err)
+	}
+
+	return nil
+}
+
+func (o *Orchestrator) waitForCertManagerWebhookTrust(ctx context.Context) error {
+	jsonpaths := []string{
+		"{.webhooks[0].clientConfig.caBundle}",
+		"{.webhooks[1].clientConfig.caBundle}",
+	}
+	resources := []string{
+		"mutatingwebhookconfiguration/cert-manager-webhook",
+		"validatingwebhookconfiguration/cert-manager-webhook",
+	}
+
+	for _, resource := range resources {
+		ready := false
+		for _, jsonpath := range jsonpaths {
+			if err := o.waitForKubectlNonEmptyOutput(ctx, "get", resource, "-o", "jsonpath="+jsonpath); err == nil {
+				ready = true
+				break
+			}
+		}
+		if !ready {
+			return fmt.Errorf("cabundle not injected for %s", resource)
+		}
+	}
+
+	return nil
+}
+
+func (o *Orchestrator) waitForCertManagerStartupAPICheck(ctx context.Context) error {
+	const resource = "job/cert-manager-startupapicheck"
+
+	if err := o.waitForKubectlGet(ctx, "-n", "cert-manager", resource); err != nil {
+		return err
+	}
+	if _, err := o.runKubectl(ctx, "wait", "-n", "cert-manager", "--for=condition=complete", "--timeout=180s", resource); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *Orchestrator) waitForKubectlGet(ctx context.Context, args ...string) error {
+	const (
+		maxAttempts = 30
+		retryDelay  = 2 * time.Second
+	)
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if _, err := o.runKubectl(ctx, append([]string{"get"}, args...)...); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if attempt == maxAttempts {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryDelay):
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("resource not ready")
+	}
+	return lastErr
+}
+
+func (o *Orchestrator) waitForKubectlNonEmptyOutput(ctx context.Context, args ...string) error {
+	const (
+		maxAttempts = 30
+		retryDelay  = 2 * time.Second
+	)
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		output, err := o.runKubectl(ctx, args...)
+		if err == nil && strings.TrimSpace(string(output)) != "" {
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("empty output")
+		}
+
+		if attempt == maxAttempts {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryDelay):
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("resource output not ready")
+	}
+	return lastErr
+}
+
 func (o *Orchestrator) internalCAManifest(namespace string) string {
 	issuerName := defaultInternalCAIssuer
 	secretName := defaultInternalCASecretName
@@ -776,11 +1023,7 @@ func (o *Orchestrator) internalCAManifest(namespace string) string {
 
 	if cfg != nil && cfg.AccessDomainTLS != nil {
 		if strings.TrimSpace(cfg.AccessDomainTLS.IssuerName) != "" {
-			issuerName = cfg.AccessDomainTLS.IssuerName
-		}
-		if strings.TrimSpace(cfg.AccessDomainTLS.SecretName) != "" {
-			secretName = cfg.AccessDomainTLS.SecretName
-			certName = cfg.AccessDomainTLS.SecretName + "-cert"
+			slog.Info("ignoring access-domain TLS issuer override for internal CA bootstrap", "issuer", cfg.AccessDomainTLS.IssuerName)
 		}
 	}
 
@@ -1156,7 +1399,6 @@ data:
 
 	return nil
 }
-
 func (o *Orchestrator) tryReconcileGatewayDataPlaneTLSSecret(ctx context.Context, namespace string) error {
 	if strings.TrimSpace(namespace) == "" {
 		namespace = "nullus"
@@ -1166,7 +1408,6 @@ func (o *Orchestrator) tryReconcileGatewayDataPlaneTLSSecret(ctx context.Context
 	}
 	return o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace)
 }
-
 func (o *Orchestrator) secretDataField(ctx context.Context, namespace, secretName, key string) (string, error) {
 	jsonPath := fmt.Sprintf("jsonpath={.data.%s}", strings.ReplaceAll(key, ".", `\\.`))
 	output, err := o.runKubectl(ctx, "get", "secret", secretName, "-n", namespace, "-o", jsonPath)
@@ -1600,6 +1841,12 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 	case "installing_cert_manager":
 		return map[string]any{
 			"resources": resources,
+			"webhook": map[string]any{
+				"resources": resources,
+			},
+			"cainjector": map[string]any{
+				"resources": resources,
+			},
 		}
 	case "installing_minio":
 		return map[string]any{
@@ -2327,12 +2574,26 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context
 	}
 
 	if lastErr == nil {
-		lastErr = fmt.Errorf("runner registration token discovery failed")
+		lastErr = fmt.Errorf("runner token discovery failed")
 	}
 	return "", lastErr
 }
 
 func (o *Orchestrator) discoverGitLabRunnerRegistrationTokenOnce(ctx context.Context, namespace string) (string, error) {
+	authTokenScript := `runner = Ci::Runner.where(description: "nullus-shared-runner", runner_type: :instance_type).order(id: :desc).first; runner ||= Ci::Runner.create!(description: "nullus-shared-runner", runner_type: :instance_type, run_untagged: true, locked: false); puts runner.token.to_s`
+	if token, err := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, authTokenScript); err == nil {
+		return token, nil
+	}
+
+	legacyRegistrationTokenScript := `puts ApplicationSetting.current.runners_registration_token`
+	if token, err := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, legacyRegistrationTokenScript); err == nil {
+		return token, nil
+	}
+
+	return "", fmt.Errorf("runner token not found in rails output")
+}
+
+func (o *Orchestrator) discoverGitLabRunnerTokenFromRailsRunner(ctx context.Context, namespace, script string) (string, error) {
 	if !looksLikeKubeconfig(o.kubeconfig) {
 		return "", fmt.Errorf("kubeconfig unavailable")
 	}
@@ -2350,7 +2611,7 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationTokenOnce(ctx context.Con
 		"exec", "deploy/gitlab-toolbox",
 		"-c", "toolbox",
 		"--", "bash", "-lc",
-		"gitlab-rails runner 'puts ApplicationSetting.current.runners_registration_token'",
+		fmt.Sprintf("gitlab-rails runner '%s'", script),
 	}
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
@@ -2360,7 +2621,7 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationTokenOnce(ctx context.Con
 
 	token := parseGitLabRunnerRegistrationTokenOutput(string(output))
 	if token == "" {
-		return "", fmt.Errorf("runner registration token not found in output")
+		return "", fmt.Errorf("runner token not found in output")
 	}
 
 	return token, nil
