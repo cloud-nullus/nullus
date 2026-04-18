@@ -63,16 +63,16 @@ type toolBaseline struct {
 var toolBaselineMap = map[string]toolBaseline{
 	"gitlab-ce":       {CPUCores: 4.0, MemoryGi: 8.0, StorageGi: 30.0},
 	"gitlab-runner":   {CPUCores: 2.0, MemoryGi: 4.0, StorageGi: 10.0},
-	"argocd":          {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 5.0},
+	"argocd":          {CPUCores: 2.0, MemoryGi: 3.0, StorageGi: 5.0},
 	"prometheus":      {CPUCores: 1.0, MemoryGi: 4.0, StorageGi: 20.0},
-	"grafana":         {CPUCores: 0.5, MemoryGi: 1.0, StorageGi: 5.0},
-	"minio":           {CPUCores: 0.5, MemoryGi: 1.0, StorageGi: 50.0},
-	"opentelemetry":   {CPUCores: 0.5, MemoryGi: 1.0, StorageGi: 0.0},
+	"grafana":         {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 5.0},
+	"minio":           {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 50.0},
+	"opentelemetry":   {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 0.0},
 	"opensearch":      {CPUCores: 2.0, MemoryGi: 4.0, StorageGi: 30.0},
 	"harbor":          {CPUCores: 2.0, MemoryGi: 4.0, StorageGi: 40.0},
 	"gitlab-registry": {CPUCores: 0.5, MemoryGi: 1.0, StorageGi: 20.0},
-	"cert-manager":    {CPUCores: 0.25, MemoryGi: 0.25, StorageGi: 0.0},
-	"cnpg":            {CPUCores: 0.5, MemoryGi: 1.0, StorageGi: 10.0},
+	"cert-manager":    {CPUCores: 0.5, MemoryGi: 0.5, StorageGi: 0.0},
+	"cnpg":            {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 10.0},
 }
 
 // costPerCPUPerMonth is an approximate AWS on-demand hourly rate scaled to monthly (USD).
