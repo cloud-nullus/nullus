@@ -452,6 +452,15 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 
 	if step == "integration_check" {
+		if looksLikeKubeconfig(o.kubeconfig) {
+			targetNamespace := strings.TrimSpace(o.namespace)
+			if targetNamespace == "" {
+				targetNamespace = "nullus"
+			}
+			if err := o.tryReconcileGatewayDataPlaneTLSSecret(ctx, targetNamespace); err != nil {
+				return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
+			}
+		}
 		o.markCompleted(stackID, order)
 		return nil
 	}
@@ -576,6 +585,11 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
 				return fmt.Errorf("apply default gatewayclass manifest: %w", err)
 			}
+		}
+	}
+	if step == "installing_route" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.tryReconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
+			return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
 		}
 	}
 	if step == "installing_gateway" && hasManifest {
@@ -1275,6 +1289,36 @@ func (o *Orchestrator) runKubectl(ctx context.Context, args ...string) ([]byte, 
 	return output, nil
 }
 
+func (o *Orchestrator) waitForKubectlGet(ctx context.Context, args ...string) error {
+	const (
+		maxAttempts = 60
+		retryDelay  = 2 * time.Second
+	)
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if _, err := o.runKubectl(ctx, append([]string{"get"}, args...)...); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if attempt == maxAttempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryDelay):
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("kubectl get %s failed", strings.Join(args, " "))
+	}
+	return lastErr
+}
+
 func (o *Orchestrator) ensureGatewayAPICRDs(ctx context.Context) error {
 	if _, err := o.runKubectl(ctx, "get", "crd", "gatewayclasses.gateway.networking.k8s.io"); err == nil {
 		return nil
@@ -1355,7 +1399,15 @@ data:
 
 	return nil
 }
-
+func (o *Orchestrator) tryReconcileGatewayDataPlaneTLSSecret(ctx context.Context, namespace string) error {
+	if strings.TrimSpace(namespace) == "" {
+		namespace = "nullus"
+	}
+	if _, err := o.runKubectl(ctx, "get", "secret", defaultEnvoyControlPlaneSecret, "-n", namespace, "-o", "name"); err != nil {
+		return nil
+	}
+	return o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace)
+}
 func (o *Orchestrator) secretDataField(ctx context.Context, namespace, secretName, key string) (string, error) {
 	jsonPath := fmt.Sprintf("jsonpath={.data.%s}", strings.ReplaceAll(key, ".", `\\.`))
 	output, err := o.runKubectl(ctx, "get", "secret", secretName, "-n", namespace, "-o", jsonPath)
@@ -1661,59 +1713,126 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		return toK8sResourceValues(scaleResourceDefault(item, ratio))
 	}
 	webScaled := func() map[string]any {
-		v := scaleResourceDefault(item, 0.22)
+		v := scaleResourceDefault(item, 0.12)
 		if v == nil {
 			return map[string]any{}
 		}
 		if v.CPURequest < 0.4 {
 			v.CPURequest = 0.4
 		}
+		if v.CPURequest > 1.0 {
+			v.CPURequest = 1.0
+		}
 		if v.CPULimit < 0.8 {
 			v.CPULimit = 0.8
+		}
+		if v.CPULimit > 2.0 {
+			v.CPULimit = 2.0
 		}
 		if v.MemoryRequestGi < 1 {
 			v.MemoryRequestGi = 1
 		}
+		if v.MemoryRequestGi > 2 {
+			v.MemoryRequestGi = 2
+		}
 		if v.MemoryLimitGi < 2 {
 			v.MemoryLimitGi = 2
+		}
+		if v.MemoryLimitGi > 4 {
+			v.MemoryLimitGi = 4
 		}
 		return toK8sResourceValues(v)
 	}
 	sidekiqScaled := func() map[string]any {
-		v := scaleResourceDefault(item, 0.18)
+		v := scaleResourceDefault(item, 0.10)
 		if v == nil {
 			return map[string]any{}
 		}
 		if v.CPURequest < 0.35 {
 			v.CPURequest = 0.35
 		}
+		if v.CPURequest > 0.8 {
+			v.CPURequest = 0.8
+		}
 		if v.CPULimit < 0.7 {
 			v.CPULimit = 0.7
+		}
+		if v.CPULimit > 1.6 {
+			v.CPULimit = 1.6
 		}
 		if v.MemoryRequestGi < 1 {
 			v.MemoryRequestGi = 1
 		}
+		if v.MemoryRequestGi > 1.5 {
+			v.MemoryRequestGi = 1.5
+		}
 		if v.MemoryLimitGi < 2 {
 			v.MemoryLimitGi = 2
+		}
+		if v.MemoryLimitGi > 3 {
+			v.MemoryLimitGi = 3
+		}
+		return toK8sResourceValues(v)
+	}
+	redisMasterScaled := func() map[string]any {
+		v := scaleResourceDefault(item, 0.06)
+		if v == nil {
+			return map[string]any{}
+		}
+		if v.CPURequest < 0.2 {
+			v.CPURequest = 0.2
+		}
+		if v.CPURequest > 0.5 {
+			v.CPURequest = 0.5
+		}
+		if v.CPULimit < 0.4 {
+			v.CPULimit = 0.4
+		}
+		if v.CPULimit > 1.0 {
+			v.CPULimit = 1.0
+		}
+		if v.MemoryRequestGi < 0.5 {
+			v.MemoryRequestGi = 0.5
+		}
+		if v.MemoryRequestGi > 1.0 {
+			v.MemoryRequestGi = 1.0
+		}
+		if v.MemoryLimitGi < 1.0 {
+			v.MemoryLimitGi = 1.0
+		}
+		if v.MemoryLimitGi > 2.0 {
+			v.MemoryLimitGi = 2.0
 		}
 		return toK8sResourceValues(v)
 	}
 	toolboxScaled := func() map[string]any {
-		v := scaleResourceDefault(item, 0.08)
+		v := scaleResourceDefault(item, 0.05)
 		if v == nil {
 			return map[string]any{}
 		}
 		if v.CPURequest < 0.25 {
 			v.CPURequest = 0.25
 		}
+		if v.CPURequest > 0.5 {
+			v.CPURequest = 0.5
+		}
 		if v.CPULimit < 0.50 {
 			v.CPULimit = 0.50
+		}
+		if v.CPULimit > 1.0 {
+			v.CPULimit = 1.0
 		}
 		if v.MemoryRequestGi < 1 {
 			v.MemoryRequestGi = 1
 		}
+		if v.MemoryRequestGi > 1.5 {
+			v.MemoryRequestGi = 1.5
+		}
 		if v.MemoryLimitGi < 2 {
 			v.MemoryLimitGi = 2
+		}
+		if v.MemoryLimitGi > 3 {
+			v.MemoryLimitGi = 3
 		}
 		return toK8sResourceValues(v)
 	}
@@ -1747,7 +1866,7 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 				"resources": scaled(0.12),
 			},
 			"redis": map[string]any{
-				"master": map[string]any{"resources": scaled(0.12)},
+				"master": map[string]any{"resources": redisMasterScaled()},
 			},
 			"prometheus": map[string]any{
 				"server": map[string]any{"resources": scaled(0.08)},

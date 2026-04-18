@@ -339,8 +339,8 @@ func TestParseGatewayNamesFromManagedResourceJSON(t *testing.T) {
   ]
 }`
 
-	names := parseGatewayNamesFromManagedResourceJSON(raw, "nullus-devsecops-stack")
-	assert.Equal(t, []string{"nullus-devsecops-stack-gateway"}, names)
+	names := parseGatewayNamesFromManagedResourceJSON(raw)
+	assert.Equal(t, []string{"nullus-devsecops-stack-gateway", "other-stack-gateway"}, names)
 }
 
 func TestDeleteStack_MergeGatewayNames(t *testing.T) {

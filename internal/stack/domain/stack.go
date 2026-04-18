@@ -48,6 +48,7 @@ type Stack struct {
 	Config     interface{}     `json:"config"` // JSONB
 	CreatedAt  time.Time       `json:"created_at"`
 	UpdatedAt  time.Time       `json:"updated_at"`
+	DeletedAt  *time.Time      `json:"deleted_at,omitempty"`
 }
 
 func (s *Stack) AddTools(newTools []ToolConfig) error {

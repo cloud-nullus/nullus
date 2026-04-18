@@ -52,7 +52,7 @@ func (r *PostgresStackRepository) GetByID(ctx context.Context, id string) (*doma
 func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*domain.Stack, error) {
 	const q = `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at
-		FROM stacks WHERE id = $1`
+		FROM stacks WHERE id = $1 AND deleted_at IS NULL`
 
 	stack, configJSON, err := r.scanStackWithConfig(r.pool.QueryRow(ctx, q, id))
 	if err != nil || stack == nil {
@@ -65,7 +65,7 @@ func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*dom
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string) ([]*domain.Stack, error) {
 	const q = `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at
-		FROM stacks WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`
+		FROM stacks WHERE org_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, orgID)
 	if err != nil {
@@ -98,7 +98,7 @@ func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stac
 	const q = `
 		UPDATE stacks
 		SET name = $2, template_id = $3, cluster_id = $4, state = $5, config = $6, updated_at = $7
-		WHERE id = $1`
+		WHERE id = $1 AND deleted_at IS NULL`
 
 	ct, err := r.pool.Exec(ctx, q,
 		stack.ID,
@@ -119,7 +119,7 @@ func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stac
 }
 
 func (r *PostgresStackRepository) UpdateTools(ctx context.Context, stack *domain.Stack) error {
-	const selectQ = `SELECT config FROM stacks WHERE id = $1`
+	const selectQ = `SELECT config FROM stacks WHERE id = $1 AND deleted_at IS NULL`
 
 	var configJSON []byte
 	if err := r.pool.QueryRow(ctx, selectQ, stack.ID).Scan(&configJSON); err != nil {
@@ -168,7 +168,7 @@ func (r *PostgresStackRepository) UpdateTools(ctx context.Context, stack *domain
 	const updateQ = `
 		UPDATE stacks
 		SET config = $2, updated_at = $3
-		WHERE id = $1`
+		WHERE id = $1 AND deleted_at IS NULL`
 
 	ct, err := r.pool.Exec(ctx, updateQ, stack.ID, mergedJSON, stack.UpdatedAt)
 	if err != nil {
@@ -182,7 +182,10 @@ func (r *PostgresStackRepository) UpdateTools(ctx context.Context, stack *domain
 }
 
 func (r *PostgresStackRepository) Delete(ctx context.Context, id string) error {
-	const q = `DELETE FROM stacks WHERE id = $1`
+	const q = `
+		UPDATE stacks
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`
 
 	ct, err := r.pool.Exec(ctx, q, id)
 	if err != nil {

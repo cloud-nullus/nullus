@@ -143,6 +143,32 @@ func DefaultValues(stepName string) map[string]any {
 					"ingress": map[string]any{
 						"enabled": false,
 					},
+					"readinessProbe": map[string]any{
+						"initialDelaySeconds": 90,
+						"periodSeconds":       10,
+						"timeoutSeconds":      5,
+						"failureThreshold":    18,
+					},
+					"livenessProbe": map[string]any{
+						"initialDelaySeconds": 180,
+						"periodSeconds":       20,
+						"timeoutSeconds":      10,
+						"failureThreshold":    6,
+					},
+				},
+				"sidekiq": map[string]any{
+					"readinessProbe": map[string]any{
+						"initialDelaySeconds": 120,
+						"periodSeconds":       10,
+						"timeoutSeconds":      5,
+						"failureThreshold":    18,
+					},
+					"livenessProbe": map[string]any{
+						"initialDelaySeconds": 240,
+						"periodSeconds":       20,
+						"timeoutSeconds":      10,
+						"failureThreshold":    6,
+					},
 				},
 				"kas": map[string]any{
 					"ingress": map[string]any{
@@ -168,6 +194,32 @@ func DefaultValues(stepName string) map[string]any {
 				"image": map[string]any{
 					"repository": "bitnamilegacy/redis",
 					"tag":        "7.4.2-debian-12-r0",
+				},
+				"master": map[string]any{
+					"resources": map[string]any{
+						"requests": map[string]any{
+							"cpu":    "250m",
+							"memory": "512Mi",
+						},
+						"limits": map[string]any{
+							"cpu":    "500m",
+							"memory": "1Gi",
+						},
+					},
+					"readinessProbe": map[string]any{
+						"enabled":             true,
+						"initialDelaySeconds": 30,
+						"periodSeconds":       10,
+						"timeoutSeconds":      5,
+						"failureThreshold":    12,
+					},
+					"livenessProbe": map[string]any{
+						"enabled":             true,
+						"initialDelaySeconds": 60,
+						"periodSeconds":       15,
+						"timeoutSeconds":      10,
+						"failureThreshold":    8,
+					},
 				},
 				"metrics": map[string]any{
 					"image": map[string]any{

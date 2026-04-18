@@ -99,6 +99,10 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 
 		require.NoError(t, repo.Delete(ctx, stackID))
 
+		listAfterDelete, err := repo.List(ctx, orgID)
+		require.NoError(t, err)
+		assert.False(t, containsStackID(listAfterDelete, stackID))
+
 		deleted, err := repo.FindByID(ctx, stackID)
 		require.NoError(t, err)
 		assert.Nil(t, deleted)
@@ -178,6 +182,12 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, versions, 2)
 		assert.Equal(t, newer.ID, versions[0].ID)
+
+		require.NoError(t, stackRepo.Delete(ctx, stackID))
+
+		versionsAfterDelete, err := repo.ListVersions(ctx, stackID)
+		require.NoError(t, err)
+		require.Len(t, versionsAfterDelete, 2)
 		assert.True(t, versions[0].CreatedAt.After(versions[1].CreatedAt))
 
 		got, err := repo.GetVersion(ctx, stackID, older.ID)
