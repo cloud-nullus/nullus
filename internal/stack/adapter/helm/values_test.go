@@ -11,6 +11,23 @@ func TestDefaultValues_CertManager(t *testing.T) {
 	values := DefaultValues("installing_cert_manager")
 	require.NotNil(t, values)
 	assert.Equal(t, true, values["installCRDs"])
+
+	resources, ok := values["resources"].(map[string]any)
+	require.True(t, ok)
+	requests, ok := resources["requests"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "500m", requests["cpu"])
+	assert.Equal(t, "512Mi", requests["memory"])
+
+	webhook, ok := values["webhook"].(map[string]any)
+	require.True(t, ok)
+	_, ok = webhook["resources"].(map[string]any)
+	require.True(t, ok)
+
+	cainjector, ok := values["cainjector"].(map[string]any)
+	require.True(t, ok)
+	_, ok = cainjector["resources"].(map[string]any)
+	require.True(t, ok)
 }
 
 func TestDefaultValues_GitLab(t *testing.T) {
@@ -36,6 +53,7 @@ func TestDefaultValues_GitLab(t *testing.T) {
 	hosts, ok := global["hosts"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "nullus.internal", hosts["domain"])
+	assert.Equal(t, false, hosts["https"])
 
 	ingress, ok := global["ingress"].(map[string]any)
 	require.True(t, ok)
@@ -108,6 +126,13 @@ func TestDefaultValues_MinIOIngressDisabled(t *testing.T) {
 	consoleIngress, ok := values["consoleIngress"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, false, consoleIngress["enabled"])
+
+	resources, ok := values["resources"].(map[string]any)
+	require.True(t, ok)
+	limits, ok := resources["limits"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "1", limits["cpu"])
+	assert.Equal(t, "2Gi", limits["memory"])
 }
 
 func TestDefaultValues_PostgreSQLSharedDefaults(t *testing.T) {
@@ -122,10 +147,27 @@ func TestDefaultValues_PostgreSQLSharedDefaults(t *testing.T) {
 
 	primary, ok := values["primary"].(map[string]any)
 	require.True(t, ok)
+	resources, ok := primary["resources"].(map[string]any)
+	require.True(t, ok)
+	requests, ok := resources["requests"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "1", requests["cpu"])
+	assert.Equal(t, "2Gi", requests["memory"])
+
 	persistence, ok := primary["persistence"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, true, persistence["enabled"])
 	assert.Equal(t, "20Gi", persistence["size"])
+}
+
+func TestDefaultValues_MetricsServerResources(t *testing.T) {
+	values := DefaultValues("installing_metrics_server")
+	resources, ok := values["resources"].(map[string]any)
+	require.True(t, ok)
+	requests, ok := resources["requests"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "250m", requests["cpu"])
+	assert.Equal(t, "256Mi", requests["memory"])
 }
 
 func TestDefaultValues_ArgoCDIngressDisabled(t *testing.T) {

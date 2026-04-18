@@ -168,10 +168,26 @@ func (e *fakeStepExecutor) calledSteps() []string {
 
 type fakeVerifiableExecutor struct {
 	fakeStepExecutor
-	verifyErr error
+	verifyErr     error
+	rollbackErr   error
+	rollbackCalls int
 }
 
 func (e *fakeVerifiableExecutor) VerifyDeployment(_ context.Context, _ string) error {
+	return e.verifyErr
+}
+
+func (e *fakeVerifiableExecutor) RollbackDeployment(_ context.Context, _ string) error {
+	e.rollbackCalls++
+	return e.rollbackErr
+}
+
+type fakeVerifyOnlyExecutor struct {
+	fakeStepExecutor
+	verifyErr error
+}
+
+func (e *fakeVerifyOnlyExecutor) VerifyDeployment(_ context.Context, _ string) error {
 	return e.verifyErr
 }
 
@@ -418,6 +434,64 @@ func TestInstallStack_RuntimeVerificationFailureTriggersRollback(t *testing.T) {
 	assert.Equal(t, domain.StateRolledBack, repo.getState("stk_verify_fail"))
 	assert.Contains(t, streamer.steps(), "health_check")
 	assert.Contains(t, streamer.steps(), "rolling_back")
+	assert.Equal(t, 1, exec.rollbackCalls)
+}
+
+func TestInstallStack_RuntimeVerificationFailureWithoutRollbackSupportStaysFailed(t *testing.T) {
+	stack := &domain.Stack{
+		ID:        "stk_verify_fail_no_rollback",
+		ClusterID: "cluster-verify-no-rollback",
+		State:     domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeVerifyOnlyExecutor{verifyErr: fmt.Errorf("gitlab not ready")}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateFailed {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	assert.Equal(t, domain.StateFailed, repo.getState(stack.ID))
+	assert.Contains(t, streamer.steps(), "health_check")
+	assert.NotContains(t, streamer.steps(), "rolling_back")
+	assert.Contains(t, streamer.steps(), "failed")
+}
+
+func TestInstallStack_RollbackFailureReturnsFailedState(t *testing.T) {
+	stack := &domain.Stack{
+		ID:        "stk_verify_fail_rollback_error",
+		ClusterID: "cluster-verify-rollback-error",
+		State:     domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeVerifiableExecutor{verifyErr: fmt.Errorf("gitlab not ready"), rollbackErr: fmt.Errorf("helm uninstall failed")}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateFailed {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	assert.Equal(t, domain.StateFailed, repo.getState(stack.ID))
+	assert.Contains(t, streamer.steps(), "rolling_back")
+	assert.Equal(t, 1, exec.rollbackCalls)
 }
 
 func TestInstallStack_StopsWhenStackIsCancelledDuringRun(t *testing.T) {

@@ -70,6 +70,10 @@ type deploymentVerifiableExecutor interface {
 	VerifyDeployment(ctx context.Context, stackID string) error
 }
 
+type deploymentRollbackExecutor interface {
+	RollbackDeployment(ctx context.Context, stackID string) error
+}
+
 type stepRuntimeReporter interface {
 	StepRuntimeLogs(ctx context.Context, stackID, step string) (infos []string, warns []string)
 }
@@ -208,7 +212,7 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 
 	// Transition: Validating → Installing
 	if err := uc.transition(ctx, stack, domain.StateInstalling); err != nil {
-		uc.handleFailure(ctx, stack, err)
+		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
 
@@ -218,31 +222,31 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 			slog.Info("installation stopped due to cancellation", "stack_id", stack.ID, "reason", err)
 			return
 		}
-		uc.handleFailure(ctx, stack, err)
+		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
 
 	// Transition: Installing → Configuring
 	if err := uc.transition(ctx, stack, domain.StateConfiguring); err != nil {
-		uc.handleFailure(ctx, stack, err)
+		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
 	uc.emit(ctx, deploymentID, "info", "configuring", "C", "post-install configuration applied")
 
 	// Transition: Configuring → HealthCheck
 	if err := uc.transition(ctx, stack, domain.StateHealthCheck); err != nil {
-		uc.handleFailure(ctx, stack, err)
+		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
 	if err := uc.verifyDeployment(ctx, stack, executor); err != nil {
-		uc.handleFailure(ctx, stack, err)
+		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
 	uc.emit(ctx, deploymentID, "info", "health_check", "C", "all health checks passed")
 
 	// Transition: HealthCheck → Completed
 	if err := uc.transition(ctx, stack, domain.StateCompleted); err != nil {
-		uc.handleFailure(ctx, stack, err)
+		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
@@ -383,12 +387,18 @@ func (uc *InstallStack) resolveExecutor(ctx context.Context, stack *domain.Stack
 }
 
 // handleFailure transitions to Failed and attempts rollback.
-func (uc *InstallStack) handleFailure(ctx context.Context, stack *domain.Stack, cause error) {
+func (uc *InstallStack) handleFailure(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, cause error) {
 	slog.Error("installation failed", "stack_id", stack.ID, "error", cause)
 	uc.emit(ctx, stack.ID, "error", "failed", "", fmt.Sprintf("installation failed: %s", cause))
 
 	if err := uc.transition(ctx, stack, domain.StateFailed); err != nil {
 		slog.Error("failed to transition to failed state", "stack_id", stack.ID, "error", err)
+		return
+	}
+
+	rollbacker, ok := executor.(deploymentRollbackExecutor)
+	if !ok {
+		uc.emit(ctx, stack.ID, "warn", "failed", "", "rollback not supported by executor; installed resources may remain")
 		return
 	}
 
@@ -399,10 +409,13 @@ func (uc *InstallStack) handleFailure(ctx context.Context, stack *domain.Stack, 
 		return
 	}
 
-	// Simulate rollback work.
-	select {
-	case <-ctx.Done():
-	case <-time.After(time.Second):
+	if err := rollbacker.RollbackDeployment(ctx, stack.ID); err != nil {
+		slog.Error("rollback failed", "stack_id", stack.ID, "error", err)
+		uc.emit(ctx, stack.ID, "error", "failed", "", fmt.Sprintf("rollback failed: %s", err))
+		if transitionErr := uc.transition(ctx, stack, domain.StateFailed); transitionErr != nil {
+			slog.Error("failed to transition back to failed state", "stack_id", stack.ID, "error", transitionErr)
+		}
+		return
 	}
 
 	if err := uc.transition(ctx, stack, domain.StateRolledBack); err != nil {
