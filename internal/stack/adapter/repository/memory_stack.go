@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
@@ -40,7 +41,7 @@ func (r *MemoryStackRepository) GetByID(_ context.Context, id string) (*domain.S
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.stacks[id]
-	if !ok {
+	if !ok || s.DeletedAt != nil {
 		return nil, fmt.Errorf("stack %q not found", id)
 	}
 	cp := *s
@@ -57,7 +58,7 @@ func (r *MemoryStackRepository) List(_ context.Context, orgID string) ([]*domain
 	defer r.mu.RUnlock()
 	result := make([]*domain.Stack, 0, len(r.stacks))
 	for _, s := range r.stacks {
-		if s.OrgID == orgID {
+		if s.OrgID == orgID && s.DeletedAt == nil {
 			cp := *s
 			result = append(result, &cp)
 		}
@@ -69,7 +70,8 @@ func (r *MemoryStackRepository) List(_ context.Context, orgID string) ([]*domain
 func (r *MemoryStackRepository) Update(_ context.Context, stack *domain.Stack) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.stacks[stack.ID]; !ok {
+	existing, ok := r.stacks[stack.ID]
+	if !ok || existing.DeletedAt != nil {
 		return fmt.Errorf("stack %q not found", stack.ID)
 	}
 	cp := *stack
@@ -88,6 +90,8 @@ func (r *MemoryStackRepository) Delete(_ context.Context, id string) error {
 	if _, ok := r.stacks[id]; !ok {
 		return fmt.Errorf("stack %q not found", id)
 	}
-	delete(r.stacks, id)
+	now := time.Now()
+	r.stacks[id].DeletedAt = &now
+	r.stacks[id].UpdatedAt = now
 	return nil
 }
