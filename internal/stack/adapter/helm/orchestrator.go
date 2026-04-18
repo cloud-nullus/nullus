@@ -132,6 +132,15 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 			}
 		}
 		if err != nil {
+			if step == "installing_cert_manager" && isReleaseNotFoundError(err) {
+				if readinessErr := o.waitForCertManagerInstallation(ctx); readinessErr == nil {
+					continue
+				}
+			}
+			if step == "installing_runner" && isReleaseNotFoundError(err) {
+				slog.Warn("skipping runner runtime health check because release is absent", "release", releaseName, "namespace", namespace)
+				continue
+			}
 			return fmt.Errorf("status check failed for %s: %w", releaseName, err)
 		}
 		if status == nil {
@@ -796,47 +805,68 @@ func (o *Orchestrator) StepRuntimeLogs(ctx context.Context, stackID, step string
 }
 
 func (o *Orchestrator) releasePodSnapshot(ctx context.Context, releaseName, namespace string) (*podListSnapshot, error) {
-	output, err := o.runKubectl(ctx,
-		"get", "pods",
-		"-n", namespace,
-		"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
-		"-o", "json",
-	)
-	if err != nil {
-		return nil, err
+	selectors := releaseLabelSelectors(releaseName)
+	for _, selector := range selectors {
+		output, err := o.runKubectl(ctx,
+			"get", "pods",
+			"-n", namespace,
+			"-l", selector,
+			"-o", "json",
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		var snapshot podListSnapshot
+		if err := json.Unmarshal(output, &snapshot); err != nil {
+			return nil, err
+		}
+		if len(snapshot.Items) > 0 {
+			return &snapshot, nil
+		}
 	}
 
-	var snapshot podListSnapshot
-	if err := json.Unmarshal(output, &snapshot); err != nil {
-		return nil, err
-	}
-	return &snapshot, nil
+	return &podListSnapshot{}, nil
 }
 
 func (o *Orchestrator) waitForReleaseRollouts(ctx context.Context, releaseName, namespace string) error {
 	resources := []string{"deployments", "statefulsets", "daemonsets"}
+	selectors := releaseLabelSelectors(releaseName)
 	for _, resourceType := range resources {
-		output, err := o.runKubectl(ctx,
-			"get", resourceType,
-			"-n", namespace,
-			"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
-			"-o", "jsonpath={range .items[*]}{.metadata.name}{"+"\n"+"}{end}",
-		)
-		if err != nil {
-			return err
-		}
-		for _, rawName := range strings.Split(string(output), "\n") {
-			name := strings.TrimSpace(rawName)
-			if name == "" {
-				continue
-			}
-			resource := strings.TrimSuffix(resourceType, "s") + "/" + name
-			if _, err := o.runKubectl(ctx, "rollout", "status", "-n", namespace, resource, "--timeout=180s"); err != nil {
+		for _, selector := range selectors {
+			output, err := o.runKubectl(ctx,
+				"get", resourceType,
+				"-n", namespace,
+				"-l", selector,
+				"-o", `jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}`,
+			)
+			if err != nil {
 				return err
+			}
+			for _, rawName := range strings.Split(string(output), "\n") {
+				name := strings.TrimSpace(rawName)
+				if name == "" {
+					continue
+				}
+				resource := strings.TrimSuffix(resourceType, "s") + "/" + name
+				if _, err := o.runKubectl(ctx, "rollout", "status", "-n", namespace, resource, "--timeout=180s"); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
+}
+
+func releaseLabelSelectors(releaseName string) []string {
+	name := strings.TrimSpace(releaseName)
+	if name == "" {
+		return []string{""}
+	}
+	return []string{
+		fmt.Sprintf("app.kubernetes.io/instance=%s", name),
+		fmt.Sprintf("release=%s", name),
+	}
 }
 
 func looksLikeKubeconfig(kubeconfig []byte) bool {
@@ -944,37 +974,6 @@ func (o *Orchestrator) waitForCertManagerStartupAPICheck(ctx context.Context) er
 		return err
 	}
 	return nil
-}
-
-func (o *Orchestrator) waitForKubectlGet(ctx context.Context, args ...string) error {
-	const (
-		maxAttempts = 30
-		retryDelay  = 2 * time.Second
-	)
-
-	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if _, err := o.runKubectl(ctx, append([]string{"get"}, args...)...); err == nil {
-			return nil
-		} else {
-			lastErr = err
-		}
-
-		if attempt == maxAttempts {
-			break
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(retryDelay):
-		}
-	}
-
-	if lastErr == nil {
-		lastErr = fmt.Errorf("resource not ready")
-	}
-	return lastErr
 }
 
 func (o *Orchestrator) waitForKubectlNonEmptyOutput(ctx context.Context, args ...string) error {
@@ -1355,7 +1354,11 @@ func (o *Orchestrator) reconcileGatewayDataPlaneTLSSecret(ctx context.Context, n
 
 	caCRT, err := o.secretDataField(ctx, namespace, defaultEnvoyControlPlaneSecret, "ca.crt")
 	if err != nil {
-		return err
+		fallbackCA, fallbackErr := o.secretDataField(ctx, namespace, defaultEnvoyControlPlaneSecret, "tls.crt")
+		if fallbackErr != nil {
+			return err
+		}
+		caCRT = fallbackCA
 	}
 	tlsCRT, err := o.secretDataField(ctx, namespace, defaultEnvoyControlPlaneSecret, "tls.crt")
 	if err != nil {
@@ -1409,8 +1412,8 @@ func (o *Orchestrator) tryReconcileGatewayDataPlaneTLSSecret(ctx context.Context
 	return o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace)
 }
 func (o *Orchestrator) secretDataField(ctx context.Context, namespace, secretName, key string) (string, error) {
-	jsonPath := fmt.Sprintf("jsonpath={.data.%s}", strings.ReplaceAll(key, ".", `\\.`))
-	output, err := o.runKubectl(ctx, "get", "secret", secretName, "-n", namespace, "-o", jsonPath)
+	goTemplate := fmt.Sprintf("go-template={{ index .data %q }}", key)
+	output, err := o.runKubectl(ctx, "get", "secret", secretName, "-n", namespace, "-o", goTemplate)
 	if err != nil {
 		return "", err
 	}
