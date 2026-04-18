@@ -50,7 +50,9 @@ func (h *HelmInstaller) Install(ctx context.Context, req port.HelmInstallRequest
 	client.ChartPathOptions.Version = req.Version
 
 	settings := cli.New()
-	chartPath, err := client.ChartPathOptions.LocateChart(req.ChartName, settings)
+	chartPath, err := locateChartWithRetry(ctx, func() (string, error) {
+		return client.ChartPathOptions.LocateChart(req.ChartName, settings)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("locate chart %s: %w", req.ChartName, err)
 	}
@@ -186,7 +188,9 @@ func (h *HelmInstaller) reinstallRelease(
 	client.ChartPathOptions.Version = req.Version
 
 	settings := cli.New()
-	chartPath, err := client.ChartPathOptions.LocateChart(req.ChartName, settings)
+	chartPath, err := locateChartWithRetry(ctx, func() (string, error) {
+		return client.ChartPathOptions.LocateChart(req.ChartName, settings)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("locate chart %s: %w", req.ChartName, err)
 	}
@@ -241,7 +245,9 @@ func (h *HelmInstaller) upgradeExistingRelease(
 	upgrade.ChartPathOptions.Version = req.Version
 
 	settings := cli.New()
-	chartPath, err := upgrade.ChartPathOptions.LocateChart(req.ChartName, settings)
+	chartPath, err := locateChartWithRetry(ctx, func() (string, error) {
+		return upgrade.ChartPathOptions.LocateChart(req.ChartName, settings)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("locate chart %s: %w", req.ChartName, err)
 	}
@@ -324,6 +330,54 @@ func newActionConfig(kubeconfig []byte, namespace string) (*action.Configuration
 }
 
 func noopHelmDebug(_ string, _ ...interface{}) {}
+
+func locateChartWithRetry(ctx context.Context, locate func() (string, error)) (string, error) {
+	const maxAttempts = 4
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		chartPath, err := locate()
+		if err == nil {
+			return chartPath, nil
+		}
+		lastErr = err
+		if !isRetryableChartLocateError(err) || attempt == maxAttempts {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(time.Duration(attempt*3) * time.Second):
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("chart locate failed")
+	}
+	return "", lastErr
+}
+
+func isRetryableChartLocateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	retryHints := []string{
+		"504",
+		"gateway timeout",
+		"i/o timeout",
+		"timeout",
+		"connection reset",
+		"temporary",
+	}
+	for _, hint := range retryHints {
+		if strings.Contains(msg, hint) {
+			return true
+		}
+	}
+	return false
+}
 
 type kubeRESTClientGetter struct {
 	restConfig *rest.Config
