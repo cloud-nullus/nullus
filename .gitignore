@@ -6,8 +6,7 @@ coverage.html
 .gocache/*
 
 # Node/React
-node_modules/
-web/node_modules/
+
 web/dist/
 web/coverage/
 web/test-results/
