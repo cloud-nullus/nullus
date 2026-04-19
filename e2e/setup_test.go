@@ -102,7 +102,15 @@ func newEchoServer() *echo.Echo {
 	listPipelinesUC := cicduc.NewListPipelines(pipelineRepo)
 	deployPipelineUC := cicduc.NewDeployPipeline(pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, &noopManifestApplier{})
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(cicdTemplateRepo)
-	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, cicdkube.NewStepTracker())
+	pipelineHandler := cicdhandler.NewPipelineHandler(
+		createPipelineUC,
+		listPipelinesUC,
+		deployPipelineUC,
+		pipelineRepo,
+		deploymentRepo,
+		&noopKubeconfigProvider{},
+		cicdkube.NewStepTracker(),
+	)
 
 	// Observability
 	dashboardRepo := obsrepo.NewMemoryDashboardRepository()

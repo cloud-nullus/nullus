@@ -27,6 +27,8 @@ const (
 	defaultEnvoyDataPlaneTLSSecret   = "envoy"
 	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
+	stepInstallingCertManager        = "installing_cert_manager"
+	stepInstallingRunner             = "installing_runner"
 )
 
 var installGatewayOCIRelease = installOCIChartWithHelmCLI
@@ -132,12 +134,12 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 			}
 		}
 		if err != nil {
-			if step == "installing_cert_manager" && isReleaseNotFoundError(err) {
+			if step == stepInstallingCertManager && isReleaseNotFoundError(err) {
 				if readinessErr := o.waitForCertManagerInstallation(ctx); readinessErr == nil {
 					continue
 				}
 			}
-			if step == "installing_runner" && isReleaseNotFoundError(err) {
+			if step == stepInstallingRunner && isReleaseNotFoundError(err) {
 				slog.Warn("skipping runner runtime health check because release is absent", "release", releaseName, "namespace", namespace)
 				continue
 			}
@@ -226,11 +228,11 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		kubeconfig: kubeconfig,
 		namespace:  namespace,
 		chartConfig: map[string]ChartSpec{
-			"installing_cert_manager": {
+			stepInstallingCertManager: {
 				ChartName: "cert-manager",
 				RepoURL:   "https://charts.jetstack.io",
 				Version:   "v1.16.3",
-				Values:    DefaultValues("installing_cert_manager"),
+				Values:    DefaultValues(stepInstallingCertManager),
 				Wait:      false,
 			},
 			"installing_metrics_server": {
@@ -270,11 +272,11 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				Values:    DefaultValues("installing_argocd"),
 				Wait:      false,
 			},
-			"installing_runner": {
+			stepInstallingRunner: {
 				ChartName: "gitlab-runner",
 				RepoURL:   "https://charts.gitlab.io/",
 				Version:   "0.72.0",
-				Values:    DefaultValues("installing_runner"),
+				Values:    DefaultValues(stepInstallingRunner),
 				Wait:      false,
 			},
 			"installing_prometheus": {
@@ -320,14 +322,14 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"integration_check": {},
 		},
 		stepOrder: map[string]int{
-			"installing_cert_manager":          0,
+			stepInstallingCertManager:          0,
 			"installing_metrics_server":        1,
 			"installing_postgresql":            2,
 			"installing_minio":                 3,
 			"installing_object_storage_secret": 4,
 			"installing_gitlab":                5,
 			"installing_argocd":                6,
-			"installing_runner":                7,
+			stepInstallingRunner:               7,
 			"installing_prometheus":            8,
 			"installing_grafana":               9,
 			"installing_logging":               10,
@@ -337,14 +339,14 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"integration_check":                14,
 		},
 		orderedStep: []string{
-			"installing_cert_manager",
+			stepInstallingCertManager,
 			"installing_metrics_server",
 			"installing_postgresql",
 			"installing_minio",
 			"installing_object_storage_secret",
 			"installing_gitlab",
 			"installing_argocd",
-			"installing_runner",
+			stepInstallingRunner,
 			"installing_prometheus",
 			"installing_grafana",
 			"installing_logging",
@@ -359,7 +361,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_object_storage_secret": "config.storage.object_storage",
 			"installing_gitlab":                "config.artifacts.source_repository",
 			"installing_argocd":                "config.pipeline.cd_tool",
-			"installing_runner":                "config.pipeline.ci_platform",
+			stepInstallingRunner:               "config.pipeline.ci_platform",
 			"installing_prometheus":            "config.monitoring.collection",
 			"installing_grafana":               "config.monitoring.visualization",
 			"installing_logging":               "config.logging.collection",
@@ -385,7 +387,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_argocd": func(cfg domain.StackConfig) bool {
 				return cfg.Pipeline.CDTool.Enabled
 			},
-			"installing_runner": func(cfg domain.StackConfig) bool {
+			stepInstallingRunner: func(cfg domain.StackConfig) bool {
 				return cfg.Pipeline.CIPlatform.Enabled
 			},
 			"installing_prometheus": func(cfg domain.StackConfig) bool {
@@ -515,7 +517,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		o.markCompleted(stackID, order)
 		return nil
 	}
-	if step == "installing_cert_manager" {
+	if step == stepInstallingCertManager {
 		installed, checkErr := checkExistingCertManagerInstallation(ctx, o)
 		if checkErr != nil {
 			return fmt.Errorf("detect existing cert-manager installation: %w", checkErr)
@@ -539,7 +541,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 	releaseName := o.releaseNameForSpec(spec)
 	values := o.valuesForStep(step, spec)
-	if step == "installing_runner" {
+	if step == stepInstallingRunner {
 		if looksLikeKubeconfig(o.kubeconfig) {
 			runnerToken, tokenErr := o.discoverGitLabRunnerRegistrationToken(ctx, namespace)
 			if tokenErr != nil {
@@ -578,7 +580,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	if result != nil {
 		o.rollback.Push(result.ReleaseName)
 	}
-	if step == "installing_cert_manager" {
+	if step == stepInstallingCertManager {
 		if err := waitForCertManagerInstallation(ctx, o); err != nil {
 			return fmt.Errorf("wait for cert-manager readiness: %w", err)
 		}
@@ -1615,7 +1617,7 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 		if step == "installing_gitlab" {
 			base = mergeMaps(base, o.gitlabExternalSharedServiceValues(nil))
 		}
-		if step == "installing_runner" {
+		if step == stepInstallingRunner {
 			namespace := strings.TrimSpace(o.namespace)
 			if namespace == "" {
 				namespace = "nullus"
@@ -1662,7 +1664,7 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 		base = mergeMaps(base, o.gitlabExternalSharedServiceValues(cfg))
 	}
 
-	if step == "installing_runner" {
+	if step == stepInstallingRunner {
 		namespace := strings.TrimSpace(o.namespace)
 		if namespace == "" {
 			namespace = "nullus"
@@ -1841,7 +1843,7 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 	}
 
 	switch step {
-	case "installing_cert_manager":
+	case stepInstallingCertManager:
 		return map[string]any{
 			"resources": resources,
 			"webhook": map[string]any{
@@ -1885,7 +1887,7 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 			"applicationSet": map[string]any{"resources": scaled(0.07)},
 			"notifications":  map[string]any{"resources": scaled(0.07)},
 		}
-	case "installing_runner":
+	case stepInstallingRunner:
 		return map[string]any{
 			"resources": resources,
 		}
@@ -1952,7 +1954,7 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 
 func (o *Orchestrator) resourceDefaultKeyForStep(step string, cfg *domain.StackConfig) string {
 	switch step {
-	case "installing_cert_manager":
+	case stepInstallingCertManager:
 		return "cert-manager"
 	case "installing_minio":
 		return "minio"
@@ -1960,7 +1962,7 @@ func (o *Orchestrator) resourceDefaultKeyForStep(step string, cfg *domain.StackC
 		return "gitlab-ce"
 	case "installing_argocd":
 		return "argocd"
-	case "installing_runner":
+	case stepInstallingRunner:
 		return "gitlab-runner"
 	case "installing_prometheus":
 		return "prometheus"
@@ -2457,7 +2459,7 @@ func resourceOverrideFromManifest(doc map[string]any) (map[string]any, bool) {
 }
 
 func (o *Orchestrator) isStepEnabled(step string) bool {
-	if step == "installing_cert_manager" || step == "integration_check" {
+	if step == stepInstallingCertManager || step == "integration_check" {
 		return true
 	}
 

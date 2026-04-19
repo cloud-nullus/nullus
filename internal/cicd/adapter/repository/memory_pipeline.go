@@ -86,6 +86,17 @@ func (r *MemoryPipelineRepository) Update(_ context.Context, p *domain.Pipeline)
 	return nil
 }
 
+// Delete removes a pipeline by ID.
+func (r *MemoryPipelineRepository) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.pipelines[id]; !ok {
+		return fmt.Errorf("pipeline %q not found", id)
+	}
+	delete(r.pipelines, id)
+	return nil
+}
+
 // MemoryDeploymentRepository is an in-memory implementation of port.DeploymentRepository.
 type MemoryDeploymentRepository struct {
 	mu          sync.RWMutex

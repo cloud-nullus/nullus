@@ -29,13 +29,25 @@ jobs:
       - name: Install web dependencies
         run: npm ci
         working-directory: web
+      - name: Detect changed web files
+        id: changed-web
+        run: |
+          files="$(git diff --name-only --diff-filter=ACMRT origin/${{ github.base_ref }}...HEAD | grep -E '^web/.*\.(ts|tsx|js|jsx)$' || true)"
+          if [ -z "$files" ]; then
+            echo "has_web_changes=false" >> "$GITHUB_OUTPUT"
+            echo "eslint_targets=." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_web_changes=true" >> "$GITHUB_OUTPUT"
+          echo "eslint_targets=$(echo "$files" | sed 's#^web/##' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
       - name: Run reviewdog with eslint
+        if: steps.changed-web.outputs.has_web_changes == 'true'
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-check
           workdir: web
-          eslint_flags: "."
+          eslint_flags: ${{ steps.changed-web.outputs.eslint_targets }}
           filter_mode: diff_context
           fail_level: none
 
@@ -59,7 +71,7 @@ jobs:
           filter_mode: diff_context
           fail_level: none
           go_version_file: go.mod
-          golangci_lint_flags: "./..."
+          golangci_lint_flags: "--new-from-rev=origin/${{ github.base_ref }} ./..."
 
   gitleaks:
     if: ${{ !github.event.pull_request.draft }}
