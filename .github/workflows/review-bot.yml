@@ -1,0 +1,99 @@
+name: Review Bot
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  eslint-reviewdog:
+    if: ${{ !github.event.pull_request.draft }}
+    name: reviewdog / eslint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+      - name: Run reviewdog with eslint
+        uses: reviewdog/action-eslint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          workdir: web
+          eslint_flags: "."
+          filter_mode: diff_context
+          fail_level: error
+
+  golangci-reviewdog:
+    if: ${{ !github.event.pull_request.draft }}
+    name: reviewdog / golangci-lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run reviewdog with golangci-lint
+        uses: reviewdog/action-golangci-lint@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          filter_mode: diff_context
+          fail_level: error
+          go_version_file: go.mod
+          golangci_lint_flags: "./..."
+
+  gitleaks:
+    if: ${{ !github.event.pull_request.draft }}
+    name: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+
+  danger:
+    if: ${{ !github.event.pull_request.draft }}
+    name: danger
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run danger
+        run: npx --yes danger@12.2.0 ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
