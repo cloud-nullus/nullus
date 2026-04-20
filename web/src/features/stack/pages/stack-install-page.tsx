@@ -37,6 +37,7 @@ import {
   matrixArchMismatches,
 } from '../utils/compatibility-arch'
 import { shouldBlockOnServerVerdict } from '../utils/server-verdict'
+import { extractDeployCompatError } from '../utils/deploy-error'
 import type { CompatibilityValidationResult } from '../../../types'
 
 // --- Tool option types ---
@@ -53,45 +54,6 @@ const K8S_PREVIEW_TABS = [
   { id: 'service', label: 'Service' },
   { id: 'gateway', label: 'Gateway API' },
 ] as const
-
-// extractDeployCompatError pulls out the structured verdict that the Deploy
-// handler attaches to DEPLOY_COMPAT_FAIL / DEPLOY_COMPAT_WARN_UNACK error
-// bodies (F8-F3). Returns null when the error is not a compatibility-gate
-// rejection so the caller can fall through to the generic formatter.
-function extractDeployCompatError(error: unknown): {
-  code: string
-  issueLines: string[]
-} | null {
-  if (typeof error !== 'object' || error === null) return null
-  const record = error as Record<string, unknown>
-  const details = record.details
-  if (typeof details !== 'object' || details === null) return null
-  const nestedError = (details as Record<string, unknown>).error
-  if (typeof nestedError !== 'object' || nestedError === null) return null
-  const nested = nestedError as Record<string, unknown>
-  const code = typeof nested.code === 'string' ? nested.code : ''
-  if (code !== 'DEPLOY_COMPAT_FAIL' && code !== 'DEPLOY_COMPAT_WARN_UNACK') {
-    return null
-  }
-  const verdict = nested.verdict
-  const issueLines: string[] = []
-  if (typeof verdict === 'object' && verdict !== null) {
-    const issues = (verdict as Record<string, unknown>).issues
-    if (Array.isArray(issues)) {
-      for (const i of issues) {
-        if (typeof i === 'object' && i !== null) {
-          const rec = i as Record<string, unknown>
-          const iCode = typeof rec.code === 'string' ? rec.code : ''
-          const msg = typeof rec.message === 'string' ? rec.message : ''
-          if (msg) {
-            issueLines.push(iCode ? `[${iCode}] ${msg}` : msg)
-          }
-        }
-      }
-    }
-  }
-  return { code, issueLines }
-}
 
 function toDeployErrorMessage(error: unknown): string {
   // Compat-gate errors get a specialized, issue-aware formatter so the user

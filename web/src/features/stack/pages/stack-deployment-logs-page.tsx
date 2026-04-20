@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
+import { useStacks } from '../api/stack-api'
+import type { Stack } from '../api/stack-api'
+import { RetryStackButton } from '../components/retry-stack-button'
+import type { StackStatus as RetryStackStatus } from '../utils/retry-policy'
 
 type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'dim'
 
@@ -161,6 +165,15 @@ export function StackDeploymentLogsPage() {
   const [visibleCount, setVisibleCount] = useState(0)
 
   const entry = deploymentId ? DEPLOYMENT_DATA[deploymentId] : undefined
+
+  // When the id does not match a fixture, fall back to the real stack list
+  // and render a condensed live view with the Retry button.
+  const { data: stacksData } = useStacks()
+  const realStack = useMemo<Stack | undefined>(() => {
+    if (entry || !deploymentId) return undefined
+    return stacksData?.items?.find((s) => s.id === deploymentId)
+  }, [stacksData, deploymentId, entry])
+
   const allLogs = entry?.logs ?? []
   const meta = entry?.meta
 
@@ -188,6 +201,16 @@ export function StackDeploymentLogsPage() {
   const visibleLogs = allLogs.slice(0, visibleCount)
   const isStreaming = visibleCount < allLogs.length
   const stages = meta ? getStages(meta.result) : []
+
+  if (!entry && realStack) {
+    return (
+      <RealStackView
+        stack={realStack}
+        onBack={() => navigate('/stack/list')}
+        onRetried={() => navigate('/stack/list')}
+      />
+    )
+  }
 
   return (
     <div>
@@ -328,6 +351,78 @@ export function StackDeploymentLogsPage() {
             </div>
           )}
           <div ref={logEndRef} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface RealStackViewProps {
+  stack: Stack
+  onBack: () => void
+  onRetried: () => void
+}
+
+function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
+  const isFailed = stack.status === 'failed' || stack.status === 'rolled_back'
+  const statusTone = isFailed
+    ? 'bg-[rgba(239,68,68,0.15)] text-[#f87171]'
+    : stack.status === 'running' || stack.status === 'installing' || stack.status === 'pending'
+      ? 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]'
+      : 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
+  return (
+    <div>
+      <Breadcrumb items={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Logs' }]} />
+
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.12)] text-[#34d399]">
+            <Terminal size={18} />
+          </div>
+          <div>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
+              Deployment Logs
+            </h1>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+              {stack.name} · {stack.templateName || stack.templateId} · {stack.clusterName || stack.clusterId}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <RetryStackButton
+            stackId={stack.id}
+            status={stack.status as RetryStackStatus}
+            onRetried={onRetried}
+          />
+          <Button variant="outline" size="md" type="button" onClick={onBack}>
+            <ArrowLeft size={14} />
+            Back to Stack List
+          </Button>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <span className={cn('flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold', statusTone)}>
+          {isFailed ? <XCircle size={12} /> : <CheckCircle2 size={12} />}
+          {stack.status}
+        </span>
+        <span className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
+          <Clock size={12} />
+          {stack.namespace ?? 'nullus'}
+        </span>
+      </div>
+
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
+        <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] px-4 py-2.5">
+          <div className="flex gap-1.5">
+            <span className="h-3 w-3 rounded-full bg-[#ef4444]" />
+            <span className="h-3 w-3 rounded-full bg-[#fbbf24]" />
+            <span className="h-3 w-3 rounded-full bg-[#34d399]" />
+          </div>
+          <span className="ml-2 text-[11px] text-[rgba(255,255,255,0.3)]">deployment/{stack.id}</span>
+        </div>
+        <div className="p-6 text-[13px] text-[var(--color-text-secondary)]">
+          Live log streaming is not yet connected. See the Stack List view for deployment events and metrics.
         </div>
       </div>
     </div>
