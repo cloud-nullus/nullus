@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RotateCcw } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { useRetryStack } from '../api/stack-api'
@@ -11,6 +12,8 @@ import { extractDeployCompatError } from '../utils/deploy-error'
 // current state allows retry (failed / rolled_back). Handles the backend's
 // warn-ack contract by opening an inline Modal on DEPLOY_COMPAT_WARN_UNACK
 // that lets the user acknowledge the issues and re-submit with the flag.
+// Non-warn outcomes are surfaced through sonner toasts so feedback shows up
+// regardless of which list row is open.
 
 interface RetryStackButtonProps {
   stackId: string
@@ -28,41 +31,36 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
   const retry = useRetryStack()
   const [warnPrompt, setWarnPrompt] = useState<WarnPromptState>({ open: false, issueLines: [] })
   const [ack, setAck] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   if (!canRetry(status)) {
     return null
   }
 
   const runRetry = (acknowledgeWarnings: boolean) => {
-    setErrorMessage(null)
     retry.mutate(
       { stackId, acknowledgeWarnings },
       {
         onSuccess: () => {
           setWarnPrompt({ open: false, issueLines: [] })
           setAck(false)
+          toast.success(t('stackList.retry.toasts.success', 'Redeploy started.'))
           onRetried?.(stackId)
         },
         onError: (err) => {
           const gate = extractDeployCompatError(err)
           if (gate?.code === 'DEPLOY_COMPAT_WARN_UNACK') {
-            // Surface ack prompt; do NOT call retry until user confirms.
+            // Surface ack prompt; do NOT fire a toast until the user decides.
             setWarnPrompt({ open: true, issueLines: gate.issueLines })
             return
           }
+          const failureBase = t('stackList.retry.toasts.failure', 'Redeploy failed.')
           if (gate?.code === 'DEPLOY_COMPAT_FAIL') {
-            setErrorMessage(
-              t('stackList.retry.toasts.failure',
-                '서버 호환성 검증에서 fail 을 받았습니다.') +
-                ' ' + gate.issueLines.join('; '),
-            )
+            const detail = gate.issueLines.length > 0 ? ' — ' + gate.issueLines.join('; ') : ''
+            toast.error(failureBase + detail)
             return
           }
-          setErrorMessage(
-            (err as { message?: string })?.message ??
-              t('stackList.retry.toasts.failure', 'Retry failed.'),
-          )
+          const message = (err as { message?: string })?.message
+          toast.error(message ? failureBase + ' — ' + message : failureBase)
         },
       },
     )
@@ -81,15 +79,6 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
         <RotateCcw size={12} className="mr-1" />
         {t('stackList.retry.button', 'Retry')}
       </Button>
-      {errorMessage && (
-        <div
-          className="ml-2 text-[11px] text-[#ef4444]"
-          role="status"
-          data-testid="retry-stack-error"
-        >
-          {errorMessage}
-        </div>
-      )}
 
       <Modal
         open={warnPrompt.open}
