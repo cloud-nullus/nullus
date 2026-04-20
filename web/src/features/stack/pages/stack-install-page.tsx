@@ -38,6 +38,7 @@ import {
 } from '../utils/compatibility-arch'
 import { shouldBlockOnServerVerdict } from '../utils/server-verdict'
 import { extractDeployCompatError } from '../utils/deploy-error'
+import { getCompatIssueMessage } from '../utils/compat-issue-i18n'
 import type { CompatibilityValidationResult } from '../../../types'
 
 // --- Tool option types ---
@@ -4060,9 +4061,16 @@ export function StackInstallPage() {
           {serverVerdict.issues.length > 0 && (
             <ul className="mb-0 mt-1 pl-4 text-[11px]">
               {serverVerdict.issues.map((issue, index) => (
-                <li key={`${issue.code ?? issue.tool}-${index}`}>
-                  {issue.code ? <strong>[{issue.code}] </strong> : null}
-                  {issue.message}
+                <li
+                  key={`${issue.code ?? issue.tool}-${index}`}
+                  data-code={issue.code ?? undefined}
+                >
+                  {getCompatIssueMessage(t, issue)}
+                  {issue.tool ? (
+                    <span className="ml-1 text-[10px] text-[var(--color-text-tertiary)]">
+                      ({issue.tool})
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>
