@@ -154,6 +154,29 @@ func TestPostgresClusterRepository_Integration(t *testing.T) {
 		assert.Equal(t, domain.ConnectionStatusUnreachable, got.ConnectionStatus)
 	})
 
+	t.Run("node architectures round trip", func(t *testing.T) {
+		// Task 3: Pre-Deploy Gate needs NodeArchitectures persisted per-cluster.
+		// Caller may pass unsorted/duplicate values — repository must normalize.
+		cluster.NodeArchitectures = []string{"arm64", "amd64", "arm64"}
+		cluster.UpdatedAt = time.Now().UTC()
+		require.NoError(t, clusterRepo.Update(ctx, cluster))
+
+		got, err := clusterRepo.GetByID(ctx, cluster.ID)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, []string{"amd64", "arm64"}, got.NodeArchitectures)
+
+		// Clearing to empty should persist as empty slice and read back as nil.
+		cluster.NodeArchitectures = nil
+		cluster.UpdatedAt = time.Now().UTC()
+		require.NoError(t, clusterRepo.Update(ctx, cluster))
+
+		got, err = clusterRepo.GetByID(ctx, cluster.ID)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Nil(t, got.NodeArchitectures)
+	})
+
 	t.Run("store and retrieve kubeconfig", func(t *testing.T) {
 		encrypted := []byte("encrypted-kubeconfig-" + uuid.NewString())
 		require.NoError(t, clusterRepo.SaveKubeconfig(ctx, cluster.ID, encrypted))

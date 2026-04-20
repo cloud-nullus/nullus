@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -73,6 +74,64 @@ func (r *PostgresCompatibilityRepository) Validate(ctx context.Context, tools ma
 	}
 
 	return nil, fmt.Errorf("no compatible matrix found for the given tool combination")
+}
+
+// Create inserts a new matrix. Returns port.ErrCompatibilityMatrixExists
+// when the id is already present (ON CONFLICT DO NOTHING + rows-affected check).
+func (r *PostgresCompatibilityRepository) Create(ctx context.Context, m *domain.CompatibilityMatrix) error {
+	toolsJSON, err := json.Marshal(m.Tools)
+	if err != nil {
+		return fmt.Errorf("marshal tools: %w", err)
+	}
+	const q = `
+		INSERT INTO compatibility_matrices
+			(id, name, status, k8s_min, k8s_max, k8s_recommended, tools)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (id) DO NOTHING`
+	tag, err := r.pool.Exec(ctx, q,
+		m.ID, m.Name, m.Status,
+		m.Kubernetes.Min, m.Kubernetes.Max, m.Kubernetes.Recommended,
+		toolsJSON,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return port.ErrCompatibilityMatrixExists
+	}
+	return nil
+}
+
+// Update replaces every mutable column. Returns
+// port.ErrCompatibilityMatrixNotFound when no row matched.
+func (r *PostgresCompatibilityRepository) Update(ctx context.Context, m *domain.CompatibilityMatrix) error {
+	toolsJSON, err := json.Marshal(m.Tools)
+	if err != nil {
+		return fmt.Errorf("marshal tools: %w", err)
+	}
+	const q = `
+		UPDATE compatibility_matrices
+		SET name = $2, status = $3, k8s_min = $4, k8s_max = $5,
+		    k8s_recommended = $6, tools = $7, updated_at = NOW()
+		WHERE id = $1`
+	tag, err := r.pool.Exec(ctx, q,
+		m.ID, m.Name, m.Status,
+		m.Kubernetes.Min, m.Kubernetes.Max, m.Kubernetes.Recommended,
+		toolsJSON,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return port.ErrCompatibilityMatrixNotFound
+	}
+	return nil
+}
+
+// Delete removes a matrix. Idempotent — missing id is not an error.
+func (r *PostgresCompatibilityRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM compatibility_matrices WHERE id = $1`, id)
+	return err
 }
 
 type compatibilityScanner interface {

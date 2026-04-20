@@ -94,3 +94,78 @@ func TestToolVersion_Fields(t *testing.T) {
 	assert.Equal(t, "2.31.0", version.HelmVersion)
 	assert.Equal(t, "2.18.0", version.AppVersion)
 }
+
+func TestToolVersion_V2Fields(t *testing.T) {
+	version := ToolVersion{
+		Name:          "harbor",
+		HelmVersion:   "1.14.0",
+		AppVersion:    "2.11.0",
+		MinK8sVersion: "1.27",
+		ArchSupport:   []string{ArchAMD64},
+		Tier:          ToolTierStable,
+	}
+
+	assert.Equal(t, "1.27", version.MinK8sVersion)
+	assert.Equal(t, []string{"amd64"}, version.ArchSupport)
+	assert.Equal(t, "stable", version.Tier)
+}
+
+func TestToolVersion_SupportsArch(t *testing.T) {
+	cases := []struct {
+		name  string
+		tool  ToolVersion
+		arch  string
+		want  bool
+	}{
+		{
+			name: "multi-arch tool supports arm64",
+			tool: ToolVersion{ArchSupport: []string{ArchAMD64, ArchARM64}},
+			arch: ArchARM64,
+			want: true,
+		},
+		{
+			name: "multi-arch tool supports amd64",
+			tool: ToolVersion{ArchSupport: []string{ArchAMD64, ArchARM64}},
+			arch: ArchAMD64,
+			want: true,
+		},
+		{
+			name: "amd64-only tool rejects arm64",
+			tool: ToolVersion{ArchSupport: []string{ArchAMD64}},
+			arch: ArchARM64,
+			want: false,
+		},
+		{
+			name: "empty arch support defaults to amd64 only",
+			tool: ToolVersion{},
+			arch: ArchARM64,
+			want: false,
+		},
+		{
+			name: "empty arch support still allows amd64",
+			tool: ToolVersion{},
+			arch: ArchAMD64,
+			want: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.tool.SupportsArch(tc.arch))
+		})
+	}
+}
+
+func TestToolVersion_EffectiveMinK8sVersion(t *testing.T) {
+	matrix := KubernetesCompat{Min: "1.27", Max: "1.35", Recommended: "1.35"}
+
+	t.Run("per-tool value overrides matrix min", func(t *testing.T) {
+		tool := ToolVersion{MinK8sVersion: "1.29"}
+		assert.Equal(t, "1.29", tool.EffectiveMinK8sVersion(matrix))
+	})
+
+	t.Run("empty per-tool falls back to matrix min", func(t *testing.T) {
+		tool := ToolVersion{}
+		assert.Equal(t, "1.27", tool.EffectiveMinK8sVersion(matrix))
+	})
+}

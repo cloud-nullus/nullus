@@ -54,6 +54,8 @@ import { cn } from "../../../lib/utils";
 import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
 import { useDeleteStack, useStackHistory, useStackMonitoring, useStacks } from "../api/stack-api";
+import { RetryStackButton } from "../components/retry-stack-button";
+import type { StackStatus as RetryStackStatus } from "../utils/retry-policy";
 import { useScopedClusters } from "../../admin/api/admin-api";
 
 ChartJS.register(
@@ -1081,6 +1083,10 @@ function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }
 						<Button variant="outline" size="sm" type="button" onClick={onAddTools}>
 							<Plus size={13} /> Add Tools
 						</Button>
+						<RetryStackButton
+							stackId={stack.id}
+							status={stack.status as RetryStackStatus}
+						/>
 						<Button variant="danger" size="sm" type="button" onClick={onDelete} disabled={isDeleting} loading={isDeleting}>
 							Delete
 						</Button>

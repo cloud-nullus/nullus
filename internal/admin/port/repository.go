@@ -26,6 +26,15 @@ type ClusterRepository interface {
 	GetKubeconfig(ctx context.Context, id string) ([]byte, error)
 }
 
+// ClusterDiscoverer talks to a live Kubernetes cluster and returns facts we
+// persist back onto the Cluster aggregate (server version, node arch set).
+// Defined as a port so ClusterUseCase can be unit tested without a real
+// cluster and the Pre-Deploy Gate can depend on the admin module only
+// through well-defined interfaces.
+type ClusterDiscoverer interface {
+	Discover(ctx context.Context, kubeconfig []byte) (*domain.ClusterDiscoveryInfo, error)
+}
+
 // UserRepository defines the interface for user persistence.
 type UserRepository interface {
 	Create(ctx context.Context, user *domain.User) error

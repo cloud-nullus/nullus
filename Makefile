@@ -1,4 +1,4 @@
-.PHONY: dev dev-up dev-down dev-status dev-logs build test test-cover test-integration lint migrate-up migrate-down migrate-status web-dev web-build web-test all clean db-shell
+.PHONY: dev dev-up dev-down dev-status dev-logs build test test-cover test-integration test-golden-path lint migrate-up migrate-down migrate-status web-dev web-build web-test all clean db-shell
 
 DB_URL := postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable
 DOCKER_COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo ""; fi)
@@ -83,6 +83,13 @@ test:
 
 test-integration:
 	go test -tags integration ./e2e/ -v -count=1
+
+# F8 Task 6 — Narwhal Golden Path 3종을 실제 로컬 Kind 클러스터 `nullus-platform`
+# 에서 순차 배포 검증. Kind 또는 helm CLI 가 없으면 graceful skip.
+# 실행 전제: `kind create cluster --name nullus-platform --image kindest/node:v1.30.x`
+# 자세한 런북: docs/20_아키텍처/F8_Task6_Kind_Runbook.md
+test-golden-path:
+	go test -tags e2e -run "^TestF8Task6_GoldenPath" -timeout 60m -v ./e2e/...
 
 test-cover:
 	go test ./... -coverprofile=coverage.out -covermode=atomic

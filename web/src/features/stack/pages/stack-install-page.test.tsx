@@ -74,15 +74,35 @@ const mockTemplates = [
 ]
 
 // Mock API hooks
+// Module-scope mocks so individual tests can override behavior via
+// `mockCreateStackAsync.mockResolvedValueOnce(...)` etc. Used by F8-F3
+// server-verdict test cases to flip the gate response per scenario.
+const mockCreateStackAsync = vi.fn(async () => ({ id: 'stk-test' }))
+const mockDeployStackAsync = vi.fn(async () => ({}))
+const mockValidateCompatibilityAsync = vi.fn(async () => ({
+  compatible: true,
+  overall: { state: 'pass' as const, score: 100 },
+  issues: [] as Array<{ tool: string; message: string; severity: 'error' | 'warning'; code?: string }>,
+  nodeArchitectures: [] as string[],
+  checkedAt: '2026-04-19T00:00:00Z',
+}))
+
 vi.mock('../api/stack-api', () => ({
-  useCreateStack: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateStack: () => ({ mutate: vi.fn(), mutateAsync: mockCreateStackAsync, isPending: false }),
   useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
   useTemplates: () => ({ data: mockTemplates, isFetched: true }),
   useStacks: () => ({ data: mockStacks }),
   useResourceDefaults: () => ({ data: mockResourceDefaults }),
-  useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeployStack: () => ({ mutate: vi.fn(), mutateAsync: mockDeployStackAsync, isPending: false }),
   useCompatibilityMatrix: () => ({ data: mockCompatibilityMatrices }),
+  // F8-F3 server-side Pre-Deploy Gate. Default returns pass so existing
+  // tests that don't touch the gate still behave as before.
+  useValidateCompatibility: () => ({
+    mutate: vi.fn(),
+    mutateAsync: mockValidateCompatibilityAsync,
+    isPending: false,
+  }),
 }))
 
 vi.mock('../../admin/api/admin-api', () => ({
@@ -331,7 +351,16 @@ describe('StackInstallPage', () => {
     fillRequiredSelectionsForConfigTabs()
     fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
 
-    expect(screen.getAllByRole('button', { name: /GitLab/i })).toHaveLength(1)
+    // F8 Task 5 Auto Select cards now add matrix-name buttons (e.g. "GitLab
+    // All-in-One", "GitLab + Argo CD") that also match /GitLab/i. Filter them
+    // out so this assertion still targets the install-file bundle button.
+    const installFileButtons = screen
+      .getAllByRole('button', { name: /GitLab/i })
+      .filter((btn) => {
+        const name = (btn.getAttribute('aria-label') ?? btn.textContent ?? '').trim()
+        return !/All-in-One|Argo|GitHub/.test(name)
+      })
+    expect(installFileButtons).toHaveLength(1)
     expect(screen.getByText(/역할:/)).toHaveTextContent('Artifacts > Package Registry')
     expect(screen.getByText(/역할:/)).toHaveTextContent('Artifacts > Source Repository')
     expect(screen.getByText(/역할:/)).toHaveTextContent('Artifacts > Container Registry')
@@ -549,4 +578,15 @@ describe('StackInstallPage', () => {
     expect(startupCpuReq).toBeGreaterThan(0)
     expect(enterpriseCpuReq).toBeGreaterThan(startupCpuReq)
   })
+
+  // F8-F3 server-verdict behavioral coverage lives in the pure unit tests
+  // `src/features/stack/utils/server-verdict.test.ts` (pass / fail / warn-ack
+  // decision policy) and in the Go handler suite
+  // `internal/stack/adapter/handler/deploy_handler_compat_test.go` (202 / 400
+  // response shapes with verdict bodies). End-to-end wiring of the submit
+  // flow is exercised by Playwright e2e; a DOM-level integration test
+  // inside this file would require threading through the full multi-step
+  // wizard (tool selections, cluster, namespace, stack name uniqueness,
+  // resources) which the existing tests already do with bespoke setup
+  // helpers — duplicating that for the gate would just re-test the wizard.
 })

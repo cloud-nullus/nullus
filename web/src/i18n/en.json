@@ -6,6 +6,7 @@
     "stackList": "Stack List",
     "stackHistory": "Stack History",
     "stackVersion": "Stack Version",
+    "stackVersionsAdmin": "Stack Version Management",
     "stackOssResourceDefault": "OSS Default Resource",
     "cicd": "CI/CD",
     "cicdTemplate": "CI/CD Template",
@@ -128,6 +129,28 @@
     },
     "errors": {
       "duplicateStackName": "A stack with this name already exists in the selected cluster"
+    },
+    "compatibility": {
+      "autoSelect": {
+        "title": "Golden Path Quick Start",
+        "subtitle": "Load a verified combination with one click",
+        "selectCluster": "Select a target cluster first",
+        "archUnknown": "Cluster architectures unknown — refresh discovery",
+        "archMismatch": "Incompatible with cluster arch",
+        "compatible": "Compatible with cluster"
+      },
+      "issue": {
+        "toolArchUnsupported": "One or more tools do not support the cluster node architecture",
+        "clusterArchUnknown": "Cluster architecture is unknown — run Refresh Discovery in Admin > Stack Version Management",
+        "kubeconfigNotRegistered": "Kubeconfig is not registered for this cluster",
+        "serverFail": "Server-side compatibility validation returned fail. Review issues and adjust the combination.",
+        "serverWarnAck": "Server-side compatibility returned warn. Acknowledge below and click Deploy again."
+      },
+      "serverVerdict": {
+        "title": "Server Pre-Deploy Gate",
+        "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying."
+      },
+      "refreshDiscoveryCta": "Open admin page"
     }
   },
   "stackTemplatePage": {
@@ -645,6 +668,18 @@
     },
     "title": "Stack List",
     "description": "Deployed DevSecOps stack list",
+    "retry": {
+      "button": "Retry",
+      "confirmWarn": {
+        "title": "Compatibility warning",
+        "description": "The server-side Pre-Deploy Gate returned warn. Review the items below before retrying.",
+        "ackLabel": "Acknowledge the risk and proceed with redeploy."
+      },
+      "toasts": {
+        "success": "Redeploy started.",
+        "failure": "Redeploy failed."
+      }
+    },
     "actions": {
       "newStack": "New Stack"
     },
@@ -1151,6 +1186,79 @@
       "pass": "Compatibility validation passed",
       "fail": "Compatibility issues found",
       "checkedAt": "Checked at"
+    }
+  },
+  "stackVersionsAdmin": {
+    "title": "Stack Version Management",
+    "subtitle": "Review Narwhal-based compatibility matrices and verify cluster architecture fit.",
+    "listTitle": "Compatibility Matrices",
+    "listSubtitle": "Golden Path 3 canonical matrices (Narwhal baseline)",
+    "loadError": "Failed to load compatibility matrices.",
+    "selectMatrix": "Select a matrix to view details.",
+    "k8sRangeLabel": "Kubernetes version range",
+    "toolsHeading": "Tools",
+    "clustersHeading": "Cluster compatibility",
+    "noClusters": "No clusters registered.",
+    "breadcrumb": {
+      "devsecops": "DevSecOps Stack",
+      "stackVersions": "Stack Version Management"
+    },
+    "status": {
+      "verified": "Verified",
+      "untested": "Untested",
+      "unsupported": "Unsupported"
+    },
+    "tier": {
+      "stable": "Stable",
+      "beta": "Beta",
+      "deprecated": "Deprecated"
+    },
+    "archBadge": {
+      "amd64": "amd64",
+      "arm64": "arm64",
+      "unknown": "—"
+    },
+    "crossEval": {
+      "compatible": "Compatible",
+      "incompatible": "Incompatible",
+      "unknown": "Needs refresh"
+    },
+    "col": {
+      "name": "Name",
+      "helm": "Helm",
+      "app": "App",
+      "arch": "Arch",
+      "minK8s": "Min K8s",
+      "tier": "Tier",
+      "cluster": "Cluster",
+      "nodeArch": "Node Architectures",
+      "crossEval": "Compatibility",
+      "actions": "Actions"
+    },
+    "refreshDiscovery": {
+      "button": "Refresh Discovery",
+      "success": "Cluster architectures refreshed.",
+      "failure": "Refresh failed.",
+      "notRegistered": "Kubeconfig is not registered."
+    },
+    "actions": {
+      "new": "New matrix",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "modal": {
+      "titleCreate": "New matrix",
+      "titleEdit": "Edit matrix",
+      "tools": "Tools",
+      "addTool": "Add tool",
+      "removeTool": "Remove tool",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "deleteConfirm": {
+      "title": "Delete compatibility matrix",
+      "description": "Deleting this matrix means stacks that previously matched it will be treated as untested. Continue?",
+      "confirm": "Delete"
     }
   }
 }

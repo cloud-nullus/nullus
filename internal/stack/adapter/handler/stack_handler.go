@@ -21,9 +21,19 @@ type StackHandler struct {
 	listStacks    *usecase.ListStacks
 	deleteStack   *usecase.DeleteStack
 	addToolsUC    *usecase.AddToolsUseCase
+	updateStack   *usecase.UpdateStack
 	manageHistory *usecase.ManageHistory
 	stackRepo     port.StackRepository
-	audit         *audit.AuditLogger
+	audit         audit.Sink
+}
+
+// StackHandlerOption configures optional features.
+type StackHandlerOption func(*StackHandler)
+
+// WithUpdateStack wires the UpdateStack usecase. Optional so existing
+// constructor signature stays backward-compatible.
+func WithUpdateStack(uc *usecase.UpdateStack) StackHandlerOption {
+	return func(h *StackHandler) { h.updateStack = uc }
 }
 
 // NewStackHandler constructs a StackHandler.
@@ -34,9 +44,9 @@ func NewStackHandler(
 	addToolsUC *usecase.AddToolsUseCase,
 	stackRepo port.StackRepository,
 	manageHistory *usecase.ManageHistory,
-	auditLogger ...*audit.AuditLogger,
+	auditLogger ...audit.Sink,
 ) *StackHandler {
-	var logger *audit.AuditLogger
+	var logger audit.Sink
 	if len(auditLogger) > 0 {
 		logger = auditLogger[0]
 	}
@@ -51,15 +61,83 @@ func NewStackHandler(
 	}
 }
 
+// WithOptions applies StackHandlerOption values after construction.
+func (h *StackHandler) WithOptions(opts ...StackHandlerOption) *StackHandler {
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
 // RegisterRoutes registers stack routes on the given Echo group.
 func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("", h.CreateStack)
 	g.GET("", h.ListStacks)
 	g.GET("/:stackId", h.GetStack)
+	g.PUT("/:stackId", h.UpdateStack)
 	g.DELETE("/:stackId", h.DeleteStack)
 	g.PATCH("/:stackId/tools", h.AddTools)
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.POST("/draft", h.SaveDraft)
+}
+
+// updateStackRequest is the PUT body. All fields optional; absent fields are
+// left untouched on the stack aggregate.
+type updateStackRequest struct {
+	Name      *string             `json:"name,omitempty"`
+	ClusterID *string             `json:"cluster_id,omitempty"`
+	Namespace *string             `json:"namespace,omitempty"`
+	Config    *domain.StackConfig `json:"config,omitempty"`
+	Tools     []domain.ToolConfig `json:"tools,omitempty"`
+}
+
+// UpdateStack handles PUT /api/v1/stacks/:stackId. Phase 4 of F8 follow-up.
+// Permits mutation only while state ∈ {pending, failed}; other states return
+// 409 STACK_UPDATE_INVALID_STATE.
+func (h *StackHandler) UpdateStack(c echo.Context) error {
+	if h.updateStack == nil {
+		return errorResponse(c, http.StatusNotImplemented, "STACK_UPDATE_DISABLED",
+			"update stack usecase not wired")
+	}
+	id := c.Param("stackId")
+	var req updateStackRequest
+	if err := c.Bind(&req); err != nil {
+		return errorResponse(c, http.StatusBadRequest, "STACK_UPDATE_REQUEST_INVALID", err.Error())
+	}
+
+	out, err := h.updateStack.Execute(c.Request().Context(), usecase.UpdateStackInput{
+		StackID:   id,
+		Name:      req.Name,
+		ClusterID: req.ClusterID,
+		Namespace: req.Namespace,
+		Config:    req.Config,
+		Tools:     req.Tools,
+	})
+	if err != nil {
+		// State-machine rejections use STACK_UPDATE_INVALID_STATE so the
+		// frontend can branch without string matching.
+		if strings.Contains(err.Error(), "is not updatable") {
+			return errorResponse(c, http.StatusConflict, "STACK_UPDATE_INVALID_STATE", err.Error())
+		}
+		if strings.Contains(err.Error(), "not found") {
+			return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+		}
+		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", err.Error())
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "update",
+			ResourceType: "stack",
+			ResourceID:   id,
+			Details:      map[string]any{"state": out.Stack.State},
+			IPAddress:    c.RealIP(),
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"id":    out.Stack.ID,
+		"state": out.Stack.State,
+	})
 }
 
 // createStackRequest is the request body for POST /stacks.

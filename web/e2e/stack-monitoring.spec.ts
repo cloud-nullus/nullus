@@ -23,7 +23,10 @@ test.describe('Stack Monitoring E2E', () => {
     await page.fill('#password', 'devops123')
     await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 5000 })
     await page.click('button[type="submit"]')
-    await page.waitForURL('**/stack/templates')
+    // Login page now navigates to '/' (Home) regardless of role — F8 Task 5 +
+    // Phase 1 (2026-04-20). Each test explicitly navigates to its target
+    // stack-* route, so beforeEach only needs to confirm auth succeeded.
+    await page.waitForURL('**/')
   })
 
   test('@stack-critical completed stack monitoring renders live values', async ({ page, request }) => {

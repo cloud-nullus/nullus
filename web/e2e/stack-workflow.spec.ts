@@ -40,16 +40,21 @@ test.describe('Stack Workflow E2E', () => {
     await page.fill('#password', 'devops123')
     await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 5000 })
     await page.click('button[type="submit"]')
-    await page.waitForURL('**/stack/templates')
+    // Login page now navigates to '/' (Home) regardless of role — F8 Task 5 +
+    // Phase 1 (2026-04-20). Tests that need /stack/templates call goto
+    // explicitly.
+    await page.waitForURL('**/')
   })
 
   test('Stack Templates 페이지 → 4개 카드 표시', async ({ page }) => {
+    await page.goto('/stack/templates')
     await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
     const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
     await expect(cards).toHaveCount(4)
   })
 
   test('"Use Template" 클릭 → Install 페이지 이동', async ({ page }) => {
+    await page.goto('/stack/templates')
     await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
     const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
     await cards.first().getByRole('button', { name: 'Use Base Template' }).click()
