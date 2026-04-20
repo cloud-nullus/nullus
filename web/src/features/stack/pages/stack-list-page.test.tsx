@@ -73,6 +73,7 @@ vi.mock('../api/stack-api', () => ({
   useStackHistory: (...args: unknown[]) => mockUseStackHistory(...args),
   useStackMonitoring: (...args: unknown[]) => mockUseStackMonitoring(...args),
   useClusters: (...args: unknown[]) => mockUseClusters(...args),
+  useRetryStack: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 vi.mock('react-chartjs-2', () => ({
