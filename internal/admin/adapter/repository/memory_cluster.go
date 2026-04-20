@@ -24,6 +24,25 @@ func NewMemoryClusterRepository() *MemoryClusterRepository {
 	}
 }
 
+// cloneCluster returns a deep copy of a Cluster, including the slice fields.
+// Without this the shared backing array would leak between the store and
+// callers (observed when a discovery Update() mutated NodeArchitectures in
+// place and the mutation appeared in a prior GetByID result).
+func cloneCluster(c *domain.Cluster) *domain.Cluster {
+	cp := *c
+	if len(c.Types) > 0 {
+		cp.Types = append([]domain.ClusterType(nil), c.Types...)
+	} else {
+		cp.Types = nil
+	}
+	if len(c.NodeArchitectures) > 0 {
+		cp.NodeArchitectures = append([]string(nil), c.NodeArchitectures...)
+	} else {
+		cp.NodeArchitectures = nil
+	}
+	return &cp
+}
+
 // Create stores a new cluster.
 func (r *MemoryClusterRepository) Create(_ context.Context, cluster *domain.Cluster) error {
 	r.mu.Lock()
@@ -31,8 +50,9 @@ func (r *MemoryClusterRepository) Create(_ context.Context, cluster *domain.Clus
 	if _, ok := r.clusters[cluster.ID]; ok {
 		return fmt.Errorf("cluster %q already exists", cluster.ID)
 	}
-	cp := *cluster
-	r.clusters[cluster.ID] = &cp
+	stored := cloneCluster(cluster)
+	stored.NodeArchitectures = domain.NormalizeNodeArchitectures(stored.NodeArchitectures)
+	r.clusters[cluster.ID] = stored
 	return nil
 }
 
@@ -44,8 +64,7 @@ func (r *MemoryClusterRepository) GetByID(_ context.Context, id string) (*domain
 	if !ok {
 		return nil, nil
 	}
-	cp := *c
-	return &cp, nil
+	return cloneCluster(c), nil
 }
 
 // List returns all clusters for the given orgID. Passing an empty orgID returns all clusters.
@@ -55,8 +74,7 @@ func (r *MemoryClusterRepository) List(_ context.Context, orgID string) ([]*doma
 	result := make([]*domain.Cluster, 0, len(r.clusters))
 	for _, c := range r.clusters {
 		if orgID == "" || c.OrgID == orgID {
-			cp := *c
-			result = append(result, &cp)
+			result = append(result, cloneCluster(c))
 		}
 	}
 	return result, nil
@@ -69,8 +87,9 @@ func (r *MemoryClusterRepository) Update(_ context.Context, cluster *domain.Clus
 	if _, ok := r.clusters[cluster.ID]; !ok {
 		return fmt.Errorf("cluster %q not found", cluster.ID)
 	}
-	cp := *cluster
-	r.clusters[cluster.ID] = &cp
+	stored := cloneCluster(cluster)
+	stored.NodeArchitectures = domain.NormalizeNodeArchitectures(stored.NodeArchitectures)
+	r.clusters[cluster.ID] = stored
 	return nil
 }
 

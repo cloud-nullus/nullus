@@ -18,6 +18,8 @@ import (
 type ClusterUseCase struct {
 	clusterRepo port.ClusterRepository
 	orgRepo     port.OrgRepository
+	discoverer  port.ClusterDiscoverer
+	decryptFn   func([]byte) ([]byte, error)
 }
 
 func NewClusterUseCase(clusterRepo port.ClusterRepository, opts ...func(*ClusterUseCase)) *ClusterUseCase {
@@ -30,6 +32,20 @@ func NewClusterUseCase(clusterRepo port.ClusterRepository, opts ...func(*Cluster
 
 func WithOrgRepo(r port.OrgRepository) func(*ClusterUseCase) {
 	return func(uc *ClusterUseCase) { uc.orgRepo = r }
+}
+
+// WithDiscoverer injects a ClusterDiscoverer so Register/Update/Refresh
+// paths can probe the real cluster for node architectures.
+func WithDiscoverer(d port.ClusterDiscoverer) func(*ClusterUseCase) {
+	return func(uc *ClusterUseCase) { uc.discoverer = d }
+}
+
+// WithKubeconfigDecryptor injects a function that turns the repository's
+// encrypted kubeconfig blob into the raw YAML bytes the discoverer can
+// consume. Kept as an option so the use case doesn't depend on the crypto
+// package directly.
+func WithKubeconfigDecryptor(fn func([]byte) ([]byte, error)) func(*ClusterUseCase) {
+	return func(uc *ClusterUseCase) { uc.decryptFn = fn }
 }
 
 func (uc *ClusterUseCase) GetFirstOrgID(ctx context.Context) (string, error) {
@@ -205,6 +221,70 @@ func (uc *ClusterUseCase) SaveKubeconfig(ctx context.Context, id string, kubecon
 		return fmt.Errorf("saving kubeconfig: %w", err)
 	}
 	return nil
+}
+
+// RefreshDiscovery reads the stored kubeconfig, probes the cluster for its
+// server version and node architectures, and persists the result onto the
+// Cluster aggregate.
+//
+// On discovery failure the cluster is marked connection_failed with an empty
+// NodeArchitectures slice — the Pre-Deploy Gate interprets empty as "arch
+// unknown" and falls back to a warn verdict, prompting the user to refresh.
+func (uc *ClusterUseCase) RefreshDiscovery(ctx context.Context, id string) (*domain.Cluster, error) {
+	if uc.discoverer == nil {
+		return nil, fmt.Errorf("cluster discoverer not configured")
+	}
+	cluster, err := uc.GetCluster(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	storedKubeconfig, err := uc.clusterRepo.GetKubeconfig(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("reading kubeconfig: %w", err)
+	}
+	if len(storedKubeconfig) == 0 {
+		return nil, &shareddomain.AppError{
+			Code:       "KUBECONFIG_NOT_REGISTERED",
+			HTTPStatus: http.StatusBadRequest,
+			Message:    "Kubeconfig is not registered for this cluster",
+			Retryable:  false,
+		}
+	}
+
+	rawKubeconfig := storedKubeconfig
+	if uc.decryptFn != nil {
+		rawKubeconfig, err = uc.decryptFn(storedKubeconfig)
+		if err != nil {
+			return uc.markDiscoveryFailed(ctx, cluster, fmt.Errorf("decrypt kubeconfig: %w", err))
+		}
+	}
+
+	info, err := uc.discoverer.Discover(ctx, rawKubeconfig)
+	if err != nil {
+		return uc.markDiscoveryFailed(ctx, cluster, err)
+	}
+
+	cluster.ConnectionStatus = domain.ConnectionStatusConnected
+	cluster.NodeArchitectures = domain.NormalizeNodeArchitectures(info.NodeArchitectures)
+	cluster.UpdatedAt = time.Now().UTC()
+	if err := uc.clusterRepo.Update(ctx, cluster); err != nil {
+		return nil, fmt.Errorf("persisting discovery: %w", err)
+	}
+	return cluster, nil
+}
+
+// markDiscoveryFailed records a connection_failed status with an empty node
+// arch set so the Pre-Deploy Gate can distinguish a stale/unknown cluster
+// from a healthy one. Persistence errors during the status write are
+// surfaced alongside the original discovery error.
+func (uc *ClusterUseCase) markDiscoveryFailed(ctx context.Context, cluster *domain.Cluster, discoveryErr error) (*domain.Cluster, error) {
+	cluster.ConnectionStatus = domain.ConnectionStatusConnectionFailed
+	cluster.NodeArchitectures = nil
+	cluster.UpdatedAt = time.Now().UTC()
+	if err := uc.clusterRepo.Update(ctx, cluster); err != nil {
+		return cluster, fmt.Errorf("discovery failed: %w (also failed to persist status: %v)", discoveryErr, err)
+	}
+	return cluster, discoveryErr
 }
 
 func (uc *ClusterUseCase) GetKubeconfig(ctx context.Context, id string) ([]byte, error) {

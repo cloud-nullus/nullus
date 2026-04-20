@@ -12,7 +12,9 @@ import (
 	"time"
 
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
+	adminkube "github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
+	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
@@ -35,6 +37,7 @@ import (
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	stackport "github.com/cloud-nullus/draft/internal/stack/port"
 	stackuc "github.com/cloud-nullus/draft/internal/stack/usecase"
+	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
@@ -73,7 +76,18 @@ func main() {
 	userRepo := adminrepo.NewPostgresUserRepository(pool)
 
 	orgUC := usecase.NewOrgUseCase(orgRepo)
-	clusterUC := usecase.NewClusterUseCase(clusterRepo, usecase.WithOrgRepo(orgRepo))
+	encryptionKey := []byte(os.Getenv("ENCRYPTION_KEY"))
+	decryptKubeconfig := func(encrypted []byte) ([]byte, error) {
+		if len(encryptionKey) != 32 {
+			return nil, fmt.Errorf("ENCRYPTION_KEY must be 32 bytes")
+		}
+		return crypto.Decrypt(encryptionKey, string(encrypted))
+	}
+	clusterUC := usecase.NewClusterUseCase(clusterRepo,
+		usecase.WithOrgRepo(orgRepo),
+		usecase.WithDiscoverer(adminkube.NewDiscoverer()),
+		usecase.WithKubeconfigDecryptor(decryptKubeconfig),
+	)
 	userUC := usecase.NewUserUseCase(userRepo)
 	auditLogger := audit.NewAuditLogger(pool)
 
@@ -118,14 +132,40 @@ func main() {
 	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, manageHistoryUC, auditLogger)
+	updateStackUC := stackuc.NewUpdateStack(pgStackRepo, manageHistoryUC)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, manageHistoryUC, auditLogger).
+		WithOptions(stackhandler.WithUpdateStack(updateStackUC))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
 
 	pgCompatRepo := stackrepo.NewPostgresCompatibilityRepository(pool)
-	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
-	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
+	pgStackClusterReader := stackrepo.NewPostgresClusterReader(pool)
+	verdictCacheTTL := 30 * time.Second
+	if override := os.Getenv("VERDICT_CACHE_TTL_SEC"); override != "" {
+		if n, err := time.ParseDuration(override + "s"); err == nil {
+			verdictCacheTTL = n
+		}
+	}
+	verdictCache := stackuc.NewMemoryVerdictCache(verdictCacheTTL)
+	validateCompatUC := stackuc.NewValidateCompatibility(
+		pgCompatRepo,
+		stackuc.WithClusterReader(pgStackClusterReader),
+		stackuc.WithStackRepository(pgStackRepo),
+		stackuc.WithVerdictCache(verdictCache),
+	)
+	manageCompatUC := stackuc.NewManageCompatibility(
+		pgCompatRepo,
+		stackuc.WithVerdictCacheClearer(verdictCache),
+	)
+	compatHandler := stackhandler.NewCompatibilityHandler(
+		pgCompatRepo,
+		validateCompatUC,
+		stackhandler.WithManageCompatibility(manageCompatUC),
+		stackhandler.WithCompatibilityAuditSink(auditLogger),
+	)
+	// F8-F3: enable server-side Pre-Deploy Gate on POST /stacks/:id/deploy.
+	deployHandler.WithOptions(stackhandler.WithValidateCompatibility(validateCompatUC))
 
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
 	stackMonitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
@@ -237,6 +277,7 @@ func main() {
 	templateHandler.RegisterRoutes(stacks)
 	exportHandler.RegisterRoutes(v1)
 	compatHandler.RegisterRoutes(stacks)
+	compatHandler.RegisterAdminRoutes(admin)
 	historyHandler.RegisterRoutes(stacks)
 	stackMonitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
@@ -264,6 +305,22 @@ func main() {
 		})
 	})
 
+	// Phase 7: nightly Refresh Discovery scheduler. Runs in a goroutine
+	// tied to the server's context so graceful shutdown (SIGINT/SIGTERM)
+	// also stops the scheduler.
+	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+	refreshInterval := 24 * time.Hour
+	if override := os.Getenv("REFRESH_DISCOVERY_INTERVAL"); override != "" {
+		if dur, err := time.ParseDuration(override); err == nil && dur > 0 {
+			refreshInterval = dur
+		}
+	}
+	clusterAdapter := adminscheduler.NewClusterAdapter(clusterUC)
+	refreshScheduler := adminscheduler.NewRefreshDiscoveryScheduler(clusterAdapter, clusterAdapter, adminscheduler.Options{
+		Interval: refreshInterval,
+	})
+	go refreshScheduler.Start(schedulerCtx)
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
 		slog.Info("starting server", "addr", addr)
@@ -276,6 +333,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	schedulerCancel()
 
 	slog.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

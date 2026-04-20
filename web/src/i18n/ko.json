@@ -6,6 +6,7 @@
     "stackList": "스택 목록",
     "stackHistory": "스택 이력",
     "stackVersion": "스택 버전",
+    "stackVersionsAdmin": "스택 버전 관리",
     "stackOssResourceDefault": "OSS 기본 리소스",
     "cicd": "CI/CD",
     "cicdTemplate": "CI/CD 템플릿",
@@ -128,6 +129,28 @@
     },
     "errors": {
       "duplicateStackName": "선택한 클러스터에 동일한 스택 이름이 이미 존재합니다."
+    },
+    "compatibility": {
+      "autoSelect": {
+        "title": "Golden Path 빠른 시작",
+        "subtitle": "한 번의 클릭으로 검증된 조합을 불러옵니다",
+        "selectCluster": "먼저 대상 클러스터를 선택하세요",
+        "archUnknown": "클러스터 아키텍처가 미상입니다. Refresh Discovery를 실행해 주세요",
+        "archMismatch": "클러스터 아키텍처와 호환되지 않습니다",
+        "compatible": "클러스터와 호환됩니다"
+      },
+      "issue": {
+        "toolArchUnsupported": "선택한 도구가 클러스터 아키텍처를 지원하지 않습니다",
+        "clusterArchUnknown": "클러스터 아키텍처가 미상이므로 관리자 > 스택 버전 관리에서 Refresh Discovery를 실행해 주세요",
+        "kubeconfigNotRegistered": "클러스터에 kubeconfig가 등록되어 있지 않습니다",
+        "serverFail": "서버 호환성 검증에서 fail 응답을 받았습니다. 상세 issues를 확인하고 조합을 수정해 주세요.",
+        "serverWarnAck": "서버 호환성 경고가 발생했습니다. 아래 체크를 확인한 뒤 다시 배포를 눌러 주세요."
+      },
+      "serverVerdict": {
+        "title": "서버 Pre-Deploy Gate",
+        "ackLabel": "서버 호환성 경고를 확인했고 리스크를 감수하고 배포를 진행합니다."
+      },
+      "refreshDiscoveryCta": "관리자 페이지로 이동"
     }
   },
   "stackTemplatePage": {
@@ -648,6 +671,18 @@
     "actions": {
       "newStack": "새 스택"
     },
+    "retry": {
+      "button": "재시도",
+      "confirmWarn": {
+        "title": "호환성 경고 확인",
+        "description": "서버 호환성 검증에서 warn 이 감지되었습니다. 아래 항목을 확인한 뒤 재시도를 진행해 주세요.",
+        "ackLabel": "위험을 감수하고 재배포를 진행합니다."
+      },
+      "toasts": {
+        "success": "재배포가 시작되었습니다.",
+        "failure": "재배포에 실패했습니다."
+      }
+    },
     "table": {
       "stackName": "스택 이름",
       "template": "템플릿",
@@ -1151,6 +1186,79 @@
       "pass": "호환성 검증 통과",
       "fail": "호환성 문제 발견",
       "checkedAt": "검증 시각"
+    }
+  },
+  "stackVersionsAdmin": {
+    "title": "스택 버전 관리",
+    "subtitle": "Narwhal 기반 호환성 매트릭스를 확인하고 클러스터 아키텍처 적합성을 교차 검증합니다.",
+    "listTitle": "호환성 매트릭스",
+    "listSubtitle": "Golden Path 3종 (Narwhal 베이스라인)",
+    "loadError": "호환성 매트릭스를 불러오지 못했습니다.",
+    "selectMatrix": "매트릭스를 선택하면 상세 정보가 표시됩니다.",
+    "k8sRangeLabel": "Kubernetes 지원 범위",
+    "toolsHeading": "도구",
+    "clustersHeading": "클러스터 호환성",
+    "noClusters": "등록된 클러스터가 없습니다.",
+    "breadcrumb": {
+      "devsecops": "데브섹옵스 스택",
+      "stackVersions": "스택 버전 관리"
+    },
+    "status": {
+      "verified": "검증됨",
+      "untested": "미검증",
+      "unsupported": "미지원"
+    },
+    "tier": {
+      "stable": "안정",
+      "beta": "베타",
+      "deprecated": "폐지 예정"
+    },
+    "archBadge": {
+      "amd64": "amd64",
+      "arm64": "arm64",
+      "unknown": "—"
+    },
+    "crossEval": {
+      "compatible": "호환",
+      "incompatible": "비호환",
+      "unknown": "확인 필요"
+    },
+    "col": {
+      "name": "이름",
+      "helm": "Helm",
+      "app": "App",
+      "arch": "아키텍처",
+      "minK8s": "최소 K8s",
+      "tier": "등급",
+      "cluster": "클러스터",
+      "nodeArch": "노드 아키텍처",
+      "crossEval": "호환성",
+      "actions": "액션"
+    },
+    "refreshDiscovery": {
+      "button": "재판독",
+      "success": "클러스터 아키텍처를 다시 읽었습니다.",
+      "failure": "재판독에 실패했습니다.",
+      "notRegistered": "kubeconfig가 등록되지 않았습니다."
+    },
+    "actions": {
+      "new": "새 매트릭스",
+      "edit": "편집",
+      "delete": "삭제"
+    },
+    "modal": {
+      "titleCreate": "새 매트릭스",
+      "titleEdit": "매트릭스 편집",
+      "tools": "도구",
+      "addTool": "도구 추가",
+      "removeTool": "도구 제거",
+      "cancel": "취소",
+      "save": "저장"
+    },
+    "deleteConfirm": {
+      "title": "호환성 매트릭스 삭제",
+      "description": "이 매트릭스를 삭제하면 이 조합을 사용하던 스택들은 untested 로 처리됩니다. 계속할까요?",
+      "confirm": "삭제"
     }
   }
 }

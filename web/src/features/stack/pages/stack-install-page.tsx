@@ -20,7 +20,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates, useValidateCompatibility } from '../api/stack-api'
 import { useClusters } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
@@ -32,6 +32,12 @@ import { CodePreview } from '../../../components/shared/code-preview'
 import { cn } from '../../../lib/utils'
 import { useThemeStore } from '../../../stores/theme-store'
 import { buildInstallOverridesFromTemplate } from '../utils/template-overrides'
+import {
+  isMatrixCompatibleWithCluster,
+  matrixArchMismatches,
+} from '../utils/compatibility-arch'
+import { shouldBlockOnServerVerdict } from '../utils/server-verdict'
+import type { CompatibilityValidationResult } from '../../../types'
 
 // --- Tool option types ---
 
@@ -48,7 +54,55 @@ const K8S_PREVIEW_TABS = [
   { id: 'gateway', label: 'Gateway API' },
 ] as const
 
+// extractDeployCompatError pulls out the structured verdict that the Deploy
+// handler attaches to DEPLOY_COMPAT_FAIL / DEPLOY_COMPAT_WARN_UNACK error
+// bodies (F8-F3). Returns null when the error is not a compatibility-gate
+// rejection so the caller can fall through to the generic formatter.
+function extractDeployCompatError(error: unknown): {
+  code: string
+  issueLines: string[]
+} | null {
+  if (typeof error !== 'object' || error === null) return null
+  const record = error as Record<string, unknown>
+  const details = record.details
+  if (typeof details !== 'object' || details === null) return null
+  const nestedError = (details as Record<string, unknown>).error
+  if (typeof nestedError !== 'object' || nestedError === null) return null
+  const nested = nestedError as Record<string, unknown>
+  const code = typeof nested.code === 'string' ? nested.code : ''
+  if (code !== 'DEPLOY_COMPAT_FAIL' && code !== 'DEPLOY_COMPAT_WARN_UNACK') {
+    return null
+  }
+  const verdict = nested.verdict
+  const issueLines: string[] = []
+  if (typeof verdict === 'object' && verdict !== null) {
+    const issues = (verdict as Record<string, unknown>).issues
+    if (Array.isArray(issues)) {
+      for (const i of issues) {
+        if (typeof i === 'object' && i !== null) {
+          const rec = i as Record<string, unknown>
+          const iCode = typeof rec.code === 'string' ? rec.code : ''
+          const msg = typeof rec.message === 'string' ? rec.message : ''
+          if (msg) {
+            issueLines.push(iCode ? `[${iCode}] ${msg}` : msg)
+          }
+        }
+      }
+    }
+  }
+  return { code, issueLines }
+}
+
 function toDeployErrorMessage(error: unknown): string {
+  // Compat-gate errors get a specialized, issue-aware formatter so the user
+  // sees every blocking reason without having to open dev tools.
+  const gate = extractDeployCompatError(error)
+  if (gate) {
+    const prefix = gate.code === 'DEPLOY_COMPAT_FAIL' ? '배포 차단(서버 호환성 fail)' : '배포 차단(서버 호환성 warn, 승인 필요)'
+    const detail = gate.issueLines.length > 0 ? ' — ' + gate.issueLines.join('; ') : ''
+    return `${prefix}${detail}`
+  }
+
   let code = ''
   let backendMessage = ''
   let status: number | undefined
@@ -260,6 +314,10 @@ type PreDeployCompatibilityState = 'pass' | 'warn' | 'fail'
 type PreDeployCompatibilityIssue = {
   severity: 'warning' | 'error'
   message: string
+  // code mirrors the server validate endpoint's issue.code. Used to branch
+  // UI copy (e.g. CLUSTER_ARCH_UNKNOWN → link to Refresh Discovery,
+  // TOOL_ARCH_UNSUPPORTED → Arch badge, KUBECONFIG_NOT_REGISTERED → admin link).
+  code?: string
 }
 
 type PreDeployCompatibilityReport = {
@@ -1891,6 +1949,15 @@ export function StackInstallPage() {
   } = useStackConfigStore()
   const createStack = useCreateStack()
   const deployStack = useDeployStack()
+  // F8-F3: server-side Pre-Deploy Gate on /stacks/:id/validate. Runs after
+  // createStack so the server can evaluate stack.Tools + stack.ClusterID.
+  const validateCompatibility = useValidateCompatibility()
+  // Separate from compatWarnAcknowledged (client pre-check). When the server
+  // returns warn, we require a dedicated ack so the client can't silently
+  // re-use a prior pre-check ack.
+  const [serverVerdict, setServerVerdict] = useState<CompatibilityValidationResult | null>(null)
+  const [serverWarnAcknowledged, setServerWarnAcknowledged] = useState(false)
+  const [pendingStackId, setPendingStackId] = useState<string | null>(null)
   const saveDraft = useSaveDraft()
   const { data: resourceDefaultsData } = useResourceDefaults()
   const { data: templatesData, isFetched: isTemplatesFetched } = useTemplates()
@@ -2160,6 +2227,47 @@ export function StackInstallPage() {
     const minioFromMatrix = findMatrixToolVersion(matched, 'minio')
     const postgresFromDraft = draft.storage.database.version || draft.storage.database.providerOrEngine || 'N/A'
 
+    // F8 Task 3 / 5: cross-check the matched matrix against the selected
+    // cluster's discovered node architectures. Produces issues the gate UI
+    // layers on top of the matrix-level verdict below.
+    const archIssues: PreDeployCompatibilityIssue[] = []
+    let archForcesFail = false
+    let archDowngradesToWarn = false
+    if (draft.clusterId) {
+      const selectedCluster = (clustersData?.items ?? []).find((c) => c.id === draft.clusterId)
+      const clusterArchs = selectedCluster?.nodeArchitectures ?? []
+      const verdict = isMatrixCompatibleWithCluster(matched, clusterArchs)
+      if (verdict === 'unknown') {
+        archDowngradesToWarn = true
+        archIssues.push({
+          severity: 'warning',
+          code: 'CLUSTER_ARCH_UNKNOWN',
+          message:
+            '선택한 클러스터의 노드 아키텍처가 미상입니다. 관리자 > 스택 버전 관리에서 Refresh Discovery를 실행해 주세요.',
+        })
+      } else if (verdict === 'incompatible') {
+        const mismatches = matrixArchMismatches(matched, clusterArchs)
+        const detail = mismatches
+          .map((m) => `${m.toolName}: ${m.missingArchs.join(', ')}`)
+          .join(' · ')
+        if (matched.status === 'verified') {
+          archForcesFail = true
+          archIssues.push({
+            severity: 'error',
+            code: 'TOOL_ARCH_UNSUPPORTED',
+            message: `이 조합의 일부 도구가 클러스터 노드 아키텍처를 지원하지 않습니다 (${detail}).`,
+          })
+        } else {
+          archDowngradesToWarn = true
+          archIssues.push({
+            severity: 'warning',
+            code: 'TOOL_ARCH_UNSUPPORTED',
+            message: `검증되지 않은 조합이며 아키텍처 호환성 리스크가 있습니다 (${detail}).`,
+          })
+        }
+      }
+    }
+
     if (matched.status === 'unsupported') {
       return {
         state: 'fail',
@@ -2180,8 +2288,11 @@ export function StackInstallPage() {
       return {
         state: 'warn',
         reason: 'Matched matrix is untested',
-        score: 70,
-        issues: [{ severity: 'warning', message: '현재 조합은 untested 매트릭스입니다. 검증 리스크를 인지하고 진행하세요.' }],
+        score: archDowngradesToWarn || archIssues.length > 0 ? Math.min(70, 60) : 70,
+        issues: [
+          { severity: 'warning', message: '현재 조합은 untested 매트릭스입니다. 검증 리스크를 인지하고 진행하세요.' },
+          ...archIssues,
+        ],
         matchedMatrix: matched,
         baseline: {
           k8s: matched.k8sRange,
@@ -2192,11 +2303,25 @@ export function StackInstallPage() {
       }
     }
 
+    // Verified matrix path: arch check may downgrade to warn or fail.
+    let passState: PreDeployCompatibilityState = 'pass'
+    let passScore = 100
+    if (archForcesFail) {
+      passState = 'fail'
+      passScore = 0
+    } else if (archDowngradesToWarn) {
+      passState = 'warn'
+      passScore = Math.min(passScore, 70)
+    }
     return {
-      state: 'pass',
-      reason: 'Matched verified matrix',
-      score: 100,
-      issues: [],
+      state: passState,
+      reason: archForcesFail
+        ? 'Tool architecture does not match cluster'
+        : archDowngradesToWarn
+          ? 'Cluster architecture unknown or partial match'
+          : 'Matched verified matrix',
+      score: passScore,
+      issues: archIssues,
       matchedMatrix: matched,
       baseline: {
         k8s: matched.k8sRange,
@@ -2207,6 +2332,8 @@ export function StackInstallPage() {
     }
   }, [
     compatibilityMatrixData,
+    clustersData,
+    draft.clusterId,
     objectStorageBackendVersion,
     draft.storage.database.providerOrEngine,
     draft.storage.database.version,
@@ -3477,13 +3604,49 @@ export function StackInstallPage() {
     const request = buildStackRequest()
 
     try {
-      const createRes = await createStack.mutateAsync(request)
-      const stackId = createRes?.id
+      // Reuse an in-flight stackId if the user already created the stack in
+      // a previous submit attempt that hit a server-verdict block; otherwise
+      // create fresh. TODO(follow-up): when createStack fails mid-flow the
+      // current implementation may leave an orphan draft — needs an
+      // updateStack/saveDraft path for retries.
+      let stackId = pendingStackId
       if (!stackId) {
-        setTabGuardError('스택 생성은 되었지만 stack ID를 확인하지 못했습니다. 다시 시도해 주세요.')
+        const createRes = await createStack.mutateAsync(request)
+        stackId = createRes?.id ?? null
+        if (!stackId) {
+          setTabGuardError('스택 생성은 되었지만 stack ID를 확인하지 못했습니다. 다시 시도해 주세요.')
+          return
+        }
+        setPendingStackId(stackId)
+      }
+
+      // F8-F3: server re-runs the Pre-Deploy Gate against persisted stack state.
+      const verdict = await validateCompatibility.mutateAsync({ stackId })
+      setServerVerdict(verdict)
+
+      const decision = shouldBlockOnServerVerdict(verdict, serverWarnAcknowledged)
+      if (decision.block) {
+        setTabGuardError(
+          verdict.overall.state === 'fail'
+            ? t(
+                'stackInstall.compatibility.issue.serverFail',
+                '서버 호환성 검증에서 fail 응답을 받았습니다. 상세 issues 를 확인하고 조합을 수정해 주세요.',
+              )
+            : t(
+                'stackInstall.compatibility.issue.serverWarnAck',
+                '서버 호환성 경고가 발생했습니다. 아래 체크를 확인한 뒤 다시 배포를 눌러 주세요.',
+              ),
+        )
         return
       }
-      await deployStack.mutateAsync(stackId)
+
+      await deployStack.mutateAsync({
+        stackId,
+        acknowledgeWarnings: decision.acknowledgeWarnings ?? false,
+      })
+      setPendingStackId(null)
+      setServerVerdict(null)
+      setServerWarnAcknowledged(false)
       navigate(`/stack/deploy/${stackId}`)
     } catch (error) {
       setTabGuardError(toDeployErrorMessage(error))
@@ -3777,6 +3940,94 @@ export function StackInstallPage() {
         </div>
 
 
+      {/* F8 Task 5: Golden Path Auto Select quick-start cards. Each button
+          loads a canonical matrix into draft.tools + selectedTemplateId.
+          Disabled when the selected cluster's node architectures can't
+          host every tool in the matrix. */}
+      {(compatibilityMatrixData ?? []).length > 0 && (
+        <div className="mb-3 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-3">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <span className="text-sm font-semibold text-[var(--color-text-primary)]">
+              {t('stackInstall.compatibility.autoSelect.title', 'Golden Path Quick Start')}
+            </span>
+            <span className="text-[11px] text-[var(--color-text-secondary)]">
+              {t(
+                'stackInstall.compatibility.autoSelect.subtitle',
+                'Load a verified combination with one click',
+              )}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {(compatibilityMatrixData ?? [])
+              .filter((m) => m.status !== 'unsupported')
+              .slice()
+              .sort((a, b) => a.id.localeCompare(b.id))
+              .map((matrix) => {
+                const selectedCluster = (clustersData?.items ?? []).find((c) => c.id === draft.clusterId)
+                const clusterArchs = selectedCluster?.nodeArchitectures ?? []
+                const archVerdict = isMatrixCompatibleWithCluster(matrix, clusterArchs)
+                const disabled = archVerdict === 'incompatible'
+                const mismatches = matrixArchMismatches(matrix, clusterArchs)
+                const mismatchLabel = mismatches
+                  .map((mm) => `${mm.toolName}: ${mm.missingArchs.join(', ')}`)
+                  .join(' · ')
+                const isActive = draft.selectedTemplateId === matrix.id
+                const subtitle = !draft.clusterId
+                  ? t(
+                      'stackInstall.compatibility.autoSelect.selectCluster',
+                      'Select a target cluster first',
+                    )
+                  : archVerdict === 'unknown'
+                    ? t(
+                        'stackInstall.compatibility.autoSelect.archUnknown',
+                        'Cluster architectures unknown — refresh discovery',
+                      )
+                    : archVerdict === 'incompatible'
+                      ? t(
+                          'stackInstall.compatibility.autoSelect.archMismatch',
+                          'Incompatible with cluster arch',
+                        ) + ` (${mismatchLabel})`
+                      : t('stackInstall.compatibility.autoSelect.compatible', 'Compatible with cluster')
+                return (
+                  <button
+                    key={matrix.id}
+                    type="button"
+                    onClick={() => {
+                      loadFromTemplate(matrix.id)
+                    }}
+                    disabled={disabled}
+                    aria-disabled={disabled}
+                    title={disabled ? mismatchLabel : undefined}
+                    className={cn(
+                      'flex flex-col items-start gap-1 rounded border px-3 py-2 text-left transition-colors',
+                      isActive
+                        ? 'border-[#6366f1] bg-[rgba(99,102,241,0.12)]'
+                        : 'border-[var(--color-border-default)] hover:bg-[rgba(255,255,255,0.04)]',
+                      disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+                      !draft.clusterId && !disabled && 'border-[rgba(245,158,11,0.35)]',
+                    )}
+                  >
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="text-sm text-[var(--color-text-primary)]">{matrix.name}</span>
+                      <span
+                        className={cn(
+                          'rounded-full px-1.5 py-0 text-[10px] uppercase',
+                          matrix.status === 'verified'
+                            ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
+                            : 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
+                        )}
+                      >
+                        {matrix.status}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[var(--color-text-secondary)]">{subtitle}</span>
+                  </button>
+                )
+              })}
+          </div>
+        </div>
+      )}
+
       <div
         className={cn(
           'mb-3 rounded border px-3 py-3 text-xs',
@@ -3820,6 +4071,56 @@ export function StackInstallPage() {
           </label>
         )}
       </div>
+
+      {/* F8-F3: server-side verdict panel. Renders only after the wizard has
+          called /stacks/:id/validate post-createStack. Fail shows issue list
+          as a hard block; warn shows an ack checkbox the user must tick before
+          pressing Deploy again. */}
+      {serverVerdict && (
+        <div
+          className={cn(
+            'mb-3 rounded border px-3 py-3 text-xs',
+            serverVerdict.overall.state === 'pass'
+              ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] text-[#86efac]'
+              : serverVerdict.overall.state === 'warn'
+                ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
+                : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
+          )}
+          data-testid="server-verdict-panel"
+        >
+          <div className="mb-2 font-semibold">
+            {t(
+              'stackInstall.compatibility.serverVerdict.title',
+              'Server Pre-Deploy Gate',
+            )}{' '}
+            ({serverVerdict.overall.state.toUpperCase()})
+          </div>
+          {serverVerdict.issues.length > 0 && (
+            <ul className="mb-0 mt-1 pl-4 text-[11px]">
+              {serverVerdict.issues.map((issue, index) => (
+                <li key={`${issue.code ?? issue.tool}-${index}`}>
+                  {issue.code ? <strong>[{issue.code}] </strong> : null}
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {serverVerdict.overall.state === 'warn' && (
+            <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
+              <input
+                type="checkbox"
+                checked={serverWarnAcknowledged}
+                onChange={(e) => setServerWarnAcknowledged(e.target.checked)}
+                data-testid="server-warn-ack"
+              />
+              {t(
+                'stackInstall.compatibility.serverVerdict.ackLabel',
+                '서버 호환성 경고를 확인했고 리스크를 감수하고 배포를 진행합니다.',
+              )}
+            </label>
+          )}
+        </div>
+      )}
 
       
 

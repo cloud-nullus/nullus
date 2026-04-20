@@ -11,7 +11,7 @@ import (
 
 type MemberHandler struct {
 	userUC *usecase.UserUseCase
-	audit  *audit.AuditLogger
+	audit  audit.Sink
 }
 
 type createMemberRequest struct {
@@ -26,8 +26,8 @@ type updateMemberRequest struct {
 	Role  *domain.Role `json:"role"`
 }
 
-func NewMemberHandler(userUC *usecase.UserUseCase, auditLogger ...*audit.AuditLogger) *MemberHandler {
-	var logger *audit.AuditLogger
+func NewMemberHandler(userUC *usecase.UserUseCase, auditLogger ...audit.Sink) *MemberHandler {
+	var logger audit.Sink
 	if len(auditLogger) > 0 {
 		logger = auditLogger[0]
 	}
