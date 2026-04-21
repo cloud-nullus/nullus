@@ -1258,7 +1258,12 @@
       "addTool": "Add tool",
       "removeTool": "Remove tool",
       "cancel": "Cancel",
-      "save": "Save"
+      "save": "Save",
+      "dropWarn": {
+        "title": "Rows that will be dropped on save because the category is empty",
+        "unnamed": "(unnamed)",
+        "hint": "Fill in the category or remove the row before saving. Saving as-is will delete those tool definitions from the server. Click Save again to proceed."
+      }
     },
     "deleteConfirm": {
       "title": "Delete compatibility matrix",
