@@ -58,6 +58,59 @@ function toolsToRows(m?: CompatibilityMatrix): ToolRow[] {
   return rows.length > 0 ? rows : [{ ...DEFAULT_ROW }]
 }
 
+// F8-UIUX-MatrixEditValidation — client-side field-level rules. The backend
+// still owns the final verdict, but surfacing these early avoids the "Save
+// button is dead and I don't know why" state and catches typos before
+// round-tripping.
+const ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/
+const K8S_PATTERN = /^v\d+\.\d+(\.\d+)?$/
+
+interface FieldErrors {
+  id?: string
+  name?: string
+  k8sMin?: string
+  k8sMax?: string
+  k8sRec?: string
+}
+
+type Translator = (key: string, defaultValue?: string) => string
+
+function validateFields(args: {
+  id: string
+  name: string
+  k8sMin: string
+  k8sMax: string
+  k8sRec: string
+  t: Translator
+  isEdit: boolean
+}): FieldErrors {
+  const { id, name, k8sMin, k8sMax, k8sRec, t, isEdit } = args
+  const errors: FieldErrors = {}
+  // ID is immutable in edit mode, so don't block Save on a legacy-bad id.
+  if (!isEdit && id.trim() && !ID_PATTERN.test(id.trim())) {
+    errors.id = t(
+      'stackVersionsAdmin.modal.validation.idFormat',
+      'ID는 소문자·숫자·하이픈만 허용되며 소문자·숫자로 시작해야 합니다.',
+    )
+  }
+  if (name.trim() && name.trim().length < 2) {
+    errors.name = t(
+      'stackVersionsAdmin.modal.validation.nameLength',
+      '이름은 최소 2자 이상이어야 합니다.',
+    )
+  }
+  if (k8sMin.trim() && !K8S_PATTERN.test(k8sMin.trim())) {
+    errors.k8sMin = t('stackVersionsAdmin.modal.validation.k8sFormat', '형식 예: v1.28 또는 v1.28.3')
+  }
+  if (k8sMax.trim() && !K8S_PATTERN.test(k8sMax.trim())) {
+    errors.k8sMax = t('stackVersionsAdmin.modal.validation.k8sFormat', '형식 예: v1.28 또는 v1.28.3')
+  }
+  if (k8sRec.trim() && !K8S_PATTERN.test(k8sRec.trim())) {
+    errors.k8sRec = t('stackVersionsAdmin.modal.validation.k8sFormat', '형식 예: v1.28 또는 v1.28.3')
+  }
+  return errors
+}
+
 function rowsToPayload(rows: ToolRow[]): MatrixInput['tools'] {
   const out: MatrixInput['tools'] = {}
   for (const row of rows) {
@@ -134,13 +187,39 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
     if (droppedRows.length === 0) setConfirmDrop(false)
   }, [droppedRows.length])
 
+  const fieldErrors = useMemo(
+    () => validateFields({ id, name, k8sMin, k8sMax, k8sRec, t, isEdit }),
+    [id, name, k8sMin, k8sMax, k8sRec, t, isEdit],
+  )
+  const hasFieldErrors = Object.values(fieldErrors).some(Boolean)
+
+  // F8-UIUX-MatrixEditValidation — snapshot the form on modal open so Cancel
+  // can prompt the user before discarding work. Using JSON.stringify keeps
+  // the comparison shallow-but-deterministic across field types.
+  const initialSnapshot = useMemo(() => {
+    if (!open) return ''
+    return JSON.stringify({
+      id: initial?.id ?? '',
+      name: initial?.name ?? '',
+      status: initial?.status ?? 'untested',
+      k8sRange: initial?.k8sRange ?? '',
+      tools: toolsToRows(initial),
+    })
+  }, [open, initial])
+  const currentSnapshot = useMemo(
+    () => JSON.stringify({ id, name, status, k8sRange: `${k8sMin}-${k8sMax}`, tools: rows }),
+    [id, name, status, k8sMin, k8sMax, rows],
+  )
+  const isDirty = currentSnapshot !== initialSnapshot
+
   const canSubmit = useMemo(() => {
+    if (hasFieldErrors) return false
     if (!id.trim() || !name.trim()) return false
     if (!k8sMin.trim() || !k8sMax.trim() || !k8sRec.trim()) return false
     const filled = rows.filter((r) => r.category.trim() && r.name.trim())
     if (filled.length === 0) return false
     return true
-  }, [id, name, k8sMin, k8sMax, k8sRec, rows])
+  }, [hasFieldErrors, id, name, k8sMin, k8sMax, k8sRec, rows])
 
   const handleSubmit = () => {
     if (!canSubmit) return
@@ -181,10 +260,25 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
         : [...rows[idx].archSupport, arch].sort(),
     })
 
+  // F8-UIUX-MatrixEditValidation — guard close paths (Cancel button, ESC,
+  // backdrop click) with a native confirm when the form is dirty so users
+  // do not lose typed edits by accident.
+  const handleCloseWithGuard = () => {
+    if (isDirty && !window.confirm(
+      t(
+        'stackVersionsAdmin.modal.unsavedPrompt',
+        '저장되지 않은 변경사항이 있습니다. 닫으시겠습니까?',
+      ),
+    )) {
+      return
+    }
+    onClose()
+  }
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleCloseWithGuard}
       title={t(
         isEdit ? 'stackVersionsAdmin.modal.titleEdit' : 'stackVersionsAdmin.modal.titleCreate',
         isEdit ? 'Edit matrix' : 'New matrix',
@@ -192,7 +286,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
       wide
       footer={
         <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+          <Button variant="outline" onClick={handleCloseWithGuard} disabled={mutation.isPending}>
             {t('stackVersionsAdmin.modal.cancel', 'Cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit || mutation.isPending}>
@@ -243,12 +337,14 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
             value={id}
             disabled={isEdit}
             onChange={(e) => setId(e.target.value)}
+            error={fieldErrors.id}
           />
           <Input
             label="Name"
             placeholder="My Matrix"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            error={fieldErrors.name}
           />
           <NativeSelect
             label="Status"
@@ -262,13 +358,26 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
         </section>
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Input label="K8s min" placeholder="v1.27" value={k8sMin} onChange={(e) => setK8sMin(e.target.value)} />
-          <Input label="K8s max" placeholder="v1.29" value={k8sMax} onChange={(e) => setK8sMax(e.target.value)} />
+          <Input
+            label="K8s min"
+            placeholder="v1.27"
+            value={k8sMin}
+            onChange={(e) => setK8sMin(e.target.value)}
+            error={fieldErrors.k8sMin}
+          />
+          <Input
+            label="K8s max"
+            placeholder="v1.29"
+            value={k8sMax}
+            onChange={(e) => setK8sMax(e.target.value)}
+            error={fieldErrors.k8sMax}
+          />
           <Input
             label="K8s recommended"
             placeholder="v1.28"
             value={k8sRec}
             onChange={(e) => setK8sRec(e.target.value)}
+            error={fieldErrors.k8sRec}
           />
         </section>
 
