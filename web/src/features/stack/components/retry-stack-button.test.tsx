@@ -77,6 +77,9 @@ describe('RetryStackButton', () => {
       expect(screen.getByTestId('retry-warn-ack')).toBeInTheDocument()
     })
     expect(screen.getByText(/TOOL_ARCH_UNSUPPORTED/)).toBeInTheDocument()
+    // F8-UIUX-WarnAckI18n: dedicated confirmWarn labels, not cross-feature admin keys.
+    expect(screen.getByRole('button', { name: /^Cancel$/ })).toBeInTheDocument()
+    expect(screen.getByTestId('retry-warn-confirm')).toHaveTextContent(/Acknowledge and retry/)
     expect(toastSuccess).not.toHaveBeenCalled()
     expect(toastError).not.toHaveBeenCalled()
   })

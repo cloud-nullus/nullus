@@ -676,7 +676,9 @@
       "confirmWarn": {
         "title": "Compatibility warning",
         "description": "The server-side Pre-Deploy Gate returned warn. Review the items below before retrying.",
-        "ackLabel": "Acknowledge the risk and proceed with redeploy."
+        "ackLabel": "Acknowledge the risk and proceed with redeploy.",
+        "cancel": "Cancel",
+        "confirm": "Acknowledge and retry"
       },
       "toasts": {
         "success": "Redeploy started.",
