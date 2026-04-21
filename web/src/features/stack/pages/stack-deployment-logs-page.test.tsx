@@ -30,6 +30,18 @@ const mockStacks: Stack[] = [
     createdAt: '2026-04-01T00:00:00Z',
     updatedAt: '2026-04-19T00:00:00Z',
   },
+  {
+    id: 'real-pending-stack',
+    name: 'billing-prod',
+    templateId: 'tpl-3',
+    templateName: 'Billing Template',
+    clusterId: 'c1',
+    clusterName: 'prod-cluster',
+    namespace: 'nullus',
+    status: 'pending',
+    createdAt: '2026-04-20T00:00:00Z',
+    updatedAt: '2026-04-20T00:00:00Z',
+  },
 ]
 
 let currentParamId: string | undefined = undefined
@@ -91,5 +103,28 @@ describe('StackDeploymentLogsPage', () => {
     currentParamId = 'nonexistent-stack'
     renderWithProviders(<StackDeploymentLogsPage />)
     expect(screen.getByText(/Deployment not found: nonexistent-stack/)).toBeInTheDocument()
+  })
+
+  it('real timeline renders for a pending stack without a terminal marker', () => {
+    currentParamId = 'real-pending-stack'
+    renderWithProviders(<StackDeploymentLogsPage />)
+    const timeline = screen.getByTestId('real-timeline')
+    expect(timeline).toBeInTheDocument()
+    // No terminal state while still in-flight.
+    expect(timeline.getAttribute('data-terminal')).toBeNull()
+  })
+
+  it('real timeline tags a failed stack with data-terminal="failed"', () => {
+    currentParamId = 'real-failed-stack'
+    renderWithProviders(<StackDeploymentLogsPage />)
+    const timeline = screen.getByTestId('real-timeline')
+    expect(timeline.getAttribute('data-terminal')).toBe('failed')
+  })
+
+  it('real timeline tags a completed stack with data-terminal="completed"', () => {
+    currentParamId = 'real-completed-stack'
+    renderWithProviders(<StackDeploymentLogsPage />)
+    const timeline = screen.getByTestId('real-timeline')
+    expect(timeline.getAttribute('data-terminal')).toBe('completed')
   })
 })

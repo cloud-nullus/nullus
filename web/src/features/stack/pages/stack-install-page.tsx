@@ -40,6 +40,7 @@ import { shouldBlockOnServerVerdict } from '../utils/server-verdict'
 import { extractDeployCompatError } from '../utils/deploy-error'
 import { getCompatIssueMessage } from '../utils/compat-issue-i18n'
 import { isDeployServerGateLocked } from '../utils/deploy-gate'
+import { warnAckKey, readAck, writeAck } from '../utils/warn-ack-storage'
 import type { CompatibilityValidationResult } from '../../../types'
 
 // --- Tool option types ---
@@ -2312,6 +2313,33 @@ export function StackInstallPage() {
       setCompatWarnAcknowledged(false)
     }
   }, [compatibilityGate.state])
+
+  // F8-UIUX-WarnAckPersist — persist the warn-ack toggles across tab
+  // refreshes via sessionStorage, keyed by (kind, stackName, clusterId,
+  // verdictHash). Rotating any of those invalidates the cached ack, so
+  // users are forced to re-ack when the underlying issue list changes.
+  const clientAckKey = useMemo(
+    () => warnAckKey('client', draft.stackName, draft.clusterId ?? '', compatibilityGate.issues),
+    [draft.stackName, draft.clusterId, compatibilityGate.issues],
+  )
+  const serverAckKey = useMemo(
+    () =>
+      serverVerdict
+        ? warnAckKey('server', draft.stackName, draft.clusterId ?? '', serverVerdict.issues)
+        : null,
+    [draft.stackName, draft.clusterId, serverVerdict],
+  )
+
+  useEffect(() => {
+    if (compatibilityGate.state !== 'warn') return
+    if (readAck(clientAckKey)) setCompatWarnAcknowledged(true)
+  }, [clientAckKey, compatibilityGate.state])
+
+  useEffect(() => {
+    if (!serverAckKey) return
+    if (serverVerdict?.overall.state !== 'warn') return
+    if (readAck(serverAckKey)) setServerWarnAcknowledged(true)
+  }, [serverAckKey, serverVerdict])
   const selectedToolKeys = Array.from(new Set(selectedInstallItems.map((item) => item.toolKey)))
 
   const defaultByTool = useMemo(
@@ -4041,7 +4069,10 @@ export function StackInstallPage() {
             <input
               type="checkbox"
               checked={compatWarnAcknowledged}
-              onChange={(e) => setCompatWarnAcknowledged(e.target.checked)}
+              onChange={(e) => {
+                setCompatWarnAcknowledged(e.target.checked)
+                writeAck(clientAckKey, e.target.checked)
+              }}
             />
             경고를 확인했고, untested 조합 리스크를 인지한 상태로 배포를 진행합니다.
           </label>
@@ -4093,7 +4124,10 @@ export function StackInstallPage() {
               <input
                 type="checkbox"
                 checked={serverWarnAcknowledged}
-                onChange={(e) => setServerWarnAcknowledged(e.target.checked)}
+                onChange={(e) => {
+                  setServerWarnAcknowledged(e.target.checked)
+                  if (serverAckKey) writeAck(serverAckKey, e.target.checked)
+                }}
                 data-testid="server-warn-ack"
               />
               {t(

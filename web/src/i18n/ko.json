@@ -685,7 +685,9 @@
       },
       "toasts": {
         "success": "재배포가 시작되었습니다.",
-        "failure": "재배포에 실패했습니다."
+        "failure": "재배포에 실패했습니다.",
+        "pending": "재배포 요청 중...",
+        "fixAction": "수정하기"
       }
     },
     "table": {
@@ -1251,6 +1253,19 @@
       "edit": "편집",
       "delete": "삭제"
     },
+    "filter": {
+      "searchPlaceholder": "ID 또는 이름으로 검색",
+      "searchAria": "매트릭스 검색",
+      "statusAria": "상태로 필터",
+      "all": "전체",
+      "empty": "조건에 맞는 매트릭스가 없습니다."
+    },
+    "legend": {
+      "aria": "매트릭스 상태 범례",
+      "verified": "verified",
+      "untested": "untested",
+      "unsupported": "unsupported"
+    },
     "modal": {
       "titleCreate": "새 매트릭스",
       "titleEdit": "매트릭스 편집",
@@ -1263,7 +1278,13 @@
         "title": "카테고리가 비어 있어 저장 시 제거되는 행",
         "unnamed": "(이름 없음)",
         "hint": "카테고리를 입력하거나 해당 행을 삭제한 뒤 저장해 주세요. 그대로 저장하면 해당 도구 정의는 서버에서 제거됩니다. 계속하려면 Save 를 한 번 더 눌러 주세요."
-      }
+      },
+      "validation": {
+        "idFormat": "ID는 소문자·숫자·하이픈만 허용되며 소문자·숫자로 시작해야 합니다.",
+        "nameLength": "이름은 최소 2자 이상이어야 합니다.",
+        "k8sFormat": "형식 예: v1.28 또는 v1.28.3"
+      },
+      "unsavedPrompt": "저장되지 않은 변경사항이 있습니다. 닫으시겠습니까?"
     },
     "deleteConfirm": {
       "title": "호환성 매트릭스 삭제",

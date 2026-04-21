@@ -99,3 +99,47 @@ describe('MatrixEditModal dirty-drop guard', () => {
     expect(updateMutate).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('MatrixEditModal validation + unsaved guard', () => {
+  it('shows an ID format error in create mode and blocks Save', () => {
+    const onClose = vi.fn()
+    renderWithProviders(<MatrixEditModal open mode="create" onClose={onClose} />)
+    const idInput = screen.getByPlaceholderText('my-matrix-v1') as HTMLInputElement
+    const nameInput = screen.getByPlaceholderText('My Matrix') as HTMLInputElement
+    fireEvent.change(idInput, { target: { value: 'Bad_ID!' } })
+    fireEvent.change(nameInput, { target: { value: 'A valid name' } })
+    expect(screen.getByText(/ID는 소문자|ID must be lowercase/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Save$/ })).toBeDisabled()
+    expect(createMutate).not.toHaveBeenCalled()
+  })
+
+  it('shows a name-length error when Name is one character', () => {
+    const onClose = vi.fn()
+    renderWithProviders(<MatrixEditModal open mode="create" onClose={onClose} />)
+    const nameInput = screen.getByPlaceholderText('My Matrix') as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: 'A' } })
+    expect(screen.getByText(/이름은 최소 2자|at least 2 characters/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Save$/ })).toBeDisabled()
+  })
+
+  it('shows a K8s format warning for a malformed version', () => {
+    const onClose = vi.fn()
+    renderWithProviders(<MatrixEditModal open mode="create" onClose={onClose} />)
+    const k8sMinInput = screen.getByPlaceholderText('v1.27') as HTMLInputElement
+    fireEvent.change(k8sMinInput, { target: { value: 'not-a-version' } })
+    expect(screen.getAllByText(/v1\.28 또는|Expected format/i).length).toBeGreaterThan(0)
+  })
+
+  it('prompts to confirm close when the form is dirty and Cancel is clicked', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { onClose } = renderEdit()
+    clearCategory(0) // make form dirty
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }))
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled() // user denied → modal stays open
+    confirmSpy.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    confirmSpy.mockRestore()
+  })
+})

@@ -682,7 +682,9 @@
       },
       "toasts": {
         "success": "Redeploy started.",
-        "failure": "Redeploy failed."
+        "failure": "Redeploy failed.",
+        "pending": "Submitting retry...",
+        "fixAction": "Fix combination"
       }
     },
     "actions": {
@@ -1251,6 +1253,19 @@
       "edit": "Edit",
       "delete": "Delete"
     },
+    "filter": {
+      "searchPlaceholder": "Search by ID or name",
+      "searchAria": "Matrix search",
+      "statusAria": "Filter by status",
+      "all": "All",
+      "empty": "No matrices match the filters."
+    },
+    "legend": {
+      "aria": "Matrix status legend",
+      "verified": "verified",
+      "untested": "untested",
+      "unsupported": "unsupported"
+    },
     "modal": {
       "titleCreate": "New matrix",
       "titleEdit": "Edit matrix",
@@ -1263,7 +1278,13 @@
         "title": "Rows that will be dropped on save because the category is empty",
         "unnamed": "(unnamed)",
         "hint": "Fill in the category or remove the row before saving. Saving as-is will delete those tool definitions from the server. Click Save again to proceed."
-      }
+      },
+      "validation": {
+        "idFormat": "ID must be lowercase letters, digits, or hyphens, and start with a letter or digit.",
+        "nameLength": "Name must be at least 2 characters long.",
+        "k8sFormat": "Expected format: v1.28 or v1.28.3"
+      },
+      "unsavedPrompt": "You have unsaved changes. Close anyway?"
     },
     "deleteConfirm": {
       "title": "Delete compatibility matrix",

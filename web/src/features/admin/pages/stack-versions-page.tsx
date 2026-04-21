@@ -5,6 +5,8 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Button } from '../../../components/ui/button'
+import { Input } from '../../../components/ui/input'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { useCompatibilityMatrix, useDeleteMatrix } from '../../stack/api/stack-api'
 import { useClusters, useRefreshDiscovery } from '../api/admin-api'
 import { MatrixEditModal } from '../components/matrix-edit-modal'
@@ -36,6 +38,10 @@ export function StackVersionsAdminPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [modal, setModal] = useState<{ mode: 'create' | 'edit'; initial?: CompatibilityMatrix } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CompatibilityMatrix | null>(null)
+  // F8-UIUX-MatrixListOps — list search + status filter (rendered only when
+  // more than 5 matrices exist so small lists stay quiet).
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | CompatibilityMatrix['status']>('all')
 
   // Determinism: always render by id so server order doesn't leak into UI.
   const sortedMatrices = useMemo(
@@ -43,14 +49,25 @@ export function StackVersionsAdminPage() {
     [matrices],
   )
 
+  const filteredMatrices = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return sortedMatrices.filter((m) => {
+      if (statusFilter !== 'all' && m.status !== statusFilter) return false
+      if (!q) return true
+      return m.id.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q)
+    })
+  }, [sortedMatrices, search, statusFilter])
+
+  const showFilterBar = sortedMatrices.length > 5
+
   const sortedClusters = useMemo(
     () => (clustersData?.items ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
     [clustersData],
   )
 
   const selectedMatrix = useMemo(
-    () => sortedMatrices.find((m) => m.id === (selectedId ?? sortedMatrices[0]?.id)) ?? null,
-    [sortedMatrices, selectedId],
+    () => filteredMatrices.find((m) => m.id === (selectedId ?? filteredMatrices[0]?.id)) ?? null,
+    [filteredMatrices, selectedId],
   )
 
   const handleRefresh = async (clusterId: string) => {
@@ -65,13 +82,46 @@ export function StackVersionsAdminPage() {
   const listContent = (
     <div>
       <div className="border-b border-[var(--color-border-default)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-primary)]">
-          {t('stackVersionsAdmin.listTitle', 'Compatibility Matrices')}
-        </div>
-        <div className="text-xs text-[var(--color-text-secondary)]">
-          {t('stackVersionsAdmin.listSubtitle', 'Golden Path 3 canonical matrices (Narwhal baseline)')}
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-medium text-[var(--color-text-primary)]">
+              {t('stackVersionsAdmin.listTitle', 'Compatibility Matrices')}
+            </div>
+            <div className="text-xs text-[var(--color-text-secondary)]">
+              {t('stackVersionsAdmin.listSubtitle', 'Golden Path 3 canonical matrices (Narwhal baseline)')}
+            </div>
+          </div>
+          <div
+            className="hidden items-center gap-3 text-[11px] text-[var(--color-text-secondary)] md:flex"
+            aria-label={t('stackVersionsAdmin.legend.aria', 'Matrix status legend')}
+          >
+            <LegendDot color="#22c55e" label={t('stackVersionsAdmin.legend.verified', 'verified')} />
+            <LegendDot color="#f59e0b" label={t('stackVersionsAdmin.legend.untested', 'untested')} />
+            <LegendDot color="#ef4444" label={t('stackVersionsAdmin.legend.unsupported', 'unsupported')} />
+          </div>
         </div>
       </div>
+      {showFilterBar && (
+        <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] px-4 py-2">
+          <Input
+            placeholder={t('stackVersionsAdmin.filter.searchPlaceholder', 'ID 또는 이름으로 검색')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1"
+            aria-label={t('stackVersionsAdmin.filter.searchAria', 'Matrix search')}
+          />
+          <NativeSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            aria-label={t('stackVersionsAdmin.filter.statusAria', 'Filter by status')}
+          >
+            <option value="all">{t('stackVersionsAdmin.filter.all', '전체')}</option>
+            <option value="verified">verified</option>
+            <option value="untested">untested</option>
+            <option value="unsupported">unsupported</option>
+          </NativeSelect>
+        </div>
+      )}
       {matricesLoading && (
         <div className="p-4 text-xs text-[var(--color-text-secondary)]">Loading…</div>
       )}
@@ -80,8 +130,13 @@ export function StackVersionsAdminPage() {
           {t('stackVersionsAdmin.loadError', 'Failed to load compatibility matrices.')}
         </div>
       )}
+      {!matricesLoading && !matricesError && filteredMatrices.length === 0 && (
+        <div className="p-4 text-xs text-[var(--color-text-secondary)]">
+          {t('stackVersionsAdmin.filter.empty', '조건에 맞는 매트릭스가 없습니다.')}
+        </div>
+      )}
       <ul>
-        {sortedMatrices.map((m) => {
+        {filteredMatrices.map((m) => {
           const active = selectedMatrix?.id === m.id
           return (
             <li key={m.id}>
@@ -374,5 +429,14 @@ export function StackVersionsAdminPage() {
         loading={deleteMatrix.isPending}
       />
     </div>
+  )
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
   )
 }
