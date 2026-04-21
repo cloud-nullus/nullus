@@ -163,21 +163,7 @@ async function copyTextToClipboard(value: string): Promise<void> {
 	}
 }
 
-const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-	pending: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Pending" },
-	validating: { bg: "rgba(99,102,241,0.15)", color: "#a5b4fc", label: "Validating" },
-	installing: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Installing" },
-	configuring: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Configuring" },
-	health_check: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Health Check" },
-	completed: { bg: "rgba(34,197,94,0.15)", color: "#22c55e", label: "Completed" },
-	failed: { bg: "rgba(239,68,68,0.15)", color: "#ef4444", label: "Failed" },
-	rolling_back: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Rolling Back" },
-	rolled_back: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Rolled Back" },
-	running: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Running" },
-	success: { bg: "rgba(16,185,129,0.18)", color: "#10b981", label: "Healthy" },
-	healthy: { bg: "rgba(16,185,129,0.18)", color: "#10b981", label: "Healthy" },
-	cancelled: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Cancelled" },
-};
+import { STATUS_STYLES } from "../utils/status-style";
 
 function getStackStatusLabel(t: (key: string, defaultValue?: string) => string, status: string) {
 	switch (status) {

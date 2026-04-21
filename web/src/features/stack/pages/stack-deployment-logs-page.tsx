@@ -8,6 +8,7 @@ import { useStacks } from '../api/stack-api'
 import type { Stack } from '../api/stack-api'
 import { RetryStackButton } from '../components/retry-stack-button'
 import type { StackStatus as RetryStackStatus } from '../utils/retry-policy'
+import { getStatusStyle } from '../utils/status-style'
 
 type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'dim'
 
@@ -365,11 +366,7 @@ interface RealStackViewProps {
 
 function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
   const isFailed = stack.status === 'failed' || stack.status === 'rolled_back'
-  const statusTone = isFailed
-    ? 'bg-[rgba(239,68,68,0.15)] text-[#f87171]'
-    : stack.status === 'running' || stack.status === 'installing' || stack.status === 'pending'
-      ? 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]'
-      : 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
+  const style = getStatusStyle(stack.status)
   return (
     <div>
       <Breadcrumb items={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Logs' }]} />
@@ -402,9 +399,13 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className={cn('flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold', statusTone)}>
+        <span
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold"
+          style={{ backgroundColor: style.bg, color: style.color }}
+          data-testid="real-stack-status-badge"
+        >
           {isFailed ? <XCircle size={12} /> : <CheckCircle2 size={12} />}
-          {stack.status}
+          {style.label}
         </span>
         <span className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
           <Clock size={12} />
