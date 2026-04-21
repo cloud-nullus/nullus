@@ -150,6 +150,9 @@
         "title": "Server Pre-Deploy Gate",
         "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying."
       },
+      "gate": {
+        "serverFailHint": "The server-side compatibility gate blocked this deployment. Review the issues above and adjust the combination."
+      },
       "refreshDiscoveryCta": "Open admin page"
     }
   },
@@ -673,7 +676,9 @@
       "confirmWarn": {
         "title": "Compatibility warning",
         "description": "The server-side Pre-Deploy Gate returned warn. Review the items below before retrying.",
-        "ackLabel": "Acknowledge the risk and proceed with redeploy."
+        "ackLabel": "Acknowledge the risk and proceed with redeploy.",
+        "cancel": "Cancel",
+        "confirm": "Acknowledge and retry"
       },
       "toasts": {
         "success": "Redeploy started.",
@@ -1253,7 +1258,12 @@
       "addTool": "Add tool",
       "removeTool": "Remove tool",
       "cancel": "Cancel",
-      "save": "Save"
+      "save": "Save",
+      "dropWarn": {
+        "title": "Rows that will be dropped on save because the category is empty",
+        "unnamed": "(unnamed)",
+        "hint": "Fill in the category or remove the row before saving. Saving as-is will delete those tool definitions from the server. Click Save again to proceed."
+      }
     },
     "deleteConfirm": {
       "title": "Delete compatibility matrix",

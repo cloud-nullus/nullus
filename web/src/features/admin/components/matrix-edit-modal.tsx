@@ -90,6 +90,23 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
   const [k8sRec, setK8sRec] = useState('')
   const [rows, setRows] = useState<ToolRow[]>([{ ...DEFAULT_ROW }])
   const [error, setError] = useState<string | null>(null)
+  // F8-UIUX-MatrixEditDirty — when editing, Save writes a full replacement.
+  // A row whose category is empty is silently dropped by rowsToPayload(),
+  // which can remove an existing tool definition the user never intended
+  // to delete. `confirmDrop` makes the first Save click a preview: render a
+  // warning banner with the rows that would vanish; require a second click
+  // to actually commit.
+  const [confirmDrop, setConfirmDrop] = useState(false)
+
+  const droppedRows = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          !r.category.trim() &&
+          (r.name.trim() || r.helmVersion.trim() || r.appVersion.trim()),
+      ),
+    [rows],
+  )
 
   // Re-seed state whenever the modal opens with a different `initial`.
   useEffect(() => {
@@ -107,7 +124,15 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
     setK8sMax(parts[1] ?? parts[0] ?? '')
     setK8sRec(parts[1] ?? parts[0] ?? '')
     setRows(toolsToRows(initial))
+    setConfirmDrop(false)
   }, [open, initial])
+
+  // Reset the confirm gate as soon as the user clears the dirty rows —
+  // otherwise Save would stay in "second-click commits" mode even after
+  // the user has actually fixed the input.
+  useEffect(() => {
+    if (droppedRows.length === 0) setConfirmDrop(false)
+  }, [droppedRows.length])
 
   const canSubmit = useMemo(() => {
     if (!id.trim() || !name.trim()) return false
@@ -119,6 +144,10 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
 
   const handleSubmit = () => {
     if (!canSubmit) return
+    if (isEdit && droppedRows.length > 0 && !confirmDrop) {
+      setConfirmDrop(true)
+      return
+    }
     const input: MatrixInput = {
       id: id.trim(),
       name: name.trim(),
@@ -176,6 +205,34 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
         {error && (
           <div className="rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-[#fca5a5]">
             {error}
+          </div>
+        )}
+
+        {confirmDrop && droppedRows.length > 0 && (
+          <div
+            className="rounded border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-3 py-2 text-[#fcd34d]"
+            data-testid="matrix-drop-warn"
+          >
+            <div className="mb-1 font-semibold">
+              {t(
+                'stackVersionsAdmin.modal.dropWarn.title',
+                '카테고리가 비어 있어 저장 시 제거되는 행',
+              )}
+            </div>
+            <ul className="ml-4 list-disc text-[11px]">
+              {droppedRows.map((r, i) => (
+                <li key={i}>
+                  {r.name || t('stackVersionsAdmin.modal.dropWarn.unnamed', '(이름 없음)')}
+                  {r.helmVersion ? ` — helm ${r.helmVersion}` : ''}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
+              {t(
+                'stackVersionsAdmin.modal.dropWarn.hint',
+                '카테고리를 입력하거나 해당 행을 삭제한 뒤 저장해 주세요. 그대로 저장하면 해당 도구 정의는 서버에서 제거됩니다. 계속하려면 Save 를 한 번 더 눌러 주세요.',
+              )}
+            </div>
           </div>
         )}
 

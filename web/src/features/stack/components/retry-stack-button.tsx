@@ -97,14 +97,14 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
               }}
               disabled={retry.isPending}
             >
-              {t('stackVersionsAdmin.modal.cancel', 'Cancel')}
+              {t('stackList.retry.confirmWarn.cancel', 'Cancel')}
             </Button>
             <Button
               onClick={() => runRetry(true)}
               disabled={!ack || retry.isPending}
               data-testid="retry-warn-confirm"
             >
-              {t('stackList.retry.button', 'Retry')}
+              {t('stackList.retry.confirmWarn.confirm', 'Acknowledge and retry')}
             </Button>
           </div>
         }
