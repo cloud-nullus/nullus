@@ -39,6 +39,7 @@ import {
 import { shouldBlockOnServerVerdict } from '../utils/server-verdict'
 import { extractDeployCompatError } from '../utils/deploy-error'
 import { getCompatIssueMessage } from '../utils/compat-issue-i18n'
+import { isDeployServerGateLocked } from '../utils/deploy-gate'
 import type { CompatibilityValidationResult } from '../../../types'
 
 // --- Tool option types ---
@@ -3684,7 +3685,8 @@ export function StackInstallPage() {
               (createNewNs && !draft.namespace.trim()) ||
               hasManifestValidationError ||
               compatibilityGate.state === 'fail' ||
-              (compatibilityGate.state === 'warn' && !compatWarnAcknowledged)
+              (compatibilityGate.state === 'warn' && !compatWarnAcknowledged) ||
+              isDeployServerGateLocked(serverVerdict, serverWarnAcknowledged)
             }
             type="button"
           >
@@ -3696,6 +3698,17 @@ export function StackInstallPage() {
       {hasManifestValidationError && (
         <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
           Strict 버전/YAML 검증 실패 {manifestValidationErrorCount}건으로 Deploy가 잠겼습니다. YAML View에서 오류를 해소해 주세요.
+        </div>
+      )}
+      {serverVerdict?.overall.state === 'fail' && (
+        <div
+          className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]"
+          data-testid="server-fail-hint"
+        >
+          {t(
+            'stackInstall.compatibility.gate.serverFailHint',
+            '서버 호환성 검증에서 차단되었습니다. 위의 상세 이슈를 확인한 뒤 조합을 수정해 주세요.',
+          )}
         </div>
       )}
 

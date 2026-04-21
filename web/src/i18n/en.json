@@ -150,6 +150,9 @@
         "title": "Server Pre-Deploy Gate",
         "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying."
       },
+      "gate": {
+        "serverFailHint": "The server-side compatibility gate blocked this deployment. Review the issues above and adjust the combination."
+      },
       "refreshDiscoveryCta": "Open admin page"
     }
   },
