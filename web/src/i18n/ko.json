@@ -685,7 +685,9 @@
       },
       "toasts": {
         "success": "재배포가 시작되었습니다.",
-        "failure": "재배포에 실패했습니다."
+        "failure": "재배포에 실패했습니다.",
+        "pending": "재배포 요청 중...",
+        "fixAction": "수정하기"
       }
     },
     "table": {

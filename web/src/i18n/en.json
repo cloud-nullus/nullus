@@ -682,7 +682,9 @@
       },
       "toasts": {
         "success": "Redeploy started.",
-        "failure": "Redeploy failed."
+        "failure": "Redeploy failed.",
+        "pending": "Submitting retry...",
+        "fixAction": "Fix combination"
       }
     },
     "actions": {

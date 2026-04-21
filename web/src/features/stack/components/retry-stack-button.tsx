@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RotateCcw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Loader2, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
@@ -28,6 +29,7 @@ interface WarnPromptState {
 
 export function RetryStackButton({ stackId, status, onRetried }: RetryStackButtonProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const retry = useRetryStack()
   const [warnPrompt, setWarnPrompt] = useState<WarnPromptState>({ open: false, issueLines: [] })
   const [ack, setAck] = useState(false)
@@ -37,30 +39,44 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
   }
 
   const runRetry = (acknowledgeWarnings: boolean) => {
+    // F8-UIUX-RetryFeedback — progressive toast. A loading toast is
+    // issued up-front and then updated in place on success/failure via the
+    // returned id. warn-ack path dismisses the loading toast and falls back
+    // to the modal.
+    const toastId = toast.loading(
+      t('stackList.retry.toasts.pending', '재배포 요청 중...'),
+    )
     retry.mutate(
       { stackId, acknowledgeWarnings },
       {
         onSuccess: () => {
           setWarnPrompt({ open: false, issueLines: [] })
           setAck(false)
-          toast.success(t('stackList.retry.toasts.success', 'Redeploy started.'))
+          toast.success(t('stackList.retry.toasts.success', 'Redeploy started.'), { id: toastId })
           onRetried?.(stackId)
         },
         onError: (err) => {
           const gate = extractDeployCompatError(err)
           if (gate?.code === 'DEPLOY_COMPAT_WARN_UNACK') {
-            // Surface ack prompt; do NOT fire a toast until the user decides.
+            // User is about to decide in the ack modal; drop the loading toast.
+            toast.dismiss(toastId)
             setWarnPrompt({ open: true, issueLines: gate.issueLines })
             return
           }
           const failureBase = t('stackList.retry.toasts.failure', 'Redeploy failed.')
           if (gate?.code === 'DEPLOY_COMPAT_FAIL') {
             const detail = gate.issueLines.length > 0 ? ' — ' + gate.issueLines.join('; ') : ''
-            toast.error(failureBase + detail)
+            toast.error(failureBase + detail, {
+              id: toastId,
+              action: {
+                label: t('stackList.retry.toasts.fixAction', '수정하기'),
+                onClick: () => navigate(`/stack/install?stackId=${stackId}`),
+              },
+            })
             return
           }
           const message = (err as { message?: string })?.message
-          toast.error(message ? failureBase + ' — ' + message : failureBase)
+          toast.error(message ? failureBase + ' — ' + message : failureBase, { id: toastId })
         },
       },
     )
@@ -76,7 +92,11 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
         aria-label={t('stackList.retry.button', 'Retry')}
         data-testid="retry-stack-button"
       >
-        <RotateCcw size={12} className="mr-1" />
+        {retry.isPending ? (
+          <Loader2 size={12} className="mr-1 animate-spin" />
+        ) : (
+          <RotateCcw size={12} className="mr-1" />
+        )}
         {t('stackList.retry.button', 'Retry')}
       </Button>
 
