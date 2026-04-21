@@ -3961,6 +3961,14 @@ export function StackInstallPage() {
               )}
             </span>
           </div>
+          {!draft.clusterId && (
+            <div
+              className="mb-2 rounded border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-2 py-1.5 text-[11px] text-[#fcd34d]"
+              data-testid="auto-select-no-cluster-hint"
+            >
+              {t('stackInstall.compatibility.autoSelect.selectCluster', 'Select a target cluster first')}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {(compatibilityMatrixData ?? [])
               .filter((m) => m.status !== 'unsupported')

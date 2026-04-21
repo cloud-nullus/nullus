@@ -1262,6 +1262,10 @@
       "all": "All",
       "empty": "No matrices match the filters."
     },
+    "empty": {
+      "title": "No compatibility matrices yet",
+      "hint": "Create a new matrix to get started"
+    },
     "legend": {
       "aria": "Matrix status legend",
       "verified": "verified",
