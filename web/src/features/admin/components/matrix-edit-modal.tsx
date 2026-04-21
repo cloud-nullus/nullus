@@ -193,6 +193,21 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
   )
   const hasFieldErrors = Object.values(fieldErrors).some(Boolean)
 
+  // F8-UIUX-Polish — guard against duplicate tool categories. rowsToPayload
+  // converts rows into a category-keyed map, so a second row with the same
+  // category silently overwrites the first. Catch it client-side before the
+  // user loses a tool definition on save.
+  const duplicateCats = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const r of rows) {
+      const c = r.category.trim()
+      if (!c) continue
+      counts.set(c, (counts.get(c) ?? 0) + 1)
+    }
+    return new Set(Array.from(counts.entries()).filter(([, n]) => n > 1).map(([k]) => k))
+  }, [rows])
+  const hasDuplicateCats = duplicateCats.size > 0
+
   // F8-UIUX-MatrixEditValidation — snapshot the form on modal open so Cancel
   // can prompt the user before discarding work. Using JSON.stringify keeps
   // the comparison shallow-but-deterministic across field types.
@@ -214,12 +229,13 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
 
   const canSubmit = useMemo(() => {
     if (hasFieldErrors) return false
+    if (hasDuplicateCats) return false
     if (!id.trim() || !name.trim()) return false
     if (!k8sMin.trim() || !k8sMax.trim() || !k8sRec.trim()) return false
     const filled = rows.filter((r) => r.category.trim() && r.name.trim())
     if (filled.length === 0) return false
     return true
-  }, [hasFieldErrors, id, name, k8sMin, k8sMax, k8sRec, rows])
+  }, [hasFieldErrors, hasDuplicateCats, id, name, k8sMin, k8sMax, k8sRec, rows])
 
   const handleSubmit = () => {
     if (!canSubmit) return
@@ -299,6 +315,18 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
         {error && (
           <div className="rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-[#fca5a5]">
             {error}
+          </div>
+        )}
+
+        {hasDuplicateCats && (
+          <div
+            className="rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-[#fca5a5]"
+            data-testid="matrix-dup-warn"
+          >
+            {t(
+              'stackVersionsAdmin.modal.validation.duplicateCategory',
+              '중복된 카테고리가 있습니다: {{names}}. 저장 시 뒤의 행이 앞의 정의를 덮어씁니다.',
+            ).replace('{{names}}', Array.from(duplicateCats).join(', '))}
           </div>
         )}
 

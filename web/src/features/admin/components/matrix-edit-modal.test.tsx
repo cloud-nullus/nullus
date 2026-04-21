@@ -89,10 +89,12 @@ describe('MatrixEditModal dirty-drop guard', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
     expect(screen.getByTestId('matrix-drop-warn')).toBeInTheDocument()
 
-    // Refill the category — banner disappears and confirm gate resets.
+    // Refill the category with a non-duplicate value — banner disappears
+    // and both the drop gate and the dup guard (F8-UIUX-Polish) reset.
     const inputs = screen.getAllByPlaceholderText('db') as HTMLInputElement[]
-    fireEvent.change(inputs[0], { target: { value: 'cicd' } })
+    fireEvent.change(inputs[0], { target: { value: 'observability' } })
     expect(screen.queryByTestId('matrix-drop-warn')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('matrix-dup-warn')).not.toBeInTheDocument()
 
     // Now a single Save commits.
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^Save$/ }))
@@ -128,6 +130,19 @@ describe('MatrixEditModal validation + unsaved guard', () => {
     const k8sMinInput = screen.getByPlaceholderText('v1.27') as HTMLInputElement
     fireEvent.change(k8sMinInput, { target: { value: 'not-a-version' } })
     expect(screen.getAllByText(/v1\.28 또는|Expected format/i).length).toBeGreaterThan(0)
+  })
+
+  it('blocks Save and warns when two tool rows share the same category', () => {
+    renderEdit()
+    // Seed category has both rows set to 'cicd' (see `seed`), so the modal
+    // opens already holding a duplicate. Save must be disabled and the
+    // dup banner must show.
+    expect(screen.getByTestId('matrix-dup-warn')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Save$/ })).toBeDisabled()
+    // Rename one row's category — banner disappears, Save enables.
+    const categoryInputs = screen.getAllByPlaceholderText('db') as HTMLInputElement[]
+    fireEvent.change(categoryInputs[1], { target: { value: 'cicd-secondary' } })
+    expect(screen.queryByTestId('matrix-dup-warn')).not.toBeInTheDocument()
   })
 
   it('prompts to confirm close when the form is dirty and Cancel is clicked', () => {

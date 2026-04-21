@@ -149,7 +149,8 @@
       "serverVerdict": {
         "title": "서버 Pre-Deploy Gate",
         "ackLabel": "서버 호환성 경고를 확인했고 리스크를 감수하고 배포를 진행합니다.",
-        "ackAria": "서버 호환성 경고 확인"
+        "ackAria": "서버 호환성 경고 확인",
+        "passShort": "서버 호환성 검증을 통과했습니다"
       },
       "gate": {
         "serverFailHint": "서버 호환성 검증에서 차단되었습니다. 위의 상세 이슈를 확인한 뒤 조합을 수정해 주세요.",
@@ -1288,7 +1289,8 @@
       "validation": {
         "idFormat": "ID는 소문자·숫자·하이픈만 허용되며 소문자·숫자로 시작해야 합니다.",
         "nameLength": "이름은 최소 2자 이상이어야 합니다.",
-        "k8sFormat": "형식 예: v1.28 또는 v1.28.3"
+        "k8sFormat": "형식 예: v1.28 또는 v1.28.3",
+        "duplicateCategory": "중복된 카테고리가 있습니다: {{names}}. 저장 시 뒤의 행이 앞의 정의를 덮어씁니다."
       },
       "unsavedPrompt": "저장되지 않은 변경사항이 있습니다. 닫으시겠습니까?"
     },

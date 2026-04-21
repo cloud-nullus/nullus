@@ -4095,15 +4095,21 @@ export function StackInstallPage() {
           called /stacks/:id/validate post-createStack. Fail shows issue list
           as a hard block; warn shows an ack checkbox the user must tick before
           pressing Deploy again. */}
-      {serverVerdict && (
+      {serverVerdict && serverVerdict.overall.state === 'pass' ? (
+        <div
+          className="mb-3 rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-xs text-[#86efac]"
+          data-testid="server-verdict-panel"
+          data-state="pass"
+        >
+          ✓ {t('stackInstall.compatibility.serverVerdict.passShort', '서버 호환성 검증을 통과했습니다')}
+        </div>
+      ) : serverVerdict && (
         <div
           className={cn(
             'mb-3 rounded border px-3 py-3 text-xs',
-            serverVerdict.overall.state === 'pass'
-              ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] text-[#86efac]'
-              : serverVerdict.overall.state === 'warn'
-                ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
-                : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
+            serverVerdict.overall.state === 'warn'
+              ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
+              : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
           )}
           data-testid="server-verdict-panel"
         >
