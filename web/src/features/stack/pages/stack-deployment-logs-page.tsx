@@ -131,6 +131,40 @@ interface Stage {
   status: StageStatus
 }
 
+// F8-UIUX-RealTimeline — derive a compact 5-stage timeline for the
+// real-data view. Backend does not stream per-stage events yet, so the
+// currentIdx is derived from the single stack.status value.
+interface RealStageDerivation {
+  stages: Stage[]
+  terminal: 'completed' | 'failed' | 'rolled_back' | 'cancelled' | null
+}
+
+function deriveRealStages(status: string, stageLabels: string[]): RealStageDerivation {
+  const [queued, provisioning, deploying, validating, completed] = stageLabels
+  const markTo = (idx: number, failAt?: number): Stage[] => {
+    return [queued, provisioning, deploying, validating, completed].map((label, i) => {
+      if (failAt !== undefined && i === failAt) return { label, status: 'failed' as StageStatus }
+      if (i < idx) return { label, status: 'done' as StageStatus }
+      if (i === idx) return { label, status: 'done' as StageStatus }
+      return { label, status: 'pending' as StageStatus }
+    })
+  }
+  switch (status) {
+    case 'pending':      return { stages: markTo(0), terminal: null }
+    case 'validating':   return { stages: markTo(1), terminal: null }
+    case 'installing':
+    case 'configuring':  return { stages: markTo(2), terminal: null }
+    case 'health_check':
+    case 'running':      return { stages: markTo(3), terminal: null }
+    case 'completed':    return { stages: markTo(4), terminal: 'completed' }
+    case 'failed':       return { stages: markTo(-1, 2), terminal: 'failed' }
+    case 'rolling_back': return { stages: markTo(2), terminal: null }
+    case 'rolled_back':  return { stages: markTo(-1, 2), terminal: 'rolled_back' }
+    case 'cancelled':    return { stages: markTo(-1, 2), terminal: 'cancelled' }
+    default:             return { stages: markTo(0), terminal: null }
+  }
+}
+
 function getStages(result: 'success' | 'failed' | 'running'): Stage[] {
   if (result === 'success') {
     return [
@@ -367,6 +401,18 @@ interface RealStackViewProps {
 function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
   const isFailed = stack.status === 'failed' || stack.status === 'rolled_back'
   const style = getStatusStyle(stack.status)
+  // Memoise the derived timeline so switching tabs / re-renders don't
+  // rebuild the stage array unnecessarily.
+  const { stages: realStages, terminal } = useMemo(() => {
+    const labels = [
+      'Queued',
+      'Provisioning',
+      'Deploying',
+      'Validating',
+      'Completed',
+    ]
+    return deriveRealStages(stack.status, labels)
+  }, [stack.status])
   return (
     <div>
       <Breadcrumb items={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Logs' }]} />
@@ -411,6 +457,46 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
           <Clock size={12} />
           {stack.namespace ?? 'nullus'}
         </span>
+
+        <div
+          className="ml-2 flex items-center gap-0"
+          data-testid="real-timeline"
+          data-terminal={terminal ?? undefined}
+        >
+          {realStages.map((stage, i) => (
+            <div key={stage.label} className="flex items-center">
+              {i > 0 && (
+                <div
+                  className={cn(
+                    'h-px w-6',
+                    stage.status === 'pending' ? 'bg-[rgba(255,255,255,0.1)]' : 'bg-[rgba(34,197,94,0.4)]',
+                  )}
+                />
+              )}
+              <div className="flex flex-col items-center gap-0.5">
+                {stage.status === 'done' ? (
+                  <CheckCircle2 size={14} className="text-[#34d399]" />
+                ) : stage.status === 'failed' ? (
+                  <XCircle size={14} className="text-[#f87171]" />
+                ) : (
+                  <Circle size={14} className="text-[rgba(255,255,255,0.15)]" />
+                )}
+                <span
+                  className={cn(
+                    'text-[10px] font-medium whitespace-nowrap',
+                    stage.status === 'done'
+                      ? 'text-[#34d399]'
+                      : stage.status === 'failed'
+                        ? 'text-[#f87171]'
+                        : 'text-[rgba(255,255,255,0.25)]',
+                  )}
+                >
+                  {stage.label}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
