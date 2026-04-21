@@ -1081,7 +1081,7 @@ function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }
 				<div className="grid grid-cols-2 gap-3 text-[12px] text-[var(--color-text-secondary)] lg:grid-cols-4">
 					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
 						<div className="text-[11px] uppercase tracking-[0.04em]">Stack Name</div>
-						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{stack.name}</div>
+						<div className="mt-1 truncate font-semibold text-[var(--color-text-primary)]" title={stack.name}>{stack.name}</div>
 					</div>
 					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
 						<div className="text-[11px] uppercase tracking-[0.04em]">Runtime</div>
@@ -2698,7 +2698,7 @@ export function StackListPage() {
 					{selectedStackId === row.original.id && (
 						<div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#6366f1]" />
 					)}
-					<span className="font-semibold">{row.original.name}</span>
+					<span className="truncate font-semibold" title={row.original.name}>{row.original.name}</span>
 				</div>
 			),
 		},

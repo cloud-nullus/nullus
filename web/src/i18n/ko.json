@@ -148,10 +148,12 @@
       },
       "serverVerdict": {
         "title": "서버 Pre-Deploy Gate",
-        "ackLabel": "서버 호환성 경고를 확인했고 리스크를 감수하고 배포를 진행합니다."
+        "ackLabel": "서버 호환성 경고를 확인했고 리스크를 감수하고 배포를 진행합니다.",
+        "ackAria": "서버 호환성 경고 확인"
       },
       "gate": {
-        "serverFailHint": "서버 호환성 검증에서 차단되었습니다. 위의 상세 이슈를 확인한 뒤 조합을 수정해 주세요."
+        "serverFailHint": "서버 호환성 검증에서 차단되었습니다. 위의 상세 이슈를 확인한 뒤 조합을 수정해 주세요.",
+        "ackAria": "클라이언트 호환성 경고 확인"
       },
       "refreshDiscoveryCta": "관리자 페이지로 이동"
     }

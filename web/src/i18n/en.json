@@ -148,10 +148,12 @@
       },
       "serverVerdict": {
         "title": "Server Pre-Deploy Gate",
-        "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying."
+        "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying.",
+        "ackAria": "Acknowledge server-side compatibility warning"
       },
       "gate": {
-        "serverFailHint": "The server-side compatibility gate blocked this deployment. Review the issues above and adjust the combination."
+        "serverFailHint": "The server-side compatibility gate blocked this deployment. Review the issues above and adjust the combination.",
+        "ackAria": "Acknowledge client-side compatibility warning"
       },
       "refreshDiscoveryCta": "Open admin page"
     }

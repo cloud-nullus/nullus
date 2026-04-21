@@ -4073,6 +4073,10 @@ export function StackInstallPage() {
                 setCompatWarnAcknowledged(e.target.checked)
                 writeAck(clientAckKey, e.target.checked)
               }}
+              aria-label={t(
+                'stackInstall.compatibility.gate.ackAria',
+                'Acknowledge client-side compatibility warning',
+              )}
             />
             경고를 확인했고, untested 조합 리스크를 인지한 상태로 배포를 진행합니다.
           </label>
@@ -4128,6 +4132,10 @@ export function StackInstallPage() {
                   setServerWarnAcknowledged(e.target.checked)
                   if (serverAckKey) writeAck(serverAckKey, e.target.checked)
                 }}
+                aria-label={t(
+                  'stackInstall.compatibility.serverVerdict.ackAria',
+                  'Acknowledge server-side compatibility warning',
+                )}
                 data-testid="server-warn-ack"
               />
               {t(
