@@ -481,6 +481,16 @@ export interface CreateAlertRuleRequest {
   enabled?: boolean
 }
 
+export interface RetryHistoryEntry {
+  id: string
+  timestamp: string
+  actor: string
+  previousState?: string
+  acknowledgeWarnings: boolean
+  verdict?: string
+  issueCodes?: string[]
+}
+
 export type StackTemplate = Template
 export type CicdTemplate = CICDTemplate
 export type KpiMetrics = DashboardMetrics

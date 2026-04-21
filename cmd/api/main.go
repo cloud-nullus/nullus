@@ -132,6 +132,7 @@ func main() {
 	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
+	retryHistoryHandler := stackhandler.NewRetryHistoryHandler(auditLogger)
 	updateStackUC := stackuc.NewUpdateStack(pgStackRepo, manageHistoryUC)
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, manageHistoryUC, auditLogger).
 		WithOptions(stackhandler.WithUpdateStack(updateStackUC))
@@ -279,6 +280,7 @@ func main() {
 	compatHandler.RegisterRoutes(stacks)
 	compatHandler.RegisterAdminRoutes(admin)
 	historyHandler.RegisterRoutes(stacks)
+	retryHistoryHandler.RegisterRoutes(stacks)
 	stackMonitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)

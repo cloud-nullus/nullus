@@ -1299,5 +1299,32 @@
       "description": "Deleting this matrix means stacks that previously matched it will be treated as untested. Continue?",
       "confirm": "Delete"
     }
+  },
+  "stackDeployment": {
+    "retryHistory": {
+      "title": "Retry history",
+      "timestamp": "When",
+      "verdict": "Verdict",
+      "issues": "Issues",
+      "expand": "Show more",
+      "collapse": "Collapse"
+    }
+  },
+  "shortcuts": {
+    "badge": "Shortcuts",
+    "help": {
+      "title": "Keyboard shortcuts",
+      "keys": "Keys",
+      "action": "Action",
+      "scope": "Scope",
+      "description": "Show shortcut help"
+    },
+    "newStack": {
+      "description": "Create new stack"
+    },
+    "scope": {
+      "global": "Global",
+      "stackList": "Stack list"
+    }
   }
 }

@@ -153,3 +153,56 @@ func (l *AuditLogger) List(ctx context.Context, limit, offset int) ([]AuditEntry
 
 	return items, total, nil
 }
+
+// ListByResource implements Reader by streaming every audit_logs row whose
+// (resource_type, resource_id) pair matches the arguments, newest first.
+// Used by the stack retry-history surface; kept action-agnostic so callers
+// can filter further (retry history handler ignores non-retry actions).
+func (l *AuditLogger) ListByResource(ctx context.Context, resourceType, resourceID string) ([]TimedEntry, error) {
+	const q = `
+		SELECT id, user_id, action, resource_type, resource_id, details, ip_address, created_at
+		FROM audit_logs
+		WHERE resource_type = $1 AND resource_id = $2
+		ORDER BY created_at DESC`
+
+	rows, err := l.querier.Query(ctx, q, resourceType, resourceID)
+	if err != nil {
+		return nil, fmt.Errorf("query audit logs by resource: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]TimedEntry, 0)
+	for rows.Next() {
+		var (
+			id        string
+			entry     AuditEntry
+			details   []byte
+			createdAt time.Time
+		)
+		if err := rows.Scan(
+			&id,
+			&entry.UserID,
+			&entry.Action,
+			&entry.ResourceType,
+			&entry.ResourceID,
+			&details,
+			&entry.IPAddress,
+			&createdAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan audit logs by resource: %w", err)
+		}
+		if len(details) > 0 {
+			if err := json.Unmarshal(details, &entry.Details); err != nil {
+				return nil, fmt.Errorf("unmarshal audit details by resource: %w", err)
+			}
+		}
+		out = append(out, TimedEntry{ID: id, Timestamp: createdAt, Entry: entry})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate audit logs by resource: %w", err)
+	}
+	return out, nil
+}
+
+// Compile-time proof that the production logger also satisfies Reader.
+var _ Reader = (*AuditLogger)(nil)

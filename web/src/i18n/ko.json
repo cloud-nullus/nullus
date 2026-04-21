@@ -1299,5 +1299,32 @@
       "description": "이 매트릭스를 삭제하면 이 조합을 사용하던 스택들은 untested 로 처리됩니다. 계속할까요?",
       "confirm": "삭제"
     }
+  },
+  "stackDeployment": {
+    "retryHistory": {
+      "title": "재배포 기록",
+      "timestamp": "시각",
+      "verdict": "결과",
+      "issues": "이슈",
+      "expand": "더 보기",
+      "collapse": "접기"
+    }
+  },
+  "shortcuts": {
+    "badge": "단축키",
+    "help": {
+      "title": "키보드 단축키",
+      "keys": "키",
+      "action": "동작",
+      "scope": "범위",
+      "description": "단축키 도움말"
+    },
+    "newStack": {
+      "description": "새 스택 생성"
+    },
+    "scope": {
+      "global": "전역",
+      "stackList": "스택 목록"
+    }
   }
 }

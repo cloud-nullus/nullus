@@ -164,6 +164,7 @@ async function copyTextToClipboard(value: string): Promise<void> {
 }
 
 import { STATUS_STYLES } from "../utils/status-style";
+import { useKeyboardShortcut } from "../../../hooks/use-keyboard-shortcut";
 
 function getStackStatusLabel(t: (key: string, defaultValue?: string) => string, status: string) {
 	switch (status) {
@@ -2598,6 +2599,8 @@ function StackDetailPanel({
 export function StackListPage() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
+	// F8-UIUX-KeyboardHints — jump straight to the install wizard.
+	useKeyboardShortcut("n", () => navigate("/stack/install"));
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("");
 	const [clusterFilter, setClusterFilter] = useState("");
