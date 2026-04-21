@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Plus, Pencil, Trash2 } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Plus, Pencil, Trash2, FolderOpen } from 'lucide-react'
+import { Skeleton } from '../../../components/ui/skeleton'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
@@ -123,18 +124,41 @@ export function StackVersionsAdminPage() {
         </div>
       )}
       {matricesLoading && (
-        <div className="p-4 text-xs text-[var(--color-text-secondary)]">Loading…</div>
+        <div className="flex flex-col gap-2 p-4" data-testid="matrix-list-loading">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
       )}
       {matricesError && (
         <div className="p-4 text-xs text-[#ef4444]">
           {t('stackVersionsAdmin.loadError', 'Failed to load compatibility matrices.')}
         </div>
       )}
-      {!matricesLoading && !matricesError && filteredMatrices.length === 0 && (
-        <div className="p-4 text-xs text-[var(--color-text-secondary)]">
-          {t('stackVersionsAdmin.filter.empty', '조건에 맞는 매트릭스가 없습니다.')}
+      {!matricesLoading && !matricesError && sortedMatrices.length === 0 && (
+        <div
+          className="flex flex-col items-center gap-2 py-12 text-center text-[var(--color-text-secondary)]"
+          data-testid="matrix-empty-state"
+        >
+          <FolderOpen size={32} className="opacity-40" />
+          <p className="text-sm">
+            {t('stackVersionsAdmin.empty.title', '등록된 호환성 매트릭스가 없습니다')}
+          </p>
+          <p className="text-[11px]">
+            {t('stackVersionsAdmin.empty.hint', '새 매트릭스를 생성해 시작하세요')}
+          </p>
         </div>
       )}
+      {!matricesLoading &&
+        !matricesError &&
+        sortedMatrices.length > 0 &&
+        filteredMatrices.length === 0 && (
+          <div className="p-4 text-xs text-[var(--color-text-secondary)]">
+            {t('stackVersionsAdmin.filter.empty', '조건에 맞는 매트릭스가 없습니다.')}
+          </div>
+        )}
       <ul>
         {filteredMatrices.map((m) => {
           const active = selectedMatrix?.id === m.id

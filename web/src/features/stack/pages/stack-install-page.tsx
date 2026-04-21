@@ -3961,6 +3961,14 @@ export function StackInstallPage() {
               )}
             </span>
           </div>
+          {!draft.clusterId && (
+            <div
+              className="mb-2 rounded border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-2 py-1.5 text-[11px] text-[#fcd34d]"
+              data-testid="auto-select-no-cluster-hint"
+            >
+              {t('stackInstall.compatibility.autoSelect.selectCluster', 'Select a target cluster first')}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {(compatibilityMatrixData ?? [])
               .filter((m) => m.status !== 'unsupported')
@@ -4073,6 +4081,10 @@ export function StackInstallPage() {
                 setCompatWarnAcknowledged(e.target.checked)
                 writeAck(clientAckKey, e.target.checked)
               }}
+              aria-label={t(
+                'stackInstall.compatibility.gate.ackAria',
+                'Acknowledge client-side compatibility warning',
+              )}
             />
             경고를 확인했고, untested 조합 리스크를 인지한 상태로 배포를 진행합니다.
           </label>
@@ -4083,15 +4095,21 @@ export function StackInstallPage() {
           called /stacks/:id/validate post-createStack. Fail shows issue list
           as a hard block; warn shows an ack checkbox the user must tick before
           pressing Deploy again. */}
-      {serverVerdict && (
+      {serverVerdict && serverVerdict.overall.state === 'pass' ? (
+        <div
+          className="mb-3 rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-xs text-[#86efac]"
+          data-testid="server-verdict-panel"
+          data-state="pass"
+        >
+          ✓ {t('stackInstall.compatibility.serverVerdict.passShort', '서버 호환성 검증을 통과했습니다')}
+        </div>
+      ) : serverVerdict && (
         <div
           className={cn(
             'mb-3 rounded border px-3 py-3 text-xs',
-            serverVerdict.overall.state === 'pass'
-              ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] text-[#86efac]'
-              : serverVerdict.overall.state === 'warn'
-                ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
-                : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
+            serverVerdict.overall.state === 'warn'
+              ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
+              : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
           )}
           data-testid="server-verdict-panel"
         >
@@ -4128,6 +4146,10 @@ export function StackInstallPage() {
                   setServerWarnAcknowledged(e.target.checked)
                   if (serverAckKey) writeAck(serverAckKey, e.target.checked)
                 }}
+                aria-label={t(
+                  'stackInstall.compatibility.serverVerdict.ackAria',
+                  'Acknowledge server-side compatibility warning',
+                )}
                 data-testid="server-warn-ack"
               />
               {t(

@@ -139,6 +139,12 @@ describe('StackVersionsAdminPage', () => {
     expect(screen.getByLabelText(/Filter by status/i)).toBeInTheDocument()
   })
 
+  it('renders the empty state when no matrices exist', () => {
+    mockMatrices.current = []
+    renderWithProviders(<StackVersionsAdminPage />)
+    expect(screen.getByTestId('matrix-empty-state')).toBeInTheDocument()
+  })
+
   it('filters the list by search query', () => {
     mockMatrices.current = [
       ...matrices,

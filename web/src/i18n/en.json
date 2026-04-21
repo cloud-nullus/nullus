@@ -148,10 +148,13 @@
       },
       "serverVerdict": {
         "title": "Server Pre-Deploy Gate",
-        "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying."
+        "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying.",
+        "ackAria": "Acknowledge server-side compatibility warning",
+        "passShort": "Server compatibility gate passed"
       },
       "gate": {
-        "serverFailHint": "The server-side compatibility gate blocked this deployment. Review the issues above and adjust the combination."
+        "serverFailHint": "The server-side compatibility gate blocked this deployment. Review the issues above and adjust the combination.",
+        "ackAria": "Acknowledge client-side compatibility warning"
       },
       "refreshDiscoveryCta": "Open admin page"
     }
@@ -1260,6 +1263,10 @@
       "all": "All",
       "empty": "No matrices match the filters."
     },
+    "empty": {
+      "title": "No compatibility matrices yet",
+      "hint": "Create a new matrix to get started"
+    },
     "legend": {
       "aria": "Matrix status legend",
       "verified": "verified",
@@ -1282,7 +1289,8 @@
       "validation": {
         "idFormat": "ID must be lowercase letters, digits, or hyphens, and start with a letter or digit.",
         "nameLength": "Name must be at least 2 characters long.",
-        "k8sFormat": "Expected format: v1.28 or v1.28.3"
+        "k8sFormat": "Expected format: v1.28 or v1.28.3",
+        "duplicateCategory": "Duplicate categories: {{names}}. Later rows will overwrite earlier definitions on save."
       },
       "unsavedPrompt": "You have unsaved changes. Close anyway?"
     },

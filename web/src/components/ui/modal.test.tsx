@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Modal } from './modal'
 
 describe('Modal', () => {
@@ -75,5 +75,66 @@ describe('Modal', () => {
     fireEvent.pointerUp(screen.getByRole('dialog'))
 
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  // F8-UIUX-A11y focus trap
+  it('auto-focuses the first focusable element when opened', async () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Trap">
+        <button type="button" data-testid="first">First</button>
+        <button type="button" data-testid="second">Second</button>
+      </Modal>,
+    )
+    await waitFor(() => {
+      // The close-X button in the modal header is the true first focusable,
+      // so "first content button" may not always be active — but we can
+      // assert that focus moved inside the dialog root.
+      expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true)
+    })
+  })
+
+  it('wraps Tab from the last focusable element back to the first', async () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Trap">
+        <button type="button" data-testid="first">First</button>
+        <button type="button" data-testid="second">Second</button>
+      </Modal>,
+    )
+    const second = await screen.findByTestId('second')
+    second.focus()
+    // Tab from the genuine last focusable wraps to the first — in jsdom the
+    // Modal's close-X button renders first in the DOM, so wrap lands on it.
+    fireEvent.keyDown(second, { key: 'Tab' })
+    const active = document.activeElement as HTMLElement | null
+    expect(active).toBeTruthy()
+    // Wrap target must stay inside the dialog root (not escape to <body>).
+    expect(screen.getByRole('dialog').contains(active)).toBe(true)
+    // And must not still be `second` — i.e. Tab actually moved focus.
+    expect(active).not.toBe(second)
+  })
+
+  it('restores focus to the previously focused element when closed', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <div>
+          <button type="button" data-testid="trigger" onClick={() => setOpen(true)}>open</button>
+          <Modal open={open} onClose={() => setOpen(false)} title="Restore">
+            <button type="button" data-testid="inside" onClick={() => setOpen(false)}>close</button>
+          </Modal>
+        </div>
+      )
+    }
+    render(<Harness />)
+    const trigger = screen.getByTestId('trigger')
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+    fireEvent.click(trigger)
+    // wait until the dialog appears and focus moves inside
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    // Now close from inside
+    fireEvent.click(screen.getByTestId('inside'))
+    // Focus should have been returned to the trigger
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 })
