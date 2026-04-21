@@ -1251,6 +1251,19 @@
       "edit": "편집",
       "delete": "삭제"
     },
+    "filter": {
+      "searchPlaceholder": "ID 또는 이름으로 검색",
+      "searchAria": "매트릭스 검색",
+      "statusAria": "상태로 필터",
+      "all": "전체",
+      "empty": "조건에 맞는 매트릭스가 없습니다."
+    },
+    "legend": {
+      "aria": "매트릭스 상태 범례",
+      "verified": "verified",
+      "untested": "untested",
+      "unsupported": "unsupported"
+    },
     "modal": {
       "titleCreate": "새 매트릭스",
       "titleEdit": "매트릭스 편집",

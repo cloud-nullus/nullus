@@ -1251,6 +1251,19 @@
       "edit": "Edit",
       "delete": "Delete"
     },
+    "filter": {
+      "searchPlaceholder": "Search by ID or name",
+      "searchAria": "Matrix search",
+      "statusAria": "Filter by status",
+      "all": "All",
+      "empty": "No matrices match the filters."
+    },
+    "legend": {
+      "aria": "Matrix status legend",
+      "verified": "verified",
+      "untested": "untested",
+      "unsupported": "unsupported"
+    },
     "modal": {
       "titleCreate": "New matrix",
       "titleEdit": "Edit matrix",

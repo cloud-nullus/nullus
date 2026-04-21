@@ -50,9 +50,10 @@ const matrices: CompatibilityMatrix[] = [
 const deleteMutate = vi.hoisted(() => vi.fn())
 const createMutate = vi.hoisted(() => vi.fn())
 const updateMutate = vi.hoisted(() => vi.fn())
+const mockMatrices = vi.hoisted(() => ({ current: [] as unknown as CompatibilityMatrix[] }))
 
 vi.mock('../../stack/api/stack-api', () => ({
-  useCompatibilityMatrix: () => ({ data: matrices, isLoading: false, isError: false }),
+  useCompatibilityMatrix: () => ({ data: mockMatrices.current, isLoading: false, isError: false }),
   useDeleteMatrix: () => ({ mutate: deleteMutate, isPending: false }),
   useCreateMatrix: () => ({ mutate: createMutate, isPending: false }),
   useUpdateMatrix: () => ({ mutate: updateMutate, isPending: false }),
@@ -68,6 +69,7 @@ vi.mock('../api/admin-api', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockMatrices.current = matrices
 })
 
 describe('StackVersionsAdminPage', () => {
@@ -117,5 +119,38 @@ describe('StackVersionsAdminPage', () => {
     fireEvent.click(within(confirmDialog).getByRole('button', { name: /cancel/i }))
     expect(screen.queryByRole('dialog', { name: /delete compatibility matrix/i })).not.toBeInTheDocument()
     expect(deleteMutate).not.toHaveBeenCalled()
+  })
+
+  it('hides the filter bar when there are 5 or fewer matrices', () => {
+    // baseline mockMatrices.current is the 3-item `matrices` seed
+    renderWithProviders(<StackVersionsAdminPage />)
+    expect(screen.queryByLabelText(/Matrix search/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the filter bar when there are more than 5 matrices', () => {
+    mockMatrices.current = [
+      ...matrices,
+      { id: 'd-one', name: 'Delta One', status: 'verified', k8sRange: 'v1.29', tools: [] },
+      { id: 'e-two', name: 'Echo Two', status: 'untested', k8sRange: 'v1.30', tools: [] },
+      { id: 'f-three', name: 'Foxtrot Three', status: 'verified', k8sRange: 'v1.31', tools: [] },
+    ]
+    renderWithProviders(<StackVersionsAdminPage />)
+    expect(screen.getByLabelText(/Matrix search/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Filter by status/i)).toBeInTheDocument()
+  })
+
+  it('filters the list by search query', () => {
+    mockMatrices.current = [
+      ...matrices,
+      { id: 'd-one', name: 'Delta One', status: 'verified', k8sRange: 'v1.29', tools: [] },
+      { id: 'e-two', name: 'Echo Two', status: 'untested', k8sRange: 'v1.30', tools: [] },
+      { id: 'f-three', name: 'Foxtrot Three', status: 'verified', k8sRange: 'v1.31', tools: [] },
+    ]
+    renderWithProviders(<StackVersionsAdminPage />)
+    const search = screen.getByLabelText(/Matrix search/i) as HTMLInputElement
+    fireEvent.change(search, { target: { value: 'echo' } })
+    // Only "Echo Two" should remain in the list column.
+    expect(screen.queryByText('Alpha Baseline')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Echo Two').length).toBeGreaterThan(0)
   })
 })
