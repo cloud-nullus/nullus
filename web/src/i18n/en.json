@@ -1299,5 +1299,15 @@
       "description": "Deleting this matrix means stacks that previously matched it will be treated as untested. Continue?",
       "confirm": "Delete"
     }
+  },
+  "stackDeployment": {
+    "retryHistory": {
+      "title": "Retry history",
+      "timestamp": "When",
+      "verdict": "Verdict",
+      "issues": "Issues",
+      "expand": "Show more",
+      "collapse": "Collapse"
+    }
   }
 }

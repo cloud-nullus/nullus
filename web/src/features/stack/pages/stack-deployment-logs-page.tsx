@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
-import { useStacks } from '../api/stack-api'
+import { useStacks, useStackRetryHistory } from '../api/stack-api'
 import type { Stack } from '../api/stack-api'
 import { RetryStackButton } from '../components/retry-stack-button'
 import type { StackStatus as RetryStackStatus } from '../utils/retry-policy'
@@ -392,6 +393,67 @@ export function StackDeploymentLogsPage() {
   )
 }
 
+// F8-UIUX-RetryAuditSurface-Frontend — compact retry-history table rendered
+// under the (placeholder) log viewer. Hidden when the audit reader returns
+// no retry events for the stack. Initial view is capped at 3 rows; rest
+// reveals via an expand toggle. Inline to keep the page module self-
+// contained — this panel is only relevant to deployment logs.
+function RetryHistoryPanel({ stackId }: { stackId: string }) {
+  const { t } = useTranslation()
+  const { data } = useStackRetryHistory(stackId)
+  const [expanded, setExpanded] = useState(false)
+  const items = data?.items ?? []
+  if (items.length === 0) return null
+  const visible = expanded ? items : items.slice(0, 3)
+  const remaining = items.length - 3
+  return (
+    <section
+      className="mt-4 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3"
+      data-testid="retry-history-panel"
+    >
+      <h3 className="mb-2 text-sm font-medium text-[var(--color-text-primary)]">
+        {t('stackDeployment.retryHistory.title', '재배포 기록')}
+      </h3>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-left text-[var(--color-text-secondary)]">
+            <th className="py-1 font-medium">
+              {t('stackDeployment.retryHistory.timestamp', '시각')}
+            </th>
+            <th className="py-1 font-medium">
+              {t('stackDeployment.retryHistory.verdict', '결과')}
+            </th>
+            <th className="py-1 font-medium">
+              {t('stackDeployment.retryHistory.issues', '이슈')}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {visible.map((e) => (
+            <tr key={e.id} className="border-t border-[var(--color-border-default)]">
+              <td className="py-1">{new Date(e.timestamp).toLocaleString()}</td>
+              <td className="py-1">{e.verdict ?? '-'}</td>
+              <td className="py-1">{e.issueCodes?.join(', ') ?? '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {remaining > 0 && (
+        <button
+          type="button"
+          className="mt-2 text-[11px] text-[#a5b4fc]"
+          onClick={() => setExpanded((v) => !v)}
+          data-testid="retry-history-toggle"
+        >
+          {expanded
+            ? t('stackDeployment.retryHistory.collapse', '접기')
+            : t('stackDeployment.retryHistory.expand', `더 보기 (+${remaining})`)}
+        </button>
+      )}
+    </section>
+  )
+}
+
 interface RealStackViewProps {
   stack: Stack
   onBack: () => void
@@ -512,6 +574,8 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
           Live log streaming is not yet connected. See the Stack List view for deployment events and metrics.
         </div>
       </div>
+
+      <RetryHistoryPanel stackId={stack.id} />
     </div>
   )
 }

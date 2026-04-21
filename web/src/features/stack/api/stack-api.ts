@@ -6,6 +6,7 @@ import type {
   CompatibilityValidationResult,
   CreateStackRequest,
   ResourceEstimate,
+  RetryHistoryEntry,
   StackResourceDefault,
   Stack,
   StackHistoryEntry,
@@ -29,6 +30,7 @@ export type {
   CompatibilityValidationResult,
   CreateStackRequest,
   ResourceEstimate,
+  RetryHistoryEntry,
   Stack,
   StackHistoryEntry,
   StackTemplate,
@@ -860,6 +862,21 @@ export function useStackHistory(stackId: string) {
     queryKey: queryKeys.history(stackId),
     queryFn: () => stackApiCalls.getHistory(stackId),
     enabled: !!stackId,
+  })
+}
+
+// F8-UIUX-RetryAuditSurface-Frontend — load retry audit entries for the
+// deployment logs page. staleTime 30s keeps the panel quiet while still
+// surfacing brand-new retries without requiring a hard refresh.
+export function useStackRetryHistory(stackId: string | undefined) {
+  return useQuery<{ items: RetryHistoryEntry[] }>({
+    queryKey: ['stack-retry-history', stackId],
+    queryFn: async () => {
+      const res = await api.get<{ items: RetryHistoryEntry[] }>(`/stacks/${stackId}/retry-history`)
+      return res.data
+    },
+    enabled: Boolean(stackId),
+    staleTime: 30_000,
   })
 }
 
