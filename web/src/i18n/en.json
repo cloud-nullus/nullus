@@ -1309,5 +1309,22 @@
       "expand": "Show more",
       "collapse": "Collapse"
     }
+  },
+  "shortcuts": {
+    "badge": "Shortcuts",
+    "help": {
+      "title": "Keyboard shortcuts",
+      "keys": "Keys",
+      "action": "Action",
+      "scope": "Scope",
+      "description": "Show shortcut help"
+    },
+    "newStack": {
+      "description": "Create new stack"
+    },
+    "scope": {
+      "global": "Global",
+      "stackList": "Stack list"
+    }
   }
 }
