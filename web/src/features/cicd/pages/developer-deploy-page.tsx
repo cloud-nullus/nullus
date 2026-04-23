@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -14,6 +14,7 @@ import { useAppTemplates, useDeployApp, useGoldenPathById } from '../api/cicd-ap
 import { useClusters } from '../../admin/api/admin-api'
 import type { AppTemplate, DeployAppRequest } from '../api/cicd-api'
 import { cn } from '../../../lib/utils'
+import { useAppToast } from '../../../hooks/use-toast'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -25,30 +26,46 @@ const STEP_LABELS: Record<Step, string> = {
   5: '환경 변수',
 }
 
+/** YAML 값에 안전하지 않은 문자가 포함되면 따옴표로 감싼다 */
+function yamlSafe(value: string): string {
+  if (/[:\n\r#"'\\{}\[\],&*?|><!%@`]/.test(value) || value !== value.trim()) {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
+  }
+  return value
+}
+
 function generateYaml(form: Partial<FormState>): string {
+  const name = yamlSafe(form.appName ?? 'my-app')
+  const ns = yamlSafe(form.namespace ?? 'default')
+  const tpl = yamlSafe(form.template ?? 'react-spa')
   const cpu = form.cpuLimit ?? '500m'
   const mem = form.memoryLimit ?? '512Mi'
+  const envLines = (form.envVars ?? [])
+    .filter((e) => e.key)
+    .map((e) => `            - name: ${yamlSafe(e.key)}\n              value: ${yamlSafe(e.value)}`)
+    .join('\n')
+
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${form.appName ?? 'my-app'}
-  namespace: ${form.namespace ?? 'default'}
+  name: ${name}
+  namespace: ${ns}
   labels:
-    app: ${form.appName ?? 'my-app'}
-    template: ${form.template ?? 'react-spa'}
+    app: ${name}
+    template: ${tpl}
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: ${form.appName ?? 'my-app'}
+      app: ${name}
   template:
     metadata:
       labels:
-        app: ${form.appName ?? 'my-app'}
+        app: ${name}
     spec:
       containers:
-        - name: ${form.appName ?? 'my-app'}
-          image: harbor.nullus.io/${form.appName ?? 'my-app'}:latest
+        - name: ${name}
+          image: harbor.nullus.io/${name}:latest
           ports:
             - containerPort: 8080
           resources:
@@ -58,18 +75,16 @@ spec:
             limits:
               cpu: ${cpu}
               memory: ${mem}
-${(form.envVars ?? []).filter((e) => e.key).length > 0
-  ? `          env:\n${(form.envVars ?? []).filter((e) => e.key).map((e) => `            - name: ${e.key}\n              value: "${e.value}"`).join('\n')}`
-  : ''}
+${envLines ? `          env:\n${envLines}` : ''}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ${form.appName ?? 'my-app'}-svc
-  namespace: ${form.namespace ?? 'default'}
+  name: ${name}-svc
+  namespace: ${ns}
 spec:
   selector:
-    app: ${form.appName ?? 'my-app'}
+    app: ${name}
   ports:
     - port: 80
       targetPort: 8080`
@@ -91,8 +106,8 @@ interface FormState {
 }
 
 const deploySchema = z.object({
-  template: z.enum(['react-spa', 'next-app', 'express-api', 'spring-boot', 'python-fastapi']),
-  appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
+  template: z.enum(['react-spa', 'next-app', 'express-api', 'spring-boot', 'python-fastapi', 'go-web-api'] as const),
+  appName: z.string().min(2, '앱 이름은 최소 2자 이상이어야 합니다').max(50, '앱 이름은 50자 이하여야 합니다').regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, '소문자, 숫자, 하이픈만 사용 가능하며 시작/끝은 영숫자여야 합니다'),
   gitUrl: z.string().min(1, 'Git URL is required').url('Invalid Git URL'),
   clusterId: z.string().min(1, 'Cluster is required'),
   namespace: z.string().min(1, 'Namespace is required'),
@@ -124,13 +139,13 @@ const DEFAULT_FORM: FormState = {
   template: 'react-spa',
   appName: '',
   gitUrl: '',
-  clusterId: 'c1',
+  clusterId: '',
   namespace: 'default',
   cpuRequest: '100m',
   cpuLimit: '500m',
   memoryRequest: '128Mi',
   memoryLimit: '512Mi',
-  envVars: [{ key: '', value: '' }],
+  envVars: [],
 }
 
 export function DeveloperDeployPage() {
@@ -175,7 +190,16 @@ export function DeveloperDeployPage() {
 
   const form = watch()
 
+  // 클러스터 로드되면 첫 번째 클러스터 자동 선택
+  useEffect(() => {
+    if (clusters.length > 0 && !form.clusterId) {
+      setValue('clusterId', clusters[0].id, { shouldValidate: true })
+      setValue('namespace', clusters[0].namespaces[0], { shouldValidate: true })
+    }
+  }, [clusters, form.clusterId, setValue])
+
   const deployMutation = useDeployApp()
+  const toast = useAppToast()
 
   const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
     setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
@@ -189,17 +213,27 @@ export function DeveloperDeployPage() {
       gitUrl: data.gitUrl,
       clusterId: data.clusterId,
       namespace: data.namespace,
-      template: data.template,
+      templateId: data.template,
+      replicas: 2,
+      port: 8080,
       resources: {
         cpuRequest: data.cpuRequest,
         cpuLimit: data.cpuLimit,
-        memoryRequest: data.memoryRequest,
-        memoryLimit: data.memoryLimit,
+        memRequest: data.memoryRequest,
+        memLimit: data.memoryLimit,
       },
-      envVars: data.envVars.filter((e) => e.key),
+      envVars: Object.fromEntries(
+        data.envVars.filter((e) => e.key).map((e) => [e.key, e.value])
+      ),
     }
     deployMutation.mutate(request, {
-      onSuccess: () => setDeployed(true),
+      onSuccess: () => {
+        toast.success(`${data.appName} 배포 요청이 완료되었습니다.`)
+        setDeployed(true)
+      },
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : '배포 요청에 실패했습니다. 다시 시도해주세요.')
+      },
     })
   }
 
@@ -252,7 +286,6 @@ export function DeveloperDeployPage() {
     <div>
       <Breadcrumb
         items={[
-          { label: 'CI/CD', path: '/cicd/list' },
           { label: 'CI/CD List', path: '/cicd/list' },
           { label: 'Pipeline Setup & Deploy' },
         ]}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BookOpen, ExternalLink, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
@@ -15,6 +15,7 @@ const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   cd_tool: { bg: 'rgba(236,72,153,0.12)', color: '#f472b6' },
   monitoring_collection: { bg: 'rgba(168,85,247,0.12)', color: '#d8b4fe' },
   monitoring_visualization: { bg: 'rgba(14,165,233,0.12)', color: '#38bdf8' },
+  log_aggregation: { bg: 'rgba(234,179,8,0.12)', color: '#fde047' },
 }
 
 export function CicdGoldenPathPage() {
@@ -24,10 +25,14 @@ export function CicdGoldenPathPage() {
   const [selectedPath, setSelectedPath] = useState<CICDGoldenPath | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
-  const filtered = (goldenPaths || []).filter(
-    (gp) =>
-      gp.name.toLowerCase().includes(search.toLowerCase()) ||
-      gp.description.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(
+    () =>
+      (goldenPaths || []).filter(
+        (gp) =>
+          gp.name.toLowerCase().includes(search.toLowerCase()) ||
+          gp.description.toLowerCase().includes(search.toLowerCase())
+      ),
+    [goldenPaths, search]
   )
 
   const openDetail = (path: CICDGoldenPath) => {
@@ -81,7 +86,7 @@ export function CicdGoldenPathPage() {
             placeholder="Golden Path 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            className="w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
           />
         </div>
       </div>
@@ -90,6 +95,10 @@ export function CicdGoldenPathPage() {
       {isLoading ? (
         <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
           로딩 중...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
+          검색 결과가 없습니다.
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
@@ -180,17 +189,11 @@ export function CicdGoldenPathPage() {
         </div>
       )}
 
-      {filtered.length === 0 && !isLoading && (
-        <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
-          검색 결과가 없습니다.
-        </div>
-      )}
-
       {/* Detail Modal */}
       <Modal
         open={detailOpen}
         onClose={closeDetail}
-        title={selectedPath?.name}
+        title={selectedPath?.name ?? ''}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeDetail} type="button">

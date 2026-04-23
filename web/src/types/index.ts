@@ -32,7 +32,7 @@ export type PipelineStatus = DeploymentState
 
 export type AppType = 'web-backend' | 'web-frontend' | 'batch-job'
 
-export type AppTemplate = 'react-spa' | 'next-app' | 'express-api' | 'spring-boot' | 'python-fastapi'
+export type AppTemplate = 'react-spa' | 'next-app' | 'express-api' | 'spring-boot' | 'python-fastapi' | 'go-web-api'
 
 export type AlertSeverity = 'critical' | 'warning' | 'info'
 
@@ -323,14 +323,16 @@ export interface DeployAppRequest {
   gitUrl: string
   clusterId: string
   namespace: string
-  template: AppTemplate
+  templateId: AppTemplate
+  replicas?: number
+  port?: number
   resources: {
     cpuRequest: string
     cpuLimit: string
-    memoryRequest: string
-    memoryLimit: string
+    memRequest: string
+    memLimit: string
   }
-  envVars: { key: string; value: string }[]
+  envVars: Record<string, string>
 }
 
 export interface DeployAppResult {

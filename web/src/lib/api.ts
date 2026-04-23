@@ -14,10 +14,15 @@ function standardizeApiError(error: unknown): StandardizedApiError {
     const message =
       typeof responseData === 'object' &&
       responseData !== null &&
-      'message' in responseData &&
-      typeof responseData.message === 'string'
-        ? responseData.message
-        : error.message || 'Request failed'
+      'error' in responseData &&
+      typeof (responseData as { error: { message: string } }).error?.message === 'string'
+        ? (responseData as { error: { message: string } }).error.message
+        : typeof responseData === 'object' &&
+          responseData !== null &&
+          'message' in responseData &&
+          typeof responseData.message === 'string'
+          ? responseData.message
+          : error.message || 'Request failed'
 
     return {
       status,
