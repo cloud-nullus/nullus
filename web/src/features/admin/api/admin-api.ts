@@ -59,10 +59,29 @@ const queryKeys = {
   inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
 }
 
-type ClusterApiShape = Cluster & {
+type ClusterApiShape = Omit<Cluster, 'nodeArchitectures'> & {
   connection_status?: Cluster['status']
   org_id?: string
   cloud_provider?: Cluster['cloudProvider']
+  node_architectures?: string[]
+  nodeArchitectures?: string[]
+  NodeArchitectures?: string[]
+}
+
+const normalizeNodeArchitectures = (archs: string[] | undefined): string[] => {
+  if (!Array.isArray(archs) || archs.length === 0) {
+    return []
+  }
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const arch of archs) {
+    if (typeof arch === 'string' && arch.length > 0 && !seen.has(arch)) {
+      seen.add(arch)
+      out.push(arch)
+    }
+  }
+  out.sort()
+  return out
 }
 
 const normalizeClusterTypes = (types: Cluster['types'] | undefined, type: Cluster['type'] | undefined): Cluster['types'] => {
@@ -79,6 +98,9 @@ const normalizeCluster = (cluster: ClusterApiShape): Cluster => ({
   cloudProvider: cluster.cloudProvider ?? cluster.cloud_provider ?? 'on_premise',
   status: cluster.status ?? cluster.connection_status ?? 'pending',
   organizationIds: cluster.organizationIds ?? (cluster.org_id ? [cluster.org_id] : []),
+  nodeArchitectures: normalizeNodeArchitectures(
+    cluster.node_architectures ?? cluster.nodeArchitectures ?? cluster.NodeArchitectures,
+  ),
 })
 
 const toClusterRequestPayload = (data: Partial<CreateClusterRequest>) => {
@@ -162,6 +184,11 @@ const adminApiCalls = {
 
   verifyClusterDraft: (data: { endpoint?: string; kubeconfig: string }) =>
     api.post<{ status: string; version?: string }>('/admin/clusters/verify', data).then((r) => r.data),
+
+  refreshClusterDiscovery: (id: string) =>
+    api
+      .post<ClusterApiShape>(`/admin/clusters/${id}/refresh-discovery`)
+      .then((r) => normalizeCluster(r.data)),
 
   getKnownIssues: () =>
     api.get<{ items: KnownIssue[] }>('/admin/known-issues').then((r) => r.data),
@@ -389,6 +416,20 @@ export function useVerifyCluster() {
 export function useVerifyClusterDraft() {
   return useMutation({
     mutationFn: (data: { endpoint?: string; kubeconfig: string }) => adminApiCalls.verifyClusterDraft(data),
+  })
+}
+
+// useRefreshDiscovery re-probes a cluster for its server version and node
+// architectures (F8 Task 3). Invalidates the cluster list + detail caches
+// on success so downstream UI sees the fresh node_architectures value.
+export function useRefreshDiscovery() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => adminApiCalls.refreshClusterDiscovery(id),
+    onSuccess: (_, id) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
+      void qc.invalidateQueries({ queryKey: queryKeys.cluster(id) })
+    },
   })
 }
 

@@ -98,6 +98,12 @@ export interface Cluster {
   organizationIds: string[]
   kubeconfig?: string
   createdAt: string
+  // nodeArchitectures is the sorted, de-duplicated set of
+  // node.status.nodeInfo.architecture values from the cluster. Populated by
+  // admin discovery flows (POST /clusters/:id/refresh-discovery) and
+  // consumed by the Stack Pre-Deploy Gate. Empty array means "not yet
+  // discovered" — treated as unknown, not as "no nodes."
+  nodeArchitectures: string[]
 }
 
 export interface ToolSelection {
@@ -208,10 +214,22 @@ export interface StackVersionDiff {
   changed: Record<string, [unknown, unknown]>
 }
 
+export type CompatibilityTier = 'stable' | 'beta' | 'deprecated'
+
 export interface CompatibilityTool {
   name: string
   helmVersion: string
   appVersion: string
+  // archSupport lists the CPU architectures the tool publishes images for
+  // (F8 Task 1). Empty array is interpreted as "amd64-only" for backward
+  // compatibility with v1 matrices that predate the field.
+  archSupport: string[]
+  // minK8sVersion is the per-tool minimum Kubernetes version (F8 Task 1).
+  // Empty string means "inherit from matrix k8sRange min."
+  minK8sVersion: string
+  // tier is the maturity of this tool inside the matrix (F8 Task 1).
+  // Distinct from the matrix-level status.
+  tier: CompatibilityTier
 }
 
 export interface CompatibilityMatrix {
@@ -238,6 +256,13 @@ export interface CompatibilityValidationResult {
   compatible: boolean
   overall: CompatibilityValidationOverall
   issues: CompatibilityIssue[]
+  // nodeArchitectures reflects the Pre-Deploy Gate's view of the target
+  // cluster's fleet (F8 Task 3). Always normalized/sorted server-side.
+  nodeArchitectures: string[]
+  // matrix is the server's view of the matched matrix row, if any.
+  matrix?: CompatibilityMatrix
+  // message is a human-readable summary returned by the server.
+  message?: string
   checkedAt: string
 }
 
@@ -454,6 +479,16 @@ export interface CreateAlertRuleRequest {
   critical_threshold: number
   channel: AlertChannel
   enabled?: boolean
+}
+
+export interface RetryHistoryEntry {
+  id: string
+  timestamp: string
+  actor: string
+  previousState?: string
+  acknowledgeWarnings: boolean
+  verdict?: string
+  issueCodes?: string[]
 }
 
 export type StackTemplate = Template

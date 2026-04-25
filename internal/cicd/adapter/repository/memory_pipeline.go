@@ -86,13 +86,11 @@ func (r *MemoryPipelineRepository) Update(_ context.Context, p *domain.Pipeline)
 	return nil
 }
 
-// Delete removes a pipeline by ID.
+// Delete removes a pipeline by ID. No-op when the pipeline does not exist so
+// callers can idempotently clean up.
 func (r *MemoryPipelineRepository) Delete(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.pipelines[id]; !ok {
-		return fmt.Errorf("pipeline %q not found", id)
-	}
 	delete(r.pipelines, id)
 	return nil
 }

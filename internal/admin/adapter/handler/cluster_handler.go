@@ -25,13 +25,13 @@ var namespaceListerFn = listNamespacesFromKubeconfig
 // ClusterHandler handles HTTP requests for clusters.
 type ClusterHandler struct {
 	clusterUC     *usecase.ClusterUseCase
-	audit         *audit.AuditLogger
+	audit         audit.Sink
 	encryptionKey []byte
 }
 
 // NewClusterHandler creates a new ClusterHandler.
-func NewClusterHandler(clusterUC *usecase.ClusterUseCase, auditLogger ...*audit.AuditLogger) *ClusterHandler {
-	var logger *audit.AuditLogger
+func NewClusterHandler(clusterUC *usecase.ClusterUseCase, auditLogger ...audit.Sink) *ClusterHandler {
+	var logger audit.Sink
 	if len(auditLogger) > 0 {
 		logger = auditLogger[0]
 	}
@@ -67,17 +67,18 @@ type verifyClusterDraftRequest struct {
 }
 
 type clusterResponse struct {
-	ID               string                  `json:"id"`
-	Name             string                  `json:"name"`
-	Type             domain.ClusterType      `json:"type"`
-	Types            []domain.ClusterType    `json:"types"`
-	CloudProvider    domain.CloudProvider    `json:"cloud_provider"`
-	Endpoint         string                  `json:"endpoint"`
-	ConnectionStatus domain.ConnectionStatus `json:"connection_status"`
-	OrgID            string                  `json:"org_id"`
-	Kubeconfig       string                  `json:"kubeconfig,omitempty"`
-	CreatedAt        any                     `json:"created_at"`
-	UpdatedAt        any                     `json:"updated_at"`
+	ID                string                  `json:"id"`
+	Name              string                  `json:"name"`
+	Type              domain.ClusterType      `json:"type"`
+	Types             []domain.ClusterType    `json:"types"`
+	CloudProvider     domain.CloudProvider    `json:"cloud_provider"`
+	Endpoint          string                  `json:"endpoint"`
+	ConnectionStatus  domain.ConnectionStatus `json:"connection_status"`
+	OrgID             string                  `json:"org_id"`
+	NodeArchitectures []string                `json:"node_architectures"`
+	Kubeconfig        string                  `json:"kubeconfig,omitempty"`
+	CreatedAt         any                     `json:"created_at"`
+	UpdatedAt         any                     `json:"updated_at"`
 }
 
 type clusterNamespaceResponseItem struct {
@@ -94,18 +95,23 @@ type clusterMonitoringSummaryResponse struct {
 }
 
 func toClusterResponse(cluster *domain.Cluster, kubeconfig string) clusterResponse {
+	archs := cluster.NodeArchitectures
+	if archs == nil {
+		archs = []string{}
+	}
 	return clusterResponse{
-		ID:               cluster.ID,
-		Name:             cluster.Name,
-		Type:             cluster.Type,
-		Types:            domain.NormalizeClusterTypes(cluster.Types, cluster.Type),
-		CloudProvider:    cluster.CloudProvider,
-		Endpoint:         cluster.Endpoint,
-		ConnectionStatus: cluster.ConnectionStatus,
-		OrgID:            cluster.OrgID,
-		Kubeconfig:       kubeconfig,
-		CreatedAt:        cluster.CreatedAt,
-		UpdatedAt:        cluster.UpdatedAt,
+		ID:                cluster.ID,
+		Name:              cluster.Name,
+		Type:              cluster.Type,
+		Types:             domain.NormalizeClusterTypes(cluster.Types, cluster.Type),
+		CloudProvider:     cluster.CloudProvider,
+		Endpoint:          cluster.Endpoint,
+		ConnectionStatus:  cluster.ConnectionStatus,
+		OrgID:             cluster.OrgID,
+		NodeArchitectures: archs,
+		Kubeconfig:        kubeconfig,
+		CreatedAt:         cluster.CreatedAt,
+		UpdatedAt:         cluster.UpdatedAt,
 	}
 }
 
@@ -160,6 +166,12 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 			// Keep cluster state consistent: if kubeconfig persistence failed, roll back created cluster.
 			_ = h.clusterUC.DeleteCluster(c.Request().Context(), cluster.ID)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to save kubeconfig")
+		}
+		// Best-effort node architecture discovery. Discovery failures do not
+		// roll back the registration — the cluster is stored with
+		// connection_status=connection_failed and the user can Refresh later.
+		if refreshed, refreshErr := h.clusterUC.RefreshDiscovery(c.Request().Context(), cluster.ID); refreshErr == nil {
+			cluster = refreshed
 		}
 	}
 	if h.audit != nil {
@@ -264,6 +276,14 @@ func (h *ClusterHandler) UpdateCluster(c echo.Context) error {
 		if err := h.clusterUC.SaveKubeconfig(c.Request().Context(), cluster.ID, []byte(encrypted)); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to save kubeconfig")
 		}
+		// Re-discover node architectures against the new kubeconfig. Best
+		// effort: discovery errors surface as connection_failed, not an HTTP
+		// error, so the PATCH call still succeeds.
+		if refreshed, refreshErr := h.clusterUC.RefreshDiscovery(c.Request().Context(), cluster.ID); refreshErr == nil {
+			cluster = refreshed
+		} else if latest, getErr := h.clusterUC.GetCluster(c.Request().Context(), cluster.ID); getErr == nil {
+			cluster = latest
+		}
 	}
 	if h.audit != nil {
 		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
@@ -325,13 +345,17 @@ func (h *ClusterHandler) VerifyCluster(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to decrypt kubeconfig")
 	}
 
-	result, err := kube.VerifyCluster(decrypted)
+	info, err := kube.DiscoverCluster(c.Request().Context(), decrypted)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 	}
 
-	if _, err := h.clusterUC.VerifyCluster(c.Request().Context(), id); err != nil {
-		return err
+	// Persist NodeArchitectures + mark connected via the use case so the
+	// cluster row reflects what we just discovered.
+	if _, err := h.clusterUC.RefreshDiscovery(c.Request().Context(), id); err != nil {
+		// Discovery talked to the cluster successfully above, so this is a
+		// persistence error — surface as 500, not 502.
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	if h.audit != nil {
 		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
@@ -340,14 +364,52 @@ func (h *ClusterHandler) VerifyCluster(c echo.Context) error {
 			ResourceType: "cluster",
 			ResourceID:   id,
 			Details: map[string]any{
-				"status":  result.Status,
-				"version": result.Version,
+				"status":             "connected",
+				"version":            info.ServerVersion,
+				"node_architectures": info.NodeArchitectures,
+				"node_count":         info.NodeCount,
 			},
 			IPAddress: c.RealIP(),
 		})
 	}
 
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, map[string]any{
+		"status":             "connected",
+		"version":            info.ServerVersion,
+		"node_architectures": info.NodeArchitectures,
+		"node_count":         info.NodeCount,
+	})
+}
+
+// RefreshDiscovery is the explicit "re-probe this cluster now" endpoint
+// used by the UI refresh button and by scheduled sweeps. It simply re-runs
+// the same discovery flow that Register/Update trigger implicitly.
+func (h *ClusterHandler) RefreshDiscovery(c echo.Context) error {
+	id := c.Param("id")
+
+	cluster, err := h.clusterUC.RefreshDiscovery(c.Request().Context(), id)
+	if err != nil {
+		if cluster != nil {
+			// Discovery failed but the cluster row was updated (connection_failed).
+			// Return 200 with the new state so the UI can display the status
+			// change without treating the HTTP call as an error.
+			return c.JSON(http.StatusOK, toClusterResponse(cluster, ""))
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "refresh_discovery",
+			ResourceType: "cluster",
+			ResourceID:   id,
+			Details: map[string]any{
+				"node_architectures": cluster.NodeArchitectures,
+			},
+			IPAddress: c.RealIP(),
+		})
+	}
+	return c.JSON(http.StatusOK, toClusterResponse(cluster, ""))
 }
 
 func (h *ClusterHandler) VerifyClusterDraft(c echo.Context) error {
@@ -366,12 +428,17 @@ func (h *ClusterHandler) VerifyClusterDraft(c echo.Context) error {
 		kubeconfigBytes = decoded
 	}
 
-	result, err := kube.VerifyCluster(kubeconfigBytes)
+	info, err := kube.DiscoverCluster(c.Request().Context(), kubeconfigBytes)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, map[string]any{
+		"status":             "connected",
+		"version":            info.ServerVersion,
+		"node_architectures": info.NodeArchitectures,
+		"node_count":         info.NodeCount,
+	})
 }
 
 func (h *ClusterHandler) ListNamespaces(c echo.Context) error {
@@ -535,4 +602,5 @@ func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.PATCH("/clusters/:id", h.UpdateCluster)
 	g.DELETE("/clusters/:id", h.DeleteCluster)
 	g.POST("/clusters/:id/verify", h.VerifyCluster)
+	g.POST("/clusters/:id/refresh-discovery", h.RefreshDiscovery)
 }

@@ -12,12 +12,12 @@ import (
 // OrgHandler handles HTTP requests for organizations.
 type OrgHandler struct {
 	orgUC *usecase.OrgUseCase
-	audit *audit.AuditLogger
+	audit audit.Sink
 }
 
 // NewOrgHandler creates a new OrgHandler.
-func NewOrgHandler(orgUC *usecase.OrgUseCase, auditLogger ...*audit.AuditLogger) *OrgHandler {
-	var logger *audit.AuditLogger
+func NewOrgHandler(orgUC *usecase.OrgUseCase, auditLogger ...audit.Sink) *OrgHandler {
+	var logger audit.Sink
 	if len(auditLogger) > 0 {
 		logger = auditLogger[0]
 	}

@@ -212,3 +212,86 @@ func TestClusterUseCase_SaveAndGetKubeconfig(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, plain, stored)
 }
+
+// stubDiscoverer lets us swap kube.DiscoverCluster out in use-case tests so
+// we don't need a real Kubernetes API server.
+type stubDiscoverer struct {
+	info *domain.ClusterDiscoveryInfo
+	err  error
+}
+
+func (s *stubDiscoverer) Discover(_ context.Context, _ []byte) (*domain.ClusterDiscoveryInfo, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.info, nil
+}
+
+func TestClusterUseCase_RefreshDiscovery_Success(t *testing.T) {
+	repo := newMockClusterRepo()
+	discoverer := &stubDiscoverer{info: &domain.ClusterDiscoveryInfo{
+		ServerVersion:     "v1.30.1",
+		NodeArchitectures: []string{"arm64", "amd64"}, // unsorted on purpose
+		NodeCount:         2,
+	}}
+	uc := NewClusterUseCase(repo, WithDiscoverer(discoverer))
+
+	created, err := uc.RegisterCluster(context.Background(), RegisterClusterInput{
+		Name: "multi-arch", Type: domain.ClusterTypePipeline, OrgID: "org_001",
+	})
+	require.NoError(t, err)
+	require.NoError(t, uc.SaveKubeconfig(context.Background(), created.ID, []byte("raw-kubeconfig")))
+
+	result, err := uc.RefreshDiscovery(context.Background(), created.ID)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	// Normalized: sorted ascending, duplicates removed.
+	assert.Equal(t, []string{"amd64", "arm64"}, result.NodeArchitectures)
+	assert.Equal(t, domain.ConnectionStatusConnected, result.ConnectionStatus)
+
+	// Verify persistence so a subsequent GetCluster sees the same data.
+	persisted, err := uc.GetCluster(context.Background(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"amd64", "arm64"}, persisted.NodeArchitectures)
+}
+
+func TestClusterUseCase_RefreshDiscovery_Failure_MarksConnectionFailed(t *testing.T) {
+	repo := newMockClusterRepo()
+	discoverer := &stubDiscoverer{err: errors.New("boom: tcp timeout")}
+	uc := NewClusterUseCase(repo, WithDiscoverer(discoverer))
+
+	created, err := uc.RegisterCluster(context.Background(), RegisterClusterInput{
+		Name: "unreachable", Type: domain.ClusterTypePipeline, OrgID: "org_001",
+	})
+	require.NoError(t, err)
+	require.NoError(t, uc.SaveKubeconfig(context.Background(), created.ID, []byte("raw-kubeconfig")))
+
+	result, err := uc.RefreshDiscovery(context.Background(), created.ID)
+	require.Error(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, domain.ConnectionStatusConnectionFailed, result.ConnectionStatus)
+	assert.Nil(t, result.NodeArchitectures)
+
+	// Status + empty arch slice must survive a round trip.
+	persisted, err := uc.GetCluster(context.Background(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.ConnectionStatusConnectionFailed, persisted.ConnectionStatus)
+	assert.Nil(t, persisted.NodeArchitectures)
+}
+
+func TestClusterUseCase_RefreshDiscovery_NoKubeconfig(t *testing.T) {
+	repo := newMockClusterRepo()
+	discoverer := &stubDiscoverer{info: &domain.ClusterDiscoveryInfo{NodeArchitectures: []string{"amd64"}}}
+	uc := NewClusterUseCase(repo, WithDiscoverer(discoverer))
+
+	created, err := uc.RegisterCluster(context.Background(), RegisterClusterInput{
+		Name: "no-kube", Type: domain.ClusterTypePipeline, OrgID: "org_001",
+	})
+	require.NoError(t, err)
+
+	_, err = uc.RefreshDiscovery(context.Background(), created.ID)
+	require.Error(t, err)
+	var appErr *shareddomain.AppError
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, "KUBECONFIG_NOT_REGISTERED", appErr.Code)
+}

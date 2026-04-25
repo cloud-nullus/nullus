@@ -6,6 +6,7 @@ import type {
   CompatibilityValidationResult,
   CreateStackRequest,
   ResourceEstimate,
+  RetryHistoryEntry,
   StackResourceDefault,
   Stack,
   StackHistoryEntry,
@@ -29,6 +30,7 @@ export type {
   CompatibilityValidationResult,
   CreateStackRequest,
   ResourceEstimate,
+  RetryHistoryEntry,
   Stack,
   StackHistoryEntry,
   StackTemplate,
@@ -158,9 +160,19 @@ interface RawCompatibilityTool {
   name?: string
   Name?: string
   helmVersion?: string
+  helm_version?: string
   HelmVersion?: string
   appVersion?: string
+  app_version?: string
   AppVersion?: string
+  archSupport?: string[]
+  arch_support?: string[]
+  ArchSupport?: string[]
+  minK8sVersion?: string
+  min_k8s_version?: string
+  MinK8sVersion?: string
+  tier?: string
+  Tier?: string
 }
 
 interface RawKubernetesRange {
@@ -241,7 +253,26 @@ interface RawCompatibilityValidationResult {
   compatible?: boolean
   overall?: RawCompatibilityOverall
   issues?: RawCompatibilityIssue[]
+  node_architectures?: string[]
+  nodeArchitectures?: string[]
+  matrix?: RawCompatibilityMatrix | null
+  message?: string
   checkedAt?: string
+}
+
+export interface ValidateCompatibilityInput {
+  stackId: string
+  // clusterId tells the backend to resolve node architectures from the
+  // admin module's cluster record (F8 Task 3). Takes precedence over
+  // nodeArchitectures when both are set server-side.
+  clusterId?: string
+  // nodeArchitectures is the explicit override — useful in the wizard
+  // before a stack row exists or when the caller already has the fleet
+  // layout in hand.
+  nodeArchitectures?: string[]
+  // tools map is forwarded to the server's tool-based matrix matcher. If
+  // omitted, the server falls back to its default Validate flow.
+  tools?: Record<string, string>
 }
 
 const toToolName = (tool: unknown): string => {
@@ -308,10 +339,36 @@ const normalizeTemplate = (raw: RawTemplate): StackTemplate => ({
   minResources: raw.minResources ?? raw.min_resources ?? raw.MinResources,
 })
 
+const normalizeArchs = (archs: string[] | undefined): string[] => {
+  if (!Array.isArray(archs) || archs.length === 0) {
+    return []
+  }
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const arch of archs) {
+    if (typeof arch === 'string' && arch.length > 0 && !seen.has(arch)) {
+      seen.add(arch)
+      out.push(arch)
+    }
+  }
+  out.sort()
+  return out
+}
+
+const normalizeTier = (raw: string | undefined): import('../../../types').CompatibilityTier => {
+  if (raw === 'beta' || raw === 'deprecated') {
+    return raw
+  }
+  return 'stable'
+}
+
 const normalizeCompatibilityTool = (tool: RawCompatibilityTool) => ({
   name: tool.name ?? tool.Name ?? 'Unknown',
-  helmVersion: tool.helmVersion ?? tool.HelmVersion ?? '-',
-  appVersion: tool.appVersion ?? tool.AppVersion ?? '-',
+  helmVersion: tool.helmVersion ?? tool.helm_version ?? tool.HelmVersion ?? '-',
+  appVersion: tool.appVersion ?? tool.app_version ?? tool.AppVersion ?? '-',
+  archSupport: normalizeArchs(tool.archSupport ?? tool.arch_support ?? tool.ArchSupport),
+  minK8sVersion: tool.minK8sVersion ?? tool.min_k8s_version ?? tool.MinK8sVersion ?? '',
+  tier: normalizeTier(tool.tier ?? tool.Tier),
 })
 
 const normalizeK8sRange = (raw: RawCompatibilityMatrix): string => {
@@ -387,6 +444,8 @@ const normalizeCompatibilityValidationResult = (raw: RawCompatibilityValidationR
       ? state
       : (raw.compatible ? 'pass' : 'fail')
 
+  const matrix = raw.matrix ? normalizeCompatibilityMatrix(raw.matrix) : undefined
+
   return {
     compatible: raw.compatible ?? (normalizedState !== 'fail'),
     overall: {
@@ -403,11 +462,53 @@ const normalizeCompatibilityValidationResult = (raw: RawCompatibilityValidationR
           code: issue.code,
         }))
       : [],
+    nodeArchitectures: normalizeArchs(raw.node_architectures ?? raw.nodeArchitectures),
+    matrix,
+    message: raw.message,
     checkedAt: raw.checkedAt ?? new Date().toISOString(),
   }
 }
 
 // --- API functions ---
+
+// F8-Phase5 matrix CRUD input type. Mirrors the backend matrixPayload but
+// uses camelCase on the TS side; `matrixInputToPayload` flips to snake_case
+// for the wire.
+export interface MatrixInput {
+  id: string
+  name: string
+  status: 'verified' | 'untested' | 'unsupported'
+  kubernetes: { min: string; max: string; recommended: string }
+  tools: Record<string, {
+    name: string
+    helmVersion: string
+    appVersion: string
+    minK8sVersion?: string
+    archSupport?: string[]
+    tier?: 'stable' | 'beta' | 'deprecated'
+  }>
+}
+
+function matrixInputToPayload(input: MatrixInput): unknown {
+  const tools: Record<string, unknown> = {}
+  for (const [cat, t] of Object.entries(input.tools)) {
+    tools[cat] = {
+      name: t.name,
+      helm_version: t.helmVersion,
+      app_version: t.appVersion,
+      min_k8s_version: t.minK8sVersion ?? '',
+      arch_support: t.archSupport ?? ['amd64'],
+      tier: t.tier ?? 'stable',
+    }
+  }
+  return {
+    id: input.id,
+    name: input.name,
+    status: input.status,
+    kubernetes: input.kubernetes,
+    tools,
+  }
+}
 
 function toBackendTool(sel: { tool: string; version: string }) {
   const name = (sel.tool ?? '').trim()
@@ -578,8 +679,35 @@ const stackApiCalls = {
   getCompatibilityMatrix: () =>
     api.get<RawCompatibilityMatrix[]>('/stacks/compatibility').then((r) => (r.data ?? []).map(normalizeCompatibilityMatrix)),
 
-  validateCompatibility: (stackId: string) =>
-    api.post<RawCompatibilityValidationResult>(`/stacks/${stackId}/validate`).then((r) => normalizeCompatibilityValidationResult(r.data ?? {})),
+  // F8-Phase5 admin CRUD — create/update/delete compatibility matrices.
+  // Wire body in snake_case to match the backend matrixPayload struct.
+  createMatrix: (input: MatrixInput) =>
+    api.post<RawCompatibilityMatrix>('/admin/compatibility/matrices', matrixInputToPayload(input))
+      .then((r) => normalizeCompatibilityMatrix(r.data)),
+
+  updateMatrix: (input: MatrixInput) =>
+    api.put<RawCompatibilityMatrix>(`/admin/compatibility/matrices/${input.id}`, matrixInputToPayload(input))
+      .then((r) => normalizeCompatibilityMatrix(r.data)),
+
+  deleteMatrix: (id: string) =>
+    api.delete<void>(`/admin/compatibility/matrices/${id}`).then(() => undefined),
+
+  validateCompatibility: (input: ValidateCompatibilityInput) => {
+    const { stackId, tools, clusterId, nodeArchitectures } = input
+    const body: Record<string, unknown> = {}
+    if (tools && Object.keys(tools).length > 0) {
+      body.tools = tools
+    }
+    if (clusterId) {
+      body.cluster_id = clusterId
+    }
+    if (nodeArchitectures && nodeArchitectures.length > 0) {
+      body.node_architectures = nodeArchitectures
+    }
+    return api
+      .post<RawCompatibilityValidationResult>(`/stacks/${stackId}/validate`, body)
+      .then((r) => normalizeCompatibilityValidationResult(r.data ?? {}))
+  },
 
   createTemplate: (request: TemplateMutationRequest) =>
     api.post<StackTemplate>('/stacks/templates', request).then((r) => r.data),
@@ -602,8 +730,33 @@ const stackApiCalls = {
   getClusterK8sVersion: (clusterId: string) =>
     api.post<RawClusterVerifyResult>(`/admin/clusters/${clusterId}/verify`).then((r) => (r.data?.version ?? '').trim()),
 
-  deployStack: (stackId: string) =>
-    api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
+  deployStack: (input: DeployStackInput | string) => {
+    const { stackId, acknowledgeWarnings } =
+      typeof input === 'string' ? { stackId: input, acknowledgeWarnings: false } : input
+    const body = acknowledgeWarnings ? { acknowledge_warnings: true } : undefined
+    return api
+      .post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`, body)
+      .then((r) => r.data)
+  },
+
+  // retryStack — F8 follow-up Phase 3. Invokes POST /stacks/:id/retry to
+  // rewind a failed/rolled_back stack to pending and re-run the install
+  // pipeline. Same acknowledge_warnings contract as deployStack.
+  retryStack: (input: DeployStackInput) => {
+    const body = input.acknowledgeWarnings ? { acknowledge_warnings: true } : undefined
+    return api
+      .post<{ stack_id: string; status: string }>(`/stacks/${input.stackId}/retry`, body)
+      .then((r) => r.data)
+  },
+}
+
+export interface DeployStackInput {
+  stackId: string
+  // acknowledgeWarnings opts in to proceeding when the server-side
+  // Pre-Deploy Gate (F8-F3) returns overall.state == "warn". Defaults to
+  // false so legacy clients that pass a bare stackId are blocked on warn
+  // instead of silently installing.
+  acknowledgeWarnings?: boolean
 }
 
 // --- Hooks ---
@@ -712,6 +865,21 @@ export function useStackHistory(stackId: string) {
   })
 }
 
+// F8-UIUX-RetryAuditSurface-Frontend — load retry audit entries for the
+// deployment logs page. staleTime 30s keeps the panel quiet while still
+// surfacing brand-new retries without requiring a hard refresh.
+export function useStackRetryHistory(stackId: string | undefined) {
+  return useQuery<{ items: RetryHistoryEntry[] }>({
+    queryKey: ['stack-retry-history', stackId],
+    queryFn: async () => {
+      const res = await api.get<{ items: RetryHistoryEntry[] }>(`/stacks/${stackId}/retry-history`)
+      return res.data
+    },
+    enabled: Boolean(stackId),
+    staleTime: 30_000,
+  })
+}
+
 export function useStackMonitoring(stackId: string, refetchIntervalMs = 5000) {
   return useQuery({
     queryKey: queryKeys.monitoring(stackId),
@@ -752,7 +920,11 @@ export function useCompatibilityMatrix() {
 export function useValidateCompatibility() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (stackId: string) => stackApiCalls.validateCompatibility(stackId),
+    mutationFn: (input: ValidateCompatibilityInput | string) => {
+      const normalized: ValidateCompatibilityInput =
+        typeof input === 'string' ? { stackId: input } : input
+      return stackApiCalls.validateCompatibility(normalized)
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
     },
@@ -794,9 +966,53 @@ export function useDeleteTemplate() {
 export function useDeployStack() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: stackApiCalls.deployStack,
+    mutationFn: (input: DeployStackInput | string) => stackApiCalls.deployStack(input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
+  })
+}
+
+// useRetryStack — F8 follow-up Phase 3. Drives POST /stacks/:id/retry from
+// UI. Invalidates the stack list cache so Retry buttons update.
+export function useRetryStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: DeployStackInput) => stackApiCalls.retryStack(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
+  })
+}
+
+// F8-Phase5 (재개) matrix CRUD mutations. Each onSuccess invalidates the
+// compatibility cache so the Stack Version Management page refetches.
+export function useCreateMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: MatrixInput) => stackApiCalls.createMatrix(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
+    },
+  })
+}
+
+export function useUpdateMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: MatrixInput) => stackApiCalls.updateMatrix(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
+    },
+  })
+}
+
+export function useDeleteMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => stackApiCalls.deleteMatrix(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
     },
   })
 }

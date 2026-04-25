@@ -49,7 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={isDisabled}
         className={cn(
-          'inline-flex items-center justify-center gap-2 transition-all duration-150 ease-in-out',
+          'inline-flex items-center justify-center gap-2 whitespace-nowrap transition-all duration-150 ease-in-out',
           isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
           variantStyles[variant],
           sizeStyles[size],

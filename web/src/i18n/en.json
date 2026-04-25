@@ -6,6 +6,7 @@
     "stackList": "Stack List",
     "stackHistory": "Stack History",
     "stackVersion": "Stack Version",
+    "stackVersionsAdmin": "Stack Version Management",
     "stackOssResourceDefault": "OSS Default Resource",
     "cicd": "CI/CD",
     "cicdTemplate": "CI/CD Template",
@@ -128,6 +129,34 @@
     },
     "errors": {
       "duplicateStackName": "A stack with this name already exists in the selected cluster"
+    },
+    "compatibility": {
+      "autoSelect": {
+        "title": "Golden Path Quick Start",
+        "subtitle": "Load a verified combination with one click",
+        "selectCluster": "Select a target cluster first",
+        "archUnknown": "Cluster architectures unknown — refresh discovery",
+        "archMismatch": "Incompatible with cluster arch",
+        "compatible": "Compatible with cluster"
+      },
+      "issue": {
+        "toolArchUnsupported": "One or more tools do not support the cluster node architecture",
+        "clusterArchUnknown": "Cluster architecture is unknown — run Refresh Discovery in Admin > Stack Version Management",
+        "kubeconfigNotRegistered": "Kubeconfig is not registered for this cluster",
+        "serverFail": "Server-side compatibility validation returned fail. Review issues and adjust the combination.",
+        "serverWarnAck": "Server-side compatibility returned warn. Acknowledge below and click Deploy again."
+      },
+      "serverVerdict": {
+        "title": "Server Pre-Deploy Gate",
+        "ackLabel": "I acknowledge the server-side compatibility warning and accept the risk of deploying.",
+        "ackAria": "Acknowledge server-side compatibility warning",
+        "passShort": "Server compatibility gate passed"
+      },
+      "gate": {
+        "serverFailHint": "The server-side compatibility gate blocked this deployment. Review the issues above and adjust the combination.",
+        "ackAria": "Acknowledge client-side compatibility warning"
+      },
+      "refreshDiscoveryCta": "Open admin page"
     }
   },
   "stackTemplatePage": {
@@ -645,6 +674,22 @@
     },
     "title": "Stack List",
     "description": "Deployed DevSecOps stack list",
+    "retry": {
+      "button": "Retry",
+      "confirmWarn": {
+        "title": "Compatibility warning",
+        "description": "The server-side Pre-Deploy Gate returned warn. Review the items below before retrying.",
+        "ackLabel": "Acknowledge the risk and proceed with redeploy.",
+        "cancel": "Cancel",
+        "confirm": "Acknowledge and retry"
+      },
+      "toasts": {
+        "success": "Redeploy started.",
+        "failure": "Redeploy failed.",
+        "pending": "Submitting retry...",
+        "fixAction": "Fix combination"
+      }
+    },
     "actions": {
       "newStack": "New Stack"
     },
@@ -1151,6 +1196,135 @@
       "pass": "Compatibility validation passed",
       "fail": "Compatibility issues found",
       "checkedAt": "Checked at"
+    }
+  },
+  "stackVersionsAdmin": {
+    "title": "Stack Version Management",
+    "subtitle": "Review Narwhal-based compatibility matrices and verify cluster architecture fit.",
+    "listTitle": "Compatibility Matrices",
+    "listSubtitle": "Golden Path 3 canonical matrices (Narwhal baseline)",
+    "loadError": "Failed to load compatibility matrices.",
+    "selectMatrix": "Select a matrix to view details.",
+    "k8sRangeLabel": "Kubernetes version range",
+    "toolsHeading": "Tools",
+    "clustersHeading": "Cluster compatibility",
+    "noClusters": "No clusters registered.",
+    "breadcrumb": {
+      "devsecops": "DevSecOps Stack",
+      "stackVersions": "Stack Version Management"
+    },
+    "status": {
+      "verified": "Verified",
+      "untested": "Untested",
+      "unsupported": "Unsupported"
+    },
+    "tier": {
+      "stable": "Stable",
+      "beta": "Beta",
+      "deprecated": "Deprecated"
+    },
+    "archBadge": {
+      "amd64": "amd64",
+      "arm64": "arm64",
+      "unknown": "—"
+    },
+    "crossEval": {
+      "compatible": "Compatible",
+      "incompatible": "Incompatible",
+      "unknown": "Needs refresh"
+    },
+    "col": {
+      "name": "Name",
+      "helm": "Helm",
+      "app": "App",
+      "arch": "Arch",
+      "minK8s": "Min K8s",
+      "tier": "Tier",
+      "cluster": "Cluster",
+      "nodeArch": "Node Architectures",
+      "crossEval": "Compatibility",
+      "actions": "Actions"
+    },
+    "refreshDiscovery": {
+      "button": "Refresh Discovery",
+      "success": "Cluster architectures refreshed.",
+      "failure": "Refresh failed.",
+      "notRegistered": "Kubeconfig is not registered."
+    },
+    "actions": {
+      "new": "New matrix",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "filter": {
+      "searchPlaceholder": "Search by ID or name",
+      "searchAria": "Matrix search",
+      "statusAria": "Filter by status",
+      "all": "All",
+      "empty": "No matrices match the filters."
+    },
+    "empty": {
+      "title": "No compatibility matrices yet",
+      "hint": "Create a new matrix to get started"
+    },
+    "legend": {
+      "aria": "Matrix status legend",
+      "verified": "verified",
+      "untested": "untested",
+      "unsupported": "unsupported"
+    },
+    "modal": {
+      "titleCreate": "New matrix",
+      "titleEdit": "Edit matrix",
+      "tools": "Tools",
+      "addTool": "Add tool",
+      "removeTool": "Remove tool",
+      "cancel": "Cancel",
+      "save": "Save",
+      "dropWarn": {
+        "title": "Rows that will be dropped on save because the category is empty",
+        "unnamed": "(unnamed)",
+        "hint": "Fill in the category or remove the row before saving. Saving as-is will delete those tool definitions from the server. Click Save again to proceed."
+      },
+      "validation": {
+        "idFormat": "ID must be lowercase letters, digits, or hyphens, and start with a letter or digit.",
+        "nameLength": "Name must be at least 2 characters long.",
+        "k8sFormat": "Expected format: v1.28 or v1.28.3",
+        "duplicateCategory": "Duplicate categories: {{names}}. Later rows will overwrite earlier definitions on save."
+      },
+      "unsavedPrompt": "You have unsaved changes. Close anyway?"
+    },
+    "deleteConfirm": {
+      "title": "Delete compatibility matrix",
+      "description": "Deleting this matrix means stacks that previously matched it will be treated as untested. Continue?",
+      "confirm": "Delete"
+    }
+  },
+  "stackDeployment": {
+    "retryHistory": {
+      "title": "Retry history",
+      "timestamp": "When",
+      "verdict": "Verdict",
+      "issues": "Issues",
+      "expand": "Show more",
+      "collapse": "Collapse"
+    }
+  },
+  "shortcuts": {
+    "badge": "Shortcuts",
+    "help": {
+      "title": "Keyboard shortcuts",
+      "keys": "Keys",
+      "action": "Action",
+      "scope": "Scope",
+      "description": "Show shortcut help"
+    },
+    "newStack": {
+      "description": "Create new stack"
+    },
+    "scope": {
+      "global": "Global",
+      "stackList": "Stack list"
     }
   }
 }
