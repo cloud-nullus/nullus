@@ -72,6 +72,18 @@ func TestClusterHandler_RegisterCluster_WithKubeconfigAndInvalidKey_500(t *testi
 	assert.EqualValues(t, 0, listResp["total"])
 }
 
+func TestClusterHandler_RegisterCluster_WithoutOrgIDAndNoOrg_400(t *testing.T) {
+	e, _ := newClusterEcho()
+
+	body := `{"name":"prod-cluster","type":"target","endpoint":"https://k8s.example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/clusters", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 func TestClusterHandler_ListClusters_200(t *testing.T) {
 	e, _ := newClusterEcho()
 

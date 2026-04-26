@@ -142,12 +142,13 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 		encryptedKubeconfig = []byte(encrypted)
 	}
 
-	orgID := req.OrgID
+	orgID := strings.TrimSpace(req.OrgID)
 	if orgID == "" {
 		firstOrg, err := h.clusterUC.GetFirstOrgID(c.Request().Context())
-		if err == nil && firstOrg != "" {
-			orgID = firstOrg
+		if err != nil || strings.TrimSpace(firstOrg) == "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "organization is required: create an organization first or provide org_id")
 		}
+		orgID = strings.TrimSpace(firstOrg)
 	}
 
 	cluster, err := h.clusterUC.RegisterCluster(c.Request().Context(), usecase.RegisterClusterInput{
@@ -187,7 +188,7 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 				"types":          req.Types,
 				"cloud_provider": req.CloudProvider,
 				"endpoint":       req.Endpoint,
-				"org_id":         req.OrgID,
+				"org_id":         orgID,
 			},
 			IPAddress: c.RealIP(),
 		})
