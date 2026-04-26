@@ -1,0 +1,112 @@
+# =============================================================================
+# Nullus Platform — Air-Gap Values Override
+# =============================================================================
+# 용도: 오프라인 kind 클러스터 배포용 values 재정의 파일
+# 사용법:
+#   helm upgrade --install nullus airgap/helm/nullus-*.tgz \
+#     -n nullus -f airgap/helm/values-airgap.yaml
+#
+# 주의:
+#   - secrets.dbPassword / secrets.encryptionKey 는 반드시 교체할 것
+#     예) --set secrets.dbPassword=실제패스워드 또는 SealedSecret 사용
+#   - 이미지 태그는 airgap/images/images.txt 와 동기화 상태여야 한다
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Nullus API 이미지
+# MUST match airgap/images/images.txt
+# -----------------------------------------------------------------------------
+api:
+  image:
+    repository: localhost:5001/cloud-nullus/draft/nullus-api
+    tag: "main"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Nullus Web 이미지
+# MUST match airgap/images/images.txt
+# -----------------------------------------------------------------------------
+web:
+  image:
+    repository: localhost:5001/cloud-nullus/draft/nullus-web
+    tag: "main"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Secrets — 플레이스홀더. 반드시 --set 또는 SealedSecret 으로 교체할 것.
+# -----------------------------------------------------------------------------
+secrets:
+  dbPassword: "CHANGE-ME"          # 운영: --set secrets.dbPassword=<실제값>
+  encryptionKey: "CHANGE-ME"       # 운영: --set secrets.encryptionKey=<32자 이상>
+
+# -----------------------------------------------------------------------------
+# Config — production 유지, 나머지는 기본값 사용
+# -----------------------------------------------------------------------------
+config:
+  server:
+    mode: production
+
+# -----------------------------------------------------------------------------
+# Ingress — kind 포트맵(80/443)이 트래픽을 처리하므로 비활성화
+# 활성화 방법: 아래 주석 해제 후 --set ingress.enabled=true
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: false
+  # className: "nginx"
+  # annotations: {}
+  # hosts:
+  #   - host: nullus.local
+  #     paths:
+  #       - path: /
+  #         pathType: Prefix
+  # tls: []
+
+# -----------------------------------------------------------------------------
+# PostgreSQL sub-chart 이미지 재정의
+# MUST match airgap/images/images.txt
+# Bitnami chart 16.7.21 기준 — 업그레이드 시 images.txt 와 함께 갱신할 것
+# -----------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  auth:
+    username: nullus
+    password: nullus
+    database: nullus
+  primary:
+    service:
+      ports:
+        postgresql: 5432
+  image:
+    registry: localhost:5001
+    repository: bitnamilegacy/postgresql
+    tag: "17.5.0-debian-12-r20"    # MUST match airgap/images/images.txt
+    pullPolicy: IfNotPresent
+  volumePermissions:
+    enabled: true
+    image:
+      registry: localhost:5001
+      repository: bitnamilegacy/os-shell
+      tag: "12-debian-12-r49"      # MUST match airgap/images/images.txt
+      pullPolicy: IfNotPresent
+  metrics:
+    # 기본값 disabled — 활성화 시 postgres-exporter 이미지도 images.txt 에서 확인
+    enabled: false
+    image:
+      registry: localhost:5001
+      repository: bitnamilegacy/postgres-exporter
+      tag: "0.17.1-debian-12-r13"  # MUST match airgap/images/images.txt
+      pullPolicy: IfNotPresent
