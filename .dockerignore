@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.vscode
+.omc
+.claude
+.DS_Store
+web/node_modules
+web/dist
+web/coverage
+web/test-results
+web/playwright-report
+postgres_data
+*.zip
+*.tar.gz
+terraform_*

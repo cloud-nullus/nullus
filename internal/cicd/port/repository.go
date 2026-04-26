@@ -35,3 +35,12 @@ type DeploymentRepository interface {
 	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.Deployment, error)
 	Update(ctx context.Context, deployment *domain.Deployment) error
 }
+
+// CICDGoldenPathRepository defines the interface for CI/CD Golden Path persistence.
+type CICDGoldenPathRepository interface {
+	GetByID(ctx context.Context, id string) (*domain.CICDGoldenPath, error)
+	List(ctx context.Context) ([]*domain.CICDGoldenPath, error)
+	Create(ctx context.Context, goldenPath *domain.CICDGoldenPath) error
+	Update(ctx context.Context, goldenPath *domain.CICDGoldenPath) error
+	Delete(ctx context.Context, id string) error
+}
