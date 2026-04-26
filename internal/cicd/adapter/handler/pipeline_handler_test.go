@@ -213,7 +213,7 @@ func newPipelineEcho(t *testing.T, pipelineRepo *mockPipelineRepository, templat
 	createPipelineUC := usecase.NewCreatePipeline(pipelineRepo, templateRepo)
 	listPipelinesUC := usecase.NewListPipelines(pipelineRepo)
 	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, &noopManifestApplier{})
-	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, kube.NewStepTracker())
+	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, kube.NewStepTracker())
 
 	v1 := e.Group("/api/v1")
 	h.RegisterRoutes(v1)

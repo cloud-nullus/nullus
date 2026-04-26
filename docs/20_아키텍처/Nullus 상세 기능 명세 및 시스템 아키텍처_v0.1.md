@@ -205,88 +205,88 @@ Nullus API Server
 ```
 Install Engine 내부 구조
 ┌─────────────────────────────────────────────────────────────┐
-│                      Orchestrator                            │
-│                                                              │
-│  입력: StackConfig (도구 목록, 버전, 클러스터 정보)            │
-│                                                              │
+│                      Orchestrator                           │
+│                                                             │
+│  입력: StackConfig (도구 목록, 버전, 클러스터 정보)                 │
+│                                                             │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │              State Machine (상태 머신)                │    │
+│  │              State Machine (상태 머신)                 │    │
 │  │                                                      │    │
 │  │  PENDING → VALIDATING → INSTALLING → CONFIGURING     │    │
-│  │      │          │             │             │          │    │
-│  │      ▼          ▼             ▼             ▼          │    │
-│  │  CANCELLED   FAILED ←──── HEALTHCHECK    COMPLETED     │    │
-│  │               │  │            │                        │    │
-│  │               │  └────────────┼──────────┐             │    │
-│  │               ▼               ▼          ▼             │    │
-│  │           RETRYING      ROLLING_BACK  TIMEOUT          │    │
-│  │                               │                        │    │
-│  │                               ▼                        │    │
-│  │               PARTIAL_SUCCESS ← ROLLED_BACK            │    │
-│  └─────────────────────────────────────────────────────┘    │
+│  │      │          │             │             │        │    │
+│  │      ▼          ▼             ▼             ▼        │    │
+│  │  CANCELLED   FAILED ←──── HEALTHCHECK    COMPLETED   │    │
+│  │               │  │            │                      │    │
+│  │               │  └────────────┼──────────┐           │    │
+│  │               ▼               ▼          ▼           │    │
+│  │           RETRYING      ROLLING_BACK  TIMEOUT        │    │
+│  │                               │                      │    │
+│  │                               ▼                      │    │
+│  │               PARTIAL_SUCCESS ← ROLLED_BACK          │    │
+│  └──────────────────────────────────────────────────────┘    │
 │                                                              │
-│  **상태 전이 정의**                                           │
-│  | 이벤트 | 소스 상태 | 타겟 상태 | 액션/가드 |               │
-│  |---|---|---|---|                                          │
-│  | START | PENDING | VALIDATING | 설정 유효성 검사 |          │
-│  | FAIL | VALIDATING | FAILED | 에러 로그 기록 |              │
-│  | CANCEL | ANY (active) | CANCELLED | 실행 중인 작업 중단 |   │
-│  | TIMEOUT | ANY (active) | TIMEOUT | 타임아웃 처리 |         │
-│  | RETRY | FAILED | RETRYING | 실패 단계부터 재시작 |         │
+│  **상태 전이 정의**                                             │
+│  | 이벤트 | 소스 상태 | 타겟 상태 | 액션/가드 |                      │
+│  |---|---|---|---|                                           │
+│  | START | PENDING | VALIDATING | 설정 유효성 검사 |             │
+│  | FAIL | VALIDATING | FAILED | 에러 로그 기록 |                 │
+│  | CANCEL | ANY (active) | CANCELLED | 실행 중인 작업 중단 |      │
+│  | TIMEOUT | ANY (active) | TIMEOUT | 타임아웃 처리 |            │
+│  | RETRY | FAILED | RETRYING | 실패 단계부터 재시작 |             │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │              Step Runner (단계별 실행기)               │    │
+│  │              Step Runner (단계별 실행기)                │    │
 │  │                                                      │    │
-│  │  ** 3-Phase 프로비저닝 (PRD 기준) **                   │    │
+│  │  ** 3-Phase 프로비저닝 (PRD 기준) **                     │    │
 │  │                                                      │    │
-│  │  Phase A (인프라 기반):                                │    │
-│  │     - cert-manager (TLS 인증서 관리)                   │    │
-│  │     - CNPG/PostgreSQL (데이터베이스 엔진)              │    │
-│  │     - Storage/MinIO (오브젝트 스토리지)                │    │
-│  │     * 선행조건: K8s 클러스터 연결 및 권한 확인           │    │
+│  │  Phase A (인프라 기반):                                 │    │
+│  │     - cert-manager (TLS 인증서 관리)                    │    │
+│  │     - CNPG/PostgreSQL (데이터베이스 엔진)                 │    │
+│  │     - Storage/MinIO (오브젝트 스토리지)                   │    │
+│  │     * 선행조건: K8s 클러스터 연결 및 권한 확인                │    │
 │  │                                                      │    │
-│  │  Phase B (핵심 서비스):                                │    │
-│  │     - GitLab/Gitea (소스 코드 관리)                    │    │
-│  │     - Harbor (컨테이너 레지스트리)                     │    │
-│  │     - ArgoCD (지속적 배포)                             │    │
-│  │     * 선행조건: Phase A 완료 및 Storage 가용성 확인      │    │
+│  │  Phase B (핵심 서비스):                                 │    │
+│  │     - GitLab/Gitea (소스 코드 관리)                     │    │
+│  │     - Harbor (컨테이너 레지스트리)                        │    │
+│  │     - ArgoCD (지속적 배포)                              │    │
+│  │     * 선행조건: Phase A 완료 및 Storage 가용성 확인         │    │
 │  │                                                      │    │
 │  │  Phase C (보조 서비스):                                │    │
 │  │     - Prometheus + Grafana (모니터링)                  │    │
-│  │     - Loki (로깅)                                      │    │
-│  │     * 선행조건: Phase B 완료 및 서비스 엔드포인트 확보    │    │
+│  │     - Loki (로깅)                                     │    │
+│  │     * 선행조건: Phase B 완료 및 서비스 엔드포인트 확보         │    │
 │  │                                                      │    │
-│  │  known-issues.yaml:                                   │    │
-│  │  Narwhal 70+ Helm edge case 패턴 코드화               │    │
-│  │  - CRD 262KB 초과 시 --server-side --force-conflicts  │    │
-│  │  - 비핵심 앱 --wait 제거, --timeout만 사용             │    │
-│  │  - ARM64 노드 감지 → 대체 이미지 자동 선택             │    │
-│  │  - 레지스트리 우선순위: ghcr.io > registry.k8s.io      │    │
-│  │    > quay.io > docker.io                              │    │
+│  │  known-issues.yaml:                                  │    │
+│  │  Narwhal 70+ Helm edge case 패턴 코드화                 │    │
+│  │  - CRD 262KB 초과 시 --server-side --force-conflicts   │    │
+│  │  - 비핵심 앱 --wait 제거, --timeout만 사용                 │    │
+│  │  - ARM64 노드 감지 → 대체 이미지 자동 선택                   │    │
+│  │  - 레지스트리 우선순위: ghcr.io > registry.k8s.io         │    │
+│  │    > quay.io > docker.io                             │    │
 │  │                                                      │    │
-│  │  각 Step은 독립 goroutine으로 실행,                    │    │
-│  │  이전 Step 완료 대기 후 실행 (DAG 기반)                │    │
-│  └─────────────────────────────────────────────────────┘    │
+│  │  각 Step은 독립 goroutine으로 실행,                      │    │
+│  │  이전 Step 완료 대기 후 실행 (DAG 기반)                    │    │
+│  └─────────────────────────────────────────────────────┘     │
 │                                                              │
-│  ┌─────────────────────────────────────────────────────┐    │
+│  ┌─────────────────────────────────────────────────────┐     │
 │  │              Rollback Manager (롤백 관리자)            │    │
-│  │                                                      │    │
-│  │  **롤백 모드**                                         │    │
-│  │  1. safe (기본): Helm uninstall, PVC 보존 (데이터 보호) │    │
-│  │  2. destructive: PVC 포함 모든 리소스 삭제 (명시적 확인) │    │
-│  │                                                      │    │
-│  │  각 Step 완료 시 롤백 함수를 스택에 push               │    │
-│  │  실패 시 스택을 역순으로 pop하며 롤백 실행              │    │
+│  │                                                     │    │
+│  │  **롤백 모드**                                        │    │
+│  │  1. safe (기본): Helm uninstall, PVC 보존 (데이터 보호)  │    │
+│  │  2. destructive: PVC 포함 모든 리소스 삭제 (명시적 확인)    │    │
+│  │                                                     │    │
+│  │  각 Step 완료 시 롤백 함수를 스택에 push                   │    │
+│  │  실패 시 스택을 역순으로 pop하며 롤백 실행                   │    │
 │  └─────────────────────────────────────────────────────┘    │
-│                                                              │
+│                                                             │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │              Log Streamer (로그 스트리머)               │    │
-│  │                                                      │    │
+│  │              Log Streamer (로그 스트리머)              │    │
+│  │                                                    │    │
 │  │  각 Step의 stdout/stderr를 캡처                       │    │
-│  │  WebSocket을 통해 클라이언트에 실시간 전송              │    │
-│  │  DB에 로그 영속화 (디버깅용)                           │    │
+│  │  WebSocket을 통해 클라이언트에 실시간 전송                 │    │
+│  │  DB에 로그 영속화 (디버깅용)                             │    │
 │  └─────────────────────────────────────────────────────┘    │
-│                                                              │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -351,19 +351,19 @@ matrices:
 
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│ organizations │────<│ org_members      │>────│ users            │
+│ organizations│────<│ org_members      │>────│ users            │
 │              │     │                  │     │                  │
 │ id (PK)      │     │ org_id (FK)      │     │ id (PK)          │
 │ name         │     │ user_id (FK)     │     │ email            │
 │ slug         │     │ role             │     │ password_hash    │
 │ status       │     └──────────────────┘     │ display_name     │
-│ created_at   │                               │ created_at       │
-└──────┬───────┘                               └──────────────────┘
+│ created_at   │                              │ created_at       │
+└──────┬───────┘                              └──────────────────┘
        │
        │ 1:N
        ▼
 ┌──────────────────┐     ┌──────────────────────────┐
-│ clusters         │     │ stack_configs             │
+│ clusters         │     │ stack_configs            │
 │                  │     │                          │
 │ id (PK)          │     │ id (PK)                  │
 │ org_id (FK)      │     │ cluster_id (FK)          │
@@ -380,7 +380,7 @@ matrices:
 │ created_at       │                  │ 1:N
 └──────────────────┘                  ▼
                            ┌──────────────────────────┐
-                           │ stack_config_versions     │
+                           │ stack_config_versions    │
                            │                          │
                            │ id (PK)                  │
                            │ stack_config_id (FK)     │
@@ -500,32 +500,32 @@ Nullus 컨트롤 플레인 자체도 Kubernetes에 배포됩니다 (또는 Docke
 ```
 배포 옵션 A: Kubernetes (권장)
 ┌─ nullus-system NS ─────────────────────────┐
-│                                             │
+│                                            │
 │  ┌─────────────────┐  ┌─────────────────┐  │
 │  │ nullus-api      │  │ nullus-web      │  │
 │  │ (Go, 2 replica) │  │ (Nginx + React) │  │
 │  │ Port: 8080      │  │ Port: 80/443    │  │
 │  └────────┬────────┘  └────────┬────────┘  │
-│           │                    │            │
-│  ┌────────▼────────┐          │            │
-│  │ postgresql      │          │            │
-│  │ (StatefulSet)   │          │            │
-│  │ Port: 5432      │          │            │
-│  └─────────────────┘          │            │
-│                                │            │
+│           │                    │           │
+│  ┌────────▼────────┐           │           │
+│  │ postgresql      │           │           │
+│  │ (StatefulSet)   │           │           │
+│  │ Port: 5432      │           │           │
+│  └─────────────────┘           │           │
+│                                │           │
 │  ┌─────────────────────────────▼─────────┐ │
 │  │ Ingress / Gateway                     │ │
 │  │ nullus.example.com                    │ │
 │  └───────────────────────────────────────┘ │
-└─────────────────────────────────────────────┘
+└────────────────────────────────────────────┘
 
 배포 옵션 B: Docker Compose (개발/소규모)
 ┌─────────────────────────────────────────────┐
 │  docker-compose.yaml                        │
 │                                             │
-│  nullus-api:    localhost:8090               │
-│  nullus-web:    localhost:3000               │
-│  postgresql:    localhost:5432               │
+│  nullus-api:    localhost:8090              │
+│  nullus-web:    localhost:3000              │
+│  postgresql:    localhost:5432              │
 └─────────────────────────────────────────────┘
 ```
 
@@ -569,46 +569,46 @@ Nullus 컨트롤 플레인 자체도 Kubernetes에 배포됩니다 (또는 Docke
 ### 8. 보안 아키텍처
 
 ```
-┌─ 데이터 흐름 보안 ─────────────────────────────────────────┐
-│                                                             │
+┌─ 데이터 흐름 보안 ───────────────────────────────────────────┐
+│                                                          │
 │  브라우저 ──HTTPS/TLS──→ Nullus API                        │
-│                            │                               │
+│                            │                             │
 │                            ├─ Kubeconfig: AES-256 암호화   │
-│                            │   저장 (DB, 복호화는 메모리)   │
-│                            │                               │
-│                            ├─ API Token: K8s Secret 저장    │
-│                            │                               │
-│                            ├─ 세션: HttpOnly + Secure 쿠키  │
-│                            │                               │
-│                            └─ DB 연결: TLS (선택)           │
-│                                                             │
-│  Nullus API ──kubeconfig──→ K8s API Server                 │
-│                 (메모리에서 복호화 후 사용)                   │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+│                            │   저장 (DB, 복호화는 메모리)     │
+│                            │                             │
+│                            ├─ API Token: K8s Secret 저장  │
+│                            │                             │
+│                            ├─ 세션: HttpOnly + Secure 쿠키 │
+│                            │                             │
+│                            └─ DB 연결: TLS (선택)          │
+│                                                          │
+│  Nullus API ──kubeconfig──→ K8s API Server               │
+│                 (메모리에서 복호화 후 사용)                    │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
 
 ┌─ RBAC 모델 (v1) ──────────────────────────────────────────┐
-│                                                             │
-│  Admin                                                     │
-│  ├── Organization 관리 (생성, 수정, 삭제)                   │
-│  ├── 멤버 관리 (초대, 역할 변경, 비활성화)                   │
-│  ├── 클러스터 관리 (등록, 삭제)                              │
-│  ├── 스택 설정/배포 (전체)                                   │
+│                                                          │
+│  Admin                                                   │
+│  ├── Organization 관리 (생성, 수정, 삭제)                     │
+│  ├── 멤버 관리 (초대, 역할 변경, 비활성화)                       │
+│  ├── 클러스터 관리 (등록, 삭제)                                │
+│  ├── 스택 설정/배포 (전체)                                    │
 │  └── 사용자 관리                                            │
-│                                                             │
-│  DevOps Engineer                                            │
-│  ├── 클러스터 조회                                           │
-│  ├── 스택 설정/배포 (생성, 수정)                             │
+│                                                          │
+│  DevOps Engineer                                         │
+│  ├── 클러스터 조회                                          │
+│  ├── 스택 설정/배포 (생성, 수정)                              │
 │  ├── 파이프라인 배포                                         │
-│  └── 모니터링 조회                                           │
-│                                                             │
-│  Developer                                                  │
-│  ├── 클러스터 조회 (읽기 전용)                               │
-│  ├── 스택 설정 조회 (읽기 전용)                              │
+│  └── 모니터링 조회                                          │
+│                                                          │
+│  Developer                                               │
+│  ├── 클러스터 조회 (읽기 전용)                                 │
+│  ├── 스택 설정 조회 (읽기 전용)                                │
 │  ├── 배포 이력 조회                                          │
 │  └── 모니터링 조회                                           │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+│                                                           │
+└───────────────────────────────────────────────────────────┘
 
 ### 보안 운영 정책
 
@@ -894,24 +894,24 @@ kubeconfig 파일 선택     →    파일 파싱, context 추출
 ```
 ┌─ 모드 전환 ─────────────────────────────────┐
 │  [노코드 UI]  [YAML 에디터]                  │
-│                                              │
-│  # nullus-stack.yaml                         │
-│  apiVersion: nullus.io/v1alpha1              │
-│  kind: StackConfig                           │
-│  metadata:                                   │
-│    name: my-devops-stack                     │
-│  spec:                                       │
-│    goldenPath: gitlab-allinone-v1            │
-│    artifacts:                                │
-│      sourceRepository:                       │
-│        tool: gitlab                          │
-│        version: "17.7.2"                     │
-│    ...                                       │
-│                                              │
+│                                           │
+│  # nullus-stack.yaml                      │
+│  apiVersion: nullus.io/v1alpha1           │
+│  kind: StackConfig                        │
+│  metadata:                                │
+│    name: my-devops-stack                  │
+│  spec:                                    │
+│    goldenPath: gitlab-allinone-v1         │
+│    artifacts:                             │
+│      sourceRepository:                    │
+│        tool: gitlab                       │
+│        version: "17.7.2"                  │
+│    ...                                    │
+│                                           │
 │  ⚠️ Line 15: 'version' 값이 호환성           │
-│     매트릭스에 없습니다                       │
-│                                              │
-└──────────────────────────────────────────────┘
+│     매트릭스에 없습니다                        │
+│                                           │
+└───────────────────────────────────────────┘
 ```
 
 #### 점진적 완성 계획 및 수용 기준
@@ -947,11 +947,11 @@ kubeconfig 파일 선택     →    파일 파싱, context 추출
 
 ```
 ┌─ Golden Path 선택 ──────────────────────────────────────────────┐
-│                                                                  │
-│  "검증된 조합을 선택하면 모든 설정이 자동으로 채워집니다."         │
-│                                                                  │
-│  ┌─────────────────────┐  ┌─────────────────────┐               │
-│  │ ⭐ GitLab All-in-One │  │ GitLab + Argo CD    │               │
+│                                                                │
+│  "검증된 조합을 선택하면 모든 설정이 자동으로 채워집니다."                  │
+│                                                                │
+│  ┌─────────────────────┐  ┌─────────────────────┐              │
+│  │ ⭐ GitLab All-in-One│  │ GitLab + Argo CD    │              │
 │  │                     │  │                     │               │
 │  │ GitLab CE 17.7      │  │ GitLab CE 17.7      │               │
 │  │ GitLab CI           │  │ GitLab CI           │               │
@@ -959,16 +959,16 @@ kubeconfig 파일 선택     →    파일 파싱, context 추출
 │  │ Prometheus 3.1      │  │ Argo CD 2.13        │               │
 │  │ Grafana 11.4        │  │ Prometheus 3.1      │               │
 │  │                     │  │                     │               │
-│  │ 설치 시간: ~90분     │  │ 설치 시간: ~120분    │               │
-│  │ CPU: 8코어 / 16Gi   │  │ CPU: 10코어 / 20Gi  │               │
+│  │ 설치 시간: ~90분       │  │ 설치 시간: ~120분     │               │
+│  │ CPU: 8코어 / 16Gi    │  │ CPU: 10코어 / 20Gi   │               │
 │  │ Storage: 100Gi      │  │ Storage: 130Gi      │               │
 │  │                     │  │                     │               │
-│  │ ✅ 검증 완료         │  │ ✅ 검증 완료         │               │
+│  │ ✅ 검증 완료           │  │ ✅ 검증 완료          │               │
 │  │                     │  │                     │               │
-│  │ [선택하기]           │  │ [선택하기]           │               │
+│  │ [선택하기]            │  │ [선택하기]             │               │
 │  └─────────────────────┘  └─────────────────────┘               │
 │                                                                  │
-│  또는 [커스텀 구성] — 직접 도구를 선택합니다                      │
+│  또는 [커스텀 구성] — 직접 도구를 선택합니다                              │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -1011,20 +1011,20 @@ Step 8: Integration (모든 Step 완료 후)
 
 ```
 ┌─ Stack Deployment ──────────────────────────────────────────┐
-│                                                              │
-│  상태: INSTALLING (3/8 단계 완료)          시작: 14:32       │
+│                                                             │
+│  상태: INSTALLING (3/8 단계 완료)          시작: 14:32          │
 │  ████████████░░░░░░░░░░░░░░░░░░  37%                        │
-│                                                              │
-│  ✅ Step 1: MinIO              완료 (2분 30초)               │
-│  ✅ Step 2: GitLab CE          완료 (12분 15초)              │
-│  ✅ Step 3: GitLab Registry    완료 (1분 45초)               │
-│  🔄 Step 4: GitLab CI Runner   설치 중... (3분 경과)         │
-│  ⏳ Step 5: Argo CD            대기 중                       │
+│                                                             │
+│  ✅ Step 1: MinIO              완료 (2분 30초)                 │
+│  ✅ Step 2: GitLab CE          완료 (12분 15초)                │
+│  ✅ Step 3: GitLab Registry    완료 (1분 45초)                 │
+│  🔄 Step 4: GitLab CI Runner   설치 중... (3분 경과)            │
+│  ⏳ Step 5: Argo CD            대기 중                        │
 │  ⏳ Step 6: Prometheus+Grafana  대기 중                       │
 │  ⏳ Step 7: OTel+OpenSearch     대기 중                       │
 │  ⏳ Step 8: Integration         대기 중                       │
 │                                                              │
-│  ┌─ 실시간 로그 ──────────────────────────────────────────┐  │
+│  ┌─ 실시간 로그 ─────────────────────────────────────────────┐  │
 │  │ [14:47:12] Installing gitlab-runner helm chart...      │  │
 │  │ [14:47:13] Waiting for runner pod to be ready...       │  │
 │  │ [14:47:25] Runner pod gitlab-runner-0 is Running       │  │
@@ -1032,7 +1032,7 @@ Step 8: Integration (모든 Step 완료 후)
 │  │ ▊                                                      │  │
 │  └────────────────────────────────────────────────────────┘  │
 │                                                              │
-│  [롤백] [중단]                                               │
+│  [롤백] [중단]                                                 │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -1042,15 +1042,15 @@ Step 8: Integration (모든 Step 완료 후)
 ```
 ┌─ Stack History ─────────────────────────────────────────────┐
 │                                                              │
-│  Version  변경자   시간              변경 내용               │
+│  Version  변경자   시간              변경 내용                    │
 │  ─────── ──────── ──────────────── ────────────────────────  │
-│  v3      김민수   2026-05-20 14:30  Argo CD 2.13.2 → 2.14.0│
-│          [diff] [롤백]                                      │
+│  v3      김민수   2026-05-20 14:30  Argo CD 2.13.2 → 2.14.0   │
+│          [diff] [롤백]                                        │
 │                                                              │
-│  v2      이미정   2026-05-15 09:15  러너 동시 실행 5 → 8    │
-│          [diff] [롤백]                                      │
+│  v2      이미정   2026-05-15 09:15  러너 동시 실행 5 → 8          │
+│          [diff] [롤백]                                        │
 │                                                              │
-│  v1      이미정   2026-05-10 11:00  최초 설치                │
+│  v1      이미정   2026-05-10 11:00  최초 설치                    │
 │          [diff]                                              │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
@@ -1149,23 +1149,23 @@ ServiceAccount: {pipeline-name}-sa (최소 권한)
 
 ```
 ┌─ Monitoring Overview ───────────────────────────────────────┐
-│                                                              │
+│                                                             │
 │  ┌─ Cluster Health ──────────┐  ┌─ Pipeline Status ───────┐ │
-│  │ CPU: ████████░░  78%      │  │ 성공: 142  실패: 3      │ │
-│  │ MEM: ██████░░░░  62%      │  │ 성공률: 97.9%           │ │
-│  │ STO: ████░░░░░░  41%      │  │ 평균 빌드 시간: 4분 32초 │ │
+│  │ CPU: ████████░░  78%      │  │ 성공: 142  실패: 3         │ │
+│  │ MEM: ██████░░░░  62%      │  │ 성공률: 97.9%             │ │
+│  │ STO: ████░░░░░░  41%      │  │ 평균 빌드 시간: 4분 32초     │ │
 │  └───────────────────────────┘  └─────────────────────────┘ │
-│                                                              │
+│                                                             │
 │  ┌─ Tool Health ─────────────────────────────────────────┐  │
-│  │ 🟢 GitLab CE      Running    CPU: 2.1/4  MEM: 6.2/8  │  │
-│  │ 🟢 Argo CD        Running    CPU: 0.5/2  MEM: 1.1/4  │  │
-│  │ 🟢 Prometheus     Running    CPU: 0.8/2  MEM: 3.2/8  │  │
-│  │ 🟢 Grafana        Running    CPU: 0.2/1  MEM: 0.5/2  │  │
-│  │ 🟡 GitLab Runner  Warning    CPU: 3.8/4  MEM: 7.5/8  │  │
-│  │ 🟢 MinIO          Running    CPU: 0.3/1  MEM: 0.8/2  │  │
-│  └───────────────────────────────────────────────────────┘  │
+│  │ 🟢 GitLab CE      Running    CPU: 2.1/4  MEM: 6.2/8   │  │
+│  │ 🟢 Argo CD        Running    CPU: 0.5/2  MEM: 1.1/4   │  │
+│  │ 🟢 Prometheus     Running    CPU: 0.8/2  MEM: 3.2/8   │  │
+│  │ 🟢 Grafana        Running    CPU: 0.2/1  MEM: 0.5/2   │  │
+│  │ 🟡 GitLab Runner  Warning    CPU: 3.8/4  MEM: 7.5/8   │  │
+│  │ 🟢 MinIO          Running    CPU: 0.3/1  MEM: 0.8/2   │  │
+│  └──────────────────────────────────────────────────────┘  │
 │                                                              │
-│  [Grafana에서 상세 보기 →]                                   │
+│  [Grafana에서 상세 보기 →]                                      │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -1334,7 +1334,7 @@ Nullus의 Keycloak 자동 설정은 Narwhal의 7-app OIDC 연동 구현(`11-keyc
 기본 리소스 (도구 자체):
   도구별 기본값 테이블에서 합산
   ┌──────────────────┬───────┬────────┬─────────┐
-  │ 도구             │ CPU   │ Memory │ Storage │
+  │ 도구              │ CPU   │ Memory │ Storage │
   ├──────────────────┼───────┼────────┼─────────┤
   │ GitLab CE        │ 4     │ 8 Gi   │ 30 Gi   │
   │ GitLab Runner    │ 2     │ 4 Gi   │ 10 Gi   │

@@ -23,6 +23,7 @@ type DeployAppRequest struct {
 	Port      int32
 	Resources ResourceSpec
 	EnvVars   map[string]string
+	Labels    map[string]string
 }
 
 type ResourceSpec struct {
@@ -81,7 +82,15 @@ func Generate(req DeployAppRequest) (*GeneratedManifests, error) {
 		return nil, err
 	}
 
-	labels := map[string]string{"app": req.AppName}
+	labels := map[string]string{
+		"app": req.AppName,
+	}
+	for k, v := range req.Labels {
+		if k == "" || v == "" {
+			continue
+		}
+		labels[k] = v
+	}
 
 	ns := &corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},

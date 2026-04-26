@@ -31,6 +31,14 @@ const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   },
 }
 
+const GITHUB_PAGES_DEMO_ADMIN_USER: User = {
+  id: 'a1000000-0000-0000-0000-000000000001',
+  name: 'Admin User',
+  email: 'admin@nullus.dev',
+  role: 'admin',
+  orgId: ORG_ID,
+}
+
 function OidcLoginContent() {
   const providerLabel = getProviderConfig().type === 'authentik' ? 'Authentik' : 'Keycloak'
 
@@ -56,6 +64,7 @@ function MockLoginContent() {
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
   const [error, setError] = useState<string | null>(null)
+  const [githubPagesDemoMode, setGithubPagesDemoMode] = useState(false)
   const {
     register,
     handleSubmit,
@@ -68,6 +77,20 @@ function MockLoginContent() {
 
   const onSubmit = (data: LoginFormData) => {
     setError(null)
+
+    if (githubPagesDemoMode) {
+      const isAdminDemoCredentials =
+        data.email === 'admin@nullus.dev' && data.password === 'admin123'
+
+      if (!isAdminDemoCredentials) {
+        setError('GitHub Pages Demo Mode only allows admin@nullus.dev / admin123.')
+        return
+      }
+
+      login(GITHUB_PAGES_DEMO_ADMIN_USER, 'mock-token-github-pages-admin')
+      navigate('/')
+      return
+    }
 
     const account = TEST_ACCOUNTS[data.email]
     if (!account || account.password !== data.password) {
@@ -82,6 +105,18 @@ function MockLoginContent() {
   return (
     <>
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <label className="flex items-center gap-2 rounded-lg border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-3 py-2.5 text-xs text-[var(--color-text-secondary)]">
+          <input
+            type="checkbox"
+            checked={githubPagesDemoMode}
+            onChange={(e) => {
+              setGithubPagesDemoMode(e.target.checked)
+              setError(null)
+            }}
+          />
+          GitHub Pages Demo Mode (Admin mock UI only)
+        </label>
+
         <div className="flex flex-col gap-1">
           <label htmlFor="email" className="text-xs font-medium text-[var(--color-text-secondary)]">
             Email

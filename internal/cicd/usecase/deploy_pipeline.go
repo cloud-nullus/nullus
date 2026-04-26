@@ -218,6 +218,11 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 		Replicas:  1,
 		Port:      port,
 		EnvVars:   pipeline.EnvVars,
+		Labels: map[string]string{
+			"app.kubernetes.io/managed-by": "nullus-cicd",
+			"app.kubernetes.io/name":       pipeline.Name,
+			"nullus.io/pipeline-id":        pipeline.ID,
+		},
 		Resources: manifests.ResourceSpec{
 			CPURequest: "100m",
 			CPULimit:   "500m",

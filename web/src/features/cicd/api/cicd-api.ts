@@ -10,6 +10,7 @@ import type {
   DeployAppResult,
   Deployment,
   Pipeline,
+  PipelineResource,
 } from '../../../types'
 
 export type {
@@ -23,6 +24,7 @@ export type {
   DeployAppResult,
   Deployment,
   Pipeline,
+  PipelineResource,
   PipelineStatus,
 } from '../../../types'
 
@@ -54,11 +56,34 @@ const queryKeys = {
   pipelines: (filters?: Record<string, unknown>) => ['cicd', 'pipelines', filters] as const,
   deployments: (filters?: Record<string, unknown>) => ['cicd', 'deployments', filters] as const,
   appTemplates: () => ['cicd', 'appTemplates'] as const,
+  pipelineResources: (pipelineId: string) => ['cicd', 'pipelineResources', pipelineId] as const,
 }
 
 // --- API functions ---
 
 const cicdApiCalls = {
+  resolvePipelineMode: (stages: string[] | undefined): Pipeline['mode'] => {
+    const normalized = (stages ?? []).map((stage) => String(stage).toLowerCase())
+    const hasCI = normalized.some((stage) =>
+      stage.includes('build') ||
+      stage.includes('test') ||
+      stage.includes('lint') ||
+      stage.includes('scan') ||
+      stage.includes('package'),
+    )
+    const hasCD = normalized.some((stage) =>
+      stage.includes('deploy') ||
+      stage.includes('release') ||
+      stage.includes('rollout') ||
+      stage.includes('sync') ||
+      stage.includes('apply'),
+    )
+    if (hasCI && hasCD) return 'ci_cd'
+    if (hasCI) return 'ci'
+    if (hasCD) return 'cd'
+    return 'ci_cd'
+  },
+
   getTemplates: async () => {
     const raw = await api.get<any[]>('/cicd/templates').then((r) => r.data)
 
@@ -106,7 +131,9 @@ const cicdApiCalls = {
   getPipelines: async (filters?: { status?: string; search?: string }) => {
     const raw = await api.get<any>('/cicd/pipelines', { params: filters }).then((r) => r.data)
     const clustersRes = await api.get<any>('/admin/clusters').then((r) => r.data)
+    const templatesRes = await api.get<any[]>('/cicd/templates').then((r) => r.data)
     const clusterMap = new Map((clustersRes.items ?? []).map((c: any) => [c.id, c.name]))
+    const templateStagesMap = new Map((templatesRes ?? []).map((tpl: any) => [tpl.id, tpl.stages ?? []]))
 
     const deploymentsRes = await api.get<any>('/cicd/deployments').then((r) => r.data)
     const latestDeployByPipeline = new Map<string, string>()
@@ -122,6 +149,7 @@ const cicdApiCalls = {
     const items: Pipeline[] = (raw.items ?? []).map((p: any) => ({
       id: p.id,
       name: p.name,
+      mode: cicdApiCalls.resolvePipelineMode(templateStagesMap.get(p.template_id)),
       appType: (p.app_type ?? '') as Pipeline['appType'],
       templateId: p.template_id ?? '',
       gitRepoUrl: p.git_repo_url ?? '',
@@ -157,6 +185,7 @@ const cicdApiCalls = {
     return {
       id: raw.id,
       name: raw.name,
+      mode: 'ci_cd',
       appType: (raw.app_type ?? '') as Pipeline['appType'],
       templateId: raw.template_id ?? '',
       gitRepoUrl: raw.git_repo_url ?? '',
@@ -266,6 +295,20 @@ const cicdApiCalls = {
 
   deployApp: (request: DeployAppRequest) =>
     api.post<DeployAppResult>('/cicd/deploy-app', request).then((r) => r.data),
+
+  getPipelineResources: async (pipelineId: string) => {
+    const raw = await api.get<any>(`/cicd/pipelines/${pipelineId}/resources`).then((r) => r.data)
+    const items = (raw.items ?? []).map((item: any) => ({
+      kind: String(item.kind ?? ''),
+      name: String(item.name ?? ''),
+      namespace: String(item.namespace ?? ''),
+      stage: String(item.stage ?? ''),
+      status: String(item.status ?? ''),
+      labelSelector: item.label_selector ? String(item.label_selector) : undefined,
+      serviceUrls: Array.isArray(item.service_urls) ? item.service_urls.map((url: unknown) => String(url)) : [],
+    })) as PipelineResource[]
+    return { items, total: raw.total ?? items.length }
+  },
 }
 
 // --- Hooks ---
@@ -407,6 +450,15 @@ export function useDeployApp() {
       void qc.invalidateQueries({ queryKey: ['cicd', 'pipelines'] })
       void qc.invalidateQueries({ queryKey: ['cicd', 'deployments'] })
     },
+  })
+}
+
+export function usePipelineResources(pipelineId: string) {
+  return useQuery({
+    queryKey: queryKeys.pipelineResources(pipelineId),
+    queryFn: () => cicdApiCalls.getPipelineResources(pipelineId),
+    enabled: !!pipelineId,
+    staleTime: 3000,
   })
 }
 

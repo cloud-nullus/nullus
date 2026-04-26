@@ -290,6 +290,7 @@ export interface StackResourceDefault {
 export interface Pipeline {
   id: string
   name: string
+  mode: 'ci' | 'cd' | 'ci_cd'
   appType: AppType
   templateId: string
   gitRepoUrl: string
@@ -313,6 +314,16 @@ export interface Deployment {
   triggeredBy: string
   startedAt: string
   completedAt: string | null
+}
+
+export interface PipelineResource {
+  kind: string
+  name: string
+  namespace: string
+  stage: 'ingress' | 'service' | 'workload' | 'pod' | 'job' | string
+  status: string
+  labelSelector?: string
+  serviceUrls?: string[]
 }
 
 export interface CICDTemplate {

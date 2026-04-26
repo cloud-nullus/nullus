@@ -95,7 +95,7 @@ CLAUDE.md의 Bounded Context 정의를 따른다.
               ▼                      ▼                      ▼
    ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
    │   org_members    │  │    sessions      │  │   audit_logs     │
-   │                  │  │  (Auth Context)  │  │  (공통)          │
+   │                  │  │  (Auth Context)  │  │   (공통)          │
    │  org_id (FK)     │  │                  │  │                  │
    │  user_id (FK)    │  │  user_id (FK)    │  │  actor_id        │
    │  role            │  │  token_hash      │  │  action          │
@@ -106,9 +106,9 @@ CLAUDE.md의 Bounded Context 정의를 따른다.
    ┌──────────────────┐        ┌──────────────────────┐
    │  organizations   │───────>│  org_cluster_access  │
    │ (Org Context)    │  1:N   │                      │
-   │                  │        │  org_id (FK)          │
-   │  id (PK)         │        │  cluster_id           │
-   │  name            │        └──────────┬────────────┘
+   │                  │        │  org_id (FK)         │
+   │  id (PK)         │        │  cluster_id          │
+   │  name            │        └──────────┬───────────┘
    │  slug (UNIQUE)   │                   │ (느슨한 참조)
    │  status          │                   ▼
    └──────────────────┘        ┌──────────────────────┐
@@ -119,14 +119,14 @@ CLAUDE.md의 Bounded Context 정의를 따른다.
           │                    │  org_id              │
           │                    │  name                │
           │                    │  type                │
-          │                    │  kubeconfig_encrypted │
+          │                    │  kubeconfig_encrypted│
           │                    │  status              │
           │                    └──────────┬───────────┘
           │                               │
           │                               │ (느슨한 참조: cluster_id)
           │                               ▼
           │                    ┌──────────────────────────┐
-          │                    │    stack_configs          │
+          │                    │    stack_configs         │
           │                    │  (Stack Context)         │
           │                    │                          │
           │                    │  id (PK)                 │
@@ -146,7 +146,7 @@ CLAUDE.md의 Bounded Context 정의를 따른다.
           │       │  stack_config_id   │  │  stack_config_id (FK)    │
           │       │  version_number    │  │  type                    │
           │       │  config_snapshot   │  │  status                  │
-          │       │  changed_by       │  │  started_by              │
+          │       │  changed_by        │  │  started_by              │
           │       └────────────────────┘  └──────────┬───────────────┘
           │                                          │
           │                                    1:N   │

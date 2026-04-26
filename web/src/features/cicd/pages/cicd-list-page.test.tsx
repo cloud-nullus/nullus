@@ -6,6 +6,10 @@ import { CicdListPage } from './cicd-list-page'
 const mockNavigate = vi.fn()
 const mockUsePipelines = vi.fn()
 const mockUseDeletePipeline = vi.fn()
+const mockUseTemplateById = vi.fn()
+const mockUsePipelineDeployments = vi.fn()
+const mockUsePipelineResources = vi.fn()
+const mockUseDeploymentStatus = vi.fn()
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -18,6 +22,10 @@ vi.mock('react-router-dom', async () => {
 vi.mock('../api/cicd-api', () => ({
   usePipelines: (...args: unknown[]) => mockUsePipelines(...args),
   useDeletePipeline: (...args: unknown[]) => mockUseDeletePipeline(...args),
+  useTemplateById: (...args: unknown[]) => mockUseTemplateById(...args),
+  usePipelineDeployments: (...args: unknown[]) => mockUsePipelineDeployments(...args),
+  usePipelineResources: (...args: unknown[]) => mockUsePipelineResources(...args),
+  useDeploymentStatus: (...args: unknown[]) => mockUseDeploymentStatus(...args),
 }))
 
 const pipelines = [
@@ -37,6 +45,10 @@ describe('CicdListPage', () => {
     mockNavigate.mockReset()
     mockUsePipelines.mockReset()
     mockUseDeletePipeline.mockReset()
+    mockUseTemplateById.mockReset()
+    mockUsePipelineDeployments.mockReset()
+    mockUsePipelineResources.mockReset()
+    mockUseDeploymentStatus.mockReset()
     mockUsePipelines.mockReturnValue({
       data: { items: pipelines, total: pipelines.length },
       isLoading: false,
@@ -45,6 +57,10 @@ describe('CicdListPage', () => {
       mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
     })
+    mockUseTemplateById.mockReturnValue({ data: undefined, isLoading: false })
+    mockUsePipelineDeployments.mockReturnValue({ data: { items: [] }, isLoading: false })
+    mockUsePipelineResources.mockReturnValue({ data: { items: [] }, isLoading: false })
+    mockUseDeploymentStatus.mockReturnValue({ data: undefined, isLoading: false })
   })
 
   it('renders loading state safely', () => {
