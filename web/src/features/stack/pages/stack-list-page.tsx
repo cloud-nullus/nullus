@@ -138,6 +138,8 @@ function getStackStatusLabel(t: TFunction, status: string) {
 	switch (status) {
 		case "pending":
 			return t("stackList.status.pending", "Pending");
+		case "terminating":
+			return t("stackList.status.terminating", "Terminating");
 		case "validating":
 			return t("stackList.status.validating", "Validating");
 		case "installing":
@@ -900,7 +902,21 @@ function ResourcesPanel() {
 	);
 }
 
-function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }: { stack: Stack; displayStatus: string; isDeleting: boolean; onAddTools: () => void; onDelete: () => void }) {
+function StackInfoTab({
+	stack,
+	displayStatus,
+	isDeleting,
+	onAddTools,
+	onDelete,
+	onBackToList,
+}: {
+	stack: Stack;
+	displayStatus: string;
+	isDeleting: boolean;
+	onAddTools: () => void;
+	onDelete: () => void;
+	onBackToList: () => void;
+}) {
 	const { t, i18n } = useTranslation();
 	const isKorean = (i18n.resolvedLanguage ?? i18n.language ?? "").toLowerCase().startsWith("ko");
 	const [hostsCopyState, setHostsCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -918,7 +934,7 @@ function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }
 			: [{ category: "Stack", oss: stack.templateName, version: "-", instances: 1, color: "#6366f1", health: "progressing", sync: "out-of-sync" }];
 
 	const degradedState = ["failed", "rolling_back", "rolled_back", "cancelled"].includes(stack.status);
-	const progressingState = ["pending", "validating", "installing", "configuring", "health_check"].includes(stack.status);
+	const progressingState = ["pending", "terminating", "validating", "installing", "configuring", "health_check"].includes(stack.status);
 	const runtimeNodes = pipelineNodes.map((node) => ({
 		...node,
 		health: degradedState ? "degraded" : progressingState ? "progressing" : "healthy",
@@ -1042,7 +1058,12 @@ function StackInfoTab({ stack, displayStatus, isDeleting, onAddTools, onDelete }
 							stackId={stack.id}
 							status={stack.status as RetryStackStatus}
 						/>
-						<Button variant="danger" size="sm" type="button" onClick={onDelete} disabled={isDeleting} loading={isDeleting}>
+						{displayStatus === "terminating" && (
+							<Button variant="outline" size="sm" type="button" onClick={onBackToList}>
+								{t("stackList.actions.backToList", "Stack List로 돌아가기")}
+							</Button>
+						)}
+						<Button variant="danger" size="sm" type="button" onClick={onDelete} disabled={isDeleting || displayStatus === "terminating"} loading={isDeleting && displayStatus !== "terminating"}>
 							Delete
 						</Button>
 					</div>
@@ -1516,6 +1537,7 @@ function StackDetailPanel({
 	isDeleting,
 	onAddTools,
 	onDelete,
+	onBackToList,
 	className,
 }: {
 	stack: Stack;
@@ -1523,6 +1545,7 @@ function StackDetailPanel({
 	isDeleting: boolean;
 	onAddTools: () => void;
 	onDelete: () => void;
+	onBackToList: () => void;
 	className?: string;
 }) {
 	const { t } = useTranslation();
@@ -1579,7 +1602,16 @@ function StackDetailPanel({
 			</div>
 
 			<div className="flex-1 overflow-auto p-5">
-				{innerTab === "info" && <StackInfoTab stack={stack} displayStatus={normalizedStatus} isDeleting={isDeleting} onAddTools={onAddTools} onDelete={onDelete} />}
+				{innerTab === "info" && (
+					<StackInfoTab
+						stack={stack}
+						displayStatus={normalizedStatus}
+						isDeleting={isDeleting}
+						onAddTools={onAddTools}
+						onDelete={onDelete}
+						onBackToList={onBackToList}
+					/>
+				)}
 				{innerTab === "monitoring" && canShowMonitoring && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
@@ -1598,7 +1630,7 @@ export function StackListPage() {
 	const [clusterFilter, setClusterFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
 	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
-	const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+	const [terminatingStatusByID, setTerminatingStatusByID] = useState<Record<string, true>>({});
 	const [viewportHeight, setViewportHeight] = useState(() =>
 		typeof window !== "undefined" ? window.innerHeight : 960,
 	);
@@ -1624,9 +1656,12 @@ export function StackListPage() {
 	const normalizedStatusFilter = statusFilter === "healthy" ? "success" : statusFilter;
 	const { data: clustersData } = useScopedClusters();
 	const clusters = clustersData?.items ?? [];
+	const shouldPollTerminating = Object.keys(terminatingStatusByID).length > 0;
 	const { data: apiData, isLoading } = useStacks({
 		search,
 		status: normalizedStatusFilter || undefined,
+	}, {
+		refetchIntervalMs: shouldPollTerminating ? 3000 : 0,
 	});
 	const clusterNameByID = useMemo(
 		() => new Map(clusters.map((cluster) => [cluster.id, cluster.name])),
@@ -1641,17 +1676,32 @@ export function StackListPage() {
 			const resolvedClusterName = clusterNameByID.get(item.clusterId);
 			return {
 				...item,
+				status: terminatingStatusByID[item.id] ? "terminating" : item.status,
 				clusterName: resolvedClusterName || item.clusterName || item.clusterId || "-",
 			};
 		}),
-		[apiData?.items, clusterNameByID],
+		[apiData?.items, clusterNameByID, terminatingStatusByID],
 	);
 	const clusterOptions = useMemo(() => Array.from(new Set(stacks.map((item) => item.clusterName).filter((name) => !!name))).sort(), [stacks]);
 
+	useEffect(() => {
+		if (Object.keys(terminatingStatusByID).length === 0) return;
+		const visibleIDs = new Set(stacks.map((s) => s.id));
+		setTerminatingStatusByID((prev) => {
+			let changed = false;
+			const next: Record<string, true> = {};
+			for (const id of Object.keys(prev)) {
+				if (visibleIDs.has(id)) {
+					next[id] = true;
+				} else {
+					changed = true;
+				}
+			}
+			return changed ? next : prev;
+		});
+	}, [stacks, terminatingStatusByID]);
+
 	const filtered = stacks.filter((s) => {
-		if (pendingDeleteIds.includes(s.id)) {
-			return false;
-		}
 		const q = search.toLowerCase();
 		const matchesSearch =
 			!search ||
@@ -1672,14 +1722,20 @@ export function StackListPage() {
 	const handleDeleteStack = () => {
 		if (!deleteStackId) return;
 		const targetID = deleteStackId;
-		setPendingDeleteIds((prev) => (prev.includes(targetID) ? prev : [...prev, targetID]));
+		setDeleteStackId(null);
+		setTerminatingStatusByID((prev) => ({ ...prev, [targetID]: true }));
+		setExpandedStackId((prev) => (prev === targetID ? null : prev));
 		deleteStack.mutate(targetID, {
 			onSuccess: () => {
-				setDeleteStackId(null);
-				setExpandedStackId((prev) => (prev === targetID ? null : prev));
+				toast.success(t("stackList.delete.started", "Stack deletion started. Kubernetes resources and DB data are being removed."));
 			},
 			onError: () => {
-				setPendingDeleteIds((prev) => prev.filter((id) => id !== targetID));
+				setTerminatingStatusByID((prev) => {
+					const next = { ...prev };
+					delete next[targetID];
+					return next;
+				});
+				toast.error(t("stackList.delete.failed", "Failed to start stack deletion."));
 			},
 		});
 	};
@@ -1781,6 +1837,7 @@ export function StackListPage() {
 									<option value="healthy" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.healthy", "Running")}</option>
 									<option value="completed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.completed", "Completed")}</option>
 									<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.running", "Running")}</option>
+									<option value="terminating" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.terminating", "Terminating")}</option>
 									<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.pending", "Pending")}</option>
 									<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.failed", "Failed")}</option>
 									<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.cancelled", "Cancelled")}</option>
@@ -1831,6 +1888,7 @@ export function StackListPage() {
 									isDeleting={deleteStack.isPending}
 									onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
 									onDelete={() => setDeleteStackId(expandedStack.id)}
+									onBackToList={() => setExpandedStackId(null)}
 								/>
 							</div>
 						) : (
@@ -1850,6 +1908,7 @@ export function StackListPage() {
 					isDeleting={deleteStack.isPending}
 					onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
 					onDelete={() => setDeleteStackId(expandedStack.id)}
+					onBackToList={() => setExpandedStackId(null)}
 					className="mt-4"
 				/>
 			)}

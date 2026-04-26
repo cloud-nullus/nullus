@@ -29,6 +29,7 @@ const INDIGO: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(99,102,241,0.15)',
 
 export const STATUS_STYLES: Record<string, StatusStyle> = {
   pending:      { ...AMBER,         label: 'Pending' },
+  terminating:  { ...AMBER,         label: 'Terminating' },
   validating:   { ...INDIGO,        label: 'Validating' },
   installing:   { ...BLUE,          label: 'Installing' },
   configuring:  { ...BLUE,          label: 'Configuring' },
