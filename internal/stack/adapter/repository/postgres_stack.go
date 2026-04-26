@@ -183,10 +183,7 @@ func (r *PostgresStackRepository) UpdateTools(ctx context.Context, stack *domain
 }
 
 func (r *PostgresStackRepository) Delete(ctx context.Context, id string) error {
-	const q = `
-		UPDATE stacks
-		SET deleted_at = NOW(), updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL`
+	const q = `DELETE FROM stacks WHERE id = $1`
 
 	ct, err := r.pool.Exec(ctx, q, id)
 	if err != nil {

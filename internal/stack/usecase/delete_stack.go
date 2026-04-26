@@ -161,6 +161,7 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortDeleteGatewayCRDs(ctx, kubeconfig, stackID)
 
 	if err := uc.stackRepo.Delete(ctx, stackID); err != nil {
+		uc.markDeleteFailedState(ctx, stack, stackID)
 		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
 		return fmt.Errorf("delete stack: %w", err)
 	}
@@ -169,6 +170,17 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.clearStreamHistory(stackID)
 
 	return nil
+}
+
+func (uc *DeleteStack) markDeleteFailedState(ctx context.Context, stack *domain.Stack, stackID string) {
+	if stack == nil {
+		return
+	}
+	stack.State = domain.StateFailed
+	stack.UpdatedAt = time.Now()
+	if err := uc.stackRepo.Update(ctx, stack); err != nil {
+		slog.Warn("failed to mark stack failed after delete error", "stack_id", stackID, "error", err)
+	}
 }
 
 type historyClearer interface {

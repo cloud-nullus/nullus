@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -99,7 +100,7 @@ func TestStackHandler_ListStacks_200(t *testing.T) {
 	assert.EqualValues(t, 1, resp["total"])
 }
 
-func TestStackHandler_DeleteStack_204(t *testing.T) {
+func TestStackHandler_DeleteStack_202(t *testing.T) {
 	e := newStackEcho()
 
 	body := `{"name":"stack-delete-test","cluster_id":"cls-1","golden_path_id":"github-argocd-v1"}`
@@ -119,19 +120,24 @@ func TestStackHandler_DeleteStack_204(t *testing.T) {
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/stacks/"+stackID, nil)
 	deleteRec := httptest.NewRecorder()
 	e.ServeHTTP(deleteRec, deleteReq)
-	assert.Equal(t, http.StatusNoContent, deleteRec.Code)
+	assert.Equal(t, http.StatusAccepted, deleteRec.Code)
 
-	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks", nil)
-	listReq.Header.Set("X-Org-ID", "org-delete")
-	listRec := httptest.NewRecorder()
-	e.ServeHTTP(listRec, listReq)
-	require.Equal(t, http.StatusOK, listRec.Code)
+	require.Eventually(t, func() bool {
+		listReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks", nil)
+		listReq.Header.Set("X-Org-ID", "org-delete")
+		listRec := httptest.NewRecorder()
+		e.ServeHTTP(listRec, listReq)
+		if listRec.Code != http.StatusOK {
+			return false
+		}
 
-	var listResp map[string]any
-	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listResp))
-	items, ok := listResp["items"].([]any)
-	require.True(t, ok)
-	require.Len(t, items, 0)
+		var listResp map[string]any
+		if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+			return false
+		}
+		items, ok := listResp["items"].([]any)
+		return ok && len(items) == 0
+	}, 2*time.Second, 20*time.Millisecond)
 }
 
 func TestStackHandler_DeleteStack_404WhenNotFound(t *testing.T) {

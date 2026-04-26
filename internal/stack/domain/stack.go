@@ -15,7 +15,7 @@ const (
 	StateConfiguring DeploymentState = "configuring"
 	StateHealthCheck DeploymentState = "health_check"
 	StateCompleted   DeploymentState = "completed"
-	StateCancelled   DeploymentState = "canceled"
+	StateCancelled   DeploymentState = "cancelled" //nolint:misspell // must match DB enum value
 	StateFailed      DeploymentState = "failed"
 	StateRollingBack DeploymentState = "rolling_back"
 	StateRolledBack  DeploymentState = "rolled_back"
