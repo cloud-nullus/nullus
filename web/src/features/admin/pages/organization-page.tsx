@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   useClusters,
   useCreateOrganization,
@@ -74,19 +75,19 @@ type InviteFormData = z.infer<typeof inviteSchema>
 const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
 
-function getMemberStatusLabel(t: (key: string, defaultValue?: string) => string, status: MemberStatus) {
+function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
   if (status === 'active') return t('organizationPage.memberStatus.active', 'Active')
   if (status === 'pending') return t('organizationPage.memberStatus.pending', 'Pending')
   return t('organizationPage.memberStatus.inactive', 'Inactive')
 }
 
-function getMemberRoleLabel(t: (key: string, defaultValue?: string) => string, role: MemberRole) {
+function getMemberRoleLabel(t: TFunction, role: MemberRole) {
   if (role === 'admin') return t('organizationPage.role.admin', 'Admin')
   if (role === 'devops') return t('organizationPage.role.devops', 'DevOps')
   return t('organizationPage.role.developer', 'Developer')
 }
 
-function getClusterStatusLabel(t: (key: string, defaultValue?: string) => string, status: ClusterStatus) {
+function getClusterStatusLabel(t: TFunction, status: ClusterStatus) {
   if (status === 'connected') return t('organizationPage.clusterStatus.connected', 'Connected')
   if (status === 'pending') return t('organizationPage.clusterStatus.pending', 'Pending')
   if (status === 'error') return t('organizationPage.clusterStatus.error', 'Error')
@@ -96,7 +97,7 @@ function getClusterStatusLabel(t: (key: string, defaultValue?: string) => string
 }
 
 function getOrganizationStatusLabel(
-  t: (key: string, defaultValue?: string) => string,
+  t: TFunction,
   status: Organization['status']
 ) {
   if (status === 'active') return t('organizationPage.orgStatus.active', 'Active')

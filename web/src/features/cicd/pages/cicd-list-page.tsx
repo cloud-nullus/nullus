@@ -1,8 +1,10 @@
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart2,
+  CheckCircle2,
+  CircleDashed,
   Eye,
   EyeOff,
   GitBranch,
@@ -11,13 +13,15 @@ import {
   List,
   Plus,
   Rocket,
+  XCircle,
   Search,
   Terminal,
   Trash2,
+  Loader2,
 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { useDeletePipeline, usePipelineDeployments, usePipelines, useTemplateById } from '../api/cicd-api'
+import { useDeletePipeline, useDeploymentStatus, usePipelineDeployments, usePipelineResources, usePipelines, useTemplateById } from '../api/cicd-api'
 import type { Pipeline } from '../api/cicd-api'
 import { useScopedClusters as useClusters } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -56,10 +60,181 @@ function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
+type PipelineResourceNode = {
+  kind: string
+  name: string
+  status: string
+  labelSelector?: string
+  serviceUrls?: string[]
+}
+
+type StageState = 'queued' | 'in_progress' | 'completed' | 'failed'
+
+function pickResourcesByKind(resources: PipelineResourceNode[], kinds: string[]): PipelineResourceNode[] {
+  const lowered = kinds.map((kind) => kind.toLowerCase())
+  return resources.filter((resource) => lowered.includes(resource.kind.toLowerCase()))
+}
+
+function buildStageStates(stageCount: number, deploymentStatus?: string): StageState[] {
+  if (stageCount <= 0) return []
+  const normalized = (deploymentStatus ?? '').toLowerCase()
+  if (!normalized) return Array.from({ length: stageCount }, () => 'queued')
+
+  if (normalized === 'success') {
+    return Array.from({ length: stageCount }, () => 'completed')
+  }
+  if (normalized === 'running') {
+    return Array.from({ length: stageCount }, (_, i) => (i < stageCount - 1 ? 'completed' : 'in_progress'))
+  }
+  if (normalized === 'failed') {
+    return Array.from({ length: stageCount }, (_, i) => {
+      if (i < stageCount - 1) return 'completed'
+      return 'failed'
+    })
+  }
+  return Array.from({ length: stageCount }, () => 'queued')
+}
+
+function stageMeta(state: StageState): { icon: React.ReactNode; label: string; cls: string } {
+  if (state === 'completed') {
+    return {
+      icon: <CheckCircle2 size={15} />,
+      label: 'Completed',
+      cls: 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] text-[#86efac]',
+    }
+  }
+  if (state === 'failed') {
+    return {
+      icon: <XCircle size={15} />,
+      label: 'Failed',
+      cls: 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
+    }
+  }
+  if (state === 'in_progress') {
+    return {
+      icon: <Loader2 size={15} className="animate-spin" />,
+      label: 'In progress',
+      cls: 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]',
+    }
+  }
+  return {
+    icon: <CircleDashed size={15} />,
+    label: 'Queued',
+    cls: 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-muted)]',
+  }
+}
+
+function statusClass(status: string): string {
+  const normalized = status.toLowerCase()
+  if (normalized === 'running' || normalized === 'completed') return 'bg-[rgba(34,197,94,0.18)] text-[#86efac]'
+  if (normalized.includes('crash') || normalized === 'failed' || normalized === 'degraded') return 'bg-[rgba(239,68,68,0.2)] text-[#fca5a5]'
+  if (normalized === 'updating' || normalized === 'progressing' || normalized === 'scheduled') return 'bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
+  return 'bg-[rgba(148,163,184,0.18)] text-[#cbd5e1]'
+}
+
+function logLineClass(line: string): string {
+  const normalized = line.toLowerCase()
+  if (normalized.startsWith('$')) return 'text-[#58a6ff]'
+  if (normalized.includes('error') || normalized.includes('failed') || normalized.includes('panic')) return 'text-[#fca5a5]'
+  if (normalized.includes('created') || normalized.includes('applied') || normalized.includes('ready') || normalized.includes('running')) return 'text-[#86efac]'
+  if (normalized.includes('warning') || normalized.includes('progress') || normalized.includes('waiting')) return 'text-[#fcd34d]'
+  return 'text-[#cbd5e1]'
+}
+
+function modeLabel(mode: Pipeline['mode']): string {
+  if (mode === 'ci') return 'CI'
+  if (mode === 'cd') return 'CD'
+  return 'CI/CD'
+}
+
+function ModeIndicator({ mode }: { mode: Pipeline['mode'] }) {
+  const ciOn = mode === 'ci' || mode === 'ci_cd'
+  const cdOn = mode === 'cd' || mode === 'ci_cd'
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className={`inline-flex items-center gap-1 rounded-md border px-2 py-[2px] text-[11px] font-semibold ${
+          ciOn
+            ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.15)] text-[#86efac]'
+            : 'border-[var(--color-border-default)] bg-[rgba(148,163,184,0.1)] text-[var(--color-text-muted)]'
+        }`}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full ${ciOn ? 'bg-[#22c55e]' : 'bg-[#64748b]'}`} />
+        CI
+      </span>
+      <span
+        className={`inline-flex items-center gap-1 rounded-md border px-2 py-[2px] text-[11px] font-semibold ${
+          cdOn
+            ? 'border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.15)] text-[#93c5fd]'
+            : 'border-[var(--color-border-default)] bg-[rgba(148,163,184,0.1)] text-[var(--color-text-muted)]'
+        }`}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full ${cdOn ? 'bg-[#60a5fa]' : 'bg-[#64748b]'}`} />
+        CD
+      </span>
+    </div>
+  )
+}
+
+function ResourceNode({
+  title,
+  resources,
+  accentClass,
+  emptyLabel = '-',
+}: {
+  title: string
+  resources: PipelineResourceNode[]
+  accentClass: string
+  emptyLabel?: string
+}) {
+  return (
+    <div className="min-h-[84px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-2.5">
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+        {title}
+      </div>
+      {resources.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          {resources.map((resource) => (
+            <div key={`${resource.kind}-${resource.name}`} className="min-w-0 overflow-hidden rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-2 py-1.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <span className={`max-w-full truncate rounded px-1.5 py-0.5 font-mono text-[11px] ${accentClass}`}>
+                  {resource.name}
+                </span>
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${statusClass(resource.status || 'unknown')}`}>
+                  {resource.status || 'unknown'}
+                </span>
+              </div>
+              {resource.labelSelector && (
+                <div className="mt-1 break-all font-mono text-[10px] text-[var(--color-text-muted)]">
+                  selector: {resource.labelSelector}
+                </div>
+              )}
+              {resource.serviceUrls && resource.serviceUrls.length > 0 && (
+                <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+                  {resource.serviceUrls.slice(0, 2).map((url) => (
+                    <code key={url} className="max-w-full break-all rounded bg-[rgba(255,255,255,0.07)] px-1.5 py-[1px] text-[10px] text-[var(--color-text-secondary)]">
+                      {url}
+                    </code>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-[12px] text-[var(--color-text-muted)]">{emptyLabel}</div>
+      )}
+    </div>
+  )
+}
+
 function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { data: template } = useTemplateById(pipeline.templateId)
+  const { data: deploymentsData, isLoading: isDeploymentsLoading } = usePipelineDeployments(pipeline.id)
+  const { data: resourcesData, isLoading: isResourcesLoading } = usePipelineResources(pipeline.id)
   const [revealedVars, setRevealedVars] = useState<Set<string>>(new Set())
 
   const toggleReveal = (key: string) => {
@@ -74,16 +249,26 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
     })
   }
 
-  const stages = (template?.stages ?? []) as string[]
   const hasBuildConfig = !!pipeline.dockerfilePath
   const envEntries = Object.entries(pipeline.envVars ?? {})
+  const deployments = deploymentsData?.items ?? []
+  const latestDeployment = [...deployments].sort(
+    (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+  )[0]
+  const resources = resourcesData?.items ?? []
+  const ingressResources = pickResourcesByKind(resources, ['Ingress'])
+  const serviceResources = pickResourcesByKind(resources, ['Service'])
+  const workloadResources = pickResourcesByKind(resources, ['Deployment', 'StatefulSet'])
+  const podResources = pickResourcesByKind(resources, ['Pod'])
+  const jobResources = pickResourcesByKind(resources, ['Job', 'CronJob'])
+  const hasDeploymentResources = resources.length > 0
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="flex flex-col gap-4">
         <DetailCard title="Pipeline Info">
           <div className="flex flex-col gap-2.5">
-            <ConfigRow label="Name" value={pipeline.name} />
+            <ConfigRow label="Mode" value={<ModeIndicator mode={pipeline.mode} />} />
             <ConfigRow label="App Type" value={pipeline.appType} />
             <ConfigRow label="Template" value={template?.name ?? pipeline.templateId} />
             <ConfigRow
@@ -96,9 +281,37 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                 )
               }
             />
-            <ConfigRow label="Status" value={getPipelineStatusLabel(t, pipeline.status)} />
+            <ConfigRow
+              label="Status"
+              value={
+                <span
+                  className="rounded-md px-[9px] py-[3px] text-xs font-semibold"
+                  style={{
+                    backgroundColor: getPipelineStatusStyle(pipeline.status).bg,
+                    color: getPipelineStatusStyle(pipeline.status).color,
+                  }}
+                >
+                  {getPipelineStatusLabel(t, pipeline.status)}
+                </span>
+              }
+            />
           </div>
         </DetailCard>
+
+        {hasBuildConfig && (
+          <DetailCard title="Build Configuration">
+            <div className="flex flex-col gap-2.5">
+              <ConfigRow
+                label="Dockerfile"
+                value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.dockerfilePath}</code>}
+              />
+              <ConfigRow
+                label="Build Context"
+                value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.dockerContext || '.'}</code>}
+              />
+            </div>
+          </DetailCard>
+        )}
 
         <DetailCard title="Deployment Target">
           <div className="flex flex-col gap-2.5">
@@ -110,39 +323,94 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
             <ConfigRow label="Created" value={formatDateTime(pipeline.createdAt, locale)} />
             <ConfigRow label="Last Deployed" value={formatDateTime(pipeline.lastDeployedAt, locale)} />
           </div>
+
+          <div className="mt-4 rounded-lg border border-[var(--color-border-default)] bg-[rgba(15,23,42,0.45)] p-3">
+            <div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
+              Deployed Resources (Latest)
+            </div>
+
+            {(isDeploymentsLoading || isResourcesLoading) && (
+              <div className="text-[12px] text-[var(--color-text-secondary)]">Loading resource topology...</div>
+            )}
+
+            {!isDeploymentsLoading && !isResourcesLoading && deployments.length === 0 && (
+              <div className="text-[12px] text-[var(--color-text-secondary)]">
+                No deployment history yet.
+              </div>
+            )}
+
+            {!isDeploymentsLoading && !isResourcesLoading && deployments.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[11px] text-[var(--color-text-secondary)]">
+                  Deployment {latestDeployment?.version ? <strong className="text-[var(--color-text-primary)]">{latestDeployment.version}</strong> : '-'}
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] md:items-stretch">
+                  <ResourceNode
+                    title="Ingress"
+                    resources={ingressResources}
+                    accentClass="bg-[rgba(34,197,94,0.12)] text-[#86efac]"
+                  />
+                  <div className="hidden items-center justify-center text-[var(--color-text-muted)] md:flex">→</div>
+                  <ResourceNode
+                    title="Service"
+                    resources={serviceResources}
+                    accentClass="bg-[rgba(59,130,246,0.12)] text-[#93c5fd]"
+                  />
+                  <div className="hidden items-center justify-center text-[var(--color-text-muted)] md:flex">→</div>
+                  <ResourceNode
+                    title="Deployment / StatefulSet"
+                    resources={workloadResources}
+                    accentClass="bg-[rgba(129,140,248,0.12)] text-[#c7d2fe]"
+                  />
+                  <div className="hidden items-center justify-center text-[var(--color-text-muted)] md:flex">→</div>
+                  <ResourceNode
+                    title="Pod"
+                    resources={podResources}
+                    accentClass="bg-[rgba(251,191,36,0.14)] text-[#fde68a]"
+                    emptyLabel={workloadResources.length > 0 ? '(managed by workload)' : '-'}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <ResourceNode
+                    title="Job / CronJob"
+                    resources={jobResources}
+                    accentClass="bg-[rgba(14,165,233,0.16)] text-[#7dd3fc]"
+                    emptyLabel="No batch resources"
+                  />
+                  <div className="min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-2.5">
+                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+                      Namespace / Access
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]">
+                      <span>Namespace:</span>
+                      <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-[2px] text-[11px]">
+                        {pipeline.namespace}
+                      </code>
+                    </div>
+                    {serviceResources.flatMap((item) => item.serviceUrls ?? []).length > 0 && (
+                      <div className="mt-1.5 flex min-w-0 flex-wrap gap-1">
+                        {Array.from(new Set(serviceResources.flatMap((item) => item.serviceUrls ?? []))).slice(0, 4).map((url) => (
+                          <code key={url} className="max-w-full break-all rounded bg-[rgba(99,102,241,0.14)] px-1.5 py-[1px] text-[10px] text-[#c7d2fe]">
+                            {url}
+                          </code>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {!hasDeploymentResources && (
+                  <div className="text-[11px] text-[var(--color-text-muted)]">
+                    Resource logs are not available for this deployment yet.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </DetailCard>
       </div>
-
-      {hasBuildConfig && (
-        <DetailCard title="Build Configuration">
-          <div className="flex flex-col gap-2.5">
-            <ConfigRow
-              label="Dockerfile"
-              value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.dockerfilePath}</code>}
-            />
-            <ConfigRow
-              label="Build Context"
-              value={<code className="rounded bg-[rgba(255,255,255,0.08)] px-2 py-[2px] text-[12px]">{pipeline.dockerContext || '.'}</code>}
-            />
-          </div>
-        </DetailCard>
-      )}
-
-      {stages.length > 0 && (
-        <DetailCard title="Pipeline Stages">
-          <div className="flex flex-wrap items-center gap-2">
-            {stages.map((stage: string, i: number) => (
-              <Fragment key={stage}>
-                <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(99,102,241,0.1)] px-3 py-1.5">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#6366f1] text-[10px] font-bold text-white">{i + 1}</span>
-                  <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">{stage}</span>
-                </div>
-                {i < stages.length - 1 && <span className="text-[var(--color-text-muted)]">→</span>}
-              </Fragment>
-            ))}
-          </div>
-        </DetailCard>
-      )}
 
       {envEntries.length > 0 && (
         <DetailCard title="Environment Variables">
@@ -262,8 +530,27 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
 function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
+  const { data: template } = useTemplateById(pipeline.templateId)
   const { data: deploymentsData, isLoading } = usePipelineDeployments(pipeline.id)
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null)
   const deployments = deploymentsData?.items ?? []
+  const stages = (template?.stages ?? []) as string[]
+
+  useEffect(() => {
+    if (deployments.length === 0) {
+      setSelectedDeploymentId(null)
+      return
+    }
+    if (!selectedDeploymentId || !deployments.some((d) => d.id === selectedDeploymentId)) {
+      setSelectedDeploymentId(deployments[0].id)
+    }
+  }, [deployments, selectedDeploymentId])
+
+  const selectedDeployment = deployments.find((d) => d.id === selectedDeploymentId) ?? null
+  const { data: deploymentStatus, isLoading: isDeploymentStatusLoading } = useDeploymentStatus(selectedDeploymentId)
+  const selectedStageStates = buildStageStates(stages.length, deploymentStatus?.status ?? selectedDeployment?.status)
+  const stepDetails = deploymentStatus?.steps ?? []
+  const logLineCount = stepDetails.reduce((total, step) => total + (step.logs?.length ?? 0), 0)
 
   if (isLoading) {
     return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">Loading deployment history...</div>
@@ -274,7 +561,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3">
       {deployments.map((d) => {
         const st = getPipelineStatusStyle(d.status)
         const durationMs =
@@ -289,19 +576,117 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
             : d.status === 'running'
               ? 'running'
               : '-'
+        const isSelected = d.id === selectedDeploymentId
 
         return (
-          <div key={d.id} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3.5 py-3">
+          <div
+            key={d.id}
+            className={`flex flex-wrap items-center gap-2.5 rounded-lg border px-3.5 py-3 ${
+              isSelected
+                ? 'border-[rgba(99,102,241,0.45)] bg-[rgba(99,102,241,0.12)]'
+                : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+            }`}
+          >
             <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: st.bg, color: st.color }}>
               {getPipelineStatusLabel(t, d.status)}
             </span>
-            <span className="text-[13px] font-semibold text-[#a5b4fc]">{d.version}</span>
+            <button
+              type="button"
+              onClick={() => setSelectedDeploymentId(d.id)}
+              className="rounded px-1 py-0.5 text-[13px] font-semibold text-[#a5b4fc] underline decoration-dotted underline-offset-2 hover:text-[#c7d2fe]"
+            >
+              {d.version}
+            </button>
             <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{d.triggeredBy || '-'}</span>
             <span className="text-[12px] text-[var(--color-text-secondary)]">{duration}</span>
             <span className="text-[12px] text-[var(--color-text-secondary)]">{formatDateTime(d.startedAt, locale)}</span>
           </div>
         )
       })}
+
+      {selectedDeployment && (
+        <div className="rounded-lg border border-[rgba(99,102,241,0.35)] bg-[rgba(15,23,42,0.5)] p-3">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
+            <span className="rounded bg-[rgba(99,102,241,0.2)] px-1.5 py-[2px] font-mono text-[#c7d2fe]">
+              {selectedDeployment.version}
+            </span>
+            <span>Deployment ID:</span>
+            <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-[2px]">{selectedDeployment.id}</code>
+            <span>Triggered by:</span>
+            <span className="text-[var(--color-text-primary)]">{selectedDeployment.triggeredBy || '-'}</span>
+          </div>
+
+          {stages.length > 0 && (
+            <div className="mt-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-2">
+              <div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">Pipeline Stages</div>
+              {stages.map((stage: string, i: number) => {
+                const state = selectedStageStates[i] ?? 'queued'
+                const meta = stageMeta(state)
+                return (
+                  <div key={`${selectedDeployment.id}-${stage}`} className="relative">
+                    {i < stages.length - 1 && (
+                      <div className="absolute left-[17px] top-8 h-[calc(100%-8px)] w-px bg-[rgba(148,163,184,0.3)]" />
+                    )}
+                    <div className={`mb-2 grid grid-cols-[26px_1fr_auto] items-center gap-2 rounded-md border px-2.5 py-2 ${meta.cls}`}>
+                      <span className="flex items-center justify-center">{meta.icon}</span>
+                      <div className="min-w-0">
+                        <div className="truncate text-[12px] font-semibold">{stage}</div>
+                        <div className="text-[10px] opacity-80">{meta.label}</div>
+                      </div>
+                      <span className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-[1px] text-[10px] font-mono">
+                        step {i + 1}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="mt-3 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[#0d1117]">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-[11px] text-[rgba(255,255,255,0.65)]">
+              <span>Detailed Logs</span>
+              <span>·</span>
+              <span>{stepDetails.length} steps</span>
+              <span>·</span>
+              <span>{logLineCount} lines</span>
+              {isDeploymentStatusLoading && <span className="text-[#fcd34d]">Loading...</span>}
+            </div>
+
+            <div className="max-h-[460px] space-y-3 overflow-y-auto p-3 font-mono text-[12px]">
+              {!isDeploymentStatusLoading && stepDetails.length === 0 && (
+                <div className="text-[12px] text-[#94a3b8]">No detailed logs available for this deployment.</div>
+              )}
+
+              {stepDetails.map((step, stepIndex) => (
+                <div key={`${selectedDeployment.id}-${step.name}-${stepIndex}`} className="rounded border border-[rgba(148,163,184,0.25)] bg-[rgba(2,6,23,0.65)]">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-[rgba(148,163,184,0.25)] px-2.5 py-2 text-[11px] text-[#94a3b8]">
+                    <span className="font-semibold text-[#cbd5e1]">{step.name}</span>
+                    {step.kind && <span className="rounded bg-[rgba(148,163,184,0.2)] px-1.5 py-[1px]">{step.kind}</span>}
+                    {step.status && (
+                      <span className={`rounded px-1.5 py-[1px] uppercase ${statusClass(step.status)}`}>
+                        {step.status}
+                      </span>
+                    )}
+                    {step.applied_at && <span>{formatDateTime(step.applied_at, locale)}</span>}
+                  </div>
+                  <div className="space-y-1 px-2.5 py-2">
+                    {(step.logs ?? []).map((line, lineIndex) => (
+                      <div key={`${selectedDeployment.id}-${step.name}-${lineIndex}`} className="grid grid-cols-[30px_minmax(0,1fr)] gap-2">
+                        <span className="text-right text-[10px] text-[#64748b]">{lineIndex + 1}</span>
+                        <span className={`break-all ${logLineClass(line)}`}>{line}</span>
+                      </div>
+                    ))}
+                    {(step.logs ?? []).length === 0 && (
+                      <div className="text-[11px] text-[#94a3b8]">{step.message || 'No log lines for this step.'}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -445,6 +830,15 @@ export function CicdListPage() {
           )}
           <span className="font-semibold">{row.original.name}</span>
         </div>
+      ),
+    },
+    {
+      accessorKey: 'mode',
+      header: 'Mode',
+      cell: ({ row }) => (
+        <span className="rounded-md border border-[var(--color-border-default)] bg-[rgba(99,102,241,0.08)] px-[8px] py-[2px] text-[11px] font-semibold text-[#c7d2fe]">
+          {modeLabel(row.original.mode)}
+        </span>
       ),
     },
     {

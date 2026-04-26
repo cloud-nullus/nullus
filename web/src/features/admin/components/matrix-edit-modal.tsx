@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { Modal } from '../../../components/ui/modal'
 import { Button } from '../../../components/ui/button'
@@ -73,7 +74,7 @@ interface FieldErrors {
   k8sRec?: string
 }
 
-type Translator = (key: string, defaultValue?: string) => string
+type Translator = TFunction
 
 function validateFields(args: {
   id: string

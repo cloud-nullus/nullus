@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { BellRing, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertHistory } from '../api/observability-api'
@@ -18,7 +19,7 @@ const SEVERITY_BADGE: Record<AlertSeverity, { className: string }> = {
   info: { className: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]' },
 }
 
-function getSeverityLabel(t: (key: string, defaultValue?: string) => string, severity: AlertSeverity) {
+function getSeverityLabel(t: TFunction, severity: AlertSeverity) {
   if (severity === 'critical') return t('observability.severity.critical', 'Critical')
   if (severity === 'warning') return t('observability.severity.warning', 'Warning')
   return t('observability.severity.info', 'Info')

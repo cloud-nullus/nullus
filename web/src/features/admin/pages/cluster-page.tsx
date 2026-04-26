@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -48,7 +49,7 @@ const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassNa
   },
 }
 
-function getStatusLabel(t: (key: string, defaultValue?: string) => string, status: ClusterStatus) {
+function getStatusLabel(t: TFunction, status: ClusterStatus) {
   if (status === 'connected') return t('clusterPage.status.connected', 'Connected')
   if (status === 'pending') return t('clusterPage.status.pending', 'Pending')
   if (status === 'error') return t('clusterPage.status.error', 'Error')
@@ -57,7 +58,7 @@ function getStatusLabel(t: (key: string, defaultValue?: string) => string, statu
   return t('clusterPage.status.authFailed', 'Auth Failed')
 }
 
-function getConnectionHint(t: (key: string, defaultValue?: string) => string, status: ClusterStatus): { text: string; className: string } {
+function getConnectionHint(t: TFunction, status: ClusterStatus): { text: string; className: string } {
   switch (status) {
     case 'connected':
       return { text: t('clusterPage.connection.connectedDetail', 'Cluster API is reachable and authentication is valid.'), className: 'text-[#22c55e]' }
@@ -164,12 +165,12 @@ function getPrimaryClusterType(types: ClusterType[]): ClusterType {
   return types.includes('pipeline') ? 'pipeline' : 'target'
 }
 
-function getClusterTypeLabel(t: (key: string, defaultValue?: string) => string, type: ClusterType) {
+function getClusterTypeLabel(t: TFunction, type: ClusterType) {
   const option = CLUSTER_TYPE_OPTIONS.find((item) => item.value === type)
   return t(option?.key ?? 'clusterPage.type.target', option?.fallback ?? 'Target Cluster')
 }
 
-function formatClusterTypes(t: (key: string, defaultValue?: string) => string, types: ClusterType[]) {
+function formatClusterTypes(t: TFunction, types: ClusterType[]) {
   return types.map((type) => getClusterTypeLabel(t, type)).join(' / ')
 }
 

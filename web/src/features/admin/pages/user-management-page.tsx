@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -134,7 +135,7 @@ const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> =
   inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]', label: 'Inactive' },
 }
 
-function getMemberStatusLabel(t: (key: string, defaultValue?: string) => string, status: MemberStatus) {
+function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
   if (status === 'active') return t('userManagementPage.status.active', 'Active')
   if (status === 'pending') return t('userManagementPage.status.pending', 'Pending')
   return t('userManagementPage.status.inactive', 'Inactive')

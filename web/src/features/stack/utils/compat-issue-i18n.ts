@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next'
+
 // F8-UIUX-ServerVerdictI18n — map the backend compatibility issue codes
 // that land in serverVerdict.issues (from /stacks/:id/validate and the
 // DEPLOY_COMPAT_FAIL / DEPLOY_COMPAT_WARN_UNACK response bodies) to user-
@@ -21,7 +23,7 @@ interface CompatIssueLike {
 // getStackStatusLabel in stack-list-page.tsx. react-i18next's TFunction
 // surfaces a pre-existing type-only mismatch on this shape, but it works
 // at runtime and keeps the helper API uniform with the rest of the feature.
-type Translator = (key: string, defaultValue?: string) => string
+type Translator = TFunction
 
 export function getCompatIssueMessage(t: Translator, issue: CompatIssueLike): string {
   const fallback = issue.message ?? ''

@@ -1,7 +1,7 @@
 import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import App from './App'
 import { isOidcMode } from './lib/oidc-providers'
 
 // When react-oidc-context is installed, replace OIDCWrapper body with:

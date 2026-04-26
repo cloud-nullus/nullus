@@ -74,16 +74,11 @@ const TOOL_SECTIONS: ToolSectionDefinition[] = [
   },
 ]
 
-type ToolSection = ToolSectionDefinition
 type ToolCategory = ToolCategoryDefinition
 type AddToolDraft = { category: string; name: string; helm_version: string; app_version: string }
 
 const TOOL_CATEGORY_LOOKUP = new Map<string, ToolCategory>(
   TOOL_SECTIONS.flatMap((section) => section.categories.map((category) => [category.category, category] as const))
-)
-
-const TOOL_SECTION_LOOKUP = new Map<string, ToolSection>(
-  TOOL_SECTIONS.flatMap((section) => section.categories.map((category) => [category.category, section] as const))
 )
 
 const defaultVersionsForTool = (toolName: string) => {
@@ -320,25 +315,6 @@ export function StackTemplatePage() {
 
   const [openToolSections, setOpenToolSections] = useState<Record<string, boolean>>(buildInitialSectionOpenState)
   const [addToolDrafts, setAddToolDrafts] = useState<Record<string, AddToolDraft>>(buildInitialAddToolDrafts)
-
-  const seedAddToolDraftsFromTools = (tools: ToolEntry[]) => {
-    setAddToolDrafts((prev) => {
-      const next = { ...buildInitialAddToolDrafts(), ...prev }
-      for (const tool of tools) {
-        const section = TOOL_SECTION_LOOKUP.get(tool.category)
-        if (!section) continue
-        const key = addToolDraftKey(section.id, tool.category)
-        const defaults = defaultVersionsForTool(tool.name)
-        next[key] = {
-          category: tool.category,
-          name: tool.name,
-          helm_version: tool.helm_version || defaults.helm_version,
-          app_version: tool.app_version || defaults.app_version,
-        }
-      }
-      return next
-    })
-  }
 
   const templates = Array.isArray(apiTemplates) ? apiTemplates : []
 
@@ -928,8 +904,6 @@ export function StackTemplatePage() {
               {allSections.map((section) => {
                 const isOpen = openToolSections[section.id]
                 const sectionCategories = getSectionCategories(section)
-                const sectionCategoryIds = new Set(sectionCategories.map((c) => c.category))
-
                 return (
                   <div key={section.id} className="border-b border-[var(--color-border-default)] last:border-b-0">
                     <div className="flex items-center bg-[rgba(255,255,255,0.03)]">
