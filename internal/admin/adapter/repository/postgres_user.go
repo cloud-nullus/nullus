@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/internal/admin/domain"
 )
 
 // PostgresUserRepository implements port.UserRepository using pgx.

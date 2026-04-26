@@ -8,12 +8,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
-	"github.com/cloud-nullus/draft/internal/observability/domain"
-	"github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
+	"github.com/cloud-nullus/draft/internal/observability/domain"
+	"github.com/cloud-nullus/draft/internal/observability/usecase"
 )
 
 type mockDashboardRepository struct {

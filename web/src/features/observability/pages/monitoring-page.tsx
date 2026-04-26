@@ -282,7 +282,7 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
           </div>
 
           {drafts.length === 0 ? (
-            <p className="text-xs text-[var(--color-text-secondary)]">{t('monitoringPage.customTabs.empty', 'No custom tabs yet. Click \"Add Tab\" to create one.')}</p>
+            <p className="text-xs text-[var(--color-text-secondary)]">{t('monitoringPage.customTabs.empty', 'No custom tabs yet. Click "Add Tab" to create one.')}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {drafts.map((d, idx) => (

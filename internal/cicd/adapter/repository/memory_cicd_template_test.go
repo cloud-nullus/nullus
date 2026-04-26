@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 )
 
 func TestMemoryCICDTemplateRepository_ListReturnsThreeTemplates(t *testing.T) {

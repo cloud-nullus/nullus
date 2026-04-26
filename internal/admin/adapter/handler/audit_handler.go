@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/labstack/echo/v4"
+
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 )
 
 type AuditHandler struct {

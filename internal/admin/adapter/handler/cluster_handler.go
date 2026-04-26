@@ -8,16 +8,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/admin/adapter/kube"
-	"github.com/cloud-nullus/draft/internal/admin/domain"
-	"github.com/cloud-nullus/draft/internal/admin/usecase"
-	"github.com/cloud-nullus/draft/internal/shared/audit"
-	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/labstack/echo/v4"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/cloud-nullus/draft/internal/admin/adapter/kube"
+	"github.com/cloud-nullus/draft/internal/admin/domain"
+	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	"github.com/cloud-nullus/draft/internal/shared/audit"
+	"github.com/cloud-nullus/draft/pkg/crypto"
 )
 
 var namespaceListerFn = listNamespacesFromKubeconfig
@@ -141,12 +142,13 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 		encryptedKubeconfig = []byte(encrypted)
 	}
 
-	orgID := req.OrgID
+	orgID := strings.TrimSpace(req.OrgID)
 	if orgID == "" {
 		firstOrg, err := h.clusterUC.GetFirstOrgID(c.Request().Context())
-		if err == nil && firstOrg != "" {
-			orgID = firstOrg
+		if err != nil || strings.TrimSpace(firstOrg) == "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "organization is required: create an organization first or provide org_id")
 		}
+		orgID = strings.TrimSpace(firstOrg)
 	}
 
 	cluster, err := h.clusterUC.RegisterCluster(c.Request().Context(), usecase.RegisterClusterInput{
@@ -186,7 +188,7 @@ func (h *ClusterHandler) RegisterCluster(c echo.Context) error {
 				"types":          req.Types,
 				"cloud_provider": req.CloudProvider,
 				"endpoint":       req.Endpoint,
-				"org_id":         req.OrgID,
+				"org_id":         orgID,
 			},
 			IPAddress: c.RealIP(),
 		})

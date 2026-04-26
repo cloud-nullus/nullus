@@ -5,8 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 const defaultReplayLimit = 2000

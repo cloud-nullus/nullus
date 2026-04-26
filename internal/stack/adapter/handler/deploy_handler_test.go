@@ -8,14 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stacklog "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func newDeployEcho(t *testing.T) (*echo.Echo, *stackrepo.MemoryStackRepository) {

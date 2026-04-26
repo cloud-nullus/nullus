@@ -7,11 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
-	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 )
 
 type mockTemplateRepository struct {

@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
-	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
-	"github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
+	"github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 )
 
 func TestDualAuth_SessionMode_ValidSession(t *testing.T) {

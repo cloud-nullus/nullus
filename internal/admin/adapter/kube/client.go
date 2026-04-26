@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/admin/domain"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/cloud-nullus/draft/internal/admin/domain"
 )
 
 // DefaultDiscoveryTimeout is the total wall-clock budget for DiscoverCluster:

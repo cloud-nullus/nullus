@@ -9,6 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stacklog "github.com/cloud-nullus/draft/internal/stack/adapter/log"
@@ -16,9 +20,6 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // newRetryEcho boots an Echo server with the Retry route + gate wired up.

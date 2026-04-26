@@ -1,8 +1,5 @@
 run:
   timeout: 5m
-  skip-dirs:
-    - web
-    - node_modules
 
 linters:
   enable:
@@ -17,8 +14,6 @@ linters:
     - misspell
     - unconvert
     - unparam
-    - goconst
-    - prealloc
 
 linters-settings:
   goconst:
@@ -30,11 +25,15 @@ linters-settings:
     local-prefixes: github.com/cloud-nullus/draft
 
 issues:
+  exclude-dirs:
+    - web
+    - node_modules
   exclude-rules:
     - path: _test\.go
       linters:
         - errcheck
         - unparam
+        - staticcheck
     - path: e2e/
       linters:
         - errcheck

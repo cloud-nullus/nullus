@@ -112,10 +112,10 @@ func TestToolVersion_V2Fields(t *testing.T) {
 
 func TestToolVersion_SupportsArch(t *testing.T) {
 	cases := []struct {
-		name  string
-		tool  ToolVersion
-		arch  string
-		want  bool
+		name string
+		tool ToolVersion
+		arch string
+		want bool
 	}{
 		{
 			name: "multi-arch tool supports arm64",

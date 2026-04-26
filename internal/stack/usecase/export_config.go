@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"gopkg.in/yaml.v3"
+
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 // ExportConfig exports a stack's configuration as JSON or YAML.
@@ -19,7 +20,7 @@ func NewExportConfig(stackRepo port.StackRepository) *ExportConfig {
 	return &ExportConfig{stackRepo: stackRepo}
 }
 
-// ExportAsJSON returns the stack configuration serialised as indented JSON.
+// ExportAsJSON returns the stack configuration serialized as indented JSON.
 func (uc *ExportConfig) ExportAsJSON(ctx context.Context, stackID string) ([]byte, error) {
 	stack, err := uc.stackRepo.GetByID(ctx, stackID)
 	if err != nil {
@@ -34,7 +35,7 @@ func (uc *ExportConfig) ExportAsJSON(ctx context.Context, stackID string) ([]byt
 	return data, nil
 }
 
-// ExportAsYAML returns the stack configuration serialised as YAML.
+// ExportAsYAML returns the stack configuration serialized as YAML.
 func (uc *ExportConfig) ExportAsYAML(ctx context.Context, stackID string) ([]byte, error) {
 	stack, err := uc.stackRepo.GetByID(ctx, stackID)
 	if err != nil {

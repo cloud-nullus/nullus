@@ -70,10 +70,10 @@ type RefreshDiscoveryScheduler struct {
 
 // Options configures the scheduler; all optional.
 type Options struct {
-	Interval       time.Duration
-	IterTimeout    time.Duration
-	Logger         *slog.Logger
-	Clock          func() time.Time
+	Interval    time.Duration
+	IterTimeout time.Duration
+	Logger      *slog.Logger
+	Clock       func() time.Time
 }
 
 // NewRefreshDiscoveryScheduler constructs a scheduler. interval defaults to
@@ -105,7 +105,7 @@ func NewRefreshDiscoveryScheduler(lister IDLister, runner RefreshRunner, opts Op
 	}
 }
 
-// Start blocks until ctx is cancelled, running an iteration every
+// Start blocks until ctx is canceled, running an iteration every
 // interval. The first iteration runs immediately on Start so fresh
 // deployments don't wait a full interval for initial discovery.
 func (s *RefreshDiscoveryScheduler) Start(ctx context.Context) {

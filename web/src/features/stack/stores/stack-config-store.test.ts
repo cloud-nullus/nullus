@@ -18,6 +18,7 @@ describe('stack-config-store', () => {
     expect(draft.activeTab).toBe('artifacts')
     expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
     expect(draft.pipeline.cdTool.version).toBe('v2.8.3')
+    expect(draft.monitoring.visualizations.map((item) => item.tool)).toEqual(['grafana'])
     expect(draft.storage.planMode).toBe('integrated-create')
     expect(draft.storage.database.mode).toBe('create')
     expect(draft.storage.objectStorage.mode).toBe('create')
@@ -104,6 +105,16 @@ describe('stack-config-store', () => {
       useStackConfigStore.getState().setTool('artifacts', 'packageRegistry', { tool: 'jfrog', version: 'latest' })
       expect(useStackConfigStore.getState().draft.artifacts.sourceRepository.tool).toBe(before)
     })
+
+    it('setMonitoringVisualizations keeps primary visualization in sync', () => {
+      useStackConfigStore.getState().setMonitoringVisualizations([
+        { tool: 'grafana', version: 'latest' },
+        { tool: 'kibana', version: 'latest' },
+      ])
+      const { monitoring } = useStackConfigStore.getState().draft
+      expect(monitoring.visualization.tool).toBe('grafana')
+      expect(monitoring.visualizations.map((item) => item.tool)).toEqual(['grafana', 'kibana'])
+    })
   })
 
   describe('stack name and access domain', () => {
@@ -183,8 +194,10 @@ describe('stack-config-store', () => {
       expect(draft.pipeline.cdTool.tool).toBe('')
       expect(draft.monitoring.collection.tool).toBe('')
       expect(draft.monitoring.visualization.tool).toBe('')
+      expect(draft.monitoring.visualizations).toEqual([])
       expect(draft.logging.search.tool).toBe('')
       expect(draft.logging.traceLayer.tool).toBe('')
+      expect(draft.logging.traceExporter.tool).toBe('')
       expect(draft.storage.planMode).toBe('none')
     })
   })

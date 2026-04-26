@@ -1,18 +1,23 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 )
 
 // StackHandler handles HTTP requests for stack operations.
@@ -25,6 +30,8 @@ type StackHandler struct {
 	manageHistory *usecase.ManageHistory
 	stackRepo     port.StackRepository
 	audit         audit.Sink
+	deleteMu      sync.Mutex
+	deleting      map[string]struct{}
 }
 
 // StackHandlerOption configures optional features.
@@ -58,6 +65,7 @@ func NewStackHandler(
 		manageHistory: manageHistory,
 		stackRepo:     stackRepo,
 		audit:         logger,
+		deleting:      make(map[string]struct{}),
 	}
 }
 
@@ -229,13 +237,38 @@ func (h *StackHandler) GetStack(c echo.Context) error {
 
 func (h *StackHandler) DeleteStack(c echo.Context) error {
 	stackID := c.Param("stackId")
-	if err := h.deleteStack.Execute(c.Request().Context(), stackID); err != nil {
-		if errors.Is(err, usecase.ErrStackNotFound) {
-			return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
-		}
-		return errorResponse(c, http.StatusInternalServerError, "STACK_DELETE_FAILED", err.Error())
+	stack, err := h.stackRepo.GetByID(c.Request().Context(), stackID)
+	if err != nil || stack == nil {
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", fmt.Sprintf("stack %q not found", stackID))
 	}
-	return c.NoContent(http.StatusNoContent)
+	h.deleteMu.Lock()
+	if _, exists := h.deleting[stackID]; exists {
+		h.deleteMu.Unlock()
+		return c.JSON(http.StatusAccepted, map[string]any{
+			"stack_id": stackID,
+			"status":   "terminating",
+		})
+	}
+	h.deleting[stackID] = struct{}{}
+	h.deleteMu.Unlock()
+
+	go func(id string) {
+		defer func() {
+			h.deleteMu.Lock()
+			delete(h.deleting, id)
+			h.deleteMu.Unlock()
+		}()
+		bgCtx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		defer cancel()
+		if deleteErr := h.deleteStack.Execute(bgCtx, id); deleteErr != nil && !errors.Is(deleteErr, usecase.ErrStackNotFound) {
+			slog.Error("async stack delete failed", "stack_id", id, "error", deleteErr)
+		}
+	}(stackID)
+
+	return c.JSON(http.StatusAccepted, map[string]any{
+		"stack_id": stackID,
+		"status":   "terminating",
+	})
 }
 
 // saveConfigRequest is the request body for POST /stacks/:id/config.

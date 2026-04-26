@@ -5,9 +5,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/cloud-nullus/draft/internal/observability/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/internal/observability/domain"
 )
 
 type PostgresAlertRuleRepository struct {

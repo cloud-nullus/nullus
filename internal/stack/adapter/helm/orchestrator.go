@@ -14,9 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -625,7 +626,6 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 				slog.Warn("normalized gateway backend service aliases to installed service names", "namespace", manifestNamespace)
 			}
 			manifest = normalizedManifest
-			hasManifest = strings.TrimSpace(manifest) != ""
 		}
 		if err := o.applyManifest(ctx, manifestNamespace, manifest); err != nil {
 			return fmt.Errorf("apply yaml manifest for step %s: %w", step, err)
@@ -2350,10 +2350,9 @@ func normalizeLegacyResourceOverrideForStep(step string, override map[string]any
 		return override
 	}
 
-	legacyExpanded := map[string]any{}
 	switch step {
 	case "installing_gitlab":
-		legacyExpanded = map[string]any{
+		return mergeMaps(map[string]any{
 			"gitlab": map[string]any{
 				"webservice":      map[string]any{"resources": resources},
 				"sidekiq":         map[string]any{"resources": resources},
@@ -2367,9 +2366,9 @@ func normalizeLegacyResourceOverrideForStep(step string, override map[string]any
 			"prometheus": map[string]any{
 				"server": map[string]any{"resources": resources},
 			},
-		}
+		}, override)
 	case "installing_argocd":
-		legacyExpanded = map[string]any{
+		return mergeMaps(map[string]any{
 			"controller":     map[string]any{"resources": resources},
 			"repoServer":     map[string]any{"resources": resources},
 			"server":         map[string]any{"resources": resources},
@@ -2377,17 +2376,17 @@ func normalizeLegacyResourceOverrideForStep(step string, override map[string]any
 			"dex":            map[string]any{"resources": resources},
 			"applicationSet": map[string]any{"resources": resources},
 			"notifications":  map[string]any{"resources": resources},
-		}
+		}, override)
 	case "installing_prometheus":
-		legacyExpanded = map[string]any{
+		return mergeMaps(map[string]any{
 			"prometheus":               map[string]any{"prometheusSpec": map[string]any{"resources": resources}},
 			"alertmanager":             map[string]any{"alertmanagerSpec": map[string]any{"resources": resources}},
 			"kube-state-metrics":       map[string]any{"resources": resources},
 			"prometheusOperator":       map[string]any{"resources": resources},
 			"prometheus-node-exporter": map[string]any{"resources": resources},
-		}
+		}, override)
 	case "installing_logging":
-		legacyExpanded = map[string]any{
+		return mergeMaps(map[string]any{
 			"resources":    resources,
 			"loki":         map[string]any{"resources": resources},
 			"singleBinary": map[string]any{"resources": resources},
@@ -2395,16 +2394,14 @@ func normalizeLegacyResourceOverrideForStep(step string, override map[string]any
 			"write":        map[string]any{"resources": resources},
 			"backend":      map[string]any{"resources": resources},
 			"promtail":     map[string]any{"resources": resources},
-		}
+		}, override)
 	case "installing_log_search":
-		legacyExpanded = map[string]any{
+		return mergeMaps(map[string]any{
 			"master": map[string]any{"resources": resources},
-		}
+		}, override)
 	default:
 		return override
 	}
-
-	return mergeMaps(legacyExpanded, override)
 }
 
 func firstResourcesFromNestedLoggingOverride(override map[string]any) map[string]any {

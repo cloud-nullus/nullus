@@ -5,9 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 )
 
 type mockCreatePipelineRepo struct {
@@ -34,7 +35,7 @@ func (m *mockCreatePipelineRepo) ListByStackID(_ context.Context, _ string) ([]*
 	return nil, nil
 }
 func (m *mockCreatePipelineRepo) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
-func (m *mockCreatePipelineRepo) Delete(_ context.Context, _ string) error            { return nil }
+func (m *mockCreatePipelineRepo) Delete(_ context.Context, _ string) error           { return nil }
 
 type mockCreateTemplateRepo struct {
 	templates map[string]*domain.PipelineTemplate

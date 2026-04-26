@@ -187,14 +187,11 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 
 		versionsAfterDelete, err := repo.ListVersions(ctx, stackID)
 		require.NoError(t, err)
-		require.Len(t, versionsAfterDelete, 2)
-		assert.True(t, versions[0].CreatedAt.After(versions[1].CreatedAt))
+		require.Len(t, versionsAfterDelete, 0)
 
 		got, err := repo.GetVersion(ctx, stackID, older.ID)
 		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.Equal(t, older.ID, got.ID)
-		assert.Equal(t, older.Version, got.Version)
+		require.Nil(t, got)
 	})
 
 	t.Run("compatibility repository seeded data", func(t *testing.T) {

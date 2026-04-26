@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/labstack/echo/v4"
+
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/labstack/echo/v4"
 )
 
 // HistoryHandler handles HTTP requests for stack version history operations.

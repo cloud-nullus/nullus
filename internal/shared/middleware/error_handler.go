@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/labstack/echo/v4"
+
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // AppErrorHandler converts AppError and echo.HTTPError into a standard JSON error response.

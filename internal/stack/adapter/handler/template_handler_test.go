@@ -7,13 +7,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func newTemplateEcho() *echo.Echo {

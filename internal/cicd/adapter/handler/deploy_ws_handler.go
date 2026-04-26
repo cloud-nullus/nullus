@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 )
 
 var cicdWsUpgrader = websocket.Upgrader{
@@ -55,9 +56,15 @@ func StreamCicdLogs(c echo.Context, tracker *kube.StepTracker) error {
 	go func() {
 		defer close(done)
 		conn.SetReadLimit(512)
-		conn.SetReadDeadline(time.Now().Add(cicdWsPongWait))
+		if err := conn.SetReadDeadline(time.Now().Add(cicdWsPongWait)); err != nil {
+			log.Printf("cicd websocket set read deadline error: %v", err)
+			return
+		}
 		conn.SetPongHandler(func(string) error {
-			conn.SetReadDeadline(time.Now().Add(cicdWsPongWait))
+			if err := conn.SetReadDeadline(time.Now().Add(cicdWsPongWait)); err != nil {
+				log.Printf("cicd websocket pong set read deadline error: %v", err)
+				return err
+			}
 			return nil
 		})
 		for {
@@ -75,7 +82,10 @@ func StreamCicdLogs(c echo.Context, tracker *kube.StepTracker) error {
 		select {
 		case event, ok := <-ch:
 			if !ok {
-				conn.SetWriteDeadline(time.Now().Add(cicdWsWriteWait))
+				if err := conn.SetWriteDeadline(time.Now().Add(cicdWsWriteWait)); err != nil {
+					log.Printf("cicd websocket set write deadline error: %v", err)
+					return nil
+				}
 				if err := conn.WriteMessage(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
@@ -103,13 +113,19 @@ func StreamCicdLogs(c echo.Context, tracker *kube.StepTracker) error {
 				continue
 			}
 
-			conn.SetWriteDeadline(time.Now().Add(cicdWsWriteWait))
+			if err := conn.SetWriteDeadline(time.Now().Add(cicdWsWriteWait)); err != nil {
+				log.Printf("cicd websocket set write deadline error: %v", err)
+				return nil
+			}
 			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 				log.Printf("cicd websocket write error: %v", err)
 				return nil
 			}
 		case <-pingTicker.C:
-			conn.SetWriteDeadline(time.Now().Add(cicdWsWriteWait))
+			if err := conn.SetWriteDeadline(time.Now().Add(cicdWsWriteWait)); err != nil {
+				log.Printf("cicd websocket set write deadline error: %v", err)
+				return nil
+			}
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Printf("cicd websocket ping error: %v", err)
 				return nil

@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 )
 
 type PostgresCICDTemplateRepository struct {

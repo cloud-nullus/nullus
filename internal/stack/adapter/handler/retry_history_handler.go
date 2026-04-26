@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/labstack/echo/v4"
+
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 )
 
 // RetryHistoryHandler serves GET /api/v1/stacks/:id/retry-history. It reads

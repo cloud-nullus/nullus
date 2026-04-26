@@ -7,13 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func newClusterEcho() (*echo.Echo, *adminhandler.ClusterHandler) {
@@ -69,6 +70,18 @@ func TestClusterHandler_RegisterCluster_WithKubeconfigAndInvalidKey_500(t *testi
 	var listResp map[string]any
 	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listResp))
 	assert.EqualValues(t, 0, listResp["total"])
+}
+
+func TestClusterHandler_RegisterCluster_WithoutOrgIDAndNoOrg_400(t *testing.T) {
+	e, _ := newClusterEcho()
+
+	body := `{"name":"prod-cluster","type":"target","endpoint":"https://k8s.example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/clusters", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestClusterHandler_ListClusters_200(t *testing.T) {

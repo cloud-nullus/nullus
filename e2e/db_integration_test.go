@@ -221,8 +221,6 @@ func TestDBIntegration_Pipelines(t *testing.T) {
 	// pipelines table uses VARCHAR for org_id/cluster_id, not UUID FK
 	// Use string IDs that match the pipelines schema
 	ts := time.Now().Format("150405")
-	orgID := "org-pip-" + ts
-	clusterID := "clu-pip-" + ts
 
 	// Create org and cluster in their UUID tables for reference data
 	var realOrgID string
@@ -241,8 +239,8 @@ func TestDBIntegration_Pipelines(t *testing.T) {
 	require.NoError(t, err)
 
 	// Use the real UUIDs (already strings from RETURNING id) for pipelines VARCHAR columns
-	orgID = realOrgID
-	clusterID = realClusterID
+	orgID := realOrgID
+	clusterID := realClusterID
 
 	t.Cleanup(func() {
 		pool.Exec(ctx, "DELETE FROM pipeline_deployments WHERE pipeline_id IN (SELECT id FROM pipelines WHERE org_id = $1)", orgID)

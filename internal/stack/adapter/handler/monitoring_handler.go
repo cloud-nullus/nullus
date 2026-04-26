@@ -12,14 +12,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/stack/domain"
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/labstack/echo/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 type StackMonitoringHandler struct {
@@ -233,9 +234,9 @@ func collectStackMonitoring(ctx context.Context, stack *domain.Stack, kubeconfig
 
 	podUsageMap, usageAvailable := collectPodUsageWithKubectl(ctx, kubeconfig, ns)
 	stackCfg := extractStackConfig(stack)
-	podStatuses, podStatusCounts, summary := toPodMonitoringStatuses(pods.Items, podUsageMap, pvcStatsByName)
+	podStatuses, _, _ := toPodMonitoringStatuses(pods.Items, podUsageMap, pvcStatsByName)
 	selectedTools := selectedToolTypes(stackCfg)
-	podStatuses, podStatusCounts, summary = filterMonitoringToSelectedTools(selectedTools, podStatuses)
+	podStatuses, podStatusCounts, summary := filterMonitoringToSelectedTools(selectedTools, podStatuses)
 	summary.UsageAvailable = usageAvailable
 	if summary.TotalPods > 0 {
 		summary.StorageUsageAvailable = true
@@ -465,28 +466,6 @@ func parseMemoryToMiB(raw string) (int64, error) {
 	return int64(v / (1024 * 1024)), nil
 }
 
-func collectPVCStorageTotals(pvcs []corev1.PersistentVolumeClaim) (requestGiB int64, limitGiB int64) {
-	for _, pvc := range pvcs {
-		req := int64(0)
-		if q, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
-			req = q.Value() / (1024 * 1024 * 1024)
-		}
-
-		lim := int64(0)
-		if q, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok {
-			lim = q.Value() / (1024 * 1024 * 1024)
-		}
-		if lim <= 0 {
-			lim = req
-		}
-
-		requestGiB += req
-		limitGiB += lim
-	}
-
-	return requestGiB, limitGiB
-}
-
 func buildPVCStorageStats(pvcs []corev1.PersistentVolumeClaim) map[string]pvcStorageStats {
 	out := make(map[string]pvcStorageStats, len(pvcs))
 	for _, pvc := range pvcs {
@@ -508,16 +487,6 @@ func buildPVCStorageStats(pvcs []corev1.PersistentVolumeClaim) map[string]pvcSto
 		out[name] = pvcStorageStats{RequestGiB: req, LimitGiB: lim}
 	}
 	return out
-}
-
-func sumPVCStorageStats(stats map[string]pvcStorageStats) (requestGiB int64, limitGiB int64, usageGiB float64) {
-	for _, s := range stats {
-		requestGiB += s.RequestGiB
-		limitGiB += s.LimitGiB
-		usageGiB += s.UsageGiB
-	}
-	usageGiB = math.Round(usageGiB*100) / 100
-	return requestGiB, limitGiB, usageGiB
 }
 
 type nodeStatsSummary struct {
@@ -781,7 +750,7 @@ func toOSSStatuses(types []selectedToolType, pods []podMonitoringStatus) []ossMo
 			}
 		}
 
-		status := "warning"
+		var status string
 		switch {
 		case len(matched) == 0 && len(allMatched) > 0:
 			status = "running"

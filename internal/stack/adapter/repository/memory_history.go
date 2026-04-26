@@ -135,7 +135,7 @@ func computeDiff(prev, target *domain.StackVersion) []domain.ConfigDiff {
 	return diffs
 }
 
-// flattenConfig serialises a StackConfig to a flat string map for comparison.
+// flattenConfig serializes a StackConfig to a flat string map for comparison.
 func flattenConfig(cfg domain.StackConfig) map[string]string {
 	b, err := json.Marshal(cfg)
 	if err != nil {

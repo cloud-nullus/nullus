@@ -19,9 +19,9 @@ type BaseEvent struct {
 	AggregateId string    `json:"aggregate_id"`
 }
 
-func (e BaseEvent) EventName() string      { return e.Name }
-func (e BaseEvent) OccurredAt() time.Time   { return e.Timestamp }
-func (e BaseEvent) AggregateID() string     { return e.AggregateId }
+func (e BaseEvent) EventName() string     { return e.Name }
+func (e BaseEvent) OccurredAt() time.Time { return e.Timestamp }
+func (e BaseEvent) AggregateID() string   { return e.AggregateId }
 
 // EventHandler is a function that handles a domain event.
 type EventHandler func(event DomainEvent) error

@@ -3,8 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/cloud-nullus/draft/internal/admin/port"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/internal/admin/port"
 )
 
 type PostgresKnownIssuesRepository struct {

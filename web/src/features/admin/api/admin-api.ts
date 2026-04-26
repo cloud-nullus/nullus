@@ -10,6 +10,7 @@ import type {
   Member,
   MemberRole,
   Organization,
+  OrgResourceProfile,
   UpdateOrgRequest,
 } from '../../../types'
 
@@ -57,6 +58,7 @@ const queryKeys = {
   clusterMonitoringSummary: (id: string) => ['admin', 'clusters', id, 'monitoring-summary'] as const,
   knownIssues: () => ['admin', 'known-issues'] as const,
   inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
+  resourceProfiles: () => ['admin', 'organization', 'resource-profiles'] as const,
 }
 
 type ClusterApiShape = Omit<Cluster, 'nodeArchitectures'> & {
@@ -210,6 +212,15 @@ const adminApiCalls = {
 
   revokeInviteLink: (orgId: string, token: string) =>
     api.delete(`/admin/organizations/${orgId}/invites/${token}`).then((r) => r.data),
+
+  getResourceProfiles: () =>
+    api.get<OrgResourceProfile[]>('/admin/organization/resource-profiles').then((r) => r.data),
+
+  createResourceProfile: (data: Omit<OrgResourceProfile, 'id' | 'orgId' | 'createdAt'>) =>
+    api.post<OrgResourceProfile>('/admin/organization/resource-profiles', data).then((r) => r.data),
+
+  deleteResourceProfile: (id: string) =>
+    api.delete(`/admin/organization/resource-profiles/${id}`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -218,6 +229,30 @@ export function useOrganization() {
   return useQuery({
     queryKey: queryKeys.organization(),
     queryFn: adminApiCalls.getOrganization,
+  })
+}
+
+export function useOrgResourceProfiles() {
+  return useQuery({
+    queryKey: queryKeys.resourceProfiles(),
+    queryFn: adminApiCalls.getResourceProfiles,
+    initialData: [],
+  })
+}
+
+export function useCreateOrgResourceProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: adminApiCalls.createResourceProfile,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() }),
+  })
+}
+
+export function useDeleteOrgResourceProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: adminApiCalls.deleteResourceProfile,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() }),
   })
 }
 

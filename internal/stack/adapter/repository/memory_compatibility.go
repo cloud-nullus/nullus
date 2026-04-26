@@ -139,20 +139,20 @@ var archMulti = []string{domain.ArchAMD64, domain.ArchARM64}
 // update both the refresh migration and the Narwhal sources doc in the same
 // commit so the three layers (DB / in-memory / docs) never drift.
 const (
-	narwhalGitLabHelmVersion    = "9.5.1"
-	narwhalGitLabAppVersion     = "18.5.1"
-	narwhalHarborHelmVersion    = "1.15.0"
-	narwhalHarborAppVersion     = "2.11.0"
-	narwhalMinIOHelmVersion     = "5.2.0"
-	narwhalMinIOAppVersion      = "RELEASE.2024-08-03T04-33-23Z"
-	narwhalArgoCDHelmVersion    = "6.8.0"
-	narwhalArgoCDAppVersion     = "v2.8.3"
-	narwhalPrometheusHelmVer    = "67.0.0"
-	narwhalPrometheusAppVer     = "v2.54.1"
-	narwhalGrafanaHelmVersion   = "8.5.0"
-	narwhalGrafanaAppVersion    = "11.1.0"
-	narwhalBaseMinK8sPlatform   = "1.27" // GitLab, GitHub, Harbor
-	narwhalBaseMinK8sWorkload   = "1.26" // MinIO, Argo CD, Prometheus, Grafana
+	narwhalGitLabHelmVersion  = "9.5.1"
+	narwhalGitLabAppVersion   = "18.5.1"
+	narwhalHarborHelmVersion  = "1.15.0"
+	narwhalHarborAppVersion   = "2.11.0"
+	narwhalMinIOHelmVersion   = "5.2.0"
+	narwhalMinIOAppVersion    = "RELEASE.2024-08-03T04-33-23Z"
+	narwhalArgoCDHelmVersion  = "6.8.0"
+	narwhalArgoCDAppVersion   = "v2.8.3"
+	narwhalPrometheusHelmVer  = "67.0.0"
+	narwhalPrometheusAppVer   = "v2.54.1"
+	narwhalGrafanaHelmVersion = "8.5.0"
+	narwhalGrafanaAppVersion  = "11.1.0"
+	narwhalBaseMinK8sPlatform = "1.27" // GitLab, GitHub, Harbor
+	narwhalBaseMinK8sWorkload = "1.26" // MinIO, Argo CD, Prometheus, Grafana
 )
 
 // defaultCompatibilityMatrices returns the three canonical compatibility matrices.

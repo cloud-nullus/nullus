@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/stack/domain"
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 // --- fakes ---
@@ -496,7 +497,7 @@ func TestInstallStack_RollbackFailureReturnsFailedState(t *testing.T) {
 
 func TestInstallStack_StopsWhenStackIsCancelledDuringRun(t *testing.T) {
 	stack := &domain.Stack{
-		ID:    "stk_cancelled_mid_run",
+		ID:    "stk_canceled_mid_run",
 		State: domain.StatePending,
 	}
 	repo := newFakeStackRepo(stack)

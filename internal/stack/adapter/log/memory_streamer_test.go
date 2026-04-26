@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 func TestMemoryStreamer_SubscribeAndReceive(t *testing.T) {

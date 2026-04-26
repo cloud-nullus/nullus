@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 	"github.com/cloud-nullus/draft/pkg/crypto"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresClusterTargetProvider struct {

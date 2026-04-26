@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/action"
+
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 func TestHelmInstaller_ImplementsPort(t *testing.T) {

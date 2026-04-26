@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cloud-nullus/draft/internal/admin/domain"
-	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/admin/domain"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 type mockUserRepo struct {

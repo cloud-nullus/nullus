@@ -3,8 +3,9 @@ package handler
 import (
 	"testing"
 
-	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 func TestSelectedToolTypes_FallsBackToCanonicalNames(t *testing.T) {

@@ -48,7 +48,7 @@ func newNode(name, arch string) corev1.Node {
 // API server. Returns nothing; the t.Cleanup handler restores the default.
 func withFakeClient(t *testing.T, nodes []corev1.Node, gitVersion string) {
 	t.Helper()
-	fakeCS := fake.NewSimpleClientset()
+	fakeCS := fake.NewClientset()
 	for i := range nodes {
 		_, err := fakeCS.CoreV1().Nodes().Create(context.Background(), &nodes[i], metav1.CreateOptions{})
 		require.NoError(t, err)

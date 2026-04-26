@@ -6,21 +6,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/websocket"
+	"github.com/labstack/echo/v4"
+
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
 )
 
 // DeployHandler handles HTTP and WebSocket requests for stack deployments.
 type DeployHandler struct {
-	installStack        *usecase.InstallStack
-	stackRepo           port.StackRepository
-	streamer            port.LogStreamer
+	installStack          *usecase.InstallStack
+	stackRepo             port.StackRepository
+	streamer              port.LogStreamer
 	validateCompatibility *usecase.ValidateCompatibility
-	audit               audit.Sink
+	audit                 audit.Sink
 }
 
 // DeployHandlerOption configures optional dependencies on DeployHandler.
@@ -401,9 +402,15 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 	go func() {
 		defer close(done)
 		conn.SetReadLimit(512)
-		conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		if err := conn.SetReadDeadline(time.Now().Add(wsPongWait)); err != nil {
+			log.Printf("websocket set read deadline error: %v", err)
+			return
+		}
 		conn.SetPongHandler(func(string) error {
-			conn.SetReadDeadline(time.Now().Add(wsPongWait))
+			if err := conn.SetReadDeadline(time.Now().Add(wsPongWait)); err != nil {
+				log.Printf("websocket pong set read deadline error: %v", err)
+				return err
+			}
 			return nil
 		})
 		for {
@@ -421,7 +428,10 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 		select {
 		case entry, ok := <-ch:
 			if !ok {
-				conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+				if err := conn.SetWriteDeadline(time.Now().Add(wsWriteWait)); err != nil {
+					log.Printf("websocket set write deadline error: %v", err)
+					return nil
+				}
 				if err := conn.WriteMessage(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
@@ -451,7 +461,10 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 				msg.Status = "failed"
 			}
 
-			conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteWait)); err != nil {
+				log.Printf("websocket set write deadline error: %v", err)
+				return nil
+			}
 			data, err := json.Marshal(msg)
 			if err != nil {
 				log.Printf("websocket message marshal error: %v", err)
@@ -462,7 +475,10 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 				return nil
 			}
 		case <-pingTicker.C:
-			conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteWait)); err != nil {
+				log.Printf("websocket set write deadline error: %v", err)
+				return nil
+			}
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Printf("websocket ping error: %v", err)
 				return nil
