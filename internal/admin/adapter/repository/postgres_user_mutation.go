@@ -3,8 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/cloud-nullus/draft/internal/admin/domain"
 )
 
 func (r *PostgresUserRepository) Update(ctx context.Context, user *domain.User) error {

@@ -9,6 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stacklog "github.com/cloud-nullus/draft/internal/stack/adapter/log"
@@ -16,9 +20,6 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // stubClusterReader mirrors the one in usecase tests but lives here so the
@@ -335,4 +336,3 @@ func TestDeployHandler_Gate_NoAuditOnBlockedWarn(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Empty(t, sink.Snapshot(), "blocked deploy must not emit audit entry")
 }
-

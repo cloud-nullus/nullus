@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/shared/middleware"
 )
 
 func newNotificationEcho(h *NotificationHandler) *echo.Echo {

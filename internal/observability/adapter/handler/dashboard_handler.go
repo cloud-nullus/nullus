@@ -3,8 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/labstack/echo/v4"
+
+	"github.com/cloud-nullus/draft/internal/observability/usecase"
 )
 
 // DashboardHandler handles HTTP requests for observability dashboard operations.

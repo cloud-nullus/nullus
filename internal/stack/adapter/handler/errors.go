@@ -8,9 +8,9 @@ import (
 func errorResponse(c echo.Context, httpStatus int, code, message string) error {
 	return c.JSON(httpStatus, map[string]any{
 		"error": map[string]any{
-			"code":       code,
+			"code":        code,
 			"http_status": httpStatus,
-			"message":    message,
+			"message":     message,
 		},
 	})
 }

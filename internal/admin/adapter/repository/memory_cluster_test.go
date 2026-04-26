@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/admin/domain"
 )
 
 func seedCluster(id string, archs []string) *domain.Cluster {

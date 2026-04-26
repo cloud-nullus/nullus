@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // stubClusterReader lets us simulate the admin module without wiring pgx.
@@ -342,4 +343,3 @@ func TestValidateCompatibility_PersistedMode_ExplicitToolsOverrideStack(t *testi
 	require.NotNil(t, out.Matrix)
 	assert.Equal(t, "pass", out.Overall.State)
 }
-

@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/pkg/crypto"
 )
 
 type PostgresKubeconfigProvider struct {

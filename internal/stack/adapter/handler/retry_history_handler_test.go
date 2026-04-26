@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/shared/audit"
 )
 
 func newRetryHistoryEcho(t *testing.T, sink *audit.MemorySink, stackID string) *httptest.ResponseRecorder {

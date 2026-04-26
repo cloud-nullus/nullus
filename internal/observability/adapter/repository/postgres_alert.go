@@ -3,8 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/cloud-nullus/draft/internal/observability/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/internal/observability/domain"
 )
 
 type PostgresAlertRepository struct {

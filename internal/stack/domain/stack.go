@@ -15,7 +15,7 @@ const (
 	StateConfiguring DeploymentState = "configuring"
 	StateHealthCheck DeploymentState = "health_check"
 	StateCompleted   DeploymentState = "completed"
-	StateCancelled   DeploymentState = "cancelled"
+	StateCancelled   DeploymentState = "canceled"
 	StateFailed      DeploymentState = "failed"
 	StateRollingBack DeploymentState = "rolling_back"
 	StateRolledBack  DeploymentState = "rolled_back"

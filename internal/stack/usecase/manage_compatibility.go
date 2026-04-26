@@ -25,8 +25,8 @@ type VerdictCacheClearer interface {
 // use case so validation lives in one place and cache invalidation is
 // triggered consistently.
 type ManageCompatibility struct {
-	repo    port.CompatibilityRepository
-	cache   VerdictCacheClearer
+	repo  port.CompatibilityRepository
+	cache VerdictCacheClearer
 }
 
 // ManageCompatibilityOption configures optional dependencies.

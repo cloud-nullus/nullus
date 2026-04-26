@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/labstack/echo/v4"
+
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/labstack/echo/v4"
 )
 
 // CompatibilityHandler handles HTTP requests for compatibility matrix operations.
@@ -77,11 +78,11 @@ func (h *CompatibilityHandler) RegisterAdminRoutes(g *echo.Group) {
 // matrixPayload is the JSON shape for Create/Update bodies. Mirrors
 // domain.CompatibilityMatrix but uses snake_case for the external wire.
 type matrixPayload struct {
-	ID         string                             `json:"id"`
-	Name       string                             `json:"name"`
-	Status     string                             `json:"status"`
-	Kubernetes k8sPayload                         `json:"kubernetes"`
-	Tools      map[string]toolPayload             `json:"tools"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Status     string                 `json:"status"`
+	Kubernetes k8sPayload             `json:"kubernetes"`
+	Tools      map[string]toolPayload `json:"tools"`
 }
 
 type k8sPayload struct {
@@ -124,7 +125,7 @@ func (p *matrixPayload) toDomain() *domain.CompatibilityMatrix {
 	return m
 }
 
-// matrixToPayload is the reverse — used when serialising the response so
+// matrixToPayload is the reverse — used when serializing the response so
 // the client sees the same snake_case shape it sent in.
 func matrixToPayload(m *domain.CompatibilityMatrix) matrixPayload {
 	p := matrixPayload{

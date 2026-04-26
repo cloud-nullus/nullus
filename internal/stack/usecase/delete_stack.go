@@ -13,9 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
-	"gopkg.in/yaml.v3"
 )
 
 var stackHelmReleaseNames = []string{
@@ -143,7 +144,7 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	stack.UpdatedAt = time.Now()
 	if err := uc.stackRepo.Update(ctx, stack); err != nil {
 		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
-		return fmt.Errorf("mark stack cancelled: %w", err)
+		return fmt.Errorf("mark stack canceled: %w", err)
 	}
 
 	kubeconfig := uc.loadKubeconfig(ctx, stack.ClusterID)

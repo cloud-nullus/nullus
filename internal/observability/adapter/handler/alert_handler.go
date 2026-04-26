@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/labstack/echo/v4"
+
 	"github.com/cloud-nullus/draft/internal/observability/domain"
 	"github.com/cloud-nullus/draft/internal/observability/usecase"
-	"github.com/labstack/echo/v4"
 )
 
 // AlertHandler handles HTTP requests for alert rule and history operations.

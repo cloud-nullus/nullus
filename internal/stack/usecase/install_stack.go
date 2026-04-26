@@ -13,7 +13,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
-var ErrDeploymentCancelled = errors.New("deployment cancelled")
+var ErrDeploymentCancelled = errors.New("deployment canceled")
 
 // installStep describes a single simulated installation step.
 type installStep struct {
@@ -338,7 +338,7 @@ func (uc *InstallStack) ensureDeploymentActive(ctx context.Context, stackID stri
 	}
 
 	if current.State == domain.StateCancelled {
-		return fmt.Errorf("%w: stack marked cancelled", ErrDeploymentCancelled)
+		return fmt.Errorf("%w: stack marked canceled", ErrDeploymentCancelled)
 	}
 	if current.State == domain.StateRollingBack || current.State == domain.StateRolledBack || current.State == domain.StateFailed {
 		return fmt.Errorf("%w: stack state is %s", ErrDeploymentCancelled, current.State)

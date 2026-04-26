@@ -27,12 +27,12 @@ func TestDeployment_StatusTransitions(t *testing.T) {
 	completed := now.Add(5 * time.Second)
 
 	d := &Deployment{
-		ID:          "dep_abc123",
-		PipelineID:  "pip_abc123",
-		Version:     "v1.0.0",
-		Status:      DeploymentStatusPending,
-		StartedAt:   now,
-		DeployedBy:  "user_001",
+		ID:         "dep_abc123",
+		PipelineID: "pip_abc123",
+		Version:    "v1.0.0",
+		Status:     DeploymentStatusPending,
+		StartedAt:  now,
+		DeployedBy: "user_001",
 	}
 
 	assert.Equal(t, DeploymentStatusPending, d.Status)

@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cloud-nullus/draft/internal/stack/adapter/repository"
-	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/stack/adapter/repository"
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 func TestManageHistory_SaveVersion(t *testing.T) {

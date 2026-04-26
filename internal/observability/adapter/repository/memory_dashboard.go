@@ -2,8 +2,9 @@ package repository
 
 import (
 	"context"
-	"github.com/cloud-nullus/draft/internal/observability/domain"
 	"sync"
+
+	"github.com/cloud-nullus/draft/internal/observability/domain"
 )
 
 // MemoryDashboardRepository provides simulated dashboard data.

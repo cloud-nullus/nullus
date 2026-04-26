@@ -12,10 +12,11 @@ import (
 	"sync"
 	"time"
 
-	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
-	authport "github.com/cloud-nullus/draft/internal/auth/port"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
+
+	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
+	authport "github.com/cloud-nullus/draft/internal/auth/port"
 )
 
 type JWTConfig struct {

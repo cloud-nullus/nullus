@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cloud-nullus/draft/internal/stack/domain"
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 type PostgresCompatibilityRepository struct {

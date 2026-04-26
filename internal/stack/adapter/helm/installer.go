@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
@@ -17,6 +16,8 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 type HelmInstaller struct {

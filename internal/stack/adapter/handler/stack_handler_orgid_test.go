@@ -5,9 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
+
+	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
 )
 
 func TestResolveOrgID_PrefersJWTClaims(t *testing.T) {

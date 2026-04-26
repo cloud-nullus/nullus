@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
-	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 func TestCreateStack_DefaultNamespaceWhenEmpty(t *testing.T) {

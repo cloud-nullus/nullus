@@ -5,10 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
 )
 
 func TestOrgContextMiddleware_ExtractsOrgIDFromCurrentUser(t *testing.T) {
