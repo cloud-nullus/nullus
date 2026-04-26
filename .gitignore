@@ -38,3 +38,8 @@ postgres_data/
 
 # Local planning/spec drafts
 Nullus 상세 기능 명세 및 시스템 아키텍처.md
+
+# Airgap build artifacts (large binaries, must not be committed)
+airgap/bundle/
+airgap/helm/charts/
+airgap/helm/nullus-*.tgz
