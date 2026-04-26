@@ -11,7 +11,7 @@ import (
 
 type MemberHandler struct {
 	userUC *usecase.UserUseCase
-	audit  *audit.AuditLogger
+	audit  audit.Sink
 }
 
 type createMemberRequest struct {
@@ -21,11 +21,13 @@ type createMemberRequest struct {
 }
 
 type updateMemberRequest struct {
-	Role domain.Role `json:"role"`
+	Name  *string      `json:"name"`
+	Email *string      `json:"email"`
+	Role  *domain.Role `json:"role"`
 }
 
-func NewMemberHandler(userUC *usecase.UserUseCase, auditLogger ...*audit.AuditLogger) *MemberHandler {
-	var logger *audit.AuditLogger
+func NewMemberHandler(userUC *usecase.UserUseCase, auditLogger ...audit.Sink) *MemberHandler {
+	var logger audit.Sink
 	if len(auditLogger) > 0 {
 		logger = auditLogger[0]
 	}
@@ -39,6 +41,16 @@ func (h *MemberHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/organizations/:orgId/members/:memberId", h.DeleteMember)
 	g.PATCH("/organizations/:orgId/members/:memberId", h.UpdateMemberRole)
 	g.POST("/organizations/:orgId/members/:memberId/deactivate", h.DeactivateMember)
+
+	g.GET("/organizations/:orgId/invites", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]any{"items": []any{}})
+	})
+	g.POST("/organizations/:orgId/invites", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]any{"token": "", "url": "", "role": "developer", "expiresAt": ""})
+	})
+	g.DELETE("/organizations/:orgId/invites/:token", func(c echo.Context) error {
+		return c.NoContent(http.StatusNoContent)
+	})
 }
 
 func (h *MemberHandler) SearchUser(c echo.Context) error {
@@ -151,16 +163,25 @@ func (h *MemberHandler) UpdateMemberRole(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
+	if req.Name == nil && req.Email == nil && req.Role == nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "at least one field(name, email, role) is required")
+	}
 	if h.userUC == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "member service is not configured")
 	}
 
 	_ = orgID
-	if err := h.userUC.UpdateRole(c.Request().Context(), memberID, req.Role); err != nil {
+	member, err := h.userUC.UpdateMember(c.Request().Context(), memberID, usecase.UpdateMemberInput{
+		OrgID: orgID,
+		Name:  req.Name,
+		Email: req.Email,
+		Role:  req.Role,
+	})
+	if err != nil {
 		return err
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"status": "updated"})
+	return c.JSON(http.StatusOK, member)
 }
 
 func (h *MemberHandler) DeactivateMember(c echo.Context) error {

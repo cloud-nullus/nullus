@@ -23,6 +23,7 @@ export type {
 const queryKeys = {
   dashboard: () => ['observability', 'dashboard'] as const,
   alertRules: () => ['observability', 'alert-rules'] as const,
+  alertRule: (id: string) => ['observability', 'alert-rules', id] as const,
   alertHistory: (filters?: Record<string, unknown>) => ['observability', 'alert-history', filters] as const,
 }
 
@@ -34,6 +35,9 @@ const observabilityApiCalls = {
 
   getAlertRules: () =>
     api.get<{ items: AlertRule[]; total: number }>('/observability/alert-rules').then((r) => r.data),
+
+  getAlertRule: (id: string) =>
+    api.get<AlertRule>(`/observability/alert-rules/${id}`).then((r) => r.data),
 
   createAlertRule: (data: CreateAlertRuleRequest) =>
     api.post<AlertRule>('/observability/alert-rules', data).then((r) => r.data),
@@ -67,6 +71,14 @@ export function useAlertRules() {
   })
 }
 
+export function useAlertRule(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.alertRule(id ?? ''),
+    queryFn: () => observabilityApiCalls.getAlertRule(id ?? ''),
+    enabled: enabled && Boolean(id),
+  })
+}
+
 export function useCreateAlertRule() {
   const qc = useQueryClient()
   return useMutation({
@@ -83,8 +95,9 @@ export function useUpdateAlertRule() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<AlertRule> }) =>
       observabilityApiCalls.updateAlertRule(id, data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void qc.invalidateQueries({ queryKey: queryKeys.alertRules() })
+      void qc.invalidateQueries({ queryKey: queryKeys.alertRule(variables.id) })
       void qc.invalidateQueries({ queryKey: ['observability', 'alert-history'] })
     },
   })
@@ -94,8 +107,9 @@ export function useDeleteAlertRule() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => observabilityApiCalls.deleteAlertRule(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       void qc.invalidateQueries({ queryKey: queryKeys.alertRules() })
+      void qc.removeQueries({ queryKey: queryKeys.alertRule(id) })
       void qc.invalidateQueries({ queryKey: ['observability', 'alert-history'] })
     },
   })

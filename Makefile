@@ -1,26 +1,46 @@
-.PHONY: dev dev-up dev-down dev-status dev-logs build test test-cover test-integration lint migrate-up migrate-down migrate-status web-dev web-build web-test all clean db-shell
+.PHONY: dev dev-up dev-down dev-status dev-logs build test test-cover test-integration test-golden-path lint migrate-up migrate-down migrate-status web-dev web-build web-test all clean db-shell
 
 DB_URL := postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable
+DOCKER_COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo ""; fi)
+
+ifeq ($(OS),Windows_NT)
+GO_BIN_DIR := $(USERPROFILE)/go/bin
+MIGRATE_FALLBACK := $(GO_BIN_DIR)/migrate.exe
+MIGRATE := $(if $(wildcard $(MIGRATE_FALLBACK)),$(MIGRATE_FALLBACK),migrate.exe)
+MIGRATE_CHECK := where migrate
+NULL_DEVICE := NUL
+else
+GO_BIN_DIR := $(HOME)/go/bin
+MIGRATE_FALLBACK := $(GO_BIN_DIR)/migrate
+MIGRATE := $(shell command -v migrate 2>/dev/null || echo $(MIGRATE_FALLBACK))
+MIGRATE_CHECK := command -v migrate
+NULL_DEVICE := /dev/null
+endif
 
 # ─── 개발 환경 ───
 dev-up:
-	docker compose -f docker-compose.dev.yaml up -d
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml up -d
 	@echo "Waiting for services..."
 	@sleep 3
-	@docker compose -f docker-compose.dev.yaml ps
+	@$(DOCKER_COMPOSE) -f docker-compose.dev.yaml ps
 
 dev-down:
-	docker compose -f docker-compose.dev.yaml down
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml down
 
 dev-clean:
-	docker compose -f docker-compose.dev.yaml down -v
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml down -v
 	@echo "Volumes removed"
 
 dev-status:
-	docker compose -f docker-compose.dev.yaml ps
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml ps
 
 dev-logs:
-	docker compose -f docker-compose.dev.yaml logs -f --tail=50
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml logs -f --tail=50
 
 dev: dev-up migrate-up
 	@echo ""
@@ -64,6 +84,13 @@ test:
 test-integration:
 	go test -tags integration ./e2e/ -v -count=1
 
+# F8 Task 6 — Narwhal Golden Path 3종을 실제 로컬 Kind 클러스터 `nullus-platform`
+# 에서 순차 배포 검증. Kind 또는 helm CLI 가 없으면 graceful skip.
+# 실행 전제: `kind create cluster --name nullus-platform --image kindest/node:v1.30.x`
+# 자세한 런북: docs/20_아키텍처/F8_Task6_Kind_Runbook.md
+test-golden-path:
+	go test -tags e2e -run "^TestF8Task6_GoldenPath" -timeout 60m -v ./e2e/...
+
 test-cover:
 	go test ./... -coverprofile=coverage.out -covermode=atomic
 	go tool cover -html=coverage.out -o coverage.html
@@ -74,10 +101,8 @@ lint:
 	golangci-lint run ./...
 
 # ─── DB ───
-MIGRATE := $(shell which migrate 2>/dev/null || echo $(HOME)/go/bin/migrate)
-
 migrate-up:
-	@which migrate > /dev/null 2>&1 || (echo "Installing golang-migrate..." && go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest)
+	@$(MIGRATE_CHECK) > $(NULL_DEVICE) 2>&1 || (echo "Installing golang-migrate..." && go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest)
 	$(MIGRATE) -path db/migrations -database "$(DB_URL)" up
 
 migrate-down:
@@ -87,7 +112,8 @@ migrate-status:
 	$(MIGRATE) -path db/migrations -database "$(DB_URL)" version
 
 db-shell:
-	docker compose -f docker-compose.dev.yaml exec postgres psql -U nullus -d nullus
+	@test -n "$(DOCKER_COMPOSE)" || (echo "Docker Compose not found. Install docker compose plugin or docker-compose."; exit 1)
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yaml exec postgres psql -U nullus -d nullus
 
 # ─── 프론트엔드 ───
 web-dev:

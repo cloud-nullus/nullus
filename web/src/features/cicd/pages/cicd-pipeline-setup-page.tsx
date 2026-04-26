@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
@@ -11,6 +12,7 @@ import { useClusters } from '../../admin/api/admin-api'
 import type { CicdTemplate } from '../api/cicd-api'
 import type { AppType } from '../../../types'
 import { cn } from '../../../lib/utils'
+import { resolveLocale } from '../../../lib/locale'
 
 type SetupTab = 'cluster' | 'build' | 'deploy' | 'yaml'
 type DeployMode = 'template' | 'custom'
@@ -196,6 +198,21 @@ const DEPLOY_YAML_PRESETS: DeployYamlPreset[] = [
   },
 ]
 
+const DEPLOY_PRESET_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
+  'k8s-deployment': {
+    ko: 'Deployment + Service 기본 매니페스트',
+    en: 'Default Deployment + Service manifest',
+  },
+  'k8s-cronjob': {
+    ko: '배치/스케줄 작업용 CronJob 매니페스트',
+    en: 'CronJob manifest for batch/scheduled tasks',
+  },
+  kustomize: {
+    ko: 'Kustomization 기반 배포 구성',
+    en: 'Kustomization-based deployment config',
+  },
+}
+
 const appTypeOptionClassName =
   'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
 
@@ -237,6 +254,8 @@ const getPipelineYaml = (input: {
 }
 
 export function CicdPipelineSetupPage() {
+  const { t, i18n } = useTranslation()
+  const isKorean = resolveLocale(i18n.resolvedLanguage || i18n.language) === 'ko-KR'
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const selectedTemplateId = searchParams.get('template')
@@ -247,8 +266,23 @@ export function CicdPipelineSetupPage() {
 
   const { data: clustersData } = useClusters()
   const clusterList = clustersData?.items ?? []
-  const clusterOptions = clusterList.length > 0
-    ? clusterList.map((cluster) => ({ id: cluster.id, name: cluster.name }))
+  const getNormalizedClusterTypes = (cluster: { type?: string; types?: string[] }) => {
+    const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
+      ? cluster.types
+      : (cluster.type ? [cluster.type] : [])
+
+    return rawTypes
+      .flatMap((type) => type.split(','))
+      .map((type) => type.trim().toLowerCase())
+      .filter((type) => type.length > 0)
+  }
+
+  const targetClusters = clusterList.filter((cluster) => getNormalizedClusterTypes(cluster).includes('target'))
+
+  const clusterOptions = targetClusters.length > 0
+    ? [...targetClusters]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((cluster) => ({ id: cluster.id, name: cluster.name }))
     : [
       { id: 'c1', name: 'prod-k8s' },
       { id: 'c2', name: 'dev-k8s' },
@@ -266,6 +300,13 @@ export function CicdPipelineSetupPage() {
   const [formError, setFormError] = useState<string | null>(null)
 
   const selectedAppType = template?.appType ?? 'web-backend'
+
+  useEffect(() => {
+    if (clusterOptions.some((cluster) => cluster.id === clusterId)) {
+      return
+    }
+    setClusterId(clusterOptions[0]?.id ?? '')
+  }, [clusterId, clusterOptions])
 
   const selectedDockerfile = DOCKERFILE_PRESETS.find((preset) => preset.id === dockerfileId) ?? DOCKERFILE_PRESETS[0]
   const selectedDeployYaml = DEPLOY_YAML_PRESETS.find((preset) => preset.id === deployYamlId) ?? DEPLOY_YAML_PRESETS[0]
@@ -286,11 +327,11 @@ export function CicdPipelineSetupPage() {
 
   const handleCreatePipeline = () => {
     if (!pipelineName.trim()) {
-      setFormError('Pipeline name is required.')
+      setFormError(t('cicdPipelineSetupPage.errors.pipelineNameRequired', 'Pipeline name is required.'))
       return
     }
     if (!clusterId) {
-      setFormError('Cluster selection is required.')
+      setFormError(t('cicdPipelineSetupPage.errors.clusterRequired', 'Cluster selection is required.'))
       return
     }
 
@@ -314,9 +355,9 @@ export function CicdPipelineSetupPage() {
     <div>
       <Breadcrumb
         items={[
-          { label: 'CI/CD List', path: '/cicd/list' },
-          { label: 'CI/CD Template', path: '/cicd/templates' },
-          { label: 'Pipeline Setup' },
+          { label: t('cicdPipelineSetupPage.breadcrumb.list', 'CI/CD List'), path: '/cicd/list' },
+          { label: t('cicdPipelineSetupPage.breadcrumb.template', 'CI/CD Template'), path: '/cicd/templates' },
+          { label: t('cicdPipelineSetupPage.breadcrumb.current', 'Pipeline Setup') },
         ]}
       />
 
@@ -327,17 +368,17 @@ export function CicdPipelineSetupPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              CI/CD Pipeline Setup
+              {t('cicdPipelineSetupPage.title', 'CI/CD Pipeline Setup')}
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              CI/CD Pipeline을 구성해보세요. 각 단계별 설정을 완료한 후, 'Create Pipeline' 버튼을 눌러 파이프라인을 생성할 수 있습니다.
+              {t('cicdPipelineSetupPage.description', "Configure your CI/CD pipeline and create it after completing each step.")}
             </p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="md" type="button" onClick={() => navigate('/cicd/templates')}>
             <GitBranch size={14} />
-            Change Template
+            {t('cicdPipelineSetupPage.actions.changeTemplate', 'Change Template')}
           </Button>
           <Button
             variant="primary"
@@ -347,20 +388,20 @@ export function CicdPipelineSetupPage() {
             loading={createPipeline.isPending}
           >
             <Rocket size={14} />
-            Create Pipeline
+            {t('cicdPipelineSetupPage.actions.createPipeline', 'Create Pipeline')}
           </Button>
         </div>
       </div>
 
       <div className="mb-5 grid grid-cols-2 gap-4">
         <Input
-          label="Pipeline Name"
-          placeholder="예: web-frontend-prod"
+          label={t('cicdPipelineSetupPage.form.pipelineName', 'Pipeline Name')}
+          placeholder={t('cicdPipelineSetupPage.form.pipelineNamePlaceholder', 'e.g. web-frontend-prod')}
           value={pipelineName}
           onChange={(event) => setPipelineName(event.target.value)}
         />
         <NativeSelect
-            label="Selected Template"
+            label={t('cicdPipelineSetupPage.form.selectedTemplate', 'Selected Template')}
             value={template?.id ?? ''}
             onChange={(event) => {
               const nextTemplate = templates.find((item) => item.id === event.target.value)
@@ -408,7 +449,7 @@ export function CicdPipelineSetupPage() {
             {activeTab === 'cluster' && (
               <div className="max-w-[420px]">
                 <NativeSelect
-                    label="Deploy Cluster"
+                    label={t('cicdPipelineSetupPage.form.deployCluster', 'Deploy Cluster')}
                     value={clusterId}
                     onChange={(event) => setClusterId(event.target.value)}
                     className={appTypeOptionClassName}
@@ -426,7 +467,7 @@ export function CicdPipelineSetupPage() {
               <div className="flex flex-col gap-4">
                 <div>
                   <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-                    Build 단계에서 사용할 Dockerfile을 선택합니다.
+                    {t('cicdPipelineSetupPage.build.description', 'Select the Dockerfile to use in the build stage.')}
                   </p>
                   <div className="grid grid-cols-3 gap-2.5">
                     {DOCKERFILE_PRESETS.map((preset) => {
@@ -470,7 +511,7 @@ export function CicdPipelineSetupPage() {
                     )}
                     onClick={() => setDeployMode('template')}
                   >
-                    Select Template YAML
+                    {t('cicdPipelineSetupPage.deploy.selectTemplateYaml', 'Select Template YAML')}
                   </button>
                   <button
                     type="button"
@@ -482,7 +523,7 @@ export function CicdPipelineSetupPage() {
                     )}
                     onClick={() => setDeployMode('custom')}
                   >
-                    Write Custom YAML
+                    {t('cicdPipelineSetupPage.deploy.writeCustomYaml', 'Write Custom YAML')}
                   </button>
                 </div>
 
@@ -506,7 +547,11 @@ export function CicdPipelineSetupPage() {
                             <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
                               {preset.label}
                             </div>
-                            <div className="mt-1 text-xs text-[var(--color-text-secondary)]">{preset.description}</div>
+                            <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                              {(DEPLOY_PRESET_DESCRIPTION_I18N[preset.id] && isKorean)
+                                ? DEPLOY_PRESET_DESCRIPTION_I18N[preset.id].ko
+                                : (DEPLOY_PRESET_DESCRIPTION_I18N[preset.id]?.en ?? preset.description)}
+                            </div>
                           </button>
                         )
                       })}
@@ -522,7 +567,7 @@ export function CicdPipelineSetupPage() {
             {activeTab === 'yaml' && (
               <div>
                 <p className="mb-3 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-                  현재 선택한 구성값을 바탕으로 생성된 파이프라인 YAML 미리보기입니다.
+                  {t('cicdPipelineSetupPage.yamlPreview.description', 'Preview of the pipeline YAML generated from your current selections.')}
                 </p>
                 <YamlEditor value={generatedPipelineYaml} readOnly height="360px" />
               </div>
@@ -534,16 +579,18 @@ export function CicdPipelineSetupPage() {
 
         <div className="sticky top-6 w-[270px] shrink-0 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
           <h3 className="mb-3 mt-0 text-[13px] font-bold uppercase tracking-[0.06em] text-[var(--color-text-primary)]">
-            Setup Summary
+            {t('cicdPipelineSetupPage.summary.title', 'Setup Summary')}
           </h3>
           {[
-            ['Template', template?.name ?? '—'],
-            ['Pipeline', pipelineName || '—'],
-            ['App Type', selectedAppType],
-            ['Cluster', selectedClusterName],
-            ['Dockerfile', selectedDockerfile.path],
-            ['Deploy Mode', deployMode === 'template' ? 'Template YAML' : 'Custom YAML'],
-            ['Deploy YAML', deployMode === 'template' ? selectedDeployYaml.label : 'custom.yaml'],
+            [t('cicdPipelineSetupPage.summary.template', 'Template'), template?.name ?? '—'],
+            [t('cicdPipelineSetupPage.summary.pipeline', 'Pipeline'), pipelineName || '—'],
+            [t('cicdPipelineSetupPage.summary.appType', 'App Type'), selectedAppType],
+            [t('cicdPipelineSetupPage.summary.cluster', 'Cluster'), selectedClusterName],
+            [t('cicdPipelineSetupPage.summary.dockerfile', 'Dockerfile'), selectedDockerfile.path],
+            [t('cicdPipelineSetupPage.summary.deployMode', 'Deploy Mode'), deployMode === 'template'
+              ? t('cicdPipelineSetupPage.summary.templateYaml', 'Template YAML')
+              : t('cicdPipelineSetupPage.summary.customYaml', 'Custom YAML')],
+            [t('cicdPipelineSetupPage.summary.deployYaml', 'Deploy YAML'), deployMode === 'template' ? selectedDeployYaml.label : 'custom.yaml'],
           ].map(([label, value]) => (
             <div key={label} className="flex items-baseline justify-between gap-2 border-b border-[rgba(255,255,255,0.04)] py-1.5">
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>

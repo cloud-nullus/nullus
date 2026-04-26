@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Check, Plus, Wrench } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
@@ -157,31 +158,6 @@ const TOOL_CATEGORIES: ToolCategory[] = [
   },
 ]
 
-const MOCK_STACKS: StackWithTools[] = [
-  {
-    id: 'production-stack',
-    name: 'production-stack',
-    templateId: 'gitlab-all-in-one',
-    templateName: 'GitLab All-in-One',
-    clusterId: 'c1',
-    clusterName: 'prod-k8s',
-    status: 'success',
-    createdAt: '2026-01-10T00:00:00Z',
-    updatedAt: '2026-03-03T14:28:00Z',
-    tools: [
-      { category: 'package_registry', tool: 'gitlab', version: 'latest' },
-      { category: 'source_repository', tool: 'gitlab', version: 'latest' },
-      { category: 'container_registry', tool: 'harbor', version: 'latest' },
-      { category: 'storage_backend', tool: 'minio', version: 'latest' },
-      { category: 'ci_platform', tool: 'gitlab-ci', version: 'latest' },
-      { category: 'cd_tool', tool: 'argocd', version: 'latest' },
-      { category: 'metrics_collection', tool: 'prometheus', version: 'latest' },
-      { category: 'visualization', tool: 'grafana', version: 'latest' },
-      { category: 'trace_layer', tool: 'tempo', version: 'latest' },
-      { category: 'log_search', tool: 'opensearch', version: 'latest' },
-    ],
-  },
-]
 
 const STEP_TABS = [
   { id: 0, label: '1. Category Selection' },
@@ -205,12 +181,14 @@ function ToolSelector({
   options,
   value,
   installedToolNames,
+  installedLabel,
   onChange,
 }: {
   label: string
   options: ToolOption[]
   value: { tool: string; version: string }
   installedToolNames: Set<string>
+  installedLabel: string
   onChange: (v: { tool: string; version: string }) => void
 }) {
   return (
@@ -256,7 +234,7 @@ function ToolSelector({
                 </div>
                 {installed && (
                   <span className="shrink-0 rounded bg-[rgba(148,163,184,0.2)] px-2 py-0.5 text-[11px] font-semibold text-[#cbd5e1]">
-                    installed
+                    {installedLabel}
                   </span>
                 )}
               </div>
@@ -269,6 +247,7 @@ function ToolSelector({
 }
 
 export function StackAddToolsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { id: stackId = '' } = useParams()
   const [step, setStep] = useState(0)
@@ -280,7 +259,7 @@ export function StackAddToolsPage() {
 
   const stack = useMemo(() => {
     const apiStack = (stackListData?.items as StackWithTools[] | undefined)?.find((item) => item.id === stackId)
-    return apiStack ?? MOCK_STACKS.find((item) => item.id === stackId) ?? null
+    return apiStack ?? null
   }, [stackListData?.items, stackId])
 
   const installedTools = (stack?.tools ?? []) as InstalledTool[]
@@ -304,7 +283,7 @@ export function StackAddToolsPage() {
   }, [installedToolsByCategory])
 
   const reviewItems = useMemo(() => {
-    const items: Array<{ category: string; categoryLabel: string; slotLabel: string; tool: string; version: string }> = []
+    const items: Array<{ category: string; categoryLabel: string; slotLabel: string; tool: string; toolLabel: string; version: string }> = []
     TOOL_CATEGORIES.forEach((category) => {
       if (!selectedCategories.includes(category.id)) return
       category.slots.forEach((slot) => {
@@ -314,15 +293,16 @@ export function StackAddToolsPage() {
         if (installedForSlot.has(selected.tool)) return
         items.push({
           category: slot.id,
-          categoryLabel: category.label,
-          slotLabel: slot.label,
+          categoryLabel: t(`stackAddTools.categories.${category.id}.label`, category.label),
+          slotLabel: t(`stackAddTools.slots.${slot.id}.label`, slot.label),
           tool: selected.tool,
+          toolLabel: t(`stackAddTools.tools.${selected.tool}.label`, selected.tool),
           version: selected.version,
         })
       })
     })
     return items
-  }, [installedToolsByCategory, selectedCategories, selectedTools])
+  }, [installedToolsByCategory, selectedCategories, selectedTools, t])
 
   const initializeSelections = (category: ToolCategory) => {
     setSelectedTools((prev) => {
@@ -350,7 +330,7 @@ export function StackAddToolsPage() {
 
   const handleAddTools = async () => {
     if (!stackId || reviewItems.length === 0) {
-      toast.error('추가할 도구를 선택해 주세요.')
+      toast.error(t('stackAddTools.toast.selectTools', 'Please select tools to add.'))
       return
     }
 
@@ -363,19 +343,19 @@ export function StackAddToolsPage() {
           version: item.version,
         })),
       })
-      toast.success('도구 추가 배포를 시작했습니다.')
+      toast.success(t('stackAddTools.toast.deployStarted', 'Tool addition deployment has started.'))
       navigate('/stack/list')
     } catch {
-      toast.error('도구 추가에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+      toast.error(t('stackAddTools.toast.deployFailed', 'Failed to add tools. Please try again later.'))
     }
   }
 
   return (
     <div>
       <Breadcrumb items={[
-        { label: 'Stack List', path: '/stack/list' },
+        { label: t('stackAddTools.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
         { label: stack?.name ?? 'Stack', path: '/stack/list' },
-        { label: 'Add Tools' },
+        { label: t('stackAddTools.breadcrumb.current', 'Add Tools') },
       ]} />
 
       <div className="mb-6 flex items-start justify-between">
@@ -384,14 +364,14 @@ export function StackAddToolsPage() {
             <Wrench size={18} />
           </div>
           <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">Add Tools</h1>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('stackAddTools.title', 'Add Tools')}</h1>
             <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              기존 스택에 필요한 도구를 안전하게 추가합니다.
+              {t('stackAddTools.description', 'Safely add required tools to an existing stack.')}
             </p>
           </div>
         </div>
         <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
-          Back to List
+          {t('stackAddTools.actions.backToList', 'Back to List')}
         </Button>
       </div>
 
@@ -410,25 +390,25 @@ export function StackAddToolsPage() {
                   : 'font-normal text-[var(--color-text-secondary)]'
               )}
             >
-              {tab.label}
+              {t(`stackAddTools.steps.${tab.id}`, tab.label)}
             </button>
           )
         })}
       </div>
 
       <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
-        {isLoading && <div className="text-sm text-[var(--color-text-secondary)]">스택 정보를 불러오는 중...</div>}
+        {isLoading && <div className="text-sm text-[var(--color-text-secondary)]">{t('stackAddTools.loading', 'Loading stack information...')}</div>}
 
         {!isLoading && !stack && (
           <div className="rounded-lg border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.08)] p-4 text-sm text-[#fca5a5]">
-            대상 스택을 찾을 수 없습니다.
+            {t('stackAddTools.notFound', 'Target stack not found.')}
           </div>
         )}
 
         {!isLoading && stack && step === 0 && (
           <div>
             <p className="mb-4 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-              설치 상태를 확인하고, 아직 추가되지 않은 카테고리를 선택하세요.
+              {t('stackAddTools.step0.description', 'Check installed status and select categories that are not added yet.')}
             </p>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
               {TOOL_CATEGORIES.map((category) => {
@@ -449,22 +429,24 @@ export function StackAddToolsPage() {
                   >
                     <div className="flex w-full items-center justify-between gap-3">
                       <span className="text-sm font-semibold text-[var(--color-text-primary)]">
-                        {category.label}
+                        {t(`stackAddTools.categories.${category.id}.label`, category.label)}
                       </span>
                       <span className="flex items-center gap-1.5">
                         {installed && (
                           <span className="inline-flex items-center gap-1 rounded bg-[rgba(34,197,94,0.18)] px-2 py-0.5 text-[11px] font-semibold text-[#86efac]">
-                            <Check size={11} /> Installed
+                            <Check size={11} /> {t('stackAddTools.badge.installed', 'Installed')}
                           </span>
                         )}
                         {!installed && selected && (
                           <span className="inline-flex items-center gap-1 rounded bg-[rgba(99,102,241,0.2)] px-2 py-0.5 text-[11px] font-semibold text-[#a5b4fc]">
-                            <Plus size={11} /> Selected
+                            <Plus size={11} /> {t('stackAddTools.badge.selected', 'Selected')}
                           </span>
                         )}
                       </span>
                     </div>
-                    <span className="text-xs text-[var(--color-text-secondary)]">{category.description}</span>
+                    <span className="text-xs text-[var(--color-text-secondary)]">
+                      {t(`stackAddTools.categories.${category.id}.description`, category.description)}
+                    </span>
                   </button>
                 )
               })}
@@ -476,7 +458,7 @@ export function StackAddToolsPage() {
           <div>
             {selectedCategories.length === 0 ? (
               <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4 text-sm text-[var(--color-text-secondary)]">
-                먼저 Step 1에서 카테고리를 선택해 주세요.
+                {t('stackAddTools.step1.selectCategoryFirst', 'Please select categories first in Step 1.')}
               </div>
             ) : (
               selectedCategories.map((categoryId) => {
@@ -485,13 +467,18 @@ export function StackAddToolsPage() {
                 return (
                   <div key={category.id} className="mb-6 last:mb-0">
                     <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">
-                      {category.label}
+                      {t(`stackAddTools.categories.${category.id}.label`, category.label)}
                     </h3>
                     {category.slots.map((slot) => (
                       <ToolSelector
                         key={slot.id}
-                        label={slot.label}
-                        options={slot.options}
+                        label={t(`stackAddTools.slots.${slot.id}.label`, slot.label)}
+                        installedLabel={t('stackAddTools.badge.installed', 'Installed')}
+                        options={slot.options.map((option) => ({
+                          ...option,
+                          label: t(`stackAddTools.tools.${option.id}.label`, option.label),
+                          description: t(`stackAddTools.tools.${option.id}.description`, option.description),
+                        }))}
                         value={selectedTools[slot.id] ?? { tool: slot.options[0].id, version: 'latest' }}
                         installedToolNames={installedToolsByCategory[slot.id] ?? new Set<string>()}
                         onChange={(value) => {
@@ -508,20 +495,20 @@ export function StackAddToolsPage() {
 
         {!isLoading && stack && step === 2 && (
           <div>
-            <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">Review & Deploy</h3>
+            <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">{t('stackAddTools.step2.title', 'Review & Deploy')}</h3>
             {reviewItems.length === 0 ? (
               <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4 text-sm text-[var(--color-text-secondary)]">
-                추가할 신규 도구가 없습니다. 카테고리/도구 선택을 다시 확인해 주세요.
+                {t('stackAddTools.step2.noItems', 'No new tools to add. Please review your category/tool selection.')}
               </div>
             ) : (
               <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)]">
                 <table className="w-full border-collapse text-sm">
                   <thead className="bg-[rgba(255,255,255,0.03)] text-left text-[11px] uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
                     <tr>
-                      <th className="px-4 py-2.5">Category</th>
-                      <th className="px-4 py-2.5">Slot</th>
-                      <th className="px-4 py-2.5">Tool</th>
-                      <th className="px-4 py-2.5">Version</th>
+                      <th className="px-4 py-2.5">{t('stackAddTools.table.category', 'Category')}</th>
+                      <th className="px-4 py-2.5">{t('stackAddTools.table.slot', 'Slot')}</th>
+                      <th className="px-4 py-2.5">{t('stackAddTools.table.tool', 'Tool')}</th>
+                      <th className="px-4 py-2.5">{t('stackAddTools.table.version', 'Version')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -529,7 +516,7 @@ export function StackAddToolsPage() {
                       <tr key={`${item.category}-${item.tool}`} className="border-t border-[var(--color-border-default)]">
                         <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{item.categoryLabel}</td>
                         <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{item.slotLabel}</td>
-                        <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{item.tool}</td>
+                        <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{item.toolLabel}</td>
                         <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{item.version}</td>
                       </tr>
                     ))}
@@ -549,7 +536,7 @@ export function StackAddToolsPage() {
           onClick={() => setStep((prev) => Math.max(0, prev - 1))}
           disabled={step === 0}
         >
-          Previous
+          {t('stackAddTools.actions.previous', 'Previous')}
         </Button>
         {step < 2 ? (
           <Button
@@ -559,7 +546,7 @@ export function StackAddToolsPage() {
             onClick={() => setStep((prev) => Math.min(2, prev + 1))}
             disabled={(step === 0 && selectedCategories.length === 0) || (step === 1 && selectedCategories.length === 0)}
           >
-            Next
+            {t('stackAddTools.actions.next', 'Next')}
           </Button>
         ) : (
           <Button
@@ -570,7 +557,7 @@ export function StackAddToolsPage() {
             disabled={reviewItems.length === 0}
             onClick={handleAddTools}
           >
-            Confirm & Deploy
+            {t('stackAddTools.actions.confirmDeploy', 'Confirm & Deploy')}
           </Button>
         )}
       </div>

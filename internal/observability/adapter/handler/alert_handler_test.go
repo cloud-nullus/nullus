@@ -109,8 +109,12 @@ func newAlertEcho(t *testing.T, ruleRepo *mockAlertRuleRepository) *echo.Echo {
 
 	e := echo.New()
 	createAlertRuleUC := usecase.NewCreateAlertRule(ruleRepo)
+	getAlertRuleUC := usecase.NewGetAlertRule(ruleRepo)
+	listAlertRulesUC := usecase.NewListAlertRules(ruleRepo)
+	updateAlertRuleUC := usecase.NewUpdateAlertRule(ruleRepo)
+	deleteAlertRuleUC := usecase.NewDeleteAlertRule(ruleRepo)
 	listAlertsUC := usecase.NewListAlerts(&mockAlertRepository{})
-	h := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, ruleRepo)
+	h := obshandler.NewAlertHandler(createAlertRuleUC, getAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
 
 	v1 := e.Group("/api/v1")
 	observability := v1.Group("/observability")
@@ -119,18 +123,51 @@ func newAlertEcho(t *testing.T, ruleRepo *mockAlertRuleRepository) *echo.Echo {
 	return e
 }
 
-func TestAlertHandler_UpdateRule_Success(t *testing.T) {
+func TestAlertHandler_GetRule_Success(t *testing.T) {
 	repo := newMockAlertRuleRepository(&domain.AlertRule{
-		ID:        "alr-1",
-		Name:      "cpu",
-		Condition: "cpu_usage",
-		Threshold: 90,
-		Channel:   domain.AlertChannelSlack,
-		Enabled:   true,
+		ID:                "alr-1",
+		Name:              "cpu",
+		MetricName:        "cpu_usage",
+		Condition:         "cpu_usage >= critical_threshold",
+		WarningThreshold:  70,
+		CriticalThreshold: 90,
+		Threshold:         90,
+		Channel:           domain.AlertChannelSlack,
+		Enabled:           true,
 	})
 	e := newAlertEcho(t, repo)
 
-	body := `{"name":"cpu-updated","threshold":85,"enabled":false}`
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/observability/alert-rules/alr-1", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, 1, repo.getByIDCalls)
+
+	var resp domain.AlertRule
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "alr-1", resp.ID)
+	assert.Equal(t, "cpu", resp.Name)
+	assert.Equal(t, "cpu_usage", resp.MetricName)
+	assert.Equal(t, 70.0, resp.WarningThreshold)
+	assert.Equal(t, 90.0, resp.CriticalThreshold)
+}
+
+func TestAlertHandler_UpdateRule_Success(t *testing.T) {
+	repo := newMockAlertRuleRepository(&domain.AlertRule{
+		ID:                "alr-1",
+		Name:              "cpu",
+		MetricName:        "cpu_usage",
+		WarningThreshold:  75,
+		CriticalThreshold: 90,
+		Threshold:         90,
+		Channel:           domain.AlertChannelSlack,
+		Enabled:           true,
+	})
+	e := newAlertEcho(t, repo)
+
+	body := `{"name":"cpu-updated","warning_threshold":80,"critical_threshold":85,"enabled":false}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/observability/alert-rules/alr-1", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -140,6 +177,8 @@ func TestAlertHandler_UpdateRule_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, 1, repo.updateCalls)
 	assert.Equal(t, "cpu-updated", repo.rules["alr-1"].Name)
+	assert.Equal(t, 80.0, repo.rules["alr-1"].WarningThreshold)
+	assert.Equal(t, 85.0, repo.rules["alr-1"].CriticalThreshold)
 	assert.Equal(t, 85.0, repo.rules["alr-1"].Threshold)
 	assert.False(t, repo.rules["alr-1"].Enabled)
 }
@@ -164,7 +203,7 @@ func TestAlertHandler_UpdateRule_NotFound(t *testing.T) {
 }
 
 func TestAlertHandler_DeleteRule_Success(t *testing.T) {
-	repo := newMockAlertRuleRepository(&domain.AlertRule{ID: "alr-1", Name: "cpu", Condition: "cpu", Channel: domain.AlertChannelSlack, Enabled: true})
+	repo := newMockAlertRuleRepository(&domain.AlertRule{ID: "alr-1", Name: "cpu", MetricName: "cpu", Channel: domain.AlertChannelSlack, Enabled: true})
 	e := newAlertEcho(t, repo)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/observability/alert-rules/alr-1", nil)
@@ -197,8 +236,8 @@ func TestAlertHandler_DeleteRule_NotFound(t *testing.T) {
 
 func TestAlertHandler_ListRules_Success(t *testing.T) {
 	repo := newMockAlertRuleRepository(
-		&domain.AlertRule{ID: "alr-2", Name: "memory", Condition: "mem", Threshold: 80, Channel: domain.AlertChannelEmail, Enabled: true},
-		&domain.AlertRule{ID: "alr-1", Name: "cpu", Condition: "cpu", Threshold: 90, Channel: domain.AlertChannelSlack, Enabled: true},
+		&domain.AlertRule{ID: "alr-2", Name: "memory", MetricName: "mem", WarningThreshold: 70, CriticalThreshold: 80, Threshold: 80, Channel: domain.AlertChannelEmail, Enabled: true},
+		&domain.AlertRule{ID: "alr-1", Name: "cpu", MetricName: "cpu", WarningThreshold: 80, CriticalThreshold: 90, Threshold: 90, Channel: domain.AlertChannelSlack, Enabled: true},
 	)
 	e := newAlertEcho(t, repo)
 
@@ -225,7 +264,7 @@ func TestAlertHandler_CreateRule_Success(t *testing.T) {
 	repo := newMockAlertRuleRepository()
 	e := newAlertEcho(t, repo)
 
-	body := `{"name":"latency","condition":"latency_p95","threshold":300,"channel":"email","enabled":true}`
+	body := `{"name":"latency","metric_name":"latency_p95","warning_threshold":250,"critical_threshold":300,"channel":"email","enabled":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/observability/alert-rules", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -239,6 +278,8 @@ func TestAlertHandler_CreateRule_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.NotEmpty(t, resp.ID)
 	assert.Equal(t, "latency", resp.Name)
+	assert.Equal(t, 250.0, resp.WarningThreshold)
+	assert.Equal(t, 300.0, resp.CriticalThreshold)
 	assert.Equal(t, domain.AlertChannelEmail, resp.Channel)
 	assert.True(t, resp.Enabled)
 }

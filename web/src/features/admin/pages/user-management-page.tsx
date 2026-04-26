@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Check, Copy, Link2, Mail, Plus, Search, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
+import { GitBranch, Link2, Mail, Pencil, Plus, Search, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useMembers, useInviteMember, useUpdateUserRole, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
+import { useMembers, useInviteMember, useUpdateUserRole, useUpdateMember, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
 import type { MemberRole, MemberStatus, InviteLink } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -14,6 +15,7 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
 type ActiveRoleTab = 'all' | MemberRole
 
@@ -132,6 +134,12 @@ const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> =
   inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]', label: 'Inactive' },
 }
 
+function getMemberStatusLabel(t: (key: string, defaultValue?: string) => string, status: MemberStatus) {
+  if (status === 'active') return t('userManagementPage.status.active', 'Active')
+  if (status === 'pending') return t('userManagementPage.status.pending', 'Pending')
+  return t('userManagementPage.status.inactive', 'Inactive')
+}
+
 const ROLE_BADGE: Record<MemberRole, { className: string }> = {
   admin: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
   devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
@@ -148,11 +156,20 @@ const inviteUserSchema = z.object({
 
 type InviteUserFormData = z.infer<typeof inviteUserSchema>
 
+const editUserSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().min(1, 'Email is required').email('Invalid email format'),
+  role: z.enum(['admin', 'devops', 'developer']),
+})
+
+type EditUserFormData = z.infer<typeof editUserSchema>
+
 const INVITE_USER_DEFAULTS: InviteUserFormData = {
   name: '',
   email: '',
   role: 'developer',
 }
+
 
 const MOCK_INVITES: InviteLink[] = [
   { token: 'inv-1', role: 'devops', expiresAt: '2026-04-01T00:00:00Z', status: 'active' },
@@ -167,12 +184,15 @@ const EXPIRY_OPTIONS = [
 ]
 
 export function UserManagementPage() {
+  const { t, i18n } = useTranslation()
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { data: orgData } = useOrganization()
   const ORG_ID = orgData?.id ?? ''
   const { data: membersData, isLoading } = useMembers(ORG_ID)
   const users = membersData?.items ?? []
   const inviteMember = useInviteMember(ORG_ID)
   const updateUserRole = useUpdateUserRole(ORG_ID)
+  const updateMember = useUpdateMember(ORG_ID)
   const deactivateUser = useDeactivateUser(ORG_ID)
   const createInviteLink = useCreateInviteLink(ORG_ID)
   const { data: inviteLinksData } = useInviteLinks(ORG_ID)
@@ -182,14 +202,14 @@ export function UserManagementPage() {
     ? inviteLinksData!.items
     : MOCK_INVITES
 
-  const [activeMainTab, setActiveMainTab] = useState<'roles' | 'users'>('roles')
+  const [activeMainTab, setActiveMainTab] = useState<'roles' | 'users'>('users')
   const [activeRoleTab, setActiveRoleTab] = useState<ActiveRoleTab>('all')
   const [inviteModal, setInviteModal] = useState(false)
+  const [editUserModal, setEditUserModal] = useState(false)
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const [inviteLinkModal, setInviteLinkModal] = useState(false)
   const [inviteLinkRole, setInviteLinkRole] = useState<MemberRole>('developer')
   const [inviteLinkExpiry, setInviteLinkExpiry] = useState(7)
-  const [generatedLink, setGeneratedLink] = useState<string | null>(null)
-  const [linkCopied, setLinkCopied] = useState(false)
   const [revokeToken, setRevokeToken] = useState<string | null>(null)
   const [menuAccessOverrides, setMenuAccessOverrides] = useState<
     Partial<Record<MemberRole, Record<string, 'View' | 'Edit'>>>
@@ -243,6 +263,16 @@ export function UserManagementPage() {
     defaultValues: INVITE_USER_DEFAULTS,
     mode: 'onChange',
   })
+  const {
+    register: registerEdit,
+    handleSubmit: handleEditSubmit,
+    reset: resetEdit,
+    formState: { errors: editErrors, isValid: isEditValid, isSubmitting: isEditSubmitting },
+  } = useForm<EditUserFormData>({
+    resolver: zodResolver(editUserSchema),
+    defaultValues: { name: '', email: '', role: 'developer' },
+    mode: 'onChange',
+  })
   const [search, setSearch] = useState('')
 
   const watchedEmail = watch('email')
@@ -293,32 +323,63 @@ export function UserManagementPage() {
     })
   }
 
-  const handleGenerateLink = () => {
-    createInviteLink.mutate(
-      { role: inviteLinkRole, expiresInDays: inviteLinkExpiry },
+  const handleOpenEditUser = (memberId: string) => {
+    const user = users.find((item) => item.id === memberId)
+    if (!user) {
+      return
+    }
+    setEditingUserId(memberId)
+    resetEdit({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    })
+    setEditUserModal(true)
+  }
+
+  const handleEditUser = (data: EditUserFormData) => {
+    if (!editingUserId) {
+      return
+    }
+    updateMember.mutate(
       {
-        onSuccess: (data) => {
-          setGeneratedLink(data.url ?? `${window.location.origin}/invite/${data.token}`)
+        memberId: editingUserId,
+        data: {
+          name: data.name,
+          email: data.email,
+          role: data.role,
         },
-        onError: () => {
-          const mockToken = `inv-${Date.now()}`
-          setGeneratedLink(`${window.location.origin}/invite/${mockToken}`)
+      },
+      {
+        onSuccess: () => {
+          setEditUserModal(false)
+          setEditingUserId(null)
+          resetEdit({ name: '', email: '', role: 'developer' })
         },
       }
     )
   }
 
-  const handleCopyLink = async () => {
-    if (!generatedLink) return
-    await navigator.clipboard.writeText(generatedLink)
-    setLinkCopied(true)
-    setTimeout(() => setLinkCopied(false), 2000)
+  const handleGenerateLink = () => {
+    createInviteLink.mutate(
+      { role: inviteLinkRole, expiresInDays: inviteLinkExpiry },
+      {
+        onSuccess: async (data) => {
+          const inviteURL = data.url ?? `${window.location.origin}/invite/${data.token}`
+          await navigator.clipboard.writeText(inviteURL)
+          handleCloseInviteLinkModal()
+        },
+        onError: async () => {
+          const mockToken = `inv-${Date.now()}`
+          await navigator.clipboard.writeText(`${window.location.origin}/invite/${mockToken}`)
+          handleCloseInviteLinkModal()
+        },
+      }
+    )
   }
 
   const handleCloseInviteLinkModal = () => {
     setInviteLinkModal(false)
-    setGeneratedLink(null)
-    setLinkCopied(false)
     setInviteLinkRole('developer')
     setInviteLinkExpiry(7)
   }
@@ -335,17 +396,17 @@ export function UserManagementPage() {
   const columns: ColumnDef<(typeof filteredUsers)[number], unknown>[] = [
     {
       accessorKey: 'name',
-      header: '이름',
+      header: t('userManagementPage.table.name', 'Name'),
       cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
     },
     {
       accessorKey: 'email',
-      header: '이메일',
+      header: t('userManagementPage.table.email', 'Email'),
       cell: ({ row }) => <span className="text-[var(--color-text-secondary)]">{row.original.email}</span>,
     },
     {
       accessorKey: 'role',
-      header: '역할',
+      header: t('userManagementPage.table.role', 'Role'),
       cell: ({ row }) => {
         const selectedRole = roleOverrides[row.original.id] ?? row.original.role
         const role = ROLE_BADGE[selectedRole]
@@ -364,31 +425,37 @@ export function UserManagementPage() {
     },
     {
       accessorKey: 'status',
-      header: '상태',
+      header: t('userManagementPage.table.status', 'Status'),
       cell: ({ row }) => {
         const st = STATUS_BADGE[row.original.status]
         return (
           <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', st.className)}>
-            {st.label}
+            {getMemberStatusLabel(t, row.original.status)}
           </span>
         )
       },
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('userManagementPage.table.actions', 'Actions'),
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="danger" size="sm" type="button" onClick={() => setDeactivateUserId(row.original.id)}>
-          비활성화
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="danger" size="sm" type="button" onClick={() => setDeactivateUserId(row.original.id)}>
+            {t('userManagementPage.actions.deactivate', 'Deactivate')}
+          </Button>
+          <Button variant="outline" size="sm" type="button" onClick={() => handleOpenEditUser(row.original.id)}>
+            <Pencil size={12} />
+            {t('userManagementPage.actions.edit', 'Edit')}
+          </Button>
+        </div>
       ),
     },
   ]
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'User Management' }]} />
+      <Breadcrumb items={[{ label: t('sidebar.userManagement', 'User Management') }]} />
 
       {/* Page header */}
       <div className="mb-6 flex items-center gap-2.5">
@@ -396,15 +463,15 @@ export function UserManagementPage() {
           <Users size={18} />
         </div>
         <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">User Management</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">사용자 목록 및 역할 관리</p>
+          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('sidebar.userManagement', 'User Management')}</h1>
+          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('userManagementPage.description', 'User list and role management')}</p>
         </div>
       </div>
 
       {/* Main tabs */}
       <div className="mb-6 flex items-center justify-between border-b border-[var(--color-border-default)]">
         <div className="flex">
-          {(['roles', 'users'] as const).map((tab) => {
+          {(['users', 'roles'] as const).map((tab) => {
             const active = activeMainTab === tab
             return (
               <button
@@ -447,7 +514,7 @@ export function UserManagementPage() {
                 onClick={() => setInviteLinkModal(true)}
               >
                 <Link2 size={13} />
-                Generate Invite Link
+                {t('userManagementPage.actions.generateInviteLink', 'Generate Invite Link')}
               </Button>
               <Button
                 variant="primary"
@@ -459,7 +526,7 @@ export function UserManagementPage() {
                 }}
               >
                 <Plus size={13} />
-                Invite User
+                {t('userManagementPage.actions.inviteUser', 'Invite User')}
               </Button>
             </div>
           )}
@@ -494,7 +561,7 @@ export function UserManagementPage() {
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
-                    메뉴
+                    {t('userManagementPage.permissions.menu', 'Menu')}
                   </span>
                   {menuCategories.map((cat) => (
                     <div key={cat} className="flex flex-col gap-1">
@@ -533,7 +600,7 @@ export function UserManagementPage() {
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
-                    버튼
+                    {t('userManagementPage.permissions.buttons', 'Buttons')}
                   </span>
                   {perm.buttons.length === 0 ? (
                     <span className="text-[11px] text-[var(--color-text-muted)]">—</span>
@@ -591,7 +658,7 @@ export function UserManagementPage() {
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
               />
               <input
-                placeholder="이름/이메일 검색..."
+                placeholder={t('userManagementPage.searchPlaceholder', 'Search name/email...')}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -601,30 +668,30 @@ export function UserManagementPage() {
 
           {isLoading ? (
             <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">
-              Loading users...
+              {t('userManagementPage.loadingUsers', 'Loading users...')}
             </div>
           ) : (
-            <DataTable columns={columns} data={filteredUsers} getRowKey={(row) => row.id} emptyMessage="사용자가 없습니다." />
+            <DataTable columns={columns} data={filteredUsers} getRowKey={(row) => row.id} emptyMessage={t('userManagementPage.emptyUsers', 'No users found.')} />
           )}
 
           {/* Pending Invites */}
           <div className="mt-6">
-            <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-primary)]">Pending Invites</h3>
+            <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-primary)]">{t('userManagementPage.pendingInvites.title', 'Pending Invites')}</h3>
             <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Role</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Expires At</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Status</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Actions</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.role', 'Role')}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.expiresAt', 'Expires At')}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.status', 'Status')}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.actions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {inviteLinks.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
-                        대기 중인 초대가 없습니다.
+                        {t('userManagementPage.pendingInvites.empty', 'No pending invites.')}
                       </td>
                     </tr>
                   ) : (
@@ -638,13 +705,13 @@ export function UserManagementPage() {
                             </span>
                           </td>
                           <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
-                            {new Date(invite.expiresAt).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            {formatDateTime(invite.expiresAt, locale)}
                           </td>
                           <td className="px-4 py-2.5">
                             {expired ? (
-                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(100,116,139,0.15)] text-[#64748b]">Expired</span>
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(100,116,139,0.15)] text-[#64748b]">{t('userManagementPage.pendingInvites.expired', 'Expired')}</span>
                             ) : (
-                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(34,197,94,0.15)] text-[#22c55e]">Active</span>
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(34,197,94,0.15)] text-[#22c55e]">{t('userManagementPage.pendingInvites.active', 'Active')}</span>
                             )}
                           </td>
                           <td className="px-4 py-2.5">
@@ -656,7 +723,7 @@ export function UserManagementPage() {
                               onClick={() => setRevokeToken(invite.token)}
                             >
                               <Trash2 size={12} />
-                              Revoke
+                              {t('userManagementPage.actions.revoke', 'Revoke')}
                             </Button>
                           </td>
                         </tr>
@@ -678,7 +745,7 @@ export function UserManagementPage() {
           reset(INVITE_USER_DEFAULTS)
           setDebouncedEmail('')
         }}
-        title={existingUser ? 'Add Existing Member' : 'Invite User'}
+        title={existingUser ? t('userManagementPage.modal.addExistingMember', 'Add Existing Member') : t('userManagementPage.modal.inviteUser', 'Invite User')}
         footer={
           <>
             <Button
@@ -689,7 +756,7 @@ export function UserManagementPage() {
                 reset(INVITE_USER_DEFAULTS)
               }}
             >
-              Cancel
+              {t('common.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -699,7 +766,9 @@ export function UserManagementPage() {
               disabled={!isValid || isSubmitting}
               type="button"
             >
-              {existingUser ? <><UserPlus size={13} /> Add Member</> : <><Mail size={13} /> Send Invite</>}
+              {existingUser
+                ? <><UserPlus size={13} /> {t('userManagementPage.actions.addMember', 'Add Member')}</>
+                : <><Mail size={13} /> {t('userManagementPage.actions.sendInvite', 'Send Invite')}</>}
             </Button>
           </>
         }
@@ -707,7 +776,7 @@ export function UserManagementPage() {
         <div className="flex flex-col gap-3.5">
           <div className="relative">
             <Input
-              label="이메일"
+              label={t('userManagementPage.form.email', 'Email')}
               type="email"
               placeholder="user@example.com"
               {...register('email')}
@@ -719,23 +788,23 @@ export function UserManagementPage() {
           {errors.email && <span className="text-xs text-[#ef4444]">{errors.email.message}</span>}
           {existingUser && (
             <div className="rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-[13px] text-[#86efac]">
-              ✓ 기존 사용자: {existingUser.name} ({existingUser.email})
+              ✓ {t('userManagementPage.form.existingUser', 'Existing user')}: {existingUser.name} ({existingUser.email})
             </div>
           )}
           {!existingUser && debouncedEmail.includes('@') && debouncedEmail.length > 3 && !isSearching && (
-            <span className="text-xs text-[var(--color-text-secondary)]">새 사용자로 초대됩니다</span>
+            <span className="text-xs text-[var(--color-text-secondary)]">{t('userManagementPage.form.inviteAsNew', 'Will invite as a new user')}</span>
           )}
           {!existingUser && (
             <>
               <Input
-                label="이름"
+                label={t('userManagementPage.form.name', 'Name')}
                 placeholder="User name"
                 {...register('name')}
               />
               {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
             </>
           )}
-          <NativeSelect label="역할" {...register('role')} className={selectClassName}>
+          <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...register('role')} className={selectClassName}>
               <option value="developer">Developer</option>
               <option value="devops">DevOps</option>
               <option value="admin">Admin</option>
@@ -748,94 +817,120 @@ export function UserManagementPage() {
         open={deactivateUserId !== null}
         onClose={() => setDeactivateUserId(null)}
         onConfirm={handleDeactivate}
-        title="Deactivate User"
-        description="선택한 사용자를 비활성화하면 로그인 및 배포 작업이 제한됩니다. 계속하시겠습니까?"
-        confirmLabel="Deactivate"
+        title={t('userManagementPage.confirm.deactivateTitle', 'Deactivate User')}
+        description={t('userManagementPage.confirm.deactivateDescription', 'Deactivating this user will restrict login and deployment actions. Continue?')}
+        confirmLabel={t('userManagementPage.actions.deactivate', 'Deactivate')}
         loading={deactivateUser.isPending}
       />
 
       <Modal
         open={inviteLinkModal}
         onClose={handleCloseInviteLinkModal}
-        title="Generate Invite Link"
+        title={t('userManagementPage.modal.generateInviteLink', 'Generate Invite Link')}
         footer={
-          generatedLink ? (
+          <>
             <Button variant="outline" size="sm" onClick={handleCloseInviteLinkModal}>
-              Close
+              {t('common.cancel', 'Cancel')}
             </Button>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={handleCloseInviteLinkModal}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                type="button"
-                loading={createInviteLink.isPending}
-                onClick={handleGenerateLink}
-              >
-                <Link2 size={13} />
-                Generate
-              </Button>
-            </>
-          )
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              loading={createInviteLink.isPending}
+              onClick={handleGenerateLink}
+            >
+              <Link2 size={13} />
+              {t('userManagementPage.actions.generate', 'Generate')}
+            </Button>
+          </>
         }
       >
-        {generatedLink ? (
-          <div className="flex flex-col gap-3">
-            <p className="m-0 text-sm text-[var(--color-text-secondary)]">
-              초대 링크가 생성되었습니다. 링크를 복사하여 공유하세요.
-            </p>
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2">
-              <code className="flex-1 truncate text-xs text-[var(--color-text-primary)]">{generatedLink}</code>
-              <Button variant="outline" size="sm" type="button" onClick={handleCopyLink}>
-                {linkCopied ? <><Check size={13} className="text-[#22c55e]" /> Copied!</> : <><Copy size={13} /> Copy Link</>}
-              </Button>
-            </div>
-            {linkCopied && (
-              <span className="text-xs text-[#22c55e]">클립보드에 복사되었습니다</span>
-            )}
+        <div className="flex flex-col gap-3.5">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="invite-link-role" className="text-xs font-medium text-[var(--color-text-secondary)]">{t('userManagementPage.form.role', 'Role')}</label>
+            <select
+              id="invite-link-role"
+              value={inviteLinkRole}
+              onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
+              className={selectClassName}
+            >
+              <option value="developer">Developer</option>
+              <option value="devops">DevOps</option>
+              <option value="admin">Admin</option>
+            </select>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3.5">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="invite-link-role" className="text-xs font-medium text-[var(--color-text-secondary)]">역할</label>
-              <select
-                id="invite-link-role"
-                value={inviteLinkRole}
-                onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
-                className={selectClassName}
-              >
-                <option value="developer">Developer</option>
-                <option value="devops">DevOps</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="invite-link-expiry" className="text-xs font-medium text-[var(--color-text-secondary)]">만료 기간</label>
-              <select
-                id="invite-link-expiry"
-                value={inviteLinkExpiry}
-                onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
-                className={selectClassName}
-              >
-                {EXPIRY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="invite-link-expiry" className="text-xs font-medium text-[var(--color-text-secondary)]">{t('userManagementPage.form.expiryPeriod', 'Expiry Period')}</label>
+            <select
+              id="invite-link-expiry"
+              value={inviteLinkExpiry}
+              onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
+              className={selectClassName}
+            >
+              {EXPIRY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
-        )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={editUserModal}
+        onClose={() => {
+          setEditUserModal(false)
+          setEditingUserId(null)
+          resetEdit({ name: '', email: '', role: 'developer' })
+        }}
+        title={t('userManagementPage.modal.editUser', 'Edit User')}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditUserModal(false)
+                setEditingUserId(null)
+                resetEdit({ name: '', email: '', role: 'developer' })
+              }}
+              type="button"
+            >
+              {t('common.cancel', 'Cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              loading={updateMember.isPending || isEditSubmitting}
+              onClick={handleEditSubmit(handleEditUser)}
+              disabled={!isEditValid || isEditSubmitting}
+            >
+              {t('common.save', 'Save')}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <Input label={t('userManagementPage.form.name', 'Name')} placeholder="User name" {...registerEdit('name')} />
+          {editErrors.name && <span className="text-xs text-[#ef4444]">{editErrors.name.message}</span>}
+          <Input label={t('userManagementPage.form.email', 'Email')} type="email" placeholder="user@example.com" {...registerEdit('email')} />
+          {editErrors.email && <span className="text-xs text-[#ef4444]">{editErrors.email.message}</span>}
+          <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...registerEdit('role')} className={selectClassName}>
+            <option value="developer">Developer</option>
+            <option value="devops">DevOps</option>
+            <option value="admin">Admin</option>
+          </NativeSelect>
+          {editErrors.role && <span className="text-xs text-[#ef4444]">{editErrors.role.message}</span>}
+        </div>
       </Modal>
 
       <ConfirmDialog
         open={revokeToken !== null}
         onClose={() => setRevokeToken(null)}
         onConfirm={handleRevokeInvite}
-        title="Revoke Invite Link"
-        description="이 초대 링크를 취소하면 더 이상 사용할 수 없습니다. 계속하시겠습니까?"
-        confirmLabel="Revoke"
+        title={t('userManagementPage.confirm.revokeTitle', 'Revoke Invite Link')}
+        description={t('userManagementPage.confirm.revokeDescription', 'Revoking this invite link will make it unusable. Continue?')}
+        confirmLabel={t('userManagementPage.actions.revoke', 'Revoke')}
         loading={revokeInviteLink.isPending}
       />
     </div>

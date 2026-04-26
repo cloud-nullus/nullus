@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle, Terminal } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
@@ -9,50 +11,55 @@ import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
+import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-const MOCK_STACKS_FOR_HISTORY = [
-  { id: 'production-stack', name: 'production-stack' },
-]
-
-const MOCK_STACK_HISTORY: StackHistoryEntry[] = [
-  { id: 'h1', stackId: 'production-stack', version: 5, changedBy: 'kim.dev', changedAt: '2026-03-03T14:28:00Z', reason: 'Grafana 버전 업그레이드 (v10.2 → v10.3)', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.3', prometheus: 'v2.49', grafana: 'v10.3' } },
-  { id: 'h2', stackId: 'production-stack', version: 4, changedBy: 'lee.devops', changedAt: '2026-02-20T09:15:00Z', reason: 'ArgoCD 보안 패치 적용', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.3', prometheus: 'v2.49', grafana: 'v10.2' } },
-  { id: 'h3', stackId: 'production-stack', version: 3, changedBy: 'park.dev', changedAt: '2026-02-10T11:00:00Z', reason: 'Prometheus 설정 변경 (retention 30d)', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.2', prometheus: 'v2.49', grafana: 'v10.2' } },
-  { id: 'h4', stackId: 'production-stack', version: 2, changedBy: 'choi.devops', changedAt: '2026-01-25T16:30:00Z', reason: 'GitLab Runner 리소스 증설', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.2', prometheus: 'v2.47', grafana: 'v10.2' } },
-  { id: 'h5', stackId: 'production-stack', version: 1, changedBy: 'admin', changedAt: '2026-01-10T00:00:00Z', reason: '초기 스택 배포', snapshot: { gitlab: 'v16.7', argocd: 'v2.9.2', prometheus: 'v2.47', grafana: 'v10.1' } },
-]
 
 export function StackHistoryPage() {
+   const { t, i18n } = useTranslation()
+   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
    const { data: stacksData } = useStacks()
-   const stacks = stacksData?.items ?? MOCK_STACKS_FOR_HISTORY
-   const [stackId, setStackId] = useState(stacks[0]?.id ?? '')
+   const navigate = useNavigate()
+   const { stackId: routeStackId } = useParams<{ stackId?: string }>()
    const [expandedId, setExpandedId] = useState<string | null>(null)
    const [search, setSearch] = useState('')
+   const [clusterFilter, setClusterFilter] = useState('')
+
+   const stacks = stacksData?.items ?? []
+   const clusterOptions = Array.from(new Set(stacks.map((stack) => stack.clusterName).filter(Boolean))).sort()
+   const visibleStacks = clusterFilter ? stacks.filter((stack) => stack.clusterName === clusterFilter) : stacks
+   const fallbackStackId = visibleStacks[0]?.id ?? ''
+   const stackId = routeStackId ?? fallbackStackId
+   const currentRouteMissingFromOptions = !!routeStackId && !visibleStacks.some((stack) => stack.id === routeStackId)
    const [compareOpen, setCompareOpen] = useState(false)
-   const [versionA, setVersionA] = useState(4)
-   const [versionB, setVersionB] = useState(5)
+   const [versionA, setVersionA] = useState(0)
+   const [versionB, setVersionB] = useState(0)
    const [rollbackEntry, setRollbackEntry] = useState<StackHistoryEntry | null>(null)
    const [preservePVC, setPreservePVC] = useState(true)
    const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
   useEffect(() => {
-    if (stacks.length > 0 && !stackId) {
-      setStackId(stacks[0].id)
+    if (!routeStackId && fallbackStackId) {
+      navigate(`/stack/history/${fallbackStackId}`, { replace: true })
+      return
     }
-  }, [stacks, stackId])
+
+    if (
+      routeStackId &&
+      clusterFilter &&
+      visibleStacks.length > 0 &&
+      !visibleStacks.some((stack) => stack.id === routeStackId)
+    ) {
+      navigate(`/stack/history/${visibleStacks[0].id}`, { replace: true })
+    }
+  }, [clusterFilter, fallbackStackId, routeStackId, visibleStacks, navigate])
+
+  useEffect(() => {
+    setVersionA(0)
+    setVersionB(0)
+  }, [stackId])
 
   const { data: historyData } = useStackHistory(stackId)
-  const allEntries = Array.isArray(historyData) && historyData.length > 0 ? historyData : MOCK_STACK_HISTORY
+  const allEntries = Array.isArray(historyData) ? historyData : []
   const entries = search.trim()
     ? allEntries.filter(
         (e) =>
@@ -63,6 +70,14 @@ export function StackHistoryPage() {
   const rollbackMutation = useRollbackStack()
 
   const versionOptions = entries.map((entry) => entry.version).sort((a, b) => b - a)
+
+  useEffect(() => {
+    if (versionOptions.length >= 2 && versionA === 0 && versionB === 0) {
+      setVersionA(versionOptions[1])
+      setVersionB(versionOptions[0])
+    }
+  }, [versionOptions, versionA, versionB])
+
   const compareEntryA = entries.find((entry) => entry.version === versionA) ?? null
   const compareEntryB = entries.find((entry) => entry.version === versionB) ?? null
 
@@ -106,7 +121,7 @@ export function StackHistoryPage() {
     },
     {
       id: 'stackName',
-      header: '스택 이름',
+      header: t('stackHistoryPage.table.stackName', 'Stack Name'),
       enableSorting: false,
       cell: ({ row }) => {
         const name = stacks.find((s) => s.id === row.original.stackId)?.name ?? row.original.stackId
@@ -114,8 +129,17 @@ export function StackHistoryPage() {
       },
     },
     {
+      id: 'cluster',
+      header: t('stackHistoryPage.table.cluster', 'Cluster'),
+      enableSorting: false,
+      cell: ({ row }) => {
+        const cluster = stacks.find((s) => s.id === row.original.stackId)?.clusterName ?? '-'
+        return <span className="text-[13px] text-[var(--color-text-secondary)]">{cluster}</span>
+      },
+    },
+    {
       accessorKey: 'version',
-      header: '버전',
+      header: t('stackHistoryPage.table.version', 'Version'),
       cell: ({ row }) => {
         const entry = row.original
         const isCurrent = entry.id === entries[0]?.id
@@ -124,7 +148,7 @@ export function StackHistoryPage() {
             v{entry.version}
             {isCurrent && (
               <span className="rounded bg-[rgba(34,197,94,0.15)] px-1.5 py-[1px] font-inherit text-[10px] text-[#22c55e]">
-                CURRENT
+                {t('stackHistoryPage.current', 'CURRENT')}
               </span>
             )}
           </span>
@@ -133,27 +157,39 @@ export function StackHistoryPage() {
     },
     {
       accessorKey: 'changedBy',
-      header: '변경자',
+      header: t('stackHistoryPage.table.changedBy', 'Changed By'),
       cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{row.original.changedBy}</span>,
     },
     {
       accessorKey: 'changedAt',
-      header: '변경 시간',
-      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDate(row.original.changedAt)}</span>,
+      header: t('stackHistoryPage.table.changedAt', 'Changed At'),
+      cell: ({ row }) => <span className="text-[13px] text-[var(--color-text-secondary)]">{formatDateTime(row.original.changedAt, locale)}</span>,
     },
     {
       accessorKey: 'reason',
-      header: '변경 사유',
+      header: t('stackHistoryPage.table.reason', 'Reason'),
     },
       {
         id: 'actions',
-        header: 'Actions',
+        header: t('stackHistoryPage.table.actions', 'Actions'),
         enableSorting: false,
         cell: ({ row }) => {
           const entry = row.original
           const index = entries.findIndex((item) => item.id === entry.id)
           return (
             <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  navigate(`/stack/logs/${entry.stackId}`)
+                }}
+                type="button"
+              >
+                <Terminal size={13} />
+                {t('stackHistoryPage.actions.log', 'Log')}
+              </Button>
               {index !== 0 && (
                 <Button
                 variant="danger"
@@ -165,7 +201,7 @@ export function StackHistoryPage() {
                 type="button"
               >
                 <RotateCcw size={13} />
-                Rollback
+                {t('stackHistoryPage.actions.rollback', 'Rollback')}
               </Button>
             )}
           </div>
@@ -178,7 +214,7 @@ export function StackHistoryPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Stack History' }]} />
+      <Breadcrumb items={[{ label: t('sidebar.stackHistory', 'Stack History') }]} />
 
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between">
@@ -190,17 +226,38 @@ export function StackHistoryPage() {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Stack History
+              {t('stackHistoryPage.title', 'Stack History')}
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              스택 변경 이력 및 버전 관리
+              {t('stackHistoryPage.description', 'Stack change history and version management')}
             </p>
           </div>
         </div>
         <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
           <GitCompare size={15} />
-          Compare Versions
+          {t('stackHistoryPage.actions.compareVersions', 'Compare Versions')}
         </Button>
+      </div>
+
+      <div className="mb-4 max-w-[360px]">
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+          {t('stackHistoryPage.stackSelect', 'Stack')}
+        </label>
+        <NativeSelect
+          value={stackId}
+          onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
+          disabled={!stackId && visibleStacks.length === 0}
+          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+        >
+          {currentRouteMissingFromOptions && routeStackId && (
+            <option value={routeStackId}>{routeStackId}</option>
+          )}
+          {visibleStacks.map((stack) => (
+            <option key={stack.id} value={stack.id}>
+              {stack.name}
+            </option>
+          ))}
+        </NativeSelect>
       </div>
 
       <DataTable
@@ -208,28 +265,40 @@ export function StackHistoryPage() {
         data={entries}
         getRowKey={(row) => row.id}
         toolbar={
-          <div className="relative ml-auto">
-            <Search
-              size={13}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-            />
-            <input
-              placeholder="변경자 / 변경 사유 검색..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-            />
-          </div>
+          <>
+            <NativeSelect
+              value={clusterFilter}
+              onChange={(event) => setClusterFilter(event.target.value)}
+              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+            >
+              <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
+              {clusterOptions.map((clusterName) => (
+                <option key={clusterName} value={clusterName}>{clusterName}</option>
+              ))}
+            </NativeSelect>
+            <div className="relative ml-auto">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+              />
+              <input
+                placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              />
+            </div>
+          </>
         }
       />
 
       {expandedEntry && (
         <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-5 py-4">
           <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            설정 스냅샷 (v{expandedEntry.version})
+            {t('stackHistoryPage.snapshot', 'Configuration Snapshot')} (v{expandedEntry.version})
           </p>
           <div className="flex flex-wrap gap-2.5">
-            {Object.entries(expandedEntry.snapshot).map(([k, v]) => (
+            {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
               <div
                 key={k}
                 className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-2 font-mono text-xs"
@@ -245,13 +314,13 @@ export function StackHistoryPage() {
       <Modal
         open={compareOpen}
         onClose={() => setCompareOpen(false)}
-        title={`Compare Versions (v${versionA} ↔ v${versionB})`}
+        title={`${t('stackHistoryPage.actions.compareVersions', 'Compare Versions')} (v${versionA} ↔ v${versionB})`}
         wide
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-2 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
-              Version A
+              {t('stackHistoryPage.compare.versionA', 'Version A')}
               <NativeSelect
                 value={versionA}
                 onChange={(event) => setVersionA(Number(event.target.value))}
@@ -263,7 +332,7 @@ export function StackHistoryPage() {
               </NativeSelect>
             </label>
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
-              Version B
+              {t('stackHistoryPage.compare.versionB', 'Version B')}
               <NativeSelect
                 value={versionB}
                 onChange={(event) => setVersionB(Number(event.target.value))}
@@ -296,7 +365,7 @@ export function StackHistoryPage() {
            setPreservePVC(true)
            setDeleteConfirmText('')
          }}
-         title={`v${rollbackEntry?.version ?? ''}로 롤백`}
+         title={`${t('stackHistoryPage.actions.rollback', 'Rollback')} v${rollbackEntry?.version ?? ''}`}
          footer={
            <>
              <Button
@@ -309,7 +378,7 @@ export function StackHistoryPage() {
                }}
                disabled={rollbackMutation.isPending}
              >
-               Cancel
+               {t('common.cancel', 'Cancel')}
              </Button>
              <Button
                variant="danger"
@@ -318,7 +387,7 @@ export function StackHistoryPage() {
                disabled={!preservePVC && deleteConfirmText !== 'DELETE' || rollbackMutation.isPending}
                loading={rollbackMutation.isPending}
              >
-               Rollback
+               {t('stackHistoryPage.actions.rollback', 'Rollback')}
              </Button>
            </>
          }
@@ -329,12 +398,12 @@ export function StackHistoryPage() {
                <AlertTriangle size={20} />
              </div>
              <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
-               스택을 v{rollbackEntry?.version ?? ''}으로 롤백합니다. 현재 설정이 변경되며 이 작업은 되돌릴 수 없습니다.
+               {t('stackHistoryPage.rollback.description', 'Rollback this stack to the selected version. Current configuration will change and this action cannot be undone.')}
              </p>
            </div>
 
            <div className="mt-4">
-             <p className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">데이터 보존 옵션</p>
+             <p className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">{t('stackHistoryPage.rollback.dataRetention', 'Data Retention Options')}</p>
              <div className="flex flex-col gap-2">
                <label className="flex items-center gap-2 text-sm cursor-pointer">
                  <input
@@ -347,7 +416,7 @@ export function StackHistoryPage() {
                      setDeleteConfirmText('')
                    }}
                  />
-                 <span>Safe Mode — 데이터 보존</span>
+                 <span>{t('stackHistoryPage.rollback.safeMode', 'Safe Mode — Preserve data')}</span>
                </label>
                <label className="flex items-center gap-2 text-sm cursor-pointer">
                  <input
@@ -357,17 +426,17 @@ export function StackHistoryPage() {
                    checked={!preservePVC}
                    onChange={() => setPreservePVC(false)}
                  />
-                 <span>Clean Mode — 볼륨 삭제</span>
+                 <span>{t('stackHistoryPage.rollback.cleanMode', 'Clean Mode — Delete volumes')}</span>
                </label>
              </div>
              {!preservePVC && (
                <div className="mt-3">
                  <div className="rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-sm text-[#ef4444]">
-                   이 작업은 Persistent Volume을 영구 삭제합니다
+                   {t('stackHistoryPage.rollback.cleanWarning', 'This action permanently deletes Persistent Volumes.')}
                  </div>
                  <input
                    type="text"
-                   placeholder='확인하려면 "DELETE" 입력'
+                   placeholder={t('stackHistoryPage.rollback.confirmDeletePlaceholder', 'Type "DELETE" to confirm')}
                    value={deleteConfirmText}
                    onChange={(e) => setDeleteConfirmText(e.target.value)}
                    className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"

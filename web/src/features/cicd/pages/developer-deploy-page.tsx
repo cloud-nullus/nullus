@@ -1,71 +1,114 @@
-import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Rocket, Plus, Trash2, ChevronRight } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Rocket, Plus, Trash2, ChevronRight, Check, Loader2, Copy, Terminal } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 
-import { useAppTemplates, useDeployApp, useGoldenPathById } from '../api/cicd-api'
-import { useClusters } from '../../admin/api/admin-api'
-import type { AppTemplate, DeployAppRequest } from '../api/cicd-api'
+import { useCicdTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
+import type { AppType } from '../api/cicd-api'
+import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
+import { useStacks } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
-import { useAppToast } from '../../../hooks/use-toast'
+import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-log'
+import { formatTime, resolveLocale } from '../../../lib/locale'
 
-type Step = 1 | 2 | 3 | 4 | 5
+type Step = 1 | 2 | 3 | 4 | 5 | 6
 
-const STEP_LABELS: Record<Step, string> = {
-  1: '앱 이름',
+const STEP_LABEL_DEFAULTS: Record<Step, string> = {
+  1: 'App Name',
   2: 'Git Repository',
-  3: '클러스터 / 네임스페이스',
-  4: '리소스 설정',
-  5: '환경 변수',
+  3: 'Cluster / Namespace',
+  4: 'Resource Configuration',
+  5: 'Environment Variables',
+  6: 'Manifest Review',
 }
 
-/** YAML 값에 안전하지 않은 문자가 포함되면 따옴표로 감싼다 */
-function yamlSafe(value: string): string {
-  if (/[:\n\r#"'\\{}\[\],&*?|><!%@`]/.test(value) || value !== value.trim()) {
-    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
-  }
-  return value
+const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
+
+const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
+  info: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
+  success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
+  error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
 }
 
-function generateYaml(form: Partial<FormState>): string {
-  const name = yamlSafe(form.appName ?? 'my-app')
-  const ns = yamlSafe(form.namespace ?? 'default')
-  const tpl = yamlSafe(form.template ?? 'react-spa')
+function PhaseStep({ label, index, progress, total }: { label: string; index: number; progress: number; total: number }) {
+  const phaseProgress = 100 / total
+  const phaseStart = index * phaseProgress
+  const isDone = progress >= phaseStart + phaseProgress
+  const isActive = progress >= phaseStart && !isDone
+
+  return (
+    <div className="flex flex-1 items-center gap-2">
+      <div
+        className={cn(
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300',
+          isDone
+            ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
+            : isActive
+              ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]'
+              : 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
+        )}
+      >
+        {isDone ? (
+          <Check size={14} />
+        ) : isActive ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <span className="text-xs font-bold">{index + 1}</span>
+        )}
+      </div>
+      <span
+        className={cn(
+          'text-[13px] font-semibold',
+          isDone ? 'text-[#22c55e]' : isActive ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
+        )}
+      >
+        {label}
+      </span>
+      {index < total - 1 && (
+        <div
+          className={cn(
+            'mx-1 h-px flex-1 transition-colors duration-300',
+            isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
+          )}
+        />
+      )}
+    </div>
+  )
+}
+
+function generateYaml(form: Partial<FormState>, appType: string): string {
   const cpu = form.cpuLimit ?? '500m'
   const mem = form.memoryLimit ?? '512Mi'
-  const envLines = (form.envVars ?? [])
-    .filter((e) => e.key)
-    .map((e) => `            - name: ${yamlSafe(e.key)}\n              value: ${yamlSafe(e.value)}`)
-    .join('\n')
-
+  const replicas = form.replicas ?? 2
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${name}
-  namespace: ${ns}
+  name: ${form.appName ?? 'my-app'}
+  namespace: ${form.namespace ?? 'default'}
   labels:
-    app: ${name}
-    template: ${tpl}
+    app: ${form.appName ?? 'my-app'}
+    template: ${appType || 'backend'}
 spec:
-  replicas: 2
+  replicas: ${replicas}
   selector:
     matchLabels:
-      app: ${name}
+      app: ${form.appName ?? 'my-app'}
   template:
     metadata:
       labels:
-        app: ${name}
+        app: ${form.appName ?? 'my-app'}
     spec:
       containers:
-        - name: ${name}
-          image: harbor.nullus.io/${name}:latest
+        - name: ${form.appName ?? 'my-app'}
+          image: harbor.nullus.io/${form.appName ?? 'my-app'}:latest
           ports:
             - containerPort: 8080
           resources:
@@ -75,16 +118,18 @@ spec:
             limits:
               cpu: ${cpu}
               memory: ${mem}
-${envLines ? `          env:\n${envLines}` : ''}
+${(form.envVars ?? []).filter((e) => e.key).length > 0
+  ? `          env:\n${(form.envVars ?? []).filter((e) => e.key).map((e) => `            - name: ${e.key}\n              value: "${e.value}"`).join('\n')}`
+  : ''}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ${name}-svc
-  namespace: ${ns}
+  name: ${form.appName ?? 'my-app'}-svc
+  namespace: ${form.namespace ?? 'default'}
 spec:
   selector:
-    app: ${name}
+    app: ${form.appName ?? 'my-app'}
   ports:
     - port: 80
       targetPort: 8080`
@@ -93,11 +138,13 @@ spec:
 interface EnvVar { key: string; value: string }
 
 interface FormState {
-  template: AppTemplate
   appName: string
   gitUrl: string
+  dockerfilePath: string
+  dockerContext: string
   clusterId: string
   namespace: string
+  replicas: number
   cpuRequest: string
   cpuLimit: string
   memoryRequest: string
@@ -106,11 +153,13 @@ interface FormState {
 }
 
 const deploySchema = z.object({
-  template: z.enum(['react-spa', 'next-app', 'express-api', 'spring-boot', 'python-fastapi', 'go-web-api'] as const),
-  appName: z.string().min(2, '앱 이름은 최소 2자 이상이어야 합니다').max(50, '앱 이름은 50자 이하여야 합니다').regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, '소문자, 숫자, 하이픈만 사용 가능하며 시작/끝은 영숫자여야 합니다'),
-  gitUrl: z.string().min(1, 'Git URL is required').url('Invalid Git URL'),
+  appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
+  gitUrl: z.string().min(1, 'Git URL is required'),
+  dockerfilePath: z.string(),
+  dockerContext: z.string(),
   clusterId: z.string().min(1, 'Cluster is required'),
   namespace: z.string().min(1, 'Namespace is required'),
+  replicas: z.number().min(1).max(10),
   cpuRequest: z.string().min(1, 'CPU request is required'),
   cpuLimit: z.string().min(1, 'CPU limit is required'),
   memoryRequest: z.string().min(1, 'Memory request is required'),
@@ -126,7 +175,7 @@ const deploySchema = z.object({
       envVars.forEach((env, index) => {
         if (env.value.trim() && !env.key.trim()) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: 'Key is required when value exists',
             path: [index, 'key'],
           })
@@ -136,39 +185,62 @@ const deploySchema = z.object({
 })
 
 const DEFAULT_FORM: FormState = {
-  template: 'react-spa',
   appName: '',
   gitUrl: '',
+  dockerfilePath: '',
+  dockerContext: '',
   clusterId: '',
   namespace: 'default',
+  replicas: 2,
   cpuRequest: '100m',
   cpuLimit: '500m',
   memoryRequest: '128Mi',
   memoryLimit: '512Mi',
-  envVars: [],
+  envVars: [{ key: '', value: '' }],
 }
 
 export function DeveloperDeployPage() {
-  const [searchParams] = useSearchParams()
-  const goldenPathId = searchParams.get('goldenPath')
-  
+  const { t, i18n } = useTranslation()
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const [step, setStep] = useState<Step>(1)
-  const [deployed, setDeployed] = useState(false)
-  const { data: appTemplatesRaw } = useAppTemplates()
-  const { data: goldenPath } = useGoldenPathById(goldenPathId ?? '')
-  const appTemplates = (appTemplatesRaw ?? []).map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description ?? t.runtime ?? '',
-    language: t.language ?? t.runtime ?? '',
-    color: '#6366f1',
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const appTypeParam = (searchParams.get('appType') ?? 'backend') as AppType
+  const [deploymentId, setDeploymentId] = useState<string | null>(null)
+  const [customManifest, setCustomManifest] = useState<string | null>(null)
+  const [selectedStackId, setSelectedStackId] = useState('')
+  const [repoName, setRepoName] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [selectedAppType, setSelectedAppType] = useState<AppType>(appTypeParam)
+  const [createNewNamespace, setCreateNewNamespace] = useState(false)
+  const { logs, status, progress, isConnected } = useCicdDeployLog(deploymentId)
+  const terminalRef = useRef<HTMLDivElement>(null)
+  const { data: stacksData } = useStacks()
+  const stacks = (stacksData?.items ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
   }))
   const { data: clustersData } = useClusters()
-  const clusters = (clustersData?.items ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    namespaces: ['default', 'production', 'staging'],
-  }))
+  const { data: templatesData } = useCicdTemplates()
+  const templates = templatesData ?? []
+  const quickStartTemplates = templates.filter((template) =>
+    !!(template.gitRepoUrl?.trim() || template.dockerfilePath?.trim() || template.dockerContext?.trim())
+  )
+  const clusters = (clustersData?.items ?? [])
+    .filter((cluster) => {
+      const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
+        ? cluster.types
+        : (cluster.type ? [cluster.type] : [])
+      const normalizedTypes = rawTypes
+        .flatMap((type) => type.split(','))
+        .map((type) => type.trim().toLowerCase())
+        .filter((type) => type.length > 0)
+      return normalizedTypes.includes('target')
+    })
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+    }))
   const {
     register,
     control,
@@ -188,96 +260,302 @@ export function DeveloperDeployPage() {
     name: 'envVars',
   })
 
+  const pipelineIdParam = searchParams.get('pipelineId') ?? ''
+  const clusterIdParam = searchParams.get('clusterId') ?? ''
+  const namespaceParam = searchParams.get('namespace') ?? ''
+  const appNameParam = searchParams.get('appName') ?? ''
+  const templateIdParam = searchParams.get('template') ?? ''
+
   const form = watch()
+  const { data: namespacesData } = useClusterNamespaces(form.clusterId)
+  const namespaces = useMemo(() => (namespacesData ?? []).map((ns) => ns.name), [namespacesData])
+  const namespaceOptions = useMemo(
+    () => Array.from(new Set(['default', ...namespaces.filter((ns) => ns && ns !== 'default')])),
+    [namespaces]
+  )
+  const selectedStack = stacks.find((s) => s.id === selectedStackId)
+  const stackGitBaseUrl = selectedStack ? `http://${selectedStack.name}.internal/` : ''
+  const gitUrl = selectedStackId ? `${stackGitBaseUrl}${repoName}` : form.gitUrl
 
-  // 클러스터 로드되면 첫 번째 클러스터 자동 선택
+  const firstClusterId = clusters[0]?.id ?? ''
   useEffect(() => {
-    if (clusters.length > 0 && !form.clusterId) {
-      setValue('clusterId', clusters[0].id, { shouldValidate: true })
-      setValue('namespace', clusters[0].namespaces[0], { shouldValidate: true })
+    if (firstClusterId && !form.clusterId) {
+      setValue('clusterId', firstClusterId, { shouldValidate: true })
     }
-  }, [clusters, form.clusterId, setValue])
+  }, [firstClusterId, form.clusterId, setValue])
 
-  const deployMutation = useDeployApp()
-  const toast = useAppToast()
+  useEffect(() => {
+    if (logs.length === 0) return
+    const el = terminalRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [logs])
+
+  useEffect(() => {
+    if (!pipelineIdParam && !clusterIdParam && !namespaceParam && !appNameParam) {
+      return
+    }
+
+    if (clusterIdParam) {
+      setValue('clusterId', clusterIdParam, { shouldValidate: true })
+    }
+    if (namespaceParam) {
+      setValue('namespace', namespaceParam, { shouldValidate: true })
+      setCreateNewNamespace(!namespaceOptions.includes(namespaceParam))
+    }
+    if (appNameParam) {
+      setValue('appName', appNameParam, { shouldValidate: true })
+    }
+  }, [appNameParam, clusterIdParam, namespaceOptions, namespaceParam, pipelineIdParam, setValue])
+
+  useEffect(() => {
+    if (!templateIdParam || templates.length === 0) {
+      return
+    }
+    if (selectedTemplateId === templateIdParam) {
+      return
+    }
+
+    const template = templates.find((item) => item.id === templateIdParam)
+    if (!template) {
+      return
+    }
+
+    const suggestedAppName = template.id.replace(/-v\d+$/, '').replace(/^nullus-/, '')
+    setSelectedTemplateId(template.id)
+    setSelectedAppType(template.appType)
+    setSelectedStackId('')
+    setRepoName('')
+    setValue('appName', suggestedAppName, { shouldValidate: true, shouldDirty: true })
+    setValue('gitUrl', template.gitRepoUrl ?? '', { shouldValidate: true, shouldDirty: true })
+    setValue('dockerfilePath', template.dockerfilePath ?? '', { shouldValidate: true, shouldDirty: true })
+    setValue('dockerContext', template.dockerContext ?? '', { shouldValidate: true, shouldDirty: true })
+    if (template.envVars && Object.keys(template.envVars).length > 0) {
+      const envArray = Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
+      setValue('envVars', [...envArray, { key: '', value: '' }], { shouldValidate: true, shouldDirty: true })
+    }
+    setStep(3)
+  }, [selectedTemplateId, setValue, templateIdParam, templates])
+
+  const firstNamespace = namespaceOptions[0] ?? 'default'
+  useEffect(() => {
+    if (createNewNamespace) {
+      return
+    }
+    if (form.namespace && namespaceOptions.includes(form.namespace)) {
+      return
+    }
+    setValue('namespace', firstNamespace, { shouldValidate: true })
+  }, [createNewNamespace, firstNamespace, form.namespace, namespaceOptions, setValue])
+
+  const createPipelineMutation = useCreatePipeline()
+  const deployPipelineMutation = useDeployPipeline()
 
   const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
     setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
   }
 
-  const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '', namespaces: ['default'] }
+  const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '' }
+  const hasBuildPipeline = form.dockerfilePath.trim() !== ''
+  const phaseLabels = hasBuildPipeline
+    ? [
+        t('developerDeployPage.phases.gitClone', 'Git Clone'),
+        t('developerDeployPage.phases.dockerBuild', 'Docker Build'),
+        t('developerDeployPage.phases.imageLoad', 'Image Load'),
+        t('developerDeployPage.phases.namespace', 'Create Namespace'),
+        t('developerDeployPage.phases.deployment', 'Create Deployment'),
+        t('developerDeployPage.phases.service', 'Create Service'),
+      ]
+    : [
+        t('developerDeployPage.phases.namespace', 'Create Namespace'),
+        t('developerDeployPage.phases.deployment', 'Create Deployment'),
+        t('developerDeployPage.phases.service', 'Create Service'),
+      ]
 
-  const onSubmit = (data: FormState) => {
-    const request: DeployAppRequest = {
-      appName: data.appName,
-      gitUrl: data.gitUrl,
-      clusterId: data.clusterId,
-      namespace: data.namespace,
-      templateId: data.template,
-      replicas: 2,
-      port: 8080,
-      resources: {
-        cpuRequest: data.cpuRequest,
-        cpuLimit: data.cpuLimit,
-        memRequest: data.memoryRequest,
-        memLimit: data.memoryLimit,
-      },
-      envVars: Object.fromEntries(
-        data.envVars.filter((e) => e.key).map((e) => [e.key, e.value])
-      ),
-    }
-    deployMutation.mutate(request, {
-      onSuccess: () => {
-        toast.success(`${data.appName} 배포 요청이 완료되었습니다.`)
-        setDeployed(true)
-      },
-      onError: (err) => {
-        toast.error(err instanceof Error ? err.message : '배포 요청에 실패했습니다. 다시 시도해주세요.')
-      },
-    })
+  const onSubmit = async (data: FormState) => {
+    try {
+      const envVarsMap: Record<string, string> = {}
+      data.envVars.forEach(({ key, value }) => {
+        if (key.trim()) envVarsMap[key.trim()] = value
+      })
+
+      const pipeline = await createPipelineMutation.mutateAsync({
+        name: data.appName,
+        appType: selectedAppType,
+        clusterId: data.clusterId,
+        namespace: data.namespace,
+        templateId: selectedTemplateId || undefined,
+        gitRepoUrl: data.gitUrl,
+        dockerfilePath: data.dockerfilePath,
+        dockerContext: data.dockerContext,
+        envVars: envVarsMap,
+      })
+      const result = await deployPipelineMutation.mutateAsync(pipeline.id)
+      setDeploymentId(result.deploymentId)
+    } catch { /* react-query handles mutation errors */ }
   }
 
   const validateCurrentStep = async () => {
     if (step === 1) return trigger('appName')
-    if (step === 2) return trigger('gitUrl')
+    if (step === 2) {
+      setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
+      return trigger('gitUrl')
+    }
     if (step === 3) return trigger(['clusterId', 'namespace'])
-    if (step === 4) return trigger(['cpuLimit', 'memoryLimit'])
-    return trigger('envVars')
+    if (step === 4) return trigger(['replicas', 'cpuLimit', 'memoryLimit'])
+    if (step === 5) return true
+    return true
   }
 
   const canNext: Record<Step, boolean> = {
     1: form.appName.trim().length >= 2,
-    2: form.gitUrl.trim().length > 0 && !errors.gitUrl,
+    2: gitUrl.trim().length > 0 && !errors.gitUrl,
     3: !!form.clusterId && !!form.namespace,
-    4: !!form.cpuLimit && !!form.memoryLimit,
-    5: !errors.envVars,
+    4: form.replicas >= 1 && !!form.cpuLimit && !!form.memoryLimit,
+    5: true,
+    6: true,
   }
 
-  if (deployed) {
+  if (deploymentId) {
+    const isComplete = status === 'success'
+    const isFailed = status === 'failed'
+    const isDone = isComplete || isFailed
+
+    const parsedResources = logs
+      .map((entry) => entry.message)
+      .filter((line) => !line.startsWith('$') && !line.startsWith('error'))
+      .map((line) => {
+        const match = line.match(/^(\w+)\/(\S+)\s+(\w+)$/)
+        return match ? { kind: match[1], name: match[2], action: match[3] } : null
+      })
+      .filter((r): r is { kind: string; name: string; action: string } => r !== null)
+    const deployedResources = Array.from(
+      parsedResources.reduce((acc, item) => {
+        const key = `${item.kind}/${item.name}`
+        const prev = acc.get(key)
+        if (!prev || (prev.action !== 'created' && item.action === 'created')) {
+          acc.set(key, item)
+        }
+        return acc
+      }, new Map<string, { kind: string; name: string; action: string }>()).values()
+    )
+
     return (
-      <div className="flex h-[360px] flex-col items-center justify-center gap-4">
-        <div
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(34,197,94,0.15)] text-[#22c55e]"
-        >
-          <Rocket size={28} />
+      <div>
+        <Breadcrumb items={[{ label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' }, { label: t('developerDeployPage.deployProgress', 'Deploy Progress') }]} />
+        <div className="mx-auto max-w-3xl py-12">
+          <div className="mb-8 text-center">
+            <h2 className="m-0 text-xl font-bold text-[var(--color-text-primary)]">{form.appName}</h2>
+            <p className="m-0 mt-1 text-sm text-[var(--color-text-secondary)]">{form.namespace} {t('developerDeployPage.namespaceSuffix', 'namespace')}</p>
+          </div>
+
+          <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6">
+            <div className="mb-5 flex items-center gap-2">
+              {phaseLabels.map((phase, idx) => (
+                <PhaseStep key={phase} label={phase} index={idx} progress={progress} total={phaseLabels.length} />
+              ))}
+            </div>
+
+            <div className="mb-1 flex justify-between text-xs">
+              <span className="text-[var(--color-text-secondary)]">{t('developerDeployPage.totalProgress', 'Total Progress')}</span>
+              <span className={cn('font-semibold', isFailed ? 'text-[#ef4444]' : 'text-[var(--color-text-primary)]')}>{progress}%</span>
+            </div>
+            <div className="mb-6 flex gap-px">
+              {PROGRESS_SEGMENTS.map((segment) => (
+                <div
+                  key={segment}
+                  className={cn(
+                    'h-1 flex-1 rounded-full transition-colors duration-300',
+                    segment <= progress
+                      ? status === 'failed' ? 'bg-[#ef4444]' : 'bg-[#6366f1]'
+                      : 'bg-[rgba(255,255,255,0.06)]'
+                  )}
+                />
+              ))}
+            </div>
+
+            <div className="text-center text-xs text-[var(--color-text-secondary)]">
+              {t('developerDeployPage.deploymentId', 'Deployment ID')}: <span className="font-mono text-[var(--color-text-primary)]">{deploymentId}</span>
+            </div>
+          </div>
+
+          <div className="mb-6 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[#0d1117]">
+            <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-4 py-2">
+              <div className="flex gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+                <div className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
+                <div className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+              </div>
+              <Terminal size={12} className="text-[rgba(255,255,255,0.4)]" />
+              <span className="text-[11px] font-medium text-[rgba(255,255,255,0.4)]">
+                {isConnected ? t('developerDeployPage.streaming', 'Streaming...') : t('developerDeployPage.connecting', 'Connecting...')}
+              </span>
+            </div>
+            <div ref={terminalRef} className="max-h-[400px] overflow-y-auto p-4">
+              {logs.length === 0 ? (
+                <span className="font-mono text-xs text-[#484f58]">
+                  {isFailed ? t('developerDeployPage.deployFailedNoLog', 'Deployment failed. Logs are unavailable.') : t('developerDeployPage.waitingLogs', 'Waiting for deployment output...')}
+                </span>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {logs.map((entry) => (
+                    <div key={entry.id} className="flex gap-2 leading-5">
+                      <span className="shrink-0 text-xs text-[#484f58]">
+                        {formatTime(entry.timestamp, locale)}
+                      </span>
+                      <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold uppercase', LOG_LEVEL_STYLE[entry.level])}>
+                        {entry.level}
+                      </span>
+                      <span className="text-xs text-[#c9d1d9]">{entry.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {isComplete && deployedResources.length > 0 && (() => {
+            const nsScoped = deployedResources.filter((r) => r.kind !== 'namespace')
+            const contextFlag = selectedCluster.name ? ` --context ${selectedCluster.name}` : ''
+            const cmd = nsScoped.length > 0
+              ? `kubectl get ${nsScoped.map((r) => `${r.kind.toLowerCase()}/${r.name}`).join(' ')} -n ${form.namespace}${contextFlag}`
+              : null
+            return (
+              <div className="mb-6 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+                <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  {t('developerDeployPage.createdResources', 'Created resources')}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {deployedResources.map((r) => (
+                    <div key={`${r.kind}-${r.name}`} className="flex items-center justify-between rounded-md bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded bg-[rgba(99,102,241,0.15)] px-1.5 py-0.5 text-[11px] font-bold text-[#818cf8]">
+                          {r.kind}
+                        </span>
+                        <span className="font-mono text-[13px] text-[var(--color-text-primary)]">{r.name}</span>
+                      </div>
+                      <span className={cn(
+                        'text-[11px] font-semibold',
+                        r.action === 'created' ? 'text-[#22c55e]' : 'text-[#d29922]'
+                      )}>{r.action}</span>
+                    </div>
+                  ))}
+                </div>
+                {cmd && <CopyableCommand command={cmd} />}
+              </div>
+            )
+          })()}
+
+          {isDone && (
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" size="md" onClick={() => { setDeploymentId(null); reset(DEFAULT_FORM); setStep(1) }}>
+                {t('developerDeployPage.newDeployment', 'New Deployment')}
+              </Button>
+              <Button variant="primary" size="md" onClick={() => navigate('/cicd/list')}>
+                {t('developerDeployPage.viewCicdList', 'View CI/CD List')}
+              </Button>
+            </div>
+          )}
         </div>
-        <h2 className="m-0 text-xl font-extrabold text-[var(--color-text-primary)]">
-          배포 요청 완료!
-        </h2>
-        <p className="m-0 text-sm text-[var(--color-text-secondary)]">
-          {form.appName} 앱이 {form.namespace} 네임스페이스에 배포 요청되었습니다.
-        </p>
-        <Button
-          variant="outline"
-          size="md"
-          onClick={() => {
-            setDeployed(false)
-            reset(DEFAULT_FORM)
-            setStep(1)
-          }}
-        >
-          새 배포
-        </Button>
       </div>
     )
   }
@@ -286,8 +564,8 @@ export function DeveloperDeployPage() {
     <div>
       <Breadcrumb
         items={[
-          { label: 'CI/CD List', path: '/cicd/list' },
-          { label: 'Pipeline Setup & Deploy' },
+          { label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' },
+          { label: t('developerDeployPage.title', 'Pipeline Setup & Deploy') },
         ]}
       />
 
@@ -300,69 +578,58 @@ export function DeveloperDeployPage() {
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            CI/CD Pipeline Setup & Developer Deploy
+            {t('developerDeployPage.title', 'CI/CD Pipeline Setup & Developer Deploy')}
           </h1>
           <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-            파이프라인 템플릿 선택과 개발자 배포를 하나의 화면에서 진행하세요.
+            {t('developerDeployPage.description', 'Proceed with pipeline template selection and developer deployment on a single screen.')}
           </p>
         </div>
       </div>
 
-      {/* Golden Path Info Banner */}
-      {goldenPath && (
-        <div className="mb-6 rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="m-0 text-sm font-semibold text-[#22c55e]">
-                Golden Path 선택됨
-              </p>
-              <p className="m-0 mt-1 text-[13px] text-[var(--color-text-primary)]">
-                <strong>{goldenPath.name}</strong> - {goldenPath.description}
-              </p>
-              <p className="m-0 mt-2 text-xs text-[var(--color-text-secondary)]">
-                설치 시간: {goldenPath.estimated_install_time}분 | 최소 리소스: {goldenPath.min_resources}
-              </p>
-            </div>
+      {quickStartTemplates.length > 0 && (
+        <div className="mb-6 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+          <p className="mb-2 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+            {t('developerDeployPage.quickStart.title', 'Quick Start — Select a Template')}
+          </p>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {quickStartTemplates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => {
+                  const suggestedAppName = template.id.replace(/-v\d+$/, '').replace(/^nullus-/, '')
+                  setSelectedTemplateId(template.id)
+                  setSelectedAppType(template.appType)
+                  setSelectedStackId('')
+                  setRepoName('')
+                  setValue('appName', suggestedAppName, { shouldValidate: true, shouldDirty: true })
+                  setValue('gitUrl', template.gitRepoUrl ?? '', { shouldValidate: true, shouldDirty: true })
+                  setValue('dockerfilePath', template.dockerfilePath ?? '', { shouldValidate: true, shouldDirty: true })
+                  setValue('dockerContext', template.dockerContext ?? '', { shouldValidate: true, shouldDirty: true })
+                  if (template.envVars && Object.keys(template.envVars).length > 0) {
+                    const envArray = Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
+                    setValue('envVars', [...envArray, { key: '', value: '' }], { shouldValidate: true, shouldDirty: true })
+                  }
+                  setStep(3)
+                }}
+                className={cn(
+                  'rounded-lg border bg-[rgba(255,255,255,0.03)] px-4 py-3 text-left transition-colors hover:border-[#6366f1] hover:bg-[rgba(99,102,241,0.05)]',
+                  selectedTemplateId === template.id
+                    ? 'border-[#6366f1] bg-[rgba(99,102,241,0.08)]'
+                    : 'border-[var(--color-border-default)]'
+                )}
+              >
+                <span className="block text-sm font-medium text-[var(--color-text-primary)]">{template.name}</span>
+                <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">{template.description}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Template selection */}
-      <div className="mb-7">
-        <p className="mb-3 mt-0 text-[13px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-          앱 템플릿
-        </p>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5">
-          {appTemplates.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setField('template', t.id)}
-              className={cn(
-                'cursor-pointer rounded-[10px] border p-[14px] text-left transition-all duration-150',
-                form.template === t.id
-                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.15)]'
-                  : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)]'
-              )}
-            >
-              <div
-                className="mb-2 h-2 w-2 rounded-full"
-                style={{ backgroundColor: t.color }}
-              />
-              <p className="mb-1 mt-0 text-[13px] font-bold text-[var(--color-text-primary)]">
-                {t.name}
-              </p>
-              <p className="m-0 text-[11px] text-[var(--color-text-secondary)]">
-                {t.language}
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Step indicator */}
       <div className="mb-6 flex flex-wrap items-center gap-1">
-        {([1, 2, 3, 4, 5] as Step[]).map((s, i) => (
+        {([1, 2, 3, 4, 5, 6] as Step[]).map((s, i) => (
           <div key={s} className="flex items-center gap-1">
             <button
               type="button"
@@ -387,10 +654,10 @@ export function DeveloperDeployPage() {
                   s === step ? 'font-semibold text-[var(--color-text-primary)]' : 'font-normal text-[var(--color-text-secondary)]'
                 )}
               >
-                {STEP_LABELS[s]}
+                {t(`developerDeployPage.steps.${s}`, STEP_LABEL_DEFAULTS[s])}
               </span>
             </button>
-            {i < 4 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
+            {i < 5 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
           </div>
         ))}
       </div>
@@ -401,7 +668,7 @@ export function DeveloperDeployPage() {
           className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6"
         >
           {step === 1 && (
-            <StepSection title="앱 이름 입력">
+            <StepSection title={t('developerDeployPage.sections.appName', 'Enter App Name')}>
               <Input
                 placeholder="my-awesome-app"
                 value={form.appName}
@@ -409,34 +676,97 @@ export function DeveloperDeployPage() {
               />
               {errors.appName && <span className="text-xs text-[#ef4444]">{errors.appName.message}</span>}
               <p className="mb-0 mt-1.5 text-xs text-[var(--color-text-secondary)]">
-                소문자, 숫자, 하이픈만 사용 가능합니다.
+                {t('developerDeployPage.appNameRule', 'Only lowercase letters, numbers, and hyphens are allowed.')}
               </p>
             </StepSection>
           )}
 
           {step === 2 && (
-            <StepSection title="Git Repository URL">
-              <Input
-                placeholder="https://github.com/org/repo.git"
-                value={form.gitUrl}
-                onChange={(e) => setField('gitUrl', e.target.value)}
-              />
+            <StepSection title={t('developerDeployPage.sections.gitRepository', 'Git Repository URL')}>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label htmlFor="deploy-stack" className={labelStyleClass}>{t('developerDeployPage.form.stackOptional', 'Stack (Optional)')}</label>
+                  <NativeSelect
+                    id="deploy-stack"
+                    value={selectedStackId}
+                    onChange={(e) => setSelectedStackId(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">{t('developerDeployPage.form.manualInput', 'Manual Input')}</option>
+                    {stacks.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </NativeSelect>
+                </div>
+
+                {selectedStackId ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input value={stackGitBaseUrl} disabled />
+                    <Input
+                      placeholder="repo-name.git"
+                      value={repoName}
+                      onChange={(e) => setRepoName(e.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    placeholder="https://github.com/org/repo.git"
+                    value={form.gitUrl}
+                    onChange={(e) => setField('gitUrl', e.target.value)}
+                  />
+                )}
+              </div>
               {errors.gitUrl && <span className="text-xs text-[#ef4444]">{errors.gitUrl.message}</span>}
+              <div className="mt-4 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4">
+                <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  {t('developerDeployPage.form.buildConfig', 'Build Configuration (Optional)')}
+                </p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label htmlFor="deploy-dockerfile" className={labelStyleClass}>
+                      {t('developerDeployPage.form.dockerfilePath', 'Dockerfile Path')}
+                    </label>
+                    <Input
+                      id="deploy-dockerfile"
+                      placeholder="backend/Dockerfile"
+                      value={form.dockerfilePath}
+                      onChange={(e) => setField('dockerfilePath', e.target.value)}
+                    />
+                    <p className="mb-0 mt-1 text-[11px] text-[var(--color-text-muted)]">
+                      {t('developerDeployPage.form.dockerfileHint', 'Relative path to Dockerfile in the repository. Leave empty to use a default base image.')}
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="deploy-context" className={labelStyleClass}>
+                      {t('developerDeployPage.form.dockerContext', 'Docker Build Context')}
+                    </label>
+                    <Input
+                      id="deploy-context"
+                      placeholder="backend/"
+                      value={form.dockerContext}
+                      onChange={(e) => setField('dockerContext', e.target.value)}
+                    />
+                    <p className="mb-0 mt-1 text-[11px] text-[var(--color-text-muted)]">
+                      {t('developerDeployPage.form.contextHint', 'Directory to use as Docker build context. Defaults to repository root.')}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </StepSection>
           )}
 
           {step === 3 && (
-            <StepSection title="클러스터 & 네임스페이스">
+            <StepSection title={t('developerDeployPage.sections.clusterNamespace', 'Cluster & Namespace')}>
               <div className="flex flex-col gap-3">
                 <div>
-                  <label htmlFor="deploy-cluster" className={labelStyleClass}>클러스터</label>
+                  <label htmlFor="deploy-cluster" className={labelStyleClass}>{t('developerDeployPage.form.cluster', 'Cluster')}</label>
                   <NativeSelect
                     id="deploy-cluster"
                     value={form.clusterId}
                     onChange={(e) => {
                       setField('clusterId', e.target.value)
-                      const cl = clusters.find((c) => c.id === e.target.value)
-                      if (cl?.namespaces[0]) setField('namespace', cl.namespaces[0])
+                      setCreateNewNamespace(false)
+                      setField('namespace', 'default')
                     }}
                     className="w-full"
                   >
@@ -447,17 +777,34 @@ export function DeveloperDeployPage() {
                   {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
                 </div>
                 <div>
-                  <label htmlFor="deploy-namespace" className={labelStyleClass}>네임스페이스</label>
+                  <label htmlFor="deploy-namespace" className={labelStyleClass}>{t('developerDeployPage.form.namespace', 'Namespace')}</label>
                   <NativeSelect
                     id="deploy-namespace"
-                    value={form.namespace}
-                    onChange={(e) => setField('namespace', e.target.value)}
+                    value={createNewNamespace ? '__new__' : (form.namespace || 'default')}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setCreateNewNamespace(true)
+                        setField('namespace', '')
+                        return
+                      }
+                      setCreateNewNamespace(false)
+                      setField('namespace', e.target.value)
+                    }}
                     className="w-full"
                   >
-                    {selectedCluster.namespaces.map((ns) => (
+                    {namespaceOptions.map((ns) => (
                       <option key={ns} value={ns}>{ns}</option>
                     ))}
+                    <option value="__new__">{t('developerDeployPage.form.newNamespace', 'New Namespace')}</option>
                   </NativeSelect>
+                  {createNewNamespace && (
+                    <Input
+                      className="mt-2"
+                      placeholder={t('developerDeployPage.form.newNamespacePlaceholder', 'my-namespace')}
+                      value={form.namespace}
+                      onChange={(e) => setField('namespace', e.target.value)}
+                    />
+                  )}
                   {errors.namespace && <span className="text-xs text-[#ef4444]">{errors.namespace.message}</span>}
                 </div>
               </div>
@@ -465,8 +812,14 @@ export function DeveloperDeployPage() {
           )}
 
           {step === 4 && (
-            <StepSection title="리소스 설정">
+            <StepSection title={t('developerDeployPage.sections.resources', 'Resource Configuration')}>
               <div className="flex flex-col gap-4">
+                <ResourceSlider
+                  label="Replicas"
+                  value={String(form.replicas)}
+                  options={['1', '2', '3', '4', '5']}
+                  onChange={(v) => setField('replicas', Number(v))}
+                />
                 <ResourceSlider
                   label="CPU Request"
                   value={form.cpuRequest}
@@ -496,7 +849,7 @@ export function DeveloperDeployPage() {
           )}
 
           {step === 5 && (
-            <StepSection title="환경 변수">
+            <StepSection title={t('developerDeployPage.sections.envVars', 'Environment Variables')}>
               <div className="flex flex-col gap-2">
                 {fields.map((field, i) => (
                   <div key={field.id}>
@@ -534,9 +887,26 @@ export function DeveloperDeployPage() {
                   type="button"
                 >
                   <Plus size={13} />
-                  변수 추가
+                  {t('developerDeployPage.actions.addVariable', 'Add Variable')}
                 </Button>
               </div>
+            </StepSection>
+          )}
+
+          {step === 6 && (
+            <StepSection title={t('developerDeployPage.sections.manifest', 'Review and Edit Manifest')}>
+              <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+                {t('developerDeployPage.manifestDescription', 'Review the generated YAML manifest and edit if needed.')}
+              </p>
+              <textarea
+                value={customManifest ?? generateYaml(form, selectedAppType)}
+                onChange={(e) => setCustomManifest(e.target.value)}
+                className="h-[400px] w-full resize-none rounded-lg border border-[var(--color-border-default)] bg-[#0d1117] p-4 font-mono text-xs leading-5 text-[#c9d1d9] focus:outline-none focus:ring-1 focus:ring-[#6366f1]"
+                spellCheck={false}
+              />
+              <button type="button" onClick={() => setCustomManifest(null)} className="mt-2 cursor-pointer border-none bg-none text-xs text-[var(--color-text-secondary)] underline">
+                {t('developerDeployPage.actions.resetDefault', 'Reset to default')}
+              </button>
             </StepSection>
           )}
 
@@ -544,10 +914,10 @@ export function DeveloperDeployPage() {
           <div className="mt-6 flex justify-end gap-2.5">
             {step > 1 && (
               <Button variant="outline" size="md" onClick={() => setStep((s) => (s - 1) as Step)}>
-                이전
+                {t('developerDeployPage.actions.previous', 'Previous')}
               </Button>
             )}
-            {step < 5 ? (
+            {step < 6 ? (
               <Button
                 variant="primary"
                 size="md"
@@ -558,35 +928,40 @@ export function DeveloperDeployPage() {
                   setStep((s) => (s + 1) as Step)
                 }}
               >
-                다음
+                {t('developerDeployPage.actions.next', 'Next')}
               </Button>
             ) : (
               <Button
                 variant="primary"
                 size="md"
-                loading={deployMutation.isPending}
+                loading={createPipelineMutation.isPending || deployPipelineMutation.isPending}
                 disabled={isSubmitting || !!errors.envVars}
-                onClick={handleSubmit(onSubmit)}
+                onClick={handleSubmit((data) => {
+                  setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
+                  return onSubmit({ ...data, gitUrl })
+                })}
               >
                 <Rocket size={14} />
-                Deploy
+                {t('developerDeployPage.actions.deploy', 'Deploy')}
               </Button>
             )}
           </div>
         </div>
 
         {/* YAML preview */}
+        {step !== 6 && (
         <div>
           <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            YAML 매니페스트 미리보기
+            {t('developerDeployPage.yamlPreview', 'YAML Manifest Preview')}
           </p>
           <CodePreview
-            code={generateYaml(form)}
+            code={generateYaml(form, selectedAppType)}
             language="yaml"
             title={`${form.appName || 'my-app'}.yaml`}
             maxHeight="600px"
           />
         </div>
+        )}
       </div>
     </div>
   )
@@ -615,23 +990,24 @@ function ResourceSlider({
   onChange: (v: string) => void
 }) {
   const idx = options.indexOf(value)
+  const isCustom = idx === -1
   const sliderId = `resource-${label.toLowerCase().replace(/\s+/g, '-')}`
   return (
     <div>
-      <div className="mb-1.5 flex justify-between">
+      <div className="mb-1.5 flex items-center justify-between">
         <label htmlFor={sliderId} className={cn(labelStyleClass, 'mb-0')}>{label}</label>
-        <span
-          className="font-mono text-[13px] font-semibold text-[#a5b4fc]"
-        >
-          {value}
-        </span>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-24 text-right font-mono text-[13px]"
+        />
       </div>
       <input
         id={sliderId}
         type="range"
         min={0}
         max={options.length - 1}
-        value={idx >= 0 ? idx : 0}
+        value={isCustom ? 0 : idx}
         onChange={(e) => onChange(options[Number(e.target.value)])}
         className="w-full accent-[#6366f1]"
       />
@@ -646,5 +1022,22 @@ function ResourceSlider({
   )
 }
 
-const labelStyleClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]'
+function CopyableCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="mt-3 flex items-center gap-2 rounded-md bg-[#0d1117] px-3 py-2">
+      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-[#c9d1d9]">
+        <span className="mr-1.5 text-[#484f58]">$</span>{command}
+      </code>
+      <button
+        type="button"
+        onClick={() => { void navigator.clipboard.writeText(command); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[rgba(255,255,255,0.4)] transition-colors hover:text-white"
+      >
+        {copied ? <Check size={14} className="text-[#3fb950]" /> : <Copy size={14} />}
+      </button>
+    </div>
+  )
+}
 
+const labelStyleClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]'

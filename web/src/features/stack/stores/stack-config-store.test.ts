@@ -9,9 +9,69 @@ describe('stack-config-store', () => {
   it('initial state has default values', () => {
     const { draft, isDirty } = useStackConfigStore.getState()
     expect(draft.stackName).toBe('')
+    expect(draft.accessDomain).toBe('')
+    expect(draft.accessDomainTls.enabled).toBe(false)
+    expect(draft.accessDomainTls.secretName).toBe('nullus-wildcard-tls')
+    expect(draft.accessDomainTls.secretNamespace).toBe('nullus')
+    expect(draft.accessDomainTls.issuerName).toBe('nullus-ca-issuer')
     expect(draft.selectedTemplateId).toBeNull()
     expect(draft.activeTab).toBe('artifacts')
+    expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
+    expect(draft.pipeline.cdTool.version).toBe('v2.8.3')
+    expect(draft.storage.planMode).toBe('integrated-create')
+    expect(draft.storage.database.mode).toBe('create')
+    expect(draft.storage.objectStorage.mode).toBe('create')
+    expect(draft.storage.database.endpoint).toBe('postgres.shared.svc:5432')
+    expect(draft.storage.objectStorage.endpoint).toBe('http://minio.shared.svc:9000')
+    expect(draft.storage.database.authId).toBe('nullus_app')
+    expect(draft.storage.database.authPasswordKey).toBe('password')
+    expect(draft.storage.objectStorage.authId).toBe('nullus_access_key')
+    expect(draft.storage.objectStorage.authPasswordKey).toBe('secretKey')
     expect(isDirty).toBe(false)
+  })
+
+  describe('storage actions', () => {
+    it('updateStorage changes plan mode and marks dirty', () => {
+      useStackConfigStore.getState().updateStorage({ planMode: 'existing-all' })
+      const { draft, isDirty } = useStackConfigStore.getState()
+      expect(draft.storage.planMode).toBe('existing-all')
+      expect(isDirty).toBe(true)
+    })
+
+    it('updateStorageTarget updates database fields without mutating object storage', () => {
+      const beforeObjectStorage = useStackConfigStore.getState().draft.storage.objectStorage
+      useStackConfigStore.getState().updateStorageTarget('database', {
+        mode: 'create',
+        providerOrEngine: 'postgres',
+        version: '17',
+        size: 'large',
+        endpoint: 'db.prod.svc:5432',
+        resourceName: 'prod',
+        accessSecretRef: 'prod-db-secret',
+        authId: 'prod_app',
+        authPasswordKey: 'password',
+      })
+
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.storage.database.mode).toBe('create')
+      expect(draft.storage.database.providerOrEngine).toBe('postgres')
+      expect(draft.storage.database.version).toBe('17')
+      expect(draft.storage.database.size).toBe('large')
+      expect(draft.storage.database.endpoint).toBe('db.prod.svc:5432')
+      expect(draft.storage.database.resourceName).toBe('prod')
+      expect(draft.storage.database.accessSecretRef).toBe('prod-db-secret')
+      expect(draft.storage.database.authId).toBe('prod_app')
+      expect(draft.storage.database.authPasswordKey).toBe('password')
+      expect(draft.storage.objectStorage).toEqual(beforeObjectStorage)
+    })
+
+    it('updateStorageTarget updates objectStorage existing reference', () => {
+      useStackConfigStore.getState().updateStorageTarget('objectStorage', {
+        existingRef: 'team-a-shared-minio',
+      })
+
+      expect(useStackConfigStore.getState().draft.storage.objectStorage.existingRef).toBe('team-a-shared-minio')
+    })
   })
 
   describe('setTool', () => {
@@ -26,6 +86,7 @@ describe('stack-config-store', () => {
     it('updates pipeline section tool', () => {
       useStackConfigStore.getState().setTool('pipeline', 'cicdPlatform', { tool: 'github-actions', version: 'latest' })
       expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.tool).toBe('github-actions')
+      expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.version).toBe('v0.9.0')
     })
 
     it('updates monitoring section tool', () => {
@@ -42,6 +103,48 @@ describe('stack-config-store', () => {
       const before = useStackConfigStore.getState().draft.artifacts.sourceRepository.tool
       useStackConfigStore.getState().setTool('artifacts', 'packageRegistry', { tool: 'jfrog', version: 'latest' })
       expect(useStackConfigStore.getState().draft.artifacts.sourceRepository.tool).toBe(before)
+    })
+  })
+
+  describe('stack name and access domain', () => {
+    it('setStackName updates default access domain automatically', () => {
+      useStackConfigStore.getState().setStackName('team-stack')
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.accessDomain).toBe('team-stack.internal')
+    })
+
+    it('manual accessDomain is preserved on later stackName changes', () => {
+      useStackConfigStore.getState().setStackName('team-stack')
+      useStackConfigStore.getState().setAccessDomain('custom.company.internal')
+      useStackConfigStore.getState().setStackName('next-stack')
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.accessDomain).toBe('custom.company.internal')
+    })
+
+    it('normalizes common typo intenral to internal', () => {
+      useStackConfigStore.getState().setAccessDomain('nullus-devsecops-stack.intenral')
+      const { draft } = useStackConfigStore.getState()
+      expect(draft.accessDomain).toBe('nullus-devsecops-stack.internal')
+    })
+
+    it('setStackName updates default TLS secret name automatically', () => {
+      useStackConfigStore.getState().setStackName('team-stack')
+      expect(useStackConfigStore.getState().draft.accessDomainTls.secretName).toBe('team-stack-wildcard-tls')
+    })
+
+    it('updateAccessDomainTls updates tls options and marks dirty', () => {
+      useStackConfigStore.getState().updateAccessDomainTls({
+        enabled: true,
+        secretName: 'corp-wildcard',
+        secretNamespace: 'kube-system',
+        issuerName: 'corp-cluster-issuer',
+      })
+      const { draft, isDirty } = useStackConfigStore.getState()
+      expect(draft.accessDomainTls.enabled).toBe(true)
+      expect(draft.accessDomainTls.secretName).toBe('corp-wildcard')
+      expect(draft.accessDomainTls.secretNamespace).toBe('kube-system')
+      expect(draft.accessDomainTls.issuerName).toBe('corp-cluster-issuer')
+      expect(isDirty).toBe(true)
     })
   })
 
@@ -65,6 +168,24 @@ describe('stack-config-store', () => {
       useStackConfigStore.getState().setTool('pipeline', 'cdTool', { tool: 'flux', version: 'latest' })
       useStackConfigStore.getState().loadFromTemplate('tpl-003')
       expect(useStackConfigStore.getState().draft.pipeline.cdTool.tool).toBe('argocd')
+    })
+
+    it('loads empty template with all tool selections cleared', () => {
+      useStackConfigStore.getState().loadFromTemplate('empty-template-v1')
+      const { draft } = useStackConfigStore.getState()
+
+      expect(draft.selectedTemplateId).toBe('empty-template-v1')
+      expect(draft.artifacts.packageRegistry.tool).toBe('')
+      expect(draft.artifacts.sourceRepository.tool).toBe('')
+      expect(draft.artifacts.containerRegistry.tool).toBe('')
+      expect(draft.artifacts.storageBackend.tool).toBe('')
+      expect(draft.pipeline.cicdPlatform.tool).toBe('')
+      expect(draft.pipeline.cdTool.tool).toBe('')
+      expect(draft.monitoring.collection.tool).toBe('')
+      expect(draft.monitoring.visualization.tool).toBe('')
+      expect(draft.logging.search.tool).toBe('')
+      expect(draft.logging.traceLayer.tool).toBe('')
+      expect(draft.storage.planMode).toBe('none')
     })
   })
 

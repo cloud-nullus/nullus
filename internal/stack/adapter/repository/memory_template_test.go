@@ -10,12 +10,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMemoryTemplateRepository_ListReturnsThreeTemplates(t *testing.T) {
+func TestMemoryTemplateRepository_ListReturnsSeededTemplates(t *testing.T) {
 	repo := NewMemoryTemplateRepository()
 
 	templates, err := repo.List(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, templates, 3, "should have exactly 3 Golden Path templates")
+	assert.Len(t, templates, 4, "should have exactly 4 Golden Path templates")
+}
+
+func TestMemoryTemplateRepository_GetByID_EmptyTemplate(t *testing.T) {
+	repo := NewMemoryTemplateRepository()
+
+	tmpl, err := repo.GetByID(context.Background(), "empty-template-v1")
+	require.NoError(t, err)
+
+	assert.Equal(t, "empty-template-v1", tmpl.ID)
+	assert.Equal(t, "Empty Template", tmpl.Name)
+	assert.Empty(t, tmpl.Tools)
+	assert.Greater(t, tmpl.EstimatedInstallTime.Minutes(), 0.0)
 }
 
 func TestMemoryTemplateRepository_GetByID_GitLabAllInOne(t *testing.T) {
@@ -49,14 +61,13 @@ func TestMemoryTemplateRepository_GetByID_GitLabArgoCD(t *testing.T) {
 	assert.Equal(t, "GitLab + Argo CD", tmpl.Name)
 	assert.NotEmpty(t, tmpl.Tools)
 
-	// Harbor should be the container registry for this template
-	var hasHarbor bool
+	var hasGitLabRegistry bool
 	for _, tool := range tmpl.Tools {
-		if tool.Name == "Harbor" {
-			hasHarbor = true
+		if tool.Name == "GitLab Registry" {
+			hasGitLabRegistry = true
 		}
 	}
-	assert.True(t, hasHarbor, "GitLab + Argo CD template should use Harbor")
+	assert.True(t, hasGitLabRegistry, "GitLab + Argo CD template should use GitLab Registry")
 }
 
 func TestMemoryTemplateRepository_GetByID_GitHubArgoCD(t *testing.T) {
@@ -102,7 +113,6 @@ func TestMemoryTemplateRepository_AllTemplatesHaveRequiredFields(t *testing.T) {
 			assert.NotEmpty(t, tmpl.ID, "ID must not be empty")
 			assert.NotEmpty(t, tmpl.Name, "Name must not be empty")
 			assert.NotEmpty(t, tmpl.Description, "Description must not be empty")
-			assert.NotEmpty(t, tmpl.Tools, "Tools must not be empty")
 			assert.Greater(t, tmpl.EstimatedInstallTime.Minutes(), 0.0, "EstimatedInstallTime must be positive")
 			assert.NotEmpty(t, tmpl.MinResources, "MinResources must not be empty")
 		})

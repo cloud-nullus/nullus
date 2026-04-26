@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { Fragment, type ReactNode, useMemo, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,6 +11,7 @@ import {
   type PaginationState,
 } from '@tanstack/react-table'
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 
@@ -23,6 +24,8 @@ interface DataTableProps<T> {
   emptyMessage?: string
   pageSize?: number
   toolbar?: ReactNode
+  expandedRowId?: string | null
+  renderExpanded?: (row: T) => ReactNode
 }
 
 export function DataTable<T>({
@@ -31,10 +34,14 @@ export function DataTable<T>({
   getRowKey,
   onSort,
   onRowClick,
-  emptyMessage = '데이터가 없습니다.',
+  emptyMessage,
   pageSize = 20,
   toolbar,
+  expandedRowId,
+  renderExpanded,
 }: DataTableProps<T>) {
+  const { t } = useTranslation()
+  const resolvedEmptyMessage = emptyMessage ?? t('dataTable.empty', 'No data available.')
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
@@ -114,30 +121,38 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <tr
-              key={row.id}
-              className={cn(
-                'transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.02)]',
-                onRowClick ? 'cursor-pointer' : 'cursor-default'
+            <Fragment key={row.id}>
+              <tr
+                className={cn(
+                  'transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.02)]',
+                  onRowClick ? 'cursor-pointer' : 'cursor-default'
+                )}
+                onClick={() => onRowClick?.(row.original)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <td
+                    key={cell.id}
+                    className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]"
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+              {expandedRowId === row.id && renderExpanded && (
+                <tr>
+                  <td colSpan={columns.length} className="border-t border-[var(--color-border-default)] p-0">
+                    {renderExpanded(row.original)}
+                  </td>
+                </tr>
               )}
-              onClick={() => onRowClick?.(row.original)}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <td
-                  key={cell.id}
-                  className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]"
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>
 
       {table.getRowModel().rows.length === 0 && (
         <div className="py-12 text-center text-sm text-[var(--color-text-secondary)]">
-          {emptyMessage}
+          {resolvedEmptyMessage}
         </div>
       )}
 

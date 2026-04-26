@@ -19,7 +19,7 @@ func (m *mockListPipelinesRepo) Create(_ context.Context, _ *domain.Pipeline) er
 func (m *mockListPipelinesRepo) GetByID(_ context.Context, _ string) (*domain.Pipeline, error) {
 	return nil, nil
 }
-func (m *mockListPipelinesRepo) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
+func (m *mockListPipelinesRepo) List(_ context.Context, orgID string, _ ...string) ([]*domain.Pipeline, error) {
 	m.listOrg = orgID
 	if m.listErr != nil {
 		return nil, m.listErr
@@ -31,7 +31,11 @@ func (m *mockListPipelinesRepo) List(_ context.Context, orgID string) ([]*domain
 	}
 	return result, nil
 }
+func (m *mockListPipelinesRepo) ListByStackID(_ context.Context, _ string) ([]*domain.Pipeline, error) {
+	return nil, nil
+}
 func (m *mockListPipelinesRepo) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
+func (m *mockListPipelinesRepo) Delete(_ context.Context, _ string) error            { return nil }
 
 func TestListPipelines_Success(t *testing.T) {
 	repo := &mockListPipelinesRepo{listResp: []*domain.Pipeline{

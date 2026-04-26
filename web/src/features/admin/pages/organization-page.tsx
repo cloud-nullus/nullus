@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   useClusters,
   useCreateOrganization,
@@ -12,7 +14,7 @@ import {
   useRemoveMember,
   useUpdateOrganization,
 } from '../api/admin-api'
-import type { CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
+import type { ClusterStatus, CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -32,6 +34,15 @@ const ROLE_BADGE: Record<MemberRole, { className: string }> = {
   admin: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
   devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
   developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
+}
+
+const CLUSTER_STATUS_BADGE: Record<ClusterStatus, { className: string }> = {
+  connected: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' },
+  pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]' },
+  error: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]' },
+  inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]' },
+  unreachable: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]' },
+  auth_failed: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]' },
 }
 
 const domainRegex = /^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
@@ -63,7 +74,39 @@ type InviteFormData = z.infer<typeof inviteSchema>
 const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
 
+function getMemberStatusLabel(t: (key: string, defaultValue?: string) => string, status: MemberStatus) {
+  if (status === 'active') return t('organizationPage.memberStatus.active', 'Active')
+  if (status === 'pending') return t('organizationPage.memberStatus.pending', 'Pending')
+  return t('organizationPage.memberStatus.inactive', 'Inactive')
+}
+
+function getMemberRoleLabel(t: (key: string, defaultValue?: string) => string, role: MemberRole) {
+  if (role === 'admin') return t('organizationPage.role.admin', 'Admin')
+  if (role === 'devops') return t('organizationPage.role.devops', 'DevOps')
+  return t('organizationPage.role.developer', 'Developer')
+}
+
+function getClusterStatusLabel(t: (key: string, defaultValue?: string) => string, status: ClusterStatus) {
+  if (status === 'connected') return t('organizationPage.clusterStatus.connected', 'Connected')
+  if (status === 'pending') return t('organizationPage.clusterStatus.pending', 'Pending')
+  if (status === 'error') return t('organizationPage.clusterStatus.error', 'Error')
+  if (status === 'inactive') return t('organizationPage.clusterStatus.inactive', 'Inactive')
+  if (status === 'unreachable') return t('organizationPage.clusterStatus.unreachable', 'Unreachable')
+  return t('organizationPage.clusterStatus.authFailed', 'Auth Failed')
+}
+
+function getOrganizationStatusLabel(
+  t: (key: string, defaultValue?: string) => string,
+  status: Organization['status']
+) {
+  if (status === 'active') return t('organizationPage.orgStatus.active', 'Active')
+  if (status === 'inactive') return t('organizationPage.orgStatus.inactive', 'Inactive')
+  return t('organizationPage.orgStatus.suspended', 'Suspended')
+}
+
 export function OrganizationPage() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
   const { data: orgData, isLoading: orgLoading } = useOrganization()
   const [localOrgs, setLocalOrgs] = useState<Organization[]>([])
   const organizations = useMemo(() => {
@@ -234,7 +277,7 @@ export function OrganizationPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Organization' }]} />
+      <Breadcrumb items={[{ label: t('sidebar.organization', 'Organization') }]} />
 
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
@@ -242,8 +285,8 @@ export function OrganizationPage() {
             <Settings size={18} />
           </div>
           <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">Organization</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">조직 설정, 접근 범위, 멤버를 통합 관리합니다.</p>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('sidebar.organization', 'Organization')}</h1>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('organizationPage.description', 'Manage organization settings, access scope, and members in one place.')}</p>
           </div>
         </div>
         <Button
@@ -256,17 +299,17 @@ export function OrganizationPage() {
           }}
         >
           <Plus size={15} />
-          New Organization
+          {t('organizationPage.actions.newOrganization', 'New Organization')}
         </Button>
       </div>
 
-      <div className="h-[700px]">
+      <div className="h-[860px]">
         <ListDetailPanel
           listWidth={280}
           listContent={
             <>
               <div className="border-b border-[var(--color-border-default)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                Organizations ({organizations.length})
+                {t('organizationPage.list.organizations', 'Organizations')} ({organizations.length})
               </div>
               {organizations.map((org) => {
                 const selected = selectedOrg?.id === org.id
@@ -287,7 +330,7 @@ export function OrganizationPage() {
                         {org.name}
                       </span>
                       <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', org.status === 'active' ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' : 'bg-[rgba(100,116,139,0.15)] text-[#64748b]')}>
-                        {org.status}
+                        {getOrganizationStatusLabel(t, org.status)}
                       </span>
                     </div>
                     <div className="text-xs text-[var(--color-text-secondary)]">{org.slug}</div>
@@ -301,7 +344,7 @@ export function OrganizationPage() {
               <div className="min-w-0 p-4">
                 <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
                   <div className="mb-4 flex items-center justify-between">
-                    <h2 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Organization Detail</h2>
+                    <h2 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">{t('organizationPage.detail.organizationDetail', 'Organization Detail')}</h2>
                     <Button
                       variant="primary"
                       size="sm"
@@ -310,18 +353,18 @@ export function OrganizationPage() {
                       disabled={!isValid || isSubmitting}
                       type="button"
                     >
-                      Save Changes
+                      {t('organizationPage.actions.saveChanges', 'Save Changes')}
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input label="Organization Name" {...register('name')} />
-                    <Input label="Slug" {...register('slug')} />
-                    <Input label="Domain" {...register('domain')} />
-                    <NativeSelect label="Status" {...register('status')} className={selectClassName}>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="suspended">Suspended</option>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Input label={t('organizationPage.form.organizationName', 'Organization Name')} {...register('name')} />
+                    <Input label={t('organizationPage.form.slug', 'Slug')} {...register('slug')} />
+                    <Input label={t('organizationPage.form.domain', 'Domain')} {...register('domain')} />
+                    <NativeSelect label={t('organizationPage.form.status', 'Status')} {...register('status')} className={selectClassName}>
+                        <option value="active">{t('organizationPage.orgStatus.active', 'Active')}</option>
+                        <option value="inactive">{t('organizationPage.orgStatus.inactive', 'Inactive')}</option>
+                        <option value="suspended">{t('organizationPage.orgStatus.suspended', 'Suspended')}</option>
                       </NativeSelect>
                   </div>
                   {(errors.name || errors.slug || errors.domain) && (
@@ -332,19 +375,17 @@ export function OrganizationPage() {
                 </div>
 
                 <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
-                  <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">Cluster Access Scope</h3>
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">{t('organizationPage.detail.clusterAccessScope', 'Cluster Access Scope')}</h3>
+                  <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
                     {allClusters.map((cluster) => {
                       const checked = clusterAccessScope.includes(cluster.name)
-                      const statusClassName = cluster.status === 'connected'
-                        ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
-                        : 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]'
+                      const statusBadge = CLUSTER_STATUS_BADGE[cluster.status]
 
                       return (
                         <label
                           key={cluster.id}
                           className={cn(
-                            'flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 transition-all duration-150',
+                            'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-all duration-150 sm:items-center',
                             checked
                               ? 'border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.08)]'
                               : 'border-[var(--color-border-default)] bg-transparent'
@@ -356,15 +397,18 @@ export function OrganizationPage() {
                             onChange={() => handleScopeToggle(cluster.name)}
                             className="h-[15px] w-[15px] accent-[#6366f1]"
                           />
-                          <div className="flex flex-1 items-center justify-between gap-2">
-                            <div>
-                              <div className={cn('text-sm font-semibold', checked ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                          <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <div
+                                className={cn('truncate text-sm font-semibold', checked ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}
+                                title={cluster.name}
+                              >
                                 {cluster.name}
                               </div>
-                              <div className="text-xs text-[var(--color-text-secondary)]">{cluster.type.toUpperCase()}</div>
+                              <div className="truncate text-xs text-[var(--color-text-secondary)]">{cluster.type.toUpperCase()}</div>
                             </div>
-                            <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', statusClassName)}>
-                              {cluster.status}
+                            <span className={cn('shrink-0 self-start whitespace-nowrap rounded-[5px] px-2 py-0.5 text-[11px] font-semibold sm:self-auto', statusBadge.className)}>
+                              {getClusterStatusLabel(t, cluster.status)}
                             </span>
                           </div>
                         </label>
@@ -374,79 +418,98 @@ export function OrganizationPage() {
                 </div>
 
                 <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-                  <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-[18px] py-4">
-                    <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Member Management</h3>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        resetInvite({ name: '', email: '', role: 'developer' })
-                        setInviteModal(true)
-                      }}
-                      type="button"
-                    >
-                      <Plus size={13} />
-                      Invite Member
-                    </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-default)] px-[18px] py-4">
+                    <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">{t('organizationPage.detail.memberManagement', 'Member Management')}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate('/admin/users')}
+                        type="button"
+                      >
+                        <Plus size={13} />
+                        {t('organizationPage.actions.addUser', 'Add User')}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          resetInvite({ name: '', email: '', role: 'developer' })
+                          setInviteModal(true)
+                        }}
+                        type="button"
+                      >
+                        <Plus size={13} />
+                        {t('organizationPage.actions.inviteMember', 'Invite Member')}
+                      </Button>
+                    </div>
                   </div>
 
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="bg-[rgba(255,255,255,0.02)]">
-                        {['Name', 'Email', 'Role', 'Status', 'Actions'].map((header) => (
-                          <th key={header} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                            {header}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {members.map((member) => (
-                        <tr key={member.id}>
-                          <td className={tdClassName}>
-                            <div className="flex items-center gap-2.5">
-                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[linear-gradient(135deg,#6366f1,#8b5cf6)] text-xs font-bold text-white">
-                                {member.name.slice(0, 1).toUpperCase()}
-                              </span>
-                              <span className="font-semibold">{member.name}</span>
-                            </div>
-                          </td>
-                          <td className={cn(tdClassName, 'text-[var(--color-text-secondary)]')}>{member.email}</td>
-                          <td className={tdClassName}>
-                            <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[member.role].className)}>
-                              {member.role}
-                            </span>
-                          </td>
-                          <td className={tdClassName}>
-                            <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[member.status].className)}>
-                              {member.status}
-                            </span>
-                          </td>
-                          <td className={tdClassName}>
-                            {member.role === 'admin' ? (
-                              <span className="text-xs text-[var(--color-text-muted)]">Owner</span>
-                            ) : (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                loading={removeMember.isPending}
-                                onClick={() => setRemoveMemberId(member.id)}
-                                type="button"
-                              >
-                                <Trash2 size={13} />
-                                Remove
-                              </Button>
-                            )}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[700px] border-collapse">
+                      <thead>
+                        <tr className="bg-[rgba(255,255,255,0.02)]">
+                          {[
+                            t('organizationPage.table.name', 'Name'),
+                            t('organizationPage.table.email', 'Email'),
+                            t('organizationPage.table.role', 'Role'),
+                            t('organizationPage.table.status', 'Status'),
+                            t('organizationPage.table.actions', 'Actions'),
+                          ].map((header) => (
+                            <th key={header} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                              {header}
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {members.map((member) => (
+                          <tr key={member.id}>
+                            <td className={tdClassName}>
+                              <div className="flex min-w-0 items-center gap-2.5">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#6366f1,#8b5cf6)] text-xs font-bold text-white">
+                                  {member.name.slice(0, 1).toUpperCase()}
+                                </span>
+                                <span className="truncate font-semibold" title={member.name}>{member.name}</span>
+                              </div>
+                            </td>
+                            <td className={cn(tdClassName, 'text-[var(--color-text-secondary)]')}>{member.email}</td>
+                            <td className={tdClassName}>
+                              <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[member.role].className)}>
+                                {getMemberRoleLabel(t, member.role)}
+                              </span>
+                            </td>
+                            <td className={tdClassName}>
+                              <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[member.status].className)}>
+                                {getMemberStatusLabel(t, member.status)}
+                              </span>
+                            </td>
+                            <td className={tdClassName}>
+                              {member.role === 'admin' ? (
+                                <span className="text-xs text-[var(--color-text-muted)]">{t('organizationPage.table.owner', 'Owner')}</span>
+                              ) : (
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  loading={removeMember.isPending}
+                                  onClick={() => setRemoveMemberId(member.id)}
+                                  type="button"
+                                >
+                                  <Trash2 size={13} />
+                                  {t('organizationPage.actions.remove', 'Remove')}
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             ) : null
           }
-          emptyDetailMessage="Select an organization to view details"
+          emptyDetailMessage={t('organizationPage.detail.selectOrganization', 'Select an organization to view details')}
         />
       </div>
 
@@ -456,7 +519,7 @@ export function OrganizationPage() {
           setInviteModal(false)
           resetInvite({ name: '', email: '', role: 'developer' })
         }}
-        title="Invite Member"
+        title={t('organizationPage.modal.inviteMember', 'Invite Member')}
         footer={
           <>
             <Button
@@ -468,7 +531,7 @@ export function OrganizationPage() {
               }}
               type="button"
             >
-              Cancel
+              {t('organizationPage.actions.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -479,22 +542,22 @@ export function OrganizationPage() {
               type="button"
             >
               <Mail size={13} />
-              Send Invite
+              {t('organizationPage.actions.sendInvite', 'Send Invite')}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3.5">
-          <Input label="Name" placeholder="홍길동" {...registerInvite('name')} />
+          <Input label={t('organizationPage.form.name', 'Name')} placeholder={t('organizationPage.form.namePlaceholder', 'e.g. Hong Gil-dong')} {...registerInvite('name')} />
           {inviteErrors.name && <span className="text-xs text-[#ef4444]">{inviteErrors.name.message}</span>}
 
-          <Input label="Email" type="email" placeholder="member@example.com" {...registerInvite('email')} />
+          <Input label={t('organizationPage.form.email', 'Email')} type="email" placeholder="member@example.com" {...registerInvite('email')} />
           {inviteErrors.email && <span className="text-xs text-[#ef4444]">{inviteErrors.email.message}</span>}
 
-          <NativeSelect label="Role" {...registerInvite('role')} className={selectClassName}>
-              <option value="developer">Developer</option>
-              <option value="devops">DevOps</option>
-              <option value="admin">Admin</option>
+          <NativeSelect label={t('organizationPage.form.role', 'Role')} {...registerInvite('role')} className={selectClassName}>
+              <option value="developer">{t('organizationPage.role.developer', 'Developer')}</option>
+              <option value="devops">{t('organizationPage.role.devops', 'DevOps')}</option>
+              <option value="admin">{t('organizationPage.role.admin', 'Admin')}</option>
             </NativeSelect>
           {inviteErrors.role && <span className="text-xs text-[#ef4444]">{inviteErrors.role.message}</span>}
         </div>
@@ -506,7 +569,7 @@ export function OrganizationPage() {
           setNewOrgModal(false)
           resetNewOrg()
         }}
-        title="New Organization"
+        title={t('organizationPage.modal.newOrganization', 'New Organization')}
         footer={
           <>
             <Button
@@ -518,7 +581,7 @@ export function OrganizationPage() {
                 resetNewOrg()
               }}
             >
-              Cancel
+              {t('organizationPage.actions.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -529,21 +592,21 @@ export function OrganizationPage() {
               disabled={!isNewOrgValid || isNewOrgSubmitting}
             >
               <Plus size={13} />
-              Create Organization
+              {t('organizationPage.actions.createOrganization', 'Create Organization')}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
-          <Input label="Organization Name" placeholder="예: Acme Corp" {...registerNewOrg('name')} />
+          <Input label={t('organizationPage.form.organizationName', 'Organization Name')} placeholder={t('organizationPage.form.organizationNamePlaceholder', 'e.g. Acme Corp')} {...registerNewOrg('name')} />
           {newOrgErrors.name && <span className="text-xs text-[#ef4444]">{newOrgErrors.name.message}</span>}
           <Input
-            label="Slug"
-            placeholder="예: acme-corp"
+            label={t('organizationPage.form.slug', 'Slug')}
+            placeholder={t('organizationPage.form.slugPlaceholder', 'e.g. acme-corp')}
             {...registerNewOrg('slug')}
           />
           {newOrgErrors.slug && <span className="text-xs text-[#ef4444]">{newOrgErrors.slug.message}</span>}
-          <Input label="Domain (optional)" placeholder="예: acme.com" {...registerNewOrg('domain')} />
+          <Input label={t('organizationPage.form.domainOptional', 'Domain (optional)')} placeholder={t('organizationPage.form.domainPlaceholder', 'e.g. acme.com')} {...registerNewOrg('domain')} />
           {newOrgErrors.domain && <span className="text-xs text-[#ef4444]">{newOrgErrors.domain.message}</span>}
         </div>
       </Modal>
@@ -552,9 +615,9 @@ export function OrganizationPage() {
         open={removeMemberId !== null}
         onClose={() => setRemoveMemberId(null)}
         onConfirm={handleConfirmRemove}
-        title="Remove Member"
-        description="선택한 멤버를 조직에서 제거합니다. 계속하시겠습니까?"
-        confirmLabel="Remove"
+        title={t('organizationPage.confirm.removeMemberTitle', 'Remove Member')}
+        description={t('organizationPage.confirm.removeMemberDescription', 'Remove the selected member from this organization. Continue?')}
+        confirmLabel={t('organizationPage.actions.remove', 'Remove')}
         loading={removeMember.isPending}
       />
     </div>

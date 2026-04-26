@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import { useAuthStore } from '../../../stores/auth-store'
 import type {
   Cluster,
   CreateClusterRequest,
@@ -16,6 +17,7 @@ export type {
   Cluster,
   ClusterStatus,
   ClusterType,
+  CloudProvider,
   CreateClusterRequest,
   CreateOrgRequest,
   InviteMemberRequest,
@@ -36,6 +38,15 @@ export interface InviteLink {
   status: 'active' | 'expired'
 }
 
+export interface ClusterMonitoringSummary {
+  total_pods: number
+  ready_pods: number
+  cpu_request_millicores: number
+  cpu_limit_millicores: number
+  memory_request_mib: number
+  memory_limit_mib: number
+}
+
 // --- Query keys ---
 
 const queryKeys = {
@@ -43,8 +54,61 @@ const queryKeys = {
   members: (orgId: string) => ['admin', 'members', orgId] as const,
   clusters: () => ['admin', 'clusters'] as const,
   cluster: (id: string) => ['admin', 'clusters', id] as const,
+  clusterMonitoringSummary: (id: string) => ['admin', 'clusters', id, 'monitoring-summary'] as const,
   knownIssues: () => ['admin', 'known-issues'] as const,
   inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
+}
+
+type ClusterApiShape = Omit<Cluster, 'nodeArchitectures'> & {
+  connection_status?: Cluster['status']
+  org_id?: string
+  cloud_provider?: Cluster['cloudProvider']
+  node_architectures?: string[]
+  nodeArchitectures?: string[]
+  NodeArchitectures?: string[]
+}
+
+const normalizeNodeArchitectures = (archs: string[] | undefined): string[] => {
+  if (!Array.isArray(archs) || archs.length === 0) {
+    return []
+  }
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const arch of archs) {
+    if (typeof arch === 'string' && arch.length > 0 && !seen.has(arch)) {
+      seen.add(arch)
+      out.push(arch)
+    }
+  }
+  out.sort()
+  return out
+}
+
+const normalizeClusterTypes = (types: Cluster['types'] | undefined, type: Cluster['type'] | undefined): Cluster['types'] => {
+  if (Array.isArray(types) && types.length > 0) {
+    return Array.from(new Set(types))
+  }
+  return type ? [type] : []
+}
+
+const normalizeCluster = (cluster: ClusterApiShape): Cluster => ({
+  ...cluster,
+  type: cluster.type ?? 'target',
+  types: normalizeClusterTypes(cluster.types, cluster.type),
+  cloudProvider: cluster.cloudProvider ?? cluster.cloud_provider ?? 'on_premise',
+  status: cluster.status ?? cluster.connection_status ?? 'pending',
+  organizationIds: cluster.organizationIds ?? (cluster.org_id ? [cluster.org_id] : []),
+  nodeArchitectures: normalizeNodeArchitectures(
+    cluster.node_architectures ?? cluster.nodeArchitectures ?? cluster.NodeArchitectures,
+  ),
+})
+
+const toClusterRequestPayload = (data: Partial<CreateClusterRequest>) => {
+  const { cloudProvider, ...rest } = data
+  return {
+    ...rest,
+    cloud_provider: cloudProvider,
+  }
 }
 
 // --- API functions ---
@@ -54,7 +118,7 @@ const adminApiCalls = {
     api.get<Organization>('/admin/organization').then((r) => r.data),
 
   createOrganization: (data: CreateOrgRequest) =>
-    api.post<Organization>('/admin/organizations', data).then((r) => r.data),
+    api.post<Organization>('/admin/orgs', data).then((r) => r.data),
 
   updateOrganization: (data: UpdateOrgRequest) =>
     api.patch<Organization>('/admin/organization', data).then((r) => r.data),
@@ -81,36 +145,50 @@ const adminApiCalls = {
   updateMemberRole: (orgId: string, memberId: string, role: MemberRole) =>
     api.patch<Member>(`/admin/organizations/${orgId}/members/${memberId}`, { role }).then((r) => r.data),
 
+  updateMember: (
+    orgId: string,
+    memberId: string,
+    data: { name: string; email: string; role: MemberRole }
+  ) => api.patch<Member>(`/admin/organizations/${orgId}/members/${memberId}`, data).then((r) => r.data),
+
   deactivateMember: (orgId: string, memberId: string) =>
     api.post<Member>(`/admin/organizations/${orgId}/members/${memberId}/deactivate`).then((r) => r.data),
 
   getClusters: () =>
-    api.get<{ items: Cluster[]; total: number }>('/admin/clusters').then((r) => ({
+    api.get<{ items: Cluster[]; total: number }>('/admin/clusters', {
+      params: {
+        page: 1,
+        page_size: 500,
+        per_page: 500,
+        limit: 500,
+      },
+    }).then((r) => ({
       ...r.data,
-      items: (r.data.items ?? []).map((c) => {
-        const raw = c as Cluster & { connection_status?: Cluster['status']; org_id?: string }
-        return {
-          ...c,
-          status: raw.status ?? raw.connection_status ?? 'pending',
-          organizationIds: c.organizationIds ?? (raw.org_id ? [raw.org_id] : []),
-        }
-      }),
+      items: (r.data.items ?? []).map((c) => normalizeCluster(c as ClusterApiShape)),
     })),
 
   getCluster: (id: string) =>
-    api.get<Cluster>(`/admin/clusters/${id}`).then((r) => r.data),
+    api.get<ClusterApiShape>(`/admin/clusters/${id}`).then((r) => normalizeCluster(r.data)),
 
   createCluster: (data: CreateClusterRequest) =>
-    api.post<Cluster>('/admin/clusters', data).then((r) => r.data),
+    api.post<ClusterApiShape>('/admin/clusters', toClusterRequestPayload(data)).then((r) => normalizeCluster(r.data)),
 
   updateCluster: (id: string, data: Partial<CreateClusterRequest>) =>
-    api.patch<Cluster>(`/admin/clusters/${id}`, data).then((r) => r.data),
+    api.patch<ClusterApiShape>(`/admin/clusters/${id}`, toClusterRequestPayload(data)).then((r) => normalizeCluster(r.data)),
 
   deleteCluster: (id: string) =>
     api.delete(`/admin/clusters/${id}`).then((r) => r.data),
 
   verifyCluster: (id: string) =>
     api.post<{ status: string; version?: string }>(`/admin/clusters/${id}/verify`).then((r) => r.data),
+
+  verifyClusterDraft: (data: { endpoint?: string; kubeconfig: string }) =>
+    api.post<{ status: string; version?: string }>('/admin/clusters/verify', data).then((r) => r.data),
+
+  refreshClusterDiscovery: (id: string) =>
+    api
+      .post<ClusterApiShape>(`/admin/clusters/${id}/refresh-discovery`)
+      .then((r) => normalizeCluster(r.data)),
 
   getKnownIssues: () =>
     api.get<{ items: KnownIssue[] }>('/admin/known-issues').then((r) => r.data),
@@ -120,6 +198,9 @@ const adminApiCalls = {
 
   getClusterNamespaces: (clusterId: string) =>
     api.get<{ items: { name: string }[] }>(`/admin/clusters/${clusterId}/namespaces`).then((r) => r.data?.items ?? []),
+
+  getClusterMonitoringSummary: (clusterId: string) =>
+    api.get<ClusterMonitoringSummary>(`/admin/clusters/${clusterId}/monitoring-summary`).then((r) => r.data),
 
   createInviteLink: (orgId: string, data: { role: MemberRole; expiresInDays: number }) =>
     api.post<{ token: string; url: string; role: MemberRole; expiresAt: string }>(`/admin/organizations/${orgId}/invites`, data).then((r) => r.data),
@@ -199,6 +280,43 @@ export function useUpdateUserRole(orgId: string) {
   })
 }
 
+export function useUpdateMember(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ memberId, data }: { memberId: string; data: { name: string; email: string; role: MemberRole } }) =>
+      adminApiCalls.updateMember(orgId, memberId, data),
+    onSuccess: (updatedMember, variables) => {
+      qc.setQueryData<{ items: Member[]; total: number } | undefined>(queryKeys.members(orgId), (prev) => {
+        if (!prev) {
+          return prev
+        }
+
+        const nextItems = prev.items.map((member) => {
+          if (member.id !== variables.memberId) {
+            return member
+          }
+
+          return {
+            ...member,
+            name: updatedMember?.name ?? variables.data.name,
+            email: updatedMember?.email ?? variables.data.email,
+            role: updatedMember?.role ?? variables.data.role,
+            status: updatedMember?.status ?? member.status,
+            joinedAt: updatedMember?.joinedAt ?? member.joinedAt,
+          }
+        })
+
+        return {
+          ...prev,
+          items: nextItems,
+          total: nextItems.length,
+        }
+      })
+      void qc.invalidateQueries({ queryKey: queryKeys.members(orgId) })
+    },
+  })
+}
+
 export function useDeactivateUser(orgId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -213,6 +331,40 @@ export function useClusters() {
   return useQuery({
     queryKey: queryKeys.clusters(),
     queryFn: adminApiCalls.getClusters,
+  })
+}
+
+export function useScopedClusters() {
+  const { data: clustersData, ...rest } = useClusters()
+  const { data: org } = useOrganization()
+  const role = useAuthStore((s) => s.role)
+  const userOrgId = useAuthStore((s) => s.user?.orgId ?? '')
+  const scope = org?.clusterAccessScope ?? []
+
+  const normalizeKey = (value: string) => value.trim().toLowerCase()
+  const scopeSet = new Set(scope.map((value) => normalizeKey(value)))
+
+  const items = clustersData?.items ?? []
+  if (role === 'admin') {
+    return { ...rest, data: clustersData ? { ...clustersData, items, total: items.length } : clustersData }
+  }
+
+  const filteredByScope = scope.length > 0
+    ? items.filter((c) => scopeSet.has(normalizeKey(c.name)) || scopeSet.has(normalizeKey(c.id)))
+    : items
+
+  const filtered = userOrgId
+    ? filteredByScope.filter((c) => c.organizationIds.length === 0 || c.organizationIds.includes(userOrgId))
+    : filteredByScope
+
+  return { ...rest, data: clustersData ? { ...clustersData, items: filtered, total: filtered.length } : clustersData }
+}
+
+export function useCluster(id: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.cluster(id),
+    queryFn: () => adminApiCalls.getCluster(id),
+    enabled: enabled && !!id,
   })
 }
 
@@ -261,6 +413,26 @@ export function useVerifyCluster() {
   })
 }
 
+export function useVerifyClusterDraft() {
+  return useMutation({
+    mutationFn: (data: { endpoint?: string; kubeconfig: string }) => adminApiCalls.verifyClusterDraft(data),
+  })
+}
+
+// useRefreshDiscovery re-probes a cluster for its server version and node
+// architectures (F8 Task 3). Invalidates the cluster list + detail caches
+// on success so downstream UI sees the fresh node_architectures value.
+export function useRefreshDiscovery() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => adminApiCalls.refreshClusterDiscovery(id),
+    onSuccess: (_, id) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.clusters() })
+      void qc.invalidateQueries({ queryKey: queryKeys.cluster(id) })
+    },
+  })
+}
+
 export function useSearchUser(email: string) {
   return useQuery({
     queryKey: ['users', 'search', email],
@@ -274,6 +446,15 @@ export function useClusterNamespaces(clusterId: string) {
     queryKey: ['admin', 'clusters', clusterId, 'namespaces'],
     queryFn: () => adminApiCalls.getClusterNamespaces(clusterId),
     enabled: !!clusterId,
+  })
+}
+
+export function useClusterMonitoringSummary(clusterId: string) {
+  return useQuery({
+    queryKey: queryKeys.clusterMonitoringSummary(clusterId),
+    queryFn: () => adminApiCalls.getClusterMonitoringSummary(clusterId),
+    enabled: !!clusterId,
+    refetchInterval: 5000,
   })
 }
 

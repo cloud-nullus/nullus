@@ -10,6 +10,7 @@ type HelmInstallRequest struct {
 	Version     string         `json:"version"`
 	Namespace   string         `json:"namespace"`
 	Values      map[string]any `json:"values"`
+	Wait        *bool          `json:"wait,omitempty"`
 }
 
 // HelmInstallResult contains the result of a Helm install operation.

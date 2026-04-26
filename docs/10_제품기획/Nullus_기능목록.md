@@ -1,10 +1,11 @@
-# Nullus v1.0 기능 목록
+﻿# Nullus v1.0 기능 목록
 
 **작성일**: 2026-03-08  
 **기반 문서**: nullus_PRD_1.2.md, 상세 기능 명세 및 시스템 아키텍처, 개발 마스터 플랜, 화면설계 프로토타입, Narwhal 분석 기반 Nullus 적용 항목  
 **범위**: Phase 1 (DevOps) 전체 기능 + Phase 2-3 예정 기능 요약
 
 ## 변경 이력
+- 2026-03-29: Empty Template/Storage 미선택 흐름, Alert Rule DB 동기화 편집, Home/Admin UX 보완사항 반영
 - 2026-03-08: PRD v1.2 기반으로 갱신 (Narwhal 강화 요구사항: known-issues, 3-Phase, OIDC 반영 확인)
 
 ---
@@ -15,6 +16,7 @@
 
 | ID | 기능명 | 대상 사용자 | 예상 공수 | 우선순위 |
 |---|---|---|---|---|
+| `empty-template-v1` | Empty Template | 기본 선택 없음(모든 도구 미선택) | 커스텀 조합을 처음부터 직접 구성하려는 조직 | v1 |
 | F0 | Organization 설정 등록 | Admin | 2주 | Must-have |
 | F1 | K8S Cluster Configurations 등록 | DevOps Engineer | 1주 | Must-have |
 | F2 | 노코드 기반 DevSecOps Stack 설정 UI | DevOps Engineer | 3주 | Must-have |
@@ -201,6 +203,11 @@
   - 오른쪽 패널에 선택한 모든 도구와 버전 표시
   - 탭/선택 변경 시 즉시 갱신
 
+- [ ] **Empty Template / 미선택 조합 지원**
+  - `Empty Template` 선택 시 Artifacts, Pipeline, Observability, Logging, Storage를 모두 미선택 상태로 시작
+  - Storage Plan은 `미선택`, `기존 DB/Storage 연결`, `통합 DB/Storage 생성 연결`을 지원
+  - Storage를 미선택한 경우 Stack 생성 요청에서 storage 블록을 제외하여 선택한 도구만 배포 가능
+
 - [ ] **리소스 설정 모드 전환** (Auto / Manual)
   - **Auto Calculate**: 팀 규모/워크로드 입력값 기반 자동 계산 (기본값)
   - **Manual Config**: 개별 도구별 CPU/Memory/Storage 직접 입력
@@ -241,6 +248,7 @@
 
 | ID | 이름 | 도구 조합 | 대상 | 릴리스 |
 |---|---|---|---|---|
+| `empty-template-v1` | Empty Template | 기본 선택 없음(모든 도구 미선택) | 커스텀 조합을 처음부터 직접 구성하려는 조직 | v1 |
 | `gitlab-allinone-v1` | GitLab All-in-One | GitLab CE + GitLab CI + GitLab Registry + MinIO + Argo CD + Prometheus + Grafana | 중견기업, 단일 플랫폼 선호 | Alpha |
 | `gitlab-argocd-v1` | GitLab + Argo CD | GitLab CE + GitLab CI + Harbor + MinIO + Argo CD + Prometheus + Grafana | GitOps 중심 조직 | Beta |
 | `github-argocd-v1` | GitHub + Argo CD | GitHub(외부) + GitHub Actions(외부) + Harbor + MinIO + Argo CD + Prometheus + Grafana | GitHub 사용 조직 | v1 |
@@ -421,6 +429,8 @@ PENDING → VALIDATING → INSTALLING → CONFIGURING → HEALTHCHECK → COMPLE
 - [ ] 핵심 지표 수집 (CPU, Memory, Storage, 파이프라인 성공률)
 - [ ] 알림 연동 기본값 제공 (Slack/Email 중 1개 이상)
   - 이벤트: tool_down, high_cpu, high_memory, storage_warning, pipeline_failure
+- [ ] Alert Rule 편집 시 Edit 팝업에서 DB 최신 값을 단건 조회 후 수정하고, Save 뒤 즉시 목록에 반영
+- [ ] Alert Rule 임계값을 Warning / Critical 2단계로 관리
 
 #### API 엔드포인트
 
@@ -436,6 +446,17 @@ PENDING → VALIDATING → INSTALLING → CONFIGURING → HEALTHCHECK → COMPLE
 |---|---|
 | Beta | 기본 대시보드 (클러스터+도구 상태), 핵심 지표, Slack 알림 |
 | v1 | 파이프라인 성공률 메트릭, Grafana 대시보드 자동 프로비저닝 확장, Email 알림 |
+
+#### 현재 기준 추가 개발 필요 항목 (Observability)
+
+- [ ] **Alert Rule 모델 고도화**: `condition` 문자열 중심에서 `metric_name + operator + threshold + window` 구조로 확장
+- [ ] **메트릭 기반 공통 평가 엔진**: 항목별 하드코딩 없이 `metric_name`만으로 룰 평가 가능한 evaluator 구현
+- [ ] **알림 채널 확장 구조**: Slack/Email 공통 인터페이스로 추상화하고 재시도/백오프 정책 추가
+- [ ] **Alert History 고도화**: fired/resolved 상태 전이, 중복 알림 억제(dedup), ack/silence 기능 추가
+- [ ] **대시보드 API 세분화**: summary 외에 시계열/범위 조회(`from`, `to`, `step`) API 추가
+- [ ] **권한 분리**: 조회(Viewer)와 규칙 관리(DevOps/Admin) 권한 분리 및 감사 로그 연동
+- [ ] **테스트 보강**: metric evaluator 단위 테스트 + 채널 어댑터 통합 테스트 + e2e 시나리오(룰 생성→발생→해제)
+- [ ] **운영 설정**: 룰 평가 주기, 채널 타임아웃, 알림 rate limit를 환경변수/설정 파일로 관리
 
 ---
 
@@ -596,6 +617,8 @@ Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana View
 | Organization 관리 | 조직 정보 등록/수정 | — |
 | 사용자 관리 | 역할 부여/비활성화 (v1) | proto3 |
 | Developer Deploy | Developer Self-Service 앱 배포 위자드 (역할 전환 시 표시) | proto3 |
+- Home 화면에서는 8단계 파이프라인 중 사용하지 않는 `Operation` 항목을 제거하여 현재 기능 범위와 일치하도록 정리함
+- Organization 화면의 `Add User`는 별도 404 경로가 아니라 실제 `User Management` 라우트(`/admin/users`)로 연결함
 
 ### 4.2 공통 UI/UX 요소
 

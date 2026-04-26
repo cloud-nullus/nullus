@@ -24,9 +24,8 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
           <select
             ref={ref}
             id={id}
-            style={{ colorScheme: 'dark' }}
             className={cn(
-              'box-border w-full cursor-pointer appearance-none rounded-lg border bg-[#111827] px-3 py-[9px] pr-8 text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out focus:border-[#6366f1]',
+              'box-border w-full cursor-pointer appearance-none rounded-lg border bg-[var(--color-surface-base)] px-3 py-[9px] pr-8 text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out focus:border-[#6366f1]',
               error ? 'border-[rgba(239,68,68,0.5)]' : 'border-[var(--color-border-default)]',
               className
             )}

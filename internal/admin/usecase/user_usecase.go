@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/admin/domain"
@@ -94,12 +95,24 @@ func (uc *UserUseCase) InviteMember(ctx context.Context, orgID, email, name stri
 }
 
 func (uc *UserUseCase) UpdateRole(ctx context.Context, userID string, newRole domain.Role) error {
+	_, err := uc.UpdateMember(ctx, userID, UpdateMemberInput{Role: &newRole})
+	return err
+}
+
+type UpdateMemberInput struct {
+	OrgID string
+	Name  *string
+	Email *string
+	Role  *domain.Role
+}
+
+func (uc *UserUseCase) UpdateMember(ctx context.Context, userID string, input UpdateMemberInput) (*domain.User, error) {
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("getting user: %w", err)
+		return nil, fmt.Errorf("getting user: %w", err)
 	}
 	if user == nil {
-		return &shareddomain.AppError{
+		return nil, &shareddomain.AppError{
 			Code:       "USER_NOT_FOUND",
 			HTTPStatus: http.StatusNotFound,
 			Message:    "User not found",
@@ -108,14 +121,48 @@ func (uc *UserUseCase) UpdateRole(ctx context.Context, userID string, newRole do
 		}
 	}
 
-	user.Role = newRole
+	if input.Name != nil {
+		trimmed := strings.TrimSpace(*input.Name)
+		if trimmed == "" {
+			return nil, &shareddomain.AppError{
+				Code:       "USER_NAME_REQUIRED",
+				HTTPStatus: http.StatusBadRequest,
+				Message:    "Name is required",
+				Detail:     "name cannot be empty",
+				Retryable:  false,
+			}
+		}
+		user.Name = trimmed
+	}
+
+	if input.Email != nil {
+		trimmed := strings.TrimSpace(*input.Email)
+		if trimmed == "" {
+			return nil, &shareddomain.AppError{
+				Code:       "USER_EMAIL_REQUIRED",
+				HTTPStatus: http.StatusBadRequest,
+				Message:    "Email is required",
+				Detail:     "email cannot be empty",
+				Retryable:  false,
+			}
+		}
+		user.Email = trimmed
+	}
+
+	if input.Role != nil {
+		user.Role = *input.Role
+	}
+	if input.OrgID != "" {
+		user.OrgID = input.OrgID
+	}
+
 	user.UpdatedAt = time.Now().UTC()
 
 	if err := uc.userRepo.Update(ctx, user); err != nil {
-		return fmt.Errorf("updating user role: %w", err)
+		return nil, fmt.Errorf("updating user: %w", err)
 	}
 
-	return nil
+	return user, nil
 }
 
 func (uc *UserUseCase) DeactivateUser(ctx context.Context, userID string) error {

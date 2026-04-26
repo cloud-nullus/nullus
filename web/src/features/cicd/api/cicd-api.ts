@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import { useAuthStore } from '../../../stores/auth-store'
 import type {
   AppTemplateInfo,
   CicdTemplate,
@@ -58,8 +59,22 @@ const queryKeys = {
 // --- API functions ---
 
 const cicdApiCalls = {
-  getTemplates: () =>
-    api.get<CicdTemplate[]>('/cicd/templates').then((r) => r.data),
+  getTemplates: async () => {
+    const raw = await api.get<any[]>('/cicd/templates').then((r) => r.data)
+
+    return (raw ?? []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description ?? '',
+      appType: (t.app_type ?? '') as CicdTemplate['appType'],
+      stages: t.stages ?? [],
+      createdBy: t.created_by,
+      gitRepoUrl: t.git_repo_url ?? '',
+      dockerfilePath: t.dockerfile_path ?? '',
+      dockerContext: t.docker_context ?? '',
+      envVars: t.env_vars ?? {},
+    })) as CicdTemplate[]
+  },
 
   createTemplate: (data: CreateCicdTemplateRequest) =>
     api.post<CicdTemplate>('/cicd/templates', data).then((r) => r.data),
@@ -85,17 +100,166 @@ const cicdApiCalls = {
   deleteGoldenPath: (id: string) =>
     api.delete<void>(`/cicd/golden-paths/${id}`).then((r) => r.data),
 
-  getPipelines: (filters?: { status?: string; search?: string }) =>
-    api.get<{ items: Pipeline[]; total: number }>('/cicd/pipelines', { params: filters }).then((r) => r.data),
+  deletePipeline: (id: string) =>
+    api.delete<void>(`/cicd/pipelines/${id}`).then((r) => r.data),
 
-  createPipeline: (data: CreatePipelineRequest) =>
-    api.post<Pipeline>('/cicd/pipelines', data).then((r) => r.data),
+  getPipelines: async (filters?: { status?: string; search?: string }) => {
+    const raw = await api.get<any>('/cicd/pipelines', { params: filters }).then((r) => r.data)
+    const clustersRes = await api.get<any>('/admin/clusters').then((r) => r.data)
+    const clusterMap = new Map((clustersRes.items ?? []).map((c: any) => [c.id, c.name]))
 
-  deployPipeline: (pipelineId: string) =>
-    api.post<{ deploymentId: string }>(`/cicd/pipelines/${pipelineId}/deploy`).then((r) => r.data),
+    const deploymentsRes = await api.get<any>('/cicd/deployments').then((r) => r.data)
+    const latestDeployByPipeline = new Map<string, string>()
 
-  getDeployments: (filters?: { pipelineId?: string; status?: string }) =>
-    api.get<{ items: Deployment[]; total: number }>('/cicd/deployments', { params: filters }).then((r) => r.data),
+    for (const d of deploymentsRes.items ?? []) {
+      const pid = d.pipeline_id
+      const existing = latestDeployByPipeline.get(pid)
+      if (!existing || d.started_at > existing) {
+        latestDeployByPipeline.set(pid, d.started_at)
+      }
+    }
+
+    const items: Pipeline[] = (raw.items ?? []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      appType: (p.app_type ?? '') as Pipeline['appType'],
+      templateId: p.template_id ?? '',
+      gitRepoUrl: p.git_repo_url ?? '',
+      clusterId: p.cluster_id ?? '',
+      clusterName: clusterMap.get(p.cluster_id) ?? '',
+      namespace: p.namespace ?? 'default',
+      dockerfilePath: p.dockerfile_path ?? '',
+      dockerContext: p.docker_context ?? '',
+      envVars: p.env_vars ?? {},
+      status: (p.status ?? 'pending') as Pipeline['status'],
+      lastDeployedAt: latestDeployByPipeline.get(p.id) ?? null,
+      createdAt: p.created_at ?? '',
+    }))
+
+    return { items, total: raw.total ?? items.length }
+  },
+
+  createPipeline: async (data: CreatePipelineRequest) => {
+    const res: any = await api.post('/cicd/pipelines', {
+      name: data.name,
+      app_type: data.appType,
+      cluster_id: data.clusterId,
+      namespace: data.namespace ?? 'default',
+      template_id: data.templateId ?? '',
+      git_repo_url: data.gitRepoUrl ?? '',
+      dockerfile_path: data.dockerfilePath ?? '',
+      docker_context: data.dockerContext ?? '',
+      env_vars: data.envVars ?? {},
+    }).then((r) => r.data)
+
+    const raw = res.pipeline ?? res
+
+    return {
+      id: raw.id,
+      name: raw.name,
+      appType: (raw.app_type ?? '') as Pipeline['appType'],
+      templateId: raw.template_id ?? '',
+      gitRepoUrl: raw.git_repo_url ?? '',
+      clusterId: raw.cluster_id ?? '',
+      clusterName: '',
+      namespace: raw.namespace ?? 'default',
+      dockerfilePath: raw.dockerfile_path ?? '',
+      dockerContext: raw.docker_context ?? '',
+      envVars: raw.env_vars ?? {},
+      status: (raw.status ?? 'active') as Pipeline['status'],
+      lastDeployedAt: null,
+      createdAt: raw.created_at ?? '',
+    } as Pipeline
+  },
+
+  deployPipeline: async (pipelineId: string) => {
+    const user = useAuthStore.getState().user
+    const response = await api.post<{ deploymentId: string }>(`/cicd/pipelines/${pipelineId}/deploy`, {
+      version: `v0.1.${Date.now() % 1000}`,
+      deployed_by: user?.email ?? '',
+    })
+    return response.data
+  },
+
+  getDeployment: async (deploymentId: string) => {
+    const raw: any = await api.get(`/cicd/deployments/${deploymentId}`).then((r) => r.data)
+    const rawSteps = (raw.steps ?? raw.Steps ?? []) as any[]
+    const normalizedSteps = rawSteps.map((step, index) => {
+      const rawLogs = step.logs ?? step.Logs ?? []
+      const normalizedLogs = Array.isArray(rawLogs) ? rawLogs.map((line: unknown) => String(line)) : []
+      const message = step.message ?? step.Message
+      const name = step.name ?? step.Name ?? `Step ${index + 1}`
+
+      // Some environments only return step-level message without explicit logs.
+      const logs = normalizedLogs.length > 0 ? normalizedLogs : (typeof message === 'string' && message ? [message] : [])
+
+      return {
+        name: String(name),
+        status: String(step.status ?? step.Status ?? ''),
+        kind: String(step.kind ?? step.Kind ?? ''),
+        message: typeof message === 'string' ? message : undefined,
+        applied_at: String(step.applied_at ?? step.AppliedAt ?? ''),
+        logs,
+      }
+    })
+
+    const topLevelLogs = raw.logs ?? raw.Logs
+    const fallbackStep =
+      normalizedSteps.length === 0 && Array.isArray(topLevelLogs) && topLevelLogs.length > 0
+        ? [
+            {
+              name: 'Output',
+              status: 'completed',
+              kind: 'log',
+              message: '',
+              applied_at: '',
+              logs: topLevelLogs.map((line: unknown) => String(line)),
+            },
+          ]
+        : []
+
+    return {
+      id: raw.ID ?? raw.id ?? '',
+      status: (raw.Status ?? raw.status ?? 'running') as string,
+      steps: [...normalizedSteps, ...fallbackStep] as Array<{ name: string; status: string; kind: string; message?: string; applied_at?: string; logs?: string[] }>,
+      startedAt: raw.StartedAt ?? raw.started_at ?? '',
+      completedAt: raw.CompletedAt ?? raw.completed_at ?? null,
+    }
+  },
+
+  getDeployments: async (filters?: { pipelineId?: string; status?: string }) => {
+    const [raw, pipelinesRaw] = await Promise.all([
+      api.get<any>('/cicd/deployments', { params: filters }).then((r) => r.data),
+      api.get<any>('/cicd/pipelines').then((r) => r.data),
+    ])
+
+    const pipelineNameMap = new Map<string, string>()
+    for (const p of pipelinesRaw.items ?? []) {
+      pipelineNameMap.set(p.id, p.name)
+    }
+
+    const mappedItems: Deployment[] = (raw.items ?? []).map((d: any) => ({
+      id: d.id,
+      pipelineId: d.pipeline_id ?? '',
+      pipelineName: pipelineNameMap.get(d.pipeline_id) ?? '',
+      version: d.version ?? '',
+      status: (d.status ?? 'pending') as Deployment['status'],
+      triggeredBy: d.deployed_by ?? '',
+      startedAt: d.started_at ?? '',
+      completedAt: d.completed_at ?? null,
+    }))
+
+    const items = mappedItems
+      .filter((item) => !filters?.pipelineId || item.pipelineId === filters.pipelineId)
+      .filter((item) => !filters?.status || item.status === filters.status)
+      .sort((a, b) => {
+        const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0
+        const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0
+        return bTime - aTime
+      })
+
+    return { items, total: items.length }
+  },
 
   getAppTemplates: () =>
     api.get<AppTemplateInfo[]>('/cicd/app-templates').then((r) => r.data),
@@ -160,6 +324,17 @@ export function useCreatePipeline() {
   })
 }
 
+export function useDeletePipeline() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: cicdApiCalls.deletePipeline,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cicd', 'pipelines'] })
+      void qc.invalidateQueries({ queryKey: ['cicd', 'deployments'] })
+    },
+  })
+}
+
 export function useDeployPipeline() {
   const qc = useQueryClient()
   return useMutation({
@@ -175,6 +350,45 @@ export function useDeployments(filters?: { pipelineId?: string; status?: string 
   return useQuery({
     queryKey: queryKeys.deployments(filters),
     queryFn: () => cicdApiCalls.getDeployments(filters),
+  })
+}
+
+export function useDeploymentStatus(deploymentId: string | null) {
+  return useQuery({
+    queryKey: ['cicd-deployment-status', deploymentId],
+    queryFn: () => cicdApiCalls.getDeployment(deploymentId!),
+    enabled: !!deploymentId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (status === 'success' || status === 'failed') return false
+      return 2000
+    },
+    staleTime: 0,
+  })
+}
+
+export function useTemplateById(templateId: string) {
+  return useQuery({
+    queryKey: ['cicd-template', templateId],
+    queryFn: () =>
+      api.get<any>(`/cicd/templates/${templateId}`).then((r) => {
+        const t = r.data
+        return {
+          id: t.id,
+          name: t.name,
+          stages: t.stages ?? [],
+          appType: t.app_type ?? '',
+        }
+      }),
+    enabled: !!templateId,
+  })
+}
+
+export function usePipelineDeployments(pipelineId: string) {
+  return useQuery({
+    queryKey: ['cicd-pipeline-deployments', pipelineId],
+    queryFn: () => cicdApiCalls.getDeployments({ pipelineId }),
+    enabled: !!pipelineId,
   })
 }
 

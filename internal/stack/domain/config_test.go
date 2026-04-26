@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,10 +18,10 @@ func TestStackConfig_ZeroValue(t *testing.T) {
 func TestStackConfig_ToolSelection(t *testing.T) {
 	cfg := StackConfig{
 		Artifacts: ArtifactsConfig{
-			PackageRegistry: ToolSelection{Name: "gitlab", Version: "17.7.2", Enabled: true},
-			SourceRepository: ToolSelection{Name: "gitlab", Version: "17.7.2", Enabled: true},
+			PackageRegistry:   ToolSelection{Name: "gitlab", Version: "17.7.2", Enabled: true},
+			SourceRepository:  ToolSelection{Name: "gitlab", Version: "17.7.2", Enabled: true},
 			ContainerRegistry: ToolSelection{Name: "gitlab-registry", Version: "17.7.2", Enabled: true},
-			StorageBackend: ToolSelection{Name: "minio", Version: "2024.11.7", Enabled: true},
+			StorageBackend:    ToolSelection{Name: "minio", Version: "2024.11.7", Enabled: true},
 		},
 		Pipeline: PipelineConfig{
 			CIPlatform: ToolSelection{Name: "gitlab-ci", Version: "17.7.2", Enabled: true},
@@ -73,4 +74,24 @@ func TestResourceEstimate_Fields(t *testing.T) {
 	assert.Equal(t, 16.0, est.MemoryGi)
 	assert.Equal(t, 100.0, est.StorageGi)
 	assert.Equal(t, 187.50, est.MonthlyCostUSD)
+}
+
+func TestToolSelection_UnmarshalJSON_LegacyString(t *testing.T) {
+	var selection ToolSelection
+	err := json.Unmarshal([]byte(`"prometheus"`), &selection)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "prometheus", selection.Name)
+	assert.Equal(t, "", selection.Version)
+	assert.True(t, selection.Enabled)
+}
+
+func TestToolSelection_UnmarshalJSON_Object(t *testing.T) {
+	var selection ToolSelection
+	err := json.Unmarshal([]byte(`{"name":"grafana","version":"11.1.0","enabled":true}`), &selection)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "grafana", selection.Name)
+	assert.Equal(t, "11.1.0", selection.Version)
+	assert.True(t, selection.Enabled)
 }

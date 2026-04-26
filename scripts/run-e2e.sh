@@ -74,6 +74,12 @@ check_playwright() {
   if ! npx playwright --version &>/dev/null; then
     warn "Playwright 미설치. 설치 중..."
     npx playwright install chromium
+    return
+  fi
+
+  if ! npx playwright install --check chromium &>/dev/null 2>&1; then
+    warn "Chromium 브라우저 바이너리 미설치. 설치 중..."
+    npx playwright install chromium
   fi
 }
 

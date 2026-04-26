@@ -287,9 +287,9 @@ func TestDBIntegration_Alerts(t *testing.T) {
 	// Insert alert rule (id is VARCHAR, no auto-gen)
 	ruleID := "rule-test-" + time.Now().Format("150405")
 	_, err := pool.Exec(ctx,
-		`INSERT INTO alert_rules (id, name, condition, threshold, channel, enabled)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		ruleID, "High CPU", "cpu_usage > threshold", 80.0, "slack", true,
+		`INSERT INTO alert_rules (id, name, condition, threshold, warning_threshold, critical_threshold, channel, enabled)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		ruleID, "High CPU", "cpu_usage > threshold", 80.0, 70.0, 90.0, "slack", true,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {

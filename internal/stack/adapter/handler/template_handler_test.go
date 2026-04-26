@@ -33,7 +33,7 @@ func newTemplateEcho() *echo.Echo {
 	return e
 }
 
-func TestTemplateHandler_ListTemplates_ReturnsThree(t *testing.T) {
+func TestTemplateHandler_ListTemplates_ReturnsSeededTemplates(t *testing.T) {
 	e := newTemplateEcho()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/stacks/templates", nil)
@@ -44,7 +44,7 @@ func TestTemplateHandler_ListTemplates_ReturnsThree(t *testing.T) {
 
 	var items []any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &items))
-	assert.Len(t, items, 3)
+	assert.Len(t, items, 4)
 }
 
 func TestTemplateHandler_GetTemplate_200(t *testing.T) {

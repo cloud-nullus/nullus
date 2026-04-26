@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
+import { useStacks, useStackRetryHistory } from '../api/stack-api'
+import type { Stack } from '../api/stack-api'
+import { RetryStackButton } from '../components/retry-stack-button'
+import type { StackStatus as RetryStackStatus } from '../utils/retry-policy'
+import { getStatusStyle } from '../utils/status-style'
 
 type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'dim'
 
@@ -126,6 +132,40 @@ interface Stage {
   status: StageStatus
 }
 
+// F8-UIUX-RealTimeline — derive a compact 5-stage timeline for the
+// real-data view. Backend does not stream per-stage events yet, so the
+// currentIdx is derived from the single stack.status value.
+interface RealStageDerivation {
+  stages: Stage[]
+  terminal: 'completed' | 'failed' | 'rolled_back' | 'cancelled' | null
+}
+
+function deriveRealStages(status: string, stageLabels: string[]): RealStageDerivation {
+  const [queued, provisioning, deploying, validating, completed] = stageLabels
+  const markTo = (idx: number, failAt?: number): Stage[] => {
+    return [queued, provisioning, deploying, validating, completed].map((label, i) => {
+      if (failAt !== undefined && i === failAt) return { label, status: 'failed' as StageStatus }
+      if (i < idx) return { label, status: 'done' as StageStatus }
+      if (i === idx) return { label, status: 'done' as StageStatus }
+      return { label, status: 'pending' as StageStatus }
+    })
+  }
+  switch (status) {
+    case 'pending':      return { stages: markTo(0), terminal: null }
+    case 'validating':   return { stages: markTo(1), terminal: null }
+    case 'installing':
+    case 'configuring':  return { stages: markTo(2), terminal: null }
+    case 'health_check':
+    case 'running':      return { stages: markTo(3), terminal: null }
+    case 'completed':    return { stages: markTo(4), terminal: 'completed' }
+    case 'failed':       return { stages: markTo(-1, 2), terminal: 'failed' }
+    case 'rolling_back': return { stages: markTo(2), terminal: null }
+    case 'rolled_back':  return { stages: markTo(-1, 2), terminal: 'rolled_back' }
+    case 'cancelled':    return { stages: markTo(-1, 2), terminal: 'cancelled' }
+    default:             return { stages: markTo(0), terminal: null }
+  }
+}
+
 function getStages(result: 'success' | 'failed' | 'running'): Stage[] {
   if (result === 'success') {
     return [
@@ -161,6 +201,15 @@ export function StackDeploymentLogsPage() {
   const [visibleCount, setVisibleCount] = useState(0)
 
   const entry = deploymentId ? DEPLOYMENT_DATA[deploymentId] : undefined
+
+  // When the id does not match a fixture, fall back to the real stack list
+  // and render a condensed live view with the Retry button.
+  const { data: stacksData } = useStacks()
+  const realStack = useMemo<Stack | undefined>(() => {
+    if (entry || !deploymentId) return undefined
+    return stacksData?.items?.find((s) => s.id === deploymentId)
+  }, [stacksData, deploymentId, entry])
+
   const allLogs = entry?.logs ?? []
   const meta = entry?.meta
 
@@ -188,6 +237,16 @@ export function StackDeploymentLogsPage() {
   const visibleLogs = allLogs.slice(0, visibleCount)
   const isStreaming = visibleCount < allLogs.length
   const stages = meta ? getStages(meta.result) : []
+
+  if (!entry && realStack) {
+    return (
+      <RealStackView
+        stack={realStack}
+        onBack={() => navigate('/stack/list')}
+        onRetried={() => navigate('/stack/list')}
+      />
+    )
+  }
 
   return (
     <div>
@@ -307,14 +366,14 @@ export function StackDeploymentLogsPage() {
           )}
         </div>
 
-        <div className="h-[480px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
+        <div className="h-[560px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
           {!entry && (
             <p className="text-[#f87171]">Deployment not found: {deploymentId}</p>
           )}
           {visibleLogs.map((line) => (
             <div key={`${line.time}-${line.text}`} className="flex gap-3">
               <span className="shrink-0 select-none text-[rgba(255,255,255,0.2)]">{line.time}</span>
-              <span className={LOG_LEVEL_STYLE[line.level]}>
+              <span className={cn(LOG_LEVEL_STYLE[line.level], "whitespace-pre-wrap break-words")}>
                 {LOG_LEVEL_PREFIX[line.level]}{line.text}
               </span>
             </div>
@@ -330,6 +389,193 @@ export function StackDeploymentLogsPage() {
           <div ref={logEndRef} />
         </div>
       </div>
+    </div>
+  )
+}
+
+// F8-UIUX-RetryAuditSurface-Frontend — compact retry-history table rendered
+// under the (placeholder) log viewer. Hidden when the audit reader returns
+// no retry events for the stack. Initial view is capped at 3 rows; rest
+// reveals via an expand toggle. Inline to keep the page module self-
+// contained — this panel is only relevant to deployment logs.
+function RetryHistoryPanel({ stackId }: { stackId: string }) {
+  const { t } = useTranslation()
+  const { data } = useStackRetryHistory(stackId)
+  const [expanded, setExpanded] = useState(false)
+  const items = data?.items ?? []
+  if (items.length === 0) return null
+  const visible = expanded ? items : items.slice(0, 3)
+  const remaining = items.length - 3
+  return (
+    <section
+      className="mt-4 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3"
+      data-testid="retry-history-panel"
+    >
+      <h3 className="mb-2 text-sm font-medium text-[var(--color-text-primary)]">
+        {t('stackDeployment.retryHistory.title', '재배포 기록')}
+      </h3>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-left text-[var(--color-text-secondary)]">
+            <th className="py-1 font-medium">
+              {t('stackDeployment.retryHistory.timestamp', '시각')}
+            </th>
+            <th className="py-1 font-medium">
+              {t('stackDeployment.retryHistory.verdict', '결과')}
+            </th>
+            <th className="py-1 font-medium">
+              {t('stackDeployment.retryHistory.issues', '이슈')}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {visible.map((e) => (
+            <tr key={e.id} className="border-t border-[var(--color-border-default)]">
+              <td className="py-1">{new Date(e.timestamp).toLocaleString()}</td>
+              <td className="py-1">{e.verdict ?? '-'}</td>
+              <td className="py-1">{e.issueCodes?.join(', ') ?? '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {remaining > 0 && (
+        <button
+          type="button"
+          className="mt-2 text-[11px] text-[#a5b4fc]"
+          onClick={() => setExpanded((v) => !v)}
+          data-testid="retry-history-toggle"
+        >
+          {expanded
+            ? t('stackDeployment.retryHistory.collapse', '접기')
+            : t('stackDeployment.retryHistory.expand', `더 보기 (+${remaining})`)}
+        </button>
+      )}
+    </section>
+  )
+}
+
+interface RealStackViewProps {
+  stack: Stack
+  onBack: () => void
+  onRetried: () => void
+}
+
+function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
+  const isFailed = stack.status === 'failed' || stack.status === 'rolled_back'
+  const style = getStatusStyle(stack.status)
+  // Memoise the derived timeline so switching tabs / re-renders don't
+  // rebuild the stage array unnecessarily.
+  const { stages: realStages, terminal } = useMemo(() => {
+    const labels = [
+      'Queued',
+      'Provisioning',
+      'Deploying',
+      'Validating',
+      'Completed',
+    ]
+    return deriveRealStages(stack.status, labels)
+  }, [stack.status])
+  return (
+    <div>
+      <Breadcrumb items={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Logs' }]} />
+
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.12)] text-[#34d399]">
+            <Terminal size={18} />
+          </div>
+          <div>
+            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
+              Deployment Logs
+            </h1>
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+              {stack.name} · {stack.templateName || stack.templateId} · {stack.clusterName || stack.clusterId}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <RetryStackButton
+            stackId={stack.id}
+            status={stack.status as RetryStackStatus}
+            onRetried={onRetried}
+          />
+          <Button variant="outline" size="md" type="button" onClick={onBack}>
+            <ArrowLeft size={14} />
+            Back to Stack List
+          </Button>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <span
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold"
+          style={{ backgroundColor: style.bg, color: style.color }}
+          data-testid="real-stack-status-badge"
+        >
+          {isFailed ? <XCircle size={12} /> : <CheckCircle2 size={12} />}
+          {style.label}
+        </span>
+        <span className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
+          <Clock size={12} />
+          {stack.namespace ?? 'nullus'}
+        </span>
+
+        <div
+          className="ml-2 flex items-center gap-0"
+          data-testid="real-timeline"
+          data-terminal={terminal ?? undefined}
+        >
+          {realStages.map((stage, i) => (
+            <div key={stage.label} className="flex items-center">
+              {i > 0 && (
+                <div
+                  className={cn(
+                    'h-px w-6',
+                    stage.status === 'pending' ? 'bg-[rgba(255,255,255,0.1)]' : 'bg-[rgba(34,197,94,0.4)]',
+                  )}
+                />
+              )}
+              <div className="flex flex-col items-center gap-0.5">
+                {stage.status === 'done' ? (
+                  <CheckCircle2 size={14} className="text-[#34d399]" />
+                ) : stage.status === 'failed' ? (
+                  <XCircle size={14} className="text-[#f87171]" />
+                ) : (
+                  <Circle size={14} className="text-[rgba(255,255,255,0.15)]" />
+                )}
+                <span
+                  className={cn(
+                    'text-[10px] font-medium whitespace-nowrap',
+                    stage.status === 'done'
+                      ? 'text-[#34d399]'
+                      : stage.status === 'failed'
+                        ? 'text-[#f87171]'
+                        : 'text-[rgba(255,255,255,0.25)]',
+                  )}
+                >
+                  {stage.label}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
+        <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] px-4 py-2.5">
+          <div className="flex gap-1.5">
+            <span className="h-3 w-3 rounded-full bg-[#ef4444]" />
+            <span className="h-3 w-3 rounded-full bg-[#fbbf24]" />
+            <span className="h-3 w-3 rounded-full bg-[#34d399]" />
+          </div>
+          <span className="ml-2 text-[11px] text-[rgba(255,255,255,0.3)]">deployment/{stack.id}</span>
+        </div>
+        <div className="p-6 text-[13px] text-[var(--color-text-secondary)]">
+          Live log streaming is not yet connected. See the Stack List view for deployment events and metrics.
+        </div>
+      </div>
+
+      <RetryHistoryPanel stackId={stack.id} />
     </div>
   )
 }

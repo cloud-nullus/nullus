@@ -8,9 +8,22 @@ export type MemberRole = Role
 
 export type MemberStatus = 'active' | 'pending' | 'inactive'
 
-export type ClusterType = 'kubernetes' | 'eks' | 'gke' | 'aks' | 'k3s' | 'pipeline' | 'target'
+export type ClusterType = 'pipeline' | 'target'
 
-export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive'
+export type CloudProvider =
+  | 'aws'
+  | 'azure'
+  | 'gcp'
+  | 'oci'
+  | 'ibm_cloud'
+  | 'alibaba_cloud'
+  | 'tencent_cloud'
+  | 'naver_cloud'
+  | 'kt_cloud'
+  | 'nhn_cloud'
+  | 'on_premise'
+
+export type ClusterStatus = 'connected' | 'pending' | 'error' | 'inactive' | 'unreachable' | 'auth_failed'
 
 export type DeploymentState =
   | 'running'
@@ -28,11 +41,18 @@ export type DeploymentState =
 
 export type StackStatus = DeploymentState
 
-export type PipelineStatus = DeploymentState
+export type PipelineStatus = DeploymentState | 'active' | 'inactive'
 
-export type AppType = 'web-backend' | 'web-frontend' | 'batch-job'
+export type AppType = 'web' | 'backend' | 'batch' | 'web-backend' | 'web-frontend' | 'batch-job'
 
-export type AppTemplate = 'react-spa' | 'next-app' | 'express-api' | 'spring-boot' | 'python-fastapi' | 'go-web-api'
+export type AppTemplate =
+  | 'go-web-api'
+  | 'react-vite'
+  | 'react-spa'
+  | 'next-app'
+  | 'express-api'
+  | 'spring-boot'
+  | 'python-fastapi'
 
 export type AlertSeverity = 'critical' | 'warning' | 'info'
 
@@ -71,15 +91,31 @@ export interface Cluster {
   id: string
   name: string
   type: ClusterType
+  types: ClusterType[]
+  cloudProvider: CloudProvider
   endpoint: string
   status: ClusterStatus
   organizationIds: string[]
+  kubeconfig?: string
   createdAt: string
+  // nodeArchitectures is the sorted, de-duplicated set of
+  // node.status.nodeInfo.architecture values from the cluster. Populated by
+  // admin discovery flows (POST /clusters/:id/refresh-discovery) and
+  // consumed by the Stack Pre-Deploy Gate. Empty array means "not yet
+  // discovered" — treated as unknown, not as "no nodes."
+  nodeArchitectures: string[]
 }
 
 export interface ToolSelection {
   tool: string
   version: string
+}
+
+export interface TemplateToolDetail {
+  category: string
+  name: string
+  helm_version: string
+  app_version: string
 }
 
 export interface StackResourcesInput {
@@ -90,16 +126,50 @@ export interface StackResourcesInput {
   currency: string
 }
 
+export type StorageMode = 'existing' | 'create'
+
+export type StoragePlanMode = 'existing-all' | 'integrated-create' | 'none'
+
+export interface StorageTargetInput {
+  mode: StorageMode
+  existingRef: string
+  endpoint: string
+  resourceName: string
+  accessSecretRef: string
+  authId: string
+  authPasswordKey: string
+  providerOrEngine: string
+  version: string
+  size: 'small' | 'medium' | 'large'
+}
+
+export interface StackStorageInput {
+  planMode: StoragePlanMode
+  database: StorageTargetInput
+  objectStorage: StorageTargetInput
+}
+
+export interface AccessDomainTlsInput {
+  enabled: boolean
+  secretName: string
+  secretNamespace: string
+  issuerName: string
+}
+
 export interface StackConfig {
   templateId: string | null
   clusterId: string | null
   namespace?: string
   stackName: string
+  accessDomain?: string
+  accessDomainTls?: AccessDomainTlsInput
+  yamlOverrides?: Record<string, string>
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>
   monitoring: Record<string, ToolSelection>
   logging: Record<string, ToolSelection>
   resources: StackResourcesInput
+  storage?: StackStorageInput
 }
 
 export interface Stack {
@@ -109,6 +179,7 @@ export interface Stack {
   templateName: string
   clusterId: string
   clusterName: string
+  namespace?: string
   status: StackStatus
   createdAt: string
   updatedAt: string
@@ -119,6 +190,7 @@ export interface Template {
   name: string
   description: string
   tools: string[]
+  toolDetails?: TemplateToolDetail[]
   estimatedMinutes: number
   category: string
   createdBy?: string
@@ -142,16 +214,28 @@ export interface StackVersionDiff {
   changed: Record<string, [unknown, unknown]>
 }
 
+export type CompatibilityTier = 'stable' | 'beta' | 'deprecated'
+
 export interface CompatibilityTool {
   name: string
   helmVersion: string
   appVersion: string
+  // archSupport lists the CPU architectures the tool publishes images for
+  // (F8 Task 1). Empty array is interpreted as "amd64-only" for backward
+  // compatibility with v1 matrices that predate the field.
+  archSupport: string[]
+  // minK8sVersion is the per-tool minimum Kubernetes version (F8 Task 1).
+  // Empty string means "inherit from matrix k8sRange min."
+  minK8sVersion: string
+  // tier is the maturity of this tool inside the matrix (F8 Task 1).
+  // Distinct from the matrix-level status.
+  tier: CompatibilityTier
 }
 
 export interface CompatibilityMatrix {
   id: string
   name: string
-  status: 'verified' | 'untested'
+  status: 'verified' | 'untested' | 'unsupported'
   k8sRange: string
   tools: CompatibilityTool[]
 }
@@ -160,11 +244,25 @@ export interface CompatibilityIssue {
   tool: string
   message: string
   severity: 'error' | 'warning'
+  code?: string
+}
+
+export interface CompatibilityValidationOverall {
+  state: 'pass' | 'warn' | 'fail'
+  score: number
 }
 
 export interface CompatibilityValidationResult {
   compatible: boolean
+  overall: CompatibilityValidationOverall
   issues: CompatibilityIssue[]
+  // nodeArchitectures reflects the Pre-Deploy Gate's view of the target
+  // cluster's fleet (F8 Task 3). Always normalized/sorted server-side.
+  nodeArchitectures: string[]
+  // matrix is the server's view of the matched matrix row, if any.
+  matrix?: CompatibilityMatrix
+  // message is a human-readable summary returned by the server.
+  message?: string
   checkedAt: string
 }
 
@@ -176,12 +274,31 @@ export interface ResourceEstimate {
   currency: string
 }
 
+export interface StackResourceDefault {
+  tool_key: string
+  display_name: string
+  cpu_request: number
+  cpu_limit: number
+  memory_request_gi: number
+  memory_limit_gi: number
+  storage_request_gi: number
+  storage_limit_gi: number
+  is_default: boolean
+  updated_at: string
+}
+
 export interface Pipeline {
   id: string
   name: string
   appType: AppType
+  templateId: string
+  gitRepoUrl: string
   clusterId: string
   clusterName: string
+  namespace: string
+  dockerfilePath: string
+  dockerContext: string
+  envVars: Record<string, string>
   status: PipelineStatus
   lastDeployedAt: string | null
   createdAt: string
@@ -205,6 +322,10 @@ export interface CICDTemplate {
   appType: AppType
   stages: string[]
   createdBy?: string
+  gitRepoUrl?: string
+  dockerfilePath?: string
+  dockerContext?: string
+  envVars?: Record<string, string>
 }
 
 export interface AppTemplateInfo {
@@ -245,11 +366,14 @@ export interface MonitoringDashboard {
 export interface AlertRule {
   id: string
   name: string
+  metric_name: string
   condition: string
-  threshold: string
+  warning_threshold: number
+  critical_threshold: number
+  threshold: number
   channel: AlertChannel
   enabled: boolean
-  createdAt: string
+  createdAt?: string
 }
 
 export interface AlertHistory {
@@ -284,7 +408,10 @@ export interface InviteMemberRequest {
 
 export interface CreateClusterRequest {
   name: string
-  type: ClusterType
+  type?: ClusterType
+  types: ClusterType[]
+  cloudProvider: CloudProvider
+  endpoint?: string
   kubeconfig: string
 }
 
@@ -307,7 +434,12 @@ export interface CreatePipelineRequest {
   name: string
   appType: AppType
   clusterId: string
+  namespace?: string
   templateId?: string
+  gitRepoUrl?: string
+  dockerfilePath?: string
+  dockerContext?: string
+  envVars?: Record<string, string>
 }
 
 export interface CreateCicdTemplateRequest {
@@ -319,13 +451,12 @@ export interface CreateCicdTemplateRequest {
 }
 
 export interface DeployAppRequest {
+  templateId: string
   appName: string
   gitUrl: string
   clusterId: string
   namespace: string
-  templateId: AppTemplate
-  replicas?: number
-  port?: number
+  replicas: number
   resources: {
     cpuRequest: string
     cpuLimit: string
@@ -343,9 +474,21 @@ export interface DeployAppResult {
 
 export interface CreateAlertRuleRequest {
   name: string
-  condition: string
-  threshold: string
+  metric_name: string
+  warning_threshold: number
+  critical_threshold: number
   channel: AlertChannel
+  enabled?: boolean
+}
+
+export interface RetryHistoryEntry {
+  id: string
+  timestamp: string
+  actor: string
+  previousState?: string
+  acknowledgeWarnings: boolean
+  verdict?: string
+  issueCodes?: string[]
 }
 
 export type StackTemplate = Template

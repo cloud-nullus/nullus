@@ -11,18 +11,24 @@ function standardizeApiError(error: unknown): StandardizedApiError {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 500
     const responseData = error.response?.data
-    const message =
+    const topLevelMessage =
+      typeof responseData === 'object' &&
+      responseData !== null &&
+      'message' in responseData &&
+      typeof responseData.message === 'string'
+        ? responseData.message
+        : null
+    const nestedMessage =
       typeof responseData === 'object' &&
       responseData !== null &&
       'error' in responseData &&
-      typeof (responseData as { error: { message: string } }).error?.message === 'string'
-        ? (responseData as { error: { message: string } }).error.message
-        : typeof responseData === 'object' &&
-          responseData !== null &&
-          'message' in responseData &&
-          typeof responseData.message === 'string'
-          ? responseData.message
-          : error.message || 'Request failed'
+      typeof responseData.error === 'object' &&
+      responseData.error !== null &&
+      'message' in responseData.error &&
+      typeof responseData.error.message === 'string'
+        ? responseData.error.message
+        : null
+    const message = (topLevelMessage ?? nestedMessage ?? error.message) || 'Request failed'
 
     return {
       status,

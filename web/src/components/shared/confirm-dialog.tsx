@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Modal } from '../ui/modal'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
@@ -27,6 +28,7 @@ export function ConfirmDialog({
    loading = false,
    customContent,
  }: ConfirmDialogProps) {
+  const { t } = useTranslation()
   const [typed, setTyped] = useState('')
 
   const canConfirm = confirmText ? typed === confirmText : true
@@ -49,8 +51,8 @@ export function ConfirmDialog({
       title={title}
       footer={
         <>
-          <Button variant="outline" size="md" onClick={handleClose} disabled={loading}>
-            Cancel
+         <Button variant="outline" size="md" onClick={handleClose} disabled={loading}>
+            {t('common.cancel', 'Cancel')}
           </Button>
           <Button
             variant="danger"
@@ -80,11 +82,12 @@ export function ConfirmDialog({
          {confirmText && (
            <div>
              <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
-               확인하려면{' '}
+               {t('confirmDialog.typeToConfirm.prefix', 'To confirm, type')}{' '}
                <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
                  {confirmText}
                </code>
-               을(를) 입력하세요.
+               {' '}
+               {t('confirmDialog.typeToConfirm.suffix', 'exactly.')}
              </p>
              <input
                type="text"

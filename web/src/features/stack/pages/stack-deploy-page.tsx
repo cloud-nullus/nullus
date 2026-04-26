@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { CheckCircle, XCircle, Loader, Terminal } from 'lucide-react'
 import { useDeployLog } from '../hooks/use-deploy-log'
 import type { LogLevel, DeployStatus } from '../hooks/use-deploy-log'
@@ -63,7 +63,7 @@ function PhaseStep({ label, index, progress }: { label: string; index: number; p
   )
 }
 
-function StatusSummary({ status }: { status: DeployStatus }) {
+function StatusSummary({ status, latestFailureMessage }: { status: DeployStatus; latestFailureMessage?: string }) {
   if (status !== 'success' && status !== 'failed') return null
 
   const isSuccess = status === 'success'
@@ -79,11 +79,18 @@ function StatusSummary({ status }: { status: DeployStatus }) {
       {isSuccess ? <CheckCircle size={24} color="#22c55e" /> : <XCircle size={24} color="#f87171" />}
       <div>
         <div className={cn('mb-0.5 text-[15px] font-bold', isSuccess ? 'text-[#22c55e]' : 'text-[#f87171]')}>
-          {isSuccess ? '배포 완료' : '배포 실패'}
+          {isSuccess ? 'Deployment Completed' : 'Deployment Failed'}
         </div>
         <div className="text-[13px] text-[var(--color-text-secondary)]">
-          {isSuccess ? '모든 단계가 성공적으로 완료되었습니다.' : '배포 중 오류가 발생했습니다. 로그를 확인하세요.'}
+          {isSuccess
+            ? 'All stages completed successfully.'
+            : 'An error occurred during deployment. Check ERROR/failed lines in the Logs console below. If logs are empty, check recent failures in Stack List > selected stack > History.'}
         </div>
+        {!isSuccess && latestFailureMessage && (
+          <div className="mt-2 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-2.5 py-2 text-[12px] text-[#fca5a5]">
+            Latest failure reason: {latestFailureMessage}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -106,10 +113,14 @@ const STATE_TO_PROGRESS: Record<string, number> = {
 }
 
 export function StackDeployPage() {
-  const { id = '' } = useParams<{ id: string }>()
+  const params = useParams<{ id?: string; deploymentId?: string }>()
+  const navigate = useNavigate()
+  const id = params.id ?? params.deploymentId ?? ''
   const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
   const logEndRef = useRef<HTMLDivElement>(null)
   const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number } | null>(null)
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
+  const [sessionOnly, setSessionOnly] = useState(true)
 
   useEffect(() => {
     if (!id) return
@@ -124,13 +135,61 @@ export function StackDeployPage() {
     }).catch(() => {})
   }, [id])
 
-  const hasWsData = logs.length > 0 || (wsStatus !== 'connecting' && wsStatus !== 'running')
-  const status = hasWsData ? wsStatus : (apiState?.status ?? wsStatus)
-  const progress = wsProgress > 0 ? wsProgress : (apiState?.progress ?? 0)
+  const hasTerminalWsStatus = wsStatus === 'success' || wsStatus === 'failed'
+  const hasLiveLogSignal = logs.length > 0 || hasTerminalWsStatus
+
+  const status: DeployStatus = hasTerminalWsStatus
+    ? wsStatus
+    : (apiState?.status === 'success' || apiState?.status === 'failed')
+      ? apiState.status
+      : hasLiveLogSignal
+        ? (wsStatus === 'connecting' ? 'running' : wsStatus)
+        : (apiState?.status === 'running' ? 'running' : 'connecting')
+
+  const progress = wsProgress > 0
+    ? wsProgress
+    : Math.min(apiState?.progress ?? 0, status === 'success' ? 100 : 99)
+  const visibleLogs = useMemo(() => {
+    if (!sessionOnly) return logs
+    const lastValidateIndex = logs.map((entry) => entry.message).lastIndexOf('validation complete')
+    if (lastValidateIndex < 0) return logs
+    return logs.slice(lastValidateIndex)
+  }, [logs, sessionOnly])
+
+  const latestFailureLog = [...visibleLogs].reverse().find((log) => {
+    if (log.level === 'error') return true
+    const normalized = log.message.toLowerCase()
+    return normalized.includes('failed') || normalized.includes('error')
+  })
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  })
+  }, [visibleLogs.length])
+
+  useEffect(() => {
+    const shouldRedirect = status === 'success' && (visibleLogs.length > 0 || apiState?.status === 'success')
+    if (!shouldRedirect) {
+      setRedirectCountdown(null)
+      return
+    }
+
+    setRedirectCountdown(5)
+    const timer = window.setTimeout(() => {
+      navigate('/stack/list')
+    }, 5000)
+
+    const countdown = window.setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev === null) return null
+        return prev <= 1 ? 1 : prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      window.clearTimeout(timer)
+      window.clearInterval(countdown)
+    }
+  }, [status, visibleLogs.length, apiState?.status, navigate])
 
   return (
     <div>
@@ -168,7 +227,7 @@ export function StackDeployPage() {
         {/* Progress bar */}
         <div>
           <div className="mb-1.5 flex justify-between">
-            <span className="text-xs text-[var(--color-text-secondary)]">전체 진행률</span>
+            <span className="text-xs text-[var(--color-text-secondary)]">Overall Progress</span>
             <span className="text-xs font-bold text-[var(--color-text-primary)]">{progress}%</span>
           </div>
           <div className="flex h-2 w-full overflow-hidden rounded bg-[rgba(255,255,255,0.08)]">
@@ -191,21 +250,36 @@ export function StackDeployPage() {
 
       {/* Log console */}
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
-        <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
-          <Terminal size={14} color="var(--color-text-secondary)" />
-          <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            Logs ({logs.length})
-          </span>
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <Terminal size={14} color="var(--color-text-secondary)" />
+            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+              Logs ({visibleLogs.length})
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSessionOnly((prev) => !prev)}
+            className="rounded border border-[var(--color-border-default)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
+          >
+            {sessionOnly ? 'Current session only' : 'Show all buffered logs'}
+          </button>
         </div>
         <div
-          className="h-[400px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
+          className="h-[560px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
         >
-          {logs.length === 0 && (
+          {visibleLogs.length === 0 && (
             <div className="px-1 py-2 text-[var(--color-text-secondary)]">
-              {isConnected ? '로그를 기다리는 중...' : 'WebSocket에 연결 중...'}
+              {status === 'failed'
+                ? 'Deployment failed, but no in-memory live logs are available. Check Stack List > selected stack > History.'
+                : status === 'success'
+                  ? 'Deployment completed. No buffered live logs were retained for this session.'
+                  : isConnected
+                    ? 'Waiting for logs...'
+                    : 'Connecting to WebSocket...'}
             </div>
           )}
-          {logs.map((log) => {
+          {visibleLogs.map((log) => {
             const lvl = LOG_LEVEL_STYLE[log.level]
             return (
               <div key={log.id} className="flex items-start gap-2.5 px-1 py-0.5">
@@ -217,7 +291,7 @@ export function StackDeployPage() {
                 >
                   {log.level.toUpperCase()}
                 </span>
-                <span className="break-words text-[#e2e8f0]">{log.message}</span>
+                <span className="break-words whitespace-pre-wrap text-[#e2e8f0]">{log.message}</span>
               </div>
             )
           })}
@@ -226,7 +300,13 @@ export function StackDeployPage() {
       </div>
 
       {/* Result summary */}
-      <StatusSummary status={status} />
+      <StatusSummary status={status} latestFailureMessage={latestFailureLog?.message} />
+
+      {status === 'success' && redirectCountdown !== null && (
+        <div className="mt-3 rounded-[var(--card-radius)] border border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.1)] px-4 py-3 text-[13px] text-[var(--color-text-primary)]">
+          Deployment completed. Returning to Stack List in {redirectCountdown}s...
+        </div>
+      )}
     </div>
   )
 }

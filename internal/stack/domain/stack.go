@@ -15,6 +15,7 @@ const (
 	StateConfiguring DeploymentState = "configuring"
 	StateHealthCheck DeploymentState = "health_check"
 	StateCompleted   DeploymentState = "completed"
+	StateCancelled   DeploymentState = "cancelled"
 	StateFailed      DeploymentState = "failed"
 	StateRollingBack DeploymentState = "rolling_back"
 	StateRolledBack  DeploymentState = "rolled_back"
@@ -30,6 +31,7 @@ var validTransitions = map[DeploymentState][]DeploymentState{
 	StateFailed:      {StateRollingBack, StatePending},
 	StateRollingBack: {StateRolledBack, StateFailed},
 	StateRolledBack:  {StatePending},
+	StateCancelled:   {},
 	StateCompleted:   {},
 }
 

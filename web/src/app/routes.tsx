@@ -39,12 +39,13 @@ const StackHistoryPage = lazy(() =>
   import('../features/stack/pages/stack-history-page').then((m) => ({ default: m.StackHistoryPage }))
 )
 
-const StackDeploymentLogsPage = lazy(() =>
-  import('../features/stack/pages/stack-deployment-logs-page').then((m) => ({ default: m.StackDeploymentLogsPage }))
-)
 
 const StackVersionPage = lazy(() =>
   import('../features/stack/pages/stack-version-page').then((m) => ({ default: m.StackVersionPage }))
+)
+
+const StackOssResourceDefaultPage = lazy(() =>
+  import('../features/stack/pages/stack-oss-resource-default-page').then((m) => ({ default: m.StackOssResourceDefaultPage }))
 )
 
 const DeveloperDeployPage = lazy(() =>
@@ -65,6 +66,10 @@ const CicdListPage = lazy(() =>
 
 const CicdHistoryPage = lazy(() =>
   import('../features/cicd/pages/cicd-history-page').then((m) => ({ default: m.CicdHistoryPage }))
+)
+
+const CicdPipelineLogsPage = lazy(() =>
+  import('../features/cicd/pages/cicd-pipeline-logs-page').then((m) => ({ default: m.CicdPipelineLogsPage }))
 )
 
 const MonitoringPage = lazy(() =>
@@ -95,6 +100,10 @@ const KnownIssuesPage = lazy(() =>
   import('../features/admin/pages/known-issues-page').then((m) => ({ default: m.KnownIssuesPage }))
 )
 
+const StackVersionsAdminPage = lazy(() =>
+  import('../features/admin/pages/stack-versions-page').then((m) => ({ default: m.StackVersionsAdminPage }))
+)
+
 function Loading() {
   return (
     <div className="flex h-[200px] items-center justify-center text-[var(--color-text-secondary)]">
@@ -119,8 +128,8 @@ export const router = createBrowserRouter([
           { index: true, element: withSuspense(<HomePage />) },
           { path: 'stack/templates', element: withSuspense(<StackTemplatePage />) },
           { path: 'stack/list', element: withSuspense(<StackListPage />) },
-          { path: 'stack/logs/:deploymentId', element: withSuspense(<StackDeploymentLogsPage />) },
-          { path: 'stack/history', element: withSuspense(<StackHistoryPage />) },
+          { path: 'stack/logs/:deploymentId', element: withSuspense(<StackDeployPage />) },
+          { path: 'stack/history/:stackId?', element: withSuspense(<StackHistoryPage />) },
           { path: 'stack/versions', element: withSuspense(<StackVersionPage />) },
           { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
           { path: 'observability/monitoring', element: withSuspense(<MonitoringPage />) },
@@ -135,6 +144,7 @@ export const router = createBrowserRouter([
           { path: 'stack/install', element: withSuspense(<StackInstallPage />) },
           { path: 'stack/:id/add-tools', element: withSuspense(<StackAddToolsPage />) },
           { path: 'stack/deploy/:id', element: withSuspense(<StackDeployPage />) },
+          { path: 'stack/oss-resource-default', element: withSuspense(<StackOssResourceDefaultPage />) },
         ],
       },
       {
@@ -146,6 +156,7 @@ export const router = createBrowserRouter([
           { path: 'cicd/create', element: withSuspense(<DeveloperDeployPage />) },
           { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
           { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },
+          { path: 'cicd/pipelines/:id/logs', element: withSuspense(<CicdPipelineLogsPage />) },
         ],
       },
       {
@@ -156,6 +167,7 @@ export const router = createBrowserRouter([
           { path: 'admin/users', element: withSuspense(<UserManagementPage />) },
           { path: 'admin/clusters', element: withSuspense(<ClusterPage />) },
           { path: 'admin/known-issues', element: withSuspense(<KnownIssuesPage />) },
+          { path: 'admin/stack-versions', element: withSuspense(<StackVersionsAdminPage />) },
         ],
       },
       { path: '*', element: withSuspense(<NotFoundPage />) },

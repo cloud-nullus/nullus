@@ -24,7 +24,7 @@ test.describe('UAT: DevOps Engineer 미정', () => {
   test('"Get Started" CTA 버튼 표시 확인', async ({ page }) => {
     await loginAsDevOps(page)
     await page.goto('/')
-    await expect(page.locator('button').filter({ hasText: /Get Started|시작하기/ })).toBeVisible()
+    await expect(page.locator('button').filter({ hasText: /Start Stack|Get Started|시작하기/ })).toBeVisible()
   })
 
   test('사이드바에 DevSecOps Stack, CI/CD, Observability 메뉴 표시', async ({ page }) => {
@@ -36,12 +36,12 @@ test.describe('UAT: DevOps Engineer 미정', () => {
     await expect(page.locator('aside button').filter({ hasText: 'Observability' }).first()).toBeVisible()
   })
 
-  test('Stack Templates 이동 → 3개 템플릿 카드 확인', async ({ page }) => {
+  test('Stack Templates 이동 → 4개 템플릿 카드 확인', async ({ page }) => {
     await loginAsDevOps(page)
     await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
 
     const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
-    await expect(cards).toHaveCount(3)
+    await expect(cards).toHaveCount(4)
   })
 
   test('Stack Install 이동 → 5개 탭 표시 확인', async ({ page }) => {

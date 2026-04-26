@@ -44,12 +44,31 @@ func (r *MemoryPipelineRepository) GetByID(_ context.Context, id string) (*domai
 }
 
 // List returns all pipelines for an organization.
-func (r *MemoryPipelineRepository) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
+// An optional stackID filters results to pipelines linked to that stack.
+func (r *MemoryPipelineRepository) List(_ context.Context, orgID string, stackID ...string) ([]*domain.Pipeline, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	filterStack := len(stackID) > 0 && stackID[0] != ""
+	var result []*domain.Pipeline
+	for _, p := range r.pipelines {
+		if p.OrgID != orgID {
+			continue
+		}
+		if filterStack && p.StackID != stackID[0] {
+			continue
+		}
+		result = append(result, clonePipeline(p))
+	}
+	return result, nil
+}
+
+// ListByStackID returns all pipelines linked to a specific stack.
+func (r *MemoryPipelineRepository) ListByStackID(_ context.Context, stackID string) ([]*domain.Pipeline, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var result []*domain.Pipeline
 	for _, p := range r.pipelines {
-		if p.OrgID == orgID {
+		if p.StackID == stackID {
 			result = append(result, clonePipeline(p))
 		}
 	}
@@ -64,6 +83,15 @@ func (r *MemoryPipelineRepository) Update(_ context.Context, p *domain.Pipeline)
 		return fmt.Errorf("pipeline %q not found", p.ID)
 	}
 	r.pipelines[p.ID] = clonePipeline(p)
+	return nil
+}
+
+// Delete removes a pipeline by ID. No-op when the pipeline does not exist so
+// callers can idempotently clean up.
+func (r *MemoryPipelineRepository) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.pipelines, id)
 	return nil
 }
 

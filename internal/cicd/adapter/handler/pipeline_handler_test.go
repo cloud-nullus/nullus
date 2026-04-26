@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/usecase"
 	"github.com/labstack/echo/v4"
@@ -23,6 +24,8 @@ type mockPipelineRepository struct {
 	listErr   error
 	getErr    map[string]error
 	created   int
+	deleteErr error
+	deleted   []string
 }
 
 func newMockPipelineRepository(seed ...*domain.Pipeline) *mockPipelineRepository {
@@ -60,13 +63,28 @@ func (m *mockPipelineRepository) GetByID(_ context.Context, id string) (*domain.
 	return &copied, nil
 }
 
-func (m *mockPipelineRepository) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
+func (m *mockPipelineRepository) List(_ context.Context, orgID string, stackID ...string) ([]*domain.Pipeline, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
+	filterStack := len(stackID) > 0 && stackID[0] != ""
 	result := make([]*domain.Pipeline, 0, len(m.pipelines))
 	for _, p := range m.pipelines {
 		if p.OrgID == orgID {
+			if filterStack && p.StackID != stackID[0] {
+				continue
+			}
+			copied := *p
+			result = append(result, &copied)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockPipelineRepository) ListByStackID(_ context.Context, stackID string) ([]*domain.Pipeline, error) {
+	result := make([]*domain.Pipeline, 0)
+	for _, p := range m.pipelines {
+		if p.StackID == stackID {
 			copied := *p
 			result = append(result, &copied)
 		}
@@ -75,6 +93,18 @@ func (m *mockPipelineRepository) List(_ context.Context, orgID string) ([]*domai
 }
 
 func (m *mockPipelineRepository) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
+
+func (m *mockPipelineRepository) Delete(_ context.Context, id string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.pipelines[id]; !ok {
+		return errors.New("pipeline not found")
+	}
+	delete(m.pipelines, id)
+	m.deleted = append(m.deleted, id)
+	return nil
+}
 
 type mockPipelineTemplateRepository struct {
 	templates map[string]*domain.PipelineTemplate
@@ -163,14 +193,27 @@ func (m *mockDeploymentRepository) ListByPipelineID(_ context.Context, pipelineI
 
 func (m *mockDeploymentRepository) Update(_ context.Context, _ *domain.Deployment) error { return nil }
 
+type noopKubeconfigProvider struct{}
+
+func (n *noopKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]byte, error) {
+	return []byte("fake-kubeconfig"), nil
+}
+
+type noopManifestApplier struct{}
+
+func (n *noopManifestApplier) Apply(_ context.Context, _ []byte, _ []string) error { return nil }
+func (n *noopManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, _ []string, _ string, _ ...int) error {
+	return nil
+}
+
 func newPipelineEcho(t *testing.T, pipelineRepo *mockPipelineRepository, templateRepo *mockPipelineTemplateRepository, deploymentRepo *mockDeploymentRepository) *echo.Echo {
 	t.Helper()
 
 	e := echo.New()
 	createPipelineUC := usecase.NewCreatePipeline(pipelineRepo, templateRepo)
 	listPipelinesUC := usecase.NewListPipelines(pipelineRepo)
-	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, deploymentRepo)
-	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo)
+	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, &noopManifestApplier{})
+	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, kube.NewStepTracker())
 
 	v1 := e.Group("/api/v1")
 	h.RegisterRoutes(v1)
@@ -195,12 +238,16 @@ func TestPipelineHandler_Create_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code)
 	assert.Equal(t, 1, pipelineRepo.created)
 
-	var resp domain.Pipeline
+	var resp struct {
+		Pipeline domain.Pipeline `json:"pipeline"`
+		Warning  string          `json:"warning,omitempty"`
+	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Equal(t, "orders", resp.Name)
-	assert.Equal(t, "org-1", resp.OrgID)
-	assert.Equal(t, domain.PipelineStatusActive, resp.Status)
-	assert.NotEmpty(t, resp.ID)
+	assert.Equal(t, "orders", resp.Pipeline.Name)
+	assert.Equal(t, "org-1", resp.Pipeline.OrgID)
+	assert.Equal(t, domain.PipelineStatusActive, resp.Pipeline.Status)
+	assert.NotEmpty(t, resp.Pipeline.ID)
+	assert.Empty(t, resp.Warning)
 }
 
 func TestPipelineHandler_Create_InvalidBody(t *testing.T) {
@@ -263,7 +310,7 @@ func TestPipelineHandler_Deploy_Success(t *testing.T) {
 
 	e.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusAccepted, rec.Code)
 	require.Len(t, deploymentRepo.deployments, 1)
 	assert.Equal(t, "pip-1", deploymentRepo.deployments[0].PipelineID)
 
@@ -292,4 +339,145 @@ func TestPipelineHandler_Deploy_NotFound(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.Equal(t, "PIPELINE_DEPLOY_FAILED", resp["error"]["code"])
 	assert.Contains(t, resp["error"]["message"], "pipeline not found")
+}
+
+func TestPipelineHandler_Delete_Success(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "org-1"})
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/pipelines/pip-1", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Len(t, pipelineRepo.deleted, 1)
+	assert.Equal(t, "pip-1", pipelineRepo.deleted[0])
+}
+
+func TestPipelineHandler_Delete_NotFound(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository()
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/pipelines/missing", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	var resp map[string]map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "PIPELINE_NOT_FOUND", resp["error"]["code"])
+}
+
+func TestPipelineHandler_List_NoOrgHeader(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(
+		&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "11111111-1111-1111-1111-111111111111"},
+	)
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pipelines", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Items []domain.Pipeline `json:"items"`
+		Total int               `json:"total"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, 1, resp.Total)
+}
+
+func TestPipelineHandler_ListDeployments_Success(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(
+		&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "org-1"},
+	)
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{
+		deployments: []*domain.Deployment{
+			{ID: "dep-1", PipelineID: "pip-1", Version: "v1.0.0"},
+		},
+	}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/deployments", nil)
+	req.Header.Set("X-Org-ID", "org-1")
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Items []domain.Deployment `json:"items"`
+		Total int                 `json:"total"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, 1, resp.Total)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "dep-1", resp.Items[0].ID)
+}
+
+func TestPipelineHandler_ListAppTemplates_Success(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository()
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/app-templates", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp []map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Len(t, resp, 3)
+	assert.Equal(t, "go-web-api", resp[0]["id"])
+}
+
+func TestPipelineHandler_DeployApp_Success(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository()
+	templateRepo := newMockPipelineTemplateRepository()
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	body := `{"templateId":"go-web-api","appName":"my-api","clusterId":"c1","namespace":"default","gitUrl":"https://github.com/acme/api","replicas":2,"port":8080,"resources":{"cpuLimit":"500m","memLimit":"512Mi","cpuRequest":"100m","memRequest":"128Mi"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/deploy-app", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "dep_app_my-api", resp["deploymentId"])
+	assert.Equal(t, "go-web-api", resp["templateId"])
+	assert.NotNil(t, resp["manifests"])
+}
+
+func TestPipelineHandler_Create_TemplateNotFound(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository()
+	templateRepo := newMockPipelineTemplateRepository() // no templates
+	deploymentRepo := &mockDeploymentRepository{}
+	e := newPipelineEcho(t, pipelineRepo, templateRepo, deploymentRepo)
+
+	body := `{"name":"orders","template_id":"missing","cluster_id":"c1","namespace":"apps","app_type":"backend","git_repo_url":"https://github.com/acme/orders"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Org-ID", "org-1")
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, 0, pipelineRepo.created)
 }

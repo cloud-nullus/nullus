@@ -3,13 +3,17 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
+
+var ErrDeploymentCancelled = errors.New("deployment cancelled")
 
 // installStep describes a single simulated installation step.
 type installStep struct {
@@ -23,7 +27,10 @@ var installPhases = [][]installStep{
 	// Phase A
 	{
 		{name: "installing_cert_manager", phase: "A", duration: time.Second},
+		{name: "installing_metrics_server", phase: "A", duration: time.Second},
+		{name: "installing_postgresql", phase: "A", duration: time.Second},
 		{name: "installing_minio", phase: "A", duration: time.Second},
+		{name: "installing_object_storage_secret", phase: "A", duration: time.Second},
 	},
 	// Phase B
 	{
@@ -35,6 +42,10 @@ var installPhases = [][]installStep{
 	{
 		{name: "installing_prometheus", phase: "C", duration: time.Second},
 		{name: "installing_grafana", phase: "C", duration: time.Second},
+		{name: "installing_logging", phase: "C", duration: time.Second},
+		{name: "installing_log_search", phase: "C", duration: time.Second},
+		{name: "installing_opentelemetry", phase: "C", duration: time.Second},
+		{name: "installing_gateway", phase: "C", duration: time.Second},
 		{name: "integration_check", phase: "C", duration: time.Second},
 	},
 }
@@ -53,6 +64,22 @@ type stackConfigAwareExecutor interface {
 
 type namespaceAwareExecutor interface {
 	SetNamespace(namespace string)
+}
+
+type deploymentVerifiableExecutor interface {
+	VerifyDeployment(ctx context.Context, stackID string) error
+}
+
+type stepRuntimeReporter interface {
+	StepRuntimeLogs(ctx context.Context, stackID, step string) (infos []string, warns []string)
+}
+
+type stepRuntimeTailer interface {
+	StartStepRuntimeTail(ctx context.Context, stackID, step string, emit func(level, message string)) (stop func())
+}
+
+type deploymentLogResetter interface {
+	ClearHistory(deploymentID string)
 }
 
 type InstallStackOption func(*InstallStack)
@@ -173,6 +200,10 @@ func stackConfigFromInterface(rawConfig any) (domain.StackConfig, bool) {
 func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) {
 	deploymentID := stack.ID
 
+	if resetter, ok := uc.streamer.(deploymentLogResetter); ok {
+		resetter.ClearHistory(deploymentID)
+	}
+
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
 
 	// Transition: Validating → Installing
@@ -183,6 +214,10 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 
 	// Execute installation phases A, B, C.
 	if err := uc.runPhases(ctx, stack, executor); err != nil {
+		if errors.Is(err, ErrDeploymentCancelled) {
+			slog.Info("installation stopped due to cancellation", "stack_id", stack.ID, "reason", err)
+			return
+		}
 		uc.handleFailure(ctx, stack, err)
 		return
 	}
@@ -199,6 +234,10 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		uc.handleFailure(ctx, stack, err)
 		return
 	}
+	if err := uc.verifyDeployment(ctx, stack, executor); err != nil {
+		uc.handleFailure(ctx, stack, err)
+		return
+	}
 	uc.emit(ctx, deploymentID, "info", "health_check", "C", "all health checks passed")
 
 	// Transition: HealthCheck → Completed
@@ -209,18 +248,66 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
 }
 
+func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {
+	verifier, ok := executor.(deploymentVerifiableExecutor)
+	if !ok {
+		uc.emit(ctx, stack.ID, "warn", "health_check", "C", "executor does not support deep verification, skipping runtime readiness checks")
+		return nil
+	}
+
+	uc.emit(ctx, stack.ID, "info", "health_check", "C", "running runtime readiness checks")
+	if err := verifier.VerifyDeployment(ctx, stack.ID); err != nil {
+		return fmt.Errorf("runtime readiness check failed: %w", err)
+	}
+
+	return nil
+}
+
 func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {
 	for _, phase := range installPhases {
 		for _, step := range phase {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			if err := uc.ensureDeploymentActive(ctx, stack.ID); err != nil {
+				return err
+			}
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
 				fmt.Sprintf("starting %s", step.name))
 
+			var stopTail func()
+			if tailer, ok := executor.(stepRuntimeTailer); ok {
+				stopTail = tailer.StartStepRuntimeTail(ctx, stack.ID, step.name, func(level, message string) {
+					normalized := strings.TrimSpace(strings.ToLower(level))
+					if normalized != "warn" && normalized != "error" {
+						normalized = "info"
+					}
+					uc.emit(ctx, stack.ID, normalized, step.name, step.phase, message)
+				})
+			}
+
 			if err := uc.executeStep(ctx, stack.ID, step, executor); err != nil {
+				if stopTail != nil {
+					stopTail()
+				}
 				return fmt.Errorf("step %s: %w", step.name, err)
+			}
+			if stopTail != nil {
+				stopTail()
+			}
+			if err := uc.ensureDeploymentActive(ctx, stack.ID); err != nil {
+				return err
+			}
+
+			if reporter, ok := executor.(stepRuntimeReporter); ok {
+				infos, warns := reporter.StepRuntimeLogs(ctx, stack.ID, step.name)
+				for _, message := range infos {
+					uc.emit(ctx, stack.ID, "info", step.name, step.phase, message)
+				}
+				for _, message := range warns {
+					uc.emit(ctx, stack.ID, "warn", step.name, step.phase, message)
+				}
 			}
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
@@ -230,10 +317,42 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 	return nil
 }
 
+func (uc *InstallStack) ensureDeploymentActive(ctx context.Context, stackID string) error {
+	if uc.stackRepo == nil || strings.TrimSpace(stackID) == "" {
+		return nil
+	}
+
+	current, err := uc.stackRepo.FindByID(ctx, stackID)
+	if err != nil {
+		if isStackNotFoundError(err) {
+			return fmt.Errorf("%w: stack deleted during deployment", ErrDeploymentCancelled)
+		}
+		return fmt.Errorf("check stack deployment state: %w", err)
+	}
+	if current == nil {
+		return fmt.Errorf("%w: stack deleted during deployment", ErrDeploymentCancelled)
+	}
+
+	if current.State == domain.StateCancelled {
+		return fmt.Errorf("%w: stack marked cancelled", ErrDeploymentCancelled)
+	}
+	if current.State == domain.StateRollingBack || current.State == domain.StateRolledBack || current.State == domain.StateFailed {
+		return fmt.Errorf("%w: stack state is %s", ErrDeploymentCancelled, current.State)
+	}
+
+	return nil
+}
+
 func (uc *InstallStack) executeStep(ctx context.Context, stackID string, step installStep, executor port.StepExecutor) error {
 	if executor != nil {
 		return executor.ExecuteStep(ctx, stackID, step.name, step.phase)
 	}
+	slog.Warn("step executor is nil; running simulated install step",
+		"stack_id", stackID,
+		"step", step.name,
+		"phase", step.phase,
+		"duration", step.duration,
+	)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

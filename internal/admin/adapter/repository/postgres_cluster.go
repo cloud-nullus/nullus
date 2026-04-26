@@ -10,6 +10,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// nodeArchsForPersist returns a safe, normalized TEXT[] payload for storage.
+// PostgreSQL rejects NULL on a NOT NULL column and pgx maps Go nil slices to
+// SQL NULL, so coerce to an empty slice when the caller hasn't discovered
+// any architectures yet.
+func nodeArchsForPersist(archs []string) []string {
+	normalized := domain.NormalizeNodeArchitectures(archs)
+	if normalized == nil {
+		return []string{}
+	}
+	return normalized
+}
+
 // PostgresClusterRepository implements port.ClusterRepository using pgx.
 type PostgresClusterRepository struct {
 	pool *pgxpool.Pool
@@ -23,12 +35,19 @@ func NewPostgresClusterRepository(pool *pgxpool.Pool) *PostgresClusterRepository
 // Create inserts a new cluster into the database.
 func (r *PostgresClusterRepository) Create(ctx context.Context, cluster *domain.Cluster) error {
 	const q = `
-		INSERT INTO clusters (id, name, type, endpoint, connection_status, org_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		INSERT INTO clusters (id, name, type, types, cloud_provider, endpoint, connection_status, org_id, node_architectures, created_at, updated_at)
+		VALUES ($1, $2, $3, $4::cluster_type[], $5, $6, $7, $8, $9, $10, $11)`
+
+	clusterTypes := clusterTypesToStrings(domain.NormalizeClusterTypes(cluster.Types, cluster.Type))
+	cloudProvider := cluster.CloudProvider
+	if cloudProvider == "" {
+		cloudProvider = domain.CloudProviderOnPremise
+	}
 
 	_, err := r.pool.Exec(ctx, q,
-		cluster.ID, cluster.Name, cluster.Type, cluster.Endpoint,
-		cluster.ConnectionStatus, cluster.OrgID, cluster.CreatedAt, cluster.UpdatedAt,
+		cluster.ID, cluster.Name, cluster.Type, clusterTypes, cloudProvider, cluster.Endpoint,
+		cluster.ConnectionStatus, cluster.OrgID, nodeArchsForPersist(cluster.NodeArchitectures),
+		cluster.CreatedAt, cluster.UpdatedAt,
 	)
 	return err
 }
@@ -36,13 +55,16 @@ func (r *PostgresClusterRepository) Create(ctx context.Context, cluster *domain.
 // GetByID retrieves a cluster by its ID. Returns nil if not found.
 func (r *PostgresClusterRepository) GetByID(ctx context.Context, id string) (*domain.Cluster, error) {
 	const q = `
-		SELECT id, name, type, endpoint, connection_status, org_id, created_at, updated_at
+		SELECT id, name, type, COALESCE(types::text[], ARRAY[]::text[]), cloud_provider, endpoint, connection_status, org_id,
+		       COALESCE(node_architectures, ARRAY[]::text[]), created_at, updated_at
 		FROM clusters WHERE id = $1`
 
 	cluster := &domain.Cluster{}
+	var rawTypes []string
+	var rawArchs []string
 	err := r.pool.QueryRow(ctx, q, id).Scan(
-		&cluster.ID, &cluster.Name, &cluster.Type, &cluster.Endpoint,
-		&cluster.ConnectionStatus, &cluster.OrgID, &cluster.CreatedAt, &cluster.UpdatedAt,
+		&cluster.ID, &cluster.Name, &cluster.Type, &rawTypes, &cluster.CloudProvider, &cluster.Endpoint,
+		&cluster.ConnectionStatus, &cluster.OrgID, &rawArchs, &cluster.CreatedAt, &cluster.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -50,6 +72,8 @@ func (r *PostgresClusterRepository) GetByID(ctx context.Context, id string) (*do
 		}
 		return nil, err
 	}
+	cluster.Types = clusterTypesFromStrings(rawTypes)
+	cluster.NodeArchitectures = domain.NormalizeNodeArchitectures(rawArchs)
 	return cluster, nil
 }
 
@@ -60,12 +84,14 @@ func (r *PostgresClusterRepository) List(ctx context.Context, orgID string) ([]*
 
 	if orgID == "" {
 		const q = `
-			SELECT id, name, type, endpoint, connection_status, org_id, created_at, updated_at
+			SELECT id, name, type, COALESCE(types::text[], ARRAY[]::text[]), cloud_provider, endpoint, connection_status, org_id,
+			       COALESCE(node_architectures, ARRAY[]::text[]), created_at, updated_at
 			FROM clusters ORDER BY created_at DESC`
 		rows, err = r.pool.Query(ctx, q)
 	} else {
 		const q = `
-			SELECT id, name, type, endpoint, connection_status, org_id, created_at, updated_at
+			SELECT id, name, type, COALESCE(types::text[], ARRAY[]::text[]), cloud_provider, endpoint, connection_status, org_id,
+			       COALESCE(node_architectures, ARRAY[]::text[]), created_at, updated_at
 			FROM clusters WHERE org_id = $1 ORDER BY created_at DESC`
 		rows, err = r.pool.Query(ctx, q, orgID)
 	}
@@ -77,26 +103,39 @@ func (r *PostgresClusterRepository) List(ctx context.Context, orgID string) ([]*
 	var clusters []*domain.Cluster
 	for rows.Next() {
 		cluster := &domain.Cluster{}
+		var rawTypes []string
+		var rawArchs []string
 		if err := rows.Scan(
-			&cluster.ID, &cluster.Name, &cluster.Type, &cluster.Endpoint,
-			&cluster.ConnectionStatus, &cluster.OrgID, &cluster.CreatedAt, &cluster.UpdatedAt,
+			&cluster.ID, &cluster.Name, &cluster.Type, &rawTypes, &cluster.CloudProvider, &cluster.Endpoint,
+			&cluster.ConnectionStatus, &cluster.OrgID, &rawArchs, &cluster.CreatedAt, &cluster.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
+		cluster.Types = clusterTypesFromStrings(rawTypes)
+		cluster.NodeArchitectures = domain.NormalizeNodeArchitectures(rawArchs)
 		clusters = append(clusters, cluster)
 	}
 	return clusters, rows.Err()
 }
 
-// Update persists changes to an existing cluster.
+// Update persists changes to an existing cluster, including the
+// discovery-derived NodeArchitectures slice.
 func (r *PostgresClusterRepository) Update(ctx context.Context, cluster *domain.Cluster) error {
 	const q = `
 		UPDATE clusters
-		SET name = $1, endpoint = $2, connection_status = $3, updated_at = $4
-		WHERE id = $5`
+		SET name = $1, type = $2, types = $3::cluster_type[], cloud_provider = $4, endpoint = $5,
+		    connection_status = $6, node_architectures = $7, updated_at = $8
+		WHERE id = $9`
+
+	clusterTypes := clusterTypesToStrings(domain.NormalizeClusterTypes(cluster.Types, cluster.Type))
+	cloudProvider := cluster.CloudProvider
+	if cloudProvider == "" {
+		cloudProvider = domain.CloudProviderOnPremise
+	}
 
 	_, err := r.pool.Exec(ctx, q,
-		cluster.Name, cluster.Endpoint, cluster.ConnectionStatus, cluster.UpdatedAt, cluster.ID,
+		cluster.Name, cluster.Type, clusterTypes, cloudProvider, cluster.Endpoint, cluster.ConnectionStatus,
+		nodeArchsForPersist(cluster.NodeArchitectures), cluster.UpdatedAt, cluster.ID,
 	)
 	return err
 }
@@ -132,4 +171,26 @@ func (r *PostgresClusterRepository) GetKubeconfig(ctx context.Context, id string
 		return nil, err
 	}
 	return kubeconfig, nil
+}
+
+func clusterTypesToStrings(types []domain.ClusterType) []string {
+	out := make([]string, 0, len(types))
+	for _, clusterType := range types {
+		if clusterType == "" {
+			continue
+		}
+		out = append(out, string(clusterType))
+	}
+	return out
+}
+
+func clusterTypesFromStrings(values []string) []domain.ClusterType {
+	out := make([]domain.ClusterType, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		out = append(out, domain.ClusterType(value))
+	}
+	return out
 }

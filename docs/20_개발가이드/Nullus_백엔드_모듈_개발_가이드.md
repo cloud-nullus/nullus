@@ -333,13 +333,14 @@ func mapError(err error) (int, string) {
 ```yaml
 # configs/config.yaml
 server:
-  port: 8080
+  port: 8090
+  mode: development
 database:
   host: localhost
-  port: 5432
+  port: 5433
   name: nullus
   user: nullus
-  password: nullus
+  password: nullus_dev
 auth:
   mode: session           # session | oidc
 oidc:
