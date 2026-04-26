@@ -83,10 +83,12 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
     monitoring: {
       collection: { tool: '', version: '' },
       visualization: { tool: '', version: '' },
+      visualizations: [],
     },
     logging: {
       search: { tool: '', version: '' },
       traceLayer: { tool: '', version: '' },
+      traceExporter: { tool: '', version: '' },
     },
   }
 
@@ -126,13 +128,23 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
         break
       case 'monitoring_visualization':
         apply('monitoring', 'visualization', tool.name, tool.app_version)
+        if (overrides.monitoring) {
+          const toolId = resolveToolIdByName(tool.name)
+          const version = tool.app_version || getToolAppVersion(toolId)
+          const exists = overrides.monitoring.visualizations.some((item) => item.tool === toolId)
+          if (!exists) {
+            overrides.monitoring.visualizations.push({ tool: toolId, version })
+          }
+        }
         break
       case 'log_search':
         apply('logging', 'search', tool.name, tool.app_version)
         break
       case 'trace_layer':
-      case 'agent':
         apply('logging', 'traceLayer', tool.name, tool.app_version)
+        break
+      case 'agent':
+        apply('logging', 'traceExporter', tool.name, tool.app_version)
         break
       default:
         break

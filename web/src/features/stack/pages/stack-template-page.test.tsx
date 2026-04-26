@@ -168,6 +168,7 @@ describe('StackTemplatePage', () => {
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
     expect(draft.logging.search.tool).toBe('')
     expect(draft.logging.traceLayer.tool).toBe('')
+    expect(draft.logging.traceExporter.tool).toBe('')
   })
 
   it('clicking Empty Template clears install selections in store', () => {

@@ -126,7 +126,6 @@ const TOOL_CATEGORIES: ToolCategory[] = [
         label: 'Visualization',
         options: [
           { id: 'grafana', label: 'Grafana', description: '오픈소스 메트릭 시각화' },
-          { id: 'kibana', label: 'Kibana', description: 'Elastic Stack 시각화' },
           { id: 'opensearch-dashboards', label: 'OpenSearch Dashboards', description: 'OpenSearch 시각화 대시보드' },
         ],
       },
@@ -150,7 +149,6 @@ const TOOL_CATEGORIES: ToolCategory[] = [
         label: 'Log Search',
         options: [
           { id: 'opensearch', label: 'OpenSearch', description: 'Elasticsearch 호환 검색/분석' },
-          { id: 'elasticsearch', label: 'Elasticsearch', description: '분산 검색/분석 엔진' },
           { id: 'loki', label: 'Grafana Loki', description: 'Prometheus 스타일 로그 집계' },
         ],
       },

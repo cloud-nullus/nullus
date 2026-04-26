@@ -93,11 +93,13 @@ export interface PipelineConfig {
 export interface MonitoringConfig {
   collection: ToolSelection
   visualization: ToolSelection
+  visualizations: ToolSelection[]
 }
 
 export interface LoggingConfig {
   search: ToolSelection
   traceLayer: ToolSelection
+  traceExporter: ToolSelection
 }
 
 export interface ResourceConfig {
@@ -168,6 +170,7 @@ interface StackConfigState {
     field: string,
     value: ToolSelection
   ) => void
+  setMonitoringVisualizations: (values: ToolSelection[]) => void
   updateResources: (config: Partial<ResourceConfig>) => void
   updateStorage: (config: Partial<StorageConfig>) => void
   updateStorageTarget: (target: 'database' | 'objectStorage', config: Partial<StorageTargetConfig>) => void
@@ -201,10 +204,12 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   monitoring: {
     collection: { tool: 'prometheus', version: getToolAppVersion('prometheus') },
     visualization: { tool: 'grafana', version: getToolAppVersion('grafana') },
+    visualizations: [{ tool: 'grafana', version: getToolAppVersion('grafana') }],
   },
   logging: {
     search: { tool: 'opensearch', version: getToolAppVersion('opensearch') },
     traceLayer: { tool: 'tempo', version: getToolAppVersion('tempo') },
+    traceExporter: emptyToolSelection(),
   },
   resources: {
     developerCount: 10,
@@ -269,10 +274,12 @@ function buildTemplateDraft(templateId: string, overrides?: Partial<StackConfigD
         monitoring: {
           collection: emptyToolSelection(),
           visualization: emptyToolSelection(),
+          visualizations: [],
         },
         logging: {
           search: emptyToolSelection(),
           traceLayer: emptyToolSelection(),
+          traceExporter: emptyToolSelection(),
         },
         storage: {
           ...DEFAULT_DRAFT.storage,
@@ -288,6 +295,16 @@ function buildTemplateDraft(templateId: string, overrides?: Partial<StackConfigD
 }
 
 function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {
+  const normalizedPrimaryVisualization = normalizeToolSelectionVersion(draft.monitoring.visualization)
+  const rawVisualizations = Array.isArray(draft.monitoring.visualizations) ? draft.monitoring.visualizations : []
+  const normalizedVisualizations = rawVisualizations
+    .map(normalizeToolSelectionVersion)
+    .filter((selection) => selection.tool)
+  const effectiveVisualizations =
+    normalizedVisualizations.length > 0
+      ? normalizedVisualizations
+      : (normalizedPrimaryVisualization.tool ? [normalizedPrimaryVisualization] : [])
+
   return {
     ...draft,
     artifacts: {
@@ -302,11 +319,13 @@ function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {
     },
     monitoring: {
       collection: normalizeToolSelectionVersion(draft.monitoring.collection),
-      visualization: normalizeToolSelectionVersion(draft.monitoring.visualization),
+      visualization: effectiveVisualizations[0] ?? emptyToolSelection(),
+      visualizations: effectiveVisualizations,
     },
     logging: {
       search: normalizeToolSelectionVersion(draft.logging.search),
       traceLayer: normalizeToolSelectionVersion(draft.logging.traceLayer),
+      traceExporter: normalizeToolSelectionVersion(draft.logging.traceExporter),
     },
   }
 }
@@ -360,16 +379,43 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
     })),
 
   setTool: (section, field, value) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        [section]: {
-          ...(s.draft[section] as unknown as Record<string, ToolSelection>),
-          [field]: normalizeToolSelectionVersion(value),
+    set((s) => {
+      const normalized = normalizeToolSelectionVersion(value)
+      const nextSection = {
+        ...(s.draft[section] as unknown as Record<string, ToolSelection>),
+        [field]: normalized,
+      } as Record<string, unknown>
+
+      if (section === 'monitoring' && field === 'visualization') {
+        nextSection.visualizations = normalized.tool ? [normalized] : []
+      }
+
+      return {
+        draft: {
+          ...s.draft,
+          [section]: nextSection,
         },
-      },
-      isDirty: true,
-    })),
+        isDirty: true,
+      }
+    }),
+
+  setMonitoringVisualizations: (values) =>
+    set((s) => {
+      const normalized = values
+        .map(normalizeToolSelectionVersion)
+        .filter((selection) => selection.tool)
+      return {
+        draft: {
+          ...s.draft,
+          monitoring: {
+            ...s.draft.monitoring,
+            visualizations: normalized,
+            visualization: normalized[0] ?? emptyToolSelection(),
+          },
+        },
+        isDirty: true,
+      }
+    }),
 
   updateResources: (config) =>
     set((s) => ({

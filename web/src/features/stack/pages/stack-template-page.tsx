@@ -66,8 +66,8 @@ const TOOL_SECTIONS: ToolSectionDefinition[] = [
     label: 'Observability',
     categories: [
       { category: 'monitoring_collection', label: 'Metrics', options: ['Prometheus', 'Thanos', 'Victoria Metrics'] },
-      { category: 'monitoring_visualization', label: 'Visualization', options: ['Grafana', 'Kibana', 'OpenSearch Dashboards'] },
-      { category: 'log_search', label: 'Logs', options: ['Loki', 'OpenSearch', 'Elasticsearch', 'Fluentd'] },
+      { category: 'monitoring_visualization', label: 'Visualization', options: ['Grafana', 'OpenSearch Dashboards'] },
+      { category: 'log_search', label: 'Logs', options: ['Loki', 'OpenSearch', 'Fluentd'] },
       { category: 'agent', label: 'Agent', options: ['OpenTelemetry Collector'] },
       { category: 'trace_layer', label: 'Traces', options: ['Tempo', 'Jaeger'] },
     ],
