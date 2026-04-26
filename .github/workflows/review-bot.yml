@@ -1,7 +1,33 @@
-.github/workflows/review-bot.yml
+name: Review Bot
 
-# Other content...
+on:
+  pull_request:
+    branches: [main]
 
-- name: Upload SARIF
-  uses: github/codeql-action/upload-sarif@v4
-# Remaining content...
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  gosec:
+    name: Go Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Run gosec
+        uses: securego/gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif -exclude-dir=web ./...'
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
