@@ -175,6 +175,7 @@ func main() {
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
 	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
+	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
 	pgStackReader := cicdrepo.NewPostgresStackReader(pool)
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, pgStackReader)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
@@ -187,6 +188,7 @@ func main() {
 		cicduc.WithClusterTargetProvider(cicdClusterTarget),
 	)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
+	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, cicdApplier.Tracker)
 
 	// Observability: Prometheus with in-memory fallback
@@ -284,6 +286,7 @@ func main() {
 	stackMonitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
+	cicdGoldenPathHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterStackRoutes(stacks)
 	e.GET("/ws/cicd/deployments/:id/logs", pipelineHandler.StreamDeployLogs)
