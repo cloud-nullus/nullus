@@ -29,6 +29,7 @@ export type DeploymentState =
   | 'running'
   | 'success'
   | 'failed'
+  | 'terminating'
   | 'pending'
   | 'cancelled'
   | 'validating'
@@ -76,6 +77,15 @@ export interface Organization {
   status: OrgStatus
   clusterAccessScope: string[]
   createdAt: string
+}
+
+export interface OrgResourceProfile {
+  id: string
+  name: string
+  orgId: string
+  baseProfile: 'startup' | 'standard' | 'enterprise'
+  optionOverrides: Record<string, Record<string, number>>
+  createdAt?: string
 }
 
 export interface Member {

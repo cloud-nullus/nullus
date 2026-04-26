@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Download, Info, Rocket, Save, ShoppingCart } from 'lucide-react'
+import { Check, Download, Info, Rocket, Save, ShoppingCart, Trash2 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
@@ -21,7 +21,7 @@ import type {
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
 import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates, useValidateCompatibility } from '../api/stack-api'
-import { useClusters } from '../../admin/api/admin-api'
+import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -157,12 +157,13 @@ const MONITORING_OPTIONS: Record<string, ToolOption[]> = {
   ],
   visualization: [
     { id: 'grafana', label: 'Grafana', description: '오픈소스 메트릭 시각화' },
-    { id: 'kibana', label: 'Kibana', description: 'Elastic Stack 시각화' },
     { id: 'opensearch-dashboards', label: 'OpenSearch Dashboards', description: 'OpenSearch 시각화 대시보드' },
   ],
   traceLayer: [
     { id: 'tempo', label: 'Tempo', description: '분산 추적 백엔드' },
     { id: 'jaeger', label: 'Jaeger', description: '분산 추적 및 트레이스 분석' },
+  ],
+  traceExporter: [
     { id: 'opentelemetry-collector', label: 'OpenTelemetry Collector', description: 'OTLP 수집/처리 파이프라인' },
   ],
 }
@@ -170,7 +171,6 @@ const MONITORING_OPTIONS: Record<string, ToolOption[]> = {
 const LOGGING_OPTIONS: Record<string, ToolOption[]> = {
   search: [
     { id: 'opensearch', label: 'OpenSearch', description: 'Elasticsearch 호환 검색/분석' },
-    { id: 'elasticsearch', label: 'Elasticsearch', description: '분산 검색/분석 엔진' },
     { id: 'loki', label: 'Grafana Loki', description: 'Prometheus 스타일 로그 집계' },
   ],
 }
@@ -258,6 +258,7 @@ const MATRIX_CATEGORY_BY_SLOT: Record<PlanningSlot, string | null> = {
   'monitoring.visualization': 'monitoring_visualization',
   'logging.search': null,
   'logging.traceLayer': null,
+  'logging.traceExporter': null,
 }
 
 const TOOL_ID_TO_MATRIX_NAME: Record<string, string> = {
@@ -370,6 +371,7 @@ type PlanningSlot =
   | 'monitoring.visualization'
   | 'logging.search'
   | 'logging.traceLayer'
+  | 'logging.traceExporter'
 
 type PlanningProfile = 'startup' | 'standard' | 'enterprise'
 
@@ -542,6 +544,7 @@ const SLOT_TOOL_BINDING: Record<PlanningSlot, { section: 'artifacts' | 'pipeline
   'monitoring.visualization': { section: 'monitoring', field: 'visualization' },
   'logging.search': { section: 'logging', field: 'search' },
   'logging.traceLayer': { section: 'logging', field: 'traceLayer' },
+  'logging.traceExporter': { section: 'logging', field: 'traceExporter' },
 }
 
 const GATEWAY_MANIFEST_ID = 'gateway'
@@ -596,6 +599,10 @@ const PLANNING_OPTION_DEFS: Record<PlanningSlot, PlanningOptionDefinition[]> = {
     { key: 'traceSpansPerMin', label: 'Trace Span 수/분', baseline: 50000, min: 1000, max: 3000000, step: 1000, weight: 0.5, impact: { cpu: 0.8, memory: 0.7, storage: 0.5 } },
     { key: 'serviceCount', label: '추적 대상 서비스 수', baseline: 40, min: 5, max: 2000, step: 1, weight: 0.3, impact: { cpu: 0.4, memory: 0.5, storage: 0.3 } },
     { key: 'traceRetentionDays', label: '트레이스 보관 기간(일)', baseline: 7, min: 1, max: 90, step: 1, weight: 0.2, impact: { cpu: 0, memory: 0.2, storage: 1 } },
+  ],
+  'logging.traceExporter': [
+    { key: 'traceSpansPerMin', label: 'Trace Span 수/분', baseline: 50000, min: 1000, max: 3000000, step: 1000, weight: 0.6, impact: { cpu: 0.9, memory: 0.7, storage: 0.2 } },
+    { key: 'serviceCount', label: '추적 대상 서비스 수', baseline: 40, min: 5, max: 2000, step: 1, weight: 0.4, impact: { cpu: 0.5, memory: 0.4, storage: 0.1 } },
   ],
 }
 
@@ -1878,14 +1885,111 @@ function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
   )
 }
 
+interface MultiToolSelectorProps {
+  label: string
+  options: ToolOption[]
+  values: ToolSelection[]
+  onChange: (values: ToolSelection[]) => void
+}
+
+function MultiToolSelector({ label, options, values, onChange }: MultiToolSelectorProps) {
+  const { t } = useTranslation()
+  const selectedIds = new Set(values.map((item) => item.tool).filter(Boolean))
+
+  const toggleSelection = (toolId: string) => {
+    if (!toolId) {
+      onChange([])
+      return
+    }
+    const next = selectedIds.has(toolId)
+      ? values.filter((item) => item.tool !== toolId)
+      : [...values, { tool: toolId, version: 'latest' }]
+    onChange(next)
+  }
+
+  return (
+    <div className="mb-5">
+      <div className="mb-2.5 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+        {label}
+      </div>
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className={cn(
+            'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
+            values.length === 0
+              ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
+              : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+          )}
+        >
+          <div
+            className={cn(
+              'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2',
+              values.length === 0
+                ? 'border-[#6366f1] bg-[#6366f1]'
+                : 'border-[var(--color-border-hover)] bg-transparent'
+            )}
+          >
+            {values.length === 0 && <Check size={11} className="text-white" />}
+          </div>
+          <div>
+            <div className={cn('text-sm font-semibold', values.length === 0 ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+              {t('stackInstall.common.unselected', 'Not selected')}
+            </div>
+            <div className="text-xs text-[var(--color-text-secondary)]">
+              {t('stackInstall.common.notInstalled', 'This item will not be installed.')}
+            </div>
+          </div>
+        </button>
+        {options.map((opt) => {
+          const selected = selectedIds.has(opt.id)
+          const displayLabel = t(`stackAddTools.tools.${opt.id}.label`, opt.label)
+          const displayDescription = t(`stackAddTools.tools.${opt.id}.description`, opt.description)
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => toggleSelection(opt.id)}
+              className={cn(
+                'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
+                selected
+                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
+                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+              )}
+            >
+              <div
+                className={cn(
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2',
+                  selected
+                    ? 'border-[#6366f1] bg-[#6366f1]'
+                    : 'border-[var(--color-border-hover)] bg-transparent'
+                )}
+              >
+                {selected && <Check size={11} className="text-white" />}
+              </div>
+              <div>
+                <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                  {displayLabel}
+                </div>
+                <div className="text-xs text-[var(--color-text-secondary)]">{displayDescription}</div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // --- Tab definitions ---
 
 const TABS: { id: InstallTab; label: string }[] = [
   { id: 'artifacts', label: 'Artifacts' },
   { id: 'pipeline', label: 'CI/CD' },
   { id: 'monitoring', label: 'Observability' },
-  { id: 'resources', label: 'Resources' },
   { id: 'storage', label: 'Storage' },
+  { id: 'resources', label: 'Resources' },
   { id: 'manifests', label: 'YAML View' },
   { id: 'deploy-script', label: 'Preview Deploy Script' },
   { id: 'dry-run', label: 'Dry Run' },
@@ -1903,6 +2007,7 @@ export function StackInstallPage() {
     draft,
     setActiveTab,
     setTool,
+    setMonitoringVisualizations,
     setStackName,
     setAccessDomain,
     setCluster,
@@ -1941,6 +2046,12 @@ export function StackInstallPage() {
   const [planningOptionOverrides, setPlanningOptionOverrides] = useState<Record<string, Record<string, number>>>({})
   const [appliedResourceOverrides, setAppliedResourceOverrides] = useState<Record<string, ResourceVector>>({})
   const [planningRowUnits, setPlanningRowUnits] = useState<Record<string, PlanningRowUnit>>({})
+  const [selectedOrgProfileId, setSelectedOrgProfileId] = useState<string | null>(null)
+  const [saveProfileDialogOpen, setSaveProfileDialogOpen] = useState(false)
+  const [saveProfileName, setSaveProfileName] = useState('')
+  const { data: orgProfiles = [] } = useOrgResourceProfiles()
+  const createOrgProfile = useCreateOrgResourceProfile()
+  const deleteOrgProfile = useDeleteOrgResourceProfile()
   const [activeFormulaPopoverKey, setActiveFormulaPopoverKey] = useState<string | null>(null)
   const [storageValidationErrors, setStorageValidationErrors] = useState<StorageValidationErrors>({})
   const [tabGuardError, setTabGuardError] = useState<string | null>(null)
@@ -2051,15 +2162,9 @@ export function StackInstallPage() {
 
   const objectStorageBackendTool = draft.storage.objectStorage.providerOrEngine || draft.artifacts.storageBackend.tool || 'minio'
   const objectStorageBackendVersion = draft.storage.objectStorage.version || draft.artifacts.storageBackend.version || getToolAppVersion(objectStorageBackendTool)
+  const selectedVisualizations = (draft.monitoring.visualizations ?? []).filter((item) => item.tool)
 
   const selectedInstallItems = ([
-    {
-      slot: 'artifacts.packageRegistry',
-      category: 'Artifacts > Package Registry',
-      toolKey: draft.artifacts.packageRegistry.tool,
-      toolLabel: toolLabel(draft.artifacts.packageRegistry.tool, noneLabel),
-      toolVersion: draft.artifacts.packageRegistry.version,
-    },
     {
       slot: 'artifacts.sourceRepository',
       category: 'Artifacts > Source Repository',
@@ -2073,6 +2178,13 @@ export function StackInstallPage() {
       toolKey: draft.artifacts.containerRegistry.tool,
       toolLabel: toolLabel(draft.artifacts.containerRegistry.tool, noneLabel),
       toolVersion: draft.artifacts.containerRegistry.version,
+    },
+    {
+      slot: 'artifacts.packageRegistry',
+      category: 'Artifacts > Package Registry',
+      toolKey: draft.artifacts.packageRegistry.tool,
+      toolLabel: toolLabel(draft.artifacts.packageRegistry.tool, noneLabel),
+      toolVersion: draft.artifacts.packageRegistry.version,
     },
     {
       slot: 'artifacts.storageBackend',
@@ -2102,13 +2214,13 @@ export function StackInstallPage() {
       toolLabel: toolLabel(draft.monitoring.collection.tool, noneLabel),
       toolVersion: draft.monitoring.collection.version,
     },
-    {
-      slot: 'monitoring.visualization',
+    ...selectedVisualizations.map((item) => ({
+      slot: 'monitoring.visualization' as const,
       category: 'Observability > Visualization',
-      toolKey: draft.monitoring.visualization.tool,
-      toolLabel: toolLabel(draft.monitoring.visualization.tool, noneLabel),
-      toolVersion: draft.monitoring.visualization.version,
-    },
+      toolKey: item.tool,
+      toolLabel: toolLabel(item.tool, noneLabel),
+      toolVersion: item.version,
+    })),
     {
       slot: 'logging.search',
       category: 'Observability > Logging/Search',
@@ -2122,6 +2234,13 @@ export function StackInstallPage() {
       toolKey: draft.logging.traceLayer.tool,
       toolLabel: toolLabel(draft.logging.traceLayer.tool, noneLabel),
       toolVersion: draft.logging.traceLayer.version,
+    },
+    {
+      slot: 'logging.traceExporter',
+      category: 'Observability > Trace Exporter/Agent',
+      toolKey: draft.logging.traceExporter.tool,
+      toolLabel: toolLabel(draft.logging.traceExporter.tool, noneLabel),
+      toolVersion: draft.logging.traceExporter.version,
     },
   ] satisfies { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string; toolVersion: string }[]).filter(
     (item) => item.toolKey.length > 0
@@ -2736,6 +2855,48 @@ export function StackInstallPage() {
     setPlanningProfile(profile)
     setPlanningOptionOverrides({})
     setAppliedResourceOverrides({})
+    setSelectedOrgProfileId(null)
+  }
+
+  const handleSizingSelectChange = (value: string) => {
+    if (value.startsWith('org:')) {
+      const profileId = value.slice(4)
+      const profile = orgProfiles.find((p) => p.id === profileId)
+      if (!profile) return
+      setPlanningProfile(profile.baseProfile)
+      setPlanningOptionOverrides(profile.optionOverrides)
+      setAppliedResourceOverrides({})
+      setSelectedOrgProfileId(profileId)
+    } else {
+      handlePlanningProfileChange(value as PlanningProfile)
+    }
+  }
+
+  const handleSaveProfileConfirm = () => {
+    const name = saveProfileName.trim()
+    if (!name) return
+    createOrgProfile.mutate(
+      { name, baseProfile: planningProfile, optionOverrides: planningOptionOverrides },
+      {
+        onSuccess: (created) => {
+          setSelectedOrgProfileId(created.id)
+          setSaveProfileDialogOpen(false)
+          setSaveProfileName('')
+        },
+      }
+    )
+  }
+
+  const handleDeleteOrgProfile = () => {
+    if (!selectedOrgProfileId) return
+    deleteOrgProfile.mutate(selectedOrgProfileId, {
+      onSuccess: () => {
+        setSelectedOrgProfileId(null)
+        setPlanningProfile('standard')
+        setPlanningOptionOverrides({})
+        setAppliedResourceOverrides({})
+      },
+    })
   }
 
   const handleAppliedResourceChange = (rowKey: string, current: ResourceVector, field: keyof ResourceVector, value: number) => {
@@ -4200,12 +4361,6 @@ export function StackInstallPage() {
             {activeTab === 'artifacts' && (
               <>
                 <ToolSelector
-                  label={t('stackInstall.labels.packageRegistry', 'Package Registry')}
-                  options={ARTIFACTS_OPTIONS.packageRegistry}
-                  value={draft.artifacts.packageRegistry}
-                  onChange={(v) => setTool('artifacts', 'packageRegistry', v)}
-                />
-                <ToolSelector
                   label={t('stackInstall.labels.sourceRepository', 'Source Repository')}
                   options={ARTIFACTS_OPTIONS.sourceRepository}
                   value={draft.artifacts.sourceRepository}
@@ -4216,6 +4371,12 @@ export function StackInstallPage() {
                   options={ARTIFACTS_OPTIONS.containerRegistry}
                   value={draft.artifacts.containerRegistry}
                   onChange={(v) => setTool('artifacts', 'containerRegistry', v)}
+                />
+                <ToolSelector
+                  label={t('stackInstall.labels.packageRegistry', 'Package Registry')}
+                  options={ARTIFACTS_OPTIONS.packageRegistry}
+                  value={draft.artifacts.packageRegistry}
+                  onChange={(v) => setTool('artifacts', 'packageRegistry', v)}
                 />
               </>
             )}
@@ -4239,11 +4400,11 @@ export function StackInstallPage() {
 
             {activeTab === 'monitoring' && (
               <>
-                <ToolSelector
+                <MultiToolSelector
                   label={t('stackInstall.labels.visualization', 'Visualization')}
                   options={MONITORING_OPTIONS.visualization}
-                  value={draft.monitoring.visualization}
-                  onChange={(v) => setTool('monitoring', 'visualization', v)}
+                  values={draft.monitoring.visualizations}
+                  onChange={setMonitoringVisualizations}
                 />
                 <ToolSelector
                   label={t('stackInstall.labels.metrics', 'Metrics')}
@@ -4262,6 +4423,12 @@ export function StackInstallPage() {
                   options={MONITORING_OPTIONS.traceLayer}
                   value={draft.logging.traceLayer}
                   onChange={(v) => setTool('logging', 'traceLayer', v)}
+                />
+                <ToolSelector
+                  label={t('stackInstall.labels.traceExporter', 'Exporter / Agent')}
+                  options={MONITORING_OPTIONS.traceExporter}
+                  value={draft.logging.traceExporter}
+                  onChange={(v) => setTool('logging', 'traceExporter', v)}
                 />
               </>
             )}
@@ -4548,18 +4715,75 @@ export function StackInstallPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-[var(--color-text-secondary)]">Sizing Profile</span>
                       <NativeSelect
-                        value={planningProfile}
-                        onChange={(e) => handlePlanningProfileChange(e.target.value as PlanningProfile)}
-                        className="min-w-[140px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
+                        value={selectedOrgProfileId ? `org:${selectedOrgProfileId}` : planningProfile}
+                        onChange={(e) => handleSizingSelectChange(e.target.value)}
+                        className="min-w-[160px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
                       >
                         {(['startup', 'standard', 'enterprise'] as PlanningProfile[]).map((profile) => (
                           <option key={profile} value={profile}>
                             {PLANNING_PROFILE_LABEL[profile]}
                           </option>
                         ))}
+                        {orgProfiles.length > 0 && (
+                          <optgroup label="Organization Profiles">
+                            {orgProfiles.map((p) => (
+                              <option key={p.id} value={`org:${p.id}`}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                       </NativeSelect>
+                      <button
+                        type="button"
+                        title="Save as organization profile"
+                        onClick={() => { setSaveProfileName(''); setSaveProfileDialogOpen(true) }}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[rgba(99,102,241,0.5)] hover:text-[#a5b4fc]"
+                      >
+                        <Save size={12} />
+                      </button>
+                      {selectedOrgProfileId && (
+                        <button
+                          type="button"
+                          title="Delete this organization profile"
+                          onClick={handleDeleteOrgProfile}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-[rgba(239,68,68,0.3)] text-[#f87171] hover:bg-[rgba(239,68,68,0.1)]"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {saveProfileDialogOpen && (
+                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.06)] px-3 py-2">
+                      <span className="text-[11px] text-[var(--color-text-secondary)] shrink-0">Profile name</span>
+                      <input
+                        type="text"
+                        value={saveProfileName}
+                        onChange={(e) => setSaveProfileName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveProfileConfirm(); if (e.key === 'Escape') setSaveProfileDialogOpen(false) }}
+                        placeholder="e.g. Production-M"
+                        autoFocus
+                        className="flex-1 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[rgba(99,102,241,0.5)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveProfileConfirm}
+                        disabled={!saveProfileName.trim() || createOrgProfile.isPending}
+                        className="rounded border border-[rgba(99,102,241,0.4)] bg-[rgba(99,102,241,0.15)] px-2.5 py-1 text-[11px] font-semibold text-[#a5b4fc] disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSaveProfileDialogOpen(false)}
+                        className="rounded border border-[var(--color-border-default)] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
 
                   <div className="mb-4 grid grid-cols-3 gap-3 rounded-lg border border-[rgba(99,102,241,0.2)] bg-[rgba(99,102,241,0.06)] p-3">
                     <div>
@@ -4963,16 +5187,17 @@ export function StackInstallPage() {
                 ? `enabled (${draft.accessDomainTls.secretNamespace || 'nullus'}/${draft.accessDomainTls.secretName || 'nullus-wildcard-tls'}, issuer=${draft.accessDomainTls.issuerName || 'nullus-ca-issuer'})`
                 : 'disabled',
             ],
-            ['Package Registry', draft.artifacts.packageRegistry.tool],
             ['Source Repo', draft.artifacts.sourceRepository.tool],
             ['Container Registry', draft.artifacts.containerRegistry.tool],
+            ['Package Registry', draft.artifacts.packageRegistry.tool],
             ['Storage', objectStorageBackendTool],
             ['CI/CD', draft.pipeline.cicdPlatform.tool],
             ['CD Tool', draft.pipeline.cdTool.tool],
-            ['Visualization', draft.monitoring.visualization.tool],
+            ['Visualization', selectedVisualizations.map((item) => item.tool).join(', ') || noneLabel],
             ['Metrics', draft.monitoring.collection.tool],
             ['Logs', draft.logging.search.tool],
             ['Traces', draft.logging.traceLayer.tool],
+            ['Exporter/Agent', draft.logging.traceExporter.tool],
             ['Storage Plan', draft.storage.planMode === 'none' ? noneLabel : draft.storage.planMode],
             [
               'Database',

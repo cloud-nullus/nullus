@@ -542,6 +542,13 @@ export function toCreateStackBody(req: CreateStackRequest) {
   const p = req.pipeline as Record<string, { tool: string; version: string }>
   const m = req.monitoring as Record<string, { tool: string; version: string }>
   const l = req.logging as Record<string, { tool: string; version: string }>
+  const monitoringWithMulti = req.monitoring as Record<string, unknown>
+  const visualizationMulti = Array.isArray(monitoringWithMulti.visualizations)
+    ? (monitoringWithMulti.visualizations as Array<{ tool?: string; version?: string }>)
+        .filter((item) => typeof item?.tool === 'string' && item.tool.trim() !== '')
+        .map((item) => ({ tool: item.tool ?? '', version: item.version ?? '' }))
+    : []
+  const primaryVisualization = visualizationMulti[0] ?? (m.visualization ?? { tool: '', version: '' })
   const backendStoragePlanMode = req.storage ? toBackendStoragePlanMode(req.storage.planMode) : null
   const storageBackendFromStorageTab = req.storage?.objectStorage?.providerOrEngine
     ? {
@@ -577,12 +584,14 @@ export function toCreateStackBody(req: CreateStackRequest) {
       },
       monitoring: {
         collection: toBackendTool(m.collection ?? { tool: '', version: '' }),
-        visualization: toBackendTool(m.visualization ?? { tool: '', version: '' }),
+        visualization: toBackendTool(primaryVisualization),
+        visualizations: visualizationMulti.map(toBackendTool),
       },
       logging: {
         collection: toBackendTool(l.collection ?? { tool: '', version: '' }),
         search: toBackendTool(l.search ?? { tool: '', version: '' }),
         trace_layer: toBackendTool(l.traceLayer ?? l.trace_layer ?? { tool: '', version: '' }),
+        trace_exporter: toBackendTool(l.traceExporter ?? { tool: '', version: '' }),
       },
       resources: {
         developers: req.resources?.developerCount ?? 0,
@@ -781,10 +790,16 @@ export function useClusterK8sVersion() {
   })
 }
 
-export function useStacks(filters?: { status?: string; search?: string }) {
+export function useStacks(
+  filters?: { status?: string; search?: string },
+  options?: { refetchIntervalMs?: number },
+) {
   return useQuery({
     queryKey: queryKeys.list(filters),
     queryFn: () => stackApiCalls.getList(filters),
+    refetchInterval: options?.refetchIntervalMs && options.refetchIntervalMs > 0
+      ? options.refetchIntervalMs
+      : false,
   })
 }
 
