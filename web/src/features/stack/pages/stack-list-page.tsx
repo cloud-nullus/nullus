@@ -359,9 +359,14 @@ function buildInstalledToolsFromSnapshot(snapshot: unknown): ToolSelectionView[]
 		pickGroup(config, ["logging", "Logging"]),
 		[["collection", "Collection"], ["search", "Search"], ["trace_layer", "traceLayer", "TraceLayer"]],
 	);
+	const authenticationGroup = pickGroup(config, ["authentication", "Authentication"]);
+	const authProvider = readString(authenticationGroup, ["provider", "Provider", "name", "Name", "tool"]);
+	const authentication: ToolSelectionView[] = authProvider
+		? [{ name: authProvider, version: "shared", instances: 1 }]
+		: [];
 
 	const byName = new Map<string, ToolSelectionView>();
-	for (const tool of [...artifacts, ...pipeline, ...monitoring, ...logging]) {
+	for (const tool of [...authentication, ...artifacts, ...pipeline, ...monitoring, ...logging]) {
 		const key = tool.name.toLowerCase();
 		if (!byName.has(key)) {
 			byName.set(key, tool);
@@ -371,10 +376,38 @@ function buildInstalledToolsFromSnapshot(snapshot: unknown): ToolSelectionView[]
 	return Array.from(byName.values());
 }
 
-function extractAccessDomain(snapshot: unknown): string {
+function sanitizeAccessDomain(value: string): string {
+	const trimmed = value.trim().toLowerCase();
+	if (!trimmed) return "";
+	const noScheme = trimmed.replace(/^https?:\/\//, "");
+	const hostOnly = noScheme.split("/")[0]?.split(":")[0] ?? "";
+	const noWildcard = hostOnly.replace(/^\*\./, "");
+	return noWildcard;
+}
+
+function fallbackAccessDomain(stackName: string): string {
+	const slug = stackName
+		.toLowerCase()
+		.replace(/[^a-z0-9-\s]/g, "")
+		.trim()
+		.replace(/\s+/g, "-")
+		.replace(/-+/g, "-");
+	if (!slug) {
+		return "";
+	}
+	return `${slug}.internal`;
+}
+
+function extractAccessDomain(snapshot: unknown, stackName: string): string {
 	const config = resolveSnapshotConfig(snapshot);
 	const value = config.access_domain ?? config.accessDomain;
-	return typeof value === "string" ? value.trim() : "";
+	if (typeof value === "string") {
+		const normalized = sanitizeAccessDomain(value);
+		if (normalized) {
+			return normalized;
+		}
+	}
+	return fallbackAccessDomain(stackName);
 }
 
 function readStorageTarget(record: Record<string, unknown>, fallback: Partial<StorageConnectionInfo>): StorageConnectionInfo {
@@ -442,6 +475,9 @@ export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo, i
 	if (key === "prometheus") {
 		return isKorean ? "로그인 불필요 (기본 설정)" : "No login required (default setting)";
 	}
+	if (key === "openbao") {
+		return isKorean ? "관리자 인증 후 OpenBao UI에서 토큰/시크릿을 조회하세요." : "After admin authentication, check tokens/secrets in OpenBao UI.";
+	}
 	return isKorean ? "도구별 기본 인증정보를 확인하세요." : "Check the default credentials for each tool.";
 }
 
@@ -504,6 +540,7 @@ function toolLogoURL(toolName: string): string {
 		harbor: "harbor",
 		"harbor registry": "harbor",
 		minio: "minio",
+		openbao: "vault",
 	};
 	const slug = map[key] ?? "kubernetes";
 	return `https://cdn.simpleicons.org/${slug}`;
@@ -520,11 +557,12 @@ function toolLaunchURL(toolName: string, accessDomain: string): string | null {
 	if (key === "prometheus") return `http://prometheus.${accessDomain}`;
   if (key === "harbor") return `http://harbor.${accessDomain}`;
   if (key === "minio") return `http://minio.${accessDomain}`;
-  if (key === "opensearch") return `http://opensearch.${accessDomain}`;
-  if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
-  if (key === "jaeger") return `http://jaeger.${accessDomain}`;
-  if (["tempo", "loki", "opentelemetry collector"].includes(key)) return `http://grafana.${accessDomain}`;
-  return null;
+	if (key === "opensearch") return `http://opensearch.${accessDomain}`;
+	if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
+	if (key === "jaeger") return `http://jaeger.${accessDomain}`;
+	if (["tempo", "loki", "opentelemetry collector"].includes(key)) return `http://grafana.${accessDomain}`;
+	if (key === "openbao") return `http://openbao.${accessDomain}`;
+	return null;
 }
 
 
@@ -941,7 +979,7 @@ function StackInfoTab({
 		sync: degradedState ? "out-of-sync" : "synced",
 	}));
 	const installedTools = buildInstalledToolsFromSnapshot(latestSnapshot);
-	const accessDomain = extractAccessDomain(latestSnapshot);
+	const accessDomain = extractAccessDomain(latestSnapshot, stack.name);
 	const launchTools: LaunchTool[] = installedTools.map((tool) => ({
 		name: tool.name,
 		version: tool.version,

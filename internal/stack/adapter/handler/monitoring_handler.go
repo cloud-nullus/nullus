@@ -889,6 +889,7 @@ func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
 		"logging_search":     "opensearch",
 		"trace_layer":        "tempo",
 		"storage_backend":    "minio",
+		"authentication":     "openbao",
 	}
 
 	tool := func(key string, sel domain.ToolSelection, prefixes ...string) selectedToolType {
@@ -914,6 +915,16 @@ func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
 	}
 
 	out := []selectedToolType{
+		tool("authentication", domain.ToolSelection{
+			Name:    strings.TrimSpace(func() string {
+				if cfg.Authentication == nil {
+					return ""
+				}
+				return cfg.Authentication.Provider
+			}()),
+			Version: "latest",
+			Enabled: cfg.Authentication != nil && strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)) == "openbao",
+		}, "openbao"),
 		tool("source_repository", cfg.Artifacts.SourceRepository, "gitlab"),
 		tool("cd_tool", cfg.Pipeline.CDTool, "argo-cd-argocd"),
 		tool("collection", cfg.Monitoring.Collection, "prometheus", "kube-prometheus-stack", "alertmanager-kube-prometheus-stack"),

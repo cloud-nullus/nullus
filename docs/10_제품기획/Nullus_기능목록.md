@@ -270,7 +270,7 @@
 
 - [ ] 웹 UI "Deploy Pipeline" 버튼 (클러스터 설정 완료 시에만 활성화)
 - [ ] 설치 순서 자동화 (의존성 DAG 기반):
-  1. Storage Backend (MinIO) → 2. Source Repository (GitLab CE) → 3. Container Registry → 4. CI Platform (Runner) → 5. CD Tool (Argo CD) → 6. Monitoring (Prometheus + Grafana) → 7. Logging (OTel + OpenSearch) → 8. Integration (도구 간 연동)
+  1. **OpenBao (Secret Control Plane)** → 2. Storage Backend (MinIO) → 3. Source Repository (GitLab CE) → 4. Container Registry → 5. CI Platform (Runner) → 6. CD Tool (Argo CD) → 7. Monitoring (Prometheus + Grafana) → 8. Logging (OTel + OpenSearch) → 9. Integration (도구 간 연동)
 - [ ] 진행률 실시간 표시 (프로그레스 바 + WebSocket 로그 스트리밍)
 - [ ] 설치 실패 시 자동 롤백 (역순 Helm uninstall + PVC 삭제 + Secret 정리)
 - [ ] 설치 완료 후 헬스체크 자동 실행
@@ -287,11 +287,19 @@
   - 버전별 변경자, 변경 시간, 변경 이유 기록
   - 이전 버전과의 diff 표시 (git diff 스타일)
   - 특정 버전으로 롤백 가능
+- [ ] **OpenBao 연계 시크릿 주입**:
+  - Stack/CI/CD/Observability 컴포넌트가 사용하는 토큰·비밀번호·client secret은 OpenBao에서 조회/주입
+  - 원문 비밀값을 values 파일/소스코드/GitHub Actions 로그에 직접 노출하지 않음
+  - Secret 회전 시 재배포 없이 반영 가능한 경로(ESO/CSI/sidecar 중 1개 이상) 제공
+- [ ] **만료 토큰 자동 갱신(신규)**:
+  - lease 기반 토큰은 만료 전 자동 renew
+  - 고정 수명 토큰은 provider API 기반 reissue 후 OpenBao 경로 업데이트
+  - 갱신 실패 시 백오프 재시도 + 임계 횟수 초과 알림(Slack/Email)
 
 #### Narwhal 레퍼런스 기반 설치 엔진 강화
 
 - **설치 순서 DAG 레퍼런스**: Narwhal의 실전 검증된 의존성 그래프를 레퍼런스 구현으로 활용
-  - 3-Phase 프로비저닝 모델: Phase A (기반 인프라: Storage, DB, cert-manager) → Phase B (플랫폼 앱) → Phase C (연동: Webhook, ServiceMonitor, OIDC)
+  - 3-Phase 프로비저닝 모델: Phase A (기반 인프라: OpenBao, Storage, DB, cert-manager) → Phase B (플랫폼 앱) → Phase C (연동: Webhook, ServiceMonitor, OIDC)
   - Phase 간 게이트 검증 (Phase A 완료 확인 후 Phase B 진행)
   - 참고: Narwhal 스크립트 번호 순서 (07-cnpg → 08-platform → ... → 14-bootstrap)
 - **Helm Edge Case 자동 처리 (`known-issues.yaml`)**:
@@ -522,6 +530,11 @@ matrices:
 - [ ] 대메뉴 단위 접근 권한 설정 (사용자 관리 포함)
 - [ ] 사용자 관리 화면 제공 (역할 부여, 비활성화)
 - [ ] OSS별 권한 매핑 지원 (Keycloak 활용)
+- [ ] 토큰 회전 관리 권한 분리 (Admin만 rotate/approve/pause/resume 가능)
+- [ ] **고위험 조회 Step-up 인증**:
+  - 관리자 토큰/시크릿 조회(reveal)는 재인증(비밀번호 재입력 또는 OIDC step-up) 후에만 허용
+  - 재인증 성공 세션의 유효시간은 짧게 제한(예: 5분)
+  - 조회 이력(사용자/시각/대상 path)은 감사 로그에 필수 기록
 
 #### RBAC 매핑
 

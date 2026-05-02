@@ -1061,13 +1061,16 @@ GitHub Webhook → Discord #alerts
 
 ### 9.1 시크릿 관리
 
+기본 정책: **OpenBao-first** (운영/스테이징). 로컬 개발만 `.envrc` fallback 허용.
+
 | 시크릿 | 저장 위치 | 용도 |
 |---|---|---|
 | DB 비밀번호 (dev) | `.envrc` (gitignore) | 로컬 개발 |
-| DB 비밀번호 (dev/staging) | K8s Secret (GKE) | 클라우드 환경 |
-| Kubeconfig 암호화 키 | `.envrc` / K8s Secret | kubeconfig AES-256-GCM 암호화 |
+| DB 비밀번호 (dev/staging) | OpenBao | 클라우드 환경 |
+| Kubeconfig 암호화 키 | `.envrc` / OpenBao | kubeconfig AES-256-GCM 암호화 |
 | Docker Hub 토큰 | GitHub Secrets | CI/CD 이미지 푸시 |
 | GCP 서비스 어카운트 키 | GitHub Secrets | CI/CD에서 GKE 접근 |
+| OIDC Client Secret / Webhook Token | OpenBao | 앱 간 인증/연동 |
 
 **절대 커밋하면 안 되는 것들**:
 - `.envrc` (환경 변수)
@@ -1149,6 +1152,9 @@ git secrets --add 'password\s*=\s*.+'
 - [ ] GKE Autopilot Dev 클러스터 생성
 - [ ] GKE Autopilot Staging 클러스터 생성
 - [ ] CI 서비스 어카운트 생성 + kubeconfig를 GitHub Secrets에 등록
+- [ ] OpenBao 배포 및 초기 정책(path/role) 구성
+- [ ] OpenBao Kubernetes auth 연동 (서비스어카운트별 권한 분리)
+- [ ] OIDC/Webhook/Registry 관련 시크릿을 OpenBao 경로로 이관
 - [ ] Artifact Registry 생성
 - [ ] 팀원 GCP IAM 권한 부여
 - [ ] Discord 서버 생성 + 채널 구조 셋업

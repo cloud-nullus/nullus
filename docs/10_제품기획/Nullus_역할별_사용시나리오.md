@@ -151,7 +151,7 @@ DevOps Engineer는 DevSecOps 스택의 전체 라이프사이클(설정, 배포,
 1. 설정 완료 후 K8s Object Preview(Namespace, Deployments, Services, Ingress) 확인
 2. "Deploy" 클릭
 3. 3-Phase 순차 설치:
-   - Phase A: 기반 인프라 (Storage, DB, cert-manager)
+   - Phase A: 기반 인프라 (OpenBao, Storage, DB, cert-manager)
    - Phase B: 플랫폼 앱 (GitLab, Argo CD 등)
    - Phase C: 연동 (OIDC, Webhook, ServiceMonitor)
 4. 실시간 로그 스트리밍(WebSocket) + 프로그레스 바

@@ -295,6 +295,20 @@ Nullus 스택 설치 시 Keycloak이 자동 구성됩니다.
 5. 각 앱의 Helm values에 OIDC 설정 주입
 6. K8s API Server OIDC 연동 (선택)
 
+#### OpenBao-first 시크릿 연계 (신규)
+
+Nullus v1.x에서는 토큰/비밀번호/client secret의 원문 저장소를 OpenBao로 통일합니다.
+
+1. Stack 배포 시작 전 OpenBao 준비 상태를 서버가 사전 검증
+2. 앱별 OIDC/SCM/Registry/Webhook credential은 OpenBao path에서 읽어 주입
+3. API 응답 본문/로그/에러 detail에 비밀 원문을 포함하지 않음
+4. Kubernetes Secret은 애플리케이션 런타임 참조를 위한 파생 리소스로만 사용
+
+권장 연계 방식:
+
+- `auth/kubernetes` + short-lived token
+- External Secrets Operator(ESO) 또는 Secrets Store CSI Driver
+
 #### OSS별 권한 매핑
 
 ```
@@ -379,6 +393,12 @@ Link: </api/v2/clusters>; rel="successor-version"
 | Resource Estimate | O | O | O |
 | User/RBAC | X | X | O |
 | WebSocket (설치 로그) | O | O | O |
+
+### 4.5 Secret Delivery 정책 (신규)
+
+- `POST /api/v1/stacks/:id/deploy` 및 retry 계열 엔드포인트는 OpenBao 연계 상태를 필수 검증한다.
+- OpenBao 미연결/권한 오류 시 배포를 차단하고, 재시도 가능한 표준 에러코드를 반환한다.
+- 시크릿 회전은 배포 파이프라인과 분리된 운영 액션으로 수행 가능해야 하며, Audit 로그를 남긴다.
 
 ---
 
@@ -2090,6 +2110,137 @@ DevSecOps Stack 리소스 예상량 계산을 담당합니다.
 ```
 
 ---
+
+### 6.12 Token Rotation (OpenBao) 모듈
+
+OpenBao-first 시크릿 정책에 따라 OSS 토큰의 만료 전 갱신/재발급을 담당합니다.
+
+#### GET /api/v1/admin/token-sources
+
+토큰 소스 목록 조회
+
+- **릴리스**: v1.x
+- **인증**: Admin
+
+지원 필터:
+
+`status`, `module`, `provider`, `org_id`, `page`, `page_size`
+
+#### GET /api/v1/admin/token-sources/:id/events
+
+토큰 갱신 이력 조회
+
+- **릴리스**: v1.x
+- **인증**: Admin
+
+#### POST /api/v1/admin/token-sources/:id/rotate
+
+즉시 갱신(renew/reissue) 트리거
+
+- **릴리스**: v1.x
+- **인증**: Admin
+
+요청 예시:
+
+```json
+{
+  "reason": "manual-rotation",
+  "force": false
+}
+```
+
+#### POST /api/v1/admin/token-sources/:id/approve
+
+수동 승인 필요 상태(`FAILED_MANUAL`)에서 갱신 재개
+
+- **릴리스**: v1.x
+- **인증**: Admin
+
+#### POST /api/v1/admin/token-sources/:id/re-auth
+
+고위험 조회(step-up)용 재인증
+
+- **릴리스**: v1.x
+- **인증**: Admin
+
+요청 예시:
+
+```json
+{
+  "method": "password",
+  "password": "********"
+}
+```
+
+또는
+
+```json
+{
+  "method": "oidc_stepup",
+  "challenge_token": "..."
+}
+```
+
+응답 예시:
+
+```json
+{
+  "step_up_token": "stepup_xxx",
+  "expires_in_seconds": 300
+}
+```
+
+#### POST /api/v1/admin/token-sources/:id/reveal
+
+토큰/시크릿 조회(원문 또는 마스킹 해제)
+
+- **릴리스**: v1.x
+- **인증**: Admin + 유효한 `step_up_token`
+
+요청 예시:
+
+```json
+{
+  "step_up_token": "stepup_xxx",
+  "mode": "masked" 
+}
+```
+
+`mode`:
+- `masked`: 일부 마스킹 값
+- `full`: 정책상 허용된 경우에만 전체 표시
+
+#### POST /api/v1/admin/token-sources/:id/pause
+
+자동 갱신 일시 정지
+
+- **릴리스**: v1.x
+- **인증**: Admin
+
+#### POST /api/v1/admin/token-sources/:id/resume
+
+자동 갱신 재개
+
+- **릴리스**: v1.x
+- **인증**: Admin
+
+#### 에러 코드 (추가)
+
+| 코드 | HTTP | 설명 |
+|---|---|---|
+| `TOKEN_ROTATE_PROVIDER_UNAVAILABLE` | 503 | 외부 provider 응답 불가 |
+| `TOKEN_ROTATE_RATE_LIMITED` | 429 | provider rate limit 도달 |
+| `TOKEN_ROTATE_APPROVAL_REQUIRED` | 409 | 수동 승인 필요 상태 |
+| `TOKEN_ROTATE_POLICY_DENIED` | 403 | OpenBao policy 권한 부족 |
+| `TOKEN_ROTATE_EXPIRED` | 422 | 토큰 만료로 긴급 조치 필요 |
+
+#### 정책 메모
+
+- 운영/스테이징은 OpenBao를 원문 시크릿 저장소로 사용합니다.
+- Kubernetes Secret은 파생 주입 리소스로만 사용합니다.
+- API 응답/로그는 시크릿 원문을 반환하지 않습니다.
+- `reveal` 액션은 step-up 재인증 세션에서만 허용하며 TTL(권장 5분)을 강제합니다.
+- `reveal` 성공/실패는 감사 로그(`audit_logs`)에 필수 기록합니다.
 
 #### PUT /api/v1/users/:userId/role
 

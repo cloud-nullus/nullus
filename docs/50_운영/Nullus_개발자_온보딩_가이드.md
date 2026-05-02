@@ -100,6 +100,8 @@ cp .env.example .env.dev
 
 > `ENCRYPTION_KEY`를 변경하면 기존 DB에 저장된 kubeconfig가 복호화되지 않는다. 클러스터를 다시 등록해야 한다.
 
+> 운영/스테이징 환경에서는 OpenBao-first 정책을 사용합니다. 온보딩 단계의 `.env.dev` 키는 로컬 개발 편의용 fallback 입니다.
+
 ### 2.4 인프라 기동
 
 ```bash
