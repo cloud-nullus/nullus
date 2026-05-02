@@ -11,7 +11,7 @@ type StackRepository interface {
 	Create(ctx context.Context, stack *domain.Stack) error
 	GetByID(ctx context.Context, id string) (*domain.Stack, error)
 	FindByID(ctx context.Context, id string) (*domain.Stack, error)
-	List(ctx context.Context, orgID string) ([]*domain.Stack, error)
+	List(ctx context.Context, orgID string, includeDeleted bool) ([]*domain.Stack, error)
 	Update(ctx context.Context, stack *domain.Stack) error
 	UpdateTools(ctx context.Context, stack *domain.Stack) error
 	Delete(ctx context.Context, id string) error

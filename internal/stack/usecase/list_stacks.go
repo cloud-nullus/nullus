@@ -10,7 +10,8 @@ import (
 
 // ListStacksInput holds parameters for listing stacks.
 type ListStacksInput struct {
-	OrgID string
+	OrgID          string
+	IncludeDeleted bool
 }
 
 // ListStacksOutput holds the result of listing stacks.
@@ -34,7 +35,7 @@ func (uc *ListStacks) Execute(ctx context.Context, input ListStacksInput) (*List
 		return nil, fmt.Errorf("org_id is required")
 	}
 
-	stacks, err := uc.stackRepo.List(ctx, input.OrgID)
+	stacks, err := uc.stackRepo.List(ctx, input.OrgID, input.IncludeDeleted)
 	if err != nil {
 		return nil, fmt.Errorf("list stacks: %w", err)
 	}

@@ -53,12 +53,12 @@ func (r *MemoryStackRepository) FindByID(ctx context.Context, id string) (*domai
 }
 
 // List returns all stacks belonging to the given organization.
-func (r *MemoryStackRepository) List(_ context.Context, orgID string) ([]*domain.Stack, error) {
+func (r *MemoryStackRepository) List(_ context.Context, orgID string, includeDeleted bool) ([]*domain.Stack, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	result := make([]*domain.Stack, 0, len(r.stacks))
 	for _, s := range r.stacks {
-		if s.OrgID == orgID && s.DeletedAt == nil {
+		if s.OrgID == orgID && (includeDeleted || s.DeletedAt == nil) {
 			cp := *s
 			result = append(result, &cp)
 		}

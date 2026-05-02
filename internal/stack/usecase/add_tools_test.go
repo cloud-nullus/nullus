@@ -24,7 +24,9 @@ func (f *fakeAddToolsRepo) Create(context.Context, *domain.Stack) error { return
 func (f *fakeAddToolsRepo) GetByID(context.Context, string) (*domain.Stack, error) {
 	return nil, errors.New("not implemented")
 }
-func (f *fakeAddToolsRepo) List(context.Context, string) ([]*domain.Stack, error) { return nil, nil }
+func (f *fakeAddToolsRepo) List(context.Context, string, bool) ([]*domain.Stack, error) {
+	return nil, nil
+}
 func (f *fakeAddToolsRepo) Update(context.Context, *domain.Stack) error           { return nil }
 func (f *fakeAddToolsRepo) Delete(context.Context, string) error                  { return nil }
 
