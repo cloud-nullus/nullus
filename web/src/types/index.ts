@@ -173,6 +173,9 @@ export interface StackConfig {
   stackName: string
   accessDomain?: string
   accessDomainTls?: AccessDomainTlsInput
+  authentication?: {
+    provider?: '' | 'openbao'
+  }
   yamlOverrides?: Record<string, string>
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>

@@ -571,6 +571,9 @@ export function toCreateStackBody(req: CreateStackRequest) {
             issuer_name: req.accessDomainTls.issuerName,
           }
         : undefined,
+      authentication: req.authentication?.provider
+        ? { provider: req.authentication.provider }
+        : undefined,
       yaml_overrides: req.yamlOverrides,
       artifacts: {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),
@@ -645,7 +648,7 @@ const stackApiCalls = {
   getTemplate: (id: string) =>
     api.get<StackTemplate>(`/stacks/templates/${id}`).then((r) => r.data),
 
-  getList: (filters?: { status?: string; search?: string }) =>
+  getList: (filters?: { status?: string; search?: string; include_deleted?: boolean }) =>
     api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => ({
       ...r.data,
       items: ((r.data.items ?? []) as unknown as RawStackItem[]).map(normalizeStackItem),
@@ -791,7 +794,7 @@ export function useClusterK8sVersion() {
 }
 
 export function useStacks(
-  filters?: { status?: string; search?: string },
+  filters?: { status?: string; search?: string; include_deleted?: boolean },
   options?: { refetchIntervalMs?: number },
 ) {
   return useQuery({

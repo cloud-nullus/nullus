@@ -56,6 +56,8 @@ type InstallStack struct {
 	executor            port.StepExecutor
 	kubeconfigProvider  port.KubeconfigProvider
 	dynamicExecutorFunc func(kubeconfig []byte) port.StepExecutor
+	tokenRegistry       port.TokenSourceRegistry
+	tokenRegistryEnv    string
 }
 
 type stackConfigAwareExecutor interface {
@@ -103,6 +105,13 @@ func WithKubeconfigProvider(provider port.KubeconfigProvider) InstallStackOption
 func WithExecutorFactory(factory func(kubeconfig []byte) port.StepExecutor) InstallStackOption {
 	return func(uc *InstallStack) {
 		uc.dynamicExecutorFunc = factory
+	}
+}
+
+func WithTokenSourceRegistry(registry port.TokenSourceRegistry, env string) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.tokenRegistry = registry
+		uc.tokenRegistryEnv = strings.TrimSpace(env)
 	}
 }
 
@@ -250,6 +259,57 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		return
 	}
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
+	if err := uc.registerStackTokenSources(ctx, stack); err != nil {
+		slog.Warn("token source registration failed", "stack_id", stack.ID, "error", err)
+	}
+}
+
+func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *domain.Stack) error {
+	if uc.tokenRegistry == nil || stack == nil {
+		return nil
+	}
+	cfg, ok := stackConfigFromInterface(stack.Config)
+	if !ok || cfg.Authentication == nil || strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)) != "openbao" {
+		return nil
+	}
+	env := uc.tokenRegistryEnv
+	if env == "" {
+		env = "dev"
+	}
+	inputs := []port.TokenSourceInput{}
+	appendTool := func(module, provider string) {
+		provider = strings.TrimSpace(strings.ToLower(provider))
+		if provider == "" {
+			return
+		}
+		provider = strings.ReplaceAll(provider, " ", "-")
+		inputs = append(inputs, port.TokenSourceInput{
+			OrgID:     stack.OrgID,
+			Module:    module,
+			Provider:  provider,
+			Path:      fmt.Sprintf("kv/nullus/%s/%s/%s/%s/token", env, stack.OrgID, module, provider),
+			TokenType: "reissue",
+			Status:    "healthy",
+		})
+	}
+
+	appendTool("artifacts", cfg.Artifacts.SourceRepository.Name)
+	appendTool("artifacts", cfg.Artifacts.ContainerRegistry.Name)
+	appendTool("pipeline", cfg.Pipeline.CIPlatform.Name)
+	appendTool("pipeline", cfg.Pipeline.CDTool.Name)
+
+	seen := map[string]struct{}{}
+	for _, input := range inputs {
+		key := input.OrgID + ":" + input.Module + ":" + input.Provider + ":" + input.Path
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if err := uc.tokenRegistry.Upsert(ctx, input); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {

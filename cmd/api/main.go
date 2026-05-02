@@ -75,6 +75,7 @@ func main() {
 	orgRepo := adminrepo.NewPostgresOrgRepository(pool)
 	clusterRepo := adminrepo.NewPostgresClusterRepository(pool)
 	userRepo := adminrepo.NewPostgresUserRepository(pool)
+	tokenSourceRepo := adminrepo.NewPostgresTokenSourceRepository(pool)
 
 	orgUC := usecase.NewOrgUseCase(orgRepo)
 	encryptionKey := []byte(os.Getenv("ENCRYPTION_KEY"))
@@ -90,6 +91,7 @@ func main() {
 		usecase.WithKubeconfigDecryptor(decryptKubeconfig),
 	)
 	userUC := usecase.NewUserUseCase(userRepo)
+	tokenSourceUC := usecase.NewTokenSourceUseCase(tokenSourceRepo)
 	auditLogger := audit.NewAuditLogger(pool)
 
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
@@ -100,13 +102,15 @@ func main() {
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
 	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
-	memStreamer := logadapter.NewMemoryStreamer()
+	tokenSourceRegistry := stackrepo.NewPostgresTokenSourceRegistry(pool)
+	memStreamer := logadapter.NewPostgresStreamer(pool)
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
+		stackuc.WithTokenSourceRegistry(tokenSourceRegistry, cfg.Server.Mode),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
 			return stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo))
@@ -269,6 +273,7 @@ func main() {
 	knownIssuesHandler := adminhandler.NewKnownIssuesHandler(knownIssuesRepo)
 	auditHandler := adminhandler.NewAuditHandler(auditLogger)
 	notificationHandler := adminhandler.NewNotificationHandler(pool)
+	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
 
 	orgHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
@@ -276,6 +281,7 @@ func main() {
 	knownIssuesHandler.RegisterRoutes(admin)
 	auditHandler.RegisterRoutes(admin)
 	notificationHandler.RegisterRoutes(admin)
+	tokenSourceHandler.RegisterRoutes(admin)
 	deployHandler.RegisterRoutes(v1, e)
 	stackHandler.RegisterRoutes(stacks)
 	templateHandler.RegisterRoutes(stacks)

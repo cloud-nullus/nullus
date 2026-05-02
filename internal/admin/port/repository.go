@@ -47,3 +47,12 @@ type UserRepository interface {
 	Update(ctx context.Context, user *domain.User) error
 	Delete(ctx context.Context, id string) error
 }
+
+// TokenSourceRepository defines persistence for token rotation metadata/events.
+type TokenSourceRepository interface {
+	ListSources(ctx context.Context, orgID string) ([]*domain.TokenSource, error)
+	ListEvents(ctx context.Context, tokenSourceID string) ([]*domain.TokenRotationEvent, error)
+	GetSource(ctx context.Context, tokenSourceID string) (*domain.TokenSource, error)
+	UpdateSourceStatus(ctx context.Context, tokenSourceID, status string) error
+	InsertEvent(ctx context.Context, event *domain.TokenRotationEvent) error
+}
