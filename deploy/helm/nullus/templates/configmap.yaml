@@ -11,11 +11,11 @@ data:
       mode: {{ .Values.config.server.mode | quote }}
 
     database:
-      host: {{ include "nullus.postgresqlHost" . | quote }}
-      port: {{ .Values.config.database.port }}
-      name: {{ .Values.postgresql.auth.database | quote }}
-      user: {{ .Values.postgresql.auth.username | quote }}
-      password: {{ .Values.postgresql.auth.password | quote }}
+      host: {{ include "nullus.database.host" . | quote }}
+      port: {{ include "nullus.database.port" . }}
+      name: {{ include "nullus.database.name" . | quote }}
+      user: {{ include "nullus.database.username" . | quote }}
+      password: {{ .Values.secrets.dbPassword | quote }}
       sslmode: {{ .Values.config.database.sslmode | quote }}
       max_open_conns: {{ .Values.config.database.maxOpenConns }}
       max_idle_conns: {{ .Values.config.database.maxIdleConns }}

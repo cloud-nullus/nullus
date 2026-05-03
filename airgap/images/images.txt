@@ -1,0 +1,43 @@
+# =============================================================================
+# Nullus Platform — Air-Gap Image List
+# =============================================================================
+# 형식: <registry>/<repository>:<tag>
+# 한 줄에 이미지 하나. 빈 줄과 '#'으로 시작하는 줄은 무시된다.
+#
+# 이 파일은 airgap/scripts/01-pull-images.sh 에서 직접 읽힌다.
+# Bitnami 차트 의존성 업그레이드 후에는 아래 "Chart 의존성" 섹션 태그를
+# Chart.lock 및 postgresql chart의 values.yaml 값으로 갱신해야 한다.
+# (재생성 방법은 airgap/images/README.md 참고)
+#
+# 출처 근거:
+#   - Nullus 앱 이미지  : deploy/helm/nullus/values.yaml
+#   - postgresql 이미지 : deploy/helm/nullus/charts/postgresql-16.7.21.tgz
+#                         (postgresql/values.yaml 내 image 섹션)
+#   - 인프라 이미지     : 운영 요구사항 (kind, local registry)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Nullus 앱
+# ---------------------------------------------------------------------------
+ghcr.io/cloud-nullus/draft/nullus-api:main
+ghcr.io/cloud-nullus/draft/nullus-web:main
+
+# ---------------------------------------------------------------------------
+# Chart 의존성 (postgresql 16.7.21 — Chart.lock sha256 검증 완료)
+# ---------------------------------------------------------------------------
+# Bitnami는 2025-08부터 docker.io/bitnami/* 의 버전 태그를 docker.io/bitnamilegacy/* 로 이관함.
+# 아래는 legacy 네임스페이스 참조 — 태그 값은 chart values와 동일.
+# bitnami/postgresql : postgresql-16.7.21.tgz → postgresql/values.yaml
+docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r20
+# bitnami/os-shell   : init 컨테이너용 셸 이미지
+docker.io/bitnamilegacy/os-shell:12-debian-12-r49
+# bitnami/postgres-exporter : metrics 익스포터 (기본값 disabled; 필요 시 활성화)
+docker.io/bitnamilegacy/postgres-exporter:0.17.1-debian-12-r13
+
+# ---------------------------------------------------------------------------
+# 인프라
+# ---------------------------------------------------------------------------
+# kind 노드 이미지 — KIND_NODE_VERSION 환경변수로 재정의 가능
+kindest/node:v1.30.0
+# 로컬 레지스트리 미러 (air-gap 환경 내 이미지 서빙용)
+registry:2
