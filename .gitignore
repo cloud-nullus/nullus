@@ -42,4 +42,10 @@ Nullus 상세 기능 명세 및 시스템 아키텍처.md
 # Airgap build artifacts (large binaries, must not be committed)
 airgap/bundle/
 airgap/helm/charts/
+airgap/helm/charts-catalog/
 airgap/helm/nullus-*.tgz
+airgap/bin/
+airgap/dist/
+airgap/kubeconfig-internal.yaml
+airgap/helm/Chart.lock
+airgap/helm/*.tgz.sha256

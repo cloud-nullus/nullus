@@ -8,19 +8,25 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: nullus-airgap
 
+# kind v0.31 + Docker Desktop on macOS arm64 환경에서 API server port
+# auto-allocation 이 실패하는 알려진 이슈(kind#3722) 회피용 명시 설정.
+# 16443 은 일반적으로 비어 있으며 충돌 시 환경 변수로 override 가능.
+networking:
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 16443
+
 nodes:
-  # 컨트롤 플레인 노드 — 인그레스 포트 매핑 포함
+  # 컨트롤 플레인 노드
+  # NOTE: extraPortMappings(80/443) 은 의도적으로 미설정.
+  #   호스트의 80/443 이 다른 데몬(예: Docker Desktop K8s 컨텍스트의 ingress,
+  #   nginx, apache 등)에 점유돼 있으면 kind 컨테이너 시작 자체가 실패해
+  #   API server port mapping 까지 깨진다 (kind#3722 의 trigger 원인).
+  #   ingress 가 필요하면 `kubectl port-forward` 또는 환경별 override 로
+  #   별도 추가하라:
+  #     - containerPort: 80
+  #       hostPort: 8080
   - role: control-plane
     image: kindest/node:v1.30.0
-    extraPortMappings:
-      # HTTP 인그레스 (NGINX Ingress Controller 기본 포트)
-      - containerPort: 80
-        hostPort: 80
-        protocol: TCP
-      # HTTPS 인그레스
-      - containerPort: 443
-        hostPort: 443
-        protocol: TCP
 
   # 워커 노드 — 일반 워크로드 실행
   - role: worker
@@ -31,15 +37,37 @@ nodes:
 # 참고: https://kind.sigs.k8s.io/docs/user/local-registry/
 containerdConfigPatches:
   - |-
-    # docker.io 미러 → localhost:5001
+    # 핵심 주의:
+    #   kind 노드 내부에서 "localhost"는 노드 컨테이너 자기 자신이다.
+    #   호스트의 registry:2 (127.0.0.1:5001) 에 직접 도달할 수 없으므로
+    #   kind 도커 네트워크의 DNS 이름 "kind-registry:5000" 으로 우회한다.
+    #   (registry:2 컨테이너 내부 포트는 5000, 호스트 매핑은 127.0.0.1:5001)
+    #
+    # docker.io 미러
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["http://localhost:5001"]
-    # ghcr.io 미러 → localhost:5001 (Nullus 이미지 저장소)
+      endpoint = ["http://kind-registry:5000"]
+    # ghcr.io 미러 (Nullus 앱 이미지)
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."ghcr.io"]
-      endpoint = ["http://localhost:5001"]
-    # registry-1.docker.io 미러 → localhost:5001
+      endpoint = ["http://kind-registry:5000"]
+    # registry-1.docker.io 미러
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry-1.docker.io"]
-      endpoint = ["http://localhost:5001"]
-    # 로컬 레지스트리 TLS 검증 비활성화 (에어갭 환경, 자체 서명 불필요)
+      endpoint = ["http://kind-registry:5000"]
+    # quay.io 미러 (ArgoCD, Prometheus stack 이미지)
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]
+      endpoint = ["http://kind-registry:5000"]
+    # registry.k8s.io 미러 (kube-state-metrics, ingress-nginx 등)
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
+      endpoint = ["http://kind-registry:5000"]
+    # public.ecr.aws 미러 (ArgoCD redis 등)
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."public.ecr.aws"]
+      endpoint = ["http://kind-registry:5000"]
+    # localhost:5001 미러 — values-airgap.yaml 의 image repository 가
+    # localhost:5001/... 형태로 고정되어 있기 때문에 노드 내부에서도
+    # 동일 표현이 동작하도록 자체 미러 등록 (실제 endpoint 는 kind-registry:5000)
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+      endpoint = ["http://kind-registry:5000"]
+    # 로컬 레지스트리 TLS 검증 비활성화 (HTTP 평문, 자체 서명 불필요)
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."kind-registry:5000".tls]
+      insecure_skip_verify = true
     [plugins."io.containerd.grpc.v1.cri".registry.configs."localhost:5001".tls]
       insecure_skip_verify = true
