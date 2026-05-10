@@ -22,6 +22,8 @@ REDIS_PORT=6380
 KEYCLOAK_PORT=8180
 
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!}"
+OPENBAO_ADDR="${OPENBAO_ADDR:-http://openbao.nullus-devsecops-stack.internal}"
+OPENBAO_TOKEN="${OPENBAO_TOKEN:-root}"
 KIND_CONFIG="$PROJECT_ROOT/scripts/kind-cluster.yaml"
 AUTHENTIK_PORT=9090
 COMPOSE_AUTH="$PROJECT_ROOT/docker-compose.auth.yaml"
@@ -482,6 +484,8 @@ do_up() {
 
   echo "[nullus] starting API server on :$API_PORT..."
   export ENCRYPTION_KEY
+  export OPENBAO_ADDR
+  export OPENBAO_TOKEN
   export NULLUS_DATABASE_HOST=localhost
   export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
   export NULLUS_SERVER_MODE=development
@@ -747,6 +751,8 @@ do_refresh() {
 
   echo "[nullus] starting API server on :$API_PORT..."
   export ENCRYPTION_KEY
+  export OPENBAO_ADDR
+  export OPENBAO_TOKEN
   export NULLUS_DATABASE_HOST=localhost
   export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
   export NULLUS_SERVER_MODE=development

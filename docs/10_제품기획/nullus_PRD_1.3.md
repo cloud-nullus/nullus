@@ -594,13 +594,22 @@ Nullus는 3개 Phase로 나뉘어 개발된다. 본 PRD는 **Phase 1**을 중점
     - Kubeconfig는 서버 측 DB에 AES-256-GCM으로 암호화 저장
     - 전송 시 TLS 1.3 필수
     - 접근 권한은 프로젝트 Owner/Admin만 허용
-    - 민감 정보(API 토큰 등)는 Kubernetes Secret으로 저장
+    - 민감 정보(API 토큰, OIDC client secret, webhook secret, DB credential 등)는 **OpenBao를 1차 저장소(Source of Truth)** 로 저장
+    - Kubernetes Secret에는 원문 비밀값을 직접 저장하지 않고, OpenBao 연계 주입 결과(단기 캐시/참조용)만 허용
+    - 배포 순서는 OpenBao 선배포를 원칙으로 하며, 이후 모든 OSS 연동 토큰은 OpenBao 경유로 주입
 - **RBAC**:
     - Nullus가 생성하는 ServiceAccount는 최소 권한 원칙
     - Namespace 격리 지원
 - **취약점 스캔**:
     - 제공하는 컨테이너 이미지는 Trivy 스캔 완료
     - CVE 발견 시 24시간 이내 패치
+
+#### OpenBao-first 시크릿 관리 원칙 (신규)
+
+- Phase A(기반 인프라)에서 OpenBao를 먼저 배포하고 health check를 완료해야 Phase B/C를 진행한다.
+- OIDC/SCM/Registry/Alert(Webhook) 관련 credential은 OpenBao path 정책으로 관리한다.
+- 애플리케이션은 정적 토큰 하드코딩을 금지하며, Kubernetes auth 기반 short-lived token 사용을 기본으로 한다.
+- 비밀값 회전(rotate)은 운영 표준 절차로 정의하고, 회전 후 무중단 재기동 전략을 함께 제공한다.
 
 ### 5.3 확장성
 

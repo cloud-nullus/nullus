@@ -6,6 +6,7 @@ import "encoding/json"
 type StackConfig struct {
 	AccessDomain    string                 `json:"access_domain,omitempty"`
 	AccessDomainTLS *AccessDomainTLSConfig `json:"access_domain_tls,omitempty"`
+	Authentication  *AuthenticationConfig  `json:"authentication,omitempty"`
 	YAMLOverrides   map[string]string      `json:"yaml_overrides,omitempty"`
 	Artifacts       ArtifactsConfig        `json:"artifacts"`
 	Pipeline        PipelineConfig         `json:"pipeline"`
@@ -13,6 +14,10 @@ type StackConfig struct {
 	Logging         LoggingConfig          `json:"logging"`
 	Resources       ResourcesConfig        `json:"resources"`
 	Storage         *StorageConfig         `json:"storage,omitempty"`
+}
+
+type AuthenticationConfig struct {
+	Provider string `json:"provider,omitempty"`
 }
 
 type AccessDomainTLSConfig struct {

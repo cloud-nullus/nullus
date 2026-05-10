@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
 export type ResourceMode = 'auto' | 'manual'
-export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'resources' | 'storage' | 'manifests' | 'deploy-script' | 'dry-run'
+export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'authentication' | 'resources' | 'storage' | 'manifests' | 'deploy-script' | 'dry-run'
 
 export type StorageMode = 'existing' | 'create'
 export type StoragePlanMode = 'none' | 'existing-all' | 'integrated-create'
@@ -147,6 +147,9 @@ export interface StackConfigDraft {
   stackName: string
   accessDomain: string
   accessDomainTls: AccessDomainTlsConfig
+  authentication: {
+    provider: '' | 'openbao'
+  }
   artifacts: ArtifactsConfig
   pipeline: PipelineConfig
   monitoring: MonitoringConfig
@@ -165,6 +168,7 @@ interface StackConfigState {
   setStackName: (name: string) => void
   setAccessDomain: (domain: string) => void
   updateAccessDomainTls: (config: Partial<AccessDomainTlsConfig>) => void
+  setAuthenticationProvider: (provider: '' | 'openbao') => void
   setTool: (
     section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging',
     field: string,
@@ -190,6 +194,9 @@ const DEFAULT_DRAFT: StackConfigDraft = {
     secretName: 'nullus-wildcard-tls',
     secretNamespace: 'nullus',
     issuerName: 'nullus-ca-issuer',
+  },
+  authentication: {
+    provider: '',
   },
   artifacts: {
     packageRegistry: { tool: 'gitlab', version: getToolAppVersion('gitlab') },
@@ -375,6 +382,18 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
   updateAccessDomainTls: (config) =>
     set((s) => ({
       draft: { ...s.draft, accessDomainTls: { ...s.draft.accessDomainTls, ...config } },
+      isDirty: true,
+    })),
+
+  setAuthenticationProvider: (provider) =>
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        authentication: {
+          ...s.draft.authentication,
+          provider,
+        },
+      },
       isDirty: true,
     })),
 

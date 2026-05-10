@@ -42,7 +42,7 @@ func (r *fakeStackRepo) GetByID(_ context.Context, id string) (*domain.Stack, er
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s, ok := r.stacks[id]
-	if !ok {
+	if !ok || s.DeletedAt != nil {
 		return nil, fmt.Errorf("stack not found: %s", id)
 	}
 	cp := *s
@@ -53,7 +53,7 @@ func (r *fakeStackRepo) FindByID(ctx context.Context, id string) (*domain.Stack,
 	return r.GetByID(ctx, id)
 }
 
-func (r *fakeStackRepo) List(_ context.Context, _ string) ([]*domain.Stack, error) {
+func (r *fakeStackRepo) List(_ context.Context, _ string, _ bool) ([]*domain.Stack, error) {
 	return nil, nil
 }
 
@@ -72,7 +72,11 @@ func (r *fakeStackRepo) UpdateTools(ctx context.Context, s *domain.Stack) error 
 func (r *fakeStackRepo) Delete(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.stacks, id)
+	if s, ok := r.stacks[id]; ok {
+		now := time.Now()
+		s.DeletedAt = &now
+		s.UpdatedAt = now
+	}
 	return nil
 }
 

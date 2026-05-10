@@ -249,6 +249,9 @@ cp .env.example .env.dev
 | `KUBECONFIG` | `~/.kube/config` | Kind 또는 OrbStack K8s 접속 설정. |
 | `LOG_LEVEL` | `debug` | 개발 시에는 `debug`, 운영 시에는 `info`. |
 
+> 운영/스테이징 표준은 OpenBao-first입니다. 이 문서의 `ENCRYPTION_KEY`는 로컬 개발 fallback 용도입니다.
+> 프로덕션에서는 앱이 OpenBao(auth/kubernetes)에서 키/토큰을 조회하도록 구성하세요.
+
 백엔드 기본 설정 파일은 `configs/config.yaml`입니다.
 
 ### 3.4 인프라 실행 및 마이그레이션

@@ -145,6 +145,10 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
 		return fmt.Errorf("mark stack canceled: %w", err)
 	}
+	if err := uc.stackRepo.Delete(ctx, stackID); err != nil {
+		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
+		return fmt.Errorf("mark stack deleted: %w", err)
+	}
 
 	kubeconfig := uc.loadKubeconfig(ctx, stack.ClusterID)
 	gatewayNames := uc.collectGatewayNames(ctx, kubeconfig, stack)
@@ -163,12 +167,6 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
-
-	if err := uc.stackRepo.Delete(ctx, stackID); err != nil {
-		uc.markDeleteFailedState(ctx, stack, stackID)
-		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
-		return fmt.Errorf("delete stack: %w", err)
-	}
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
 	uc.clearStreamHistory(stackID)

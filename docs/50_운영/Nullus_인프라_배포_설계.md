@@ -1290,13 +1290,17 @@ monitoring:
 
 **원칙**: 민감 정보는 코드에 절대 포함하지 않습니다.
 
+**OpenBao-first 원칙**: 운영/스테이징 환경에서 민감 정보의 Source of Truth는 OpenBao입니다.
+
 | 시크릿 | 저장 방식 | 환경 |
 |--------|-----------|------|
-| DB 비밀번호 | `.env` (로컬), K8s Secret (클라우드) | 전체 |
-| Kubeconfig 암호화 키 (AES-256) | `.env` (로컬), K8s Secret (클라우드) | 전체 |
+| DB 비밀번호 | `.env` (로컬), **OpenBao (클라우드)** | 전체 |
+| Kubeconfig 암호화 키 (AES-256) | `.env` (로컬), **OpenBao (클라우드)** | 전체 |
 | Docker Hub 토큰 | GitHub Secrets | CI/CD |
 | GCP 서비스 계정 키 | GitHub Secrets | CI/CD |
-| Keycloak Client Secret | K8s Secret | Dev/Staging/Prod |
+| Keycloak Client Secret | **OpenBao** | Dev/Staging/Prod |
+
+> 참고: K8s Secret은 앱 주입을 위한 파생 리소스로만 사용하고, 원문 비밀값의 직접 저장소로 사용하지 않습니다.
 
 **K8s Secret 생성 예시**:
 
@@ -1317,8 +1321,22 @@ kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
 | 데이터 | 저장 위치 | 예시 |
 |--------|-----------|------|
 | 비민감 설정 | ConfigMap | LOG_LEVEL, API_PORT, ENVIRONMENT |
-| 민감 정보 | Secret (Base64) | 비밀번호, API 키, 암호화 키 |
-| Kubeconfig | Secret + AES-256 암호화 후 DB | 사용자 등록 클러스터 정보 |
+| 민감 정보 | OpenBao + (필요 시) Secret 파생 주입 | 비밀번호, API 키, 암호화 키 |
+| Kubeconfig | OpenBao 키로 AES-256 암호화 후 DB | 사용자 등록 클러스터 정보 |
+
+### 8.5 OpenBao 연계 배포 순서 (신규)
+
+스택 배포 시 비밀관리 평면을 먼저 준비합니다.
+
+1. Phase A-0: OpenBao 배포 및 health check
+2. Phase A: Storage/DB/cert-manager
+3. Phase B: 플랫폼 앱 배포
+4. Phase C: OIDC/Webhook/ServiceMonitor 연동
+
+연동 규칙:
+
+- OIDC client secret, webhook token, registry credential은 OpenBao 경유로만 주입
+- values 파일/로그/에러 메시지에 원문 시크릿 노출 금지
 
 ---
 
@@ -1941,6 +1959,71 @@ kubectl get pod -n nullus-system -l app.kubernetes.io/name=keycloak
 
 # Refresh Token 강제 갱신
 # 프론트엔드에서 /auth/refresh 엔드포인트 호출
+```
+
+#### OpenBao 토큰 자동 갱신 실패 시
+
+```text
+1. 상태 확인
+   - Token Source 상태: failed_retryable | failed_manual | expired
+   - 최근 이벤트에서 provider 오류 코드/권한 오류 확인
+
+2. 분기 처리
+   a. failed_retryable
+      - 백오프 재시도 상태인지 확인
+      - provider rate limit/네트워크 장애 해소 후 수동 rotate 트리거
+
+   b. failed_manual
+      - 승인 필요 토큰인지 확인
+      - Admin이 approve 액션 수행 후 rotate 재시작
+
+   c. expired
+      - P0 알림 발행
+      - 임시 운영토큰(브레이크글래스) 적용 후 정상 회전 절차 복구
+
+3. 반영 검증
+   - OpenBao path 최신 버전 확인
+   - ESO/CSI 동기화 시각 확인
+   - 대상 앱 reload/rolling restart 후 인증 성공 확인
+
+4. 사후 조치
+   - 원인 코드 기록 (rate_limited, policy_denied, provider_unavailable 등)
+   - token_rotation_events + audit_logs에 조치 이력 남김
+```
+
+#### OpenBao 승인/롤백 운영 절차
+
+```text
+1. 승인(approve)
+   - 조건: failed_manual 상태, 변경 이력 검토 완료
+   - 실행: Admin 승인 -> rotate 재개
+
+2. 롤백(rotate rollback)
+   - 새 토큰 반영 후 앱 인증 실패 시
+   - OpenBao 이전 버전으로 되돌림 -> 주입 동기화 -> 앱 재검증
+
+3. 재개(resume)
+   - pause 상태에서 운영 창구 승인 후 자동 갱신 재개
+```
+
+#### 관리자 토큰 조회(step-up) 운영 절차
+
+```text
+1. 기본 원칙
+   - 토큰 원문 조회는 기본 비활성(마스킹 표시)
+   - 원문 조회(reveal)는 관리자 재인증(step-up) 이후만 허용
+
+2. 재인증
+   - 비밀번호 재입력 또는 OIDC step-up 인증 수행
+   - 성공 시 짧은 세션 토큰 발급(권장 TTL: 5분)
+
+3. 조회 제한
+   - TTL 만료 후 재조회 시 재인증 필수
+   - 조회/복사 횟수 및 속도 제한 적용
+
+4. 감사/보안
+   - 누가/언제/어떤 path를 조회했는지 audit_logs 기록
+   - 실패 반복 시 보안 알림 발행
 ```
 
 ### 12.2 온콜 체계 (v1 GA 이후)

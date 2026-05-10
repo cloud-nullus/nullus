@@ -48,6 +48,34 @@ export interface ClusterMonitoringSummary {
   memory_limit_mib: number
 }
 
+export interface TokenSource {
+  id: string
+  org_id: string
+  module: string
+  provider: string
+  path: string
+  token_type: string
+  status: string
+  expires_at?: string
+  last_rotated_at?: string
+  next_check_at?: string
+  requires_approval: boolean
+  metadata?: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface TokenRotationEvent {
+  id: string
+  token_source_id: string
+  event_type: string
+  result: string
+  reason_code?: string
+  detail_json?: Record<string, unknown>
+  trace_id?: string
+  created_at: string
+}
+
 // --- Query keys ---
 
 const queryKeys = {
@@ -59,6 +87,8 @@ const queryKeys = {
   knownIssues: () => ['admin', 'known-issues'] as const,
   inviteLinks: (orgId: string) => ['invite-links', orgId] as const,
   resourceProfiles: () => ['admin', 'organization', 'resource-profiles'] as const,
+  tokenSources: () => ['admin', 'token-sources'] as const,
+  tokenSourceEvents: (id: string) => ['admin', 'token-sources', id, 'events'] as const,
 }
 
 type ClusterApiShape = Omit<Cluster, 'nodeArchitectures'> & {
@@ -221,6 +251,30 @@ const adminApiCalls = {
 
   deleteResourceProfile: (id: string) =>
     api.delete(`/admin/organization/resource-profiles/${id}`).then((r) => r.data),
+
+  getTokenSources: () =>
+    api.get<{ items: TokenSource[]; total: number }>('/admin/token-sources').then((r) => r.data),
+
+  getTokenSourceEvents: (id: string) =>
+    api.get<{ items: TokenRotationEvent[]; total: number }>(`/admin/token-sources/${id}/events`).then((r) => r.data),
+
+  rotateTokenSource: (id: string, reason?: string) =>
+    api.post(`/admin/token-sources/${id}/rotate`, { reason }).then((r) => r.data),
+
+  approveTokenSource: (id: string, reason?: string) =>
+    api.post(`/admin/token-sources/${id}/approve`, { reason }).then((r) => r.data),
+
+  pauseTokenSource: (id: string, reason?: string) =>
+    api.post(`/admin/token-sources/${id}/pause`, { reason }).then((r) => r.data),
+
+  resumeTokenSource: (id: string, reason?: string) =>
+    api.post(`/admin/token-sources/${id}/resume`, { reason }).then((r) => r.data),
+
+  reAuthTokenSource: (id: string, reason?: string) =>
+    api.post<{ step_up_token: string; expires_in_seconds: number }>(`/admin/token-sources/${id}/re-auth`, { reason }).then((r) => r.data),
+
+  revealTokenSource: (id: string, stepUpToken: string) =>
+    api.post<{ token_source_id: string; provider: string; path: string; status: string; expires_at?: string; token_value: string }>(`/admin/token-sources/${id}/reveal`, { step_up_token: stepUpToken }).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -526,5 +580,61 @@ export function useRevokeInviteLink(orgId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.inviteLinks(orgId) })
     },
+  })
+}
+
+export function useTokenSources() {
+  return useQuery({
+    queryKey: queryKeys.tokenSources(),
+    queryFn: adminApiCalls.getTokenSources,
+  })
+}
+
+export function useTokenSourceEvents(id: string) {
+  return useQuery({
+    queryKey: queryKeys.tokenSourceEvents(id),
+    queryFn: () => adminApiCalls.getTokenSourceEvents(id),
+    enabled: !!id,
+  })
+}
+
+function useTokenSourceActionMutation(
+  mutationFn: (args: { id: string; reason?: string }) => Promise<unknown>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (_data, variables) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tokenSources() })
+      void qc.invalidateQueries({ queryKey: queryKeys.tokenSourceEvents(variables.id) })
+    },
+  })
+}
+
+export function useRotateTokenSource() {
+  return useTokenSourceActionMutation(({ id, reason }) => adminApiCalls.rotateTokenSource(id, reason))
+}
+
+export function useApproveTokenSource() {
+  return useTokenSourceActionMutation(({ id, reason }) => adminApiCalls.approveTokenSource(id, reason))
+}
+
+export function usePauseTokenSource() {
+  return useTokenSourceActionMutation(({ id, reason }) => adminApiCalls.pauseTokenSource(id, reason))
+}
+
+export function useResumeTokenSource() {
+  return useTokenSourceActionMutation(({ id, reason }) => adminApiCalls.resumeTokenSource(id, reason))
+}
+
+export function useReAuthTokenSource() {
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => adminApiCalls.reAuthTokenSource(id, reason),
+  })
+}
+
+export function useRevealTokenSource() {
+  return useMutation({
+    mutationFn: ({ id, stepUpToken }: { id: string; stepUpToken: string }) => adminApiCalls.revealTokenSource(id, stepUpToken),
   })
 }

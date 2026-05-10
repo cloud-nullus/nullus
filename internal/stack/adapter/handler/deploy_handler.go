@@ -71,8 +71,9 @@ func (h *DeployHandler) WithOptions(opts ...DeployHandlerOption) *DeployHandler 
 
 // RegisterRoutes registers deployment routes on the given Echo instance and group.
 func (h *DeployHandler) RegisterRoutes(v1 *echo.Group, e *echo.Echo) {
-	v1.POST("/stacks/:id/deploy", h.Deploy)
-	v1.POST("/stacks/:id/retry", h.Retry)
+	stacks := v1.Group("/stacks")
+	stacks.POST("/:id/deploy", h.Deploy)
+	stacks.POST("/:id/retry", h.Retry)
 	v1.GET("/stacks/:id/status", h.Status)
 	v1.GET("/stacks/:id/deploy/logs", h.StreamLogs)
 	e.GET("/ws/deployments/:id/logs", h.StreamLogs)
@@ -137,7 +138,7 @@ func issueCodes(issues []usecase.ValidationIssue) []string {
 type preDeployGateResult struct {
 	verdict *usecase.ValidateCompatibilityOutput
 	blocked bool
-	err     error // echo response error already formatted; return as-is
+	handled bool
 }
 
 // runPreDeployGate re-executes ValidateCompatibility in persisted mode for
@@ -153,23 +154,26 @@ func (h *DeployHandler) runPreDeployGate(c echo.Context, stackID string, ack boo
 		usecase.ValidateCompatibilityInput{StackID: stackID},
 	)
 	if err != nil {
-		return &preDeployGateResult{err: errorResponse(c, http.StatusBadRequest, "DEPLOY_COMPAT_VALIDATE_FAILED", err.Error())}
+		_ = errorResponse(c, http.StatusBadRequest, "DEPLOY_COMPAT_VALIDATE_FAILED", err.Error())
+		return &preDeployGateResult{blocked: true, handled: true}
 	}
 	switch verdict.Overall.State {
 	case "fail":
+		_ = deployGateErrorResponse(c, "DEPLOY_COMPAT_FAIL",
+			"deployment blocked by compatibility gate (fail)", verdict)
 		return &preDeployGateResult{
 			verdict: verdict,
 			blocked: true,
-			err: deployGateErrorResponse(c, "DEPLOY_COMPAT_FAIL",
-				"deployment blocked by compatibility gate (fail)", verdict),
+			handled: true,
 		}
 	case "warn":
 		if !ack {
+			_ = deployGateErrorResponse(c, "DEPLOY_COMPAT_WARN_UNACK",
+				"deployment blocked: explicit acknowledgement required for warn verdict", verdict)
 			return &preDeployGateResult{
 				verdict: verdict,
 				blocked: true,
-				err: deployGateErrorResponse(c, "DEPLOY_COMPAT_WARN_UNACK",
-					"deployment blocked: explicit acknowledgement required for warn verdict", verdict),
+				handled: true,
 			}
 		}
 	}
@@ -202,8 +206,8 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 	}
 
 	gate := h.runPreDeployGate(c, id, req.AcknowledgeWarnings)
-	if gate.err != nil {
-		return gate.err
+	if gate.handled {
+		return nil
 	}
 	if gate.blocked {
 		return nil // gate.err is nil here only if validate was never run
@@ -266,8 +270,8 @@ func (h *DeployHandler) Retry(c echo.Context) error {
 	}
 
 	gate := h.runPreDeployGate(c, id, req.AcknowledgeWarnings)
-	if gate.err != nil {
-		return gate.err
+	if gate.handled {
+		return nil
 	}
 	if gate.blocked {
 		return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -23,9 +24,54 @@ func stackToolsToCategoryMap(tools []domain.ToolConfig) map[string]string {
 		if t.Category == "" || name == "" {
 			continue
 		}
-		out[t.Category] = name
+		out[t.Category] = canonicalToolName(name)
 	}
 	return out
+}
+
+func stackConfigToCategoryMap(cfg domain.StackConfig) map[string]string {
+	out := map[string]string{}
+	put := func(category, name string) {
+		trimmed := strings.TrimSpace(name)
+		if category == "" || trimmed == "" {
+			return
+		}
+		out[category] = canonicalToolName(trimmed)
+	}
+
+	put("source_repository", cfg.Artifacts.SourceRepository.Name)
+	put("container_registry", cfg.Artifacts.ContainerRegistry.Name)
+	put("storage_backend", cfg.Artifacts.StorageBackend.Name)
+	put("ci_platform", cfg.Pipeline.CIPlatform.Name)
+	put("cd_tool", cfg.Pipeline.CDTool.Name)
+	put("monitoring_collection", cfg.Monitoring.Collection.Name)
+	put("monitoring_visualization", cfg.Monitoring.Visualization.Name)
+	return out
+}
+
+func canonicalToolName(name string) string {
+	key := strings.ToLower(strings.TrimSpace(name))
+	alias := map[string]string{
+		"gitlab":           "GitLab CE",
+		"gitlab-ce":        "GitLab CE",
+		"gitlab ci":        "GitLab CI",
+		"gitlab-ci":        "GitLab CI",
+		"gitlab registry":  "GitLab Registry",
+		"gitlab-registry":  "GitLab Registry",
+		"argocd":           "Argo CD",
+		"argo cd":          "Argo CD",
+		"minio":            "MinIO",
+		"prometheus":       "Prometheus",
+		"grafana":          "Grafana",
+		"harbor":           "Harbor",
+		"github":           "GitHub",
+		"github actions":   "GitHub Actions",
+		"github-actions":   "GitHub Actions",
+	}
+	if v, ok := alias[key]; ok {
+		return v
+	}
+	return strings.TrimSpace(name)
 }
 
 // ValidateCompatibilityInput holds the tool combination to validate, plus
@@ -161,16 +207,37 @@ func (uc *ValidateCompatibility) Execute(ctx context.Context, input ValidateComp
 			return nil, fmt.Errorf("stack %q not found", input.StackID)
 		}
 		input.Tools = stackToolsToCategoryMap(stack.Tools)
+		if len(input.Tools) == 0 {
+			if cfg, ok := stack.Config.(domain.StackConfig); ok {
+				input.Tools = stackConfigToCategoryMap(cfg)
+			}
+		}
 		if input.ClusterID == "" {
 			input.ClusterID = stack.ClusterID
 		}
 	}
 
+	checkedAt := time.Now().UTC()
+
 	if len(input.Tools) == 0 {
+		if input.StackID != "" {
+			out := &ValidateCompatibilityOutput{
+				Compatible: true,
+				Message:    "compatibility check skipped: stack tools are not configured",
+				Overall: ValidationOverall{
+					State: "pass",
+					Score: 100,
+				},
+				Issues:    nil,
+				CheckedAt: checkedAt,
+			}
+			if uc.cache != nil && cacheKey != "" {
+				uc.cache.Put(cacheKey, out)
+			}
+			return out, nil
+		}
 		return nil, fmt.Errorf("tools map or stack_id is required")
 	}
-
-	checkedAt := time.Now().UTC()
 
 	// Resolve node architectures from cluster_id when no explicit override was
 	// provided. "Cluster context" is considered present whenever the caller

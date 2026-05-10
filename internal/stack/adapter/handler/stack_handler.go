@@ -32,6 +32,7 @@ type StackHandler struct {
 	audit         audit.Sink
 	deleteMu      sync.Mutex
 	deleting      map[string]struct{}
+	deletingKeys  map[string]struct{}
 }
 
 // StackHandlerOption configures optional features.
@@ -66,7 +67,25 @@ func NewStackHandler(
 		stackRepo:     stackRepo,
 		audit:         logger,
 		deleting:      make(map[string]struct{}),
+		deletingKeys:  make(map[string]struct{}),
 	}
+}
+
+func normalizeStackNamespace(ns string) string {
+	trimmed := strings.TrimSpace(ns)
+	if trimmed == "" {
+		return "nullus"
+	}
+	return trimmed
+}
+
+func stackDeletionKey(orgID, clusterID, namespace, name string) string {
+	return strings.ToLower(strings.Join([]string{
+		strings.TrimSpace(orgID),
+		strings.TrimSpace(clusterID),
+		normalizeStackNamespace(namespace),
+		strings.TrimSpace(name),
+	}, "|"))
 }
 
 // WithOptions applies StackHandlerOption values after construction.
@@ -165,6 +184,14 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 	}
 
 	orgID := resolveOrgID(c)
+	deletionKey := stackDeletionKey(orgID, req.ClusterID, req.Namespace, req.Name)
+
+	h.deleteMu.Lock()
+	_, deletingInProgress := h.deletingKeys[deletionKey]
+	h.deleteMu.Unlock()
+	if deletingInProgress {
+		return errorResponse(c, http.StatusConflict, "STACK_DELETE_IN_PROGRESS", "a stack with the same name is still being deleted in this cluster/namespace")
+	}
 
 	out, err := h.createStack.Execute(c.Request().Context(), usecase.CreateStackInput{
 		Name:       req.Name,
@@ -175,6 +202,9 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 		Config:     req.Config,
 	})
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+			return errorResponse(c, http.StatusConflict, "STACK_NAME_DUPLICATE", err.Error())
+		}
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONFIG_INVALID", err.Error())
 	}
 	if h.manageHistory != nil {
@@ -215,7 +245,10 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 func (h *StackHandler) ListStacks(c echo.Context) error {
 	orgID := resolveOrgID(c)
 
-	out, err := h.listStacks.Execute(c.Request().Context(), usecase.ListStacksInput{OrgID: orgID})
+	out, err := h.listStacks.Execute(c.Request().Context(), usecase.ListStacksInput{
+		OrgID:          orgID,
+		IncludeDeleted: c.QueryParam("include_deleted") == "true",
+	})
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_LIST_FAILED", err.Error())
 	}
@@ -250,12 +283,15 @@ func (h *StackHandler) DeleteStack(c echo.Context) error {
 		})
 	}
 	h.deleting[stackID] = struct{}{}
+	deletionKey := stackDeletionKey(stack.OrgID, stack.ClusterID, stack.Namespace, stack.Name)
+	h.deletingKeys[deletionKey] = struct{}{}
 	h.deleteMu.Unlock()
 
-	go func(id string) {
+	go func(id, key string) {
 		defer func() {
 			h.deleteMu.Lock()
 			delete(h.deleting, id)
+			delete(h.deletingKeys, key)
 			h.deleteMu.Unlock()
 		}()
 		bgCtx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -263,7 +299,7 @@ func (h *StackHandler) DeleteStack(c echo.Context) error {
 		if deleteErr := h.deleteStack.Execute(bgCtx, id); deleteErr != nil && !errors.Is(deleteErr, usecase.ErrStackNotFound) {
 			slog.Error("async stack delete failed", "stack_id", id, "error", deleteErr)
 		}
-	}(stackID)
+	}(stackID, deletionKey)
 
 	return c.JSON(http.StatusAccepted, map[string]any{
 		"stack_id": stackID,

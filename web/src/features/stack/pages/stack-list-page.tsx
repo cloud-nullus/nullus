@@ -163,6 +163,8 @@ function getStackStatusLabel(t: TFunction, status: string) {
 			return t("stackList.status.healthy", "Running");
 		case "cancelled":
 			return t("stackList.status.cancelled", "Cancelled");
+		case "deleted":
+			return t("stackList.status.deleted", "Deleted");
 		default:
 			return status;
 	}
@@ -359,9 +361,14 @@ function buildInstalledToolsFromSnapshot(snapshot: unknown): ToolSelectionView[]
 		pickGroup(config, ["logging", "Logging"]),
 		[["collection", "Collection"], ["search", "Search"], ["trace_layer", "traceLayer", "TraceLayer"]],
 	);
+	const authenticationGroup = pickGroup(config, ["authentication", "Authentication"]);
+	const authProvider = readString(authenticationGroup, ["provider", "Provider", "name", "Name", "tool"]);
+	const authentication: ToolSelectionView[] = authProvider
+		? [{ name: authProvider, version: "shared", instances: 1 }]
+		: [];
 
 	const byName = new Map<string, ToolSelectionView>();
-	for (const tool of [...artifacts, ...pipeline, ...monitoring, ...logging]) {
+	for (const tool of [...authentication, ...artifacts, ...pipeline, ...monitoring, ...logging]) {
 		const key = tool.name.toLowerCase();
 		if (!byName.has(key)) {
 			byName.set(key, tool);
@@ -371,10 +378,48 @@ function buildInstalledToolsFromSnapshot(snapshot: unknown): ToolSelectionView[]
 	return Array.from(byName.values());
 }
 
-function extractAccessDomain(snapshot: unknown): string {
+function sanitizeAccessDomain(value: string): string {
+	const trimmed = value.trim().toLowerCase();
+	if (!trimmed) return "";
+	const noScheme = trimmed.replace(/^https?:\/\//, "");
+	const hostOnly = noScheme.split("/")[0]?.split(":")[0] ?? "";
+	const noWildcard = hostOnly.replace(/^\*\./, "");
+	return noWildcard;
+}
+
+function fallbackAccessDomain(stackName: string): string {
+	const slug = stackName
+		.toLowerCase()
+		.replace(/[^a-z0-9-\s]/g, "")
+		.trim()
+		.replace(/\s+/g, "-")
+		.replace(/-+/g, "-");
+	if (!slug) {
+		return "";
+	}
+	return `${slug}.internal`;
+}
+
+function deriveGatewayName(accessDomain: string, stackName: string): string {
+	const base = (accessDomain || fallbackAccessDomain(stackName))
+		.replace(/\.internal$/i, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return `${base || "nullus-stack"}-gateway`;
+}
+
+function extractAccessDomain(snapshot: unknown, stackName: string): string {
 	const config = resolveSnapshotConfig(snapshot);
 	const value = config.access_domain ?? config.accessDomain;
-	return typeof value === "string" ? value.trim() : "";
+	if (typeof value === "string") {
+		const normalized = sanitizeAccessDomain(value);
+		if (normalized) {
+			return normalized;
+		}
+	}
+	return fallbackAccessDomain(stackName);
 }
 
 function readStorageTarget(record: Record<string, unknown>, fallback: Partial<StorageConnectionInfo>): StorageConnectionInfo {
@@ -442,17 +487,32 @@ export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo, i
 	if (key === "prometheus") {
 		return isKorean ? "로그인 불필요 (기본 설정)" : "No login required (default setting)";
 	}
+	if (key === "openbao") {
+		return isKorean ? "관리자 인증 후 OpenBao UI에서 토큰/시크릿을 조회하세요." : "After admin authentication, check tokens/secrets in OpenBao UI.";
+	}
 	return isKorean ? "도구별 기본 인증정보를 확인하세요." : "Check the default credentials for each tool.";
 }
 
-export function buildConnectionInfoText(stackName: string, conn: StackConnectionInfo, launchTools: LaunchTool[], isKorean = false): string {
+export function buildConnectionInfoText(stackName: string, conn: StackConnectionInfo, launchTools: LaunchTool[], isKorean = false, gatewayPFCommand?: string): string {
 	const ossLines = launchTools
 		.map((tool) => `- ${tool.name}: ${tool.url ?? (isKorean ? "(URL 없음)" : "(No URL)") } | ${buildOssLoginHint(tool.name, conn, isKorean)}`)
 		.join("\n");
+	const gatewayLines = gatewayPFCommand
+		? [
+			"",
+			"[Gateway Port-Forward]",
+			gatewayPFCommand,
+		]
+		: [];
 
 	return [
 		`[Stack] ${stackName}`,
 		`[Access Domain] ${conn.accessDomain || "-"}`,
+		...(conn.accessDomain
+			? [
+				`[Primary URLs] https://gitlab.${conn.accessDomain} | https://argocd.${conn.accessDomain} | https://minio.${conn.accessDomain} | https://openbao.${conn.accessDomain}`,
+			]
+			: []),
 		"",
 		"[OSS Login]",
 		ossLines,
@@ -472,6 +532,7 @@ export function buildConnectionInfoText(stackName: string, conn: StackConnection
 		`- bucket=${conn.objectStorage.resourceName}`,
 		`- accessKey=${conn.objectStorage.authId}`,
 		`- secret=${conn.objectStorage.accessSecretRef} (key=${conn.objectStorage.authPasswordKey})`,
+		...gatewayLines,
 	].join("\n");
 }
 
@@ -504,6 +565,7 @@ function toolLogoURL(toolName: string): string {
 		harbor: "harbor",
 		"harbor registry": "harbor",
 		minio: "minio",
+		openbao: "vault",
 	};
 	const slug = map[key] ?? "kubernetes";
 	return `https://cdn.simpleicons.org/${slug}`;
@@ -520,11 +582,12 @@ function toolLaunchURL(toolName: string, accessDomain: string): string | null {
 	if (key === "prometheus") return `http://prometheus.${accessDomain}`;
   if (key === "harbor") return `http://harbor.${accessDomain}`;
   if (key === "minio") return `http://minio.${accessDomain}`;
-  if (key === "opensearch") return `http://opensearch.${accessDomain}`;
-  if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
-  if (key === "jaeger") return `http://jaeger.${accessDomain}`;
-  if (["tempo", "loki", "opentelemetry collector"].includes(key)) return `http://grafana.${accessDomain}`;
-  return null;
+	if (key === "opensearch") return `http://opensearch.${accessDomain}`;
+	if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
+	if (key === "jaeger") return `http://jaeger.${accessDomain}`;
+	if (["tempo", "loki", "opentelemetry collector"].includes(key)) return `http://grafana.${accessDomain}`;
+	if (key === "openbao") return `http://openbao.${accessDomain}`;
+	return null;
 }
 
 
@@ -941,7 +1004,7 @@ function StackInfoTab({
 		sync: degradedState ? "out-of-sync" : "synced",
 	}));
 	const installedTools = buildInstalledToolsFromSnapshot(latestSnapshot);
-	const accessDomain = extractAccessDomain(latestSnapshot);
+	const accessDomain = extractAccessDomain(latestSnapshot, stack.name);
 	const launchTools: LaunchTool[] = installedTools.map((tool) => ({
 		name: tool.name,
 		version: tool.version,
@@ -950,29 +1013,15 @@ function StackInfoTab({
 	}));
 	const hostsText = buildHostsText(stack.name, accessDomain, launchTools);
 	const connectionInfo = extractConnectionInfo(latestSnapshot, stack.namespace?.trim() || "nullus", accessDomain);
-	const connectionInfoText = buildConnectionInfoText(stack.name, connectionInfo, launchTools, isKorean);
 	const stackNamespace = stack.namespace?.trim() || "nullus";
 	const stackNamespaceArg = toShellSingleQuoted(stackNamespace);
+	const gatewayNameArg = toShellSingleQuoted(deriveGatewayName(accessDomain, stack.name));
+	const accessHostArg = toShellSingleQuoted(accessDomain || `${stack.name}.internal`);
 	const gatewayPFCommand = [
-		isKorean ? "# Gateway 데이터플레인 서비스 자동 선택 후 포트포워드" : "# Auto-select Gateway data-plane service and run port-forward",
-		`STACK_NAMESPACE=${stackNamespaceArg}`,
-		"KUBECONFIG_PATH=${KUBECONFIG:-$HOME/.kube/config}",
-		isKorean
-			? "if [ ! -f \"$KUBECONFIG_PATH\" ]; then echo \"kubeconfig 파일이 없습니다: $KUBECONFIG_PATH\"; return 1 2>/dev/null || exit 1; fi"
-			: "if [ ! -f \"$KUBECONFIG_PATH\" ]; then echo \"kubeconfig file not found: $KUBECONFIG_PATH\"; return 1 2>/dev/null || exit 1; fi",
-		"KUBE_CONTEXT=${KUBE_CONTEXT:-$(kubectl --kubeconfig \"$KUBECONFIG_PATH\" config current-context 2>/dev/null)}",
-		isKorean
-			? "if [ -z \"$KUBE_CONTEXT\" ]; then echo 'kubectl context가 없습니다. 먼저 kubectl config use-context <context> 실행하세요.'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi"
-			: "if [ -z \"$KUBE_CONTEXT\" ]; then echo 'kubectl context not found. Run kubectl config use-context <context> first.'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
-		isKorean
-			? "if ! kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" get ns \"$STACK_NAMESPACE\" >/dev/null 2>&1; then echo \"kubectl context 연결 실패: $KUBE_CONTEXT\"; echo '올바른 컨텍스트를 지정하세요. 예) export KUBE_CONTEXT=kind-nullus-platform'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi"
-			: "if ! kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" get ns \"$STACK_NAMESPACE\" >/dev/null 2>&1; then echo \"kubectl context connection failed: $KUBE_CONTEXT\"; echo 'Set a valid context, e.g.) export KUBE_CONTEXT=kind-nullus-platform'; kubectl --kubeconfig \"$KUBECONFIG_PATH\" config get-contexts; return 1 2>/dev/null || exit 1; fi",
-		"GW_SVC=$(kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" -n \"$STACK_NAMESPACE\" get svc -l gateway.envoyproxy.io/owning-gateway-namespace=$STACK_NAMESPACE -o name | head -n1 | cut -d'/' -f2)",
-		isKorean
-			? "if [ -z \"$GW_SVC\" ]; then echo 'Gateway 서비스가 없습니다. deploy에서 installing_gateway/route 생성 여부를 확인하세요.'; return 1 2>/dev/null || exit 1; fi"
-			: "if [ -z \"$GW_SVC\" ]; then echo 'Gateway service not found. Check if installing_gateway/route was created in deploy.'; return 1 2>/dev/null || exit 1; fi",
-		"sudo kubectl --kubeconfig \"$KUBECONFIG_PATH\" --context \"$KUBE_CONTEXT\" -n \"$STACK_NAMESPACE\" port-forward \"svc/$GW_SVC\" 80:80",
+		isKorean ? "# 80/443 동시 포트포워드 (Gateway 서비스 자동 선택)" : "# Port-forward both 80/443 (auto-select Gateway service)",
+		`KUBE_CONTEXT=kind-nullus-platform STACK_NAMESPACE=${stackNamespaceArg} GATEWAY_NAME=${gatewayNameArg} ACCESS_HOST=${accessHostArg} sudo -E ./scripts/port-forward-gateway.sh`,
 	].join("\n");
+	const connectionInfoWithGatewayText = buildConnectionInfoText(stack.name, connectionInfo, launchTools, isKorean, gatewayPFCommand);
 
 	const handleCopyHosts = async () => {
 		if (!hostsText) return;
@@ -987,7 +1036,7 @@ function StackInfoTab({
 
 	const handleCopyConnectionInfo = async () => {
 		try {
-			await copyTextToClipboard(connectionInfoText);
+			await copyTextToClipboard(connectionInfoWithGatewayText);
 			setConnCopyState("copied");
 		} catch {
 			setConnCopyState("failed");
@@ -1660,6 +1709,7 @@ export function StackListPage() {
 	const { data: apiData, isLoading } = useStacks({
 		search,
 		status: normalizedStatusFilter || undefined,
+		include_deleted: true,
 	}, {
 		refetchIntervalMs: shouldPollTerminating ? 3000 : 0,
 	});

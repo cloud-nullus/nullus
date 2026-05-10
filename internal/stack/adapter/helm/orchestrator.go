@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -59,18 +60,66 @@ var checkExistingCertManagerInstallation = func(ctx context.Context, o *Orchestr
 		}
 	}
 
+	if _, err := o.detectCertManagerNamespace(ctx); err != nil {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (o *Orchestrator) certManagerNamespaceCandidates() []string {
+	candidates := []string{"cert-manager", "nullus", "default"}
+	if releaseNamespace, err := o.detectCertManagerReleaseNamespaceFromCRD(context.Background()); err == nil && strings.TrimSpace(releaseNamespace) != "" {
+		trimmed := strings.TrimSpace(releaseNamespace)
+		for _, candidate := range candidates {
+			if candidate == trimmed {
+				goto includeOrchestratorNamespace
+			}
+		}
+		candidates = append([]string{trimmed}, candidates...)
+	}
+
+includeOrchestratorNamespace:
+	if ns := strings.TrimSpace(o.namespace); ns != "" {
+		for _, candidate := range candidates {
+			if candidate == ns {
+				return candidates
+			}
+		}
+		candidates = append([]string{ns}, candidates...)
+	}
+	return candidates
+}
+
+func (o *Orchestrator) detectCertManagerNamespace(ctx context.Context) (string, error) {
 	deployments := []string{
 		"deployment/cert-manager",
 		"deployment/cert-manager-webhook",
 		"deployment/cert-manager-cainjector",
 	}
-	for _, deployment := range deployments {
-		if _, err := o.runKubectl(ctx, "get", "-n", "cert-manager", deployment); err != nil {
-			return false, nil
+
+	for _, namespace := range o.certManagerNamespaceCandidates() {
+		allFound := true
+		for _, deployment := range deployments {
+			if _, err := o.runKubectl(ctx, "get", "-n", namespace, deployment); err != nil {
+				allFound = false
+				break
+			}
+		}
+		if allFound {
+			return namespace, nil
 		}
 	}
 
-	return true, nil
+	return "", fmt.Errorf("cert-manager deployments not found in candidate namespaces")
+}
+
+func (o *Orchestrator) detectCertManagerReleaseNamespaceFromCRD(ctx context.Context) (string, error) {
+	output, err := o.runKubectl(ctx, "get", "crd", "certificaterequests.cert-manager.io", "-o", "jsonpath={.metadata.annotations.meta\\.helm\\.sh/release-namespace}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 type Orchestrator struct {
@@ -89,6 +138,7 @@ type Orchestrator struct {
 	progress            map[string]int
 	resourceDefaults    map[string]*domain.ResourceDefault
 	defaultsLoaded      bool
+	sharedClusterScoped bool
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -96,6 +146,12 @@ type OrchestratorOption func(*Orchestrator)
 func WithResourceDefaultRepository(repo port.ResourceDefaultRepository) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.resourceDefaultRepo = repo
+	}
+}
+
+func WithSharedClusterScopedComponents(enabled bool) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.sharedClusterScoped = enabled
 	}
 }
 
@@ -163,7 +219,70 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 
 func (o *Orchestrator) RollbackDeployment(ctx context.Context, stackID string) error {
 	_ = stackID
-	return o.rollback.RollbackAll(ctx, o.installer, o.namespace)
+	rbErr := o.rollback.RollbackAll(ctx, o.installer, o.namespace)
+	cleanupErr := o.cleanupResidualReleaseResources(ctx)
+	if rbErr != nil && cleanupErr != nil {
+		return fmt.Errorf("rollback: %w; residual cleanup: %v", rbErr, cleanupErr)
+	}
+	if rbErr != nil {
+		return rbErr
+	}
+	if cleanupErr != nil {
+		return cleanupErr
+	}
+	return nil
+}
+
+func (o *Orchestrator) cleanupResidualReleaseResources(ctx context.Context) error {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+
+	resourceKinds := []string{"deploy", "sts", "ds", "job", "cronjob", "svc", "cm", "secret", "pvc"}
+	seen := map[string]struct{}{}
+	var errs []error
+
+	for _, step := range o.orderedStep {
+		spec, ok := o.chartConfig[step]
+		if !ok {
+			continue
+		}
+		spec = o.resolveChartSpecForStep(step, spec)
+		releaseName := strings.TrimSpace(o.releaseNameForSpec(spec))
+		if releaseName == "" {
+			continue
+		}
+		namespace := strings.TrimSpace(o.namespace)
+		if strings.TrimSpace(spec.Namespace) != "" {
+			namespace = strings.TrimSpace(spec.Namespace)
+		}
+		if step == stepInstallingCertManager {
+			if detectedNS, err := o.detectCertManagerReleaseNamespaceFromCRD(ctx); err == nil && strings.TrimSpace(detectedNS) != "" {
+				namespace = strings.TrimSpace(detectedNS)
+			}
+		}
+		if namespace == "" {
+			continue
+		}
+
+		key := namespace + "::" + releaseName
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		for _, kind := range resourceKinds {
+			selector := "app.kubernetes.io/instance=" + releaseName
+			if _, err := o.runKubectl(ctx, "delete", kind, "-n", namespace, "-l", selector, "--ignore-not-found"); err != nil {
+				errs = append(errs, fmt.Errorf("delete %s for release %s in namespace %s: %w", kind, releaseName, namespace, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 func (o *Orchestrator) verifyReleaseRuntimeReadiness(ctx context.Context, step, releaseName, namespace string) error {
@@ -233,6 +352,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				ChartName: "cert-manager",
 				RepoURL:   "https://charts.jetstack.io",
 				Version:   "v1.16.3",
+				Namespace: "cert-manager",
 				Values:    DefaultValues(stepInstallingCertManager),
 				Wait:      false,
 			},
@@ -259,6 +379,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				Wait:        false,
 			},
 			"installing_object_storage_secret": {},
+			"installing_openbao":             {},
 			"installing_gitlab": {
 				ChartName: "gitlab",
 				RepoURL:   "https://charts.gitlab.io/",
@@ -337,7 +458,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_log_search":            11,
 			"installing_opentelemetry":         12,
 			"installing_gateway":               13,
-			"integration_check":                14,
+			"installing_openbao":               14,
+			"integration_check":                15,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -354,12 +476,14 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_log_search",
 			"installing_opentelemetry",
 			"installing_gateway",
+			"installing_openbao",
 			"integration_check",
 		},
 		stepConfigFieldPath: map[string]string{
 			"installing_postgresql":            "config.storage.database",
 			"installing_minio":                 "config.artifacts.storage_backend",
 			"installing_object_storage_secret": "config.storage.object_storage",
+			"installing_openbao":               "config.authentication.provider",
 			"installing_gitlab":                "config.artifacts.source_repository",
 			"installing_argocd":                "config.pipeline.cd_tool",
 			stepInstallingRunner:               "config.pipeline.ci_platform",
@@ -384,6 +508,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
 				return cfg.Artifacts.SourceRepository.Enabled
+			},
+			"installing_openbao": func(cfg domain.StackConfig) bool {
+				if cfg.Authentication == nil {
+					return false
+				}
+				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
 			},
 			"installing_argocd": func(cfg domain.StackConfig) bool {
 				return cfg.Pipeline.CDTool.Enabled
@@ -480,6 +610,11 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	namespace := o.namespace
 	if spec.Namespace != "" {
 		namespace = spec.Namespace
+	}
+	if step == stepInstallingCertManager && looksLikeKubeconfig(o.kubeconfig) {
+		if releaseNamespace, err := o.detectCertManagerReleaseNamespaceFromCRD(ctx); err == nil && strings.TrimSpace(releaseNamespace) != "" {
+			namespace = strings.TrimSpace(releaseNamespace)
+		}
 	}
 
 	if step == "installing_object_storage_secret" {
@@ -834,6 +969,10 @@ func (o *Orchestrator) releasePodSnapshot(ctx context.Context, releaseName, name
 func (o *Orchestrator) waitForReleaseRollouts(ctx context.Context, releaseName, namespace string) error {
 	resources := []string{"deployments", "statefulsets", "daemonsets"}
 	selectors := releaseLabelSelectors(releaseName)
+	rolloutTimeout := "180s"
+	if strings.TrimSpace(releaseName) == "gitlab" {
+		rolloutTimeout = "600s"
+	}
 	for _, resourceType := range resources {
 		for _, selector := range selectors {
 			output, err := o.runKubectl(ctx,
@@ -851,7 +990,7 @@ func (o *Orchestrator) waitForReleaseRollouts(ctx context.Context, releaseName, 
 					continue
 				}
 				resource := strings.TrimSuffix(resourceType, "s") + "/" + name
-				if _, err := o.runKubectl(ctx, "rollout", "status", "-n", namespace, resource, "--timeout=180s"); err != nil {
+				if _, err := o.runKubectl(ctx, "rollout", "status", "-n", namespace, resource, "--timeout="+rolloutTimeout); err != nil {
 					return err
 				}
 			}
@@ -915,16 +1054,21 @@ func (o *Orchestrator) waitForCertManagerInstallation(ctx context.Context) error
 		}
 	}
 
+	certManagerNamespace, err := o.detectCertManagerNamespace(ctx)
+	if err != nil {
+		return err
+	}
+
 	deployments := []string{
 		"deployment/cert-manager",
 		"deployment/cert-manager-webhook",
 		"deployment/cert-manager-cainjector",
 	}
 	for _, deployment := range deployments {
-		if err := o.waitForKubectlGet(ctx, "-n", "cert-manager", deployment); err != nil {
+		if err := o.waitForKubectlGet(ctx, "-n", certManagerNamespace, deployment); err != nil {
 			return fmt.Errorf("cert-manager deployment %s not found: %w", deployment, err)
 		}
-		if _, err := o.runKubectl(ctx, "rollout", "status", "-n", "cert-manager", deployment, "--timeout=180s"); err != nil {
+		if _, err := o.runKubectl(ctx, "rollout", "status", "-n", certManagerNamespace, deployment, "--timeout=180s"); err != nil {
 			return fmt.Errorf("cert-manager deployment %s not ready: %w", deployment, err)
 		}
 	}
@@ -933,7 +1077,7 @@ func (o *Orchestrator) waitForCertManagerInstallation(ctx context.Context) error
 		return fmt.Errorf("cert-manager webhook trust not stabilized: %w", err)
 	}
 
-	if err := o.waitForCertManagerStartupAPICheck(ctx); err != nil {
+	if err := o.waitForCertManagerStartupAPICheck(ctx, certManagerNamespace); err != nil {
 		return fmt.Errorf("cert-manager startup API check not complete: %w", err)
 	}
 
@@ -966,16 +1110,28 @@ func (o *Orchestrator) waitForCertManagerWebhookTrust(ctx context.Context) error
 	return nil
 }
 
-func (o *Orchestrator) waitForCertManagerStartupAPICheck(ctx context.Context) error {
+func (o *Orchestrator) waitForCertManagerStartupAPICheck(ctx context.Context, namespace string) error {
 	const resource = "job/cert-manager-startupapicheck"
 
-	if err := o.waitForKubectlGet(ctx, "-n", "cert-manager", resource); err != nil {
+	if err := o.waitForKubectlGet(ctx, "-n", namespace, resource); err != nil {
+		if isKubectlNotFoundError(err) {
+			slog.Info("cert-manager startup API check job not found; skipping wait", "namespace", namespace)
+			return nil
+		}
 		return err
 	}
-	if _, err := o.runKubectl(ctx, "wait", "-n", "cert-manager", "--for=condition=complete", "--timeout=180s", resource); err != nil {
+	if _, err := o.runKubectl(ctx, "wait", "-n", namespace, "--for=condition=complete", "--timeout=180s", resource); err != nil {
 		return err
 	}
 	return nil
+}
+
+func isKubectlNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "notfound") || strings.Contains(msg, "not found")
 }
 
 func (o *Orchestrator) waitForKubectlNonEmptyOutput(ctx context.Context, args ...string) error {
@@ -1061,6 +1217,9 @@ spec:
 }
 
 func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
+	if step == "installing_openbao" {
+		return o.openBaoManifest(o.namespace), true
+	}
 	if step != "installing_prometheus" && step != "installing_grafana" && step != "installing_logging" && step != "installing_log_search" && step != "installing_opentelemetry" && step != "installing_gateway" {
 		return "", false
 	}
@@ -1111,6 +1270,70 @@ func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func (o *Orchestrator) openBaoManifest(namespace string) string {
+	if strings.TrimSpace(namespace) == "" {
+		namespace = "nullus"
+	}
+	return fmt.Sprintf(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbao
+  namespace: %s
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/instance: openbao
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openbao
+      app.kubernetes.io/instance: openbao
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openbao
+        app.kubernetes.io/instance: openbao
+    spec:
+      containers:
+        - name: openbao
+          image: openbao/openbao:latest
+          imagePullPolicy: IfNotPresent
+          args: ["server", "-dev", "-dev-root-token-id=root"]
+          env:
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: 0.0.0.0:8200
+            - name: VAULT_UI
+              value: "true"
+          ports:
+            - containerPort: 8200
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true
+              port: 8200
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao
+  namespace: %s
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/instance: openbao
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/instance: openbao
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+`, namespace, namespace)
 }
 
 func (o *Orchestrator) defaultGatewayBundleManifest(namespace string) string {
@@ -1178,6 +1401,9 @@ spec:
 	}
 	if cfg.Artifacts.StorageBackend.Enabled && strings.EqualFold(cfg.Artifacts.StorageBackend.Name, "minio") {
 		routes = append(routes, routeSpec{name: "minio-route", host: fmt.Sprintf("minio.%s", accessDomain), service: "nullus-minio-console", port: 9001})
+	}
+	if cfg.Authentication != nil && strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao") {
+		routes = append(routes, routeSpec{name: "openbao-route", host: fmt.Sprintf("openbao.%s", accessDomain), service: "openbao", port: 8200})
 	}
 
 	for _, route := range routes {
@@ -2456,14 +2682,16 @@ func resourceOverrideFromManifest(doc map[string]any) (map[string]any, bool) {
 }
 
 func (o *Orchestrator) isStepEnabled(step string) bool {
-	if step == stepInstallingCertManager || step == "integration_check" {
+	if step == "integration_check" {
 		return true
+	}
+	if o.sharedClusterScoped && isSharedClusterScopedStep(step) {
+		return false
 	}
 
 	o.mu.Lock()
 	cfg := o.stackConfig
 	o.mu.Unlock()
-
 	if cfg == nil {
 		return true
 	}
@@ -2474,6 +2702,10 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	}
 
 	return enabledFn(*cfg)
+}
+
+func isSharedClusterScopedStep(step string) bool {
+	return step == stepInstallingCertManager || step == "installing_metrics_server"
 }
 
 func (o *Orchestrator) ensureOrder(stackID, step string, order int) error {

@@ -90,6 +90,9 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
       traceLayer: { tool: '', version: '' },
       traceExporter: { tool: '', version: '' },
     },
+    authentication: {
+      provider: template.id === 'gitlab-argocd-v1' ? 'openbao' : '',
+    },
   }
 
   const apply = (

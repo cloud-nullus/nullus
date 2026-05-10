@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 )
 
 var ErrDeploymentCancelled = errors.New("deployment canceled")
@@ -46,6 +47,7 @@ var installPhases = [][]installStep{
 		{name: "installing_log_search", phase: "C", duration: time.Second},
 		{name: "installing_opentelemetry", phase: "C", duration: time.Second},
 		{name: "installing_gateway", phase: "C", duration: time.Second},
+		{name: "installing_openbao", phase: "C", duration: time.Second},
 		{name: "integration_check", phase: "C", duration: time.Second},
 	},
 }
@@ -56,6 +58,9 @@ type InstallStack struct {
 	executor            port.StepExecutor
 	kubeconfigProvider  port.KubeconfigProvider
 	dynamicExecutorFunc func(kubeconfig []byte) port.StepExecutor
+	tokenRegistry       port.TokenSourceRegistry
+	tokenRegistryEnv    string
+	secretRouter        *secrets.Router
 }
 
 type stackConfigAwareExecutor interface {
@@ -103,6 +108,19 @@ func WithKubeconfigProvider(provider port.KubeconfigProvider) InstallStackOption
 func WithExecutorFactory(factory func(kubeconfig []byte) port.StepExecutor) InstallStackOption {
 	return func(uc *InstallStack) {
 		uc.dynamicExecutorFunc = factory
+	}
+}
+
+func WithTokenSourceRegistry(registry port.TokenSourceRegistry, env string) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.tokenRegistry = registry
+		uc.tokenRegistryEnv = strings.TrimSpace(env)
+	}
+}
+
+func WithSecretRouter(router *secrets.Router) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.secretRouter = router
 	}
 }
 
@@ -209,6 +227,10 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	}
 
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
+	if err := uc.runOpenBaoPreflight(ctx, stack); err != nil {
+		uc.handleFailure(ctx, stack, executor, err)
+		return
+	}
 
 	// Transition: Validating → Installing
 	if err := uc.transition(ctx, stack, domain.StateInstalling); err != nil {
@@ -250,6 +272,81 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		return
 	}
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
+	if err := uc.registerStackTokenSources(ctx, stack); err != nil {
+		slog.Warn("token source registration failed", "stack_id", stack.ID, "error", err)
+	}
+}
+
+func (uc *InstallStack) runOpenBaoPreflight(ctx context.Context, stack *domain.Stack) error {
+	if stack == nil {
+		return nil
+	}
+	cfg, ok := stackConfigFromInterface(stack.Config)
+	if !ok || cfg.Authentication == nil {
+		return nil
+	}
+	provider := strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider))
+	if provider != "openbao" {
+		return nil
+	}
+	if uc.secretRouter == nil || !uc.secretRouter.Has(provider) {
+		return fmt.Errorf("openbao preflight failed: secret provider is not configured")
+	}
+	if err := uc.secretRouter.Check(ctx, provider); err != nil {
+		return fmt.Errorf("openbao preflight failed: %w", err)
+	}
+	uc.emit(ctx, stack.ID, "info", "validate", "A", "openbao preflight check passed")
+	return nil
+}
+
+func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *domain.Stack) error {
+	if uc.tokenRegistry == nil || stack == nil {
+		return nil
+	}
+	cfg, ok := stackConfigFromInterface(stack.Config)
+	if !ok || cfg.Authentication == nil || strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)) != "openbao" {
+		return nil
+	}
+	env := uc.tokenRegistryEnv
+	if env == "" {
+		env = "dev"
+	}
+	inputs := []port.TokenSourceInput{}
+	appendTool := func(module, provider string) {
+		provider = strings.TrimSpace(strings.ToLower(provider))
+		if provider == "" {
+			return
+		}
+		provider = strings.ReplaceAll(provider, " ", "-")
+		inputs = append(inputs, port.TokenSourceInput{
+			OrgID:     stack.OrgID,
+			Module:    module,
+			Provider:  provider,
+			Path:      fmt.Sprintf("kv/nullus/%s/%s/%s/%s/token", env, stack.OrgID, module, provider),
+			TokenType: "reissue",
+			Status:    "healthy",
+			SecretManager: strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)),
+			TokenValue:    "managed-by-nullus",
+		})
+	}
+
+	appendTool("artifacts", cfg.Artifacts.SourceRepository.Name)
+	appendTool("artifacts", cfg.Artifacts.ContainerRegistry.Name)
+	appendTool("pipeline", cfg.Pipeline.CIPlatform.Name)
+	appendTool("pipeline", cfg.Pipeline.CDTool.Name)
+
+	seen := map[string]struct{}{}
+	for _, input := range inputs {
+		key := input.OrgID + ":" + input.Module + ":" + input.Provider + ":" + input.Path
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if err := uc.tokenRegistry.Upsert(ctx, input); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {

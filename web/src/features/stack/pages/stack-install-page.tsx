@@ -168,6 +168,14 @@ const MONITORING_OPTIONS: Record<string, ToolOption[]> = {
   ],
 }
 
+const AUTHENTICATION_OPTIONS: ToolOption[] = [
+  {
+    id: 'openbao',
+    label: 'OpenBao',
+    description: 'Use OpenBao as shared token provider for all selected OSS integrations.',
+  },
+]
+
 const LOGGING_OPTIONS: Record<string, ToolOption[]> = {
   search: [
     { id: 'opensearch', label: 'OpenSearch', description: 'Elasticsearch 호환 검색/분석' },
@@ -1985,6 +1993,7 @@ function MultiToolSelector({ label, options, values, onChange }: MultiToolSelect
 // --- Tab definitions ---
 
 const TABS: { id: InstallTab; label: string }[] = [
+  { id: 'authentication', label: 'Authentication' },
   { id: 'artifacts', label: 'Artifacts' },
   { id: 'pipeline', label: 'CI/CD' },
   { id: 'monitoring', label: 'Observability' },
@@ -2016,6 +2025,7 @@ export function StackInstallPage() {
     updateStorage,
     updateStorageTarget,
     updateAccessDomainTls,
+    setAuthenticationProvider,
   } = useStackConfigStore()
   const createStack = useCreateStack()
   const deployStack = useDeployStack()
@@ -3725,6 +3735,7 @@ export function StackInstallPage() {
       stackName: draft.stackName,
       accessDomain: draft.accessDomain,
       accessDomainTls: draft.accessDomainTls,
+      authentication: draft.authentication,
       yamlOverrides: yamlOverridesPayload,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
@@ -3802,7 +3813,11 @@ export function StackInstallPage() {
       setServerWarnAcknowledged(false)
       navigate(`/stack/deploy/${stackId}`)
     } catch (error) {
-      setTabGuardError(toDeployErrorMessage(error))
+      const message = toDeployErrorMessage(error)
+      if (message.includes('COMPATIBILITY_REQUEST_INVALID') || message.includes('tools map or stack_id is required')) {
+        setPendingStackId(null)
+      }
+      setTabGuardError(message)
     }
   }
 
@@ -4430,6 +4445,23 @@ export function StackInstallPage() {
                   value={draft.logging.traceExporter}
                   onChange={(v) => setTool('logging', 'traceExporter', v)}
                 />
+              </>
+            )}
+
+            {activeTab === 'authentication' && (
+              <>
+                <ToolSelector
+                  label={t('stackInstall.authentication.title', 'Authentication')}
+                  options={AUTHENTICATION_OPTIONS}
+                  value={{ tool: draft.authentication.provider, version: draft.authentication.provider ? 'latest' : '' }}
+                  onChange={(v) => setAuthenticationProvider((v.tool as '' | 'openbao') || '')}
+                />
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                  {t(
+                    'stackInstall.authentication.sharedNotice',
+                    'OpenBao를 선택하면 현재 스택에 포함된 모든 OSS가 공통 인증 공급자(OpenBao)를 공유합니다. 미선택 시 기존 방식으로 배포됩니다.',
+                  )}
+                </p>
               </>
             )}
 

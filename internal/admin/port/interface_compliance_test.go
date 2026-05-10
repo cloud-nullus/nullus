@@ -12,5 +12,6 @@ var _ port.ClusterRepository = (*adminrepo.PostgresClusterRepository)(nil)
 var _ port.ClusterRepository = (*adminrepo.MemoryClusterRepository)(nil)
 
 var _ port.UserRepository = (*adminrepo.PostgresUserRepository)(nil)
+var _ port.TokenSourceRepository = (*adminrepo.PostgresTokenSourceRepository)(nil)
 
 var _ port.KnownIssuesRepository = (*adminrepo.PostgresKnownIssuesRepository)(nil)

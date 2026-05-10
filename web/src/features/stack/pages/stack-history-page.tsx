@@ -17,7 +17,7 @@ import { formatDateTime, resolveLocale } from '../../../lib/locale'
 export function StackHistoryPage() {
    const { t, i18n } = useTranslation()
    const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
-   const { data: stacksData } = useStacks()
+   const { data: stacksData } = useStacks({ include_deleted: true })
    const navigate = useNavigate()
    const { stackId: routeStackId } = useParams<{ stackId?: string }>()
    const [expandedId, setExpandedId] = useState<string | null>(null)

@@ -52,7 +52,7 @@ func (r *PostgresStackRepository) GetByID(ctx context.Context, id string) (*doma
 
 func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*domain.Stack, error) {
 	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at, deleted_at
 		FROM stacks WHERE id = $1 AND deleted_at IS NULL`
 
 	stack, configJSON, err := r.scanStackWithConfig(r.pool.QueryRow(ctx, q, id))
@@ -63,10 +63,14 @@ func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*dom
 	return stack, nil
 }
 
-func (r *PostgresStackRepository) List(ctx context.Context, orgID string) ([]*domain.Stack, error) {
-	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at
-		FROM stacks WHERE org_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`
+func (r *PostgresStackRepository) List(ctx context.Context, orgID string, includeDeleted bool) ([]*domain.Stack, error) {
+	q := `
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at, deleted_at
+		FROM stacks WHERE org_id = $1`
+	if !includeDeleted {
+		q += ` AND deleted_at IS NULL`
+	}
+	q += ` ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, orgID)
 	if err != nil {
@@ -183,7 +187,10 @@ func (r *PostgresStackRepository) UpdateTools(ctx context.Context, stack *domain
 }
 
 func (r *PostgresStackRepository) Delete(ctx context.Context, id string) error {
-	const q = `DELETE FROM stacks WHERE id = $1`
+	const q = `
+		UPDATE stacks
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`
 
 	ct, err := r.pool.Exec(ctx, q, id)
 	if err != nil {
@@ -222,6 +229,7 @@ func (r *PostgresStackRepository) scanStackWithConfig(row pgxScanner) (*domain.S
 		&configJSON,
 		&s.CreatedAt,
 		&s.UpdatedAt,
+		&s.DeletedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil, nil

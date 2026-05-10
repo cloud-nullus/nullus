@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminkube "github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
+	"github.com/cloud-nullus/draft/internal/admin/rotation"
 	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
@@ -35,6 +37,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
@@ -75,6 +78,7 @@ func main() {
 	orgRepo := adminrepo.NewPostgresOrgRepository(pool)
 	clusterRepo := adminrepo.NewPostgresClusterRepository(pool)
 	userRepo := adminrepo.NewPostgresUserRepository(pool)
+	tokenSourceRepo := adminrepo.NewPostgresTokenSourceRepository(pool)
 
 	orgUC := usecase.NewOrgUseCase(orgRepo)
 	encryptionKey := []byte(os.Getenv("ENCRYPTION_KEY"))
@@ -90,6 +94,20 @@ func main() {
 		usecase.WithKubeconfigDecryptor(decryptKubeconfig),
 	)
 	userUC := usecase.NewUserUseCase(userRepo)
+	secretRouter := secrets.NewRouter()
+	openBaoAddr := strings.TrimSpace(os.Getenv("OPENBAO_ADDR"))
+	openBaoToken := strings.TrimSpace(os.Getenv("OPENBAO_TOKEN"))
+	if openBaoAddr != "" && openBaoToken != "" {
+		secretRouter.Register("openbao", secrets.NewOpenBaoStore(openBaoAddr, openBaoToken))
+	}
+	reissueRouter := rotation.NewRouterReissuer()
+	reissueRouter.Register("gitlab", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
+	reissueRouter.Register("gitlab-ce", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
+	reissueRouter.Register("gitlab-ci", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
+	reissueRouter.Register("gitlab-registry", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
+	reissueRouter.Register("github", rotation.NewGitHubReissuer(strings.TrimSpace(os.Getenv("GITHUB_API_BASE"))))
+	reissueRouter.Register("github-actions", rotation.NewGitHubReissuer(strings.TrimSpace(os.Getenv("GITHUB_API_BASE"))))
+	tokenSourceUC := usecase.NewTokenSourceUseCase(tokenSourceRepo, usecase.WithSecretRouter(secretRouter))
 	auditLogger := audit.NewAuditLogger(pool)
 
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
@@ -100,16 +118,25 @@ func main() {
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
 	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
-	memStreamer := logadapter.NewMemoryStreamer()
+	tokenSourceRegistry := stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter)
+	memStreamer := logadapter.NewPostgresStreamer(pool)
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
+		stackuc.WithSecretRouter(secretRouter),
+		stackuc.WithTokenSourceRegistry(tokenSourceRegistry, cfg.Server.Mode),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			return stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo))
+			return stackhelm.NewOrchestrator(
+				installer,
+				kubeconfig,
+				"",
+				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
+				stackhelm.WithSharedClusterScopedComponents(true),
+			)
 		}),
 	)
 	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)
@@ -269,6 +296,7 @@ func main() {
 	knownIssuesHandler := adminhandler.NewKnownIssuesHandler(knownIssuesRepo)
 	auditHandler := adminhandler.NewAuditHandler(auditLogger)
 	notificationHandler := adminhandler.NewNotificationHandler(pool)
+	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
 
 	orgHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
@@ -276,6 +304,7 @@ func main() {
 	knownIssuesHandler.RegisterRoutes(admin)
 	auditHandler.RegisterRoutes(admin)
 	notificationHandler.RegisterRoutes(admin)
+	tokenSourceHandler.RegisterRoutes(admin)
 	deployHandler.RegisterRoutes(v1, e)
 	stackHandler.RegisterRoutes(stacks)
 	templateHandler.RegisterRoutes(stacks)
@@ -326,6 +355,15 @@ func main() {
 		Interval: refreshInterval,
 	})
 	go refreshScheduler.Start(schedulerCtx)
+
+	tokenRotationInterval := 5 * time.Minute
+	if override := os.Getenv("TOKEN_ROTATION_INTERVAL"); override != "" {
+		if dur, err := time.ParseDuration(override); err == nil && dur > 0 {
+			tokenRotationInterval = dur
+		}
+	}
+	tokenRotationScheduler := adminscheduler.NewTokenRotationScheduler(pool, secretRouter, tokenRotationInterval, 2*time.Minute, slog.Default(), reissueRouter)
+	go tokenRotationScheduler.Start(schedulerCtx)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {

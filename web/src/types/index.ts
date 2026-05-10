@@ -39,6 +39,7 @@ export type DeploymentState =
   | 'completed'
   | 'rolling_back'
   | 'rolled_back'
+  | 'deleted'
 
 export type StackStatus = DeploymentState
 
@@ -173,6 +174,9 @@ export interface StackConfig {
   stackName: string
   accessDomain?: string
   accessDomainTls?: AccessDomainTlsInput
+  authentication?: {
+    provider?: '' | 'openbao'
+  }
   yamlOverrides?: Record<string, string>
   artifacts: Record<string, ToolSelection>
   pipeline: Record<string, ToolSelection>
@@ -193,6 +197,7 @@ export interface Stack {
   status: StackStatus
   createdAt: string
   updatedAt: string
+  deletedAt?: string
 }
 
 export interface Template {

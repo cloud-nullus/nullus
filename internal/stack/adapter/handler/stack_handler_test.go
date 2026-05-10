@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,10 +14,32 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
 )
+
+type slowDeleteKubeconfigProvider struct{}
+
+func (slowDeleteKubeconfigProvider) GetKubeconfig(context.Context, string) ([]byte, error) {
+	return []byte("kubeconfig"), nil
+}
+
+type slowDeleteInstaller struct{}
+
+func (slowDeleteInstaller) Install(context.Context, port.HelmInstallRequest) (*port.HelmInstallResult, error) {
+	return nil, nil
+}
+
+func (slowDeleteInstaller) Uninstall(context.Context, string, string) error {
+	time.Sleep(150 * time.Millisecond)
+	return nil
+}
+
+func (slowDeleteInstaller) Status(context.Context, string, string) (*port.HelmInstallResult, error) {
+	return nil, nil
+}
 
 func newStackEcho() *echo.Echo {
 	e := echo.New()
@@ -29,6 +52,32 @@ func newStackEcho() *echo.Echo {
 	createStackUC := usecase.NewCreateStack(memStackRepo, memTemplateRepo)
 	listStacksUC := usecase.NewListStacks(memStackRepo)
 	deleteStackUC := usecase.NewDeleteStack(memStackRepo, nil, nil)
+	addToolsUC := usecase.NewAddToolsUseCase(memStackRepo)
+	manageHistoryUC := usecase.NewManageHistory(memHistoryRepo)
+	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, manageHistoryUC, nil)
+	historyHandler := stackhandler.NewHistoryHandler(memHistoryRepo, memStackRepo, manageHistoryUC)
+
+	v1 := e.Group("/api/v1")
+	stacks := v1.Group("/stacks")
+	h.RegisterRoutes(stacks)
+	historyHandler.RegisterRoutes(stacks)
+
+	return e
+}
+
+func newStackEchoWithSlowDelete() *echo.Echo {
+	e := echo.New()
+	e.HideBanner = true
+	e.HTTPErrorHandler = middleware.AppErrorHandler
+
+	memStackRepo := stackrepo.NewMemoryStackRepository()
+	memTemplateRepo := stackrepo.NewMemoryTemplateRepository()
+	memHistoryRepo := stackrepo.NewMemoryHistoryRepository()
+	createStackUC := usecase.NewCreateStack(memStackRepo, memTemplateRepo)
+	listStacksUC := usecase.NewListStacks(memStackRepo)
+	deleteStackUC := usecase.NewDeleteStack(memStackRepo, slowDeleteKubeconfigProvider{}, func([]byte) port.HelmInstaller {
+		return slowDeleteInstaller{}
+	})
 	addToolsUC := usecase.NewAddToolsUseCase(memStackRepo)
 	manageHistoryUC := usecase.NewManageHistory(memHistoryRepo)
 	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, manageHistoryUC, nil)
@@ -70,6 +119,27 @@ func TestStackHandler_CreateStack_201(t *testing.T) {
 	require.NoError(t, json.Unmarshal(historyRec.Body.Bytes(), &versions))
 	require.Len(t, versions, 1)
 	assert.Equal(t, "stack created", versions[0]["ChangeReason"])
+}
+
+func TestStackHandler_CreateStack_409OnDuplicateName(t *testing.T) {
+	e := newStackEcho()
+	body := `{"name":"dup-stack","cluster_id":"cls-1","golden_path_id":"gitlab-allinone-v1"}`
+
+	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("X-Org-ID", "org-dup")
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+	require.Equal(t, http.StatusCreated, rec1.Code)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("X-Org-ID", "org-dup")
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	assert.Equal(t, http.StatusConflict, rec2.Code)
+	assert.Contains(t, rec2.Body.String(), "STACK_NAME_DUPLICATE")
 }
 
 func TestStackHandler_ListStacks_200(t *testing.T) {
@@ -148,6 +218,37 @@ func TestStackHandler_DeleteStack_404WhenNotFound(t *testing.T) {
 	e.ServeHTTP(deleteRec, deleteReq)
 
 	assert.Equal(t, http.StatusNotFound, deleteRec.Code)
+}
+
+func TestStackHandler_CreateStack_409WhileSameKeyDeleting(t *testing.T) {
+	e := newStackEchoWithSlowDelete()
+
+	body := `{"name":"race-stack","cluster_id":"cls-1","namespace":"nullus","golden_path_id":"github-argocd-v1"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Org-ID", "org-race")
+	createRec := httptest.NewRecorder()
+	e.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var createResp map[string]any
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
+	stackID, _ := createResp["id"].(string)
+	require.NotEmpty(t, stackID)
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/stacks/"+stackID, nil)
+	deleteRec := httptest.NewRecorder()
+	e.ServeHTTP(deleteRec, deleteReq)
+	require.Equal(t, http.StatusAccepted, deleteRec.Code)
+
+	recreateReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	recreateReq.Header.Set("Content-Type", "application/json")
+	recreateReq.Header.Set("X-Org-ID", "org-race")
+	recreateRec := httptest.NewRecorder()
+	e.ServeHTTP(recreateRec, recreateReq)
+
+	assert.Equal(t, http.StatusConflict, recreateRec.Code)
+	assert.Contains(t, recreateRec.Body.String(), "STACK_DELETE_IN_PROGRESS")
 }
 
 func TestStackHandler_SaveConfig_CreatesHistoryWithYAMLOverridesReason(t *testing.T) {
