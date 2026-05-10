@@ -271,6 +271,49 @@ func TestValidateCompatibility_PersistedMode_LoadsStackTools(t *testing.T) {
 	assert.Equal(t, []string{"amd64"}, out.NodeArchitectures)
 }
 
+func TestValidateCompatibility_PersistedMode_DerivesToolsFromConfigSelections(t *testing.T) {
+	stackRepo := repository.NewMemoryStackRepository()
+	stack := &domain.Stack{
+		ID:        "stack-config-derived",
+		Name:      "config-derived-stack",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Namespace: "nullus",
+		Tools:     nil,
+		Config: domain.StackConfig{
+			Artifacts: domain.ArtifactsConfig{
+				SourceRepository:  domain.ToolSelection{Name: "gitlab"},
+				ContainerRegistry: domain.ToolSelection{Name: "gitlab-registry"},
+				StorageBackend:    domain.ToolSelection{Name: "minio"},
+			},
+			Pipeline: domain.PipelineConfig{
+				CIPlatform: domain.ToolSelection{Name: "gitlab-ci"},
+				CDTool:     domain.ToolSelection{Name: "argocd"},
+			},
+			Monitoring: domain.MonitoringConfig{
+				Collection:    domain.ToolSelection{Name: "prometheus"},
+				Visualization: domain.ToolSelection{Name: "grafana"},
+			},
+		},
+		State:     domain.StatePending,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	require.NoError(t, stackRepo.Create(context.Background(), stack))
+
+	reader := &stubClusterReader{summary: &port.ClusterSummary{ID: "cluster-1", NodeArchitectures: []string{"amd64"}}}
+	uc := NewValidateCompatibility(
+		repository.NewMemoryCompatibilityRepository(),
+		WithClusterReader(reader),
+		WithStackRepository(stackRepo),
+	)
+
+	out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{StackID: stack.ID})
+	require.NoError(t, err)
+	require.NotNil(t, out.Matrix)
+	assert.Equal(t, "pass", out.Overall.State)
+}
+
 func TestValidateCompatibility_PersistedMode_StackNotFound(t *testing.T) {
 	stackRepo := repository.NewMemoryStackRepository()
 	uc := NewValidateCompatibility(

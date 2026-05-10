@@ -318,8 +318,9 @@ func TestOrchestrator_SetNamespace_OverridesDefaultNamespace(t *testing.T) {
 	orch.SetNamespace("production")
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_cert_manager", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_metrics_server", "A"))
 
-	assert.Equal(t, []string{"production"}, installer.namespaces)
+	assert.Equal(t, []string{"cert-manager", "production"}, installer.namespaces)
 }
 
 func TestOrchestrator_ExecuteStep_ReusesExistingCertManagerInstallation(t *testing.T) {
@@ -503,7 +504,7 @@ func TestOrchestrator_VerifyDeployment_InvokesRuntimeReadinessChecks(t *testing.
 
 	require.NoError(t, orch.VerifyDeployment(context.Background(), "stk_verify_runtime"))
 	assert.Contains(t, checked, "installing_gitlab@gitlab@nullus")
-	assert.Contains(t, checked, "installing_cert_manager@cert-manager@nullus")
+	assert.Contains(t, checked, "installing_cert_manager@cert-manager@cert-manager")
 }
 
 func TestOrchestrator_VerifyDeployment_FailsWhenRuntimeReadinessFails(t *testing.T) {

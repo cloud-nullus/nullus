@@ -59,18 +59,66 @@ var checkExistingCertManagerInstallation = func(ctx context.Context, o *Orchestr
 		}
 	}
 
+	if _, err := o.detectCertManagerNamespace(ctx); err != nil {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (o *Orchestrator) certManagerNamespaceCandidates() []string {
+	candidates := []string{"cert-manager", "nullus", "default"}
+	if releaseNamespace, err := o.detectCertManagerReleaseNamespaceFromCRD(context.Background()); err == nil && strings.TrimSpace(releaseNamespace) != "" {
+		trimmed := strings.TrimSpace(releaseNamespace)
+		for _, candidate := range candidates {
+			if candidate == trimmed {
+				goto includeOrchestratorNamespace
+			}
+		}
+		candidates = append([]string{trimmed}, candidates...)
+	}
+
+includeOrchestratorNamespace:
+	if ns := strings.TrimSpace(o.namespace); ns != "" {
+		for _, candidate := range candidates {
+			if candidate == ns {
+				return candidates
+			}
+		}
+		candidates = append([]string{ns}, candidates...)
+	}
+	return candidates
+}
+
+func (o *Orchestrator) detectCertManagerNamespace(ctx context.Context) (string, error) {
 	deployments := []string{
 		"deployment/cert-manager",
 		"deployment/cert-manager-webhook",
 		"deployment/cert-manager-cainjector",
 	}
-	for _, deployment := range deployments {
-		if _, err := o.runKubectl(ctx, "get", "-n", "cert-manager", deployment); err != nil {
-			return false, nil
+
+	for _, namespace := range o.certManagerNamespaceCandidates() {
+		allFound := true
+		for _, deployment := range deployments {
+			if _, err := o.runKubectl(ctx, "get", "-n", namespace, deployment); err != nil {
+				allFound = false
+				break
+			}
+		}
+		if allFound {
+			return namespace, nil
 		}
 	}
 
-	return true, nil
+	return "", fmt.Errorf("cert-manager deployments not found in candidate namespaces")
+}
+
+func (o *Orchestrator) detectCertManagerReleaseNamespaceFromCRD(ctx context.Context) (string, error) {
+	output, err := o.runKubectl(ctx, "get", "crd", "certificaterequests.cert-manager.io", "-o", "jsonpath={.metadata.annotations.meta\\.helm\\.sh/release-namespace}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 type Orchestrator struct {
@@ -233,6 +281,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				ChartName: "cert-manager",
 				RepoURL:   "https://charts.jetstack.io",
 				Version:   "v1.16.3",
+				Namespace: "cert-manager",
 				Values:    DefaultValues(stepInstallingCertManager),
 				Wait:      false,
 			},
@@ -480,6 +529,11 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	namespace := o.namespace
 	if spec.Namespace != "" {
 		namespace = spec.Namespace
+	}
+	if step == stepInstallingCertManager && looksLikeKubeconfig(o.kubeconfig) {
+		if releaseNamespace, err := o.detectCertManagerReleaseNamespaceFromCRD(ctx); err == nil && strings.TrimSpace(releaseNamespace) != "" {
+			namespace = strings.TrimSpace(releaseNamespace)
+		}
 	}
 
 	if step == "installing_object_storage_secret" {
@@ -915,16 +969,21 @@ func (o *Orchestrator) waitForCertManagerInstallation(ctx context.Context) error
 		}
 	}
 
+	certManagerNamespace, err := o.detectCertManagerNamespace(ctx)
+	if err != nil {
+		return err
+	}
+
 	deployments := []string{
 		"deployment/cert-manager",
 		"deployment/cert-manager-webhook",
 		"deployment/cert-manager-cainjector",
 	}
 	for _, deployment := range deployments {
-		if err := o.waitForKubectlGet(ctx, "-n", "cert-manager", deployment); err != nil {
+		if err := o.waitForKubectlGet(ctx, "-n", certManagerNamespace, deployment); err != nil {
 			return fmt.Errorf("cert-manager deployment %s not found: %w", deployment, err)
 		}
-		if _, err := o.runKubectl(ctx, "rollout", "status", "-n", "cert-manager", deployment, "--timeout=180s"); err != nil {
+		if _, err := o.runKubectl(ctx, "rollout", "status", "-n", certManagerNamespace, deployment, "--timeout=180s"); err != nil {
 			return fmt.Errorf("cert-manager deployment %s not ready: %w", deployment, err)
 		}
 	}
@@ -933,7 +992,7 @@ func (o *Orchestrator) waitForCertManagerInstallation(ctx context.Context) error
 		return fmt.Errorf("cert-manager webhook trust not stabilized: %w", err)
 	}
 
-	if err := o.waitForCertManagerStartupAPICheck(ctx); err != nil {
+	if err := o.waitForCertManagerStartupAPICheck(ctx, certManagerNamespace); err != nil {
 		return fmt.Errorf("cert-manager startup API check not complete: %w", err)
 	}
 
@@ -966,16 +1025,28 @@ func (o *Orchestrator) waitForCertManagerWebhookTrust(ctx context.Context) error
 	return nil
 }
 
-func (o *Orchestrator) waitForCertManagerStartupAPICheck(ctx context.Context) error {
+func (o *Orchestrator) waitForCertManagerStartupAPICheck(ctx context.Context, namespace string) error {
 	const resource = "job/cert-manager-startupapicheck"
 
-	if err := o.waitForKubectlGet(ctx, "-n", "cert-manager", resource); err != nil {
+	if err := o.waitForKubectlGet(ctx, "-n", namespace, resource); err != nil {
+		if isKubectlNotFoundError(err) {
+			slog.Info("cert-manager startup API check job not found; skipping wait", "namespace", namespace)
+			return nil
+		}
 		return err
 	}
-	if _, err := o.runKubectl(ctx, "wait", "-n", "cert-manager", "--for=condition=complete", "--timeout=180s", resource); err != nil {
+	if _, err := o.runKubectl(ctx, "wait", "-n", namespace, "--for=condition=complete", "--timeout=180s", resource); err != nil {
 		return err
 	}
 	return nil
+}
+
+func isKubectlNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "notfound") || strings.Contains(msg, "not found")
 }
 
 func (o *Orchestrator) waitForKubectlNonEmptyOutput(ctx context.Context, args ...string) error {
