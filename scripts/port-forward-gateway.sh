@@ -67,6 +67,14 @@ if [[ -z "$GW_SVC" ]]; then
   GW_SVC="$(pick_single_or_empty "$GW_SVC_LIST")"
 fi
 
+if [[ "$FORWARD_HTTPS" == "true" ]]; then
+  SVC_PORTS="$(kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$KUBE_CONTEXT" -n "$STACK_NAMESPACE" get svc "$GW_SVC" -o jsonpath='{range .spec.ports[*]}{.port}{"\n"}{end}' 2>/dev/null || true)"
+  if ! printf '%s\n' "$SVC_PORTS" | grep -qx "$REMOTE_HTTPS_PORT"; then
+    echo "게이트웨이 서비스($GW_SVC)에 HTTPS 포트($REMOTE_HTTPS_PORT)가 없어 HTTP만 포워딩합니다."
+    FORWARD_HTTPS="false"
+  fi
+fi
+
 # 3) Envoy Gateway 데이터플레인 서비스 패턴 fallback
 if [[ -z "$GW_SVC" ]]; then
   GW_SVC_LIST="$(kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$KUBE_CONTEXT" -n "$STACK_NAMESPACE" get svc -l "app.kubernetes.io/managed-by=envoy-gateway,app.kubernetes.io/component=proxy" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"

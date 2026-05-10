@@ -400,6 +400,16 @@ function fallbackAccessDomain(stackName: string): string {
 	return `${slug}.internal`;
 }
 
+function deriveGatewayName(accessDomain: string, stackName: string): string {
+	const base = (accessDomain || fallbackAccessDomain(stackName))
+		.replace(/\.internal$/i, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return `${base || "nullus-stack"}-gateway`;
+}
+
 function extractAccessDomain(snapshot: unknown, stackName: string): string {
 	const config = resolveSnapshotConfig(snapshot);
 	const value = config.access_domain ?? config.accessDomain;
@@ -1005,10 +1015,11 @@ function StackInfoTab({
 	const connectionInfo = extractConnectionInfo(latestSnapshot, stack.namespace?.trim() || "nullus", accessDomain);
 	const stackNamespace = stack.namespace?.trim() || "nullus";
 	const stackNamespaceArg = toShellSingleQuoted(stackNamespace);
+	const gatewayNameArg = toShellSingleQuoted(deriveGatewayName(accessDomain, stack.name));
 	const accessHostArg = toShellSingleQuoted(accessDomain || `${stack.name}.internal`);
 	const gatewayPFCommand = [
 		isKorean ? "# 80/443 동시 포트포워드 (Gateway 서비스 자동 선택)" : "# Port-forward both 80/443 (auto-select Gateway service)",
-		`KUBE_CONTEXT=kind-nullus-platform STACK_NAMESPACE=${stackNamespaceArg} ACCESS_HOST=${accessHostArg} sudo -E ./scripts/port-forward-gateway.sh`,
+		`KUBE_CONTEXT=kind-nullus-platform STACK_NAMESPACE=${stackNamespaceArg} GATEWAY_NAME=${gatewayNameArg} ACCESS_HOST=${accessHostArg} sudo -E ./scripts/port-forward-gateway.sh`,
 	].join("\n");
 	const connectionInfoWithGatewayText = buildConnectionInfoText(stack.name, connectionInfo, launchTools, isKorean, gatewayPFCommand);
 
