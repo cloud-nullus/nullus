@@ -1291,7 +1291,7 @@ spec:
     spec:
       containers:
         - name: openbao
-		  image: openbao/openbao:latest
+          image: openbao/openbao:latest
           imagePullPolicy: IfNotPresent
           args: ["server", "-dev", "-dev-root-token-id=root"]
           env:

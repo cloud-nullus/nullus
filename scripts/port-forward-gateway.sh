@@ -44,8 +44,9 @@ fi
 
 if ! kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$KUBE_CONTEXT" get namespace "$STACK_NAMESPACE" >/dev/null 2>&1; then
   if kubectl --kubeconfig "$KUBECONFIG_PATH" --context "kind-nullus-platform" get namespace "$STACK_NAMESPACE" >/dev/null 2>&1; then
+    ORIGINAL_CONTEXT="$KUBE_CONTEXT"
     KUBE_CONTEXT="kind-nullus-platform"
-    echo "현재 컨텍스트($KUBE_CONTEXT) 대신 kind-nullus-platform 컨텍스트를 사용합니다."
+    echo "현재 컨텍스트(${ORIGINAL_CONTEXT}) 대신 kind-nullus-platform 컨텍스트를 사용합니다."
   else
     echo "kubectl context 연결 실패: $KUBE_CONTEXT"
     echo "올바른 컨텍스트를 지정하세요. 예) export KUBE_CONTEXT=kind-nullus-platform"

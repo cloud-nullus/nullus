@@ -46,6 +46,7 @@ var installPhases = [][]installStep{
 		{name: "installing_log_search", phase: "C", duration: time.Second},
 		{name: "installing_opentelemetry", phase: "C", duration: time.Second},
 		{name: "installing_gateway", phase: "C", duration: time.Second},
+		{name: "installing_openbao", phase: "C", duration: time.Second},
 		{name: "integration_check", phase: "C", duration: time.Second},
 	},
 }
