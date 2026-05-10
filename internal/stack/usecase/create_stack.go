@@ -63,7 +63,7 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 		namespace = "nullus"
 	}
 
-	existingStacks, err := uc.stackRepo.List(ctx, input.OrgID, true)
+	existingStacks, err := uc.stackRepo.List(ctx, input.OrgID, false)
 	if err != nil {
 		return nil, fmt.Errorf("check stack name uniqueness: %w", err)
 	}
