@@ -105,6 +105,31 @@ else
   CHART_IMAGES="$(printf '%s\n' "$RENDERED" | extract_images | rewrite_upstream | sort -u)"
 fi
 
+# 카탈로그 chart 가 helm/charts-catalog/ 에 있으면 각각 helm template 으로 image 추출
+CATALOG_DIR="${ROOT_DIR}/helm/charts-catalog"
+CATALOG_IMAGES=""
+if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
+  log_info "카탈로그 chart 스캔: $CATALOG_DIR"
+  shopt -s nullglob
+  for tgz in "$CATALOG_DIR"/*.tgz; do
+    name="$(basename "$tgz" .tgz)"
+    log_info "  helm template $name"
+    rendered="$(helm template "$name" "$tgz" 2>/dev/null || true)"
+    [[ -z "$rendered" ]] && { log_warn "    렌더 실패 — 건너뜀"; continue; }
+    imgs="$(printf '%s\n' "$rendered" | extract_images | rewrite_upstream | sort -u)"
+    CATALOG_IMAGES+="$imgs"$'\n'
+  done
+  shopt -u nullglob
+  # 2025-08 Bitnami 정책: 버전 태그는 docker.io/bitnamilegacy/* 로 이관됨
+  CATALOG_IMAGES="$(printf '%s' "$CATALOG_IMAGES" \
+    | sed -e 's#^docker.io/bitnami/#docker.io/bitnamilegacy/#' \
+    | grep -v '^$' | sort -u || true)"
+  # Nullus chart 와 중복되는 이미지 제거 (CHART_IMAGES 에 이미 있는 것)
+  if [[ -n "$CATALOG_IMAGES" ]]; then
+    CATALOG_IMAGES="$(comm -23 <(printf '%s\n' "$CATALOG_IMAGES") <(printf '%s\n' "$CHART_IMAGES" | sort -u))"
+  fi
+fi
+
 tmp_file="$(mktemp)"
 trap 'rm -f "$tmp_file"' EXIT
 
@@ -119,6 +144,11 @@ trap 'rm -f "$tmp_file"' EXIT
   printf '\n'
   printf '# --- Nullus app + chart dependency images (rendered from chart) ---\n'
   printf '%s\n' "$CHART_IMAGES"
+  if [[ -n "${CATALOG_IMAGES:-}" ]]; then
+    printf '\n'
+    printf '# --- Catalog images (Stack: Keycloak/Harbor/MinIO/ArgoCD/Prometheus) ---\n'
+    printf '%s\n' "$CATALOG_IMAGES"
+  fi
   printf '\n'
   printf '# --- Infra images (not part of helm render) ---\n'
   for img in "${INFRA_IMAGES[@]}"; do printf '%s\n' "$img"; done
