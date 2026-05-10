@@ -163,6 +163,8 @@ function getStackStatusLabel(t: TFunction, status: string) {
 			return t("stackList.status.healthy", "Running");
 		case "cancelled":
 			return t("stackList.status.cancelled", "Cancelled");
+		case "deleted":
+			return t("stackList.status.deleted", "Deleted");
 		default:
 			return status;
 	}
@@ -1698,6 +1700,7 @@ export function StackListPage() {
 	const { data: apiData, isLoading } = useStacks({
 		search,
 		status: normalizedStatusFilter || undefined,
+		include_deleted: true,
 	}, {
 		refetchIntervalMs: shouldPollTerminating ? 3000 : 0,
 	});

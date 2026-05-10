@@ -202,6 +202,9 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 		Config:     req.Config,
 	})
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+			return errorResponse(c, http.StatusConflict, "STACK_NAME_DUPLICATE", err.Error())
+		}
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONFIG_INVALID", err.Error())
 	}
 	if h.manageHistory != nil {

@@ -3813,7 +3813,11 @@ export function StackInstallPage() {
       setServerWarnAcknowledged(false)
       navigate(`/stack/deploy/${stackId}`)
     } catch (error) {
-      setTabGuardError(toDeployErrorMessage(error))
+      const message = toDeployErrorMessage(error)
+      if (message.includes('COMPATIBILITY_REQUEST_INVALID') || message.includes('tools map or stack_id is required')) {
+        setPendingStackId(null)
+      }
+      setTabGuardError(message)
     }
   }
 

@@ -178,3 +178,29 @@ func TestCreateStack_RejectsTlsEnabledWithoutIssuer(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "access_domain_tls.issuer_name")
 }
+
+func TestCreateStack_RejectsDuplicateNameIncludingDeleted(t *testing.T) {
+	stackRepo := stackrepo.NewMemoryStackRepository()
+	templateRepo := stackrepo.NewMemoryTemplateRepository()
+	uc := NewCreateStack(stackRepo, templateRepo)
+
+	first, err := uc.Execute(context.Background(), CreateStackInput{
+		Name:      "duplicate-name",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config:    domain.StackConfig{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	require.NoError(t, stackRepo.Delete(context.Background(), first.Stack.ID))
+
+	_, err = uc.Execute(context.Background(), CreateStackInput{
+		Name:      "duplicate-name",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config:    domain.StackConfig{},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+}

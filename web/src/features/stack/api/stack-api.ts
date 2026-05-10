@@ -216,6 +216,8 @@ interface RawStackItem {
   createdAt?: string
   updated_at?: string
   updatedAt?: string
+  deleted_at?: string
+  deletedAt?: string
 }
 
 interface RawStackHistoryEntry {
@@ -411,7 +413,8 @@ const normalizeCompatibilityMatrix = (raw: RawCompatibilityMatrix): Compatibilit
 }
 
 const normalizeStackItem = (raw: RawStackItem): Stack => {
-  const status = raw.state ?? raw.status ?? 'pending'
+  const deletedAt = raw.deleted_at ?? raw.deletedAt ?? ''
+  const status = deletedAt ? 'deleted' : (raw.state ?? raw.status ?? 'pending')
   return {
     id: raw.id ?? '',
     name: raw.name ?? '',
@@ -423,6 +426,7 @@ const normalizeStackItem = (raw: RawStackItem): Stack => {
     status: status as Stack['status'],
     createdAt: raw.created_at ?? raw.createdAt ?? '',
     updatedAt: raw.updated_at ?? raw.updatedAt ?? '',
+    deletedAt: deletedAt || undefined,
   }
 }
 

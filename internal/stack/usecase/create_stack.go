@@ -62,6 +62,21 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	if namespace == "" {
 		namespace = "nullus"
 	}
+
+	existingStacks, err := uc.stackRepo.List(ctx, input.OrgID, true)
+	if err != nil {
+		return nil, fmt.Errorf("check stack name uniqueness: %w", err)
+	}
+	normalizedName := strings.ToLower(strings.TrimSpace(input.Name))
+	for _, existing := range existingStacks {
+		if existing == nil {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(existing.Name)) == normalizedName {
+			return nil, fmt.Errorf("stack name %q already exists", input.Name)
+		}
+	}
+
 	if strings.TrimSpace(input.Config.AccessDomain) == "" {
 		input.Config.AccessDomain = fmt.Sprintf("%s.internal", input.Name)
 	}

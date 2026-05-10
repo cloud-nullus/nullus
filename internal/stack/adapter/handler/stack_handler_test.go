@@ -121,6 +121,27 @@ func TestStackHandler_CreateStack_201(t *testing.T) {
 	assert.Equal(t, "stack created", versions[0]["ChangeReason"])
 }
 
+func TestStackHandler_CreateStack_409OnDuplicateName(t *testing.T) {
+	e := newStackEcho()
+	body := `{"name":"dup-stack","cluster_id":"cls-1","golden_path_id":"gitlab-allinone-v1"}`
+
+	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("X-Org-ID", "org-dup")
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+	require.Equal(t, http.StatusCreated, rec1.Code)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("X-Org-ID", "org-dup")
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	assert.Equal(t, http.StatusConflict, rec2.Code)
+	assert.Contains(t, rec2.Body.String(), "STACK_NAME_DUPLICATE")
+}
+
 func TestStackHandler_ListStacks_200(t *testing.T) {
 	e := newStackEcho()
 

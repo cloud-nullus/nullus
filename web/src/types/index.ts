@@ -39,6 +39,7 @@ export type DeploymentState =
   | 'completed'
   | 'rolling_back'
   | 'rolled_back'
+  | 'deleted'
 
 export type StackStatus = DeploymentState
 
@@ -196,6 +197,7 @@ export interface Stack {
   status: StackStatus
   createdAt: string
   updatedAt: string
+  deletedAt?: string
 }
 
 export interface Template {
