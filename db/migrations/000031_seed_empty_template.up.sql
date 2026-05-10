@@ -11,7 +11,7 @@ INSERT INTO golden_path_templates (
     'Empty Template',
     'Start from an empty stack configuration with every tool left unselected.',
     '[]'::jsonb,
-    300000000000,
+    300,
     'Blank starting point for custom stack composition',
     'Decide resources after selecting the tools you need'
 )
