@@ -366,14 +366,14 @@ export function StackDeploymentLogsPage() {
           )}
         </div>
 
-        <div className="h-[560px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
+        <div className="h-[480px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
           {!entry && (
             <p className="text-[#f87171]">Deployment not found: {deploymentId}</p>
           )}
           {visibleLogs.map((line) => (
             <div key={`${line.time}-${line.text}`} className="flex gap-3">
               <span className="shrink-0 select-none text-[rgba(255,255,255,0.2)]">{line.time}</span>
-              <span className={cn(LOG_LEVEL_STYLE[line.level], "whitespace-pre-wrap break-words")}>
+              <span className={LOG_LEVEL_STYLE[line.level]}>
                 {LOG_LEVEL_PREFIX[line.level]}{line.text}
               </span>
             </div>

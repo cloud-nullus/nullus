@@ -59,6 +59,9 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
       },
       onStatusChange: (connected) => {
         setIsConnected(connected)
+        if (connected) {
+          setStatus('running')
+        }
       },
     })
 

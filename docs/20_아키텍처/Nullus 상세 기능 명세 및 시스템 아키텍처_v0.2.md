@@ -75,7 +75,7 @@ flowchart LR
 
 - 프런트 OIDC는 의존성만 들어와 있고 런타임 연결은 placeholder 상태다.
 - 세션 인증은 현재 `X-User-*` 헤더 기반 단순화 구현이다.
-- Stack 배포 로그는 `PostgresStreamer` 기반으로 `deployment_logs` 테이블에 영속 저장되며, WebSocket 재연결 시 최근 로그를 replay한다.
+- Stack 배포 로그는 인메모리 스트리머 기반이며 DB 영속화되지 않는다.
 - Alert Rule과 Notification Config는 모두 CRUD 가능하지만 운영 알림 파이프라인 연결은 아직 제한적이다.
 
 ---
@@ -87,7 +87,7 @@ v0.1의 NFR 목표는 유지하되, v0.2에서는 현재 구현이 제공하는 
 | 항목 | 목표/기준 | 현재 구현 근거 |
 |---|---|---|
 | REST API 응답 | 일반 조회 API는 수백 ms 내 응답 목표 | Echo + pgx 기반, `/health` 제공, production rate limit 적용 |
-| Stack 로그 전달 | Near real-time + replay | gorilla/websocket + `deployment_logs` 영속 저장 + `PostgresStreamer` fan-out/replay |
+| Stack 로그 전달 | Near real-time | gorilla/websocket + 인메모리 fan-out 스트리머 |
 | 대시보드 조회 | 요청 시 외부 메트릭 반영 | Prometheus API 프록시 방식, DB 장기 저장 없음 |
 | 배포 복구 | 실패 시 최소 safe rollback | Stack install 실패 시 rollback 단계 지원 |
 | 보안 민감정보 보호 | DB 평문 저장 지양 | kubeconfig AES-256-GCM 암호화 저장 |
@@ -838,7 +838,7 @@ flowchart LR
 
 - 현재 설정: `stacks`
 - 버전 이력: `stack_config_versions`
-- 배포 로그: `deployment_logs` + `PostgresStreamer`(live fan-out + replay)
+- 배포 로그: 인메모리 스트리머
 
 #### 삭제 정책
 
@@ -847,15 +847,15 @@ flowchart LR
 
 #### 현재 제약
 
-- Stack 배포 실행 메타데이터 전용 `deployments` 테이블은 아직 없다
+- `deployments`, `deployment_logs` 테이블은 없다
 - 재시도 전용 endpoint는 없다
 - `partial_success`, `retrying`, `timeout` 상태는 없다
 
 #### 향후 확장
 
-- 배포 실행 메타데이터(`deployments`) 분리 저장
+- 배포 실행 이력 분리 저장
 - 실패 단계 재시도 API
-- 로그 보존 기간/페이지네이션 정책 고도화
+- 로그 영속화
 
 ---
 

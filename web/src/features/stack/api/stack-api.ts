@@ -932,12 +932,14 @@ export function useCompatibilityMatrix() {
   })
 }
 
-export function useValidateCompatibility() {
+export function useValidateCompatibility(defaultStackId?: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (input: ValidateCompatibilityInput | string) => {
+    mutationFn: (input?: ValidateCompatibilityInput | string) => {
       const normalized: ValidateCompatibilityInput =
-        typeof input === 'string' ? { stackId: input } : input
+        typeof input === 'string'
+          ? { stackId: input }
+          : (input ?? { stackId: defaultStackId ?? '' })
       return stackApiCalls.validateCompatibility(normalized)
     },
     onSuccess: () => {

@@ -12,8 +12,8 @@ INSERT INTO compatibility_matrices (
     'GitLab All-in-One',
     'verified',
     '1.27',
-    '1.35',
-    '1.35',
+    '1.32',
+    '1.30',
     $$
     {
       "source_repository": {"Name": "GitLab CE", "HelmVersion": "8.7.2", "AppVersion": "17.7.2"},
@@ -31,8 +31,8 @@ INSERT INTO compatibility_matrices (
     'GitLab + Argo CD',
     'verified',
     '1.27',
-    '1.35',
-    '1.35',
+    '1.32',
+    '1.30',
     $$
     {
       "source_repository": {"Name": "GitLab CE", "HelmVersion": "8.7.2", "AppVersion": "17.7.2"},
@@ -50,8 +50,8 @@ INSERT INTO compatibility_matrices (
     'GitHub + Argo CD',
     'untested',
     '1.27',
-    '1.35',
-    '1.35',
+    '1.32',
+    '1.29',
     $$
     {
       "source_repository": {"Name": "GitHub", "HelmVersion": "external", "AppVersion": "external"},

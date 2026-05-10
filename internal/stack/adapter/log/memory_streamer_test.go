@@ -135,17 +135,3 @@ func TestMemoryStreamer_ReplaysHistoryToLateSubscriber(t *testing.T) {
 		t.Fatal("expected second replayed log entry")
 	}
 }
-
-func TestMemoryStreamer_ClearHistory(t *testing.T) {
-	s := NewMemoryStreamer()
-	s.Stream(context.Background(), "dep-clear", port.LogEntry{Level: "info", Step: "s1", Message: "old", Phase: "A"})
-	s.ClearHistory("dep-clear")
-
-	ch := s.Subscribe("dep-clear")
-	select {
-	case got := <-ch:
-		t.Fatalf("expected no replayed history after clear, got: %#v", got)
-	case <-time.After(120 * time.Millisecond):
-		// expected
-	}
-}

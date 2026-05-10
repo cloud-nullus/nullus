@@ -66,7 +66,6 @@ var legacyReleaseArtifactPrefixes = []string{
 	"gitlab-",
 	"argo-cd-",
 	"argocd-",
-	"envoy-",
 	"nullus-",
 	"opensearch-",
 	"tempo-",
@@ -152,6 +151,7 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	gatewayNames = uc.mergeGatewayNames(gatewayNames, uc.collectGatewayNamesFromManagedResources(ctx, kubeconfig, stack))
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortUninstall(ctx, kubeconfig, stack.Namespace, stackID)
+	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteGatewayManagedResources(ctx, kubeconfig, stack, gatewayNames, stackID)
 	uc.bestEffortDeleteLegacyMonitoringResources(ctx, kubeconfig, stack, stackID)
@@ -159,6 +159,10 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteGatewayCRDs(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
+	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
 
 	if err := uc.stackRepo.Delete(ctx, stackID); err != nil {
 		uc.markDeleteFailedState(ctx, stack, stackID)
@@ -670,6 +674,9 @@ func (uc *DeleteStack) bestEffortDeleteLegacyReleaseArtifacts(ctx context.Contex
 func shouldDeleteLegacyReleaseArtifact(resourceRef, stackName string) bool {
 	name := strings.ToLower(strings.TrimSpace(resourceNameFromRef(resourceRef)))
 	if name == "" {
+		return false
+	}
+	if strings.Contains(name, "yaml") {
 		return false
 	}
 

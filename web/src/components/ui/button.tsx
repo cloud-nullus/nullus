@@ -57,7 +57,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         )}
         {...props}
       >
-        {loading && <span className="inline-block size-[14px] animate-spin rounded-full border-2 border-dashed border-current border-t-transparent [animation-duration:0.7s]" />}
+        {loading && <span className="inline-block size-[14px] animate-spin rounded-full border-2 border-current border-t-transparent [animation-duration:0.6s]" />}
         {children}
       </button>
     )

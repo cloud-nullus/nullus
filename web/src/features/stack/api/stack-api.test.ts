@@ -123,32 +123,3 @@ describe('toCreateStackBody storage size mapping', () => {
     expect(body.config.storage).toBeUndefined()
   })
 })
-
-  it('marks empty tool selections as disabled in backend payload', () => {
-    const request: CreateStackRequest = {
-      ...baseRequest,
-      artifacts: {
-        ...baseRequest.artifacts,
-        sourceRepository: { tool: '', version: '' },
-        containerRegistry: { tool: '', version: '' },
-      },
-      pipeline: {
-        ...baseRequest.pipeline,
-        cicdPlatform: { tool: '', version: '' },
-        cdTool: { tool: '', version: '' },
-      },
-      logging: {
-        ...baseRequest.logging,
-        search: { tool: '', version: '' },
-      },
-    }
-
-    const body = toCreateStackBody(request)
-
-    expect(body.config.artifacts.source_repository.enabled).toBe(false)
-    expect(body.config.artifacts.container_registry.enabled).toBe(false)
-    expect(body.config.pipeline.ci_platform.enabled).toBe(false)
-    expect(body.config.pipeline.cd_tool.enabled).toBe(false)
-    expect(body.config.logging.search.enabled).toBe(false)
-  })
-

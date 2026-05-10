@@ -100,7 +100,7 @@ func main() {
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
 	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
-	memStreamer := logadapter.NewPostgresStreamer(pool)
+	memStreamer := logadapter.NewMemoryStreamer()
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
 	installStackUC := stackuc.NewInstallStack(

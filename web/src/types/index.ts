@@ -257,14 +257,12 @@ export interface CompatibilityIssue {
   code?: string
 }
 
-export interface CompatibilityValidationOverall {
-  state: 'pass' | 'warn' | 'fail'
-  score: number
-}
-
 export interface CompatibilityValidationResult {
   compatible: boolean
-  overall: CompatibilityValidationOverall
+  overall: {
+    state: 'pass' | 'warn' | 'fail'
+    score: number
+  }
   issues: CompatibilityIssue[]
   // nodeArchitectures reflects the Pre-Deploy Gate's view of the target
   // cluster's fleet (F8 Task 3). Always normalized/sorted server-side.

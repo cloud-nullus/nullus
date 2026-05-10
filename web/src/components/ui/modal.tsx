@@ -105,7 +105,7 @@ export function Modal({ open, onClose, title, children, wide = false, footer }: 
         ref={cardRef}
         className={cn(
           'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)]',
-          wide ? 'max-w-[980px]' : 'max-w-[480px]'
+          wide ? 'max-w-[800px]' : 'max-w-[480px]'
         )}
       >
         {title && (

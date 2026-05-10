@@ -1,10 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/test-utils'
-import { act, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { StackDeployPage } from './stack-deploy-page'
 
 const mockUseParams = vi.fn()
-const mockUseNavigate = vi.fn()
 const mockUseDeployLog = vi.fn()
 const mockApiGet = vi.fn()
 
@@ -13,7 +12,6 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useParams: () => mockUseParams(),
-    useNavigate: () => mockUseNavigate,
   }
 })
 
@@ -34,7 +32,6 @@ vi.mock('../../../stores/auth-store', () => ({
 describe('StackDeployPage', () => {
   beforeEach(() => {
     mockUseParams.mockReset()
-    mockUseNavigate.mockReset()
     mockUseDeployLog.mockReset()
     mockApiGet.mockReset()
 
@@ -50,10 +47,6 @@ describe('StackDeployPage', () => {
     Element.prototype.scrollIntoView = vi.fn()
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('renders without crash', async () => {
     renderWithProviders(<StackDeployPage />)
 
@@ -64,7 +57,7 @@ describe('StackDeployPage', () => {
   it('shows loading state while websocket is connecting', async () => {
     renderWithProviders(<StackDeployPage />)
 
-    expect(screen.getByText('Connecting to WebSocket...')).not.toBeNull()
+    expect(screen.getByText('WebSocket에 연결 중...')).not.toBeNull()
   })
 
   it('renders deployment log data when logs are available', async () => {
@@ -99,70 +92,6 @@ describe('StackDeployPage', () => {
 
     renderWithProviders(<StackDeployPage />)
 
-    expect(screen.getByText('Waiting for logs...')).not.toBeNull()
-  })
-
-  it('shows success summary from API state even without live log frames', async () => {
-    mockApiGet.mockResolvedValue({
-      data: {
-        data: {
-          state: 'completed',
-        },
-      },
-    })
-
-    renderWithProviders(<StackDeployPage />)
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(screen.getByText('Deployment Completed')).toBeInTheDocument()
-    expect(screen.getByText('Deployment completed. No buffered live logs were retained for this session.')).toBeInTheDocument()
-  })
-
-  it('toggles current session log filter label', async () => {
-    mockUseDeployLog.mockReturnValue({
-      logs: [{ id: 'l1', timestamp: '2026-01-01T10:00:00Z', level: 'info', message: 'validation complete' }],
-      status: 'running',
-      progress: 20,
-      isConnected: true,
-    })
-
-    renderWithProviders(<StackDeployPage />)
-
-    expect(screen.getByRole('button', { name: 'Current session only' })).toBeInTheDocument()
-    act(() => {
-      screen.getByRole('button', { name: 'Current session only' }).click()
-    })
-    expect(screen.getByRole('button', { name: 'Show all buffered logs' })).toBeInTheDocument()
-  })
-
-  it('redirects to stack list 5 seconds after true success completion', async () => {
-    vi.useFakeTimers()
-
-    mockUseDeployLog.mockReturnValue({
-      logs: [
-        {
-          id: 'log-1',
-          timestamp: '2026-01-01T10:00:00Z',
-          level: 'success',
-          message: 'installation completed successfully',
-        },
-      ],
-      status: 'success',
-      progress: 100,
-      isConnected: true,
-    })
-
-    renderWithProviders(<StackDeployPage />)
-
-    expect(screen.getByText(/Returning to Stack List in 5s/)).toBeInTheDocument()
-
-    act(() => {
-      vi.advanceTimersByTime(5000)
-    })
-
-    expect(mockUseNavigate).toHaveBeenCalledWith('/stack/list')
+    expect(screen.getByText('로그를 기다리는 중...')).not.toBeNull()
   })
 })

@@ -75,10 +75,3 @@ func (s *MemoryStreamer) Stream(ctx context.Context, deploymentID string, entry 
 		}
 	}
 }
-
-// ClearHistory removes buffered log history for deploymentID.
-func (s *MemoryStreamer) ClearHistory(deploymentID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.history, deploymentID)
-}
