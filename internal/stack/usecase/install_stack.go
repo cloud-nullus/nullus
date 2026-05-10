@@ -290,6 +290,8 @@ func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *do
 			Path:      fmt.Sprintf("kv/nullus/%s/%s/%s/%s/token", env, stack.OrgID, module, provider),
 			TokenType: "reissue",
 			Status:    "healthy",
+			SecretManager: strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)),
+			TokenValue:    "managed-by-nullus",
 		})
 	}
 

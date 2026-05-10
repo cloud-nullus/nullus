@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
@@ -91,7 +93,13 @@ func main() {
 		usecase.WithKubeconfigDecryptor(decryptKubeconfig),
 	)
 	userUC := usecase.NewUserUseCase(userRepo)
-	tokenSourceUC := usecase.NewTokenSourceUseCase(tokenSourceRepo)
+	secretRouter := secrets.NewRouter()
+	openBaoAddr := strings.TrimSpace(os.Getenv("OPENBAO_ADDR"))
+	openBaoToken := strings.TrimSpace(os.Getenv("OPENBAO_TOKEN"))
+	if openBaoAddr != "" && openBaoToken != "" {
+		secretRouter.Register("openbao", secrets.NewOpenBaoStore(openBaoAddr, openBaoToken))
+	}
+	tokenSourceUC := usecase.NewTokenSourceUseCase(tokenSourceRepo, usecase.WithSecretRouter(secretRouter))
 	auditLogger := audit.NewAuditLogger(pool)
 
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
@@ -102,7 +110,7 @@ func main() {
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
 	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
-	tokenSourceRegistry := stackrepo.NewPostgresTokenSourceRegistry(pool)
+	tokenSourceRegistry := stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter)
 	memStreamer := logadapter.NewPostgresStreamer(pool)
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 

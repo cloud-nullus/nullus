@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -211,7 +212,70 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 
 func (o *Orchestrator) RollbackDeployment(ctx context.Context, stackID string) error {
 	_ = stackID
-	return o.rollback.RollbackAll(ctx, o.installer, o.namespace)
+	rbErr := o.rollback.RollbackAll(ctx, o.installer, o.namespace)
+	cleanupErr := o.cleanupResidualReleaseResources(ctx)
+	if rbErr != nil && cleanupErr != nil {
+		return fmt.Errorf("rollback: %w; residual cleanup: %v", rbErr, cleanupErr)
+	}
+	if rbErr != nil {
+		return rbErr
+	}
+	if cleanupErr != nil {
+		return cleanupErr
+	}
+	return nil
+}
+
+func (o *Orchestrator) cleanupResidualReleaseResources(ctx context.Context) error {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+
+	resourceKinds := []string{"deploy", "sts", "ds", "job", "cronjob", "svc", "cm", "secret", "pvc"}
+	seen := map[string]struct{}{}
+	var errs []error
+
+	for _, step := range o.orderedStep {
+		spec, ok := o.chartConfig[step]
+		if !ok {
+			continue
+		}
+		spec = o.resolveChartSpecForStep(step, spec)
+		releaseName := strings.TrimSpace(o.releaseNameForSpec(spec))
+		if releaseName == "" {
+			continue
+		}
+		namespace := strings.TrimSpace(o.namespace)
+		if strings.TrimSpace(spec.Namespace) != "" {
+			namespace = strings.TrimSpace(spec.Namespace)
+		}
+		if step == stepInstallingCertManager {
+			if detectedNS, err := o.detectCertManagerReleaseNamespaceFromCRD(ctx); err == nil && strings.TrimSpace(detectedNS) != "" {
+				namespace = strings.TrimSpace(detectedNS)
+			}
+		}
+		if namespace == "" {
+			continue
+		}
+
+		key := namespace + "::" + releaseName
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		for _, kind := range resourceKinds {
+			selector := "app.kubernetes.io/instance=" + releaseName
+			if _, err := o.runKubectl(ctx, "delete", kind, "-n", namespace, "-l", selector, "--ignore-not-found"); err != nil {
+				errs = append(errs, fmt.Errorf("delete %s for release %s in namespace %s: %w", kind, releaseName, namespace, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 func (o *Orchestrator) verifyReleaseRuntimeReadiness(ctx context.Context, step, releaseName, namespace string) error {
@@ -308,6 +372,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				Wait:        false,
 			},
 			"installing_object_storage_secret": {},
+			"installing_openbao":             {},
 			"installing_gitlab": {
 				ChartName: "gitlab",
 				RepoURL:   "https://charts.gitlab.io/",
@@ -386,7 +451,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_log_search":            11,
 			"installing_opentelemetry":         12,
 			"installing_gateway":               13,
-			"integration_check":                14,
+			"installing_openbao":               14,
+			"integration_check":                15,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -403,12 +469,14 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_log_search",
 			"installing_opentelemetry",
 			"installing_gateway",
+			"installing_openbao",
 			"integration_check",
 		},
 		stepConfigFieldPath: map[string]string{
 			"installing_postgresql":            "config.storage.database",
 			"installing_minio":                 "config.artifacts.storage_backend",
 			"installing_object_storage_secret": "config.storage.object_storage",
+			"installing_openbao":               "config.authentication.provider",
 			"installing_gitlab":                "config.artifacts.source_repository",
 			"installing_argocd":                "config.pipeline.cd_tool",
 			stepInstallingRunner:               "config.pipeline.ci_platform",
@@ -433,6 +501,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
 				return cfg.Artifacts.SourceRepository.Enabled
+			},
+			"installing_openbao": func(cfg domain.StackConfig) bool {
+				if cfg.Authentication == nil {
+					return false
+				}
+				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
 			},
 			"installing_argocd": func(cfg domain.StackConfig) bool {
 				return cfg.Pipeline.CDTool.Enabled
@@ -888,6 +962,10 @@ func (o *Orchestrator) releasePodSnapshot(ctx context.Context, releaseName, name
 func (o *Orchestrator) waitForReleaseRollouts(ctx context.Context, releaseName, namespace string) error {
 	resources := []string{"deployments", "statefulsets", "daemonsets"}
 	selectors := releaseLabelSelectors(releaseName)
+	rolloutTimeout := "180s"
+	if strings.TrimSpace(releaseName) == "gitlab" {
+		rolloutTimeout = "600s"
+	}
 	for _, resourceType := range resources {
 		for _, selector := range selectors {
 			output, err := o.runKubectl(ctx,
@@ -905,7 +983,7 @@ func (o *Orchestrator) waitForReleaseRollouts(ctx context.Context, releaseName, 
 					continue
 				}
 				resource := strings.TrimSuffix(resourceType, "s") + "/" + name
-				if _, err := o.runKubectl(ctx, "rollout", "status", "-n", namespace, resource, "--timeout=180s"); err != nil {
+				if _, err := o.runKubectl(ctx, "rollout", "status", "-n", namespace, resource, "--timeout="+rolloutTimeout); err != nil {
 					return err
 				}
 			}
@@ -1132,6 +1210,9 @@ spec:
 }
 
 func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
+	if step == "installing_openbao" {
+		return o.openBaoManifest(o.namespace), true
+	}
 	if step != "installing_prometheus" && step != "installing_grafana" && step != "installing_logging" && step != "installing_log_search" && step != "installing_opentelemetry" && step != "installing_gateway" {
 		return "", false
 	}
@@ -1182,6 +1263,70 @@ func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func (o *Orchestrator) openBaoManifest(namespace string) string {
+	if strings.TrimSpace(namespace) == "" {
+		namespace = "nullus"
+	}
+	return fmt.Sprintf(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbao
+  namespace: %s
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/instance: openbao
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openbao
+      app.kubernetes.io/instance: openbao
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openbao
+        app.kubernetes.io/instance: openbao
+    spec:
+      containers:
+        - name: openbao
+		  image: openbao/openbao:latest
+          imagePullPolicy: IfNotPresent
+          args: ["server", "-dev", "-dev-root-token-id=root"]
+          env:
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: 0.0.0.0:8200
+            - name: VAULT_UI
+              value: "true"
+          ports:
+            - containerPort: 8200
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true
+              port: 8200
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao
+  namespace: %s
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/instance: openbao
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/instance: openbao
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+`, namespace, namespace)
 }
 
 func (o *Orchestrator) defaultGatewayBundleManifest(namespace string) string {
@@ -1249,6 +1394,9 @@ spec:
 	}
 	if cfg.Artifacts.StorageBackend.Enabled && strings.EqualFold(cfg.Artifacts.StorageBackend.Name, "minio") {
 		routes = append(routes, routeSpec{name: "minio-route", host: fmt.Sprintf("minio.%s", accessDomain), service: "nullus-minio-console", port: 9001})
+	}
+	if cfg.Authentication != nil && strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao") {
+		routes = append(routes, routeSpec{name: "openbao-route", host: fmt.Sprintf("openbao.%s", accessDomain), service: "openbao", port: 8200})
 	}
 
 	for _, route := range routes {

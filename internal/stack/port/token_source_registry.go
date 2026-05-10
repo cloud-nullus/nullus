@@ -9,6 +9,8 @@ type TokenSourceInput struct {
 	Path      string
 	TokenType string
 	Status    string
+	SecretManager string
+	TokenValue    string
 }
 
 // TokenSourceRegistry tracks OpenBao token metadata for stack integrations.
