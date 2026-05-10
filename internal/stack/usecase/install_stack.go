@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 )
 
 var ErrDeploymentCancelled = errors.New("deployment canceled")
@@ -59,6 +60,7 @@ type InstallStack struct {
 	dynamicExecutorFunc func(kubeconfig []byte) port.StepExecutor
 	tokenRegistry       port.TokenSourceRegistry
 	tokenRegistryEnv    string
+	secretRouter        *secrets.Router
 }
 
 type stackConfigAwareExecutor interface {
@@ -113,6 +115,12 @@ func WithTokenSourceRegistry(registry port.TokenSourceRegistry, env string) Inst
 	return func(uc *InstallStack) {
 		uc.tokenRegistry = registry
 		uc.tokenRegistryEnv = strings.TrimSpace(env)
+	}
+}
+
+func WithSecretRouter(router *secrets.Router) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.secretRouter = router
 	}
 }
 
@@ -219,6 +227,10 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	}
 
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
+	if err := uc.runOpenBaoPreflight(ctx, stack); err != nil {
+		uc.handleFailure(ctx, stack, executor, err)
+		return
+	}
 
 	// Transition: Validating → Installing
 	if err := uc.transition(ctx, stack, domain.StateInstalling); err != nil {
@@ -263,6 +275,28 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	if err := uc.registerStackTokenSources(ctx, stack); err != nil {
 		slog.Warn("token source registration failed", "stack_id", stack.ID, "error", err)
 	}
+}
+
+func (uc *InstallStack) runOpenBaoPreflight(ctx context.Context, stack *domain.Stack) error {
+	if stack == nil {
+		return nil
+	}
+	cfg, ok := stackConfigFromInterface(stack.Config)
+	if !ok || cfg.Authentication == nil {
+		return nil
+	}
+	provider := strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider))
+	if provider != "openbao" {
+		return nil
+	}
+	if uc.secretRouter == nil || !uc.secretRouter.Has(provider) {
+		return fmt.Errorf("openbao preflight failed: secret provider is not configured")
+	}
+	if err := uc.secretRouter.Check(ctx, provider); err != nil {
+		return fmt.Errorf("openbao preflight failed: %w", err)
+	}
+	uc.emit(ctx, stack.ID, "info", "validate", "A", "openbao preflight check passed")
+	return nil
 }
 
 func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *domain.Stack) error {

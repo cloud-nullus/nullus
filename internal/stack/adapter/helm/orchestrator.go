@@ -138,6 +138,7 @@ type Orchestrator struct {
 	progress            map[string]int
 	resourceDefaults    map[string]*domain.ResourceDefault
 	defaultsLoaded      bool
+	sharedClusterScoped bool
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -145,6 +146,12 @@ type OrchestratorOption func(*Orchestrator)
 func WithResourceDefaultRepository(repo port.ResourceDefaultRepository) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.resourceDefaultRepo = repo
+	}
+}
+
+func WithSharedClusterScopedComponents(enabled bool) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.sharedClusterScoped = enabled
 	}
 }
 
@@ -2675,14 +2682,16 @@ func resourceOverrideFromManifest(doc map[string]any) (map[string]any, bool) {
 }
 
 func (o *Orchestrator) isStepEnabled(step string) bool {
-	if step == stepInstallingCertManager || step == "integration_check" {
+	if step == "integration_check" {
 		return true
+	}
+	if o.sharedClusterScoped && isSharedClusterScopedStep(step) {
+		return false
 	}
 
 	o.mu.Lock()
 	cfg := o.stackConfig
 	o.mu.Unlock()
-
 	if cfg == nil {
 		return true
 	}
@@ -2693,6 +2702,10 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	}
 
 	return enabledFn(*cfg)
+}
+
+func isSharedClusterScopedStep(step string) bool {
+	return step == stepInstallingCertManager || step == "installing_metrics_server"
 }
 
 func (o *Orchestrator) ensureOrder(stackID, step string, order int) error {

@@ -13,6 +13,10 @@ type Store interface {
 	GetToken(ctx context.Context, path string) (string, error)
 }
 
+type HealthChecker interface {
+	Check(ctx context.Context) error
+}
+
 type Router struct {
 	providers map[string]Store
 }
@@ -46,6 +50,27 @@ func (r *Router) GetToken(ctx context.Context, provider, path string) (string, e
 		return "", err
 	}
 	return store.GetToken(ctx, path)
+}
+
+func (r *Router) Check(ctx context.Context, provider string) error {
+	store, err := r.resolve(provider)
+	if err != nil {
+		return err
+	}
+	hc, ok := store.(HealthChecker)
+	if !ok {
+		return ErrProviderNotConfigured
+	}
+	return hc.Check(ctx)
+}
+
+func (r *Router) Has(provider string) bool {
+	if r == nil {
+		return false
+	}
+	key := strings.ToLower(strings.TrimSpace(provider))
+	_, ok := r.providers[key]
+	return ok
 }
 
 func (r *Router) resolve(provider string) (Store, error) {

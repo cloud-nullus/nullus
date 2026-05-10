@@ -1,9 +1,40 @@
 # OpenBao 기반 OSS 토큰 자동 갱신(자동 업데이트) 설계
 
 **작성일**: 2026-05-02  
-**버전**: 1.0  
+**버전**: 1.1  
 **대상**: DevOps Engineer, Backend Engineer, Platform Engineer  
 **연관 문서**: `nullus_PRD_1.3.md`, `Nullus_API_설계.md`, `Nullus_DB_스키마.md`, `Nullus_인프라_배포_설계.md`
+
+---
+
+## 0. 구현 정합성 상태 (2026-05-10)
+
+이 문서는 설계 문서이며, 현재 브랜치 구현 상태를 아래와 같이 반영한다.
+
+### 0.1 구현 완료
+
+- `authentication.provider=openbao` 선택 시에만 OpenBao 배포/라우팅(`installing_openbao`, `openbao.<access_domain>`) 수행
+- Secret Manager 추상화 계층 도입: `internal/shared/secrets` (`Router`, `Store`, `OpenBaoStore`)
+- Stack token source 등록 시 `metadata.secret_manager` 저장 및 OpenBao path write 연동
+- Admin `reveal`이 placeholder 대신 OpenBao 실조회 값을 우선 반환
+- OpenBao preflight gate: 배포 시작 시 provider 구성/헬스/token lookup-self 검증
+- Rotation scheduler 기본 동작 추가: due 대상 조회, 상태/이벤트 업데이트, 실패 백오프(15m) 처리
+- Reissue adapter 추상화 도입: `internal/admin/rotation/Reissuer`
+- GitLab reissue 구현: PAT self rotate API 연동
+- GitHub reissue 구현: GitHub App installation access token 발급 연동
+
+### 0.2 부분 구현/주의사항
+
+- 현재 OpenBao 배포는 개발 편의(dev mode) 구성이며, 운영 HA/TLS/스토리지 구성은 별도 운영 스펙 필요
+- Provider별 metadata 요구사항(예: GitHub app_id/installation_id/private_key_pem)이 충족되어야 실제 reissue 수행
+- 미구현 provider(예: Harbor/Slack 등)는 `ErrReissueUnsupported` 경로로 fallback 처리
+
+### 0.3 미구현 항목
+
+- 승인 워크플로우(`requires_approval`)와 회전 스케줄러의 강결합 상태전이(FAILED_MANUAL -> AWAITING_APPROVAL -> RENEWING) 완성
+- 앱 무중단 반영(ESO/CSI/rolling restart 자동화)과 회전 성공 후 반영 검증 자동화
+- provider별 세분화 백오프 정책 및 rate-limit/jitter 튜닝
+- rotation 메트릭/알림(`token_rotation_total`, `token_expiry_seconds`)의 운영 대시보드 연동
 
 ---
 

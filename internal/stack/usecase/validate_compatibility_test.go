@@ -373,3 +373,33 @@ func TestValidateCompatibility_PersistedMode_ExplicitToolsOverrideStack(t *testi
 	require.NotNil(t, out.Matrix)
 	assert.Equal(t, "pass", out.Overall.State)
 }
+
+func TestValidateCompatibility_PersistedMode_NoToolsConfigured_SkipsAsPass(t *testing.T) {
+	stackRepo := repository.NewMemoryStackRepository()
+	stack := &domain.Stack{
+		ID:        "stack-no-tools",
+		Name:      "stack-no-tools",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Namespace: "nullus",
+		Tools:     nil,
+		Config:    domain.StackConfig{},
+		State:     domain.StatePending,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	require.NoError(t, stackRepo.Create(context.Background(), stack))
+
+	uc := NewValidateCompatibility(
+		repository.NewMemoryCompatibilityRepository(),
+		WithStackRepository(stackRepo),
+	)
+
+	out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{StackID: stack.ID})
+	require.NoError(t, err)
+	assert.True(t, out.Compatible)
+	assert.Equal(t, "pass", out.Overall.State)
+	assert.Equal(t, 100, out.Overall.Score)
+	assert.Nil(t, out.Matrix)
+	assert.Contains(t, out.Message, "skipped")
+}

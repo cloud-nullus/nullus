@@ -17,6 +17,38 @@ type OpenBaoStore struct {
 	client *http.Client
 }
 
+func (s *OpenBaoStore) Check(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.addr+"/v1/sys/health", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("openbao health check failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+
+	lookupReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.addr+"/v1/auth/token/lookup-self", nil)
+	if err != nil {
+		return err
+	}
+	lookupReq.Header.Set("X-Vault-Token", s.token)
+	lookupResp, err := s.client.Do(lookupReq)
+	if err != nil {
+		return err
+	}
+	defer lookupResp.Body.Close()
+	if lookupResp.StatusCode >= 300 {
+		b, _ := io.ReadAll(lookupResp.Body)
+		return fmt.Errorf("openbao token lookup failed: status=%d body=%s", lookupResp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 func NewOpenBaoStore(addr, token string) *OpenBaoStore {
 	return &OpenBaoStore{
 		addr:  strings.TrimRight(strings.TrimSpace(addr), "/"),

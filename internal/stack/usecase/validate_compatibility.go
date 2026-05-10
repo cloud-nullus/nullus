@@ -217,11 +217,27 @@ func (uc *ValidateCompatibility) Execute(ctx context.Context, input ValidateComp
 		}
 	}
 
+	checkedAt := time.Now().UTC()
+
 	if len(input.Tools) == 0 {
+		if input.StackID != "" {
+			out := &ValidateCompatibilityOutput{
+				Compatible: true,
+				Message:    "compatibility check skipped: stack tools are not configured",
+				Overall: ValidationOverall{
+					State: "pass",
+					Score: 100,
+				},
+				Issues:    nil,
+				CheckedAt: checkedAt,
+			}
+			if uc.cache != nil && cacheKey != "" {
+				uc.cache.Put(cacheKey, out)
+			}
+			return out, nil
+		}
 		return nil, fmt.Errorf("tools map or stack_id is required")
 	}
-
-	checkedAt := time.Now().UTC()
 
 	// Resolve node architectures from cluster_id when no explicit override was
 	// provided. "Cluster context" is considered present whenever the caller

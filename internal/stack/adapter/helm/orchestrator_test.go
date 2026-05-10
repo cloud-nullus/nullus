@@ -143,6 +143,26 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 	}, installer.installed)
 }
 
+func TestOrchestrator_ExecuteStep_SkipsSharedClusterScopedComponents(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus", WithSharedClusterScopedComponents(true))
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_postgresql", phase: "A"},
+	}
+
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_shared", step.name, step.phase))
+	}
+
+	assert.Equal(t, []string{"nullus-postgresql"}, installer.installed)
+}
+
 func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 	installer := &mockInstaller{}
 	resourceRepo := &mockResourceDefaultRepo{items: []*domain.ResourceDefault{
