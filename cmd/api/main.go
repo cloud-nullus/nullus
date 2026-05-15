@@ -110,7 +110,7 @@ func main() {
 	calculateResourcesUC := stackuc.NewCalculateResources()
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithPool(pool))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
@@ -150,7 +150,12 @@ func main() {
 	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
 	createAlertRuleUC := obsuc.NewCreateAlertRule(pgAlertRuleRepo)
 	listAlertsUC := obsuc.NewListAlerts(pgAlertRepo)
-	dashboardHandler := obshandler.NewDashboardHandler(getDashboardUC)
+	dashboardHandler := obshandler.NewDashboardHandler(
+		getDashboardUC,
+		obshandler.WithStackRepo(pgStackRepo),
+		obshandler.WithPool(pool),
+		obshandler.WithKubeconfigProvider(kubeconfigProvider),
+	)
 	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, pgAlertRuleRepo)
 
 	// Echo

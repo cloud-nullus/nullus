@@ -13,6 +13,7 @@ import { useStackConfigStore } from '../stores/stack-config-store'
 import type { InstallTab, ToolSelection, StackConfigDraft } from '../stores/stack-config-store'
 import { useCreateStack, useSaveDraft, useEstimateResources, useClusters, toCreateStackBody } from '../api/stack-api'
 import { api } from '../../../lib/api'
+import { useAppToast } from '../../../hooks/use-toast'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -483,6 +484,7 @@ export function StackInstallPage() {
   const { draft, setActiveTab, setTool, setStackName, setCluster, setNamespace, updateResources } = useStackConfigStore()
   const createStack = useCreateStack()
   const saveDraft = useSaveDraft()
+  const toast = useAppToast()
   const estimateResources = useEstimateResources()
   const { data: clusters } = useClusters()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
@@ -646,11 +648,23 @@ export function StackInstallPage() {
     try {
       const createRes = await api.post<{ id: string }>('/stacks', body)
       const stackId = createRes.data?.id
-      if (!stackId) { navigate('/stack/list'); return }
-      await api.post(`/stacks/${stackId}/deploy`).catch(() => { })
+      if (!stackId) {
+        toast.error('스택 생성 응답에 id가 없습니다')
+        return
+      }
+      await api.post(`/stacks/${stackId}/deploy`).catch((err) => {
+        const msg = (err && typeof err === 'object' && 'message' in err) ? String((err as { message: unknown }).message) : '배포 시작 실패'
+        toast.error(`배포 시작 실패: ${msg}`)
+      })
       navigate(`/stack/deploy/${stackId}`)
-    } catch {
-      navigate('/stack/list')
+    } catch (err) {
+      const e = err as { status?: number; message?: string; details?: unknown }
+      const detail = (e?.details && typeof e.details === 'object' && 'error' in e.details && typeof (e.details as { error: { message?: string } }).error?.message === 'string')
+        ? (e.details as { error: { message: string } }).error.message
+        : e?.message ?? '알 수 없는 오류'
+      // eslint-disable-next-line no-console
+      console.error('stack create failed', { status: e?.status, body, error: err })
+      toast.error(`스택 생성 실패 (${e?.status ?? '?'}): ${detail}`)
     }
   }
 

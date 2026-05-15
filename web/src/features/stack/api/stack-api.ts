@@ -9,6 +9,7 @@ import type {
   StackHistoryEntry,
   StackTemplate,
   StackVersionDiff,
+  StackWorkloads,
 } from '../../../types'
 
 export interface TemplateMutationRequest {
@@ -46,6 +47,7 @@ const queryKeys = {
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
+  workloads: (stackId: string) => ['stacks', 'workloads', stackId] as const,
 }
 
 interface RawTemplate {
@@ -312,6 +314,9 @@ const stackApiCalls = {
 
   deployStack: (stackId: string) =>
     api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
+
+  getWorkloads: (stackId: string) =>
+    api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -473,5 +478,14 @@ export function useDeployStack() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
     },
+  })
+}
+
+export function useStackWorkloads(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.workloads(stackId),
+    queryFn: () => stackApiCalls.getWorkloads(stackId),
+    enabled: !!stackId,
+    refetchInterval: 30_000,
   })
 }

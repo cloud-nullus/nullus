@@ -324,6 +324,7 @@ export interface DeployAppRequest {
   clusterId: string
   namespace: string
   templateId: AppTemplate
+  stackId?: string
   replicas?: number
   port?: number
   resources: {
@@ -346,6 +347,47 @@ export interface CreateAlertRuleRequest {
   condition: string
   threshold: string
   channel: AlertChannel
+}
+
+// K8s Workload monitoring types for Stack → CI/CD integration
+export interface K8sObject {
+  kind: string
+  name: string
+  namespace: string
+  status: string
+  replicas?: number
+  port?: number
+  host?: string
+  node?: string
+}
+
+export interface WorkloadDeployment {
+  id: string
+  status: string
+  startedAt: string
+  version: string
+}
+
+export interface StackWorkloadPipeline {
+  id: string
+  name: string
+  namespace: string
+  status: string
+  lastDeployment: WorkloadDeployment | null
+  k8sObjects: K8sObject[]
+}
+
+export interface StackWorkloadSummary {
+  totalPipelines: number
+  totalDeployments: number
+  runningPods: number
+  pendingPods: number
+  failedPods: number
+}
+
+export interface StackWorkloads {
+  pipelines: StackWorkloadPipeline[]
+  summary: StackWorkloadSummary
 }
 
 export type StackTemplate = Template

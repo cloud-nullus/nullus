@@ -52,7 +52,8 @@ import { Button } from "../../../components/ui/button";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
-import { useDeleteStack, useStacks } from "../api/stack-api";
+import { useDeleteStack, useStacks, useStackWorkloads } from "../api/stack-api";
+import type { StackWorkloadPipeline } from "../../../types";
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
@@ -623,64 +624,223 @@ function generateMonitoringSeries(range: MonitoringRange) {
 	});
 }
 
-function StackMonitoringTab() {
-	const [range, setRange] = useState<MonitoringRange>("24h");
-	const usageData = useMemo(() => generateMonitoringSeries(range), [range]);
-
-	const pipelineBars = useMemo(
-		() => [
-			{ day: "Mon", success: 16, failed: 2 },
-			{ day: "Tue", success: 19, failed: 3 },
-			{ day: "Wed", success: 15, failed: 4 },
-			{ day: "Thu", success: 21, failed: 2 },
-			{ day: "Fri", success: 24, failed: 3 },
-			{ day: "Sat", success: 11, failed: 2 },
-			{ day: "Sun", success: 9, failed: 1 },
-		],
-		[],
+function K8sObjectBadge({ kind, status }: { kind: string; status?: string }) {
+	const styles: Record<string, { bg: string; color: string }> = {
+		Deployment: { bg: "rgba(99,102,241,0.15)", color: "#a5b4fc" },
+		Pod: { bg: "rgba(34,197,94,0.15)", color: "#86efac" },
+		Service: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa" },
+		Ingress: { bg: "rgba(245,158,11,0.15)", color: "#fcd34d" },
+	};
+	if (kind === "Pod" && status && status !== "Running") {
+		if (status === "Pending") {
+			return (
+				<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(245,158,11,0.15)] text-[#fbbf24]">
+					{kind}
+				</span>
+			);
+		}
+		return (
+			<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(239,68,68,0.15)] text-[#ef4444]">
+				{kind}
+			</span>
+		);
+	}
+	const s = styles[kind] ?? { bg: "rgba(107,114,128,0.15)", color: "#9ca3af" };
+	return (
+		<span
+			className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+			style={{ background: s.bg, color: s.color }}
+		>
+			{kind}
+		</span>
 	);
+}
 
+function WorkloadRow({ pipeline }: { pipeline: StackWorkloadPipeline }) {
+	const [open, setOpen] = useState(true);
+	const deployStatus = pipeline.lastDeployment?.status ?? "none";
+	const statusStyle = STATUS_STYLES[deployStatus] ?? STATUS_STYLES.pending;
+
+	return (
+		<>
+			<tr
+				className="cursor-pointer border-b border-[var(--color-border-default)] transition-colors hover:bg-[rgba(99,102,241,0.06)]"
+				onClick={() => setOpen((o) => !o)}
+			>
+				<td className="px-3 py-2.5">
+					<button type="button" className="border-none bg-transparent p-0 text-[var(--color-text-secondary)]">
+						{open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+					</button>
+				</td>
+				<td className="px-3 py-2.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
+					{pipeline.name}
+				</td>
+				<td className="px-3 py-2.5 text-[13px] text-[var(--color-text-secondary)]">
+					{pipeline.namespace}
+				</td>
+				<td className="px-3 py-2.5">
+					<span
+						className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+						style={{ background: statusStyle.bg, color: statusStyle.color }}
+					>
+						{statusStyle.label}
+					</span>
+				</td>
+				<td className="px-3 py-2.5 text-[12px] text-[var(--color-text-secondary)]">
+					{pipeline.lastDeployment
+						? new Date(pipeline.lastDeployment.startedAt).toLocaleString("ko-KR")
+						: "-"}
+				</td>
+				<td className="px-3 py-2.5">
+					<div className="flex flex-wrap gap-1">
+						{pipeline.k8sObjects.filter((obj) => obj.kind !== "Pod").map((obj) => (
+							<K8sObjectBadge key={`${obj.kind}-${obj.name}`} kind={obj.kind} />
+						))}
+						{(() => {
+							const pods = pipeline.k8sObjects.filter((o) => o.kind === "Pod");
+							if (pods.length === 0) return null;
+							const running = pods.filter((p) => p.status === "Running").length;
+							const failed = pods.filter((p) => p.status !== "Running" && p.status !== "Pending").length;
+							const pending = pods.filter((p) => p.status === "Pending").length;
+							return (
+								<div className="flex gap-1">
+									{running > 0 && (
+										<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(34,197,94,0.15)] text-[#86efac]">
+											Pod {running} Running
+										</span>
+									)}
+									{pending > 0 && (
+										<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(245,158,11,0.15)] text-[#fbbf24]">
+											Pod {pending} Pending
+										</span>
+									)}
+									{failed > 0 && (
+										<span className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(239,68,68,0.15)] text-[#ef4444]">
+											<AlertCircle size={10} /> Pod {failed} Failed
+										</span>
+									)}
+								</div>
+							);
+						})()}
+					</div>
+				</td>
+			</tr>
+			{open && (
+				<tr>
+					<td colSpan={7} className="bg-[rgba(255,255,255,0.02)] p-0">
+						<div className="px-6 py-3">
+							<div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+								{[...pipeline.k8sObjects].sort((a, b) => {
+									const priority = (o: typeof a) => {
+										if (o.kind !== "Pod") return 2;
+										if (o.status !== "Running" && o.status !== "Pending") return 0;
+										if (o.status === "Pending") return 1;
+										return 3;
+									};
+									return priority(a) - priority(b);
+								}).map((obj) => {
+									const isPod = obj.kind === "Pod";
+									const isFailed = isPod && obj.status !== "Running" && obj.status !== "Pending";
+									const isPending = isPod && obj.status === "Pending";
+									const podStatusColor = isPod
+										? obj.status === "Running" ? "#22c55e"
+										: isPending ? "#f59e0b" : "#ef4444"
+										: undefined;
+									const borderClass = isFailed
+										? "border-[#ef4444]/40 bg-[rgba(239,68,68,0.05)]"
+										: isPending
+										? "border-[#f59e0b]/30 bg-[rgba(245,158,11,0.03)]"
+										: "border-[var(--color-border-default)]";
+									return (
+										<div
+											key={`${obj.kind}-${obj.name}`}
+											className={`flex items-center justify-between rounded-lg border px-3 py-2 ${borderClass}`}
+										>
+											<div className="flex items-center gap-2">
+												{isFailed && <AlertCircle size={13} className="text-[#ef4444] shrink-0" />}
+												<K8sObjectBadge kind={obj.kind} status={obj.status} />
+												<span className={`text-[12px] font-medium ${isFailed ? "text-[#ef4444]" : "text-[var(--color-text-primary)]"}`}>
+													{obj.name}
+												</span>
+											</div>
+											<div className="flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
+												{isPod && podStatusColor && (
+													<span className="flex items-center gap-1">
+														<span className="inline-block h-2 w-2 rounded-full" style={{ background: podStatusColor }} />
+														<span className={`font-semibold ${isFailed ? "text-[#ef4444]" : ""}`}>{obj.status}</span>
+													</span>
+												)}
+												{isPod && obj.node && (
+													<span className="flex items-center gap-0.5 text-[var(--color-text-muted)]">
+														<Server size={10} /> {obj.node}
+													</span>
+												)}
+												{obj.replicas != null && <span>Replicas: {obj.replicas}</span>}
+												{obj.port != null && obj.port > 0 && <span>:{obj.port}</span>}
+												{obj.host && <span className="truncate max-w-[140px]">{obj.host}</span>}
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						</div>
+					</td>
+				</tr>
+			)}
+		</>
+	);
+}
+
+function StackMonitoringTab({ stackId }: { stackId: string }) {
+	const { data: workloads } = useStackWorkloads(stackId);
+
+	const summary = workloads?.summary;
+	const pipelineList = workloads?.pipelines ?? [];
+
+	const totalPods = (summary?.runningPods ?? 0) + (summary?.pendingPods ?? 0) + (summary?.failedPods ?? 0);
 	const podStatusData = useMemo(
 		() => [
-			{ name: "Running", value: 24, color: "#22c55e" },
-			{ name: "Pending", value: 2, color: "#f59e0b" },
-			{ name: "Failed", value: 1, color: "#ef4444" },
+			{ name: "Running", value: summary?.runningPods ?? 0, color: "#22c55e" },
+			{ name: "Pending", value: summary?.pendingPods ?? 0, color: "#f59e0b" },
+			{ name: "Failed", value: summary?.failedPods ?? 0, color: "#ef4444" },
 		],
-		[],
+		[summary],
 	);
 
 	const kpiCards = [
 		{
-			label: "CPU 사용률",
-			value: "68%",
-			icon: <Cpu size={18} />,
+			label: "Pipelines",
+			value: String(summary?.totalPipelines ?? 0),
+			icon: <GitBranch size={18} />,
 			color: "#60a5fa",
 			iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]",
-			bar: 68,
+			bar: Math.min(100, (summary?.totalPipelines ?? 0) * 20),
 		},
 		{
-			label: "메모리 사용률",
-			value: "42%",
-			icon: <MemoryStick size={18} />,
+			label: "Deployments",
+			value: String(summary?.totalDeployments ?? 0),
+			icon: <Layers size={18} />,
 			color: "#a78bfa",
 			iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]",
-			bar: 42,
+			bar: Math.min(100, (summary?.totalDeployments ?? 0) * 20),
 		},
 		{
-			label: "스토리지",
-			value: "31%",
-			icon: <HardDrive size={18} />,
+			label: "Running Pods",
+			value: `${summary?.runningPods ?? 0} / ${totalPods}`,
+			icon: <Box size={18} />,
 			color: "#34d399",
 			iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
-			bar: 31,
+			bar: totalPods > 0 ? Math.round(((summary?.runningPods ?? 0) / totalPods) * 100) : 0,
 		},
 		{
-			label: "Pod 수",
-			value: "24 / 27",
-			icon: <Box size={18} />,
-			color: "#fbbf24",
-			iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]",
-			bar: 89,
+			label: "Failed Pods",
+			value: String(summary?.failedPods ?? 0),
+			icon: <XCircle size={18} />,
+			color: summary?.failedPods ? "#ef4444" : "#34d399",
+			iconWrapClassName: summary?.failedPods
+				? "bg-[rgba(239,68,68,0.15)] text-[#ef4444]"
+				: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
+			bar: totalPods > 0 ? Math.round(((summary?.failedPods ?? 0) / totalPods) * 100) : 0,
 		},
 	];
 
@@ -721,242 +881,175 @@ function StackMonitoringTab() {
 				))}
 			</div>
 
-			<div className={cn(cardClassName, "mb-6")}>
-				<div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
-					<h2 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
-						Monitoring Charts
+			{/* Deployed Pods Overview */}
+			{pipelineList.length > 0 && (() => {
+				const allPods = pipelineList.flatMap((p) =>
+					p.k8sObjects
+						.filter((o) => o.kind === "Pod")
+						.map((pod) => ({ ...pod, appName: p.name, appNamespace: p.namespace, deployStatus: p.lastDeployment?.status ?? "unknown", deployedAt: p.lastDeployment?.startedAt, node: pod.node ?? "-" }))
+				);
+				const failedFirst = [...allPods].sort((a, b) => {
+					const pri = (s: string | undefined) => s === "CrashLoopBackOff" || s === "Error" || s === "Failed" ? 0 : s === "Pending" ? 1 : 2;
+					return pri(a.status) - pri(b.status);
+				});
+				return (
+					<div className={cn(cardClassName, "mb-6")}>
+						<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
+							Deployed Pods ({allPods.length})
+						</h2>
+						<div className="overflow-x-auto">
+							<table className="w-full text-left">
+								<thead>
+									<tr className="border-b border-[var(--color-border-default)]">
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Status</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Pod Name</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Node</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">App</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Namespace</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Deploy Status</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Deployed At</th>
+									</tr>
+								</thead>
+								<tbody>
+									{failedFirst.map((pod) => {
+										const isFailed = pod.status !== "Running" && pod.status !== "Pending";
+										const isPending = pod.status === "Pending";
+										const dotColor = isFailed ? "#ef4444" : isPending ? "#f59e0b" : "#22c55e";
+										const rowBg = isFailed ? "bg-[rgba(239,68,68,0.04)]" : isPending ? "bg-[rgba(245,158,11,0.03)]" : "";
+										return (
+											<tr key={`${pod.appName}-${pod.name}`} className={`border-b border-[var(--color-border-default)] ${rowBg}`}>
+												<td className="px-3 py-2">
+													<span className="flex items-center gap-1.5">
+														<span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: dotColor }} />
+														<span className={`text-[12px] font-semibold ${isFailed ? "text-[#ef4444]" : isPending ? "text-[#fbbf24]" : "text-[#22c55e]"}`}>
+															{pod.status}
+														</span>
+													</span>
+												</td>
+												<td className="px-3 py-2">
+													<span className={`text-[12px] font-mono ${isFailed ? "text-[#ef4444] font-bold" : "text-[var(--color-text-primary)]"}`}>
+														{pod.name}
+													</span>
+												</td>
+												<td className="px-3 py-2">
+													<span className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
+														<Server size={11} className="shrink-0 text-[var(--color-text-muted)]" />
+														{pod.node}
+													</span>
+												</td>
+												<td className="px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">{pod.appName}</td>
+												<td className="px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">{pod.appNamespace}</td>
+												<td className="px-3 py-2">
+													<K8sObjectBadge kind={pod.deployStatus === "success" ? "Service" : "Pod"} status={pod.deployStatus} />
+												</td>
+												<td className="px-3 py-2 text-[11px] text-[var(--color-text-secondary)]">
+													{pod.deployedAt ? new Date(pod.deployedAt).toLocaleString("ko-KR") : "-"}
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				);
+			})()}
+
+			{/* CI/CD Workloads Table */}
+			{pipelineList.length > 0 && (
+				<div className={cn(cardClassName, "mb-6")}>
+					<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
+						CI/CD Workloads
 					</h2>
-					<div className="flex gap-1.5">
-						{(["1h", "6h", "24h", "7d"] as const).map((item) => {
-							const active = range === item;
-							return (
-								<button
-									key={item}
-									type="button"
-									onClick={() => setRange(item)}
-									className={cn(
-										"cursor-pointer rounded-[7px] border px-2.5 py-[5px] text-xs font-bold",
-										active
-											? "border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]"
-											: "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]",
-									)}
-								>
-									{item}
-								</button>
-							);
-						})}
+					<div className="overflow-x-auto">
+						<table className="w-full text-left">
+							<thead>
+								<tr className="border-b border-[var(--color-border-default)]">
+									<th className="w-8 px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]" />
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">App</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Namespace</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Status</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Last Deploy</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">K8s Objects</th>
+								</tr>
+							</thead>
+							<tbody>
+								{pipelineList.map((p) => (
+									<WorkloadRow key={p.id} pipeline={p} />
+								))}
+							</tbody>
+						</table>
 					</div>
 				</div>
+			)}
 
-				<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
-					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							CPU Usage
-						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<AreaChart data={usageData}>
-								<defs>
-									<linearGradient
-										id="stackCpuGradient"
-										x1="0"
-										y1="0"
-										x2="0"
-										y2="1"
-									>
-										<stop offset="5%" stopColor="#f59e0b" stopOpacity={0.58} />
-										<stop offset="95%" stopColor="#f59e0b" stopOpacity={0.06} />
-									</linearGradient>
-								</defs>
-								<CartesianGrid
-									stroke="rgba(148,163,184,0.2)"
-									strokeDasharray="3 3"
-								/>
-								<XAxis
-									dataKey="time"
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<YAxis
-									domain={[0, 100]}
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-								<Area
-									type="monotone"
-									dataKey="cpu"
-									stroke="#f59e0b"
-									strokeWidth={2}
-									fill="url(#stackCpuGradient)"
-									name="CPU %"
-								/>
-							</AreaChart>
-						</ResponsiveContainer>
-					</div>
-
-					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							Memory Usage
-						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<AreaChart data={usageData}>
-								<defs>
-									<linearGradient
-										id="stackMemoryGradient"
-										x1="0"
-										y1="0"
-										x2="0"
-										y2="1"
-									>
-										<stop offset="5%" stopColor="#3b82f6" stopOpacity={0.54} />
-										<stop offset="95%" stopColor="#3b82f6" stopOpacity={0.08} />
-									</linearGradient>
-								</defs>
-								<CartesianGrid
-									stroke="rgba(148,163,184,0.2)"
-									strokeDasharray="3 3"
-								/>
-								<XAxis
-									dataKey="time"
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<YAxis
-									domain={[0, 100]}
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-								<Area
-									type="monotone"
-									dataKey="memory"
-									stroke="#3b82f6"
-									strokeWidth={2}
-									fill="url(#stackMemoryGradient)"
-									name="Memory %"
-								/>
-							</AreaChart>
-						</ResponsiveContainer>
-					</div>
-
-					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							Pipeline Success Rate
-						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<BarChart data={pipelineBars}>
-								<CartesianGrid
-									stroke="rgba(148,163,184,0.2)"
-									strokeDasharray="3 3"
-								/>
-								<XAxis
-									dataKey="day"
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<YAxis
-									stroke="#cbd5e1"
-									tick={{ fill: "#cbd5e1", fontSize: 11 }}
-								/>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-								<Bar dataKey="success" fill="#22c55e" radius={[5, 5, 0, 0]} />
-								<Bar dataKey="failed" fill="#ef4444" radius={[5, 5, 0, 0]} />
-							</BarChart>
-						</ResponsiveContainer>
-					</div>
-
-					<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-						<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
-							Pod Status
-						</div>
-						<ResponsiveContainer width="100%" height={250}>
-							<PieChart>
-								<Pie
-									data={podStatusData}
-									dataKey="value"
-									nameKey="name"
-									cx="50%"
-									cy="50%"
-									outerRadius={86}
-									label
-								>
-									{podStatusData.map((entry) => (
-										<Cell key={entry.name} fill={entry.color} />
-									))}
-								</Pie>
-								<Tooltip
-									contentStyle={{
-										background: "#111827",
-										border: "1px solid #374151",
-										color: "#e5e7eb",
-									}}
-								/>
-								<Legend wrapperStyle={{ color: "#e5e7eb" }} />
-							</PieChart>
-						</ResponsiveContainer>
-					</div>
-				</div>
-
-				<div className="mt-3 text-xs text-[var(--color-text-secondary)]">
-					Pipeline summary: 97.3% success, 145 total runs, average build 2m 34s.
-				</div>
-			</div>
-
-			<div className={cardClassName}>
-				<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
-					Tool Health
-				</h2>
-				<div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-					{tools.map((tool) => {
-						const cfg = TOOL_STATUS_CONFIG[tool.status];
-						return (
-							<div
-								key={tool.name}
-								className="rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3.5"
-							>
-								<div className="mb-1.5 flex items-center justify-between">
-									<span className="text-sm font-bold text-[var(--color-text-primary)]">
-										{tool.name}
-									</span>
-									<span
-										className={cn(
-											"inline-flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[11px] font-semibold",
-											cfg.badgeClassName,
-										)}
-									>
-										{cfg.icon}
-										{cfg.label}
-									</span>
-								</div>
-								<div className="text-xs text-[var(--color-text-secondary)]">
-									v{tool.version}
-								</div>
+			{/* Pod Status Chart - real data only */}
+			{totalPods > 0 && (
+				<div className={cn(cardClassName, "mb-6")}>
+					<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
+						Pod Status Overview
+					</h2>
+					<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
+						<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+							<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+								Pod Status Distribution
 							</div>
-						);
-					})}
+							<ResponsiveContainer width="100%" height={250}>
+								<PieChart>
+									<Pie
+										data={podStatusData}
+										dataKey="value"
+										nameKey="name"
+										cx="50%"
+										cy="50%"
+										outerRadius={86}
+										label
+									>
+										{podStatusData.map((entry) => (
+											<Cell key={entry.name} fill={entry.color} />
+										))}
+									</Pie>
+									<Tooltip
+										contentStyle={{
+											background: "#111827",
+											border: "1px solid #374151",
+											color: "#e5e7eb",
+										}}
+									/>
+									<Legend wrapperStyle={{ color: "#e5e7eb" }} />
+								</PieChart>
+							</ResponsiveContainer>
+						</div>
+
+						<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+							<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+								Pods per App
+							</div>
+							<ResponsiveContainer width="100%" height={250}>
+								<BarChart data={pipelineList.map((p) => ({
+									name: p.name,
+									running: p.k8sObjects.filter((o) => o.kind === "Pod" && o.status === "Running").length,
+									pending: p.k8sObjects.filter((o) => o.kind === "Pod" && o.status === "Pending").length,
+									failed: p.k8sObjects.filter((o) => o.kind === "Pod" && o.status !== "Running" && o.status !== "Pending").length,
+								}))}>
+									<CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
+									<XAxis dataKey="name" stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+									<YAxis stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 11 }} allowDecimals={false} />
+									<Tooltip contentStyle={{ background: "#111827", border: "1px solid #374151", color: "#e5e7eb" }} />
+									<Legend wrapperStyle={{ color: "#e5e7eb" }} />
+									<Bar dataKey="running" fill="#22c55e" radius={[5, 5, 0, 0]} name="Running" />
+									<Bar dataKey="pending" fill="#f59e0b" radius={[5, 5, 0, 0]} name="Pending" />
+									<Bar dataKey="failed" fill="#ef4444" radius={[5, 5, 0, 0]} name="Failed" />
+								</BarChart>
+							</ResponsiveContainer>
+						</div>
+					</div>
+
+					<div className="mt-3 text-xs text-[var(--color-text-secondary)]">
+						Total: {totalPods} pods — {summary?.runningPods ?? 0} running, {summary?.pendingPods ?? 0} pending, {summary?.failedPods ?? 0} failed
+					</div>
 				</div>
-			</div>
+			)}
 		</div>
 	);
 }
@@ -1288,7 +1381,7 @@ function StackDetailPanel({ stack }: { stack: Stack }) {
 
 			<div className="p-5">
 				{innerTab === "info" && <StackInfoTab />}
-				{innerTab === "monitoring" && <StackMonitoringTab />}
+				{innerTab === "monitoring" && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
 			</div>

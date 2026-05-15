@@ -14,7 +14,9 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>
 
-const ORG_ID = '89226bdf-96fd-4d12-9ff5-c1d4f555c5ad'
+// Must match an existing row in the `organizations` table.
+// Nullus DevOps Team — also owns the seed stacks visible in stack list / monitoring.
+const ORG_ID = '11111111-1111-1111-1111-111111111111'
 
 const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   'admin@nullus.dev': {

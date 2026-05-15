@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -232,7 +233,11 @@ func (r *PostgresStackRepository) scanStackWithConfig(row pgxScanner) (*domain.S
 
 	var cfg domain.StackConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal config: %w", err)
+		// Tolerate legacy/incompatible config shapes so listing or fetch by ID still
+		// succeeds — the dashboard only needs identity fields (name/namespace/cluster/state).
+		slog.Warn("stack config unmarshal failed, falling back to empty config",
+			"stack_id", s.ID, "error", err)
+		cfg = domain.StackConfig{}
 	}
 	s.Config = cfg
 

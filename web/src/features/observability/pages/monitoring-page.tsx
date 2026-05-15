@@ -10,7 +10,7 @@ import {
   Activity, Clock, Package, TrendingUp, TrendingDown, Layers,
 } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-import { useDashboard } from '../api/observability-api'
+import { useDashboard, useDeployedApps } from '../api/observability-api'
 import type { ToolHealthStatus } from '../api/observability-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
@@ -591,6 +591,118 @@ function StackDefault({ stackName }: { stackName: string }) {
   )
 }
 
+// ─── Deployed Stacks panel (visible regardless of view) ─────────────────────
+function DeployedStacksPanel() {
+  const { data, isLoading } = useDeployedApps()
+  const apps = data?.items ?? []
+
+  return (
+    <div className="mb-5 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
+      <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-3">
+        <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
+          <Package size={15} className="text-[#a5b4fc]" />
+          Deployed Stacks
+        </h2>
+        <span className="text-xs text-[var(--color-text-secondary)]">
+          {isLoading ? 'loading…' : `${apps.length} stacks`}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        {apps.length === 0 ? (
+          <div className="py-10 text-center text-sm text-[var(--color-text-secondary)]">
+            배포된 스택이 없습니다. Stack Template에서 스택을 만들어 배포해보세요.
+          </div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-[var(--color-border-default)] text-[11px] text-[var(--color-text-secondary)]">
+                {['Stack', 'Template', 'Namespace', 'Cluster', 'Pods', 'Status', 'Deployed At'].map((h) => (
+                  <th key={h} className="px-4 py-2.5 text-left font-semibold tracking-[0.03em]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {apps.map((app, i) => {
+                const isLast = i === apps.length - 1
+                const statusColor = app.status === 'success'
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : app.status === 'failed'
+                    ? 'bg-red-500/15 text-red-400'
+                    : 'bg-amber-500/15 text-amber-400'
+                const dotColor = app.status === 'success'
+                  ? 'bg-emerald-400'
+                  : app.status === 'failed'
+                    ? 'bg-red-400'
+                    : 'bg-amber-400'
+                return (
+                  <tr key={app.id}
+                    className={cn('transition-colors hover:bg-[rgba(255,255,255,0.02)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className={cn('h-2 w-2 shrink-0 rounded-full', dotColor)} />
+                        <span className="font-semibold text-[var(--color-text-primary)]">{app.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
+                        <GitBranch size={11} />{app.template_id || '-'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-[4px] bg-[rgba(99,102,241,0.12)] px-1.5 py-0.5 text-[10px] font-bold text-[#a5b4fc]">
+                        {app.namespace}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
+                        <Server size={11} className="text-[var(--color-text-muted)]" />
+                        <span className="font-medium text-[var(--color-text-primary)]">
+                          {app.cluster_name || app.cluster_id?.slice(0, 8)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(app.pods ?? []).length === 0 ? (
+                          <span className="text-[10px] italic text-[var(--color-text-muted)]">no pods</span>
+                        ) : (
+                          (app.pods ?? []).map((pod) => (
+                            <span
+                              key={pod.name}
+                              title={pod.node ? `node: ${pod.node} · ${pod.status}` : pod.status}
+                              className="inline-flex items-center gap-0.5 rounded-[4px] bg-[rgba(34,197,94,0.1)] px-1.5 py-0.5 text-[10px] font-mono text-[#4ade80]"
+                            >
+                              <Box size={9} />{pod.name}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', statusColor)}
+                        title={app.state ? `state: ${app.state}` : undefined}
+                      >
+                        {app.state || app.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
+                        <Clock size={11} />
+                        {new Date(app.deployed_at).toLocaleString('ko-KR')}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Default content: CI/CD view ─────────────────────────────────────────────
 // ─── CI/CD Application monitoring data ───────────────────────────────────────
 type AppStatus = 'healthy' | 'degraded' | 'down'
@@ -663,39 +775,25 @@ export const CICD_DEFAULT_TABS: EmbedTab[] = [
 ]
 
 function CicdDefault() {
-  const [envFilter, setEnvFilter] = useState<AppEnv | 'all'>('all')
   const [range, setRange] = useState<TimeRange>('24h')
+  const { data: deployedAppsData } = useDeployedApps()
+  const deployedApps = deployedAppsData?.items ?? []
 
-  const filtered = envFilter === 'all' ? MOCK_APPS : MOCK_APPS.filter((a) => a.env === envFilter)
-
-  const healthy = filtered.filter((a) => a.status === 'healthy').length
-  const degraded = filtered.filter((a) => a.status === 'degraded').length
-  const down = filtered.filter((a) => a.status === 'down').length
-  const totalPods = filtered.reduce((s, a) => s + a.pods[0], 0)
+  const healthy = deployedApps.filter((a) => a.status === 'success').length
+  const failed = deployedApps.filter((a) => a.status === 'failed').length
+  const running = deployedApps.filter((a) => a.status === 'running').length
 
   const appKpis = [
-    { label: 'Total Apps', value: String(filtered.length), icon: <Layers size={18} />, color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 100 },
-    { label: 'Healthy', value: String(healthy), icon: <CheckCircle size={18} />, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: Math.round(healthy / filtered.length * 100) || 0 },
-    { label: 'Degraded / Down', value: `${degraded} / ${down}`, icon: <AlertCircle size={18} />, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400', bar: Math.round((degraded + down) / filtered.length * 100) || 0 },
-    { label: 'Running Pods', value: String(totalPods), icon: <Box size={18} />, color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: 80 },
+    { label: 'Total Apps', value: String(deployedApps.length), icon: <Layers size={18} />, color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 100 },
+    { label: 'Success', value: String(healthy), icon: <CheckCircle size={18} />, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: deployedApps.length ? Math.round(healthy / deployedApps.length * 100) : 0 },
+    { label: 'Failed / Running', value: `${failed} / ${running}`, icon: <AlertCircle size={18} />, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400', bar: deployedApps.length ? Math.round((failed + running) / deployedApps.length * 100) : 0 },
+    { label: 'Namespaces', value: String(new Set(deployedApps.map((a) => a.namespace)).size), icon: <Box size={18} />, color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: 80 },
   ]
 
   return (
     <div>
       {/* Toolbar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[var(--color-text-secondary)]">Environment</span>
-          {(['all', 'prod', 'staging', 'dev'] as const).map((e) => (
-            <button key={e} type="button" onClick={() => setEnvFilter(e)}
-              className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold capitalize',
-                envFilter === e
-                  ? 'border-[rgba(99,102,241,0.6)] bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
-              {e === 'all' ? 'All' : e}
-            </button>
-          ))}
-        </div>
         <div className="ml-auto flex items-center gap-2">
           {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
             <button key={r} type="button" onClick={() => setRange(r)}
@@ -761,78 +859,98 @@ function CicdDefault() {
             <Package size={15} className="text-[#a5b4fc]" />
             Deployed Applications
           </h2>
-          <span className="text-xs text-[var(--color-text-secondary)]">{filtered.length} apps</span>
+          <span className="text-xs text-[var(--color-text-secondary)]">{deployedApps.length} apps</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-[var(--color-border-default)] text-[11px] text-[var(--color-text-secondary)]">
-                {['Application', 'Version', 'Pipeline', 'Env', 'Status', 'Pods', 'Resp. Time', 'Error Rate', 'Req/min', 'Last Deploy'].map((h) => (
-                  <th key={h} className="px-4 py-2.5 text-left font-semibold tracking-[0.03em]">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((app, i) => {
-                const sc = APP_STATUS_CFG[app.status]
-                const ec = ENV_CFG[app.env]
-                const isLast = i === filtered.length - 1
-                return (
-                  <tr key={app.name}
-                    className={cn('transition-colors hover:bg-[rgba(255,255,255,0.02)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={cn('h-2 w-2 shrink-0 rounded-full', sc.dot)} />
-                        <span className="font-semibold text-[var(--color-text-primary)]">{app.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">{app.version}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
-                        <GitBranch size={11} />{app.pipeline}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn('rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase', ec.cls)}>{app.env}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', sc.cls)}>{sc.label}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn('font-mono', app.pods[0] < app.pods[1] ? 'text-amber-400' : 'text-[var(--color-text-primary)]')}>
-                        {app.pods[0]}/{app.pods[1]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn('font-mono', app.respMs > 300 ? 'text-amber-400' : app.respMs === 0 ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-primary)]')}>
-                        {app.respMs ? `${app.respMs}ms` : '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 font-mono">
-                        {app.errRate > 1
-                          ? <><TrendingUp size={11} className="text-red-400" /><span className="text-red-400">{app.errRate}%</span></>
-                          : app.errRate > 0
-                            ? <><TrendingUp size={11} className="text-amber-400" /><span className="text-amber-400">{app.errRate}%</span></>
-                            : <><TrendingDown size={11} className="text-emerald-400" /><span className="text-emerald-400">0%</span></>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
-                        <Activity size={11} />
-                        <span className="font-mono">{app.reqRate > 0 ? app.reqRate.toLocaleString() : '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
-                        <Clock size={11} />{app.lastDeploy}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          {deployedApps.length === 0 ? (
+            <div className="py-10 text-center text-sm text-[var(--color-text-secondary)]">
+              배포된 앱이 없습니다. CI/CD Pipeline Setup에서 앱을 배포해보세요.
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[var(--color-border-default)] text-[11px] text-[var(--color-text-secondary)]">
+                  {['Application', 'Version', 'Template', 'Namespace', 'Cluster', 'Pods', 'Status', 'Deployed At'].map((h) => (
+                    <th key={h} className="px-4 py-2.5 text-left font-semibold tracking-[0.03em]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {deployedApps.map((app, i) => {
+                  const isLast = i === deployedApps.length - 1
+                  const statusColor = app.status === 'success'
+                    ? 'bg-emerald-500/15 text-emerald-400'
+                    : app.status === 'failed'
+                      ? 'bg-red-500/15 text-red-400'
+                      : 'bg-amber-500/15 text-amber-400'
+                  const dotColor = app.status === 'success'
+                    ? 'bg-emerald-400'
+                    : app.status === 'failed'
+                      ? 'bg-red-400'
+                      : 'bg-amber-400'
+                  return (
+                    <tr key={app.id}
+                      className={cn('transition-colors hover:bg-[rgba(255,255,255,0.02)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className={cn('h-2 w-2 shrink-0 rounded-full', dotColor)} />
+                          <span className="font-semibold text-[var(--color-text-primary)]">{app.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">{app.version}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
+                          <GitBranch size={11} />{app.template_id}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-[4px] bg-[rgba(99,102,241,0.12)] px-1.5 py-0.5 text-[10px] font-bold text-[#a5b4fc]">
+                          {app.namespace}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
+                          <Server size={11} className="text-[var(--color-text-muted)]" />
+                          <span className="font-medium text-[var(--color-text-primary)]">{app.cluster_name || app.cluster_id?.slice(0, 8)}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {(app.pods ?? []).length === 0 ? (
+                            <span className="text-[10px] italic text-[var(--color-text-muted)]">no pods</span>
+                          ) : (
+                            (app.pods ?? []).map((pod) => (
+                              <span
+                                key={pod.name}
+                                title={pod.node ? `node: ${pod.node} · ${pod.status}` : pod.status}
+                                className="inline-flex items-center gap-0.5 rounded-[4px] bg-[rgba(34,197,94,0.1)] px-1.5 py-0.5 text-[10px] font-mono text-[#4ade80]"
+                              >
+                                <Box size={9} />{pod.name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', statusColor)}
+                          title={app.state ? `state: ${app.state}` : undefined}
+                        >
+                          {app.state || app.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
+                          <Clock size={11} />
+                          {new Date(app.deployed_at).toLocaleString('ko-KR')}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -845,25 +963,32 @@ function CicdDefault() {
           </h2>
         </div>
         <div className="divide-y divide-[var(--color-border-default)]">
-          {RECENT_DEPLOYS.map((d) => (
-            <div key={`${d.app}-${d.time}`} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3">
-              <div className="flex items-center gap-2">
-                {d.status === 'success'
-                  ? <CheckCircle size={13} className="text-emerald-400" />
-                  : <XCircle size={13} className="text-red-400" />}
-                <span className="font-semibold text-[var(--color-text-primary)]">{d.app}</span>
-              </div>
-              <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">{d.version}</span>
-              <span className={cn('rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase', ENV_CFG[d.env as AppEnv].cls)}>{d.env}</span>
-              <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
-                <GitBranch size={10} />{d.pipeline}
-              </div>
-              <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
-                <Clock size={10} />{d.duration}
-              </div>
-              <span className="ml-auto text-[11px] text-[var(--color-text-secondary)]">{d.time}</span>
+          {deployedApps.length === 0 ? (
+            <div className="py-6 text-center text-sm text-[var(--color-text-secondary)]">
+              최근 배포 이력이 없습니다.
             </div>
-          ))}
+          ) : (
+            deployedApps.slice(0, 5).map((app) => (
+              <div key={app.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  {app.status === 'success'
+                    ? <CheckCircle size={13} className="text-emerald-400" />
+                    : <XCircle size={13} className="text-red-400" />}
+                  <span className="font-semibold text-[var(--color-text-primary)]">{app.name}</span>
+                </div>
+                <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">{app.version}</span>
+                <span className="rounded-[4px] bg-[rgba(99,102,241,0.12)] px-1.5 py-0.5 text-[10px] font-bold text-[#a5b4fc]">
+                  {app.namespace}
+                </span>
+                <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
+                  <GitBranch size={10} />{app.template_id}
+                </div>
+                <span className="ml-auto text-[11px] text-[var(--color-text-secondary)]">
+                  {new Date(app.deployed_at).toLocaleString('ko-KR')}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -1066,7 +1191,7 @@ export function MonitoringPage() {
 
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [selectedStackId, setSelectedStackId] = useState('')
-  const [activeView, setActiveView] = useState<ViewType | null>(null)
+  const [activeView, setActiveView] = useState<ViewType | null>('cicd')
 
   const { clusters, filteredStacks, selectedCluster, selectedStack, hasContext } =
     useClusterStackFilterState(selectedClusterId, selectedStackId)
@@ -1107,6 +1232,8 @@ export function MonitoringPage() {
         </div>
       </div>
 
+      <DeployedStacksPanel />
+
       <ClusterStackFilter
         selectedClusterId={selectedClusterId}
         selectedStackId={selectedStackId}
@@ -1119,75 +1246,69 @@ export function MonitoringPage() {
         selectedStack={selectedStack}
       />
 
-      {/* ── Empty state ── */}
-      {
-        !hasContext && (
+      {/* ── View switcher ── */}
+      <div className="mb-0 flex items-end border-b border-[var(--color-border-default)]">
+        {views.map((v) => (
+          <button key={v.id} type="button"
+            onClick={() => !v.disabled && setActiveView(v.id)}
+            disabled={v.disabled}
+            className={cn(
+              'flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors',
+              activeView === v.id
+                ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
+                : v.disabled
+                  ? 'cursor-not-allowed border-b-transparent text-[var(--color-text-secondary)] opacity-35'
+                  : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+            )}>
+            {v.icon}{v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* View content */}
+      <div className="pt-5">
+        {activeView === 'cluster' && selectedClusterId && (
+          <DashboardTabLayout
+            viewId="cluster"
+            isAdmin={isAdmin}
+            defaultContent={<ClusterDefault clusterId={selectedCluster?.name ?? selectedClusterId} />}
+          />
+        )}
+        {activeView === 'cluster' && !selectedClusterId && (
+          <div className="flex h-44 flex-col items-center justify-center gap-2 rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] text-[var(--color-text-secondary)]">
+            <Server size={28} className="opacity-20" />
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">Select a Cluster above</p>
+          </div>
+        )}
+        {activeView === 'stack' && selectedStackId && (
+          <DashboardTabLayout
+            viewId="stack"
+            isAdmin={isAdmin}
+            defaultContent={<StackDefault stackName={selectedStack?.name ?? selectedStackId} />}
+            firstTimePanel={(onConnect, onSkip) => (
+              <StackConnectPanel
+                stackName={selectedStack?.name ?? selectedStackId}
+                onConnect={onConnect}
+                onSkip={onSkip}
+              />
+            )}
+          />
+        )}
+        {activeView === 'stack' && !selectedStackId && (
           <div className="flex h-44 flex-col items-center justify-center gap-2 rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] text-[var(--color-text-secondary)]">
             <BarChart3 size={28} className="opacity-20" />
-            <p className="text-sm font-medium text-[var(--color-text-primary)]">Select a Cluster or Stack above to begin</p>
-            <p className="text-xs">You can select either one or both.</p>
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">Select a Stack above</p>
           </div>
-        )
-      }
-
-      {/* ── View switcher + content ── */}
-      {
-        hasContext && (
-          <>
-            {/* View tabs */}
-            <div className="mb-0 flex items-end border-b border-[var(--color-border-default)]">
-              {views.map((v) => (
-                <button key={v.id} type="button"
-                  onClick={() => !v.disabled && setActiveView(v.id)}
-                  disabled={v.disabled}
-                  className={cn(
-                    'flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors',
-                    activeView === v.id
-                      ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
-                      : v.disabled
-                        ? 'cursor-not-allowed border-b-transparent text-[var(--color-text-secondary)] opacity-35'
-                        : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                  )}>
-                  {v.icon}{v.label}
-                </button>
-              ))}
-            </div>
-
-            {/* View content */}
-            <div className="pt-5">
-              {activeView === 'cluster' && (
-                <DashboardTabLayout
-                  viewId="cluster"
-                  isAdmin={isAdmin}
-                  defaultContent={<ClusterDefault clusterId={selectedCluster?.name ?? selectedClusterId} />}
-                />
-              )}
-              {activeView === 'stack' && (
-                <DashboardTabLayout
-                  viewId="stack"
-                  isAdmin={isAdmin}
-                  defaultContent={<StackDefault stackName={selectedStack?.name ?? selectedStackId} />}
-                  firstTimePanel={(onConnect, onSkip) => (
-                    <StackConnectPanel
-                      stackName={selectedStack?.name ?? selectedStackId}
-                      onConnect={onConnect}
-                      onSkip={onSkip}
-                    />
-                  )}
-                />
-              )}
-              {activeView === 'cicd' && (
-                <DashboardTabLayout
-                  viewId="cicd"
-                  isAdmin={isAdmin}
-                  defaultContent={<CicdDefault />}
-                  seedTabs={CICD_DEFAULT_TABS}
-                />
-              )}
-            </div>
-          </>
-        )
-      }
+        )}
+        {activeView === 'cicd' && (
+          <DashboardTabLayout
+            viewId="cicd"
+            isAdmin={isAdmin}
+            defaultContent={<CicdDefault />}
+            seedTabs={CICD_DEFAULT_TABS}
+          />
+        )}
+      </div>
     </div >
   )
 }
