@@ -75,6 +75,19 @@ func (r *MemoryPipelineRepository) ListByStackID(_ context.Context, stackID stri
 	return result, nil
 }
 
+// ListByStackID returns all pipelines linked to a specific stack.
+func (r *MemoryPipelineRepository) ListByStackID(_ context.Context, stackID string) ([]*domain.Pipeline, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*domain.Pipeline
+	for _, p := range r.pipelines {
+		if p.StackID == stackID {
+			result = append(result, clonePipeline(p))
+		}
+	}
+	return result, nil
+}
+
 // Update persists changes to an existing pipeline.
 func (r *MemoryPipelineRepository) Update(_ context.Context, p *domain.Pipeline) error {
 	r.mu.Lock()
