@@ -27,7 +27,6 @@ import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
-import { Modal } from '../../../components/ui/modal'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { cn } from '../../../lib/utils'
 import { useThemeStore } from '../../../stores/theme-store'
@@ -50,13 +49,6 @@ interface ToolOption {
   label: string
   description: string
 }
-
-const K8S_PREVIEW_TABS = [
-  { id: 'namespace', label: 'Namespace' },
-  { id: 'deployment', label: 'Deployment' },
-  { id: 'service', label: 'Service' },
-  { id: 'gateway', label: 'Gateway API' },
-] as const
 
 function toDeployErrorMessage(error: unknown): string {
   // Compat-gate errors get a specialized, issue-aware formatter so the user
@@ -365,8 +357,6 @@ const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string }> = {
   elasticsearch: { repoUrl: 'https://helm.elastic.co', chartName: 'elastic/elasticsearch' },
   loki: { repoUrl: 'https://grafana.github.io/helm-charts', chartName: 'grafana/loki-stack' },
 }
-
-type K8sPreviewTab = 'namespace' | 'deployment' | 'service' | 'gateway'
 
 type PlanningSlot =
   | 'artifacts.packageRegistry'
@@ -1662,171 +1652,6 @@ function createDeployScript(
   ].join('\n')
 }
 
-function createK8sObjects(draft: StackConfigDraft): Record<K8sPreviewTab, string> {
-  const appName = draft.stackName || 'nullus-stack'
-  const serviceName = `${appName}-svc`
-  const gatewayNamespace = 'nullus-stack'
-  const accessDomain = normalizeAccessDomain(draft.accessDomain || `${appName}.internal`)
-  const gatewayName = `${appName}-gateway`
-  const primaryRuntimeTool = draft.pipeline.cicdPlatform.tool || 'sample-app'
-  const primaryRuntimeVersion = draft.pipeline.cicdPlatform.tool
-    ? draft.pipeline.cicdPlatform.version || getToolAppVersion(draft.pipeline.cicdPlatform.tool)
-    : 'latest'
-  const metricsTool = draft.monitoring.collection.tool || 'metrics-sidecar'
-  const metricsToolVersion = draft.monitoring.collection.tool
-    ? draft.monitoring.collection.version || getToolAppVersion(draft.monitoring.collection.tool)
-    : 'latest'
-  const tlsEnabled = draft.accessDomainTls.enabled
-  const tlsSecretName = draft.accessDomainTls.secretName.trim() || `${appName}-wildcard-tls`
-  const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim() || gatewayNamespace
-  const tlsIssuerName = draft.accessDomainTls.issuerName.trim() || 'nullus-ca-issuer'
-  const requiresReferenceGrant = tlsEnabled && tlsSecretNamespace !== gatewayNamespace
-
-  return {
-    namespace: [
-      'apiVersion: v1',
-      'kind: Namespace',
-      'metadata:',
-      '  name: nullus-stack',
-      '  labels:',
-      '    app.kubernetes.io/managed-by: nullus',
-      `    nullus.io/stack: ${appName}`,
-    ].join('\n'),
-    deployment: [
-      'apiVersion: apps/v1',
-      'kind: Deployment',
-      'metadata:',
-      `  name: ${appName}`,
-      '  namespace: nullus-stack',
-      '  labels:',
-      `    app: ${appName}`,
-      'spec:',
-      '  replicas: 2',
-      '  selector:',
-      '    matchLabels:',
-      `      app: ${appName}`,
-      '  template:',
-      '    metadata:',
-      '      labels:',
-      `        app: ${appName}`,
-      '    spec:',
-      '      containers:',
-      `        - name: ${primaryRuntimeTool}`,
-      `          image: ghcr.io/nullus/${primaryRuntimeTool}:${primaryRuntimeVersion}`,
-      '          ports:',
-      '            - containerPort: 8080',
-      `        - name: ${metricsTool}`,
-      `          image: ghcr.io/nullus/${metricsTool}:${metricsToolVersion}`,
-      '          ports:',
-      '            - containerPort: 9090',
-    ].join('\n'),
-    service: [
-      'apiVersion: v1',
-      'kind: Service',
-      'metadata:',
-      `  name: ${serviceName}`,
-      '  namespace: nullus-stack',
-      'spec:',
-      '  selector:',
-      `    app: ${appName}`,
-      '  ports:',
-      '    - name: http',
-      '      protocol: TCP',
-      '      port: 80',
-      '      targetPort: 8080',
-      '  type: ClusterIP',
-    ].join('\n'),
-    gateway: [
-      'apiVersion: gateway.networking.k8s.io/v1',
-      'kind: Gateway',
-      'metadata:',
-      `  name: ${gatewayName}`,
-      `  namespace: ${gatewayNamespace}`,
-      'spec:',
-      '  gatewayClassName: envoy',
-      '  listeners:',
-      '    - name: http',
-      '      protocol: HTTP',
-      '      port: 80',
-      `      hostname: *.${accessDomain}`,
-      '      allowedRoutes:',
-      '        namespaces:',
-      '          from: Same',
-      ...(tlsEnabled
-        ? [
-            '    - name: https',
-            '      protocol: HTTPS',
-            '      port: 443',
-            `      hostname: *.${accessDomain}`,
-            '      tls:',
-            '        mode: Terminate',
-            '        certificateRefs:',
-            `          - kind: Secret`,
-            `            name: ${tlsSecretName}`,
-            `            namespace: ${tlsSecretNamespace}`,
-            '      allowedRoutes:',
-            '        namespaces:',
-            '          from: Same',
-
-            '---',
-            'apiVersion: cert-manager.io/v1',
-            'kind: Certificate',
-            'metadata:',
-            `  name: ${appName}-wildcard-cert`,
-            `  namespace: ${tlsSecretNamespace}`,
-            'spec:',
-            `  secretName: ${tlsSecretName}`,
-            `  commonName: ${accessDomain}`,
-            '  dnsNames:',
-            `    - ${accessDomain}`,
-            `    - *.${accessDomain}`,
-            '  issuerRef:',
-            `    name: ${tlsIssuerName}`,
-            '    kind: ClusterIssuer',
-          ]
-        : []),
-      '---',
-      'apiVersion: gateway.networking.k8s.io/v1',
-      'kind: HTTPRoute',
-      'metadata:',
-      `  name: ${appName}-route`,
-      `  namespace: ${gatewayNamespace}`,
-      'spec:',
-      '  parentRefs:',
-      `    - name: ${gatewayName}`,
-      '  hostnames:',
-      `    - ${appName}.${accessDomain}`,
-      '  rules:',
-      '    - matches:',
-      '        - path:',
-      '            type: PathPrefix',
-      '            value: /',
-      '      backendRefs:',
-      `        - name: ${serviceName}`,
-      '          port: 80',
-      ...(requiresReferenceGrant
-        ? [
-            '---',
-            'apiVersion: gateway.networking.k8s.io/v1beta1',
-            'kind: ReferenceGrant',
-            'metadata:',
-            `  name: ${appName}-tls-secret-grant`,
-            `  namespace: ${tlsSecretNamespace}`,
-            'spec:',
-            '  from:',
-            '    - group: gateway.networking.k8s.io',
-            '      kind: Gateway',
-            `      namespace: ${gatewayNamespace}`,
-            '  to:',
-            '    - group: ""',
-            '      kind: Secret',
-            `      name: ${tlsSecretName}`,
-          ]
-        : []),
-    ].join('\n'),
-  }
-}
-
 // --- ToolSelector component ---
 
 interface ToolSelectorProps {
@@ -2050,8 +1875,6 @@ export function StackInstallPage() {
   const [createNewNs, setCreateNewNs] = useState(false)
   const [selectedClusterId, setSelectedClusterId] = useState(draft.clusterId ?? '')
   const [activeTab, setLocalTab] = useState<InstallTab>(draft.activeTab)
-  const [k8sPreviewModalOpen, setK8sPreviewModalOpen] = useState(false)
-  const [activeK8sPreviewTab, setActiveK8sPreviewTab] = useState<K8sPreviewTab>('namespace')
   const [planningProfile, setPlanningProfile] = useState<PlanningProfile>('standard')
   const [planningOptionOverrides, setPlanningOptionOverrides] = useState<Record<string, Record<string, number>>>({})
   const [appliedResourceOverrides, setAppliedResourceOverrides] = useState<Record<string, ResourceVector>>({})
@@ -2167,8 +1990,6 @@ export function StackInstallPage() {
     setError,
     watchedStackName,
   ])
-
-  const k8sObjects = createK8sObjects(draft)
 
   const objectStorageBackendTool = draft.storage.objectStorage.providerOrEngine || draft.artifacts.storageBackend.tool || 'minio'
   const objectStorageBackendVersion = draft.storage.objectStorage.version || draft.artifacts.storageBackend.version || getToolAppVersion(objectStorageBackendTool)
@@ -3870,9 +3691,6 @@ export function StackInstallPage() {
             <Save size={14} />
             {t('stackInstall.actions.saveDraft', 'Save Draft')}
           </Button>
-          <Button variant="ghost" size="md" onClick={() => setK8sPreviewModalOpen(true)} type="button">
-            {t('stackInstall.actions.previewK8sObjects', 'Preview K8s Objects')}
-          </Button>
           <Button
             variant="primary"
             size="md"
@@ -4598,42 +4416,6 @@ export function StackInstallPage() {
                   ))}
                 </div>
 
-                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] p-3">
-                  <div className="mb-2">
-                    <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">Final Kubernetes Objects</h4>
-                    <p className="mb-0 mt-1 text-xs text-[var(--color-text-secondary)]">
-                      현재 옵션으로 최종 생성되는 Kubernetes 오브젝트를 배포 전에 확인합니다.
-                    </p>
-                  </div>
-
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {K8S_PREVIEW_TABS.map((tab) => {
-                      const isActive = activeK8sPreviewTab === tab.id
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => setActiveK8sPreviewTab(tab.id)}
-                          className={cn(
-                            'cursor-pointer rounded-lg border px-3 py-[7px] text-[13px]',
-                            isActive
-                              ? 'border-[#ca8a04] bg-[rgba(202,138,4,0.18)] font-bold text-[#fcd34d]'
-                              : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] font-medium text-[var(--color-text-secondary)]'
-                          )}
-                        >
-                          {tab.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  <CodePreview
-                    code={k8sObjects[activeK8sPreviewTab]}
-                    language="yaml"
-                    title={`${activeK8sPreviewTab}.yaml`}
-                    maxHeight="420px"
-                  />
-                </div>
               </div>
             )}
 
@@ -5160,44 +4942,6 @@ export function StackInstallPage() {
         </div>
       </div>
 
-      <Modal
-        open={k8sPreviewModalOpen}
-        onClose={() => setK8sPreviewModalOpen(false)}
-        title="K8s Object Preview"
-        wide
-        footer={
-          <Button variant="outline" size="sm" onClick={() => setK8sPreviewModalOpen(false)} type="button">
-            Close
-          </Button>
-        }
-      >
-        <div className="mb-[14px] flex flex-wrap gap-2">
-          {K8S_PREVIEW_TABS.map((tab) => {
-            const isActive = activeK8sPreviewTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveK8sPreviewTab(tab.id as K8sPreviewTab)}
-                className={cn(
-                  'cursor-pointer rounded-lg border px-3 py-[7px] text-[13px]',
-                  isActive
-                    ? 'border-[#ca8a04] bg-[rgba(202,138,4,0.18)] font-bold text-[#fcd34d]'
-                    : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] font-medium text-[var(--color-text-secondary)]'
-                )}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
-        <CodePreview
-          code={k8sObjects[activeK8sPreviewTab]}
-          language="yaml"
-          title={`${activeK8sPreviewTab}.yaml`}
-          maxHeight="500px"
-        />
-      </Modal>
     </div>
   )
 }

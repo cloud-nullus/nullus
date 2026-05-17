@@ -62,8 +62,7 @@
   "stackInstall": {
     "actions": {
       "saveDraft": "임시 저장",
-      "deploy": "배포",
-      "previewK8sObjects": "K8s 오브젝트 미리보기"
+      "deploy": "배포"
     },
     "breadcrumb": {
       "stackList": "스택 목록",

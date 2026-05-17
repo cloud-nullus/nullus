@@ -462,9 +462,6 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/Dry Run — 배포 전 최종 검토/)).toBeInTheDocument()
     expect(screen.getByText('Stack Name 형식')).toBeInTheDocument()
     expect(screen.getByText('YAML/values 검증')).toBeInTheDocument()
-    expect(screen.getByText('Final Kubernetes Objects')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Namespace' }).length).toBeGreaterThan(0)
-    expect(screen.getByText(/kind: Namespace/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Dry Run' }))
     expect(screen.getByText(/last run:/)).toBeInTheDocument()

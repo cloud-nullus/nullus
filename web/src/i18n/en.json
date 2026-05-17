@@ -62,8 +62,7 @@
   "stackInstall": {
     "actions": {
       "saveDraft": "Save Draft",
-      "deploy": "Deploy",
-      "previewK8sObjects": "Preview K8s Objects"
+      "deploy": "Deploy"
     },
     "breadcrumb": {
       "stackList": "Stack List",
