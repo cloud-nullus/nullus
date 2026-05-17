@@ -49,7 +49,7 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
         if (payload.progress !== undefined && payload.progress > 0) {
           setProgress(payload.progress)
         }
-        if (payload.type === 'log' && payload.message) {
+        if (payload.message) {
           const entry: LogEntry = {
             id: String(++counterRef.current),
             timestamp: payload.timestamp ?? new Date().toISOString(),
@@ -59,7 +59,8 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
             message: payload.message,
           }
           setLogs((prev) => [...prev, entry])
-        } else if (payload.type === 'status' && payload.status) {
+        }
+        if (payload.type === 'status' && payload.status) {
           setStatus(payload.status)
         }
       },

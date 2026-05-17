@@ -59,6 +59,20 @@ const mockCompatibilityMatrices = [
 
 const mockTemplates = [
   {
+    id: 'gitlab-argocd-v1',
+    name: 'GitLab + ArgoCD',
+    description: 'mock',
+    tools: ['GitLab CE', 'GitLab CI', 'Argo CD'],
+    estimatedMinutes: 30,
+    category: 'default',
+    toolDetails: [
+      { category: 'source_repository', name: 'GitLab CE', helm_version: '', app_version: '18.5.1' },
+      { category: 'ci_platform', name: 'GitLab CI', helm_version: '', app_version: '18.5.1' },
+      { category: 'cd_tool', name: 'Argo CD', helm_version: '', app_version: 'v2.8.3' },
+      { category: 'container_registry', name: 'Harbor', helm_version: '', app_version: '2.11.0' },
+    ],
+  },
+  {
     id: 'github-argocd-v1',
     name: 'GitHub + ArgoCD',
     description: 'mock',
@@ -211,6 +225,17 @@ describe('StackInstallPage', () => {
     expect(draft.artifacts.sourceRepository.tool).toBe('github')
     expect(draft.pipeline.cicdPlatform.tool).toBe('github-actions')
     expect(draft.artifacts.containerRegistry.tool).toBe('harbor')
+  })
+
+  it('selects GitLab package registry for GitLab templates', () => {
+    renderWithProviders(<StackInstallPage />, { route: '/stack/install?template=gitlab-argocd-v1' })
+    const draft = useStackConfigStore.getState().draft
+    expect(draft.selectedTemplateId).toBe('gitlab-argocd-v1')
+    expect(draft.artifacts.sourceRepository.tool).toBe('gitlab')
+    expect(draft.pipeline.cicdPlatform.tool).toBe('gitlab-ci')
+    expect(draft.artifacts.packageRegistry.tool).toBe('gitlab')
+    expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
+    expect(draft.authentication.provider).toBe('')
   })
 
   it('renders install tabs including storage and YAML view', () => {

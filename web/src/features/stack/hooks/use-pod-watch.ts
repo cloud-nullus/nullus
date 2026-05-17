@@ -12,7 +12,7 @@ export interface PodWatchRow {
 }
 
 interface PodWatchPayload {
-  type: 'pod' | 'error'
+  type: 'pod' | 'error' | 'meta'
   timestamp?: string
   namespace?: string
   name?: string
@@ -27,12 +27,14 @@ interface UsePodWatchResult {
   pods: PodWatchRow[]
   error: string | null
   isConnected: boolean
+  namespace: string | null
 }
 
 export function usePodWatch(deploymentId: string): UsePodWatchResult {
   const [pods, setPods] = useState<PodWatchRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [namespace, setNamespace] = useState<string | null>(null)
 
   useEffect(() => {
     if (!deploymentId) return
@@ -41,6 +43,12 @@ export function usePodWatch(deploymentId: string): UsePodWatchResult {
     const client = connect(wsUrl, {
       onMessage: (data) => {
         const payload = data as PodWatchPayload
+        if (payload.namespace) {
+          setNamespace(payload.namespace)
+        }
+        if (payload.type === 'meta') {
+          return
+        }
         if (payload.type === 'error') {
           setError(payload.message ?? 'pod watch failed')
           return
@@ -62,11 +70,16 @@ export function usePodWatch(deploymentId: string): UsePodWatchResult {
           return next.slice(-80)
         })
       },
-      onStatusChange: setIsConnected,
+      onStatusChange: (connected) => {
+        setIsConnected(connected)
+        if (connected) {
+          setError(null)
+        }
+      },
     })
 
     return () => client.close()
   }, [deploymentId])
 
-  return { pods, error, isConnected }
+  return { pods, error, isConnected, namespace }
 }

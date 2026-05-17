@@ -764,6 +764,13 @@ const stackApiCalls = {
       .post<{ stack_id: string; status: string }>(`/stacks/${input.stackId}/retry`, body)
       .then((r) => r.data)
   },
+
+  continueStack: (input: DeployStackInput) => {
+    const body = input.acknowledgeWarnings ? { acknowledge_warnings: true } : undefined
+    return api
+      .post<{ stack_id: string; status: string }>(`/stacks/${input.stackId}/continue`, body)
+      .then((r) => r.data)
+  },
 }
 
 export interface DeployStackInput {
@@ -1003,6 +1010,16 @@ export function useRetryStack() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: DeployStackInput) => stackApiCalls.retryStack(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
+  })
+}
+
+export function useContinueStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: DeployStackInput) => stackApiCalls.continueStack(input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
     },

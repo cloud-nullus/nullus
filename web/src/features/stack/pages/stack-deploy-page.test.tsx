@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/test-utils'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { StackDeployPage } from './stack-deploy-page'
 
 const mockUseParams = vi.fn()
 const mockUseDeployLog = vi.fn()
 const mockUsePodWatch = vi.fn()
 const mockApiGet = vi.fn()
+const mockApiPost = vi.fn()
+const mockToastError = vi.fn()
+const mockToastLoading = vi.fn()
+const mockToastSuccess = vi.fn()
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -27,6 +31,15 @@ vi.mock('../hooks/use-pod-watch', () => ({
 vi.mock('../../../lib/api', () => ({
   api: {
     get: (...args: unknown[]) => mockApiGet(...args),
+    post: (...args: unknown[]) => mockApiPost(...args),
+  },
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: (...args: unknown[]) => mockToastError(...args),
+    loading: (...args: unknown[]) => mockToastLoading(...args),
+    success: (...args: unknown[]) => mockToastSuccess(...args),
   },
 }))
 
@@ -40,6 +53,10 @@ describe('StackDeployPage', () => {
     mockUseDeployLog.mockReset()
     mockUsePodWatch.mockReset()
     mockApiGet.mockReset()
+    mockApiPost.mockReset()
+    mockToastError.mockReset()
+    mockToastLoading.mockReset()
+    mockToastSuccess.mockReset()
 
     mockUseParams.mockReturnValue({ id: 'deploy-1' })
     mockUseDeployLog.mockReturnValue({
@@ -52,8 +69,11 @@ describe('StackDeployPage', () => {
       pods: [],
       error: null,
       isConnected: false,
+      namespace: 'team-a',
     })
     mockApiGet.mockReturnValue(new Promise(() => undefined))
+    mockApiPost.mockResolvedValue({ data: { stack_id: 'deploy-1', status: 'accepted' } })
+    mockToastLoading.mockReturnValue('toast-1')
 
     Element.prototype.scrollIntoView = vi.fn()
   })
@@ -63,7 +83,7 @@ describe('StackDeployPage', () => {
 
     expect(screen.getAllByText('Deployment Log').length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Deployment ID: deploy-1/).length).toBeGreaterThan(0)
-    expect(screen.getByText('$ kubectl get pods -n nullus -w')).not.toBeNull()
+    expect(screen.getByText('$ kubectl get pods -n team-a -w')).not.toBeNull()
   })
 
   it('shows loading state while websocket is connecting', async () => {
@@ -108,6 +128,7 @@ describe('StackDeployPage', () => {
       ],
       error: null,
       isConnected: true,
+      namespace: 'team-a',
     })
 
     renderWithProviders(<StackDeployPage />)
@@ -132,5 +153,36 @@ describe('StackDeployPage', () => {
     renderWithProviders(<StackDeployPage />)
 
     expect(screen.getByText('Waiting for logs...')).not.toBeNull()
+  })
+
+  it('shows failure cause and continues a failed deployment from the log view', async () => {
+    mockUseDeployLog.mockReturnValue({
+      logs: [
+        {
+          id: 'log-error',
+          timestamp: '2026-01-01T10:02:00Z',
+          level: 'error',
+          step: 'installing_gitlab',
+          message: 'installation failed: gitlab timeout',
+        },
+      ],
+      status: 'failed',
+      progress: 40,
+      isConnected: true,
+    })
+
+    renderWithProviders(<StackDeployPage />)
+
+    expect(screen.getByText('Deployment error')).not.toBeNull()
+    expect(screen.getAllByText('installation failed: gitlab timeout').length).toBeGreaterThan(0)
+    expect(mockToastError).toHaveBeenCalledWith('Deployment failed', {
+      description: 'installation failed: gitlab timeout',
+    })
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Continue/i })[0])
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/stacks/deploy-1/continue', undefined)
+    })
   })
 })

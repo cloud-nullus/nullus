@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Circle, Loader, Terminal, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Circle, Loader, PlayCircle, Terminal, XCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import { useDeployLog } from '../hooks/use-deploy-log'
 import type { LogEntry, LogLevel, DeployStatus } from '../hooks/use-deploy-log'
 import { usePodWatch } from '../hooks/use-pod-watch'
 import type { PodWatchRow } from '../hooks/use-pod-watch'
+import { useContinueStack } from '../api/stack-api'
 import { api } from '../../../lib/api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
@@ -173,16 +175,27 @@ function podStatusClass(status: string): string {
   }
 }
 
-function PodWatchPanel({ rows, error, isConnected }: { rows: PodWatchRow[]; error: string | null; isConnected: boolean }) {
+function PodWatchPanel({
+  rows,
+  error,
+  isConnected,
+  namespace,
+}: {
+  rows: PodWatchRow[]
+  error: string | null
+  isConnected: boolean
+  namespace: string
+}) {
+  const hasRows = rows.length > 0
   return (
     <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
       <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
         <Terminal size={14} color="var(--color-text-secondary)" />
         <span className="font-mono text-xs font-semibold text-[var(--color-text-secondary)]">
-          $ kubectl get pods -n nullus -w
+          $ kubectl get pods -n {namespace} -w
         </span>
         <span className={cn('ml-auto text-[11px]', isConnected ? 'text-[#34d399]' : 'text-[#fbbf24]')}>
-          {isConnected ? 'Connected' : 'Connecting...'}
+          {isConnected ? (hasRows ? `${rows.length} pods` : 'Watching') : 'Connecting...'}
         </span>
       </div>
       <div className="h-[1200px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]">
@@ -201,7 +214,9 @@ function PodWatchPanel({ rows, error, isConnected }: { rows: PodWatchRow[]; erro
         <div className="mt-2 space-y-1">
           {rows.length === 0 && !error && (
             <div className="px-1 py-2 text-[var(--color-text-secondary)]">
-              Waiting for pod watch events...
+              {isConnected
+                ? `No pods in namespace ${namespace} yet. Pods appear here as they are scheduled.`
+                : 'Connecting to pod watch...'}
             </div>
           )}
           {rows.map((row) => (
@@ -219,7 +234,17 @@ function PodWatchPanel({ rows, error, isConnected }: { rows: PodWatchRow[]; erro
   )
 }
 
-function StatusSummary({ status, latestFailureMessage }: { status: DeployStatus; latestFailureMessage?: string }) {
+function StatusSummary({
+  status,
+  latestFailureMessage,
+  onContinue,
+  isContinuing,
+}: {
+  status: DeployStatus
+  latestFailureMessage?: string
+  onContinue: () => void
+  isContinuing: boolean
+}) {
   if (status !== 'success' && status !== 'failed') return null
 
   const isSuccess = status === 'success'
@@ -233,7 +258,7 @@ function StatusSummary({ status, latestFailureMessage }: { status: DeployStatus;
       )}
     >
       {isSuccess ? <CheckCircle size={24} color="#22c55e" /> : <XCircle size={24} color="#f87171" />}
-      <div>
+      <div className="min-w-0 flex-1">
         <div className={cn('mb-0.5 text-[15px] font-bold', isSuccess ? 'text-[#22c55e]' : 'text-[#f87171]')}>
           {isSuccess ? 'Deployment Completed' : 'Deployment Failed'}
         </div>
@@ -248,6 +273,17 @@ function StatusSummary({ status, latestFailureMessage }: { status: DeployStatus;
           </div>
         )}
       </div>
+      {!isSuccess && (
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={isContinuing}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.12)] px-3 py-2 text-xs font-bold text-[#86efac] hover:bg-[rgba(34,197,94,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isContinuing ? <Loader size={14} className="animate-spin" /> : <PlayCircle size={14} />}
+          Continue
+        </button>
+      )}
     </div>
   )
 }
@@ -272,19 +308,22 @@ export function StackDeployPage() {
   const params = useParams<{ id?: string; deploymentId?: string }>()
   const id = params.id ?? params.deploymentId ?? ''
   const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
-  const { pods, error: podWatchError, isConnected: isPodWatchConnected } = usePodWatch(id)
+  const { pods, error: podWatchError, isConnected: isPodWatchConnected, namespace: podWatchNamespace } = usePodWatch(id)
+  const continueStack = useContinueStack()
   const logEndRef = useRef<HTMLDivElement>(null)
-  const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number } | null>(null)
+  const failureToastRef = useRef('')
+  const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number; namespace?: string } | null>(null)
   const [rawLogsOpen, setRawLogsOpen] = useState(true)
 
   useEffect(() => {
     if (!id) return
-    api.get<{ data: { state: string } }>(`/stacks/${id}/status`).then((r) => {
+    api.get<{ data: { state: string; namespace?: string } }>(`/stacks/${id}/status`).then((r) => {
       const state = r.data?.data?.state ?? ''
       if (state) {
         setApiState({
           status: STATE_TO_STATUS[state] ?? 'connecting',
           progress: STATE_TO_PROGRESS[state] ?? 0,
+          namespace: r.data?.data?.namespace,
         })
       }
     }).catch(() => {})
@@ -293,6 +332,7 @@ export function StackDeployPage() {
   const hasWsData = logs.length > 0 || (wsStatus !== 'connecting' && wsStatus !== 'running')
   const status = hasWsData ? wsStatus : (apiState?.status ?? wsStatus)
   const progress = wsProgress > 0 ? wsProgress : (apiState?.progress ?? 0)
+  const podNamespace = podWatchNamespace || apiState?.namespace || '...'
   const latestFailureLog = [...logs].reverse().find((log) => {
     if (log.level === 'error') return true
     const normalized = log.message.toLowerCase()
@@ -300,6 +340,34 @@ export function StackDeployPage() {
   })
   const highlightedLogs = logs.filter((log) => log.level === 'warn' || log.level === 'error')
   const timeline = deriveTimeline(logs, progress, status)
+
+  useEffect(() => {
+    if (status !== 'failed' || !latestFailureLog) return
+    const toastKey = `${id}:${latestFailureLog.id}:${latestFailureLog.message}`
+    if (failureToastRef.current === toastKey) return
+    failureToastRef.current = toastKey
+    toast.error('Deployment failed', {
+      description: latestFailureLog.message,
+    })
+  }, [id, latestFailureLog, status])
+
+  const handleContinue = () => {
+    if (!id) return
+    const toastId = toast.loading('Continuing deployment...')
+    continueStack.mutate(
+      { stackId: id },
+      {
+        onSuccess: () => {
+          toast.success('Deployment continued.', { id: toastId })
+          setApiState({ status: 'running', progress: Math.max(progress, 5) })
+        },
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : 'Failed to continue deployment.'
+          toast.error(message, { id: toastId })
+        },
+      }
+    )
+  }
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -362,6 +430,18 @@ export function StackDeployPage() {
         </div>
       </div>
 
+      {status === 'failed' && latestFailureLog && (
+        <div className="mb-4 rounded-[var(--card-radius)] border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] p-4">
+          <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[#f87171]">
+            <XCircle size={16} />
+            Deployment error
+          </div>
+          <div className="font-mono text-xs leading-[1.7] text-[#fecaca]">
+            {latestFailureLog.message}
+          </div>
+        </div>
+      )}
+
       {highlightedLogs.length > 0 && (
         <div className="mb-4 overflow-hidden rounded-[var(--card-radius)] border border-[rgba(245,158,11,0.25)] bg-[rgba(245,158,11,0.04)]">
           <div className="flex items-center gap-2 border-b border-[rgba(245,158,11,0.18)] px-4 py-2.5">
@@ -386,10 +466,24 @@ export function StackDeployPage() {
             <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
               Raw Logs ({logs.length})
             </span>
+            {status === 'failed' && (
+              <button
+                type="button"
+                onClick={handleContinue}
+                disabled={continueStack.isPending}
+                className="ml-auto inline-flex items-center gap-1.5 rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.12)] px-2.5 py-1 text-[11px] font-bold text-[#86efac] hover:bg-[rgba(34,197,94,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {continueStack.isPending ? <Loader size={13} className="animate-spin" /> : <PlayCircle size={13} />}
+                Continue
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setRawLogsOpen((open) => !open)}
-              className="ml-auto inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              className={cn(
+                'inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+                status !== 'failed' && 'ml-auto'
+              )}
             >
               {rawLogsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               {rawLogsOpen ? 'Hide' : 'Show'}
@@ -418,11 +512,16 @@ export function StackDeployPage() {
           )}
         </div>
 
-        <PodWatchPanel rows={pods} error={podWatchError} isConnected={isPodWatchConnected} />
+        <PodWatchPanel rows={pods} error={podWatchError} isConnected={isPodWatchConnected} namespace={podNamespace} />
       </div>
 
       {/* Result summary */}
-      <StatusSummary status={status} latestFailureMessage={latestFailureLog?.message} />
+      <StatusSummary
+        status={status}
+        latestFailureMessage={latestFailureLog?.message}
+        onContinue={handleContinue}
+        isContinuing={continueStack.isPending}
+      />
     </div>
   )
 }
