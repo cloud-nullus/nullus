@@ -76,6 +76,8 @@ export interface TokenRotationEvent {
   created_at: string
 }
 
+type SaveResourceProfilePayload = Omit<OrgResourceProfile, 'id' | 'orgId' | 'createdAt'>
+
 // --- Query keys ---
 
 const queryKeys = {
@@ -246,8 +248,11 @@ const adminApiCalls = {
   getResourceProfiles: () =>
     api.get<OrgResourceProfile[]>('/admin/organization/resource-profiles').then((r) => r.data),
 
-  createResourceProfile: (data: Omit<OrgResourceProfile, 'id' | 'orgId' | 'createdAt'>) =>
+  createResourceProfile: (data: SaveResourceProfilePayload) =>
     api.post<OrgResourceProfile>('/admin/organization/resource-profiles', data).then((r) => r.data),
+
+  updateResourceProfile: (id: string, data: SaveResourceProfilePayload) =>
+    api.patch<OrgResourceProfile>(`/admin/organization/resource-profiles/${id}`, data).then((r) => r.data),
 
   deleteResourceProfile: (id: string) =>
     api.delete(`/admin/organization/resource-profiles/${id}`).then((r) => r.data),
@@ -300,6 +305,19 @@ export function useCreateOrgResourceProfile() {
     mutationFn: adminApiCalls.createResourceProfile,
     onSuccess: (created) => {
       qc.setQueryData<OrgResourceProfile[]>(queryKeys.resourceProfiles(), (old = []) => [created, ...old])
+      void qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() })
+    },
+  })
+}
+
+export function useUpdateOrgResourceProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: SaveResourceProfilePayload }) => adminApiCalls.updateResourceProfile(id, data),
+    onSuccess: (updated) => {
+      qc.setQueryData<OrgResourceProfile[]>(queryKeys.resourceProfiles(), (old = []) =>
+        old.map((profile) => profile.id === updated.id ? updated : profile)
+      )
       void qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() })
     },
   })

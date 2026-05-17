@@ -21,7 +21,7 @@ import type {
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
 import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates, useValidateCompatibility } from '../api/stack-api'
-import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
+import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useUpdateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -30,6 +30,8 @@ import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { cn } from '../../../lib/utils'
 import { useThemeStore } from '../../../stores/theme-store'
+import { useAuthStore } from '../../../stores/auth-store'
+import { useAppToast } from '../../../hooks/use-toast'
 import { buildInstallOverridesFromTemplate } from '../utils/template-overrides'
 import {
   isMatrixCompatibleWithCluster,
@@ -371,7 +373,7 @@ type PlanningSlot =
   | 'logging.traceLayer'
   | 'logging.traceExporter'
 
-type PlanningProfile = 'startup' | 'standard' | 'enterprise'
+type PlanningProfile = 'local' | 'startup' | 'standard' | 'enterprise'
 
 type ResourceVector = {
   cpuRequest: number
@@ -493,11 +495,21 @@ type DryRunCheck = {
   detail: string
 }
 
+function getMutationErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return 'Request failed'
+}
+
 const PLANNING_PROFILE_LABEL: Record<PlanningProfile, string> = {
+  local: 'Local',
   startup: 'Startup',
   standard: 'Standard',
   enterprise: 'Enterprise',
 }
+
+const PLANNING_PROFILES: PlanningProfile[] = ['local', 'startup', 'standard', 'enterprise']
 
 const STORAGE_ENDPOINT_REGEX = /^((https?:\/\/)[^\s]+|[a-zA-Z0-9.-]+(?::\d{1,5})?)$/
 const K8S_SECRET_REF_REGEX = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
@@ -636,6 +648,14 @@ function profileFactorByOption(profile: PlanningProfile, optionKey: string): num
   const isConcurrency = optionKey === 'concurrentRunners'
   const isThroughput = /(calls|events|pulls|pushes|ops|deployments|commits|targets|spans|query|users|count)/i.test(optionKey)
 
+  if (profile === 'local') {
+    if (isRetention) return 0.2
+    if (isInterval) return 2.5
+    if (isConcurrency) return 0.25
+    if (isThroughput) return 0.25
+    return 0.3
+  }
+
   if (profile === 'startup') {
     if (isRetention) return 0.45
     if (isInterval) return 1.7
@@ -660,6 +680,7 @@ function profileAdjustedBaseline(profile: PlanningProfile, def: PlanningOptionDe
 function calculateMultipliers(profile: PlanningProfile, slot: PlanningSlot, optionValues: Record<string, number>): ResourceMultipliers {
 	const defs = PLANNING_OPTION_DEFS[slot]
 	const profileDamping: Record<PlanningProfile, number> = {
+		local: 0.2,
 		startup: 0.35,
 		standard: 0.7,
 		enterprise: 0.9,
@@ -679,6 +700,10 @@ function calculateMultipliers(profile: PlanningProfile, slot: PlanningSlot, opti
 	)
 
 	const profileClampMax: Record<PlanningProfile, { cicd: { cpu: number; memory: number; storage: number }; default: { cpu: number; memory: number; storage: number } }> = {
+		local: {
+			cicd: { cpu: 1.35, memory: 1.35, storage: 1.25 },
+			default: { cpu: 1.25, memory: 1.25, storage: 1.25 },
+		},
 		startup: {
 			cicd: { cpu: 1.9, memory: 1.9, storage: 1.6 },
 			default: { cpu: 1.6, memory: 1.6, storage: 1.6 },
@@ -698,9 +723,15 @@ function calculateMultipliers(profile: PlanningProfile, slot: PlanningSlot, opti
 		: profileClampMax[profile].default
 
   const clamp = (value: number, max: number) => Math.min(max, Math.max(0.5, value))
+  const profileResourceScale: Record<PlanningProfile, number> = {
+    local: 0.65,
+    startup: 0.8,
+    standard: 1,
+    enterprise: 1.15,
+  }
   let rawCpu = 1 + weighted.cpu
   let rawMemory = 1 + weighted.memory
-  const rawStorage = 1 + weighted.storage
+  let rawStorage = 1 + weighted.storage
 
 	if (slot === 'pipeline.cicdPlatform') {
 		const runnerDef = defs.find((def) => def.key === 'concurrentRunners')
@@ -708,21 +739,25 @@ function calculateMultipliers(profile: PlanningProfile, slot: PlanningSlot, opti
 			const runners = optionValues.concurrentRunners ?? runnerDef.baseline
 			const ratio = Math.max(0.25, runners / runnerDef.baseline)
 			const cpuExpByProfile: Record<PlanningProfile, number> = {
+				local: 0.15,
 				startup: 0.2,
 				standard: 0.35,
 				enterprise: 0.45,
 			}
 			const memExpByProfile: Record<PlanningProfile, number> = {
+				local: 0.12,
 				startup: 0.18,
 				standard: 0.3,
 				enterprise: 0.4,
 			}
 			const cpuBoostCapByProfile: Record<PlanningProfile, number> = {
+				local: 1.08,
 				startup: 1.15,
 				standard: 1.45,
 				enterprise: 1.75,
 			}
 			const memBoostCapByProfile: Record<PlanningProfile, number> = {
+				local: 1.06,
 				startup: 1.12,
 				standard: 1.4,
 				enterprise: 1.65,
@@ -735,6 +770,11 @@ function calculateMultipliers(profile: PlanningProfile, slot: PlanningSlot, opti
 			rawMemory *= runnerMemoryBoost
 		}
 	}
+
+  const profileScale = profileResourceScale[profile]
+  rawCpu *= profileScale
+  rawMemory *= profileScale
+  rawStorage *= profileScale
 
   return {
     cpu: clamp(rawCpu, clampMax.cpu),
@@ -1852,6 +1892,8 @@ export function StackInstallPage() {
     updateAccessDomainTls,
     setAuthenticationProvider,
   } = useStackConfigStore()
+  const toast = useAppToast()
+  const currentOrgId = useAuthStore((state) => state.user?.orgId)
   const createStack = useCreateStack()
   const deployStack = useDeployStack()
   // F8-F3: server-side Pre-Deploy Gate on /stacks/:id/validate. Runs after
@@ -1884,6 +1926,7 @@ export function StackInstallPage() {
   const [saveProfileName, setSaveProfileName] = useState('')
   const { data: orgProfiles = [] } = useOrgResourceProfiles()
   const createOrgProfile = useCreateOrgResourceProfile()
+  const updateOrgProfile = useUpdateOrgResourceProfile()
   const deleteOrgProfile = useDeleteOrgResourceProfile()
   const [activeFormulaPopoverKey, setActiveFormulaPopoverKey] = useState<string | null>(null)
   const [storageValidationErrors, setStorageValidationErrors] = useState<StorageValidationErrors>({})
@@ -2695,24 +2738,86 @@ export function StackInstallPage() {
       const profile = orgProfiles.find((p) => p.id === profileId)
       if (!profile) return
       setPlanningProfile(profile.baseProfile)
-      setPlanningOptionOverrides(profile.optionOverrides)
-      setAppliedResourceOverrides({})
+      setPlanningOptionOverrides(profile.optionOverrides ?? {})
+      setAppliedResourceOverrides(profile.appliedResourceOverrides ?? {})
+      setPlanningRowUnits(profile.rowUnits ?? {})
       setSelectedOrgProfileId(profileId)
     } else {
       handlePlanningProfileChange(value as PlanningProfile)
     }
   }
 
+  const buildResourceProfilePayload = (name: string) => {
+    const currentAppliedResources = planningRows.reduce<Record<string, ResourceVector>>((acc, row) => {
+      if (row.applied) {
+        acc[row.rowKey] = row.applied
+      }
+      return acc
+    }, {})
+    return {
+      name,
+      baseProfile: planningProfile,
+      optionOverrides: planningOptionOverrides,
+      appliedResourceOverrides: currentAppliedResources,
+      rowUnits: planningRowUnits,
+    }
+  }
+
+  const handleSaveProfileButtonClick = () => {
+    const currentOrgProfiles = currentOrgId
+      ? orgProfiles.filter((profile) => profile.orgId === currentOrgId)
+      : orgProfiles
+    const selectedProfile = selectedOrgProfileId
+      ? currentOrgProfiles.find((profile) => profile.id === selectedOrgProfileId)
+      : currentOrgProfiles.find((profile) => profile.name.toLowerCase() === PLANNING_PROFILE_LABEL[planningProfile].toLowerCase())
+    const selectedProfileName = selectedOrgProfileId
+      ? orgProfiles.find((profile) => profile.id === selectedOrgProfileId)?.name ?? PLANNING_PROFILE_LABEL[planningProfile]
+      : PLANNING_PROFILE_LABEL[planningProfile]
+
+    if (selectedProfile) {
+      updateOrgProfile.mutate({
+        id: selectedProfile.id,
+        data: buildResourceProfilePayload(selectedProfile.name),
+      }, {
+        onSuccess: () => {
+          toast.success(`Sizing profile "${selectedProfile.name}" saved.`)
+        },
+        onError: (error) => {
+          toast.error(`Failed to save sizing profile "${selectedProfile.name}": ${getMutationErrorMessage(error)}`)
+        },
+      })
+      setSelectedOrgProfileId(selectedProfile.id)
+      return
+    }
+
+    createOrgProfile.mutate(
+      buildResourceProfilePayload(selectedProfileName),
+      {
+        onSuccess: (created) => {
+          setSelectedOrgProfileId(created.id)
+          toast.success(`Sizing profile "${created.name}" saved.`)
+        },
+        onError: (error) => {
+          toast.error(`Failed to save sizing profile "${selectedProfileName}": ${getMutationErrorMessage(error)}`)
+        },
+      }
+    )
+  }
+
   const handleSaveProfileConfirm = () => {
     const name = saveProfileName.trim()
     if (!name) return
     createOrgProfile.mutate(
-      { name, baseProfile: planningProfile, optionOverrides: planningOptionOverrides },
+      buildResourceProfilePayload(name),
       {
         onSuccess: (created) => {
           setSelectedOrgProfileId(created.id)
           setSaveProfileDialogOpen(false)
           setSaveProfileName('')
+          toast.success(`Sizing profile "${created.name}" saved.`)
+        },
+        onError: (error) => {
+          toast.error(`Failed to save sizing profile "${name}": ${getMutationErrorMessage(error)}`)
         },
       }
     )
@@ -4436,7 +4541,7 @@ export function StackInstallPage() {
                         onChange={(e) => handleSizingSelectChange(e.target.value)}
                         className="min-w-[160px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
                       >
-                        {(['startup', 'standard', 'enterprise'] as PlanningProfile[]).map((profile) => (
+                        {PLANNING_PROFILES.map((profile) => (
                           <option key={profile} value={profile}>
                             {PLANNING_PROFILE_LABEL[profile]}
                           </option>
@@ -4453,8 +4558,9 @@ export function StackInstallPage() {
                       </NativeSelect>
                       <button
                         type="button"
-                        title="Save as organization profile"
-                        onClick={() => { setSaveProfileName(''); setSaveProfileDialogOpen(true) }}
+                        title="Save current values to selected profile"
+                        onClick={handleSaveProfileButtonClick}
+                        disabled={createOrgProfile.isPending || updateOrgProfile.isPending}
                         className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[rgba(99,102,241,0.5)] hover:text-[#a5b4fc]"
                       >
                         <Save size={12} />

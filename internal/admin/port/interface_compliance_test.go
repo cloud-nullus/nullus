@@ -7,6 +7,7 @@ import (
 
 var _ port.OrgRepository = (*adminrepo.PostgresOrgRepository)(nil)
 var _ port.OrgRepository = (*adminrepo.MemoryOrgRepository)(nil)
+var _ port.ResourceProfileRepository = (*adminrepo.PostgresResourceProfileRepository)(nil)
 
 var _ port.ClusterRepository = (*adminrepo.PostgresClusterRepository)(nil)
 var _ port.ClusterRepository = (*adminrepo.MemoryClusterRepository)(nil)

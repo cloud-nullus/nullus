@@ -79,6 +79,7 @@ func main() {
 	clusterRepo := adminrepo.NewPostgresClusterRepository(pool)
 	userRepo := adminrepo.NewPostgresUserRepository(pool)
 	tokenSourceRepo := adminrepo.NewPostgresTokenSourceRepository(pool)
+	resourceProfileRepo := adminrepo.NewPostgresResourceProfileRepository(pool)
 
 	orgUC := usecase.NewOrgUseCase(orgRepo)
 	encryptionKey := []byte(os.Getenv("ENCRYPTION_KEY"))
@@ -113,6 +114,7 @@ func main() {
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
 	clusterHandler := adminhandler.NewClusterHandler(clusterUC, auditLogger)
 	memberHandler := adminhandler.NewMemberHandler(userUC, auditLogger)
+	resourceProfileHandler := adminhandler.NewResourceProfileHandler(orgUC, resourceProfileRepo, auditLogger)
 
 	// Stack: postgres repos + log streamer
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
@@ -299,6 +301,7 @@ func main() {
 	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
 
 	orgHandler.RegisterRoutes(admin)
+	resourceProfileHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
 	memberHandler.RegisterRoutes(admin)
 	knownIssuesHandler.RegisterRoutes(admin)

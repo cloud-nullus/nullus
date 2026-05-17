@@ -84,8 +84,20 @@ export interface OrgResourceProfile {
   id: string
   name: string
   orgId: string
-  baseProfile: 'startup' | 'standard' | 'enterprise'
+  baseProfile: 'local' | 'startup' | 'standard' | 'enterprise'
   optionOverrides: Record<string, Record<string, number>>
+  appliedResourceOverrides?: Record<
+    string,
+    {
+      cpuRequest: number
+      cpuLimit: number
+      memoryRequestGi: number
+      memoryLimitGi: number
+      storageRequestGi: number
+      storageLimitGi: number
+    }
+  >
+  rowUnits?: Record<string, { memory: 'Gi' | 'Mi'; storage: 'Gi' | 'Mi' }>
   createdAt?: string
 }
 
