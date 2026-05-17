@@ -116,6 +116,9 @@ vi.mock('../../admin/api/admin-api', () => ({
     },
   }),
   useClusterNamespaces: () => ({ data: [] }),
+  useOrgResourceProfiles: () => ({ data: [] }),
+  useCreateOrgResourceProfile: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useDeleteOrgResourceProfile: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
 }))
 
 // Mock useNavigate
@@ -351,15 +354,7 @@ describe('StackInstallPage', () => {
     fillRequiredSelectionsForConfigTabs()
     fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
 
-    // F8 Task 5 Auto Select cards now add matrix-name buttons (e.g. "GitLab
-    // All-in-One", "GitLab + Argo CD") that also match /GitLab/i. Filter them
-    // out so this assertion still targets the install-file bundle button.
-    const installFileButtons = screen
-      .getAllByRole('button', { name: /GitLab/i })
-      .filter((btn) => {
-        const name = (btn.getAttribute('aria-label') ?? btn.textContent ?? '').trim()
-        return !/All-in-One|Argo|GitHub/.test(name)
-      })
+    const installFileButtons = screen.getAllByRole('button', { name: /GitLab/i })
     expect(installFileButtons).toHaveLength(1)
     expect(screen.getByText(/역할:/)).toHaveTextContent('Artifacts > Package Registry')
     expect(screen.getByText(/역할:/)).toHaveTextContent('Artifacts > Source Repository')
@@ -485,7 +480,7 @@ describe('StackInstallPage', () => {
   it('allows clearing a tool selection with the none option', () => {
     renderWithProviders(<StackInstallPage />)
 
-    const packageRegistrySection = screen.getAllByText('Package Registry')[0].parentElement?.parentElement
+    const packageRegistrySection = screen.getByText('Nexus Repository').closest('button')?.parentElement
     expect(packageRegistrySection).toBeTruthy()
     fireEvent.click(within(packageRegistrySection as HTMLElement).getAllByRole('button')[0])
 
@@ -499,7 +494,11 @@ describe('StackInstallPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Storage' }))
 
-    fireEvent.click(screen.getByText(/Not selected|미선택/))
+    const storageNoneOption = screen
+      .getAllByRole('button', { name: /Not selected|미선택/ })
+      .find((button) => button.textContent?.includes('Connection mode for DB and Object Storage'))
+    expect(storageNoneOption).toBeTruthy()
+    fireEvent.click(storageNoneOption as HTMLElement)
 
     expect(useStackConfigStore.getState().draft.storage.planMode).toBe('none')
   })
