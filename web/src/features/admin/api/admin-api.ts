@@ -298,7 +298,10 @@ export function useCreateOrgResourceProfile() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: adminApiCalls.createResourceProfile,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() }),
+    onSuccess: (created) => {
+      qc.setQueryData<OrgResourceProfile[]>(queryKeys.resourceProfiles(), (old = []) => [created, ...old])
+      void qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() })
+    },
   })
 }
 
