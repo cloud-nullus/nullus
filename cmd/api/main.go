@@ -196,7 +196,10 @@ func main() {
 		stackhandler.WithCompatibilityAuditSink(auditLogger),
 	)
 	// F8-F3: enable server-side Pre-Deploy Gate on POST /stacks/:id/deploy.
-	deployHandler.WithOptions(stackhandler.WithValidateCompatibility(validateCompatUC))
+	deployHandler.WithOptions(
+		stackhandler.WithValidateCompatibility(validateCompatUC),
+		stackhandler.WithKubeconfigProvider(kubeconfigProvider),
+	)
 
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
 	stackMonitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle, XCircle, Loader, Terminal } from 'lucide-react'
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Circle, Loader, Terminal, XCircle } from 'lucide-react'
 import { useDeployLog } from '../hooks/use-deploy-log'
-import type { LogLevel, DeployStatus } from '../hooks/use-deploy-log'
+import type { LogEntry, LogLevel, DeployStatus } from '../hooks/use-deploy-log'
+import { usePodWatch } from '../hooks/use-pod-watch'
+import type { PodWatchRow } from '../hooks/use-pod-watch'
 import { api } from '../../../lib/api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
-const PHASES = ['Initializing', 'Building', 'Deploying']
 const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
 
 const LOG_LEVEL_STYLE: Record<LogLevel, string> = {
@@ -17,48 +18,203 @@ const LOG_LEVEL_STYLE: Record<LogLevel, string> = {
   success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
 }
 
-function PhaseStep({ label, index, progress }: { label: string; index: number; progress: number }) {
-  const phaseProgress = 100 / PHASES.length
-  const phaseStart = index * phaseProgress
-  const isDone = progress >= phaseStart + phaseProgress
-  const isActive = progress >= phaseStart && !isDone
+const LOG_ROW_STYLE: Record<LogLevel, string> = {
+  info: 'border-transparent bg-transparent',
+  success: 'border-[rgba(34,197,94,0.25)] bg-[rgba(34,197,94,0.06)]',
+  warn: 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)]',
+  error: 'border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)]',
+}
+
+type TimelineStatus = 'pending' | 'running' | 'success' | 'warn' | 'error'
+
+interface DeployStage {
+  key: string
+  label: string
+  steps: string[]
+  progressAt: number
+}
+
+const DEPLOY_STAGES: DeployStage[] = [
+  { key: 'validate', label: 'Validate', steps: ['validate'], progressAt: 5 },
+  { key: 'install', label: 'Install', steps: ['installing_'], progressAt: 15 },
+  { key: 'configure', label: 'Configure', steps: ['integration_check', 'configuring'], progressAt: 90 },
+  { key: 'health', label: 'Health Check', steps: ['health_check'], progressAt: 96 },
+  { key: 'complete', label: 'Complete', steps: ['completed'], progressAt: 100 },
+]
+
+const TERMINAL_FAILURE_STEPS = new Set(['failed', 'rolling_back', 'rolled_back', 'delete_failed'])
+
+function stepMatches(stage: DeployStage, step?: string): boolean {
+  if (!step) return false
+  return stage.steps.some((candidate) => candidate.endsWith('_') ? step.startsWith(candidate) : step === candidate)
+}
+
+function deriveTimeline(logs: LogEntry[], progress: number, status: DeployStatus): Array<DeployStage & { status: TimelineStatus }> {
+  const failedLog = logs.find((log) => log.level === 'error' || TERMINAL_FAILURE_STEPS.has(log.step ?? ''))
+  const failedStageIndex = failedLog
+    ? Math.max(0, DEPLOY_STAGES.findIndex((stage) => stepMatches(stage, failedLog.step)) || 0)
+    : -1
+  const latestStageIndex = logs.reduce((latest, log) => {
+    const index = DEPLOY_STAGES.findIndex((stage) => stepMatches(stage, log.step))
+    return index >= 0 ? Math.max(latest, index) : latest
+  }, -1)
+  const progressStageIndex = DEPLOY_STAGES.reduce((latest, stage, index) => (
+    progress >= stage.progressAt ? index : latest
+  ), -1)
+  const activeIndex = Math.max(latestStageIndex, progressStageIndex, status === 'running' ? 0 : -1)
+
+  return DEPLOY_STAGES.map((stage, index) => {
+    const stageLogs = logs.filter((log) => stepMatches(stage, log.step))
+    if (failedStageIndex === index || stageLogs.some((log) => log.level === 'error')) {
+      return { ...stage, status: 'error' }
+    }
+    if (stageLogs.some((log) => log.level === 'warn')) {
+      return { ...stage, status: 'warn' }
+    }
+    if (status === 'success' || progress >= stage.progressAt || index < activeIndex) {
+      return { ...stage, status: 'success' }
+    }
+    if (index === activeIndex && status !== 'failed') {
+      return { ...stage, status: 'running' }
+    }
+    return { ...stage, status: 'pending' }
+  })
+}
+
+function TimelineStep({ stage, isLast }: { stage: DeployStage & { status: TimelineStatus }; isLast: boolean }) {
+  const isDone = stage.status === 'success'
+  const isRunning = stage.status === 'running'
+  const isWarn = stage.status === 'warn'
+  const isError = stage.status === 'error'
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-[130px] flex-1 items-center gap-2">
       <div
         className={cn(
           'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300',
-          isDone
-            ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
-            : isActive
-              ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]'
-              : 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
+          isError && 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
+          isWarn && 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',
+          isDone && 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
+          isRunning && 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]',
+          stage.status === 'pending' && 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
         )}
       >
-        {isDone ? (
+        {isError ? (
+          <XCircle size={15} />
+        ) : isWarn ? (
+          <AlertTriangle size={15} />
+        ) : isDone ? (
           <CheckCircle size={15} />
-        ) : isActive ? (
+        ) : isRunning ? (
           <Loader size={15} className="animate-spin" />
         ) : (
-          <span className="text-xs font-bold">{index + 1}</span>
+          <Circle size={13} />
         )}
       </div>
       <span
         className={cn(
           'text-[13px] font-semibold',
-          isDone ? 'text-[#22c55e]' : isActive ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
+          isError && 'text-[#f87171]',
+          isWarn && 'text-[#fbbf24]',
+          isDone && 'text-[#22c55e]',
+          isRunning && 'text-[#a5b4fc]',
+          stage.status === 'pending' && 'text-[var(--color-text-secondary)]'
         )}
       >
-        {label}
+        {stage.label}
       </span>
-      {index < PHASES.length - 1 && (
+      {!isLast && (
         <div
           className={cn(
             'mx-1 h-px flex-1 transition-colors duration-300',
-            isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
+            isError ? 'bg-[rgba(239,68,68,0.45)]' : isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
           )}
         />
       )}
+    </div>
+  )
+}
+
+function LogLineRow({ log }: { log: LogEntry }) {
+  return (
+    <div className={cn('flex items-start gap-2.5 rounded border px-2 py-1', LOG_ROW_STYLE[log.level])}>
+      <span className="shrink-0 whitespace-nowrap text-[#475569]">
+        {new Date(log.timestamp).toISOString().slice(11, 19)}
+      </span>
+      <span
+        className={cn('shrink-0 whitespace-nowrap rounded px-1.5 text-[10px] font-bold leading-5', LOG_LEVEL_STYLE[log.level])}
+      >
+        {log.level.toUpperCase()}
+      </span>
+      {log.step && (
+        <span className="shrink-0 whitespace-nowrap rounded bg-[rgba(148,163,184,0.12)] px-1.5 text-[10px] font-semibold leading-5 text-[#94a3b8]">
+          {log.step.replace(/_/g, ' ')}
+        </span>
+      )}
+      <span className={cn('break-words', log.level === 'error' ? 'font-semibold text-[#fecaca]' : log.level === 'warn' ? 'font-semibold text-[#fde68a]' : 'text-[#e2e8f0]')}>
+        {log.message}
+      </span>
+    </div>
+  )
+}
+
+function podStatusClass(status: string): string {
+  switch (status) {
+    case 'Running':
+      return 'text-[#34d399]'
+    case 'Pending':
+    case 'ContainerCreating':
+    case 'Waiting':
+      return 'text-[#fbbf24]'
+    case 'Error':
+      return 'text-[#f87171]'
+    default:
+      return 'text-[#e2e8f0]'
+  }
+}
+
+function PodWatchPanel({ rows, error, isConnected }: { rows: PodWatchRow[]; error: string | null; isConnected: boolean }) {
+  return (
+    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
+      <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
+        <Terminal size={14} color="var(--color-text-secondary)" />
+        <span className="font-mono text-xs font-semibold text-[var(--color-text-secondary)]">
+          $ kubectl get pods -n nullus -w
+        </span>
+        <span className={cn('ml-auto text-[11px]', isConnected ? 'text-[#34d399]' : 'text-[#fbbf24]')}>
+          {isConnected ? 'Connected' : 'Connecting...'}
+        </span>
+      </div>
+      <div className="h-[1200px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]">
+        {error && (
+          <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-2 py-1.5 text-[#fca5a5]">
+            {error}
+          </div>
+        )}
+        <div className="grid grid-cols-[minmax(220px,1fr)_70px_120px_80px_60px] gap-3 border-b border-[rgba(255,255,255,0.08)] pb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+          <span>Name</span>
+          <span>Ready</span>
+          <span>Status</span>
+          <span>Restarts</span>
+          <span>Age</span>
+        </div>
+        <div className="mt-2 space-y-1">
+          {rows.length === 0 && !error && (
+            <div className="px-1 py-2 text-[var(--color-text-secondary)]">
+              Waiting for pod watch events...
+            </div>
+          )}
+          {rows.map((row) => (
+            <div key={row.name} className="grid grid-cols-[minmax(220px,1fr)_70px_120px_80px_60px] gap-3 rounded px-1 py-0.5 text-[#cbd5e1] hover:bg-[rgba(255,255,255,0.04)]">
+              <span className="truncate">{row.name}</span>
+              <span>{row.ready}</span>
+              <span className={cn('font-semibold', podStatusClass(row.status))}>{row.status}</span>
+              <span>{row.restarts}</span>
+              <span>{row.age}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -116,8 +272,10 @@ export function StackDeployPage() {
   const params = useParams<{ id?: string; deploymentId?: string }>()
   const id = params.id ?? params.deploymentId ?? ''
   const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
+  const { pods, error: podWatchError, isConnected: isPodWatchConnected } = usePodWatch(id)
   const logEndRef = useRef<HTMLDivElement>(null)
   const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number } | null>(null)
+  const [rawLogsOpen, setRawLogsOpen] = useState(true)
 
   useEffect(() => {
     if (!id) return
@@ -140,6 +298,8 @@ export function StackDeployPage() {
     const normalized = log.message.toLowerCase()
     return normalized.includes('failed') || normalized.includes('error')
   })
+  const highlightedLogs = logs.filter((log) => log.level === 'warn' || log.level === 'error')
+  const timeline = deriveTimeline(logs, progress, status)
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -173,8 +333,8 @@ export function StackDeployPage() {
       {/* Phase steps */}
       <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]">
         <div className="mb-4 flex flex-wrap items-center gap-0">
-          {PHASES.map((phase, idx) => (
-            <PhaseStep key={phase} label={phase} index={idx} progress={progress} />
+          {timeline.map((stage, idx) => (
+            <TimelineStep key={stage.key} stage={stage} isLast={idx === timeline.length - 1} />
           ))}
         </div>
 
@@ -202,44 +362,63 @@ export function StackDeployPage() {
         </div>
       </div>
 
-      {/* Log console */}
-      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
-        <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
-          <Terminal size={14} color="var(--color-text-secondary)" />
-          <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            Logs ({logs.length})
-          </span>
+      {highlightedLogs.length > 0 && (
+        <div className="mb-4 overflow-hidden rounded-[var(--card-radius)] border border-[rgba(245,158,11,0.25)] bg-[rgba(245,158,11,0.04)]">
+          <div className="flex items-center gap-2 border-b border-[rgba(245,158,11,0.18)] px-4 py-2.5">
+            <AlertTriangle size={14} className="text-[#fbbf24]" />
+            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[#fbbf24]">
+              Attention ({highlightedLogs.length})
+            </span>
+          </div>
+          <div className="space-y-1.5 p-3 font-mono text-xs leading-[1.7]">
+            {highlightedLogs.map((log) => (
+              <LogLineRow key={log.id} log={log} />
+            ))}
+          </div>
         </div>
-        <div
-          className="h-[400px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
-        >
-          {logs.length === 0 && (
-            <div className="px-1 py-2 text-[var(--color-text-secondary)]">
-              {status === 'failed'
-                ? 'Unable to receive live logs. Check recent failures in Stack List > selected stack > History.'
-                : isConnected
-                  ? 'Waiting for logs...'
-                  : 'Connecting to WebSocket...'}
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Log console */}
+        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
+            <Terminal size={14} color="var(--color-text-secondary)" />
+            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+              Raw Logs ({logs.length})
+            </span>
+            <button
+              type="button"
+              onClick={() => setRawLogsOpen((open) => !open)}
+              className="ml-auto inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+            >
+              {rawLogsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              {rawLogsOpen ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {rawLogsOpen && (
+            <div
+              className="h-[1200px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
+            >
+              {logs.length === 0 && (
+                <div className="px-1 py-2 text-[var(--color-text-secondary)]">
+                  {status === 'failed'
+                    ? 'Unable to receive live logs. Check recent failures in Stack List > selected stack > History.'
+                    : isConnected
+                      ? 'Waiting for logs...'
+                      : 'Connecting to WebSocket...'}
+                </div>
+              )}
+              <div className="space-y-1">
+                {logs.map((log) => (
+                  <LogLineRow key={log.id} log={log} />
+                ))}
+              </div>
+              <div ref={logEndRef} />
             </div>
           )}
-          {logs.map((log) => {
-            const lvl = LOG_LEVEL_STYLE[log.level]
-            return (
-              <div key={log.id} className="flex items-start gap-2.5 px-1 py-0.5">
-                <span className="shrink-0 whitespace-nowrap text-[#475569]">
-                  {new Date(log.timestamp).toISOString().slice(11, 19)}
-                </span>
-                <span
-                  className={cn('shrink-0 whitespace-nowrap rounded px-1.5 text-[10px] font-bold leading-5', lvl)}
-                >
-                  {log.level.toUpperCase()}
-                </span>
-                <span className="break-words text-[#e2e8f0]">{log.message}</span>
-              </div>
-            )
-          })}
-          <div ref={logEndRef} />
         </div>
+
+        <PodWatchPanel rows={pods} error={podWatchError} isConnected={isPodWatchConnected} />
       </div>
 
       {/* Result summary */}

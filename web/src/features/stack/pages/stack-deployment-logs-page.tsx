@@ -366,7 +366,7 @@ export function StackDeploymentLogsPage() {
           )}
         </div>
 
-        <div className="h-[480px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
+        <div className="h-[1440px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
           {!entry && (
             <p className="text-[#f87171]">Deployment not found: {deploymentId}</p>
           )}

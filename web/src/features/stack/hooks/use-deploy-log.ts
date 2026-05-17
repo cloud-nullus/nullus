@@ -8,12 +8,16 @@ export interface LogEntry {
   id: string
   timestamp: string
   level: LogLevel
+  phase?: string
+  step?: string
   message: string
 }
 
 interface DeployLogPayload {
   type: 'log' | 'status' | 'progress'
   level?: LogLevel
+  phase?: string
+  step?: string
   message?: string
   timestamp?: string
   status?: DeployStatus
@@ -50,6 +54,8 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
             id: String(++counterRef.current),
             timestamp: payload.timestamp ?? new Date().toISOString(),
             level: payload.level ?? 'info',
+            phase: payload.phase,
+            step: payload.step,
             message: payload.message,
           }
           setLogs((prev) => [...prev, entry])
