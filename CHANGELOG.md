@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Stack Continue 배포** (`POST /api/v1/stacks/:id/continue`): 실패한 스택 배포를 rollback 없이 재개. 이미 설치된 Helm 릴리즈를 보존하고 실패 지점부터 재시작. `InstallStackInput`에 `Continue`/`PreserveLogs` 필드 추가, 실패 시 UI에 Continue 버튼 노출.
+- **Pod Watch WebSocket** (`GET /ws/deployments/:id/pods`): kubectl get pods -n <namespace> -w 출력을 WebSocket으로 실시간 스트리밍. 배포 로그 페이지에 Pod Watch 패널 추가 (네임스페이스, Ready, Status, Restarts, Age 표시).
+- **Org Resource Profile 저장** (`/api/v1/admin/org-resource-profiles`): 조직 단위 리소스 프로파일 CRUD. Stack Install Wizard Sizing 탭에서 프로파일 저장·불러오기 드롭다운 지원. DB 마이그레이션 `000049_org_resource_profiles`, `000050_allow_local_resource_profile`.
+- **`Orchestrator.IsStepEnabled` 공개 메서드**: `stepEnabledChecker` 인터페이스를 통해 usecase 레이어에서 각 설치 단계 활성화 여부를 조회 가능.
+
+### Changed
+
+- **배포 로그 페이지 UI 개선**: 타임라인 스텝, 세그먼트 프로그레스 바, Raw Logs 콘솔, Attention 패널(warn/error 필터), Pod Watch 패널로 구성한 새 레이아웃. WS 연결 전 "Connecting..." / 연결 후 파드 없음 "No pods in namespace yet." 으로 상태 구분.
+- **Status API `namespace` 필드**: `omitempty` 제거 — 스택 네임스페이스가 빈 값이어도 항상 필드 포함해 반환.
+- **`podNamespace` 폴백 처리**: `??` → `||` 변경으로 빈 문자열까지 폴백 처리.
+- **Stack Install 페이지**: Quick Start 카드 및 Kubernetes Preview 섹션 제거.
+
+### Fixed
+
+- **Sizing Profile 드롭다운 즉시 반영**: 프로파일 저장 후 드롭다운에 즉시 반영되지 않는 버그 수정 (캐시 invalidation 누락).
+- **`usePodWatch` 재연결 시 에러 초기화**: WS 재연결 성공 시 이전 연결의 stale 에러 메시지가 남는 문제 수정.
+
+### Added (기존)
+
 - OpenBao 선택형 배포 경로 구현: `authentication.provider=openbao` 선택 시 `installing_openbao` 단계에서 OpenBao(공식 이미지) Deployment/Service를 생성하고 Gateway 기본 번들에 `openbao.<access_domain>` 라우트를 자동 추가합니다.
 - Secret Manager 추상화 계층 추가: `internal/shared/secrets`에 provider 라우터(`Router`)와 OpenBao 구현체(`OpenBaoStore`)를 도입해, 토큰 저장/조회를 provider별 어댑터로 분리했습니다.
 - Token source OpenBao 실연동: stack token source 등록 시 `metadata.secret_manager`를 저장하고, Admin `POST /api/v1/admin/token-sources/:id/reveal`가 OpenBao 실조회 값을 우선 반환하도록 확장했습니다.
