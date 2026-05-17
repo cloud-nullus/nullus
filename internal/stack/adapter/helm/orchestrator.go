@@ -379,7 +379,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				Wait:        false,
 			},
 			"installing_object_storage_secret": {},
-			"installing_openbao":             {},
+			"installing_openbao":               {},
 			"installing_gitlab": {
 				ChartName: "gitlab",
 				RepoURL:   "https://charts.gitlab.io/",
@@ -560,6 +560,10 @@ func (o *Orchestrator) SetNamespace(namespace string) {
 		namespace = "nullus"
 	}
 	o.namespace = namespace
+}
+
+func (o *Orchestrator) IsStepEnabled(step string) bool {
+	return o.isStepEnabled(step)
 }
 
 func (o *Orchestrator) SetStackConfig(config domain.StackConfig) {

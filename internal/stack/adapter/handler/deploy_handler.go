@@ -85,6 +85,7 @@ func (h *DeployHandler) RegisterRoutes(v1 *echo.Group, e *echo.Echo) {
 	stacks := v1.Group("/stacks")
 	stacks.POST("/:id/deploy", h.Deploy)
 	stacks.POST("/:id/retry", h.Retry)
+	stacks.POST("/:id/continue", h.Continue)
 	v1.GET("/stacks/:id/status", h.Status)
 	v1.GET("/stacks/:id/deploy/logs", h.StreamLogs)
 	e.GET("/ws/deployments/:id/logs", h.StreamLogs)
@@ -324,10 +325,80 @@ func (h *DeployHandler) Retry(c echo.Context) error {
 	})
 }
 
+// Continue handles POST /api/v1/stacks/:id/continue.
+// It resumes a failed deployment without invoking rollback. Previously
+// installed resources are left in place; Helm install will upgrade/reuse
+// existing releases where possible and continue with the same stack config.
+func (h *DeployHandler) Continue(c echo.Context) error {
+	id := c.Param("id")
+
+	stack, err := h.stackRepo.GetByID(c.Request().Context(), id)
+	if err != nil {
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+	}
+	if stack == nil {
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", "stack not found")
+	}
+	if stack.State != domain.StateFailed {
+		return errorResponse(c, http.StatusConflict, "STACK_CONTINUE_INVALID_STATE",
+			"continue requires state failed, got "+string(stack.State))
+	}
+
+	var req deployRequest
+	if c.Request().ContentLength != 0 {
+		if err := c.Bind(&req); err != nil {
+			return errorResponse(c, http.StatusBadRequest, "DEPLOY_REQUEST_INVALID", err.Error())
+		}
+	}
+
+	auditDetails := map[string]any{
+		"acknowledge_warnings": req.AcknowledgeWarnings,
+		"previous_state":       string(stack.State),
+	}
+
+	gate := h.runPreDeployGate(c, id, req.AcknowledgeWarnings)
+	if gate.handled {
+		return nil
+	}
+	if gate.blocked {
+		return nil
+	}
+	if gate.verdict != nil {
+		auditDetails["compatibility_verdict"] = gate.verdict.Overall.State
+		auditDetails["issue_codes"] = issueCodes(gate.verdict.Issues)
+	}
+
+	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{
+		StackID:      id,
+		Continue:     true,
+		PreserveLogs: true,
+	}); err != nil {
+		return errorResponse(c, http.StatusBadRequest, "STACK_CONTINUE_FAILED", err.Error())
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "continue",
+			ResourceType: "stack",
+			ResourceID:   id,
+			Details:      auditDetails,
+			IPAddress:    c.RealIP(),
+		})
+	}
+
+	return c.JSON(http.StatusAccepted, deployResponse{
+		StackID: id,
+		Status:  "accepted",
+		Message: "continue started; subscribe to /ws/deployments/" + id + "/logs for real-time logs",
+	})
+}
+
 // statusResponse is the response body for GET /stacks/:id/status.
 type statusResponse struct {
 	StackID   string    `json:"stack_id"`
 	State     string    `json:"state"`
+	ClusterID string    `json:"cluster_id,omitempty"`
+	Namespace string    `json:"namespace"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -347,6 +418,8 @@ func (h *DeployHandler) Status(c echo.Context) error {
 		"data": statusResponse{
 			StackID:   stack.ID,
 			State:     string(stack.State),
+			ClusterID: stack.ClusterID,
+			Namespace: stack.Namespace,
 			UpdatedAt: stack.UpdatedAt,
 		},
 	})
@@ -379,6 +452,7 @@ type wsLogMessage struct {
 
 var stepProgress = map[string]int{
 	"validate":                 5,
+	"continue":                 5,
 	"installing_cert_manager":  15,
 	"installing_minio":         25,
 	"installing_gitlab":        40,
@@ -469,7 +543,10 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 				Progress:  progress,
 			}
 
-			if entry.Step == "completed" || entry.Step == "deleted" {
+			if entry.Step == "continue" {
+				msg.Type = "status"
+				msg.Status = "running"
+			} else if entry.Step == "completed" || entry.Step == "deleted" {
 				msg.Type = "status"
 				msg.Status = "success"
 			} else if entry.Step == "failed" || entry.Step == "rolling_back" || entry.Step == "rolled_back" || entry.Step == "delete_failed" {
@@ -551,6 +628,9 @@ func (h *DeployHandler) StreamPods(c echo.Context) error {
 	if namespace == "" {
 		namespace = "nullus"
 	}
+	if !writePodMessage(wsPodMessage{Type: "meta", Namespace: namespace, Message: "pod watch namespace resolved"}) {
+		return nil
+	}
 	if h.kubeconfigProvider == nil {
 		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: "kubeconfig provider is not configured"})
 		return nil
@@ -583,6 +663,19 @@ func (h *DeployHandler) StreamPods(c echo.Context) error {
 	if err := tmpFile.Close(); err != nil {
 		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("close kubeconfig temp file: %v", err)})
 		return nil
+	}
+
+	snapshotCmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", tmpPath, "get", "pods", "-n", namespace, "--no-headers")
+	if output, err := snapshotCmd.CombinedOutput(); err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			if msg, ok := parseKubectlPodLine(namespace, line); ok {
+				if !writePodMessage(msg) {
+					return nil
+				}
+			}
+		}
+	} else if strings.TrimSpace(string(output)) != "" {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: strings.TrimSpace(string(output))})
 	}
 
 	cmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", tmpPath, "get", "pods", "-n", namespace, "-w", "--no-headers")
