@@ -154,7 +154,7 @@ func (h *DashboardHandler) GetDeployedApps(c echo.Context) error {
 		orgID = "00000000-0000-0000-0000-000000000001"
 	}
 
-	stacks, err := h.stackRepo.List(ctx, orgID)
+	stacks, err := h.stackRepo.List(ctx, orgID, false)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "DEPLOYED_APPS_FETCH_FAILED", err.Error())
 	}

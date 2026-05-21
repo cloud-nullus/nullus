@@ -12,11 +12,13 @@ import (
 	"time"
 
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
+	adminkube "github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
@@ -25,6 +27,7 @@ import (
 	obsport "github.com/cloud-nullus/draft/internal/observability/port"
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
+	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
@@ -71,7 +74,15 @@ func main() {
 	userRepo := adminrepo.NewPostgresUserRepository(pool)
 
 	orgUC := usecase.NewOrgUseCase(orgRepo)
-	clusterUC := usecase.NewClusterUseCase(clusterRepo, usecase.WithOrgRepo(orgRepo))
+	encryptionKey := []byte(os.Getenv("ENCRYPTION_KEY"))
+	clusterUC := usecase.NewClusterUseCase(
+		clusterRepo,
+		usecase.WithOrgRepo(orgRepo),
+		usecase.WithDiscoverer(adminkube.NewDiscoverer()),
+		usecase.WithKubeconfigDecryptor(func(encrypted []byte) ([]byte, error) {
+			return crypto.Decrypt(encryptionKey, string(encrypted))
+		}),
+	)
 	userUC := usecase.NewUserUseCase(userRepo)
 	auditLogger := audit.NewAuditLogger(pool)
 
@@ -108,12 +119,15 @@ func main() {
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
+	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
+	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
+	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithPool(pool))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
-	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC)
+	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
 
 	pgCompatRepo := stackrepo.NewPostgresCompatibilityRepository(pool)
 	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
@@ -128,12 +142,13 @@ func main() {
 	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
 	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
+	manifestApplier := cicdkube.NewManifestApplier()
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
-	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo)
+	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
-	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, pool)
+	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository
@@ -149,6 +164,10 @@ func main() {
 	pgAlertRepo := obsrepo.NewPostgresAlertRepository(pool)
 	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
 	createAlertRuleUC := obsuc.NewCreateAlertRule(pgAlertRuleRepo)
+	getAlertRuleUC := obsuc.NewGetAlertRule(pgAlertRuleRepo)
+	listAlertRulesUC := obsuc.NewListAlertRules(pgAlertRuleRepo)
+	updateAlertRuleUC := obsuc.NewUpdateAlertRule(pgAlertRuleRepo)
+	deleteAlertRuleUC := obsuc.NewDeleteAlertRule(pgAlertRuleRepo)
 	listAlertsUC := obsuc.NewListAlerts(pgAlertRepo)
 	dashboardHandler := obshandler.NewDashboardHandler(
 		getDashboardUC,
@@ -156,7 +175,7 @@ func main() {
 		obshandler.WithPool(pool),
 		obshandler.WithKubeconfigProvider(kubeconfigProvider),
 	)
-	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, listAlertsUC, pgAlertRuleRepo)
+	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, getAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
 
 	// Echo
 	e := echo.New()

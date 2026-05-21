@@ -507,7 +507,13 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Artifacts.StorageBackend.Enabled && cfg.Artifacts.SourceRepository.Enabled
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
-				return cfg.Artifacts.SourceRepository.Enabled
+				if !cfg.Artifacts.SourceRepository.Enabled {
+					return false
+				}
+				if strings.EqualFold(strings.TrimSpace(cfg.Artifacts.SourceRepository.Version), "external") {
+					return false
+				}
+				return true
 			},
 			"installing_openbao": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
@@ -519,7 +525,13 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Pipeline.CDTool.Enabled
 			},
 			stepInstallingRunner: func(cfg domain.StackConfig) bool {
-				return cfg.Pipeline.CIPlatform.Enabled
+				if !cfg.Pipeline.CIPlatform.Enabled {
+					return false
+				}
+				if strings.EqualFold(strings.TrimSpace(cfg.Pipeline.CIPlatform.Version), "external") {
+					return false
+				}
+				return true
 			},
 			"installing_prometheus": func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Collection.Enabled

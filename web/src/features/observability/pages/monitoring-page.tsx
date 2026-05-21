@@ -15,6 +15,7 @@ import type { ToolHealthStatus } from '../api/observability-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { useClusterMonitoringSummary, useClusterPods } from '../../admin/api/admin-api'
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -387,20 +388,34 @@ function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTi
 }
 
 // ─── Default content: Cluster view ───────────────────────────────────────────
-function ClusterDefault({ clusterId }: { clusterId: string }) {
+function ClusterDefault({ clusterId, clusterName }: { clusterId: string; clusterName?: string }) {
   const [range, setRange] = useState<TimeRange>('24h')
   const series = useMemo(() => makeSeries(range), [range])
+  const { data: summary } = useClusterMonitoringSummary(clusterId)
+  const { data: podList } = useClusterPods(clusterId)
+  const [showPods, setShowPods] = useState(false)
+  const displayName = clusterName || clusterId
+  const nodesValue = summary ? `${summary.ready_nodes}/${summary.total_nodes}` : '-/-'
+  const nodesBar = summary && summary.total_nodes > 0 ? Math.round((summary.ready_nodes / summary.total_nodes) * 100) : 0
+  const podsValue = summary ? `${summary.ready_pods}/${summary.total_pods}` : '-/-'
+  const podsBar = summary && summary.total_pods > 0 ? Math.round((summary.ready_pods / summary.total_pods) * 100) : 0
+  const cpuPercent = summary && summary.cpu_allocatable_millicores > 0
+    ? Math.round((summary.cpu_request_millicores / summary.cpu_allocatable_millicores) * 100)
+    : 0
+  const memPercent = summary && summary.memory_allocatable_mib > 0
+    ? Math.round((summary.memory_request_mib / summary.memory_allocatable_mib) * 100)
+    : 0
   const pods = [
-    { name: 'Running', value: 22, color: '#22c55e' },
-    { name: 'Pending', value: 1, color: '#f59e0b' },
-    { name: 'Failed', value: 1, color: '#ef4444' },
+    { name: 'Running', value: summary?.ready_pods ?? 0, color: '#22c55e' },
+    { name: 'Pending', value: summary ? Math.max(summary.total_pods - summary.ready_pods, 0) : 0, color: '#f59e0b' },
+    { name: 'Failed', value: 0, color: '#ef4444' },
   ]
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
         <div className={cn('flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium',
           'border-emerald-500/20 bg-emerald-500/5 text-emerald-400')}>
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />{clusterId}
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />{displayName}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-[var(--color-text-secondary)]">Range:</span>
@@ -415,10 +430,10 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
         </div>
       </div>
       <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        <KpiCard label="Nodes" value="3/4" icon={<Server size={18} />} color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]" bar={75} />
-        <KpiCard label="Pods" value="22/24" icon={<Box size={18} />} color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]" bar={92} />
-        <KpiCard label="CPU" value="62%" icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={62} />
-        <KpiCard label="Memory" value="71%" icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={71} />
+        <KpiCard label="Nodes" value={nodesValue} icon={<Server size={18} />} color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]" bar={nodesBar} />
+        <KpiCard label="Pods" value={podsValue} icon={<Box size={18} />} color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]" bar={podsBar} />
+        <KpiCard label="CPU" value={`${cpuPercent}%`} icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={cpuPercent} />
+        <KpiCard label="Memory" value={`${memPercent}%`} icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={memPercent} />
       </div>
       <div className="grid grid-cols-2 gap-3.5">
         <ChartPanel title="CPU Usage">
@@ -445,16 +460,18 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
-        <ChartPanel title="Pod Status">
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={pods} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                {pods.map((e) => <Cell key={e.name} fill={e.color} />)}
-              </Pie>
-              <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: '#e5e7eb' }} />
-            </PieChart>
-          </ResponsiveContainer>
+        <ChartPanel title="Pod Status (click to view pods)">
+          <div className="cursor-pointer" onClick={() => setShowPods(true)} title="Click to view all pods">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={pods} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                  {pods.map((e) => <Cell key={e.name} fill={e.color} />)}
+                </Pie>
+                <Tooltip contentStyle={CHART_STYLE.tooltip} />
+                <Legend wrapperStyle={{ color: '#e5e7eb' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </ChartPanel>
         <ChartPanel title="Pipeline Success (this week)">
           <ResponsiveContainer width="100%" height={220}>
@@ -470,6 +487,40 @@ function ClusterDefault({ clusterId }: { clusterId: string }) {
           </ResponsiveContainer>
         </ChartPanel>
       </div>
+      {showPods && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setShowPods(false)}>
+          <div className="max-h-[80vh] w-full max-w-4xl overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Cluster Pods ({podList?.length ?? 0})</h2>
+              <button onClick={() => setShowPods(false)} className="text-sm text-[var(--color-text-secondary)] hover:text-white">✕</button>
+            </div>
+            <table className="w-full text-xs">
+              <thead className="border-b border-[var(--color-border-default)] text-[var(--color-text-secondary)]">
+                <tr>
+                  <th className="py-2 text-left">Namespace</th>
+                  <th className="py-2 text-left">Pod</th>
+                  <th className="py-2 text-left">Status</th>
+                  <th className="py-2 text-left">Ready</th>
+                  <th className="py-2 text-right">Restarts</th>
+                  <th className="py-2 text-left">Node</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(podList ?? []).map((pod) => (
+                  <tr key={`${pod.namespace}/${pod.name}`} className="border-b border-[var(--color-border-default)]/30 text-[var(--color-text-primary)]">
+                    <td className="py-1.5">{pod.namespace}</td>
+                    <td className="py-1.5 font-mono">{pod.name}</td>
+                    <td className="py-1.5">{pod.status}</td>
+                    <td className="py-1.5">{pod.ready}</td>
+                    <td className="py-1.5 text-right">{pod.restarts}</td>
+                    <td className="py-1.5">{pod.node}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1271,7 +1322,7 @@ export function MonitoringPage() {
           <DashboardTabLayout
             viewId="cluster"
             isAdmin={isAdmin}
-            defaultContent={<ClusterDefault clusterId={selectedCluster?.name ?? selectedClusterId} />}
+            defaultContent={<ClusterDefault clusterId={selectedClusterId} clusterName={selectedCluster?.name} />}
           />
         )}
         {activeView === 'cluster' && !selectedClusterId && (

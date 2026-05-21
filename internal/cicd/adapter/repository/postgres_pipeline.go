@@ -127,6 +127,19 @@ func (r *PostgresPipelineRepository) Update(ctx context.Context, p *domain.Pipel
 	return nil
 }
 
+// Delete removes a pipeline by ID. Cascades to pipeline_deployments via FK.
+func (r *PostgresPipelineRepository) Delete(ctx context.Context, id string) error {
+	const q = `DELETE FROM pipelines WHERE id = $1`
+	res, err := r.pool.Exec(ctx, q, id)
+	if err != nil {
+		return fmt.Errorf("delete pipeline: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return fmt.Errorf("pipeline %q not found", id)
+	}
+	return nil
+}
+
 // pipelineScanner abstracts pgx row and rows scanning.
 type pipelineScanner interface {
 	Scan(dest ...any) error
