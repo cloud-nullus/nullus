@@ -44,17 +44,12 @@ func (r *MemoryPipelineRepository) GetByID(_ context.Context, id string) (*domai
 }
 
 // List returns all pipelines for an organization.
-// An optional stackID filters results to pipelines linked to that stack.
-func (r *MemoryPipelineRepository) List(_ context.Context, orgID string, stackID ...string) ([]*domain.Pipeline, error) {
+func (r *MemoryPipelineRepository) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	filterStack := len(stackID) > 0 && stackID[0] != ""
 	var result []*domain.Pipeline
 	for _, p := range r.pipelines {
 		if p.OrgID != orgID {
-			continue
-		}
-		if filterStack && p.StackID != stackID[0] {
 			continue
 		}
 		result = append(result, clonePipeline(p))

@@ -78,7 +78,8 @@ func newEchoServer() *echo.Echo {
 	memHistoryRepo := stackrepo.NewMemoryHistoryRepository()
 	manageHistoryUC := stackuc.NewManageHistory(memHistoryRepo)
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, manageHistoryUC)
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, nil)
+	_ = manageHistoryUC
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, memTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 
@@ -111,6 +112,7 @@ func newEchoServer() *echo.Echo {
 		deploymentRepo,
 		&noopKubeconfigProvider{},
 		cicdkube.NewStepTracker(),
+		nil,
 	)
 
 	// Observability

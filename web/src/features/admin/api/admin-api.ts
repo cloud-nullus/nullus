@@ -56,9 +56,11 @@ export interface ClusterMonitoringSummary {
   cpu_request_millicores: number
   cpu_limit_millicores: number
   cpu_allocatable_millicores: number
+  cpu_usage_millicores: number
   memory_request_mib: number
   memory_limit_mib: number
   memory_allocatable_mib: number
+  memory_usage_mib: number
 }
 
 export interface TokenSource {

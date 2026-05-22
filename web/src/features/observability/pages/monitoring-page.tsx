@@ -400,9 +400,15 @@ function ClusterDefault({ clusterId, clusterName }: { clusterId: string; cluster
   const podsValue = summary ? `${summary.ready_pods}/${summary.total_pods}` : '-/-'
   const podsBar = summary && summary.total_pods > 0 ? Math.round((summary.ready_pods / summary.total_pods) * 100) : 0
   const cpuPercent = summary && summary.cpu_allocatable_millicores > 0
-    ? Math.round((summary.cpu_request_millicores / summary.cpu_allocatable_millicores) * 100)
+    ? Math.round((summary.cpu_usage_millicores / summary.cpu_allocatable_millicores) * 100)
     : 0
   const memPercent = summary && summary.memory_allocatable_mib > 0
+    ? Math.round((summary.memory_usage_mib / summary.memory_allocatable_mib) * 100)
+    : 0
+  const cpuRequestPercent = summary && summary.cpu_allocatable_millicores > 0
+    ? Math.round((summary.cpu_request_millicores / summary.cpu_allocatable_millicores) * 100)
+    : 0
+  const memRequestPercent = summary && summary.memory_allocatable_mib > 0
     ? Math.round((summary.memory_request_mib / summary.memory_allocatable_mib) * 100)
     : 0
   const pods = [
@@ -432,8 +438,8 @@ function ClusterDefault({ clusterId, clusterName }: { clusterId: string; cluster
       <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
         <KpiCard label="Nodes" value={nodesValue} icon={<Server size={18} />} color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]" bar={nodesBar} />
         <KpiCard label="Pods" value={podsValue} icon={<Box size={18} />} color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]" bar={podsBar} />
-        <KpiCard label="CPU" value={`${cpuPercent}%`} icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={cpuPercent} />
-        <KpiCard label="Memory" value={`${memPercent}%`} icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={memPercent} />
+        <KpiCard label={`CPU (usage / req ${cpuRequestPercent}%)`} value={`${cpuPercent}%`} icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={cpuPercent} />
+        <KpiCard label={`Memory (usage / req ${memRequestPercent}%)`} value={`${memPercent}%`} icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={memPercent} />
       </div>
       <div className="grid grid-cols-2 gap-3.5">
         <ChartPanel title="CPU Usage">

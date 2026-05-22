@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	metricsclient "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/admin/domain"
@@ -104,9 +105,11 @@ type clusterMonitoringSummaryResponse struct {
 	CPURequestMillicores     int64 `json:"cpu_request_millicores"`
 	CPULimitMillicores       int64 `json:"cpu_limit_millicores"`
 	CPUAllocatableMillicores int64 `json:"cpu_allocatable_millicores"`
+	CPUUsageMillicores       int64 `json:"cpu_usage_millicores"`
 	MemoryRequestMiB         int64 `json:"memory_request_mib"`
 	MemoryLimitMiB           int64 `json:"memory_limit_mib"`
 	MemoryAllocatableMiB     int64 `json:"memory_allocatable_mib"`
+	MemoryUsageMiB           int64 `json:"memory_usage_mib"`
 }
 
 func toClusterResponse(cluster *domain.Cluster, kubeconfig string) clusterResponse {
@@ -590,6 +593,16 @@ func getClusterMonitoringSummary(ctx context.Context, kubeconfig []byte) (*clust
 			summary.MemoryAllocatableMiB += mem.Value() / (1024 * 1024)
 		}
 	}
+	// metrics-server (best-effort): cluster 에 metrics API 가 있으면 실제 사용량 합산.
+	if mc, err := metricsclient.NewForConfig(restConfig); err == nil {
+		if nm, err := mc.MetricsV1beta1().NodeMetricses().List(podCtx, metav1.ListOptions{}); err == nil {
+			for _, m := range nm.Items {
+				summary.CPUUsageMillicores += m.Usage.Cpu().MilliValue()
+				summary.MemoryUsageMiB += m.Usage.Memory().Value() / (1024 * 1024)
+			}
+		}
+	}
+
 	for _, pod := range podList.Items {
 		summary.TotalPods++
 		if isClusterPodReady(pod) {
