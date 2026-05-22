@@ -487,13 +487,12 @@ export interface CreateCicdTemplateRequest {
 }
 
 export interface DeployAppRequest {
+  templateId: string
   appName: string
   gitUrl: string
   clusterId: string
   namespace: string
-  templateId: AppTemplate
-  replicas?: number
-  port?: number
+  replicas: number
   resources: {
     cpuRequest: string
     cpuLimit: string

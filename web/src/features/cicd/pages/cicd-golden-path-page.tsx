@@ -198,7 +198,6 @@ export function CicdGoldenPathPage() {
         open={detailOpen}
         onClose={closeDetail}
         title={selectedPath?.name ?? ''}
-
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeDetail} type="button">
