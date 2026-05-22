@@ -31,7 +31,7 @@ const STATUS_BADGE: Record<string, string> = {
 export function TokenManagementPage() {
   const { t } = useTranslation()
   const { data, isLoading } = useTokenSources()
-  const items = data?.items ?? []
+  const items = useMemo(() => data?.items ?? [], [data?.items])
   const [selectedId, setSelectedId] = useState('')
   const [revealResult, setRevealResult] = useState<Record<string, unknown> | null>(null)
 

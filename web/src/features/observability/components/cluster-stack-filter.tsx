@@ -34,8 +34,8 @@ export const useClusterStackFilterState = (selectedClusterId: string, selectedSt
   const { data: clustersData } = useClusters()
   const { data: stacksData } = useStacks()
 
-  const clusters = clustersData?.items ?? []
-  const stacks = stacksData?.items ?? []
+  const clusters = useMemo(() => clustersData?.items ?? [], [clustersData?.items])
+  const stacks = useMemo(() => stacksData?.items ?? [], [stacksData?.items])
 
   // When a cluster is selected show only its stacks; otherwise show all stacks
   // so users can pick a stack independently without selecting a cluster first.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
@@ -265,7 +265,7 @@ export function CicdPipelineSetupPage() {
   const template = templates.find((item) => item.id === selectedTemplateId) ?? templates[0]
 
   const { data: clustersData } = useClusters()
-  const clusterList = clustersData?.items ?? []
+  const clusterList = useMemo(() => clustersData?.items ?? [], [clustersData?.items])
   const getNormalizedClusterTypes = (cluster: { type?: string; types?: string[] }) => {
     const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
       ? cluster.types
@@ -277,16 +277,17 @@ export function CicdPipelineSetupPage() {
       .filter((type) => type.length > 0)
   }
 
-  const targetClusters = clusterList.filter((cluster) => getNormalizedClusterTypes(cluster).includes('target'))
-
-  const clusterOptions = targetClusters.length > 0
-    ? [...targetClusters]
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((cluster) => ({ id: cluster.id, name: cluster.name }))
-    : [
-      { id: 'c1', name: 'prod-k8s' },
-      { id: 'c2', name: 'dev-k8s' },
-    ]
+  const clusterOptions = useMemo(() => {
+    const targetClusters = clusterList.filter((cluster) => getNormalizedClusterTypes(cluster).includes('target'))
+    return targetClusters.length > 0
+      ? [...targetClusters]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((cluster) => ({ id: cluster.id, name: cluster.name }))
+      : [
+        { id: 'c1', name: 'prod-k8s' },
+        { id: 'c2', name: 'dev-k8s' },
+      ]
+  }, [clusterList])
 
   const createPipeline = useCreatePipeline()
 

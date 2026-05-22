@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
-	"github.com/cloud-nullus/draft/internal/stack/port"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
 )
 
@@ -54,7 +54,7 @@ func newStackEcho() *echo.Echo {
 	deleteStackUC := usecase.NewDeleteStack(memStackRepo, nil, nil)
 	addToolsUC := usecase.NewAddToolsUseCase(memStackRepo)
 	manageHistoryUC := usecase.NewManageHistory(memHistoryRepo)
-	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, manageHistoryUC, nil)
+	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, nil, stackhandler.WithHistory(manageHistoryUC))
 	historyHandler := stackhandler.NewHistoryHandler(memHistoryRepo, memStackRepo, manageHistoryUC)
 
 	v1 := e.Group("/api/v1")
@@ -80,7 +80,7 @@ func newStackEchoWithSlowDelete() *echo.Echo {
 	})
 	addToolsUC := usecase.NewAddToolsUseCase(memStackRepo)
 	manageHistoryUC := usecase.NewManageHistory(memHistoryRepo)
-	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, manageHistoryUC, nil)
+	h := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, nil, stackhandler.WithHistory(manageHistoryUC))
 	historyHandler := stackhandler.NewHistoryHandler(memHistoryRepo, memStackRepo, manageHistoryUC)
 
 	v1 := e.Group("/api/v1")

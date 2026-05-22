@@ -1,3 +1,5 @@
+//go:build legacy_k8s_orchestrator
+
 package helm
 
 import (

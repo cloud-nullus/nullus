@@ -260,7 +260,7 @@ export function StackAddToolsPage() {
     return apiStack ?? null
   }, [stackListData?.items, stackId])
 
-  const installedTools = (stack?.tools ?? []) as InstalledTool[]
+  const installedTools = useMemo(() => (stack?.tools ?? []) as InstalledTool[], [stack?.tools])
 
   const installedToolsByCategory = useMemo(() => {
     return installedTools.reduce<Record<string, Set<string>>>((acc, tool) => {

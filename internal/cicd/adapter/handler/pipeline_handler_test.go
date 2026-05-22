@@ -214,7 +214,7 @@ func newPipelineEcho(t *testing.T, pipelineRepo *mockPipelineRepository, templat
 	createPipelineUC := usecase.NewCreatePipeline(pipelineRepo, templateRepo)
 	listPipelinesUC := usecase.NewListPipelines(pipelineRepo)
 	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, &noopManifestApplier{})
-	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, kube.NewStepTracker())
+	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pipelineRepo, deploymentRepo, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil)
 
 	v1 := e.Group("/api/v1")
 	h.RegisterRoutes(v1)
@@ -460,7 +460,7 @@ func TestPipelineHandler_DeployApp_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Equal(t, "dep_app_my-api", resp["deploymentId"])
+	assert.Regexp(t, `^dep_app_my-api_\d{14}$`, resp["deploymentId"])
 	assert.Equal(t, "go-web-api", resp["templateId"])
 	assert.NotNil(t, resp["manifests"])
 }

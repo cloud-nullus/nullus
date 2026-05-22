@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +26,7 @@ type StackHandler struct {
 	addToolsUC  *usecase.AddToolsUseCase
 	stackRepo   port.StackRepository
 	audit       *audit.AuditLogger
+	history     *usecase.ManageHistory
 	pool        *pgxpool.Pool
 }
 
@@ -34,6 +36,11 @@ type StackHandlerOption func(*StackHandler)
 // WithPool sets the database pool for cross-module queries.
 func WithPool(pool *pgxpool.Pool) StackHandlerOption {
 	return func(h *StackHandler) { h.pool = pool }
+}
+
+// WithHistory records stack configuration snapshots for create/update flows.
+func WithHistory(history *usecase.ManageHistory) StackHandlerOption {
+	return func(h *StackHandler) { h.history = history }
 }
 
 // NewStackHandler constructs a StackHandler.
@@ -99,8 +106,17 @@ func (h *StackHandler) CreateStack(c echo.Context) error {
 		Config:     req.Config,
 	})
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+			statusCode := http.StatusConflict
+			errorCode := "STACK_NAME_DUPLICATE"
+			if h.stackDeleteInProgress(c.Request().Context(), orgID, req.Name) {
+				errorCode = "STACK_DELETE_IN_PROGRESS"
+			}
+			return errorResponse(c, statusCode, errorCode, err.Error())
+		}
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONFIG_INVALID", err.Error())
 	}
+	h.saveHistory(c.Request().Context(), out.Stack.ID, req.Config, userIDOrSystem(c), "stack created")
 	if h.audit != nil {
 		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
 			UserID:       c.Request().Header.Get("X-User-ID"),
@@ -147,10 +163,26 @@ func (h *StackHandler) GetStack(c echo.Context) error {
 
 func (h *StackHandler) DeleteStack(c echo.Context) error {
 	stackID := c.Param("stackId")
-	if err := h.deleteStack.Execute(c.Request().Context(), stackID); err != nil {
+	stack, err := h.stackRepo.GetByID(c.Request().Context(), stackID)
+	if err != nil {
+		if isStackNotFound(err) {
+			return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+		}
 		return errorResponse(c, http.StatusInternalServerError, "STACK_DELETE_FAILED", err.Error())
 	}
-	return c.NoContent(http.StatusNoContent)
+
+	stack.State = domain.StateCancelled
+	stack.UpdatedAt = time.Now()
+	if err := h.stackRepo.Update(c.Request().Context(), stack); err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "STACK_DELETE_FAILED", err.Error())
+	}
+
+	ctx := context.WithoutCancel(c.Request().Context())
+	go func() {
+		_ = h.deleteStack.Execute(ctx, stackID)
+	}()
+
+	return c.NoContent(http.StatusAccepted)
 }
 
 // saveConfigRequest is the request body for POST /stacks/:id/config.
@@ -215,6 +247,7 @@ func (h *StackHandler) SaveConfig(c echo.Context) error {
 	if err := h.stackRepo.Update(c.Request().Context(), stack); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", err.Error())
 	}
+	h.saveHistory(c.Request().Context(), stack.ID, req.Config, userIDOrSystem(c), configChangeReason(req.Config))
 
 	return c.JSON(http.StatusOK, stack)
 }
@@ -225,12 +258,12 @@ func (h *StackHandler) SaveDraft(c echo.Context) error {
 
 // workloadPipeline is the response shape for a pipeline in the workloads endpoint.
 type workloadPipeline struct {
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	Namespace      string            `json:"namespace"`
-	Status         string            `json:"status"`
-	LastDeployment *workloadDeploy   `json:"lastDeployment"`
-	K8sObjects     []workloadK8sObj  `json:"k8sObjects"`
+	ID             string           `json:"id"`
+	Name           string           `json:"name"`
+	Namespace      string           `json:"namespace"`
+	Status         string           `json:"status"`
+	LastDeployment *workloadDeploy  `json:"lastDeployment"`
+	K8sObjects     []workloadK8sObj `json:"k8sObjects"`
 }
 
 type workloadDeploy struct {
@@ -422,7 +455,7 @@ func resolveOrgID(c echo.Context) string {
 		return orgID
 	}
 
-	return "00000000-0000-0000-0000-000000000001"
+	return "11111111-1111-1111-1111-111111111111"
 }
 
 func orgIDFromPrincipal(principal any) string {
@@ -448,4 +481,54 @@ func orgIDFromPrincipal(principal any) string {
 	}
 
 	return ""
+}
+
+func (h *StackHandler) saveHistory(ctx context.Context, stackID string, cfg domain.StackConfig, changedBy, reason string) {
+	if h.history == nil {
+		return
+	}
+	_, _ = h.history.SaveVersion(ctx, usecase.SaveVersionInput{
+		StackID:      stackID,
+		Config:       cfg,
+		ChangedBy:    changedBy,
+		ChangeReason: reason,
+	})
+}
+
+func (h *StackHandler) stackDeleteInProgress(ctx context.Context, orgID, name string) bool {
+	stacks, err := h.stackRepo.List(ctx, orgID, false)
+	if err != nil {
+		return false
+	}
+	needle := strings.ToLower(strings.TrimSpace(name))
+	for _, stack := range stacks {
+		if stack == nil {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(stack.Name)) == needle && stack.State == domain.StateCancelled {
+			return true
+		}
+	}
+	return false
+}
+
+func configChangeReason(cfg domain.StackConfig) string {
+	if count := len(cfg.YAMLOverrides); count > 0 {
+		return fmt.Sprintf("yaml_view_customization (%d overrides)", count)
+	}
+	return "config updated"
+}
+
+func userIDOrSystem(c echo.Context) string {
+	if userID := c.Request().Header.Get("X-User-ID"); userID != "" {
+		return userID
+	}
+	return "system"
+}
+
+func isStackNotFound(err error) bool {
+	if errors.Is(err, usecase.ErrStackNotFound) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "not found")
 }

@@ -7,6 +7,7 @@ import type {
   ResourceEstimate,
   Stack,
   StackHistoryEntry,
+  StackResourceDefault,
   StackTemplate,
   StackVersionDiff,
   StackWorkloads,
@@ -29,9 +30,90 @@ export type {
   ResourceEstimate,
   Stack,
   StackHistoryEntry,
+  StackResourceDefault,
   StackTemplate,
   StackVersionDiff,
 } from '../../../types'
+
+export interface MatrixInput {
+  id: string
+  name: string
+  status: CompatibilityMatrix['status']
+  kubernetes: {
+    min: string
+    max: string
+    recommended: string
+  }
+  tools: Record<
+    string,
+    {
+      name: string
+      helmVersion: string
+      appVersion: string
+      minK8sVersion: string
+      archSupport: string[]
+      tier: 'stable' | 'beta' | 'deprecated'
+    }
+  >
+}
+
+export interface StackRetryHistoryEntry {
+  id: string
+  timestamp: string
+  verdict?: string
+  issueCodes?: string[]
+}
+
+export interface StackMonitoringPod {
+  name: string
+  status: string
+  phase: string
+  ready: boolean
+  restart_count: number
+  cpu_request_millicores: number
+  cpu_limit_millicores: number
+  cpu_usage_millicores: number
+  memory_request_mib: number
+  memory_limit_mib: number
+  memory_usage_mib: number
+  storage_request_gib?: number
+  storage_limit_gib?: number
+  storage_usage_gib?: number
+}
+
+export interface StackMonitoringData {
+  summary: {
+    cpu_request_millicores: number
+    cpu_limit_millicores: number
+    cpu_usage_millicores: number
+    memory_request_mib: number
+    memory_limit_mib: number
+    memory_usage_mib: number
+    storage_request_gib?: number
+    storage_limit_gib?: number
+    storage_usage_gib?: number
+    usage_available: boolean
+    storage_usage_available?: boolean
+    ready_pods: number
+    total_pods: number
+  }
+  pod_status_counts: Array<{ name: string; count: number }>
+  oss_statuses: Array<{
+    key: string
+    name: string
+    pod_count: number
+    ready_pods: number
+    pods: StackMonitoringPod[]
+  }>
+  installed_resources: Array<{
+    name: string
+    kind: string
+    namespace?: string
+    status?: string
+    ready_replicas?: number
+    desired_replicas?: number
+  }>
+}
 
 export interface ClusterSummary {
   id: string
@@ -46,6 +128,9 @@ const queryKeys = {
   history: (stackId: string) => ['stacks', 'history', stackId] as const,
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
+  resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
+  retryHistory: (stackId: string) => ['stacks', 'retry-history', stackId] as const,
+  monitoring: (stackId: string) => ['stacks', 'monitoring', stackId] as const,
   clusters: () => ['clusters'] as const,
   workloads: (stackId: string) => ['stacks', 'workloads', stackId] as const,
 }
@@ -76,12 +161,20 @@ interface RawTemplate {
 }
 
 interface RawCompatibilityTool {
+  category?: string
+  Category?: string
   name?: string
   Name?: string
   helmVersion?: string
   HelmVersion?: string
   appVersion?: string
   AppVersion?: string
+  archSupport?: string[]
+  ArchSupport?: string[]
+  minK8sVersion?: string
+  MinK8sVersion?: string
+  tier?: 'stable' | 'beta' | 'deprecated'
+  Tier?: 'stable' | 'beta' | 'deprecated'
 }
 
 interface RawKubernetesRange {
@@ -156,9 +249,13 @@ const normalizeTemplate = (raw: RawTemplate): StackTemplate => ({
 })
 
 const normalizeCompatibilityTool = (tool: RawCompatibilityTool) => ({
+  category: tool.category ?? tool.Category,
   name: tool.name ?? tool.Name ?? 'Unknown',
   helmVersion: tool.helmVersion ?? tool.HelmVersion ?? '-',
   appVersion: tool.appVersion ?? tool.AppVersion ?? '-',
+  archSupport: tool.archSupport ?? tool.ArchSupport ?? ['amd64'],
+  minK8sVersion: tool.minK8sVersion ?? tool.MinK8sVersion ?? '',
+  tier: tool.tier ?? tool.Tier ?? 'stable',
 })
 
 const normalizeK8sRange = (raw: RawCompatibilityMatrix): string => {
@@ -267,7 +364,7 @@ const stackApiCalls = {
   getTemplate: (id: string) =>
     api.get<StackTemplate>(`/stacks/templates/${id}`).then((r) => r.data),
 
-  getList: (filters?: { status?: string; search?: string }) =>
+  getList: (filters?: { status?: string; search?: string; include_deleted?: boolean }) =>
     api.get<{ items: Stack[]; total: number }>('/stacks', { params: filters }).then((r) => ({
       ...r.data,
       items: ((r.data.items ?? []) as unknown as RawStackItem[]).map(normalizeStackItem),
@@ -309,11 +406,38 @@ const stackApiCalls = {
   deleteTemplate: (id: string) =>
     api.delete<void>(`/stacks/templates/${id}`).then((r) => r.data),
 
+  createMatrix: (request: MatrixInput) =>
+    api.post<CompatibilityMatrix>('/stacks/compatibility', request).then((r) => r.data),
+
+  updateMatrix: (request: MatrixInput) =>
+    api.put<CompatibilityMatrix>(`/stacks/compatibility/${request.id}`, request).then((r) => r.data),
+
+  deleteMatrix: (id: string) =>
+    api.delete<void>(`/stacks/compatibility/${id}`).then((r) => r.data),
+
+  getResourceDefaults: () =>
+    api.get<{ items: StackResourceDefault[]; total: number }>('/stacks/resource-defaults').then((r) => r.data),
+
+  upsertResourceDefault: (request: Omit<StackResourceDefault, 'updated_at'>) =>
+    api.post<StackResourceDefault>('/stacks/resource-defaults', request).then((r) => r.data),
+
   getClusters: () =>
     api.get<{ items: ClusterSummary[] }>('/admin/clusters').then((r) => r.data?.items ?? []),
 
   deployStack: (stackId: string) =>
     api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/deploy`).then((r) => r.data),
+
+  continueStack: ({ stackId }: { stackId: string }) =>
+    api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/continue`).then((r) => r.data),
+
+  retryStack: ({ stackId, acknowledgeWarnings }: { stackId: string; acknowledgeWarnings: boolean }) =>
+    api.post<{ stack_id: string; status: string }>(`/stacks/${stackId}/retry`, { acknowledgeWarnings }).then((r) => r.data),
+
+  getRetryHistory: (stackId: string) =>
+    api.get<{ items: StackRetryHistoryEntry[] }>(`/stacks/${stackId}/retry-history`).then((r) => r.data),
+
+  getMonitoring: (stackId: string) =>
+    api.get<StackMonitoringData>(`/stacks/${stackId}/monitoring`).then((r) => r.data),
 
   getWorkloads: (stackId: string) =>
     api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
@@ -335,7 +459,7 @@ export function useClusters() {
   })
 }
 
-export function useStacks(filters?: { status?: string; search?: string }) {
+export function useStacks(filters?: { status?: string; search?: string; include_deleted?: boolean }) {
   return useQuery({
     queryKey: queryKeys.list(filters),
     queryFn: () => stackApiCalls.getList(filters),
@@ -471,6 +595,53 @@ export function useDeleteTemplate() {
   })
 }
 
+export function useCreateMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.createMatrix,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
+    },
+  })
+}
+
+export function useUpdateMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.updateMatrix,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
+    },
+  })
+}
+
+export function useDeleteMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.deleteMatrix,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
+    },
+  })
+}
+
+export function useResourceDefaults() {
+  return useQuery({
+    queryKey: queryKeys.resourceDefaults(),
+    queryFn: stackApiCalls.getResourceDefaults,
+  })
+}
+
+export function useUpsertResourceDefault() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.upsertResourceDefault,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.resourceDefaults() })
+    },
+  })
+}
+
 export function useDeployStack() {
   const qc = useQueryClient()
   return useMutation({
@@ -478,6 +649,45 @@ export function useDeployStack() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
     },
+  })
+}
+
+export function useContinueStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.continueStack,
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+      void qc.invalidateQueries({ queryKey: queryKeys.monitoring(variables.stackId) })
+    },
+  })
+}
+
+export function useRetryStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: stackApiCalls.retryStack,
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+      void qc.invalidateQueries({ queryKey: queryKeys.retryHistory(variables.stackId) })
+    },
+  })
+}
+
+export function useStackRetryHistory(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.retryHistory(stackId),
+    queryFn: () => stackApiCalls.getRetryHistory(stackId),
+    enabled: !!stackId,
+  })
+}
+
+export function useStackMonitoring(stackId: string, refetchInterval = 30_000) {
+  return useQuery({
+    queryKey: queryKeys.monitoring(stackId),
+    queryFn: () => stackApiCalls.getMonitoring(stackId),
+    enabled: !!stackId,
+    refetchInterval,
   })
 }
 

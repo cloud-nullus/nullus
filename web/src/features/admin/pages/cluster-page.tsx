@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useForm } from 'react-hook-form'
@@ -189,7 +189,7 @@ function getClusterAuthMethods(types: ClusterType[]) {
 export function ClusterPage() {
   const { t } = useTranslation()
   const { data: clustersData, isLoading } = useClusters()
-  const clusters = clustersData?.items ?? []
+  const clusters = useMemo(() => clustersData?.items ?? [], [clustersData?.items])
   const createCluster = useCreateCluster()
   const updateCluster = useUpdateCluster()
   const deleteCluster = useDeleteCluster()
@@ -254,7 +254,7 @@ export function ClusterPage() {
 
       return changed ? next : prev
     })
-  }, [clusters])
+  }, [clusters, statusOverrides])
 
   const getEffectiveStatus = (cluster: Pick<Cluster, 'id' | 'status'>): ClusterStatus => statusOverrides[cluster.id] ?? cluster.status
   const selectedCluster = selected ? clusters.find((cluster) => cluster.id === selected.id) ?? selected : null

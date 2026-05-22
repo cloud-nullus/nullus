@@ -10,9 +10,10 @@ import (
 type PipelineRepository interface {
 	Create(ctx context.Context, pipeline *domain.Pipeline) error
 	GetByID(ctx context.Context, id string) (*domain.Pipeline, error)
-	List(ctx context.Context, orgID string) ([]*domain.Pipeline, error)
+	List(ctx context.Context, orgID string, stackID ...string) ([]*domain.Pipeline, error)
 	ListByStackID(ctx context.Context, stackID string) ([]*domain.Pipeline, error)
 	Update(ctx context.Context, pipeline *domain.Pipeline) error
+	Delete(ctx context.Context, id string) error
 }
 
 // PipelineTemplateRepository defines the interface for pipeline template persistence.

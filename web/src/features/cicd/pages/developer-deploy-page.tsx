@@ -49,31 +49,37 @@ export function DeveloperDeployPage() {
   const { logs, status, progress, isConnected } = useCicdDeployLog(deploymentId)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { data: stacksData } = useStacks()
-  const stacks = (stacksData?.items ?? []).map((s) => ({
-    id: s.id,
-    name: s.name,
-  }))
+  const stacks = useMemo(
+    () => (stacksData?.items ?? []).map((s) => ({
+      id: s.id,
+      name: s.name,
+    })),
+    [stacksData?.items],
+  )
   const { data: clustersData } = useClusters()
   const { data: templatesData } = useCicdTemplates()
-  const templates = templatesData ?? []
+  const templates = useMemo(() => templatesData ?? [], [templatesData])
   const quickStartTemplates = templates.filter((template) =>
     !!(template.gitRepoUrl?.trim() || template.dockerfilePath?.trim() || template.dockerContext?.trim())
   )
-  const clusters = (clustersData?.items ?? [])
-    .filter((cluster) => {
-      const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
-        ? cluster.types
-        : (cluster.type ? [cluster.type] : [])
-      const normalizedTypes = rawTypes
-        .flatMap((type) => type.split(','))
-        .map((type) => type.trim().toLowerCase())
-        .filter((type) => type.length > 0)
-      return normalizedTypes.includes('target')
-    })
-    .map((c) => ({
-      id: c.id,
-      name: c.name,
-    }))
+  const clusters = useMemo(
+    () => (clustersData?.items ?? [])
+      .filter((cluster) => {
+        const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
+          ? cluster.types
+          : (cluster.type ? [cluster.type] : [])
+        const normalizedTypes = rawTypes
+          .flatMap((type) => type.split(','))
+          .map((type) => type.trim().toLowerCase())
+          .filter((type) => type.length > 0)
+        return normalizedTypes.includes('target')
+      })
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+      })),
+    [clustersData?.items],
+  )
   const {
     register,
     control,

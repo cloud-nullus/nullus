@@ -413,6 +413,7 @@ export function parseDraftFromYaml(text: string, currentDraft: StackConfigDraft)
         tool: toStringOrFallback(monitoring.visualization, currentDraft.monitoring.visualization.tool),
         version: currentDraft.monitoring.visualization.version,
       },
+      visualizations: currentDraft.monitoring.visualizations,
     },
     logging: {
       search: {
@@ -423,6 +424,7 @@ export function parseDraftFromYaml(text: string, currentDraft: StackConfigDraft)
         tool: toStringOrFallback(logging.traces, currentDraft.logging.traceLayer.tool),
         version: currentDraft.logging.traceLayer.version,
       },
+      traceExporter: currentDraft.logging.traceExporter,
     },
     resources: {
       ...currentDraft.resources,

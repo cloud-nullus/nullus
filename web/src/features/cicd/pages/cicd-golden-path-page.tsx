@@ -6,7 +6,7 @@ import { useGoldenPaths } from '../api/cicd-api'
 import type { CICDGoldenPath, CICDTool } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
-import { useStackConfigStore } from '../../stack/stores/stack-config-store'
+import { useStackConfigStore, type StackConfigDraft } from '../../stack/stores/stack-config-store'
 
 // Golden Path 도구 이름 → Stack 설정 tool ID 매핑
 const TOOL_NAME_TO_ID: Record<string, string> = {
@@ -35,7 +35,7 @@ const TOOL_NAME_TO_ID: Record<string, string> = {
 }
 
 /** Golden Path 도구 목록을 Stack 설정 오버라이드로 변환 */
-function goldenPathToStackOverrides(tools: CICDTool[]) {
+function goldenPathToStackOverrides(tools: CICDTool[]): Partial<StackConfigDraft> {
   const artifacts = {
     packageRegistry: { tool: 'gitlab', version: 'latest' },
     sourceRepository: { tool: 'gitlab', version: 'latest' },
@@ -49,10 +49,12 @@ function goldenPathToStackOverrides(tools: CICDTool[]) {
   const monitoring = {
     collection: { tool: 'prometheus', version: 'latest' },
     visualization: { tool: 'grafana', version: 'latest' },
+    visualizations: [{ tool: 'grafana', version: 'latest' }],
   }
   const logging = {
     search: { tool: 'opensearch', version: 'latest' },
     traceLayer: { tool: 'tempo', version: 'latest' },
+    traceExporter: { tool: '', version: '' },
   }
 
   for (const tool of tools) {
@@ -81,6 +83,7 @@ function goldenPathToStackOverrides(tools: CICDTool[]) {
         break
       case 'monitoring_visualization':
         monitoring.visualization = { tool: toolId, version }
+        monitoring.visualizations = [{ tool: toolId, version }]
         break
       case 'log_aggregation':
         logging.search = { tool: toolId, version }

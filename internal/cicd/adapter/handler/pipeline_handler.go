@@ -906,6 +906,12 @@ const defaultOrgID = "11111111-1111-1111-1111-111111111111"
 
 // validatedOrgID checks if the header org ID exists in DB, falls back to default.
 func (h *PipelineHandler) validatedOrgID(ctx context.Context, headerOrgID string) string {
+	if h.pool == nil {
+		if headerOrgID != "" {
+			return headerOrgID
+		}
+		return defaultOrgID
+	}
 	if headerOrgID != "" {
 		var exists bool
 		if err := h.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM organizations WHERE id = $1)", headerOrgID).Scan(&exists); err == nil && exists {
@@ -917,6 +923,12 @@ func (h *PipelineHandler) validatedOrgID(ctx context.Context, headerOrgID string
 
 // resolveOrgID determines the org ID: validates header, falls back to cluster's org, then default.
 func (h *PipelineHandler) resolveOrgID(ctx context.Context, headerOrgID, clusterID string) (string, error) {
+	if h.pool == nil {
+		if headerOrgID != "" {
+			return headerOrgID, nil
+		}
+		return defaultOrgID, nil
+	}
 	if headerOrgID != "" {
 		var exists bool
 		if err := h.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM organizations WHERE id = $1)", headerOrgID).Scan(&exists); err == nil && exists {

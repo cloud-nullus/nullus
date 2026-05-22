@@ -87,7 +87,7 @@ export const deploySchema = z.object({
 export const labelStyleClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]'
 
 function yamlSafe(value: string): string {
-  if (/[:\n\r#"'\\{}\[\],&*?|><!%@`]/.test(value) || value !== value.trim()) {
+  if (/[:\n\r#"'\\{},&*?|><!%@`]/.test(value) || value.includes('[') || value.includes(']') || value !== value.trim()) {
     return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
   }
   return value

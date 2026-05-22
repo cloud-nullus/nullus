@@ -98,6 +98,7 @@ export function StackInstallPage() {
           isDirty: true,
         }))
       } catch {
+        // Ignore invalid YAML while the user is still typing.
       }
     }, 300)
   }, [])
@@ -115,6 +116,7 @@ export function StackInstallPage() {
       const formatted = YAML.stringify(parsed, { indent: 2, lineWidth: 0 })
       handleYamlChange(formatted)
     } catch {
+      // Keep the existing YAML when formatting invalid input.
     }
   }, [handleYamlChange])
 
@@ -213,7 +215,6 @@ export function StackInstallPage() {
       const detail = (e?.details && typeof e.details === 'object' && 'error' in e.details && typeof (e.details as { error: { message?: string } }).error?.message === 'string')
         ? (e.details as { error: { message: string } }).error.message
         : e?.message ?? '알 수 없는 오류'
-      // eslint-disable-next-line no-console
       console.error('stack create failed', { status: e?.status, body, error: err })
       toast.error(`스택 생성 실패 (${e?.status ?? '?'}): ${detail}`)
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -251,7 +251,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
 
   const hasBuildConfig = !!pipeline.dockerfilePath
   const envEntries = Object.entries(pipeline.envVars ?? {})
-  const deployments = deploymentsData?.items ?? []
+  const deployments = useMemo(() => deploymentsData?.items ?? [], [deploymentsData?.items])
   const latestDeployment = [...deployments].sort(
     (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
   )[0]
@@ -446,7 +446,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { data: deploymentsData, isLoading } = usePipelineDeployments(pipeline.id)
-  const deployments = deploymentsData?.items ?? []
+  const deployments = useMemo(() => deploymentsData?.items ?? [], [deploymentsData?.items])
 
   if (isLoading) {
     return <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">Loading deployment metrics...</div>
@@ -533,7 +533,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const { data: template } = useTemplateById(pipeline.templateId)
   const { data: deploymentsData, isLoading } = usePipelineDeployments(pipeline.id)
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null)
-  const deployments = deploymentsData?.items ?? []
+  const deployments = useMemo(() => deploymentsData?.items ?? [], [deploymentsData?.items])
   const stages = (template?.stages ?? []) as string[]
 
   useEffect(() => {

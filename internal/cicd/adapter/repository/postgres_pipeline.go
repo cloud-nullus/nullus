@@ -54,12 +54,20 @@ func (r *PostgresPipelineRepository) GetByID(ctx context.Context, id string) (*d
 }
 
 // List returns all pipelines belonging to an organization.
-func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]*domain.Pipeline, error) {
-	const q = `
+// An optional stackID filters results to pipelines linked to that stack.
+func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string, stackID ...string) ([]*domain.Pipeline, error) {
+	filterStack := len(stackID) > 0 && stackID[0] != ""
+	q := `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
-		FROM pipelines WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`
+		FROM pipelines WHERE org_id = $1`
+	args := []any{orgID}
+	if filterStack {
+		q += ` AND stack_id = $2`
+		args = append(args, stackID[0])
+	}
+	q += ` ORDER BY created_at DESC LIMIT 100`
 
-	rows, err := r.pool.Query(ctx, q, orgID)
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query pipelines: %w", err)
 	}
@@ -123,6 +131,18 @@ func (r *PostgresPipelineRepository) Update(ctx context.Context, p *domain.Pipel
 	}
 	if res.RowsAffected() == 0 {
 		return fmt.Errorf("pipeline %q not found", p.ID)
+	}
+	return nil
+}
+
+// Delete removes a pipeline by ID.
+func (r *PostgresPipelineRepository) Delete(ctx context.Context, id string) error {
+	res, err := r.pool.Exec(ctx, `DELETE FROM pipelines WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete pipeline: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return fmt.Errorf("pipeline %q not found", id)
 	}
 	return nil
 }
