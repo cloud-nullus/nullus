@@ -808,7 +808,6 @@ type deployAppRequest struct {
 	ClusterID  string `json:"clusterId"`
 	Namespace  string `json:"namespace"`
 	GitURL     string `json:"gitUrl"`
-	StackID    string `json:"stackId"`
 	Replicas   int32  `json:"replicas"`
 	Port       int32  `json:"port"`
 	Resources  struct {
@@ -859,7 +858,6 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 		TemplateID: req.TemplateID,
 		OrgID:      orgID,
 		ClusterID:  req.ClusterID,
-		StackID:    req.StackID,
 		Namespace:  req.Namespace,
 		AppType:    domain.AppTypeBackend,
 		GitRepoURL: req.GitURL,

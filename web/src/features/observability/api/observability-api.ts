@@ -121,35 +121,3 @@ export function useAlertHistory(filters?: { severity?: AlertSeverity }) {
     queryFn: () => observabilityApiCalls.getAlertHistory(filters),
   })
 }
-
-export interface DeployedAppPod {
-  name: string
-  node: string
-  status: string
-}
-
-export interface DeployedApp {
-  id: string
-  name: string
-  template_id: string
-  namespace: string
-  cluster_id: string
-  cluster_name: string
-  git_repo_url: string
-  status: string
-  state: string
-  version: string
-  deployed_by: string
-  deployed_at: string
-  replicas: number
-  pods: DeployedAppPod[]
-}
-
-export function useDeployedApps() {
-  return useQuery({
-    queryKey: ['observability', 'deployed-apps'] as const,
-    queryFn: () =>
-      api.get<{ items: DeployedApp[]; total: number }>('/observability/deployed-apps').then((r) => r.data),
-    refetchInterval: 10000,
-  })
-}

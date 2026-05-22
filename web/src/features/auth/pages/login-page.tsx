@@ -14,29 +14,29 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>
 
-// Must match an existing row in the `organizations` table.
-// Nullus DevOps Team — also owns the seed stacks visible in stack list / monitoring.
 const ORG_ID = '11111111-1111-1111-1111-111111111111'
 
 const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   'admin@nullus.dev': {
     password: 'admin123',
-    user: { id: '1', name: 'Admin User', email: 'admin@nullus.dev', role: 'admin', orgId: ORG_ID },
+    user: { id: 'a1000000-0000-0000-0000-000000000001', name: 'Admin User', email: 'admin@nullus.dev', role: 'admin', orgId: ORG_ID },
   },
   'devops@nullus.dev': {
     password: 'devops123',
-    user: { id: '2', name: 'DevOps Engineer', email: 'devops@nullus.dev', role: 'devops', orgId: ORG_ID },
+    user: { id: 'a2000000-0000-0000-0000-000000000002', name: 'DevOps Engineer', email: 'devops@nullus.dev', role: 'devops', orgId: ORG_ID },
   },
   'developer@nullus.dev': {
     password: 'developer123',
-    user: { id: '3', name: 'Developer', email: 'developer@nullus.dev', role: 'developer', orgId: ORG_ID },
+    user: { id: 'a3000000-0000-0000-0000-000000000003', name: 'Developer', email: 'developer@nullus.dev', role: 'developer', orgId: ORG_ID },
   },
 }
 
-const ROLE_HOME: Record<string, string> = {
-  admin: '/admin/organization',
-  devops: '/stack/templates',
-  developer: '/cicd/developer-deploy',
+const GITHUB_PAGES_DEMO_ADMIN_USER: User = {
+  id: 'a1000000-0000-0000-0000-000000000001',
+  name: 'Admin User',
+  email: 'admin@nullus.dev',
+  role: 'admin',
+  orgId: ORG_ID,
 }
 
 function OidcLoginContent() {
@@ -64,6 +64,7 @@ function MockLoginContent() {
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
   const [error, setError] = useState<string | null>(null)
+  const [githubPagesDemoMode, setGithubPagesDemoMode] = useState(false)
   const {
     register,
     handleSubmit,
@@ -77,6 +78,20 @@ function MockLoginContent() {
   const onSubmit = (data: LoginFormData) => {
     setError(null)
 
+    if (githubPagesDemoMode) {
+      const isAdminDemoCredentials =
+        data.email === 'admin@nullus.dev' && data.password === 'admin123'
+
+      if (!isAdminDemoCredentials) {
+        setError('GitHub Pages Demo Mode only allows admin@nullus.dev / admin123.')
+        return
+      }
+
+      login(GITHUB_PAGES_DEMO_ADMIN_USER, 'mock-token-github-pages-admin')
+      navigate('/')
+      return
+    }
+
     const account = TEST_ACCOUNTS[data.email]
     if (!account || account.password !== data.password) {
       setError('Invalid email or password.')
@@ -84,12 +99,24 @@ function MockLoginContent() {
     }
 
     login(account.user)
-    navigate(ROLE_HOME[account.user.role] ?? '/')
+    navigate('/')
   }
 
   return (
     <>
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <label className="flex items-center gap-2 rounded-lg border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-3 py-2.5 text-xs text-[var(--color-text-secondary)]">
+          <input
+            type="checkbox"
+            checked={githubPagesDemoMode}
+            onChange={(e) => {
+              setGithubPagesDemoMode(e.target.checked)
+              setError(null)
+            }}
+          />
+          GitHub Pages Demo Mode (Admin mock UI only)
+        </label>
+
         <div className="flex flex-col gap-1">
           <label htmlFor="email" className="text-xs font-medium text-[var(--color-text-secondary)]">
             Email
