@@ -17,186 +17,20 @@ import { useStacks } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
 import { useCicdDeployLog } from '../hooks/use-cicd-deploy-log'
 import { formatTime, resolveLocale } from '../../../lib/locale'
-
-type Step = 1 | 2 | 3 | 4 | 5 | 6
-
-const STEP_LABEL_DEFAULTS: Record<Step, string> = {
-  1: 'App Name',
-  2: 'Git Repository',
-  3: 'Cluster / Namespace',
-  4: 'Resource Configuration',
-  5: 'Environment Variables',
-  6: 'Manifest Review',
-}
-
-const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
-
-const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
-  info: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
-  success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-  error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-}
-
-function PhaseStep({ label, index, progress, total }: { label: string; index: number; progress: number; total: number }) {
-  const phaseProgress = 100 / total
-  const phaseStart = index * phaseProgress
-  const isDone = progress >= phaseStart + phaseProgress
-  const isActive = progress >= phaseStart && !isDone
-
-  return (
-    <div className="flex flex-1 items-center gap-2">
-      <div
-        className={cn(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300',
-          isDone
-            ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
-            : isActive
-              ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]'
-              : 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
-        )}
-      >
-        {isDone ? (
-          <Check size={14} />
-        ) : isActive ? (
-          <Loader2 size={14} className="animate-spin" />
-        ) : (
-          <span className="text-xs font-bold">{index + 1}</span>
-        )}
-      </div>
-      <span
-        className={cn(
-          'text-[13px] font-semibold',
-          isDone ? 'text-[#22c55e]' : isActive ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
-        )}
-      >
-        {label}
-      </span>
-      {index < total - 1 && (
-        <div
-          className={cn(
-            'mx-1 h-px flex-1 transition-colors duration-300',
-            isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
-          )}
-        />
-      )}
-    </div>
-  )
-}
-
-function generateYaml(form: Partial<FormState>, appType: string): string {
-  const cpu = form.cpuLimit ?? '500m'
-  const mem = form.memoryLimit ?? '512Mi'
-  const replicas = form.replicas ?? 2
-  return `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${form.appName ?? 'my-app'}
-  namespace: ${form.namespace ?? 'default'}
-  labels:
-    app: ${form.appName ?? 'my-app'}
-    template: ${appType || 'backend'}
-spec:
-  replicas: ${replicas}
-  selector:
-    matchLabels:
-      app: ${form.appName ?? 'my-app'}
-  template:
-    metadata:
-      labels:
-        app: ${form.appName ?? 'my-app'}
-    spec:
-      containers:
-        - name: ${form.appName ?? 'my-app'}
-          image: harbor.nullus.io/${form.appName ?? 'my-app'}:latest
-          ports:
-            - containerPort: 8080
-          resources:
-            requests:
-              cpu: ${form.cpuRequest ?? '100m'}
-              memory: ${form.memoryRequest ?? '128Mi'}
-            limits:
-              cpu: ${cpu}
-              memory: ${mem}
-${(form.envVars ?? []).filter((e) => e.key).length > 0
-  ? `          env:\n${(form.envVars ?? []).filter((e) => e.key).map((e) => `            - name: ${e.key}\n              value: "${e.value}"`).join('\n')}`
-  : ''}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${form.appName ?? 'my-app'}-svc
-  namespace: ${form.namespace ?? 'default'}
-spec:
-  selector:
-    app: ${form.appName ?? 'my-app'}
-  ports:
-    - port: 80
-      targetPort: 8080`
-}
-
-interface EnvVar { key: string; value: string }
-
-interface FormState {
-  appName: string
-  gitUrl: string
-  dockerfilePath: string
-  dockerContext: string
-  clusterId: string
-  namespace: string
-  replicas: number
-  cpuRequest: string
-  cpuLimit: string
-  memoryRequest: string
-  memoryLimit: string
-  envVars: EnvVar[]
-}
-
-const deploySchema = z.object({
-  appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
-  gitUrl: z.string().min(1, 'Git URL is required'),
-  dockerfilePath: z.string(),
-  dockerContext: z.string(),
-  clusterId: z.string().min(1, 'Cluster is required'),
-  namespace: z.string().min(1, 'Namespace is required'),
-  replicas: z.number().min(1).max(10),
-  cpuRequest: z.string().min(1, 'CPU request is required'),
-  cpuLimit: z.string().min(1, 'CPU limit is required'),
-  memoryRequest: z.string().min(1, 'Memory request is required'),
-  memoryLimit: z.string().min(1, 'Memory limit is required'),
-  envVars: z
-    .array(
-      z.object({
-        key: z.string(),
-        value: z.string(),
-      })
-    )
-    .superRefine((envVars, ctx) => {
-      envVars.forEach((env, index) => {
-        if (env.value.trim() && !env.key.trim()) {
-          ctx.addIssue({
-            code: 'custom',
-            message: 'Key is required when value exists',
-            path: [index, 'key'],
-          })
-        }
-      })
-    }),
-})
-
-const DEFAULT_FORM: FormState = {
-  appName: '',
-  gitUrl: '',
-  dockerfilePath: '',
-  dockerContext: '',
-  clusterId: '',
-  namespace: 'default',
-  replicas: 2,
-  cpuRequest: '100m',
-  cpuLimit: '500m',
-  memoryRequest: '128Mi',
-  memoryLimit: '512Mi',
-  envVars: [{ key: '', value: '' }],
-}
+import {
+  STEP_LABEL_DEFAULTS,
+  PROGRESS_SEGMENTS,
+  LOG_LEVEL_STYLE,
+  DEFAULT_FORM,
+  deploySchema,
+  labelStyleClass,
+  generateYaml,
+  PhaseStep,
+  StepSection,
+  ResourceSlider,
+  CopyableCommand,
+} from './developer-deploy-components'
+import type { Step, FormState } from './developer-deploy-components'
 
 export function DeveloperDeployPage() {
   const { t, i18n } = useTranslation()
@@ -904,7 +738,7 @@ export function DeveloperDeployPage() {
                 {t('developerDeployPage.manifestDescription', 'Review the generated YAML manifest and edit if needed.')}
               </p>
               <textarea
-                value={customManifest ?? generateYaml(form, selectedAppType)}
+                value={customManifest ?? generateYaml(form)}
                 onChange={(e) => setCustomManifest(e.target.value)}
                 className="h-[400px] w-full resize-none rounded-lg border border-[var(--color-border-default)] bg-[#0d1117] p-4 font-mono text-xs leading-5 text-[#c9d1d9] focus:outline-none focus:ring-1 focus:ring-[#6366f1]"
                 spellCheck={false}
@@ -960,7 +794,7 @@ export function DeveloperDeployPage() {
             {t('developerDeployPage.yamlPreview', 'YAML Manifest Preview')}
           </p>
           <CodePreview
-            code={generateYaml(form, selectedAppType)}
+            code={generateYaml(form)}
             language="yaml"
             title={`${form.appName || 'my-app'}.yaml`}
             maxHeight="600px"
