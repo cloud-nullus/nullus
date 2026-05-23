@@ -880,6 +880,79 @@ func TestOrchestrator_ExecuteStep_AppliesRunnerGitlabURL(t *testing.T) {
 	assert.Equal(t, "http://gitlab-webservice-default.nullus.svc:8181", runnerValues["gitlabUrl"])
 }
 
+func TestOrchestrator_ExecuteStep_SkipsGitLabAndRunnerForGitHubSelection(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			StorageBackend:   domain.ToolSelection{Name: "minio", Enabled: true},
+			SourceRepository: domain.ToolSelection{Name: "github", Enabled: true},
+		},
+		Pipeline: domain.PipelineConfig{
+			CIPlatform: domain.ToolSelection{Name: "github-actions", Enabled: true},
+			CDTool:     domain.ToolSelection{Name: "argocd", Enabled: true},
+		},
+	})
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_postgresql", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+	}
+
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_github_ext", step.name, step.phase))
+	}
+
+	assert.NotContains(t, installer.installed, "gitlab")
+	assert.NotContains(t, installer.installed, "gitlab-runner")
+	assert.Contains(t, installer.installed, "argo-cd")
+}
+
+func TestOrchestrator_ExecuteStep_InstallsGitLabAndRunnerForGitLabSelection(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			StorageBackend:   domain.ToolSelection{Name: "minio", Enabled: true},
+			SourceRepository: domain.ToolSelection{Name: "gitlab", Enabled: true},
+		},
+		Pipeline: domain.PipelineConfig{
+			CIPlatform: domain.ToolSelection{Name: "gitlab-ci", Enabled: true},
+			CDTool:     domain.ToolSelection{Name: "argocd", Enabled: true},
+		},
+	})
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_postgresql", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+	}
+
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_embedded", step.name, step.phase))
+	}
+
+	assert.Contains(t, installer.installed, "gitlab")
+	assert.Contains(t, installer.installed, "gitlab-runner")
+}
+
 func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *testing.T) {
 	orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
 	orch.SetStackConfig(domain.StackConfig{

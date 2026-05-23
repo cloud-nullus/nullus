@@ -439,6 +439,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_gateway": {
 				ReleaseName: "eg",
 				ChartName:   "oci://docker.io/envoyproxy/gateway-helm",
+				Version:     "1.4.3",
 				Wait:        false,
 			},
 			"integration_check": {},
@@ -504,16 +505,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Artifacts.StorageBackend.Enabled
 			},
 			"installing_object_storage_secret": func(cfg domain.StackConfig) bool {
-				return cfg.Artifacts.StorageBackend.Enabled && cfg.Artifacts.SourceRepository.Enabled
+				return cfg.Artifacts.StorageBackend.Enabled && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
-				if !cfg.Artifacts.SourceRepository.Enabled {
-					return false
-				}
-				if strings.EqualFold(strings.TrimSpace(cfg.Artifacts.SourceRepository.Version), "external") {
-					return false
-				}
-				return true
+				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_openbao": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
@@ -525,13 +520,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Pipeline.CDTool.Enabled
 			},
 			stepInstallingRunner: func(cfg domain.StackConfig) bool {
-				if !cfg.Pipeline.CIPlatform.Enabled {
-					return false
-				}
-				if strings.EqualFold(strings.TrimSpace(cfg.Pipeline.CIPlatform.Version), "external") {
-					return false
-				}
-				return true
+				return isGitLabCISelection(cfg.Pipeline.CIPlatform)
 			},
 			"installing_prometheus": func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Collection.Enabled
@@ -563,6 +552,38 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		opt(o)
 	}
 	return o
+}
+
+func isGitLabSourceRepositorySelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return false
+	}
+	name := normalizeToolName(sel.Name)
+	if name == "" {
+		return true
+	}
+	return name == "gitlab" || name == "gitlab-ce"
+}
+
+func isGitLabCISelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return false
+	}
+	name := normalizeToolName(sel.Name)
+	if name == "" {
+		return true
+	}
+	return name == "gitlab-ci" || name == "gitlab-runner"
+}
+
+func normalizeToolName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 func (o *Orchestrator) SetNamespace(namespace string) {
