@@ -29,6 +29,7 @@ var installPhases = [][]installStep{
 	{
 		{name: "installing_cert_manager", phase: "A", duration: time.Second},
 		{name: "installing_metrics_server", phase: "A", duration: time.Second},
+		{name: "installing_openbao", phase: "A", duration: time.Second},
 		{name: "installing_postgresql", phase: "A", duration: time.Second},
 		{name: "installing_minio", phase: "A", duration: time.Second},
 		{name: "installing_object_storage_secret", phase: "A", duration: time.Second},
@@ -47,7 +48,6 @@ var installPhases = [][]installStep{
 		{name: "installing_log_search", phase: "C", duration: time.Second},
 		{name: "installing_opentelemetry", phase: "C", duration: time.Second},
 		{name: "installing_gateway", phase: "C", duration: time.Second},
-		{name: "installing_openbao", phase: "C", duration: time.Second},
 		{name: "integration_check", phase: "C", duration: time.Second},
 	},
 }
@@ -354,6 +354,43 @@ func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *do
 	appendTool("artifacts", cfg.Artifacts.ContainerRegistry.Name)
 	appendTool("pipeline", cfg.Pipeline.CIPlatform.Name)
 	appendTool("pipeline", cfg.Pipeline.CDTool.Name)
+
+	namespace := strings.TrimSpace(stack.Namespace)
+	if namespace == "" {
+		namespace = "nullus"
+	}
+
+	appendBootstrap := func(module, provider, pathSuffix, value string) {
+		provider = strings.TrimSpace(strings.ToLower(provider))
+		if provider == "" || strings.TrimSpace(value) == "" {
+			return
+		}
+		provider = strings.ReplaceAll(provider, " ", "-")
+		inputs = append(inputs, port.TokenSourceInput{
+			OrgID:         stack.OrgID,
+			Module:        module,
+			Provider:      provider,
+			Path:          fmt.Sprintf("kv/nullus/%s/%s/%s/%s/%s", env, stack.OrgID, module, provider, pathSuffix),
+			TokenType:     "bootstrap",
+			Status:        "healthy",
+			SecretManager: strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)),
+			TokenValue:    value,
+		})
+	}
+
+	if cfg.Storage != nil && strings.TrimSpace(strings.ToLower(cfg.Storage.Database.Mode)) == "create" {
+		appendBootstrap("storage", "postgresql", "access", fmt.Sprintf("host=nullus-postgresql.%s.svc.cluster.local port=5432 db=gitlabhq_production username=gitlab password=nullus-gitlab-password", namespace))
+	}
+	if cfg.Artifacts.StorageBackend.Enabled && strings.EqualFold(strings.TrimSpace(cfg.Artifacts.StorageBackend.Name), "minio") {
+		appendBootstrap("artifacts", "minio", "access", fmt.Sprintf("endpoint=http://nullus-minio.%s.svc.cluster.local:9000 access_key=nullus-admin secret_key=nullus-minio-secret", namespace))
+	}
+	cdTool := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(cfg.Pipeline.CDTool.Name)), " ", "-")
+	if cfg.Pipeline.CDTool.Enabled && (cdTool == "argocd" || cdTool == "argo-cd") {
+		appendBootstrap("pipeline", "argocd", "access", fmt.Sprintf("url=http://argo-cd-argocd-server.%s.svc.cluster.local username=admin password_secret=argocd-initial-admin-secret", namespace))
+	}
+	if cfg.Artifacts.SourceRepository.Enabled && (strings.EqualFold(strings.TrimSpace(cfg.Artifacts.SourceRepository.Name), "gitlab") || strings.EqualFold(strings.TrimSpace(cfg.Artifacts.SourceRepository.Name), "gitlab-ce")) {
+		appendBootstrap("artifacts", "gitlab", "access", fmt.Sprintf("url=http://gitlab-webservice-default.%s.svc:8181 username=root password=nullus-gitlab-password", namespace))
+	}
 
 	seen := map[string]struct{}{}
 	for _, input := range inputs {
