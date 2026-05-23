@@ -143,6 +143,18 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 	}, installer.installed)
 }
 
+func TestOrchestrator_OpenBaoOrderAndEnablement(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+
+	assert.False(t, orch.IsStepEnabled("installing_openbao"))
+
+	orch.SetStackConfig(domain.StackConfig{
+		Authentication: &domain.AuthenticationConfig{Provider: "openbao"},
+	})
+	assert.True(t, orch.IsStepEnabled("installing_openbao"))
+}
+
 func TestOrchestrator_ExecuteStep_SkipsSharedClusterScopedComponents(t *testing.T) {
 	installer := &mockInstaller{}
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus", WithSharedClusterScopedComponents(true))
