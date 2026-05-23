@@ -1,595 +1,131 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import {
+	AlertCircle,
 	Archive,
 	ArrowUpCircle,
 	BarChart2,
+	Box,
 	Boxes,
 	Check,
+	CheckCircle,
+	ChevronDown,
+	ChevronUp,
 	ClipboardList,
+	Cpu,
 	FileText,
 	GitBranch,
+	HardDrive,
 	History,
 	Info,
 	Layers,
 	List,
+	MemoryStick,
 	Monitor,
-	ExternalLink,
 	Plus,
+	RotateCcw,
 	Search,
 	Server,
 	Terminal,
+	XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import {
+	Area,
+	AreaChart,
+	Bar,
+	BarChart,
+	CartesianGrid,
+	Cell,
+	Legend,
+	Pie,
+	PieChart,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts";
 import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
 import { Button } from "../../../components/ui/button";
-import { Modal } from "../../../components/ui/modal";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
-import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
-import { useDeleteStack, useStackHistory, useStacks } from "../api/stack-api";
-import { RetryStackButton } from "../components/retry-stack-button";
-import type { StackStatus as RetryStackStatus } from "../utils/retry-policy";
-import { useScopedClusters } from "../../admin/api/admin-api";
+import { useDeleteStack, useStacks, useStackWorkloads } from "../api/stack-api";
+import type { StackWorkloadPipeline } from "../../../types";
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
-type PipelineNode = {
-	category: string;
-	oss: string;
-	version: string;
-	instances: number;
-	color: string;
-	health: "healthy" | "progressing" | "degraded";
-	sync: "synced" | "out-of-sync";
+const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+	pending: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Pending" },
+	validating: { bg: "rgba(99,102,241,0.15)", color: "#a5b4fc", label: "Validating" },
+	installing: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Installing" },
+	configuring: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Configuring" },
+	health_check: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Health Check" },
+	completed: { bg: "rgba(34,197,94,0.15)", color: "#22c55e", label: "Completed" },
+	failed: { bg: "rgba(239,68,68,0.15)", color: "#ef4444", label: "Failed" },
+	rolling_back: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", label: "Rolling Back" },
+	rolled_back: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Rolled Back" },
+	running: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", label: "Running" },
+	success: { bg: "rgba(34,197,94,0.15)", color: "#22c55e", label: "Success" },
+	cancelled: { bg: "rgba(100,116,139,0.15)", color: "#64748b", label: "Cancelled" },
 };
-
-type ToolSelectionView = {
-	name: string;
-	version: string;
-	instances: number;
-};
-
-export type LaunchTool = {
-	name: string;
-	version: string;
-	url: string | null;
-	logo: string;
-};
-
-export type StorageConnectionInfo = {
-	mode: string;
-	providerOrEngine: string;
-	endpoint: string;
-	resourceName: string;
-	authId: string;
-	accessSecretRef: string;
-	authPasswordKey: string;
-};
-
-export type StackConnectionInfo = {
-	accessDomain: string;
-	database: StorageConnectionInfo;
-	objectStorage: StorageConnectionInfo;
-};
-
-function tryGetHostname(url: string | null): string | null {
-	if (!url) return null;
-	try {
-		return new URL(url).hostname;
-	} catch {
-		return null;
-	}
-}
-
-function buildHostsText(stackName: string, accessDomain: string, launchTools: LaunchTool[]): string {
-	if (!accessDomain) {
-		return "";
-	}
-	const hostSet = new Set<string>();
-	for (const tool of launchTools) {
-		const hostname = tryGetHostname(tool.url);
-		if (hostname) {
-			hostSet.add(hostname);
-		}
-	}
-	hostSet.add(accessDomain);
-
-	const hosts = Array.from(hostSet).sort();
-	if (hosts.length === 0) {
-		return "";
-	}
-
-	return [
-		`# Nullus Stack: ${stackName}`,
-		`127.0.0.1 ${hosts.join(" ")}`,
-	].join("\n");
-}
-
-async function copyTextToClipboard(value: string): Promise<void> {
-	if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-		await navigator.clipboard.writeText(value);
-		return;
-	}
-
-	if (typeof document !== "undefined") {
-		const textArea = document.createElement("textarea");
-		textArea.value = value;
-		textArea.style.position = "fixed";
-		textArea.style.left = "-9999px";
-		document.body.appendChild(textArea);
-		textArea.focus();
-		textArea.select();
-		document.execCommand("copy");
-		document.body.removeChild(textArea);
-	}
-}
-
-import { STATUS_STYLES } from "../utils/status-style";
-import { useKeyboardShortcut } from "../../../hooks/use-keyboard-shortcut";
-
-function getStackStatusLabel(t: TFunction, status: string) {
-	switch (status) {
-		case "pending":
-			return t("stackList.status.pending", "Pending");
-		case "terminating":
-			return t("stackList.status.terminating", "Terminating");
-		case "validating":
-			return t("stackList.status.validating", "Validating");
-		case "installing":
-			return t("stackList.status.installing", "Installing");
-		case "configuring":
-			return t("stackList.status.configuring", "Configuring");
-		case "health_check":
-			return t("stackList.status.healthCheck", "Health Check");
-		case "completed":
-			return t("stackList.status.completed", "Completed");
-		case "failed":
-			return t("stackList.status.failed", "Failed");
-		case "rolling_back":
-			return t("stackList.status.rollingBack", "Rolling Back");
-		case "rolled_back":
-			return t("stackList.status.rolledBack", "Rolled Back");
-		case "running":
-			return t("stackList.status.running", "Running");
-		case "success":
-		case "healthy":
-			return t("stackList.status.healthy", "Running");
-		case "cancelled":
-			return t("stackList.status.cancelled", "Cancelled");
-		case "deleted":
-			return t("stackList.status.deleted", "Deleted");
-		default:
-			return status;
-	}
-}
-
-
-function normalizeStackStatus(status: string, clusterConnectionStatus?: string): string {
-	if (status === "success" || status === "running") return "healthy";
-	if (status === "completed" && clusterConnectionStatus === "connected") return "healthy";
-	return status;
-}
-
-function isHealthyStatus(status: string, clusterConnectionStatus?: string): boolean {
-	const normalized = normalizeStackStatus(status, clusterConnectionStatus);
-	return normalized === "healthy";
-}
-
-function matchesStackStatusFilter(status: string, filter: string, clusterConnectionStatus?: string): boolean {
-	if (!filter) return true;
-	const normalized = normalizeStackStatus(status, clusterConnectionStatus);
-	if (filter === "healthy") return normalized === "healthy";
-	if (filter === "running") return status === "running";
-	if (filter === "completed") return status === "completed" && clusterConnectionStatus !== "connected";
-	return normalized === filter;
-}
 
 function formatDate(iso: string) {
-	if (!iso) {
-		return "-";
-	}
-	const date = new Date(iso);
-	if (Number.isNaN(date.getTime())) {
-		return "-";
-	}
-	return date.toLocaleDateString("ko-KR", {
+	return new Date(iso).toLocaleDateString("ko-KR", {
 		year: "numeric",
 		month: "2-digit",
 		day: "2-digit",
 	});
 }
 
-function toShellSingleQuoted(value: string): string {
-	return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return null;
-	}
-	return value as Record<string, unknown>;
-}
-
-function readString(record: Record<string, unknown>, keys: string[]): string {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "string" && value.trim() !== "") {
-			return value;
-		}
-	}
-	return "";
-}
-
-function readNumber(record: Record<string, unknown>, keys: string[]): number | null {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "number" && Number.isFinite(value)) {
-			return value;
-		}
-	}
-	return null;
-}
-
-function readBool(record: Record<string, unknown>, keys: string[], defaultValue = true): boolean {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "boolean") {
-			return value;
-		}
-	}
-	return defaultValue;
-}
-
-function parseToolSelection(raw: unknown): ToolSelectionView | null {
-	const record = toRecord(raw);
-	if (!record) {
-		return null;
-	}
-
-	if (!readBool(record, ["enabled", "Enabled"], true)) {
-		return null;
-	}
-
-	const name = readString(record, ["tool", "name", "Name", "id"]);
-	if (!name) {
-		return null;
-	}
-	const version = readString(record, ["version", "Version", "app_version", "appVersion"]) || "-";
-	const instances = Math.max(1, Math.floor(readNumber(record, ["instances", "replicas", "count"]) ?? 1));
-
-	return { name, version, instances };
-}
-
-function resolveSnapshotConfig(snapshot: unknown): Record<string, unknown> {
-	const root = toRecord(snapshot);
-	if (!root) {
-		return {};
-	}
-	const nested = toRecord(root.config) ?? toRecord(root.Config);
-	return nested ?? root;
-}
-
-function pickGroup(config: Record<string, unknown>, keys: string[]): Record<string, unknown> {
-	for (const key of keys) {
-		const group = toRecord(config[key]);
-		if (group) {
-			return group;
-		}
-	}
-	return {};
-}
-
-function parseCategorySelections(group: Record<string, unknown>, keyPairs: string[][]): ToolSelectionView[] {
-	const tools: ToolSelectionView[] = [];
-	for (const pair of keyPairs) {
-		let selection: ToolSelectionView | null = null;
-		for (const key of pair) {
-			selection = parseToolSelection(group[key]);
-			if (selection) break;
-		}
-		if (selection) {
-			tools.push(selection);
-		}
-	}
-	return tools;
-}
-
-function toPipelineNode(category: string, tools: ToolSelectionView[], color: string): PipelineNode | null {
-	if (tools.length === 0) {
-		return null;
-	}
-	return {
-		category,
-		oss: tools.map((tool) => tool.name).join(" + "),
-		version: tools.map((tool) => tool.version).join(" / "),
-		instances: tools.reduce((sum, tool) => sum + tool.instances, 0),
-		color,
-		health: "healthy",
-		sync: "synced",
-	};
-}
-
-function buildPipelineNodesFromSnapshot(snapshot: unknown): PipelineNode[] {
-	const config = resolveSnapshotConfig(snapshot);
-	const artifacts = parseCategorySelections(
-		pickGroup(config, ["artifacts", "Artifacts"]),
-		[["package_registry", "packageRegistry"], ["source_repository", "sourceRepository"], ["container_registry", "containerRegistry"], ["storage_backend", "storageBackend"]],
-	);
-	const pipeline = pickGroup(config, ["pipeline", "Pipeline"]);
-	const ci = parseCategorySelections(pipeline, [["ci_platform", "ciPlatform"]]);
-	const cd = parseCategorySelections(pipeline, [["cd_tool", "cdTool"]]);
-	const monitoring = parseCategorySelections(
-		pickGroup(config, ["monitoring", "Monitoring"]),
-		[["collection", "Collection"], ["visualization", "Visualization"]],
-	);
-	const loggingGroup = pickGroup(config, ["logging", "Logging"]);
-	const logging = parseCategorySelections(loggingGroup, [["collection", "Collection"], ["search", "Search"]]);
-	const trace = parseCategorySelections(loggingGroup, [["trace_layer", "traceLayer", "TraceLayer"]]);
-
-	return [
-		toPipelineNode("Artifacts", artifacts, "#6366f1"),
-		toPipelineNode("CI", ci, "#0ea5e9"),
-		toPipelineNode("CD", cd, "#8b5cf6"),
-		toPipelineNode("Monitoring", monitoring, "#10b981"),
-		toPipelineNode("Logging", logging, "#f59e0b"),
-		toPipelineNode("Trace", trace, "#ef4444"),
-	].filter((node): node is PipelineNode => !!node);
-}
-
-function buildInstalledToolsFromSnapshot(snapshot: unknown): ToolSelectionView[] {
-	const config = resolveSnapshotConfig(snapshot);
-	const artifacts = parseCategorySelections(
-		pickGroup(config, ["artifacts", "Artifacts"]),
-		[["package_registry", "packageRegistry"], ["source_repository", "sourceRepository"], ["container_registry", "containerRegistry"], ["storage_backend", "storageBackend"]],
-	);
-	const pipeline = parseCategorySelections(
-		pickGroup(config, ["pipeline", "Pipeline"]),
-		[["ci_platform", "ciPlatform"], ["cd_tool", "cdTool"]],
-	);
-	const monitoring = parseCategorySelections(
-		pickGroup(config, ["monitoring", "Monitoring"]),
-		[["collection", "Collection"], ["visualization", "Visualization"]],
-	);
-	const logging = parseCategorySelections(
-		pickGroup(config, ["logging", "Logging"]),
-		[["collection", "Collection"], ["search", "Search"], ["trace_layer", "traceLayer", "TraceLayer"]],
-	);
-	const authenticationGroup = pickGroup(config, ["authentication", "Authentication"]);
-	const authProvider = readString(authenticationGroup, ["provider", "Provider", "name", "Name", "tool"]);
-	const authentication: ToolSelectionView[] = authProvider
-		? [{ name: authProvider, version: "shared", instances: 1 }]
-		: [];
-
-	const byName = new Map<string, ToolSelectionView>();
-	for (const tool of [...authentication, ...artifacts, ...pipeline, ...monitoring, ...logging]) {
-		const key = tool.name.toLowerCase();
-		if (!byName.has(key)) {
-			byName.set(key, tool);
-		}
-	}
-
-	return Array.from(byName.values());
-}
-
-function sanitizeAccessDomain(value: string): string {
-	const trimmed = value.trim().toLowerCase();
-	if (!trimmed) return "";
-	const noScheme = trimmed.replace(/^https?:\/\//, "");
-	const hostOnly = noScheme.split("/")[0]?.split(":")[0] ?? "";
-	const noWildcard = hostOnly.replace(/^\*\./, "");
-	return noWildcard;
-}
-
-function fallbackAccessDomain(stackName: string): string {
-	const slug = stackName
-		.toLowerCase()
-		.replace(/[^a-z0-9-\s]/g, "")
-		.trim()
-		.replace(/\s+/g, "-")
-		.replace(/-+/g, "-");
-	if (!slug) {
-		return "";
-	}
-	return `${slug}.internal`;
-}
-
-function deriveGatewayName(accessDomain: string, stackName: string): string {
-	const base = (accessDomain || fallbackAccessDomain(stackName))
-		.replace(/\.internal$/i, "")
-		.toLowerCase()
-		.replace(/[^a-z0-9-]+/g, "-")
-		.replace(/-+/g, "-")
-		.replace(/^-+|-+$/g, "");
-	return `${base || "nullus-stack"}-gateway`;
-}
-
-function extractAccessDomain(snapshot: unknown, stackName: string): string {
-	const config = resolveSnapshotConfig(snapshot);
-	const value = config.access_domain ?? config.accessDomain;
-	if (typeof value === "string") {
-		const normalized = sanitizeAccessDomain(value);
-		if (normalized) {
-			return normalized;
-		}
-	}
-	return fallbackAccessDomain(stackName);
-}
-
-function readStorageTarget(record: Record<string, unknown>, fallback: Partial<StorageConnectionInfo>): StorageConnectionInfo {
-	return {
-		mode: readString(record, ["mode", "Mode"]) || fallback.mode || "create",
-		providerOrEngine: readString(record, ["provider_or_engine", "providerOrEngine", "ProviderOrEngine"]) || fallback.providerOrEngine || "-",
-		endpoint: readString(record, ["endpoint", "Endpoint"]) || fallback.endpoint || "-",
-		resourceName: readString(record, ["resource_name", "resourceName", "ResourceName"]) || fallback.resourceName || "-",
-		authId: readString(record, ["auth_id", "authId", "AuthID", "user", "username"]) || fallback.authId || "-",
-		accessSecretRef: readString(record, ["access_secret_ref", "accessSecretRef", "AccessSecretRef", "secret", "secretRef"]) || fallback.accessSecretRef || "-",
-		authPasswordKey: readString(record, ["auth_password_key", "authPasswordKey", "AuthPasswordKey", "passwordKey"]) || fallback.authPasswordKey || "-",
-	};
-}
-
-export function extractConnectionInfo(snapshot: unknown, namespace: string, accessDomain: string): StackConnectionInfo {
-	const config = resolveSnapshotConfig(snapshot);
-	const storage = pickGroup(config, ["storage", "Storage"]);
-	const db = pickGroup(storage, ["database", "Database"]);
-	const objectStorage = pickGroup(storage, ["object_storage", "objectStorage", "ObjectStorage"]);
-
-	const ns = namespace.trim() || "nullus";
-	const dbFallback: Partial<StorageConnectionInfo> = {
-		mode: "create",
-		providerOrEngine: "postgres",
-		endpoint: `${ns}-postgresql:5432`,
-		resourceName: "nullus",
-		authId: "postgres",
-		accessSecretRef: `${ns}-postgresql`,
-		authPasswordKey: "postgres-password",
-	};
-	const objectFallback: Partial<StorageConnectionInfo> = {
-		mode: "create",
-		providerOrEngine: "minio",
-		endpoint: `http://${ns}-minio:9000`,
-		resourceName: "nullus-artifacts",
-		authId: "nullus",
-		accessSecretRef: `${ns}-minio`,
-		authPasswordKey: "root-password",
-	};
-
-	return {
-		accessDomain,
-		database: readStorageTarget(db, dbFallback),
-		objectStorage: readStorageTarget(objectStorage, objectFallback),
-	};
-}
-
-export function buildOssLoginHint(toolName: string, conn: StackConnectionInfo, isKorean = false): string {
-	const key = toolName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-	if (["argocd", "argo cd"].includes(key)) {
-		return "ID: admin / Password: kubectl -n nullus get secret argo-cd-argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d";
-	}
-	if (["gitlab", "gitlab ce", "gitlab ci", "gitlab registry"].includes(key)) {
-		return "ID: root / Password: kubectl -n nullus get secret gitlab-gitlab-initial-root-password -o jsonpath='{.data.password}' | base64 -d";
-	}
-	if (key === "grafana") {
-		return isKorean ? "기본값: admin / admin (또는 values override 확인)" : "Default: admin / admin (or check values override)";
-	}
-	if (key === "minio") {
-		return `ID: ${conn.objectStorage.authId} / SecretRef: ${conn.objectStorage.accessSecretRef} (key: ${conn.objectStorage.authPasswordKey})`;
-	}
-	if (key === "opensearch") {
-		return isKorean ? "ID: admin / 비밀번호: NullusAdmin123! (기본값, 변경 시 values 확인)" : "ID: admin / Password: NullusAdmin123! (default value, check values if changed)";
-	}
-	if (key === "prometheus") {
-		return isKorean ? "로그인 불필요 (기본 설정)" : "No login required (default setting)";
-	}
-	if (key === "openbao") {
-		return isKorean ? "관리자 인증 후 OpenBao UI에서 토큰/시크릿을 조회하세요." : "After admin authentication, check tokens/secrets in OpenBao UI.";
-	}
-	return isKorean ? "도구별 기본 인증정보를 확인하세요." : "Check the default credentials for each tool.";
-}
-
-export function buildConnectionInfoText(stackName: string, conn: StackConnectionInfo, launchTools: LaunchTool[], isKorean = false, gatewayPFCommand?: string): string {
-	const ossLines = launchTools
-		.map((tool) => `- ${tool.name}: ${tool.url ?? (isKorean ? "(URL 없음)" : "(No URL)") } | ${buildOssLoginHint(tool.name, conn, isKorean)}`)
-		.join("\n");
-	const gatewayLines = gatewayPFCommand
-		? [
-			"",
-			"[Gateway Port-Forward]",
-			gatewayPFCommand,
-		]
-		: [];
-
-	return [
-		`[Stack] ${stackName}`,
-		`[Access Domain] ${conn.accessDomain || "-"}`,
-		...(conn.accessDomain
-			? [
-				`[Primary URLs] https://gitlab.${conn.accessDomain} | https://argocd.${conn.accessDomain} | https://minio.${conn.accessDomain} | https://openbao.${conn.accessDomain}`,
-			]
-			: []),
-		"",
-		"[OSS Login]",
-		ossLines,
-		"",
-		"[Database]",
-		`- mode=${conn.database.mode}`,
-		`- engine=${conn.database.providerOrEngine}`,
-		`- endpoint=${conn.database.endpoint}`,
-		`- db=${conn.database.resourceName}`,
-		`- user=${conn.database.authId}`,
-		`- secret=${conn.database.accessSecretRef} (key=${conn.database.authPasswordKey})`,
-		"",
-		"[Object Storage]",
-		`- mode=${conn.objectStorage.mode}`,
-		`- provider=${conn.objectStorage.providerOrEngine}`,
-		`- endpoint=${conn.objectStorage.endpoint}`,
-		`- bucket=${conn.objectStorage.resourceName}`,
-		`- accessKey=${conn.objectStorage.authId}`,
-		`- secret=${conn.objectStorage.accessSecretRef} (key=${conn.objectStorage.authPasswordKey})`,
-		...gatewayLines,
-	].join("\n");
-}
-
-function toolLogoURL(toolName: string): string {
-	const key = toolName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-	const map: Record<string, string> = {
-		gitlab: "gitlab",
-		"gitlab ce": "gitlab",
-		"gitlab ci": "gitlab",
-		"gitlab registry": "gitlab",
-		github: "github",
-		"github actions": "githubactions",
-		nexus: "sonatype",
-		"nexus repository": "sonatype",
-		"nexus repository manager": "sonatype",
-		argocd: "argo",
-		"argo cd": "argo",
-		flux: "flux",
-		"flux cd": "flux",
-		fluxcd: "flux",
-		grafana: "grafana",
-		prometheus: "prometheus",
-		thanos: "thanos",
-		loki: "grafana",
-		opensearch: "opensearch",
-		elasticsearch: "elasticsearch",
-		"opentelemetry collector": "opentelemetry",
-		tempo: "grafana",
-		jaeger: "jaeger",
-		harbor: "harbor",
-		"harbor registry": "harbor",
-		minio: "minio",
-		openbao: "vault",
-	};
-	const slug = map[key] ?? "kubernetes";
-	return `https://cdn.simpleicons.org/${slug}`;
-}
-
-function toolLaunchURL(toolName: string, accessDomain: string): string | null {
-  if (!accessDomain) {
-    return null;
-  }
-  const key = toolName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-	if (["gitlab", "gitlab ce", "gitlab ci", "gitlab registry"].includes(key)) return `http://gitlab.${accessDomain}`;
-	if (["argocd", "argo cd"].includes(key)) return `http://argocd.${accessDomain}`;
-	if (key === "grafana") return `http://grafana.${accessDomain}`;
-	if (key === "prometheus") return `http://prometheus.${accessDomain}`;
-  if (key === "harbor") return `http://harbor.${accessDomain}`;
-  if (key === "minio") return `http://minio.${accessDomain}`;
-	if (key === "opensearch") return `http://opensearch.${accessDomain}`;
-	if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
-	if (key === "jaeger") return `http://jaeger.${accessDomain}`;
-	if (["tempo", "loki", "opentelemetry collector"].includes(key)) return `http://grafana.${accessDomain}`;
-	if (key === "openbao") return `http://openbao.${accessDomain}`;
-	return null;
-}
-
+const MOCK_STACKS: Stack[] = [
+	{
+		id: "production-stack",
+		name: "production-stack",
+		templateId: "gitlab-all-in-one",
+		templateName: "GitLab All-in-One",
+		clusterId: "c1",
+		clusterName: "prod-k8s",
+		status: "success" as const,
+		createdAt: "2026-01-10T00:00:00Z",
+		updatedAt: "2026-03-03T14:28:00Z",
+	},
+	{
+		id: "development-stack",
+		name: "development-stack",
+		templateId: "github-argocd",
+		templateName: "GitHub + ArgoCD",
+		clusterId: "c2",
+		clusterName: "dev-k8s",
+		status: "running" as const,
+		createdAt: "2026-02-01T00:00:00Z",
+		updatedAt: "2026-03-03T09:15:00Z",
+	},
+	{
+		id: "staging-environment",
+		name: "staging-environment",
+		templateId: "gitlab-argocd",
+		templateName: "GitLab + ArgoCD",
+		clusterId: "c1",
+		clusterName: "prod-k8s",
+		status: "failed" as const,
+		createdAt: "2026-02-15T00:00:00Z",
+		updatedAt: "2026-03-02T18:45:00Z",
+	},
+	{
+		id: "microservices-platform",
+		name: "microservices-platform",
+		templateId: "gitlab-all-in-one",
+		templateName: "GitLab All-in-One",
+		clusterId: "c3",
+		clusterName: "staging-k8s",
+		status: "success" as const,
+		createdAt: "2026-01-25T00:00:00Z",
+		updatedAt: "2026-03-01T11:20:00Z",
+	},
+];
 
 function ConfigCard({
 	title,
@@ -965,460 +501,647 @@ function ResourcesPanel() {
 	);
 }
 
-function StackInfoTab({
-	stack,
-	displayStatus,
-	isDeleting,
-	onAddTools,
-	onDelete,
-	onBackToList,
-}: {
-	stack: Stack;
-	displayStatus: string;
-	isDeleting: boolean;
-	onAddTools: () => void;
-	onDelete: () => void;
-	onBackToList: () => void;
-}) {
-	const { t, i18n } = useTranslation();
-	const isKorean = (i18n.resolvedLanguage ?? i18n.language ?? "").toLowerCase().startsWith("ko");
-	const [hostsCopyState, setHostsCopyState] = useState<"idle" | "copied" | "failed">("idle");
-	const [gatewayCopyState, setGatewayCopyState] = useState<"idle" | "copied" | "failed">("idle");
-	const [connOpen, setConnOpen] = useState(false);
-	const [connCopyState, setConnCopyState] = useState<"idle" | "copied" | "failed">("idle");
-	const { data: historyData } = useStackHistory(stack.id);
-	const latestSnapshot = Array.isArray(historyData) && historyData.length > 0
-		? historyData[historyData.length - 1].snapshot
-		: null;
-	const derivedNodes = buildPipelineNodesFromSnapshot(latestSnapshot);
-	const pipelineNodes: PipelineNode[] =
-		derivedNodes.length > 0
-			? derivedNodes
-			: [{ category: "Stack", oss: stack.templateName, version: "-", instances: 1, color: "#6366f1", health: "progressing", sync: "out-of-sync" }];
-
-	const degradedState = ["failed", "rolling_back", "rolled_back", "cancelled"].includes(stack.status);
-	const progressingState = ["pending", "terminating", "validating", "installing", "configuring", "health_check"].includes(stack.status);
-	const runtimeNodes = pipelineNodes.map((node) => ({
-		...node,
-		health: degradedState ? "degraded" : progressingState ? "progressing" : "healthy",
-		sync: degradedState ? "out-of-sync" : "synced",
-	}));
-	const installedTools = buildInstalledToolsFromSnapshot(latestSnapshot);
-	const accessDomain = extractAccessDomain(latestSnapshot, stack.name);
-	const launchTools: LaunchTool[] = installedTools.map((tool) => ({
-		name: tool.name,
-		version: tool.version,
-		url: toolLaunchURL(tool.name, accessDomain),
-		logo: toolLogoURL(tool.name),
-	}));
-	const hostsText = buildHostsText(stack.name, accessDomain, launchTools);
-	const connectionInfo = extractConnectionInfo(latestSnapshot, stack.namespace?.trim() || "nullus", accessDomain);
-	const stackNamespace = stack.namespace?.trim() || "nullus";
-	const stackNamespaceArg = toShellSingleQuoted(stackNamespace);
-	const gatewayNameArg = toShellSingleQuoted(deriveGatewayName(accessDomain, stack.name));
-	const accessHostArg = toShellSingleQuoted(accessDomain || `${stack.name}.internal`);
-	const gatewayPFCommand = [
-		isKorean ? "# 80/443 동시 포트포워드 (Gateway 서비스 자동 선택)" : "# Port-forward both 80/443 (auto-select Gateway service)",
-		`KUBE_CONTEXT=kind-nullus-platform STACK_NAMESPACE=${stackNamespaceArg} GATEWAY_NAME=${gatewayNameArg} ACCESS_HOST=${accessHostArg} sudo -E ./scripts/port-forward-gateway.sh`,
-	].join("\n");
-	const connectionInfoWithGatewayText = buildConnectionInfoText(stack.name, connectionInfo, launchTools, isKorean, gatewayPFCommand);
-
-	const handleCopyHosts = async () => {
-		if (!hostsText) return;
-		try {
-			await copyTextToClipboard(hostsText);
-			setHostsCopyState("copied");
-		} catch {
-			setHostsCopyState("failed");
-		}
-		setTimeout(() => setHostsCopyState("idle"), 2200);
-	};
-
-	const handleCopyConnectionInfo = async () => {
-		try {
-			await copyTextToClipboard(connectionInfoWithGatewayText);
-			setConnCopyState("copied");
-		} catch {
-			setConnCopyState("failed");
-		}
-		setTimeout(() => setConnCopyState("idle"), 2200);
-	};
-
-	const handleCopyGatewayPF = async () => {
-		try {
-			await copyTextToClipboard(gatewayPFCommand);
-			setGatewayCopyState("copied");
-		} catch {
-			setGatewayCopyState("failed");
-		}
-		setTimeout(() => setGatewayCopyState("idle"), 2200);
-	};
-
-	const observabilitySummary = ["Monitoring", "Logging", "Trace"]
-		.filter((category) => pipelineNodes.some((node) => node.category === category))
-		.join(" + ") || "Not configured";
-
+function StackInfoTab() {
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
-				<div className="mb-3 flex flex-col gap-3">
-					<div>
-						<div className="flex items-center gap-2">
-							<div className="text-[14px] font-bold text-[var(--color-text-primary)]">Installed Stack Summary</div>
-						</div>
-						<div className="text-[12px] text-[var(--color-text-secondary)]">{t("stackList.connection.summary", "Deployed configuration summary and key actions")}</div>
-					</div>
-					<div className="flex flex-wrap items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							type="button"
-							onClick={handleCopyGatewayPF}
-							title={t("stackList.connection.gatewayCopyTitle", "Copy gateway port-forward command")}
-						>
-							<ClipboardList size={13} />
-							{gatewayCopyState === "copied"
-								? "Copied"
-								: gatewayCopyState === "failed"
-									? "Copy Failed"
-									: "Gateway PF Copy"}
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							type="button"
-							onClick={handleCopyHosts}
-							disabled={!hostsText}
-							title={hostsText
-								? t("stackList.connection.hostsCopyTitle", "Copy /etc/hosts mappings")
-								: t("stackList.connection.hostsCopyUnavailable", "Cannot build hosts mappings because access domain is missing")}
-						>
-							<ClipboardList size={13} />
-							{hostsCopyState === "copied"
-								? "Copied"
-								: hostsCopyState === "failed"
-									? "Copy Failed"
-									: "/etc/hosts Copy"}
-						</Button>
-						<Button variant="outline" size="sm" type="button" onClick={onAddTools}>
-							<Plus size={13} /> Add Tools
-						</Button>
-						<RetryStackButton
-							stackId={stack.id}
-							status={stack.status as RetryStackStatus}
-						/>
-						{displayStatus === "terminating" && (
-							<Button variant="outline" size="sm" type="button" onClick={onBackToList}>
-								{t("stackList.actions.backToList", "Stack List로 돌아가기")}
-							</Button>
-						)}
-						<Button variant="danger" size="sm" type="button" onClick={onDelete} disabled={isDeleting || displayStatus === "terminating"} loading={isDeleting && displayStatus !== "terminating"}>
-							Delete
-						</Button>
-					</div>
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
+				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
+					<Archive size={13} /> Artifacts
 				</div>
-				<div className="grid grid-cols-2 gap-3 text-[12px] text-[var(--color-text-secondary)] lg:grid-cols-4">
-					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
-						<div className="text-[11px] uppercase tracking-[0.04em]">Stack Name</div>
-						<div className="mt-1 truncate font-semibold text-[var(--color-text-primary)]" title={stack.name}>{stack.name}</div>
-					</div>
-					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
-						<div className="text-[11px] uppercase tracking-[0.04em]">Runtime</div>
-						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">Kubernetes / Helm</div>
-					</div>
-					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
-						<div className="text-[11px] uppercase tracking-[0.04em]">Observability</div>
-						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{observabilitySummary}</div>
-					</div>
-					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
-						<div className="text-[11px] uppercase tracking-[0.04em]">Update Mode</div>
-						<div className="mt-1 font-semibold text-[var(--color-text-primary)]">{getStackStatusLabel(t, displayStatus)}</div>
-					</div>
-				</div>
-				<div className="mt-3 border-t border-[var(--color-border-default)] pt-3">
-					<div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
-						Open Source Consoles
-					</div>
-					<div className="flex flex-wrap gap-2">
-						{launchTools.map((tool) => (
-							<a
-								key={tool.name}
-									href={tool.url ?? undefined}
-									target="_blank"
-									rel="noreferrer"
-									onClick={(event) => {
-										if (!tool.url) {
-											event.preventDefault();
-										}
-									}}
-									className={cn(
-										"inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] transition-colors",
-										tool.url
-											? "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-primary)] hover:border-[rgba(99,102,241,0.45)] hover:bg-[rgba(99,102,241,0.1)]"
-											: "cursor-not-allowed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-muted)]",
-									)}
-									title={tool.url ? `${tool.name} 콘솔 열기` : `${tool.name}: 경로 미설정`}
-							>
-									<span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[rgba(255,255,255,0.08)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
-										<img
-											src={tool.logo}
-											alt={`${tool.name} logo`}
-											className="absolute inset-0 h-full w-full object-contain p-0.5"
-											onError={(event) => {
-												event.currentTarget.style.display = "none";
-											}}
-										/>
-									</span>
-									<span className="font-medium">{tool.name}</span>
-									<span className="text-[10px] text-[var(--color-text-secondary)]">{tool.version}</span>
-									<ExternalLink size={12} />
-							</a>
-						))}
-					</div>
-					<div className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
-						{t("stackList.connection.gatewayGuide", "After single-entry gateway port forwarding, access each OSS domain based on hosts mappings.")}
-					</div>
-					<div className="mt-3 flex justify-end">
-						<Button size="sm" variant="outline" type="button" onClick={() => setConnOpen(true)}>
-							{t("stackList.connection.open", "Connection Info")}
-						</Button>
-					</div>
-				</div>
-			</div>
-
-			<Modal
-				open={connOpen}
-				onClose={() => setConnOpen(false)}
-				title={t("stackList.connection.open", "Connection Info")}
-				wide
-				footer={(
-					<>
-						<Button variant="ghost" size="sm" type="button" onClick={handleCopyConnectionInfo}>
-							{connCopyState === "copied"
-								? t("stackList.connection.copied", "Copied")
-								: connCopyState === "failed"
-									? t("stackList.connection.copyFailed", "Copy failed")
-									: t("stackList.connection.copyAll", "Copy all")}
-						</Button>
-						<Button variant="secondary" size="sm" type="button" onClick={() => setConnOpen(false)}>
-							{t("common.cancel", "Close")}
-						</Button>
-					</>
-				)}
-			>
-				<div className="space-y-4 text-[13px]">
-					<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[var(--color-text-secondary)]">
-						<span className="font-semibold text-[var(--color-text-primary)]">Access Domain:</span> {connectionInfo.accessDomain || "-"}
-					</div>
-
-					<div>
-						<div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">OSS Login</div>
-						<div className="space-y-2">
-							{launchTools.map((tool) => (
-								<div key={`conn-${tool.name}`} className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
-									<div className="flex flex-wrap items-center justify-between gap-2">
-										<div className="font-semibold text-[var(--color-text-primary)]">{tool.name}</div>
-										<a
-											href={tool.url ?? undefined}
-											target="_blank"
-											rel="noreferrer"
-											onClick={(event) => {
-												if (!tool.url) event.preventDefault();
-											}}
-											className={cn("text-[12px] underline", tool.url ? "text-[#93c5fd]" : "pointer-events-none text-[var(--color-text-muted)]")}
-										>
-									{tool.url || (isKorean ? "URL 없음" : "No URL")}
-								</a>
-							</div>
-									<div className="mt-1 text-[12px] text-[var(--color-text-secondary)]">{buildOssLoginHint(tool.name, connectionInfo, isKorean)}</div>
-								</div>
-							))}
-						</div>
-					</div>
-
-					<div className="grid gap-3 md:grid-cols-2">
-						<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
-							<div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Database</div>
-							<div className="space-y-1 text-[12px] text-[var(--color-text-secondary)]">
-								<div><strong className="text-[var(--color-text-primary)]">Mode:</strong> {connectionInfo.database.mode}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Engine:</strong> {connectionInfo.database.providerOrEngine}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Endpoint:</strong> {connectionInfo.database.endpoint}</div>
-								<div><strong className="text-[var(--color-text-primary)]">DB:</strong> {connectionInfo.database.resourceName}</div>
-								<div><strong className="text-[var(--color-text-primary)]">User:</strong> {connectionInfo.database.authId}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Secret:</strong> {connectionInfo.database.accessSecretRef} ({connectionInfo.database.authPasswordKey})</div>
-							</div>
-						</div>
-
-						<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
-							<div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Object Storage</div>
-							<div className="space-y-1 text-[12px] text-[var(--color-text-secondary)]">
-								<div><strong className="text-[var(--color-text-primary)]">Mode:</strong> {connectionInfo.objectStorage.mode}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Provider:</strong> {connectionInfo.objectStorage.providerOrEngine}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Endpoint:</strong> {connectionInfo.objectStorage.endpoint}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Bucket:</strong> {connectionInfo.objectStorage.resourceName}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Access Key:</strong> {connectionInfo.objectStorage.authId}</div>
-								<div><strong className="text-[var(--color-text-primary)]">Secret:</strong> {connectionInfo.objectStorage.accessSecretRef} ({connectionInfo.objectStorage.authPasswordKey})</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</Modal>
-
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
-				<div className="mb-3 flex items-center gap-2">
-					<GitBranch size={14} className="text-[#818cf8]" />
-					<div className="text-[14px] font-bold text-[var(--color-text-primary)]">Pipeline Topology</div>
-				</div>
-				<div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-					<span className={cn(
-						"inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
-						degradedState
-							? "bg-[rgba(239,68,68,0.15)] text-[#fca5a5]"
-							: progressingState
-								? "bg-[rgba(59,130,246,0.15)] text-[#93c5fd]"
-								: "bg-[rgba(34,197,94,0.15)] text-[#86efac]",
-					)}>
-						● Health {degradedState ? "Degraded" : progressingState ? "Progressing" : "Healthy"}
-					</span>
-					<span className={cn(
-						"inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
-						degradedState
-							? "bg-[rgba(245,158,11,0.15)] text-[#fcd34d]"
-							: "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]",
-					)}>
-						◉ Sync {degradedState ? "OutOfSync" : "Synced"}
-					</span>
-				</div>
-				<div className="relative overflow-x-auto pb-1">
-					<div className="relative z-10 grid min-w-max grid-flow-col auto-cols-auto gap-3">
-						{runtimeNodes.map((node, idx) => (
-							<div key={node.category} className="relative rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]">
-								{idx < runtimeNodes.length - 1 && (
-									<div className="pointer-events-none absolute right-[-16px] top-3 h-[2px] w-8 bg-gradient-to-r from-[rgba(148,163,184,0.25)] to-[rgba(148,163,184,0.62)]" aria-hidden="true">
-										<div className="absolute right-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[rgba(148,163,184,0.72)]" />
-									</div>
-								)}
-								<div className="mb-2 flex items-center gap-2">
-									<div className="flex items-center gap-2">
-										<div className="h-6 w-6 rounded-full ring-2 ring-white/10" style={{ backgroundColor: node.color }} />
-										<div className="text-[12px] font-semibold text-[var(--color-text-primary)]">{node.category}</div>
-									</div>
-									<span className={cn(
-										"rounded-full px-2 py-0.5 text-[10px] font-semibold",
-										node.health === "degraded"
-											? "bg-[rgba(239,68,68,0.15)] text-[#fca5a5]"
-											: node.health === "progressing"
-												? "bg-[rgba(59,130,246,0.15)] text-[#93c5fd]"
-												: "bg-[rgba(34,197,94,0.15)] text-[#86efac]",
-									)}>
-										{node.health}
-									</span>
-								</div>
-								<div className="mb-2 flex items-center gap-1.5">
-									<span className={cn(
-										"rounded-full px-2 py-0.5 text-[10px] font-semibold",
-										node.sync === "synced"
-											? "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]"
-											: "bg-[rgba(245,158,11,0.15)] text-[#fcd34d]",
-									)}>
-										{node.sync}
-									</span>
-								</div>
-								<div className="text-[11px] text-[var(--color-text-secondary)]">OSS</div>
-								<div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">{node.oss}</div>
-								<div className="text-[11px] text-[var(--color-text-secondary)]">Version</div>
-								<div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">{node.version}</div>
-								<div className="text-[11px] text-[var(--color-text-secondary)]">Instances</div>
-								<div className="text-[12px] font-medium text-[var(--color-text-primary)]">{node.instances}</div>
-							</div>
-						))}
-					</div>
-				</div>
-			</div>
-
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
-				{t("stackList.hiddenInstallCardsNotice", "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs.")}
-			</div>
-			<div className="hidden" aria-hidden="true">
 				<ArtifactsPanel />
+			</div>
+
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
+				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
+					<GitBranch size={13} /> Pipeline Tools
+				</div>
 				<PipelineToolsPanel />
+			</div>
+
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
+				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
+					<Monitor size={13} /> Monitoring Tools
+				</div>
 				<MonitoringToolsPanel />
+			</div>
+
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
+				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
+					<FileText size={13} /> Logging Tools
+				</div>
 				<LoggingToolsPanel />
+			</div>
+
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-4">
+				<div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
+					<Server size={13} /> Resources
+				</div>
 				<ResourcesPanel />
 			</div>
 		</div>
 	);
 }
 
-function StackMonitoringTab({ stackId }: { stackId: string }) {
-	return <StackMonitoringOverview stackId={stackId} />;
+type MonitoringRange = "1h" | "6h" | "24h" | "7d";
+type ToolHealthStatus = "running" | "warning" | "error";
+
+const TOOL_STATUS_CONFIG: Record<
+	ToolHealthStatus,
+	{ icon: React.ReactNode; badgeClassName: string; label: string }
+> = {
+	running: {
+		icon: <CheckCircle size={13} />,
+		badgeClassName: "bg-[rgba(34,197,94,0.15)] text-[#22c55e]",
+		label: "Running",
+	},
+	warning: {
+		icon: <AlertCircle size={13} />,
+		badgeClassName: "bg-[rgba(245,158,11,0.15)] text-[#f59e0b]",
+		label: "Warning",
+	},
+	error: {
+		icon: <XCircle size={13} />,
+		badgeClassName: "bg-[rgba(239,68,68,0.15)] text-[#ef4444]",
+		label: "Error",
+	},
+};
+
+function UsageBar({ value, color }: { value: number; color: string }) {
+	const normalized = Math.max(0, Math.min(100, value));
+	return (
+		<div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[rgba(255,255,255,0.08)]">
+			<svg
+				className="h-full w-full"
+				viewBox="0 0 100 6"
+				preserveAspectRatio="none"
+				aria-hidden="true"
+			>
+				<rect width={normalized} height="6" rx="3" fill={color} />
+			</svg>
+		</div>
+	);
 }
 
-function StackHistoryTab({ stack }: { stack: Stack }) {
-	const navigate = useNavigate();
-	const { data: historyData, isLoading } = useStackHistory(stack.id);
-	const entries = Array.isArray(historyData) ? historyData : [];
-	const latestEntryID = entries[entries.length - 1]?.id;
+function generateMonitoringSeries(range: MonitoringRange) {
+	const pointsByRange: Record<MonitoringRange, number> = {
+		"1h": 6,
+		"6h": 12,
+		"24h": 24,
+		"7d": 28,
+	};
+	const hoursByRange: Record<MonitoringRange, number> = {
+		"1h": 1,
+		"6h": 6,
+		"24h": 24,
+		"7d": 24 * 7,
+	};
+
+	const now = Date.now();
+	const points = pointsByRange[range];
+	const totalHours = hoursByRange[range];
+	const hourStep = totalHours / points;
+
+	return Array.from({ length: points }, (_, index) => {
+		const ageHours = totalHours - hourStep * (index + 1);
+		const ts = new Date(now - ageHours * 60 * 60 * 1000);
+		const label =
+			range === "7d"
+				? ts.toLocaleDateString("en-US", { weekday: "short" })
+				: ts.toLocaleTimeString("en-US", {
+					hour: "2-digit",
+					minute: "2-digit",
+					hour12: false,
+				});
+
+		const cpuWave = 56 + Math.sin(index / 2.5) * 16 + (index % 3) * 2.1;
+		const memoryWave = 63 + Math.cos(index / 3.2) * 10 + (index % 4) * 1.8;
+
+		return {
+			time: label,
+			cpu: Math.max(12, Math.min(96, Math.round(cpuWave))),
+			memory: Math.max(24, Math.min(97, Math.round(memoryWave))),
+		};
+	});
+}
+
+function K8sObjectBadge({ kind, status }: { kind: string; status?: string }) {
+	const styles: Record<string, { bg: string; color: string }> = {
+		Deployment: { bg: "rgba(99,102,241,0.15)", color: "#a5b4fc" },
+		Pod: { bg: "rgba(34,197,94,0.15)", color: "#86efac" },
+		Service: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa" },
+		Ingress: { bg: "rgba(245,158,11,0.15)", color: "#fcd34d" },
+	};
+	if (kind === "Pod" && status && status !== "Running") {
+		if (status === "Pending") {
+			return (
+				<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(245,158,11,0.15)] text-[#fbbf24]">
+					{kind}
+				</span>
+			);
+		}
+		return (
+			<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(239,68,68,0.15)] text-[#ef4444]">
+				{kind}
+			</span>
+		);
+	}
+	const s = styles[kind] ?? { bg: "rgba(107,114,128,0.15)", color: "#9ca3af" };
+	return (
+		<span
+			className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+			style={{ background: s.bg, color: s.color }}
+		>
+			{kind}
+		</span>
+	);
+}
+
+function WorkloadRow({ pipeline }: { pipeline: StackWorkloadPipeline }) {
+	const [open, setOpen] = useState(true);
+	const deployStatus = pipeline.lastDeployment?.status ?? "none";
+	const statusStyle = STATUS_STYLES[deployStatus] ?? STATUS_STYLES.pending;
 
 	return (
-		<div className="flex h-full flex-col">
-			<div className="mb-4 flex items-center justify-between gap-3">
-				<div className="flex items-center gap-3">
-					<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,#10b981,#059669)]" />
-					<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">{stack.name} History</h3>
-				</div>
-				<div className="flex items-center gap-2">
-					<Button variant="outline" size="sm" onClick={() => navigate(`/stack/logs/${stack.id}`)} type="button">
-						<Terminal size={13} /> Open Logs
-					</Button>
-					<Button variant="outline" size="sm" onClick={() => navigate(`/stack/history/${stack.id}`)} type="button">
-						Open Full History
-					</Button>
-				</div>
+		<>
+			<tr
+				className="cursor-pointer border-b border-[var(--color-border-default)] transition-colors hover:bg-[rgba(99,102,241,0.06)]"
+				onClick={() => setOpen((o) => !o)}
+			>
+				<td className="px-3 py-2.5">
+					<button type="button" className="border-none bg-transparent p-0 text-[var(--color-text-secondary)]">
+						{open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+					</button>
+				</td>
+				<td className="px-3 py-2.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
+					{pipeline.name}
+				</td>
+				<td className="px-3 py-2.5 text-[13px] text-[var(--color-text-secondary)]">
+					{pipeline.namespace}
+				</td>
+				<td className="px-3 py-2.5">
+					<span
+						className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+						style={{ background: statusStyle.bg, color: statusStyle.color }}
+					>
+						{statusStyle.label}
+					</span>
+				</td>
+				<td className="px-3 py-2.5 text-[12px] text-[var(--color-text-secondary)]">
+					{pipeline.lastDeployment
+						? new Date(pipeline.lastDeployment.startedAt).toLocaleString("ko-KR")
+						: "-"}
+				</td>
+				<td className="px-3 py-2.5">
+					<div className="flex flex-wrap gap-1">
+						{pipeline.k8sObjects.filter((obj) => obj.kind !== "Pod").map((obj) => (
+							<K8sObjectBadge key={`${obj.kind}-${obj.name}`} kind={obj.kind} />
+						))}
+						{(() => {
+							const pods = pipeline.k8sObjects.filter((o) => o.kind === "Pod");
+							if (pods.length === 0) return null;
+							const running = pods.filter((p) => p.status === "Running").length;
+							const failed = pods.filter((p) => p.status !== "Running" && p.status !== "Pending").length;
+							const pending = pods.filter((p) => p.status === "Pending").length;
+							return (
+								<div className="flex gap-1">
+									{running > 0 && (
+										<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(34,197,94,0.15)] text-[#86efac]">
+											Pod {running} Running
+										</span>
+									)}
+									{pending > 0 && (
+										<span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(245,158,11,0.15)] text-[#fbbf24]">
+											Pod {pending} Pending
+										</span>
+									)}
+									{failed > 0 && (
+										<span className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-[rgba(239,68,68,0.15)] text-[#ef4444]">
+											<AlertCircle size={10} /> Pod {failed} Failed
+										</span>
+									)}
+								</div>
+							);
+						})()}
+					</div>
+				</td>
+			</tr>
+			{open && (
+				<tr>
+					<td colSpan={7} className="bg-[rgba(255,255,255,0.02)] p-0">
+						<div className="px-6 py-3">
+							<div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+								{[...pipeline.k8sObjects].sort((a, b) => {
+									const priority = (o: typeof a) => {
+										if (o.kind !== "Pod") return 2;
+										if (o.status !== "Running" && o.status !== "Pending") return 0;
+										if (o.status === "Pending") return 1;
+										return 3;
+									};
+									return priority(a) - priority(b);
+								}).map((obj) => {
+									const isPod = obj.kind === "Pod";
+									const isFailed = isPod && obj.status !== "Running" && obj.status !== "Pending";
+									const isPending = isPod && obj.status === "Pending";
+									const podStatusColor = isPod
+										? obj.status === "Running" ? "#22c55e"
+										: isPending ? "#f59e0b" : "#ef4444"
+										: undefined;
+									const borderClass = isFailed
+										? "border-[#ef4444]/40 bg-[rgba(239,68,68,0.05)]"
+										: isPending
+										? "border-[#f59e0b]/30 bg-[rgba(245,158,11,0.03)]"
+										: "border-[var(--color-border-default)]";
+									return (
+										<div
+											key={`${obj.kind}-${obj.name}`}
+											className={`flex items-center justify-between rounded-lg border px-3 py-2 ${borderClass}`}
+										>
+											<div className="flex items-center gap-2">
+												{isFailed && <AlertCircle size={13} className="text-[#ef4444] shrink-0" />}
+												<K8sObjectBadge kind={obj.kind} status={obj.status} />
+												<span className={`text-[12px] font-medium ${isFailed ? "text-[#ef4444]" : "text-[var(--color-text-primary)]"}`}>
+													{obj.name}
+												</span>
+											</div>
+											<div className="flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
+												{isPod && podStatusColor && (
+													<span className="flex items-center gap-1">
+														<span className="inline-block h-2 w-2 rounded-full" style={{ background: podStatusColor }} />
+														<span className={`font-semibold ${isFailed ? "text-[#ef4444]" : ""}`}>{obj.status}</span>
+													</span>
+												)}
+												{isPod && obj.node && (
+													<span className="flex items-center gap-0.5 text-[var(--color-text-muted)]">
+														<Server size={10} /> {obj.node}
+													</span>
+												)}
+												{obj.replicas != null && <span>Replicas: {obj.replicas}</span>}
+												{obj.port != null && obj.port > 0 && <span>:{obj.port}</span>}
+												{obj.host && <span className="truncate max-w-[140px]">{obj.host}</span>}
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						</div>
+					</td>
+				</tr>
+			)}
+		</>
+	);
+}
+
+function StackMonitoringTab({ stackId }: { stackId: string }) {
+	const { data: workloads } = useStackWorkloads(stackId);
+
+	const summary = workloads?.summary;
+	const pipelineList = workloads?.pipelines ?? [];
+
+	const totalPods = (summary?.runningPods ?? 0) + (summary?.pendingPods ?? 0) + (summary?.failedPods ?? 0);
+	const podStatusData = useMemo(
+		() => [
+			{ name: "Running", value: summary?.runningPods ?? 0, color: "#22c55e" },
+			{ name: "Pending", value: summary?.pendingPods ?? 0, color: "#f59e0b" },
+			{ name: "Failed", value: summary?.failedPods ?? 0, color: "#ef4444" },
+		],
+		[summary],
+	);
+
+	const kpiCards = [
+		{
+			label: "Pipelines",
+			value: String(summary?.totalPipelines ?? 0),
+			icon: <GitBranch size={18} />,
+			color: "#60a5fa",
+			iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]",
+			bar: Math.min(100, (summary?.totalPipelines ?? 0) * 20),
+		},
+		{
+			label: "Deployments",
+			value: String(summary?.totalDeployments ?? 0),
+			icon: <Layers size={18} />,
+			color: "#a78bfa",
+			iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]",
+			bar: Math.min(100, (summary?.totalDeployments ?? 0) * 20),
+		},
+		{
+			label: "Running Pods",
+			value: `${summary?.runningPods ?? 0} / ${totalPods}`,
+			icon: <Box size={18} />,
+			color: "#34d399",
+			iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
+			bar: totalPods > 0 ? Math.round(((summary?.runningPods ?? 0) / totalPods) * 100) : 0,
+		},
+		{
+			label: "Failed Pods",
+			value: String(summary?.failedPods ?? 0),
+			icon: <XCircle size={18} />,
+			color: summary?.failedPods ? "#ef4444" : "#34d399",
+			iconWrapClassName: summary?.failedPods
+				? "bg-[rgba(239,68,68,0.15)] text-[#ef4444]"
+				: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
+			bar: totalPods > 0 ? Math.round(((summary?.failedPods ?? 0) / totalPods) * 100) : 0,
+		},
+	];
+
+	const tools: { name: string; version: string; status: ToolHealthStatus }[] = [
+		{ name: "GitLab", status: "running", version: "16.7" },
+		{ name: "Argo CD", status: "running", version: "2.9.3" },
+		{ name: "Prometheus", status: "running", version: "2.48.1" },
+		{ name: "Grafana", status: "warning", version: "10.3" },
+		{ name: "Harbor", status: "running", version: "2.8.2" },
+	];
+
+	const cardClassName =
+		"rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]";
+
+	return (
+		<div>
+			<div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+				{kpiCards.map((card) => (
+					<div key={card.label} className={cardClassName}>
+						<div className="mb-2.5 flex items-center gap-2.5">
+							<div
+								className={cn(
+									"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+									card.iconWrapClassName,
+								)}
+							>
+								{card.icon}
+							</div>
+							<span className="text-xs font-medium text-[var(--color-text-secondary)]">
+								{card.label}
+							</span>
+						</div>
+						<div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">
+							{card.value}
+						</div>
+						<UsageBar value={card.bar} color={card.color} />
+					</div>
+				))}
 			</div>
-			{isLoading && (
-				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
-					Loading history...
+
+			{/* Deployed Pods Overview */}
+			{pipelineList.length > 0 && (() => {
+				const allPods = pipelineList.flatMap((p) =>
+					p.k8sObjects
+						.filter((o) => o.kind === "Pod")
+						.map((pod) => ({ ...pod, appName: p.name, appNamespace: p.namespace, deployStatus: p.lastDeployment?.status ?? "unknown", deployedAt: p.lastDeployment?.startedAt, node: pod.node ?? "-" }))
+				);
+				const failedFirst = [...allPods].sort((a, b) => {
+					const pri = (s: string | undefined) => s === "CrashLoopBackOff" || s === "Error" || s === "Failed" ? 0 : s === "Pending" ? 1 : 2;
+					return pri(a.status) - pri(b.status);
+				});
+				return (
+					<div className={cn(cardClassName, "mb-6")}>
+						<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
+							Deployed Pods ({allPods.length})
+						</h2>
+						<div className="overflow-x-auto">
+							<table className="w-full text-left">
+								<thead>
+									<tr className="border-b border-[var(--color-border-default)]">
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Status</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Pod Name</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Node</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">App</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Namespace</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Deploy Status</th>
+										<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Deployed At</th>
+									</tr>
+								</thead>
+								<tbody>
+									{failedFirst.map((pod) => {
+										const isFailed = pod.status !== "Running" && pod.status !== "Pending";
+										const isPending = pod.status === "Pending";
+										const dotColor = isFailed ? "#ef4444" : isPending ? "#f59e0b" : "#22c55e";
+										const rowBg = isFailed ? "bg-[rgba(239,68,68,0.04)]" : isPending ? "bg-[rgba(245,158,11,0.03)]" : "";
+										return (
+											<tr key={`${pod.appName}-${pod.name}`} className={`border-b border-[var(--color-border-default)] ${rowBg}`}>
+												<td className="px-3 py-2">
+													<span className="flex items-center gap-1.5">
+														<span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: dotColor }} />
+														<span className={`text-[12px] font-semibold ${isFailed ? "text-[#ef4444]" : isPending ? "text-[#fbbf24]" : "text-[#22c55e]"}`}>
+															{pod.status}
+														</span>
+													</span>
+												</td>
+												<td className="px-3 py-2">
+													<span className={`text-[12px] font-mono ${isFailed ? "text-[#ef4444] font-bold" : "text-[var(--color-text-primary)]"}`}>
+														{pod.name}
+													</span>
+												</td>
+												<td className="px-3 py-2">
+													<span className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
+														<Server size={11} className="shrink-0 text-[var(--color-text-muted)]" />
+														{pod.node}
+													</span>
+												</td>
+												<td className="px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">{pod.appName}</td>
+												<td className="px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">{pod.appNamespace}</td>
+												<td className="px-3 py-2">
+													<K8sObjectBadge kind={pod.deployStatus === "success" ? "Service" : "Pod"} status={pod.deployStatus} />
+												</td>
+												<td className="px-3 py-2 text-[11px] text-[var(--color-text-secondary)]">
+													{pod.deployedAt ? new Date(pod.deployedAt).toLocaleString("ko-KR") : "-"}
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				);
+			})()}
+
+			{/* CI/CD Workloads Table */}
+			{pipelineList.length > 0 && (
+				<div className={cn(cardClassName, "mb-6")}>
+					<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
+						CI/CD Workloads
+					</h2>
+					<div className="overflow-x-auto">
+						<table className="w-full text-left">
+							<thead>
+								<tr className="border-b border-[var(--color-border-default)]">
+									<th className="w-8 px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]" />
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">App</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Namespace</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Status</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">Last Deploy</th>
+									<th className="px-3 py-2 text-[11px] font-semibold uppercase text-[var(--color-text-muted)]">K8s Objects</th>
+								</tr>
+							</thead>
+							<tbody>
+								{pipelineList.map((p) => (
+									<WorkloadRow key={p.id} pipeline={p} />
+								))}
+							</tbody>
+						</table>
+					</div>
 				</div>
 			)}
-			{!isLoading && entries.length === 0 && (
-				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
-					No history found for this stack yet.
+
+			{/* Pod Status Chart - real data only */}
+			{totalPods > 0 && (
+				<div className={cn(cardClassName, "mb-6")}>
+					<h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
+						Pod Status Overview
+					</h2>
+					<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
+						<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+							<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+								Pod Status Distribution
+							</div>
+							<ResponsiveContainer width="100%" height={250}>
+								<PieChart>
+									<Pie
+										data={podStatusData}
+										dataKey="value"
+										nameKey="name"
+										cx="50%"
+										cy="50%"
+										outerRadius={86}
+										label
+									>
+										{podStatusData.map((entry) => (
+											<Cell key={entry.name} fill={entry.color} />
+										))}
+									</Pie>
+									<Tooltip
+										contentStyle={{
+											background: "#111827",
+											border: "1px solid #374151",
+											color: "#e5e7eb",
+										}}
+									/>
+									<Legend wrapperStyle={{ color: "#e5e7eb" }} />
+								</PieChart>
+							</ResponsiveContainer>
+						</div>
+
+						<div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
+							<div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+								Pods per App
+							</div>
+							<ResponsiveContainer width="100%" height={250}>
+								<BarChart data={pipelineList.map((p) => ({
+									name: p.name,
+									running: p.k8sObjects.filter((o) => o.kind === "Pod" && o.status === "Running").length,
+									pending: p.k8sObjects.filter((o) => o.kind === "Pod" && o.status === "Pending").length,
+									failed: p.k8sObjects.filter((o) => o.kind === "Pod" && o.status !== "Running" && o.status !== "Pending").length,
+								}))}>
+									<CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
+									<XAxis dataKey="name" stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+									<YAxis stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 11 }} allowDecimals={false} />
+									<Tooltip contentStyle={{ background: "#111827", border: "1px solid #374151", color: "#e5e7eb" }} />
+									<Legend wrapperStyle={{ color: "#e5e7eb" }} />
+									<Bar dataKey="running" fill="#22c55e" radius={[5, 5, 0, 0]} name="Running" />
+									<Bar dataKey="pending" fill="#f59e0b" radius={[5, 5, 0, 0]} name="Pending" />
+									<Bar dataKey="failed" fill="#ef4444" radius={[5, 5, 0, 0]} name="Failed" />
+								</BarChart>
+							</ResponsiveContainer>
+						</div>
+					</div>
+
+					<div className="mt-3 text-xs text-[var(--color-text-secondary)]">
+						Total: {totalPods} pods — {summary?.runningPods ?? 0} running, {summary?.pendingPods ?? 0} pending, {summary?.failedPods ?? 0} failed
+					</div>
 				</div>
 			)}
-			<div className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
-				{entries.map((entry) => {
-					const isCurrent = entry.id === latestEntryID;
-					return (
+		</div>
+	);
+}
+
+const HISTORY_ENTRIES = [
+	{
+		id: "deploy-v3-20260302",
+		version: "v3 · Current",
+		versionBg: "#059669",
+		tools: "GitLab CI + Argo CD + Prometheus + Grafana",
+		tag: "Tool Upgrade",
+		tagBg: "rgba(245,158,11,0.15)",
+		tagColor: "#fcd34d",
+		borderColor: "#bbf7d0",
+		reason: "Grafana v10.2 → v10.3 upgrade",
+		duration: "42 min",
+		result: "success",
+		who: "admin@nullus.io",
+		when: "2026-03-02 14:30",
+		canRollback: false,
+	},
+	{
+		id: "deploy-v2-20260228",
+		version: "v2",
+		versionBg: "#6366f1",
+		tools: "GitLab CI + Argo CD + Prometheus + Grafana",
+		tag: "Config Change",
+		tagBg: "#e0f2fe",
+		tagColor: "#0369a1",
+		borderColor: "var(--color-border-default)",
+		reason: "Storage: AWS S3 → MinIO",
+		duration: "58 min",
+		result: "success",
+		who: "kim@nullus.io",
+		when: "2026-02-28 09:15",
+		canRollback: true,
+	},
+	{
+		id: "deploy-v1-20260220",
+		version: "v1 · Failed",
+		versionBg: "#ef4444",
+		tools: "GitLab CI + Argo CD + Prometheus",
+		tag: "Initial Deploy",
+		tagBg: "rgba(239,68,68,0.15)",
+		tagColor: "#fca5a5",
+		borderColor: "#fecaca",
+		reason: "Initial stack deployment",
+		duration: "12 min (aborted)",
+		result: "failed",
+		who: "admin@nullus.io",
+		when: "2026-02-20 16:00",
+		canRollback: false,
+	},
+];
+
+function StackHistoryTab() {
+	const navigate = useNavigate();
+	return (
+		<div>
+			<div className="mb-4 flex items-center gap-3">
+				<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,#10b981,#059669)]" />
+				<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">
+					DevSecOps Stack History
+				</h3>
+			</div>
+			<div className="flex flex-col gap-3">
+				{HISTORY_ENTRIES.map((entry) => (
 					<div
-						key={entry.id}
+						key={entry.version}
 						className="overflow-hidden rounded-lg border"
-						style={{ borderColor: isCurrent ? "#bbf7d0" : "var(--color-border-default)" }}
+						style={{ borderColor: entry.borderColor }}
 					>
 						<div className="flex flex-wrap items-center justify-between gap-3 bg-[rgba(255,255,255,0.04)] px-5 py-3">
 							<div className="flex flex-wrap items-center gap-2.5">
 								<span
 									className="rounded-full px-2.5 py-0.5 text-[12px] font-bold text-white"
-									style={{
-										background: isCurrent
-											? "#059669"
-											: "#6366f1",
-									}}
+									style={{ background: entry.versionBg }}
 								>
-									v{entry.version}{isCurrent ? " · Current" : ""}
+									{entry.version}
+								</span>
+								<span className="text-[13px] font-semibold text-[var(--color-text-secondary)]">
+									{entry.tools}
 								</span>
 								<span
 									className="rounded-[8px] px-2 py-0.5 text-[11px] font-semibold"
-									style={{
-										background: isCurrent ? "rgba(245,158,11,0.15)" : "rgba(99,102,241,0.15)",
-										color: isCurrent ? "#fcd34d" : "#a5b4fc",
-									}}
+									style={{ background: entry.tagBg, color: entry.tagColor }}
 								>
-									{isCurrent ? "Current Config" : "Version Snapshot"}
+									{entry.tag}
 								</span>
 							</div>
 							<div className="text-[12px] text-[var(--color-text-secondary)]">
-								👤 {entry.changedBy} &nbsp;🕐 {formatDate(entry.changedAt)}
+								👤 {entry.who} &nbsp;🕐 {entry.when}
 							</div>
 						</div>
 						<div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
@@ -1428,14 +1151,53 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 										Reason:
 									</strong>{" "}
 									<span className="text-[var(--color-text-secondary)]">
-										{entry.reason || "N/A"}
+										{entry.reason}
 									</span>
 								</span>
+								<span>
+									<strong className="text-[var(--color-text-primary)]">
+										Duration:
+									</strong>{" "}
+									<span className="text-[var(--color-text-secondary)]">
+										{entry.duration}
+									</span>
+								</span>
+								<span
+									className="rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
+									style={
+										entry.result === "success"
+											? {
+												background: "rgba(16,185,129,0.15)",
+												color: "#6ee7b7",
+											}
+											: { background: "rgba(239,68,68,0.15)", color: "#fca5a5" }
+									}
+								>
+									{entry.result === "success"
+										? "✓ Success"
+										: "✗ Failed · Auto Rolled Back"}
+								</span>
+							</div>
+							<div className="flex gap-2">
+								<button
+									type="button"
+									onClick={() => navigate(`/stack/logs/${entry.id}`)}
+									className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)] transition-colors duration-150 hover:border-[rgba(99,102,241,0.4)] hover:bg-[rgba(99,102,241,0.08)] hover:text-[#a5b4fc]"
+								>
+									<Terminal size={12} /> Logs
+								</button>
+								{entry.canRollback && (
+									<button
+										type="button"
+										className="flex items-center gap-1.5 rounded-md border border-[#6366f1] bg-[rgba(99,102,241,0.12)] px-2.5 py-1.5 text-[12px] text-[#a5b4fc]"
+									>
+										<RotateCcw size={12} /> Rollback to {entry.version}
+									</button>
+								)}
 							</div>
 						</div>
 					</div>
-					);
-				})}
+				))}
 			</div>
 		</div>
 	);
@@ -1485,11 +1247,6 @@ const UPGRADE_ITEMS = [
 ];
 
 function StackVersionUpgradeTab() {
-	const { t } = useTranslation();
-	const handleUpgradeClick = () => {
-		toast.info(t("stackList.toast.upgradeInProgress", "개발중인 기능입니다."));
-	};
-
 	return (
 		<div>
 			<div className="mb-6 flex flex-wrap items-center gap-3">
@@ -1555,7 +1312,6 @@ function StackVersionUpgradeTab() {
 									</button>
 									<button
 										type="button"
-										onClick={handleUpgradeClick}
 										className="flex items-center gap-1.5 rounded-md bg-[linear-gradient(135deg,#6366f1,#8b5cf6)] px-2.5 py-1.5 text-[12px] font-semibold text-white"
 									>
 										<ArrowUpCircle size={12} /> Upgrade
@@ -1570,8 +1326,9 @@ function StackVersionUpgradeTab() {
 	);
 }
 
-const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
+const INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
 	{ key: "info", label: "Info", icon: <Info size={13} /> },
+	{ key: "monitoring", label: "Monitoring", icon: <BarChart2 size={13} /> },
 	{ key: "history", label: "History", icon: <History size={13} /> },
 	{
 		key: "version-upgrade",
@@ -1580,40 +1337,12 @@ const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[]
 	},
 ];
 
-function StackDetailPanel({
-	stack,
-	clusterConnectionStatus,
-	isDeleting,
-	onAddTools,
-	onDelete,
-	onBackToList,
-	className,
-}: {
-	stack: Stack;
-	clusterConnectionStatus?: string;
-	isDeleting: boolean;
-	onAddTools: () => void;
-	onDelete: () => void;
-	onBackToList: () => void;
-	className?: string;
-}) {
-	const { t } = useTranslation();
+function StackDetailPanel({ stack }: { stack: Stack }) {
 	const [innerTab, setInnerTab] = useState<InnerTab>("info");
-	const normalizedStatus = normalizeStackStatus(stack.status, clusterConnectionStatus);
-	const canShowMonitoring = isHealthyStatus(stack.status, clusterConnectionStatus);
-	const innerTabs = canShowMonitoring
-		? [BASE_INNER_TABS[0], { key: "monitoring" as const, label: "Monitoring", icon: <BarChart2 size={13} /> }, ...BASE_INNER_TABS.slice(1)]
-		: BASE_INNER_TABS;
-	const statusStyle = STATUS_STYLES[normalizedStatus] ?? STATUS_STYLES.pending;
-
-	useEffect(() => {
-		if (!canShowMonitoring && innerTab === "monitoring") {
-			setInnerTab("info");
-		}
-	}, [canShowMonitoring, innerTab]);
+	const statusStyle = STATUS_STYLES[stack.status] ?? STATUS_STYLES.pending;
 
 	return (
-		<div className={cn("flex h-full flex-col overflow-hidden rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.3)] bg-[var(--color-surface-card)]", className)}>
+		<div className="mt-2.5 overflow-hidden rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.3)] bg-[var(--color-surface-card)]">
 			<div className="flex items-center gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
 				<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
 					<Layers size={16} />
@@ -1625,7 +1354,7 @@ function StackDetailPanel({
 					className="rounded-[10px] px-[9px] py-[3px] text-[11px] font-bold"
 					style={{ background: statusStyle.bg, color: statusStyle.color }}
 				>
-					{getStackStatusLabel(t, normalizedStatus)}
+					{statusStyle.label}
 				</span>
 				<span className="text-[12px] text-[var(--color-text-secondary)]">
 					· {stack.templateName} · {stack.clusterName}
@@ -1633,7 +1362,7 @@ function StackDetailPanel({
 			</div>
 
 			<div className="flex border-b border-[var(--color-border-default)]">
-				{innerTabs.map((tab) => (
+				{INNER_TABS.map((tab) => (
 					<button
 						key={tab.key}
 						type="button"
@@ -1645,24 +1374,15 @@ function StackDetailPanel({
 								: "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[rgba(99,102,241,0.08)] hover:text-[var(--color-text-primary)]",
 						)}
 					>
-						{tab.icon} {t(`stackList.tabs.${tab.key}`, tab.label)}
+						{tab.icon} {tab.label}
 					</button>
 				))}
 			</div>
 
-			<div className="flex-1 overflow-auto p-5">
-				{innerTab === "info" && (
-					<StackInfoTab
-						stack={stack}
-						displayStatus={normalizedStatus}
-						isDeleting={isDeleting}
-						onAddTools={onAddTools}
-						onDelete={onDelete}
-						onBackToList={onBackToList}
-					/>
-				)}
-				{innerTab === "monitoring" && canShowMonitoring && <StackMonitoringTab stackId={stack.id} />}
-				{innerTab === "history" && <StackHistoryTab stack={stack} />}
+			<div className="p-5">
+				{innerTab === "info" && <StackInfoTab />}
+				{innerTab === "monitoring" && <StackMonitoringTab stackId={stack.id} />}
+				{innerTab === "history" && <StackHistoryTab />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
 			</div>
 		</div>
@@ -1670,86 +1390,18 @@ function StackDetailPanel({
 }
 
 export function StackListPage() {
-	const { t } = useTranslation();
 	const navigate = useNavigate();
-	// F8-UIUX-KeyboardHints — jump straight to the install wizard.
-	useKeyboardShortcut("n", () => navigate("/stack/install"));
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("");
-	const [clusterFilter, setClusterFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
 	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
-	const [terminatingStatusByID, setTerminatingStatusByID] = useState<Record<string, true>>({});
-	const [viewportHeight, setViewportHeight] = useState(() =>
-		typeof window !== "undefined" ? window.innerHeight : 960,
-	);
-	const [viewportWidth, setViewportWidth] = useState(() =>
-		typeof window !== "undefined" ? window.innerWidth : 1440,
-	);
 	const deleteStack = useDeleteStack();
-	const tablePageSize = Math.max(6, Math.min(14, Math.floor((viewportHeight - 340) / 52)));
-	const isDesktopLayout = viewportWidth >= 1280;
 
-	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		const onResize = () => {
-			setViewportHeight(window.innerHeight);
-			setViewportWidth(window.innerWidth);
-		};
-		window.addEventListener("resize", onResize);
-		return () => window.removeEventListener("resize", onResize);
-	}, []);
-
-	const normalizedStatusFilter = statusFilter === "healthy" ? "success" : statusFilter;
-	const { data: clustersData } = useScopedClusters();
-	const clusters = clustersData?.items ?? [];
-	const shouldPollTerminating = Object.keys(terminatingStatusByID).length > 0;
 	const { data: apiData, isLoading } = useStacks({
 		search,
-		status: normalizedStatusFilter || undefined,
-		include_deleted: true,
-	}, {
-		refetchIntervalMs: shouldPollTerminating ? 3000 : 0,
+		status: statusFilter || undefined,
 	});
-	const clusterNameByID = useMemo(
-		() => new Map(clusters.map((cluster) => [cluster.id, cluster.name])),
-		[clusters],
-	);
-	const clusterConnectionByID = useMemo(
-		() => new Map(clusters.map((cluster) => [cluster.id, cluster.status])),
-		[clusters],
-	);
-	const stacks = useMemo(
-		() => (apiData?.items ?? []).map((item) => {
-			const resolvedClusterName = clusterNameByID.get(item.clusterId);
-			return {
-				...item,
-				status: terminatingStatusByID[item.id] ? "terminating" : item.status,
-				clusterName: resolvedClusterName || item.clusterName || item.clusterId || "-",
-			};
-		}),
-		[apiData?.items, clusterNameByID, terminatingStatusByID],
-	);
-	const clusterOptions = useMemo(() => Array.from(new Set(stacks.map((item) => item.clusterName).filter((name) => !!name))).sort(), [stacks]);
-
-	useEffect(() => {
-		if (Object.keys(terminatingStatusByID).length === 0) return;
-		const visibleIDs = new Set(stacks.map((s) => s.id));
-		setTerminatingStatusByID((prev) => {
-			let changed = false;
-			const next: Record<string, true> = {};
-			for (const id of Object.keys(prev)) {
-				if (visibleIDs.has(id)) {
-					next[id] = true;
-				} else {
-					changed = true;
-				}
-			}
-			return changed ? next : prev;
-		});
-	}, [stacks, terminatingStatusByID]);
+	const stacks = apiData?.items ?? MOCK_STACKS;
 
 	const filtered = stacks.filter((s) => {
 		const q = search.toLowerCase();
@@ -1758,54 +1410,66 @@ export function StackListPage() {
 			s.name.toLowerCase().includes(q) ||
 			s.templateName.toLowerCase().includes(q) ||
 			s.clusterName.toLowerCase().includes(q);
-		const matchesStatus = matchesStackStatusFilter(s.status, statusFilter, clusterConnectionByID.get(s.clusterId));
-		const matchesCluster = !clusterFilter || s.clusterName === clusterFilter;
-		return matchesSearch && matchesStatus && matchesCluster;
+		const matchesStatus = !statusFilter || s.status === statusFilter;
+		return matchesSearch && matchesStatus;
 	});
-	const selectedStackId = expandedStackId && filtered.some((stack) => stack.id === expandedStackId)
-		? expandedStackId
-		: (filtered[0]?.id ?? null);
-	const expandedStack = selectedStackId
-		? filtered.find((s) => s.id === selectedStackId) ?? null
-		: null;
+	const expandedStack = filtered.find((s) => s.id === expandedStackId) ?? null;
 
 	const handleDeleteStack = () => {
 		if (!deleteStackId) return;
-		const targetID = deleteStackId;
-		setDeleteStackId(null);
-		setTerminatingStatusByID((prev) => ({ ...prev, [targetID]: true }));
-		setExpandedStackId((prev) => (prev === targetID ? null : prev));
-		deleteStack.mutate(targetID, {
-			onSuccess: () => {
-				toast.success(t("stackList.delete.started", "Stack deletion started. Kubernetes resources and DB data are being removed."));
-			},
-			onError: () => {
-				setTerminatingStatusByID((prev) => {
-					const next = { ...prev };
-					delete next[targetID];
-					return next;
-				});
-				toast.error(t("stackList.delete.failed", "Failed to start stack deletion."));
-			},
+		deleteStack.mutate(deleteStackId, {
+			onSuccess: () => setDeleteStackId(null),
 		});
 	};
 
 	const columns: ColumnDef<Stack, unknown>[] = [
 		{
+			id: "expand",
+			header: "",
+			enableSorting: false,
+			cell: ({ row }) => {
+				const isExpanded = expandedStackId === row.original.id;
+				return (
+					<Button
+						variant={isExpanded ? "secondary" : "ghost"}
+						size="sm"
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							setExpandedStackId((prev) =>
+								prev === row.original.id ? null : row.original.id,
+							);
+						}}
+					>
+						{isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+					</Button>
+				);
+			},
+		},
+		{
 			accessorKey: "name",
-			header: t("stackList.table.stackName", "Stack Name"),
+			header: "스택 이름",
 			cell: ({ row }) => (
 				<div className="flex items-center gap-2">
-					{selectedStackId === row.original.id && (
+					{expandedStackId === row.original.id && (
 						<div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#6366f1]" />
 					)}
-					<span className="truncate font-semibold" title={row.original.name}>{row.original.name}</span>
+					<span className="font-semibold">{row.original.name}</span>
 				</div>
 			),
 		},
-				{
+		{
+			accessorKey: "templateName",
+			header: "템플릿",
+			cell: ({ row }) => (
+				<span className="text-[var(--color-text-secondary)]">
+					{row.original.templateName}
+				</span>
+			),
+		},
+		{
 			accessorKey: "clusterName",
-			header: t("stackList.table.cluster", "Cluster"),
+			header: "클러스터",
 			cell: ({ row }) => (
 				<span className="text-[var(--color-text-secondary)]">
 					{row.original.clusterName}
@@ -1814,34 +1478,64 @@ export function StackListPage() {
 		},
 		{
 			accessorKey: "status",
-			header: () => <span className="whitespace-nowrap">{t("stackList.table.status", "Status")}</span>,
+			header: "상태",
 			cell: ({ row }) => {
-				const normalizedRowStatus = normalizeStackStatus(row.original.status, clusterConnectionByID.get(row.original.clusterId));
-				const s = STATUS_STYLES[normalizedRowStatus] ?? STATUS_STYLES.pending;
+				const s = STATUS_STYLES[row.original.status] ?? STATUS_STYLES.pending;
 				return (
 					<span
-						className="inline-block min-w-[72px] whitespace-nowrap rounded-md px-[9px] py-[3px] text-center text-xs font-semibold"
+						className="rounded-md px-[9px] py-[3px] text-xs font-semibold"
 						style={{ backgroundColor: s.bg, color: s.color }}
 					>
-						{getStackStatusLabel(t, normalizedRowStatus)}
+						{s.label}
 					</span>
 				);
 			},
 		},
 		{
 			accessorKey: "createdAt",
-			header: () => <span className="whitespace-nowrap">{t("stackList.table.createdAt", "Created At")}</span>,
+			header: "생성일",
 			cell: ({ row }) => (
-				<span className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">
+				<span className="text-[13px] text-[var(--color-text-secondary)]">
 					{formatDate(row.original.createdAt)}
 				</span>
+			),
+		},
+		{
+			id: "actions",
+			header: "Actions",
+			enableSorting: false,
+			cell: ({ row }) => (
+				<div className="flex gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							navigate(`/stack/${row.original.id}/add-tools`);
+						}}
+					>
+						<Plus size={13} /> Add Tools
+					</Button>
+					<Button
+						variant="danger"
+						size="sm"
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							setDeleteStackId(row.original.id);
+						}}
+					>
+						Delete
+					</Button>
+				</div>
 			),
 		},
 	];
 
 	return (
 		<div>
-			<Breadcrumb items={[{ label: t("sidebar.stackList", "Stack List") }]} />
+			<Breadcrumb items={[{ label: "Stack List" }]} />
 
 			<div className="mb-6 flex items-start justify-between">
 				<div className="flex items-center gap-2.5">
@@ -1850,10 +1544,10 @@ export function StackListPage() {
 					</div>
 					<div>
 						<h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-							{t("stackList.title", "Stack List")}
+							Stack List
 						</h1>
 						<p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-							{t("stackList.description", "Deployed DevSecOps stack list")}
+							배포된 DevSecOps 스택 목록
 						</p>
 					</div>
 				</div>
@@ -1865,112 +1559,59 @@ export function StackListPage() {
 					}
 				>
 					<Plus size={15} />
-					{t("stackList.actions.newStack", "New Stack")}
+					New Stack
 				</Button>
 			</div>
 
-			<div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
-				<div className="min-w-0">
-					<DataTable
-						key={`stack-list-${tablePageSize}`}
-						columns={columns}
-						data={filtered}
-						pageSize={tablePageSize}
-						toolbar={
-							<>
-								<NativeSelect
-									value={statusFilter}
-									onChange={(e) => setStatusFilter(e.target.value)}
-									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-								>
-									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allStatus", "All Status")}</option>
-									<option value="healthy" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.healthy", "Running")}</option>
-									<option value="completed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.completed", "Completed")}</option>
-									<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.running", "Running")}</option>
-									<option value="terminating" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.terminating", "Terminating")}</option>
-									<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.pending", "Pending")}</option>
-									<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.failed", "Failed")}</option>
-									<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.cancelled", "Cancelled")}</option>
-								</NativeSelect>
-								<NativeSelect
-									value={clusterFilter}
-									onChange={(e) => setClusterFilter(e.target.value)}
-									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-								>
-									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allClusters", "All Clusters")}</option>
-									{clusterOptions.map((clusterName) => (
-										<option key={clusterName} value={clusterName} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
-											{clusterName}
-										</option>
-									))}
-								</NativeSelect>
-								<div className="relative ml-auto">
-									<Search
-										size={13}
-										className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-									/>
-									<input
-										placeholder={t("stackList.searchPlaceholder", "Search stacks...")}
-										value={search}
-										onChange={(e) => setSearch(e.target.value)}
-										className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-									/>
-								</div>
-							</>
-						}
-						getRowKey={(row) => row.id}
-						onRowClick={(row) => setExpandedStackId(row.id)}
-						emptyMessage={isLoading ? t("stackList.loading", "Loading stacks...") : t("stackList.empty", "No stacks found.")}
-					/>
-					<div className="mt-2 hidden text-[12px] text-[var(--color-text-secondary)] xl:block">
-						{t("stackList.listHint", "Selecting a stack from the list updates the detail panel immediately.")}
-					</div>
-				</div>
+			<DataTable
+				columns={columns}
+				data={filtered}
+				toolbar={
+					<>
+						<NativeSelect
+							value={statusFilter}
+							onChange={(e) => setStatusFilter(e.target.value)}
+							className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+						>
+							<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">All Status</option>
+							<option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Success</option>
+							<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Running</option>
+							<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Pending</option>
+							<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Failed</option>
+							<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">Cancelled</option>
+						</NativeSelect>
+						<div className="relative ml-auto">
+							<Search
+								size={13}
+								className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+							/>
+							<input
+								placeholder="스택 검색..."
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+							/>
+						</div>
+					</>
+				}
+				getRowKey={(row) => row.id}
+				onRowClick={(row) =>
+					setExpandedStackId((prev) => (prev === row.id ? null : row.id))
+				}
+				emptyMessage={isLoading ? "스택을 불러오는 중..." : "스택이 없습니다."}
+			/>
 
-				{isDesktopLayout && (
-					<div>
-						{expandedStack ? (
-							<div className="h-full pr-1">
-								<StackDetailPanel
-									key={expandedStack.id}
-									stack={expandedStack}
-									clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
-									isDeleting={deleteStack.isPending}
-									onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
-									onDelete={() => setDeleteStackId(expandedStack.id)}
-									onBackToList={() => setExpandedStackId(null)}
-								/>
-							</div>
-						) : (
-							<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
-								{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
-							</div>
-						)}
-					</div>
-				)}
-			</div>
-
-			{!isDesktopLayout && expandedStack && (
-				<StackDetailPanel
-					key={`${expandedStack.id}-mobile`}
-					stack={expandedStack}
-					clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
-					isDeleting={deleteStack.isPending}
-					onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
-					onDelete={() => setDeleteStackId(expandedStack.id)}
-					onBackToList={() => setExpandedStackId(null)}
-					className="mt-4"
-				/>
+			{expandedStack && (
+				<StackDetailPanel key={expandedStack.id} stack={expandedStack} />
 			)}
 
 			<ConfirmDialog
 				open={deleteStackId !== null}
 				onClose={() => setDeleteStackId(null)}
 				onConfirm={handleDeleteStack}
-				title={t("stackList.confirm.deleteTitle", "Delete Stack")}
-				description={t("stackList.confirm.deleteDescription", "Deleting this stack may affect related deployment data. Continue?")}
-				confirmLabel={t("common.delete", "Delete")}
-				loading={deleteStack.isPending}
+				title="Delete Stack"
+				description="이 스택을 삭제하면 관련 배포 정보가 영향을 받을 수 있습니다. 계속하시겠습니까?"
+				confirmLabel="Delete"
 			/>
 		</div>
 	);

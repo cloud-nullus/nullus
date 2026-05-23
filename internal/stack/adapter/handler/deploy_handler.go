@@ -1,9 +1,15 @@
 package handler
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,6 +26,7 @@ type DeployHandler struct {
 	installStack          *usecase.InstallStack
 	stackRepo             port.StackRepository
 	streamer              port.LogStreamer
+	kubeconfigProvider    port.KubeconfigProvider
 	validateCompatibility *usecase.ValidateCompatibility
 	audit                 audit.Sink
 }
@@ -32,6 +39,10 @@ type DeployHandlerOption func(*DeployHandler)
 // install, blocking `fail` verdicts and `warn` without an explicit ack.
 func WithValidateCompatibility(uc *usecase.ValidateCompatibility) DeployHandlerOption {
 	return func(h *DeployHandler) { h.validateCompatibility = uc }
+}
+
+func WithKubeconfigProvider(provider port.KubeconfigProvider) DeployHandlerOption {
+	return func(h *DeployHandler) { h.kubeconfigProvider = provider }
 }
 
 // NewDeployHandler constructs a DeployHandler. The audit logger is variadic
@@ -74,9 +85,11 @@ func (h *DeployHandler) RegisterRoutes(v1 *echo.Group, e *echo.Echo) {
 	stacks := v1.Group("/stacks")
 	stacks.POST("/:id/deploy", h.Deploy)
 	stacks.POST("/:id/retry", h.Retry)
+	stacks.POST("/:id/continue", h.Continue)
 	v1.GET("/stacks/:id/status", h.Status)
 	v1.GET("/stacks/:id/deploy/logs", h.StreamLogs)
 	e.GET("/ws/deployments/:id/logs", h.StreamLogs)
+	e.GET("/ws/deployments/:id/pods", h.StreamPods)
 }
 
 // deployResponse is the response body for POST /stacks/:id/deploy.
@@ -312,10 +325,80 @@ func (h *DeployHandler) Retry(c echo.Context) error {
 	})
 }
 
+// Continue handles POST /api/v1/stacks/:id/continue.
+// It resumes a failed deployment without invoking rollback. Previously
+// installed resources are left in place; Helm install will upgrade/reuse
+// existing releases where possible and continue with the same stack config.
+func (h *DeployHandler) Continue(c echo.Context) error {
+	id := c.Param("id")
+
+	stack, err := h.stackRepo.GetByID(c.Request().Context(), id)
+	if err != nil {
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+	}
+	if stack == nil {
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", "stack not found")
+	}
+	if stack.State != domain.StateFailed {
+		return errorResponse(c, http.StatusConflict, "STACK_CONTINUE_INVALID_STATE",
+			"continue requires state failed, got "+string(stack.State))
+	}
+
+	var req deployRequest
+	if c.Request().ContentLength != 0 {
+		if err := c.Bind(&req); err != nil {
+			return errorResponse(c, http.StatusBadRequest, "DEPLOY_REQUEST_INVALID", err.Error())
+		}
+	}
+
+	auditDetails := map[string]any{
+		"acknowledge_warnings": req.AcknowledgeWarnings,
+		"previous_state":       string(stack.State),
+	}
+
+	gate := h.runPreDeployGate(c, id, req.AcknowledgeWarnings)
+	if gate.handled {
+		return nil
+	}
+	if gate.blocked {
+		return nil
+	}
+	if gate.verdict != nil {
+		auditDetails["compatibility_verdict"] = gate.verdict.Overall.State
+		auditDetails["issue_codes"] = issueCodes(gate.verdict.Issues)
+	}
+
+	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{
+		StackID:      id,
+		Continue:     true,
+		PreserveLogs: true,
+	}); err != nil {
+		return errorResponse(c, http.StatusBadRequest, "STACK_CONTINUE_FAILED", err.Error())
+	}
+	if h.audit != nil {
+		_ = h.audit.Log(c.Request().Context(), audit.AuditEntry{
+			UserID:       c.Request().Header.Get("X-User-ID"),
+			Action:       "continue",
+			ResourceType: "stack",
+			ResourceID:   id,
+			Details:      auditDetails,
+			IPAddress:    c.RealIP(),
+		})
+	}
+
+	return c.JSON(http.StatusAccepted, deployResponse{
+		StackID: id,
+		Status:  "accepted",
+		Message: "continue started; subscribe to /ws/deployments/" + id + "/logs for real-time logs",
+	})
+}
+
 // statusResponse is the response body for GET /stacks/:id/status.
 type statusResponse struct {
 	StackID   string    `json:"stack_id"`
 	State     string    `json:"state"`
+	ClusterID string    `json:"cluster_id,omitempty"`
+	Namespace string    `json:"namespace"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -335,6 +418,8 @@ func (h *DeployHandler) Status(c echo.Context) error {
 		"data": statusResponse{
 			StackID:   stack.ID,
 			State:     string(stack.State),
+			ClusterID: stack.ClusterID,
+			Namespace: stack.Namespace,
 			UpdatedAt: stack.UpdatedAt,
 		},
 	})
@@ -367,6 +452,7 @@ type wsLogMessage struct {
 
 var stepProgress = map[string]int{
 	"validate":                 5,
+	"continue":                 5,
 	"installing_cert_manager":  15,
 	"installing_minio":         25,
 	"installing_gitlab":        40,
@@ -457,7 +543,10 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 				Progress:  progress,
 			}
 
-			if entry.Step == "completed" || entry.Step == "deleted" {
+			if entry.Step == "continue" {
+				msg.Type = "status"
+				msg.Status = "running"
+			} else if entry.Step == "completed" || entry.Step == "deleted" {
 				msg.Type = "status"
 				msg.Status = "success"
 			} else if entry.Step == "failed" || entry.Step == "rolling_back" || entry.Step == "rolled_back" || entry.Step == "delete_failed" {
@@ -491,4 +580,212 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 			return nil
 		}
 	}
+}
+
+type wsPodMessage struct {
+	Type      string `json:"type"`
+	Timestamp string `json:"timestamp"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Ready     string `json:"ready,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Restarts  string `json:"restarts,omitempty"`
+	Age       string `json:"age,omitempty"`
+	Message   string `json:"message,omitempty"`
+}
+
+func (h *DeployHandler) StreamPods(c echo.Context) error {
+	id := c.Param("id")
+
+	conn, err := wsUpgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		log.Printf("websocket upgrade error: %v", err)
+		return nil
+	}
+	defer conn.Close()
+
+	writePodMessage := func(msg wsPodMessage) bool {
+		if msg.Timestamp == "" {
+			msg.Timestamp = time.Now().Format(time.RFC3339)
+		}
+		if err := conn.SetWriteDeadline(time.Now().Add(wsWriteWait)); err != nil {
+			log.Printf("pod websocket set write deadline error: %v", err)
+			return false
+		}
+		if err := conn.WriteJSON(msg); err != nil {
+			log.Printf("pod websocket write error: %v", err)
+			return false
+		}
+		return true
+	}
+
+	stack, err := h.stackRepo.GetByID(c.Request().Context(), id)
+	if err != nil || stack == nil {
+		writePodMessage(wsPodMessage{Type: "error", Message: "stack not found"})
+		return nil
+	}
+	namespace := strings.TrimSpace(stack.Namespace)
+	if namespace == "" {
+		namespace = "nullus"
+	}
+	if !writePodMessage(wsPodMessage{Type: "meta", Namespace: namespace, Message: "pod watch namespace resolved"}) {
+		return nil
+	}
+	if h.kubeconfigProvider == nil {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: "kubeconfig provider is not configured"})
+		return nil
+	}
+	kubeconfig, err := h.kubeconfigProvider.GetKubeconfig(c.Request().Context(), stack.ClusterID)
+	if err != nil {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("load kubeconfig: %v", err)})
+		return nil
+	}
+	if len(kubeconfig) == 0 {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: "kubeconfig is not registered for this cluster"})
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
+
+	tmpFile, err := os.CreateTemp("", "nullus-pod-watch-kubeconfig-*.yaml")
+	if err != nil {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("create kubeconfig temp file: %v", err)})
+		return nil
+	}
+	tmpPath := tmpFile.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if _, err := tmpFile.Write(kubeconfig); err != nil {
+		_ = tmpFile.Close()
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("write kubeconfig temp file: %v", err)})
+		return nil
+	}
+	if err := tmpFile.Close(); err != nil {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("close kubeconfig temp file: %v", err)})
+		return nil
+	}
+
+	snapshotCmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", tmpPath, "get", "pods", "-n", namespace, "--no-headers")
+	if output, err := snapshotCmd.CombinedOutput(); err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			if msg, ok := parseKubectlPodLine(namespace, line); ok {
+				if !writePodMessage(msg) {
+					return nil
+				}
+			}
+		}
+	} else if strings.TrimSpace(string(output)) != "" {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: strings.TrimSpace(string(output))})
+	}
+
+	cmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", tmpPath, "get", "pods", "-n", namespace, "-w", "--no-headers")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("open kubectl stdout: %v", err)})
+		return nil
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("open kubectl stderr: %v", err)})
+		return nil
+	}
+	if err := cmd.Start(); err != nil {
+		writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("start kubectl: %v", err)})
+		return nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn.SetReadLimit(512)
+		if err := conn.SetReadDeadline(time.Now().Add(wsPongWait)); err != nil {
+			cancel()
+			return
+		}
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		})
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				cancel()
+				return
+			}
+		}
+	}()
+
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			if !writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: scanner.Text()}) {
+				cancel()
+				return
+			}
+		}
+	}()
+
+	pingTicker := time.NewTicker(wsPingPeriod)
+	defer pingTicker.Stop()
+
+	lines := make(chan string)
+	go func() {
+		defer close(lines)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+
+	for {
+		select {
+		case <-done:
+			cancel()
+			_ = cmd.Wait()
+			return nil
+		case <-ctx.Done():
+			_ = cmd.Wait()
+			return nil
+		case <-pingTicker.C:
+			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteWait)); err != nil {
+				cancel()
+				return nil
+			}
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				cancel()
+				return nil
+			}
+		case line, ok := <-lines:
+			if !ok {
+				if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+					writePodMessage(wsPodMessage{Type: "error", Namespace: namespace, Message: fmt.Sprintf("kubectl watch exited: %v", err)})
+				}
+				return nil
+			}
+			msg, ok := parseKubectlPodLine(namespace, line)
+			if !ok {
+				continue
+			}
+			if !writePodMessage(msg) {
+				cancel()
+				_ = cmd.Wait()
+				return nil
+			}
+		}
+	}
+}
+
+func parseKubectlPodLine(namespace, line string) (wsPodMessage, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 5 {
+		return wsPodMessage{}, false
+	}
+	return wsPodMessage{
+		Type:      "pod",
+		Timestamp: time.Now().Format(time.RFC3339),
+		Namespace: namespace,
+		Name:      fields[0],
+		Ready:     fields[1],
+		Status:    fields[2],
+		Restarts:  fields[3],
+		Age:       fields[len(fields)-1],
+	}, true
 }

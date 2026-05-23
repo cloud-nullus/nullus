@@ -39,13 +39,28 @@ export interface InviteLink {
   status: 'active' | 'expired'
 }
 
+export interface ClusterPod {
+  namespace: string
+  name: string
+  status: string
+  ready: string
+  restarts: number
+  node: string
+}
+
 export interface ClusterMonitoringSummary {
+  total_nodes: number
+  ready_nodes: number
   total_pods: number
   ready_pods: number
   cpu_request_millicores: number
   cpu_limit_millicores: number
+  cpu_allocatable_millicores: number
+  cpu_usage_millicores: number
   memory_request_mib: number
   memory_limit_mib: number
+  memory_allocatable_mib: number
+  memory_usage_mib: number
 }
 
 export interface TokenSource {
@@ -75,6 +90,8 @@ export interface TokenRotationEvent {
   trace_id?: string
   created_at: string
 }
+
+type SaveResourceProfilePayload = Omit<OrgResourceProfile, 'id' | 'orgId' | 'createdAt'>
 
 // --- Query keys ---
 
@@ -234,6 +251,9 @@ const adminApiCalls = {
   getClusterMonitoringSummary: (clusterId: string) =>
     api.get<ClusterMonitoringSummary>(`/admin/clusters/${clusterId}/monitoring-summary`).then((r) => r.data),
 
+  getClusterPods: (clusterId: string) =>
+    api.get<{ items: ClusterPod[] }>(`/admin/clusters/${clusterId}/pods`).then((r) => r.data?.items ?? []),
+
   createInviteLink: (orgId: string, data: { role: MemberRole; expiresInDays: number }) =>
     api.post<{ token: string; url: string; role: MemberRole; expiresAt: string }>(`/admin/organizations/${orgId}/invites`, data).then((r) => r.data),
 
@@ -246,8 +266,11 @@ const adminApiCalls = {
   getResourceProfiles: () =>
     api.get<OrgResourceProfile[]>('/admin/organization/resource-profiles').then((r) => r.data),
 
-  createResourceProfile: (data: Omit<OrgResourceProfile, 'id' | 'orgId' | 'createdAt'>) =>
+  createResourceProfile: (data: SaveResourceProfilePayload) =>
     api.post<OrgResourceProfile>('/admin/organization/resource-profiles', data).then((r) => r.data),
+
+  updateResourceProfile: (id: string, data: SaveResourceProfilePayload) =>
+    api.patch<OrgResourceProfile>(`/admin/organization/resource-profiles/${id}`, data).then((r) => r.data),
 
   deleteResourceProfile: (id: string) =>
     api.delete(`/admin/organization/resource-profiles/${id}`).then((r) => r.data),
@@ -298,7 +321,23 @@ export function useCreateOrgResourceProfile() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: adminApiCalls.createResourceProfile,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() }),
+    onSuccess: (created) => {
+      qc.setQueryData<OrgResourceProfile[]>(queryKeys.resourceProfiles(), (old = []) => [created, ...old])
+      void qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() })
+    },
+  })
+}
+
+export function useUpdateOrgResourceProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: SaveResourceProfilePayload }) => adminApiCalls.updateResourceProfile(id, data),
+    onSuccess: (updated) => {
+      qc.setQueryData<OrgResourceProfile[]>(queryKeys.resourceProfiles(), (old = []) =>
+        old.map((profile) => profile.id === updated.id ? updated : profile)
+      )
+      void qc.invalidateQueries({ queryKey: queryKeys.resourceProfiles() })
+    },
   })
 }
 
@@ -542,6 +581,15 @@ export function useClusterMonitoringSummary(clusterId: string) {
   return useQuery({
     queryKey: queryKeys.clusterMonitoringSummary(clusterId),
     queryFn: () => adminApiCalls.getClusterMonitoringSummary(clusterId),
+    enabled: !!clusterId,
+    refetchInterval: 5000,
+  })
+}
+
+export function useClusterPods(clusterId: string) {
+  return useQuery({
+    queryKey: ['admin', 'clusters', clusterId, 'pods'],
+    queryFn: () => adminApiCalls.getClusterPods(clusterId),
     enabled: !!clusterId,
     refetchInterval: 5000,
   })

@@ -30,9 +30,17 @@ func NewListPipelines(pipelineRepo port.PipelineRepository) *ListPipelines {
 }
 
 // Execute returns all pipelines for the given organization.
-// When StackID is set, results are filtered to that stack.
+// When StackID is set, results are filtered to that stack via the dedicated repo method.
 func (uc *ListPipelines) Execute(ctx context.Context, input ListPipelinesInput) (*ListPipelinesOutput, error) {
-	pipelines, err := uc.pipelineRepo.List(ctx, input.OrgID, input.StackID)
+	var (
+		pipelines []*domain.Pipeline
+		err       error
+	)
+	if input.StackID != "" {
+		pipelines, err = uc.pipelineRepo.ListByStackID(ctx, input.StackID)
+	} else {
+		pipelines, err = uc.pipelineRepo.List(ctx, input.OrgID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list pipelines: %w", err)
 	}

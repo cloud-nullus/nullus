@@ -8,23 +8,15 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
-	echomw "github.com/labstack/echo/v4/middleware"
 
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminkube "github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
-	"github.com/cloud-nullus/draft/internal/admin/rotation"
-	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
-	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
@@ -35,16 +27,18 @@ import (
 	obsport "github.com/cloud-nullus/draft/internal/observability/port"
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
+	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
-	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	stackport "github.com/cloud-nullus/draft/internal/stack/port"
 	stackuc "github.com/cloud-nullus/draft/internal/stack/usecase"
-	"github.com/cloud-nullus/draft/pkg/crypto"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v4"
+	echomw "github.com/labstack/echo/v4/middleware"
 )
 
 func main() {
@@ -78,36 +72,18 @@ func main() {
 	orgRepo := adminrepo.NewPostgresOrgRepository(pool)
 	clusterRepo := adminrepo.NewPostgresClusterRepository(pool)
 	userRepo := adminrepo.NewPostgresUserRepository(pool)
-	tokenSourceRepo := adminrepo.NewPostgresTokenSourceRepository(pool)
 
 	orgUC := usecase.NewOrgUseCase(orgRepo)
 	encryptionKey := []byte(os.Getenv("ENCRYPTION_KEY"))
-	decryptKubeconfig := func(encrypted []byte) ([]byte, error) {
-		if len(encryptionKey) != 32 {
-			return nil, fmt.Errorf("ENCRYPTION_KEY must be 32 bytes")
-		}
-		return crypto.Decrypt(encryptionKey, string(encrypted))
-	}
-	clusterUC := usecase.NewClusterUseCase(clusterRepo,
+	clusterUC := usecase.NewClusterUseCase(
+		clusterRepo,
 		usecase.WithOrgRepo(orgRepo),
 		usecase.WithDiscoverer(adminkube.NewDiscoverer()),
-		usecase.WithKubeconfigDecryptor(decryptKubeconfig),
+		usecase.WithKubeconfigDecryptor(func(encrypted []byte) ([]byte, error) {
+			return crypto.Decrypt(encryptionKey, string(encrypted))
+		}),
 	)
 	userUC := usecase.NewUserUseCase(userRepo)
-	secretRouter := secrets.NewRouter()
-	openBaoAddr := strings.TrimSpace(os.Getenv("OPENBAO_ADDR"))
-	openBaoToken := strings.TrimSpace(os.Getenv("OPENBAO_TOKEN"))
-	if openBaoAddr != "" && openBaoToken != "" {
-		secretRouter.Register("openbao", secrets.NewOpenBaoStore(openBaoAddr, openBaoToken))
-	}
-	reissueRouter := rotation.NewRouterReissuer()
-	reissueRouter.Register("gitlab", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
-	reissueRouter.Register("gitlab-ce", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
-	reissueRouter.Register("gitlab-ci", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
-	reissueRouter.Register("gitlab-registry", rotation.NewGitLabReissuer(strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))))
-	reissueRouter.Register("github", rotation.NewGitHubReissuer(strings.TrimSpace(os.Getenv("GITHUB_API_BASE"))))
-	reissueRouter.Register("github-actions", rotation.NewGitHubReissuer(strings.TrimSpace(os.Getenv("GITHUB_API_BASE"))))
-	tokenSourceUC := usecase.NewTokenSourceUseCase(tokenSourceRepo, usecase.WithSecretRouter(secretRouter))
 	auditLogger := audit.NewAuditLogger(pool)
 
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
@@ -117,26 +93,16 @@ func main() {
 	// Stack: postgres repos + log streamer
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
-	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
-	tokenSourceRegistry := stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter)
-	memStreamer := logadapter.NewPostgresStreamer(pool)
+	memStreamer := logadapter.NewMemoryStreamer()
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
-		stackuc.WithSecretRouter(secretRouter),
-		stackuc.WithTokenSourceRegistry(tokenSourceRegistry, cfg.Server.Mode),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			return stackhelm.NewOrchestrator(
-				installer,
-				kubeconfig,
-				"",
-				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
-				stackhelm.WithSharedClusterScopedComponents(true),
-			)
+			return stackhelm.NewOrchestrator(installer, kubeconfig, "")
 		}),
 	)
 	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)
@@ -147,77 +113,42 @@ func main() {
 		func(kubeconfig []byte) stackport.HelmInstaller {
 			return stackhelm.NewHelmInstaller(kubeconfig)
 		},
-		memStreamer,
 	)
 	addToolsUC := stackuc.NewAddToolsUseCase(pgStackRepo)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
+	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
 	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
 	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
-	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
-	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
-	retryHistoryHandler := stackhandler.NewRetryHistoryHandler(auditLogger)
-	updateStackUC := stackuc.NewUpdateStack(pgStackRepo, manageHistoryUC)
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, manageHistoryUC, auditLogger).
-		WithOptions(stackhandler.WithUpdateStack(updateStackUC))
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithPool(pool))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
 
 	pgCompatRepo := stackrepo.NewPostgresCompatibilityRepository(pool)
-	pgStackClusterReader := stackrepo.NewPostgresClusterReader(pool)
-	verdictCacheTTL := 30 * time.Second
-	if override := os.Getenv("VERDICT_CACHE_TTL_SEC"); override != "" {
-		if n, err := time.ParseDuration(override + "s"); err == nil {
-			verdictCacheTTL = n
-		}
-	}
-	verdictCache := stackuc.NewMemoryVerdictCache(verdictCacheTTL)
-	validateCompatUC := stackuc.NewValidateCompatibility(
-		pgCompatRepo,
-		stackuc.WithClusterReader(pgStackClusterReader),
-		stackuc.WithStackRepository(pgStackRepo),
-		stackuc.WithVerdictCache(verdictCache),
-	)
-	manageCompatUC := stackuc.NewManageCompatibility(
-		pgCompatRepo,
-		stackuc.WithVerdictCacheClearer(verdictCache),
-	)
-	compatHandler := stackhandler.NewCompatibilityHandler(
-		pgCompatRepo,
-		validateCompatUC,
-		stackhandler.WithManageCompatibility(manageCompatUC),
-		stackhandler.WithCompatibilityAuditSink(auditLogger),
-	)
-	// F8-F3: enable server-side Pre-Deploy Gate on POST /stacks/:id/deploy.
-	deployHandler.WithOptions(stackhandler.WithValidateCompatibility(validateCompatUC))
+	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
+	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
 
+	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
+	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
-	stackMonitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
 
 	// CI/CD: postgres repos
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
 	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
 	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
-	pgStackReader := cicdrepo.NewPostgresStackReader(pool)
-	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, pgStackReader)
+	manifestApplier := cicdkube.NewManifestApplier()
+	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
-	cicdApplier := cicdkube.NewManifestApplier()
-	cicdBuilder := cicddocker.NewBuilder(cicdApplier.Tracker)
-	cicdClusterTarget := cicdrepo.NewPostgresClusterTargetProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
-	deployPipelineUC := cicduc.NewDeployPipeline(
-		pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, cicdApplier,
-		cicduc.WithImagePreparer(cicdBuilder),
-		cicduc.WithClusterTargetProvider(cicdClusterTarget),
-	)
+	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
-	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, cicdApplier.Tracker)
+	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository
@@ -238,7 +169,12 @@ func main() {
 	updateAlertRuleUC := obsuc.NewUpdateAlertRule(pgAlertRuleRepo)
 	deleteAlertRuleUC := obsuc.NewDeleteAlertRule(pgAlertRuleRepo)
 	listAlertsUC := obsuc.NewListAlerts(pgAlertRepo)
-	dashboardHandler := obshandler.NewDashboardHandler(getDashboardUC)
+	dashboardHandler := obshandler.NewDashboardHandler(
+		getDashboardUC,
+		obshandler.WithStackRepo(pgStackRepo),
+		obshandler.WithPool(pool),
+		obshandler.WithKubeconfigProvider(kubeconfigProvider),
+	)
 	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, getAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
 
 	// Echo
@@ -253,16 +189,14 @@ func main() {
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
 		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "X-Org-ID"},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 		AllowCredentials: true,
 		MaxAge:           7200,
 	}))
-	if cfg.Server.Mode == "production" {
-		e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
-			Authenticated:   300,
-			Unauthenticated: 30,
-		}))
-	}
+	e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
+		Authenticated:   300,
+		Unauthenticated: 30,
+	}))
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
@@ -296,7 +230,6 @@ func main() {
 	knownIssuesHandler := adminhandler.NewKnownIssuesHandler(knownIssuesRepo)
 	auditHandler := adminhandler.NewAuditHandler(auditLogger)
 	notificationHandler := adminhandler.NewNotificationHandler(pool)
-	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
 
 	orgHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
@@ -304,22 +237,16 @@ func main() {
 	knownIssuesHandler.RegisterRoutes(admin)
 	auditHandler.RegisterRoutes(admin)
 	notificationHandler.RegisterRoutes(admin)
-	tokenSourceHandler.RegisterRoutes(admin)
 	deployHandler.RegisterRoutes(v1, e)
 	stackHandler.RegisterRoutes(stacks)
 	templateHandler.RegisterRoutes(stacks)
 	exportHandler.RegisterRoutes(v1)
 	compatHandler.RegisterRoutes(stacks)
-	compatHandler.RegisterAdminRoutes(admin)
 	historyHandler.RegisterRoutes(stacks)
-	retryHistoryHandler.RegisterRoutes(stacks)
-	stackMonitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	cicdGoldenPathHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
-	pipelineHandler.RegisterStackRoutes(stacks)
-	e.GET("/ws/cicd/deployments/:id/logs", pipelineHandler.StreamDeployLogs)
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
 
@@ -340,31 +267,6 @@ func main() {
 		})
 	})
 
-	// Phase 7: nightly Refresh Discovery scheduler. Runs in a goroutine
-	// tied to the server's context so graceful shutdown (SIGINT/SIGTERM)
-	// also stops the scheduler.
-	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
-	refreshInterval := 24 * time.Hour
-	if override := os.Getenv("REFRESH_DISCOVERY_INTERVAL"); override != "" {
-		if dur, err := time.ParseDuration(override); err == nil && dur > 0 {
-			refreshInterval = dur
-		}
-	}
-	clusterAdapter := adminscheduler.NewClusterAdapter(clusterUC)
-	refreshScheduler := adminscheduler.NewRefreshDiscoveryScheduler(clusterAdapter, clusterAdapter, adminscheduler.Options{
-		Interval: refreshInterval,
-	})
-	go refreshScheduler.Start(schedulerCtx)
-
-	tokenRotationInterval := 5 * time.Minute
-	if override := os.Getenv("TOKEN_ROTATION_INTERVAL"); override != "" {
-		if dur, err := time.ParseDuration(override); err == nil && dur > 0 {
-			tokenRotationInterval = dur
-		}
-	}
-	tokenRotationScheduler := adminscheduler.NewTokenRotationScheduler(pool, secretRouter, tokenRotationInterval, 2*time.Minute, slog.Default(), reissueRouter)
-	go tokenRotationScheduler.Start(schedulerCtx)
-
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
 		slog.Info("starting server", "addr", addr)
@@ -377,7 +279,6 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	schedulerCancel()
 
 	slog.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

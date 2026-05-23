@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
-	"github.com/cloud-nullus/draft/internal/shared/secrets"
 )
 
 var ErrDeploymentCancelled = errors.New("deployment canceled")
@@ -87,6 +87,10 @@ type stepRuntimeTailer interface {
 	StartStepRuntimeTail(ctx context.Context, stackID, step string, emit func(level, message string)) (stop func())
 }
 
+type stepEnabledChecker interface {
+	IsStepEnabled(step string) bool
+}
+
 type deploymentLogResetter interface {
 	ClearHistory(deploymentID string)
 }
@@ -137,7 +141,9 @@ func NewInstallStack(stackRepo port.StackRepository, streamer port.LogStreamer, 
 
 // InstallStackInput holds the parameters for starting an installation.
 type InstallStackInput struct {
-	StackID string
+	StackID      string
+	Continue     bool
+	PreserveLogs bool
 }
 
 // Execute starts the installation in a goroutine and returns immediately.
@@ -151,6 +157,15 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 	executor := uc.resolveExecutor(ctx, stack)
 	uc.configureExecutorForStack(stack, executor)
 
+	if input.Continue && stack.State == domain.StateFailed {
+		if err := stack.TransitionTo(domain.StatePending); err != nil {
+			return fmt.Errorf("transition failed stack to pending: %w", err)
+		}
+		if err := uc.stackRepo.Update(ctx, stack); err != nil {
+			return fmt.Errorf("update stack state: %w", err)
+		}
+	}
+
 	if err := stack.TransitionTo(domain.StateValidating); err != nil {
 		return fmt.Errorf("transition to validating: %w", err)
 	}
@@ -159,7 +174,7 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 	}
 
 	// Run the full installation pipeline asynchronously.
-	go uc.run(context.WithoutCancel(ctx), stack, executor)
+	go uc.run(context.WithoutCancel(ctx), stack, executor, input)
 
 	return nil
 }
@@ -219,11 +234,16 @@ func stackConfigFromInterface(rawConfig any) (domain.StackConfig, bool) {
 
 // run executes the full installation pipeline, performing state transitions and
 // emitting log entries. On any failure it initiates rollback.
-func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) {
+func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, input InstallStackInput) {
 	deploymentID := stack.ID
 
-	if resetter, ok := uc.streamer.(deploymentLogResetter); ok {
-		resetter.ClearHistory(deploymentID)
+	if !input.PreserveLogs {
+		if resetter, ok := uc.streamer.(deploymentLogResetter); ok {
+			resetter.ClearHistory(deploymentID)
+		}
+	}
+	if input.Continue {
+		uc.emit(ctx, deploymentID, "info", "continue", "", "continuing deployment after failure")
 	}
 
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
@@ -319,12 +339,12 @@ func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *do
 		}
 		provider = strings.ReplaceAll(provider, " ", "-")
 		inputs = append(inputs, port.TokenSourceInput{
-			OrgID:     stack.OrgID,
-			Module:    module,
-			Provider:  provider,
-			Path:      fmt.Sprintf("kv/nullus/%s/%s/%s/%s/token", env, stack.OrgID, module, provider),
-			TokenType: "reissue",
-			Status:    "healthy",
+			OrgID:         stack.OrgID,
+			Module:        module,
+			Provider:      provider,
+			Path:          fmt.Sprintf("kv/nullus/%s/%s/%s/%s/token", env, stack.OrgID, module, provider),
+			TokenType:     "reissue",
+			Status:        "healthy",
 			SecretManager: strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)),
 			TokenValue:    "managed-by-nullus",
 		})
@@ -372,6 +392,15 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 			}
 			if err := uc.ensureDeploymentActive(ctx, stack.ID); err != nil {
 				return err
+			}
+
+			if checker, ok := executor.(stepEnabledChecker); ok && !checker.IsStepEnabled(step.name) {
+				if err := uc.executeStep(ctx, stack.ID, step, executor); err != nil {
+					return fmt.Errorf("step %s: %w", step.name, err)
+				}
+				uc.emit(ctx, stack.ID, "info", "skipped", step.phase,
+					fmt.Sprintf("skipped %s because it is not selected", step.name))
+				continue
 			}
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
@@ -485,6 +514,7 @@ func (uc *InstallStack) resolveExecutor(ctx context.Context, stack *domain.Stack
 
 // handleFailure transitions to Failed and attempts rollback.
 func (uc *InstallStack) handleFailure(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, cause error) {
+	_ = executor
 	slog.Error("installation failed", "stack_id", stack.ID, "error", cause)
 	uc.emit(ctx, stack.ID, "error", "failed", "", fmt.Sprintf("installation failed: %s", cause))
 
@@ -493,33 +523,7 @@ func (uc *InstallStack) handleFailure(ctx context.Context, stack *domain.Stack, 
 		return
 	}
 
-	rollbacker, ok := executor.(deploymentRollbackExecutor)
-	if !ok {
-		uc.emit(ctx, stack.ID, "warn", "failed", "", "rollback not supported by executor; installed resources may remain")
-		return
-	}
-
-	uc.emit(ctx, stack.ID, "warn", "rolling_back", "", "initiating rollback")
-
-	if err := uc.transition(ctx, stack, domain.StateRollingBack); err != nil {
-		slog.Error("failed to transition to rolling_back", "stack_id", stack.ID, "error", err)
-		return
-	}
-
-	if err := rollbacker.RollbackDeployment(ctx, stack.ID); err != nil {
-		slog.Error("rollback failed", "stack_id", stack.ID, "error", err)
-		uc.emit(ctx, stack.ID, "error", "failed", "", fmt.Sprintf("rollback failed: %s", err))
-		if transitionErr := uc.transition(ctx, stack, domain.StateFailed); transitionErr != nil {
-			slog.Error("failed to transition back to failed state", "stack_id", stack.ID, "error", transitionErr)
-		}
-		return
-	}
-
-	if err := uc.transition(ctx, stack, domain.StateRolledBack); err != nil {
-		slog.Error("failed to transition to rolled_back", "stack_id", stack.ID, "error", err)
-		return
-	}
-	uc.emit(ctx, stack.ID, "info", "rolled_back", "", "rollback completed")
+	uc.emit(ctx, stack.ID, "warn", "failed", "", "deployment paused; fix the cause and press Continue to resume")
 }
 
 // transition updates the stack state machine and persists the new state.

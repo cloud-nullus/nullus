@@ -62,8 +62,7 @@
   "stackInstall": {
     "actions": {
       "saveDraft": "Save Draft",
-      "deploy": "Deploy",
-      "previewK8sObjects": "Preview K8s Objects"
+      "deploy": "Deploy"
     },
     "breadcrumb": {
       "stackList": "Stack List",
@@ -131,14 +130,6 @@
       "duplicateStackName": "A stack with this name already exists in the selected cluster"
     },
     "compatibility": {
-      "autoSelect": {
-        "title": "Golden Path Quick Start",
-        "subtitle": "Load a verified combination with one click",
-        "selectCluster": "Select a target cluster first",
-        "archUnknown": "Cluster architectures unknown — refresh discovery",
-        "archMismatch": "Incompatible with cluster arch",
-        "compatible": "Compatible with cluster"
-      },
       "issue": {
         "toolArchUnsupported": "One or more tools do not support the cluster node architecture",
         "clusterArchUnknown": "Cluster architecture is unknown — run Refresh Discovery in Admin > Stack Version Management",

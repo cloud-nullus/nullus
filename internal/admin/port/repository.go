@@ -15,6 +15,13 @@ type OrgRepository interface {
 	GetBySlug(ctx context.Context, slug string) (*domain.Organization, error)
 }
 
+type ResourceProfileRepository interface {
+	List(ctx context.Context, orgID string) ([]*domain.OrgResourceProfile, error)
+	Create(ctx context.Context, profile *domain.OrgResourceProfile) error
+	Update(ctx context.Context, profile *domain.OrgResourceProfile) (bool, error)
+	Delete(ctx context.Context, orgID, id string) error
+}
+
 // ClusterRepository defines the interface for cluster persistence.
 type ClusterRepository interface {
 	Create(ctx context.Context, cluster *domain.Cluster) error

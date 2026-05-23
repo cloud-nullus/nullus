@@ -11,6 +11,7 @@ import type {
   Stack,
   StackHistoryEntry,
   StackTemplate,
+  StackWorkloads,
   TemplateToolDetail,
   StackVersionDiff,
 } from '../../../types'
@@ -64,6 +65,7 @@ const queryKeys = {
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
+  workloads: (stackId: string) => ['stacks', 'workloads', stackId] as const,
   resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
 }
 
@@ -764,6 +766,16 @@ const stackApiCalls = {
       .post<{ stack_id: string; status: string }>(`/stacks/${input.stackId}/retry`, body)
       .then((r) => r.data)
   },
+
+  continueStack: (input: DeployStackInput) => {
+    const body = input.acknowledgeWarnings ? { acknowledge_warnings: true } : undefined
+    return api
+      .post<{ stack_id: string; status: string }>(`/stacks/${input.stackId}/continue`, body)
+      .then((r) => r.data)
+  },
+
+  getWorkloads: (stackId: string) =>
+    api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
 }
 
 export interface DeployStackInput {
@@ -1009,6 +1021,16 @@ export function useRetryStack() {
   })
 }
 
+export function useContinueStack() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: DeployStackInput) => stackApiCalls.continueStack(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stacks', 'list'] })
+    },
+  })
+}
+
 // F8-Phase5 (재개) matrix CRUD mutations. Each onSuccess invalidates the
 // compatibility cache so the Stack Version Management page refetches.
 export function useCreateMatrix() {
@@ -1038,5 +1060,14 @@ export function useDeleteMatrix() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
     },
+  })
+}
+
+export function useStackWorkloads(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.workloads(stackId),
+    queryFn: () => stackApiCalls.getWorkloads(stackId),
+    enabled: !!stackId,
+    refetchInterval: 30_000,
   })
 }

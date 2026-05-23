@@ -100,6 +100,48 @@ func TestRetry_FromFailed_VerifiedPasses(t *testing.T) {
 	assert.Equal(t, "failed", entries[0].Details["previous_state"])
 }
 
+func TestContinue_FromFailed_VerifiedPasses(t *testing.T) {
+	sink := audit.NewMemorySink()
+	e, repo := newRetryEcho(t, []string{"amd64"}, sink)
+	id := seedStackInState(t, repo, "stk-continue-failed", domain.StateFailed,
+		[]domain.ToolConfig{
+			{Category: "source_repository", Name: "GitLab CE"},
+			{Category: "ci_platform", Name: "GitLab CI"},
+			{Category: "container_registry", Name: "GitLab Registry"},
+		})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/continue", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	entries := sink.Snapshot()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "continue", entries[0].Action)
+	assert.Equal(t, "failed", entries[0].Details["previous_state"])
+}
+
+func TestContinue_FromCompleted_Returns409(t *testing.T) {
+	sink := audit.NewMemorySink()
+	e, repo := newRetryEcho(t, []string{"amd64"}, sink)
+	id := seedStackInState(t, repo, "stk-continue-completed", domain.StateCompleted,
+		[]domain.ToolConfig{
+			{Category: "source_repository", Name: "GitLab CE"},
+			{Category: "ci_platform", Name: "GitLab CI"},
+			{Category: "container_registry", Name: "GitLab Registry"},
+		})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/continue", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	var resp map[string]map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "STACK_CONTINUE_INVALID_STATE", resp["error"]["code"])
+	assert.Empty(t, sink.Snapshot(), "rejected continue must not emit audit entry")
+}
+
 // rolled_back → retry should also succeed.
 func TestRetry_FromRolledBack_VerifiedPasses(t *testing.T) {
 	sink := audit.NewMemorySink()

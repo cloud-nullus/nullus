@@ -84,8 +84,20 @@ export interface OrgResourceProfile {
   id: string
   name: string
   orgId: string
-  baseProfile: 'startup' | 'standard' | 'enterprise'
+  baseProfile: 'local' | 'startup' | 'standard' | 'enterprise'
   optionOverrides: Record<string, Record<string, number>>
+  appliedResourceOverrides?: Record<
+    string,
+    {
+      cpuRequest: number
+      cpuLimit: number
+      memoryRequestGi: number
+      memoryLimitGi: number
+      storageRequestGi: number
+      storageLimitGi: number
+    }
+  >
+  rowUnits?: Record<string, { memory: 'Gi' | 'Mi'; storage: 'Gi' | 'Mi' }>
   createdAt?: string
 }
 
@@ -475,12 +487,14 @@ export interface CreateCicdTemplateRequest {
 }
 
 export interface DeployAppRequest {
-  templateId: string
   appName: string
   gitUrl: string
   clusterId: string
   namespace: string
-  replicas: number
+  templateId: AppTemplate
+  stackId?: string
+  replicas?: number
+  port?: number
   resources: {
     cpuRequest: string
     cpuLimit: string
@@ -513,6 +527,47 @@ export interface RetryHistoryEntry {
   acknowledgeWarnings: boolean
   verdict?: string
   issueCodes?: string[]
+}
+
+// K8s Workload monitoring types for Stack → CI/CD integration
+export interface K8sObject {
+  kind: string
+  name: string
+  namespace: string
+  status: string
+  replicas?: number
+  port?: number
+  host?: string
+  node?: string
+}
+
+export interface WorkloadDeployment {
+  id: string
+  status: string
+  startedAt: string
+  version: string
+}
+
+export interface StackWorkloadPipeline {
+  id: string
+  name: string
+  namespace: string
+  status: string
+  lastDeployment: WorkloadDeployment | null
+  k8sObjects: K8sObject[]
+}
+
+export interface StackWorkloadSummary {
+  totalPipelines: number
+  totalDeployments: number
+  runningPods: number
+  pendingPods: number
+  failedPods: number
+}
+
+export interface StackWorkloads {
+  pipelines: StackWorkloadPipeline[]
+  summary: StackWorkloadSummary
 }
 
 export type StackTemplate = Template

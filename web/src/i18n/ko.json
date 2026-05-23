@@ -62,8 +62,7 @@
   "stackInstall": {
     "actions": {
       "saveDraft": "임시 저장",
-      "deploy": "배포",
-      "previewK8sObjects": "K8s 오브젝트 미리보기"
+      "deploy": "배포"
     },
     "breadcrumb": {
       "stackList": "스택 목록",
@@ -131,14 +130,6 @@
       "duplicateStackName": "선택한 클러스터에 동일한 스택 이름이 이미 존재합니다."
     },
     "compatibility": {
-      "autoSelect": {
-        "title": "Golden Path 빠른 시작",
-        "subtitle": "한 번의 클릭으로 검증된 조합을 불러옵니다",
-        "selectCluster": "먼저 대상 클러스터를 선택하세요",
-        "archUnknown": "클러스터 아키텍처가 미상입니다. Refresh Discovery를 실행해 주세요",
-        "archMismatch": "클러스터 아키텍처와 호환되지 않습니다",
-        "compatible": "클러스터와 호환됩니다"
-      },
       "issue": {
         "toolArchUnsupported": "선택한 도구가 클러스터 아키텍처를 지원하지 않습니다",
         "clusterArchUnknown": "클러스터 아키텍처가 미상이므로 관리자 > 스택 버전 관리에서 Refresh Discovery를 실행해 주세요",

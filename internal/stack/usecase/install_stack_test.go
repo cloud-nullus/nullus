@@ -413,7 +413,7 @@ func TestInstallStack_ConfiguresExecutorNamespaceFromStack(t *testing.T) {
 	assert.Equal(t, domain.StateCompleted, repo.getState(stack.ID))
 }
 
-func TestInstallStack_RuntimeVerificationFailureTriggersRollback(t *testing.T) {
+func TestInstallStack_RuntimeVerificationFailurePausesWithoutRollback(t *testing.T) {
 	stack := &domain.Stack{
 		ID:        "stk_verify_fail",
 		ClusterID: "cluster-verify-fail",
@@ -430,16 +430,16 @@ func TestInstallStack_RuntimeVerificationFailureTriggersRollback(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if repo.getState("stk_verify_fail") == domain.StateRolledBack {
+		if repo.getState("stk_verify_fail") == domain.StateFailed {
 			break
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
 
-	assert.Equal(t, domain.StateRolledBack, repo.getState("stk_verify_fail"))
+	assert.Equal(t, domain.StateFailed, repo.getState("stk_verify_fail"))
 	assert.Contains(t, streamer.steps(), "health_check")
-	assert.Contains(t, streamer.steps(), "rolling_back")
-	assert.Equal(t, 1, exec.rollbackCalls)
+	assert.NotContains(t, streamer.steps(), "rolling_back")
+	assert.Equal(t, 0, exec.rollbackCalls)
 }
 
 func TestInstallStack_RuntimeVerificationFailureWithoutRollbackSupportStaysFailed(t *testing.T) {
@@ -471,7 +471,7 @@ func TestInstallStack_RuntimeVerificationFailureWithoutRollbackSupportStaysFaile
 	assert.Contains(t, streamer.steps(), "failed")
 }
 
-func TestInstallStack_RollbackFailureReturnsFailedState(t *testing.T) {
+func TestInstallStack_FailureDoesNotInvokeRollbackEvenWhenRollbackWouldFail(t *testing.T) {
 	stack := &domain.Stack{
 		ID:        "stk_verify_fail_rollback_error",
 		ClusterID: "cluster-verify-rollback-error",
@@ -495,8 +495,8 @@ func TestInstallStack_RollbackFailureReturnsFailedState(t *testing.T) {
 	}
 
 	assert.Equal(t, domain.StateFailed, repo.getState(stack.ID))
-	assert.Contains(t, streamer.steps(), "rolling_back")
-	assert.Equal(t, 1, exec.rollbackCalls)
+	assert.NotContains(t, streamer.steps(), "rolling_back")
+	assert.Equal(t, 0, exec.rollbackCalls)
 }
 
 func TestInstallStack_StopsWhenStackIsCancelledDuringRun(t *testing.T) {

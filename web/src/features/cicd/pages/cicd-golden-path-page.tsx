@@ -3,9 +3,93 @@ import { useNavigate } from 'react-router-dom'
 import { BookOpen, ExternalLink, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useGoldenPaths } from '../api/cicd-api'
-import type { CICDGoldenPath } from '../api/cicd-api'
+import type { CICDGoldenPath, CICDTool } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
+import { useStackConfigStore } from '../../stack/stores/stack-config-store'
+
+// Golden Path 도구 이름 → Stack 설정 tool ID 매핑
+const TOOL_NAME_TO_ID: Record<string, string> = {
+  'GitLab CE': 'gitlab',
+  'GitLab CI': 'gitlab-ci',
+  'GitLab Registry': 'gitlab-registry',
+  'GitHub': 'github',
+  'GitHub Actions': 'github-actions',
+  'Harbor': 'harbor',
+  'Docker Hub': 'docker-hub',
+  'MinIO': 'minio',
+  'AWS S3': 's3',
+  'Argo CD': 'argocd',
+  'Flux CD': 'flux',
+  'Spinnaker': 'spinnaker',
+  'Prometheus': 'prometheus',
+  'Thanos': 'thanos',
+  'VictoriaMetrics': 'victoriametrics',
+  'Grafana': 'grafana',
+  'Kibana': 'kibana',
+  'Loki': 'loki',
+  'OpenSearch': 'opensearch',
+  'Elasticsearch': 'elasticsearch',
+  'Tempo': 'tempo',
+  'Jaeger': 'jaeger',
+}
+
+/** Golden Path 도구 목록을 Stack 설정 오버라이드로 변환 */
+function goldenPathToStackOverrides(tools: CICDTool[]) {
+  const artifacts = {
+    packageRegistry: { tool: 'gitlab', version: 'latest' },
+    sourceRepository: { tool: 'gitlab', version: 'latest' },
+    containerRegistry: { tool: 'gitlab-registry', version: 'latest' },
+    storageBackend: { tool: 'minio', version: 'latest' },
+  }
+  const pipeline = {
+    cicdPlatform: { tool: 'gitlab-ci', version: 'latest' },
+    cdTool: { tool: 'argocd', version: 'latest' },
+  }
+  const monitoring = {
+    collection: { tool: 'prometheus', version: 'latest' },
+    visualization: { tool: 'grafana', version: 'latest' },
+  }
+  const logging = {
+    search: { tool: 'opensearch', version: 'latest' },
+    traceLayer: { tool: 'tempo', version: 'latest' },
+  }
+
+  for (const tool of tools) {
+    const toolId = TOOL_NAME_TO_ID[tool.name]
+    if (!toolId) continue
+    const version = tool.helm_version
+
+    switch (tool.category) {
+      case 'source_repository':
+        artifacts.sourceRepository = { tool: toolId, version }
+        break
+      case 'container_registry':
+        artifacts.containerRegistry = { tool: toolId, version }
+        break
+      case 'storage_backend':
+        artifacts.storageBackend = { tool: toolId, version }
+        break
+      case 'ci_platform':
+        pipeline.cicdPlatform = { tool: toolId, version }
+        break
+      case 'cd_tool':
+        pipeline.cdTool = { tool: toolId, version }
+        break
+      case 'monitoring_collection':
+        monitoring.collection = { tool: toolId, version }
+        break
+      case 'monitoring_visualization':
+        monitoring.visualization = { tool: toolId, version }
+        break
+      case 'log_aggregation':
+        logging.search = { tool: toolId, version }
+        break
+    }
+  }
+
+  return { artifacts, pipeline, monitoring, logging }
+}
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   source_repository: { bg: 'rgba(59,130,246,0.12)', color: '#60a5fa' },
@@ -21,10 +105,10 @@ const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
 export function CicdGoldenPathPage() {
   const navigate = useNavigate()
   const { data: goldenPaths, isLoading } = useGoldenPaths()
+  const loadFromTemplate = useStackConfigStore((s) => s.loadFromTemplate)
   const [search, setSearch] = useState('')
   const [selectedPath, setSelectedPath] = useState<CICDGoldenPath | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-
   const filtered = useMemo(
     () =>
       (goldenPaths || []).filter(
@@ -189,11 +273,17 @@ export function CicdGoldenPathPage() {
         </div>
       )}
 
+      {filtered.length === 0 && !isLoading && (
+        <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
+          검색 결과가 없습니다.
+        </div>
+      )}
       {/* Detail Modal */}
       <Modal
         open={detailOpen}
         onClose={closeDetail}
         title={selectedPath?.name ?? ''}
+
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeDetail} type="button">
@@ -206,7 +296,9 @@ export function CicdGoldenPathPage() {
               className="bg-[linear-gradient(135deg,#34d399,#10b981)] text-white"
               onClick={() => {
                 if (selectedPath) {
-                  navigate(`/cicd/developer-deploy?goldenPath=${selectedPath.id}`)
+                  const overrides = goldenPathToStackOverrides(selectedPath.tools)
+                  loadFromTemplate(selectedPath.id, overrides)
+                  navigate('/stack/install')
                 }
               }}
             >

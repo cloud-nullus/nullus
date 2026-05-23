@@ -84,31 +84,47 @@ function PhaseStep({ label, index, progress, total }: { label: string; index: nu
   )
 }
 
-function generateYaml(form: Partial<FormState>, appType: string): string {
+/** YAML 값에 안전하지 않은 문자가 포함되면 따옴표로 감싼다 */
+function yamlSafe(value: string): string {
+  if (/[:\n\r#"'\\{}\[\],&*?|><!%@`]/.test(value) || value !== value.trim()) {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
+  }
+  return value
+}
+
+function generateYaml(form: Partial<FormState>): string {
+  const name = yamlSafe(form.appName ?? 'my-app')
+  const ns = yamlSafe(form.namespace ?? 'default')
+  const tpl = yamlSafe(form.template ?? 'react-spa')
   const cpu = form.cpuLimit ?? '500m'
   const mem = form.memoryLimit ?? '512Mi'
   const replicas = form.replicas ?? 2
+  const envLines = (form.envVars ?? [])
+    .filter((e) => e.key)
+    .map((e) => `            - name: ${yamlSafe(e.key)}\n              value: ${yamlSafe(e.value)}`)
+    .join('\n')
+
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${form.appName ?? 'my-app'}
-  namespace: ${form.namespace ?? 'default'}
+  name: ${name}
+  namespace: ${ns}
   labels:
-    app: ${form.appName ?? 'my-app'}
-    template: ${appType || 'backend'}
+    app: ${name}
+    template: ${tpl}
 spec:
   replicas: ${replicas}
   selector:
     matchLabels:
-      app: ${form.appName ?? 'my-app'}
+      app: ${name}
   template:
     metadata:
       labels:
-        app: ${form.appName ?? 'my-app'}
+        app: ${name}
     spec:
       containers:
-        - name: ${form.appName ?? 'my-app'}
-          image: harbor.nullus.io/${form.appName ?? 'my-app'}:latest
+        - name: ${name}
+          image: harbor.nullus.io/${name}:latest
           ports:
             - containerPort: 8080
           resources:
@@ -118,18 +134,16 @@ spec:
             limits:
               cpu: ${cpu}
               memory: ${mem}
-${(form.envVars ?? []).filter((e) => e.key).length > 0
-  ? `          env:\n${(form.envVars ?? []).filter((e) => e.key).map((e) => `            - name: ${e.key}\n              value: "${e.value}"`).join('\n')}`
-  : ''}
+${envLines ? `          env:\n${envLines}` : ''}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ${form.appName ?? 'my-app'}-svc
-  namespace: ${form.namespace ?? 'default'}
+  name: ${name}-svc
+  namespace: ${ns}
 spec:
   selector:
-    app: ${form.appName ?? 'my-app'}
+    app: ${name}
   ports:
     - port: 80
       targetPort: 8080`
@@ -137,11 +151,14 @@ spec:
 
 interface EnvVar { key: string; value: string }
 
+type AppTemplate = 'react-spa' | 'next-app' | 'express-api' | 'spring-boot' | 'python-fastapi' | 'go-web-api'
+
 interface FormState {
   appName: string
   gitUrl: string
   dockerfilePath: string
   dockerContext: string
+  template: AppTemplate
   clusterId: string
   namespace: string
   replicas: number
@@ -157,6 +174,7 @@ const deploySchema = z.object({
   gitUrl: z.string().min(1, 'Git URL is required'),
   dockerfilePath: z.string(),
   dockerContext: z.string(),
+  template: z.enum(['react-spa', 'next-app', 'express-api', 'spring-boot', 'python-fastapi', 'go-web-api'] as const),
   clusterId: z.string().min(1, 'Cluster is required'),
   namespace: z.string().min(1, 'Namespace is required'),
   replicas: z.number().min(1).max(10),
@@ -189,6 +207,7 @@ const DEFAULT_FORM: FormState = {
   gitUrl: '',
   dockerfilePath: '',
   dockerContext: '',
+  template: 'react-spa',
   clusterId: '',
   namespace: 'default',
   replicas: 2,
@@ -196,7 +215,7 @@ const DEFAULT_FORM: FormState = {
   cpuLimit: '500m',
   memoryRequest: '128Mi',
   memoryLimit: '512Mi',
-  envVars: [{ key: '', value: '' }],
+  envVars: [],
 }
 
 export function DeveloperDeployPage() {
@@ -899,7 +918,7 @@ export function DeveloperDeployPage() {
                 {t('developerDeployPage.manifestDescription', 'Review the generated YAML manifest and edit if needed.')}
               </p>
               <textarea
-                value={customManifest ?? generateYaml(form, selectedAppType)}
+                value={customManifest ?? generateYaml(form)}
                 onChange={(e) => setCustomManifest(e.target.value)}
                 className="h-[400px] w-full resize-none rounded-lg border border-[var(--color-border-default)] bg-[#0d1117] p-4 font-mono text-xs leading-5 text-[#c9d1d9] focus:outline-none focus:ring-1 focus:ring-[#6366f1]"
                 spellCheck={false}
@@ -955,7 +974,7 @@ export function DeveloperDeployPage() {
             {t('developerDeployPage.yamlPreview', 'YAML Manifest Preview')}
           </p>
           <CodePreview
-            code={generateYaml(form, selectedAppType)}
+            code={generateYaml(form)}
             language="yaml"
             title={`${form.appName || 'my-app'}.yaml`}
             maxHeight="600px"

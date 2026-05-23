@@ -8,12 +8,16 @@ export interface LogEntry {
   id: string
   timestamp: string
   level: LogLevel
+  phase?: string
+  step?: string
   message: string
 }
 
 interface DeployLogPayload {
   type: 'log' | 'status' | 'progress'
   level?: LogLevel
+  phase?: string
+  step?: string
   message?: string
   timestamp?: string
   status?: DeployStatus
@@ -45,15 +49,18 @@ export function useDeployLog(deploymentId: string): UseDeployLogResult {
         if (payload.progress !== undefined && payload.progress > 0) {
           setProgress(payload.progress)
         }
-        if (payload.type === 'log' && payload.message) {
+        if (payload.message) {
           const entry: LogEntry = {
             id: String(++counterRef.current),
             timestamp: payload.timestamp ?? new Date().toISOString(),
             level: payload.level ?? 'info',
+            phase: payload.phase,
+            step: payload.step,
             message: payload.message,
           }
           setLogs((prev) => [...prev, entry])
-        } else if (payload.type === 'status' && payload.status) {
+        }
+        if (payload.type === 'status' && payload.status) {
           setStatus(payload.status)
         }
       },

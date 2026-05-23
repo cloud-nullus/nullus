@@ -1,9 +1,8 @@
 import type { CompatibilityMatrix, CompatibilityTool } from '../../../types'
 
 // CompatibilityArchVerdict mirrors the three-state verdict the Pre-Deploy
-// Gate renders for Auto Select buttons: the cluster is confirmed safe, the
-// cluster is confirmed incompatible, or the cluster architecture is not
-// yet known (user should Refresh Discovery first).
+// Gate renders: the cluster is confirmed safe, the cluster is confirmed
+// incompatible, or the cluster architecture is not yet known.
 export type CompatibilityArchVerdict = 'compatible' | 'incompatible' | 'unknown'
 
 // toolSupportsArch matches the backend's ToolVersion.SupportsArch: an empty
@@ -44,7 +43,6 @@ export function isMatrixCompatibleWithCluster(
 }
 
 // matrixArchMismatches enumerates which (tool, arch) pairs break compatibility.
-// Used by the UI tooltip to explain *why* a button is disabled.
 export interface MatrixArchMismatch {
   toolName: string
   missingArchs: string[]

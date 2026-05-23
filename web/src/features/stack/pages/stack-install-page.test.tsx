@@ -3,6 +3,7 @@ import { screen, fireEvent, act, within } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { StackInstallPage } from './stack-install-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
+import { useAuthStore } from '../../../stores/auth-store'
 import YAML from 'yaml'
 
 const mockResourceDefaults = {
@@ -58,6 +59,20 @@ const mockCompatibilityMatrices = [
 
 const mockTemplates = [
   {
+    id: 'gitlab-argocd-v1',
+    name: 'GitLab + ArgoCD',
+    description: 'mock',
+    tools: ['GitLab CE', 'GitLab CI', 'Argo CD'],
+    estimatedMinutes: 30,
+    category: 'default',
+    toolDetails: [
+      { category: 'source_repository', name: 'GitLab CE', helm_version: '', app_version: '18.5.1' },
+      { category: 'ci_platform', name: 'GitLab CI', helm_version: '', app_version: '18.5.1' },
+      { category: 'cd_tool', name: 'Argo CD', helm_version: '', app_version: 'v2.8.3' },
+      { category: 'container_registry', name: 'Harbor', helm_version: '', app_version: '2.11.0' },
+    ],
+  },
+  {
     id: 'github-argocd-v1',
     name: 'GitHub + ArgoCD',
     description: 'mock',
@@ -79,6 +94,24 @@ const mockTemplates = [
 // server-verdict test cases to flip the gate response per scenario.
 const mockCreateStackAsync = vi.fn(async () => ({ id: 'stk-test' }))
 const mockDeployStackAsync = vi.fn(async () => ({}))
+const mockOrgResourceProfiles: Array<{
+  id: string
+  name: string
+  orgId: string
+  baseProfile: 'local' | 'startup' | 'standard' | 'enterprise'
+  optionOverrides: Record<string, Record<string, number>>
+  appliedResourceOverrides?: Record<string, {
+    cpuRequest: number
+    cpuLimit: number
+    memoryRequestGi: number
+    memoryLimitGi: number
+    storageRequestGi: number
+    storageLimitGi: number
+  }>
+  rowUnits?: Record<string, { memory: 'Gi' | 'Mi'; storage: 'Gi' | 'Mi' }>
+}> = []
+const mockCreateOrgResourceProfileMutate = vi.fn()
+const mockUpdateOrgResourceProfileMutate = vi.fn()
 const mockValidateCompatibilityAsync = vi.fn(async () => ({
   compatible: true,
   overall: { state: 'pass' as const, score: 100 },
@@ -116,6 +149,10 @@ vi.mock('../../admin/api/admin-api', () => ({
     },
   }),
   useClusterNamespaces: () => ({ data: [] }),
+  useOrgResourceProfiles: () => ({ data: mockOrgResourceProfiles }),
+  useCreateOrgResourceProfile: () => ({ mutate: mockCreateOrgResourceProfileMutate, mutateAsync: vi.fn(), isPending: false }),
+  useUpdateOrgResourceProfile: () => ({ mutate: mockUpdateOrgResourceProfileMutate, mutateAsync: vi.fn(), isPending: false }),
+  useDeleteOrgResourceProfile: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
 }))
 
 // Mock useNavigate
@@ -147,6 +184,10 @@ beforeEach(() => {
   mockResourceDefaults.total = 0
   mockStacks.items = []
   mockStacks.total = 0
+  mockOrgResourceProfiles.splice(0)
+  mockCreateOrgResourceProfileMutate.mockReset()
+  mockUpdateOrgResourceProfileMutate.mockReset()
+  useAuthStore.setState({ role: 'developer', user: null, token: null, isAuthenticated: false })
   Object.assign(navigator, {
     clipboard: {
       writeText: vi.fn().mockResolvedValue(undefined),
@@ -184,6 +225,17 @@ describe('StackInstallPage', () => {
     expect(draft.artifacts.sourceRepository.tool).toBe('github')
     expect(draft.pipeline.cicdPlatform.tool).toBe('github-actions')
     expect(draft.artifacts.containerRegistry.tool).toBe('harbor')
+  })
+
+  it('selects GitLab package registry for GitLab templates', () => {
+    renderWithProviders(<StackInstallPage />, { route: '/stack/install?template=gitlab-argocd-v1' })
+    const draft = useStackConfigStore.getState().draft
+    expect(draft.selectedTemplateId).toBe('gitlab-argocd-v1')
+    expect(draft.artifacts.sourceRepository.tool).toBe('gitlab')
+    expect(draft.pipeline.cicdPlatform.tool).toBe('gitlab-ci')
+    expect(draft.artifacts.packageRegistry.tool).toBe('gitlab')
+    expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
+    expect(draft.authentication.provider).toBe('')
   })
 
   it('renders install tabs including storage and YAML view', () => {
@@ -246,6 +298,142 @@ describe('StackInstallPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
     expect(screen.getByText('OSS별 Resource Planning')).toBeTruthy()
     expect(screen.getByText('Sizing Profile')).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Local' })).toBeTruthy()
+  })
+
+  it('saves the current applied resource planning to the selected built-in profile', () => {
+    mockResourceDefaults.items = [
+      {
+        tool_key: 'gitlab',
+        cpu_request: 1,
+        cpu_limit: 2,
+        memory_request_gi: 2,
+        memory_limit_gi: 4,
+        storage_request_gi: 10,
+        storage_limit_gi: 20,
+      },
+    ]
+    mockResourceDefaults.total = 1
+    const store = useStackConfigStore.getState()
+    store.setTemplate('')
+    store.setTool('artifacts', 'packageRegistry', { tool: 'gitlab', version: '17.2.1' })
+
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
+
+    const profileContainer = screen.getByText('Sizing Profile').parentElement
+    expect(profileContainer).toBeTruthy()
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
+    fireEvent.change(profileSelect, { target: { value: 'local' } })
+
+    const row = screen.getByText('Artifacts > Package Registry').closest('.rounded-lg')
+    expect(row).toBeTruthy()
+    const inputs = Array.from((row as HTMLElement).querySelectorAll('input')) as HTMLInputElement[]
+    fireEvent.change(inputs[3], { target: { value: '9.75' } })
+
+    fireEvent.click(screen.getByTitle('Save current values to selected profile'))
+
+    expect(mockCreateOrgResourceProfileMutate).toHaveBeenCalledTimes(1)
+    const [payload] = mockCreateOrgResourceProfileMutate.mock.calls[0]
+    expect(payload.name).toBe('Local')
+    expect(payload.baseProfile).toBe('local')
+    expect(payload.appliedResourceOverrides['artifacts.packageRegistry:gitlab'].cpuRequest).toBe(9.75)
+    expect(payload.appliedResourceOverrides['artifacts.packageRegistry:gitlab'].cpuLimit).toBeGreaterThan(0)
+  })
+
+  it('updates the selected organization profile from the sizing profile save button', () => {
+    mockResourceDefaults.items = [
+      {
+        tool_key: 'gitlab',
+        cpu_request: 1,
+        cpu_limit: 2,
+        memory_request_gi: 2,
+        memory_limit_gi: 4,
+        storage_request_gi: 10,
+        storage_limit_gi: 20,
+      },
+    ]
+    mockResourceDefaults.total = 1
+    mockOrgResourceProfiles.push({
+      id: 'profile-1',
+      name: 'Local Dev',
+      orgId: 'org-1',
+      baseProfile: 'local',
+      optionOverrides: {},
+      appliedResourceOverrides: {},
+      rowUnits: {},
+    })
+    const store = useStackConfigStore.getState()
+    store.setTemplate('')
+    store.setTool('artifacts', 'packageRegistry', { tool: 'gitlab', version: '17.2.1' })
+
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
+
+    const profileContainer = screen.getByText('Sizing Profile').parentElement
+    expect(profileContainer).toBeTruthy()
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
+    fireEvent.change(profileSelect, { target: { value: 'org:profile-1' } })
+
+    const row = screen.getByText('Artifacts > Package Registry').closest('.rounded-lg')
+    expect(row).toBeTruthy()
+    const inputs = Array.from((row as HTMLElement).querySelectorAll('input')) as HTMLInputElement[]
+    fireEvent.change(inputs[3], { target: { value: '4.25' } })
+    fireEvent.click(screen.getByTitle('Save current values to selected profile'))
+
+    expect(mockUpdateOrgResourceProfileMutate).toHaveBeenCalledTimes(1)
+    const [payload] = mockUpdateOrgResourceProfileMutate.mock.calls[0]
+    expect(payload.id).toBe('profile-1')
+    expect(payload.data.name).toBe('Local Dev')
+    expect(payload.data.baseProfile).toBe('local')
+    expect(payload.data.appliedResourceOverrides['artifacts.packageRegistry:gitlab'].cpuRequest).toBe(4.25)
+    expect(mockCreateOrgResourceProfileMutate).not.toHaveBeenCalled()
+  })
+
+  it('creates an org-local profile instead of updating a development fallback profile', () => {
+    mockResourceDefaults.items = [
+      {
+        tool_key: 'gitlab',
+        cpu_request: 1,
+        cpu_limit: 2,
+        memory_request_gi: 2,
+        memory_limit_gi: 4,
+        storage_request_gi: 10,
+        storage_limit_gi: 20,
+      },
+    ]
+    mockResourceDefaults.total = 1
+    mockOrgResourceProfiles.push({
+      id: 'fallback-local-profile',
+      name: 'Local',
+      orgId: '11111111-1111-1111-1111-111111111111',
+      baseProfile: 'local',
+      optionOverrides: {},
+      appliedResourceOverrides: {},
+      rowUnits: {},
+    })
+    useAuthStore.setState({
+      role: 'devops',
+      user: { id: 'user-1', name: 'DevOps', email: 'devops@example.com', role: 'devops', orgId: '22222222-2222-2222-2222-222222222222' },
+      token: 'token',
+      isAuthenticated: true,
+    })
+    const store = useStackConfigStore.getState()
+    store.setTemplate('')
+    store.setTool('artifacts', 'packageRegistry', { tool: 'gitlab', version: '17.2.1' })
+
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
+
+    const profileContainer = screen.getByText('Sizing Profile').parentElement
+    expect(profileContainer).toBeTruthy()
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
+    fireEvent.change(profileSelect, { target: { value: 'local' } })
+    fireEvent.click(screen.getByTitle('Save current values to selected profile'))
+
+    expect(mockCreateOrgResourceProfileMutate).toHaveBeenCalledTimes(1)
+    expect(mockCreateOrgResourceProfileMutate.mock.calls[0][0].name).toBe('Local')
+    expect(mockUpdateOrgResourceProfileMutate).not.toHaveBeenCalled()
   })
 
   it('blocks YAML tab until required fields are selected', () => {
@@ -351,15 +539,7 @@ describe('StackInstallPage', () => {
     fillRequiredSelectionsForConfigTabs()
     fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
 
-    // F8 Task 5 Auto Select cards now add matrix-name buttons (e.g. "GitLab
-    // All-in-One", "GitLab + Argo CD") that also match /GitLab/i. Filter them
-    // out so this assertion still targets the install-file bundle button.
-    const installFileButtons = screen
-      .getAllByRole('button', { name: /GitLab/i })
-      .filter((btn) => {
-        const name = (btn.getAttribute('aria-label') ?? btn.textContent ?? '').trim()
-        return !/All-in-One|Argo|GitHub/.test(name)
-      })
+    const installFileButtons = screen.getAllByRole('button', { name: /GitLab/i })
     expect(installFileButtons).toHaveLength(1)
     expect(screen.getByText(/역할:/)).toHaveTextContent('Artifacts > Package Registry')
     expect(screen.getByText(/역할:/)).toHaveTextContent('Artifacts > Source Repository')
@@ -467,9 +647,6 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/Dry Run — 배포 전 최종 검토/)).toBeInTheDocument()
     expect(screen.getByText('Stack Name 형식')).toBeInTheDocument()
     expect(screen.getByText('YAML/values 검증')).toBeInTheDocument()
-    expect(screen.getByText('Final Kubernetes Objects')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Namespace' }).length).toBeGreaterThan(0)
-    expect(screen.getByText(/kind: Namespace/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Dry Run' }))
     expect(screen.getByText(/last run:/)).toBeInTheDocument()
@@ -485,7 +662,7 @@ describe('StackInstallPage', () => {
   it('allows clearing a tool selection with the none option', () => {
     renderWithProviders(<StackInstallPage />)
 
-    const packageRegistrySection = screen.getAllByText('Package Registry')[0].parentElement?.parentElement
+    const packageRegistrySection = screen.getByText('Nexus Repository').closest('button')?.parentElement
     expect(packageRegistrySection).toBeTruthy()
     fireEvent.click(within(packageRegistrySection as HTMLElement).getAllByRole('button')[0])
 
@@ -499,7 +676,11 @@ describe('StackInstallPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Storage' }))
 
-    fireEvent.click(screen.getByText(/Not selected|미선택/))
+    const storageNoneOption = screen
+      .getAllByRole('button', { name: /Not selected|미선택/ })
+      .find((button) => button.textContent?.includes('Connection mode for DB and Object Storage'))
+    expect(storageNoneOption).toBeTruthy()
+    fireEvent.click(storageNoneOption as HTMLElement)
 
     expect(useStackConfigStore.getState().draft.storage.planMode).toBe('none')
   })
@@ -569,13 +750,17 @@ describe('StackInstallPage', () => {
     expect(profileContainer).toBeTruthy()
     const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
 
+    fireEvent.change(profileSelect, { target: { value: 'local' } })
+    const localCpuReq = parseCpuReq()
+
     fireEvent.change(profileSelect, { target: { value: 'startup' } })
     const startupCpuReq = parseCpuReq()
 
     fireEvent.change(profileSelect, { target: { value: 'enterprise' } })
     const enterpriseCpuReq = parseCpuReq()
 
-    expect(startupCpuReq).toBeGreaterThan(0)
+    expect(localCpuReq).toBeGreaterThan(0)
+    expect(startupCpuReq).toBeGreaterThan(localCpuReq)
     expect(enterpriseCpuReq).toBeGreaterThan(startupCpuReq)
   })
 

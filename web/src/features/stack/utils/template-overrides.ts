@@ -68,6 +68,11 @@ function normalizeTemplateTools(template: StackTemplate): NormalizedTemplateTool
 
 export function buildInstallOverridesFromTemplate(template: StackTemplate): Partial<StackConfigDraft> {
   const tools = normalizeTemplateTools(template)
+  const hasExplicitPackageRegistry = tools.some((tool) => tool.category === 'package_registry')
+  const hasGitLabTool = tools.some((tool) => {
+    const toolId = resolveToolIdByName(tool.name)
+    return toolId === 'gitlab' || toolId === 'gitlab-ci' || toolId === 'gitlab-registry'
+  })
 
   const overrides: Partial<StackConfigDraft> = {
     artifacts: {
@@ -91,7 +96,7 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
       traceExporter: { tool: '', version: '' },
     },
     authentication: {
-      provider: template.id === 'gitlab-argocd-v1' ? 'openbao' : '',
+      provider: '',
     },
   }
 
@@ -151,6 +156,13 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
         break
       default:
         break
+    }
+  }
+
+  if (hasGitLabTool && !hasExplicitPackageRegistry && overrides.artifacts) {
+    overrides.artifacts.packageRegistry = {
+      tool: 'gitlab',
+      version: getToolAppVersion('gitlab'),
     }
   }
 

@@ -2,10 +2,10 @@ import { test, expect, type Page } from '@playwright/test'
 
 // F8 Task 7 — warn-forced Retry/Rollback UI smoke.
 //
-// Scope: the spec validates the *UI contract* for the warn-ack path —
-// Golden Path Auto Select cards render the untested (warn-prone) matrix,
-// and the admin Stack Version Management page surfaces it with the
-// `untested` status badge. Driving a full deploy-to-terminal-state flow
+// Scope: the spec validates the *UI contract* for the warn-ack path:
+// the admin Stack Version Management page surfaces the untested
+// warn-prone matrix with the `untested` status badge. Driving a full
+// deploy-to-terminal-state flow
 // requires a live Kind cluster (tracked separately under F8 Task 6 and
 // F8-F6-Cloud); here we only assert what the UI exposes so downstream
 // operators can complete the flow.
@@ -22,7 +22,7 @@ async function loginAsAdmin(page: Page): Promise<void> {
 }
 
 test.describe('F8 Task 7 — Warn-Forced Retry/Rollback UI', () => {
-  test('admin page + install wizard surface the untested matrix (warn-prone) @stack-critical', async ({ page }) => {
+  test('admin page surfaces the untested matrix (warn-prone) @stack-critical', async ({ page }) => {
     await loginAsAdmin(page)
 
     // 1. Admin Stack Version Management page shows the github-argocd-v1
@@ -39,13 +39,5 @@ test.describe('F8 Task 7 — Warn-Forced Retry/Rollback UI', () => {
     // ko/en i18n variants both keep `untested` as the lowercase key.
     await expect(page.getByText(/untested|미검증/i).first()).toBeVisible()
 
-    // 2. Install wizard Auto Select section renders the same untested
-    //    matrix as a quick-start card. Warn-prone combinations MUST still
-    //    appear (only `unsupported` matrices are filtered out).
-    await page.goto('/stack/install')
-    await expect(
-      page.getByText(/Golden Path Quick Start|Golden Path 빠른 시작/i).first(),
-    ).toBeVisible()
-    await expect(page.getByRole('button', { name: /GitHub \+ Argo CD/i })).toBeVisible()
   })
 })

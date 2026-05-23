@@ -3,10 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
-
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	"github.com/labstack/echo/v4"
 )
 
 // CICDGoldenPathHandler handles HTTP requests for CI/CD Golden Path operations.
