@@ -13,8 +13,6 @@ nodes:
         protocol: TCP
   - role: worker
     image: kindest/node:v1.35.1
-  - role: worker
-    image: kindest/node:v1.35.1
 ---
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4

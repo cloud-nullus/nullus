@@ -77,6 +77,50 @@ register_kind_cluster_endpoints() {
   done < <(kind_cluster_names)
 }
 
+auto_register_kind_clusters() {
+  local register_script="$PROJECT_ROOT/scripts/register-kind-clusters.sh"
+  if [[ ! -x "$register_script" ]]; then
+    chmod +x "$register_script" 2>/dev/null || true
+  fi
+
+  if [[ -x "$register_script" ]]; then
+    echo "[nullus] auto-registering kind clusters in Nullus..."
+    NULLUS_API="http://localhost:${API_PORT}" "$register_script" || {
+      echo "[nullus] kind cluster auto-registration failed (continuing...)"
+    }
+  else
+    echo "[nullus] register-kind-clusters.sh is not executable; skipping auto-registration"
+  fi
+}
+
+seed_golden_path_templates_if_needed() {
+  local count
+  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM golden_path_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ -z "$count" || "$count" == "0" ]]; then
+    echo "[nullus] seeding golden_path_templates..."
+    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000008_seed_templates.up.sql"
+    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000031_seed_empty_template.up.sql"
+  else
+    echo "[nullus] golden_path_templates already seeded ($count rows)"
+  fi
+}
+
+seed_cicd_templates_if_needed() {
+  local count
+  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM pipeline_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ -z "$count" || "$count" == "0" ]]; then
+    echo "[nullus] seeding pipeline_templates..."
+    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000010_seed_cicd_templates.up.sql"
+  else
+    echo "[nullus] pipeline_templates already seeded ($count rows)"
+  fi
+}
+
+ensure_golden_path_seed() {
+  seed_golden_path_templates_if_needed
+  seed_cicd_templates_if_needed
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -520,6 +564,13 @@ do_up() {
   if [[ "$with_kind" == "true" ]]; then
     echo ""
     do_kind_up || true
+    auto_register_kind_clusters
+    seed="true"
+  fi
+
+  if [[ "$seed" == "true" ]]; then
+    echo ""
+    ensure_golden_path_seed
   fi
 
   # 6. Authentik OIDC provider (optional)

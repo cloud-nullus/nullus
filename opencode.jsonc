@@ -1,0 +1,38 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // 이 프로젝트에서만 플러그인을 로드합니다. (전역 설정은 변경하지 않음)
+  "plugin": [
+    "oh-my-openagent@latest"
+  ],
+
+  // 이 프로젝트를 열었을 때 기본으로 선택할 에이전트입니다.
+  "default_agent": "hephaestus",
+
+  "agent": {
+    // 일반 구현 작업, 코드 작성/수정, 빌드 중심 작업에 사용합니다.
+    "hephaestus": {
+      "mode": "primary"
+    },
+
+    // 아키텍처 방향 결정, 기술 선택의 장단점 비교에 사용합니다.
+    "oracle": {
+      "mode": "primary"
+    },
+
+    // 문서 조사, 레퍼런스 수집, 근거 정리에 사용합니다.
+    "librarian": {
+      "mode": "primary"
+    },
+
+    // 난이도 높은 디버깅, 복잡한 설계 문제 분석에 사용합니다.
+    "metis": {
+      "mode": "primary"
+    },
+
+    // 큰 범위의 실행 계획 수립, 시스템 단위 조율 작업에 사용합니다.
+    "atlas": {
+      "mode": "primary"
+    }
+  }
+}
