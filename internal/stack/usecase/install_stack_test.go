@@ -86,6 +86,13 @@ func (r *fakeStackRepo) getState(id string) domain.DeploymentState {
 	return r.stacks[id].State
 }
 
+func (r *fakeStackRepo) getStack(id string) *domain.Stack {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := *r.stacks[id]
+	return &cp
+}
+
 // fakeStreamer records all log entries.
 type fakeStreamer struct {
 	mu      sync.Mutex
@@ -437,9 +444,142 @@ func TestInstallStack_RuntimeVerificationFailurePausesWithoutRollback(t *testing
 	}
 
 	assert.Equal(t, domain.StateFailed, repo.getState("stk_verify_fail"))
+	got := repo.getStack("stk_verify_fail")
+	assert.Equal(t, "health_check", got.LastFailedStep)
+	assert.Contains(t, got.LastFailureReason, "runtime readiness check failed")
 	assert.Contains(t, streamer.steps(), "health_check")
 	assert.NotContains(t, streamer.steps(), "rolling_back")
 	assert.Equal(t, 0, exec.rollbackCalls)
+}
+
+func TestInstallStack_RuntimeVerificationFailureMapsReleaseToResumeStep(t *testing.T) {
+	stack := &domain.Stack{
+		ID:        "stk_verify_gitlab_fail",
+		ClusterID: "cluster-verify-gitlab-fail",
+		State:     domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeVerifiableExecutor{verifyErr: fmt.Errorf("runtime readiness failed for gitlab: registry rollout timeout")}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateFailed {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	got := repo.getStack(stack.ID)
+	assert.Equal(t, domain.StateFailed, got.State)
+	assert.Equal(t, "installing_gitlab", got.LastFailedStep)
+	assert.Contains(t, got.LastFailureReason, "registry rollout timeout")
+}
+
+func TestInstallStack_RecordsFailedInstallStep(t *testing.T) {
+	stack := &domain.Stack{
+		ID:    "stk_step_fail",
+		State: domain.StatePending,
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeStepExecutor{failAt: "installing_argocd", errText: "argocd timed out"}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateFailed {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	got := repo.getStack(stack.ID)
+	assert.Equal(t, domain.StateFailed, got.State)
+	assert.Equal(t, "installing_argocd", got.LastFailedStep)
+	assert.Equal(t, "installing_gitlab", got.LastCompletedStep)
+	assert.Contains(t, got.LastFailureReason, "argocd timed out")
+}
+
+func TestInstallStack_ContinueResumesFromFailedInstallStep(t *testing.T) {
+	stack := &domain.Stack{
+		ID:                "stk_resume_step",
+		State:             domain.StateFailed,
+		LastCompletedStep: "installing_gitlab",
+		LastFailedStep:    "installing_argocd",
+		LastFailureReason: "argocd timed out",
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeStepExecutor{}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{
+		StackID:      stack.ID,
+		Continue:     true,
+		PreserveLogs: true,
+	})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	called := exec.calledSteps()
+	require.NotEmpty(t, called)
+	assert.Equal(t, "installing_argocd", called[0])
+	assert.NotContains(t, called, "installing_cert_manager")
+	assert.Equal(t, domain.StateCompleted, repo.getState(stack.ID))
+}
+
+func TestInstallStack_ContinueFromHealthCheckSkipsInstallSteps(t *testing.T) {
+	stack := &domain.Stack{
+		ID:                "stk_resume_health",
+		State:             domain.StateFailed,
+		LastCompletedStep: "integration_check",
+		LastFailedStep:    "health_check",
+		LastFailureReason: "gitlab-registry unavailable",
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeVerifyOnlyExecutor{}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+
+	err := uc.Execute(context.Background(), InstallStackInput{
+		StackID:      stack.ID,
+		Continue:     true,
+		PreserveLogs: true,
+	})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	assert.Empty(t, exec.calledSteps())
+	got := repo.getStack(stack.ID)
+	assert.Equal(t, domain.StateCompleted, got.State)
+	assert.Empty(t, got.LastFailedStep)
+	assert.Empty(t, got.LastFailureReason)
 }
 
 func TestInstallStack_RuntimeVerificationFailureWithoutRollbackSupportStaysFailed(t *testing.T) {

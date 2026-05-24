@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,8 +30,12 @@ func (r *PostgresStackRepository) Create(ctx context.Context, stack *domain.Stac
 	}
 
 	const q = `
-		INSERT INTO stacks (id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+		INSERT INTO stacks (
+			id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
 
 	_, err = r.pool.Exec(ctx, q,
 		stack.ID,
@@ -41,6 +46,10 @@ func (r *PostgresStackRepository) Create(ctx context.Context, stack *domain.Stac
 		stack.Namespace,
 		string(stack.State),
 		configJSON,
+		nullableString(stack.CurrentStep),
+		nullableString(stack.LastCompletedStep),
+		nullableString(stack.LastFailedStep),
+		nullableString(stack.LastFailureReason),
 		stack.CreatedAt,
 		stack.UpdatedAt,
 	)
@@ -53,7 +62,9 @@ func (r *PostgresStackRepository) GetByID(ctx context.Context, id string) (*doma
 
 func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*domain.Stack, error) {
 	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at, deleted_at
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at, deleted_at
 		FROM stacks WHERE id = $1 AND deleted_at IS NULL`
 
 	stack, configJSON, err := r.scanStackWithConfig(r.pool.QueryRow(ctx, q, id))
@@ -66,7 +77,9 @@ func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*dom
 
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string, includeDeleted bool) ([]*domain.Stack, error) {
 	q := `
-		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config, created_at, updated_at, deleted_at
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at, deleted_at
 		FROM stacks WHERE org_id = $1`
 	if !includeDeleted {
 		q += ` AND deleted_at IS NULL`
@@ -103,7 +116,9 @@ func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stac
 
 	const q = `
 		UPDATE stacks
-		SET name = $2, template_id = $3, cluster_id = $4, state = $5, config = $6, updated_at = $7
+		SET name = $2, template_id = $3, cluster_id = $4, state = $5, config = $6,
+			current_step = $7, last_completed_step = $8, last_failed_step = $9,
+			last_failure_reason = $10, updated_at = $11
 		WHERE id = $1 AND deleted_at IS NULL`
 
 	ct, err := r.pool.Exec(ctx, q,
@@ -113,6 +128,10 @@ func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stac
 		stack.ClusterID,
 		string(stack.State),
 		configJSON,
+		nullableString(stack.CurrentStep),
+		nullableString(stack.LastCompletedStep),
+		nullableString(stack.LastFailedStep),
+		nullableString(stack.LastFailureReason),
 		stack.UpdatedAt,
 	)
 	if err != nil {
@@ -214,9 +233,13 @@ func (r *PostgresStackRepository) scanStack(row pgxScanner) (*domain.Stack, erro
 
 func (r *PostgresStackRepository) scanStackWithConfig(row pgxScanner) (*domain.Stack, []byte, error) {
 	var (
-		s          domain.Stack
-		state      string
-		configJSON []byte
+		s                 domain.Stack
+		state             string
+		configJSON        []byte
+		currentStep       sql.NullString
+		lastCompletedStep sql.NullString
+		lastFailedStep    sql.NullString
+		lastFailureReason sql.NullString
 	)
 
 	if err := row.Scan(
@@ -228,6 +251,10 @@ func (r *PostgresStackRepository) scanStackWithConfig(row pgxScanner) (*domain.S
 		&s.Namespace,
 		&state,
 		&configJSON,
+		&currentStep,
+		&lastCompletedStep,
+		&lastFailedStep,
+		&lastFailureReason,
 		&s.CreatedAt,
 		&s.UpdatedAt,
 		&s.DeletedAt,
@@ -239,6 +266,10 @@ func (r *PostgresStackRepository) scanStackWithConfig(row pgxScanner) (*domain.S
 	}
 
 	s.State = domain.DeploymentState(state)
+	s.CurrentStep = currentStep.String
+	s.LastCompletedStep = lastCompletedStep.String
+	s.LastFailedStep = lastFailedStep.String
+	s.LastFailureReason = lastFailureReason.String
 
 	var cfg domain.StackConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
@@ -251,6 +282,13 @@ func (r *PostgresStackRepository) scanStackWithConfig(row pgxScanner) (*domain.S
 	s.Config = cfg
 
 	return &s, configJSON, nil
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func parseToolsFromConfig(configJSON []byte) []domain.ToolConfig {
