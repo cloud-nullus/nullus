@@ -33,14 +33,15 @@ export function normalizeAccessDomain(domain: string): string {
   return domain.trim().replace(/\.intenral$/i, '.internal')
 }
 
-export function buildDefaultStackName(): string {
-  const now = new Date()
-  const yyyymmdd = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('')
-  return `stack-${yyyymmdd}-${Math.random().toString(36).slice(2, 6)}`
+export function buildDefaultStackName(now = new Date()): string {
+  const pad = (value: number) => value.toString().padStart(2, '0')
+  const year = now.getFullYear()
+  const month = pad(now.getMonth() + 1)
+  const day = pad(now.getDate())
+  const hour = pad(now.getHours())
+  const minute = pad(now.getMinutes())
+  const second = pad(now.getSeconds())
+  return `nullus-devsecops-stack-${year}${month}${day}-${hour}${minute}${second}`
 }
 
 export function buildOpenSearchBackendTLSPolicy(namespace: string, stackName: string, accessDomain: string): Record<string, unknown> {
