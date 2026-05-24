@@ -4,7 +4,7 @@ import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Rocket, Plus, Trash2, ChevronRight, Check, Loader2, Copy, Terminal } from 'lucide-react'
+import { Rocket, Plus, Trash2, ChevronRight, Terminal } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
@@ -18,6 +18,8 @@ import { useStacks } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
 import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-log'
 import { formatTime, resolveLocale } from '../../../lib/locale'
+import { generateYaml } from '../utils/yaml-generator'
+import { PhaseStep, StepSection, ResourceSlider, CopyableCommand, labelStyleClass } from '../components/deploy-ui'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -36,103 +38,6 @@ const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
   info: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
   success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
   error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-}
-
-function PhaseStep({ label, index, progress, total }: { label: string; index: number; progress: number; total: number }) {
-  const phaseProgress = 100 / total
-  const phaseStart = index * phaseProgress
-  const isDone = progress >= phaseStart + phaseProgress
-  const isActive = progress >= phaseStart && !isDone
-
-  return (
-    <div className="flex flex-1 items-center gap-2">
-      <div
-        className={cn(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300',
-          isDone
-            ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
-            : isActive
-              ? 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]'
-              : 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
-        )}
-      >
-        {isDone ? (
-          <Check size={14} />
-        ) : isActive ? (
-          <Loader2 size={14} className="animate-spin" />
-        ) : (
-          <span className="text-xs font-bold">{index + 1}</span>
-        )}
-      </div>
-      <span
-        className={cn(
-          'text-[13px] font-semibold',
-          isDone ? 'text-[#22c55e]' : isActive ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
-        )}
-      >
-        {label}
-      </span>
-      {index < total - 1 && (
-        <div
-          className={cn(
-            'mx-1 h-px flex-1 transition-colors duration-300',
-            isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
-          )}
-        />
-      )}
-    </div>
-  )
-}
-
-function generateYaml(form: Partial<FormState>, appType: string): string {
-  const cpu = form.cpuLimit ?? '500m'
-  const mem = form.memoryLimit ?? '512Mi'
-  const replicas = form.replicas ?? 2
-  return `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${form.appName ?? 'my-app'}
-  namespace: ${form.namespace ?? 'default'}
-  labels:
-    app: ${form.appName ?? 'my-app'}
-    template: ${appType || 'backend'}
-spec:
-  replicas: ${replicas}
-  selector:
-    matchLabels:
-      app: ${form.appName ?? 'my-app'}
-  template:
-    metadata:
-      labels:
-        app: ${form.appName ?? 'my-app'}
-    spec:
-      containers:
-        - name: ${form.appName ?? 'my-app'}
-          image: harbor.nullus.io/${form.appName ?? 'my-app'}:latest
-          ports:
-            - containerPort: 8080
-          resources:
-            requests:
-              cpu: ${form.cpuRequest ?? '100m'}
-              memory: ${form.memoryRequest ?? '128Mi'}
-            limits:
-              cpu: ${cpu}
-              memory: ${mem}
-${(form.envVars ?? []).filter((e) => e.key).length > 0
-  ? `          env:\n${(form.envVars ?? []).filter((e) => e.key).map((e) => `            - name: ${e.key}\n              value: "${e.value}"`).join('\n')}`
-  : ''}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${form.appName ?? 'my-app'}-svc
-  namespace: ${form.namespace ?? 'default'}
-spec:
-  selector:
-    app: ${form.appName ?? 'my-app'}
-  ports:
-    - port: 80
-      targetPort: 8080`
 }
 
 interface EnvVar { key: string; value: string }
@@ -967,77 +872,3 @@ export function DeveloperDeployPage() {
   )
 }
 
-function StepSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="mb-4 mt-0 text-[15px] font-bold text-[var(--color-text-primary)]">
-        {title}
-      </p>
-      {children}
-    </div>
-  )
-}
-
-function ResourceSlider({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string
-  options: string[]
-  onChange: (v: string) => void
-}) {
-  const idx = options.indexOf(value)
-  const isCustom = idx === -1
-  const sliderId = `resource-${label.toLowerCase().replace(/\s+/g, '-')}`
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between">
-        <label htmlFor={sliderId} className={cn(labelStyleClass, 'mb-0')}>{label}</label>
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-24 text-right font-mono text-[13px]"
-        />
-      </div>
-      <input
-        id={sliderId}
-        type="range"
-        min={0}
-        max={options.length - 1}
-        value={isCustom ? 0 : idx}
-        onChange={(e) => onChange(options[Number(e.target.value)])}
-        className="w-full accent-[#6366f1]"
-      />
-      <div className="mt-1 flex justify-between">
-        {options.map((o) => (
-          <span key={o} className="font-mono text-[10px] text-[var(--color-text-secondary)]">
-            {o}
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function CopyableCommand({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <div className="mt-3 flex items-center gap-2 rounded-md bg-[#0d1117] px-3 py-2">
-      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-[#c9d1d9]">
-        <span className="mr-1.5 text-[#484f58]">$</span>{command}
-      </code>
-      <button
-        type="button"
-        onClick={() => { void navigator.clipboard.writeText(command); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
-        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[rgba(255,255,255,0.4)] transition-colors hover:text-white"
-      >
-        {copied ? <Check size={14} className="text-[#3fb950]" /> : <Copy size={14} />}
-      </button>
-    </div>
-  )
-}
-
-const labelStyleClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]'
