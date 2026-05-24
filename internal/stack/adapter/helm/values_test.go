@@ -224,6 +224,14 @@ func TestDefaultValues_ArgoCDIngressDisabled(t *testing.T) {
 	params, ok := configs["params"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "true", params["server.insecure"])
+
+	secret, ok := configs["secret"].(map[string]any)
+	require.True(t, ok)
+	extra, ok := secret["extra"].(map[string]any)
+	require.True(t, ok)
+	serverSecretKey, ok := extra["server.secretkey"].(string)
+	require.True(t, ok)
+	assert.NotEmpty(t, serverSecretKey)
 }
 
 func TestDefaultValues_OpenSearchProtocolAndSecurity(t *testing.T) {

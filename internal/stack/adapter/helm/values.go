@@ -1,5 +1,10 @@
 package helm
 
+import (
+	"crypto/rand"
+	"encoding/base64"
+)
+
 func DefaultValues(stepName string) map[string]any {
 	switch stepName {
 	case "installing_cert_manager":
@@ -238,6 +243,11 @@ func DefaultValues(stepName string) map[string]any {
 				"params": map[string]any{
 					"server.insecure": "true",
 				},
+				"secret": map[string]any{
+					"extra": map[string]any{
+						"server.secretkey": randomArgoCDServerSecretKey(),
+					},
+				},
 			},
 			"server": map[string]any{
 				"ingress": map[string]any{
@@ -321,4 +331,12 @@ func DefaultValues(stepName string) map[string]any {
 	default:
 		return map[string]any{}
 	}
+}
+
+func randomArgoCDServerSecretKey() string {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return "nullus-argocd-server-secretkey"
+	}
+	return base64.StdEncoding.EncodeToString(key)
 }
