@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -23,6 +23,8 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 	"github.com/cloud-nullus/draft/internal/cicd/usecase"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v4"
 )
 
 const resourceStatusRunning = "running"
@@ -36,6 +38,7 @@ type PipelineHandler struct {
 	deploymentRepo port.DeploymentRepository
 	kubeconfig     port.KubeconfigProvider
 	stepTracker    *kube.StepTracker
+	pool           *pgxpool.Pool
 }
 
 // NewPipelineHandler constructs a PipelineHandler.
@@ -47,6 +50,7 @@ func NewPipelineHandler(
 	deploymentRepo port.DeploymentRepository,
 	kubeconfigProvider port.KubeconfigProvider,
 	stepTracker *kube.StepTracker,
+	pool *pgxpool.Pool,
 ) *PipelineHandler {
 	return &PipelineHandler{
 		createPipeline: createPipeline,
@@ -56,6 +60,7 @@ func NewPipelineHandler(
 		deploymentRepo: deploymentRepo,
 		kubeconfig:     kubeconfigProvider,
 		stepTracker:    stepTracker,
+		pool:           pool,
 	}
 }
 
@@ -114,10 +119,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_CONFIG_INVALID", err.Error())
 	}
 
-	orgID := c.Request().Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "11111111-1111-1111-1111-111111111111"
-	}
+	orgID := h.validatedOrgID(c.Request().Context(), c.Request().Header.Get("X-Org-ID"))
 
 	out, err := h.createPipeline.Execute(c.Request().Context(), usecase.CreatePipelineInput{
 		Name:           req.Name,
@@ -152,10 +154,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 // ListPipelines handles GET /api/v1/pipelines.
 // Supports optional ?stack_id= query parameter to filter by stack.
 func (h *PipelineHandler) ListPipelines(c echo.Context) error {
-	orgID := c.Request().Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "11111111-1111-1111-1111-111111111111"
-	}
+	orgID := h.validatedOrgID(c.Request().Context(), c.Request().Header.Get("X-Org-ID"))
 
 	out, err := h.listPipelines.Execute(c.Request().Context(), usecase.ListPipelinesInput{
 		OrgID:   orgID,
@@ -254,27 +253,56 @@ func (h *PipelineHandler) GetDeployment(c echo.Context) error {
 	return c.JSON(http.StatusOK, deployment)
 }
 
-func (h *PipelineHandler) ListDeployments(c echo.Context) error {
-	orgID := c.Request().Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "11111111-1111-1111-1111-111111111111"
-	}
+type deploymentResponse struct {
+	ID           string  `json:"id"`
+	PipelineID   string  `json:"pipelineId"`
+	PipelineName string  `json:"pipelineName"`
+	Version      string  `json:"version"`
+	Status       string  `json:"status"`
+	TriggeredBy  string  `json:"triggeredBy"`
+	StartedAt    string  `json:"startedAt"`
+	CompletedAt  *string `json:"completedAt"`
+}
 
-	pipelines, err := h.pipelineRepo.List(c.Request().Context(), orgID)
+func (h *PipelineHandler) ListDeployments(c echo.Context) error {
+	ctx := c.Request().Context()
+	orgID := h.validatedOrgID(ctx, c.Request().Header.Get("X-Org-ID"))
+
+	pipelines, err := h.pipelineRepo.List(ctx, orgID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	deployments := make([]*domain.Deployment, 0)
+	pipelineNames := make(map[string]string, len(pipelines))
+	for _, p := range pipelines {
+		pipelineNames[p.ID] = p.Name
+	}
+
+	results := make([]deploymentResponse, 0)
 	for _, pipeline := range pipelines {
 		items, err := h.deploymentRepo.ListByPipelineID(c.Request().Context(), pipeline.ID)
 		if err != nil {
 			return errorResponse(c, http.StatusInternalServerError, "DEPLOYMENT_LIST_FAILED", err.Error())
 		}
-		deployments = append(deployments, items...)
+		for _, d := range items {
+			resp := deploymentResponse{
+				ID:           d.ID,
+				PipelineID:   d.PipelineID,
+				PipelineName: pipelineNames[d.PipelineID],
+				Version:      d.Version,
+				Status:       string(d.Status),
+				TriggeredBy:  d.DeployedBy,
+				StartedAt:    d.StartedAt.Format(time.RFC3339),
+			}
+			if d.CompletedAt != nil {
+				formatted := d.CompletedAt.Format(time.RFC3339)
+				resp.CompletedAt = &formatted
+			}
+			results = append(results, resp)
+		}
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"items": deployments, "total": len(deployments)})
+	return c.JSON(http.StatusOK, map[string]any{"items": results, "total": len(results)})
 }
 
 func (h *PipelineHandler) GetPipelineResources(c echo.Context) error {
@@ -780,6 +808,7 @@ type deployAppRequest struct {
 	ClusterID  string `json:"clusterId"`
 	Namespace  string `json:"namespace"`
 	GitURL     string `json:"gitUrl"`
+	StackID    string `json:"stackId"`
 	Replicas   int32  `json:"replicas"`
 	Port       int32  `json:"port"`
 	Resources  struct {
@@ -816,8 +845,51 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())
 	}
 
+	ctx := c.Request().Context()
+	orgID, err := h.resolveOrgID(ctx, c.Request().Header.Get("X-Org-ID"), req.ClusterID)
+	if err != nil {
+		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", "cannot resolve organization: "+err.Error())
+	}
+
+	// Pipeline 저장 (이미 존재하면 무시)
+	pipelineID := "pip_app_" + req.AppName + "_" + req.Namespace
+	pipeline := &domain.Pipeline{
+		ID:         pipelineID,
+		Name:       req.AppName,
+		TemplateID: req.TemplateID,
+		OrgID:      orgID,
+		ClusterID:  req.ClusterID,
+		StackID:    req.StackID,
+		Namespace:  req.Namespace,
+		AppType:    domain.AppTypeBackend,
+		GitRepoURL: req.GitURL,
+		Status:     domain.PipelineStatusActive,
+		CreatedAt:  time.Now(),
+	}
+	if err := h.pipelineRepo.Create(ctx, pipeline); err != nil {
+		slog.Warn("pipeline create failed (may already exist)", "id", pipelineID, "error", err)
+	}
+
+	// Deployment 기록 저장
+	now := time.Now()
+	completed := now.Add(3 * time.Second)
+	deploymentID := "dep_app_" + req.AppName + "_" + now.Format("20060102150405")
+	deployment := &domain.Deployment{
+		ID:          deploymentID,
+		PipelineID:  pipelineID,
+		Version:     "latest",
+		Status:      domain.DeploymentStatusSuccess,
+		StartedAt:   now,
+		CompletedAt: &completed,
+		DeployedBy:  orgID,
+	}
+	if err := h.deploymentRepo.Create(ctx, deployment); err != nil {
+		slog.Error("deployment create failed", "id", deploymentID, "error", err)
+		return errorResponse(c, http.StatusInternalServerError, "DEPLOY_SAVE_FAILED", err.Error())
+	}
+
 	return c.JSON(http.StatusOK, map[string]any{
-		"deploymentId": "dep_app_" + req.AppName,
+		"deploymentId": deploymentID,
 		"templateId":   req.TemplateID,
 		"namespace":    req.Namespace,
 		"clusterId":    req.ClusterID,
@@ -828,4 +900,33 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 			"ingress":    generated.Ingress,
 		},
 	})
+}
+
+const defaultOrgID = "11111111-1111-1111-1111-111111111111"
+
+// validatedOrgID checks if the header org ID exists in DB, falls back to default.
+func (h *PipelineHandler) validatedOrgID(ctx context.Context, headerOrgID string) string {
+	if headerOrgID != "" {
+		var exists bool
+		if err := h.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM organizations WHERE id = $1)", headerOrgID).Scan(&exists); err == nil && exists {
+			return headerOrgID
+		}
+	}
+	return defaultOrgID
+}
+
+// resolveOrgID determines the org ID: validates header, falls back to cluster's org, then default.
+func (h *PipelineHandler) resolveOrgID(ctx context.Context, headerOrgID, clusterID string) (string, error) {
+	if headerOrgID != "" {
+		var exists bool
+		if err := h.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM organizations WHERE id = $1)", headerOrgID).Scan(&exists); err == nil && exists {
+			return headerOrgID, nil
+		}
+	}
+	var orgID string
+	err := h.pool.QueryRow(ctx, "SELECT org_id FROM clusters WHERE id = $1", clusterID).Scan(&orgID)
+	if err != nil {
+		return "", fmt.Errorf("cluster %s not found: %w", clusterID, err)
+	}
+	return orgID, nil
 }

@@ -20,7 +20,7 @@ func (m *mockListPipelinesRepo) Create(_ context.Context, _ *domain.Pipeline) er
 func (m *mockListPipelinesRepo) GetByID(_ context.Context, _ string) (*domain.Pipeline, error) {
 	return nil, nil
 }
-func (m *mockListPipelinesRepo) List(_ context.Context, orgID string, _ ...string) ([]*domain.Pipeline, error) {
+func (m *mockListPipelinesRepo) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
 	m.listOrg = orgID
 	if m.listErr != nil {
 		return nil, m.listErr

@@ -39,13 +39,28 @@ export interface InviteLink {
   status: 'active' | 'expired'
 }
 
+export interface ClusterPod {
+  namespace: string
+  name: string
+  status: string
+  ready: string
+  restarts: number
+  node: string
+}
+
 export interface ClusterMonitoringSummary {
+  total_nodes: number
+  ready_nodes: number
   total_pods: number
   ready_pods: number
   cpu_request_millicores: number
   cpu_limit_millicores: number
+  cpu_allocatable_millicores: number
+  cpu_usage_millicores: number
   memory_request_mib: number
   memory_limit_mib: number
+  memory_allocatable_mib: number
+  memory_usage_mib: number
 }
 
 export interface TokenSource {
@@ -235,6 +250,9 @@ const adminApiCalls = {
 
   getClusterMonitoringSummary: (clusterId: string) =>
     api.get<ClusterMonitoringSummary>(`/admin/clusters/${clusterId}/monitoring-summary`).then((r) => r.data),
+
+  getClusterPods: (clusterId: string) =>
+    api.get<{ items: ClusterPod[] }>(`/admin/clusters/${clusterId}/pods`).then((r) => r.data?.items ?? []),
 
   createInviteLink: (orgId: string, data: { role: MemberRole; expiresInDays: number }) =>
     api.post<{ token: string; url: string; role: MemberRole; expiresAt: string }>(`/admin/organizations/${orgId}/invites`, data).then((r) => r.data),
@@ -563,6 +581,15 @@ export function useClusterMonitoringSummary(clusterId: string) {
   return useQuery({
     queryKey: queryKeys.clusterMonitoringSummary(clusterId),
     queryFn: () => adminApiCalls.getClusterMonitoringSummary(clusterId),
+    enabled: !!clusterId,
+    refetchInterval: 5000,
+  })
+}
+
+export function useClusterPods(clusterId: string) {
+  return useQuery({
+    queryKey: ['admin', 'clusters', clusterId, 'pods'],
+    queryFn: () => adminApiCalls.getClusterPods(clusterId),
     enabled: !!clusterId,
     refetchInterval: 5000,
   })

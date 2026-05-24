@@ -375,6 +375,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_gateway": {
 				ReleaseName: "eg",
 				ChartName:   "oci://docker.io/envoyproxy/gateway-helm",
+				Version:     "1.4.3",
 				Wait:        false,
 			},
 			"integration_check": {},
@@ -382,24 +383,25 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		stepOrder: map[string]int{
 			stepInstallingCertManager:          0,
 			"installing_metrics_server":        1,
-			"installing_postgresql":            2,
-			"installing_minio":                 3,
-			"installing_object_storage_secret": 4,
-			"installing_gitlab":                5,
-			"installing_argocd":                6,
-			stepInstallingRunner:               7,
-			"installing_prometheus":            8,
-			"installing_grafana":               9,
-			"installing_logging":               10,
-			"installing_log_search":            11,
-			"installing_opentelemetry":         12,
-			"installing_gateway":               13,
-			"installing_openbao":               14,
+			"installing_openbao":               2,
+			"installing_postgresql":            3,
+			"installing_minio":                 4,
+			"installing_object_storage_secret": 5,
+			"installing_gitlab":                6,
+			"installing_argocd":                7,
+			stepInstallingRunner:               8,
+			"installing_prometheus":            9,
+			"installing_grafana":               10,
+			"installing_logging":               11,
+			"installing_log_search":            12,
+			"installing_opentelemetry":         13,
+			"installing_gateway":               14,
 			"integration_check":                15,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
 			"installing_metrics_server",
+			"installing_openbao",
 			"installing_postgresql",
 			"installing_minio",
 			"installing_object_storage_secret",
@@ -412,7 +414,6 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_log_search",
 			"installing_opentelemetry",
 			"installing_gateway",
-			"installing_openbao",
 			"integration_check",
 		},
 		stepConfigFieldPath: map[string]string{
@@ -440,10 +441,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Artifacts.StorageBackend.Enabled
 			},
 			"installing_object_storage_secret": func(cfg domain.StackConfig) bool {
-				return cfg.Artifacts.StorageBackend.Enabled && cfg.Artifacts.SourceRepository.Enabled
+				return cfg.Artifacts.StorageBackend.Enabled && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
-				return cfg.Artifacts.SourceRepository.Enabled
+				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_openbao": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
@@ -455,7 +456,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Pipeline.CDTool.Enabled
 			},
 			stepInstallingRunner: func(cfg domain.StackConfig) bool {
-				return cfg.Pipeline.CIPlatform.Enabled
+				return isGitLabCISelection(cfg.Pipeline.CIPlatform)
 			},
 			"installing_prometheus": func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Collection.Enabled
@@ -487,6 +488,38 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		opt(o)
 	}
 	return o
+}
+
+func isGitLabSourceRepositorySelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return false
+	}
+	name := normalizeToolName(sel.Name)
+	if name == "" {
+		return true
+	}
+	return name == "gitlab" || name == "gitlab-ce"
+}
+
+func isGitLabCISelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return false
+	}
+	name := normalizeToolName(sel.Name)
+	if name == "" {
+		return true
+	}
+	return name == "gitlab-ci" || name == "gitlab-runner"
+}
+
+func normalizeToolName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 func (o *Orchestrator) SetNamespace(namespace string) {
@@ -738,6 +771,9 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	cfg := o.stackConfig
 	o.mu.Unlock()
 	if cfg == nil {
+		if step == "installing_openbao" {
+			return false
+		}
 		return true
 	}
 
@@ -754,16 +790,29 @@ func isSharedClusterScopedStep(step string) bool {
 }
 
 func (o *Orchestrator) ensureOrder(stackID, step string, order int) error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
 	if stackID == "" {
 		return nil
 	}
+
+	o.mu.Lock()
 	current := o.progress[stackID]
 	if _, ok := o.progress[stackID]; !ok {
 		current = -1
 	}
+	o.mu.Unlock()
+
+	for current+1 < order {
+		nextIdx := current + 1
+		if nextIdx < 0 || nextIdx >= len(o.orderedStep) {
+			break
+		}
+		nextStep := o.orderedStep[nextIdx]
+		if o.isStepEnabled(nextStep) {
+			break
+		}
+		current = nextIdx
+	}
+
 	if order != current+1 {
 		expectedIdx := current + 1
 		expected := ""
@@ -772,6 +821,10 @@ func (o *Orchestrator) ensureOrder(stackID, step string, order int) error {
 		}
 		return fmt.Errorf("out of order step %q for stack %s: expected %q", step, stackID, expected)
 	}
+
+	o.mu.Lock()
+	o.progress[stackID] = current
+	o.mu.Unlock()
 	return nil
 }
 

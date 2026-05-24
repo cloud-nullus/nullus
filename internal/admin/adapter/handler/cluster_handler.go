@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	metricsclient "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/admin/domain"
@@ -86,13 +88,28 @@ type clusterNamespaceResponseItem struct {
 	Name string `json:"name"`
 }
 
+type clusterPodResponseItem struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	Ready     string `json:"ready"`
+	Restarts  int32  `json:"restarts"`
+	Node      string `json:"node"`
+}
+
 type clusterMonitoringSummaryResponse struct {
-	TotalPods            int   `json:"total_pods"`
-	ReadyPods            int   `json:"ready_pods"`
-	CPURequestMillicores int64 `json:"cpu_request_millicores"`
-	CPULimitMillicores   int64 `json:"cpu_limit_millicores"`
-	MemoryRequestMiB     int64 `json:"memory_request_mib"`
-	MemoryLimitMiB       int64 `json:"memory_limit_mib"`
+	TotalNodes               int   `json:"total_nodes"`
+	ReadyNodes               int   `json:"ready_nodes"`
+	TotalPods                int   `json:"total_pods"`
+	ReadyPods                int   `json:"ready_pods"`
+	CPURequestMillicores     int64 `json:"cpu_request_millicores"`
+	CPULimitMillicores       int64 `json:"cpu_limit_millicores"`
+	CPUAllocatableMillicores int64 `json:"cpu_allocatable_millicores"`
+	CPUUsageMillicores       int64 `json:"cpu_usage_millicores"`
+	MemoryRequestMiB         int64 `json:"memory_request_mib"`
+	MemoryLimitMiB           int64 `json:"memory_limit_mib"`
+	MemoryAllocatableMiB     int64 `json:"memory_allocatable_mib"`
+	MemoryUsageMiB           int64 `json:"memory_usage_mib"`
 }
 
 func toClusterResponse(cluster *domain.Cluster, kubeconfig string) clusterResponse {
@@ -550,12 +567,42 @@ func getClusterMonitoringSummary(ctx context.Context, kubeconfig []byte) (*clust
 	podCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
+	nodeList, err := clientset.CoreV1().Nodes().List(podCtx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
 	podList, err := clientset.CoreV1().Pods("").List(podCtx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	summary := &clusterMonitoringSummaryResponse{}
+	for _, node := range nodeList.Items {
+		summary.TotalNodes++
+		for _, cond := range node.Status.Conditions {
+			if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
+				summary.ReadyNodes++
+				break
+			}
+		}
+		if cpu, ok := node.Status.Allocatable[corev1.ResourceCPU]; ok {
+			summary.CPUAllocatableMillicores += cpu.MilliValue()
+		}
+		if mem, ok := node.Status.Allocatable[corev1.ResourceMemory]; ok {
+			summary.MemoryAllocatableMiB += mem.Value() / (1024 * 1024)
+		}
+	}
+	// metrics-server (best-effort): cluster 에 metrics API 가 있으면 실제 사용량 합산.
+	if mc, err := metricsclient.NewForConfig(restConfig); err == nil {
+		if nm, err := mc.MetricsV1beta1().NodeMetricses().List(podCtx, metav1.ListOptions{}); err == nil {
+			for _, m := range nm.Items {
+				summary.CPUUsageMillicores += m.Usage.Cpu().MilliValue()
+				summary.MemoryUsageMiB += m.Usage.Memory().Value() / (1024 * 1024)
+			}
+		}
+	}
+
 	for _, pod := range podList.Items {
 		summary.TotalPods++
 		if isClusterPodReady(pod) {
@@ -593,6 +640,67 @@ func isClusterPodReady(pod corev1.Pod) bool {
 	return false
 }
 
+func (h *ClusterHandler) ListPods(c echo.Context) error {
+	id := c.Param("id")
+
+	encryptedConfig, err := h.clusterUC.GetKubeconfig(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if len(encryptedConfig) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "kubeconfig is not registered for this cluster")
+	}
+	if len(h.encryptionKey) != 32 {
+		return echo.NewHTTPError(http.StatusInternalServerError, "ENCRYPTION_KEY must be 32 bytes")
+	}
+
+	decrypted, err := crypto.Decrypt(h.encryptionKey, string(encryptedConfig))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to decrypt kubeconfig")
+	}
+
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(decrypted)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+	restConfig.Timeout = 10 * time.Second
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+
+	podCtx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+	defer cancel()
+
+	podList, err := clientset.CoreV1().Pods("").List(podCtx, metav1.ListOptions{})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+
+	items := make([]clusterPodResponseItem, 0, len(podList.Items))
+	for _, pod := range podList.Items {
+		totalContainers := len(pod.Spec.Containers)
+		readyContainers := 0
+		var totalRestarts int32 = 0
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.Ready {
+				readyContainers++
+			}
+			totalRestarts += cs.RestartCount
+		}
+		items = append(items, clusterPodResponseItem{
+			Namespace: pod.Namespace,
+			Name:      pod.Name,
+			Status:    string(pod.Status.Phase),
+			Ready:     fmt.Sprintf("%d/%d", readyContainers, totalContainers),
+			Restarts:  totalRestarts,
+			Node:      pod.Spec.NodeName,
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": items})
+}
+
 // RegisterRoutes registers cluster routes on the given group.
 func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/clusters", h.RegisterCluster)
@@ -601,6 +709,7 @@ func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/clusters/:id", h.GetCluster)
 	g.GET("/clusters/:id/namespaces", h.ListNamespaces)
 	g.GET("/clusters/:id/monitoring-summary", h.GetMonitoringSummary)
+	g.GET("/clusters/:id/pods", h.ListPods)
 	g.PATCH("/clusters/:id", h.UpdateCluster)
 	g.DELETE("/clusters/:id", h.DeleteCluster)
 	g.POST("/clusters/:id/verify", h.VerifyCluster)

@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
-import type { StackResourceDefault, ClusterStatus } from '../../../types'
 import {
   normalizeTemplate,
   normalizeCompatibilityMatrix,
@@ -24,6 +23,7 @@ import type {
   DeployStackInput,
   StackMonitoringSnapshot,
 } from './stack-api-types'
+import type { ClusterStatus, StackResourceDefault, StackWorkloads } from '../../../types'
 
 export * from './stack-api-types'
 export { toCreateStackBody } from './stack-normalizers'
@@ -49,6 +49,7 @@ const queryKeys = {
   versionDiff: (stackId: string, from: number, to: number) => ['stacks', 'diff', stackId, from, to] as const,
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
+  workloads: (stackId: string) => ['stacks', 'workloads', stackId] as const,
   resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
 }
 
@@ -178,6 +179,9 @@ const stackApiCalls = {
       .post<{ stack_id: string; status: string }>(`/stacks/${input.stackId}/continue`, body)
       .then((r) => r.data)
   },
+
+  getWorkloads: (stackId: string) =>
+    api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -453,5 +457,14 @@ export function useDeleteMatrix() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.compatibilityMatrix() })
     },
+  })
+}
+
+export function useStackWorkloads(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.workloads(stackId),
+    queryFn: () => stackApiCalls.getWorkloads(stackId),
+    enabled: !!stackId,
+    refetchInterval: 30_000,
   })
 }

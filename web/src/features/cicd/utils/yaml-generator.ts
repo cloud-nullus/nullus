@@ -9,31 +9,46 @@ interface YamlFormValues {
   envVars?: Array<{ key: string; value: string }>
 }
 
+function yamlSafe(value: string): string {
+  if (/[:\n\r#"'\\{}\[\],&*?|><!%@`]/.test(value) || value !== value.trim()) {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
+  }
+  return value
+}
+
 export function generateYaml(form: YamlFormValues, appType: string): string {
+  const name = yamlSafe(form.appName ?? 'my-app')
+  const namespace = yamlSafe(form.namespace ?? 'default')
+  const template = yamlSafe(appType || 'backend')
   const cpu = form.cpuLimit ?? '500m'
   const mem = form.memoryLimit ?? '512Mi'
   const replicas = form.replicas ?? 2
+  const envLines = (form.envVars ?? [])
+    .filter((e) => e.key)
+    .map((e) => `            - name: ${yamlSafe(e.key)}\n              value: ${yamlSafe(e.value)}`)
+    .join('\n')
+
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${form.appName ?? 'my-app'}
-  namespace: ${form.namespace ?? 'default'}
+  name: ${name}
+  namespace: ${namespace}
   labels:
-    app: ${form.appName ?? 'my-app'}
-    template: ${appType || 'backend'}
+    app: ${name}
+    template: ${template}
 spec:
   replicas: ${replicas}
   selector:
     matchLabels:
-      app: ${form.appName ?? 'my-app'}
+      app: ${name}
   template:
     metadata:
       labels:
-        app: ${form.appName ?? 'my-app'}
+        app: ${name}
     spec:
       containers:
-        - name: ${form.appName ?? 'my-app'}
-          image: harbor.nullus.io/${form.appName ?? 'my-app'}:latest
+        - name: ${name}
+          image: harbor.nullus.io/${name}:latest
           ports:
             - containerPort: 8080
           resources:
@@ -43,18 +58,16 @@ spec:
             limits:
               cpu: ${cpu}
               memory: ${mem}
-${(form.envVars ?? []).filter((e) => e.key).length > 0
-  ? `          env:\n${(form.envVars ?? []).filter((e) => e.key).map((e) => `            - name: ${e.key}\n              value: "${e.value}"`).join('\n')}`
-  : ''}
+${envLines ? `          env:\n${envLines}` : ''}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ${form.appName ?? 'my-app'}-svc
-  namespace: ${form.namespace ?? 'default'}
+  name: ${name}-svc
+  namespace: ${namespace}
 spec:
   selector:
-    app: ${form.appName ?? 'my-app'}
+    app: ${name}
   ports:
     - port: 80
       targetPort: 8080`
