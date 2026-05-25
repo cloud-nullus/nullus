@@ -281,8 +281,6 @@ do_kind_up() {
     return 1
   fi
 
-  local preferred_context="kind-nullus-platform"
-
   if [[ -f "$KIND_CONFIG" ]]; then
     local tmp_dir
     tmp_dir="$(mktemp -d)"
@@ -325,11 +323,6 @@ do_kind_up() {
     echo "[nullus] creating kind cluster 'nullus-platform'..."
     kind create cluster --name "nullus-platform"
     echo "[nullus] kind cluster 'nullus-platform' ready"
-  fi
-
-  if command -v kubectl >/dev/null 2>&1 && kind_cluster_exists "nullus-platform"; then
-    kubectl config use-context "$preferred_context" >/dev/null 2>&1 || true
-    echo "[nullus] kubectl context set to '$preferred_context'"
   fi
 }
 
