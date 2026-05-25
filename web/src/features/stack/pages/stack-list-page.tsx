@@ -405,7 +405,7 @@ export function StackListPage() {
 
 	const normalizedStatusFilter = statusFilter === "healthy" ? "success" : statusFilter;
 	const { data: clustersData } = useScopedClusters();
-	const clusters = clustersData?.items ?? [];
+	const clusters = useMemo(() => clustersData?.items ?? [], [clustersData]);
 	const shouldPollTerminating = Object.keys(terminatingStatusByID).length > 0;
 	const { data: apiData, isLoading } = useStacks({
 		search,

@@ -322,7 +322,7 @@ export function StackInstallPage() {
   const { data: templatesData, isFetched: isTemplatesFetched } = useTemplates()
   const { data: clustersData } = useClusters()
   const clusters = clustersData?.items ?? []
-  const templates = templatesData ?? []
+  const templates = useMemo(() => templatesData ?? [], [templatesData])
   const { data: stackListData } = useStacks()
   const { data: compatibilityMatrixData } = useCompatibilityMatrix()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
