@@ -916,7 +916,7 @@ func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
 
 	out := []selectedToolType{
 		tool("authentication", domain.ToolSelection{
-			Name:    strings.TrimSpace(func() string {
+			Name: strings.TrimSpace(func() string {
 				if cfg.Authentication == nil {
 					return ""
 				}

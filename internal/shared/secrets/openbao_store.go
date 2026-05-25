@@ -51,8 +51,8 @@ func (s *OpenBaoStore) Check(ctx context.Context) error {
 
 func NewOpenBaoStore(addr, token string) *OpenBaoStore {
 	return &OpenBaoStore{
-		addr:  strings.TrimRight(strings.TrimSpace(addr), "/"),
-		token: strings.TrimSpace(token),
+		addr:   strings.TrimRight(strings.TrimSpace(addr), "/"),
+		token:  strings.TrimSpace(token),
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
 }

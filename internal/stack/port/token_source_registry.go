@@ -3,12 +3,12 @@ package port
 import "context"
 
 type TokenSourceInput struct {
-	OrgID     string
-	Module    string
-	Provider  string
-	Path      string
-	TokenType string
-	Status    string
+	OrgID         string
+	Module        string
+	Provider      string
+	Path          string
+	TokenType     string
+	Status        string
 	SecretManager string
 	TokenValue    string
 }

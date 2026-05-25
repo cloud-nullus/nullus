@@ -12,11 +12,11 @@ import (
 )
 
 type mockTokenSourceRepo struct {
-	listSourcesFn       func(ctx context.Context, orgID string) ([]*domain.TokenSource, error)
-	listEventsFn        func(ctx context.Context, tokenSourceID string) ([]*domain.TokenRotationEvent, error)
-	getSourceFn         func(ctx context.Context, tokenSourceID string) (*domain.TokenSource, error)
+	listSourcesFn        func(ctx context.Context, orgID string) ([]*domain.TokenSource, error)
+	listEventsFn         func(ctx context.Context, tokenSourceID string) ([]*domain.TokenRotationEvent, error)
+	getSourceFn          func(ctx context.Context, tokenSourceID string) (*domain.TokenSource, error)
 	updateSourceStatusFn func(ctx context.Context, tokenSourceID, status string) error
-	insertEventFn       func(ctx context.Context, event *domain.TokenRotationEvent) error
+	insertEventFn        func(ctx context.Context, event *domain.TokenRotationEvent) error
 }
 
 func (m *mockTokenSourceRepo) ListSources(ctx context.Context, orgID string) ([]*domain.TokenSource, error) {
