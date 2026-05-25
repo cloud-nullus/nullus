@@ -100,7 +100,7 @@ jobs:
           level: warning
           golangci_lint_flags: >-
             --timeout=5m
-            --enable=govet,errcheck,staticcheck,unused,gosimple,ineffassign,gofmt,goimports
+            --enable=govet,errcheck,staticcheck,unused,gosimple,ineffassign
 
   # ─────────────────────────────────────────
   # React: ESLint → inline PR comments

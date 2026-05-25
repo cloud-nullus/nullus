@@ -11,8 +11,6 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    - gofmt
-    - goimports
     - misspell
     - unconvert
     - unparam
@@ -22,8 +20,15 @@ linters:
       min-occurrences: 3
     misspell:
       locale: US
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
     goimports:
-      local-prefixes: github.com/cloud-nullus/draft
+      local-prefixes:
+        - github.com/cloud-nullus/draft
 
 issues:
   exclude-dirs:
