@@ -10,7 +10,7 @@
 #
 # 사용법:
 #   ./pre-build.sh
-#   PLATFORMS="linux-amd64,linux-arm64" BUNDLE_VERSION=2026-04-27 ./pre-build.sh
+#   PLATFORMS="linux-amd64,linux-arm64" BUNDLE_VERSION=<yyyy-mm-dd> ./pre-build.sh
 #   SKIP_IMAGES=1 ./pre-build.sh    # 이미지 pull/save 건너뜀 (이미 있을 때)
 #   SKIP_BIN=1    ./pre-build.sh    # 바이너리 다운로드 건너뜀
 #   SKIP_CHARTS=1 ./pre-build.sh    # helm 차트 번들 건너뜀

@@ -1,0 +1,8 @@
+# Minimal values to make `helm template gitlab/gitlab` render for image extraction.
+# Not used at install time — stack orchestrator passes its own values.
+global:
+  hosts:
+    domain: example.com
+  edition: ce
+certmanager-issuer:
+  email: airgap@example.com

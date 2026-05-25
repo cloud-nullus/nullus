@@ -13,7 +13,7 @@
 #
 # 사용법:
 #   ./package-bundle.sh
-#   BUNDLE_VERSION=2026-04-27 ./package-bundle.sh
+#   BUNDLE_VERSION=<yyyy-mm-dd> ./package-bundle.sh
 #
 # 환경 변수:
 #   BUNDLE_VERSION   번들 태그 (기본: 오늘 날짜 YYYY-MM-DD)
