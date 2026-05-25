@@ -67,9 +67,9 @@ func DefaultValues(stepName string) map[string]any {
 			"architecture": "standalone",
 			"auth": map[string]any{
 				"username":         "gitlab",
-				"password":         "nullus-gitlab-password",
+				"password":         "nullus-gitlab-password",         // #nosec G101 -- default Helm value, expected to be overridden by operator
 				"database":         "gitlabhq_production",
-				"postgresPassword": "nullus-postgres-admin",
+				"postgresPassword": "nullus-postgres-admin",           // #nosec G101 -- default Helm value, expected to be overridden by operator
 			},
 			"primary": map[string]any{
 				"resources": map[string]any{
@@ -92,7 +92,7 @@ func DefaultValues(stepName string) map[string]any {
 		return map[string]any{
 			"mode":         "standalone",
 			"rootUser":     "nullus-admin",
-			"rootPassword": "nullus-minio-secret",
+			"rootPassword": "nullus-minio-secret", // #nosec G101 -- default Helm value, expected to be overridden by operator
 			"ingress": map[string]any{
 				"enabled": false,
 			},

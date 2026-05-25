@@ -64,7 +64,7 @@ func (c *Client) QueryVector(ctx context.Context, promql string) ([]VectorResult
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024)) // #nosec G104 -- best-effort body read for error context
 		return nil, fmt.Errorf("prometheus query failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 

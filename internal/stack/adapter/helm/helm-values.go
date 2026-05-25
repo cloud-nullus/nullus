@@ -182,9 +182,9 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 	return map[string]any{
 		"auth": map[string]any{
 			"username":         "gitlab",
-			"password":         "nullus-gitlab-password",
+			"password":         "nullus-gitlab-password",         // #nosec G101 -- default Helm value, expected to be overridden by operator
 			"database":         "gitlabhq_production",
-			"postgresPassword": "nullus-postgres-admin",
+			"postgresPassword": "nullus-postgres-admin",           // #nosec G101 -- default Helm value, expected to be overridden by operator
 		},
 		"primary": map[string]any{
 			"persistence": map[string]any{
@@ -251,7 +251,7 @@ func (o *Orchestrator) sharedObjectStorageSecretManifest(namespace string) strin
 	}
 
 	endpoint := fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace)
-	connection := fmt.Sprintf("provider: AWS\nregion: us-east-1\naws_access_key_id: nullus-admin\naws_secret_access_key: nullus-minio-secret\nendpoint: %s\npath_style: true\n", endpoint)
+	connection := fmt.Sprintf("provider: AWS\nregion: us-east-1\naws_access_key_id: nullus-admin\naws_secret_access_key: nullus-minio-secret\nendpoint: %s\npath_style: true\n", endpoint) // #nosec G101 -- default bootstrap credential, matches Helm default value
 
 	return fmt.Sprintf(`apiVersion: v1
 kind: Secret
