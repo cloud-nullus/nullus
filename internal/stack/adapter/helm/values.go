@@ -1,5 +1,10 @@
 package helm
 
+import (
+	"crypto/rand"
+	"encoding/base64"
+)
+
 func DefaultValues(stepName string) map[string]any {
 	switch stepName {
 	case "installing_cert_manager":
@@ -62,9 +67,9 @@ func DefaultValues(stepName string) map[string]any {
 			"architecture": "standalone",
 			"auth": map[string]any{
 				"username":         "gitlab",
-				"password":         "nullus-gitlab-password",
+				"password":         "nullus-gitlab-password", // #nosec G101 -- default Helm value, expected to be overridden by operator
 				"database":         "gitlabhq_production",
-				"postgresPassword": "nullus-postgres-admin",
+				"postgresPassword": "nullus-postgres-admin", // #nosec G101 -- default Helm value, expected to be overridden by operator
 			},
 			"primary": map[string]any{
 				"resources": map[string]any{
@@ -87,7 +92,7 @@ func DefaultValues(stepName string) map[string]any {
 		return map[string]any{
 			"mode":         "standalone",
 			"rootUser":     "nullus-admin",
-			"rootPassword": "nullus-minio-secret",
+			"rootPassword": "nullus-minio-secret", // #nosec G101 -- default Helm value, expected to be overridden by operator
 			"ingress": map[string]any{
 				"enabled": false,
 			},
@@ -238,6 +243,11 @@ func DefaultValues(stepName string) map[string]any {
 				"params": map[string]any{
 					"server.insecure": "true",
 				},
+				"secret": map[string]any{
+					"extra": map[string]any{
+						"server.secretkey": randomArgoCDServerSecretKey(),
+					},
+				},
 			},
 			"server": map[string]any{
 				"ingress": map[string]any{
@@ -321,4 +331,12 @@ func DefaultValues(stepName string) map[string]any {
 	default:
 		return map[string]any{}
 	}
+}
+
+func randomArgoCDServerSecretKey() string {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return "nullus-argocd-server-secretkey"
+	}
+	return base64.StdEncoding.EncodeToString(key)
 }

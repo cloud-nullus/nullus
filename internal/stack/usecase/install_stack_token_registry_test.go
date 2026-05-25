@@ -26,7 +26,7 @@ func TestInstallStack_RegisterStackTokenSources_OpenBao(t *testing.T) {
 	registry := &mockTokenRegistry{}
 	uc := &InstallStack{tokenRegistry: registry, tokenRegistryEnv: "dev"}
 	stack := &domain.Stack{
-		OrgID: "org-1",
+		OrgID:     "org-1",
 		Namespace: "nullus-test",
 		Config: domain.StackConfig{
 			Authentication: &domain.AuthenticationConfig{Provider: "openbao"},

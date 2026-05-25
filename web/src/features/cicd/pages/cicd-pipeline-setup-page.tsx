@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
@@ -261,7 +261,10 @@ export function CicdPipelineSetupPage() {
   const selectedTemplateId = searchParams.get('template')
 
   const { data: templatesData } = useCicdTemplates()
-  const templates = Array.isArray(templatesData) && templatesData.length > 0 ? templatesData : DEFAULT_TEMPLATES
+  const templates = useMemo(
+    () => Array.isArray(templatesData) && templatesData.length > 0 ? templatesData : DEFAULT_TEMPLATES,
+    [templatesData]
+  )
   const template = templates.find((item) => item.id === selectedTemplateId) ?? templates[0]
 
   const { data: clustersData } = useClusters()

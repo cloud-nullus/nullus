@@ -27,7 +27,6 @@ import (
 	obsport "github.com/cloud-nullus/draft/internal/observability/port"
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
-	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
@@ -36,6 +35,7 @@ import (
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	stackport "github.com/cloud-nullus/draft/internal/stack/port"
 	stackuc "github.com/cloud-nullus/draft/internal/stack/usecase"
+	"github.com/cloud-nullus/draft/pkg/crypto"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
@@ -89,6 +89,8 @@ func main() {
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
 	clusterHandler := adminhandler.NewClusterHandler(clusterUC, auditLogger)
 	memberHandler := adminhandler.NewMemberHandler(userUC, auditLogger)
+	pgResourceProfileRepo := adminrepo.NewPostgresResourceProfileRepository(pool)
+	resourceProfileHandler := adminhandler.NewResourceProfileHandler(orgUC, pgResourceProfileRepo, auditLogger)
 
 	// Stack: postgres repos + log streamer
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
@@ -123,7 +125,8 @@ func main() {
 	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
 	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
 
-	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger)
+	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger).
+		WithOptions(stackhandler.WithKubeconfigProvider(kubeconfigProvider))
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithPool(pool))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
@@ -234,6 +237,7 @@ func main() {
 	orgHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
 	memberHandler.RegisterRoutes(admin)
+	resourceProfileHandler.RegisterRoutes(admin)
 	knownIssuesHandler.RegisterRoutes(admin)
 	auditHandler.RegisterRoutes(admin)
 	notificationHandler.RegisterRoutes(admin)

@@ -121,6 +121,33 @@ func TestContinue_FromFailed_VerifiedPasses(t *testing.T) {
 	assert.Equal(t, "failed", entries[0].Details["previous_state"])
 }
 
+func TestContinue_FromPending_UsesRecordedFailedStep(t *testing.T) {
+	sink := audit.NewMemorySink()
+	e, repo := newRetryEcho(t, []string{"amd64"}, sink)
+	id := seedStackInState(t, repo, "stk-continue-pending", domain.StatePending,
+		[]domain.ToolConfig{
+			{Category: "source_repository", Name: "GitLab CE"},
+			{Category: "ci_platform", Name: "GitLab CI"},
+			{Category: "container_registry", Name: "GitLab Registry"},
+		})
+	stack, err := repo.GetByID(context.Background(), id)
+	require.NoError(t, err)
+	stack.LastFailedStep = "health_check"
+	stack.LastFailureReason = "gitlab-registry unavailable"
+	require.NoError(t, repo.Update(context.Background(), stack))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/continue", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	entries := sink.Snapshot()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "continue", entries[0].Action)
+	assert.Equal(t, "pending", entries[0].Details["previous_state"])
+	assert.Equal(t, "health_check", entries[0].Details["resume_from_step"])
+}
+
 func TestContinue_FromCompleted_Returns409(t *testing.T) {
 	sink := audit.NewMemorySink()
 	e, repo := newRetryEcho(t, []string{"amd64"}, sink)

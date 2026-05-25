@@ -71,6 +71,10 @@ type namespaceAwareExecutor interface {
 	SetNamespace(namespace string)
 }
 
+type resumeAwareExecutor interface {
+	ResumeFromStep(stackID, step string)
+}
+
 type deploymentVerifiableExecutor interface {
 	VerifyDeployment(ctx context.Context, stackID string) error
 }
@@ -141,9 +145,10 @@ func NewInstallStack(stackRepo port.StackRepository, streamer port.LogStreamer, 
 
 // InstallStackInput holds the parameters for starting an installation.
 type InstallStackInput struct {
-	StackID      string
-	Continue     bool
-	PreserveLogs bool
+	StackID        string
+	Continue       bool
+	PreserveLogs   bool
+	ResumeFromStep string
 }
 
 // Execute starts the installation in a goroutine and returns immediately.
@@ -157,6 +162,18 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 	executor := uc.resolveExecutor(ctx, stack)
 	uc.configureExecutorForStack(stack, executor)
 
+	if input.Continue && input.ResumeFromStep == "" {
+		input.ResumeFromStep = firstNonEmpty(stack.LastFailedStep, stack.CurrentStep)
+	}
+	if input.Continue && !isKnownResumeStep(input.ResumeFromStep) {
+		input.ResumeFromStep = ""
+	}
+	if input.Continue && input.ResumeFromStep != "" {
+		if resumable, ok := executor.(resumeAwareExecutor); ok {
+			resumable.ResumeFromStep(stack.ID, input.ResumeFromStep)
+		}
+	}
+
 	if input.Continue && stack.State == domain.StateFailed {
 		if err := stack.TransitionTo(domain.StatePending); err != nil {
 			return fmt.Errorf("transition failed stack to pending: %w", err)
@@ -164,6 +181,12 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 		if err := uc.stackRepo.Update(ctx, stack); err != nil {
 			return fmt.Errorf("update stack state: %w", err)
 		}
+	}
+	if !input.Continue {
+		stack.CurrentStep = ""
+		stack.LastCompletedStep = ""
+		stack.LastFailedStep = ""
+		stack.LastFailureReason = ""
 	}
 
 	if err := stack.TransitionTo(domain.StateValidating); err != nil {
@@ -243,14 +266,21 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		}
 	}
 	if input.Continue {
-		uc.emit(ctx, deploymentID, "info", "continue", "", "continuing deployment after failure")
+		message := "continuing deployment after failure"
+		if input.ResumeFromStep != "" {
+			message = fmt.Sprintf("%s from %s", message, input.ResumeFromStep)
+		}
+		uc.emit(ctx, deploymentID, "info", "continue", "", message)
 	}
 
+	uc.markStepStarted(ctx, stack, "validate")
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
 	if err := uc.runOpenBaoPreflight(ctx, stack); err != nil {
+		uc.markStepFailed(ctx, stack, "validate", err)
 		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
+	uc.markStepCompleted(ctx, stack, "validate")
 
 	// Transition: Validating → Installing
 	if err := uc.transition(ctx, stack, domain.StateInstalling); err != nil {
@@ -259,7 +289,7 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	}
 
 	// Execute installation phases A, B, C.
-	if err := uc.runPhases(ctx, stack, executor); err != nil {
+	if err := uc.runPhases(ctx, stack, executor, input.ResumeFromStep); err != nil {
 		if errors.Is(err, ErrDeploymentCancelled) {
 			slog.Info("installation stopped due to cancellation", "stack_id", stack.ID, "reason", err)
 			return
@@ -273,6 +303,7 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
+	uc.markStepCompleted(ctx, stack, "configuring")
 	uc.emit(ctx, deploymentID, "info", "configuring", "C", "post-install configuration applied")
 
 	// Transition: Configuring → HealthCheck
@@ -280,10 +311,13 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
+	uc.markStepStarted(ctx, stack, "health_check")
 	if err := uc.verifyDeployment(ctx, stack, executor); err != nil {
+		uc.markStepFailed(ctx, stack, resumeStepForReadinessError(err), err)
 		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
+	uc.markStepCompleted(ctx, stack, "health_check")
 	uc.emit(ctx, deploymentID, "info", "health_check", "C", "all health checks passed")
 
 	// Transition: HealthCheck → Completed
@@ -291,6 +325,10 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		uc.handleFailure(ctx, stack, executor, err)
 		return
 	}
+	stack.CurrentStep = ""
+	stack.LastFailedStep = ""
+	stack.LastFailureReason = ""
+	_ = uc.stackRepo.Update(ctx, stack)
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
 	if err := uc.registerStackTokenSources(ctx, stack); err != nil {
 		slog.Warn("token source registration failed", "stack_id", stack.ID, "error", err)
@@ -379,17 +417,17 @@ func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *do
 	}
 
 	if cfg.Storage != nil && strings.TrimSpace(strings.ToLower(cfg.Storage.Database.Mode)) == "create" {
-		appendBootstrap("storage", "postgresql", "access", fmt.Sprintf("host=nullus-postgresql.%s.svc.cluster.local port=5432 db=gitlabhq_production username=gitlab password=nullus-gitlab-password", namespace))
+		appendBootstrap("storage", "postgresql", "access", fmt.Sprintf("host=nullus-postgresql.%s.svc.cluster.local port=5432 db=gitlabhq_production username=gitlab password=nullus-gitlab-password", namespace)) // #nosec G101 -- default bootstrap credential, matches Helm default value
 	}
 	if cfg.Artifacts.StorageBackend.Enabled && strings.EqualFold(strings.TrimSpace(cfg.Artifacts.StorageBackend.Name), "minio") {
-		appendBootstrap("artifacts", "minio", "access", fmt.Sprintf("endpoint=http://nullus-minio.%s.svc.cluster.local:9000 access_key=nullus-admin secret_key=nullus-minio-secret", namespace))
+		appendBootstrap("artifacts", "minio", "access", fmt.Sprintf("endpoint=http://nullus-minio.%s.svc.cluster.local:9000 access_key=nullus-admin secret_key=nullus-minio-secret", namespace)) // #nosec G101 -- default bootstrap credential, matches Helm default value
 	}
 	cdTool := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(cfg.Pipeline.CDTool.Name)), " ", "-")
 	if cfg.Pipeline.CDTool.Enabled && (cdTool == "argocd" || cdTool == "argo-cd") {
 		appendBootstrap("pipeline", "argocd", "access", fmt.Sprintf("url=http://argo-cd-argocd-server.%s.svc.cluster.local username=admin password_secret=argocd-initial-admin-secret", namespace))
 	}
 	if cfg.Artifacts.SourceRepository.Enabled && (strings.EqualFold(strings.TrimSpace(cfg.Artifacts.SourceRepository.Name), "gitlab") || strings.EqualFold(strings.TrimSpace(cfg.Artifacts.SourceRepository.Name), "gitlab-ce")) {
-		appendBootstrap("artifacts", "gitlab", "access", fmt.Sprintf("url=http://gitlab-webservice-default.%s.svc:8181 username=root password=nullus-gitlab-password", namespace))
+		appendBootstrap("artifacts", "gitlab", "access", fmt.Sprintf("url=http://gitlab-webservice-default.%s.svc:8181 username=root password=nullus-gitlab-password", namespace)) // #nosec G101 -- default bootstrap credential, matches Helm default value
 	}
 
 	seen := map[string]struct{}{}
@@ -421,9 +459,21 @@ func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stac
 	return nil
 }
 
-func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {
+func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, resumeFromStep string) error {
+	resumeStarted := resumeFromStep == "" || resumeFromStep == "validate"
+	if resumeFromStep == "health_check" || resumeFromStep == "configuring" {
+		resumeStarted = false
+	}
 	for _, phase := range installPhases {
 		for _, step := range phase {
+			if !resumeStarted {
+				if step.name != resumeFromStep {
+					uc.emit(ctx, stack.ID, "info", "resume_skip", step.phase,
+						fmt.Sprintf("skipping previously completed %s", step.name))
+					continue
+				}
+				resumeStarted = true
+			}
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -442,6 +492,7 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
 				fmt.Sprintf("starting %s", step.name))
+			uc.markStepStarted(ctx, stack, step.name)
 
 			var stopTail func()
 			if tailer, ok := executor.(stepRuntimeTailer); ok {
@@ -458,6 +509,7 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 				if stopTail != nil {
 					stopTail()
 				}
+				uc.markStepFailed(ctx, stack, step.name, err)
 				return fmt.Errorf("step %s: %w", step.name, err)
 			}
 			if stopTail != nil {
@@ -479,6 +531,7 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
 				fmt.Sprintf("%s completed", step.name))
+			uc.markStepCompleted(ctx, stack, step.name)
 		}
 	}
 	return nil
@@ -553,6 +606,9 @@ func (uc *InstallStack) resolveExecutor(ctx context.Context, stack *domain.Stack
 func (uc *InstallStack) handleFailure(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, cause error) {
 	_ = executor
 	slog.Error("installation failed", "stack_id", stack.ID, "error", cause)
+	if stack.LastFailedStep == "" {
+		uc.markStepFailed(ctx, stack, firstNonEmpty(stack.CurrentStep, "deployment"), cause)
+	}
 	uc.emit(ctx, stack.ID, "error", "failed", "", fmt.Sprintf("installation failed: %s", cause))
 
 	if err := uc.transition(ctx, stack, domain.StateFailed); err != nil {
@@ -572,6 +628,107 @@ func (uc *InstallStack) transition(ctx context.Context, stack *domain.Stack, nex
 		return fmt.Errorf("persist state %s: %w", next, err)
 	}
 	return nil
+}
+
+func (uc *InstallStack) markStepStarted(ctx context.Context, stack *domain.Stack, step string) {
+	if stack == nil || uc.stackRepo == nil || strings.TrimSpace(step) == "" {
+		return
+	}
+	stack.CurrentStep = step
+	if stack.LastFailedStep == step {
+		stack.LastFailedStep = ""
+		stack.LastFailureReason = ""
+	}
+	if err := uc.stackRepo.Update(ctx, stack); err != nil {
+		slog.Warn("failed to persist deployment step start", "stack_id", stack.ID, "step", step, "error", err)
+	}
+}
+
+func (uc *InstallStack) markStepCompleted(ctx context.Context, stack *domain.Stack, step string) {
+	if stack == nil || uc.stackRepo == nil || strings.TrimSpace(step) == "" {
+		return
+	}
+	stack.CurrentStep = step
+	stack.LastCompletedStep = step
+	if stack.LastFailedStep == step {
+		stack.LastFailedStep = ""
+		stack.LastFailureReason = ""
+	}
+	if err := uc.stackRepo.Update(ctx, stack); err != nil {
+		slog.Warn("failed to persist deployment step completion", "stack_id", stack.ID, "step", step, "error", err)
+	}
+}
+
+func (uc *InstallStack) markStepFailed(ctx context.Context, stack *domain.Stack, step string, cause error) {
+	if stack == nil || uc.stackRepo == nil || strings.TrimSpace(step) == "" {
+		return
+	}
+	stack.CurrentStep = step
+	stack.LastFailedStep = step
+	if cause != nil {
+		stack.LastFailureReason = cause.Error()
+	}
+	if err := uc.stackRepo.Update(ctx, stack); err != nil {
+		slog.Warn("failed to persist deployment step failure", "stack_id", stack.ID, "step", step, "error", err)
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func isKnownResumeStep(step string) bool {
+	step = strings.TrimSpace(step)
+	if step == "" || step == "validate" || step == "configuring" || step == "health_check" {
+		return true
+	}
+	for _, phase := range installPhases {
+		for _, item := range phase {
+			if item.name == step {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func resumeStepForReadinessError(err error) string {
+	if err == nil {
+		return "health_check"
+	}
+	message := strings.ToLower(err.Error())
+	releaseSteps := []struct {
+		hint string
+		step string
+	}{
+		{hint: "gitlab-runner", step: "installing_runner"},
+		{hint: "argo-cd", step: "installing_argocd"},
+		{hint: "argocd", step: "installing_argocd"},
+		{hint: "gitlab", step: "installing_gitlab"},
+		{hint: "metrics-server", step: "installing_metrics_server"},
+		{hint: "nullus-postgresql", step: "installing_postgresql"},
+		{hint: "postgresql", step: "installing_postgresql"},
+		{hint: "nullus-minio", step: "installing_minio"},
+		{hint: "minio", step: "installing_minio"},
+		{hint: "kube-prometheus-stack", step: "installing_prometheus"},
+		{hint: "grafana", step: "installing_grafana"},
+		{hint: "envoy", step: "installing_gateway"},
+		{hint: "gateway", step: "installing_gateway"},
+	}
+	for _, item := range releaseSteps {
+		if strings.Contains(message, " for "+item.hint+":") ||
+			strings.Contains(message, " for "+item.hint+" ") ||
+			strings.Contains(message, "release "+item.hint+" ") ||
+			strings.Contains(message, "status check failed for "+item.hint) {
+			return item.step
+		}
+	}
+	return "health_check"
 }
 
 // emit sends a log entry to the streamer.

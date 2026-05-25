@@ -70,7 +70,7 @@ func (kc *KeycloakClient) getToken(ctx context.Context) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 		return "", fmt.Errorf("token request failed: status=%d body=%s", resp.StatusCode, string(body))
 	}
 
@@ -136,7 +136,7 @@ func (kc *KeycloakClient) RegisterOIDCClient(ctx context.Context, clientID strin
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusConflict {
 		return nil
 	}
-	body, _ = io.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 	return fmt.Errorf("register oidc client failed: status=%d body=%s", resp.StatusCode, string(body))
 }
 
@@ -160,7 +160,7 @@ func (kc *KeycloakClient) DeleteOIDCClient(ctx context.Context, clientID string)
 	defer lookupResp.Body.Close()
 
 	if lookupResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(lookupResp.Body)
+		body, _ := io.ReadAll(lookupResp.Body) // #nosec G104 -- best-effort body read for error context
 		return fmt.Errorf("lookup client id failed: status=%d body=%s", lookupResp.StatusCode, string(body))
 	}
 
@@ -187,7 +187,7 @@ func (kc *KeycloakClient) DeleteOIDCClient(ctx context.Context, clientID string)
 	if deleteResp.StatusCode == http.StatusNoContent || deleteResp.StatusCode == http.StatusNotFound {
 		return nil
 	}
-	body, _ := io.ReadAll(deleteResp.Body)
+	body, _ := io.ReadAll(deleteResp.Body) // #nosec G104 -- best-effort body read for error context
 	return fmt.Errorf("delete oidc client failed: status=%d body=%s", deleteResp.StatusCode, string(body))
 }
 
@@ -210,7 +210,7 @@ func (kc *KeycloakClient) ListClients(ctx context.Context) ([]OIDCClient, error)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 		return nil, fmt.Errorf("list clients failed: status=%d body=%s", resp.StatusCode, string(body))
 	}
 

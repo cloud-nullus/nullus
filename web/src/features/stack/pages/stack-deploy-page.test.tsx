@@ -142,6 +142,30 @@ describe('StackDeployPage', () => {
     expect(screen.getByText('45%')).not.toBeNull()
   })
 
+  it('formats deployment log timestamps in the browser local time zone', () => {
+    const localTimeSpy = vi.spyOn(Date.prototype, 'toLocaleTimeString').mockReturnValue('19:00:00')
+    mockUseDeployLog.mockReturnValue({
+      logs: [
+        {
+          id: 'log-local-time',
+          timestamp: '2026-01-01T10:00:00Z',
+          level: 'info',
+          step: 'installing_gitlab',
+          message: 'Timestamp check',
+        },
+      ],
+      status: 'running',
+      progress: 45,
+      isConnected: true,
+    })
+
+    renderWithProviders(<StackDeployPage />)
+
+    expect(screen.getByText('19:00:00')).not.toBeNull()
+    expect(localTimeSpy).toHaveBeenCalled()
+    localTimeSpy.mockRestore()
+  })
+
   it('shows empty state when connected but no logs yet', async () => {
     mockUseDeployLog.mockReturnValue({
       logs: [],

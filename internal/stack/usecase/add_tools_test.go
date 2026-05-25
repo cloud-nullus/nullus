@@ -27,8 +27,8 @@ func (f *fakeAddToolsRepo) GetByID(context.Context, string) (*domain.Stack, erro
 func (f *fakeAddToolsRepo) List(context.Context, string, bool) ([]*domain.Stack, error) {
 	return nil, nil
 }
-func (f *fakeAddToolsRepo) Update(context.Context, *domain.Stack) error           { return nil }
-func (f *fakeAddToolsRepo) Delete(context.Context, string) error                  { return nil }
+func (f *fakeAddToolsRepo) Update(context.Context, *domain.Stack) error { return nil }
+func (f *fakeAddToolsRepo) Delete(context.Context, string) error        { return nil }
 
 func (f *fakeAddToolsRepo) FindByID(_ context.Context, _ string) (*domain.Stack, error) {
 	f.findCalled = true

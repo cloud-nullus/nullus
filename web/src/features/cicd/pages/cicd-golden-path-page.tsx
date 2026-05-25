@@ -49,10 +49,12 @@ function goldenPathToStackOverrides(tools: CICDTool[]) {
   const monitoring = {
     collection: { tool: 'prometheus', version: 'latest' },
     visualization: { tool: 'grafana', version: 'latest' },
+    visualizations: [{ tool: 'grafana', version: 'latest' }],
   }
   const logging = {
     search: { tool: 'opensearch', version: 'latest' },
     traceLayer: { tool: 'tempo', version: 'latest' },
+    traceExporter: { tool: 'opentelemetry-collector', version: 'latest' },
   }
 
   for (const tool of tools) {
@@ -81,6 +83,7 @@ function goldenPathToStackOverrides(tools: CICDTool[]) {
         break
       case 'monitoring_visualization':
         monitoring.visualization = { tool: toolId, version }
+        monitoring.visualizations = [{ tool: toolId, version }]
         break
       case 'log_aggregation':
         logging.search = { tool: toolId, version }

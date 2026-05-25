@@ -272,4 +272,3 @@ func (h *DashboardHandler) fetchPodsInNamespace(
 	cache[key] = pods
 	return pods
 }
-

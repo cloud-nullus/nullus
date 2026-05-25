@@ -197,7 +197,8 @@ function getStages(result: 'success' | 'failed' | 'running'): Stage[] {
 export function StackDeploymentLogsPage() {
   const { deploymentId } = useParams<{ deploymentId: string }>()
   const navigate = useNavigate()
-  const logEndRef = useRef<HTMLDivElement>(null)
+  const logContainerRef = useRef<HTMLDivElement>(null)
+  const shouldFollowLogsRef = useRef(true)
   const [visibleCount, setVisibleCount] = useState(0)
 
   const entry = deploymentId ? DEPLOYMENT_DATA[deploymentId] : undefined
@@ -229,9 +230,17 @@ export function StackDeploymentLogsPage() {
     return () => clearInterval(interval)
   }, [allLogs.length])
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to bottom whenever a new log line appears
+  const handleLogScroll = () => {
+    const el = logContainerRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    shouldFollowLogsRef.current = distanceFromBottom < 48
+  }
+
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = logContainerRef.current
+    if (!el || !shouldFollowLogsRef.current) return
+    el.scrollTop = el.scrollHeight
   }, [visibleCount])
 
   const visibleLogs = allLogs.slice(0, visibleCount)
@@ -366,7 +375,11 @@ export function StackDeploymentLogsPage() {
           )}
         </div>
 
-        <div className="h-[1440px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]">
+        <div
+          ref={logContainerRef}
+          onScroll={handleLogScroll}
+          className="h-[1440px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]"
+        >
           {!entry && (
             <p className="text-[#f87171]">Deployment not found: {deploymentId}</p>
           )}
@@ -386,7 +399,6 @@ export function StackDeploymentLogsPage() {
               <span className="inline-block h-[1em] w-2 animate-pulse bg-[#a5b4fc]" />
             </div>
           )}
-          <div ref={logEndRef} />
         </div>
       </div>
     </div>

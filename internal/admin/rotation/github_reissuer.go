@@ -56,7 +56,7 @@ func (r *GitHubReissuer) Reissue(ctx context.Context, input ReissueInput) (strin
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 		return "", fmt.Errorf("github installation token issue failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 

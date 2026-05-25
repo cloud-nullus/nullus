@@ -37,18 +37,22 @@ var validTransitions = map[DeploymentState][]DeploymentState{
 
 // Stack represents a deployed stack of DevOps tools.
 type Stack struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	TemplateID string          `json:"template_id"`
-	OrgID      string          `json:"org_id"`
-	ClusterID  string          `json:"cluster_id"`
-	Namespace  string          `json:"namespace"`
-	Tools      []ToolConfig    `json:"tools,omitempty"`
-	State      DeploymentState `json:"state"`
-	Config     interface{}     `json:"config"` // JSONB
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	DeletedAt  *time.Time      `json:"deleted_at,omitempty"`
+	ID                string          `json:"id"`
+	Name              string          `json:"name"`
+	TemplateID        string          `json:"template_id"`
+	OrgID             string          `json:"org_id"`
+	ClusterID         string          `json:"cluster_id"`
+	Namespace         string          `json:"namespace"`
+	Tools             []ToolConfig    `json:"tools,omitempty"`
+	State             DeploymentState `json:"state"`
+	Config            interface{}     `json:"config"` // JSONB
+	CurrentStep       string          `json:"current_step,omitempty"`
+	LastCompletedStep string          `json:"last_completed_step,omitempty"`
+	LastFailedStep    string          `json:"last_failed_step,omitempty"`
+	LastFailureReason string          `json:"last_failure_reason,omitempty"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+	DeletedAt         *time.Time      `json:"deleted_at,omitempty"`
 }
 
 func (s *Stack) AddTools(newTools []ToolConfig) error {

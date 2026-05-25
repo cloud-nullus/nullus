@@ -225,12 +225,12 @@ func (h *StackHandler) SaveDraft(c echo.Context) error {
 
 // workloadPipeline is the response shape for a pipeline in the workloads endpoint.
 type workloadPipeline struct {
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	Namespace      string            `json:"namespace"`
-	Status         string            `json:"status"`
-	LastDeployment *workloadDeploy   `json:"lastDeployment"`
-	K8sObjects     []workloadK8sObj  `json:"k8sObjects"`
+	ID             string           `json:"id"`
+	Name           string           `json:"name"`
+	Namespace      string           `json:"namespace"`
+	Status         string           `json:"status"`
+	LastDeployment *workloadDeploy  `json:"lastDeployment"`
+	K8sObjects     []workloadK8sObj `json:"k8sObjects"`
 }
 
 type workloadDeploy struct {

@@ -339,9 +339,9 @@ func (h *DeployHandler) Continue(c echo.Context) error {
 	if stack == nil {
 		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", "stack not found")
 	}
-	if stack.State != domain.StateFailed {
+	if stack.State != domain.StateFailed && stack.State != domain.StatePending {
 		return errorResponse(c, http.StatusConflict, "STACK_CONTINUE_INVALID_STATE",
-			"continue requires state failed, got "+string(stack.State))
+			"continue requires state failed or pending, got "+string(stack.State))
 	}
 
 	var req deployRequest
@@ -354,6 +354,7 @@ func (h *DeployHandler) Continue(c echo.Context) error {
 	auditDetails := map[string]any{
 		"acknowledge_warnings": req.AcknowledgeWarnings,
 		"previous_state":       string(stack.State),
+		"resume_from_step":     firstNonEmpty(stack.LastFailedStep, stack.CurrentStep),
 	}
 
 	gate := h.runPreDeployGate(c, id, req.AcknowledgeWarnings)
@@ -369,9 +370,10 @@ func (h *DeployHandler) Continue(c echo.Context) error {
 	}
 
 	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{
-		StackID:      id,
-		Continue:     true,
-		PreserveLogs: true,
+		StackID:        id,
+		Continue:       true,
+		PreserveLogs:   true,
+		ResumeFromStep: firstNonEmpty(stack.LastFailedStep, stack.CurrentStep),
 	}); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONTINUE_FAILED", err.Error())
 	}
@@ -395,11 +397,15 @@ func (h *DeployHandler) Continue(c echo.Context) error {
 
 // statusResponse is the response body for GET /stacks/:id/status.
 type statusResponse struct {
-	StackID   string    `json:"stack_id"`
-	State     string    `json:"state"`
-	ClusterID string    `json:"cluster_id,omitempty"`
-	Namespace string    `json:"namespace"`
-	UpdatedAt time.Time `json:"updated_at"`
+	StackID           string    `json:"stack_id"`
+	State             string    `json:"state"`
+	ClusterID         string    `json:"cluster_id,omitempty"`
+	Namespace         string    `json:"namespace"`
+	CurrentStep       string    `json:"current_step,omitempty"`
+	LastCompletedStep string    `json:"last_completed_step,omitempty"`
+	LastFailedStep    string    `json:"last_failed_step,omitempty"`
+	LastFailureReason string    `json:"last_failure_reason,omitempty"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // Status handles GET /api/v1/stacks/:id/status.
@@ -416,13 +422,26 @@ func (h *DeployHandler) Status(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"data": statusResponse{
-			StackID:   stack.ID,
-			State:     string(stack.State),
-			ClusterID: stack.ClusterID,
-			Namespace: stack.Namespace,
-			UpdatedAt: stack.UpdatedAt,
+			StackID:           stack.ID,
+			State:             string(stack.State),
+			ClusterID:         stack.ClusterID,
+			Namespace:         stack.Namespace,
+			CurrentStep:       stack.CurrentStep,
+			LastCompletedStep: stack.LastCompletedStep,
+			LastFailedStep:    stack.LastFailedStep,
+			LastFailureReason: stack.LastFailureReason,
+			UpdatedAt:         stack.UpdatedAt,
 		},
 	})
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 var wsUpgrader = websocket.Upgrader{

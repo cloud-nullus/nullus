@@ -1,28 +1,32 @@
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - unused
-    - gofmt
-    - goimports
     - misspell
     - unconvert
     - unparam
+  settings:
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: US
 
-linters-settings:
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  misspell:
-    locale: US
-  goimports:
-    local-prefixes: github.com/cloud-nullus/draft
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/cloud-nullus/draft
 
 issues:
   exclude-dirs:

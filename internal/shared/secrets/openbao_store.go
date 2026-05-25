@@ -28,7 +28,7 @@ func (s *OpenBaoStore) Check(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 500 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 		return fmt.Errorf("openbao health check failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 
@@ -43,7 +43,7 @@ func (s *OpenBaoStore) Check(ctx context.Context) error {
 	}
 	defer lookupResp.Body.Close()
 	if lookupResp.StatusCode >= 300 {
-		b, _ := io.ReadAll(lookupResp.Body)
+		b, _ := io.ReadAll(lookupResp.Body) // #nosec G104 -- best-effort body read for error context
 		return fmt.Errorf("openbao token lookup failed: status=%d body=%s", lookupResp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	return nil
@@ -51,8 +51,8 @@ func (s *OpenBaoStore) Check(ctx context.Context) error {
 
 func NewOpenBaoStore(addr, token string) *OpenBaoStore {
 	return &OpenBaoStore{
-		addr:  strings.TrimRight(strings.TrimSpace(addr), "/"),
-		token: strings.TrimSpace(token),
+		addr:   strings.TrimRight(strings.TrimSpace(addr), "/"),
+		token:  strings.TrimSpace(token),
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -62,7 +62,7 @@ func (s *OpenBaoStore) PutToken(ctx context.Context, path, value string) error {
 	if err != nil {
 		return err
 	}
-	body, _ := json.Marshal(map[string]any{"data": map[string]any{"token": value}})
+	body, _ := json.Marshal(map[string]any{"data": map[string]any{"token": value}}) // #nosec G104 -- json.Marshal on simple types never errors
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.addr+"/v1/"+mount+"/data/"+subpath, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func (s *OpenBaoStore) PutToken(ctx context.Context, path, value string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 		return fmt.Errorf("openbao write failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	return nil
@@ -97,7 +97,7 @@ func (s *OpenBaoStore) GetToken(ctx context.Context, path string) (string, error
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 		return "", fmt.Errorf("openbao read failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	var out struct {

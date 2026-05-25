@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CreateStackRequest } from '../../../types'
-import { toCreateStackBody } from './stack-api'
+import { stackListRefetchInterval, toCreateStackBody } from './stack-api'
 
 const baseRequest: CreateStackRequest = {
   templateId: 'gitlab-argocd-v1',
@@ -121,5 +121,21 @@ describe('toCreateStackBody storage size mapping', () => {
     const body = toCreateStackBody(request)
 
     expect(body.config.storage).toBeUndefined()
+  })
+})
+
+describe('stackListRefetchInterval', () => {
+  it('polls while a deployment is still running', () => {
+    expect(stackListRefetchInterval({ items: [{ status: 'installing' }] })).toBe(3000)
+    expect(stackListRefetchInterval({ items: [{ status: 'health_check' }] })).toBe(3000)
+  })
+
+  it('stops polling when deployments are terminal', () => {
+    expect(stackListRefetchInterval({ items: [{ status: 'completed' }] })).toBe(false)
+    expect(stackListRefetchInterval({ items: [{ status: 'failed' }] })).toBe(false)
+  })
+
+  it('keeps an explicit polling interval for deletion tracking', () => {
+    expect(stackListRefetchInterval({ items: [{ status: 'completed' }] }, 3000)).toBe(3000)
   })
 })

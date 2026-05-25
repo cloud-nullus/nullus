@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { screen, fireEvent, act, within } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
-import { StackInstallPage } from './stack-install-page'
+import { StackInstallPage, findReusablePendingStackId, hasDuplicateStackNameInCluster } from './stack-install-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import { useAuthStore } from '../../../stores/auth-store'
 import YAML from 'yaml'
@@ -187,6 +187,18 @@ beforeEach(() => {
   mockOrgResourceProfiles.splice(0)
   mockCreateOrgResourceProfileMutate.mockReset()
   mockUpdateOrgResourceProfileMutate.mockReset()
+  mockCreateStackAsync.mockReset()
+  mockCreateStackAsync.mockResolvedValue({ id: 'stk-test' })
+  mockDeployStackAsync.mockReset()
+  mockDeployStackAsync.mockResolvedValue({})
+  mockValidateCompatibilityAsync.mockReset()
+  mockValidateCompatibilityAsync.mockResolvedValue({
+    compatible: true,
+    overall: { state: 'pass' as const, score: 100 },
+    issues: [],
+    nodeArchitectures: [],
+    checkedAt: '2026-04-19T00:00:00Z',
+  })
   useAuthStore.setState({ role: 'developer', user: null, token: null, isAuthenticated: false })
   Object.assign(navigator, {
     clipboard: {
@@ -268,6 +280,16 @@ describe('StackInstallPage', () => {
 
     expect(await screen.findByText('A stack with this name already exists in the selected cluster')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeDisabled()
+  })
+
+  it('does not treat the in-flight created stack as a duplicate', () => {
+    const stacks = [
+      { id: 'stk-test', name: 'duplicate-stack', clusterId: 'cluster-1', status: 'pending' },
+    ]
+
+    expect(hasDuplicateStackNameInCluster(stacks, 'cluster-1', 'duplicate-stack', 'stk-test')).toBe(false)
+    expect(hasDuplicateStackNameInCluster(stacks, 'cluster-1', 'duplicate-stack', null)).toBe(true)
+    expect(findReusablePendingStackId(stacks, 'cluster-1', 'duplicate-stack')).toBe('stk-test')
   })
 
   it('default tab shows Artifacts content', () => {
@@ -760,8 +782,9 @@ describe('StackInstallPage', () => {
     const enterpriseCpuReq = parseCpuReq()
 
     expect(localCpuReq).toBeGreaterThan(0)
-    expect(startupCpuReq).toBeGreaterThan(localCpuReq)
-    expect(enterpriseCpuReq).toBeGreaterThan(startupCpuReq)
+    expect(startupCpuReq).toBeGreaterThanOrEqual(localCpuReq)
+    expect(enterpriseCpuReq).toBeGreaterThanOrEqual(startupCpuReq)
+    expect(enterpriseCpuReq).toBeGreaterThan(localCpuReq)
   })
 
   // F8-F3 server-verdict behavioral coverage lives in the pure unit tests

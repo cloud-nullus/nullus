@@ -52,21 +52,21 @@ func stackConfigToCategoryMap(cfg domain.StackConfig) map[string]string {
 func canonicalToolName(name string) string {
 	key := strings.ToLower(strings.TrimSpace(name))
 	alias := map[string]string{
-		"gitlab":           "GitLab CE",
-		"gitlab-ce":        "GitLab CE",
-		"gitlab ci":        "GitLab CI",
-		"gitlab-ci":        "GitLab CI",
-		"gitlab registry":  "GitLab Registry",
-		"gitlab-registry":  "GitLab Registry",
-		"argocd":           "Argo CD",
-		"argo cd":          "Argo CD",
-		"minio":            "MinIO",
-		"prometheus":       "Prometheus",
-		"grafana":          "Grafana",
-		"harbor":           "Harbor",
-		"github":           "GitHub",
-		"github actions":   "GitHub Actions",
-		"github-actions":   "GitHub Actions",
+		"gitlab":          "GitLab CE",
+		"gitlab-ce":       "GitLab CE",
+		"gitlab ci":       "GitLab CI",
+		"gitlab-ci":       "GitLab CI",
+		"gitlab registry": "GitLab Registry",
+		"gitlab-registry": "GitLab Registry",
+		"argocd":          "Argo CD",
+		"argo cd":         "Argo CD",
+		"minio":           "MinIO",
+		"prometheus":      "Prometheus",
+		"grafana":         "Grafana",
+		"harbor":          "Harbor",
+		"github":          "GitHub",
+		"github actions":  "GitHub Actions",
+		"github-actions":  "GitHub Actions",
 	}
 	if v, ok := alias[key]; ok {
 		return v

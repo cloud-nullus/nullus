@@ -2,7 +2,9 @@ name: Review Bot
 
 on:
   pull_request:
+    types: [opened, reopened]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -21,15 +23,9 @@ jobs:
         with:
           go-version: '1.24'
 
-      - name: Run gosec
-        uses: securego/gosec@master
-        with:
-          args: '-fmt sarif -out gosec.sarif -exclude-dir=web ./...'
+      # TODO: public 전환 후 아래 주석 해제 — GitHub Advanced Security 필요
+      # - name: Run gosec
+      #   uses: securego/gosec@master
+      #   with:
+      #     args: '-exclude-dir=web ./...'
 
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: gosec.sarif
-          category: gosec
