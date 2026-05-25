@@ -22,7 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     # fork PR은 시크릿 접근 불가라 스킵
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'issue_comment' }}
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: PR Agent
         uses: Codium-ai/pr-agent@main
