@@ -234,9 +234,12 @@ export function calculateMultipliers(profile: PlanningProfile, slot: PlanningSlo
 		? profileClampMax[profile].cicd
 		: profileClampMax[profile].default
 
-  const clamp = (value: number, max: number) => Math.min(max, Math.max(0.5, value))
+  // A local kind cluster needs materially smaller requests than hosted
+  // environments; a 0.5 floor alone keeps GitLab and monitoring unschedulable.
+  const minimumMultiplier = profile === 'local' ? 0.15 : 0.5
+  const clamp = (value: number, max: number) => Math.min(max, Math.max(minimumMultiplier, value))
   const profileResourceScale: Record<PlanningProfile, number> = {
-    local: 0.65,
+    local: 0.25,
     startup: 0.8,
     standard: 1,
     enterprise: 1.15,
