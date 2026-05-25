@@ -72,6 +72,55 @@ Stack List에서 completed Stack 선택
   -> Nullus가 실행 상태/로그/이력 수집
 ```
 
+### 3.0 Runtime 배포 흐름 (Developer push 기준)
+
+```text
+1. Developer
+   git push -> Code Repository (GitLab, on-premise)
+
+2. Code Repository
+   webhook -> CI Platform (GitLab Runner) 트리거
+
+3. CI Platform: 소스 checkout
+   Code Repository에서 소스 pull
+
+4. CI Platform: 의존성 설치
+   Package Registry (on-premise, proxy 모드)로 요청
+     -> 캐시 hit: 내부에서 즉시 반환
+     -> 캐시 miss: npmjs.com / pkg.go.dev 등 upstream에서 fetch 후 캐시 저장
+
+5. CI Platform: build
+   소스 + 의존성으로 빌드 수행 
+   (단, docker build (Docker-in-Docker), Runner 안에서 Docker 데몬 실행, 보안 이슈 (privileged 필요))
+   빌드 산출물(artifact) -> Package Registry에 publish
+
+(phase 2)
+6. CI Platform: test
+   단위 테스트 / 통합 테스트 수행
+   test report -> Package Registry에 publish
+
+(phase 2)
+7. CI Platform: security scan (SAST / SCA)
+   소스 정적 분석 (SAST)
+   의존성 취약점 분석 (SCA)
+   SBOM 생성 -> Package Registry에 publish
+
+8. CI Platform: image build & push
+   container image 빌드
+   Image Registry (GitLab Registry, on-premise)에 push
+   tag: orders-api:<commit-sha>
+
+9. CI Platform: environment repo 갱신
+   Environment Repository의 manifest / values 내 image digest 또는 tag 업데이트 commit
+
+10. CD Tool (Argo CD)
+    Environment Repository 변경 감지 (polling)
+    -> Target Cluster (Kubernetes namespace)에 sync / deploy
+
+11. Nullus
+    CI run / CD sync 상태 수집 및 이력 표시
+```
+
 ### 3.1 Pipeline 구성 시점
 
 1. 사용자가 CI/CD 생성 화면에서 배포 완료 Stack을 선택한다.
@@ -353,3 +402,15 @@ Compatibility     Unverified - proceed after acknowledgement
 - Compatibility Matrix는 CI/CD 컴포넌트 사용을 강제로 차단하지 않는다.
 - 정상모드에서는 Image Registry의 immutable image tag 또는 digest를 배포 기준으로 사용한다.
 - `emergency_direct` 코드는 삭제하지 않고 별도 문서의 긴급 경로로 유지한다.
+
+<!-- [운영 참고] GitLab 설치 시 MinIO에 아래 버킷을 미리 생성해야 한다. 없으면 프로젝트 임포트/템플릿 생성 시 NoSuchBucket 404 에러 발생.
+  - gitlab-uploads   : 프로젝트 임포트, 첨부파일
+  - gitlab-artifacts : CI/CD 아티팩트
+  - gitlab-lfs       : Git LFS 객체
+  - gitlab-packages  : 패키지 레지스트리
+  - gitlab-registry  : 컨테이너 이미지 레지스트리
+  - gitlab-tmp       : 임시 파일
+생성 명령 (MinIO 파드 내):
+  mc alias set local http://localhost:9000 <user> <password>
+  mc mb local/gitlab-uploads && mc mb local/gitlab-artifacts && mc mb local/gitlab-lfs && mc mb local/gitlab-packages && mc mb local/gitlab-registry && mc mb local/gitlab-tmp
+-->
