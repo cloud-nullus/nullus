@@ -212,6 +212,28 @@ describe('StackListPage', () => {
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0)
   })
 
+  it('renders OSS console buttons and topology from monitoring when install history is missing', () => {
+    mockUseStackMonitoring.mockReturnValue({
+      data: {
+        oss_statuses: [
+          { key: 'source_repository', name: 'gitlab', version: '18.5.1', enabled: true, pod_count: 14 },
+          { key: 'visualization', name: 'grafana', version: '11.1.0', enabled: true, pod_count: 1 },
+        ],
+      },
+      isLoading: false,
+    })
+
+    renderWithProviders(<StackListPage />)
+
+    expect(screen.getByText('Open Source Consoles')).not.toBeNull()
+    expect(screen.getByTitle('gitlab 콘솔 열기')).not.toBeNull()
+    expect(screen.getByTitle('grafana 콘솔 열기')).not.toBeNull()
+    expect(screen.getByText('Pipeline Topology')).not.toBeNull()
+    expect(screen.getByText('Artifacts')).not.toBeNull()
+    expect(screen.getAllByText('Monitoring').length).toBeGreaterThan(1)
+    expect(screen.getByText('14')).not.toBeNull()
+  })
+
   it('renders empty state when no stacks exist', () => {
     mockUseStacks.mockReturnValue({
       data: { items: [], total: 0 },

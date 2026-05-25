@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, ChevronDown, ChevronRight, Clock, Pencil, Plus, Search, Trash2, User, Wrench, X } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Search, Trash2, Wrench, X } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../api/stack-api'
 import type { StackTemplate } from '../api/stack-api'
@@ -439,19 +439,15 @@ export function StackTemplatePage() {
       </div>
 
       {/* Template cards */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,460px),1fr))] gap-[var(--grid-gap)]">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
         {filtered.map((template) => (
           <div
             key={template.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => setSelectedTemplateId(template.id)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedTemplateId(template.id) }}
-            className="flex h-full cursor-pointer flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] text-left transition-colors duration-150 hover:border-[var(--color-border-hover)]"
+            className="flex h-full flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-150 hover:border-[var(--color-border-hover)]"
           >
             {/* Card header */}
             <div>
-              <h3 className="mb-1.5 mt-0 text-[15px] font-bold text-[var(--color-text-primary)]">
+              <h3 className="m-0 mb-1 text-[15px] font-bold text-[var(--color-text-primary)]">
                 {template.name}
               </h3>
               <p className="m-0 text-[13px] leading-[1.5] text-[var(--color-text-secondary)]">
@@ -459,43 +455,70 @@ export function StackTemplatePage() {
               </p>
             </div>
 
-            {/* Tools */}
-            <div className="flex flex-wrap gap-1.5">
-              {template.tools.map((tool) => (
-                <span
-                  key={tool}
-                  className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-[3px] text-[11px] font-medium text-[#a5b4fc]"
-                >
-                  {tool}
+            {/* Info grid */}
+            <div className="grid grid-cols-2 gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] p-3">
+              <div>
+                <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                  {t('stackTemplatePage.card.estimatedTime', '설치 시간')}
                 </span>
-              ))}
+                <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
+                  {estimateInstallMinutesForTemplate(template)}분
+                </p>
+              </div>
+              {template.recommendedUseCase && (
+                <div>
+                  <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                    {t('stackTemplatePage.card.recommendedUse', '권장 사용')}
+                  </span>
+                  <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
+                    {template.recommendedUseCase}
+                  </p>
+                </div>
+              )}
+              {template.minResources && (
+                <div className="col-span-2">
+                  <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                    {t('stackTemplatePage.card.minResources', '최소 리소스')}
+                  </span>
+                  <p className="m-0 mt-1 text-[12px] text-[var(--color-text-primary)]">
+                    {template.minResources}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Tools preview */}
+            <div>
+              <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                {t('stackTemplatePage.card.includedTools', '포함된 도구')}
+              </span>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {template.tools.slice(0, 4).map((tool) => (
+                  <span
+                    key={tool}
+                    className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-1 text-[11px] font-semibold text-[#a5b4fc]"
+                  >
+                    {tool}
+                  </span>
+                ))}
+                {template.tools.length > 4 && (
+                  <span className="rounded-md bg-[rgba(107,114,128,0.12)] px-2 py-1 text-[11px] font-semibold text-[#9ca3af]">
+                    +{template.tools.length - 4}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Footer */}
-            <div className="mt-auto flex items-center justify-between border-t border-[var(--color-border-default)] pt-2.5">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-secondary)]">
-                  <Clock size={13} />
-                  <span>{t('stackTemplatePage.card.estimatedMinutes', '{{minutes}} min', { minutes: estimateInstallMinutesForTemplate(template) })}</span>
-                </div>
-                {template.createdBy && (
-                  <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
-                    <User size={12} />
-                    <span>{template.createdBy}</span>
-                  </div>
-                )}
-              </div>
-                <div className="flex items-center gap-1.5">
-                  {isAdmin && (
-                    <>
+            <div className="mt-auto border-t border-[var(--color-border-default)] pt-3">
+              <div className="flex items-center gap-1.5">
+                {isAdmin && (
+                  <>
                     <Button
                       variant="ghost"
                       size="sm"
                       type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        openEditModal(template)
-                      }}
+                      onClick={() => openEditModal(template)}
                     >
                       <Pencil size={13} />
                       {t('stackTemplatePage.actions.edit', 'Edit')}
@@ -504,38 +527,22 @@ export function StackTemplatePage() {
                       variant="danger"
                       size="sm"
                       type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setDeleteTemplateId(template.id)
-                      }}
+                      onClick={() => setDeleteTemplateId(template.id)}
                     >
                       <Trash2 size={13} />
                       {t('stackTemplatePage.actions.delete', 'Delete')}
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleDuplicateTemplate(template)
-                      }}
-                    >
-                      {t('stackTemplatePage.actions.duplicateTemplate', 'Duplicate Template')}
-                    </Button>
                   </>
                 )}
                 <Button
-                  variant="primary"
+                  variant="outline"
                   size="sm"
                   type="button"
-                  className="whitespace-nowrap bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    handleUseTemplate(template)
-                  }}
+                  className="ml-auto"
+                  onClick={() => setSelectedTemplateId(template.id)}
                 >
-                  {t('stackTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
+                  <ExternalLink size={13} />
+                  {t('stackTemplatePage.actions.viewDetail', '상세 보기')}
                 </Button>
               </div>
             </div>
@@ -560,17 +567,47 @@ export function StackTemplatePage() {
               {t('stackTemplatePage.actions.close', 'Close')}
             </Button>
             {selectedTemplate && (
-              <Button
-                variant="primary"
-                size="sm"
-                type="button"
-                onClick={() => {
-                  setSelectedTemplateId(null)
-                  handleUseTemplate(selectedTemplate)
-                }}
-              >
-                {t('stackTemplatePage.actions.baseTemplate', 'Base Template')}
-              </Button>
+              <>
+                {isAdmin && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      onClick={() => {
+                        setSelectedTemplateId(null)
+                        openEditModal(selectedTemplate)
+                      }}
+                    >
+                      <Pencil size={13} />
+                      {t('stackTemplatePage.actions.edit', 'Edit')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => {
+                        setSelectedTemplateId(null)
+                        handleDuplicateTemplate(selectedTemplate)
+                      }}
+                    >
+                      {t('stackTemplatePage.actions.duplicateTemplate', 'Duplicate Template')}
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="button"
+                  className="bg-[linear-gradient(135deg,#34d399,#10b981)] text-white"
+                  onClick={() => {
+                    setSelectedTemplateId(null)
+                    handleUseTemplate(selectedTemplate)
+                  }}
+                >
+                  {t('stackTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
+                </Button>
+              </>
             )}
           </>
         }
@@ -578,43 +615,84 @@ export function StackTemplatePage() {
         {selectedTemplate && selectedDetail && (
           <div className="flex flex-col gap-4">
             <div>
-              <div className="mb-1.5 text-[13px] text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.description', 'Description')}</div>
-              <p className="m-0 text-sm leading-[1.7] text-[var(--color-text-primary)]">
+              <h4 className="mb-1 text-sm font-semibold text-[var(--color-text-primary)]">
+                {t('stackTemplatePage.modal.description', 'Description')}
+              </h4>
+              <p className="m-0 text-sm text-[var(--color-text-secondary)]">
                 {selectedDetail.fullDescription}
               </p>
             </div>
 
-            <div>
-              <div className="mb-2 text-[13px] text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.includedTools', 'Included Tools')}</div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-                {selectedTemplate.tools.map((tool) => (
-                  <div
-                    key={tool}
-                    className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2"
-                  >
-                    <Wrench size={13} color="#fbbf24" />
-                    <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{tool}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-[var(--color-border-default)] p-3">
-                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.estimatedDeployTime', 'Estimated Deploy Time')}</div>
-                <div className="text-base font-bold text-[#fcd34d]">
-                  {t('stackTemplatePage.modal.minutes', '{{minutes}} minutes', { minutes: estimateInstallMinutesForTemplate(selectedTemplate) })}
+              <div>
+                <span className="text-xs font-semibold text-[var(--color-text-muted)]">
+                  {t('stackTemplatePage.modal.estimatedDeployTime', '설치 시간')}
+                </span>
+                <p className="m-0 mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
+                  {estimateInstallMinutesForTemplate(selectedTemplate)}분
+                </p>
+              </div>
+              {selectedDetail.compatibility && (
+                <div>
+                  <span className="text-xs font-semibold text-[var(--color-text-muted)]">
+                    {t('stackTemplatePage.modal.compatibility', '권장 사용')}
+                  </span>
+                  <p className="m-0 mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
+                    {selectedDetail.compatibility}
+                  </p>
                 </div>
-              </div>
-              <div className="rounded-lg border border-[var(--color-border-default)] p-3">
-                <div className="mb-1.5 text-xs text-[var(--color-text-secondary)]">{t('stackTemplatePage.modal.resourceRequirements', 'Resource Requirements')}</div>
-                <div className="text-sm font-semibold text-[var(--color-text-primary)]">{selectedDetail.resource}</div>
-              </div>
+              )}
+              {selectedDetail.resource && (
+                <div className="col-span-2">
+                  <span className="text-xs font-semibold text-[var(--color-text-muted)]">
+                    {t('stackTemplatePage.modal.resourceRequirements', '최소 리소스')}
+                  </span>
+                  <p className="m-0 mt-1 text-sm text-[var(--color-text-primary)]">
+                    {selectedDetail.resource}
+                  </p>
+                </div>
+              )}
             </div>
 
-            <div className="rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] p-3">
-              <div className="mb-1.5 text-xs font-bold text-[#86efac]">{t('stackTemplatePage.modal.compatibility', 'Compatibility')}</div>
-              <div className="text-[13px] text-[var(--color-text-primary)]">{selectedDetail.compatibility}</div>
+            <div>
+              <h4 className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">
+                {t('stackTemplatePage.modal.includedTools', 'Included Tools')}
+              </h4>
+              {(selectedTemplate.toolDetails && selectedTemplate.toolDetails.length > 0) ? (
+                <div className="space-y-2">
+                  {selectedTemplate.toolDetails.map((tool) => (
+                    <div
+                      key={`${tool.category}-${tool.name}`}
+                      className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] p-2.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-1 text-[11px] font-semibold text-[#a5b4fc]">
+                          {tool.category}
+                        </span>
+                        <span className="text-sm font-semibold text-[var(--color-text-primary)]">
+                          {tool.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                        <span>Helm: {tool.helm_version}</span>
+                        <span>App: {tool.app_version}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+                  {selectedTemplate.tools.map((tool) => (
+                    <div
+                      key={tool}
+                      className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2"
+                    >
+                      <Wrench size={13} color="#fbbf24" />
+                      <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{tool}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
