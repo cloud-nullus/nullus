@@ -65,7 +65,7 @@ jobs:
                 '',
                 errors.map((e, i) => `${i + 1}. ${e}`).join('\n\n'),
                 '',
-                '> 참고: [Nullus PR/커밋 컨벤션 가이드](docs/20_개발가이드/Nullus_PR_커밋_컨벤션.md)',
+                '> 참고: [Nullus PR/커밋 컨벤션 가이드](https://github.com/cloud-nullus/draft/blob/main/docs/20_개발가이드/Nullus_PR_커밋_컨벤션.md)',
               ].join('\n');
 
               await github.rest.issues.createComment({
