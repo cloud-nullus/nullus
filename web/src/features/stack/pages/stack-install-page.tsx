@@ -18,7 +18,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates, useValidateCompatibility } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates } from '../api/stack-api'
 import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useUpdateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
@@ -35,7 +35,6 @@ import {
   isMatrixCompatibleWithCluster,
   matrixArchMismatches,
 } from '../utils/compatibility-arch'
-import { shouldBlockOnServerVerdict } from '../utils/server-verdict'
 import { extractDeployCompatError } from '../utils/deploy-error'
 import { getCompatIssueMessage } from '../utils/compat-issue-i18n'
 import { isDeployServerGateLocked } from '../utils/deploy-gate'
@@ -234,6 +233,43 @@ const stackInstallSchema = z.object({
 
 type StackInstallFormData = z.infer<typeof stackInstallSchema>
 
+export function hasDuplicateStackNameInCluster(
+  stacks: Array<{ id?: string; clusterId?: string; name: string; status?: string }>,
+  clusterId: string | null | undefined,
+  stackName: string,
+  pendingStackId: string | null = null,
+) {
+  const normalizedStackName = stackName.trim().toLowerCase()
+  if (!clusterId || !normalizedStackName) {
+    return false
+  }
+
+  return stacks.some(
+    (stack) =>
+      stack.id !== pendingStackId &&
+      stack.clusterId === clusterId &&
+      stack.name.trim().toLowerCase() === normalizedStackName
+  )
+}
+
+export function findReusablePendingStackId(
+  stacks: Array<{ id?: string; clusterId?: string; name: string; status?: string }>,
+  clusterId: string | null | undefined,
+  stackName: string,
+) {
+  const normalizedStackName = stackName.trim().toLowerCase()
+  if (!clusterId || !normalizedStackName) {
+    return null
+  }
+
+  return stacks.find(
+    (stack) =>
+      stack.clusterId === clusterId &&
+      stack.name.trim().toLowerCase() === normalizedStackName &&
+      stack.status === 'pending'
+  )?.id ?? null
+}
+
 // --- Tab definitions ---
 
 const TABS: { id: InstallTab; label: string }[] = [
@@ -275,9 +311,6 @@ export function StackInstallPage() {
   const currentOrgId = useAuthStore((state) => state.user?.orgId)
   const createStack = useCreateStack()
   const deployStack = useDeployStack()
-  // F8-F3: server-side Pre-Deploy Gate on /stacks/:id/validate. Runs after
-  // createStack so the server can evaluate stack.Tools + stack.ClusterID.
-  const validateCompatibility = useValidateCompatibility()
   // Separate from compatWarnAcknowledged (client pre-check). When the server
   // returns warn, we require a dedicated ack so the client can't silently
   // re-use a prior pre-check ack.
@@ -349,17 +382,24 @@ export function StackInstallPage() {
     'A stack with this name already exists in the selected cluster'
   )
   const noneLabel = t('stackInstall.common.unselected', 'Not selected')
+  const reusablePendingStackId = useMemo(
+    () =>
+      findReusablePendingStackId(
+        stackListData?.items ?? [],
+        effectiveClusterId,
+        normalizedDraftStackName,
+      ),
+    [effectiveClusterId, normalizedDraftStackName, stackListData?.items],
+  )
+  const inFlightStackId = pendingStackId ?? reusablePendingStackId
   const isDuplicateStackNameInCluster = useMemo(() => {
-    if (!effectiveClusterId || !normalizedDraftStackName) {
-      return false
-    }
-
-    return (stackListData?.items ?? []).some(
-      (stack) =>
-        stack.clusterId === effectiveClusterId &&
-        stack.name.trim().toLowerCase() === normalizedDraftStackName
+    return hasDuplicateStackNameInCluster(
+      stackListData?.items ?? [],
+      effectiveClusterId,
+      normalizedDraftStackName,
+      inFlightStackId,
     )
-  }, [effectiveClusterId, normalizedDraftStackName, stackListData?.items])
+  }, [effectiveClusterId, inFlightStackId, normalizedDraftStackName, stackListData?.items])
 
   useEffect(() => {
     setSelectedClusterId(draft.clusterId ?? '')
@@ -2071,14 +2111,13 @@ export function StackInstallPage() {
     }
 
     const request = buildStackRequest()
+    let activeStackId = inFlightStackId
 
     try {
       // Reuse an in-flight stackId if the user already created the stack in
-      // a previous submit attempt that hit a server-verdict block; otherwise
-      // create fresh. TODO(follow-up): when createStack fails mid-flow the
-      // current implementation may leave an orphan draft — needs an
-      // updateStack/saveDraft path for retries.
-      let stackId = pendingStackId
+      // this page session or if a previous attempt left a pending row with
+      // the same cluster/name. Otherwise create fresh.
+      let stackId = activeStackId
       if (!stackId) {
         const createRes = await createStack.mutateAsync(request)
         stackId = createRes?.id ?? null
@@ -2086,32 +2125,13 @@ export function StackInstallPage() {
           setTabGuardError('스택 생성은 되었지만 stack ID를 확인하지 못했습니다. 다시 시도해 주세요.')
           return
         }
+        activeStackId = stackId
         setPendingStackId(stackId)
-      }
-
-      // F8-F3: server re-runs the Pre-Deploy Gate against persisted stack state.
-      const verdict = await validateCompatibility.mutateAsync({ stackId })
-      setServerVerdict(verdict)
-
-      const decision = shouldBlockOnServerVerdict(verdict, serverWarnAcknowledged)
-      if (decision.block) {
-        setTabGuardError(
-          verdict.overall.state === 'fail'
-            ? t(
-                'stackInstall.compatibility.issue.serverFail',
-                '서버 호환성 검증에서 fail 응답을 받았습니다. 상세 issues 를 확인하고 조합을 수정해 주세요.',
-              )
-            : t(
-                'stackInstall.compatibility.issue.serverWarnAck',
-                '서버 호환성 경고가 발생했습니다. 아래 체크를 확인한 뒤 다시 배포를 눌러 주세요.',
-              ),
-        )
-        return
       }
 
       await deployStack.mutateAsync({
         stackId,
-        acknowledgeWarnings: decision.acknowledgeWarnings ?? false,
+        acknowledgeWarnings: serverWarnAcknowledged || compatWarnAcknowledged,
       })
       setPendingStackId(null)
       setServerVerdict(null)
@@ -2119,7 +2139,10 @@ export function StackInstallPage() {
       navigate(`/stack/deploy/${stackId}`)
     } catch (error) {
       const message = toDeployErrorMessage(error)
-      if (message.includes('COMPATIBILITY_REQUEST_INVALID') || message.includes('tools map or stack_id is required')) {
+      if (
+        !activeStackId &&
+        (message.includes('COMPATIBILITY_REQUEST_INVALID') || message.includes('tools map or stack_id is required'))
+      ) {
         setPendingStackId(null)
       }
       setTabGuardError(message)
@@ -3102,9 +3125,9 @@ export function StackInstallPage() {
                               <div className="p-1">
                                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">추천값 (읽기 전용)</div>
                                 <div className="grid grid-cols-3 gap-2 text-sm">
-                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div><div className="font-semibold text-[#a5b4fc]">{row.recommended.cpuRequest.toFixed(2)} | {row.recommended.cpuLimit.toFixed(2)}</div></div>
-                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.memoryRequestGi, row.units.memory).toFixed(2)} | {convertGiToUnit(row.recommended.memoryLimitGi, row.units.memory).toFixed(2)} {row.units.memory}</div></div>
-                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.storageRequestGi, row.units.storage).toFixed(2)} | {convertGiToUnit(row.recommended.storageLimitGi, row.units.storage).toFixed(2)} {row.units.storage}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div><div className="font-semibold text-[#a5b4fc]">{row.recommended.cpuRequest.toFixed(1)} | {row.recommended.cpuLimit.toFixed(1)}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.memoryRequestGi, row.units.memory).toFixed(1)} | {convertGiToUnit(row.recommended.memoryLimitGi, row.units.memory).toFixed(1)} {row.units.memory}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.storageRequestGi, row.units.storage).toFixed(1)} | {convertGiToUnit(row.recommended.storageLimitGi, row.units.storage).toFixed(1)} {row.units.storage}</div></div>
                                 </div>
                               </div>
 

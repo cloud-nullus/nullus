@@ -72,6 +72,9 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 		if existing == nil {
 			continue
 		}
+		if existing.ClusterID != input.ClusterID {
+			continue
+		}
 		if strings.ToLower(strings.TrimSpace(existing.Name)) == normalizedName {
 			return nil, fmt.Errorf("stack name %q already exists", input.Name)
 		}

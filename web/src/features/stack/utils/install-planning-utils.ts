@@ -132,6 +132,14 @@ export function round2(value: number): number {
   return Number(value.toFixed(2))
 }
 
+export function roundRecommendedHalf(value: number): number {
+  if (value <= 0) {
+    return 0
+  }
+
+  return Math.max(0.5, Math.round(value * 2) / 2)
+}
+
 export function ceil2(value: number): number {
   return Math.ceil(value * 100) / 100
 }
@@ -317,12 +325,12 @@ export function applyMultipliers(base: {
   storage_limit_gi: number
 }, multipliers: Pick<ResourceMultipliers, 'cpu' | 'memory' | 'storage'>): ResourceVector {
   return {
-    cpuRequest: round2(base.cpu_request * multipliers.cpu),
-    cpuLimit: round2(base.cpu_limit * multipliers.cpu),
-    memoryRequestGi: round2(base.memory_request_gi * multipliers.memory),
-    memoryLimitGi: round2(base.memory_limit_gi * multipliers.memory),
-    storageRequestGi: round2(base.storage_request_gi * multipliers.storage),
-    storageLimitGi: round2(base.storage_limit_gi * multipliers.storage),
+    cpuRequest: roundRecommendedHalf(base.cpu_request * multipliers.cpu),
+    cpuLimit: roundRecommendedHalf(base.cpu_limit * multipliers.cpu),
+    memoryRequestGi: roundRecommendedHalf(base.memory_request_gi * multipliers.memory),
+    memoryLimitGi: roundRecommendedHalf(base.memory_limit_gi * multipliers.memory),
+    storageRequestGi: roundRecommendedHalf(base.storage_request_gi * multipliers.storage),
+    storageLimitGi: roundRecommendedHalf(base.storage_limit_gi * multipliers.storage),
   }
 }
 
@@ -346,6 +354,7 @@ export function buildFormulaTooltip(toolLabelValue: string, defs: PlanningOption
     '   CPU 추천 = 기본 CPU × (1 + Σ(w × a × Δ))',
     '   MEM 추천 = 기본 MEM × (1 + Σ(w × m × Δ))',
     '   STO 추천 = 기본 STO × (1 + Σ(w × s × Δ))',
+    '   최종 추천값은 0.5 단위로 반올림됩니다.',
     `   ${clampText}`,
     '',
     '4) 적용값',

@@ -204,3 +204,51 @@ func TestCreateStack_AllowsDuplicateNameAfterDelete(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, second)
 }
+
+func TestCreateStack_RejectsDuplicateNameInSameCluster(t *testing.T) {
+	stackRepo := stackrepo.NewMemoryStackRepository()
+	templateRepo := stackrepo.NewMemoryTemplateRepository()
+	uc := NewCreateStack(stackRepo, templateRepo)
+
+	first, err := uc.Execute(context.Background(), CreateStackInput{
+		Name:      "duplicate-name",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config:    domain.StackConfig{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	_, err = uc.Execute(context.Background(), CreateStackInput{
+		Name:      " DUPLICATE-NAME ",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config:    domain.StackConfig{},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestCreateStack_AllowsDuplicateNameInDifferentCluster(t *testing.T) {
+	stackRepo := stackrepo.NewMemoryStackRepository()
+	templateRepo := stackrepo.NewMemoryTemplateRepository()
+	uc := NewCreateStack(stackRepo, templateRepo)
+
+	first, err := uc.Execute(context.Background(), CreateStackInput{
+		Name:      "shared-name",
+		OrgID:     "org-1",
+		ClusterID: "cluster-1",
+		Config:    domain.StackConfig{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	second, err := uc.Execute(context.Background(), CreateStackInput{
+		Name:      "shared-name",
+		OrgID:     "org-1",
+		ClusterID: "cluster-2",
+		Config:    domain.StackConfig{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, second)
+}

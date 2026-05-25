@@ -310,7 +310,8 @@ export function StackDeployPage() {
   const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
   const { pods, error: podWatchError, isConnected: isPodWatchConnected, namespace: podWatchNamespace } = usePodWatch(id)
   const continueStack = useContinueStack()
-  const logEndRef = useRef<HTMLDivElement>(null)
+  const logContainerRef = useRef<HTMLDivElement>(null)
+  const shouldFollowLogsRef = useRef(true)
   const failureToastRef = useRef('')
   const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number; namespace?: string } | null>(null)
   const [rawLogsOpen, setRawLogsOpen] = useState(true)
@@ -369,9 +370,18 @@ export function StackDeployPage() {
     )
   }
 
+  const handleLogScroll = () => {
+    const el = logContainerRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    shouldFollowLogsRef.current = distanceFromBottom < 48
+  }
+
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  })
+    const el = logContainerRef.current
+    if (!el || !rawLogsOpen || !shouldFollowLogsRef.current) return
+    el.scrollTop = el.scrollHeight
+  }, [logs.length, rawLogsOpen])
 
   return (
     <div>
@@ -491,6 +501,8 @@ export function StackDeployPage() {
           </div>
           {rawLogsOpen && (
             <div
+              ref={logContainerRef}
+              onScroll={handleLogScroll}
               className="h-[1200px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]"
             >
               {logs.length === 0 && (
@@ -507,7 +519,6 @@ export function StackDeployPage() {
                   <LogLineRow key={log.id} log={log} />
                 ))}
               </div>
-              <div ref={logEndRef} />
             </div>
           )}
         </div>

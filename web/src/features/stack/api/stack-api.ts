@@ -53,6 +53,28 @@ const queryKeys = {
   resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
 }
 
+const ACTIVE_DEPLOYMENT_STATES = new Set([
+  'pending',
+  'validating',
+  'installing',
+  'configuring',
+  'health_check',
+  'rolling_back',
+])
+
+export function stackListRefetchInterval(
+  data: { items?: Array<{ status?: string }> } | undefined,
+  forcedIntervalMs = 0,
+): number | false {
+  if (forcedIntervalMs > 0) {
+    return forcedIntervalMs
+  }
+
+  return data?.items?.some((stack) => ACTIVE_DEPLOYMENT_STATES.has(stack.status ?? ''))
+    ? 3000
+    : false
+}
+
 const stackApiCalls = {
   getTemplates: () =>
     api.get<RawTemplate[]>('/stacks/templates').then((r) => (r.data ?? []).map(normalizeTemplate)),
@@ -213,9 +235,8 @@ export function useStacks(
   return useQuery({
     queryKey: queryKeys.list(filters),
     queryFn: () => stackApiCalls.getList(filters),
-    refetchInterval: options?.refetchIntervalMs && options.refetchIntervalMs > 0
-      ? options.refetchIntervalMs
-      : false,
+    refetchInterval: (query) =>
+      stackListRefetchInterval(query.state.data, options?.refetchIntervalMs),
   })
 }
 
