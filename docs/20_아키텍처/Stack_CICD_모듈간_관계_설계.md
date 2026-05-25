@@ -1,32 +1,44 @@
-# Stack ↔ CI/CD 모듈 간 관계 설계
+# Stack를 통한 CICD 긴급모드 설계
 
 > 작성일: 2026-04-02
-> 상태: 구현 완료 (v0.2-alpha)
+> 수정일: 2026-05-25
+> 상태: 기존 직접 배포 경로 구현 / 일반 운영 경로 아님
+> 정상 운영 설계: [Stack_CICD_통합모드_설계.md](./Stack_CICD_통합모드_설계.md)
 
 ---
 
-## 1. 배경
+## 1. 문서 목적
 
-Nullus 플랫폼에서 **Stack**(인프라 프로비저닝)과 **CI/CD**(애플리케이션 파이프라인)는 각각 독립된 Bounded Context로 설계되어 있다. 사용자 워크플로우 상으로는 "Stack을 먼저 배포한 뒤, 그 위에서 CI/CD 파이프라인을 생성"하는 순차 관계가 있지만, 코드 레벨에서 이 관계가 미완성 상태였다.
+이 문서는 CI/CD 파이프라인이 배포된 Stack의 Repository 및 Registry를 사용하지 못하는 상황에서 동작하는 **긴급 직접 배포 모드**(`emergency_direct`)를 설명한다.
 
-### 발견된 문제
+신규 CI/CD 개발의 기본 경로는 `stack_integrated` 모드이며, 배포 완료 Stack의 Code Repository, Package Registry, Image Registry, CI Platform, CD Tool을 활용한다. 해당 설계는 별도 문서인 [Stack_CICD_통합모드_설계.md](./Stack_CICD_통합모드_설계.md)를 기준으로 한다.
 
-| 항목 | 설계 | 구현 (수정 전) |
-|------|------|--------------|
-| `pipelines.stack_id` DB 컬럼 | migration #20에서 추가 | ✅ FK 존재 |
-| `Pipeline.StackID` 도메인 필드 | 정의됨 | ✅ 필드 존재 |
-| Repository SELECT에 `stack_id` 포함 | 필요 | ❌ 누락 |
-| Repository INSERT에 `stack_id` 포함 | 필요 | ❌ 누락 |
-| Handler → UseCase `stack_id` 전달 | 필요 | ❌ 누락 |
-| `CreatePipelineInput.StackID` | 필요 | ❌ 필드 없음 |
-| Stack 존재/Org 검증 | 권장 | ❌ 없음 |
-| `GET /stacks/:id/pipelines` | 편의 API | ❌ 없음 |
+`emergency_direct` 모드는 다음 경우에만 사용한다.
 
----
+- Stack 컴포넌트 연계가 불가능하거나 아직 준비되지 않은 경우
+- 통합모드 장애 시 운영자가 명시적으로 긴급 실행을 선택한 경우
+- 로컬 Kind 환경에서 앱 배포 동작을 빠르게 검증하는 경우
+- 장애 복구 또는 제한된 임시 배포가 필요한 경우
 
-## 2. 설계 원칙
 
-### 2.1 Bounded Context 분리 유지
+## 2. 실행 흐름
+
+긴급모드에서는 Nullus가 애플리케이션 소스를 직접 가져와 이미지를 만들고 Kubernetes 대상 클러스터에 적용한다.
+
+```text
+Git Clone
+  -> Docker Build
+  -> kind load docker-image
+  -> K8s Manifest Generate
+  -> K8s Apply
+  -> Deployment Status / Log Tracking
+```
+
+이 흐름은 배포된 Stack의 `code_repository`, `package_registry`, `image_registry`를 정상적인 pipeline runtime으로 사용하는 구조가 아니다. 따라서 새로운 일반 운영 기능을 이 흐름 위에 확장하지 않는다.
+
+## 3. 모듈 관계
+
+### 3.1 Bounded Context 분리
 
 Stack 모듈과 CI/CD 모듈은 서로의 `domain` 패키지를 직접 import하지 않는다.
 
@@ -34,22 +46,22 @@ Stack 모듈과 CI/CD 모듈은 서로의 `domain` 패키지를 직접 import하
 internal/stack/domain/   ←  Stack Context 소유
 internal/cicd/domain/    ←  CI/CD Context 소유
 
-❌ 금지: import "github.com/cloud-nullus/draft/internal/stack/domain"
-         (CI/CD 모듈 내부에서)
+금지: CI/CD 모듈에서 internal/stack/domain 직접 import
 ```
 
-### 2.2 Port 인터페이스를 통한 느슨한 결합
+### 3.2 선택적 Stack 참조
 
-CI/CD 모듈이 Stack 정보를 필요로 할 때, 자신의 Port 레이어에 **최소 인터페이스**를 정의하고 Adapter에서 구현한다.
+긴급모드 및 기존 데이터 하위 호환을 위해 Pipeline은 Stack 없이 존재할 수 있다.
 
+- `pipelines.stack_id`는 nullable이다.
+- Stack이 삭제되면 FK는 `ON DELETE SET NULL`로 Pipeline을 유지한다.
+- `stack_id`가 존재하더라도 긴급모드 실행 자체는 Stack Registry를 사용한다는 의미가 아니다.
+
+```text
+Pipeline (emergency_direct)
+  -> optional stack_id: 목록 연결, 이력 문맥, 향후 통합 전환 식별자
+  -> deployment runtime: Nullus 직접 build/apply
 ```
-cicd/port/stack_reader.go    ← 인터페이스 정의 (CI/CD가 소유)
-cicd/adapter/repository/     ← 구현체 (같은 DB를 직접 조회)
-```
-
-### 2.3 선택적 참조 (Optional Reference)
-
-Pipeline은 Stack 없이도 독립적으로 존재할 수 있다. `stack_id`는 nullable이며, FK는 `ON DELETE SET NULL`로 설정되어 Stack 삭제 시 Pipeline이 고아가 되지만 유지된다.
 
 ---
 
@@ -61,10 +73,10 @@ Pipeline은 Stack 없이도 독립적으로 존재할 수 있다. `stack_id`는 
 ┌───────────────────────────────────────────────────────┐
 │                   CI/CD Context                       │
 │                                                       │
-│  ┌─────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │ Handler │───▶│   UseCase    │───▶│    Domain    │  │
-│  │         │    │ CreatePipeline│   │   Pipeline   │  │
-│  └─────────┘    └──────┬───────┘    └──────────────┘  │
+│  ┌─────────┐    ┌───────────────┐    ┌──────────────┐ │
+│  │ Handler │───▶│   UseCase     │───▶│    Domain    │ │
+│  │         │    │ CreatePipeline│    │   Pipeline   │ │
+│  └─────────┘    └──────┬────────┘    └──────────────┘ │
 │                        │                              │
 │                 ┌──────▼───────┐                      │
 │                 │     Port     │                      │
@@ -318,26 +330,27 @@ func (r *HTTPStackReader) GetStackSummary(ctx context.Context, stackID string) (
 }
 ```
 
+## 실행 정책
+
+| 조건 | 처리 |
+|---|---|
+| 사용자가 `emergency_direct`를 명시 선택 | 기존 직접 배포 흐름 실행 |
+| Stack 통합 연결이 장애 상태이고 긴급 실행 승인 | 기존 직접 배포 흐름 실행 |
+| 정상 운영 신규 Pipeline 구성 | 통합모드 문서를 따름 |
+| Stack Registry를 활용한 이미지 publish/deploy 필요 | 긴급모드 범위 아님 |
+
+긴급모드에서는 Compatibility Matrix를 CI/CD 실행 차단 규칙으로 추가하지 않는다. 다만 기존 Stack 자체의 설치 전 호환성 검증 기능은 별도 기능으로 유지된다.
+
+## 일반모드로의 전환 경계
+
+다음 요구가 발생하면 이 문서의 직접 배포 경로를 확장하지 않고 통합모드 구현으로 처리한다.
+
+- Stack의 Code Repository에 프로젝트를 만들거나 workflow 파일을 저장해야 하는 경우
+- Stack의 Package Registry에 artifact, SBOM, test report를 publish해야 하는 경우
+- Stack의 Image Registry에 이미지를 push하고 해당 digest를 배포해야 하는 경우
+- Stack의 CI Platform 또는 CD Tool에 pipeline/application을 프로비저닝해야 하는 경우
+- 외부 provider run 결과와 CD sync 결과를 Nullus 이력으로 수집해야 하는 경우
+
 ---
 
-## 9. 향후 확장 (Phase 2+)
-
-### 도메인 이벤트 도입
-
-v1.x 이후 Stack 배포 완료 시 `StackDeployed` 이벤트를 발행하고, CI/CD 모듈이 구독하여 사용 가능한 도구 목록을 캐싱하는 방식을 고려한다.
-
-```go
-// 향후 구현 예시
-type StackDeployed struct {
-    StackID   string
-    OrgID     string
-    ClusterID string
-    Tools     []string  // ["gitlab", "argocd", "prometheus", ...]
-}
-```
-
-이벤트 기반으로 전환하면, Pipeline 배포 시 Stack의 실시간 상태를 매번 조회하지 않고 로컬 캐시로 검증할 수 있다.
-
-### Pipeline → Stack 역참조
-
-Stack 상세 화면에서 "이 인프라에서 실행 중인 애플리케이션" 목록을 보여주는 기능을 위해, 이미 `GET /api/v1/stacks/:stackId/pipelines` 엔드포인트를 마련했다. 프론트엔드에서 이 API를 호출하면 된다.
+본 문서는 기존 직접 배포 코드를 유지하기 위한 긴급모드 기준이다. 정상 운영 CI/CD는 [Stack_CICD_통합모드_설계.md](./Stack_CICD_통합모드_설계.md)를 따른다.
