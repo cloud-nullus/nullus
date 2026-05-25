@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Circle, Loader, PlayCircle, Terminal, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDeployLog } from '../hooks/use-deploy-log'
@@ -9,6 +10,7 @@ import type { PodWatchRow } from '../hooks/use-pod-watch'
 import { useContinueStack } from '../api/stack-api'
 import { api } from '../../../lib/api'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
+import { formatTime, resolveLocale } from '../../../lib/locale'
 import { cn } from '../../../lib/utils'
 
 const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
@@ -137,11 +139,11 @@ function TimelineStep({ stage, isLast }: { stage: DeployStage & { status: Timeli
   )
 }
 
-function LogLineRow({ log }: { log: LogEntry }) {
+function LogLineRow({ log, locale }: { log: LogEntry; locale: string }) {
   return (
     <div className={cn('flex items-start gap-2.5 rounded border px-2 py-1', LOG_ROW_STYLE[log.level])}>
       <span className="shrink-0 whitespace-nowrap text-[#475569]">
-        {new Date(log.timestamp).toISOString().slice(11, 19)}
+        {formatTime(log.timestamp, locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
       </span>
       <span
         className={cn('shrink-0 whitespace-nowrap rounded px-1.5 text-[10px] font-bold leading-5', LOG_LEVEL_STYLE[log.level])}
@@ -305,6 +307,8 @@ const STATE_TO_PROGRESS: Record<string, number> = {
 }
 
 export function StackDeployPage() {
+  const { i18n } = useTranslation()
+  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const params = useParams<{ id?: string; deploymentId?: string }>()
   const id = params.id ?? params.deploymentId ?? ''
   const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
@@ -462,7 +466,7 @@ export function StackDeployPage() {
           </div>
           <div className="space-y-1.5 p-3 font-mono text-xs leading-[1.7]">
             {highlightedLogs.map((log) => (
-              <LogLineRow key={log.id} log={log} />
+              <LogLineRow key={log.id} log={log} locale={locale} />
             ))}
           </div>
         </div>
@@ -516,7 +520,7 @@ export function StackDeployPage() {
               )}
               <div className="space-y-1">
                 {logs.map((log) => (
-                  <LogLineRow key={log.id} log={log} />
+                  <LogLineRow key={log.id} log={log} locale={locale} />
                 ))}
               </div>
             </div>
