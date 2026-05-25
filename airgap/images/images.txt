@@ -37,7 +37,7 @@ jimmidyson/configmap-reload:v0.5.0
 minio/mc:RELEASE.2018-07-13T00-53-22Z
 minio/minio:RELEASE.2017-12-28T01-21-00Z
 opensearchproject/opensearch:2.16.0
-otel/opentelemetry-collector-k8s:0.90.0
+otel/opentelemetry-collector-contrib:0.90.0
 public.ecr.aws/docker/library/redis:7.4.1-alpine
 quay.io/argoproj/argocd:v2.13.3
 quay.io/jetstack/cert-manager-cainjector:v1.12.14
