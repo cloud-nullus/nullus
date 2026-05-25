@@ -16,6 +16,14 @@ export type ToolSelectionView = {
 	instances: number;
 };
 
+export type MonitoringToolView = {
+	key: string;
+	name: string;
+	version: string;
+	enabled: boolean;
+	pod_count: number;
+};
+
 export type LaunchTool = {
 	name: string;
 	version: string;
@@ -297,6 +305,33 @@ export function buildPipelineNodesFromSnapshot(snapshot: unknown): PipelineNode[
 		toPipelineNode("Monitoring", monitoring, "#10b981"),
 		toPipelineNode("Logging", logging, "#f59e0b"),
 		toPipelineNode("Trace", trace, "#ef4444"),
+	].filter((node): node is PipelineNode => !!node);
+}
+
+export function buildPipelineNodesFromMonitoring(tools: MonitoringToolView[] | undefined): PipelineNode[] {
+	const enabledTools = (tools ?? []).filter((tool) => tool.enabled);
+	const toNode = (category: string, keys: string[], color: string): PipelineNode | null => {
+		const matches = enabledTools.filter((tool) => keys.includes(tool.key));
+		if (matches.length === 0) {
+			return null;
+		}
+		return {
+			category,
+			oss: matches.map((tool) => tool.name).join(" + "),
+			version: matches.map((tool) => tool.version).join(" / "),
+			instances: matches.reduce((sum, tool) => sum + tool.pod_count, 0),
+			color,
+			health: "healthy",
+			sync: "synced",
+		};
+	};
+
+	return [
+		toNode("Artifacts", ["source_repository", "storage_backend"], "#6366f1"),
+		toNode("CD", ["cd_tool"], "#8b5cf6"),
+		toNode("Monitoring", ["collection", "visualization"], "#10b981"),
+		toNode("Logging", ["logging_collection", "logging_search"], "#f59e0b"),
+		toNode("Trace", ["trace_layer"], "#ef4444"),
 	].filter((node): node is PipelineNode => !!node);
 }
 

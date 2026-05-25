@@ -139,6 +139,7 @@ func main() {
 	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
 	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
+	monitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
 
 	// CI/CD: postgres repos
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
@@ -247,6 +248,7 @@ func main() {
 	exportHandler.RegisterRoutes(v1)
 	compatHandler.RegisterRoutes(stacks)
 	historyHandler.RegisterRoutes(stacks)
+	monitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	cicdGoldenPathHandler.RegisterRoutes(cicd)

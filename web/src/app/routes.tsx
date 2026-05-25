@@ -56,9 +56,6 @@ const CicdTemplatePage = lazy(() =>
   import('../features/cicd/pages/cicd-template-page').then((m) => ({ default: m.CicdTemplatePage }))
 )
 
-const CicdGoldenPathPage = lazy(() =>
-  import('../features/cicd/pages/cicd-golden-path-page').then((m) => ({ default: m.CicdGoldenPathPage }))
-)
 
 const CicdListPage = lazy(() =>
   import('../features/cicd/pages/cicd-list-page').then((m) => ({ default: m.CicdListPage }))
@@ -153,7 +150,6 @@ export const router = createBrowserRouter([
         children: [
           { path: 'cicd/developer-deploy', element: withSuspense(<DeveloperDeployPage />) },
           { path: 'cicd/templates', element: withSuspense(<CicdTemplatePage />) },
-          { path: 'cicd/golden-paths', element: withSuspense(<CicdGoldenPathPage />) },
           { path: 'cicd/create', element: withSuspense(<DeveloperDeployPage />) },
           { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
           { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },

@@ -5,12 +5,13 @@ import { Button } from "../../../components/ui/button"
 import { Modal } from "../../../components/ui/modal"
 import { cn } from "../../../lib/utils"
 import type { Stack } from "../api/stack-api"
-import { useStackHistory } from "../api/stack-api"
+import { useStackHistory, useStackMonitoring } from "../api/stack-api"
 import { RetryStackButton } from "./retry-stack-button"
 import type { StackStatus as RetryStackStatus } from "../utils/retry-policy"
 import type { PipelineNode, LaunchTool } from "../utils/stack-list-utils"
 import {
   buildPipelineNodesFromSnapshot,
+  buildPipelineNodesFromMonitoring,
   buildInstalledToolsFromSnapshot,
   extractAccessDomain,
   toolLaunchURL,
@@ -54,14 +55,18 @@ export function StackInfoTab({
 	const [connOpen, setConnOpen] = useState(false);
 	const [connCopyState, setConnCopyState] = useState<"idle" | "copied" | "failed">("idle");
 	const { data: historyData } = useStackHistory(stack.id);
+	const { data: monitoringData } = useStackMonitoring(stack.id, 30_000);
 	const latestSnapshot = Array.isArray(historyData) && historyData.length > 0
 		? historyData[historyData.length - 1].snapshot
 		: null;
 	const derivedNodes = buildPipelineNodesFromSnapshot(latestSnapshot);
+	const monitoringNodes = buildPipelineNodesFromMonitoring(monitoringData?.oss_statuses);
 	const pipelineNodes: PipelineNode[] =
 		derivedNodes.length > 0
 			? derivedNodes
-			: [{ category: "Stack", oss: stack.templateName, version: "-", instances: 1, color: "#6366f1", health: "progressing", sync: "out-of-sync" }];
+			: monitoringNodes.length > 0
+				? monitoringNodes
+				: [{ category: "Stack", oss: stack.templateName, version: "-", instances: 1, color: "#6366f1", health: "progressing", sync: "out-of-sync" }];
 
 	const degradedState = ["failed", "rolling_back", "rolled_back", "cancelled"].includes(stack.status);
 	const progressingState = ["pending", "terminating", "validating", "installing", "configuring", "health_check"].includes(stack.status);
@@ -70,7 +75,12 @@ export function StackInfoTab({
 		health: degradedState ? "degraded" : progressingState ? "progressing" : "healthy",
 		sync: degradedState ? "out-of-sync" : "synced",
 	}));
-	const installedTools = buildInstalledToolsFromSnapshot(latestSnapshot);
+	const snapshotTools = buildInstalledToolsFromSnapshot(latestSnapshot);
+	const installedTools = snapshotTools.length > 0
+		? snapshotTools
+		: (monitoringData?.oss_statuses ?? [])
+			.filter((tool) => tool.enabled)
+			.map((tool) => ({ name: tool.name, version: tool.version }));
 	const accessDomain = extractAccessDomain(latestSnapshot, stack.name);
 	const launchTools: LaunchTool[] = installedTools.map((tool) => ({
 		name: tool.name,
