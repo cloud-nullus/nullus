@@ -21,35 +21,29 @@ type installStep struct {
 	name     string
 	phase    string
 	duration time.Duration
+	deps     []string
 }
 
-// installPhases defines the ordered phases A→B→C and the steps within each.
-var installPhases = [][]installStep{
-	// Phase A
-	{
-		{name: "installing_cert_manager", phase: "A", duration: time.Second},
-		{name: "installing_metrics_server", phase: "A", duration: time.Second},
-		{name: "installing_openbao", phase: "A", duration: time.Second},
-		{name: "installing_postgresql", phase: "A", duration: time.Second},
-		{name: "installing_minio", phase: "A", duration: time.Second},
-		{name: "installing_object_storage_secret", phase: "A", duration: time.Second},
-	},
-	// Phase B
-	{
-		{name: "installing_gitlab", phase: "B", duration: 2 * time.Second},
-		{name: "installing_argocd", phase: "B", duration: time.Second},
-		{name: "installing_runner", phase: "B", duration: time.Second},
-	},
-	// Phase C
-	{
-		{name: "installing_prometheus", phase: "C", duration: time.Second},
-		{name: "installing_grafana", phase: "C", duration: time.Second},
-		{name: "installing_logging", phase: "C", duration: time.Second},
-		{name: "installing_log_search", phase: "C", duration: time.Second},
-		{name: "installing_opentelemetry", phase: "C", duration: time.Second},
-		{name: "installing_gateway", phase: "C", duration: time.Second},
-		{name: "integration_check", phase: "C", duration: time.Second},
-	},
+// installDAG defines step dependencies with phase labels.
+var installDAG = []installStep{
+	{name: "installing_cert_manager", phase: "A", duration: time.Second},
+	{name: "installing_metrics_server", phase: "A", duration: time.Second},
+	{name: "installing_postgresql", phase: "A", duration: time.Second, deps: []string{"installing_cert_manager", "installing_metrics_server"}},
+	{name: "installing_minio", phase: "A", duration: time.Second, deps: []string{"installing_postgresql"}},
+	{name: "installing_object_storage_secret", phase: "A", duration: time.Second, deps: []string{"installing_minio"}},
+
+	{name: "installing_openbao", phase: "B", duration: time.Second, deps: []string{"installing_postgresql", "installing_minio"}},
+	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"installing_openbao", "installing_object_storage_secret"}},
+	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"installing_openbao"}},
+	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"installing_openbao", "installing_gitlab"}},
+
+	{name: "installing_prometheus", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
+	{name: "installing_grafana", phase: "C", duration: time.Second, deps: []string{"installing_prometheus"}},
+	{name: "installing_logging", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
+	{name: "installing_log_search", phase: "C", duration: time.Second, deps: []string{"installing_logging"}},
+	{name: "installing_opentelemetry", phase: "C", duration: time.Second, deps: []string{"installing_logging"}},
+	{name: "installing_gateway", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
+	{name: "integration_check", phase: "C", duration: time.Second, deps: []string{"installing_gateway"}},
 }
 
 type InstallStack struct {
@@ -247,10 +241,6 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	}
 
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
-	if err := uc.runOpenBaoPreflight(ctx, stack); err != nil {
-		uc.handleFailure(ctx, stack, executor, err)
-		return
-	}
 
 	// Transition: Validating → Installing
 	if err := uc.transition(ctx, stack, domain.StateInstalling); err != nil {
@@ -297,7 +287,7 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	}
 }
 
-func (uc *InstallStack) runOpenBaoPreflight(ctx context.Context, stack *domain.Stack) error {
+func (uc *InstallStack) runOpenBaoHealthGate(ctx context.Context, stack *domain.Stack, phase string) error {
 	if stack == nil {
 		return nil
 	}
@@ -310,12 +300,14 @@ func (uc *InstallStack) runOpenBaoPreflight(ctx context.Context, stack *domain.S
 		return nil
 	}
 	if uc.secretRouter == nil || !uc.secretRouter.Has(provider) {
-		return fmt.Errorf("openbao preflight failed: secret provider is not configured")
+		uc.emit(ctx, stack.ID, "warn", "installing_openbao", phase, "openbao provider is not configured in API router; proceeding with in-cluster health gate")
+		return nil
 	}
 	if err := uc.secretRouter.Check(ctx, provider); err != nil {
-		return fmt.Errorf("openbao preflight failed: %w", err)
+		uc.emit(ctx, stack.ID, "warn", "installing_openbao", phase, fmt.Sprintf("openbao router health check failed (non-blocking): %v", err))
+		return nil
 	}
-	uc.emit(ctx, stack.ID, "info", "validate", "A", "openbao preflight check passed")
+	uc.emit(ctx, stack.ID, "info", "installing_openbao", phase, "openbao health gate check passed")
 	return nil
 }
 
@@ -422,8 +414,28 @@ func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stac
 }
 
 func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {
-	for _, phase := range installPhases {
-		for _, step := range phase {
+	completed := map[string]bool{}
+	processed := map[string]bool{}
+
+	for len(processed) < len(installDAG) {
+		progressed := false
+
+		for _, step := range installDAG {
+			if processed[step.name] {
+				continue
+			}
+
+			depsDone := true
+			for _, dep := range step.deps {
+				if !completed[dep] {
+					depsDone = false
+					break
+				}
+			}
+			if !depsDone {
+				continue
+			}
+
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -437,6 +449,9 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 				}
 				uc.emit(ctx, stack.ID, "info", "skipped", step.phase,
 					fmt.Sprintf("skipped %s because it is not selected", step.name))
+				processed[step.name] = true
+				completed[step.name] = true
+				progressed = true
 				continue
 			}
 
@@ -460,6 +475,14 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 				}
 				return fmt.Errorf("step %s: %w", step.name, err)
 			}
+			if step.name == "installing_openbao" {
+				if err := uc.runOpenBaoHealthGate(ctx, stack, step.phase); err != nil {
+					if stopTail != nil {
+						stopTail()
+					}
+					return err
+				}
+			}
 			if stopTail != nil {
 				stopTail()
 			}
@@ -479,6 +502,13 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 
 			uc.emit(ctx, stack.ID, "info", step.name, step.phase,
 				fmt.Sprintf("%s completed", step.name))
+			processed[step.name] = true
+			completed[step.name] = true
+			progressed = true
+		}
+
+		if !progressed {
+			return fmt.Errorf("install DAG is blocked: unresolved dependencies or disabled prerequisite steps")
 		}
 	}
 	return nil

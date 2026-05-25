@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -151,6 +152,44 @@ type fakeStepExecutor struct {
 	steps   []string
 	failAt  string
 	errText string
+}
+
+type fakeSelectableExecutor struct {
+	mu      sync.Mutex
+	steps   []string
+	enabled map[string]bool
+}
+
+type fakeSecretStore struct{}
+
+func (s *fakeSecretStore) PutToken(_ context.Context, _, _ string) error { return nil }
+func (s *fakeSecretStore) GetToken(_ context.Context, _ string) (string, error) { return "", nil }
+func (s *fakeSecretStore) Check(_ context.Context) error { return nil }
+
+func (e *fakeSelectableExecutor) ExecuteStep(_ context.Context, _ string, step, _ string) error {
+	if !e.IsStepEnabled(step) {
+		return nil
+	}
+	e.mu.Lock()
+	e.steps = append(e.steps, step)
+	e.mu.Unlock()
+	return nil
+}
+
+func (e *fakeSelectableExecutor) IsStepEnabled(step string) bool {
+	enabled, ok := e.enabled[step]
+	if !ok {
+		return false
+	}
+	return enabled
+}
+
+func (e *fakeSelectableExecutor) calledSteps() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]string, len(e.steps))
+	copy(out, e.steps)
+	return out
 }
 
 func (e *fakeStepExecutor) ExecuteStep(_ context.Context, _ string, step, _ string) error {
@@ -525,4 +564,158 @@ func TestInstallStack_StopsWhenStackIsCancelledDuringRun(t *testing.T) {
 	assert.NotContains(t, exec.stepCalls, "installing_gateway")
 	assert.NotContains(t, streamer.steps(), "rolling_back")
 	assert.NotContains(t, streamer.steps(), "failed")
+}
+
+func TestInstallStack_DAG_OpenBaoEnabledInstallsBeforeCoreServices(t *testing.T) {
+	stack := &domain.Stack{
+		ID:    "stk_openbao_enabled",
+		State: domain.StatePending,
+		Config: domain.StackConfig{
+			Authentication: &domain.AuthenticationConfig{Provider: "openbao"},
+		},
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeSelectableExecutor{enabled: map[string]bool{
+		"installing_cert_manager":          true,
+		"installing_metrics_server":        true,
+		"installing_postgresql":            true,
+		"installing_minio":                 true,
+		"installing_object_storage_secret": false,
+		"installing_openbao":               true,
+		"installing_gitlab":                false,
+		"installing_argocd":                true,
+		"installing_runner":                false,
+		"installing_prometheus":            false,
+		"installing_grafana":               false,
+		"installing_logging":               false,
+		"installing_log_search":            false,
+		"installing_opentelemetry":         false,
+		"installing_gateway":               true,
+		"integration_check":                true,
+	}}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+	router := secrets.NewRouter()
+	router.Register("openbao", &fakeSecretStore{})
+	uc.secretRouter = router
+	require.NoError(t, uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID}))
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	steps := exec.calledSteps()
+	openbaoIdx := indexOfStep(steps, "installing_openbao")
+	argocdIdx := indexOfStep(steps, "installing_argocd")
+	require.GreaterOrEqual(t, openbaoIdx, 0)
+	require.GreaterOrEqual(t, argocdIdx, 0)
+	assert.Less(t, openbaoIdx, argocdIdx)
+	assert.Equal(t, domain.StateCompleted, repo.getState(stack.ID))
+}
+
+func TestInstallStack_DAG_OpenBaoDisabledSkipsAndContinues(t *testing.T) {
+	stack := &domain.Stack{
+		ID:    "stk_openbao_disabled",
+		State: domain.StatePending,
+		Config: domain.StackConfig{
+			Authentication: &domain.AuthenticationConfig{Provider: ""},
+		},
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeSelectableExecutor{enabled: map[string]bool{
+		"installing_cert_manager":          true,
+		"installing_metrics_server":        true,
+		"installing_postgresql":            true,
+		"installing_minio":                 true,
+		"installing_object_storage_secret": false,
+		"installing_openbao":               false,
+		"installing_gitlab":                false,
+		"installing_argocd":                true,
+		"installing_runner":                false,
+		"installing_prometheus":            false,
+		"installing_grafana":               false,
+		"installing_logging":               false,
+		"installing_log_search":            false,
+		"installing_opentelemetry":         false,
+		"installing_gateway":               true,
+		"integration_check":                true,
+	}}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+	require.NoError(t, uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID}))
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	steps := exec.calledSteps()
+	assert.Equal(t, -1, indexOfStep(steps, "installing_openbao"))
+	assert.GreaterOrEqual(t, indexOfStep(steps, "installing_argocd"), 0)
+	assert.Equal(t, domain.StateCompleted, repo.getState(stack.ID))
+}
+
+func TestInstallStack_DAG_OpenBaoEnabled_ContinuesWithoutRouterProvider(t *testing.T) {
+	stack := &domain.Stack{
+		ID:    "stk_openbao_gate_warn",
+		State: domain.StatePending,
+		Config: domain.StackConfig{
+			Authentication: &domain.AuthenticationConfig{Provider: "openbao"},
+		},
+	}
+	repo := newFakeStackRepo(stack)
+	streamer := &fakeStreamer{}
+	exec := &fakeSelectableExecutor{enabled: map[string]bool{
+		"installing_cert_manager":          true,
+		"installing_metrics_server":        true,
+		"installing_postgresql":            true,
+		"installing_minio":                 true,
+		"installing_object_storage_secret": false,
+		"installing_openbao":               true,
+		"installing_gitlab":                true,
+		"installing_argocd":                true,
+		"installing_runner":                true,
+		"installing_prometheus":            false,
+		"installing_grafana":               false,
+		"installing_logging":               false,
+		"installing_log_search":            false,
+		"installing_opentelemetry":         false,
+		"installing_gateway":               true,
+		"integration_check":                true,
+	}}
+
+	uc := NewInstallStack(repo, streamer, WithExecutor(exec))
+	require.NoError(t, uc.Execute(context.Background(), InstallStackInput{StackID: stack.ID}))
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if repo.getState(stack.ID) == domain.StateCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	steps := exec.calledSteps()
+	assert.GreaterOrEqual(t, indexOfStep(steps, "installing_openbao"), 0)
+	assert.GreaterOrEqual(t, indexOfStep(steps, "installing_argocd"), 0)
+	assert.Equal(t, domain.StateCompleted, repo.getState(stack.ID))
+	assert.Contains(t, streamer.steps(), "installing_openbao")
+}
+
+func indexOfStep(steps []string, target string) int {
+	for i, step := range steps {
+		if step == target {
+			return i
+		}
+	}
+	return -1
 }
