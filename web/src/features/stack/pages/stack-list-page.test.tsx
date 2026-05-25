@@ -216,8 +216,10 @@ describe('StackListPage', () => {
     mockUseStackMonitoring.mockReturnValue({
       data: {
         oss_statuses: [
-          { key: 'source_repository', name: 'gitlab', version: '18.5.1', enabled: true, pod_count: 14 },
-          { key: 'visualization', name: 'grafana', version: '11.1.0', enabled: true, pod_count: 1 },
+          { key: 'source_repository', name: 'gitlab', version: '18.5.1', enabled: true, pod_count: 14, ready_pods: 14, pods: [] },
+          { key: 'cd_tool', name: 'argocd', version: '2.13.2', enabled: true, pod_count: 1, ready_pods: 1, pods: [] },
+          { key: 'visualization', name: 'grafana', version: '11.1.0', enabled: true, pod_count: 1, ready_pods: 1, pods: [] },
+          { key: 'storage_backend', name: 'minio', version: '2024.11.7', enabled: true, pod_count: 1, ready_pods: 1, pods: [] },
         ],
       },
       isLoading: false,
@@ -227,11 +229,25 @@ describe('StackListPage', () => {
 
     expect(screen.getByText('Open Source Consoles')).not.toBeNull()
     expect(screen.getByTitle('gitlab 콘솔 열기')).not.toBeNull()
+    expect(screen.getByTitle('argocd 콘솔 열기')).not.toBeNull()
     expect(screen.getByTitle('grafana 콘솔 열기')).not.toBeNull()
+    expect(screen.getByTitle('minio 콘솔 열기')).not.toBeNull()
+    expect(screen.getByAltText('gitlab logo')).toHaveAttribute('src', '/tool-icons/gitlab.svg')
+    expect(screen.getByAltText('argocd logo')).toHaveAttribute('src', '/tool-icons/argo.svg')
+    expect(screen.getByAltText('grafana logo')).toHaveAttribute('src', '/tool-icons/grafana.svg')
+    expect(screen.getByAltText('minio logo')).toHaveAttribute('src', '/tool-icons/minio.svg')
+    fireEvent.error(screen.getByAltText('grafana logo'))
+    expect(screen.getByLabelText('grafana logo fallback')).toHaveTextContent('G')
     expect(screen.getByText('Pipeline Topology')).not.toBeNull()
     expect(screen.getByText('Artifacts')).not.toBeNull()
     expect(screen.getAllByText('Monitoring').length).toBeGreaterThan(1)
-    expect(screen.getByText('14')).not.toBeNull()
+    expect(screen.getByText('15')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Monitoring' }))
+    expect(screen.getByAltText('gitlab icon')).toHaveAttribute('src', '/tool-icons/gitlab.svg')
+    expect(screen.getByAltText('argocd icon')).toHaveAttribute('src', '/tool-icons/argo.svg')
+    expect(screen.getByAltText('grafana icon')).toHaveAttribute('src', '/tool-icons/grafana.svg')
+    expect(screen.getByAltText('minio icon')).toHaveAttribute('src', '/tool-icons/minio.svg')
   })
 
   it('renders empty state when no stacks exist', () => {

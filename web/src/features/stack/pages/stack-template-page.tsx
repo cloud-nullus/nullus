@@ -36,8 +36,19 @@ import {
   estimateInstallMinutesForTemplate,
 } from '../utils/template-config'
 
+const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
+  source_repository: { bg: 'rgba(59,130,246,0.12)', color: '#60a5fa' },
+  ci_platform: { bg: 'rgba(139,92,246,0.12)', color: '#a78bfa' },
+  container_registry: { bg: 'rgba(34,197,94,0.12)', color: '#86efac' },
+  storage_backend: { bg: 'rgba(249,115,22,0.12)', color: '#fb923c' },
+  cd_tool: { bg: 'rgba(236,72,153,0.12)', color: '#f472b6' },
+  monitoring_collection: { bg: 'rgba(168,85,247,0.12)', color: '#d8b4fe' },
+  monitoring_visualization: { bg: 'rgba(14,165,233,0.12)', color: '#38bdf8' },
+  log_aggregation: { bg: 'rgba(234,179,8,0.12)', color: '#fde047' },
+}
 
-
+const getToolCategoryColor = (category: string) =>
+  TOOL_CATEGORY_COLORS[category] ?? { bg: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }
 
 export function StackTemplatePage() {
   const { t, i18n } = useTranslation()
@@ -660,13 +671,18 @@ export function StackTemplatePage() {
               </h4>
               {(selectedTemplate.toolDetails && selectedTemplate.toolDetails.length > 0) ? (
                 <div className="space-y-2">
-                  {selectedTemplate.toolDetails.map((tool) => (
+                  {selectedTemplate.toolDetails.map((tool) => {
+                    const color = getToolCategoryColor(tool.category)
+                    return (
                     <div
                       key={`${tool.category}-${tool.name}`}
                       className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] p-2.5"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-1 text-[11px] font-semibold text-[#a5b4fc]">
+                        <span
+                          className="rounded-md px-2 py-1 text-[11px] font-semibold"
+                          style={{ backgroundColor: color.bg, color: color.color }}
+                        >
                           {tool.category}
                         </span>
                         <span className="text-sm font-semibold text-[var(--color-text-primary)]">
@@ -678,7 +694,7 @@ export function StackTemplatePage() {
                         <span>App: {tool.app_version}</span>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
