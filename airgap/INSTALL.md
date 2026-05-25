@@ -44,14 +44,14 @@ shasum -a 256 -c nullus-airgap-bundle-*.tar.gz.sha256
 번들이 알아서 압축 해제 + 모든 단계 수행합니다.
 
 ```bash
-./install.sh nullus-airgap-bundle-2026-04-27.tar.gz
+./install.sh nullus-airgap-bundle-<version>.tar.gz
 ```
 
 또는 직접 압축 해제 후 실행:
 
 ```bash
-tar -xzf nullus-airgap-bundle-2026-04-27.tar.gz
-cd nullus-airgap-bundle-2026-04-27/
+tar -xzf nullus-airgap-bundle-<version>.tar.gz
+cd nullus-airgap-bundle-<version>/
 ./install.sh
 ```
 
@@ -144,7 +144,7 @@ EXTRA_ARGS='--set secrets.dbPassword=<강력비밀번호> --set secrets.encrypti
 
 ```bash
 # 클러스터 + 로컬 레지스트리 컨테이너 제거
-cd nullus-airgap-bundle-2026-04-27/
+cd nullus-airgap-bundle-<version>/
 make clean
 
 # 또는 직접
@@ -193,12 +193,24 @@ nullus-airgap-bundle-<version>/
 ├── helm/
 │   ├── nullus-<ver>.tgz            ← Nullus Helm 차트
 │   ├── values-airgap.yaml          ← 에어갭 환경 values 오버라이드
-│   └── charts-catalog/             ← Stack 카탈로그 (Nullus 가 사용자 클러스터에 배포하는 도구들)
-│       ├── keycloak-24.4.5.tgz             ← OIDC (STEP 6 자동 설치)
-│       ├── kube-prometheus-stack-67.0.0.tgz ← INSTALL_FULL=1 시 자동 설치
-│       ├── harbor-1.15.0.tgz                ← Nullus UI 에서 on-demand 설치
-│       ├── minio-14.7.0.tgz                  ← Nullus UI 에서 on-demand 설치
-│       └── argo-cd-6.8.0.tgz                 ← Nullus UI 에서 on-demand 설치
+│   ├── charts-catalog/             ← Stack 카탈로그 (stack orchestrator 가 사용자 클러스터에 배포)
+│   │   ├── cert-manager-v1.16.3.tgz         ← TLS 인증서 (orchestrator 1순위)
+│   │   ├── metrics-server-3.12.2.tgz        ← HPA/리소스 메트릭
+│   │   ├── keycloak-24.4.5.tgz              ← OIDC (STEP 6 자동 설치)
+│   │   ├── minio-5.4.0.tgz                  ← 오브젝트 스토리지 (charts.min.io)
+│   │   ├── gitlab-8.7.2.tgz                 ← 소스 저장소 (embedded GitLab)
+│   │   ├── gitlab-runner-0.72.0.tgz         ← GitLab CI runner
+│   │   ├── argo-cd-7.7.16.tgz               ← GitOps CD
+│   │   ├── kube-prometheus-stack-69.3.0.tgz ← Prometheus + AlertManager + operator
+│   │   ├── grafana-8.9.0.tgz                ← 대시보드
+│   │   ├── loki-2.10.3.tgz                  ← 로그 수집
+│   │   ├── opensearch-2.22.0.tgz            ← 로그 검색
+│   │   ├── opentelemetry-collector-0.75.0.tgz ← Tracing
+│   │   ├── gateway-helm-v1.4.3.tgz          ← Envoy Gateway (oci://docker.io)
+│   │   └── harbor-1.15.0.tgz                ← (선택) 컨테이너 레지스트리
+│   └── charts-catalog-values/      ← 일부 카탈로그 chart 의 helm-template 렌더용 values
+│       ├── gitlab.yaml                       ← global.hosts.domain 등 필수 값
+│       └── opentelemetry-collector.yaml      ← mode 등 필수 값
 ├── kind/
 │   ├── kind-airgap.yaml            ← 클러스터 설정 + containerd mirror 패치
 │   └── registry.yaml               ← local-registry-hosting ConfigMap

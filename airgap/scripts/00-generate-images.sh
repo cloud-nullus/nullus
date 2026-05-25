@@ -29,6 +29,8 @@ OUT_FILE="$ROOT_DIR/images/images.txt"
 INFRA_IMAGES=(
   "kindest/node:v1.30.0"
   "registry:2"
+  # OpenBao: installed via inline manifest by stack orchestrator (not a helm chart)
+  "openbao/openbao:latest"
 )
 
 if [[ -t 1 ]]; then
@@ -83,6 +85,7 @@ extract_images() {
       sub(/^[[:space:]]*image:[[:space:]]*/, "");
       gsub(/["'\'']/, "");
       sub(/[[:space:]]*#.*/, "");
+      sub(/[[:space:]]+$/, "");
       if (length($0) > 0 && $0 !~ /^\{\{/ && $0 !~ /^\$/) print
     }
   ' | sort -u
@@ -106,16 +109,27 @@ else
 fi
 
 # 카탈로그 chart 가 helm/charts-catalog/ 에 있으면 각각 helm template 으로 image 추출
+# chart-specific values 가 helm/charts-catalog-values/<base>.yaml 에 있으면 자동 적용
+# (일부 chart 는 필수 values 없이는 렌더 실패: gitlab, opentelemetry-collector 등)
 CATALOG_DIR="${ROOT_DIR}/helm/charts-catalog"
+CATALOG_VALUES_DIR="${ROOT_DIR}/helm/charts-catalog-values"
 CATALOG_IMAGES=""
 if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
   log_info "카탈로그 chart 스캔: $CATALOG_DIR"
   shopt -s nullglob
   for tgz in "$CATALOG_DIR"/*.tgz; do
     name="$(basename "$tgz" .tgz)"
-    log_info "  helm template $name"
-    rendered="$(helm template "$name" "$tgz" 2>/dev/null || true)"
-    [[ -z "$rendered" ]] && { log_warn "    렌더 실패 — 건너뜀"; continue; }
+    # base chart name = strip trailing version suffix (e.g., gitlab-8.7.2 → gitlab, cert-manager-v1.16.3 → cert-manager)
+    base="$(printf '%s' "$name" | sed -E 's/-v?[0-9].*$//')"
+    extra_args=()
+    if [[ -f "$CATALOG_VALUES_DIR/$base.yaml" ]]; then
+      extra_args+=(-f "$CATALOG_VALUES_DIR/$base.yaml")
+      log_info "  helm template $name (with values: $base.yaml)"
+    else
+      log_info "  helm template $name"
+    fi
+    rendered="$(helm template "$name" "$tgz" ${extra_args[@]+"${extra_args[@]}"} 2>/dev/null || true)"
+    [[ -z "$rendered" ]] && { log_warn "    렌더 실패 — 건너뜀 (values override 필요?)"; continue; }
     imgs="$(printf '%s\n' "$rendered" | extract_images | rewrite_upstream | sort -u)"
     CATALOG_IMAGES+="$imgs"$'\n'
   done

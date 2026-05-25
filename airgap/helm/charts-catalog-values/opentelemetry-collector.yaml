@@ -1,0 +1,5 @@
+# Minimal values to make `helm template open-telemetry/opentelemetry-collector` render
+# for image extraction. Not used at install time.
+mode: deployment
+image:
+  repository: otel/opentelemetry-collector-k8s
