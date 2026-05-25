@@ -455,7 +455,7 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 	processed := map[string]bool{}
 	resumeStarted := resumeFromStep == "" || resumeFromStep == "validate"
 	if resumeFromStep == "health_check" || resumeFromStep == "configuring" {
-		resumeStarted = true
+		resumeStarted = false
 	}
 
 	for len(processed) < len(installDAG) {
@@ -719,11 +719,9 @@ func isKnownResumeStep(step string) bool {
 	if step == "" || step == "validate" || step == "configuring" || step == "health_check" {
 		return true
 	}
-	for _, phase := range installPhases {
-		for _, item := range phase {
-			if item.name == step {
-				return true
-			}
+	for _, item := range installDAG {
+		if item.name == step {
+			return true
 		}
 	}
 	return false
