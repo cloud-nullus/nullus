@@ -3,6 +3,10 @@ name: Lint Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    branches: [main]
+  issue_comment:
+    types: [created]        # /review, /describe 같은 명령어 지원
+  workflow_dispatch:
 
 permissions:
   contents: read

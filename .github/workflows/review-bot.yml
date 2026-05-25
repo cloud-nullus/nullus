@@ -2,7 +2,9 @@ name: Review Bot
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   actions: read
