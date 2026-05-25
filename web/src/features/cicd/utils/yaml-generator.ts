@@ -10,7 +10,7 @@ interface YamlFormValues {
 }
 
 function yamlSafe(value: string): string {
-  if (/[:\n\r#"'\\{}\[\],&*?|><!%@`]/.test(value) || value !== value.trim()) {
+  if (/[:\n\r#"'\\{}[\],&*?|><!%@`]/.test(value) || value !== value.trim()) {
     return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
   }
   return value

@@ -786,10 +786,7 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	cfg := o.stackConfig
 	o.mu.Unlock()
 	if cfg == nil {
-		if step == "installing_openbao" {
-			return false
-		}
-		return true
+		return step != "installing_openbao"
 	}
 
 	enabledFn, ok := o.stepConfigEnabled[step]
