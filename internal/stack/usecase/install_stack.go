@@ -453,6 +453,7 @@ func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stac
 func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, resumeFromStep string) error {
 	completed := map[string]bool{}
 	processed := map[string]bool{}
+	currentExecutor := executor
 	resumeStarted := resumeFromStep == "" || resumeFromStep == "validate"
 	if resumeFromStep == "health_check" || resumeFromStep == "configuring" {
 		resumeStarted = false
@@ -495,8 +496,8 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 				return err
 			}
 
-			if checker, ok := executor.(stepEnabledChecker); ok && !checker.IsStepEnabled(step.name) {
-				if err := uc.executeStep(ctx, stack.ID, step, executor); err != nil {
+			if checker, ok := currentExecutor.(stepEnabledChecker); ok && !checker.IsStepEnabled(step.name) {
+				if err := uc.executeStep(ctx, stack.ID, step, currentExecutor); err != nil {
 					return fmt.Errorf("step %s: %w", step.name, err)
 				}
 				uc.emit(ctx, stack.ID, "info", "skipped", step.phase,
@@ -512,7 +513,7 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 			uc.markStepStarted(ctx, stack, step.name)
 
 			var stopTail func()
-			if tailer, ok := executor.(stepRuntimeTailer); ok {
+			if tailer, ok := currentExecutor.(stepRuntimeTailer); ok {
 				stopTail = tailer.StartStepRuntimeTail(ctx, stack.ID, step.name, func(level, message string) {
 					normalized := strings.TrimSpace(strings.ToLower(level))
 					if normalized != "warn" && normalized != "error" {
@@ -522,13 +523,29 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 				})
 			}
 
-			if err := uc.executeStep(ctx, stack.ID, step, executor); err != nil {
+			if err := uc.executeStep(ctx, stack.ID, step, currentExecutor); err != nil {
+				if step.name == "installing_cert_manager" {
+					refreshedExecutor := uc.resolveExecutor(ctx, stack)
+					if refreshedExecutor != nil && refreshedExecutor != currentExecutor {
+						uc.configureExecutorForStack(stack, refreshedExecutor)
+						uc.emit(ctx, stack.ID, "warn", step.name, step.phase, "cert-manager preflight failed; retrying once with refreshed cluster connection")
+						currentExecutor = refreshedExecutor
+						if retryErr := uc.executeStep(ctx, stack.ID, step, currentExecutor); retryErr == nil {
+							if stopTail != nil {
+								stopTail()
+								stopTail = nil
+							}
+							goto stepSucceeded
+						}
+					}
+				}
 				if stopTail != nil {
 					stopTail()
 				}
 				uc.markStepFailed(ctx, stack, step.name, err)
 				return fmt.Errorf("step %s: %w", step.name, err)
 			}
+		stepSucceeded:
 			if step.name == "installing_openbao" {
 				if err := uc.runOpenBaoHealthGate(ctx, stack, step.phase); err != nil {
 					if stopTail != nil {
@@ -544,7 +561,7 @@ func (uc *InstallStack) runPhases(ctx context.Context, stack *domain.Stack, exec
 				return err
 			}
 
-			if reporter, ok := executor.(stepRuntimeReporter); ok {
+			if reporter, ok := currentExecutor.(stepRuntimeReporter); ok {
 				infos, warns := reporter.StepRuntimeLogs(ctx, stack.ID, step.name)
 				for _, message := range infos {
 					uc.emit(ctx, stack.ID, "info", step.name, step.phase, message)
@@ -637,6 +654,13 @@ func (uc *InstallStack) resolveExecutor(ctx context.Context, stack *domain.Stack
 // handleFailure transitions to Failed and attempts rollback.
 func (uc *InstallStack) handleFailure(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, cause error) {
 	_ = executor
+	if cause != nil {
+		message := strings.ToLower(cause.Error())
+		if strings.Contains(message, "installing_cert_manager") &&
+			(strings.Contains(message, "connect: connection refused") || strings.Contains(message, "cluster unreachable") || strings.Contains(message, "no such host")) {
+			cause = fmt.Errorf("%w (possible stale cluster endpoint/kubeconfig; try cluster verify or refresh-discovery)", cause)
+		}
+	}
 	slog.Error("installation failed", "stack_id", stack.ID, "error", cause)
 	if stack.LastFailedStep == "" {
 		uc.markStepFailed(ctx, stack, firstNonEmpty(stack.CurrentStep, "deployment"), cause)

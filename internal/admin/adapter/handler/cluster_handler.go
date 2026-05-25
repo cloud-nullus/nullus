@@ -366,7 +366,21 @@ func (h *ClusterHandler) VerifyCluster(c echo.Context) error {
 
 	info, err := kube.DiscoverCluster(c.Request().Context(), decrypted)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+		// Auto-heal flow: refresh discovery metadata, re-read kubeconfig, retry verify once.
+		_, _ = h.clusterUC.RefreshDiscovery(c.Request().Context(), id)
+		reloaded, reloadErr := h.clusterUC.GetKubeconfig(c.Request().Context(), id)
+		if reloadErr == nil && len(reloaded) > 0 {
+			if retryDecrypted, decErr := crypto.Decrypt(h.encryptionKey, string(reloaded)); decErr == nil {
+				if retryInfo, retryErr := kube.DiscoverCluster(c.Request().Context(), retryDecrypted); retryErr == nil {
+					info = retryInfo
+					err = nil
+				}
+			}
+		}
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadGateway,
+				fmt.Sprintf("cluster verify failed (possible stale endpoint/kubeconfig). run refresh-discovery and retry: %v", err))
+		}
 	}
 
 	// Persist NodeArchitectures + mark connected via the use case so the
