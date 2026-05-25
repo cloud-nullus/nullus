@@ -71,6 +71,10 @@ type namespaceAwareExecutor interface {
 	SetNamespace(namespace string)
 }
 
+type resumeAwareExecutor interface {
+	ResumeFromStep(stackID, step string)
+}
+
 type deploymentVerifiableExecutor interface {
 	VerifyDeployment(ctx context.Context, stackID string) error
 }
@@ -163,6 +167,11 @@ func (uc *InstallStack) Execute(ctx context.Context, input InstallStackInput) er
 	}
 	if input.Continue && !isKnownResumeStep(input.ResumeFromStep) {
 		input.ResumeFromStep = ""
+	}
+	if input.Continue && input.ResumeFromStep != "" {
+		if resumable, ok := executor.(resumeAwareExecutor); ok {
+			resumable.ResumeFromStep(stack.ID, input.ResumeFromStep)
+		}
 	}
 
 	if input.Continue && stack.State == domain.StateFailed {

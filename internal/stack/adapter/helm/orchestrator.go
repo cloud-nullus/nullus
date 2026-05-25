@@ -542,6 +542,21 @@ func (o *Orchestrator) SetStackConfig(config domain.StackConfig) {
 	o.stackConfig = &cfg
 }
 
+// ResumeFromStep initializes ordering for a new executor created during a
+// continued deployment, so the failed step can be reapplied directly.
+func (o *Orchestrator) ResumeFromStep(stackID, step string) {
+	if strings.TrimSpace(stackID) == "" {
+		return
+	}
+	order, ok := o.stepOrder[step]
+	if !ok {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.progress[stackID] = order - 1
+}
+
 func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase string) error {
 	_ = stackID
 	_ = phase

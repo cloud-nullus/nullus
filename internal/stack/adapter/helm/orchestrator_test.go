@@ -316,6 +316,19 @@ func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsWebserviceAndSidekiqF
 	assert.Equal(t, "2Gi", redisLim["memory"])
 }
 
+func TestOrchestrator_ResumeFromStep_AllowsFailedStepOnFreshExecutor(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{SourceRepository: domain.ToolSelection{Enabled: true}},
+	})
+
+	orch.ResumeFromStep("stk_resume_gitlab", "installing_gitlab")
+
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_resume_gitlab", "installing_gitlab", "B"))
+	assert.Equal(t, []string{"gitlab"}, installer.installed)
+}
+
 func TestOrchestrator_ExecuteStep_UnknownStepReturnsError(t *testing.T) {
 	installer := &mockInstaller{}
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
