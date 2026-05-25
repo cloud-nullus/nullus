@@ -96,7 +96,7 @@ jobs:
         uses: reviewdog/action-golangci-lint@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review       # 문제 라인에 인라인 코멘트
+          reporter: github-check
           level: warning
           golangci_lint_flags: >-
             --timeout=5m
@@ -127,7 +127,7 @@ jobs:
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
+          reporter: github-check
           level: warning
           workdir: web
           eslint_flags: 'src/ --ext .js,.jsx,.ts,.tsx'
@@ -157,7 +157,7 @@ jobs:
         uses: EPMatt/reviewdog-action-prettier@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
+          reporter: github-check
           level: warning
           workdir: web
 
@@ -178,5 +178,5 @@ jobs:
         uses: reviewdog/action-gofmt@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
+          reporter: github-check
           level: error
