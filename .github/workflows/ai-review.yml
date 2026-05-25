@@ -25,11 +25,12 @@ jobs:
         uses: Codium-ai/pr-agent@main
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI.KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           github_action_config.auto_review: "true"          # PR 열릴 때 자동 리뷰
           github_action_config.auto_describe: "true"        # PR 설명 자동 생성
           github_action_config.auto_improve: "true"         # 코드 개선 제안
-          config.model: "claude-sonnet-4-5"
+          config.model: "claude-sonnet-4-6"
           pr_description.push_description_changes: "false"  # PR 본문 덮어쓰기 방지 (템플릿 보호)
           pr_description.publish_labels: "true"             # 라벨 자동 추가 (bug/feature/refactor 등)
           pr_reviewer.require_score_review: "true"          # 0-100 점수 표시
