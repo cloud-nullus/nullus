@@ -9,13 +9,13 @@ import { useStackHistory, useStackMonitoring } from "../api/stack-api"
 import { RetryStackButton } from "./retry-stack-button"
 import type { StackStatus as RetryStackStatus } from "../utils/retry-policy"
 import type { PipelineNode, LaunchTool } from "../utils/stack-list-utils"
+import { toolLogoURL } from "../utils/tool-logo"
 import {
   buildPipelineNodesFromSnapshot,
   buildPipelineNodesFromMonitoring,
   buildInstalledToolsFromSnapshot,
   extractAccessDomain,
   toolLaunchURL,
-  toolLogoURL,
   buildHostsText,
   extractConnectionInfo,
   buildConnectionInfoText,
@@ -32,6 +32,27 @@ import {
   LoggingToolsPanel,
   ResourcesPanel,
 } from "./stack-info-panels"
+
+function ToolLogo({ name, logo }: Pick<LaunchTool, "name" | "logo">) {
+	const [hasError, setHasError] = useState(false);
+
+	if (hasError) {
+		return (
+			<span aria-label={`${name} logo fallback`}>
+				{name.charAt(0).toUpperCase()}
+			</span>
+		);
+	}
+
+	return (
+		<img
+			src={logo}
+			alt={`${name} logo`}
+			className="absolute inset-0 h-full w-full object-contain p-0.5"
+			onError={() => setHasError(true)}
+		/>
+	);
+}
 
 export function StackInfoTab({
 	stack,
@@ -237,14 +258,7 @@ export function StackInfoTab({
 									title={tool.url ? `${tool.name} 콘솔 열기` : `${tool.name}: 경로 미설정`}
 							>
 									<span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[rgba(255,255,255,0.08)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
-										<img
-											src={tool.logo}
-											alt={`${tool.name} logo`}
-											className="absolute inset-0 h-full w-full object-contain p-0.5"
-											onError={(event) => {
-												event.currentTarget.style.display = "none";
-											}}
-										/>
+										<ToolLogo name={tool.name} logo={tool.logo} />
 									</span>
 									<span className="font-medium">{tool.name}</span>
 									<span className="text-[10px] text-[var(--color-text-secondary)]">{tool.version}</span>

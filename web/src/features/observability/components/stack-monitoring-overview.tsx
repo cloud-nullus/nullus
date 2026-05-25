@@ -21,6 +21,7 @@ import {
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { cn } from '../../../lib/utils'
 import { useStackMonitoring } from '../../stack/api/stack-api'
+import { toolLogoURL } from '../../stack/utils/tool-logo'
 
 ChartJS.register(
   CategoryScale,
@@ -55,40 +56,6 @@ type ScopeMetrics = {
   readyPods: number
   totalPods: number
   statusCounts: Record<string, number>
-}
-
-function toolLogoURL(toolName: string): string {
-  const key = toolName.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
-  const map: Record<string, string> = {
-    gitlab: 'gitlab',
-    'gitlab ce': 'gitlab',
-    'gitlab ci': 'gitlab',
-    'gitlab registry': 'gitlab',
-    github: 'github',
-    'github actions': 'githubactions',
-    nexus: 'sonatype',
-    'nexus repository': 'sonatype',
-    'nexus repository manager': 'sonatype',
-    argocd: 'argo',
-    'argo cd': 'argo',
-    flux: 'flux',
-    'flux cd': 'flux',
-    fluxcd: 'flux',
-    grafana: 'grafana',
-    prometheus: 'prometheus',
-    thanos: 'thanos',
-    loki: 'grafana',
-    opensearch: 'opensearch',
-    elasticsearch: 'elasticsearch',
-    'opentelemetry collector': 'opentelemetry',
-    tempo: 'grafana',
-    jaeger: 'jaeger',
-    harbor: 'harbor',
-    'harbor registry': 'harbor',
-    minio: 'minio',
-  }
-  const slug = map[key] ?? 'kubernetes'
-  return `https://cdn.simpleicons.org/${slug}`
 }
 
 function UsageBar({ value, color }: { value: number; color: string }) {
