@@ -21,8 +21,9 @@ jobs:
         with:
           go-version: '1.24'
 
-      - name: Run gosec
-        uses: securego/gosec@master
-        with:
-          args: '-exclude-dir=web ./...'
+      # TODO: public 전환 후 아래 주석 해제 — GitHub Advanced Security 필요
+      # - name: Run gosec
+      #   uses: securego/gosec@master
+      #   with:
+      #     args: '-exclude-dir=web ./...'
 
