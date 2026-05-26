@@ -314,8 +314,9 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				Values:      DefaultValues("installing_minio"),
 				Wait:        false,
 			},
-			"installing_object_storage_secret": {},
-			"installing_openbao":               {},
+			"installing_object_storage_secret":  {},
+			"installing_object_storage_buckets": {},
+			"installing_openbao":                {},
 			"installing_gitlab": {
 				ChartName: "gitlab",
 				RepoURL:   "https://charts.gitlab.io/",
@@ -381,22 +382,23 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"integration_check": {},
 		},
 		stepOrder: map[string]int{
-			stepInstallingCertManager:          0,
-			"installing_metrics_server":        1,
-			"installing_postgresql":            2,
-			"installing_minio":                 3,
-			"installing_object_storage_secret": 4,
-			"installing_openbao":               5,
-			"installing_gitlab":                6,
-			"installing_argocd":                7,
-			stepInstallingRunner:               8,
-			"installing_prometheus":            9,
-			"installing_grafana":               10,
-			"installing_logging":               11,
-			"installing_log_search":            12,
-			"installing_opentelemetry":         13,
-			"installing_gateway":               14,
-			"integration_check":                15,
+			stepInstallingCertManager:           0,
+			"installing_metrics_server":         1,
+			"installing_postgresql":             2,
+			"installing_minio":                  3,
+			"installing_object_storage_secret":  4,
+			"installing_object_storage_buckets": 5,
+			"installing_openbao":                6,
+			"installing_gitlab":                 7,
+			"installing_argocd":                 8,
+			stepInstallingRunner:                9,
+			"installing_prometheus":             10,
+			"installing_grafana":                11,
+			"installing_logging":                12,
+			"installing_log_search":             13,
+			"installing_opentelemetry":          14,
+			"installing_gateway":                15,
+			"integration_check":                 16,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -404,6 +406,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_postgresql",
 			"installing_minio",
 			"installing_object_storage_secret",
+			"installing_object_storage_buckets",
 			"installing_openbao",
 			"installing_gitlab",
 			"installing_argocd",
@@ -417,18 +420,19 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"integration_check",
 		},
 		stepConfigFieldPath: map[string]string{
-			"installing_postgresql":            "config.storage.database",
-			"installing_minio":                 "config.artifacts.storage_backend",
-			"installing_object_storage_secret": "config.storage.object_storage",
-			"installing_openbao":               "config.authentication.provider",
-			"installing_gitlab":                "config.artifacts.source_repository",
-			"installing_argocd":                "config.pipeline.cd_tool",
-			stepInstallingRunner:               "config.pipeline.ci_platform",
-			"installing_prometheus":            "config.monitoring.collection",
-			"installing_grafana":               "config.monitoring.visualization",
-			"installing_logging":               "config.logging.collection",
-			"installing_log_search":            "config.logging.search",
-			"installing_opentelemetry":         "config.logging.trace_layer",
+			"installing_postgresql":             "config.storage.database",
+			"installing_minio":                  "config.artifacts.storage_backend",
+			"installing_object_storage_secret":  "config.storage.object_storage",
+			"installing_object_storage_buckets": "config.storage.object_storage",
+			"installing_openbao":                "config.authentication.provider",
+			"installing_gitlab":                 "config.artifacts.source_repository",
+			"installing_argocd":                 "config.pipeline.cd_tool",
+			stepInstallingRunner:                "config.pipeline.ci_platform",
+			"installing_prometheus":             "config.monitoring.collection",
+			"installing_grafana":                "config.monitoring.visualization",
+			"installing_logging":                "config.logging.collection",
+			"installing_log_search":             "config.logging.search",
+			"installing_opentelemetry":          "config.logging.trace_layer",
 		},
 		stepConfigEnabled: map[string]func(domain.StackConfig) bool{
 			"installing_postgresql": func(cfg domain.StackConfig) bool {
@@ -441,6 +445,9 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Artifacts.StorageBackend.Enabled
 			},
 			"installing_object_storage_secret": func(cfg domain.StackConfig) bool {
+				return cfg.Artifacts.StorageBackend.Enabled && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+			},
+			"installing_object_storage_buckets": func(cfg domain.StackConfig) bool {
 				return cfg.Artifacts.StorageBackend.Enabled && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
@@ -620,6 +627,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	if step == "installing_object_storage_buckets" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureGitLabObjectStorageBuckets(ctx, namespace); err != nil {
+			return fmt.Errorf("ensure gitlab object storage buckets: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	spec = o.resolveChartSpecForStep(step, spec)
 	manifest, hasManifest := o.stepManifestForStep(step)
 	if step == "installing_gateway" && !hasManifest && looksLikeKubeconfig(o.kubeconfig) {
@@ -777,6 +796,9 @@ func isReleaseNotFoundError(err error) bool {
 func (o *Orchestrator) isStepEnabled(step string) bool {
 	if step == "integration_check" {
 		return true
+	}
+	if step == "installing_object_storage_buckets" && !looksLikeKubeconfig(o.kubeconfig) {
+		return false
 	}
 	if o.sharedClusterScoped && isSharedClusterScopedStep(step) {
 		return false
