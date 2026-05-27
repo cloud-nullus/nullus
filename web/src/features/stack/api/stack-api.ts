@@ -40,6 +40,20 @@ interface RawClusterVerifyResult {
   version?: string
 }
 
+interface StorageTestRequest {
+  target: 'database' | 'object_storage'
+  endpoint: string
+  provider_or_engine?: string
+  auth_id?: string
+  auth_password?: string
+  resource_name?: string
+}
+
+interface StorageTestResult {
+  ok: boolean
+  message: string
+}
+
 const queryKeys = {
   templates: () => ['stacks', 'templates'] as const,
   template: (id: string) => ['stacks', 'templates', id] as const,
@@ -204,6 +218,9 @@ const stackApiCalls = {
 
   getWorkloads: (stackId: string) =>
     api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
+
+  testStorageConnection: (input: StorageTestRequest) =>
+    api.post<StorageTestResult>('/stacks/storage/test', input).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -225,6 +242,12 @@ export function useClusters() {
 export function useClusterK8sVersion() {
   return useMutation({
     mutationFn: (clusterId: string) => stackApiCalls.getClusterK8sVersion(clusterId),
+  })
+}
+
+export function useTestStorageConnection() {
+  return useMutation({
+    mutationFn: (input: StorageTestRequest) => stackApiCalls.testStorageConnection(input),
   })
 }
 

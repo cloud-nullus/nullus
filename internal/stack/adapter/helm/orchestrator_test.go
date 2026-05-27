@@ -996,6 +996,7 @@ func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *t
 		Logging: domain.LoggingConfig{
 			Search: domain.ToolSelection{Name: "opensearch", Enabled: true},
 		},
+		Authentication: &domain.AuthenticationConfig{Provider: "openbao"},
 	})
 
 	manifest := orch.defaultGatewayBundleManifest("nullus")
@@ -1008,11 +1009,13 @@ func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *t
 	assert.Contains(t, manifest, "grafana.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "prometheus.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "minio.nullus-devsecops-stack.internal")
+	assert.Contains(t, manifest, "openbao.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "name: argo-cd-argocd-server")
 	assert.Contains(t, manifest, "name: opensearch-cluster-master")
 	assert.Contains(t, manifest, "name: gitlab-webservice-default")
 	assert.Contains(t, manifest, "name: kube-prometheus-stack-prometheus")
 	assert.Contains(t, manifest, "name: nullus-minio-console")
+	assert.Contains(t, manifest, "name: openbao")
 }
 
 func TestFilterGatewayManifestDocuments_SkipsBackendTLSPolicy(t *testing.T) {
