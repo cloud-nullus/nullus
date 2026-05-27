@@ -316,6 +316,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_object_storage_secret":  {},
 			"installing_object_storage_buckets": {},
+			"installing_database_connection_check": {},
 			"installing_openbao":                {},
 			"installing_gitlab": {
 				ChartName: "gitlab",
@@ -388,17 +389,18 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_minio":                  3,
 			"installing_object_storage_secret":  4,
 			"installing_object_storage_buckets": 5,
-			"installing_openbao":                6,
-			"installing_gitlab":                 7,
-			"installing_argocd":                 8,
-			stepInstallingRunner:                9,
-			"installing_prometheus":             10,
-			"installing_grafana":                11,
-			"installing_logging":                12,
-			"installing_log_search":             13,
-			"installing_opentelemetry":          14,
-			"installing_gateway":                15,
-			"integration_check":                 16,
+			"installing_database_connection_check": 6,
+			"installing_openbao":                7,
+			"installing_gitlab":                 8,
+			"installing_argocd":                 9,
+			stepInstallingRunner:                10,
+			"installing_prometheus":             11,
+			"installing_grafana":                12,
+			"installing_logging":                13,
+			"installing_log_search":             14,
+			"installing_opentelemetry":          15,
+			"installing_gateway":                16,
+			"integration_check":                 17,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -407,6 +409,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_minio",
 			"installing_object_storage_secret",
 			"installing_object_storage_buckets",
+			"installing_database_connection_check",
 			"installing_openbao",
 			"installing_gitlab",
 			"installing_argocd",
@@ -424,6 +427,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_minio":                  "config.artifacts.storage_backend",
 			"installing_object_storage_secret":  "config.storage.object_storage",
 			"installing_object_storage_buckets": "config.storage.object_storage",
+			"installing_database_connection_check": "config.storage.database",
 			"installing_openbao":                "config.authentication.provider",
 			"installing_gitlab":                 "config.artifacts.source_repository",
 			"installing_argocd":                 "config.pipeline.cd_tool",
@@ -449,6 +453,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_object_storage_buckets": func(cfg domain.StackConfig) bool {
 				return cfg.Artifacts.StorageBackend.Enabled && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+			},
+			"installing_database_connection_check": func(cfg domain.StackConfig) bool {
+				if !isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository) || cfg.Storage == nil {
+					return false
+				}
+				return strings.TrimSpace(cfg.Storage.Database.Mode) == "existing-connect"
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
@@ -634,6 +644,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		}
 		if err := o.ensureGitLabObjectStorageBuckets(ctx, namespace); err != nil {
 			return fmt.Errorf("ensure gitlab object storage buckets: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
+	if step == "installing_database_connection_check" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureGitLabDatabaseConnectivity(ctx, namespace); err != nil {
+			return fmt.Errorf("ensure gitlab database connectivity: %w", err)
 		}
 		o.markCompleted(stackID, order)
 		return nil

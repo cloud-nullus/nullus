@@ -32,9 +32,10 @@ var installDAG = []installStep{
 	{name: "installing_minio", phase: "A", duration: time.Second, deps: []string{"installing_postgresql"}},
 	{name: "installing_object_storage_secret", phase: "A", duration: time.Second, deps: []string{"installing_minio"}},
 	{name: "installing_object_storage_buckets", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
+	{name: "installing_database_connection_check", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
 
 	{name: "installing_openbao", phase: "B", duration: time.Second, deps: []string{"installing_postgresql", "installing_minio"}},
-	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"installing_openbao", "installing_object_storage_secret", "installing_object_storage_buckets"}},
+	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"installing_openbao", "installing_object_storage_secret", "installing_object_storage_buckets", "installing_database_connection_check"}},
 	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"installing_openbao"}},
 	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"installing_openbao", "installing_gitlab"}},
 
