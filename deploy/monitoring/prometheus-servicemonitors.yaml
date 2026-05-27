@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-cd-argocd-server-metrics
+  namespace: nullus
+  labels:
+    app.kubernetes.io/instance: argo-cd
+    app.kubernetes.io/name: argocd-server
+spec:
+  selector:
+    app.kubernetes.io/instance: argo-cd
+    app.kubernetes.io/name: argocd-server
+  ports:
+    - name: metrics
+      port: 8083
+      targetPort: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gitlab-prometheus-server
+  namespace: nullus
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: prometheus
+      component: server
+      release: gitlab
+  namespaceSelector:
+    matchNames:
+      - nullus
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: envoy-gateway
+  namespace: nullus
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: eg
+      app.kubernetes.io/name: gateway-helm
+      control-plane: envoy-gateway
+  namespaceSelector:
+    matchNames:
+      - nullus
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-server
+  namespace: nullus
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: argo-cd
+      app.kubernetes.io/name: argocd-server
+  namespaceSelector:
+    matchNames:
+      - nullus
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
