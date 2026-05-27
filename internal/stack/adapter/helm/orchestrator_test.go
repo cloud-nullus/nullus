@@ -111,6 +111,7 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_database_connection_check", phase: "A"},
 		{name: "installing_gitlab", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
@@ -204,6 +205,7 @@ func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_database_connection_check", phase: "A"},
 		{name: "installing_gitlab", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
@@ -484,6 +486,7 @@ func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_database_connection_check", phase: "A"},
 		{name: "installing_gitlab", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
@@ -514,6 +517,7 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_database_connection_check", phase: "A"},
 		{name: "installing_gitlab", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
@@ -996,6 +1000,7 @@ func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *t
 		Logging: domain.LoggingConfig{
 			Search: domain.ToolSelection{Name: "opensearch", Enabled: true},
 		},
+		Authentication: &domain.AuthenticationConfig{Provider: "openbao"},
 	})
 
 	manifest := orch.defaultGatewayBundleManifest("nullus")
@@ -1008,11 +1013,13 @@ func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *t
 	assert.Contains(t, manifest, "grafana.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "prometheus.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "minio.nullus-devsecops-stack.internal")
+	assert.Contains(t, manifest, "openbao.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "name: argo-cd-argocd-server")
 	assert.Contains(t, manifest, "name: opensearch-cluster-master")
 	assert.Contains(t, manifest, "name: gitlab-webservice-default")
 	assert.Contains(t, manifest, "name: kube-prometheus-stack-prometheus")
 	assert.Contains(t, manifest, "name: nullus-minio-console")
+	assert.Contains(t, manifest, "name: openbao")
 }
 
 func TestFilterGatewayManifestDocuments_SkipsBackendTLSPolicy(t *testing.T) {
