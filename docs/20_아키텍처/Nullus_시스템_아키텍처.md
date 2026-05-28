@@ -1,8 +1,7 @@
-# Nullus 상세 기능 명세 및 시스템 아키텍처 v0.2
+# Nullus 상세 기능 명세 및 시스템 아키텍처
 
 **작성일**: 2026-03-30
-**문서 버전**: 0.2
-**기준 문서**: v0.1 설계 문서 + `draft` 실제 구현
+**기준**: `draft` 실제 구현 및 운영 흐름
 **문서 성격**: 현재 구현 기준 문서 (As-Is Baseline)
 **대상 독자**: 엔지니어, 아키텍트, DevOps Engineer
 
@@ -10,8 +9,7 @@
 
 ## 문서 업데이트 원칙
 
-- v0.1은 설계 기준 문서로 유지한다.
-- v0.2는 `draft` 코드베이스의 현재 구현을 기준으로 서술한다.
+- 본 문서는 `draft` 코드베이스의 현재 구현을 기준으로 서술한다.
 - 설계에 있었지만 아직 구현되지 않은 항목은 본문에서 현재 기능처럼 설명하지 않는다.
 - 설계 대비 미구현 목록은 `Nullus_설계_대비_미구현_항목.md`를 별도 참조한다.
 - As-Is 다이어그램 원본은 `Nullus_As-Is_아키텍처_다이어그램.md`를 참조한다.
@@ -47,13 +45,63 @@ flowchart LR
   API -->|메트릭 조회| PROM
 ```
 
+### 1.1 Architecture as Code
+
+아키텍처는 문장 설명보다 코드형 다이어그램과 구조 선언으로 관리한다.
+
+```mermaid
+flowchart TB
+  subgraph ControlPlane["Control Plane"]
+    API["cmd/api/main.go"]
+    Admin["internal/admin"]
+    Stack["internal/stack"]
+    CICD["internal/cicd"]
+    Obs["internal/observability"]
+    Auth["internal/auth"]
+    API --> Admin
+    API --> Stack
+    API --> CICD
+    API --> Obs
+    API --> Auth
+  end
+
+  subgraph DataPlane["Target Cluster"]
+    Helm["Helm Releases"]
+    Workloads["Stack/Pipeline Workloads"]
+    Helm --> Workloads
+  end
+
+  Stack -->|Helm SDK + kubectl| Helm
+```
+
+```text
+internal/
+  admin/
+    domain/
+    usecase/
+    port/
+    adapter/
+  stack/
+    domain/
+    usecase/
+    port/
+    adapter/
+      helm/
+      handler/
+      repository/
+  cicd/
+  observability/
+  auth/
+  shared/
+```
+
 #### 현재 런타임 경계
 
 1. 사용자 브라우저
 2. Nullus 컨트롤 플레인 (`web` + `api` + `postgresql`)
 3. 등록된 대상 Kubernetes 클러스터
 
-#### v0.1 대비 핵심 변경점
+#### 설계안 대비 핵심 변경점
 
 - `Auth/Config/Installer/Monitor Handler` 중심 구조에서 모듈별 `domain/usecase/port/adapter` 구조로 정리되었다.
 - 파일 기반 `matrix.yaml`, `known-issues.yaml` 중심 설계에서 DB 기반 카탈로그 구조로 이동했다.
@@ -82,7 +130,7 @@ flowchart LR
 
 ### 3. 비기능 요구사항과 현재 운영 기준
 
-v0.1의 NFR 목표는 유지하되, v0.2에서는 현재 구현이 제공하는 운영 근거를 함께 적는다.
+NFR 목표는 유지하되, 현재 구현이 제공하는 운영 근거를 함께 적는다.
 
 | 항목 | 목표/기준 | 현재 구현 근거 |
 |---|---|---|
@@ -1057,13 +1105,13 @@ flowchart LR
 | ADR-006 | 실시간 배포 관찰 | WebSocket + HTTP stream | 로그는 인메모리 유지 |
 | ADR-007 | 인증 | 단순 세션 헤더 + OIDC JWT 병행 | 프런트 OIDC는 과도기 |
 | ADR-008 | 네트워크 진입 | Stack 영역은 Gateway API 중심 | Ingress보다 Gateway/HTTPRoute 비중 증가 |
-| ADR-009 | 문서 기준 | v0.2부터 As-Is 기준 문서화 | v0.1은 설계 기준으로 유지 |
+| ADR-009 | 문서 기준 | As-Is 기준 문서화 | 설계안은 별도 문서로 분리 관리 |
 
 ---
 
 ## Part 4: 참조 문서
 
-- `Nullus 상세 기능 명세 및 시스템 아키텍처.md` (v0.1 설계 기준)
+- `Nullus_시스템_아키텍처.md`
 - `Nullus_설계_대비_미구현_항목.md`
 - `Nullus_As-Is_아키텍처_다이어그램.md`
 - `docs/20_개발가이드/Nullus_백엔드_모듈_개발_가이드.md`
@@ -1073,7 +1121,7 @@ flowchart LR
 
 ## 결론
 
-v0.2의 Nullus 문서는 더 이상 "예정 아키텍처"를 기술하지 않는다.
+본 문서는 더 이상 "예정 아키텍처"를 기술하지 않는다.
 현재 구현의 기준선은 다음과 같다.
 
 - React SPA + Go API + PostgreSQL 컨트롤 플레인

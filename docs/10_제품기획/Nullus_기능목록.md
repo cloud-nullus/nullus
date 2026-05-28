@@ -735,7 +735,7 @@ Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana View
 | PRD v1.1 | `기획단계/아키텍처/nullus_PRD_1.1.md` | 이전 제품 요구사항 정의서 |
 | PRD v1.0 | `기획단계/아키텍처/nullus_PRD_1.0.md` | 초기 제품 요구사항 정의서 |
 | PMF 정의 | `기획단계/아키텍처/nullus_PMF.md` | Product-Market Fit 정의 및 달성 조건 |
-| 상세 기능 명세 | `기획단계/아키텍처/개발계획/Nullus 상세 기능 명세 및 시스템 아키텍처.md` | API, 데이터 모델, 아키텍처 상세 |
+| 상세 기능 명세 | `docs/20_아키텍처/Nullus_시스템_아키텍처.md` | API, 데이터 모델, 아키텍처 상세 |
 | 개발 마스터 플랜 | `기획단계/아키텍처/개발계획/Nullus 개발 마스터 플랜.md` | 12주 + 피드백 루프 개발 계획 |
 | 경쟁 분석 | `기획단계/아키텍처/개발계획/Nullus 플랫폼 경쟁 분석 및 PRD 검토 보고서.md` | 시장 경쟁 환경 분석 |
 | Day 0 체크리스트 | `기획단계/아키텍처/개발계획/Nullus Day 0 프로젝트 착수 체크리스트.md` | 프로젝트 착수 준비 작업 |
