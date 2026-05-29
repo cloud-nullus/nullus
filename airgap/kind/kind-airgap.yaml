@@ -55,6 +55,9 @@ containerdConfigPatches:
     # quay.io 미러 (ArgoCD, Prometheus stack 이미지)
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]
       endpoint = ["http://kind-registry:5000"]
+    # registry.gitlab.com 미러 (GitLab CNG 이미지, gitlab-runner)
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.gitlab.com"]
+      endpoint = ["http://kind-registry:5000"]
     # registry.k8s.io 미러 (kube-state-metrics, ingress-nginx 등)
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
       endpoint = ["http://kind-registry:5000"]
