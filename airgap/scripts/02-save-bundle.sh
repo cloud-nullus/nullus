@@ -86,7 +86,9 @@ sha256_file() {
 images=()
 while IFS= read -r line; do
   [[ -z "$line" || "$line" == \#* ]] && continue
-  images+=("$line")
+  # @sha256:... digest 제거 — 01-pull 이 digest-pin 이미지를 digest-제거 태그형으로
+  # 적재하므로, 저장/검증도 동일한 태그형 reference 를 사용한다.
+  images+=("${line%@*}")
 done < "$IMAGES_FILE"
 
 if [[ ${#images[@]} -eq 0 ]]; then

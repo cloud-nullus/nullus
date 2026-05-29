@@ -49,6 +49,10 @@ compute_target() {
   local src="$1"
   local path
 
+  # @sha256:... digest 제거 — 타깃 reference 에는 digest 를 포함할 수 없다
+  # (docker tag <src> <host>/<path>:<tag>@sha256:... 는 invalid reference 로 실패)
+  src="${src%@*}"
+
   # 알려진 레지스트리 프리픽스 제거
   if [[ "${src}" == ghcr.io/* ]]; then
     path="${src#ghcr.io/}"
@@ -71,6 +75,31 @@ compute_target() {
   echo "${REGISTRY_HOST}/${path}"
 }
 
+# ── 로컬 소스 reference 해석 ─────────────────────────────────
+# images.txt 항목(name:tag@sha256:digest 등)이 로컬 daemon 에 어떤 이름으로
+# 적재돼 있는지는 pull 방식에 따라 다르다(태그형 vs digest형). 실제로 존재하는
+# reference 를 찾아 docker tag 의 소스로 사용한다.
+resolve_local() {
+  local entry="$1"
+
+  # 1) 항목 그대로
+  if docker image inspect "${entry}" >/dev/null 2>&1; then echo "${entry}"; return 0; fi
+
+  # 2) digest 형식: name:tag@sha256:... → name@sha256:...
+  if [[ "${entry}" == *@sha256:* ]]; then
+    local name_tag="${entry%@*}" dig="${entry##*@}"
+    local name="${name_tag%:*}"
+    if docker image inspect "${name}@${dig}" >/dev/null 2>&1; then echo "${name}@${dig}"; return 0; fi
+  fi
+
+  # 3) 태그 형식: digest 제거
+  local no_digest="${entry%@*}"
+  if docker image inspect "${no_digest}" >/dev/null 2>&1; then echo "${no_digest}"; return 0; fi
+
+  # 마지막 폴백 — 원본 그대로(이후 docker tag 가 실패하면 건너뜀)
+  echo "${entry}"
+}
+
 # ── 메인 ─────────────────────────────────────────────────────
 main() {
   log_info "==> 이미지 로컬 레지스트리 푸시 시작 → ${REGISTRY_HOST}"
@@ -89,14 +118,15 @@ main() {
     [[ -z "${image}" || "${image}" == \#* ]] && continue
     total=$((total + 1))
 
-    local target
+    local target source
     target="$(compute_target "${image}")"
+    source="$(resolve_local "${image}")"
 
-    log_info "[${total}] ${image} → ${target}"
+    log_info "[${total}] ${source} → ${target}"
 
     # 리태그
-    if ! run docker tag "${image}" "${target}" 2>&1; then
-      log_warn "  태그 실패: ${image} — 건너뜀"
+    if ! run docker tag "${source}" "${target}" 2>&1; then
+      log_warn "  태그 실패: ${source} — 건너뜀"
       failed=$((failed + 1))
       continue
     fi
