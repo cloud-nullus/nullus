@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"time"
@@ -63,6 +66,7 @@ func NewStackHandler(
 // RegisterRoutes registers stack routes on the given Echo group.
 func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("", h.CreateStack)
+	g.POST("/storage/test", h.TestStorageConnection)
 	g.GET("", h.ListStacks)
 	g.GET("/:stackId", h.GetStack)
 	g.DELETE("/:stackId", h.DeleteStack)
@@ -70,6 +74,80 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.GET("/:stackId/workloads", h.GetWorkloads)
 	g.POST("/draft", h.SaveDraft)
+}
+
+type testStorageConnectionRequest struct {
+	Target         string `json:"target"`
+	Endpoint       string `json:"endpoint"`
+	ProviderEngine string `json:"provider_or_engine"`
+	AuthID         string `json:"auth_id"`
+	AuthPassword   string `json:"auth_password"`
+	ResourceName   string `json:"resource_name"`
+}
+
+func (h *StackHandler) TestStorageConnection(c echo.Context) error {
+	var req testStorageConnectionRequest
+	if err := c.Bind(&req); err != nil {
+		return errorResponse(c, http.StatusBadRequest, "STORAGE_TEST_INVALID", err.Error())
+	}
+
+	target := strings.TrimSpace(strings.ToLower(req.Target))
+	endpoint := strings.TrimSpace(req.Endpoint)
+	if target != "database" && target != "object_storage" {
+		return errorResponse(c, http.StatusBadRequest, "STORAGE_TEST_INVALID", "target must be database or object_storage")
+	}
+	if endpoint == "" {
+		return errorResponse(c, http.StatusBadRequest, "STORAGE_TEST_INVALID", "endpoint is required")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	if target == "database" {
+		if err := testDatabaseConnection(ctx, endpoint); err != nil {
+			return c.JSON(http.StatusOK, map[string]any{"ok": false, "message": err.Error()})
+		}
+		return c.JSON(http.StatusOK, map[string]any{"ok": true, "message": "database endpoint reachable"})
+	}
+
+	if err := testObjectStorageConnection(ctx, endpoint); err != nil {
+		return c.JSON(http.StatusOK, map[string]any{"ok": false, "message": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"ok": true, "message": "object storage endpoint reachable"})
+}
+
+func testDatabaseConnection(ctx context.Context, endpoint string) error {
+	addr := endpoint
+	if strings.Contains(endpoint, "://") {
+		u, err := url.Parse(endpoint)
+		if err != nil {
+			return fmt.Errorf("invalid endpoint: %w", err)
+		}
+		addr = u.Host
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("database connection failed: %w", err)
+	}
+	_ = conn.Close()
+	return nil
+}
+
+func testObjectStorageConnection(ctx context.Context, endpoint string) error {
+	addr := endpoint
+	if strings.Contains(endpoint, "://") {
+		u, err := url.Parse(endpoint)
+		if err != nil {
+			return fmt.Errorf("invalid endpoint: %w", err)
+		}
+		addr = u.Host
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("object storage connection failed: %w", err)
+	}
+	_ = conn.Close()
+	return nil
 }
 
 // createStackRequest is the request body for POST /stacks.

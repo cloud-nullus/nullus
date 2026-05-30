@@ -3,6 +3,7 @@ import { useQueries } from "@tanstack/react-query"
 import { AreaChart, Area, BarChart, Bar, Cell, Legend, Pie, PieChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { Box, Cpu, MemoryStick, Server } from "lucide-react"
 import { api } from "../../../lib/api"
+import { Modal } from "../../../components/ui/modal"
 import type { StackMonitoringSnapshot } from "../../stack/api/stack-api"
 import { useClusterMonitoringSummary } from "../../admin/api/admin-api"
 import { useDeployments, usePipelines } from "../../cicd/api/cicd-api"
@@ -21,6 +22,7 @@ export function ClusterDefault({
   stackIds: string[]
 }) {
   const [range, setRange] = useState<TimeRange>('24h')
+  const [podsModalOpen, setPodsModalOpen] = useState(false)
   const { data: pipelinesData } = usePipelines()
   const { data: deploymentsData } = useDeployments()
   const { data: clusterSummary } = useClusterMonitoringSummary(clusterId)
@@ -152,6 +154,36 @@ export function ClusterDefault({
 
   const runningPodsPercent = podCount > 0 ? Math.round((podRunning / podCount) * 100) : 0
 
+  const podRows = useMemo(() => {
+    const rows: Array<{
+      namespace: string
+      podName: string
+      status: string
+      ready: string
+      node: string
+      tool: string
+    }> = []
+
+    for (const snapshot of snapshots) {
+      const namespace = snapshot.namespace || '-'
+      for (const tool of snapshot.oss_statuses ?? []) {
+        for (const pod of tool.pods ?? []) {
+          rows.push({
+            namespace,
+            podName: pod.name,
+            status: pod.phase,
+            ready: pod.ready ? '1/1' : '0/1',
+            node: pod.node_name || '-',
+            tool: tool.name,
+          })
+        }
+      }
+    }
+
+    rows.sort((a, b) => a.podName.localeCompare(b.podName))
+    return rows
+  }, [snapshots])
+
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
@@ -203,6 +235,15 @@ export function ClusterDefault({
           </ResponsiveContainer>
         </ChartPanel>
         <ChartPanel title="Pod Status">
+          <div className="mb-2 flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => setPodsModalOpen(true)}
+              className="rounded-md border border-[var(--color-border-default)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+            >
+              Click to view pods
+            </button>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={pods} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
@@ -227,6 +268,47 @@ export function ClusterDefault({
           </ResponsiveContainer>
         </ChartPanel>
       </div>
+
+      <Modal
+        open={podsModalOpen}
+        onClose={() => setPodsModalOpen(false)}
+        title={`Pods in ${clusterName || clusterId}`}
+        wide
+      >
+        <div className="max-h-[62vh] overflow-auto rounded-md border border-[var(--color-border-default)]">
+          <table className="w-full text-left text-xs">
+            <thead className="sticky top-0 bg-[var(--color-surface-card)] text-[var(--color-text-secondary)]">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Namespace</th>
+                <th className="px-3 py-2 font-semibold">Pod</th>
+                <th className="px-3 py-2 font-semibold">Status</th>
+                <th className="px-3 py-2 font-semibold">Ready</th>
+                <th className="px-3 py-2 font-semibold">Node</th>
+                <th className="px-3 py-2 font-semibold">Tool</th>
+              </tr>
+            </thead>
+            <tbody>
+              {podRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-[var(--color-text-secondary)]">
+                    No pod data available.
+                  </td>
+                </tr>
+              )}
+              {podRows.map((row) => (
+                <tr key={`${row.namespace}:${row.podName}`} className="border-t border-[var(--color-border-default)]">
+                  <td className="px-3 py-2">{row.namespace}</td>
+                  <td className="px-3 py-2 font-medium text-[var(--color-text-primary)]">{row.podName}</td>
+                  <td className="px-3 py-2">{row.status}</td>
+                  <td className="px-3 py-2">{row.ready}</td>
+                  <td className="px-3 py-2">{row.node}</td>
+                  <td className="px-3 py-2">{row.tool}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
     </div>
   )
 }
