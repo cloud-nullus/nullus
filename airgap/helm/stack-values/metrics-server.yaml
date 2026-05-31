@@ -1,0 +1,5 @@
+# metrics-server airgap install values
+# Source: helm get values metrics-server -n nullus
+args:
+  - --kubelet-insecure-tls
+  - --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP

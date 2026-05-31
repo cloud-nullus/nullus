@@ -123,32 +123,53 @@ START_TS=$(date +%s)
 # -----------------------------------------------------------------------------
 # 단계 실행
 # -----------------------------------------------------------------------------
-hdr "STEP 1/6" "이미지 docker load (03-load-bundle.sh)"
+hdr "STEP 1/8" "이미지 docker load (03-load-bundle.sh)"
 bash "${SCRIPTS}/03-load-bundle.sh"
 
-hdr "STEP 2/6" "로컬 레지스트리 기동 (10-setup-registry.sh)"
+hdr "STEP 2/8" "로컬 레지스트리 기동 (10-setup-registry.sh)"
 bash "${SCRIPTS}/10-setup-registry.sh"
 
-hdr "STEP 3/6" "kind 클러스터 생성 (11-create-cluster.sh)"
+hdr "STEP 3/8" "kind 클러스터 생성 (11-create-cluster.sh)"
 bash "${SCRIPTS}/11-create-cluster.sh"
 
-hdr "STEP 4/6" "이미지 → 로컬 레지스트리 push (12-push-to-registry.sh)"
+hdr "STEP 4/8" "이미지 → 로컬 레지스트리 push (12-push-to-registry.sh)"
 bash "${SCRIPTS}/12-push-to-registry.sh"
 
-hdr "STEP 5/7" "Helm 설치 (21-install-nullus.sh)"
+hdr "STEP 5/9" "Helm 설치 (21-install-nullus.sh)"
 bash "${SCRIPTS}/21-install-nullus.sh"
+
+# DB 스키마 마이그레이션 — api 가 자동 적용하지 않으므로 명시 실행.
+# (미실행 시 테이블/시드 사용자 부재 → 로그인·데이터 전부 실패)
+SKIP_MIGRATE="${SKIP_MIGRATE:-0}"
+if [[ "$SKIP_MIGRATE" != "1" ]]; then
+  hdr "STEP 6/9" "DB 마이그레이션 (26-migrate-db.sh)"
+  bash "${SCRIPTS}/26-migrate-db.sh" || log_warn "마이그레이션 실패 — 로그인/데이터 화면 영향. 수동 확인 권장"
+else
+  log_info "STEP 6/9 건너뜀 (SKIP_MIGRATE=1)"
+fi
 
 # Platform stack: Keycloak (필수) + 옵션으로 kube-prometheus-stack
 SKIP_PLATFORM="${SKIP_PLATFORM:-0}"
 if [[ "$SKIP_PLATFORM" != "1" && -d "${AIRGAP_DIR}/helm/charts-catalog" ]]; then
-  hdr "STEP 6/7" "Platform stack 설치 (Keycloak${INSTALL_FULL:+ + kube-prometheus-stack})"
+  hdr "STEP 7/9" "Platform stack 설치 (Keycloak${INSTALL_FULL:+ + kube-prometheus-stack})"
   bash "${SCRIPTS}/22-install-platform-stack.sh" || log_warn "platform stack 설치 일부 실패 — 수동 확인 권장"
 else
-  log_info "STEP 6/7 건너뜀 (SKIP_PLATFORM=1 또는 카탈로그 없음)"
+  log_info "STEP 7/9 건너뜀 (SKIP_PLATFORM=1 또는 카탈로그 없음)"
+fi
+
+# 외부 접근 도메인 (Envoy Gateway + HTTPRoute) — Gateway API CRD 가 있을 때만.
+# 순수 airgap 설치엔 CRD/envoy 가 없으므로(UI 스택 설치 시 제공) 보통 건너뛰며,
+# 이후 스택 설치 후 scripts/23-setup-gateway.sh 를 수동 실행하면 도메인이 구성된다.
+SETUP_GATEWAY="${SETUP_GATEWAY:-1}"
+if [[ "$SETUP_GATEWAY" == "1" ]] && kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
+  hdr "STEP 8/9" "외부 접근 도메인 구성 (23-setup-gateway.sh)"
+  bash "${SCRIPTS}/23-setup-gateway.sh" || log_warn "gateway 구성 일부 실패 — 수동 확인 권장"
+else
+  log_info "STEP 8/9 건너뜀 (Gateway API CRD 없음 — 스택 설치 후 scripts/23-setup-gateway.sh 수동 실행)"
 fi
 
 if [[ "$SKIP_VERIFY" != "1" ]]; then
-  hdr "STEP 7/7" "검증 (99-verify.sh + kubectl get pods)"
+  hdr "STEP 9/9" "검증 (99-verify.sh + kubectl get pods)"
   bash "${SCRIPTS}/99-verify.sh" || log_warn "verify 실패 — pods 상태로 직접 확인 권장"
   bash "${SCRIPTS}/13-set-config.sh" cert || true
   echo "--- nullus 네임스페이스 ---" >&2
@@ -166,4 +187,7 @@ log_ok "=== 설치 완료 — 총 $((DUR / 60))분 $((DUR % 60))초 ==="
 log_info "이후 사용 명령:"
 log_info "  kubectl get pods -n nullus"
 log_info "  helm list -n nullus"
+log_info "  외부 접근 도메인 (재)구성/확인:  bash ${SCRIPTS#${AIRGAP_DIR}/}/23-setup-gateway.sh"
+log_info "  도메인 → /etc/hosts 등록(sudo):  sudo bash ${SCRIPTS#${AIRGAP_DIR}/}/24-register-hosts.sh"
+log_info "  접근 진입점 포워딩(8080):  bash ${SCRIPTS#${AIRGAP_DIR}/}/25-port-forward.sh  → http://nullus.internal:8080/"
 log_info "정리:  kind delete cluster --name $CLUSTER_NAME && docker rm -f kind-registry"

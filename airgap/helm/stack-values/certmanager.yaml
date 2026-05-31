@@ -1,0 +1,4 @@
+# cert-manager airgap install values
+# Source: helm get values cert-manager -n cert-manager
+crds:
+  enabled: true

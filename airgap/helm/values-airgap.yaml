@@ -62,8 +62,13 @@ web:
 # Secrets — 플레이스홀더. 반드시 --set 또는 SealedSecret 으로 교체할 것.
 # -----------------------------------------------------------------------------
 secrets:
-  dbPassword: "CHANGE-ME"          # 운영: --set secrets.dbPassword=<실제값>
-  encryptionKey: "CHANGE-ME"       # 운영: --set secrets.encryptionKey=<32자 이상>
+  # airgap/데모 기본값 — 아래 postgresql.auth.password 와 반드시 일치해야 한다.
+  # 불일치 시 api 가 DB 접속 실패(SASL 28P01) → 마이그레이션/로그인 전부 불가.
+  # 운영: --set secrets.dbPassword=<값> + postgresql.auth.password 를 함께 교체.
+  dbPassword: "nullus"             # == postgresql.auth.password (아래)
+  # kubeconfig 암호화(클러스터 등록)에 사용 — 반드시 32바이트여야 한다.
+  # 9바이트 "CHANGE-ME" 면 클러스터 등록이 "ENCRYPTION_KEY must be 32 bytes" 로 실패.
+  encryptionKey: "nullus-dev-key-32bytes-padding!!"  # 32바이트 (운영: --set 으로 교체)
 
 # -----------------------------------------------------------------------------
 # Config — production 유지, 나머지는 기본값 사용

@@ -1,0 +1,6 @@
+# gitlab-runner airgap install values
+# Source: helm get values gitlab-runner -n nullus
+gitlabUrl: http://gitlab-webservice-default.gitlab.svc:8181
+rbac:
+  create: true
+runnerRegistrationToken: dummy-airgap-test-token

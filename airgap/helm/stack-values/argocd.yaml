@@ -1,0 +1,11 @@
+# argo-cd airgap install values
+# Source: helm get values argo-cd -n nullus
+configs:
+  params:
+    server.insecure: "true"
+crds:
+  install: true
+  keep: false
+server:
+  ingress:
+    enabled: false

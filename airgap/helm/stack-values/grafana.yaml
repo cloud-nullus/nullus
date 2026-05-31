@@ -1,0 +1,8 @@
+# grafana airgap install values
+# Source: helm get values grafana -n nullus
+adminPassword: admin
+adminUser: admin
+ingress:
+  enabled: false
+persistence:
+  enabled: false

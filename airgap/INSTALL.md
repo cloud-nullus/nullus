@@ -228,6 +228,67 @@ nullus-airgap-bundle-<version>/
 
 ---
 
+## 8-1. 스택(카탈로그) 설치
+
+Nullus UI의 `/admin/stack-versions` 페이지에 표시되는 DevSecOps 카탈로그 스택을  
+`airgap/helm/charts-catalog/` 에 번들된 차트로 직접 설치하는 스크립트입니다.
+
+```bash
+# 전체 스택 설치 (설치 순서 자동 보장)
+bash scripts/27-install-stacks.sh
+
+# 특정 스택만 설치
+bash scripts/27-install-stacks.sh argocd harbor keycloak
+
+# 스택 목록 확인
+bash scripts/27-install-stacks.sh --list
+
+# 렌더 검증만 (클러스터 변경 없음)
+DRY_RUN=1 bash scripts/27-install-stacks.sh
+
+# 배포 완료까지 대기
+WAIT=1 bash scripts/27-install-stacks.sh certmanager
+```
+
+### 스택 목록 (설치 순서)
+
+| 키 | 릴리스 | 네임스페이스 | 버전 |
+|---|---|---|---|
+| `certmanager` | cert-manager | cert-manager | v1.16.3 |
+| `metrics-server` | metrics-server | nullus | 3.12.2 |
+| `minio` | nullus-minio | nullus | 5.4.0 |
+| `gitlab` | gitlab | gitlab | 8.7.2 |
+| `gitlab-runner` | gitlab-runner | nullus | 0.72.0 |
+| `argocd` | argo-cd | nullus | 7.7.16 |
+| `prometheus` | kps | nullus-monitoring | 69.3.0 |
+| `grafana` | grafana | nullus | 8.9.0 |
+| `loki` | loki | nullus | 2.10.3 |
+| `opensearch` | opensearch | nullus | 2.22.0 |
+| `otel` | otel | nullus | 0.75.0 |
+| `keycloak` | keycloak | nullus-auth | 24.4.5 |
+| `harbor` | harbor | nullus | 1.15.0 |
+| `gateway` | eg | nullus | 1.4.3 |
+
+### 이미지 미러링
+
+`kind/kind-airgap.yaml` 의 containerd mirror 설정으로 인해  
+`docker.io`, `ghcr.io`, `registry.gitlab.com`, `registry.k8s.io`, `quay.io`,  
+`public.ecr.aws`, `registry-1.docker.io`, `localhost:5001` 의 이미지 요청이  
+모두 `kind-registry:5000` (로컬 레지스트리) 로 리다이렉트됩니다.  
+**차트 기본 이미지 레퍼런스를 그대로 사용해도 로컬 레지스트리에서 이미지를 가져옵니다.**
+
+### 설치 후 접근 구성
+
+```bash
+# HTTPRoute 등록 (신규 서비스 도메인 노출)
+bash scripts/23-setup-gateway.sh
+
+# /etc/hosts 등록
+sudo bash scripts/24-register-hosts.sh
+```
+
+---
+
 ## 9. 개발자용: 번들 재생성 (온라인)
 
 ```bash

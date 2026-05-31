@@ -1,0 +1,13 @@
+# kube-prometheus-stack airgap install values
+# Source: helm get values kps -n nullus-monitoring
+grafana:
+  adminPassword: admin
+prometheus:
+  prometheusSpec:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 400Mi

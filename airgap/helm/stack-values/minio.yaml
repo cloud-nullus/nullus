@@ -1,0 +1,16 @@
+# nullus-minio airgap install values
+# Source: helm get values nullus-minio -n nullus
+consoleIngress:
+  enabled: false
+ingress:
+  enabled: false
+mode: standalone
+persistence:
+  enabled: true
+  size: 2Gi
+replicas: 1
+resources:
+  requests:
+    memory: 512Mi
+rootPassword: nullus-minio-secret
+rootUser: nullus-admin
