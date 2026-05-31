@@ -145,7 +145,7 @@ Vite 개발 서버가 `http://localhost:5173`에서 실행됩니다.
 
 기본 클러스터 구조(dual kind):
 
-- `nullus-platform(플랫폼 설치 클러스터)`: control-plane 1 + worker(data-plane) 1
+- `nullus-platform(플랫폼 설치 클러스터)`: control-plane 1 + worker(data-plane) 2
 - `nullus-develop(애플리케이션 배포 클러스터)`: control-plane 1 + worker(data-plane) 1
 - Kubernetes 버전: `kindest/node:v1.35.1`
 
