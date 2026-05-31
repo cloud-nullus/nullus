@@ -76,6 +76,11 @@ secrets:
 config:
   server:
     mode: production
+  helm:
+    # airgap: UI 스택 설치(orchestrator)가 온라인 helm 레포 대신 로컬 OCI
+    # 레지스트리에서 차트를 pull 하도록 지정. 28-push-charts-oci.sh 가 차트를
+    # 이 레지스트리에 push 한다. (api 파드는 kind-registry:5000 에 도달 가능)
+    ociRegistry: "kind-registry:5000/charts"
 
 # -----------------------------------------------------------------------------
 # Ingress — kind 포트맵(80/443)이 트래픽을 처리하므로 비활성화
