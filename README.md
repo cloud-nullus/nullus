@@ -4,7 +4,26 @@ Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 
 ## 개요
 
-Nullus는 DevOps 엔지니어가 검증된 CI/CD 베스트 프랙티스 조합(Golden Path)을 선택하고, 웹 UI에서 노코드로 설정한 후 한 번의 버튼 클릭으로 Kubernetes 클러스터에 전체 DevSecOps 스택을 자동 설치할 수 있도록 하는 오픈소스 플랫폼입니다.
+Nullus는 DevOps 엔지니어가 검증된 CI/CD 베스트 프랙티스 조합을 선택하고, 웹 UI에서 노코드로 설정한 후 한 번의 버튼 클릭으로 Kubernetes 클러스터에 전체 DevSecOps 스택을 자동 설치할 수 있도록 하는 오픈소스 플랫폼입니다.
+
+Nullus는 "클러스터 준비 -> 스택 선택/설치 -> 배포 관측"의 흐름을 하나의 일관된 사용자 경험으로 제공하는 데 집중합니다. 플랫폼 팀은 표준화된 템플릿과 버전 호환성 정책을 운영하고, 개발 팀은 반복적인 인프라 구성 작업 없이 검증된 파이프라인을 빠르게 사용할 수 있습니다.
+
+사내에서 여러 프로젝트가 병렬로 운영되면 프로젝트별 Kubernetes 클러스터에 파이프라인을 반복 설치해야 하고, 팀마다 설치 절차와 운영 방식이 달라 표준화가 어려워집니다. 또한 GitLab, Argo CD, Prometheus, Grafana, MinIO 등 OSS 조합은 버전 호환성과 의존 관계를 함께 검토해야 해서 "어떤 조합이 실제로 안전하게 동작하는지"를 판단하는 데 많은 시간이 소요됩니다.
+
+Nullus는 이 문제를 해결하기 위해 검증된 OSS 조합을 Golden Path 템플릿으로 제공하고, 설치/연동 절차를 UI 기반 워크플로우로 통일하며, 배포 진행률과 로그를 단일 화면에서 추적할 수 있게 설계되었습니다. 이를 통해 신규 프로젝트 온보딩 시간을 줄이고, 환경별 편차로 인한 장애 가능성을 낮추며, 플랫폼 팀의 반복 작업을 자동화합니다.
+
+> 참고: 현재 스택 자동화는 GitLab 기반 워크플로우를 중심으로 구현되어 있습니다. GitHub 호환성은 Phase 2에서 추가할 예정이며, CI/CD 영역은 현재 안정화 작업을 계속 진행 중입니다.
+
+### 주요 기능
+
+- **Golden Path 템플릿 카탈로그**: 검증된 OSS 조합을 템플릿으로 제공해 설치 의사결정 시간을 줄입니다.
+- **노코드 스택 설치 워크플로우**: UI 기반 단계형 설정으로 DevSecOps 스택을 배포합니다.
+- **스택 상태/이력 가시화**: 스택 목록, 상태, 설치 이력, 핵심 구성 정보를 한 화면에서 확인합니다.
+- **실시간 배포 로그 추적**: 단계별 진행률과 로그 스트림으로 설치/장애 상황을 빠르게 파악합니다.
+- **클러스터 등록 및 연결 검증**: 다중 Kubernetes 클러스터를 등록하고 API 기반 연결 상태를 검증합니다.
+- **버전 호환성 관리**: 검증된 도구 버전 조합을 기준으로 배포 안정성을 높입니다.
+- **통합 관측/알림 관리**: 대시보드와 알림 규칙 관리로 운영 상태를 지속적으로 모니터링합니다.
+- **역할 기반 접근 제어(RBAC)**: Admin/DevOps/Developer 권한 분리로 기능 접근 범위를 제어합니다.
 
 ### 핵심 가치
 
@@ -12,6 +31,36 @@ Nullus는 DevOps 엔지니어가 검증된 CI/CD 베스트 프랙티스 조합(G
 - **노코드 설정**: 웹 UI의 체크박스/드롭다운으로 5단계 설정 워크플로우
 - **자동 설치**: 한 번의 Deploy로 전체 스택 자동 설치 및 연동
 - **버전 호환성 보장**: 테스트 완료된 도구 버전 조합만 제공
+
+## 프로젝트 미리보기
+
+### 1) 메인 대시보드
+
+![Nullus main dashboard](.github/assets/main.png)
+
+- Nullus의 핵심 가치(자동 설치, Golden Path, 모니터링, RBAC)를 한 화면에서 요약합니다.
+- 빠른 시작 액션(클러스터 등록, 스택 시작, CI/CD 진입)으로 초기 온보딩 시간을 줄입니다.
+
+### 2) Stack Template 카탈로그
+
+![Nullus stack template](.github/assets/stack_template.png)
+
+- GitLab/Argo CD/Prometheus/Grafana/MinIO 같은 도구 조합을 템플릿으로 표준화합니다.
+- 예상 배포 시간, 리소스 요구사항, Helm/App 버전을 함께 보여 의사결정을 돕습니다.
+
+### 3) Stack List 및 설치 결과 요약
+
+![Nullus stack list](.github/assets/stack_list.png)
+
+- 배포된 스택 목록과 상태(Running 등)를 확인하고, 선택한 스택의 상세 정보를 우측 패널에서 즉시 조회합니다.
+- OSS 콘솔 링크, 토폴로지, 설치 요약 정보를 제공해 운영 가시성을 높입니다.
+
+### 4) 실시간 설치 로그/진행 상태
+
+![Nullus stack install progress](.github/assets/stack_install.png)
+
+- Validate -> Install -> Configure -> Health Check -> Complete 단계로 설치 파이프라인 진행률을 추적합니다.
+- Raw 로그와 kubectl 스냅샷을 동시에 노출해 문제 진단 속도를 개선합니다.
 
 ## 기술 스택
 
@@ -46,13 +95,13 @@ cp .env.example .env.dev
 
 ### 샘플데이터 마이그레이션 (DevSecOps Stack 목업)
 
-`000022_seed_devsecops_stack_mock` 마이그레이션으로 스택 목록/이력 화면 검증용 샘플 데이터를 추가할 수 있습니다.
+`000023_seed_devsecops_stack_mock` 마이그레이션으로 스택 목록/이력 화면 검증용 샘플 데이터를 추가할 수 있습니다.
 
 ```bash
 # 1) 로컬 인프라 실행 (PostgreSQL 포함)
 make dev-up
 
-# 2) 최신 마이그레이션 전체 적용 (000022 포함)
+# 2) 최신 마이그레이션 전체 적용 (000023 포함)
 make migrate-up
 
 # 3) 샘플 데이터 확인
@@ -96,8 +145,8 @@ Vite 개발 서버가 `http://localhost:5173`에서 실행됩니다.
 
 기본 클러스터 구조(dual kind):
 
-- `nullus-platform`: control-plane 1 + worker(data-plane) 1
-- `nullus-develop`: control-plane 1 + worker(data-plane) 1
+- `nullus-platform(플랫폼 설치 클러스터)`: control-plane 1 + worker(data-plane) 2
+- `nullus-develop(애플리케이션 배포 클러스터)`: control-plane 1 + worker(data-plane) 1
 - Kubernetes 버전: `kindest/node:v1.35.1`
 
 생성(권장):
@@ -273,7 +322,7 @@ API 서버: `http://localhost:8090`
 |--------|------|------|
 | GET/POST | `/stacks` | 스택 목록 / 생성 (namespace 지정 가능) |
 | DELETE | `/stacks/:id` | 스택 삭제 (Helm uninstall 포함) |
-| GET | `/stacks/templates` | Golden Path 템플릿 (3개) |
+| GET | `/stacks/templates` | Golden Path 템플릿 목록 |
 | GET | `/stacks/compatibility` | 도구 호환성 매트릭스 |
 | GET | `/stacks/resource-defaults` | OSS별 리소스 request/limit 기본값 목록 |
 | POST | `/stacks/resource-defaults` | OSS 리소스 request/limit 업서트 (`tool_key` 기준, idempotent) |
@@ -311,19 +360,19 @@ API 서버: `http://localhost:8090`
 
 | 기능 | 설명 | 상태 |
 |------|------|------|
-| F0 | Organization 설정 등록 | [x] Postgres Repository, CRUD API |
-| F1 | K8S Cluster 등록/검증 | [x] Postgres Repository, client-go, Kubeconfig 암호화 |
-| F2 | 노코드 DevSecOps Stack 설정 UI | [x] React 5단계 Wizard, RHF+Zod |
-| F3 | Golden Path 템플릿 | [x] 3개 템플릿, Postgres Seed |
-| F4 | 스택 자동 설치/배포/이력 | [x] Helm SDK 3-Phase DAG, Rollback, WebSocket 로그 |
-| F5 | CI/CD Pipeline 템플릿 | [x] Pipeline 템플릿, K8s Manifest Generator |
-| F6 | CI/CD Pipeline 배포/이력 | [x] Manifest Applier, 배포 추적 |
-| F7 | 모니터링/알림 관리 | [x] Prometheus HTTP Client, Dashboard, Alert CRUD |
-| F8 | 버전 호환성 관리 | [x] 호환성 매트릭스, JSONB Diff, 검증 API |
-| F9 | UI 권한 체계 | [x] Keycloak OIDC, JWT, 라우트별 RBAC |
-| F10 | 리소스 예상량 계산 | [x] 리소스 계산기, 비용 추정 |
-| F11 | 기존 사용자 추가 | [x] org_members 멀티 조직, 이메일 검색, 즉시 활성 |
-| F12 | 네임스페이스 선택/생성 | [x] K8s API 조회, 스택별 namespace 지정 |
+| F0 | Organization 설정 등록 (Postgres Repository, CRUD API) | 구현됨 |
+| F1 | K8S Cluster 등록/검증 (client-go, kubeconfig 암호화) | 구현됨 |
+| F2 | 노코드 DevSecOps Stack 설정 UI (React Wizard, RHF+Zod) | 구현됨 |
+| F3 | Golden Path 템플릿 (템플릿 카탈로그, Postgres Seed) | 구현됨 |
+| F4 | 스택 자동 설치/배포/이력 (Helm DAG, rollback, WS 로그) | 구현됨 |
+| F5 | CI/CD Pipeline 템플릿 (템플릿, Manifest Generator) | 안정화 진행 중 |
+| F6 | CI/CD Pipeline 배포/이력 (Manifest Applier, 배포 추적) | 안정화 진행 중 |
+| F7 | 모니터링/알림 관리 (Dashboard, Alert CRUD) | 구현됨 |
+| F8 | 버전 호환성 관리 (호환성 매트릭스, 검증 API) | 구현됨 |
+| F9 | UI 권한 체계 (OIDC/JWT, 라우트 RBAC) | 구현됨 |
+| F10 | 리소스 예상량 계산 (리소스 계산, 비용 추정) | 구현됨 |
+| F11 | 기존 사용자 추가 (멀티 조직 멤버십, 이메일 검색) | 구현됨 |
+| F12 | 네임스페이스 선택/생성 (K8s API 조회, 스택별 namespace) | 구현됨 |
 
 전체 기능 명세: [PRD v1.3](./docs/10_제품기획/nullus_PRD_1.3.md)
 
@@ -333,7 +382,7 @@ API 서버: `http://localhost:8090`
 nullus/
 ├── cmd/api/                # API 서버 진입점
 ├── configs/                # 설정 파일 (config.yaml)
-├── db/migrations/          # DB 마이그레이션 (22개)
+├── db/migrations/          # DB 마이그레이션
 ├── deploy/helm/nullus/     # Helm 차트
 ├── internal/               # 내부 모듈 (Clean Architecture)
 │   ├── admin/              # 조직/클러스터/사용자 관리
@@ -346,10 +395,10 @@ nullus/
 ├── scripts/                # 운영 스크립트 (runbook, keycloak, kind)
 ├── web/                    # React 프론트엔드
 │   ├── src/features/       # 기능별 모듈 (admin, auth, cicd, observability, stack)
-│   └── e2e/                # Playwright E2E 테스트 (18개)
+│   └── e2e/                # Playwright E2E 테스트
 ├── e2e/                    # Go E2E 테스트
 ├── CHANGELOG.md            # 변경 이력
-├── ROADMAP.md              # 로드맵
+├── docs/70_전략/ROADMAP.md # 로드맵
 └── Makefile                # 개발 명령어
 ```
 
@@ -403,7 +452,7 @@ Apache License 2.0
 
 ## 커뮤니티
 
-- **GitHub**: [cloud-nullus/draft](https://github.com/cloud-nullus/draft)
+- **GitHub**: [cloud-nullus/nullus](https://github.com/cloud-nullus/nullus)
 - **Issues**: 기능 요청 및 버그 리포트는 GitHub Issues를 이용
 - **Discussions**: 아이디어 및 질문은 GitHub Discussions에서 논의
 
