@@ -38,6 +38,7 @@ config:
   helm:
     timeout: 600s
     namespacePrefix: nullus-
+    ociRegistry: ""   # airgap: 로컬 OCI 레지스트리(host/path). 빈 값이면 온라인 레포 사용
   prometheus:
     url: ""
   log:
