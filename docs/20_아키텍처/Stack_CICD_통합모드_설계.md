@@ -3,7 +3,7 @@
 > 작성일: 2026-05-25
 > 상태: 신규 일반 운영 경로 설계
 > 실행 모드: `stack_integrated`
-> 긴급 배포 설계: [Stack_CICD_모듈간_관계_설계.md](./Stack_CICD_모듈간_관계_설계.md)
+> 긴급 배포 설계: [Stack_CICD_긴급모드_설계.md](./Stack_CICD_긴급모드_설계.md)
 
 ---
 

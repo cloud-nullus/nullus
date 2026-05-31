@@ -2,7 +2,7 @@
 
 **작성일**: 2026-03-30
 **버전**: 1.0
-**기준 문서**: `docs/20_아키텍처/Nullus 상세 기능 명세 및 시스템 아키텍처.md`
+**기준 문서**: `docs/20_아키텍처/Nullus_시스템_아키텍처.md`
 **비교 대상 구현**: `draft` 실제 코드베이스 (`cmd/`, `internal/`, `web/`, `db/migrations/`, `deploy/`)
 
 ---
@@ -41,7 +41,7 @@
 설계 문서는 `/auth/login`, `/auth/logout`, `/auth/me`를 API Server의 기본 진입점으로 상정한다.
 하지만 현재 `main.go`에는 `admin`, `stacks`, `cicd`, `observability` 그룹만 등록되어 있고, 별도의 `/api/v1/auth` 라우트는 없다.
 
-- 설계 근거: `Nullus 상세 기능 명세 및 시스템 아키텍처.md` 5.1 API Server
+- 설계 근거: `Nullus_시스템_아키텍처.md` 5.1 API Server
 - 구현 확인:
   - `cmd/api/main.go`
   - `internal/*/adapter/handler/*.go`

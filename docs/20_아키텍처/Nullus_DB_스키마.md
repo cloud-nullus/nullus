@@ -2,7 +2,7 @@
 
 **작성일**: 2026-03-14
 **버전**: 1.0
-**기반 문서**: nullus_PRD_1.3.md, Nullus 상세 기능 명세 및 시스템 아키텍처, Nullus_기능목록.md, Nullus_기능분해도.csv, CLAUDE.md
+**기반 문서**: nullus_PRD_1.3.md, Nullus_시스템_아키텍처.md, Nullus_기능목록.md, Nullus_기능분해도.csv, CLAUDE.md
 **대상 독자**: 백엔드 엔지니어, DBA, 아키텍트
 
 ---
