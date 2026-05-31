@@ -22,11 +22,11 @@ func NewPostgresPipelineRepository(pool *pgxpool.Pool) *PostgresPipelineReposito
 // Create inserts a new pipeline record.
 func (r *PostgresPipelineRepository) Create(ctx context.Context, p *domain.Pipeline) error {
 	const q = `
-		INSERT INTO pipelines (id, name, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, stack_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		INSERT INTO pipelines (id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, stack_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 
 	_, err := r.pool.Exec(ctx, q,
-		p.ID, p.Name, p.TemplateID, p.OrgID, p.ClusterID,
+		p.ID, p.Name, p.ExecutionMode, p.TemplateID, p.OrgID, p.ClusterID,
 		p.Namespace, string(p.AppType), p.GitRepoURL, string(p.Status), p.CreatedAt,
 		nilIfEmpty(p.StackID),
 	)
@@ -46,7 +46,7 @@ func nilIfEmpty(s string) any {
 // GetByID retrieves a pipeline by its ID.
 func (r *PostgresPipelineRepository) GetByID(ctx context.Context, id string) (*domain.Pipeline, error) {
 	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
+		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
 		FROM pipelines WHERE id = $1`
 
 	row := r.pool.QueryRow(ctx, q, id)
@@ -56,7 +56,7 @@ func (r *PostgresPipelineRepository) GetByID(ctx context.Context, id string) (*d
 // List returns all pipelines belonging to an organization.
 func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]*domain.Pipeline, error) {
 	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
+		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
 		FROM pipelines WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, orgID)
@@ -82,7 +82,7 @@ func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]
 // ListByStackID returns all pipelines linked to a specific stack.
 func (r *PostgresPipelineRepository) ListByStackID(ctx context.Context, stackID string) ([]*domain.Pipeline, error) {
 	const q = `
-		SELECT id, name, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
+		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
 		FROM pipelines WHERE stack_id = $1 ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, stackID)
@@ -109,12 +109,12 @@ func (r *PostgresPipelineRepository) ListByStackID(ctx context.Context, stackID 
 func (r *PostgresPipelineRepository) Update(ctx context.Context, p *domain.Pipeline) error {
 	const q = `
 		UPDATE pipelines
-		SET name = $2, template_id = $3, cluster_id = $4, namespace = $5,
-		    app_type = $6, git_repo_url = $7, status = $8, stack_id = $9
+		SET name = $2, execution_mode = $3, template_id = $4, cluster_id = $5, namespace = $6,
+		    app_type = $7, git_repo_url = $8, status = $9, stack_id = $10
 		WHERE id = $1`
 
 	res, err := r.pool.Exec(ctx, q,
-		p.ID, p.Name, p.TemplateID, p.ClusterID,
+		p.ID, p.Name, p.ExecutionMode, p.TemplateID, p.ClusterID,
 		p.Namespace, string(p.AppType), p.GitRepoURL, string(p.Status),
 		nilIfEmpty(p.StackID),
 	)
@@ -153,7 +153,7 @@ func scanPipeline(row pipelineScanner) (*domain.Pipeline, error) {
 		createdAt time.Time
 	)
 	if err := row.Scan(
-		&p.ID, &p.Name, &p.TemplateID, &p.OrgID, &p.ClusterID,
+		&p.ID, &p.Name, &p.ExecutionMode, &p.TemplateID, &p.OrgID, &p.ClusterID,
 		&p.Namespace, &appType, &p.GitRepoURL, &status, &createdAt,
 		&p.StackID,
 	); err != nil {

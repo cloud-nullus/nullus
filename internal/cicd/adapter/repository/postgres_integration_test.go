@@ -122,12 +122,12 @@ func TestPostgresRepositories_CICDModuleIntegration(t *testing.T) {
 			ids = append(ids, tmpl.ID)
 		}
 		assert.Contains(t, ids, "web-backend-v1")
-		assert.Contains(t, ids, "web-frontend-v1")
+		assert.NotContains(t, ids, "web-frontend-v1")
 
 		tmpl, err := repo.GetByID(ctx, "web-backend-v1")
 		require.NoError(t, err)
 		require.NotNil(t, tmpl)
-		assert.Equal(t, "Web Backend Pipeline", tmpl.Name)
+		assert.Equal(t, "User Custom Pipeline", tmpl.Name)
 		assert.Equal(t, domain.AppTypeBackend, tmpl.AppType)
 		assert.Contains(t, tmpl.Stages, "Build")
 		assert.Contains(t, tmpl.Stages, "Deploy")
