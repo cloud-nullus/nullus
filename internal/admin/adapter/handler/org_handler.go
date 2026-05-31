@@ -42,6 +42,13 @@ func (h *OrgHandler) resolveOrgID(c echo.Context) string {
 	if orgID == "" {
 		orgID = c.QueryParam("orgId")
 	}
+	// 헤더/쿼리에 org 가 없으면 인증된 사용자의 org 로 폴백한다.
+	// (없으면 GetOrganization 이 임의의 첫 org 를 반환해 다른 조직 데이터가 노출될 수 있음)
+	if orgID == "" {
+		if u, ok := c.Get("current_user").(*domain.User); ok && u != nil {
+			orgID = u.OrgID
+		}
+	}
 	return orgID
 }
 
