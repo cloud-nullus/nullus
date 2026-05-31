@@ -72,6 +72,18 @@ api.interceptors.request.use((config) => {
     config.headers.set('X-Org-ID', user.orgId)
   }
 
+  // Alpha/session auth: the backend AuthMiddleware identifies the caller via
+  // X-User-* headers (see internal/auth/adapter/middleware/auth_middleware.go).
+  // Without these the API returns 401 → the response interceptor logs the user
+  // out, bouncing them back to /login right after a successful client-side login.
+  if (user) {
+    config.headers.set('X-User-ID', user.id)
+    config.headers.set('X-User-Email', user.email)
+    config.headers.set('X-User-Name', user.name)
+    config.headers.set('X-User-Role', user.role)
+    config.headers.set('X-User-OrgID', user.orgId)
+  }
+
   return config
 })
 
