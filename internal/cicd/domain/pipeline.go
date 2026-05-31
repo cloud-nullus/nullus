@@ -34,6 +34,7 @@ const (
 type Pipeline struct {
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
+	ExecutionMode  string            `json:"execution_mode,omitempty"`
 	TemplateID     string            `json:"template_id"`
 	OrgID          string            `json:"org_id"`
 	ClusterID      string            `json:"cluster_id"`

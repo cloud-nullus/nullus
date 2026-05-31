@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net"
@@ -73,6 +74,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.PATCH("/:stackId/tools", h.AddTools)
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.GET("/:stackId/workloads", h.GetWorkloads)
+	g.GET("/:stackId/integrations", h.GetIntegrations)
 	g.POST("/draft", h.SaveDraft)
 }
 
@@ -148,6 +150,154 @@ func testObjectStorageConnection(ctx context.Context, endpoint string) error {
 	}
 	_ = conn.Close()
 	return nil
+}
+
+type stackIntegrationResponse struct {
+	ID                    string         `json:"id"`
+	StackID               string         `json:"stack_id"`
+	ComponentType         string         `json:"component_type"`
+	Provider              string         `json:"provider"`
+	Endpoint              string         `json:"endpoint"`
+	APIEndpoint           string         `json:"api_endpoint"`
+	CredentialRef         string         `json:"credential_ref,omitempty"`
+	CredentialReady       bool           `json:"credential_ready"`
+	HealthStatus          string         `json:"health_status"`
+	ProvisionCapabilities []string       `json:"provisioning_capabilities"`
+	Metadata              map[string]any `json:"metadata,omitempty"`
+}
+
+func (h *StackHandler) GetIntegrations(c echo.Context) error {
+	stackID := c.Param("stackId")
+	if stackID == "" {
+		return errorResponse(c, http.StatusBadRequest, "STACK_ID_REQUIRED", "stack_id is required")
+	}
+	stack, err := h.stackRepo.GetByID(c.Request().Context(), stackID)
+	if err != nil || stack == nil {
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", "stack not found")
+	}
+
+	cfg := stackConfigFromAny(stack.Config)
+	items := []stackIntegrationResponse{
+		buildIntegration(stack, cfg, "code_repository", cfg.Artifacts.SourceRepository, []string{"repository_select", "repository_create"}),
+		buildIntegration(stack, cfg, "package_registry", cfg.Artifacts.PackageRegistry, []string{"artifact_publish", "sbom_publish", "test_report_publish"}),
+		buildIntegration(stack, cfg, "image_registry", cfg.Artifacts.ContainerRegistry, []string{"image_push", "image_pull"}),
+		buildIntegration(stack, cfg, "ci_platform", cfg.Pipeline.CIPlatform, []string{"workflow_provision", "pipeline_trigger", "run_status_read"}),
+		buildIntegration(stack, cfg, "cd_tool", cfg.Pipeline.CDTool, []string{"application_provision", "sync_trigger", "sync_status_read"}),
+	}
+
+	if h.pool != nil {
+		var clusterName sql.NullString
+		if err := h.pool.QueryRow(c.Request().Context(), "SELECT name FROM clusters WHERE id = $1", stack.ClusterID).Scan(&clusterName); err == nil && clusterName.Valid {
+			for i := range items {
+				if items[i].Metadata == nil {
+					items[i].Metadata = map[string]any{}
+				}
+				items[i].Metadata["cluster_name"] = clusterName.String
+			}
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"stack_id":     stack.ID,
+		"state":        stack.State,
+		"integrations": items,
+		"total":        len(items),
+	})
+}
+
+func buildIntegration(stack *domain.Stack, cfg domain.StackConfig, componentType string, sel domain.ToolSelection, caps []string) stackIntegrationResponse {
+	provider := strings.TrimSpace(sel.Name)
+	ready := sel.Enabled && provider != ""
+	health := "credential_required"
+	if ready {
+		health = "ready"
+	}
+	id := fmt.Sprintf("int_%s_%s", stack.ID, componentType)
+	endpoint := integrationEndpoint(stack, cfg, componentType, provider)
+	return stackIntegrationResponse{
+		ID:                    id,
+		StackID:               stack.ID,
+		ComponentType:         componentType,
+		Provider:              provider,
+		Endpoint:              endpoint,
+		APIEndpoint:           endpoint,
+		CredentialRef:         "",
+		CredentialReady:       ready,
+		HealthStatus:          health,
+		ProvisionCapabilities: caps,
+		Metadata: map[string]any{
+			"version": sel.Version,
+		},
+	}
+}
+
+func integrationEndpoint(stack *domain.Stack, cfg domain.StackConfig, componentType, provider string) string {
+	if provider == "" {
+		return ""
+	}
+
+	normalizedProvider := strings.ToLower(strings.ReplaceAll(provider, " ", "-"))
+	if componentType == "code_repository" && (normalizedProvider == "gitlab" || normalizedProvider == "gitlab-ce") {
+		if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
+			return fmt.Sprintf("https://gitlab.%s", accessDomain)
+		}
+		if namespace := strings.TrimSpace(stack.Namespace); namespace != "" {
+			return fmt.Sprintf("http://gitlab-webservice-default.%s.svc:8181", namespace)
+		}
+	}
+
+	if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
+		if subdomain := integrationSubdomain(componentType, normalizedProvider); subdomain != "" {
+			return fmt.Sprintf("https://%s.%s", subdomain, accessDomain)
+		}
+	}
+	return ""
+}
+
+func integrationSubdomain(componentType, normalizedProvider string) string {
+	switch componentType {
+	case "image_registry":
+		switch normalizedProvider {
+		case "gitlab-registry", "gitlab-container-registry":
+			return "registry"
+		case "harbor":
+			return "harbor"
+		}
+	case "package_registry":
+		switch normalizedProvider {
+		case "gitlab", "gitlab-package", "gitlab-package-registry":
+			return "gitlab"
+		case "nexus":
+			return "nexus"
+		case "artifactory":
+			return "artifactory"
+		}
+	case "ci_platform":
+		switch normalizedProvider {
+		case "gitlab-ci", "gitlab":
+			return "gitlab"
+		case "argocd", "argo-cd":
+			return "argocd"
+		}
+	case "cd_tool":
+		switch normalizedProvider {
+		case "argocd", "argo-cd":
+			return "argocd"
+		case "flux":
+			return "flux"
+		}
+	}
+	return normalizedProvider
+}
+
+func stackConfigFromAny(v any) domain.StackConfig {
+	if cfg, ok := v.(domain.StackConfig); ok {
+		return cfg
+	}
+	if cfg, ok := v.(*domain.StackConfig); ok && cfg != nil {
+		return *cfg
+	}
+	return domain.StackConfig{}
 }
 
 // createStackRequest is the request body for POST /stacks.

@@ -130,6 +130,74 @@ func TestDeployPipeline_Success(t *testing.T) {
 	assert.Equal(t, domain.DeploymentStatusSuccess, out.Deployment.Status)
 	assert.NotEmpty(t, out.Deployment.ID)
 	require.Len(t, applier.appliedManifests, 1)
+	require.Len(t, applier.appliedManifests[0], 4)
+	assert.Contains(t, applier.appliedManifests[0][3], "kind: Ingress")
+}
+
+func TestDeployPipeline_AppliesSelectedManifestTypes(t *testing.T) {
+	pipelineRepo := newMockDeployPipelineRepo(
+		&domain.Pipeline{ID: "pip-1", Name: "orders", Namespace: "apps", ClusterID: "c1", AppType: domain.AppTypeBackend},
+	)
+	deploymentRepo := &mockDeployDeploymentRepo{}
+	applier := &mockManifestApplier{}
+	uc := NewDeployPipeline(pipelineRepo, deploymentRepo, &mockKubeconfigProvider{kubeconfig: []byte("fake")}, applier)
+
+	_, err := uc.Execute(context.Background(), DeployPipelineInput{
+		PipelineID:    "pip-1",
+		Version:       "v1.2.0",
+		ManifestTypes: []string{"deployment"},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, applier.appliedManifests, 1)
+	require.Len(t, applier.appliedManifests[0], 2)
+	assert.Contains(t, applier.appliedManifests[0][1], "kind: Deployment")
+}
+
+func TestDeployPipeline_AppliesSavedReviewManifests(t *testing.T) {
+	pipelineRepo := newMockDeployPipelineRepo(
+		&domain.Pipeline{
+			ID:        "pip-1",
+			Name:      "orders",
+			Namespace: "apps",
+			ClusterID: "c1",
+			AppType:   domain.AppTypeBackend,
+			EnvVars: map[string]string{
+				envManifestDeployment: "kind: Deployment\nmetadata:\n  name: imported\n",
+				envManifestService:    "kind: Service\nmetadata:\n  name: imported-svc\n",
+				envManifestIngress:    "kind: Ingress\nmetadata:\n  name: imported-ingress\n",
+				"APP_ENV":             "prod",
+			},
+		},
+	)
+	deploymentRepo := &mockDeployDeploymentRepo{}
+	applier := &mockManifestApplier{}
+	uc := NewDeployPipeline(pipelineRepo, deploymentRepo, &mockKubeconfigProvider{kubeconfig: []byte("fake")}, applier)
+
+	_, err := uc.Execute(context.Background(), DeployPipelineInput{PipelineID: "pip-1", Version: "v1.2.0"})
+
+	require.NoError(t, err)
+	require.Len(t, applier.appliedManifests, 1)
+	require.Len(t, applier.appliedManifests[0], 4)
+	assert.Contains(t, applier.appliedManifests[0][1], "name: imported")
+	assert.Contains(t, applier.appliedManifests[0][2], "name: imported-svc")
+	assert.Contains(t, applier.appliedManifests[0][3], "name: imported-ingress")
+	assert.NotContains(t, applier.appliedManifests[0][1], envManifestDeployment)
+}
+
+func TestBuildStepPlan_IncludesIngress(t *testing.T) {
+	assert.Equal(t,
+		[]string{"Namespace 생성", "Deployment 생성", "Service 생성", "Ingress 생성"},
+		BuildStepPlan(&domain.Pipeline{}),
+	)
+	assert.Equal(t,
+		[]string{"Git Clone", "Docker Build", "Image Load", "Namespace 생성", "Deployment 생성", "Service 생성", "Ingress 생성"},
+		BuildStepPlan(&domain.Pipeline{DockerfilePath: "Dockerfile"}),
+	)
+	assert.Equal(t,
+		[]string{"Namespace 생성", "Deployment 생성"},
+		BuildStepPlan(&domain.Pipeline{}, []string{"deployment"}),
+	)
 }
 
 func TestDeployPipeline_PipelineNotFound(t *testing.T) {

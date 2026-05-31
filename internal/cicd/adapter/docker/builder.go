@@ -55,6 +55,51 @@ func (b *Builder) PrepareImage(ctx context.Context, opts port.PrepareImageOpts) 
 	}
 	b.markSuccess(opts.DeploymentID, 1, fmt.Sprintf("Built %s", opts.ImageName))
 
+	if opts.RegistryURL != "" {
+		return b.pushToRegistry(ctx, opts)
+	}
+	return b.loadIntoKind(ctx, opts)
+}
+
+func (b *Builder) pushToRegistry(ctx context.Context, opts port.PrepareImageOpts) (string, error) {
+	remoteRef := fmt.Sprintf("%s/%s", strings.TrimRight(opts.RegistryURL, "/"), opts.ImageName)
+
+	b.markRunning(opts.DeploymentID, 2)
+	if opts.RegistryUsername != "" {
+		b.log(opts.DeploymentID, 2, "$ docker login %s -u %s", opts.RegistryURL, opts.RegistryUsername)
+		loginCmd := exec.CommandContext(ctx, "docker", "login", opts.RegistryURL,
+			"--username", opts.RegistryUsername,
+			"--password-stdin",
+		)
+		loginCmd.Stdin = strings.NewReader(opts.RegistryPassword)
+		if output, err := loginCmd.CombinedOutput(); err != nil {
+			b.log(opts.DeploymentID, 2, "error: %s", strings.TrimSpace(string(output)))
+			b.markFailed(opts.DeploymentID, 2, "docker login failed")
+			return "", fmt.Errorf("docker login: %w", err)
+		}
+	}
+
+	b.log(opts.DeploymentID, 2, "$ docker tag %s %s", opts.ImageName, remoteRef)
+	tagCmd := exec.CommandContext(ctx, "docker", "tag", opts.ImageName, remoteRef)
+	if output, err := tagCmd.CombinedOutput(); err != nil {
+		b.log(opts.DeploymentID, 2, "error: %s", strings.TrimSpace(string(output)))
+		b.markFailed(opts.DeploymentID, 2, "docker tag failed")
+		return "", fmt.Errorf("docker tag: %w", err)
+	}
+
+	b.log(opts.DeploymentID, 2, "$ docker push %s", remoteRef)
+	pushCmd := exec.CommandContext(ctx, "docker", "push", remoteRef)
+	if output, err := pushCmd.CombinedOutput(); err != nil {
+		b.log(opts.DeploymentID, 2, "error: %s", strings.TrimSpace(string(output)))
+		b.markFailed(opts.DeploymentID, 2, "docker push failed")
+		return "", fmt.Errorf("docker push: %w", err)
+	}
+	b.markSuccess(opts.DeploymentID, 2, fmt.Sprintf("Pushed %s", remoteRef))
+
+	return remoteRef, nil
+}
+
+func (b *Builder) loadIntoKind(ctx context.Context, opts port.PrepareImageOpts) (string, error) {
 	b.markRunning(opts.DeploymentID, 2)
 	b.log(opts.DeploymentID, 2, "$ kind load docker-image %s --name %s", opts.ImageName, opts.ClusterName)
 	loadCmd := exec.CommandContext(ctx, "kind", "load", "docker-image", opts.ImageName, "--name", opts.ClusterName)
@@ -64,7 +109,6 @@ func (b *Builder) PrepareImage(ctx context.Context, opts port.PrepareImageOpts) 
 		return "", fmt.Errorf("kind load: %w", err)
 	}
 	b.markSuccess(opts.DeploymentID, 2, fmt.Sprintf("Loaded into kind-%s", opts.ClusterName))
-
 	return opts.ImageName, nil
 }
 

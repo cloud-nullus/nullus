@@ -94,8 +94,30 @@ func TestCreatePipeline_Success(t *testing.T) {
 	require.NotNil(t, out.Pipeline)
 	assert.Equal(t, "orders", out.Pipeline.Name)
 	assert.Equal(t, domain.PipelineStatusActive, out.Pipeline.Status)
+	assert.Equal(t, "emergency_direct", out.Pipeline.ExecutionMode)
 	require.Len(t, pipelineRepo.created, 1)
 	assert.Equal(t, out.Pipeline.ID, pipelineRepo.created[0].ID)
+}
+
+func TestCreatePipeline_DefaultExecutionModeForStackIntegrated(t *testing.T) {
+	pipelineRepo := &mockCreatePipelineRepo{}
+	templateRepo := newMockCreateTemplateRepo(&domain.PipelineTemplate{ID: "tmpl-1", Name: "backend"})
+	uc := NewCreatePipeline(pipelineRepo, templateRepo)
+
+	out, err := uc.Execute(context.Background(), CreatePipelineInput{
+		Name:       "orders",
+		TemplateID: "tmpl-1",
+		OrgID:      "org-1",
+		ClusterID:  "cluster-1",
+		StackID:    "stack-1",
+		Namespace:  "apps",
+		AppType:    domain.AppTypeBackend,
+		GitRepoURL: "https://github.com/acme/orders",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, "stack_integrated", out.Pipeline.ExecutionMode)
 }
 
 func TestCreatePipeline_TemplateNotFound(t *testing.T) {

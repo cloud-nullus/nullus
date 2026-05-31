@@ -174,6 +174,156 @@ func TestStackHandler_ListStacks_200(t *testing.T) {
 	assert.EqualValues(t, 1, resp["total"])
 }
 
+func TestStackHandler_GetIntegrations_200(t *testing.T) {
+	e := newStackEcho()
+
+	body := `{
+		"name":"stack-integration-test",
+		"cluster_id":"cls-1",
+		"golden_path_id":"github-argocd-v1",
+		"config":{
+			"access_domain":"nullus.dev",
+			"artifacts":{
+				"source_repository":{"name":"GitLab CE","version":"17.0.0","enabled":true},
+				"package_registry":{"name":"gitlab-package","version":"17.0.0","enabled":true},
+				"container_registry":{"name":"gitlab-registry","version":"17.0.0","enabled":true},
+				"storage_backend":{"name":"minio","version":"1","enabled":true}
+			},
+			"pipeline":{
+				"ci_platform":{"name":"gitlab-ci","version":"17.0.0","enabled":true},
+				"cd_tool":{"name":"argocd","version":"2.11.0","enabled":true}
+			},
+			"monitoring":{
+				"collection":{"name":"prometheus","version":"1","enabled":true},
+				"visualization":{"name":"grafana","version":"1","enabled":true}
+			},
+			"logging":{
+				"collection":{"name":"loki","version":"1","enabled":true},
+				"search":{"name":"opensearch","version":"1","enabled":true}
+			},
+			"resources":{"developers":1,"concurrent_runners":1,"weekly_commits":1,"build_frequency":"daily"}
+		}
+	}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Org-ID", "org-int")
+	createRec := httptest.NewRecorder()
+	e.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &created))
+	stackID, ok := created["id"].(string)
+	require.True(t, ok)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks/"+stackID+"/integrations", nil)
+	getRec := httptest.NewRecorder()
+	e.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var resp struct {
+		Integrations []map[string]any `json:"integrations"`
+		Total        int              `json:"total"`
+	}
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &resp))
+	assert.Equal(t, 5, resp.Total)
+	assert.Len(t, resp.Integrations, 5)
+	assert.Equal(t, "https://gitlab.nullus.dev", resp.Integrations[0]["endpoint"])
+	assert.Equal(t, "https://gitlab.nullus.dev", resp.Integrations[1]["endpoint"])
+	assert.Equal(t, "https://registry.nullus.dev", resp.Integrations[2]["endpoint"])
+	assert.Equal(t, "https://gitlab.nullus.dev", resp.Integrations[3]["endpoint"])
+	assert.Equal(t, "https://argocd.nullus.dev", resp.Integrations[4]["endpoint"])
+}
+
+func TestStackHandler_GetIntegrations_GitLabRegistryDisplayNameUsesRegistryHost(t *testing.T) {
+	e := newStackEcho()
+
+	body := `{
+		"name":"stack-integration-test-display-name",
+		"cluster_id":"cls-1",
+		"golden_path_id":"gitlab-allinone-v1",
+		"config":{
+			"access_domain":"nullus.dev",
+			"artifacts":{
+				"source_repository":{"name":"GitLab CE","version":"17.0.0","enabled":true},
+				"container_registry":{"name":"GitLab Registry","version":"17.0.0","enabled":true}
+			}
+		}
+	}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Org-ID", "org-int")
+	createRec := httptest.NewRecorder()
+	e.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &created))
+	stackID, ok := created["id"].(string)
+	require.True(t, ok)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks/"+stackID+"/integrations", nil)
+	getRec := httptest.NewRecorder()
+	e.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var resp struct {
+		Integrations []map[string]any `json:"integrations"`
+	}
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &resp))
+	require.Len(t, resp.Integrations, 5)
+	assert.Equal(t, "https://registry.nullus.dev", resp.Integrations[2]["endpoint"])
+}
+
+func TestStackHandler_GetIntegrations_LegacyGitLabStackUsesServiceEndpoint(t *testing.T) {
+	e := newStackEcho()
+
+	body := `{
+		"name":"legacy-gitlab-stack",
+		"cluster_id":"cls-1",
+		"namespace":"nullus-legacy",
+		"golden_path_id":"gitlab-allinone-v1",
+		"config":{
+			"artifacts":{
+				"source_repository":{"name":"GitLab CE","version":"17.0.0","enabled":true}
+			}
+		}
+	}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Org-ID", "org-legacy")
+	createRec := httptest.NewRecorder()
+	e.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &created))
+	stackID := created["id"].(string)
+
+	configReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+stackID+"/config", strings.NewReader(`{
+		"config":{
+			"artifacts":{
+				"source_repository":{"name":"GitLab CE","version":"17.0.0","enabled":true}
+			}
+		}
+	}`))
+	configReq.Header.Set("Content-Type", "application/json")
+	configRec := httptest.NewRecorder()
+	e.ServeHTTP(configRec, configReq)
+	require.Equal(t, http.StatusOK, configRec.Code)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks/"+stackID+"/integrations", nil)
+	getRec := httptest.NewRecorder()
+	e.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var resp struct {
+		Integrations []map[string]any `json:"integrations"`
+	}
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &resp))
+	assert.Equal(t, "http://gitlab-webservice-default.nullus-legacy.svc:8181", resp.Integrations[0]["endpoint"])
+}
+
 func TestStackHandler_DeleteStack_202(t *testing.T) {
 	t.Skip("delete is now synchronous (204) instead of 202; legacy expectation outdated")
 	e := newStackEcho()

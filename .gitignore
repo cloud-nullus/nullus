@@ -16,8 +16,10 @@ web/playwright-report/
 # IDE
 .idea/
 .vscode/
+.omo/
 *.swp
 *.swo
+AGENTS.md
 
 # Environment
 .env
