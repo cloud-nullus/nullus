@@ -4,8 +4,7 @@ import { useFieldArray, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Plus, Rocket, Trash2 } from 'lucide-react'
-import YAML from 'yaml'
+import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { Button } from '../../../components/ui/button'
@@ -14,7 +13,7 @@ import { NativeSelect } from '../../../components/ui/native-select'
 import { cn } from '../../../lib/utils'
 import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
 import { useStackIntegrations, useStacks } from '../../stack/api/stack-api'
-import { useCicdTemplates, useCreatePipeline } from '../api/cicd-api'
+import { useCicdTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
 import type { AppType } from '../api/cicd-api'
 import { StepSection, labelStyleClass } from '../components/deploy-ui'
 import { generateManifestYamls } from '../utils/yaml-generator'
@@ -24,6 +23,7 @@ type Capability = 'CI' | 'CD' | 'Test' | 'Security'
 type PipelinePhase = 'production' | 'qa' | 'development'
 
 const CAPABILITIES: Capability[] = ['CI', 'CD', 'Test', 'Security']
+const DISABLED_CAPABILITIES = new Set<Capability>(['Test', 'Security'])
 const PHASES: PipelinePhase[] = ['production', 'qa', 'development']
 
 const STEP_LABEL_DEFAULTS: Record<Step, string> = {
@@ -59,6 +59,16 @@ interface FormState {
   memoryLimit: string
   envVars: EnvVar[]
 }
+
+const DEFAULT_REPOSITORY_PATH = 'root/spring-sample.git'
+const DEFAULT_DOCKERFILE_REPOSITORY_PATH = 'root/spring-sample/-/blob/master/Dockerfile'
+const DEFAULT_IMAGE_REGISTRY_PATH = 'root/spring-sample'
+const DEFAULT_DEPLOY_YAML_PATH = 'root/spring-sample/deploy'
+const MANIFEST_ENV_KEYS = {
+  deployment: 'NULLUS_MANIFEST_DEPLOYMENT',
+  service: 'NULLUS_MANIFEST_SERVICE',
+  ingress: 'NULLUS_MANIFEST_INGRESS',
+} as const
 
 const deploySchema = z.object({
   appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
@@ -99,7 +109,7 @@ const DEFAULT_FORM: FormState = {
   configRepositoryUrl: '',
   dockerfileBranch: 'main',
   deployYamlBranch: 'main',
-  manifestPath: '',
+  manifestPath: DEFAULT_DEPLOY_YAML_PATH,
   dockerfilePath: '',
   dockerContext: '',
   clusterId: '',
@@ -118,21 +128,51 @@ function RequiredDot() {
   return <span aria-hidden="true" data-testid="required-dot" className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[#ef4444] align-middle" />
 }
 
+function createPipelineErrorMessage(error: unknown) {
+  const rawMessage =
+    typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : ''
+  const normalized = rawMessage.toLowerCase()
+
+  if (normalized.includes('different organization') || normalized.includes('org mismatch')) {
+    return '선택한 Stack에 접근할 수 없습니다. 현재 조직의 Stack을 다시 선택하거나 관리자에게 권한을 요청하세요.'
+  }
+  if (normalized.includes('stack') && normalized.includes('not found')) {
+    return '선택한 Stack을 찾을 수 없습니다. Stack 목록을 새로고침한 뒤 다시 선택하세요.'
+  }
+  if (normalized.includes('template') && normalized.includes('not found')) {
+    return '선택한 템플릿을 찾을 수 없습니다. 템플릿을 다시 선택한 뒤 생성하세요.'
+  }
+  if (normalized.includes('cluster')) {
+    return '배포할 Cluster 정보를 확인할 수 없습니다. Cluster를 다시 선택한 뒤 생성하세요.'
+  }
+  if (rawMessage) {
+    return `Pipeline을 생성하지 못했습니다. 관리자에게 아래 오류를 전달하세요: ${rawMessage}`
+  }
+  return 'Failed to create pipeline.'
+}
+
 export function DeveloperDeployPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [activeStep, setActiveStep] = useState<Step>(1)
   const [selectedStackId, setSelectedStackId] = useState('')
-  const [repoName, setRepoName] = useState('')
+  const [repoName, setRepoName] = useState(DEFAULT_REPOSITORY_PATH)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [selectedAppType, setSelectedAppType] = useState<AppType>((searchParams.get('appType') ?? 'backend') as AppType)
-  const [selectedCapabilities, setSelectedCapabilities] = useState<Capability[]>(CAPABILITIES)
+  const [selectedCapabilities, setSelectedCapabilities] = useState<Capability[]>(['CI', 'CD'])
   const [selectedPhase, setSelectedPhase] = useState<PipelinePhase>('production')
+  const [buildRepositoryPath, setBuildRepositoryPath] = useState(DEFAULT_DOCKERFILE_REPOSITORY_PATH)
+  const [imageRegistryPath, setImageRegistryPath] = useState(DEFAULT_IMAGE_REGISTRY_PATH)
   const [loadedManifests, setLoadedManifests] = useState<Partial<ReturnType<typeof generateManifestYamls>>>({})
   const [manifestLoadError, setManifestLoadError] = useState('')
   const [isLoadingManifests, setIsLoadingManifests] = useState(false)
   const [createNewNamespace, setCreateNewNamespace] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const sectionRefs = useRef<Record<Step, HTMLDivElement | null>>({
     1: null,
     2: null,
@@ -184,18 +224,34 @@ export function DeveloperDeployPage() {
     [namespaces]
   )
   const codeRepositoryEndpoint = integrationsData?.integrations.find((integration) => integration.component_type === 'code_repository')?.endpoint ?? ''
+  const artifactRepositoryEndpoint = integrationsData?.integrations.find((integration) => integration.component_type === 'package_registry')?.endpoint ?? ''
+  const imageRegistryEndpoint = integrationsData?.integrations.find((integration) => integration.component_type === 'image_registry')?.endpoint ?? ''
   const stackGitBaseUrl = selectedStackId && codeRepositoryEndpoint
     ? `${codeRepositoryEndpoint.replace(/\/+$/, '')}/`
+    : ''
+  const artifactRepositoryBaseUrl = selectedStackId && artifactRepositoryEndpoint
+    ? `${artifactRepositoryEndpoint.replace(/\/+$/, '')}/`
+    : ''
+  const imageRegistryBaseUrl = selectedStackId && imageRegistryEndpoint
+    ? `${imageRegistryEndpoint.replace(/\/+$/, '')}/`
     : ''
   const gitUrl = selectedStackId && stackGitBaseUrl
     ? (repoName.trim() ? `${stackGitBaseUrl}${repoName}` : '')
     : form.gitUrl
+  const dockerfileUrl = selectedStackId && stackGitBaseUrl && buildRepositoryPath.trim()
+    ? `${stackGitBaseUrl}${buildRepositoryPath.trim()}`
+    : ''
+  const imageRegistryUrl = selectedStackId && imageRegistryBaseUrl && imageRegistryPath.trim()
+    ? `${imageRegistryBaseUrl}${imageRegistryPath.trim()}`
+    : imageRegistryPath.trim()
+  const repositoryUrl = selectedStackId && stackGitBaseUrl ? gitUrl : form.gitUrl
 
   const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
     setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
   }
 
   const firstClusterId = clusters[0]?.id ?? ''
+  const firstStackId = stacks[0]?.id ?? ''
   useEffect(() => {
     if (firstClusterId && !form.clusterId) {
       setValue('clusterId', firstClusterId, { shouldValidate: true })
@@ -203,8 +259,15 @@ export function DeveloperDeployPage() {
   }, [firstClusterId, form.clusterId, setValue])
 
   useEffect(() => {
+    if (firstStackId && !selectedStackId) {
+      setSelectedStackId(firstStackId)
+    }
+  }, [firstStackId, selectedStackId])
+
+  useEffect(() => {
     if (selectedStackId && stackGitBaseUrl) {
       setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
+      setValue('configRepositoryUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
     }
   }, [gitUrl, selectedStackId, setValue, stackGitBaseUrl])
 
@@ -236,8 +299,10 @@ export function DeveloperDeployPage() {
 
     setSelectedTemplateId(template.id)
     setSelectedAppType(template.appType)
-    setSelectedStackId('')
-    setRepoName('')
+    setRepoName((current) => current || DEFAULT_REPOSITORY_PATH)
+    setBuildRepositoryPath((current) => current || DEFAULT_DOCKERFILE_REPOSITORY_PATH)
+    setImageRegistryPath((current) => current || DEFAULT_IMAGE_REGISTRY_PATH)
+    setValue('manifestPath', DEFAULT_DEPLOY_YAML_PATH, { shouldValidate: true, shouldDirty: true })
     setValue('appName', template.id.replace(/-v\d+$/, '').replace(/^nullus-/, ''), { shouldValidate: true, shouldDirty: true })
     setValue('gitUrl', template.gitRepoUrl ?? '', { shouldValidate: true, shouldDirty: true })
     setValue('dockerfilePath', template.dockerfilePath ?? '', { shouldValidate: true, shouldDirty: true })
@@ -256,6 +321,7 @@ export function DeveloperDeployPage() {
   }, [createNewNamespace, firstNamespace, form.namespace, namespaceOptions, setValue])
 
   const createPipelineMutation = useCreatePipeline()
+  const deployPipelineMutation = useDeployPipeline()
   const isSelected = (capability: Capability) => selectedCapabilities.includes(capability)
   const canReview = (
     isSelected('CD')
@@ -279,9 +345,12 @@ export function DeveloperDeployPage() {
     && !errors.memoryLimit
     && !errors.envVars
   )
-  const manifests = generateManifestYamls(form, selectedAppType)
-  const reviewManifests = { ...manifests, ...loadedManifests }
+  const generatedManifests = generateManifestYamls(form, selectedAppType)
+  const reviewManifests = { ...generatedManifests, ...loadedManifests }
   const toggleCapability = (capability: Capability) => {
+    if (DISABLED_CAPABILITIES.has(capability)) {
+      return
+    }
     setSelectedCapabilities((current) => current.includes(capability)
       ? current.filter((item) => item !== capability)
       : [...current, capability])
@@ -290,40 +359,43 @@ export function DeveloperDeployPage() {
     setActiveStep(step)
     sectionRefs.current[step]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
-  const loadConfigRepositoryManifests = async () => {
+  const loadDeployYamlDirectory = async () => {
     setManifestLoadError('')
-    if (!form.configRepositoryUrl.trim() || !form.manifestPath.trim()) {
-      setManifestLoadError(t('developerDeployPage.manifestLoad.pathRequired', 'Enter a Config Repository URL and YAML path.'))
+    const directory = form.manifestPath.trim().replace(/\/+$/, '')
+    const baseUrl = selectedStackId && artifactRepositoryBaseUrl
+      ? artifactRepositoryBaseUrl
+      : form.configRepositoryUrl.trim()
+
+    if (!baseUrl || !directory) {
+      setManifestLoadError('Deploy YAML Repository의 기준 URL과 directory 경로를 확인하세요.')
       return
+    }
+
+    const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+    const loadFile = async (fileName: string) => {
+      const response = await fetch(new URL(`${directory}/${fileName}`, base))
+      if (!response.ok) {
+        throw new Error(`${fileName} 파일을 불러오지 못했습니다.`)
+      }
+      return response.text()
     }
 
     setIsLoadingManifests(true)
     try {
-      const baseUrl = form.configRepositoryUrl.endsWith('/') ? form.configRepositoryUrl : `${form.configRepositoryUrl}/`
-      const response = await fetch(new URL(form.manifestPath, baseUrl))
-      if (!response.ok) {
-        throw new Error('load failed')
-      }
-      const text = await response.text()
-      const parsed: Partial<ReturnType<typeof generateManifestYamls>> = {}
-      YAML.parseAllDocuments(text).forEach((document) => {
-        const kind = String((document.toJSON() as { kind?: string } | null)?.kind ?? '').toLowerCase()
-        if (kind === 'deployment' || kind === 'service' || kind === 'ingress') {
-          parsed[kind] = document.toString().trim()
-        }
-      })
-      if (Object.keys(parsed).length === 0) {
-        throw new Error('no supported manifests')
-      }
-      setLoadedManifests(parsed)
+      const [deployment, service, ingress] = await Promise.all([
+        loadFile('deployment.yaml'),
+        loadFile('service.yaml'),
+        loadFile('ingress.yaml'),
+      ])
+      setLoadedManifests({ deployment, service, ingress })
     } catch {
-      setManifestLoadError(t('developerDeployPage.manifestLoad.failed', 'Unable to load Deployment, Service, or Ingress YAML from the config repository.'))
+      setManifestLoadError('해당 directory에서 deployment.yaml, service.yaml, ingress.yaml을 불러오지 못했습니다. 경로와 파일명을 확인하세요.')
     } finally {
       setIsLoadingManifests(false)
     }
   }
-
   const onSubmit = async (data: FormState) => {
+    setSubmitError('')
     try {
       const envVars: Record<string, string> = {}
       data.envVars.forEach(({ key, value }) => {
@@ -331,20 +403,35 @@ export function DeveloperDeployPage() {
           envVars[key.trim()] = value
         }
       })
-      await createPipelineMutation.mutateAsync({
+
+      const hasCi = isSelected('CI')
+      const hasCd = isSelected('CD')
+      const executionMode = hasCi && hasCd ? 'ci_cd' : hasCi ? 'ci' : 'cd'
+
+      const pipeline = await createPipelineMutation.mutateAsync({
         name: data.appName,
         appType: selectedAppType,
         clusterId: data.clusterId,
         namespace: data.namespace,
         templateId: selectedTemplateId || undefined,
-        gitRepoUrl: data.gitUrl,
-        dockerfilePath: data.dockerfilePath,
+        stackId: selectedStackId || undefined,
+        gitRepoUrl: gitUrl,
+        dockerfilePath: dockerfileUrl || data.dockerfilePath,
         dockerContext: data.dockerContext,
-        envVars,
+        executionMode,
+        envVars: {
+          ...envVars,
+          ...(imageRegistryUrl ? { IMAGE_REGISTRY_URL: imageRegistryUrl } : {}),
+          [MANIFEST_ENV_KEYS.deployment]: reviewManifests.deployment,
+          [MANIFEST_ENV_KEYS.service]: reviewManifests.service,
+          [MANIFEST_ENV_KEYS.ingress]: reviewManifests.ingress,
+        },
       })
-      navigate('/cicd/list')
-    } catch {
-      // Mutation errors are presented by react-query.
+
+      const result = await deployPipelineMutation.mutateAsync({ pipelineId: pipeline.id })
+      navigate(`/cicd/pipelines/${pipeline.id}/logs?deploymentId=${result.deploymentId}`)
+    } catch (error) {
+      setSubmitError(createPipelineErrorMessage(error))
     }
   }
 
@@ -421,17 +508,27 @@ export function DeveloperDeployPage() {
                   {t('developerDeployPage.form.capabilities', 'Capabilities')}<RequiredDot />
                 </p>
                 <div className="mb-5 flex flex-wrap gap-5">
-                  {CAPABILITIES.map((capability) => (
-                    <label key={capability} className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
-                      <input
-                        type="checkbox"
-                        checked={isSelected(capability)}
-                        onChange={() => toggleCapability(capability)}
-                        className="h-4 w-4 accent-[#6366f1]"
-                      />
-                      {capability}
-                    </label>
-                  ))}
+                  {CAPABILITIES.map((capability) => {
+                    const disabled = DISABLED_CAPABILITIES.has(capability)
+                    return (
+                      <label
+                        key={capability}
+                        className={cn(
+                          'flex items-center gap-2 text-sm font-medium',
+                          disabled ? 'text-[var(--color-text-secondary)] opacity-60' : 'text-[var(--color-text-primary)]'
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected(capability)}
+                          disabled={disabled}
+                          onChange={() => toggleCapability(capability)}
+                          className="h-4 w-4 accent-[#6366f1]"
+                        />
+                        {capability}
+                      </label>
+                    )
+                  })}
                 </div>
                 <p className={cn(labelStyleClass, 'mb-3')}>
                   {t('developerDeployPage.form.phase', 'Phase')}<RequiredDot />
@@ -461,8 +558,37 @@ export function DeveloperDeployPage() {
         id="pipeline-step-configuration"
         className={cn(sectionClassName, 'mb-5 scroll-mt-6')}
       >
-        <StepSection title={t('developerDeployPage.sections.pipelineConfiguration', 'Pipeline Configuration')}>
+        <StepSection
+              title={(
+            <>
+              <span className="rounded-md bg-[rgba(99,102,241,0.14)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#a5b4fc]">
+                CI
+              </span>
+              <span>{t('developerDeployPage.sections.buildConfiguration', 'Build Configuration')}</span>
+            </>
+          )}
+        >
           <div className="flex flex-col gap-6">
+            <div>
+              <label htmlFor="deploy-stack" className={labelStyleClass}>
+                {t('developerDeployPage.form.stackRequired', 'Stack 선택')}<RequiredDot />
+              </label>
+              <NativeSelect
+                id="deploy-stack"
+                value={selectedStackId}
+                onChange={(event) => {
+                  setSelectedStackId(event.target.value)
+                  setRepoName(DEFAULT_REPOSITORY_PATH)
+                  setBuildRepositoryPath(DEFAULT_DOCKERFILE_REPOSITORY_PATH)
+                  setImageRegistryPath(DEFAULT_IMAGE_REGISTRY_PATH)
+                  setValue('manifestPath', DEFAULT_DEPLOY_YAML_PATH, { shouldValidate: true, shouldDirty: true })
+                }}
+                className="w-full"
+              >
+                {stacks.length === 0 && <option value="">{t('developerDeployPage.form.manualInput', 'Manual Input')}</option>}
+                {stacks.map((stack) => <option key={stack.id} value={stack.id}>{stack.name}</option>)}
+              </NativeSelect>
+            </div>
             {isSelected('CI') && (
               <>
                 <div className="flex flex-col gap-3">
@@ -470,26 +596,13 @@ export function DeveloperDeployPage() {
                     {t('developerDeployPage.sections.codeCheckout', '1. Code Checkout')}
                   </h3>
                   <div>
-                    <label htmlFor="deploy-stack" className={labelStyleClass}>
-                      {t('developerDeployPage.form.stackOptional', 'Stack')}
-                    </label>
-                    <NativeSelect id="deploy-stack" value={selectedStackId} onChange={(event) => setSelectedStackId(event.target.value)} className="w-full">
-                      <option value="">{t('developerDeployPage.form.manualInput', 'Manual Input')}</option>
-                      {stacks.map((stack) => <option key={stack.id} value={stack.id}>{stack.name}</option>)}
-                    </NativeSelect>
-                  </div>
-                  <div>
                     <label htmlFor="deploy-code-repository" className={labelStyleClass}>
                       {t('developerDeployPage.form.sourceRepository', 'Source Repository')}<RequiredDot />
                     </label>
-                    {selectedStackId && stackGitBaseUrl ? (
-                      <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                         <Input value={stackGitBaseUrl} disabled />
-                        <Input id="deploy-code-repository" placeholder="owner/repo-name.git" value={repoName} onChange={(event) => setRepoName(event.target.value)} />
-                      </div>
-                    ) : (
-                      <Input id="deploy-code-repository" placeholder="https://github.com/org/repo.git" value={form.gitUrl} onChange={(event) => setField('gitUrl', event.target.value)} />
-                    )}
+                        <Input id="deploy-code-repository" placeholder={DEFAULT_REPOSITORY_PATH} value={repoName} onChange={(event) => setRepoName(event.target.value)} />
+                    </div>
                   </div>
                 </div>
 
@@ -498,48 +611,46 @@ export function DeveloperDeployPage() {
                     {t('developerDeployPage.sections.buildStage', '2. Build')}
                   </h3>
                   <div className="grid gap-3 md:grid-cols-3">
-                    <div>
+                    <div className="md:col-span-3">
                       <label htmlFor="deploy-dockerfile-repository" className={labelStyleClass}>{t('developerDeployPage.form.dockerfileRepository', 'Dockerfile Repository')}</label>
-                      <Input id="deploy-dockerfile-repository" value={gitUrl} disabled placeholder="https://github.com/org/repo.git" />
+                      {selectedStackId && stackGitBaseUrl ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input value={stackGitBaseUrl} disabled />
+                          <Input id="deploy-dockerfile-repository" placeholder={DEFAULT_DOCKERFILE_REPOSITORY_PATH} value={buildRepositoryPath} onChange={(event) => setBuildRepositoryPath(event.target.value)} />
+                        </div>
+                      ) : (
+                        <Input id="deploy-dockerfile-repository" value={repositoryUrl} disabled placeholder="https://github.com/org/repo.git" />
+                      )}
                     </div>
-                    <div>
-                      <label htmlFor="deploy-dockerfile-branch" className={labelStyleClass}>{t('developerDeployPage.form.branch', 'Branch')}</label>
-                      <Input id="deploy-dockerfile-branch" value={form.dockerfileBranch} onChange={(event) => setField('dockerfileBranch', event.target.value)} placeholder="main" />
-                    </div>
-                    <div>
-                      <label htmlFor="deploy-dockerfile" className={labelStyleClass}>{t('developerDeployPage.form.directory', 'Directory')}</label>
-                      <Input id="deploy-dockerfile" placeholder="backend/Dockerfile" value={form.dockerfilePath} onChange={(event) => setField('dockerfilePath', event.target.value)} />
-                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-[var(--color-border-default)] pt-5">
+                  <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                    {t('developerDeployPage.sections.imageRegistry', '3. Image Registry')}
+                  </h3>
+                  <div>
+                    <label htmlFor="deploy-image-registry" className={labelStyleClass}>
+                      {t('developerDeployPage.form.imageRegistry', 'Image Registry')}
+                    </label>
+                    {selectedStackId && imageRegistryBaseUrl ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input value={imageRegistryBaseUrl} disabled />
+                        <Input id="deploy-image-registry" placeholder={DEFAULT_IMAGE_REGISTRY_PATH} value={imageRegistryPath} onChange={(event) => setImageRegistryPath(event.target.value)} />
+                      </div>
+                    ) : (
+                      <Input
+                        id="deploy-image-registry"
+                        placeholder="https://gitlab.nullus-devsecops-stack.internal/owner/repo/branch/directory"
+                        value={imageRegistryPath}
+                        onChange={(event) => setImageRegistryPath(event.target.value)}
+                      />
+                    )}
                   </div>
                 </div>
               </>
             )}
 
-            {isSelected('CD') && (
-              <div className={cn(isSelected('CI') && 'border-t border-[var(--color-border-default)] pt-5')}>
-                <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
-                  {t('developerDeployPage.sections.deploy', '3. Deploy')}
-                </h3>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div>
-                    <label htmlFor="deploy-manifest-config-repository" className={labelStyleClass}>{t('developerDeployPage.form.deployYamlRepository', 'Deploy YAML Repository')}</label>
-                    <Input id="deploy-manifest-config-repository" placeholder="https://raw.githubusercontent.com/org/config/main/" value={form.configRepositoryUrl} onChange={(event) => setField('configRepositoryUrl', event.target.value)} />
-                  </div>
-                  <div>
-                    <label htmlFor="deploy-yaml-branch" className={labelStyleClass}>{t('developerDeployPage.form.branch', 'Branch')}</label>
-                    <Input id="deploy-yaml-branch" value={form.deployYamlBranch} onChange={(event) => setField('deployYamlBranch', event.target.value)} placeholder="main" />
-                  </div>
-                  <div>
-                    <label htmlFor="deploy-manifest-path" className={labelStyleClass}>{t('developerDeployPage.form.directory', 'Directory')}</label>
-                    <Input id="deploy-manifest-path" placeholder="deploy/app.yaml" value={form.manifestPath} onChange={(event) => setField('manifestPath', event.target.value)} />
-                  </div>
-                </div>
-                <Button type="button" variant="outline" size="sm" loading={isLoadingManifests} onClick={() => void loadConfigRepositoryManifests()} className="mt-3">
-                  {t('developerDeployPage.actions.loadFromConfigRepository', 'Load from Deploy YAML Repository')}
-                </Button>
-                {manifestLoadError && <span className="ml-3 text-xs text-[#ef4444]">{manifestLoadError}</span>}
-              </div>
-            )}
           </div>
         </StepSection>
       </div>
@@ -570,128 +681,187 @@ export function DeveloperDeployPage() {
             </StepSection>
           </div>
         ) : (
-        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(400px,1fr)_minmax(420px,1fr)]">
-          <div className="flex flex-col gap-5">
           <div className={sectionClassName}>
-            <StepSection title={t('developerDeployPage.sections.clusterNamespace', 'Cluster & Namespace')}>
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label htmlFor="deploy-cluster" className={labelStyleClass}>{t('developerDeployPage.form.cluster', 'Cluster')}<RequiredDot /></label>
-                  <NativeSelect
-                    id="deploy-cluster"
-                    value={form.clusterId}
-                    onChange={(event) => {
-                      setField('clusterId', event.target.value)
-                      setCreateNewNamespace(false)
-                      setField('namespace', 'default')
-                    }}
-                    className="w-full"
-                  >
-                    {clusters.map((cluster) => <option key={cluster.id} value={cluster.id}>{cluster.name}</option>)}
-                  </NativeSelect>
-                  {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
-                </div>
-                <div>
-                  <label htmlFor="deploy-namespace" className={labelStyleClass}>{t('developerDeployPage.form.namespace', 'Namespace')}<RequiredDot /></label>
-                  <NativeSelect
-                    id="deploy-namespace"
-                    value={createNewNamespace ? '__new__' : (form.namespace || 'default')}
-                    onChange={(event) => {
-                      if (event.target.value === '__new__') {
-                        setCreateNewNamespace(true)
-                        setField('namespace', '')
-                      } else {
-                        setCreateNewNamespace(false)
-                        setField('namespace', event.target.value)
-                      }
-                    }}
-                    className="w-full"
-                  >
-                    {namespaceOptions.map((namespace) => <option key={namespace} value={namespace}>{namespace}</option>)}
-                    <option value="__new__">{t('developerDeployPage.form.newNamespace', 'New Namespace')}</option>
-                  </NativeSelect>
-                  {createNewNamespace && (
-                    <Input
-                      className="mt-2"
-                      placeholder={t('developerDeployPage.form.newNamespacePlaceholder', 'my-namespace')}
-                      value={form.namespace}
-                      onChange={(event) => setField('namespace', event.target.value)}
-                    />
-                  )}
-                  {errors.namespace && <span className="text-xs text-[#ef4444]">{errors.namespace.message}</span>}
-                </div>
-                <div>
-                  <label htmlFor="deploy-service-url" className={labelStyleClass}>
-                    {t('developerDeployPage.form.serviceUrl', 'Service URL')}
-                  </label>
-                  <Input
-                    id="deploy-service-url"
-                    placeholder={t('developerDeployPage.form.serviceUrlPlaceholder', 'app.example.com')}
-                    value={form.serviceUrl}
-                    onChange={(event) => setField('serviceUrl', event.target.value)}
-                  />
-                </div>
-              </div>
-            </StepSection>
-          </div>
-
-          <div className={sectionClassName}>
-            <StepSection title={t('developerDeployPage.sections.resources', 'Resource Configuration')}>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label htmlFor="deploy-replicas" className={labelStyleClass}>Replicas<RequiredDot /></label>
-                  <Input id="deploy-replicas" type="number" min={1} max={10} value={form.replicas} onChange={(event) => setField('replicas', Number(event.target.value))} />
-                  {errors.replicas && <span className="text-xs text-[#ef4444]">{errors.replicas.message}</span>}
-                </div>
-                <div>
-                  <label htmlFor="deploy-cpu-request" className={labelStyleClass}>CPU Request<RequiredDot /></label>
-                  <Input id="deploy-cpu-request" value={form.cpuRequest} onChange={(event) => setField('cpuRequest', event.target.value)} />
-                </div>
-                <div>
-                  <label htmlFor="deploy-cpu-limit" className={labelStyleClass}>CPU Limit<RequiredDot /></label>
-                  <Input id="deploy-cpu-limit" value={form.cpuLimit} onChange={(event) => setField('cpuLimit', event.target.value)} />
-                </div>
-                <div>
-                  <label htmlFor="deploy-memory-request" className={labelStyleClass}>Memory Request<RequiredDot /></label>
-                  <Input id="deploy-memory-request" value={form.memoryRequest} onChange={(event) => setField('memoryRequest', event.target.value)} />
-                </div>
-                <div>
-                  <label htmlFor="deploy-memory-limit" className={labelStyleClass}>Memory Limit<RequiredDot /></label>
-                  <Input id="deploy-memory-limit" value={form.memoryLimit} onChange={(event) => setField('memoryLimit', event.target.value)} />
-                </div>
-              </div>
-            </StepSection>
-          </div>
-
-          <div className={sectionClassName}>
-            <StepSection title={t('developerDeployPage.sections.envVars', 'Environment Variables')}>
-              <div className="flex flex-col gap-2">
-                {fields.map((field, index) => (
-                  <div key={field.id}>
-                    <div className="flex items-center gap-2">
-                      <Input placeholder="KEY" {...register(`envVars.${index}.key`)} className="flex-1 font-mono text-[13px]" />
-                      <Input placeholder="value" {...register(`envVars.${index}.value`)} className="flex-[2] font-mono text-[13px]" />
-                      <button type="button" onClick={() => remove(index)} className="shrink-0 cursor-pointer border-none bg-none p-1 text-[#f87171]">
-                        <Trash2 size={14} />
-                      </button>
+            <StepSection
+              title={(
+                <>
+                  <span className="rounded-md bg-[rgba(34,197,94,0.14)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#86efac]">
+                    CD
+                  </span>
+                  <span>{t('developerDeployPage.sections.deployConfiguration', 'Deploy Configuration')}</span>
+                </>
+              )}
+            >
+              <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(400px,1fr)_minmax(420px,1fr)]">
+                <div className="flex flex-col gap-6">
+                  <section>
+                    <div>
+                      <label htmlFor="deploy-manifest-path" className={labelStyleClass}>{t('developerDeployPage.form.deployYamlRepository', 'Deploy YAML Repository')}</label>
+                      {selectedStackId && artifactRepositoryBaseUrl ? (
+                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                          <Input value={artifactRepositoryBaseUrl} disabled />
+                          <Input id="deploy-manifest-path" placeholder={DEFAULT_DEPLOY_YAML_PATH} value={form.manifestPath} onChange={(event) => setField('manifestPath', event.target.value)} />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="md"
+                            loading={isLoadingManifests}
+                            onClick={loadDeployYamlDirectory}
+                            aria-label="Reload Deploy YAML files"
+                            title="Reload Deploy YAML files"
+                          >
+                            <RefreshCw size={14} />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                          <Input
+                            id="deploy-manifest-path"
+                            placeholder="https://artifactory.example.com/root/spring-sample/deploy"
+                            value={form.configRepositoryUrl}
+                            onChange={(event) => setField('configRepositoryUrl', event.target.value)}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="md"
+                            loading={isLoadingManifests}
+                            onClick={loadDeployYamlDirectory}
+                            aria-label="Reload Deploy YAML files"
+                            title="Reload Deploy YAML files"
+                          >
+                            <RefreshCw size={14} />
+                          </Button>
+                        </div>
+                      )}
+                      {manifestLoadError && <p className="mb-0 mt-2 text-xs text-[#f87171]">{manifestLoadError}</p>}
                     </div>
-                    {errors.envVars?.[index]?.key?.message && <span className="text-xs text-[#ef4444]">{errors.envVars[index]?.key?.message}</span>}
-                  </div>
-                ))}
-                <Button variant="ghost" size="sm" onClick={() => append({ key: '', value: '' })} className="mt-1 self-start" type="button">
-                  <Plus size={13} />
-                  {t('developerDeployPage.actions.addVariable', 'Add Variable')}
-                </Button>
-              </div>
-            </StepSection>
-          </div>
+                  </section>
 
-        </div>
+                  <section className="border-t border-[var(--color-border-default)] pt-5">
+                    <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                      {t('developerDeployPage.sections.clusterNamespace', 'Cluster & Namespace')}
+                    </h3>
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <label htmlFor="deploy-cluster" className={labelStyleClass}>{t('developerDeployPage.form.cluster', 'Cluster')}<RequiredDot /></label>
+                        <NativeSelect
+                          id="deploy-cluster"
+                          value={form.clusterId}
+                          onChange={(event) => {
+                            setField('clusterId', event.target.value)
+                            setCreateNewNamespace(false)
+                            setField('namespace', 'default')
+                          }}
+                          className="w-full"
+                        >
+                          {clusters.map((cluster) => <option key={cluster.id} value={cluster.id}>{cluster.name}</option>)}
+                        </NativeSelect>
+                        {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
+                      </div>
+                      <div>
+                        <label htmlFor="deploy-namespace" className={labelStyleClass}>{t('developerDeployPage.form.namespace', 'Namespace')}<RequiredDot /></label>
+                        <NativeSelect
+                          id="deploy-namespace"
+                          value={createNewNamespace ? '__new__' : (form.namespace || 'default')}
+                          onChange={(event) => {
+                            if (event.target.value === '__new__') {
+                              setCreateNewNamespace(true)
+                              setField('namespace', '')
+                            } else {
+                              setCreateNewNamespace(false)
+                              setField('namespace', event.target.value)
+                            }
+                          }}
+                          className="w-full"
+                        >
+                          {namespaceOptions.map((namespace) => <option key={namespace} value={namespace}>{namespace}</option>)}
+                          <option value="__new__">{t('developerDeployPage.form.newNamespace', 'New Namespace')}</option>
+                        </NativeSelect>
+                        {createNewNamespace && (
+                          <Input
+                            className="mt-2"
+                            placeholder={t('developerDeployPage.form.newNamespacePlaceholder', 'my-namespace')}
+                            value={form.namespace}
+                            onChange={(event) => setField('namespace', event.target.value)}
+                          />
+                        )}
+                        {errors.namespace && <span className="text-xs text-[#ef4444]">{errors.namespace.message}</span>}
+                      </div>
+                      <div>
+                        <label htmlFor="deploy-service-url" className={labelStyleClass}>
+                          {t('developerDeployPage.form.serviceUrl', 'Service URL')}
+                        </label>
+                        <Input
+                          id="deploy-service-url"
+                          placeholder={t('developerDeployPage.form.serviceUrlPlaceholder', 'app.example.com')}
+                          value={form.serviceUrl}
+                          onChange={(event) => setField('serviceUrl', event.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </section>
 
-        <div className="xl:sticky xl:top-6">
-          {canReview ? (
-            <div className={sectionClassName}>
-              <StepSection title={t('developerDeployPage.sections.manifest', 'Review Manifest')}>
+                  <section className="border-t border-[var(--color-border-default)] pt-5">
+                    <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                      {t('developerDeployPage.sections.resources', 'Resource Configuration')}
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label htmlFor="deploy-replicas" className={labelStyleClass}>Replicas<RequiredDot /></label>
+                        <Input id="deploy-replicas" type="number" min={1} max={10} value={form.replicas} onChange={(event) => setField('replicas', Number(event.target.value))} />
+                        {errors.replicas && <span className="text-xs text-[#ef4444]">{errors.replicas.message}</span>}
+                      </div>
+                      <div>
+                        <label htmlFor="deploy-cpu-request" className={labelStyleClass}>CPU Request<RequiredDot /></label>
+                        <Input id="deploy-cpu-request" value={form.cpuRequest} onChange={(event) => setField('cpuRequest', event.target.value)} />
+                      </div>
+                      <div>
+                        <label htmlFor="deploy-cpu-limit" className={labelStyleClass}>CPU Limit<RequiredDot /></label>
+                        <Input id="deploy-cpu-limit" value={form.cpuLimit} onChange={(event) => setField('cpuLimit', event.target.value)} />
+                      </div>
+                      <div>
+                        <label htmlFor="deploy-memory-request" className={labelStyleClass}>Memory Request<RequiredDot /></label>
+                        <Input id="deploy-memory-request" value={form.memoryRequest} onChange={(event) => setField('memoryRequest', event.target.value)} />
+                      </div>
+                      <div>
+                        <label htmlFor="deploy-memory-limit" className={labelStyleClass}>Memory Limit<RequiredDot /></label>
+                        <Input id="deploy-memory-limit" value={form.memoryLimit} onChange={(event) => setField('memoryLimit', event.target.value)} />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="border-t border-[var(--color-border-default)] pt-5">
+                    <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                      {t('developerDeployPage.sections.envVars', 'Environment Variables')}
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                      {fields.map((field, index) => (
+                        <div key={field.id}>
+                          <div className="flex items-center gap-2">
+                            <Input placeholder="KEY" {...register(`envVars.${index}.key`)} className="flex-1 font-mono text-[13px]" />
+                            <Input placeholder="value" {...register(`envVars.${index}.value`)} className="flex-[2] font-mono text-[13px]" />
+                            <button type="button" onClick={() => remove(index)} className="shrink-0 cursor-pointer border-none bg-none p-1 text-[#f87171]">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          {errors.envVars?.[index]?.key?.message && <span className="text-xs text-[#ef4444]">{errors.envVars[index]?.key?.message}</span>}
+                        </div>
+                      ))}
+                      <Button variant="ghost" size="sm" onClick={() => append({ key: '', value: '' })} className="mt-1 self-start" type="button">
+                        <Plus size={13} />
+                        {t('developerDeployPage.actions.addVariable', 'Add Variable')}
+                      </Button>
+                    </div>
+                  </section>
+                </div>
+
+                <div className="xl:sticky xl:top-6">
+                  {canReview ? (
+                    <section>
+                      <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                        {t('developerDeployPage.sections.manifest', 'Review Manifest')}
+                      </h3>
                 <p className="mb-4 mt-0 text-xs text-[var(--color-text-secondary)]">
                   {t('developerDeployPage.manifestDescription', 'Review generated manifests before creating the pipeline.')}
                 </p>
@@ -718,28 +888,31 @@ export function DeveloperDeployPage() {
                   <Button
                     variant="primary"
                     size="md"
-                    loading={createPipelineMutation.isPending}
-                    disabled={isSubmitting || !canReview}
+                    type="button"
+                    loading={createPipelineMutation.isPending || deployPipelineMutation.isPending}
+                    disabled={isSubmitting || !canReview || createPipelineMutation.isPending || deployPipelineMutation.isPending}
                     onClick={handleSubmit((data) => {
                       setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
                       return onSubmit({ ...data, gitUrl })
                     })}
                   >
                     <Rocket size={14} />
-                    {t('developerDeployPage.actions.create', 'Create')}
+                    {t('developerDeployPage.actions.execute', 'Execute')}
                   </Button>
                 </div>
-              </StepSection>
-            </div>
-          ) : (
-            <div className={sectionClassName}>
-              <p className="m-0 text-sm text-[var(--color-text-secondary)]">
-                {t('developerDeployPage.reviewPending', 'Complete required fields to preview deployment manifests.')}
-              </p>
-            </div>
-          )}
-        </div>
-        </div>
+                {submitError && (
+                  <p className="mt-3 text-right text-xs text-[#f87171]">{submitError}</p>
+                )}
+                    </section>
+                  ) : (
+                    <p className="m-0 text-sm text-[var(--color-text-secondary)]">
+                      {t('developerDeployPage.reviewPending', 'Complete required fields to preview deployment manifests.')}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </StepSection>
+          </div>
         )}
       </div>
     </div>

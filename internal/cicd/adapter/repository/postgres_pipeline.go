@@ -22,12 +22,12 @@ func NewPostgresPipelineRepository(pool *pgxpool.Pool) *PostgresPipelineReposito
 // Create inserts a new pipeline record.
 func (r *PostgresPipelineRepository) Create(ctx context.Context, p *domain.Pipeline) error {
 	const q = `
-		INSERT INTO pipelines (id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, stack_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+		INSERT INTO pipelines (id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, dockerfile_path, docker_context, env_vars, status, created_at, stack_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
 
 	_, err := r.pool.Exec(ctx, q,
 		p.ID, p.Name, p.ExecutionMode, p.TemplateID, p.OrgID, p.ClusterID,
-		p.Namespace, string(p.AppType), p.GitRepoURL, string(p.Status), p.CreatedAt,
+		p.Namespace, string(p.AppType), p.GitRepoURL, p.DockerfilePath, p.DockerContext, p.EnvVars, string(p.Status), p.CreatedAt,
 		nilIfEmpty(p.StackID),
 	)
 	if err != nil {
@@ -46,7 +46,9 @@ func nilIfEmpty(s string) any {
 // GetByID retrieves a pipeline by its ID.
 func (r *PostgresPipelineRepository) GetByID(ctx context.Context, id string) (*domain.Pipeline, error) {
 	const q = `
-		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
+		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url,
+		       COALESCE(dockerfile_path, ''), COALESCE(docker_context, ''), COALESCE(env_vars, '{}'::jsonb),
+		       status, created_at, COALESCE(stack_id, '')
 		FROM pipelines WHERE id = $1`
 
 	row := r.pool.QueryRow(ctx, q, id)
@@ -56,7 +58,9 @@ func (r *PostgresPipelineRepository) GetByID(ctx context.Context, id string) (*d
 // List returns all pipelines belonging to an organization.
 func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]*domain.Pipeline, error) {
 	const q = `
-		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
+		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url,
+		       COALESCE(dockerfile_path, ''), COALESCE(docker_context, ''), COALESCE(env_vars, '{}'::jsonb),
+		       status, created_at, COALESCE(stack_id, '')
 		FROM pipelines WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, orgID)
@@ -82,7 +86,9 @@ func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]
 // ListByStackID returns all pipelines linked to a specific stack.
 func (r *PostgresPipelineRepository) ListByStackID(ctx context.Context, stackID string) ([]*domain.Pipeline, error) {
 	const q = `
-		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url, status, created_at, COALESCE(stack_id, '')
+		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url,
+		       COALESCE(dockerfile_path, ''), COALESCE(docker_context, ''), COALESCE(env_vars, '{}'::jsonb),
+		       status, created_at, COALESCE(stack_id, '')
 		FROM pipelines WHERE stack_id = $1 ORDER BY created_at DESC LIMIT 100`
 
 	rows, err := r.pool.Query(ctx, q, stackID)
@@ -110,12 +116,12 @@ func (r *PostgresPipelineRepository) Update(ctx context.Context, p *domain.Pipel
 	const q = `
 		UPDATE pipelines
 		SET name = $2, execution_mode = $3, template_id = $4, cluster_id = $5, namespace = $6,
-		    app_type = $7, git_repo_url = $8, status = $9, stack_id = $10
+		    app_type = $7, git_repo_url = $8, dockerfile_path = $9, docker_context = $10, env_vars = $11, status = $12, stack_id = $13
 		WHERE id = $1`
 
 	res, err := r.pool.Exec(ctx, q,
 		p.ID, p.Name, p.ExecutionMode, p.TemplateID, p.ClusterID,
-		p.Namespace, string(p.AppType), p.GitRepoURL, string(p.Status),
+		p.Namespace, string(p.AppType), p.GitRepoURL, p.DockerfilePath, p.DockerContext, p.EnvVars, string(p.Status),
 		nilIfEmpty(p.StackID),
 	)
 	if err != nil {
@@ -154,7 +160,7 @@ func scanPipeline(row pipelineScanner) (*domain.Pipeline, error) {
 	)
 	if err := row.Scan(
 		&p.ID, &p.Name, &p.ExecutionMode, &p.TemplateID, &p.OrgID, &p.ClusterID,
-		&p.Namespace, &appType, &p.GitRepoURL, &status, &createdAt,
+		&p.Namespace, &appType, &p.GitRepoURL, &p.DockerfilePath, &p.DockerContext, &p.EnvVars, &status, &createdAt,
 		&p.StackID,
 	); err != nil {
 		return nil, fmt.Errorf("scan pipeline: %w", err)

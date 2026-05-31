@@ -247,9 +247,47 @@ func integrationEndpoint(stack *domain.Stack, cfg domain.StackConfig, componentT
 	}
 
 	if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
-		return fmt.Sprintf("https://%s.%s", provider, accessDomain)
+		if subdomain := integrationSubdomain(componentType, normalizedProvider); subdomain != "" {
+			return fmt.Sprintf("https://%s.%s", subdomain, accessDomain)
+		}
 	}
 	return ""
+}
+
+func integrationSubdomain(componentType, normalizedProvider string) string {
+	switch componentType {
+	case "image_registry":
+		switch normalizedProvider {
+		case "gitlab-registry", "gitlab-container-registry":
+			return "registry"
+		case "harbor":
+			return "harbor"
+		}
+	case "package_registry":
+		switch normalizedProvider {
+		case "gitlab", "gitlab-package", "gitlab-package-registry":
+			return "gitlab"
+		case "nexus":
+			return "nexus"
+		case "artifactory":
+			return "artifactory"
+		}
+	case "ci_platform":
+		switch normalizedProvider {
+		case "gitlab-ci", "gitlab":
+			return "gitlab"
+		case "argocd", "argo-cd":
+			return "argocd"
+		}
+	case "cd_tool":
+		switch normalizedProvider {
+		case "argocd", "argo-cd":
+			return "argocd"
+		case "flux":
+			return "flux"
+		}
+	}
+	return normalizedProvider
 }
 
 func stackConfigFromAny(v any) domain.StackConfig {

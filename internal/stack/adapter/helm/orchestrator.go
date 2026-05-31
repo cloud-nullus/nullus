@@ -473,7 +473,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Pipeline.CDTool.Enabled
 			},
 			stepInstallingRunner: func(cfg domain.StackConfig) bool {
-				return isGitLabCISelection(cfg.Pipeline.CIPlatform)
+				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository) || isGitLabCISelection(cfg.Pipeline.CIPlatform)
 			},
 			"installing_prometheus": func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Collection.Enabled

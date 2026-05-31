@@ -229,6 +229,50 @@ func TestStackHandler_GetIntegrations_200(t *testing.T) {
 	assert.Equal(t, 5, resp.Total)
 	assert.Len(t, resp.Integrations, 5)
 	assert.Equal(t, "https://gitlab.nullus.dev", resp.Integrations[0]["endpoint"])
+	assert.Equal(t, "https://gitlab.nullus.dev", resp.Integrations[1]["endpoint"])
+	assert.Equal(t, "https://registry.nullus.dev", resp.Integrations[2]["endpoint"])
+	assert.Equal(t, "https://gitlab.nullus.dev", resp.Integrations[3]["endpoint"])
+	assert.Equal(t, "https://argocd.nullus.dev", resp.Integrations[4]["endpoint"])
+}
+
+func TestStackHandler_GetIntegrations_GitLabRegistryDisplayNameUsesRegistryHost(t *testing.T) {
+	e := newStackEcho()
+
+	body := `{
+		"name":"stack-integration-test-display-name",
+		"cluster_id":"cls-1",
+		"golden_path_id":"gitlab-allinone-v1",
+		"config":{
+			"access_domain":"nullus.dev",
+			"artifacts":{
+				"source_repository":{"name":"GitLab CE","version":"17.0.0","enabled":true},
+				"container_registry":{"name":"GitLab Registry","version":"17.0.0","enabled":true}
+			}
+		}
+	}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Org-ID", "org-int")
+	createRec := httptest.NewRecorder()
+	e.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &created))
+	stackID, ok := created["id"].(string)
+	require.True(t, ok)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks/"+stackID+"/integrations", nil)
+	getRec := httptest.NewRecorder()
+	e.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var resp struct {
+		Integrations []map[string]any `json:"integrations"`
+	}
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &resp))
+	require.Len(t, resp.Integrations, 5)
+	assert.Equal(t, "https://registry.nullus.dev", resp.Integrations[2]["endpoint"])
 }
 
 func TestStackHandler_GetIntegrations_LegacyGitLabStackUsesServiceEndpoint(t *testing.T) {

@@ -318,6 +318,8 @@ export interface Pipeline {
   mode: 'ci' | 'cd' | 'ci_cd'
   appType: AppType
   templateId: string
+  stackId: string
+  executionMode: string
   gitRepoUrl: string
   clusterId: string
   clusterName: string
@@ -472,9 +474,11 @@ export interface CreatePipelineRequest {
   clusterId: string
   namespace?: string
   templateId?: string
+  stackId?: string
   gitRepoUrl?: string
   dockerfilePath?: string
   dockerContext?: string
+  executionMode?: string
   envVars?: Record<string, string>
 }
 

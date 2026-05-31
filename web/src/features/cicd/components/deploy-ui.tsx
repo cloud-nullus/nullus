@@ -51,10 +51,10 @@ export function PhaseStep({ label, index, progress, total }: { label: string; in
   )
 }
 
-export function StepSection({ title, children }: { title: string; children: React.ReactNode }) {
+export function StepSection({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-4 mt-0 text-[15px] font-bold text-[var(--color-text-primary)]">
+      <p className="mb-4 mt-0 flex items-center gap-2 text-[15px] font-bold text-[var(--color-text-primary)]">
         {title}
       </p>
       {children}

@@ -56,8 +56,9 @@ const clusters = {
 
 function completeRequiredFields() {
   fireEvent.change(screen.getByPlaceholderText('my-awesome-app'), { target: { value: 'demo-app' } })
+  fireEvent.change(screen.getByLabelText('Stack 선택'), { target: { value: 'stack-1' } })
   fireEvent.change(screen.getByLabelText('Source Repository'), {
-    target: { value: 'https://github.com/cloud-nullus/demo-app.git' },
+    target: { value: 'owner/demo-app.git' },
   })
 }
 
@@ -84,7 +85,11 @@ describe('DeveloperDeployPage', () => {
     mockUseStacks.mockReturnValue({ data: { items: [{ id: 'stack-1', name: 'app-stack' }], total: 1 } })
     mockUseStackIntegrations.mockReturnValue({
       data: {
-        integrations: [{ component_type: 'code_repository', endpoint: 'https://gitlab.stack.internal' }],
+        integrations: [
+          { component_type: 'code_repository', endpoint: 'https://gitlab.stack.internal' },
+          { component_type: 'package_registry', endpoint: 'https://artifactory.stack.internal' },
+          { component_type: 'image_registry', endpoint: 'https://registry.stack.internal' },
+        ],
       },
     })
   })
@@ -100,10 +105,12 @@ describe('DeveloperDeployPage', () => {
     expect(screen.getByRole('button', { name: 'Test' })).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Security' })).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Create' })).not.toBeNull()
-    expect(screen.getByText('Pipeline Configuration')).not.toBeNull()
+    expect(screen.getByText('Build Configuration')).not.toBeNull()
+    expect(screen.getByText('Deploy Configuration')).not.toBeNull()
     expect(screen.getByText('1. Code Checkout')).not.toBeNull()
     expect(screen.getByText('2. Build')).not.toBeNull()
-    expect(screen.getByText('3. Deploy')).not.toBeNull()
+    expect(screen.getByText('3. Image Registry')).not.toBeNull()
+    expect(screen.queryByText('3. Deploy')).toBeNull()
     expect(screen.getByText('Cluster & Namespace')).not.toBeNull()
     expect(screen.queryByText(/Quick Start/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Next' })).toBeNull()
@@ -116,22 +123,35 @@ describe('DeveloperDeployPage', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('my-awesome-app')).toHaveValue('starter')
     })
-    expect(screen.getByLabelText('Source Repository')).toHaveValue('https://github.com/cloud-nullus/starter.git')
+    expect(screen.getByLabelText('Source Repository')).toHaveValue('root/spring-sample.git')
+  })
+
+  it('selects the first stack and fills stack path defaults', async () => {
+    renderWithProviders(<DeveloperDeployPage />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Stack 선택')).toHaveValue('stack-1')
+    })
+    expect(screen.queryByRole('option', { name: 'Manual Input' })).toBeNull()
+    expect(screen.getByLabelText('Source Repository')).toHaveValue('root/spring-sample.git')
+    expect(screen.getByLabelText('Dockerfile Repository')).toHaveValue('root/spring-sample/-/blob/master/Dockerfile')
+    expect(screen.getByLabelText('Image Registry')).toHaveValue('root/spring-sample')
+    expect(screen.getByLabelText('Deploy YAML Repository')).toHaveValue('root/spring-sample/deploy')
   })
 
   it('shows every input section and pending review before required values are complete', () => {
     renderWithProviders(<DeveloperDeployPage />)
 
-    expect(screen.getByText('Pipeline Configuration')).not.toBeNull()
+    expect(screen.getByText('Build Configuration')).not.toBeNull()
     expect(screen.getByText('Cluster & Namespace')).not.toBeNull()
     expect(screen.getByText('Complete required fields to preview deployment manifests.')).not.toBeNull()
   })
 
-  it('shows required markers except for optional fields and renames Stack without optional text', () => {
+  it('shows required markers and marks Stack selection as required', () => {
     renderWithProviders(<DeveloperDeployPage />)
 
-    expect(screen.getAllByTestId('required-dot')).toHaveLength(11)
-    expect(screen.getByLabelText('Stack')).not.toBeNull()
+    expect(screen.getAllByTestId('required-dot')).toHaveLength(12)
+    expect(screen.getByLabelText('Stack 선택')).not.toBeNull()
     expect(screen.queryByLabelText('Stack (Optional)')).toBeNull()
     expect(screen.getByLabelText('Service URL')).not.toBeNull()
   })
@@ -139,8 +159,15 @@ describe('DeveloperDeployPage', () => {
   it('allows exactly one phase selection and shows configuration groups by capability', () => {
     renderWithProviders(<DeveloperDeployPage />)
 
+    const testCapability = screen.getAllByLabelText('Test').find((item) => item.tagName === 'INPUT')
+    const securityCapability = screen.getAllByLabelText('Security').find((item) => item.tagName === 'INPUT')
+
     expect(screen.getByLabelText('CI')).toBeChecked()
     expect(screen.getByLabelText('CD')).toBeChecked()
+    expect(testCapability).not.toBeChecked()
+    expect(testCapability).toBeDisabled()
+    expect(securityCapability).not.toBeChecked()
+    expect(securityCapability).toBeDisabled()
     expect(screen.getByLabelText('production')).toBeChecked()
     expect(screen.getByLabelText('qa')).not.toBeChecked()
     expect(screen.getByLabelText('development')).not.toBeChecked()
@@ -155,13 +182,15 @@ describe('DeveloperDeployPage', () => {
 
     expect(screen.getByLabelText('Source Repository')).not.toBeNull()
     expect(screen.getByLabelText('Dockerfile Repository')).not.toBeNull()
+    expect(screen.getByLabelText('Image Registry')).not.toBeNull()
     expect(screen.getByLabelText('Deploy YAML Repository')).not.toBeNull()
 
     fireEvent.click(screen.getByLabelText('CI'))
     expect(screen.queryByText('1. Code Checkout')).toBeNull()
     expect(screen.queryByText('2. Build')).toBeNull()
+    expect(screen.queryByText('3. Image Registry')).toBeNull()
     expect(screen.queryByLabelText('Source Repository')).toBeNull()
-    expect(screen.getByText('3. Deploy')).not.toBeNull()
+    expect(screen.queryByText('3. Deploy')).toBeNull()
     expect(screen.getByLabelText('Deploy YAML Repository')).not.toBeNull()
 
     fireEvent.click(screen.getByLabelText('CD'))
@@ -187,24 +216,36 @@ describe('DeveloperDeployPage', () => {
   it('uses the selected stacks code repository endpoint as the code URL prefix', () => {
     renderWithProviders(<DeveloperDeployPage />)
 
-    fireEvent.change(screen.getByLabelText('Stack'), { target: { value: 'stack-1' } })
+    fireEvent.change(screen.getByLabelText('Stack 선택'), { target: { value: 'stack-1' } })
+    fireEvent.change(screen.getByLabelText('Source Repository'), { target: { value: 'owner/demo-app/main/src' } })
+    fireEvent.change(screen.getByPlaceholderText('root/spring-sample/-/blob/master/Dockerfile'), { target: { value: 'owner/demo-app/main/docker' } })
+    fireEvent.change(screen.getByPlaceholderText('root/spring-sample'), { target: { value: 'owner/demo-app/main/image' } })
 
-    expect(screen.getByDisplayValue('https://gitlab.stack.internal/')).toBeDisabled()
-    expect(screen.getByPlaceholderText('owner/repo-name.git')).not.toBeNull()
+    expect(screen.getAllByDisplayValue('https://gitlab.stack.internal/')).toHaveLength(2)
+    screen.getAllByDisplayValue('https://gitlab.stack.internal/').forEach((input) => {
+      expect(input).toBeDisabled()
+    })
+    expect(screen.getByDisplayValue('https://registry.stack.internal/')).toBeDisabled()
+    expect(screen.getByDisplayValue('https://artifactory.stack.internal/')).toBeDisabled()
+    expect(screen.getByLabelText('Source Repository')).toHaveValue('owner/demo-app/main/src')
+    expect(screen.getByLabelText('Dockerfile Repository')).toHaveValue('owner/demo-app/main/docker')
+    expect(screen.getByLabelText('Image Registry')).toHaveValue('owner/demo-app/main/image')
+    expect(screen.getByLabelText('Deploy YAML Repository')).toHaveValue('root/spring-sample/deploy')
   })
 
   it('allows review and create with a repository URL assembled from the selected stack', async () => {
     renderWithProviders(<DeveloperDeployPage />)
 
     fireEvent.change(screen.getByPlaceholderText('my-awesome-app'), { target: { value: 'demo-app' } })
-    fireEvent.change(screen.getByLabelText('Stack'), { target: { value: 'stack-1' } })
-    fireEvent.change(screen.getByPlaceholderText('owner/repo-name.git'), { target: { value: 'owner/demo-app.git' } })
+    fireEvent.change(screen.getByLabelText('Stack 선택'), { target: { value: 'stack-1' } })
+    fireEvent.change(screen.getByLabelText('Source Repository'), { target: { value: 'owner/demo-app.git' } })
 
     expect(await screen.findByText('demo-app-deployment.yaml')).not.toBeNull()
     fireEvent.click(screen.getAllByRole('button', { name: 'Create' }).at(-1)!)
     await waitFor(() => {
       expect(mockCreatePipeline).toHaveBeenCalledWith(expect.objectContaining({
         gitRepoUrl: 'https://gitlab.stack.internal/owner/demo-app.git',
+        stackId: 'stack-1',
       }))
     })
   })
@@ -213,7 +254,7 @@ describe('DeveloperDeployPage', () => {
     mockUseStackIntegrations.mockReturnValue({ data: { integrations: [] } })
     renderWithProviders(<DeveloperDeployPage />)
 
-    fireEvent.change(screen.getByLabelText('Stack'), { target: { value: 'stack-1' } })
+    fireEvent.change(screen.getByLabelText('Stack 선택'), { target: { value: 'stack-1' } })
 
     expect(screen.getByLabelText('Source Repository')).not.toBeNull()
   })
@@ -228,17 +269,19 @@ describe('DeveloperDeployPage', () => {
     expect(screen.queryByRole('slider')).toBeNull()
   })
 
-  it('groups code checkout, build, and deploy repository inputs together', () => {
+  it('groups code checkout, build, image registry, and deploy repository inputs in order', () => {
     renderWithProviders(<DeveloperDeployPage />)
 
     const source = screen.getByLabelText('Source Repository')
     const dockerfile = screen.getByLabelText('Dockerfile Repository')
+    const imageRegistry = screen.getByLabelText('Image Registry')
     const deployYaml = screen.getByLabelText('Deploy YAML Repository')
 
     expect(source.compareDocumentPosition(dockerfile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(dockerfile.compareDocumentPosition(deployYaml) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getAllByLabelText('Branch')).toHaveLength(2)
-    expect(screen.getAllByLabelText('Directory')).toHaveLength(2)
+    expect(dockerfile.compareDocumentPosition(imageRegistry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(imageRegistry.compareDocumentPosition(deployYaml) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryAllByLabelText('Branch')).toHaveLength(0)
+    expect(screen.queryAllByLabelText('Directory')).toHaveLength(0)
   })
 
   it('shows separate manifests and enables create without an optional service URL', async () => {
@@ -263,23 +306,28 @@ describe('DeveloperDeployPage', () => {
     expect(await screen.findByText(/host: demo-app\.example\.com/)).not.toBeNull()
   })
 
-  it('loads YAML previews from a Deploy YAML Repository path', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: vi.fn().mockResolvedValue('kind: Deployment\nmetadata:\n  name: imported\n---\nkind: Service\nmetadata:\n  name: imported-svc\n'),
+  it('loads manifests from the Deploy YAML Repository directory', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: URL) => {
+      const href = String(url)
+      const body = href.endsWith('/deployment.yaml')
+        ? 'kind: Deployment\nmetadata:\n  name: imported\n'
+        : href.endsWith('/service.yaml')
+          ? 'kind: Service\nmetadata:\n  name: imported-svc\n'
+          : 'kind: Ingress\nmetadata:\n  name: imported-ingress\n'
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve(body),
+      })
     }))
     renderWithProviders(<DeveloperDeployPage />)
     completeRequiredFields()
 
-    fireEvent.change(screen.getByLabelText('Deploy YAML Repository'), {
-      target: { value: 'https://config.example.com/manifests/' },
-    })
-    fireEvent.change(screen.getByPlaceholderText('deploy/app.yaml'), { target: { value: 'app.yaml' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Load from Deploy YAML Repository' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reload Deploy YAML files' }))
 
-    expect(await screen.findByText(/^kind: Deployment[\s\S]*name: imported$/)).not.toBeNull()
-    expect(screen.getByText(/kind: Service[\s\S]*name: imported-svc/)).not.toBeNull()
-    expect(fetch).toHaveBeenCalledWith(new URL('https://config.example.com/manifests/app.yaml'))
+    expect(await screen.findByText(/name: imported$/)).not.toBeNull()
+    expect(screen.getByText(/name: imported-svc/)).not.toBeNull()
+    expect(screen.getByText(/name: imported-ingress/)).not.toBeNull()
+    expect(fetch).toHaveBeenCalledWith(new URL('root/spring-sample/deploy/deployment.yaml', 'https://artifactory.stack.internal/'))
   })
 
   it('navigates to the CI/CD list after creating from manifest review', async () => {
@@ -289,8 +337,35 @@ describe('DeveloperDeployPage', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: 'Create' })).at(-1)!)
 
     await waitFor(() => {
-      expect(mockCreatePipeline).toHaveBeenCalled()
+      expect(mockCreatePipeline).toHaveBeenCalledWith(expect.objectContaining({
+        envVars: expect.objectContaining({
+          NULLUS_MANIFEST_DEPLOYMENT: expect.stringContaining('kind: Deployment'),
+          NULLUS_MANIFEST_SERVICE: expect.stringContaining('kind: Service'),
+          NULLUS_MANIFEST_INGRESS: expect.stringContaining('kind: Ingress'),
+        }),
+      }))
       expect(mockNavigate).toHaveBeenCalledWith('/cicd/list')
     })
+  })
+
+  it('shows the create error when pipeline creation fails', async () => {
+    mockCreatePipeline.mockRejectedValueOnce({ message: 'stack belongs to a different organization' })
+    renderWithProviders(<DeveloperDeployPage />)
+    completeRequiredFields()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Create' })).at(-1)!)
+
+    expect(await screen.findByText('선택한 Stack에 접근할 수 없습니다. 현재 조직의 Stack을 다시 선택하거나 관리자에게 권한을 요청하세요.')).not.toBeNull()
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('includes the backend error for unmapped create failures', async () => {
+    mockCreatePipeline.mockRejectedValueOnce({ message: 'create pipeline: insert pipeline failed' })
+    renderWithProviders(<DeveloperDeployPage />)
+    completeRequiredFields()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Create' })).at(-1)!)
+
+    expect(await screen.findByText('Pipeline을 생성하지 못했습니다. 관리자에게 아래 오류를 전달하세요: create pipeline: insert pipeline failed')).not.toBeNull()
   })
 })

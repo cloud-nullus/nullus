@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 import { useDeploymentStatus, usePipelineDeployments, usePipelines } from '../api/cicd-api'
@@ -12,8 +12,10 @@ export function CicdPipelineLogsPage() {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const { id: pipelineId = '' } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const initialDeploymentId = searchParams.get('deploymentId')
   const terminalRef = useRef<HTMLDivElement>(null)
-  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null)
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(initialDeploymentId)
 
   const { data: pipelinesData } = usePipelines()
   const pipeline = (pipelinesData?.items ?? []).find((p) => p.id === pipelineId)
@@ -160,16 +162,39 @@ export function CicdPipelineLogsPage() {
             )}
             {!selectedDeploymentId && <p className="text-[#8b949e]">Select a deployment to view logs.</p>}
 
-            {steps.map((step) => (
-              <div key={step.name} className="mb-2.5">
-                <div className="mb-1 flex items-center gap-2 text-[11px] text-[rgba(255,255,255,0.4)]">
-                  <Clock size={11} />
-                  <span>{step.name}</span>
+            {steps.map((step, stepIdx) => (
+              <div key={`${step.name}-${stepIdx}`} className="mb-3">
+                <div className="mb-1 flex items-center gap-2 text-[11px]">
+                  {step.status === 'success' ? (
+                    <CheckCircle2 size={11} className="text-[#3fb950]" />
+                  ) : step.status === 'failed' ? (
+                    <XCircle size={11} className="text-[#f85149]" />
+                  ) : step.status === 'running' ? (
+                    <Loader2 size={11} className="animate-spin text-[#fbbf24]" />
+                  ) : (
+                    <CircleDashed size={11} className="text-[rgba(255,255,255,0.3)]" />
+                  )}
+                  <span className={cn(
+                    'font-semibold',
+                    step.status === 'success' ? 'text-[#3fb950]'
+                    : step.status === 'failed' ? 'text-[#f85149]'
+                    : step.status === 'running' ? 'text-[#fbbf24]'
+                    : 'text-[rgba(255,255,255,0.4)]'
+                  )}>{step.name}</span>
+                  {step.status && (
+                    <span className="text-[rgba(255,255,255,0.25)]">[{step.status}]</span>
+                  )}
+                  {step.applied_at && (
+                    <span className="ml-auto text-[rgba(255,255,255,0.2)]">
+                      <Clock size={10} className="mr-0.5 inline" />{step.applied_at}
+                    </span>
+                  )}
                 </div>
-                {(step.logs ?? []).map((line) => (
+                {(step.logs ?? []).map((line, lineIdx) => (
                   <div
-                    key={`${step.name}-${line}`}
+                    key={`${step.name}-${lineIdx}`}
                     className={cn(
+                      'pl-4',
                       line.startsWith('$')
                         ? 'text-[#58a6ff]'
                         : line.includes('created')
@@ -184,6 +209,11 @@ export function CicdPipelineLogsPage() {
                     {line}
                   </div>
                 ))}
+                {(step.logs ?? []).length === 0 && step.message && (
+                  <div className={cn('pl-4 text-[12px]', step.status === 'failed' ? 'text-[#f85149]' : 'text-[#c9d1d9]')}>
+                    {step.message}
+                  </div>
+                )}
               </div>
             ))}
           </div>

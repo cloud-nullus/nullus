@@ -260,6 +260,9 @@ func DefaultValues(stepName string) map[string]any {
 			"rbac": map[string]any{
 				"create": true,
 			},
+			"runners": map[string]any{
+				"privileged": true,
+			},
 		}
 	case "installing_prometheus":
 		return map[string]any{

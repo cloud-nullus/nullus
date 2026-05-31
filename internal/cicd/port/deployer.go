@@ -16,12 +16,15 @@ type ImagePreparer interface {
 }
 
 type PrepareImageOpts struct {
-	GitRepoURL     string
-	DockerfilePath string
-	DockerContext  string
-	ImageName      string
-	ClusterName    string
-	DeploymentID   string
+	GitRepoURL       string
+	DockerfilePath   string
+	DockerContext    string
+	ImageName        string
+	ClusterName      string
+	DeploymentID     string
+	RegistryURL      string
+	RegistryUsername string
+	RegistryPassword string
 }
 
 type ClusterTarget struct {
