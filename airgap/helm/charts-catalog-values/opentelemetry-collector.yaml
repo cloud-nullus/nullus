@@ -1,5 +1,7 @@
 # Minimal values to make `helm template open-telemetry/opentelemetry-collector` render
-# for image extraction. Not used at install time.
+# for image extraction. Not used at install time (orchestrator passes its own values).
+#
+# image.repository 는 override 하지 않음 — chart default 인
+# `otel/opentelemetry-collector-contrib:<chart appVersion>` 이 docker hub 에 실제 존재.
+# (k8s distribution image 는 별도 release line 이라 chart appVersion 과 안 맞을 수 있음)
 mode: deployment
-image:
-  repository: otel/opentelemetry-collector-k8s
