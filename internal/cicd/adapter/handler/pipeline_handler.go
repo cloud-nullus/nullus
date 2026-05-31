@@ -101,6 +101,7 @@ func (h *PipelineHandler) StreamDeployLogs(c echo.Context) error {
 // createPipelineRequest is the request body for POST /pipelines.
 type createPipelineRequest struct {
 	Name           string            `json:"name"`
+	ExecutionMode  string            `json:"execution_mode,omitempty"`
 	TemplateID     string            `json:"template_id"`
 	ClusterID      string            `json:"cluster_id"`
 	StackID        string            `json:"stack_id,omitempty"` // optional — links to a stack
@@ -123,6 +124,7 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 
 	out, err := h.createPipeline.Execute(c.Request().Context(), usecase.CreatePipelineInput{
 		Name:           req.Name,
+		ExecutionMode:  req.ExecutionMode,
 		TemplateID:     req.TemplateID,
 		OrgID:          orgID,
 		ClusterID:      req.ClusterID,
@@ -185,8 +187,9 @@ func (h *PipelineHandler) ListPipelinesByStack(c echo.Context) error {
 
 // deployRequest is the request body for POST /pipelines/:id/deploy.
 type deployRequest struct {
-	Version    string `json:"version"`
-	DeployedBy string `json:"deployed_by"`
+	Version       string   `json:"version"`
+	DeployedBy    string   `json:"deployed_by"`
+	ManifestTypes []string `json:"manifest_types"`
 }
 
 // DeployPipeline handles POST /api/v1/pipelines/:id/deploy.
@@ -199,23 +202,24 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 	}
 
 	out, err := h.deployPipeline.Start(c.Request().Context(), usecase.DeployPipelineInput{
-		PipelineID: id,
-		Version:    req.Version,
-		DeployedBy: req.DeployedBy,
+		PipelineID:    id,
+		Version:       req.Version,
+		DeployedBy:    req.DeployedBy,
+		ManifestTypes: req.ManifestTypes,
 	})
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_DEPLOY_FAILED", err.Error())
 	}
 
 	depID := out.Deployment.ID
-	steps := []string{"Namespace 생성", "Deployment 생성", "Service 생성"}
+	steps := usecase.BuildStepPlan(nil, req.ManifestTypes)
 	if pipeline, getErr := h.pipelineRepo.GetByID(c.Request().Context(), id); getErr == nil {
-		steps = usecase.BuildStepPlan(pipeline)
+		steps = usecase.BuildStepPlan(pipeline, req.ManifestTypes)
 	}
 	h.stepTracker.Init(depID, steps)
 
 	go func() {
-		h.deployPipeline.ApplyAsync(depID)
+		h.deployPipeline.ApplyAsync(depID, req.ManifestTypes)
 		time.AfterFunc(5*time.Minute, func() { h.stepTracker.Remove(depID) })
 	}()
 

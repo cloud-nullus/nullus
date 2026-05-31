@@ -8,12 +8,12 @@ import (
 )
 
 // MemoryCICDTemplateRepository is an in-memory implementation of port.PipelineTemplateRepository
-// with three hard-coded CI/CD pipeline templates.
+// with hard-coded CI/CD pipeline templates.
 type MemoryCICDTemplateRepository struct {
 	templates map[string]*domain.PipelineTemplate
 }
 
-// NewMemoryCICDTemplateRepository constructs a MemoryCICDTemplateRepository with three
+// NewMemoryCICDTemplateRepository constructs a MemoryCICDTemplateRepository with
 // canonical CI/CD pipeline templates pre-loaded.
 func NewMemoryCICDTemplateRepository() *MemoryCICDTemplateRepository {
 	repo := &MemoryCICDTemplateRepository{
@@ -67,22 +67,15 @@ func (r *MemoryCICDTemplateRepository) Delete(_ context.Context, id string) erro
 	return nil
 }
 
-// cicdTemplates returns the three canonical CI/CD pipeline templates.
+// cicdTemplates returns the canonical CI/CD pipeline templates.
 func cicdTemplates() []*domain.PipelineTemplate {
 	return []*domain.PipelineTemplate{
 		{
 			ID:          "web-backend-v1",
-			Name:        "Web Backend Pipeline",
+			Name:        "User Custom Pipeline",
 			Description: "백엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 이미지 빌드, 배포 단계를 포함합니다.",
 			AppType:     domain.AppTypeBackend,
 			Stages:      []string{"Build", "Test", "ImageBuild", "Deploy"},
-		},
-		{
-			ID:          "web-frontend-v1",
-			Name:        "Web Frontend Pipeline",
-			Description: "프론트엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 정적 빌드, 배포 단계를 포함합니다.",
-			AppType:     domain.AppTypeWeb,
-			Stages:      []string{"Build", "Test", "StaticBuild", "Deploy"},
 		},
 		{
 			ID:          "batch-job-v1",

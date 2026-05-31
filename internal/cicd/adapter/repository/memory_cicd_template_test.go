@@ -10,12 +10,12 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 )
 
-func TestMemoryCICDTemplateRepository_ListReturnsThreeTemplates(t *testing.T) {
+func TestMemoryCICDTemplateRepository_ListReturnsCanonicalTemplates(t *testing.T) {
 	repo := NewMemoryCICDTemplateRepository()
 
 	templates, err := repo.List(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, templates, 3, "should have exactly 3 CI/CD pipeline templates")
+	assert.Len(t, templates, 2, "should have exactly 2 CI/CD pipeline templates")
 }
 
 func TestMemoryCICDTemplateRepository_GetByID_WebBackend(t *testing.T) {
@@ -25,19 +25,15 @@ func TestMemoryCICDTemplateRepository_GetByID_WebBackend(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "web-backend-v1", tmpl.ID)
-	assert.Equal(t, "Web Backend Pipeline", tmpl.Name)
+	assert.Equal(t, "User Custom Pipeline", tmpl.Name)
 	assert.Equal(t, []string{"Build", "Test", "ImageBuild", "Deploy"}, tmpl.Stages)
 }
 
-func TestMemoryCICDTemplateRepository_GetByID_WebFrontend(t *testing.T) {
+func TestMemoryCICDTemplateRepository_DoesNotReturnRemovedWebFrontend(t *testing.T) {
 	repo := NewMemoryCICDTemplateRepository()
 
-	tmpl, err := repo.GetByID(context.Background(), "web-frontend-v1")
-	require.NoError(t, err)
-
-	assert.Equal(t, "web-frontend-v1", tmpl.ID)
-	assert.Equal(t, "Web Frontend Pipeline", tmpl.Name)
-	assert.Equal(t, []string{"Build", "Test", "StaticBuild", "Deploy"}, tmpl.Stages)
+	_, err := repo.GetByID(context.Background(), "web-frontend-v1")
+	require.Error(t, err)
 }
 
 func TestMemoryCICDTemplateRepository_GetByID_BatchJob(t *testing.T) {
@@ -72,7 +68,6 @@ func TestMemoryCICDTemplateRepository_ListContainsCanonicalTemplateIDs(t *testin
 
 	assert.ElementsMatch(t, []string{
 		"web-backend-v1",
-		"web-frontend-v1",
 		"batch-job-v1",
 	}, ids)
 }

@@ -980,6 +980,47 @@ func TestOrchestrator_ExecuteStep_InstallsGitLabAndRunnerForGitLabSelection(t *t
 
 	assert.Contains(t, installer.installed, "gitlab")
 	assert.Contains(t, installer.installed, "gitlab-runner")
+
+	runnerValues := installer.valuesByRelease["gitlab-runner"]
+	require.NotNil(t, runnerValues)
+	runners, ok := runnerValues["runners"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, runners["privileged"])
+}
+
+func TestOrchestrator_ExecuteStep_InstallsRunnerWhenGitLabSourceRepositoryIsInstalled(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			StorageBackend:   domain.ToolSelection{Name: "minio", Enabled: true},
+			SourceRepository: domain.ToolSelection{Name: "gitlab", Enabled: true},
+		},
+		Pipeline: domain.PipelineConfig{
+			CDTool: domain.ToolSelection{Name: "argocd", Enabled: true},
+		},
+	})
+
+	steps := []struct {
+		name  string
+		phase string
+	}{
+		{name: "installing_cert_manager", phase: "A"},
+		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_postgresql", phase: "A"},
+		{name: "installing_minio", phase: "A"},
+		{name: "installing_object_storage_secret", phase: "A"},
+		{name: "installing_gitlab", phase: "B"},
+		{name: "installing_argocd", phase: "B"},
+		{name: "installing_runner", phase: "B"},
+	}
+
+	for _, step := range steps {
+		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_runner", step.name, step.phase))
+	}
+
+	assert.Contains(t, installer.installed, "gitlab")
+	assert.Contains(t, installer.installed, "gitlab-runner")
 }
 
 func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *testing.T) {

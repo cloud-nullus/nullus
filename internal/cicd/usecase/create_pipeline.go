@@ -20,6 +20,7 @@ var (
 // CreatePipelineInput holds the parameters for creating a new pipeline.
 type CreatePipelineInput struct {
 	Name           string
+	ExecutionMode  string
 	TemplateID     string
 	OrgID          string
 	ClusterID      string
@@ -112,6 +113,7 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	pipeline := &domain.Pipeline{
 		ID:             generateID("pip"),
 		Name:           input.Name,
+		ExecutionMode:  input.ExecutionMode,
 		TemplateID:     input.TemplateID,
 		OrgID:          input.OrgID,
 		ClusterID:      input.ClusterID,
@@ -124,6 +126,13 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 		EnvVars:        envVars,
 		Status:         domain.PipelineStatusActive,
 		CreatedAt:      time.Now(),
+	}
+	if pipeline.ExecutionMode == "" {
+		if pipeline.StackID != "" {
+			pipeline.ExecutionMode = "stack_integrated"
+		} else {
+			pipeline.ExecutionMode = "emergency_direct"
+		}
 	}
 
 	if err := uc.pipelineRepo.Create(ctx, pipeline); err != nil {

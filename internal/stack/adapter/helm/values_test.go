@@ -152,6 +152,19 @@ func TestDefaultValues_GitLab(t *testing.T) {
 	assert.Equal(t, "1.76.0-debian-12-r0", redisMetricsImage["tag"])
 }
 
+func TestDefaultValues_GitLabRunner(t *testing.T) {
+	values := DefaultValues("installing_runner")
+	require.NotNil(t, values)
+
+	rbac, ok := values["rbac"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, rbac["create"])
+
+	runners, ok := values["runners"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, runners["privileged"])
+}
+
 func TestDefaultValues_UnknownStepReturnsEmptyMap(t *testing.T) {
 	values := DefaultValues("unknown_step")
 	require.NotNil(t, values)

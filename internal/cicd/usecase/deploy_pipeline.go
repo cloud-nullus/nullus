@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
+	"strings"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/manifests"
@@ -11,10 +13,21 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
+const (
+	envManifestDeployment = "NULLUS_MANIFEST_DEPLOYMENT"
+	envManifestService    = "NULLUS_MANIFEST_SERVICE"
+	envManifestIngress    = "NULLUS_MANIFEST_INGRESS"
+
+	envRegistryURL      = "IMAGE_REGISTRY_URL"
+	envRegistryUsername = "REGISTRY_USERNAME"
+	envRegistryPassword = "REGISTRY_PASSWORD"
+)
+
 type DeployPipelineInput struct {
-	PipelineID string
-	Version    string
-	DeployedBy string
+	PipelineID    string
+	Version       string
+	DeployedBy    string
+	ManifestTypes []string
 }
 
 type DeployPipelineOutput struct {
@@ -59,11 +72,39 @@ func WithClusterTargetProvider(p port.ClusterTargetProvider) DeployOption {
 	return func(dp *DeployPipeline) { dp.clusterTargetProvider = p }
 }
 
-func BuildStepPlan(pipeline *domain.Pipeline) []string {
-	if pipeline != nil && pipeline.DockerfilePath != "" {
-		return []string{"Git Clone", "Docker Build", "Image Load", "Namespace 생성", "Deployment 생성", "Service 생성"}
+func includesOptionalManifest(manifestTypes []string, target string) bool {
+	if len(manifestTypes) == 0 {
+		return true
 	}
-	return []string{"Namespace 생성", "Deployment 생성", "Service 생성"}
+	for _, manifestType := range manifestTypes {
+		if strings.EqualFold(strings.TrimSpace(manifestType), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func BuildStepPlan(pipeline *domain.Pipeline, manifestTypes ...[]string) []string {
+	var selected []string
+	if len(manifestTypes) > 0 {
+		selected = manifestTypes[0]
+	}
+	steps := []string{"Namespace 생성", "Deployment 생성"}
+	if pipeline != nil && pipeline.DockerfilePath != "" {
+		hasRegistry := pipeline.EnvVars[envRegistryURL] != ""
+		imageStep := "Image Load"
+		if hasRegistry {
+			imageStep = "Image Push"
+		}
+		steps = append([]string{"Git Clone", "Docker Build", imageStep}, steps...)
+	}
+	if includesOptionalManifest(selected, "service") {
+		steps = append(steps, "Service 생성")
+	}
+	if includesOptionalManifest(selected, "ingress") {
+		steps = append(steps, "Ingress 생성")
+	}
+	return steps
 }
 
 // Start creates a Deployment record with status=running and returns immediately.
@@ -96,7 +137,7 @@ func (uc *DeployPipeline) Start(ctx context.Context, input DeployPipelineInput) 
 }
 
 // ApplyAsync runs the actual K8s deployment in the background.
-func (uc *DeployPipeline) ApplyAsync(deploymentID string) {
+func (uc *DeployPipeline) ApplyAsync(deploymentID string, manifestTypes ...[]string) {
 	ctx := context.Background()
 
 	deployment, err := uc.deploymentRepo.GetByID(ctx, deploymentID)
@@ -112,7 +153,11 @@ func (uc *DeployPipeline) ApplyAsync(deploymentID string) {
 		return
 	}
 
-	if deployErr := uc.applyToCluster(ctx, pipeline, deploymentID); deployErr != nil {
+	var selected []string
+	if len(manifestTypes) > 0 {
+		selected = manifestTypes[0]
+	}
+	if deployErr := uc.applyToCluster(ctx, pipeline, deploymentID, selected); deployErr != nil {
 		slog.Error("apply: cluster deploy failed", "deployment", deploymentID, "error", deployErr)
 		uc.failDeployment(ctx, deployment, deployErr)
 		return
@@ -132,7 +177,7 @@ func (uc *DeployPipeline) Execute(ctx context.Context, input DeployPipelineInput
 		return nil, err
 	}
 
-	uc.ApplyAsync(out.Deployment.ID)
+	uc.ApplyAsync(out.Deployment.ID, input.ManifestTypes)
 
 	updated, err := uc.deploymentRepo.GetByID(ctx, out.Deployment.ID)
 	if err != nil {
@@ -153,7 +198,7 @@ func (uc *DeployPipeline) failDeployment(ctx context.Context, deployment *domain
 	_ = uc.deploymentRepo.Update(ctx, deployment)
 }
 
-func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.Pipeline, deploymentID string) error {
+func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.Pipeline, deploymentID string, manifestTypes []string) error {
 	namespace := pipeline.Namespace
 	if namespace == "" {
 		namespace = "default"
@@ -172,12 +217,15 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 		imageName := fmt.Sprintf("%s:%s", pipeline.Name, deploymentID[suffixStart:])
 
 		builtRef, err := uc.imagePreparer.PrepareImage(ctx, port.PrepareImageOpts{
-			GitRepoURL:     pipeline.GitRepoURL,
-			DockerfilePath: pipeline.DockerfilePath,
-			DockerContext:  pipeline.DockerContext,
-			ImageName:      imageName,
-			ClusterName:    target.ClusterName,
-			DeploymentID:   deploymentID,
+			GitRepoURL:       pipeline.GitRepoURL,
+			DockerfilePath:   pipeline.DockerfilePath,
+			DockerContext:    pipeline.DockerContext,
+			ImageName:        imageName,
+			ClusterName:      target.ClusterName,
+			DeploymentID:     deploymentID,
+			RegistryURL:      pipeline.EnvVars[envRegistryURL],
+			RegistryUsername: pipeline.EnvVars[envRegistryUsername],
+			RegistryPassword: pipeline.EnvVars[envRegistryPassword],
 		})
 		if err != nil {
 			return fmt.Errorf("prepare image: %w", err)
@@ -217,7 +265,7 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 		ImageRef:  imageRef,
 		Replicas:  1,
 		Port:      port,
-		EnvVars:   pipeline.EnvVars,
+		EnvVars:   deployEnvVars(pipeline.EnvVars),
 		Labels: map[string]string{
 			"app.kubernetes.io/managed-by": "nullus-cicd",
 			"app.kubernetes.io/name":       pipeline.Name,
@@ -236,9 +284,30 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 
 	yamlDocs := []string{
 		generated.Namespace,
-		generated.Deployment,
-		generated.Service,
+		firstNonEmptyManifest(pipeline.EnvVars[envManifestDeployment], generated.Deployment),
+	}
+	if includesOptionalManifest(manifestTypes, "service") {
+		yamlDocs = append(yamlDocs, firstNonEmptyManifest(pipeline.EnvVars[envManifestService], generated.Service))
+	}
+	if includesOptionalManifest(manifestTypes, "ingress") {
+		yamlDocs = append(yamlDocs, firstNonEmptyManifest(pipeline.EnvVars[envManifestIngress], generated.Ingress))
 	}
 
 	return uc.applier.ApplyWithTracking(ctx, kubeconfig, yamlDocs, deploymentID, stepOffset)
+}
+
+func firstNonEmptyManifest(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func deployEnvVars(envVars map[string]string) map[string]string {
+	filtered := make(map[string]string)
+	maps.Copy(filtered, envVars)
+	delete(filtered, envManifestDeployment)
+	delete(filtered, envManifestService)
+	delete(filtered, envManifestIngress)
+	return filtered
 }
