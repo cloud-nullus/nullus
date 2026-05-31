@@ -96,6 +96,7 @@ extract_images() {
 rewrite_upstream() {
   sed \
     -e 's#^localhost:5001/cloud-nullus/#ghcr.io/cloud-nullus/#' \
+    -e 's#^localhost:5001/dasomel/#ghcr.io/dasomel/#' \
     -e 's#^localhost:5001/bitnamilegacy/#docker.io/bitnamilegacy/#' \
     -e 's#^localhost:5001/bitnami/#docker.io/bitnami/#'
 }

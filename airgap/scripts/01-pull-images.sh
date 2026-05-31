@@ -52,6 +52,66 @@ command -v "$RUNTIME" >/dev/null 2>&1 || {
 }
 
 # ---------------------------------------------------------------------------
+# 타깃 플랫폼 — 멀티아치 인덱스를 단일 플랫폼으로 평탄화한다.
+#   docker(containerd 스토어)의 pull→save→load→push 라운드트립은 멀티아치
+#   인덱스의 플랫폼별 blob 을 온전히 보존하지 못해, 설치 시 push 가
+#   "does not provide any platform" 으로 실패한다. crane 으로 단일 플랫폼만
+#   받아 docker 로 load 하면 단일 매니페스트 이미지가 되어 정상 동작한다.
+# ---------------------------------------------------------------------------
+_host_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64)  echo amd64 ;;
+    aarch64|arm64) echo arm64 ;;
+    *)             uname -m ;;
+  esac
+}
+TARGET_PLATFORM="${TARGET_PLATFORM:-linux/$(_host_arch)}"
+
+# USE_CRANE: auto|1|0 — auto 면 docker 런타임 + crane 존재 시 활성화
+USE_CRANE="${USE_CRANE:-auto}"
+if [[ "$USE_CRANE" == "auto" ]]; then
+  if [[ "$RUNTIME" == "docker" ]] && command -v crane >/dev/null 2>&1; then
+    USE_CRANE=1
+  else
+    USE_CRANE=0
+  fi
+fi
+
+if [[ "$USE_CRANE" != "1" && "$RUNTIME" == "docker" ]]; then
+  log_warn "crane 미사용 — 멀티아치 이미지가 docker save/load 라운드트립에서 손상돼"
+  log_warn "  설치 시 push 가 'does not provide any platform' 으로 실패할 수 있습니다."
+  log_warn "  권장: crane 설치 후 재실행 (go install github.com/google/go-containerregistry/cmd/crane@latest"
+  log_warn "        또는 brew install crane). 강제 활성화: USE_CRANE=1"
+fi
+
+# 단일 이미지 pull — crane 평탄화 우선, 실패 시 런타임 --platform 폴백
+pull_one() {
+  local image="$1"
+  if [[ "$USE_CRANE" == "1" ]]; then
+    local tmp loaded desired
+    tmp="$(mktemp -t airgap-img.XXXXXX)"
+    if crane pull --platform "$TARGET_PLATFORM" "$image" "$tmp" 2>/dev/null; then
+      # docker load 가 실제 적재한 reference 파싱
+      loaded="$(docker load -i "$tmp" 2>/dev/null | sed -n 's/^Loaded image: //p' | head -1)"
+      rm -f "$tmp"
+      if [[ -n "$loaded" ]]; then
+        # digest-pin 항목(name:tag@sha256:...)은 crane 이 ':i-was-a-digest' 로 적재하므로
+        # 이후 save/push 가 기대하는 digest-제거 태그 형식으로 재태그한다.
+        desired="${image%@*}"
+        if [[ "$loaded" != "$desired" ]]; then
+          docker tag "$loaded" "$desired" >/dev/null 2>&1 || true
+        fi
+        return 0
+      fi
+    else
+      rm -f "$tmp"
+    fi
+    log_warn "crane pull 실패 → ${RUNTIME} pull --platform 폴백: $image"
+  fi
+  "$RUNTIME" pull --platform "$TARGET_PLATFORM" "$image"
+}
+
+# ---------------------------------------------------------------------------
 # images.txt 존재 확인
 # ---------------------------------------------------------------------------
 [[ -f "$IMAGES_FILE" ]] || {
@@ -67,6 +127,7 @@ total=0
 success=0
 
 log_info "Using runtime: $RUNTIME"
+log_info "Target platform: $TARGET_PLATFORM (USE_CRANE=$USE_CRANE)"
 log_info "Image list: $IMAGES_FILE"
 [[ "$DRY_RUN" == "1" ]] && log_warn "DRY_RUN enabled — commands will be printed only"
 
@@ -83,8 +144,8 @@ while IFS= read -r line; do
     continue
   fi
 
-  log_info "Pulling: $image"
-  if "$RUNTIME" pull "$image"; then
+  log_info "Pulling ($TARGET_PLATFORM): $image"
+  if pull_one "$image"; then
     success=$((success + 1))
   else
     log_err "Failed to pull: $image"

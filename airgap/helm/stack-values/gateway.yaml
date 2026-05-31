@@ -1,0 +1,3 @@
+# envoy-gateway airgap install values
+# Source: helm get values eg -n nullus (returned null — no overrides)
+# Chart defaults are sufficient; containerd mirror resolves all images.

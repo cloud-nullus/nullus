@@ -1,0 +1,14 @@
+# loki airgap install values
+# Source: helm get values loki -n nullus
+grafana:
+  enabled: false
+loki:
+  enabled: true
+  isDefault: true
+prometheus:
+  enabled: false
+promtail:
+  enabled: false
+rbac:
+  create: true
+  pspEnabled: false

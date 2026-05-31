@@ -1,0 +1,37 @@
+# gitlab 전용 PostgreSQL (release: nullus-postgresql, namespace: gitlab)
+# gitlab 차트의 global.psql 이 nullus-postgresql.gitlab.svc + DB gitlabhq_production 을
+# 기대하므로, gitlab 설치 전에 이 postgres 를 gitlab 네임스페이스에 먼저 띄워야 한다.
+# (orchestrator internal/stack/adapter/helm/values.go: installing_postgresql 값 재현)
+# 이미지는 values-airgap.yaml 의 postgresql 섹션과 동일 (containerd 미러로 로컬 레지스트리 해석).
+global:
+  security:
+    allowInsecureImages: true   # bitnamilegacy repo 사용 시 필요
+architecture: standalone
+auth:
+  username: gitlab
+  password: nullus-gitlab-password
+  database: gitlabhq_production
+  postgresPassword: nullus-postgres-admin
+image:
+  registry: localhost:5001
+  repository: bitnamilegacy/postgresql
+  tag: "17.5.0-debian-12-r20"
+  pullPolicy: IfNotPresent
+volumePermissions:
+  enabled: true
+  image:
+    registry: localhost:5001
+    repository: bitnamilegacy/os-shell
+    tag: "12-debian-12-r49"
+    pullPolicy: IfNotPresent
+primary:
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi

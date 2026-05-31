@@ -94,6 +94,20 @@ copy_charts() {
     log_warn "복사할 .tgz 파일이 없습니다. helm dep update 결과를 확인하세요."
   fi
 
+  # gitlab 전용 PostgreSQL: 27-install-stacks.sh 의 gitlab-postgres 스택이
+  # charts-catalog 에서 postgresql 차트를 찾으므로, nullus 차트의 postgresql
+  # subchart 를 카탈로그에도 복사한다(미복사 시 fresh 번들에서 gitlab DB 누락).
+  local catalog_dir="${BUNDLE_HELM_DIR}/charts-catalog"
+  local pg_tgz
+  pg_tgz=$(ls "${charts_src}"/postgresql-*.tgz 2>/dev/null | head -1 || true)
+  if [[ -n "${pg_tgz}" ]]; then
+    run mkdir -p "${catalog_dir}"
+    log_info "  카탈로그 복사: $(basename "${pg_tgz}") → charts-catalog/ (gitlab-postgres 용)"
+    run cp -f "${pg_tgz}" "${catalog_dir}/"
+  else
+    log_warn "postgresql subchart 를 찾지 못함 — gitlab-postgres 스택이 fresh 번들에서 실패할 수 있음"
+  fi
+
   # Chart.lock 복사
   local lock_src="${CHART_SRC}/Chart.lock"
   if [[ -f "${lock_src}" ]]; then

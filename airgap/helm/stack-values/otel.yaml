@@ -1,0 +1,3 @@
+# opentelemetry-collector airgap install values
+# Source: airgap/helm/charts-catalog-values/opentelemetry-collector.yaml
+mode: deployment

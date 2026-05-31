@@ -1,0 +1,62 @@
+# gitlab airgap install values
+# Source: helm get values gitlab -n gitlab (live cluster) + charts-catalog-values/gitlab.yaml
+certmanager:
+  install: false
+certmanager-issuer:
+  email: airgap@example.com
+gitlab:
+  toolbox:
+    backups:
+      objectStorage:
+        config:
+          key: config
+          secret: nullus-object-storage
+  webservice:
+    ingress:
+      enabled: false
+gitlab-runner:
+  install: false
+global:
+  appConfig:
+    object_store:
+      connection:
+        key: connection
+        secret: nullus-object-storage
+      enabled: true
+  edition: ce
+  hosts:
+    domain: nullus.internal
+    https: false
+  ingress:
+    configureCertmanager: false
+    enabled: false
+  minio:
+    enabled: false
+  psql:
+    database: gitlabhq_production
+    host: nullus-postgresql.gitlab.svc.cluster.local
+    password:
+      key: password
+      secret: nullus-postgresql
+      useSecret: true
+    port: 5432
+    username: gitlab
+nginx-ingress:
+  enabled: false
+postgresql:
+  install: false
+prometheus:
+  install: false
+redis:
+  image:
+    repository: bitnamilegacy/redis
+    tag: 7.4.2-debian-12-r0
+  master:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+  metrics:
+    image:
+      repository: bitnamilegacy/redis-exporter
+      tag: 1.76.0-debian-12-r0

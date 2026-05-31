@@ -1,8 +1,21 @@
 # Minimal values to make `helm template gitlab/gitlab` render for image extraction.
 # Not used at install time — stack orchestrator passes its own values.
+#
+# redis 이미지 태그는 stack orchestrator(internal/stack/adapter/helm/values.go)가
+# install 시 override 하는 값과 반드시 일치해야 한다. 이 override 가 없으면
+# 차트 기본 redis(6.2.16) 가 images.txt 에 잡혀 실제 install 시 요구하는
+# 7.4.2 / 1.76.0 이 번들에서 누락된다.
 global:
   hosts:
     domain: example.com
   edition: ce
 certmanager-issuer:
   email: airgap@example.com
+redis:
+  image:
+    repository: bitnami/redis
+    tag: 7.4.2-debian-12-r0
+  metrics:
+    image:
+      repository: bitnami/redis-exporter
+      tag: 1.76.0-debian-12-r0

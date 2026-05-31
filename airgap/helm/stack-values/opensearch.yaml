@@ -1,0 +1,24 @@
+# opensearch airgap install values
+# Source: helm get values opensearch -n nullus
+config:
+  opensearch.yml: |
+    cluster.name: opensearch-cluster
+    network.host: 0.0.0.0
+    plugins.security.disabled: true
+extraEnvs:
+  - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+    value: NullusAdmin123!
+opensearchJavaOpts: -Xms512m -Xmx512m
+persistence:
+  size: 4Gi
+protocol: http
+replicas: 1
+resources:
+  limits:
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 1Gi
+securityConfig:
+  enabled: false
+singleNode: true
