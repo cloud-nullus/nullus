@@ -43,109 +43,58 @@ test.describe('CI/CD UX 개선 검증', () => {
     }
   })
 
-  test('3. Pipeline Setup & Deploy — 6단계 위저드', async () => {
+  test('3. Pipeline Setup — 세로 섹션과 Review', async () => {
     await page.goto('/cicd/developer-deploy')
     await page.waitForLoadState('networkidle')
 
-    // Step 1: 앱 이름 (템플릿 그리드가 없어야 함)
+    // 모든 설정 섹션이 한 화면의 세로 흐름으로 표시되어야 함
     await expect(page.getByText('Enter App Name')).toBeVisible()
-    // 앱 템플릿 그리드가 없는지 확인
     const templateGrid = page.locator('text=앱 템플릿')
     await expect(templateGrid).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Code Checkout' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Build' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Test' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Security' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create' })).toBeVisible()
+    await expect(page.getByText('Pipeline Configuration')).toBeVisible()
+    await expect(page.getByText('1. Code Checkout')).toBeVisible()
+    await expect(page.getByText('2. Build')).toBeVisible()
+    await expect(page.getByText('3. Deploy')).toBeVisible()
+    await expect(page.getByText('Cluster & Namespace')).toBeVisible()
 
-    // 앱 이름 입력
     await page.fill('input[placeholder*="app"]', 'verify-test')
-    await page.screenshot({ path: 'e2e/screenshots/wizard-step1-app-name.png' })
-
-    // Step 2로 이동
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 2: Git Repository (Stack 선택 드롭다운 확인)
-    await expect(page.getByText('Git Repository URL')).toBeVisible()
-    await page.screenshot({ path: 'e2e/screenshots/wizard-step2-git.png' })
-
-    // Git URL 입력 (Stack 미선택 시 직접 입력)
     const gitInput = page.locator('input[placeholder*="github"], input[placeholder*="repo"]').first()
     if (await gitInput.isVisible()) {
       await gitInput.fill('https://github.com/cloud-nullus/sample-go-api')
     }
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
 
-    // Step 3: 클러스터 & 네임스페이스
-    await expect(page.getByText('Cluster & Namespace')).toBeVisible()
-    await page.screenshot({ path: 'e2e/screenshots/wizard-step3-cluster.png' })
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 4: 리소스 설정 (Input + Slider)
-    await expect(page.getByRole('paragraph').filter({ hasText: 'Resource Configuration' })).toBeVisible()
-    // Input 필드 확인 (슬라이더 옆 직접 입력)
-    const resourceInputs = page.locator('input[type="text"], input:not([type="range"])')
-    await page.screenshot({ path: 'e2e/screenshots/wizard-step4-resources.png' })
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 5: 환경 변수
-    await expect(page.getByRole('paragraph').filter({ hasText: 'Environment Variables' })).toBeVisible()
-    await page.screenshot({ path: 'e2e/screenshots/wizard-step5-envvars.png' })
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 6: 매니페스트 확인 (textarea 존재)
-    await expect(page.getByRole('paragraph').filter({ hasText: /Review.*Manifest|Manifest/ })).toBeVisible()
-    const manifestEditor = page.locator('textarea')
-    await expect(manifestEditor).toBeVisible()
-    // YAML 내용에 verify-test 포함 확인
-    const yamlContent = await manifestEditor.inputValue()
-    expect(yamlContent).toContain('verify-test')
-    await page.screenshot({ path: 'e2e/screenshots/wizard-step6-manifest.png' })
-
-    // Deploy 버튼 확인
-    await expect(page.getByRole('button', { name: /Deploy/i })).toBeVisible()
+    await expect(page.getByText('Resource Configuration').last()).toBeVisible()
+    await expect(page.getByText('Environment Variables').last()).toBeVisible()
+    await expect(page.getByText('Manifest Types')).toHaveCount(0)
+    await expect(page.getByText(/Review.*Manifest/).last()).toBeVisible()
+    await expect(page.getByText('verify-test-deployment.yaml')).toBeVisible()
+    await expect(page.getByText('verify-test-service.yaml')).toBeVisible()
+    await expect(page.getByText('verify-test-ingress.yaml')).toBeVisible()
+    await expect(page.locator('input[type="range"]')).toHaveCount(0)
+    await page.screenshot({ path: 'e2e/screenshots/developer-deploy-steps.png' })
+    await expect(page.getByRole('button', { name: /^Create$/ }).last()).toBeVisible()
   })
 
-  test('4. Pipeline Setup & Deploy — 배포 실행 및 진행 UI', async () => {
+  test('4. Pipeline Setup — 생성 후 목록에서 배포 실행', async () => {
     await page.goto('/cicd/developer-deploy')
     await page.waitForLoadState('networkidle')
 
-    // 빠르게 6단계까지 진행
-    // Step 1: 앱 이름
     await page.fill('input[placeholder*="app"]', 'ws-verify')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 2: Git URL
     const gitInput = page.locator('input[placeholder*="github"], input[placeholder*="repo"]').first()
     if (await gitInput.isVisible()) {
       await gitInput.fill('https://github.com/cloud-nullus/sample-go-api')
     }
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 3: 클러스터 (기본값 사용)
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 4: 리소스 (기본값)
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 5: 환경 변수 (스킵)
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForTimeout(300)
-
-    // Step 6: 매니페스트 확인 → Deploy
-    await page.getByRole('button', { name: /Deploy/i }).click()
-    await page.waitForTimeout(2000)
-
-    // 배포 진행 UI 확인 (터미널 콘솔 또는 진행 단계)
-    await page.screenshot({ path: 'e2e/screenshots/deploy-progress-ws.png' })
-
-    // 완료 대기 (최대 15초)
-    await page.waitForTimeout(8000)
-    await page.screenshot({ path: 'e2e/screenshots/deploy-complete-ws.png' })
+    await page.getByRole('button', { name: /^Create$/ }).last().click()
+    await expect(page).toHaveURL(/\/cicd\/list/, { timeout: 10000 })
+    await page.getByText('ws-verify', { exact: true }).first().click()
+    await page.getByRole('button', { name: /^Deploy$/ }).click()
+    await expect(page).toHaveURL(/\/cicd\/pipelines\/.*\/logs/, { timeout: 10000 })
+    await page.screenshot({ path: 'e2e/screenshots/deploy-logs-page.png' })
   })
 
   test('5. CI/CD History — Breadcrumb 네비게이션', async () => {

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/auth'
 
 test.describe('Developer 역할 화면 검증', () => {
-  test('홈 — Pipeline Setup & Deploy + 사이드바 메뉴 검증', async ({ page }) => {
+  test('홈 — Pipeline Setup + 사이드바 메뉴 검증', async ({ page }) => {
     await loginAs(page, 'developer')
     await expect(page).toHaveURL(/\/cicd\/developer-deploy/)
     await page.waitForTimeout(500)

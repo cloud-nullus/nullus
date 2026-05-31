@@ -7,39 +7,35 @@ test.describe('Developer UAT Scenarios', () => {
     await loginAs(page, 'developer')
   })
 
-  test('V1: Developer Deploy 페이지 렌더링', async ({ page }) => {
-    await expect(page.locator('h1')).toContainText(/deploy/i, { timeout: 10000 })
+  test('V1: Pipeline Setup 페이지 렌더링', async ({ page }) => {
+    await expect(page.locator('h1')).toContainText(/pipeline setup/i, { timeout: 10000 })
   })
 
-  test('V1: 앱 배포 위자드 6단계 탭 존재', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'App Name' })).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: 'Git Repository' })).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: 'Environment Variables' })).toBeVisible({ timeout: 10000 })
+  test('V1: 앱 배포 세로 섹션 및 이동 버튼 존재', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Basic Info' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: 'Code Checkout' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: 'Build' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: 'Test' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: 'Security' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: 'Create' })).toBeVisible({ timeout: 10000 })
   })
 
   test('V1: 앱 이름 입력 필드', async ({ page }) => {
     await expect(page.getByPlaceholder('my-awesome-app')).toBeVisible({ timeout: 10000 })
   })
 
-  test('V1: Git Repository URL 입력 필드', async ({ page }) => {
-    await page.getByPlaceholder('my-awesome-app').fill('uat-app')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByPlaceholder('https://github.com/org/repo.git')).toBeVisible({ timeout: 10000 })
+  test('V1: Source Repository 입력 필드', async ({ page }) => {
+    await expect(page.getByLabel('Source Repository')).toBeVisible({ timeout: 10000 })
   })
 
   test('V1: 클러스터/네임스페이스 드롭다운', async ({ page }) => {
     await expect(page.getByText(/cluster|클러스터/i).first()).toBeVisible({ timeout: 10000 })
   })
 
-  test('V1: Deploy 버튼 존재', async ({ page }) => {
+  test('V1: Create 버튼 존재', async ({ page }) => {
     await page.getByPlaceholder('my-awesome-app').fill('uat-app')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByPlaceholder('https://github.com/org/repo.git').fill('https://github.com/cloud-nullus/draft.git')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('button', { name: /^Deploy$/ })).toBeVisible({ timeout: 10000 })
+    await page.getByLabel('Source Repository').fill('https://github.com/cloud-nullus/draft.git')
+    await expect(page.getByRole('button', { name: /^Create$/ }).last()).toBeVisible({ timeout: 10000 })
   })
 
   test('V2: CI/CD 이력 페이지 접근', async ({ page }) => {

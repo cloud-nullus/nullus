@@ -229,6 +229,28 @@
     "description": "Choose a pipeline template to get started quickly.",
     "searchPlaceholder": "Search templates...",
     "empty": "No search results found.",
+    "cicdType": "CI/CD Type",
+    "typeEmpty": "No templates in this type.",
+    "types": {
+      "default": {
+        "label": "Default",
+        "description": "Deployment, Service, Ingress"
+      },
+      "helm": {
+        "label": "Helm",
+        "description": "Helm chart release"
+      },
+      "cronjobJob": {
+        "label": "Cronjob/Job",
+        "description": "Scheduled and one-time workloads"
+      }
+    },
+    "card": {
+      "workloadType": "CI/CD Type",
+      "appType": "Application Type",
+      "capabilities": "Capabilities",
+      "noCapabilities": "No capabilities selected"
+    },
     "actions": {
       "createTemplate": "Create Template",
       "edit": "Edit",
@@ -246,7 +268,7 @@
       "name": "Name",
       "namePlaceholder": "e.g. Standard Web Backend",
       "description": "Description",
-      "stages": "Stages"
+      "stages": "Capabilities"
     },
     "errors": {
       "nameRequired": "Name is required.",
@@ -588,6 +610,7 @@
     "history": "Deployment History",
     "historyDesc": "CI/CD deployment history",
     "newPipeline": "New Pipeline",
+    "addPhase": "Add Phase",
     "useTemplate": "Use Template",
     "deploy": "Deploy",
     "status": {
@@ -1046,23 +1069,38 @@
     }
   },
   "developerDeployPage": {
-    "title": "Pipeline Setup & Deploy",
-    "description": "Proceed with pipeline template selection and developer deployment on a single screen.",
+    "title": "Pipeline Setup",
+    "description": "Configure your application pipeline before deployment.",
+    "reviewPending": "Complete required fields to preview deployment manifests.",
+    "manifestTypes": {
+      "title": "Manifest Types",
+      "deployment": "Deployment",
+      "service": "Service",
+      "ingress": "Ingress"
+    },
     "steps": {
-      "1": "App Name",
-      "2": "Git Repository",
-      "3": "Cluster / Namespace",
-      "4": "Resource Configuration",
-      "5": "Environment Variables",
-      "6": "Manifest Review"
+      "1": "Basic Info",
+      "2": "Code Checkout",
+      "3": "Build",
+      "4": "Test",
+      "5": "Security",
+      "6": "Create"
     },
     "sections": {
       "appName": "Enter App Name",
-      "gitRepository": "Git Repository URL",
+      "pipelineConfiguration": "Pipeline Configuration",
+      "codeCheckout": "1. Code Checkout",
+      "buildStage": "2. Build",
+      "test": "Test",
+      "testDescription": "Test execution is configured by the selected CI/CD template.",
+      "security": "Security",
+      "securityDescription": "Security checks are configured by the selected CI/CD template.",
+      "cdNotSelected": "Select CD in Basic Info to configure deployment.",
+      "deploy": "3. Deploy",
       "clusterNamespace": "Cluster & Namespace",
       "resources": "Resource Configuration",
       "envVars": "Environment Variables",
-      "manifest": "Review and Edit Manifest"
+      "manifest": "Review Manifest"
     },
     "phases": {
       "namespace": "Create Namespace",
@@ -1082,17 +1120,32 @@
     "viewCicdList": "View CI/CD List",
     "appNameRule": "Only lowercase letters, numbers, and hyphens are allowed.",
     "form": {
-      "stackOptional": "Stack (Optional)",
+      "stackOptional": "Stack",
       "manualInput": "Manual Input",
+      "appName": "App Name",
+      "capabilities": "Capabilities",
+      "phase": "Phase",
       "cluster": "Cluster",
-      "namespace": "Namespace"
+      "namespace": "Namespace",
+      "serviceUrl": "Service URL",
+      "serviceUrlPlaceholder": "app.example.com",
+      "sourceRepository": "Source Repository",
+      "dockerfileRepository": "Dockerfile Repository",
+      "deployYamlRepository": "Deploy YAML Repository",
+      "branch": "Branch",
+      "directory": "Directory"
+    },
+    "manifestLoad": {
+      "pathRequired": "Enter a Config Repository URL and YAML path.",
+      "failed": "Unable to load Deployment, Service, or Ingress YAML from the config repository."
     },
     "actions": {
       "addVariable": "Add Variable",
       "resetDefault": "Reset to default",
       "previous": "Previous",
       "next": "Next",
-      "deploy": "Deploy"
+      "loadFromConfigRepository": "Load from Deploy YAML Repository",
+      "create": "Create"
     },
     "yamlPreview": "YAML Manifest Preview"
   },

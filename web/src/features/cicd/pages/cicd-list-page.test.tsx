@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { CicdListPage } from './cicd-list-page'
 
 const mockNavigate = vi.fn()
 const mockUsePipelines = vi.fn()
 const mockUseDeletePipeline = vi.fn()
+const mockUseDeployPipeline = vi.fn()
 const mockUseTemplateById = vi.fn()
 const mockUsePipelineDeployments = vi.fn()
 const mockUsePipelineResources = vi.fn()
 const mockUseDeploymentStatus = vi.fn()
+const mockDeployPipeline = vi.fn()
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -22,6 +24,7 @@ vi.mock('react-router-dom', async () => {
 vi.mock('../api/cicd-api', () => ({
   usePipelines: (...args: unknown[]) => mockUsePipelines(...args),
   useDeletePipeline: (...args: unknown[]) => mockUseDeletePipeline(...args),
+  useDeployPipeline: (...args: unknown[]) => mockUseDeployPipeline(...args),
   useTemplateById: (...args: unknown[]) => mockUseTemplateById(...args),
   usePipelineDeployments: (...args: unknown[]) => mockUsePipelineDeployments(...args),
   usePipelineResources: (...args: unknown[]) => mockUsePipelineResources(...args),
@@ -45,10 +48,12 @@ describe('CicdListPage', () => {
     mockNavigate.mockReset()
     mockUsePipelines.mockReset()
     mockUseDeletePipeline.mockReset()
+    mockUseDeployPipeline.mockReset()
     mockUseTemplateById.mockReset()
     mockUsePipelineDeployments.mockReset()
     mockUsePipelineResources.mockReset()
     mockUseDeploymentStatus.mockReset()
+    mockDeployPipeline.mockReset()
     mockUsePipelines.mockReturnValue({
       data: { items: pipelines, total: pipelines.length },
       isLoading: false,
@@ -57,6 +62,11 @@ describe('CicdListPage', () => {
       mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
     })
+    mockUseDeployPipeline.mockReturnValue({
+      mutateAsync: mockDeployPipeline,
+      isPending: false,
+    })
+    mockDeployPipeline.mockResolvedValue({ deploymentId: 'deployment-1' })
     mockUseTemplateById.mockReturnValue({ data: undefined, isLoading: false })
     mockUsePipelineDeployments.mockReturnValue({ data: { items: [] }, isLoading: false })
     mockUsePipelineResources.mockReturnValue({ data: { items: [] }, isLoading: false })
@@ -96,5 +106,23 @@ describe('CicdListPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'New Pipeline' }))
     expect(mockNavigate).toHaveBeenCalledWith('/cicd/templates')
+  })
+
+  it('navigates to phase setup page from Add Phase', () => {
+    renderWithProviders(<CicdListPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Phase' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/cicd/developer-deploy')
+  })
+
+  it('deploys the selected pipeline from the list detail panel and opens logs', async () => {
+    renderWithProviders(<CicdListPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }))
+
+    await waitFor(() => {
+      expect(mockDeployPipeline).toHaveBeenCalledWith({ pipelineId: 'pipeline-1' })
+      expect(mockNavigate).toHaveBeenCalledWith('/cicd/pipelines/pipeline-1/logs')
+    })
   })
 })

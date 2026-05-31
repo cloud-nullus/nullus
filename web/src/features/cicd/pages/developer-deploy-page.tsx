@@ -1,50 +1,53 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useFieldArray, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Rocket, Plus, Trash2, ChevronRight, Terminal } from 'lucide-react'
-import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
-import { Input } from '../../../components/ui/input'
-import { CodePreview } from '../../../components/shared/code-preview'
+import { ChevronRight, Plus, Rocket, Trash2 } from 'lucide-react'
+import YAML from 'yaml'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
-
-import { useCicdTemplates, useCreatePipeline, useDeployPipeline } from '../api/cicd-api'
-import type { AppType } from '../api/cicd-api'
-import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
-import { useStacks } from '../../stack/api/stack-api'
+import { CodePreview } from '../../../components/shared/code-preview'
+import { Button } from '../../../components/ui/button'
+import { Input } from '../../../components/ui/input'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { cn } from '../../../lib/utils'
-import { useCicdDeployLog, type CicdLogLevel } from '../hooks/use-cicd-deploy-log'
-import { formatTime, resolveLocale } from '../../../lib/locale'
-import { generateYaml } from '../utils/yaml-generator'
-import { PhaseStep, StepSection, ResourceSlider, CopyableCommand, labelStyleClass } from '../components/deploy-ui'
+import { useClusterNamespaces, useClusters } from '../../admin/api/admin-api'
+import { useStackIntegrations, useStacks } from '../../stack/api/stack-api'
+import { useCicdTemplates, useCreatePipeline } from '../api/cicd-api'
+import type { AppType } from '../api/cicd-api'
+import { StepSection, labelStyleClass } from '../components/deploy-ui'
+import { generateManifestYamls } from '../utils/yaml-generator'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
+type Capability = 'CI' | 'CD' | 'Test' | 'Security'
+type PipelinePhase = 'production' | 'qa' | 'development'
+
+const CAPABILITIES: Capability[] = ['CI', 'CD', 'Test', 'Security']
+const PHASES: PipelinePhase[] = ['production', 'qa', 'development']
 
 const STEP_LABEL_DEFAULTS: Record<Step, string> = {
-  1: 'App Name',
-  2: 'Git Repository',
-  3: 'Cluster / Namespace',
-  4: 'Resource Configuration',
-  5: 'Environment Variables',
-  6: 'Manifest Review',
+  1: 'Basic Info',
+  2: 'Code Checkout',
+  3: 'Build',
+  4: 'Test',
+  5: 'Security',
+  6: 'Create',
 }
 
-const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
-
-const LOG_LEVEL_STYLE: Record<CicdLogLevel, string> = {
-  info: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
-  success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-  error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
+interface EnvVar {
+  key: string
+  value: string
 }
-
-interface EnvVar { key: string; value: string }
 
 interface FormState {
   appName: string
   gitUrl: string
+  serviceUrl: string
+  configRepositoryUrl: string
+  dockerfileBranch: string
+  deployYamlBranch: string
+  manifestPath: string
   dockerfilePath: string
   dockerContext: string
   clusterId: string
@@ -59,7 +62,12 @@ interface FormState {
 
 const deploySchema = z.object({
   appName: z.string().min(2, 'App name must be at least 2 characters').max(50, 'App name must be 50 characters or less'),
-  gitUrl: z.string().min(1, 'Git URL is required'),
+  gitUrl: z.string(),
+  serviceUrl: z.string(),
+  configRepositoryUrl: z.string(),
+  dockerfileBranch: z.string(),
+  deployYamlBranch: z.string(),
+  manifestPath: z.string(),
   dockerfilePath: z.string(),
   dockerContext: z.string(),
   clusterId: z.string().min(1, 'Cluster is required'),
@@ -70,12 +78,7 @@ const deploySchema = z.object({
   memoryRequest: z.string().min(1, 'Memory request is required'),
   memoryLimit: z.string().min(1, 'Memory limit is required'),
   envVars: z
-    .array(
-      z.object({
-        key: z.string(),
-        value: z.string(),
-      })
-    )
+    .array(z.object({ key: z.string(), value: z.string() }))
     .superRefine((envVars, ctx) => {
       envVars.forEach((env, index) => {
         if (env.value.trim() && !env.key.trim()) {
@@ -92,6 +95,11 @@ const deploySchema = z.object({
 const DEFAULT_FORM: FormState = {
   appName: '',
   gitUrl: '',
+  serviceUrl: '',
+  configRepositoryUrl: '',
+  dockerfileBranch: 'main',
+  deployYamlBranch: 'main',
+  manifestPath: '',
   dockerfilePath: '',
   dockerContext: '',
   clusterId: '',
@@ -104,89 +112,88 @@ const DEFAULT_FORM: FormState = {
   envVars: [{ key: '', value: '' }],
 }
 
+const sectionClassName = 'rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6'
+
+function RequiredDot() {
+  return <span aria-hidden="true" data-testid="required-dot" className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[#ef4444] align-middle" />
+}
+
 export function DeveloperDeployPage() {
-  const { t, i18n } = useTranslation()
-  const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
-  const [step, setStep] = useState<Step>(1)
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const appTypeParam = (searchParams.get('appType') ?? 'backend') as AppType
-  const [deploymentId, setDeploymentId] = useState<string | null>(null)
-  const [customManifest, setCustomManifest] = useState<string | null>(null)
+  const [activeStep, setActiveStep] = useState<Step>(1)
   const [selectedStackId, setSelectedStackId] = useState('')
   const [repoName, setRepoName] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [selectedAppType, setSelectedAppType] = useState<AppType>(appTypeParam)
+  const [selectedAppType, setSelectedAppType] = useState<AppType>((searchParams.get('appType') ?? 'backend') as AppType)
+  const [selectedCapabilities, setSelectedCapabilities] = useState<Capability[]>(CAPABILITIES)
+  const [selectedPhase, setSelectedPhase] = useState<PipelinePhase>('production')
+  const [loadedManifests, setLoadedManifests] = useState<Partial<ReturnType<typeof generateManifestYamls>>>({})
+  const [manifestLoadError, setManifestLoadError] = useState('')
+  const [isLoadingManifests, setIsLoadingManifests] = useState(false)
   const [createNewNamespace, setCreateNewNamespace] = useState(false)
-  const { logs, status, progress, isConnected } = useCicdDeployLog(deploymentId)
-  const terminalRef = useRef<HTMLDivElement>(null)
+  const sectionRefs = useRef<Record<Step, HTMLDivElement | null>>({
+    1: null,
+    2: null,
+    3: null,
+    4: null,
+    5: null,
+    6: null,
+  })
+
   const { data: stacksData } = useStacks()
-  const stacks = (stacksData?.items ?? []).map((s) => ({
-    id: s.id,
-    name: s.name,
-  }))
+  const stacks = (stacksData?.items ?? []).map((stack) => ({ id: stack.id, name: stack.name }))
   const { data: clustersData } = useClusters()
   const { data: templatesData } = useCicdTemplates()
   const templates = useMemo(() => templatesData ?? [], [templatesData])
-  const quickStartTemplates = useMemo(
-    () => templates.filter((template) =>
-      !!(template.gitRepoUrl?.trim() || template.dockerfilePath?.trim() || template.dockerContext?.trim())
-    ),
-    [templates]
-  )
   const clusters = useMemo(
     () => (clustersData?.items ?? [])
       .filter((cluster) => {
         const rawTypes = Array.isArray(cluster.types) && cluster.types.length > 0
           ? cluster.types
           : (cluster.type ? [cluster.type] : [])
-        const normalizedTypes = rawTypes
+        return rawTypes
           .flatMap((type) => type.split(','))
           .map((type) => type.trim().toLowerCase())
-          .filter((type) => type.length > 0)
-        return normalizedTypes.includes('target')
+          .includes('target')
       })
-      .map((c) => ({
-        id: c.id,
-        name: c.name,
-      })),
+      .map((cluster) => ({ id: cluster.id, name: cluster.name })),
     [clustersData]
   )
+
   const {
     register,
     control,
     watch,
     setValue,
-    trigger,
     handleSubmit,
-    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormState>({
     resolver: zodResolver(deploySchema),
     defaultValues: DEFAULT_FORM,
     mode: 'onChange',
   })
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'envVars',
-  })
-
-  const pipelineIdParam = searchParams.get('pipelineId') ?? ''
-  const clusterIdParam = searchParams.get('clusterId') ?? ''
-  const namespaceParam = searchParams.get('namespace') ?? ''
-  const appNameParam = searchParams.get('appName') ?? ''
-  const templateIdParam = searchParams.get('template') ?? ''
-
+  const { fields, append, remove } = useFieldArray({ control, name: 'envVars' })
   const form = watch()
   const { data: namespacesData } = useClusterNamespaces(form.clusterId)
-  const namespaces = useMemo(() => (namespacesData ?? []).map((ns) => ns.name), [namespacesData])
+  const { data: integrationsData } = useStackIntegrations(selectedStackId)
+  const namespaces = useMemo(() => (namespacesData ?? []).map((namespace) => namespace.name), [namespacesData])
   const namespaceOptions = useMemo(
-    () => Array.from(new Set(['default', ...namespaces.filter((ns) => ns && ns !== 'default')])),
+    () => Array.from(new Set(['default', ...namespaces.filter((namespace) => namespace && namespace !== 'default')])),
     [namespaces]
   )
-  const selectedStack = stacks.find((s) => s.id === selectedStackId)
-  const stackGitBaseUrl = selectedStack ? `http://${selectedStack.name}.internal/` : ''
-  const gitUrl = selectedStackId ? `${stackGitBaseUrl}${repoName}` : form.gitUrl
+  const codeRepositoryEndpoint = integrationsData?.integrations.find((integration) => integration.component_type === 'code_repository')?.endpoint ?? ''
+  const stackGitBaseUrl = selectedStackId && codeRepositoryEndpoint
+    ? `${codeRepositoryEndpoint.replace(/\/+$/, '')}/`
+    : ''
+  const gitUrl = selectedStackId && stackGitBaseUrl
+    ? (repoName.trim() ? `${stackGitBaseUrl}${repoName}` : '')
+    : form.gitUrl
+
+  const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
+    setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
+  }
 
   const firstClusterId = clusters[0]?.id ?? ''
   useEffect(() => {
@@ -196,16 +203,15 @@ export function DeveloperDeployPage() {
   }, [firstClusterId, form.clusterId, setValue])
 
   useEffect(() => {
-    if (logs.length === 0) return
-    const el = terminalRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [logs])
-
-  useEffect(() => {
-    if (!pipelineIdParam && !clusterIdParam && !namespaceParam && !appNameParam) {
-      return
+    if (selectedStackId && stackGitBaseUrl) {
+      setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
     }
+  }, [gitUrl, selectedStackId, setValue, stackGitBaseUrl])
 
+  const clusterIdParam = searchParams.get('clusterId') ?? ''
+  const namespaceParam = searchParams.get('namespace') ?? ''
+  const appNameParam = searchParams.get('appName') ?? ''
+  useEffect(() => {
     if (clusterIdParam) {
       setValue('clusterId', clusterIdParam, { shouldValidate: true })
     }
@@ -216,80 +222,116 @@ export function DeveloperDeployPage() {
     if (appNameParam) {
       setValue('appName', appNameParam, { shouldValidate: true })
     }
-  }, [appNameParam, clusterIdParam, namespaceOptions, namespaceParam, pipelineIdParam, setValue])
+  }, [appNameParam, clusterIdParam, namespaceOptions, namespaceParam, setValue])
 
+  const templateIdParam = searchParams.get('template') ?? ''
   useEffect(() => {
-    if (!templateIdParam || templates.length === 0) {
+    if (!templateIdParam || templates.length === 0 || selectedTemplateId === templateIdParam) {
       return
     }
-    if (selectedTemplateId === templateIdParam) {
-      return
-    }
-
     const template = templates.find((item) => item.id === templateIdParam)
     if (!template) {
       return
     }
 
-    const suggestedAppName = template.id.replace(/-v\d+$/, '').replace(/^nullus-/, '')
     setSelectedTemplateId(template.id)
     setSelectedAppType(template.appType)
     setSelectedStackId('')
     setRepoName('')
-    setValue('appName', suggestedAppName, { shouldValidate: true, shouldDirty: true })
+    setValue('appName', template.id.replace(/-v\d+$/, '').replace(/^nullus-/, ''), { shouldValidate: true, shouldDirty: true })
     setValue('gitUrl', template.gitRepoUrl ?? '', { shouldValidate: true, shouldDirty: true })
     setValue('dockerfilePath', template.dockerfilePath ?? '', { shouldValidate: true, shouldDirty: true })
     setValue('dockerContext', template.dockerContext ?? '', { shouldValidate: true, shouldDirty: true })
     if (template.envVars && Object.keys(template.envVars).length > 0) {
-      const envArray = Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
-      setValue('envVars', [...envArray, { key: '', value: '' }], { shouldValidate: true, shouldDirty: true })
+      const envVars = Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
+      setValue('envVars', [...envVars, { key: '', value: '' }], { shouldValidate: true, shouldDirty: true })
     }
-    setStep(3)
   }, [selectedTemplateId, setValue, templateIdParam, templates])
 
   const firstNamespace = namespaceOptions[0] ?? 'default'
   useEffect(() => {
-    if (createNewNamespace) {
-      return
+    if (!createNewNamespace && (!form.namespace || !namespaceOptions.includes(form.namespace))) {
+      setValue('namespace', firstNamespace, { shouldValidate: true })
     }
-    if (form.namespace && namespaceOptions.includes(form.namespace)) {
-      return
-    }
-    setValue('namespace', firstNamespace, { shouldValidate: true })
   }, [createNewNamespace, firstNamespace, form.namespace, namespaceOptions, setValue])
 
   const createPipelineMutation = useCreatePipeline()
-  const deployPipelineMutation = useDeployPipeline()
-
-  const setField = (key: keyof FormState, value: FormState[keyof FormState]) => {
-    setValue(key as never, value as never, { shouldValidate: true, shouldDirty: true })
+  const isSelected = (capability: Capability) => selectedCapabilities.includes(capability)
+  const canReview = (
+    isSelected('CD')
+    && form.appName.trim().length >= 2
+    && (!isSelected('CI') || gitUrl.trim().length > 0)
+    && !!form.clusterId
+    && !!form.namespace.trim()
+    && form.replicas >= 1
+    && !!form.cpuRequest.trim()
+    && !!form.cpuLimit.trim()
+    && !!form.memoryRequest.trim()
+    && !!form.memoryLimit.trim()
+    && !errors.appName
+    && (!isSelected('CI') || !errors.gitUrl)
+    && !errors.clusterId
+    && !errors.namespace
+    && !errors.replicas
+    && !errors.cpuRequest
+    && !errors.cpuLimit
+    && !errors.memoryRequest
+    && !errors.memoryLimit
+    && !errors.envVars
+  )
+  const manifests = generateManifestYamls(form, selectedAppType)
+  const reviewManifests = { ...manifests, ...loadedManifests }
+  const toggleCapability = (capability: Capability) => {
+    setSelectedCapabilities((current) => current.includes(capability)
+      ? current.filter((item) => item !== capability)
+      : [...current, capability])
   }
+  const scrollToStep = (step: Step) => {
+    setActiveStep(step)
+    sectionRefs.current[step]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const loadConfigRepositoryManifests = async () => {
+    setManifestLoadError('')
+    if (!form.configRepositoryUrl.trim() || !form.manifestPath.trim()) {
+      setManifestLoadError(t('developerDeployPage.manifestLoad.pathRequired', 'Enter a Config Repository URL and YAML path.'))
+      return
+    }
 
-  const selectedCluster = clusters.find((c) => c.id === form.clusterId) ?? clusters[0] ?? { id: '', name: '' }
-  const hasBuildPipeline = form.dockerfilePath.trim() !== ''
-  const phaseLabels = hasBuildPipeline
-    ? [
-        t('developerDeployPage.phases.gitClone', 'Git Clone'),
-        t('developerDeployPage.phases.dockerBuild', 'Docker Build'),
-        t('developerDeployPage.phases.imageLoad', 'Image Load'),
-        t('developerDeployPage.phases.namespace', 'Create Namespace'),
-        t('developerDeployPage.phases.deployment', 'Create Deployment'),
-        t('developerDeployPage.phases.service', 'Create Service'),
-      ]
-    : [
-        t('developerDeployPage.phases.namespace', 'Create Namespace'),
-        t('developerDeployPage.phases.deployment', 'Create Deployment'),
-        t('developerDeployPage.phases.service', 'Create Service'),
-      ]
+    setIsLoadingManifests(true)
+    try {
+      const baseUrl = form.configRepositoryUrl.endsWith('/') ? form.configRepositoryUrl : `${form.configRepositoryUrl}/`
+      const response = await fetch(new URL(form.manifestPath, baseUrl))
+      if (!response.ok) {
+        throw new Error('load failed')
+      }
+      const text = await response.text()
+      const parsed: Partial<ReturnType<typeof generateManifestYamls>> = {}
+      YAML.parseAllDocuments(text).forEach((document) => {
+        const kind = String((document.toJSON() as { kind?: string } | null)?.kind ?? '').toLowerCase()
+        if (kind === 'deployment' || kind === 'service' || kind === 'ingress') {
+          parsed[kind] = document.toString().trim()
+        }
+      })
+      if (Object.keys(parsed).length === 0) {
+        throw new Error('no supported manifests')
+      }
+      setLoadedManifests(parsed)
+    } catch {
+      setManifestLoadError(t('developerDeployPage.manifestLoad.failed', 'Unable to load Deployment, Service, or Ingress YAML from the config repository.'))
+    } finally {
+      setIsLoadingManifests(false)
+    }
+  }
 
   const onSubmit = async (data: FormState) => {
     try {
-      const envVarsMap: Record<string, string> = {}
+      const envVars: Record<string, string> = {}
       data.envVars.forEach(({ key, value }) => {
-        if (key.trim()) envVarsMap[key.trim()] = value
+        if (key.trim()) {
+          envVars[key.trim()] = value
+        }
       })
-
-      const pipeline = await createPipelineMutation.mutateAsync({
+      await createPipelineMutation.mutateAsync({
         name: data.appName,
         appType: selectedAppType,
         clusterId: data.clusterId,
@@ -298,177 +340,12 @@ export function DeveloperDeployPage() {
         gitRepoUrl: data.gitUrl,
         dockerfilePath: data.dockerfilePath,
         dockerContext: data.dockerContext,
-        envVars: envVarsMap,
+        envVars,
       })
-      const result = await deployPipelineMutation.mutateAsync(pipeline.id)
-      setDeploymentId(result.deploymentId)
-    } catch { /* react-query handles mutation errors */ }
-  }
-
-  const validateCurrentStep = async () => {
-    if (step === 1) return trigger('appName')
-    if (step === 2) {
-      setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
-      return trigger('gitUrl')
+      navigate('/cicd/list')
+    } catch {
+      // Mutation errors are presented by react-query.
     }
-    if (step === 3) return trigger(['clusterId', 'namespace'])
-    if (step === 4) return trigger(['replicas', 'cpuLimit', 'memoryLimit'])
-    if (step === 5) return true
-    return true
-  }
-
-  const canNext: Record<Step, boolean> = {
-    1: form.appName.trim().length >= 2,
-    2: gitUrl.trim().length > 0 && !errors.gitUrl,
-    3: !!form.clusterId && !!form.namespace,
-    4: form.replicas >= 1 && !!form.cpuLimit && !!form.memoryLimit,
-    5: true,
-    6: true,
-  }
-
-  if (deploymentId) {
-    const isComplete = status === 'success'
-    const isFailed = status === 'failed'
-    const isDone = isComplete || isFailed
-
-    const parsedResources = logs
-      .map((entry) => entry.message)
-      .filter((line) => !line.startsWith('$') && !line.startsWith('error'))
-      .map((line) => {
-        const match = line.match(/^(\w+)\/(\S+)\s+(\w+)$/)
-        return match ? { kind: match[1], name: match[2], action: match[3] } : null
-      })
-      .filter((r): r is { kind: string; name: string; action: string } => r !== null)
-    const deployedResources = Array.from(
-      parsedResources.reduce((acc, item) => {
-        const key = `${item.kind}/${item.name}`
-        const prev = acc.get(key)
-        if (!prev || (prev.action !== 'created' && item.action === 'created')) {
-          acc.set(key, item)
-        }
-        return acc
-      }, new Map<string, { kind: string; name: string; action: string }>()).values()
-    )
-
-    return (
-      <div>
-        <Breadcrumb items={[{ label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' }, { label: t('developerDeployPage.deployProgress', 'Deploy Progress') }]} />
-        <div className="mx-auto max-w-3xl py-12">
-          <div className="mb-8 text-center">
-            <h2 className="m-0 text-xl font-bold text-[var(--color-text-primary)]">{form.appName}</h2>
-            <p className="m-0 mt-1 text-sm text-[var(--color-text-secondary)]">{form.namespace} {t('developerDeployPage.namespaceSuffix', 'namespace')}</p>
-          </div>
-
-          <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6">
-            <div className="mb-5 flex items-center gap-2">
-              {phaseLabels.map((phase, idx) => (
-                <PhaseStep key={phase} label={phase} index={idx} progress={progress} total={phaseLabels.length} />
-              ))}
-            </div>
-
-            <div className="mb-1 flex justify-between text-xs">
-              <span className="text-[var(--color-text-secondary)]">{t('developerDeployPage.totalProgress', 'Total Progress')}</span>
-              <span className={cn('font-semibold', isFailed ? 'text-[#ef4444]' : 'text-[var(--color-text-primary)]')}>{progress}%</span>
-            </div>
-            <div className="mb-6 flex gap-px">
-              {PROGRESS_SEGMENTS.map((segment) => (
-                <div
-                  key={segment}
-                  className={cn(
-                    'h-1 flex-1 rounded-full transition-colors duration-300',
-                    segment <= progress
-                      ? status === 'failed' ? 'bg-[#ef4444]' : 'bg-[#6366f1]'
-                      : 'bg-[rgba(255,255,255,0.06)]'
-                  )}
-                />
-              ))}
-            </div>
-
-            <div className="text-center text-xs text-[var(--color-text-secondary)]">
-              {t('developerDeployPage.deploymentId', 'Deployment ID')}: <span className="font-mono text-[var(--color-text-primary)]">{deploymentId}</span>
-            </div>
-          </div>
-
-          <div className="mb-6 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[#0d1117]">
-            <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-4 py-2">
-              <div className="flex gap-1.5">
-                <div className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
-                <div className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
-                <div className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-              </div>
-              <Terminal size={12} className="text-[rgba(255,255,255,0.4)]" />
-              <span className="text-[11px] font-medium text-[rgba(255,255,255,0.4)]">
-                {isConnected ? t('developerDeployPage.streaming', 'Streaming...') : t('developerDeployPage.connecting', 'Connecting...')}
-              </span>
-            </div>
-            <div ref={terminalRef} className="max-h-[400px] overflow-y-auto p-4">
-              {logs.length === 0 ? (
-                <span className="font-mono text-xs text-[#484f58]">
-                  {isFailed ? t('developerDeployPage.deployFailedNoLog', 'Deployment failed. Logs are unavailable.') : t('developerDeployPage.waitingLogs', 'Waiting for deployment output...')}
-                </span>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {logs.map((entry) => (
-                    <div key={entry.id} className="flex gap-2 leading-5">
-                      <span className="shrink-0 text-xs text-[#484f58]">
-                        {formatTime(entry.timestamp, locale)}
-                      </span>
-                      <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold uppercase', LOG_LEVEL_STYLE[entry.level])}>
-                        {entry.level}
-                      </span>
-                      <span className="text-xs text-[#c9d1d9]">{entry.message}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {isComplete && deployedResources.length > 0 && (() => {
-            const nsScoped = deployedResources.filter((r) => r.kind !== 'namespace')
-            const contextFlag = selectedCluster.name ? ` --context ${selectedCluster.name}` : ''
-            const cmd = nsScoped.length > 0
-              ? `kubectl get ${nsScoped.map((r) => `${r.kind.toLowerCase()}/${r.name}`).join(' ')} -n ${form.namespace}${contextFlag}`
-              : null
-            return (
-              <div className="mb-6 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
-                <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                  {t('developerDeployPage.createdResources', 'Created resources')}
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {deployedResources.map((r) => (
-                    <div key={`${r.kind}-${r.name}`} className="flex items-center justify-between rounded-md bg-[rgba(255,255,255,0.03)] px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded bg-[rgba(99,102,241,0.15)] px-1.5 py-0.5 text-[11px] font-bold text-[#818cf8]">
-                          {r.kind}
-                        </span>
-                        <span className="font-mono text-[13px] text-[var(--color-text-primary)]">{r.name}</span>
-                      </div>
-                      <span className={cn(
-                        'text-[11px] font-semibold',
-                        r.action === 'created' ? 'text-[#22c55e]' : 'text-[#d29922]'
-                      )}>{r.action}</span>
-                    </div>
-                  ))}
-                </div>
-                {cmd && <CopyableCommand command={cmd} />}
-              </div>
-            )
-          })()}
-
-          {isDone && (
-            <div className="flex justify-center gap-3">
-              <Button variant="outline" size="md" onClick={() => { setDeploymentId(null); reset(DEFAULT_FORM); setStep(1) }}>
-                {t('developerDeployPage.newDeployment', 'New Deployment')}
-              </Button>
-              <Button variant="primary" size="md" onClick={() => navigate('/cicd/list')}>
-                {t('developerDeployPage.viewCicdList', 'View CI/CD List')}
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -476,236 +353,261 @@ export function DeveloperDeployPage() {
       <Breadcrumb
         items={[
           { label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' },
-          { label: t('developerDeployPage.title', 'Pipeline Setup & Deploy') },
+          { label: t('developerDeployPage.title', 'Pipeline Setup') },
         ]}
       />
 
-      {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
-        <div
-          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
-        >
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
           <Rocket size={18} />
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            {t('developerDeployPage.title', 'CI/CD Pipeline Setup & Developer Deploy')}
+            {t('developerDeployPage.title', 'Pipeline Setup')}
           </h1>
-          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-            {t('developerDeployPage.description', 'Proceed with pipeline template selection and developer deployment on a single screen.')}
+          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+            {t('developerDeployPage.description', 'Configure your application pipeline before deployment.')}
           </p>
         </div>
       </div>
 
-      {quickStartTemplates.length > 0 && (
-        <div className="mb-6 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
-          <p className="mb-2 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            {t('developerDeployPage.quickStart.title', 'Quick Start — Select a Template')}
-          </p>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            {quickStartTemplates.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => {
-                  const suggestedAppName = template.id.replace(/-v\d+$/, '').replace(/^nullus-/, '')
-                  setSelectedTemplateId(template.id)
-                  setSelectedAppType(template.appType)
-                  setSelectedStackId('')
-                  setRepoName('')
-                  setValue('appName', suggestedAppName, { shouldValidate: true, shouldDirty: true })
-                  setValue('gitUrl', template.gitRepoUrl ?? '', { shouldValidate: true, shouldDirty: true })
-                  setValue('dockerfilePath', template.dockerfilePath ?? '', { shouldValidate: true, shouldDirty: true })
-                  setValue('dockerContext', template.dockerContext ?? '', { shouldValidate: true, shouldDirty: true })
-                  if (template.envVars && Object.keys(template.envVars).length > 0) {
-                    const envArray = Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
-                    setValue('envVars', [...envArray, { key: '', value: '' }], { shouldValidate: true, shouldDirty: true })
-                  }
-                  setStep(3)
-                }}
-                className={cn(
-                  'rounded-lg border bg-[rgba(255,255,255,0.03)] px-4 py-3 text-left transition-colors hover:border-[#6366f1] hover:bg-[rgba(99,102,241,0.05)]',
-                  selectedTemplateId === template.id
-                    ? 'border-[#6366f1] bg-[rgba(99,102,241,0.08)]'
-                    : 'border-[var(--color-border-default)]'
-                )}
-              >
-                <span className="block text-sm font-medium text-[var(--color-text-primary)]">{template.name}</span>
-                <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">{template.description}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Step indicator */}
       <div className="mb-6 flex flex-wrap items-center gap-1">
-        {([1, 2, 3, 4, 5, 6] as Step[]).map((s, i) => (
-          <div key={s} className="flex items-center gap-1">
+        {([1, 2, 3, 4, 5, 6] as Step[]).map((step, index) => (
+          <div key={step} className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => s < step && setStep(s)}
-              className={cn('flex items-center gap-1.5 rounded-md border-none bg-none px-1.5 py-1', s < step ? 'cursor-pointer' : 'cursor-default')}
+              aria-label={t(`developerDeployPage.steps.${step}`, STEP_LABEL_DEFAULTS[step])}
+              onClick={() => scrollToStep(step)}
+              className="flex cursor-pointer items-center gap-1.5 rounded-md border-none bg-none px-1.5 py-1"
             >
-              <div
+              <span
                 className={cn(
                   'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
-                  s === step
+                  step === activeStep
                     ? 'bg-[#6366f1] text-white'
-                    : s < step
+                    : step < activeStep
                       ? 'bg-[rgba(34,197,94,0.3)] text-[#22c55e]'
                       : 'bg-[rgba(255,255,255,0.08)] text-[var(--color-text-secondary)]'
                 )}
               >
-                {s}
-              </div>
-              <span
-                className={cn(
-                  'text-[13px]',
-                  s === step ? 'font-semibold text-[var(--color-text-primary)]' : 'font-normal text-[var(--color-text-secondary)]'
-                )}
-              >
-                {t(`developerDeployPage.steps.${s}`, STEP_LABEL_DEFAULTS[s])}
+                {step}
+              </span>
+              <span className={cn('text-[13px]', step === activeStep ? 'font-semibold text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]')}>
+                {t(`developerDeployPage.steps.${step}`, STEP_LABEL_DEFAULTS[step])}
               </span>
             </button>
-            {i < 5 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
+            {index < 5 && <ChevronRight size={14} className="shrink-0 text-[var(--color-text-secondary)]" />}
           </div>
         ))}
       </div>
 
-      {/* Step content */}
-      <div className="grid grid-cols-2 items-start gap-6">
-        <div
-          className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-6"
-        >
-          {step === 1 && (
+      <div ref={(node) => { sectionRefs.current[1] = node }} id="pipeline-step-basic-info" className={cn(sectionClassName, 'mb-5 scroll-mt-6')}>
             <StepSection title={t('developerDeployPage.sections.appName', 'Enter App Name')}>
+              <label htmlFor="deploy-app-name" className={labelStyleClass}>
+                {t('developerDeployPage.form.appName', 'App Name')}<RequiredDot />
+              </label>
               <Input
+                id="deploy-app-name"
                 placeholder="my-awesome-app"
                 value={form.appName}
-                onChange={(e) => setField('appName', e.target.value)}
+                onChange={(event) => setField('appName', event.target.value)}
               />
               {errors.appName && <span className="text-xs text-[#ef4444]">{errors.appName.message}</span>}
               <p className="mb-0 mt-1.5 text-xs text-[var(--color-text-secondary)]">
                 {t('developerDeployPage.appNameRule', 'Only lowercase letters, numbers, and hyphens are allowed.')}
               </p>
-            </StepSection>
-          )}
-
-          {step === 2 && (
-            <StepSection title={t('developerDeployPage.sections.gitRepository', 'Git Repository URL')}>
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label htmlFor="deploy-stack" className={labelStyleClass}>{t('developerDeployPage.form.stackOptional', 'Stack (Optional)')}</label>
-                  <NativeSelect
-                    id="deploy-stack"
-                    value={selectedStackId}
-                    onChange={(e) => setSelectedStackId(e.target.value)}
-                    className="w-full"
-                  >
-                    <option value="">{t('developerDeployPage.form.manualInput', 'Manual Input')}</option>
-                    {stacks.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </NativeSelect>
-                </div>
-
-                {selectedStackId ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={stackGitBaseUrl} disabled />
-                    <Input
-                      placeholder="repo-name.git"
-                      value={repoName}
-                      onChange={(e) => setRepoName(e.target.value)}
-                    />
-                  </div>
-                ) : (
-                  <Input
-                    placeholder="https://github.com/org/repo.git"
-                    value={form.gitUrl}
-                    onChange={(e) => setField('gitUrl', e.target.value)}
-                  />
-                )}
-              </div>
-              {errors.gitUrl && <span className="text-xs text-[#ef4444]">{errors.gitUrl.message}</span>}
-              <div className="mt-4 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4">
-                <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-                  {t('developerDeployPage.form.buildConfig', 'Build Configuration (Optional)')}
+              <div className="mt-6 border-t border-[var(--color-border-default)] pt-5">
+                <p className={cn(labelStyleClass, 'mb-3')}>
+                  {t('developerDeployPage.form.capabilities', 'Capabilities')}<RequiredDot />
                 </p>
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <label htmlFor="deploy-dockerfile" className={labelStyleClass}>
-                      {t('developerDeployPage.form.dockerfilePath', 'Dockerfile Path')}
+                <div className="mb-5 flex flex-wrap gap-5">
+                  {CAPABILITIES.map((capability) => (
+                    <label key={capability} className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
+                      <input
+                        type="checkbox"
+                        checked={isSelected(capability)}
+                        onChange={() => toggleCapability(capability)}
+                        className="h-4 w-4 accent-[#6366f1]"
+                      />
+                      {capability}
                     </label>
-                    <Input
-                      id="deploy-dockerfile"
-                      placeholder="backend/Dockerfile"
-                      value={form.dockerfilePath}
-                      onChange={(e) => setField('dockerfilePath', e.target.value)}
-                    />
-                    <p className="mb-0 mt-1 text-[11px] text-[var(--color-text-muted)]">
-                      {t('developerDeployPage.form.dockerfileHint', 'Relative path to Dockerfile in the repository. Leave empty to use a default base image.')}
-                    </p>
-                  </div>
-                  <div>
-                    <label htmlFor="deploy-context" className={labelStyleClass}>
-                      {t('developerDeployPage.form.dockerContext', 'Docker Build Context')}
+                  ))}
+                </div>
+                <p className={cn(labelStyleClass, 'mb-3')}>
+                  {t('developerDeployPage.form.phase', 'Phase')}<RequiredDot />
+                </p>
+                <div className="flex flex-wrap gap-5">
+                  {PHASES.map((phase) => (
+                    <label key={phase} className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
+                      <input
+                        type="checkbox"
+                        checked={selectedPhase === phase}
+                        onChange={() => setSelectedPhase(phase)}
+                        className="h-4 w-4 accent-[#6366f1]"
+                      />
+                      {phase}
                     </label>
-                    <Input
-                      id="deploy-context"
-                      placeholder="backend/"
-                      value={form.dockerContext}
-                      onChange={(e) => setField('dockerContext', e.target.value)}
-                    />
-                    <p className="mb-0 mt-1 text-[11px] text-[var(--color-text-muted)]">
-                      {t('developerDeployPage.form.contextHint', 'Directory to use as Docker build context. Defaults to repository root.')}
-                    </p>
-                  </div>
+                  ))}
                 </div>
               </div>
             </StepSection>
-          )}
+        </div>
 
-          {step === 3 && (
+      <div
+        ref={(node) => {
+          sectionRefs.current[2] = node
+          sectionRefs.current[3] = node
+        }}
+        id="pipeline-step-configuration"
+        className={cn(sectionClassName, 'mb-5 scroll-mt-6')}
+      >
+        <StepSection title={t('developerDeployPage.sections.pipelineConfiguration', 'Pipeline Configuration')}>
+          <div className="flex flex-col gap-6">
+            {isSelected('CI') && (
+              <>
+                <div className="flex flex-col gap-3">
+                  <h3 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                    {t('developerDeployPage.sections.codeCheckout', '1. Code Checkout')}
+                  </h3>
+                  <div>
+                    <label htmlFor="deploy-stack" className={labelStyleClass}>
+                      {t('developerDeployPage.form.stackOptional', 'Stack')}
+                    </label>
+                    <NativeSelect id="deploy-stack" value={selectedStackId} onChange={(event) => setSelectedStackId(event.target.value)} className="w-full">
+                      <option value="">{t('developerDeployPage.form.manualInput', 'Manual Input')}</option>
+                      {stacks.map((stack) => <option key={stack.id} value={stack.id}>{stack.name}</option>)}
+                    </NativeSelect>
+                  </div>
+                  <div>
+                    <label htmlFor="deploy-code-repository" className={labelStyleClass}>
+                      {t('developerDeployPage.form.sourceRepository', 'Source Repository')}<RequiredDot />
+                    </label>
+                    {selectedStackId && stackGitBaseUrl ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input value={stackGitBaseUrl} disabled />
+                        <Input id="deploy-code-repository" placeholder="owner/repo-name.git" value={repoName} onChange={(event) => setRepoName(event.target.value)} />
+                      </div>
+                    ) : (
+                      <Input id="deploy-code-repository" placeholder="https://github.com/org/repo.git" value={form.gitUrl} onChange={(event) => setField('gitUrl', event.target.value)} />
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-[var(--color-border-default)] pt-5">
+                  <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                    {t('developerDeployPage.sections.buildStage', '2. Build')}
+                  </h3>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div>
+                      <label htmlFor="deploy-dockerfile-repository" className={labelStyleClass}>{t('developerDeployPage.form.dockerfileRepository', 'Dockerfile Repository')}</label>
+                      <Input id="deploy-dockerfile-repository" value={gitUrl} disabled placeholder="https://github.com/org/repo.git" />
+                    </div>
+                    <div>
+                      <label htmlFor="deploy-dockerfile-branch" className={labelStyleClass}>{t('developerDeployPage.form.branch', 'Branch')}</label>
+                      <Input id="deploy-dockerfile-branch" value={form.dockerfileBranch} onChange={(event) => setField('dockerfileBranch', event.target.value)} placeholder="main" />
+                    </div>
+                    <div>
+                      <label htmlFor="deploy-dockerfile" className={labelStyleClass}>{t('developerDeployPage.form.directory', 'Directory')}</label>
+                      <Input id="deploy-dockerfile" placeholder="backend/Dockerfile" value={form.dockerfilePath} onChange={(event) => setField('dockerfilePath', event.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {isSelected('CD') && (
+              <div className={cn(isSelected('CI') && 'border-t border-[var(--color-border-default)] pt-5')}>
+                <h3 className="mb-3 mt-0 text-sm font-semibold text-[var(--color-text-primary)]">
+                  {t('developerDeployPage.sections.deploy', '3. Deploy')}
+                </h3>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div>
+                    <label htmlFor="deploy-manifest-config-repository" className={labelStyleClass}>{t('developerDeployPage.form.deployYamlRepository', 'Deploy YAML Repository')}</label>
+                    <Input id="deploy-manifest-config-repository" placeholder="https://raw.githubusercontent.com/org/config/main/" value={form.configRepositoryUrl} onChange={(event) => setField('configRepositoryUrl', event.target.value)} />
+                  </div>
+                  <div>
+                    <label htmlFor="deploy-yaml-branch" className={labelStyleClass}>{t('developerDeployPage.form.branch', 'Branch')}</label>
+                    <Input id="deploy-yaml-branch" value={form.deployYamlBranch} onChange={(event) => setField('deployYamlBranch', event.target.value)} placeholder="main" />
+                  </div>
+                  <div>
+                    <label htmlFor="deploy-manifest-path" className={labelStyleClass}>{t('developerDeployPage.form.directory', 'Directory')}</label>
+                    <Input id="deploy-manifest-path" placeholder="deploy/app.yaml" value={form.manifestPath} onChange={(event) => setField('manifestPath', event.target.value)} />
+                  </div>
+                </div>
+                <Button type="button" variant="outline" size="sm" loading={isLoadingManifests} onClick={() => void loadConfigRepositoryManifests()} className="mt-3">
+                  {t('developerDeployPage.actions.loadFromConfigRepository', 'Load from Deploy YAML Repository')}
+                </Button>
+                {manifestLoadError && <span className="ml-3 text-xs text-[#ef4444]">{manifestLoadError}</span>}
+              </div>
+            )}
+          </div>
+        </StepSection>
+      </div>
+
+      {isSelected('Test') && <div ref={(node) => { sectionRefs.current[4] = node }} id="pipeline-step-test" className={cn(sectionClassName, 'mb-5 scroll-mt-6')}>
+          <StepSection title={t('developerDeployPage.sections.test', 'Test')}>
+            <p className="m-0 text-sm text-[var(--color-text-secondary)]">
+              {t('developerDeployPage.sections.testDescription', 'Test execution is configured by the selected CI/CD template.')}
+            </p>
+          </StepSection>
+        </div>}
+
+      {isSelected('Security') && <div ref={(node) => { sectionRefs.current[5] = node }} id="pipeline-step-security" className={cn(sectionClassName, 'mb-5 scroll-mt-6')}>
+          <StepSection title={t('developerDeployPage.sections.security', 'Security')}>
+            <p className="m-0 text-sm text-[var(--color-text-secondary)]">
+              {t('developerDeployPage.sections.securityDescription', 'Security checks are configured by the selected CI/CD template.')}
+            </p>
+          </StepSection>
+        </div>}
+
+      <div ref={(node) => { sectionRefs.current[6] = node }} id="pipeline-step-deploy" className="scroll-mt-6">
+        {!isSelected('CD') ? (
+          <div className={sectionClassName}>
+            <StepSection title={t('developerDeployPage.steps.6', 'Create')}>
+              <p className="m-0 text-sm text-[var(--color-text-secondary)]">
+                {t('developerDeployPage.sections.cdNotSelected', 'Select CD in Basic Info to configure deployment.')}
+              </p>
+            </StepSection>
+          </div>
+        ) : (
+        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(400px,1fr)_minmax(420px,1fr)]">
+          <div className="flex flex-col gap-5">
+          <div className={sectionClassName}>
             <StepSection title={t('developerDeployPage.sections.clusterNamespace', 'Cluster & Namespace')}>
               <div className="flex flex-col gap-3">
                 <div>
-                  <label htmlFor="deploy-cluster" className={labelStyleClass}>{t('developerDeployPage.form.cluster', 'Cluster')}</label>
+                  <label htmlFor="deploy-cluster" className={labelStyleClass}>{t('developerDeployPage.form.cluster', 'Cluster')}<RequiredDot /></label>
                   <NativeSelect
                     id="deploy-cluster"
                     value={form.clusterId}
-                    onChange={(e) => {
-                      setField('clusterId', e.target.value)
+                    onChange={(event) => {
+                      setField('clusterId', event.target.value)
                       setCreateNewNamespace(false)
                       setField('namespace', 'default')
                     }}
                     className="w-full"
                   >
-                    {clusters.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {clusters.map((cluster) => <option key={cluster.id} value={cluster.id}>{cluster.name}</option>)}
                   </NativeSelect>
                   {errors.clusterId && <span className="text-xs text-[#ef4444]">{errors.clusterId.message}</span>}
                 </div>
                 <div>
-                  <label htmlFor="deploy-namespace" className={labelStyleClass}>{t('developerDeployPage.form.namespace', 'Namespace')}</label>
+                  <label htmlFor="deploy-namespace" className={labelStyleClass}>{t('developerDeployPage.form.namespace', 'Namespace')}<RequiredDot /></label>
                   <NativeSelect
                     id="deploy-namespace"
                     value={createNewNamespace ? '__new__' : (form.namespace || 'default')}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
+                    onChange={(event) => {
+                      if (event.target.value === '__new__') {
                         setCreateNewNamespace(true)
                         setField('namespace', '')
-                        return
+                      } else {
+                        setCreateNewNamespace(false)
+                        setField('namespace', event.target.value)
                       }
-                      setCreateNewNamespace(false)
-                      setField('namespace', e.target.value)
                     }}
                     className="w-full"
                   >
-                    {namespaceOptions.map((ns) => (
-                      <option key={ns} value={ns}>{ns}</option>
-                    ))}
+                    {namespaceOptions.map((namespace) => <option key={namespace} value={namespace}>{namespace}</option>)}
                     <option value="__new__">{t('developerDeployPage.form.newNamespace', 'New Namespace')}</option>
                   </NativeSelect>
                   {createNewNamespace && (
@@ -713,168 +615,133 @@ export function DeveloperDeployPage() {
                       className="mt-2"
                       placeholder={t('developerDeployPage.form.newNamespacePlaceholder', 'my-namespace')}
                       value={form.namespace}
-                      onChange={(e) => setField('namespace', e.target.value)}
+                      onChange={(event) => setField('namespace', event.target.value)}
                     />
                   )}
                   {errors.namespace && <span className="text-xs text-[#ef4444]">{errors.namespace.message}</span>}
                 </div>
+                <div>
+                  <label htmlFor="deploy-service-url" className={labelStyleClass}>
+                    {t('developerDeployPage.form.serviceUrl', 'Service URL')}
+                  </label>
+                  <Input
+                    id="deploy-service-url"
+                    placeholder={t('developerDeployPage.form.serviceUrlPlaceholder', 'app.example.com')}
+                    value={form.serviceUrl}
+                    onChange={(event) => setField('serviceUrl', event.target.value)}
+                  />
+                </div>
               </div>
             </StepSection>
-          )}
+          </div>
 
-          {step === 4 && (
+          <div className={sectionClassName}>
             <StepSection title={t('developerDeployPage.sections.resources', 'Resource Configuration')}>
-              <div className="flex flex-col gap-4">
-                <ResourceSlider
-                  label="Replicas"
-                  value={String(form.replicas)}
-                  options={['1', '2', '3', '4', '5']}
-                  onChange={(v) => setField('replicas', Number(v))}
-                />
-                <ResourceSlider
-                  label="CPU Request"
-                  value={form.cpuRequest}
-                  options={['100m', '200m', '500m', '1000m']}
-                  onChange={(v) => setField('cpuRequest', v)}
-                />
-                <ResourceSlider
-                  label="CPU Limit"
-                  value={form.cpuLimit}
-                  options={['200m', '500m', '1000m', '2000m']}
-                  onChange={(v) => setField('cpuLimit', v)}
-                />
-                <ResourceSlider
-                  label="Memory Request"
-                  value={form.memoryRequest}
-                  options={['64Mi', '128Mi', '256Mi', '512Mi']}
-                  onChange={(v) => setField('memoryRequest', v)}
-                />
-                <ResourceSlider
-                  label="Memory Limit"
-                  value={form.memoryLimit}
-                  options={['128Mi', '256Mi', '512Mi', '1Gi', '2Gi']}
-                  onChange={(v) => setField('memoryLimit', v)}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label htmlFor="deploy-replicas" className={labelStyleClass}>Replicas<RequiredDot /></label>
+                  <Input id="deploy-replicas" type="number" min={1} max={10} value={form.replicas} onChange={(event) => setField('replicas', Number(event.target.value))} />
+                  {errors.replicas && <span className="text-xs text-[#ef4444]">{errors.replicas.message}</span>}
+                </div>
+                <div>
+                  <label htmlFor="deploy-cpu-request" className={labelStyleClass}>CPU Request<RequiredDot /></label>
+                  <Input id="deploy-cpu-request" value={form.cpuRequest} onChange={(event) => setField('cpuRequest', event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="deploy-cpu-limit" className={labelStyleClass}>CPU Limit<RequiredDot /></label>
+                  <Input id="deploy-cpu-limit" value={form.cpuLimit} onChange={(event) => setField('cpuLimit', event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="deploy-memory-request" className={labelStyleClass}>Memory Request<RequiredDot /></label>
+                  <Input id="deploy-memory-request" value={form.memoryRequest} onChange={(event) => setField('memoryRequest', event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="deploy-memory-limit" className={labelStyleClass}>Memory Limit<RequiredDot /></label>
+                  <Input id="deploy-memory-limit" value={form.memoryLimit} onChange={(event) => setField('memoryLimit', event.target.value)} />
+                </div>
               </div>
             </StepSection>
-          )}
+          </div>
 
-          {step === 5 && (
+          <div className={sectionClassName}>
             <StepSection title={t('developerDeployPage.sections.envVars', 'Environment Variables')}>
               <div className="flex flex-col gap-2">
-                {fields.map((field, i) => (
+                {fields.map((field, index) => (
                   <div key={field.id}>
                     <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="KEY"
-                        {...register(`envVars.${i}.key`)}
-                        className="flex-1 font-mono text-[13px]"
-                      />
-                      <Input
-                        placeholder="value"
-                        {...register(`envVars.${i}.value`)}
-                        className="flex-[2] font-mono text-[13px]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => remove(i)}
-                        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[#f87171]"
-                      >
+                      <Input placeholder="KEY" {...register(`envVars.${index}.key`)} className="flex-1 font-mono text-[13px]" />
+                      <Input placeholder="value" {...register(`envVars.${index}.value`)} className="flex-[2] font-mono text-[13px]" />
+                      <button type="button" onClick={() => remove(index)} className="shrink-0 cursor-pointer border-none bg-none p-1 text-[#f87171]">
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    {errors.envVars?.[i]?.key?.message && (
-                      <span className="text-xs text-[#ef4444]">
-                        {errors.envVars[i]?.key?.message}
-                      </span>
-                    )}
+                    {errors.envVars?.[index]?.key?.message && <span className="text-xs text-[#ef4444]">{errors.envVars[index]?.key?.message}</span>}
                   </div>
                 ))}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => append({ key: '', value: '' })}
-                  className="mt-1 self-start"
-                  type="button"
-                >
+                <Button variant="ghost" size="sm" onClick={() => append({ key: '', value: '' })} className="mt-1 self-start" type="button">
                   <Plus size={13} />
                   {t('developerDeployPage.actions.addVariable', 'Add Variable')}
                 </Button>
               </div>
             </StepSection>
-          )}
-
-          {step === 6 && (
-            <StepSection title={t('developerDeployPage.sections.manifest', 'Review and Edit Manifest')}>
-              <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
-                {t('developerDeployPage.manifestDescription', 'Review the generated YAML manifest and edit if needed.')}
-              </p>
-              <textarea
-                value={customManifest ?? generateYaml(form, selectedAppType)}
-                onChange={(e) => setCustomManifest(e.target.value)}
-                className="h-[400px] w-full resize-none rounded-lg border border-[var(--color-border-default)] bg-[#0d1117] p-4 font-mono text-xs leading-5 text-[#c9d1d9] focus:outline-none focus:ring-1 focus:ring-[#6366f1]"
-                spellCheck={false}
-              />
-              <button type="button" onClick={() => setCustomManifest(null)} className="mt-2 cursor-pointer border-none bg-none text-xs text-[var(--color-text-secondary)] underline">
-                {t('developerDeployPage.actions.resetDefault', 'Reset to default')}
-              </button>
-            </StepSection>
-          )}
-
-          {/* Navigation */}
-          <div className="mt-6 flex justify-end gap-2.5">
-            {step > 1 && (
-              <Button variant="outline" size="md" onClick={() => setStep((s) => (s - 1) as Step)}>
-                {t('developerDeployPage.actions.previous', 'Previous')}
-              </Button>
-            )}
-            {step < 6 ? (
-              <Button
-                variant="primary"
-                size="md"
-                disabled={!canNext[step]}
-                onClick={async () => {
-                  const isStepValid = await validateCurrentStep()
-                  if (!isStepValid) return
-                  setStep((s) => (s + 1) as Step)
-                }}
-              >
-                {t('developerDeployPage.actions.next', 'Next')}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="md"
-                loading={createPipelineMutation.isPending || deployPipelineMutation.isPending}
-                disabled={isSubmitting || !!errors.envVars}
-                onClick={handleSubmit((data) => {
-                  setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
-                  return onSubmit({ ...data, gitUrl })
-                })}
-              >
-                <Rocket size={14} />
-                {t('developerDeployPage.actions.deploy', 'Deploy')}
-              </Button>
-            )}
           </div>
+
         </div>
 
-        {/* YAML preview */}
-        {step !== 6 && (
-        <div>
-          <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            {t('developerDeployPage.yamlPreview', 'YAML Manifest Preview')}
-          </p>
-          <CodePreview
-            code={generateYaml(form, selectedAppType)}
-            language="yaml"
-            title={`${form.appName || 'my-app'}.yaml`}
-            maxHeight="600px"
-          />
+        <div className="xl:sticky xl:top-6">
+          {canReview ? (
+            <div className={sectionClassName}>
+              <StepSection title={t('developerDeployPage.sections.manifest', 'Review Manifest')}>
+                <p className="mb-4 mt-0 text-xs text-[var(--color-text-secondary)]">
+                  {t('developerDeployPage.manifestDescription', 'Review generated manifests before creating the pipeline.')}
+                </p>
+                <div className="flex flex-col gap-4">
+                  <p className="m-0 text-sm font-medium text-[var(--color-text-primary)]">
+                    {t('developerDeployPage.manifestTypes.deployment', 'Deployment')}
+                  </p>
+                  <CodePreview code={reviewManifests.deployment} language="yaml" title={`${form.appName}-deployment.yaml`} maxHeight="380px" />
+                  {(['service', 'ingress'] as const).map((manifest) => (
+                    <div key={manifest} className="flex flex-col gap-2">
+                      <p className="m-0 text-sm font-medium text-[var(--color-text-primary)]">
+                        {t(`developerDeployPage.manifestTypes.${manifest}`, manifest === 'service' ? 'Service' : 'Ingress')}
+                      </p>
+                      <CodePreview
+                        code={reviewManifests[manifest]}
+                        language="yaml"
+                        title={`${form.appName}-${manifest}.yaml`}
+                        maxHeight={manifest === 'service' ? '260px' : '320px'}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    loading={createPipelineMutation.isPending}
+                    disabled={isSubmitting || !canReview}
+                    onClick={handleSubmit((data) => {
+                      setValue('gitUrl', gitUrl, { shouldValidate: true, shouldDirty: true })
+                      return onSubmit({ ...data, gitUrl })
+                    })}
+                  >
+                    <Rocket size={14} />
+                    {t('developerDeployPage.actions.create', 'Create')}
+                  </Button>
+                </div>
+              </StepSection>
+            </div>
+          ) : (
+            <div className={sectionClassName}>
+              <p className="m-0 text-sm text-[var(--color-text-secondary)]">
+                {t('developerDeployPage.reviewPending', 'Complete required fields to preview deployment manifests.')}
+              </p>
+            </div>
+          )}
+        </div>
         </div>
         )}
       </div>
     </div>
   )
 }
-

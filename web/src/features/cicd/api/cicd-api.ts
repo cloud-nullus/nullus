@@ -201,11 +201,12 @@ const cicdApiCalls = {
     } as Pipeline
   },
 
-  deployPipeline: async (pipelineId: string) => {
+  deployPipeline: async ({ pipelineId, manifestTypes }: { pipelineId: string; manifestTypes?: string[] }) => {
     const user = useAuthStore.getState().user
     const response = await api.post<{ deploymentId: string }>(`/cicd/pipelines/${pipelineId}/deploy`, {
       version: `v0.1.${Date.now() % 1000}`,
       deployed_by: user?.email ?? '',
+      manifest_types: manifestTypes,
     })
     return response.data
   },

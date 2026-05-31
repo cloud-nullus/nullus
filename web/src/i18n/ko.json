@@ -224,6 +224,28 @@
     "description": "파이프라인 템플릿을 선택하여 빠르게 시작하세요.",
     "searchPlaceholder": "템플릿 검색...",
     "empty": "검색 결과가 없습니다.",
+    "cicdType": "CI/CD 유형",
+    "typeEmpty": "이 유형에 등록된 템플릿이 없습니다.",
+    "types": {
+      "default": {
+        "label": "Default",
+        "description": "Deployment, Service, Ingress"
+      },
+      "helm": {
+        "label": "Helm",
+        "description": "Helm chart release"
+      },
+      "cronjobJob": {
+        "label": "Cronjob/Job",
+        "description": "예약 실행 및 일회성 워크로드"
+      }
+    },
+    "card": {
+      "workloadType": "CI/CD 유형",
+      "appType": "애플리케이션 유형",
+      "capabilities": "기능",
+      "noCapabilities": "선택된 기능이 없습니다."
+    },
     "actions": {
       "createTemplate": "템플릿 생성",
       "edit": "수정",
@@ -241,7 +263,7 @@
       "name": "이름",
       "namePlaceholder": "예: Standard Web Backend",
       "description": "설명",
-      "stages": "스테이지"
+      "stages": "기능"
     },
     "errors": {
       "nameRequired": "이름은 필수입니다.",
@@ -583,6 +605,7 @@
     "history": "배포 이력",
     "historyDesc": "CI/CD 배포 이력",
     "newPipeline": "새 파이프라인",
+    "addPhase": "단계 추가",
     "useTemplate": "템플릿 사용",
     "deploy": "배포",
     "status": {
@@ -1038,23 +1061,38 @@
     }
   },
   "developerDeployPage": {
-    "title": "Pipeline 설정 및 배포",
-    "description": "파이프라인 템플릿 선택과 개발자 배포를 한 화면에서 진행하세요.",
+    "title": "Pipeline 설정",
+    "description": "배포 전에 애플리케이션 파이프라인을 설정하세요.",
+    "reviewPending": "필수 입력값을 완료하면 배포 매니페스트를 확인할 수 있습니다.",
+    "manifestTypes": {
+      "title": "매니페스트 유형",
+      "deployment": "Deployment",
+      "service": "Service",
+      "ingress": "Ingress"
+    },
     "steps": {
-      "1": "앱 이름",
-      "2": "Git 저장소",
-      "3": "클러스터 / 네임스페이스",
-      "4": "리소스 설정",
-      "5": "환경 변수",
-      "6": "매니페스트 검토"
+      "1": "기본 정보",
+      "2": "코드 체크아웃",
+      "3": "빌드",
+      "4": "테스트",
+      "5": "보안",
+      "6": "생성"
     },
     "sections": {
       "appName": "앱 이름 입력",
-      "gitRepository": "Git 저장소 URL",
+      "pipelineConfiguration": "파이프라인 구성",
+      "codeCheckout": "1. Code Checkout",
+      "buildStage": "2. Build",
+      "test": "테스트",
+      "testDescription": "테스트 실행은 선택한 CI/CD 템플릿에서 구성됩니다.",
+      "security": "보안",
+      "securityDescription": "보안 검사는 선택한 CI/CD 템플릿에서 구성됩니다.",
+      "cdNotSelected": "배포를 구성하려면 기본 정보에서 CD를 선택하세요.",
+      "deploy": "3. Deploy",
       "clusterNamespace": "클러스터 & 네임스페이스",
       "resources": "리소스 설정",
       "envVars": "환경 변수",
-      "manifest": "매니페스트 확인 및 편집"
+      "manifest": "매니페스트 확인"
     },
     "phases": {
       "namespace": "Namespace 생성",
@@ -1074,17 +1112,32 @@
     "viewCicdList": "CI/CD 목록 보기",
     "appNameRule": "소문자, 숫자, 하이픈만 사용할 수 있습니다.",
     "form": {
-      "stackOptional": "스택 (선택)",
+      "stackOptional": "스택",
       "manualInput": "직접 입력",
+      "appName": "앱 이름",
+      "capabilities": "기능",
+      "phase": "Phase",
       "cluster": "클러스터",
-      "namespace": "네임스페이스"
+      "namespace": "네임스페이스",
+      "serviceUrl": "서비스 URL",
+      "serviceUrlPlaceholder": "app.example.com",
+      "sourceRepository": "Source Repository",
+      "dockerfileRepository": "Dockerfile Repository",
+      "deployYamlRepository": "Deploy YAML Repository",
+      "branch": "Branch",
+      "directory": "Directory"
+    },
+    "manifestLoad": {
+      "pathRequired": "Config Repository URL과 YAML 경로를 입력하세요.",
+      "failed": "Config Repository에서 Deployment, Service 또는 Ingress YAML을 불러올 수 없습니다."
     },
     "actions": {
       "addVariable": "변수 추가",
       "resetDefault": "기본값으로 초기화",
       "previous": "이전",
       "next": "다음",
-      "deploy": "배포"
+      "loadFromConfigRepository": "Deploy YAML Repository에서 불러오기",
+      "create": "생성"
     },
     "yamlPreview": "YAML 매니페스트 미리보기"
   },

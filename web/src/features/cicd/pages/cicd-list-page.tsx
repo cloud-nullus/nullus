@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { useDeletePipeline, useDeploymentStatus, usePipelineDeployments, usePipelineResources, usePipelines, useTemplateById } from '../api/cicd-api'
+import { useDeletePipeline, useDeploymentStatus, useDeployPipeline, usePipelineDeployments, usePipelineResources, usePipelines, useTemplateById } from '../api/cicd-api'
 import type { Pipeline } from '../api/cicd-api'
 import { useScopedClusters as useClusters } from '../../admin/api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -693,15 +693,17 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
 
 function PipelineDetailPanel({
   pipeline,
-  onRun,
+  onDeploy,
   onOpenLogs,
   onDelete,
+  isDeploying,
   isDeleting,
 }: {
   pipeline: Pipeline
-  onRun: () => void
+  onDeploy: () => void
   onOpenLogs: () => void
   onDelete: () => void
+  isDeploying: boolean
   isDeleting: boolean
 }) {
   const { t, i18n } = useTranslation()
@@ -741,9 +743,9 @@ function PipelineDetailPanel({
             <Terminal size={12} />
             Logs
           </Button>
-          <Button variant="primary" size="sm" type="button" onClick={onRun}>
+          <Button variant="primary" size="sm" type="button" onClick={onDeploy} loading={isDeploying} disabled={isDeploying}>
             <Rocket size={12} />
-            Run
+            Deploy
           </Button>
         </div>
       </div>
@@ -787,6 +789,7 @@ export function CicdListPage() {
   const [search, setSearch] = useState('')
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null)
   const [deletingPipelineId, setDeletingPipelineId] = useState<string | null>(null)
+  const [deployingPipelineId, setDeployingPipelineId] = useState<string | null>(null)
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1440,
   )
@@ -802,6 +805,7 @@ export function CicdListPage() {
   const { data: clustersData } = useClusters()
   const { data: apiData } = usePipelines({ status: statusFilter || undefined, search: search || undefined })
   const deletePipelineMutation = useDeletePipeline()
+  const deployPipelineMutation = useDeployPipeline()
   const pipelines = apiData?.items ?? []
 
   const filtered = pipelines.filter((p) => {
@@ -885,6 +889,16 @@ export function CicdListPage() {
     }
   }
 
+  const handleDeployPipeline = async (pipeline: Pipeline) => {
+    try {
+      setDeployingPipelineId(pipeline.id)
+      await deployPipelineMutation.mutateAsync({ pipelineId: pipeline.id })
+      navigate(`/cicd/pipelines/${pipeline.id}/logs`)
+    } finally {
+      setDeployingPipelineId(null)
+    }
+  }
+
   return (
     <div>
       <Breadcrumb items={[{ label: t('sidebar.cicdList', 'CI/CD List') }]} />
@@ -906,15 +920,26 @@ export function CicdListPage() {
             </p>
           </div>
         </div>
-        <Button
-          variant="primary"
-          size="md"
-          onClick={() => navigate('/cicd/templates')}
-          type="button"
-        >
-          <Plus size={15} />
-          {t('cicd.newPipeline', 'New Pipeline')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={() => navigate('/cicd/developer-deploy')}
+            type="button"
+          >
+            <Plus size={15} />
+            {t('cicd.addPhase', 'Add Phase')}
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => navigate('/cicd/templates')}
+            type="button"
+          >
+            <Plus size={15} />
+            {t('cicd.newPipeline', 'New Pipeline')}
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
@@ -970,7 +995,8 @@ export function CicdListPage() {
                   pipeline={expandedPipeline}
                   onDelete={() => void handleDeletePipeline(expandedPipeline)}
                   isDeleting={deletingPipelineId === expandedPipeline.id}
-                  onRun={() => navigate(`/cicd/developer-deploy?pipelineId=${expandedPipeline.id}&clusterId=${expandedPipeline.clusterId}&namespace=${expandedPipeline.namespace}&appName=${expandedPipeline.name}`)}
+                  onDeploy={() => void handleDeployPipeline(expandedPipeline)}
+                  isDeploying={deployingPipelineId === expandedPipeline.id}
                   onOpenLogs={() => navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)}
                 />
               </div>
@@ -989,7 +1015,8 @@ export function CicdListPage() {
           pipeline={expandedPipeline}
           onDelete={() => void handleDeletePipeline(expandedPipeline)}
           isDeleting={deletingPipelineId === expandedPipeline.id}
-          onRun={() => navigate(`/cicd/developer-deploy?pipelineId=${expandedPipeline.id}&clusterId=${expandedPipeline.clusterId}&namespace=${expandedPipeline.namespace}&appName=${expandedPipeline.name}`)}
+          onDeploy={() => void handleDeployPipeline(expandedPipeline)}
+          isDeploying={deployingPipelineId === expandedPipeline.id}
           onOpenLogs={() => navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)}
         />
       )}

@@ -17,14 +17,15 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { useAuthStore } from '../../../stores/auth-store'
 import { resolveLocale } from '../../../lib/locale'
 
-const APP_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
-  'web-backend': { bg: 'rgba(99,102,241,0.12)', color: '#a5b4fc' },
-  'web-frontend': { bg: 'rgba(16,185,129,0.12)', color: '#34d399' },
-  'batch-job': { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24' },
-}
-
-const STAGE_OPTIONS = ['Production', 'QA', 'Development', 'Beta'] as const
+const CAPABILITY_OPTIONS = ['CI', 'CD', 'Test', 'Security'] as const
 const PRIORITY_TEMPLATE_IDS = ['nullus-sample-backend-v1', 'nullus-sample-frontend-v1'] as const
+type CicdType = 'default' | 'helm' | 'cronjobJob'
+
+const CICD_TYPES: Array<{ id: CicdType; label: string; description: string }> = [
+  { id: 'default', label: 'Default', description: 'Deployment, Service, Ingress' },
+  { id: 'helm', label: 'Helm', description: 'Helm chart release' },
+  { id: 'cronjobJob', label: 'Cronjob/Job', description: 'Scheduled and one-time workloads' },
+]
 
 const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
   'web-frontend': {
@@ -107,6 +108,38 @@ const EMPTY_FORM: TemplateFormState = {
   stages: [],
 }
 
+function resolveCicdType(template: CicdTemplate): CicdType {
+  const searchable = `${template.id} ${template.name} ${template.stages.join(' ')}`.toLowerCase()
+  if (searchable.includes('helm')) return 'helm'
+  if (searchable.includes('cronjob') || searchable.includes('cron job') || searchable.includes('job')) return 'cronjobJob'
+  return 'default'
+}
+
+function resolveCapabilities(stages: string[]): string[] {
+  const hasCapability = (capability: (typeof CAPABILITY_OPTIONS)[number]) => stages.some((stage) => {
+    const normalized = stage.toLowerCase().replace(/[\s_-]/g, '')
+    if (capability === 'CI') {
+      return normalized === 'ci'
+        || normalized.includes('build')
+        || normalized.includes('gitclone')
+        || normalized.includes('imageload')
+        || normalized.includes('package')
+        || normalized.includes('lint')
+    }
+    if (capability === 'CD') {
+      return normalized === 'cd'
+        || normalized.includes('deploy')
+        || normalized.includes('release')
+        || normalized.includes('rollout')
+        || normalized.includes('sync')
+        || normalized.includes('apply')
+    }
+    if (capability === 'Test') return normalized.includes('test')
+    return normalized.includes('security') || normalized.includes('scan')
+  })
+
+  return CAPABILITY_OPTIONS.filter(hasCapability)
+}
 
 export function CicdTemplatePage() {
   const { t, i18n } = useTranslation()
@@ -118,7 +151,9 @@ export function CicdTemplatePage() {
   const createTemplate = useCreateCicdTemplate()
   const updateTemplate = useUpdateCicdTemplate()
   const deleteTemplate = useDeleteCicdTemplate()
-  const templates = Array.isArray(apiTemplates) ? apiTemplates : []
+  const templates = (Array.isArray(apiTemplates) ? apiTemplates : [])
+    .filter((template) => template.id !== 'web-frontend-v1')
+    .map((template) => template.id === 'web-backend-v1' ? { ...template, name: 'User Custom Pipeline' } : template)
 
   const [search, setSearch] = useState('')
   const [formOpen, setFormOpen] = useState(false)
@@ -156,6 +191,10 @@ export function CicdTemplatePage() {
     if (aPriority === bPriority) return 0
     return aPriority ? -1 : 1
   })
+  const templatesByType = CICD_TYPES.map((type) => ({
+    ...type,
+    templates: prioritizedFiltered.filter((template) => resolveCicdType(template) === type.id),
+  }))
 
   const resetForm = () => {
     setForm(EMPTY_FORM)
@@ -180,7 +219,7 @@ export function CicdTemplatePage() {
       id: template.id,
       name: template.name,
       description: template.description,
-      stages: template.stages.filter((s) => (STAGE_OPTIONS as readonly string[]).includes(s)),
+      stages: resolveCapabilities(template.stages),
     })
     setFormOpen(true)
   }
@@ -294,93 +333,121 @@ export function CicdTemplatePage() {
         </div>
       </div>
 
-      {/* Template cards */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
-        {prioritizedFiltered.map((template) => {
-          const typeColor = APP_TYPE_COLOR[template.appType] ?? APP_TYPE_COLOR['web-backend']
-          return (
-            <div
-              key={template.id}
-              className="flex h-full flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-150"
-            >
-              {/* Card header */}
-              <div>
-                <div className="mb-2 flex items-center gap-2">
-                  <h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
-                    {template.name}
-                  </h3>
-                  <span
-                    className="rounded-[5px] px-2 py-0.5 text-[11px] font-semibold"
-                    style={{ backgroundColor: typeColor.bg, color: typeColor.color }}
-                  >
-                    {template.appType}
+      {/* Template cards grouped by CI/CD workload type. */}
+      {filtered.length > 0 && (
+        <div>
+          <p className="mb-4 mt-0 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">
+            {t('cicdTemplatePage.cicdType', 'CI/CD Type')}
+          </p>
+          <div className="flex flex-col gap-8">
+            {templatesByType.map((type) => (
+              <section key={type.id} aria-label={type.label}>
+                <div className="mb-3 flex items-baseline gap-3">
+                  <h2 className="m-0 text-lg font-bold text-[var(--color-text-primary)]">
+                    {t(`cicdTemplatePage.types.${type.id}.label`, type.label)}
+                  </h2>
+                  <span className="text-sm text-[var(--color-text-secondary)]">
+                    {t(`cicdTemplatePage.types.${type.id}.description`, type.description)}
                   </span>
                 </div>
-                <p className="m-0 text-[13px] leading-[1.5] text-[var(--color-text-secondary)]">
-                  {resolveTemplateDescription(template)}
-                </p>
-              </div>
-
-              {/* Stages */}
-              <div className="flex flex-wrap items-center gap-1">
-                {template.stages.map((stage, idx) => (
-                  <div key={stage} className="flex items-center gap-1">
-                    <span
-                      className="rounded-md bg-[rgba(99,102,241,0.12)] px-2.5 py-[3px] text-[11px] font-semibold text-[#a5b4fc]"
-                    >
-                      {stage}
-                    </span>
-                    {idx < template.stages.length - 1 && (
-                      <span className="text-[11px] text-[var(--color-text-muted)]">→</span>
-                    )}
+                {type.templates.length === 0 ? (
+                  <div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+                    {t('cicdTemplatePage.typeEmpty', 'No templates in this type.')}
                   </div>
-                ))}
-              </div>
+                ) : (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+                    {type.templates.map((template) => {
+                      const capabilities = resolveCapabilities(template.stages)
+                      return (
+                        <div
+                          key={template.id}
+                          className="flex h-full flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-150 hover:border-[var(--color-border-hover)]"
+                        >
+                          <div>
+                            <h3 className="m-0 mb-1 text-[15px] font-bold text-[var(--color-text-primary)]">
+                              {template.name}
+                            </h3>
+                            <p className="m-0 text-[13px] leading-[1.5] text-[var(--color-text-secondary)]">
+                              {resolveTemplateDescription(template)}
+                            </p>
+                          </div>
 
-              {/* Footer */}
-              <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-default)] pt-2.5">
-                <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
-                  {template.createdBy && <User size={12} />}
-                  <span>{template.createdBy ?? ''}</span>
-                </div>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-                  {isAdmin && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        type="button"
-                        onClick={() => openEditModal(template)}
-                      >
-                        <Pencil size={13} />
-                        {t('cicdTemplatePage.actions.edit', 'Edit')}
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        type="button"
-                        onClick={() => setDeleteTemplateId(template.id)}
-                      >
-                        <Trash2 size={13} />
-                        {t('cicdTemplatePage.actions.delete', 'Delete')}
-                      </Button>
-                    </>
-                  )}
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    type="button"
-                    className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
-                    onClick={() => navigate(`/cicd/developer-deploy?template=${encodeURIComponent(template.id)}&appType=${encodeURIComponent(template.appType)}`)}
-                  >
-                    {t('cicdTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+                          <div className="grid grid-cols-2 gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] p-3">
+                            <div>
+                              <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                                {t('cicdTemplatePage.card.workloadType', 'CI/CD Type')}
+                              </span>
+                              <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
+                                {t(`cicdTemplatePage.types.${type.id}.label`, type.label)}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                                {t('cicdTemplatePage.card.appType', 'Application Type')}
+                              </span>
+                              <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
+                                {template.appType}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                              {t('cicdTemplatePage.card.capabilities', 'Capabilities')}
+                            </span>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {capabilities.map((capability) => (
+                                <span key={capability} className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-1 text-[11px] font-semibold text-[#a5b4fc]">
+                                  {capability}
+                                </span>
+                              ))}
+                              {capabilities.length === 0 && (
+                                <span className="text-xs text-[var(--color-text-muted)]">
+                                  {t('cicdTemplatePage.card.noCapabilities', 'No capabilities selected')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-default)] pt-2.5">
+                            <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
+                              {template.createdBy && <User size={12} />}
+                              <span>{template.createdBy ?? ''}</span>
+                            </div>
+                            <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+                              {isAdmin && (
+                                <>
+                                  <Button variant="ghost" size="sm" type="button" onClick={() => openEditModal(template)}>
+                                    <Pencil size={13} />
+                                    {t('cicdTemplatePage.actions.edit', 'Edit')}
+                                  </Button>
+                                  <Button variant="danger" size="sm" type="button" onClick={() => setDeleteTemplateId(template.id)}>
+                                    <Trash2 size={13} />
+                                    {t('cicdTemplatePage.actions.delete', 'Delete')}
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                type="button"
+                                className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
+                                onClick={() => navigate(`/cicd/developer-deploy?template=${encodeURIComponent(template.id)}&appType=${encodeURIComponent(template.appType)}`)}
+                              >
+                                {t('cicdTemplatePage.actions.useBaseTemplate', 'Use Base Template')}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            ))}
+          </div>
+        </div>
+      )}
 
       {filtered.length === 0 && (
         <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
@@ -431,10 +498,10 @@ export function CicdTemplatePage() {
           />
           <div className="flex flex-col gap-2">
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
-              {t('cicdTemplatePage.form.stages', 'Stages')}
+              {t('cicdTemplatePage.form.stages', 'Capabilities')}
             </span>
             <div className="flex flex-wrap gap-2">
-              {STAGE_OPTIONS.map((stage) => {
+              {CAPABILITY_OPTIONS.map((stage) => {
                 const checked = form.stages.includes(stage)
                 return (
                   <label
