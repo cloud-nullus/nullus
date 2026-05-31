@@ -3,9 +3,11 @@ package helm
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
@@ -21,6 +23,7 @@ import (
 )
 
 type HelmInstaller struct {
+	kubeconfig      []byte
 	newActionConfig func(kubeconfig []byte, namespace string) (*action.Configuration, error)
 }
 
@@ -28,13 +31,98 @@ const helmOperationTimeout = 30 * time.Minute
 
 func NewHelmInstaller(kubeconfig []byte) *HelmInstaller {
 	return &HelmInstaller{
+		kubeconfig: kubeconfig,
 		newActionConfig: func(_ []byte, namespace string) (*action.Configuration, error) {
 			return newActionConfig(kubeconfig, namespace)
 		},
 	}
 }
 
+// airgapOCIRegistry returns the value of NULLUS_HELM_OCI_REGISTRY if set (e.g. "kind-registry:5000/charts").
+// An empty string means airgap mode is disabled.
+func airgapOCIRegistry() string {
+	return os.Getenv("NULLUS_HELM_OCI_REGISTRY")
+}
+
+// chartBaseName extracts the final path segment of a chart name, stripping any oci:// prefix and host.
+// Examples:
+//
+//	"cert-manager"                         -> "cert-manager"
+//	"oci://docker.io/envoyproxy/gateway-helm" -> "gateway-helm"
+//	"kube-prometheus-stack"                -> "kube-prometheus-stack"
+func chartBaseName(chartName string) string {
+	name := strings.TrimPrefix(chartName, "oci://")
+	// Strip host:port prefix if present (anything before the first slash after stripping scheme)
+	if idx := strings.Index(name, "/"); idx >= 0 {
+		name = name[idx+1:]
+	}
+	// Take only the final segment
+	if idx := strings.LastIndex(name, "/"); idx >= 0 {
+		name = name[idx+1:]
+	}
+	return name
+}
+
+// installAirgapOCI performs a helm upgrade --install using the local OCI registry over plain HTTP.
+func (h *HelmInstaller) installAirgapOCI(ctx context.Context, req port.HelmInstallRequest) (*port.HelmInstallResult, error) {
+	registry := airgapOCIRegistry()
+	base := chartBaseName(req.ChartName)
+	ociRef := "oci://" + registry + "/" + base
+
+	var valuesFile string
+	if len(req.Values) > 0 {
+		data, err := yaml.Marshal(req.Values)
+		if err != nil {
+			return nil, fmt.Errorf("marshal values for airgap install: %w", err)
+		}
+		tmp, err := os.CreateTemp("", "nullus-helm-values-*.yaml")
+		if err != nil {
+			return nil, fmt.Errorf("create values temp file: %w", err)
+		}
+		defer func() { _ = os.Remove(tmp.Name()) }()
+		if _, err := tmp.Write(data); err != nil {
+			_ = tmp.Close()
+			return nil, fmt.Errorf("write values temp file: %w", err)
+		}
+		if err := tmp.Close(); err != nil {
+			return nil, fmt.Errorf("close values temp file: %w", err)
+		}
+		valuesFile = tmp.Name()
+	}
+
+	if err := installOCIChartWithHelmCLI(ctx, h.kubeconfig, req.ReleaseName, ociRef, req.Namespace, req.Version, req.Wait, valuesFile, true); err != nil {
+		return nil, err
+	}
+
+	// Return a synthetic result; full release metadata requires a status lookup.
+	cfg, err := h.newActionConfig(nil, req.Namespace)
+	if err != nil {
+		return &port.HelmInstallResult{
+			ReleaseName: req.ReleaseName,
+			Namespace:   req.Namespace,
+			Status:      "deployed",
+		}, nil
+	}
+	if result, err := h.releaseStatus(ctx, cfg, req.ReleaseName); err == nil {
+		return &port.HelmInstallResult{
+			ReleaseName: req.ReleaseName,
+			Namespace:   req.Namespace,
+			Status:      result,
+		}, nil
+	}
+	return &port.HelmInstallResult{
+		ReleaseName: req.ReleaseName,
+		Namespace:   req.Namespace,
+		Status:      "deployed",
+	}, nil
+}
+
+
 func (h *HelmInstaller) Install(ctx context.Context, req port.HelmInstallRequest) (*port.HelmInstallResult, error) {
+	if airgapOCIRegistry() != "" {
+		return h.installAirgapOCI(ctx, req)
+	}
+
 	cfg, err := h.newActionConfig(nil, req.Namespace)
 	if err != nil {
 		return nil, fmt.Errorf("init action config: %w", err)
