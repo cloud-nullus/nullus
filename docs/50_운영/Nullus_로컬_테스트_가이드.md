@@ -143,6 +143,21 @@ curl -X POST http://localhost:8090/api/v1/admin/clusters \
   -d "{\"name\":\"kind-nullus-test\",\"type\":\"target\",\"endpoint\":\"https://127.0.0.1:PORT\",\"org_id\":\"$ORG_ID\",\"kubeconfig\":\"$KUBECONFIG_B64\"}"
 ```
 
+> **endpoint / kubeconfig 는 nullus-api 가 닿을 수 있는 주소여야 한다.**
+> - **로컬 dev (api 가 호스트에서 실행)**: 위처럼 `https://127.0.0.1:PORT` + 일반 `kind get kubeconfig`.
+> - **클러스터 내부 배포 (airgap 등, api 가 파드로 실행)**: 파드에서 `127.0.0.1` 은 자기 자신이라 닿지 않는다.
+>   `--internal` kubeconfig 를 쓰고 endpoint 도 control-plane 내부 주소로 등록한다.
+>   ```bash
+>   CLUSTER=nullus-airgap
+>   KUBECONFIG_B64=$(kind get kubeconfig --name "$CLUSTER" --internal | base64 | tr -d '\n')
+>   ENDPOINT="https://${CLUSTER}-control-plane:6443"   # 노드 컨테이너 hostname
+>   # org_id 는 로그인 사용자의 org (예: 11111111-... Nullus DevOps Team)
+>   ```
+>
+> **사전 조건 — `ENCRYPTION_KEY` 는 정확히 32바이트여야 한다.** 미설정/길이 불일치 시
+> 등록이 `500 "ENCRYPTION_KEY must be 32 bytes"` 로 실패한다. airgap 차트는
+> `secrets.encryptionKey`(32바이트) 를 `ENCRYPTION_KEY` 환경변수로 주입한다.
+
 ### 4.4 Admin — Members
 
 ```bash
