@@ -18,7 +18,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
-import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates } from '../api/stack-api'
+import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates, useTestStorageConnection } from '../api/stack-api'
 import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useUpdateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
@@ -201,6 +201,31 @@ function findMatrixToolVersion(matrix: CompatibilityMatrix | undefined, keyword:
 
 type StorageTargetKey = 'database' | 'objectStorage'
 type StorageFieldKey = 'existingRef' | 'endpoint' | 'resourceName' | 'accessSecretRef' | 'authId' | 'authPasswordKey'
+
+const EXISTING_DOCKER_STORAGE_DEFAULTS = {
+  database: {
+    mode: 'existing' as const,
+    existingRef: 'local-docker-postgres',
+    endpoint: 'host.docker.internal:5433',
+    resourceName: 'nullus',
+    accessSecretRef: '',
+    authId: 'nullus',
+    authPasswordKey: 'nullus_dev',
+    providerOrEngine: 'postgres',
+    version: '17',
+  },
+  objectStorage: {
+    mode: 'existing' as const,
+    existingRef: 'local-docker-minio',
+    endpoint: 'http://host.docker.internal:9000',
+    resourceName: 'nullus-artifacts',
+    accessSecretRef: '',
+    authId: 'nullus',
+    authPasswordKey: 'nullus_dev',
+    providerOrEngine: 'minio',
+    version: 'latest',
+  },
+}
 type StorageValidationErrorKey = `${StorageTargetKey}.${StorageFieldKey}`
 type StorageValidationErrors = Partial<Record<StorageValidationErrorKey, string>>
 type DryRunCheckStatus = 'pass' | 'warn' | 'fail'
@@ -311,6 +336,7 @@ export function StackInstallPage() {
   const currentOrgId = useAuthStore((state) => state.user?.orgId)
   const createStack = useCreateStack()
   const deployStack = useDeployStack()
+  const testStorageConnection = useTestStorageConnection()
   // Separate from compatWarnAcknowledged (client pre-check). When the server
   // returns warn, we require a dedicated ack so the client can't silently
   // re-use a prior pre-check ack.
@@ -342,6 +368,7 @@ export function StackInstallPage() {
   const deleteOrgProfile = useDeleteOrgResourceProfile()
   const [activeFormulaPopoverKey, setActiveFormulaPopoverKey] = useState<string | null>(null)
   const [storageValidationErrors, setStorageValidationErrors] = useState<StorageValidationErrors>({})
+  const [testingStorageTarget, setTestingStorageTarget] = useState<StorageTargetKey | null>(null)
   const [tabGuardError, setTabGuardError] = useState<string | null>(null)
   const [manifestDraftByTool, setManifestDraftByTool] = useState<Record<string, string>>({})
   const [manifestOverridesByTool, setManifestOverridesByTool] = useState<Record<string, string>>({})
@@ -1383,8 +1410,8 @@ export function StackInstallPage() {
     if (planMode === 'existing-all') {
       updateStorage({
         planMode,
-        database: { ...draft.storage.database, mode: 'existing' },
-        objectStorage: { ...draft.storage.objectStorage, mode: 'existing' },
+        database: { ...draft.storage.database, ...EXISTING_DOCKER_STORAGE_DEFAULTS.database },
+        objectStorage: { ...draft.storage.objectStorage, ...EXISTING_DOCKER_STORAGE_DEFAULTS.objectStorage },
       })
       return
     }
@@ -1424,6 +1451,34 @@ export function StackInstallPage() {
     })
   }
 
+  const handleTestStorageConnection = async (targetKey: StorageTargetKey) => {
+    const endpoint = draft.storage[targetKey].endpoint.trim()
+    if (!endpoint) {
+      toast.error(`${targetKey === 'database' ? 'Database' : 'Object Storage'} endpoint is required.`)
+      return
+    }
+    setTestingStorageTarget(targetKey)
+    try {
+      const result = await testStorageConnection.mutateAsync({
+        target: targetKey === 'database' ? 'database' : 'object_storage',
+        endpoint,
+        provider_or_engine: draft.storage[targetKey].providerOrEngine,
+        auth_id: draft.storage[targetKey].authId,
+        auth_password: draft.storage[targetKey].authPasswordKey,
+        resource_name: draft.storage[targetKey].resourceName,
+      })
+      if (result.ok) {
+        toast.success(`${targetKey === 'database' ? 'Database' : 'Object Storage'} connection succeeded.`)
+      } else {
+        toast.error(`${targetKey === 'database' ? 'Database' : 'Object Storage'} connection failed: ${result.message}`)
+      }
+    } catch (error) {
+      toast.error(`${targetKey === 'database' ? 'Database' : 'Object Storage'} connection failed: ${toDeployErrorMessage(error)}`)
+    } finally {
+      setTestingStorageTarget(null)
+    }
+  }
+
   const validateStorageConfig = (): boolean => {
     const errors: StorageValidationErrors = {}
 
@@ -1447,20 +1502,25 @@ export function StackInstallPage() {
         errors[key('resourceName')] = target === 'database' ? 'DB 이름은 필수입니다.' : 'Bucket 이름은 필수입니다.'
       }
 
-      if (!config.accessSecretRef.trim()) {
-        errors[key('accessSecretRef')] = '접근 Secret Ref는 필수입니다.'
-      } else if (!K8S_SECRET_REF_REGEX.test(config.accessSecretRef.trim())) {
+      const accessSecretRef = config.accessSecretRef.trim()
+      if (accessSecretRef && !K8S_SECRET_REF_REGEX.test(accessSecretRef)) {
         errors[key('accessSecretRef')] = 'Secret Ref 형식이 올바르지 않습니다. (소문자/숫자/-, DNS-1123)'
       }
 
-      if (!config.authId.trim()) {
+      const authId = config.authId.trim()
+      if (!authId) {
         errors[key('authId')] = target === 'database' ? 'DB 사용자 ID는 필수입니다.' : 'Access Key ID는 필수입니다.'
       }
 
-      if (!config.authPasswordKey.trim()) {
+      const authPasswordKey = config.authPasswordKey.trim()
+      if (!authPasswordKey) {
         errors[key('authPasswordKey')] = target === 'database' ? 'DB 비밀번호 Key는 필수입니다.' : 'Secret Key Key는 필수입니다.'
-      } else if (!SECRET_KEY_REGEX.test(config.authPasswordKey.trim())) {
+      } else if (!SECRET_KEY_REGEX.test(authPasswordKey)) {
         errors[key('authPasswordKey')] = '비밀번호 Key 형식이 올바르지 않습니다. (영문/숫자/-, _, .)'
+      }
+
+      if (!accessSecretRef && (!authId || !authPasswordKey)) {
+        errors[key('accessSecretRef')] = 'Secret Ref를 입력하거나 인증 정보(ID/Key)를 모두 입력해야 합니다.'
       }
     }
 
@@ -3245,13 +3305,27 @@ export function StackInstallPage() {
                       >
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h4>
-                          <span className="rounded border border-[var(--color-border-default)] px-2 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
-                            {effectiveMode === 'existing'
-                              ? t('stackInstall.storagePlan.badge.existing', 'Existing')
-                              : effectiveMode === 'create'
-                                ? t('stackInstall.storagePlan.badge.create', 'New')
-                                : noneLabel}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {effectiveMode === 'existing' && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-[10px]"
+                                disabled={testingStorageTarget !== null}
+                                onClick={() => void handleTestStorageConnection(targetKey)}
+                              >
+                                {testingStorageTarget === targetKey ? 'Testing...' : '연결 테스트'}
+                              </Button>
+                            )}
+                            <span className="rounded border border-[var(--color-border-default)] px-2 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
+                              {effectiveMode === 'existing'
+                                ? t('stackInstall.storagePlan.badge.existing', 'Existing')
+                                : effectiveMode === 'create'
+                                  ? t('stackInstall.storagePlan.badge.create', 'New')
+                                  : noneLabel}
+                            </span>
+                          </div>
                         </div>
 
                         {effectiveMode === null ? (
@@ -3302,8 +3376,8 @@ export function StackInstallPage() {
                                 value={item.target.accessSecretRef}
                                 placeholder={
                                   targetKey === 'database'
-                                    ? 'shared-postgres-credentials'
-                                    : 'shared-object-storage-credentials'
+                                    ? 'optional: local-docker-postgres-secret'
+                                    : 'optional: local-docker-minio-secret'
                                 }
                                 onChange={(e) => {
                                   clearStorageFieldError(targetKey, 'accessSecretRef')
@@ -3316,7 +3390,7 @@ export function StackInstallPage() {
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 사용자 ID' : 'Access Key ID'}</label>
                               <Input
                                 value={item.target.authId}
-                                placeholder={targetKey === 'database' ? 'nullus_app' : 'nullus_access_key'}
+                                placeholder={targetKey === 'database' ? 'nullus' : 'nullus'}
                                 onChange={(e) => {
                                   clearStorageFieldError(targetKey, 'authId')
                                   updateStorageTarget(targetKey, { authId: e.target.value })
@@ -3328,7 +3402,7 @@ export function StackInstallPage() {
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 비밀번호 Key' : 'Secret Key Key'}</label>
                               <Input
                                 value={item.target.authPasswordKey}
-                                placeholder={targetKey === 'database' ? 'password' : 'secretKey'}
+                                placeholder={targetKey === 'database' ? 'nullus_dev' : 'nullus_dev'}
                                 onChange={(e) => {
                                   clearStorageFieldError(targetKey, 'authPasswordKey')
                                   updateStorageTarget(targetKey, { authPasswordKey: e.target.value })

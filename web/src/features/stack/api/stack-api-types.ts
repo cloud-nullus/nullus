@@ -92,6 +92,27 @@ export interface StackMonitoringSnapshot {
   oss_statuses: OSSMonitoringStatus[]
 }
 
+export interface StackIntegration {
+  id: string
+  stack_id: string
+  component_type: string
+  provider: string
+  endpoint: string
+  api_endpoint: string
+  credential_ref?: string
+  credential_ready: boolean
+  health_status: string
+  provisioning_capabilities: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface StackIntegrationsResponse {
+  stack_id: string
+  state: string
+  integrations: StackIntegration[]
+  total: number
+}
+
 export interface ValidateCompatibilityInput {
   stackId: string
   // clusterId tells the backend to resolve node architectures from the

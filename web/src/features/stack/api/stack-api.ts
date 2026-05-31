@@ -21,6 +21,7 @@ import type {
   ValidateCompatibilityInput,
   MatrixInput,
   DeployStackInput,
+  StackIntegrationsResponse,
   StackMonitoringSnapshot,
 } from './stack-api-types'
 import type { ClusterStatus, StackResourceDefault, StackWorkloads } from '../../../types'
@@ -40,6 +41,20 @@ interface RawClusterVerifyResult {
   version?: string
 }
 
+interface StorageTestRequest {
+  target: 'database' | 'object_storage'
+  endpoint: string
+  provider_or_engine?: string
+  auth_id?: string
+  auth_password?: string
+  resource_name?: string
+}
+
+interface StorageTestResult {
+  ok: boolean
+  message: string
+}
+
 const queryKeys = {
   templates: () => ['stacks', 'templates'] as const,
   template: (id: string) => ['stacks', 'templates', id] as const,
@@ -50,6 +65,7 @@ const queryKeys = {
   compatibilityMatrix: () => ['stacks', 'compatibility'] as const,
   clusters: () => ['clusters'] as const,
   workloads: (stackId: string) => ['stacks', 'workloads', stackId] as const,
+  integrations: (stackId: string) => ['stacks', 'integrations', stackId] as const,
   resourceDefaults: () => ['stacks', 'resource-defaults'] as const,
 }
 
@@ -204,6 +220,12 @@ const stackApiCalls = {
 
   getWorkloads: (stackId: string) =>
     api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
+
+  testStorageConnection: (input: StorageTestRequest) =>
+    api.post<StorageTestResult>('/stacks/storage/test', input).then((r) => r.data),
+
+  getIntegrations: (stackId: string) =>
+    api.get<StackIntegrationsResponse>(`/stacks/${stackId}/integrations`).then((r) => r.data),
 }
 
 // --- Hooks ---
@@ -228,6 +250,12 @@ export function useClusterK8sVersion() {
   })
 }
 
+export function useTestStorageConnection() {
+  return useMutation({
+    mutationFn: (input: StorageTestRequest) => stackApiCalls.testStorageConnection(input),
+  })
+}
+
 export function useStacks(
   filters?: { status?: string; search?: string; include_deleted?: boolean },
   options?: { refetchIntervalMs?: number },
@@ -237,6 +265,14 @@ export function useStacks(
     queryFn: () => stackApiCalls.getList(filters),
     refetchInterval: (query) =>
       stackListRefetchInterval(query.state.data, options?.refetchIntervalMs),
+  })
+}
+
+export function useStackIntegrations(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.integrations(stackId),
+    queryFn: () => stackApiCalls.getIntegrations(stackId),
+    enabled: !!stackId,
   })
 }
 
