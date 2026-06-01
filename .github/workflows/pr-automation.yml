@@ -1,0 +1,31 @@
+name: PR Automation
+
+# AI PR 리뷰(Codium PR-Agent)는 Anthropic API 키(과금)를 요구해 제거했다.
+# API 키 없이 동작하는 PR 크기 라벨링만 유지한다.
+# 추후 AI 리뷰가 필요하면 ANTHROPIC_API_KEY 시크릿을 등록하고 pr-agent 잡을 복원할 것.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────
+  # PR Size Label: PR 크기 자동 분류 (API 불필요)
+  # ─────────────────────────────────────────
+  pr-size-label:
+    name: 📏 PR Size Label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_max_size: 10
+          s_max_size: 100
+          m_max_size: 500
+          l_max_size: 1000
+          # 1000줄 초과 = XL (리뷰하기 너무 큰 PR 경고)
+          fail_if_xl: false
