@@ -122,7 +122,7 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 		releaseName := o.releaseNameForSpec(spec)
 		status, err := o.installer.Status(ctx, releaseName, namespace)
 		if err != nil && step == "installing_gateway" && isReleaseNotFoundError(err) {
-			if fallbackErr := installGatewayOCIRelease(ctx, o.kubeconfig, releaseName, spec.ChartName, namespace, spec.Version); fallbackErr == nil {
+			if fallbackErr := installGatewayOCIRelease(ctx, o.kubeconfig, releaseName, spec.ChartName, namespace, spec.Version, nil, "", false); fallbackErr == nil {
 				status, err = o.installer.Status(ctx, releaseName, namespace)
 			}
 		}
@@ -732,7 +732,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		Wait:        boolPtr(spec.Wait),
 	})
 	if err != nil && step == "installing_gateway" && strings.Contains(strings.ToLower(err.Error()), "missing registry client") {
-		if fallbackErr := installOCIChartWithHelmCLI(ctx, o.kubeconfig, releaseName, spec.ChartName, namespace, spec.Version); fallbackErr == nil {
+		if fallbackErr := installOCIChartWithHelmCLI(ctx, o.kubeconfig, releaseName, spec.ChartName, namespace, spec.Version, boolPtr(spec.Wait), "", false); fallbackErr == nil {
 			result = &port.HelmInstallResult{ReleaseName: releaseName, Namespace: namespace, Status: "deployed"}
 			err = nil
 		} else {

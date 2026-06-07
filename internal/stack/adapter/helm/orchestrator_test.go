@@ -596,7 +596,7 @@ func TestOrchestrator_VerifyDeployment_RepairsMissingGatewayRelease(t *testing.T
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
 
 	originalInstallGatewayOCIRelease := installGatewayOCIRelease
-	installGatewayOCIRelease = func(_ context.Context, _ []byte, releaseName, _, _, _ string) error {
+	installGatewayOCIRelease = func(_ context.Context, _ []byte, releaseName, _, _, _ string, _ *bool, _ string, _ bool) error {
 		installer.installed = append(installer.installed, releaseName)
 		return nil
 	}

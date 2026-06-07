@@ -55,7 +55,7 @@ cd nullus-airgap-bundle-<version>/
 ./install.sh
 ```
 
-내부적으로 다음 7단계가 순차 실행됩니다 (총 약 5 ~ 15 분).
+내부적으로 다음 10단계가 순차 실행됩니다 (총 약 5 ~ 15 분).
 
 | # | 단계 | 스크립트 |
 |---|------|----------|
@@ -63,9 +63,16 @@ cd nullus-airgap-bundle-<version>/
 | 2 | 로컬 레지스트리(registry:2) 컨테이너 기동 | `scripts/10-setup-registry.sh` |
 | 3 | kind 클러스터 생성 + 레지스트리 연결 | `scripts/11-create-cluster.sh` |
 | 4 | 이미지 → 로컬 레지스트리 retag/push | `scripts/12-push-to-registry.sh` |
-| 5 | Helm 차트 설치 (Nullus + PostgreSQL) | `scripts/21-install-nullus.sh` |
-| 6 | Platform stack 설치 (Keycloak; INSTALL_FULL=1 시 Prometheus stack 추가) | `scripts/22-install-platform-stack.sh` |
-| 7 | 검증 + kubeconfig 컨텍스트 정리 | `scripts/99-verify.sh` + `13-set-config.sh` |
+| 5 | 카탈로그 Helm 차트 → OCI 레지스트리 push | `scripts/28-push-charts-oci.sh` |
+| 6 | Helm 차트 설치 (Nullus + PostgreSQL) | `scripts/21-install-nullus.sh` |
+| 7 | DB 마이그레이션 | `scripts/26-migrate-db.sh` |
+| 8 | Platform stack 설치 (Keycloak; INSTALL_FULL=1 시 Prometheus stack 추가) | `scripts/22-install-platform-stack.sh` |
+| 9 | 외부 접근 도메인 구성 (Gateway API CRD 있을 때) | `scripts/23-setup-gateway.sh` |
+| 10 | 검증 + kubeconfig 컨텍스트 정리 | `scripts/99-verify.sh` + `13-set-config.sh` |
+
+> **nullus-api 환경 변수 (Stack 설치 기능 필수):**  
+> STEP 5 에서 push 된 OCI 차트를 인-클러스터 오케스트레이터가 참조하려면  
+> nullus-api 배포에 `NULLUS_HELM_OCI_REGISTRY=kind-registry:5000/charts` 를 설정해야 합니다.
 
 ---
 

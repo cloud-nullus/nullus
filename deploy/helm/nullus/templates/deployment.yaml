@@ -83,6 +83,22 @@ spec:
           value: {{ .Values.config.helm.timeout | quote }}
         - name: NULLUS_HELM_NAMESPACE_PREFIX
           value: {{ .Values.config.helm.namespacePrefix | quote }}
+        {{- if .Values.config.helm.ociRegistry }}
+        # airgap: 스택 차트를 온라인 레포 대신 로컬 OCI 레지스트리에서 pull
+        - name: NULLUS_HELM_OCI_REGISTRY
+          value: {{ .Values.config.helm.ociRegistry | quote }}
+        {{- end }}
+        # 오케스트레이터가 helm CLI 를 실행하는데 컨테이너 루트가 readOnlyRootFilesystem
+        # 이라 기본 캐시 경로(HOME/.cache)에 쓰지 못한다(Error: mkdir /.cache: read-only).
+        # helm 캐시/설정/데이터 및 HOME 을 쓰기 가능한 /tmp 로 돌린다.
+        - name: HOME
+          value: /tmp
+        - name: HELM_CACHE_HOME
+          value: /tmp/.helm/cache
+        - name: HELM_CONFIG_HOME
+          value: /tmp/.helm/config
+        - name: HELM_DATA_HOME
+          value: /tmp/.helm/data
         {{- if .Values.config.prometheus.url }}
         - name: NULLUS_PROMETHEUS_URL
           value: {{ .Values.config.prometheus.url | quote }}

@@ -10,7 +10,11 @@ import (
 	"time"
 )
 
-func installOCIChartWithHelmCLI(ctx context.Context, kubeconfig []byte, releaseName, chartName, namespace, version string) error {
+// installOCIChartWithHelmCLI runs `helm upgrade --install` for an OCI chart reference.
+// wait controls whether --wait is appended (nil defaults to true).
+// valuesFile, if non-empty, is passed via --values.
+// plainHTTP adds --plain-http for insecure HTTP OCI registries.
+func installOCIChartWithHelmCLI(ctx context.Context, kubeconfig []byte, releaseName, chartName, namespace, version string, wait *bool, valuesFile string, plainHTTP bool) error {
 	if strings.TrimSpace(releaseName) == "" || strings.TrimSpace(chartName) == "" || strings.TrimSpace(namespace) == "" {
 		return fmt.Errorf("invalid helm cli install arguments")
 	}
@@ -35,6 +39,19 @@ func installOCIChartWithHelmCLI(ctx context.Context, kubeconfig []byte, releaseN
 	args := []string{"upgrade", "--install", releaseName, chartName, "--namespace", namespace, "--create-namespace", "--skip-crds"}
 	if strings.TrimSpace(version) != "" {
 		args = append(args, "--version", version)
+	}
+	if valuesFile != "" {
+		args = append(args, "--values", valuesFile)
+	}
+	if plainHTTP {
+		args = append(args, "--plain-http")
+	}
+	doWait := true
+	if wait != nil {
+		doWait = *wait
+	}
+	if doWait {
+		args = append(args, "--wait")
 	}
 	args = append(args, "--kubeconfig", tmpFile.Name())
 	cmd := exec.CommandContext(ctx, "helm", args...)
