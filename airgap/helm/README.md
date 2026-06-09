@@ -21,9 +21,9 @@ airgap/helm/
 
 | 항목 | 기본값 (values.yaml) | Air-Gap 재정의 |
 |------|----------------------|----------------|
-| `api.image.repository` | `ghcr.io/cloud-nullus/nullus-api` | `localhost:5001/cloud-nullus/draft/nullus-api` |
+| `api.image.repository` | `ghcr.io/cloud-nullus/nullus-api` | `localhost:5001/cloud-nullus/nullus/nullus-api` |
 | `api.image.tag` | `0.1.0-alpha` | `main` |
-| `web.image.repository` | `ghcr.io/cloud-nullus/nullus-web` | `localhost:5001/cloud-nullus/draft/nullus-web` |
+| `web.image.repository` | `ghcr.io/cloud-nullus/nullus-web` | `localhost:5001/cloud-nullus/nullus/nullus-web` |
 | `web.image.tag` | `0.1.0-alpha` | `main` |
 | `postgresql.image.registry` | `docker.io` | `localhost:5001` |
 | `postgresql.image.repository` | `bitnami/postgresql` | `bitnamilegacy/postgresql` (2025-08 Bitnami 정책 변경) |
@@ -38,8 +38,8 @@ airgap/helm/
 
 | 원본 이미지 | localhost:5001 이미지 |
 |-------------|----------------------|
-| `ghcr.io/cloud-nullus/draft/nullus-api:main` | `localhost:5001/cloud-nullus/draft/nullus-api:main` |
-| `ghcr.io/cloud-nullus/draft/nullus-web:main` | `localhost:5001/cloud-nullus/draft/nullus-web:main` |
+| `ghcr.io/cloud-nullus/nullus/nullus-api:main` | `localhost:5001/cloud-nullus/nullus/nullus-api:main` |
+| `ghcr.io/cloud-nullus/nullus/nullus-web:main` | `localhost:5001/cloud-nullus/nullus/nullus-web:main` |
 | `docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r20` | `localhost:5001/bitnamilegacy/postgresql:17.5.0-debian-12-r20` |
 | `docker.io/bitnamilegacy/os-shell:12-debian-12-r49` | `localhost:5001/bitnamilegacy/os-shell:12-debian-12-r49` |
 

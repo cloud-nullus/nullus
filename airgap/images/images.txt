@@ -8,8 +8,8 @@
 busybox:1.37
 docker.io/bitnamilegacy/os-shell:12-debian-12-r49
 docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r20
-ghcr.io/cloud-nullus/draft/nullus-api:main
-ghcr.io/cloud-nullus/draft/nullus-web:main
+ghcr.io/cloud-nullus/nullus/nullus-api:main
+ghcr.io/cloud-nullus/nullus/nullus-web:main
 
 # --- Catalog images (Stack: Keycloak/Harbor/MinIO/ArgoCD/Prometheus) ---
 busybox:latest

@@ -30,7 +30,7 @@ global:
 # -----------------------------------------------------------------------------
 api:
   image:
-    repository: localhost:5001/cloud-nullus/draft/nullus-api
+    repository: localhost:5001/cloud-nullus/nullus/nullus-api
     tag: "main"
     pullPolicy: IfNotPresent
   resources:
@@ -47,7 +47,7 @@ api:
 # -----------------------------------------------------------------------------
 web:
   image:
-    repository: localhost:5001/cloud-nullus/draft/nullus-web
+    repository: localhost:5001/cloud-nullus/nullus/nullus-web
     tag: "main"
     pullPolicy: IfNotPresent
   resources:

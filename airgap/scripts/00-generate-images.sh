@@ -102,8 +102,8 @@ rewrite_upstream() {
 }
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  CHART_IMAGES="ghcr.io/cloud-nullus/draft/nullus-api:main
-ghcr.io/cloud-nullus/draft/nullus-web:main
+  CHART_IMAGES="ghcr.io/cloud-nullus/nullus/nullus-api:main
+ghcr.io/cloud-nullus/nullus/nullus-web:main
 docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r20"
 else
   CHART_IMAGES="$(printf '%s\n' "$RENDERED" | extract_images | rewrite_upstream | sort -u)"
