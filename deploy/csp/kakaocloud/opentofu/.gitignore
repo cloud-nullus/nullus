@@ -1,0 +1,25 @@
+# OpenTofu / Terraform 상태 파일 (절대 커밋 금지)
+*.tfstate
+*.tfstate.*
+
+# plan 출력물 (생성된 키·credential·IP 등 평문 attribute 포함 → 커밋 금지)
+tfplan
+*.tfplan
+
+# 로컬 provider 캐시
+.terraform/
+
+# lock 파일: registry 기반이므로 커밋한다 (provider 버전·해시 고정 → 팀원 재현성).
+#   로컬 dev_override 빌드만 쓸 거면 아래 줄 주석 해제해서 무시 가능.
+# .terraform.lock.hcl
+
+# 실제 변수 파일 (시크릿 포함, example 은 허용)
+*.tfvars
+!*.tfvars.example
+
+# SSH 개인키
+*.pem
+*.key
+
+# OpenTofu 생성 디렉토리
+generated/
