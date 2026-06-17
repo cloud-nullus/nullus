@@ -177,6 +177,22 @@ refactor(stack): Install Engine 상태 머신 정리
 docs: PRD v1.3 업데이트
 ```
 
+### PR 컨벤션
+
+`.github/workflows/lint-review.yml` 의 "PR Convention Check" 가 PR **제목·본문**을 강제한다 (위반 시 CI 실패). PR 생성 시 `.github/pull_request_template.md` 구조를 그대로 따른다.
+
+**제목**: `<type>(<module>): <설명>` (설명 1~72자)
+- type: `feat | fix | refactor | test | docs | chore | perf | ci`
+- module(선택): `stack | cicd | admin | auth | o11y | product | ui | shared | infra`
+- ⚠️ `csp` 모듈은 없음 — 클라우드/CSP·배포 인프라는 **`infra`** 사용
+
+**본문 필수 요소**: `## Summary`, `## Changes`, `## Testing` 섹션 + `Scope:` 줄(내용 필수)
+
+**주의**
+- `gh pr create --body ...` 는 PR 템플릿을 자동 적용하지 않는다 → 본문 직접 작성 시에도 위 4요소를 반드시 포함
+- 워크플로 트리거는 `pull_request: [opened, reopened]` 뿐(synchronize/edited 미포함) → 제목·본문만 고쳤다면 `gh pr close <n> && gh pr reopen <n>` 로 재검사
+- 커밋 메시지는 이 검사 대상이 아님(제목·본문만 검사)
+
 ### 코드 리뷰 기준
 
 - Clean Architecture 레이어 위반 없는지 확인
