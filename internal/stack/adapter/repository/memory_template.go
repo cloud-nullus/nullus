@@ -70,6 +70,8 @@ func (r *MemoryTemplateRepository) Delete(_ context.Context, id string) error {
 
 // goldenPathTemplates returns the canonical Golden Path templates.
 func goldenPathTemplates() []*domain.Template {
+	// Templates surface the tested matrix snapshot. The install runtime still
+	// reads chart versions from stack_helm_step_configs.
 	return []*domain.Template{
 		{
 			ID:                   "empty-template-v1",
@@ -85,13 +87,13 @@ func goldenPathTemplates() []*domain.Template {
 			Name:        "GitLab All-in-One",
 			Description: "GitLab CE 기반 단일 플랫폼. 소스코드 관리, CI/CD, 컨테이너 레지스트리를 GitLab에서 통합 제공합니다.",
 			Tools: []domain.ToolConfig{
-				{Category: "source_repository", Name: "GitLab CE", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
-				{Category: "ci_platform", Name: "GitLab CI", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
-				{Category: "container_registry", Name: "GitLab Registry", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
-				{Category: "storage_backend", Name: "MinIO", HelmVersion: "5.3.0", AppVersion: "2024.11.7"},
-				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"},
-				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "3.1.0"},
-				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: "8.5.0", AppVersion: "11.4.0"},
+				{Category: "source_repository", Name: "GitLab CE", HelmVersion: "9.5.1", AppVersion: "18.5.1"},
+				{Category: "ci_platform", Name: "GitLab CI", HelmVersion: "9.5.1", AppVersion: "18.5.1"},
+				{Category: "container_registry", Name: "GitLab Registry", HelmVersion: "9.5.1", AppVersion: "18.5.1"},
+				{Category: "storage_backend", Name: "MinIO", HelmVersion: "5.2.0", AppVersion: "RELEASE.2024-08-03T04-33-23Z"},
+				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "6.8.0", AppVersion: "v2.8.3"},
+				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "v2.54.1"},
+				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: "8.5.0", AppVersion: "11.1.0"},
 			},
 			EstimatedInstallTime: 90 * time.Minute,
 			RecommendedUseCase:   "중견기업, 단일 플랫폼 선호",
@@ -102,13 +104,13 @@ func goldenPathTemplates() []*domain.Template {
 			Name:        "GitLab + Argo CD",
 			Description: "GitLab CI와 GitLab Registry를 사용하고 Argo CD로 GitOps 패턴을 강화한 구성입니다.",
 			Tools: []domain.ToolConfig{
-				{Category: "source_repository", Name: "GitLab CE", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
-				{Category: "ci_platform", Name: "GitLab CI", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
-				{Category: "container_registry", Name: "GitLab Registry", HelmVersion: "8.7.2", AppVersion: "17.7.2"},
-				{Category: "storage_backend", Name: "MinIO", HelmVersion: "5.3.0", AppVersion: "2024.11.7"},
-				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"},
-				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "3.1.0"},
-				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: "8.5.0", AppVersion: "11.4.0"},
+				{Category: "source_repository", Name: "GitLab CE", HelmVersion: "9.5.1", AppVersion: "18.5.1"},
+				{Category: "ci_platform", Name: "GitLab CI", HelmVersion: "9.5.1", AppVersion: "18.5.1"},
+				{Category: "container_registry", Name: "GitLab Registry", HelmVersion: "9.5.1", AppVersion: "18.5.1"},
+				{Category: "storage_backend", Name: "MinIO", HelmVersion: "5.2.0", AppVersion: "RELEASE.2024-08-03T04-33-23Z"},
+				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "6.8.0", AppVersion: "v2.8.3"},
+				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "v2.54.1"},
+				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: "8.5.0", AppVersion: "11.1.0"},
 			},
 			EstimatedInstallTime: 120 * time.Minute,
 			RecommendedUseCase:   "GitOps 중심 조직",
