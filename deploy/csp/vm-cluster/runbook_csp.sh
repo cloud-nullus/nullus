@@ -606,6 +606,7 @@ _deploy_nullus_app() {
 
   log "컨테이너 레지스트리 Secret 생성 (GHCR 접근용)..."
   # GitHub PAT가 있는 경우 ghcr.io pull secret 생성
+  local pull_secret_set=""
   if [[ -n "${GHCR_PAT:-}" ]] && [[ -n "${GHCR_USER:-}" ]]; then
     kubectl create secret docker-registry ghcr-pull-secret \
       --namespace="${NULLUS_NAMESPACE}" \
@@ -615,6 +616,7 @@ _deploy_nullus_app() {
       --docker-email="${GHCR_USER}@users.noreply.github.com" \
       --dry-run=client -o yaml | kubectl apply -f -
     ok "GHCR pull secret 생성 완료"
+    pull_secret_set='--set imagePullSecrets[0].name=ghcr-pull-secret'
   else
     warn "GHCR_PAT / GHCR_USER 가 설정되지 않았습니다."
     warn "  ghcr.io/cloud-nullus 이미지가 public이라면 pull secret 없이 진행됩니다."
@@ -640,6 +642,7 @@ _deploy_nullus_app() {
     --set "ingress.hosts[0].host=${INGRESS_HOST}" \
     --set "ingress.hosts[0].paths[0].path=/" \
     --set "ingress.hosts[0].paths[0].pathType=Prefix" \
+    ${pull_secret_set} \
     --wait \
     --timeout 300s
 

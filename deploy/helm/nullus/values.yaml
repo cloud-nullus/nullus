@@ -1,3 +1,6 @@
+# 사설 레지스트리 이미지 pull 용 시크릿 (예: [{name: ghcr-pull-secret}]). 비우면 미적용.
+imagePullSecrets: []
+
 api:
   replicaCount: 2
   image:
