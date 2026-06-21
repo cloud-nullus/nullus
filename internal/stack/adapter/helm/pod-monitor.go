@@ -42,7 +42,7 @@ func (o *Orchestrator) StartStepRuntimeTail(ctx context.Context, stackID, step s
 		return nil
 	}
 
-	spec, ok := o.chartConfig[step]
+	spec, ok := o.chartSpecForStep(step)
 	if !ok {
 		return nil
 	}
@@ -123,7 +123,7 @@ func (o *Orchestrator) StepRuntimeLogs(ctx context.Context, stackID, step string
 		return nil, nil
 	}
 
-	spec, ok := o.chartConfig[step]
+	spec, ok := o.chartSpecForStep(step)
 	if !ok {
 		return nil, nil
 	}

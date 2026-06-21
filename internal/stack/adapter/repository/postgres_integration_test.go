@@ -83,7 +83,7 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		}
 		require.NoError(t, repo.Create(ctx, otherStack))
 
-		list, err := repo.List(ctx, orgID)
+		list, err := repo.List(ctx, orgID, false)
 		require.NoError(t, err)
 		assert.NotEmpty(t, list)
 		assert.True(t, containsStackID(list, stackID))
@@ -99,7 +99,7 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 
 		require.NoError(t, repo.Delete(ctx, stackID))
 
-		listAfterDelete, err := repo.List(ctx, orgID)
+		listAfterDelete, err := repo.List(ctx, orgID, false)
 		require.NoError(t, err)
 		assert.False(t, containsStackID(listAfterDelete, stackID))
 
@@ -255,6 +255,57 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		assert.Equal(t, "Custom Tool Updated", updated.DisplayName)
 		assert.Equal(t, 1.5, updated.CPURequest)
 	})
+
+	t.Run("helm step metadata repository CRUD", func(t *testing.T) {
+		repo := NewPostgresHelmStepMetadataRepository(pool)
+
+		stepName := "installing_test_chart_" + uuid.NewString()
+		t.Cleanup(func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM stack_helm_step_configs WHERE step_name = $1`, stepName)
+		})
+
+		now := time.Now().UTC().Truncate(time.Microsecond)
+		item := &domain.HelmStepMetadata{
+			StepName:    stepName,
+			ReleaseName: "test-release",
+			ChartName:   "test-chart",
+			RepoURL:     "https://example.com/charts",
+			Version:     "1.2.3",
+			Namespace:   "test-ns",
+			Phase:       "B",
+			SortOrder:   99,
+			Wait:        true,
+			IsEnabled:   true,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		require.NoError(t, repo.Create(ctx, item))
+
+		got, err := repo.GetByStep(ctx, stepName)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, item.ChartName, got.ChartName)
+		assert.Equal(t, item.RepoURL, got.RepoURL)
+
+		item.Version = "2.0.0"
+		item.Wait = false
+		require.NoError(t, repo.Update(ctx, item))
+
+		updated, err := repo.GetByStep(ctx, stepName)
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.0", updated.Version)
+		assert.False(t, updated.Wait)
+
+		list, err := repo.List(ctx)
+		require.NoError(t, err)
+		assert.True(t, containsHelmStepMetadata(list, stepName))
+
+		require.NoError(t, repo.Delete(ctx, stepName))
+		deleted, err := repo.GetByStep(ctx, stepName)
+		require.Error(t, err)
+		assert.Nil(t, deleted)
+	})
 }
 
 func setupPostgres(t *testing.T) (*pgxpool.Pool, func()) {
@@ -315,10 +366,6 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 	sort.Strings(upFiles)
-
-	if err := ensurePreMigrationTables(ctx, pool); err != nil {
-		return err
-	}
 
 	for _, filename := range upFiles {
 		path := filepath.Join(migrationsDir, filename)
@@ -443,4 +490,13 @@ func findResourceByToolKey(resources []*domain.ResourceDefault, toolKey string) 
 		}
 	}
 	return nil, false
+}
+
+func containsHelmStepMetadata(items []*domain.HelmStepMetadata, stepName string) bool {
+	for _, item := range items {
+		if item != nil && item.StepName == stepName {
+			return true
+		}
+	}
+	return false
 }
