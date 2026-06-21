@@ -91,8 +91,8 @@ log "9. Nullus 전체 배포 수행"
 export METALLB_IP_RANGE="172.16.2.200-172.16.2.220" # CSP망의 가용 IP 대역 사용
 export INGRESS_HOST="nullus.local"
 export APISERVER_EXTRA_SANS="${APISERVER_EXTRA_SANS:-<PUBLIC_IP>}"  # 실행 시 환경변수로 공인 IP 주입
-export DB_PASSWORD="change-me-in-production"
-export ENCRYPTION_KEY="nullus-dev-key-32bytes-padding!!"
+export DB_PASSWORD="${DB_PASSWORD:?DB_PASSWORD 를 환경변수로 주입하세요}"
+export ENCRYPTION_KEY="${ENCRYPTION_KEY:?ENCRYPTION_KEY(32바이트)를 환경변수로 주입하세요}"
 export IMAGE_TAG="0.1.0-alpha"
 export NULLUS_NAMESPACE="nullus"
 

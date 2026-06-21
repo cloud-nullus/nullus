@@ -40,7 +40,8 @@ POD_CIDR="${POD_CIDR:-192.168.0.0/16}"
 SERVICE_CIDR="${SERVICE_CIDR:-10.96.0.0/12}"
 
 # CNI 플러그인 (calico | cilium | flannel)
-CNI_PLUGIN="${CNI_PLUGIN:-flannel}"
+# 기본값 calico — POD_CIDR(192.168.0.0/16) 및 usage 안내와 일치
+CNI_PLUGIN="${CNI_PLUGIN:-calico}"
 
 # 마스터 노드 VIP 또는 로드밸런서 IP (HA 구성 시 필수)
 # 단일 마스터라면 해당 VM의 IP를 입력
@@ -233,6 +234,11 @@ _install_docker() {
   if command -v docker >/dev/null 2>&1; then
     ok "docker 이미 설치됨: $(docker --version)"
     return 0
+  fi
+
+  # cri-dockerd 설치가 .deb(ubuntu-jammy) 전용이라 apt 계열만 지원
+  if [[ "$PKG_MGR" != "apt" ]]; then
+    die "CONTAINER_RUNTIME=docker 는 apt 계열(Ubuntu/Debian)만 지원합니다. RHEL 계열은 CONTAINER_RUNTIME=containerd 를 사용하세요."
   fi
 
   log "Docker 설치 중..."
@@ -503,6 +509,17 @@ do_deploy() {
   require_cmd kubectl
   require_cmd helm
   _check_cluster_ready
+
+  # 기본 시크릿 값으로 배포 차단 + ENCRYPTION_KEY 32바이트 검증
+  if [[ "$DB_PASSWORD" == "change-me-in-production" ]]; then
+    die "DB_PASSWORD 가 기본값입니다. 배포 전 'export DB_PASSWORD=<강력한_값>' 으로 변경하세요."
+  fi
+  if [[ "$ENCRYPTION_KEY" == "change-me-32bytes-production!!" ]]; then
+    die "ENCRYPTION_KEY 가 기본값입니다. 배포 전 'export ENCRYPTION_KEY=<32바이트_키>' 로 변경하세요."
+  fi
+  if [[ ${#ENCRYPTION_KEY} -ne 32 ]]; then
+    die "ENCRYPTION_KEY 길이가 ${#ENCRYPTION_KEY}바이트입니다 — 정확히 32바이트여야 합니다."
+  fi
 
   log "=== Nullus 배포 시작 ==="
   log "  Namespace: ${NULLUS_NAMESPACE}"
