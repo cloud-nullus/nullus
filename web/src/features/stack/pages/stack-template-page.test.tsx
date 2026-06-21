@@ -11,6 +11,11 @@ const mockDeleteTemplateMutate = vi.fn()
 const SEARCH_PLACEHOLDER = /Search templates\.\.\.|템플릿 검색\.\.\./
 const EMPTY_RESULT_MESSAGE = /No templates found\.|No search results found\.|검색 결과가 없습니다\./
 
+const getTemplateCard = (title: string) => {
+  const heading = screen.getByRole('heading', { name: title })
+  return heading.closest('div')?.parentElement as HTMLElement
+}
+
 const mockTemplates = [
   {
     id: 'empty-template-v1',
@@ -97,9 +102,23 @@ describe('StackTemplatePage', () => {
     expect(screen.getByText('GitHub + ArgoCD')).toBeInTheDocument()
   })
 
-  it('renders 4 Use Base Template buttons', () => {
+  it('labels template versions as matrix snapshot values', async () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByText('Use As Base')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'stackTemplatePage.actions.viewDetail' })[2])
+
+    const dialog = await screen.findByRole('dialog', { name: 'GitLab + ArgoCD' })
+
+    expect(
+      within(dialog).getByText('stackTemplatePage.modal.matrixVersionNote'),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByText('Matrix Helm: 9.5.1')).toBeInTheDocument()
+    expect(within(dialog).getByText('Matrix App: 18.5.1')).toBeInTheDocument()
+  })
+
+  it('renders 4 template detail buttons', () => {
+    renderWithProviders(<StackTemplatePage />)
+    const buttons = screen.getAllByRole('button', { name: 'stackTemplatePage.actions.viewDetail' })
     expect(buttons).toHaveLength(4)
   })
 
@@ -153,17 +172,15 @@ describe('StackTemplatePage', () => {
 
   it('clicking Use Base Template navigates to /stack/install', () => {
     renderWithProviders(<StackTemplatePage />)
-    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
-    expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByText('Use As Base'))
+    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
   it('clicking Use Base Template sets template in store and clears unselected slots', () => {
     renderWithProviders(<StackTemplatePage />)
-    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
-    expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByText('Use As Base'))
+    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
     expect(draft.logging.search.tool).toBe('')
@@ -173,10 +190,8 @@ describe('StackTemplatePage', () => {
 
   it('clicking Empty Template clears install selections in store', () => {
     renderWithProviders(<StackTemplatePage />)
-    const templateCard = screen.getByText('Empty Template').closest('[role="button"]')
-    expect(templateCard).toBeTruthy()
-
-    fireEvent.click(within(templateCard as HTMLElement).getByText('Use As Base'))
+    fireEvent.click(within(getTemplateCard('Empty Template')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
 
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('empty-template-v1')
@@ -249,9 +264,7 @@ describe('StackTemplatePage', () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
-    expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Edit' }))
+    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'Edit' }))
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GitLab All-in-One Updated' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -264,9 +277,7 @@ describe('StackTemplatePage', () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    const templateCard = screen.getByText('GitLab + ArgoCD').closest('[role="button"]')
-    expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Edit' }))
+    fireEvent.click(within(getTemplateCard('GitLab + ArgoCD')).getByRole('button', { name: 'Edit' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
@@ -300,12 +311,9 @@ describe('StackTemplatePage', () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    const duplicateButtons = screen.getAllByRole('button', { name: 'Duplicate' })
-    expect(duplicateButtons).toHaveLength(4)
-
-    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
-    expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByRole('button', { name: 'Duplicate' }))
+    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    expect(screen.getByRole('button', { name: 'Duplicate' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
 
     await waitFor(() => {
       expect(mockCreateTemplateMutate).toHaveBeenCalled()

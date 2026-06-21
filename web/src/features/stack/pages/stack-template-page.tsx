@@ -816,6 +816,12 @@ export function StackTemplatePage() {
               <h4 className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">
                 {t("stackTemplatePage.modal.includedTools", "Included Tools")}
               </h4>
+              <p className="m-0 mb-2 text-xs text-[var(--color-text-muted)]">
+                {t(
+                  "stackTemplatePage.modal.matrixVersionNote",
+                  "These versions reflect the validated matrix snapshot used for template guidance.",
+                )}
+              </p>
               {selectedTemplate.toolDetails &&
               selectedTemplate.toolDetails.length > 0 ? (
                 <div className="space-y-2">
@@ -841,8 +847,8 @@ export function StackTemplatePage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                          <span>Helm: {tool.helm_version}</span>
-                          <span>App: {tool.app_version}</span>
+                          <span>Matrix Helm: {tool.helm_version}</span>
+                          <span>Matrix App: {tool.app_version}</span>
                         </div>
                       </div>
                     );
