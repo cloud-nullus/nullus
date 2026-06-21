@@ -24,6 +24,14 @@ const mockStacks = {
   total: 0,
 }
 
+const mockClusters = {
+  items: [
+    { id: 'cluster-1', name: 'kind-nullus-platform', status: 'connected' },
+    { id: 'cluster-2', name: 'kind-nullus-develop', status: 'pending' },
+  ] as Array<{ id: string; name: string; status: string }>,
+  total: 2,
+}
+
 const mockCompatibilityMatrices = [
   {
     id: 'gitlab-allinone-v1',
@@ -128,6 +136,7 @@ vi.mock('../api/stack-api', () => ({
   useStacks: () => ({ data: mockStacks }),
   useResourceDefaults: () => ({ data: mockResourceDefaults }),
   useDeployStack: () => ({ mutate: vi.fn(), mutateAsync: mockDeployStackAsync, isPending: false }),
+  useTestStorageConnection: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useCompatibilityMatrix: () => ({ data: mockCompatibilityMatrices }),
   // F8-F3 server-side Pre-Deploy Gate. Default returns pass so existing
   // tests that don't touch the gate still behave as before.
@@ -139,15 +148,7 @@ vi.mock('../api/stack-api', () => ({
 }))
 
 vi.mock('../../admin/api/admin-api', () => ({
-  useClusters: () => ({
-    data: {
-      items: [
-        { id: 'cluster-1', name: 'test-cluster', status: 'connected' },
-        { id: 'cluster-2', name: 'dev-cluster', status: 'pending' },
-      ],
-      total: 2,
-    },
-  }),
+  useClusters: () => ({ data: mockClusters }),
   useClusterNamespaces: () => ({ data: [] }),
   useOrgResourceProfiles: () => ({ data: mockOrgResourceProfiles }),
   useCreateOrgResourceProfile: () => ({ mutate: mockCreateOrgResourceProfileMutate, mutateAsync: vi.fn(), isPending: false }),
@@ -184,6 +185,11 @@ beforeEach(() => {
   mockResourceDefaults.total = 0
   mockStacks.items = []
   mockStacks.total = 0
+  mockClusters.items = [
+    { id: 'cluster-1', name: 'kind-nullus-platform', status: 'connected' },
+    { id: 'cluster-2', name: 'kind-nullus-develop', status: 'pending' },
+  ]
+  mockClusters.total = 2
   mockOrgResourceProfiles.splice(0)
   mockCreateOrgResourceProfileMutate.mockReset()
   mockUpdateOrgResourceProfileMutate.mockReset()
@@ -226,8 +232,14 @@ describe('StackInstallPage', () => {
   it('shows all clusters from Cluster Management in target cluster select', () => {
     renderWithProviders(<StackInstallPage />)
     const select = screen.getByLabelText('Target Cluster')
-    expect(within(select).getByRole('option', { name: 'test-cluster (Connected)' })).toBeInTheDocument()
-    expect(within(select).getByRole('option', { name: 'dev-cluster (Pending)' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'kind-nullus-platform (Connected)' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'kind-nullus-develop (Pending)' })).toBeInTheDocument()
+  })
+
+  it('prefers the platform cluster by default', () => {
+    renderWithProviders(<StackInstallPage />)
+    const draft = useStackConfigStore.getState().draft
+    expect(draft.clusterId).toBe('cluster-1')
   })
 
   it('applies template overrides from query parameter on first load', () => {
@@ -459,6 +471,8 @@ describe('StackInstallPage', () => {
   })
 
   it('blocks YAML tab until required fields are selected', () => {
+    mockClusters.items = []
+    mockClusters.total = 0
     renderWithProviders(<StackInstallPage />)
     fireEvent.click(screen.getByRole('button', { name: 'YAML View' }))
     expect(screen.queryByTestId('monaco-yaml-editor')).toBeNull()

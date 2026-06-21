@@ -23,13 +23,14 @@ import (
 
 // StackHandler handles HTTP requests for stack operations.
 type StackHandler struct {
-	createStack *usecase.CreateStack
-	listStacks  *usecase.ListStacks
-	deleteStack *usecase.DeleteStack
-	addToolsUC  *usecase.AddToolsUseCase
-	stackRepo   port.StackRepository
-	audit       *audit.AuditLogger
-	pool        *pgxpool.Pool
+	createStack   *usecase.CreateStack
+	listStacks    *usecase.ListStacks
+	deleteStack   *usecase.DeleteStack
+	addToolsUC    *usecase.AddToolsUseCase
+	manageHistory *usecase.ManageHistory
+	stackRepo     port.StackRepository
+	audit         *audit.AuditLogger
+	pool          *pgxpool.Pool
 }
 
 // StackHandlerOption configures optional StackHandler dependencies.
@@ -62,6 +63,11 @@ func NewStackHandler(
 		o(h)
 	}
 	return h
+}
+
+// WithStackManageHistory enables history snapshotting for stack config updates.
+func WithStackManageHistory(manageHistory *usecase.ManageHistory) StackHandlerOption {
+	return func(h *StackHandler) { h.manageHistory = manageHistory }
 }
 
 // RegisterRoutes registers stack routes on the given Echo group.
@@ -439,6 +445,16 @@ func (h *StackHandler) SaveConfig(c echo.Context) error {
 	}
 
 	stack.Config = req.Config
+	if h.manageHistory != nil {
+		if _, err := h.manageHistory.SaveVersion(c.Request().Context(), usecase.SaveVersionInput{
+			StackID:      stack.ID,
+			Config:       req.Config,
+			ChangedBy:    "system",
+			ChangeReason: "config updated",
+		}); err != nil {
+			return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
+		}
+	}
 
 	if err := h.stackRepo.Update(c.Request().Context(), stack); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", err.Error())

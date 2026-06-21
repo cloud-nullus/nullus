@@ -62,6 +62,14 @@ func TestMemoryTemplateRepository_GetByID_GitLabArgoCD(t *testing.T) {
 	assert.Equal(t, "GitLab + Argo CD", tmpl.Name)
 	assert.NotEmpty(t, tmpl.Tools)
 
+	toolByCategory := make(map[string]domain.ToolConfig, len(tmpl.Tools))
+	for _, tool := range tmpl.Tools {
+		toolByCategory[tool.Category] = tool
+	}
+	assert.Equal(t, "18.5.1", toolByCategory["source_repository"].AppVersion)
+	assert.Equal(t, "v2.8.3", toolByCategory["cd_tool"].AppVersion)
+	assert.Equal(t, "11.1.0", toolByCategory["monitoring_visualization"].AppVersion)
+
 	var hasGitLabRegistry bool
 	for _, tool := range tmpl.Tools {
 		if tool.Name == "GitLab Registry" {

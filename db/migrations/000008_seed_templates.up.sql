@@ -25,13 +25,13 @@ INSERT INTO golden_path_templates (
     'GitLab All-in-One',
     'GitLab CE 기반 단일 플랫폼. 소스코드 관리, CI/CD, 컨테이너 레지스트리를 GitLab에서 통합 제공합니다.',
     $$[
-      {"category":"source_repository","name":"GitLab CE","helm_version":"8.7.2","app_version":"17.7.2"},
-      {"category":"ci_platform","name":"GitLab CI","helm_version":"8.7.2","app_version":"17.7.2"},
-      {"category":"container_registry","name":"GitLab Registry","helm_version":"8.7.2","app_version":"17.7.2"},
-      {"category":"storage_backend","name":"MinIO","helm_version":"5.3.0","app_version":"2024.11.7"},
-      {"category":"cd_tool","name":"Argo CD","helm_version":"7.7.2","app_version":"2.13.2"},
-      {"category":"monitoring_collection","name":"Prometheus","helm_version":"67.0.0","app_version":"3.1.0"},
-      {"category":"monitoring_visualization","name":"Grafana","helm_version":"8.5.0","app_version":"11.4.0"}
+      {"category":"source_repository","name":"GitLab CE","helm_version":"9.5.1","app_version":"18.5.1"},
+      {"category":"ci_platform","name":"GitLab CI","helm_version":"9.5.1","app_version":"18.5.1"},
+      {"category":"container_registry","name":"GitLab Registry","helm_version":"9.5.1","app_version":"18.5.1"},
+      {"category":"storage_backend","name":"MinIO","helm_version":"5.2.0","app_version":"RELEASE.2024-08-03T04-33-23Z"},
+      {"category":"cd_tool","name":"Argo CD","helm_version":"6.8.0","app_version":"v2.8.3"},
+      {"category":"monitoring_collection","name":"Prometheus","helm_version":"67.0.0","app_version":"v2.54.1"},
+      {"category":"monitoring_visualization","name":"Grafana","helm_version":"8.5.0","app_version":"11.1.0"}
     ]$$::jsonb,
     90,
     '중견기업, 단일 플랫폼 선호',
@@ -42,13 +42,13 @@ INSERT INTO golden_path_templates (
     'GitLab + Argo CD',
     'GitLab CI와 Harbor 레지스트리를 분리하여 GitOps 패턴을 강화한 구성입니다.',
     $$[
-      {"category":"source_repository","name":"GitLab CE","helm_version":"8.7.2","app_version":"17.7.2"},
-      {"category":"ci_platform","name":"GitLab CI","helm_version":"8.7.2","app_version":"17.7.2"},
+      {"category":"source_repository","name":"GitLab CE","helm_version":"9.5.1","app_version":"18.5.1"},
+      {"category":"ci_platform","name":"GitLab CI","helm_version":"9.5.1","app_version":"18.5.1"},
       {"category":"container_registry","name":"Harbor","helm_version":"1.14.0","app_version":"2.11.0"},
-      {"category":"storage_backend","name":"MinIO","helm_version":"5.3.0","app_version":"2024.11.7"},
-      {"category":"cd_tool","name":"Argo CD","helm_version":"7.7.2","app_version":"2.13.2"},
-      {"category":"monitoring_collection","name":"Prometheus","helm_version":"67.0.0","app_version":"3.1.0"},
-      {"category":"monitoring_visualization","name":"Grafana","helm_version":"8.5.0","app_version":"11.4.0"}
+      {"category":"storage_backend","name":"MinIO","helm_version":"5.2.0","app_version":"RELEASE.2024-08-03T04-33-23Z"},
+      {"category":"cd_tool","name":"Argo CD","helm_version":"6.8.0","app_version":"v2.8.3"},
+      {"category":"monitoring_collection","name":"Prometheus","helm_version":"67.0.0","app_version":"v2.54.1"},
+      {"category":"monitoring_visualization","name":"Grafana","helm_version":"8.5.0","app_version":"11.1.0"}
     ]$$::jsonb,
     120,
     'GitOps 중심 조직',
@@ -62,10 +62,10 @@ INSERT INTO golden_path_templates (
       {"category":"source_repository","name":"GitHub","helm_version":"external","app_version":"external"},
       {"category":"ci_platform","name":"GitHub Actions","helm_version":"external","app_version":"external"},
       {"category":"container_registry","name":"Harbor","helm_version":"1.14.0","app_version":"2.11.0"},
-      {"category":"storage_backend","name":"MinIO","helm_version":"5.3.0","app_version":"2024.11.7"},
-      {"category":"cd_tool","name":"Argo CD","helm_version":"7.7.2","app_version":"2.13.2"},
-      {"category":"monitoring_collection","name":"Prometheus","helm_version":"67.0.0","app_version":"3.1.0"},
-      {"category":"monitoring_visualization","name":"Grafana","helm_version":"8.5.0","app_version":"11.4.0"}
+      {"category":"storage_backend","name":"MinIO","helm_version":"5.2.0","app_version":"RELEASE.2024-08-03T04-33-23Z"},
+      {"category":"cd_tool","name":"Argo CD","helm_version":"6.8.0","app_version":"v2.8.3"},
+      {"category":"monitoring_collection","name":"Prometheus","helm_version":"67.0.0","app_version":"v2.54.1"},
+      {"category":"monitoring_visualization","name":"Grafana","helm_version":"8.5.0","app_version":"11.1.0"}
     ]$$::jsonb,
     60,
     'GitHub 사용 조직',

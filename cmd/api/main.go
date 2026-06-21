@@ -95,6 +95,9 @@ func main() {
 	// Stack: postgres repos + log streamer
 	pgStackRepo := stackrepo.NewPostgresStackRepository(pool)
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
+	pgHelmStepMetadataRepo := stackrepo.NewPostgresHelmStepMetadataRepository(pool)
+	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
+	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 	memStreamer := logadapter.NewMemoryStreamer()
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
@@ -104,10 +107,10 @@ func main() {
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			return stackhelm.NewOrchestrator(installer, kubeconfig, "")
+			return stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo))
 		}),
 	)
-	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)
+	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo, stackuc.WithManageHistory(manageHistoryUC))
 	listStacksUC := stackuc.NewListStacks(pgStackRepo)
 	deleteStackUC := stackuc.NewDeleteStack(
 		pgStackRepo,
@@ -126,8 +129,8 @@ func main() {
 	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger).
-		WithOptions(stackhandler.WithKubeconfigProvider(kubeconfigProvider))
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithPool(pool))
+		WithOptions(stackhandler.WithKubeconfigProvider(kubeconfigProvider), stackhandler.WithManageHistory(manageHistoryUC))
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithStackManageHistory(manageHistoryUC), stackhandler.WithPool(pool))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
@@ -136,8 +139,6 @@ func main() {
 	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
 	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
 
-	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
-	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
 	monitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
 

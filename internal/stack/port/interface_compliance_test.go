@@ -24,6 +24,9 @@ var _ port.LogStreamer = (*logadapter.MemoryStreamer)(nil)
 var _ port.ResourceDefaultRepository = (*stackrepo.PostgresResourceDefaultRepository)(nil)
 var _ port.ResourceDefaultRepository = (*stackrepo.MemoryResourceDefaultRepository)(nil)
 
+var _ port.HelmStepMetadataRepository = (*stackrepo.PostgresHelmStepMetadataRepository)(nil)
+var _ port.HelmStepMetadataRepository = (*stackrepo.MemoryHelmStepMetadataRepository)(nil)
+
 var _ port.StepExecutor = (*helmadapter.Orchestrator)(nil)
 var _ port.KubeconfigProvider = (*stackrepo.PostgresKubeconfigProvider)(nil)
 var _ port.HelmInstaller = (*helmadapter.HelmInstaller)(nil)

@@ -59,22 +59,22 @@ var checkExistingCertManagerInstallation = func(ctx context.Context, o *Orchestr
 }
 
 type Orchestrator struct {
-	installer           port.HelmInstaller
-	resourceDefaultRepo port.ResourceDefaultRepository
-	rollback            *RollbackManager
-	kubeconfig          []byte
-	namespace           string
-	chartConfig         map[string]ChartSpec
-	stepOrder           map[string]int
-	orderedStep         []string
-	stackConfig         *domain.StackConfig
-	stepConfigFieldPath map[string]string
-	stepConfigEnabled   map[string]func(domain.StackConfig) bool
-	mu                  sync.Mutex
-	progress            map[string]int
-	resourceDefaults    map[string]*domain.ResourceDefault
-	defaultsLoaded      bool
-	sharedClusterScoped bool
+	installer            port.HelmInstaller
+	helmStepMetadataRepo port.HelmStepMetadataRepository
+	resourceDefaultRepo  port.ResourceDefaultRepository
+	rollback             *RollbackManager
+	kubeconfig           []byte
+	namespace            string
+	stepOrder            map[string]int
+	orderedStep          []string
+	stackConfig          *domain.StackConfig
+	stepConfigFieldPath  map[string]string
+	stepConfigEnabled    map[string]func(domain.StackConfig) bool
+	mu                   sync.Mutex
+	progress             map[string]int
+	resourceDefaults     map[string]*domain.ResourceDefault
+	defaultsLoaded       bool
+	sharedClusterScoped  bool
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -105,9 +105,9 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 			continue
 		}
 
-		spec, ok := o.chartConfig[step]
+		spec, ok := o.chartSpecForStep(step)
 		if !ok {
-			return fmt.Errorf("chart config not found for step %s", step)
+			continue
 		}
 		spec = o.resolveChartSpecForStep(step, spec)
 		if strings.TrimSpace(spec.ChartName) == "" {
@@ -179,7 +179,7 @@ func (o *Orchestrator) cleanupResidualReleaseResources(ctx context.Context) erro
 	var errs []error
 
 	for _, step := range o.orderedStep {
-		spec, ok := o.chartConfig[step]
+		spec, ok := o.chartSpecForStep(step)
 		if !ok {
 			continue
 		}
@@ -283,105 +283,6 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		rollback:   &RollbackManager{},
 		kubeconfig: kubeconfig,
 		namespace:  namespace,
-		chartConfig: map[string]ChartSpec{
-			stepInstallingCertManager: {
-				ChartName: "cert-manager",
-				RepoURL:   "https://charts.jetstack.io",
-				Version:   "v1.16.3",
-				Namespace: "cert-manager",
-				Values:    DefaultValues(stepInstallingCertManager),
-				Wait:      false,
-			},
-			"installing_metrics_server": {
-				ChartName: "metrics-server",
-				RepoURL:   "https://kubernetes-sigs.github.io/metrics-server/",
-				Version:   "3.12.2",
-				Values:    DefaultValues("installing_metrics_server"),
-				Wait:      false,
-			},
-			"installing_postgresql": {
-				ReleaseName: "nullus-postgresql",
-				ChartName:   "postgresql",
-				RepoURL:     "https://charts.bitnami.com/bitnami",
-				Values:      DefaultValues("installing_postgresql"),
-				Wait:        false,
-			},
-			"installing_minio": {
-				ReleaseName: "nullus-minio",
-				ChartName:   "minio",
-				RepoURL:     "https://charts.min.io/",
-				Version:     "5.4.0",
-				Values:      DefaultValues("installing_minio"),
-				Wait:        false,
-			},
-			"installing_object_storage_secret":     {},
-			"installing_object_storage_buckets":    {},
-			"installing_database_connection_check": {},
-			"installing_openbao":                   {},
-			"installing_gitlab": {
-				ChartName: "gitlab",
-				RepoURL:   "https://charts.gitlab.io/",
-				Version:   "8.7.2",
-				Values:    DefaultValues("installing_gitlab"),
-				Wait:      false,
-			},
-			"installing_argocd": {
-				ChartName: "argo-cd",
-				RepoURL:   "https://argoproj.github.io/argo-helm",
-				Version:   "7.7.16",
-				Values:    DefaultValues("installing_argocd"),
-				Wait:      false,
-			},
-			stepInstallingRunner: {
-				ChartName: "gitlab-runner",
-				RepoURL:   "https://charts.gitlab.io/",
-				Version:   "0.72.0",
-				Values:    DefaultValues(stepInstallingRunner),
-				Wait:      false,
-			},
-			"installing_prometheus": {
-				ChartName: "kube-prometheus-stack",
-				RepoURL:   "https://prometheus-community.github.io/helm-charts",
-				Version:   "69.3.0",
-				Values:    DefaultValues("installing_prometheus"),
-				Wait:      false,
-			},
-			"installing_grafana": {
-				ChartName: "grafana",
-				RepoURL:   "https://grafana.github.io/helm-charts",
-				Version:   "8.9.0",
-				Values:    DefaultValues("installing_grafana"),
-				Wait:      false,
-			},
-			"installing_logging": {
-				ChartName: "loki",
-				RepoURL:   "https://grafana.github.io/helm-charts",
-				Version:   "2.10.3",
-				Values:    DefaultValues("installing_logging"),
-				Wait:      false,
-			},
-			"installing_log_search": {
-				ChartName: "opensearch",
-				RepoURL:   "https://opensearch-project.github.io/helm-charts",
-				Version:   "2.22.0",
-				Values:    DefaultValues("installing_logging_opensearch"),
-				Wait:      false,
-			},
-			"installing_opentelemetry": {
-				ChartName: "opentelemetry-collector",
-				RepoURL:   "https://open-telemetry.github.io/opentelemetry-helm-charts",
-				Version:   "0.75.0",
-				Values:    DefaultValues("installing_opentelemetry"),
-				Wait:      false,
-			},
-			"installing_gateway": {
-				ReleaseName: "eg",
-				ChartName:   "oci://docker.io/envoyproxy/gateway-helm",
-				Version:     "1.4.3",
-				Wait:        false,
-			},
-			"integration_check": {},
-		},
 		stepOrder: map[string]int{
 			stepInstallingCertManager:              0,
 			"installing_metrics_server":            1,
@@ -536,7 +437,9 @@ func isGitLabCISelection(sel domain.ToolSelection) bool {
 }
 
 func normalizeToolName(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	normalized = strings.NewReplacer(" ", "-", "_", "-").Replace(normalized)
+	return normalized
 }
 
 func (o *Orchestrator) SetNamespace(namespace string) {
@@ -578,13 +481,11 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	_ = stackID
 	_ = phase
 
-	spec, ok := o.chartConfig[step]
-	if !ok {
-		return fmt.Errorf("unknown step %q", step)
-	}
-
 	order, ok := o.stepOrder[step]
 	if !ok {
+		if _, specOK := o.chartSpecForStep(step); !specOK {
+			return fmt.Errorf("unknown step %q", step)
+		}
 		return fmt.Errorf("step order not defined for %q", step)
 	}
 	if err := o.ensureOrder(stackID, step, order); err != nil {
@@ -612,24 +513,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
-	namespace := o.namespace
-	if spec.Namespace != "" {
-		namespace = spec.Namespace
-	}
-	if step == stepInstallingCertManager && looksLikeKubeconfig(o.kubeconfig) {
-		if releaseNamespace, err := o.detectCertManagerReleaseNamespaceFromCRD(ctx); err == nil && strings.TrimSpace(releaseNamespace) != "" {
-			namespace = strings.TrimSpace(releaseNamespace)
-		}
-	}
-
 	if step == "installing_object_storage_secret" {
 		if !looksLikeKubeconfig(o.kubeconfig) {
 			o.markCompleted(stackID, order)
 			return nil
 		}
-		manifest := o.sharedObjectStorageSecretManifest(namespace)
+		manifest := o.sharedObjectStorageSecretManifest(o.namespace)
 		if strings.TrimSpace(manifest) != "" {
-			if err := o.applyManifest(ctx, namespace, manifest); err != nil {
+			if err := o.applyManifest(ctx, o.namespace, manifest); err != nil {
 				return fmt.Errorf("apply object storage secret manifest: %w", err)
 			}
 		}
@@ -642,7 +533,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			o.markCompleted(stackID, order)
 			return nil
 		}
-		if err := o.ensureGitLabObjectStorageBuckets(ctx, namespace); err != nil {
+		if err := o.ensureGitLabObjectStorageBuckets(ctx, o.namespace); err != nil {
 			return fmt.Errorf("ensure gitlab object storage buckets: %w", err)
 		}
 		o.markCompleted(stackID, order)
@@ -654,11 +545,27 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			o.markCompleted(stackID, order)
 			return nil
 		}
-		if err := o.ensureGitLabDatabaseConnectivity(ctx, namespace); err != nil {
+		if err := o.ensureGitLabDatabaseConnectivity(ctx, o.namespace); err != nil {
 			return fmt.Errorf("ensure gitlab database connectivity: %w", err)
 		}
 		o.markCompleted(stackID, order)
 		return nil
+	}
+
+	spec, ok := o.chartSpecForStep(step)
+	if !ok {
+		return fmt.Errorf("unknown step %q", step)
+	}
+	spec = o.resolveChartSpecForStep(step, spec)
+
+	namespace := o.namespace
+	if spec.Namespace != "" {
+		namespace = spec.Namespace
+	}
+	if step == stepInstallingCertManager && looksLikeKubeconfig(o.kubeconfig) {
+		if releaseNamespace, err := o.detectCertManagerReleaseNamespaceFromCRD(ctx); err == nil && strings.TrimSpace(releaseNamespace) != "" {
+			namespace = strings.TrimSpace(releaseNamespace)
+		}
 	}
 
 	spec = o.resolveChartSpecForStep(step, spec)

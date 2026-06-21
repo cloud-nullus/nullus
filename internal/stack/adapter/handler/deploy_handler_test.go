@@ -34,6 +34,24 @@ func newDeployEcho(t *testing.T) (*echo.Echo, *stackrepo.MemoryStackRepository) 
 	return e, repo
 }
 
+func newDeployEchoWithHistory(t *testing.T) (*echo.Echo, *stackrepo.MemoryStackRepository, *stackrepo.MemoryHistoryRepository) {
+	t.Helper()
+
+	e := echo.New()
+	repo := stackrepo.NewMemoryStackRepository()
+	historyRepo := stackrepo.NewMemoryHistoryRepository()
+	streamer := stacklog.NewMemoryStreamer()
+	install := usecase.NewInstallStack(repo, streamer)
+	manageHistory := usecase.NewManageHistory(historyRepo)
+	h := stackhandler.NewDeployHandler(install, repo, streamer).
+		WithOptions(stackhandler.WithManageHistory(manageHistory))
+
+	v1 := e.Group("/api/v1")
+	h.RegisterRoutes(v1, e)
+
+	return e, repo, historyRepo
+}
+
 func seedStack(t *testing.T, repo *stackrepo.MemoryStackRepository, state domain.DeploymentState) string {
 	t.Helper()
 
@@ -67,6 +85,23 @@ func TestDeployHandler_Deploy_202Accepted(t *testing.T) {
 	assert.Equal(t, id, resp["stack_id"])
 	assert.Equal(t, "accepted", resp["status"])
 	assert.Contains(t, resp["message"], "/ws/deployments/")
+}
+
+func TestDeployHandler_Deploy_SavesHistorySnapshot(t *testing.T) {
+	e, repo, historyRepo := newDeployEchoWithHistory(t)
+	id := seedStack(t, repo, domain.StatePending)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/deploy", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	versions, err := historyRepo.ListVersions(context.Background(), id)
+	require.NoError(t, err)
+	require.Len(t, versions, 1)
+	assert.Equal(t, 1, versions[0].Version)
+	assert.Equal(t, "deployment started", versions[0].ChangeReason)
 }
 
 func TestDeployHandler_Deploy_400WhenStackNotFound(t *testing.T) {

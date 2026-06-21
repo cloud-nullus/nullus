@@ -500,7 +500,7 @@ erDiagram
 | 조직/사용자 | `organizations`, `users`, `org_members` | 조직 및 멤버 관리 |
 | 클러스터 | `clusters` | 등록 대상 클러스터 |
 | Stack | `stacks`(soft delete), `stack_config_versions` | 본문 설정 + 버전 이력(삭제 후 보존) |
-| Stack 카탈로그 | `golden_path_templates`, `compatibility_matrices`, `stack_resource_defaults`, `known_issues` | DB 중심 카탈로그 |
+| Stack 카탈로그 | `golden_path_templates`, `compatibility_matrices`, `stack_resource_defaults`, `stack_helm_step_configs`, `known_issues` | DB 중심 카탈로그 |
 | CI/CD | `pipeline_templates`, `pipelines`, `pipeline_deployments` | 파이프라인 정의/실행 |
 | Observability | `alert_rules`, `alerts` | 규칙/이력 |
 | 운영 로그 | `audit_logs` | 감사 로그 |
@@ -512,6 +512,7 @@ erDiagram
 - `stack_config_versions.config`
 - `golden_path_templates.tools`
 - `compatibility_matrices.tools`
+- `stack_helm_step_configs`의 `version`, `repo_url`, `namespace`
 - `notification_configs.config`
 
 #### 7.4 StackConfig 현재 구조
@@ -1045,6 +1046,7 @@ flowchart LR
 #### 현재 데이터 모델
 
 - `stack_resource_defaults`
+- `stack_helm_step_configs`
 
 #### 현재 구현 포인트
 

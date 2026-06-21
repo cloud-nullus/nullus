@@ -27,16 +27,31 @@ type CreateStackOutput struct {
 
 // CreateStack creates a new stack configuration, optionally loading defaults from a template.
 type CreateStack struct {
-	stackRepo    port.StackRepository
-	templateRepo port.TemplateRepository
+	stackRepo     port.StackRepository
+	templateRepo  port.TemplateRepository
+	manageHistory *ManageHistory
+}
+
+// CreateStackOption configures optional CreateStack dependencies.
+type CreateStackOption func(*CreateStack)
+
+// WithManageHistory enables automatic initial version snapshots.
+func WithManageHistory(manageHistory *ManageHistory) CreateStackOption {
+	return func(uc *CreateStack) {
+		uc.manageHistory = manageHistory
+	}
 }
 
 // NewCreateStack constructs a CreateStack use case.
-func NewCreateStack(stackRepo port.StackRepository, templateRepo port.TemplateRepository) *CreateStack {
-	return &CreateStack{
+func NewCreateStack(stackRepo port.StackRepository, templateRepo port.TemplateRepository, opts ...CreateStackOption) *CreateStack {
+	uc := &CreateStack{
 		stackRepo:    stackRepo,
 		templateRepo: templateRepo,
 	}
+	for _, opt := range opts {
+		opt(uc)
+	}
+	return uc
 }
 
 // Execute creates a new stack, merging template defaults when a TemplateID is provided.
@@ -98,6 +113,21 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 
 	if err := uc.stackRepo.Create(ctx, stack); err != nil {
 		return nil, fmt.Errorf("create stack: %w", err)
+	}
+
+	if uc.manageHistory != nil {
+		cfg, ok := stackConfigFromInterface(stack.Config)
+		if !ok {
+			return nil, fmt.Errorf("save initial history: invalid stack config")
+		}
+		if _, err := uc.manageHistory.SaveVersion(ctx, SaveVersionInput{
+			StackID:      stack.ID,
+			Config:       cfg,
+			ChangedBy:    "system",
+			ChangeReason: "stack created",
+		}); err != nil {
+			return nil, fmt.Errorf("save initial history: %w", err)
+		}
 	}
 
 	return &CreateStackOutput{Stack: stack}, nil

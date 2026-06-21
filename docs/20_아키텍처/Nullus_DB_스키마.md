@@ -68,7 +68,7 @@ CLAUDE.md의 Bounded Context 정의를 따른다.
 |---------|----------|------------|----------------|
 | **Organization** | `internal/admin/` | `organizations`, `org_members`, `org_cluster_access`, `invite_links` | Organization |
 | **Cluster** | `internal/admin/` | `clusters` | Cluster |
-| **Stack** | `internal/stack/` | `stack_configs`, `stack_config_versions`, `deployments`, `deployment_logs`, `deployment_steps`, `golden_path_templates`, `golden_path_template_tools`, `compatibility_matrices`, `compatibility_tools` | Stack, GoldenPathTemplate, CompatibilityMatrix |
+| **Stack** | `internal/stack/` | `stack_configs`, `stack_config_versions`, `stack_helm_step_configs`, `deployments`, `deployment_logs`, `deployment_steps`, `golden_path_templates`, `golden_path_template_tools`, `compatibility_matrices`, `compatibility_tools` | Stack, GoldenPathTemplate, CompatibilityMatrix |
 | **CI/CD** | `internal/cicd/` | `pipeline_templates`, `pipeline_template_versions`, `pipeline_configs`, `pipeline_deployments` | Pipeline |
 | **Observability** | `internal/observability/` | `alert_configs`, `alert_history` | Alert |
 | **Auth** | `internal/auth/` | `users`, `sessions`, `rbac_policies`, `menu_permissions` | User, Session |
@@ -633,7 +633,43 @@ CREATE INDEX idx_stack_versions_number ON stack_config_versions (stack_config_id
 | `change_reason` | TEXT | 변경 사유 (사용자 입력) |
 | `changed_by` | UUID | 변경자 (users.id 느슨한 참조) |
 
-### 8.4 deployments
+### 8.4 stack_helm_step_configs
+
+```sql
+CREATE TABLE stack_helm_step_configs (
+    step_name    VARCHAR(100) PRIMARY KEY,
+    release_name VARCHAR(255),
+    chart_name   VARCHAR(255) NOT NULL,
+    repo_url     VARCHAR(512),
+    version      VARCHAR(100),
+    namespace    VARCHAR(255),
+    phase        VARCHAR(10) NOT NULL,
+    sort_order   SMALLINT NOT NULL,
+    wait         BOOLEAN NOT NULL DEFAULT false,
+    is_enabled   BOOLEAN NOT NULL DEFAULT true,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_stack_helm_step_configs_order ON stack_helm_step_configs (sort_order, step_name);
+```
+
+**컬럼 설명:**
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `step_name` | VARCHAR(100) | 설치 step 식별자 |
+| `release_name` | VARCHAR(255) | Helm release 이름 (없으면 chart_name 사용) |
+| `chart_name` | VARCHAR(255) | Helm chart 이름 또는 OCI ref |
+| `repo_url` | VARCHAR(512) | Helm repo URL |
+| `version` | VARCHAR(100) | 설치 chart 버전 |
+| `namespace` | VARCHAR(255) | 설치 대상 네임스페이스 |
+| `phase` | VARCHAR(10) | 설치 phase (A/B/C) |
+| `sort_order` | SMALLINT | 실행 순서 |
+| `wait` | BOOLEAN | Helm wait 옵션 |
+| `is_enabled` | BOOLEAN | 관리상 활성화 여부 |
+
+### 8.5 deployments
 
 ```sql
 CREATE TABLE deployments (
@@ -690,7 +726,7 @@ CREATE INDEX idx_deployments_type ON deployments (type);
 ]
 ```
 
-### 8.5 deployment_steps
+### 8.6 deployment_steps
 
 ```sql
 CREATE TABLE deployment_steps (
@@ -728,7 +764,7 @@ CREATE INDEX idx_deployment_steps_status ON deployment_steps (deployment_id, sta
 | `namespace` | VARCHAR(255) | 설치 대상 네임스페이스 |
 | `retry_count` | SMALLINT | 재시도 횟수 |
 
-### 8.6 deployment_logs
+### 8.7 deployment_logs
 
 ```sql
 CREATE TABLE deployment_logs (
@@ -760,7 +796,7 @@ CREATE INDEX idx_deployment_logs_level ON deployment_logs (deployment_id, level)
 | `metadata` | JSONB | 추가 컨텍스트 (에러 스택트레이스 등) |
 | `timestamp` | TIMESTAMPTZ | 로그 발생 시각 |
 
-### 8.7 compatibility_matrices
+### 8.8 compatibility_matrices
 
 ```sql
 CREATE TABLE compatibility_matrices (

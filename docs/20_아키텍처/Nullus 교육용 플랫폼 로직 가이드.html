@@ -533,7 +533,7 @@ InstallStack.runPhases()
         </div>
 
         <h3>어떤 chart를 어디서 받는가</h3>
-        <p><code>internal/stack/adapter/helm/orchestrator.go</code>의 <code>chartConfig</code>에 step별 chart 정보가 하드코딩돼 있습니다.</p>
+        <p>step별 Helm chart 정보는 <code>stack_helm_step_configs</code> 테이블에서 조회합니다. 오케스트레이터는 이 테이블을 읽어 release / chart / repo / version을 조합합니다.</p>
         <pre>예시 chart source
 installing_cert_manager  -&gt; cert-manager / https://charts.jetstack.io
 installing_postgresql    -&gt; postgresql / https://charts.bitnami.com/bitnami
@@ -546,7 +546,7 @@ installing_gateway       -&gt; oci://docker.io/envoyproxy/gateway-helm</pre>
         <div class="grid-2">
           <div class="card">
             <h4>현재 실제 기준</h4>
-            <p>설치에 쓰는 Helm chart 버전은 현재 <code>latest</code>가 아니라, <code>chartConfig</code> 안에 코드로 고정된 값입니다. 예를 들어 GitLab은 <code>8.7.2</code>, Argo CD는 <code>7.7.16</code>처럼 지정돼 있습니다.</p>
+            <p>설치에 쓰는 Helm chart 버전은 현재 <code>latest</code>가 아니라, <code>stack_helm_step_configs.version</code>에 저장된 값입니다. 예를 들어 GitLab은 <code>8.7.2</code>, Argo CD는 <code>7.7.16</code>처럼 DB에서 조회됩니다.</p>
           </div>
           <div class="card">
             <h4>템플릿과의 관계</h4>
@@ -558,12 +558,12 @@ installing_gateway       -&gt; oci://docker.io/envoyproxy/gateway-helm</pre>
 Template.Tools[*].HelmVersion / AppVersion
   -&gt; 카탈로그/설명/호환성 표현 용도
 
-Orchestrator.chartConfig[step].Version
+stack_helm_step_configs.version
   -&gt; 실제 Helm install 에 사용되는 버전</pre>
 
         <div class="callout" style="margin-top:14px;">
           <b>PM이 이해해야 할 차이</b>
-          지금 Nullus는 "템플릿에 적힌 버전으로 바로 설치"하는 구조가 아닙니다. 실제 설치 버전은 <code>internal/stack/adapter/helm/orchestrator.go</code>의 <code>chartConfig</code>가 기준입니다. 즉, 템플릿 화면에 보이는 버전과 실제 설치 chart 버전이 항상 1:1로 연결된다고 가정하면 안 됩니다.
+          지금 Nullus는 "템플릿에 적힌 버전으로 바로 설치"하는 구조가 아닙니다. 실제 설치 버전은 <code>stack_helm_step_configs</code> 테이블이 기준입니다. 즉, 템플릿 화면에 보이는 버전과 실제 설치 chart 버전이 항상 1:1로 연결된다고 가정하면 안 됩니다.
         </div>
 
         <p>다만 일부 step은 설정에 따라 <b>chart 종류 자체가 바뀌는</b> 예외가 있습니다.</p>
@@ -579,13 +579,13 @@ Orchestrator.chartConfig[step].Version
   -&gt; Orchestrator.ExecuteStep(step)
 
 Orchestrator.ExecuteStep(step)
-  1. chartConfig 에서 step의 ChartSpec 조회
-  2. step 이 disabled 면 skip
-  3. manifest step 이면 YAML apply
-  4. chart step 이면:
-     - resolveChartSpecForStep() 로 최종 chart 결정
-     - valuesForStep() 로 values 조립
-     - installer.Install() 호출
+   1. DB에서 step의 ChartSpec 조회
+   2. step 이 disabled 면 skip
+   3. manifest step 이면 YAML apply
+   4. chart step 이면:
+      - resolveChartSpecForStep() 로 최종 chart 결정
+      - valuesForStep() 로 values 조립
+      - installer.Install() 호출
 
 HelmInstaller.Install(req)
   1. newActionConfig() 로 Helm SDK 실행 컨텍스트 생성
@@ -1016,6 +1016,7 @@ runIteration()
           <div class="file-item"><b>핸들러</b><code>internal/stack/adapter/handler/deploy_handler.go</code> - deploy / retry / continue / websocket logs</div>
           <div class="file-item"><b>핵심 usecase</b><code>internal/stack/usecase/install_stack.go</code> - 상태 전이와 DAG 실행</div>
           <div class="file-item"><b>실행 엔진</b><code>internal/stack/adapter/helm/orchestrator.go</code> - 어떤 step이 Helm chart인지, 어떤 step이 manifest인지 결정</div>
+          <div class="file-item"><b>Helm metadata repo</b><code>internal/stack/adapter/repository/postgres_helm_step_metadata.go</code> - step별 chart/repo/version CRUD</div>
           <div class="file-item"><b>실제 Helm</b><code>internal/stack/adapter/helm/installer.go</code> - install/upgrade/status</div>
           <div class="file-item"><b>OpenBao Store</b><code>internal/shared/secrets/openbao_store.go</code> - OpenBao HTTP API read/write/check</div>
           <div class="file-item"><b>Secret Router</b><code>internal/shared/secrets/store.go</code> - provider 라우팅</div>

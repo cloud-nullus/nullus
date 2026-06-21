@@ -14,7 +14,8 @@ import (
 func TestCreateStack_DefaultNamespaceWhenEmpty(t *testing.T) {
 	stackRepo := stackrepo.NewMemoryStackRepository()
 	templateRepo := stackrepo.NewMemoryTemplateRepository()
-	uc := NewCreateStack(stackRepo, templateRepo)
+	historyRepo := stackrepo.NewMemoryHistoryRepository()
+	uc := NewCreateStack(stackRepo, templateRepo, WithManageHistory(NewManageHistory(historyRepo)))
 
 	out, err := uc.Execute(context.Background(), CreateStackInput{
 		Name:      "stack-default-ns",
@@ -25,6 +26,10 @@ func TestCreateStack_DefaultNamespaceWhenEmpty(t *testing.T) {
 	require.NotNil(t, out)
 	require.NotNil(t, out.Stack)
 	assert.Equal(t, "nullus", out.Stack.Namespace)
+	versions, err := historyRepo.ListVersions(context.Background(), out.Stack.ID)
+	require.NoError(t, err)
+	require.Len(t, versions, 1)
+	assert.Equal(t, 1, versions[0].Version)
 }
 
 func TestCreateStack_UsesProvidedNamespace(t *testing.T) {

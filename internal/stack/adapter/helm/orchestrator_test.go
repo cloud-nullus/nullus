@@ -156,6 +156,19 @@ func TestOrchestrator_OpenBaoOrderAndEnablement(t *testing.T) {
 	assert.True(t, orch.IsStepEnabled("installing_openbao"))
 }
 
+func TestOrchestrator_GitLabSourceRepositoryEnablement(t *testing.T) {
+	installer := &mockInstaller{}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
+
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			SourceRepository: domain.ToolSelection{Name: "GitLab CE", Enabled: true},
+		},
+	})
+
+	assert.True(t, orch.IsStepEnabled("installing_gitlab"))
+}
+
 func TestOrchestrator_ExecuteStep_SkipsSharedClusterScopedComponents(t *testing.T) {
 	installer := &mockInstaller{}
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus", WithSharedClusterScopedComponents(true))

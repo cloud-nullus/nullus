@@ -28,6 +28,7 @@ type DeployHandler struct {
 	streamer              port.LogStreamer
 	kubeconfigProvider    port.KubeconfigProvider
 	validateCompatibility *usecase.ValidateCompatibility
+	manageHistory         *usecase.ManageHistory
 	audit                 audit.Sink
 }
 
@@ -39,6 +40,11 @@ type DeployHandlerOption func(*DeployHandler)
 // install, blocking `fail` verdicts and `warn` without an explicit ack.
 func WithValidateCompatibility(uc *usecase.ValidateCompatibility) DeployHandlerOption {
 	return func(h *DeployHandler) { h.validateCompatibility = uc }
+}
+
+// WithManageHistory snapshots stack config before deploy/retry/continue starts.
+func WithManageHistory(manageHistory *usecase.ManageHistory) DeployHandlerOption {
+	return func(h *DeployHandler) { h.manageHistory = manageHistory }
 }
 
 func WithKubeconfigProvider(provider port.KubeconfigProvider) DeployHandlerOption {
@@ -78,6 +84,27 @@ func (h *DeployHandler) WithOptions(opts ...DeployHandlerOption) *DeployHandler 
 		opt(h)
 	}
 	return h
+}
+
+func (h *DeployHandler) snapshotHistory(ctx context.Context, stackID, reason string) error {
+	if h.manageHistory == nil {
+		return nil
+	}
+	stack, err := h.stackRepo.GetByID(ctx, stackID)
+	if err != nil {
+		return err
+	}
+	if stack == nil {
+		return fmt.Errorf("stack not found")
+	}
+	cfg := stackConfigFromAny(stack.Config)
+	_, err = h.manageHistory.SaveVersion(ctx, usecase.SaveVersionInput{
+		StackID:      stackID,
+		Config:       cfg,
+		ChangedBy:    "system",
+		ChangeReason: reason,
+	})
+	return err
 }
 
 // RegisterRoutes registers deployment routes on the given Echo instance and group.
@@ -229,6 +256,9 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 		auditDetails["compatibility_verdict"] = gate.verdict.Overall.State
 		auditDetails["issue_codes"] = issueCodes(gate.verdict.Issues)
 	}
+	if err := h.snapshotHistory(c.Request().Context(), id, "deployment started"); err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
+	}
 
 	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{StackID: id}); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_FAILED", err.Error())
@@ -292,6 +322,9 @@ func (h *DeployHandler) Retry(c echo.Context) error {
 	if gate.verdict != nil {
 		auditDetails["compatibility_verdict"] = gate.verdict.Overall.State
 		auditDetails["issue_codes"] = issueCodes(gate.verdict.Issues)
+	}
+	if err := h.snapshotHistory(c.Request().Context(), id, "retry started"); err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
 	}
 
 	// Wind the state back to pending so InstallStack can transition forward
@@ -367,6 +400,9 @@ func (h *DeployHandler) Continue(c echo.Context) error {
 	if gate.verdict != nil {
 		auditDetails["compatibility_verdict"] = gate.verdict.Overall.State
 		auditDetails["issue_codes"] = issueCodes(gate.verdict.Issues)
+	}
+	if err := h.snapshotHistory(c.Request().Context(), id, "deployment continued"); err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
 	}
 
 	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{

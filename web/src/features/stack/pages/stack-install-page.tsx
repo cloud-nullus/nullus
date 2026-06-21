@@ -433,6 +433,25 @@ export function StackInstallPage() {
   }, [draft.clusterId])
 
   useEffect(() => {
+    if (draft.clusterId || selectedClusterId) {
+      return
+    }
+
+    const preferredCluster = clusters.find((cluster) => {
+      const name = (cluster.name ?? '').trim().toLowerCase()
+      const typeList = Array.isArray(cluster.types) ? cluster.types : []
+      return name === 'kind-nullus-platform' || typeList.includes('pipeline') || cluster.type === 'pipeline'
+    })
+
+    if (!preferredCluster) {
+      return
+    }
+
+    setSelectedClusterId(preferredCluster.id)
+    setCluster(preferredCluster.id)
+  }, [clusters, draft.clusterId, selectedClusterId, setCluster])
+
+  useEffect(() => {
     if (!templateIdFromQuery) {
       return
     }
