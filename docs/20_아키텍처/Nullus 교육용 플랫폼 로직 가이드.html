@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<!-- saved from url=(0216)file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#stack-install -->
+<html lang="ko"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nullus 교육용 플랫폼 로직 가이드</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --panel-2: #f1f5f9;
+      --line: #e2e8f0;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #0891b2;
+      --accent-soft: #ecfeff;
+      --warn: #92400e;
+      --warn-bg: #fffbeb;
+      --shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #ffffff 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    .layout {
+      max-width: 1580px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 24px;
+      padding: 24px 18px 40px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.88);
+      backdrop-filter: blur(10px);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .sidebar h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      line-height: 1.25;
+    }
+
+    .sidebar p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav a {
+      display: block;
+      padding: 9px 11px;
+      border-radius: 10px;
+      color: var(--text);
+      text-decoration: none;
+      background: transparent;
+      border: 1px solid transparent;
+      font-size: 14px;
+    }
+
+    .nav a:hover {
+      background: var(--accent-soft);
+      border-color: #bae6fd;
+    }
+
+    .content {
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero,
+    .section,
+    .callout {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 26px;
+      background:
+        radial-gradient(circle at top right, rgba(8,145,178,0.08), transparent 28%),
+        linear-gradient(180deg, #ffffff 0%, #f8fdff 100%);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .hero h2 {
+      margin: 8px 0 10px;
+      font-size: 34px;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .section {
+      padding: 22px;
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+    }
+
+    .section h3 {
+      margin: 20px 0 8px;
+      font-size: 18px;
+    }
+
+    .section p {
+      margin: 0 0 10px;
+      color: var(--muted);
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+
+    .card h4 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+
+    .card p,
+    .card li {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .card ul,
+    .section ul,
+    .section ol {
+      margin: 8px 0 0;
+      padding-left: 20px;
+    }
+
+    .code,
+    pre {
+      margin: 12px 0 0;
+      border-radius: 14px;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 14px 16px;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.65;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    code {
+      background: #eef2ff;
+      color: #1e293b;
+      padding: 2px 6px;
+      border-radius: 7px;
+      font-size: 0.92em;
+    }
+
+    .file-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .file-item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fff;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .file-item b {
+      display: block;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .callout {
+      padding: 16px 18px;
+      background: var(--warn-bg);
+      border-color: #fcd34d;
+      color: var(--warn);
+    }
+
+    .callout b {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 12px 14px;
+    }
+
+    .step b {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .tag {
+      border: 1px solid #bae6fd;
+      background: var(--accent-soft);
+      color: #155e75;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .layout { padding: 12px; }
+      .hero h2 { font-size: 28px; }
+      .grid-2,
+      .grid-3,
+      .grid-4 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1>Nullus 로직 가이드</h1>
+      <p>PM/기획자도 함수 단위로 따라갈 수 있게 현재 구현의 처리 흐름을 설명한 교육용 페이지</p>
+      <nav class="nav">
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#reading-map">읽는 법</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#runtime-wiring">서버 기동과 배선</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#stack-install">Stack 설치 알고리즘</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#stack-resources">Stack 리소스 반영</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#stack-airgap">Stack Airgap 설치</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#stack-openbao">Stack OpenBao 연동</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#cicd-deploy">CI/CD 배포 알고리즘</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#observability">Observability 로직</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#admin">Admin 로직</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#auth">Auth 로직</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#airgap-chapter">Airgap 운영 챕터</a>
+        <a href="file:///Users/devlos/Desktop/project/draft/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_%EA%B5%90%EC%9C%A1%EC%9A%A9_%ED%94%8C%EB%9E%AB%ED%8F%BC_%EB%A1%9C%EC%A7%81_%EA%B0%80%EC%9D%B4%EB%93%9C.html#study-order">추천 학습 순서</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <section class="hero">
+        <div class="eyebrow">Educational Page</div>
+        <h2>Nullus 전체 로직을 함수 기준으로 읽는 페이지</h2>
+        <p>이 페이지는 추상 아키텍처 그림이 아니라, 실제 코드가 어떤 순서로 호출되고 어떤 알고리즘으로 동작하는지 이해하는 데 초점을 둡니다. 각 섹션은 <code>진입점</code>, <code>핵심 구조체</code>, <code>처리 알고리즘</code>, <code>봐야 할 파일</code> 순서로 정리했습니다.</p>
+        <div class="tag-row">
+          <span class="tag">현재 코드 기준</span>
+          <span class="tag">함수 흐름 중심</span>
+          <span class="tag">교육용 설명</span>
+          <span class="tag">HTML 단일 페이지</span>
+        </div>
+      </section>
+
+      <section class="section" id="reading-map">
+        <h2>이 페이지를 읽는 법</h2>
+        <div class="grid-4">
+          <div class="card">
+            <h4>1. Handler</h4>
+            <p>HTTP 요청을 받아 입력을 파싱하고, 어떤 usecase를 호출할지 결정합니다.</p>
+          </div>
+          <div class="card">
+            <h4>2. UseCase</h4>
+            <p>실제 업무 절차를 조립합니다. 상태 전이, 저장, 비동기 시작, 실패 처리의 중심입니다.</p>
+          </div>
+          <div class="card">
+            <h4>3. Port</h4>
+            <p>DB나 Helm 같은 바깥 세상에 대해 "무슨 기능이 필요하다"만 인터페이스로 정의합니다.</p>
+          </div>
+          <div class="card">
+            <h4>4. Adapter</h4>
+            <p>Port를 실제로 구현합니다. PostgreSQL, Prometheus, Helm, middleware가 여기에 해당합니다.</p>
+          </div>
+        </div>
+        <div class="callout" style="margin-top:14px;">
+          <b>중요한 해석 포인트</b>
+          현재 Nullus는 "각 모듈이 완전히 독립 실행되는 분산 시스템"이 아니라, <code>cmd/api/main.go</code>가 모든 모듈을 한 프로세스 안에서 조립하는 <b>모듈러 모놀리스</b>입니다.
+        </div>
+      </section>
+
+      <section class="section" id="runtime-wiring">
+        <h2>서버 기동과 배선</h2>
+        <p>프로젝트를 이해할 때 가장 먼저 봐야 하는 파일은 <code>cmd/api/main.go</code>입니다. 이 파일은 "무엇을 만들고, 무엇을 어디에 연결하는지"를 전부 보여줍니다.</p>
+
+        <h3>핵심 배선 순서</h3>
+        <div class="flow">
+          <div class="step"><b>1. 설정과 DB 연결</b><span><code>config.LoadConfig()</code>로 설정을 읽고, <code>pgxpool.NewWithConfig()</code>로 PostgreSQL 풀을 만듭니다.</span></div>
+          <div class="step"><b>2. 모듈별 repository 생성</b><span>예: <code>NewPostgresStackRepository</code>, <code>NewPostgresPipelineRepository</code>, <code>NewPostgresAlertRuleRepository</code></span></div>
+          <div class="step"><b>3. usecase 생성</b><span>repository와 외부 포트를 usecase에 주입합니다. 예: <code>NewInstallStack</code>, <code>NewDeployPipeline</code>, <code>NewGetDashboard</code></span></div>
+          <div class="step"><b>4. handler 생성</b><span>각 handler는 필요한 usecase를 받아 REST API 진입점이 됩니다.</span></div>
+          <div class="step"><b>5. 인증 모드 분기</b><span>개발 모드에서는 auth를 끄고, 운영 모드에서는 <code>DualAuthMiddleware</code>로 세션/JWT를 묶습니다.</span></div>
+          <div class="step"><b>6. 라우트 등록</b><span><code>RegisterRoutes()</code> 호출로 각 모듈 엔드포인트를 Echo에 연결합니다.</span></div>
+        </div>
+
+        <h3>개발 모드와 운영 모드 차이</h3>
+        <pre>if cfg.Server.Mode == "development" {
+  // auth 미들웨어 비활성
+  admin = v1.Group("/admin")
+  stacks = v1.Group("/stacks")
+} else {
+  sessionMW := AuthMiddleware()
+  oidcMW := JWTAuthMiddleware(...)
+  authMW := DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW)
+
+  admin = v1.Group("/admin", authMW, RequireRole("admin"))
+  stacks = v1.Group("/stacks", authMW, RequireRole("admin", "devops"))
+  cicd = v1.Group("/cicd", authMW, RequireRole("admin", "devops", "developer"))
+}</pre>
+
+        <div class="file-list">
+          <div class="file-item"><b>가장 먼저 볼 파일</b><code>cmd/api/main.go</code> - 전체 시스템의 DI 컨테이너 역할</div>
+          <div class="file-item"><b>왜 중요한가</b>각 모듈이 어떤 외부 구현체를 쓰는지, 어떤 인증 규칙으로 묶였는지, 어떤 라우트가 열려 있는지 한 번에 볼 수 있습니다.</div>
+        </div>
+      </section>
+
+      <section class="section" id="stack-install">
+        <h2>Stack 설치 알고리즘</h2>
+        <p>이 프로젝트에서 가장 복잡한 핵심 로직입니다. 설치를 "한 번에 끝내는 함수"가 아니라, <b>상태 전이 + DAG 기반 step 실행 + 실시간 로그 스트리밍</b> 조합으로 구현돼 있습니다.</p>
+
+        <h3>진입점</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>HTTP</h4>
+            <p><code>POST /api/v1/stacks/:id/deploy</code></p>
+            <p>파일: <code>internal/stack/adapter/handler/deploy_handler.go</code></p>
+          </div>
+          <div class="card">
+            <h4>UseCase</h4>
+            <p><code>InstallStack.Execute()</code></p>
+            <p>파일: <code>internal/stack/usecase/install_stack.go</code></p>
+          </div>
+          <div class="card">
+            <h4>실행체</h4>
+            <p><code>Orchestrator.ExecuteStep()</code> → <code>HelmInstaller.Install()</code></p>
+            <p>파일: <code>adapter/helm/orchestrator.go</code>, <code>installer.go</code></p>
+          </div>
+        </div>
+
+        <h3>핵심 구조체</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>InstallStack</h4>
+            <ul>
+              <li><code>stackRepo</code>: 상태 저장</li>
+              <li><code>streamer</code>: 실시간 로그 fan-out</li>
+              <li><code>executor</code> / <code>dynamicExecutorFunc</code>: step 실행체</li>
+              <li><code>kubeconfigProvider</code>: 대상 클러스터 kubeconfig 조회</li>
+              <li><code>tokenRegistry</code>: OpenBao 기반 토큰 소스 등록</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>installDAG</h4>
+            <ul>
+              <li><code>installing_cert_manager</code></li>
+              <li><code>installing_minio</code>, <code>installing_openbao</code></li>
+              <li><code>installing_gitlab</code>, <code>installing_argocd</code>, <code>installing_runner</code></li>
+              <li><code>installing_prometheus</code>, <code>installing_grafana</code>, <code>integration_check</code></li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>DAG가 뭐냐</h3>
+        <p><b>DAG</b>는 <b>Directed Acyclic Graph</b>의 약자입니다. 한국어로 풀면 <b>방향이 있고, 순환이 없는 작업 연결도</b> 정도로 보면 됩니다.</p>
+        <div class="grid-2">
+          <div class="card">
+            <h4>쉽게 말하면</h4>
+            <p>"이 작업은 저 작업이 끝난 뒤에만 할 수 있다"는 규칙을 그래프로 표현한 것입니다. 즉, 작업 순서를 코드에 하드코딩한 긴 if문 대신, <b>선행 조건</b>으로 관리하는 방식입니다.</p>
+          </div>
+          <div class="card">
+            <h4>왜 쓰나</h4>
+            <p>설치 단계가 많아질수록 순서 의존성이 복잡해집니다. DAG를 쓰면 어떤 단계가 무엇을 기다리는지 명확해지고, 일부 단계를 끄거나 재개할 때도 흐름을 관리하기 쉬워집니다.</p>
+          </div>
+        </div>
+
+        <pre>예시:
+cert-manager ----┐
+                 ├--&gt; postgresql --&gt; minio --&gt; object-storage-secret
+metrics-server --┘
+
+openbao 는 postgresql, minio 뒤에 실행
+gitlab 은 openbao, object-storage-secret 뒤에 실행
+runner 는 openbao, gitlab 뒤에 실행</pre>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>Nullus에서 DAG를 어떻게 읽으면 되나</b>
+          <code>installing_gitlab</code> step에 <code>installing_openbao</code>, <code>installing_object_storage_secret</code> 같은 dependency가 걸려 있으면, GitLab 설치는 그 앞 단계들이 모두 끝날 때까지 시작되지 않습니다. 즉, <b>앞선 준비물이 다 갖춰져야 다음 단계가 열린다</b>고 이해하면 됩니다.
+        </div>
+
+        <h3>설치 알고리즘</h3>
+        <pre>DeployHandler.Deploy()
+  -&gt; compatibility gate 확인
+  -&gt; InstallStack.Execute(StackID)
+
+InstallStack.Execute()
+  1. stackRepo.GetByID(StackID)
+  2. resolveExecutor()로 kubeconfig 기반 실행체 준비
+  3. Continue 모드면 ResumeFromStep 계산
+  4. 상태를 validating 으로 전이하고 저장
+  5. goroutine 으로 run() 시작
+
+InstallStack.run()
+  1. 로그 히스토리 초기화 여부 결정
+  2. validate step 로그 기록
+  3. 상태를 installing 으로 전이
+  4. runPhases() 실행
+  5. 상태를 configuring 으로 전이
+  6. 상태를 health_check 로 전이
+  7. verifyDeployment() 실행
+  8. 성공 시 completed 로 전이
+  9. OpenBao 사용 시 token source 등록
+
+InstallStack.runPhases()
+  while processed step 수 &lt; 전체 DAG step 수:
+    for each step in installDAG:
+      - 이미 처리했으면 skip
+      - dependency 미완료면 skip
+      - resume 모드인데 아직 resume step 전이면 completed 처리 후 skip
+      - stack 이 취소/삭제/실패 상태인지 ensureDeploymentActive()
+      - stepEnabledChecker 가 false 면 skip 로그만 기록
+      - markStepStarted()
+      - StartStepRuntimeTail() 로 런타임 로그 tail 시작
+      - executeStep()
+      - cert-manager 실패면 executor 재생성 후 1회 재시도
+      - openbao step 완료 후 runOpenBaoHealthGate()
+      - StepRuntimeLogs() 수집
+      - markStepCompleted()
+    if 한 바퀴 돌았는데 progressed == false:
+      DAG blocked 에러 반환</pre>
+
+        <h3>중요한 구현 디테일</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>실시간 로그</h4>
+            <p><code>MemoryStreamer</code>가 deploymentID 별 history와 subscriber 채널을 들고 있습니다. <code>StreamLogs()</code>는 WebSocket을 upgrade 한 뒤 이 채널을 구독합니다.</p>
+          </div>
+          <div class="card">
+            <h4>실패 처리</h4>
+            <p>현재 코드는 실패 시 자동 롤백보다 <b>failed 상태로 멈추고 Continue를 유도</b>하는 방향입니다. <code>handleFailure()</code>는 failed 전이와 안내 로그를 남깁니다.</p>
+          </div>
+          <div class="card">
+            <h4>선택적 step</h4>
+            <p>도구 선택에 따라 step이 꺼질 수 있습니다. 이때 executor 쪽에서 skip을 반영하고, usecase는 processed/completed 상태를 맞춰 DAG가 막히지 않게 합니다.</p>
+          </div>
+        </div>
+
+        <h3>Helm chart를 실제로 어떻게 읽고 설치하나</h3>
+        <p>여기서 중요한 점은 <b>모든 step이 Helm chart 설치는 아니라는 것</b>입니다. Stack 설치 엔진은 step마다 아래 셋 중 하나를 고릅니다.</p>
+        <div class="grid-3">
+          <div class="card">
+            <h4>1. Helm chart 설치</h4>
+            <p><code>cert-manager</code>, <code>postgresql</code>, <code>gitlab</code>, <code>argocd</code>, <code>grafana</code> 같은 도구는 Helm chart로 설치합니다.</p>
+          </div>
+          <div class="card">
+            <h4>2. Raw YAML apply</h4>
+            <p><code>installing_openbao</code>는 현재 chart가 아니라 코드로 만든 manifest를 그대로 apply합니다.</p>
+          </div>
+          <div class="card">
+            <h4>3. 특수 함수 실행</h4>
+            <p><code>object_storage_buckets</code>, <code>database_connection_check</code>처럼 연결/검증용 step은 전용 함수가 수행합니다.</p>
+          </div>
+        </div>
+
+        <h3>어떤 chart를 어디서 받는가</h3>
+        <p><code>internal/stack/adapter/helm/orchestrator.go</code>의 <code>chartConfig</code>에 step별 chart 정보가 하드코딩돼 있습니다.</p>
+        <pre>예시 chart source
+installing_cert_manager  -&gt; cert-manager / https://charts.jetstack.io
+installing_postgresql    -&gt; postgresql / https://charts.bitnami.com/bitnami
+installing_gitlab        -&gt; gitlab / https://charts.gitlab.io/
+installing_argocd        -&gt; argo-cd / https://argoproj.github.io/argo-helm
+installing_prometheus    -&gt; kube-prometheus-stack / https://prometheus-community.github.io/helm-charts
+installing_gateway       -&gt; oci://docker.io/envoyproxy/gateway-helm</pre>
+
+        <h3>버전은 어디서 결정되나</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>현재 실제 기준</h4>
+            <p>설치에 쓰는 Helm chart 버전은 현재 <code>latest</code>가 아니라, <code>chartConfig</code> 안에 코드로 고정된 값입니다. 예를 들어 GitLab은 <code>8.7.2</code>, Argo CD는 <code>7.7.16</code>처럼 지정돼 있습니다.</p>
+          </div>
+          <div class="card">
+            <h4>템플릿과의 관계</h4>
+            <p><code>domain.Template</code>에는 <code>HelmVersion</code>, <code>AppVersion</code> 필드가 있지만, 현재 설치 로직은 그 값을 직접 읽어 chart version으로 쓰지 않습니다.</p>
+          </div>
+        </div>
+
+        <pre>현재 구조
+Template.Tools[*].HelmVersion / AppVersion
+  -&gt; 카탈로그/설명/호환성 표현 용도
+
+Orchestrator.chartConfig[step].Version
+  -&gt; 실제 Helm install 에 사용되는 버전</pre>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>PM이 이해해야 할 차이</b>
+          지금 Nullus는 "템플릿에 적힌 버전으로 바로 설치"하는 구조가 아닙니다. 실제 설치 버전은 <code>internal/stack/adapter/helm/orchestrator.go</code>의 <code>chartConfig</code>가 기준입니다. 즉, 템플릿 화면에 보이는 버전과 실제 설치 chart 버전이 항상 1:1로 연결된다고 가정하면 안 됩니다.
+        </div>
+
+        <p>다만 일부 step은 설정에 따라 <b>chart 종류 자체가 바뀌는</b> 예외가 있습니다.</p>
+        <ul>
+          <li><code>installing_log_search</code>: <code>opensearch</code> 또는 <code>elasticsearch</code></li>
+          <li><code>installing_opentelemetry</code>: <code>tempo</code>, <code>jaeger</code>, 기본 <code>opentelemetry-collector</code></li>
+        </ul>
+        <p>이 경우에도 최종 chart/버전 결정은 여전히 <code>resolveChartSpecForStep()</code> 안의 코드가 기준입니다.</p>
+
+        <h3>Helm 설치 알고리즘</h3>
+        <pre>runPhases()
+  -&gt; executeStep()
+  -&gt; Orchestrator.ExecuteStep(step)
+
+Orchestrator.ExecuteStep(step)
+  1. chartConfig 에서 step의 ChartSpec 조회
+  2. step 이 disabled 면 skip
+  3. manifest step 이면 YAML apply
+  4. chart step 이면:
+     - resolveChartSpecForStep() 로 최종 chart 결정
+     - valuesForStep() 로 values 조립
+     - installer.Install() 호출
+
+HelmInstaller.Install(req)
+  1. newActionConfig() 로 Helm SDK 실행 컨텍스트 생성
+  2. action.NewInstall(cfg)
+  3. RepoURL / Version / Namespace / ReleaseName 세팅
+  4. LocateChart() 로 외부 repo 또는 OCI에서 chart 위치 탐색
+  5. loader.Load() 로 chart 로드
+  6. RunWithContext(chart, values) 로 실제 install
+  7. 같은 release 가 이미 있으면 upgrade 또는 reinstall 시도</pre>
+
+        <h3>values는 어떻게 만들어지나</h3>
+        <p><code>internal/stack/adapter/helm/helm-values.go</code>에서 차트 values를 단계적으로 합칩니다.</p>
+        <div class="grid-2">
+          <div class="card">
+            <h4>기본값 + 리소스 기본값</h4>
+            <p>step별 기본 values를 먼저 가져오고, CPU/메모리/스토리지 같은 resource default를 merge합니다.</p>
+          </div>
+          <div class="card">
+            <h4>Stack 설정 반영</h4>
+            <p>예: GitLab은 앞에서 설치한 PostgreSQL/MinIO를 사용하도록 host, secret, object storage 연결값을 주입합니다.</p>
+          </div>
+          <div class="card">
+            <h4>YAML override 반영</h4>
+            <p>사용자가 step별 override를 넣으면 마지막에 덮어씁니다. 그래서 기본 chart라도 최종 values는 stack마다 달라질 수 있습니다.</p>
+          </div>
+          <div class="card">
+            <h4>동적 chart 선택</h4>
+            <p><code>installing_log_search</code>는 OpenSearch/Elasticsearch 중 선택되고, <code>installing_opentelemetry</code>도 Tempo/Jaeger 등으로 바뀔 수 있습니다.</p>
+          </div>
+        </div>
+
+        <h3 id="stack-resources">스택 OSS 리소스를 실제 설치에 반영하는 메커니즘</h3>
+        <p>리소스 관련 로직은 두 층으로 나뉩니다.</p>
+        <div class="grid-2">
+          <div class="card">
+            <h4>1. 사전 추정(Estimate)</h4>
+            <p>사용자가 스택 구성을 입력하면 <code>/estimate</code> API가 대략적인 CPU/메모리/스토리지 요구량을 계산합니다. 이건 "설치 전 계산기"에 가깝습니다.</p>
+          </div>
+          <div class="card">
+            <h4>2. 실제 설치 반영(Helm values)</h4>
+            <p>설치 시점에는 DB에 저장된 <code>resource-defaults</code>를 읽어서 Helm values의 <code>resources.requests/limits</code>에 주입합니다. 이게 실제 배포 spec에 들어갑니다.</p>
+          </div>
+        </div>
+
+        <h3>사전 추정 로직</h3>
+        <pre>POST /api/v1/stacks/estimate
+  -&gt; ResourceHandler.Estimate()
+  -&gt; StackConfig 에서 enabled tool 목록 추출
+  -&gt; CalculateResources.Execute()
+
+CalculateResources.Execute()
+  1. toolBaselineMap 에서 툴별 baseline 자원 조회
+  2. developers / build frequency 기반 scale factor 계산
+  3. tool별 CPU/Memory/Storage 계산
+  4. weekly commits 기반 artifact storage 추가
+  5. 월 비용 추정까지 계산</pre>
+
+        <p>예를 들어 baseline은 이런 식으로 정의돼 있습니다.</p>
+        <pre>gitlab-ce       -&gt; CPU 4 / Memory 8Gi / Storage 30Gi
+gitlab-runner   -&gt; CPU 2 / Memory 4Gi / Storage 10Gi
+argocd          -&gt; CPU 2 / Memory 3Gi / Storage 5Gi
+prometheus      -&gt; CPU 1 / Memory 4Gi / Storage 20Gi
+grafana         -&gt; CPU 1 / Memory 2Gi / Storage 5Gi</pre>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>중요</b>
+          이 추정값은 "상담용/가이드용 계산"입니다. 실제 Kubernetes Deployment/StatefulSet spec에 바로 쓰이는 값은 아닙니다.
+        </div>
+
+        <h3>실제 설치 반영 로직</h3>
+        <pre>Orchestrator.valuesForStep(step, spec)
+  1. step 기본 values 복사
+  2. resourceDefaultValuesForStep(step, cfg) merge
+  3. namespace/shared service values merge
+  4. YAML override 있으면 마지막에 덮어쓰기</pre>
+
+        <p>핵심은 <code>resourceDefaultValuesForStep()</code> 입니다.</p>
+        <pre>resourceDefaultValuesForStep(step)
+  1. resourceDefaultKeyForStep(step) 로 tool key 결정
+     - installing_gitlab     -&gt; gitlab-ce
+     - installing_argocd     -&gt; argocd
+     - installing_prometheus -&gt; prometheus
+     - installing_grafana    -&gt; grafana
+     - installing_minio      -&gt; minio
+  2. loadResourceDefault(key) 로 DB resource default 로드
+  3. toK8sResourceValues() 로 requests/limits 형태로 변환
+  4. step별 chart 구조에 맞게 values tree 구성</pre>
+
+        <h3>왜 step마다 방식이 다르나</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>단순 차트</h4>
+            <p>MinIO, Grafana, Runner 같은 건 거의 <code>resources</code> 한 덩어리만 넣으면 됩니다.</p>
+          </div>
+          <div class="card">
+            <h4>복합 차트</h4>
+            <p>GitLab, ArgoCD, Prometheus는 하위 컴포넌트가 많아서 webservice, sidekiq, repoServer, alertmanager 등 여러 위치에 나눠 넣어야 합니다.</p>
+          </div>
+          <div class="card">
+            <h4>공급자별 분기</h4>
+            <p>OpenSearch/Elasticsearch, Tempo/Jaeger처럼 실제 차트 종류가 바뀌면 resource key와 values 구조도 함께 달라집니다.</p>
+          </div>
+        </div>
+
+        <h3>GitLab 리소스 반영 예시</h3>
+        <pre>installing_gitlab
+  -&gt; resource key: gitlab-ce
+  -&gt; DB의 gitlab-ce 기본 자원값 로드
+  -&gt; 컴포넌트별로 분배:
+     webservice      -&gt; scaled(0.12) + 최소/최대 clamp
+     sidekiq         -&gt; scaled(0.10) + 최소/최대 clamp
+     toolbox         -&gt; scaled(0.05)
+     gitaly          -&gt; scaled(0.20)
+     kas             -&gt; scaled(0.12)
+     gitlab-exporter -&gt; scaled(0.05)
+     registry        -&gt; scaled(0.12)
+     redis master    -&gt; 별도 redisMasterScaled()
+     prometheus      -&gt; scaled(0.08)</pre>
+
+        <p>즉 GitLab은 "gitlab-ce 1개의 리소스 값"을 그대로 넣는 게 아니라, <b>그 값을 여러 내부 컴포넌트 비율로 쪼개서 적용</b>합니다.</p>
+
+        <h3>Prometheus 리소스 반영 예시</h3>
+        <pre>installing_prometheus
+  -&gt; resource key: prometheus
+  -&gt; 같은 resource 기본값을
+     prometheus.prometheusSpec.resources
+     alertmanager.alertmanagerSpec.resources
+     kube-state-metrics.resources
+     prometheusOperator.resources
+     prometheus-node-exporter.resources
+  에 주입</pre>
+
+        <h3>리소스 기본값은 어디서 오나</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>저장 구조</h4>
+            <p><code>domain.ResourceDefault</code>는 <code>ToolKey</code>, CPU request/limit, memory request/limit, storage request/limit을 가집니다.</p>
+          </div>
+          <div class="card">
+            <h4>조회 방식</h4>
+            <p><code>loadResourceDefault()</code>가 repository에서 한 번 목록을 읽어 메모리에 캐시하고, step별 tool key로 꺼내 씁니다.</p>
+          </div>
+        </div>
+
+        <pre>ResourceDefault 예시 필드
+ToolKey
+CPURequest / CPULimit
+MemoryRequestGi / MemoryLimitGi
+StorageRequestGi / StorageLimitGi</pre>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>PM 관점 요약</b>
+          현재 Nullus는 "스택 규모를 먼저 추정"하는 기능과, "실제 설치 시 Helm values에 리소스를 주입"하는 기능이 분리돼 있습니다. 전자는 계획/상담용이고, 후자는 실제 배포 spec 생성용입니다.
+        </div>
+
+        <h3>설치 중 예외 처리</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>이미 release가 있을 때</h4>
+            <p><code>cannot re-use a name that is still in use</code>가 나오면 실패로 끝내지 않고 상태를 보고 <code>upgrade</code> 또는 <code>reinstall</code>를 시도합니다.</p>
+          </div>
+          <div class="card">
+            <h4>Airgap 모드</h4>
+            <p><code>NULLUS_HELM_OCI_REGISTRY</code>가 있으면 일반 Helm repo 대신 내부 OCI registry에서 chart를 읽습니다.</p>
+          </div>
+          <div class="card">
+            <h4>Gateway 특수 처리</h4>
+            <p>Gateway는 chart 설치 후 끝나지 않고 CRD 보장, TLS 보정, route manifest apply까지 이어집니다.</p>
+          </div>
+        </div>
+
+        <h3 id="stack-airgap">에어갭 설치 로직</h3>
+        <p>에어갭 모드에서는 외부 Helm repository에서 chart를 내려받지 않고, <b>미리 준비된 내부 OCI registry</b>에서 chart를 읽습니다. 분기 기준은 환경변수 <code>NULLUS_HELM_OCI_REGISTRY</code> 입니다.</p>
+
+        <pre>HelmInstaller.Install(req)
+  if NULLUS_HELM_OCI_REGISTRY != "":
+    -&gt; installAirgapOCI(req)
+  else:
+    -&gt; 일반 Helm repo install 경로</pre>
+
+        <h3>에어갭 경로에서 실제로 하는 일</h3>
+        <pre>installAirgapOCI(req)
+  1. registry = NULLUS_HELM_OCI_REGISTRY
+  2. chartBaseName(req.ChartName) 으로 chart 이름의 마지막 segment 추출
+     예: cert-manager -&gt; cert-manager
+     예: oci://docker.io/envoyproxy/gateway-helm -&gt; gateway-helm
+  3. ociRef = oci://{registry}/{baseName}
+  4. values 가 있으면 임시 yaml 파일 생성
+  5. installOCIChartWithHelmCLI(...) 호출
+  6. 설치 후 가능하면 release status 조회
+  7. 조회 실패해도 deployed 로 간주한 synthetic result 반환</pre>
+
+        <div class="grid-2">
+          <div class="card">
+            <h4>일반 모드와 차이</h4>
+            <p>일반 모드는 <code>LocateChart()</code>로 외부 repo URL을 찾아가지만, 에어갭 모드는 repo URL을 거의 무시하고 내부 OCI 참조값으로 재조합합니다.</p>
+          </div>
+          <div class="card">
+            <h4>왜 Helm SDK가 아니라 CLI fallback을 쓰나</h4>
+            <p>에어갭/OCI 환경에서는 registry 접근 조건이 까다로울 수 있어서, 현재 구현은 <code>installOCIChartWithHelmCLI()</code>를 통해 CLI 기반 설치를 사용합니다.</p>
+          </div>
+        </div>
+
+        <pre>예시
+환경변수:
+  NULLUS_HELM_OCI_REGISTRY=kind-registry:5000/charts
+
+요청 chart:
+  postgresql
+
+실제 읽는 OCI ref:
+  oci://kind-registry:5000/charts/postgresql</pre>
+
+        <h3>에어갭 설치 준비물</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>1. 내부 OCI registry</h4>
+            <p>클러스터에서 접근 가능한 내부 registry가 필요합니다. 예: <code>kind-registry:5000/charts</code></p>
+          </div>
+          <div class="card">
+            <h4>2. chart 사전 적재</h4>
+            <p>인터넷 없이 설치하려면 필요한 Helm chart를 미리 OCI 형태로 내부 registry에 push 해둬야 합니다.</p>
+          </div>
+          <div class="card">
+            <h4>3. 이미지 사전 적재</h4>
+            <p>chart만 있어도 부족합니다. chart가 참조하는 컨테이너 이미지도 별도 미러링돼 있어야 실제 pod가 뜹니다.</p>
+          </div>
+        </div>
+
+        <h3>내부 registry에 미리 있어야 하는 chart 예시</h3>
+        <pre>cert-manager
+metrics-server
+postgresql
+minio
+gitlab
+argo-cd
+gitlab-runner
+kube-prometheus-stack
+grafana
+loki
+opensearch 또는 elasticsearch
+opentelemetry-collector 또는 tempo 또는 jaeger
+gateway-helm</pre>
+
+        <p>실제로 필요한 목록은 사용자가 켠 기능에 따라 달라집니다.</p>
+        <ul>
+          <li>OpenBao를 쓰면 <code>installing_openbao</code>는 chart가 아니라 manifest라 chart 적재 대상이 아닙니다.</li>
+          <li>Logging search를 OpenSearch로 쓰면 <code>opensearch</code> chart가 필요합니다.</li>
+          <li>Trace layer를 Jaeger로 바꾸면 <code>jaeger</code> chart가 필요합니다.</li>
+        </ul>
+
+        <h3>PM이 이해해야 할 운영 포인트</h3>
+        <pre>에어갭 설치 성공 조건
+  = 내부 registry 에 chart 존재
+  + 내부 registry/이미지 저장소 에 컨테이너 이미지 존재
+  + 클러스터가 그 registry 에 접근 가능
+  + NULLUS_HELM_OCI_REGISTRY 가 올바르게 설정됨</pre>
+
+        <div class="grid-2">
+          <div class="card">
+            <h4>왜 chart만으로 끝나지 않나</h4>
+            <p>Helm chart는 Kubernetes 리소스 설계도일 뿐입니다. 실제 Pod는 chart가 지정한 이미지 태그를 pull 해야 하므로 이미지 미러링이 따로 필요합니다.</p>
+          </div>
+          <div class="card">
+            <h4>실패가 나는 대표 경우</h4>
+            <p>chart는 내부 registry에 있는데 이미지가 외부 registry를 가리키면 install은 성공해도 Pod는 <code>ImagePullBackOff</code>로 실패할 수 있습니다.</p>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>PM 관점 요약</b>
+          에어갭 설치는 "인터넷이 없는 환경에서도 설치할 수 있게, 외부 Helm repo 대신 내부 registry에 미리 적재한 chart를 사용"하는 기능입니다. 즉 제품 동작은 비슷하지만, <b>chart를 읽어오는 소스만 인터넷 repo에서 내부 OCI registry로 바뀐다</b>고 보면 됩니다.
+        </div>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>PM 관점 요약</b>
+          Stack 설치는 "Helm chart 여러 개를 순서대로 설치하는 기능"이라기보다, <b>Helm chart 설치 + YAML apply + 연결값 주입 + 후처리 검증</b>을 묶은 설치 엔진입니다. 그래서 같은 "GitLab 설치"라도 단순 install이 아니라 PostgreSQL/MinIO/OpenBao와의 연결 관계까지 함께 고려됩니다.
+        </div>
+
+        <h3 id="stack-openbao">OpenBao가 OSS 연결에 쓰이는 방식</h3>
+        <p>OpenBao는 여기서 "스택 안에 포함된 OSS 도구들의 접근 토큰/접속 정보를 저장하고 관리하는 비밀 저장소" 역할로 설계돼 있습니다. 즉, GitLab, ArgoCD, MinIO, PostgreSQL 같은 도구를 <b>OpenBao 경유 토큰 소스</b>로 관리하려는 구조입니다.</p>
+
+        <div class="grid-2">
+          <div class="card">
+            <h4>1. 설치 중 연결</h4>
+            <p><code>installing_openbao</code> step이 활성화되면 OpenBao manifest를 클러스터에 apply합니다. 설치가 끝나면 <code>registerStackTokenSources()</code>가 GitLab/ArgoCD/MinIO/PostgreSQL 관련 token source 메타데이터를 DB에 등록합니다.</p>
+          </div>
+          <div class="card">
+            <h4>2. 운영 중 사용</h4>
+            <p>Admin 모듈의 token source 기능이 OpenBao path를 읽고, 필요하면 회전/재발급합니다. 실제 비밀값 저장/조회 API는 <code>shared/secrets.Router</code>와 <code>OpenBaoStore</code>가 담당합니다.</p>
+          </div>
+        </div>
+
+        <h3>설치 시점의 OpenBao 연결 알고리즘</h3>
+        <pre>Stack config.authentication.provider == "openbao"
+  -&gt; installing_openbao step 활성화
+  -&gt; openBaoManifest() 로 Deployment + Service YAML 생성
+  -&gt; kubectl/apply 로 클러스터에 배포
+  -&gt; runOpenBaoHealthGate() 로 라우터 health check (non-blocking)
+  -&gt; 설치 완료 후 registerStackTokenSources()
+
+registerStackTokenSources()
+  1. stack.Config 에서 어떤 OSS를 쓰는지 읽음
+  2. module/provider/path 조합으로 token source 입력 생성
+  3. 예: artifacts/gitlab, pipeline/argocd, artifacts/minio
+  4. path 예시:
+     kv/nullus/{env}/{orgID}/{module}/{provider}/token
+  5. bootstrap access 정보(PostgreSQL, MinIO, ArgoCD, GitLab)도 함께 생성 가능
+  6. tokenRegistry.Upsert() 로 DB에 저장</pre>
+
+        <h3>어떤 OSS 정보가 OpenBao와 연결되나</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>reissue 성격 token source</h4>
+            <ul>
+              <li>Artifacts source repository</li>
+              <li>Container registry</li>
+              <li>CI platform</li>
+              <li>CD tool</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>bootstrap access 정보</h4>
+            <ul>
+              <li>PostgreSQL 접속 문자열</li>
+              <li>MinIO endpoint / access key / secret key</li>
+              <li>ArgoCD admin 접근 정보</li>
+              <li>GitLab root 접근 정보</li>
+            </ul>
+          </div>
+        </div>
+
+        <pre>예시 path 규칙
+kv/nullus/dev/{orgID}/artifacts/gitlab/token
+kv/nullus/dev/{orgID}/pipeline/argocd/token
+kv/nullus/dev/{orgID}/artifacts/minio/access
+kv/nullus/dev/{orgID}/storage/postgresql/access</pre>
+
+        <h3>운영 시점의 OpenBao 사용 알고리즘</h3>
+        <pre>TokenSourceUseCase.RevealMeta(tokenSourceID)
+  1. DB에서 token source 메타데이터 조회
+  2. metadata.secret_manager 확인 (기본 openbao)
+  3. secretRouter.GetToken(provider, path)
+  4. OpenBaoStore.GetToken() 이 /v1/{mount}/data/{path} 호출
+  5. token 값을 응답에 포함
+
+TokenRotationScheduler.runIteration()
+  1. DB에서 secret_manager=openbao 인 token_sources 조회
+  2. next_check_at 이 지난 항목만 선택
+  3. rotateOne()
+  4. secret.GetToken() 으로 현재 토큰 읽기
+  5. reissuer 또는 randomToken() 으로 새 토큰 생성
+  6. secret.PutToken() 으로 OpenBao에 저장
+  7. DB status / last_rotated_at / next_check_at 갱신
+  8. token_rotation_events 기록</pre>
+
+        <h3>토큰 자동 갱신 로직</h3>
+        <p>자동 갱신의 중심은 <code>internal/admin/scheduler/token_rotation.go</code>의 <code>TokenRotationScheduler</code>입니다. 역할은 "OpenBao에 저장된 token source를 주기적으로 검사하고, 교체 가능한 것은 자동으로 새 토큰으로 바꾸는 것"입니다.</p>
+
+        <pre>TokenRotationScheduler.Start(ctx)
+  1. 시작하자마자 runIteration() 1회 실행
+  2. 이후 interval 마다 반복 실행
+
+runIteration()
+  1. pool / secret router / openbao provider 존재 여부 확인
+  2. inFlight 플래그로 중복 실행 방지
+  3. DB에서 다음 조건의 token_sources 조회
+     - deleted_at IS NULL
+     - metadata.secret_manager = openbao (기본값 포함)
+     - next_check_at &lt;= now()
+  4. 각 항목에 대해:
+     - expires_at 지났으면 expired 처리
+     - manual 타입이거나 approval 필요면 failed_manual 처리
+     - 아니면 rotateOne()</pre>
+
+        <pre>rotateOne(item)
+  1. secret.GetToken(ctx, "openbao", item.Path) 로 현재 토큰 읽기
+  2. issueToken() 으로 새 토큰 발급
+  3. secret.PutToken(ctx, "openbao", item.Path, token) 로 OpenBao에 저장
+  4. DB 상태 업데이트
+     - 기본: rotated
+     - manual 타입이면 renew_due
+  5. last_rotated_at, next_check_at 갱신
+  6. token_rotation_events 에 success 이벤트 기록</pre>
+
+        <div class="grid-3">
+          <div class="card">
+            <h4>새 토큰 생성 방식</h4>
+            <p><code>type == reissue</code> 이고 provider별 재발급기가 있으면 <code>reissuer.Reissue()</code>를 먼저 시도합니다. 안 되면 <code>randomToken()</code>으로 랜덤 토큰을 만듭니다.</p>
+          </div>
+          <div class="card">
+            <h4>실패 시 재시도</h4>
+            <p>실패하면 retry backoff를 기록합니다. 지연은 <code>1분 → 5분 → 15분 → 1시간</code> 순으로 커지고, 상태는 <code>failed_manual</code>로 바뀝니다.</p>
+          </div>
+          <div class="card">
+            <h4>수동 승인 흐름</h4>
+            <p>manual 타입이거나 승인 필요 상태면 자동 회전을 멈추고 <code>failed_manual</code> 이벤트를 남깁니다. 이후 Admin API의 approve/resume 흐름으로 이어집니다.</p>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>현재 구현 상태에서 중요한 점</b>
+          자동 갱신 로직 자체는 구현돼 있지만, 현재 <code>cmd/api/main.go</code>에는 <code>TokenRotationScheduler</code>를 생성해서 <code>Start()</code>하는 코드가 보이지 않습니다. 즉, <b>자동 갱신 엔진은 코드상 존재하지만 실제 서버에서 항상 켜져 있다고 단정하면 안 됩니다.</b>
+        </div>
+
+        <h3>OpenBaoStore가 실제로 하는 일</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>Check()</h4>
+            <p><code>/v1/sys/health</code>와 <code>/v1/auth/token/lookup-self</code>를 호출해 서버 상태와 현재 토큰 유효성을 확인합니다.</p>
+          </div>
+          <div class="card">
+            <h4>PutToken()</h4>
+            <p><code>/v1/{mount}/data/{subpath}</code>에 <code>{"data":{"token":...}}</code> 형식으로 저장합니다.</p>
+          </div>
+          <div class="card">
+            <h4>GetToken()</h4>
+            <p>같은 경로를 읽고 KV data 안의 <code>token</code> 필드를 꺼냅니다. 경로의 <code>kv/...</code>는 내부적으로 <code>secret/...</code> mount로 변환됩니다.</p>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>현재 구현 상태에서 주의할 점</b>
+          관련 구조체와 함수는 많이 구현돼 있지만, 현재 <code>cmd/api/main.go</code>에는 OpenBao용 <code>secrets.Router</code> 생성/주입과 <code>TokenRotationScheduler</code> 시작 코드가 아직 보이지 않습니다. 즉, <b>설계와 핵심 로직은 존재하지만 런타임 wiring은 아직 일부 미완성일 가능성</b>이 있습니다.
+        </div>
+
+        <div class="file-list">
+          <div class="file-item"><b>핸들러</b><code>internal/stack/adapter/handler/deploy_handler.go</code> - deploy / retry / continue / websocket logs</div>
+          <div class="file-item"><b>핵심 usecase</b><code>internal/stack/usecase/install_stack.go</code> - 상태 전이와 DAG 실행</div>
+          <div class="file-item"><b>실행 엔진</b><code>internal/stack/adapter/helm/orchestrator.go</code> - 어떤 step이 Helm chart인지, 어떤 step이 manifest인지 결정</div>
+          <div class="file-item"><b>실제 Helm</b><code>internal/stack/adapter/helm/installer.go</code> - install/upgrade/status</div>
+          <div class="file-item"><b>OpenBao Store</b><code>internal/shared/secrets/openbao_store.go</code> - OpenBao HTTP API read/write/check</div>
+          <div class="file-item"><b>Secret Router</b><code>internal/shared/secrets/store.go</code> - provider 라우팅</div>
+          <div class="file-item"><b>Token Source Admin</b><code>internal/admin/usecase/token_source_usecase.go</code>, <code>internal/admin/scheduler/token_rotation.go</code></div>
+        </div>
+      </section>
+
+      <section class="section" id="cicd-deploy">
+        <h2>CI/CD 배포 알고리즘</h2>
+        <p>CI/CD 모듈은 "파이프라인 정의 저장"과 "실제 클러스터 배포"를 분리합니다. 배포는 deployment 레코드를 먼저 만들고, 그 뒤 비동기 apply를 실행하는 구조입니다.</p>
+
+        <h3>핵심 함수</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>등록</h4>
+            <p><code>CreatePipeline</code></p>
+            <p>Pipeline 정의를 DB에 저장</p>
+          </div>
+          <div class="card">
+            <h4>배포 시작</h4>
+            <p><code>DeployPipeline.Start()</code></p>
+            <p>deployment status=running 레코드 생성</p>
+          </div>
+          <div class="card">
+            <h4>실제 적용</h4>
+            <p><code>DeployPipeline.ApplyAsync()</code></p>
+            <p>K8s manifest 생성/적용</p>
+          </div>
+        </div>
+
+        <h3>배포 알고리즘</h3>
+        <pre>PipelineHandler.DeployPipeline()
+  -&gt; DeployPipeline.Start()
+  -&gt; deployment row(status=running) 생성
+  -&gt; 백그라운드에서 ApplyAsync()
+
+DeployPipeline.ApplyAsync(deploymentID)
+  1. deploymentRepo.GetByID()
+  2. pipelineRepo.GetByID()
+  3. applyToCluster()
+  4. 성공하면 deployment.status = success
+  5. 실패하면 failDeployment()
+
+DeployPipeline.applyToCluster()
+  1. namespace 결정 (없으면 default)
+  2. DockerfilePath 가 있고 imagePreparer 가 있으면:
+     - clusterTargetProvider.GetTarget()
+     - Git Clone / Docker Build / Push or Load 준비
+     - imageRef 생성
+     - stepOffset = 3
+  3. kubeconfigProvider.GetKubeconfig()
+  4. AppType 에 따라 template 선택
+     - backend -&gt; go-web-api
+     - web -&gt; react-spa
+     - batch -&gt; python-fastapi
+  5. manifests.Generate() 호출
+  6. Deployment / Service / Ingress YAML 조합
+  7. applier.ApplyWithTracking() 으로 실제 K8s apply</pre>
+
+        <h3>PM 관점에서 이해해야 할 포인트</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>왜 deployment 테이블을 먼저 만드나</h4>
+            <p>사용자에게 "배포가 시작됐다"는 상태를 즉시 보여주고, 이후 비동기 진행 상황을 조회/스트리밍할 수 있게 하기 위해서입니다.</p>
+          </div>
+          <div class="card">
+            <h4>이미지 빌드는 항상 일어나나</h4>
+            <p>아닙니다. <code>DockerfilePath</code>가 있고 <code>ImagePreparer</code>와 <code>ClusterTargetProvider</code>가 주입된 경우에만 준비합니다.</p>
+          </div>
+        </div>
+
+        <div class="file-list">
+          <div class="file-item"><b>핸들러</b><code>internal/cicd/adapter/handler/pipeline_handler.go</code></div>
+          <div class="file-item"><b>핵심 usecase</b><code>internal/cicd/usecase/deploy_pipeline.go</code></div>
+          <div class="file-item"><b>외부 포트</b><code>internal/cicd/port/deployer.go</code></div>
+          <div class="file-item"><b>실행 구현</b><code>internal/cicd/adapter/kube/applier.go</code>, <code>adapter/manifests/generator.go</code></div>
+        </div>
+      </section>
+
+      <section class="section" id="observability">
+        <h2>Observability 로직</h2>
+        <p>Observability는 두 갈래입니다. 하나는 <b>대시보드 조회</b>, 다른 하나는 <b>alert rule CRUD + alert history 조회</b>입니다.</p>
+
+        <h3>대시보드 조회</h3>
+        <pre>DashboardHandler.GetDashboard()
+  -&gt; GetDashboard.Execute()
+  -&gt; dashboardRepo.GetDashboard()
+  -&gt; 결과를 KPI / Pipeline / Tools 형태로 응답
+
+main.go 에서 dashboardRepo 결정
+  if Prometheus URL 있음:
+    obsprom.NewDashboardRepository(promClient)
+  else:
+    obsrepo.NewMemoryDashboardRepository()</pre>
+
+        <h3>Alert Rule 생성/수정</h3>
+        <pre>AlertHandler.CreateRule()
+  1. request bind
+  2. metric_name 이 비어 있으면 condition 값을 대체 사용
+  3. threshold 만 있으면 warning/critical threshold 를 보정
+  4. CreateAlertRule.Execute() 호출
+
+AlertHandler.UpdateRule()
+  1. patch body bind
+  2. 없는 필드는 그대로 두고 있는 필드만 반영
+  3. threshold 입력을 warning/critical 로 보정
+  4. UpdateAlertRule.Execute() 호출</pre>
+
+        <div class="grid-3">
+          <div class="card">
+            <h4>Repository 계층</h4>
+            <p><code>DashboardRepository</code>, <code>AlertRuleRepository</code>, <code>AlertRepository</code>로 나뉩니다.</p>
+          </div>
+          <div class="card">
+            <h4>핸들러 추가 책임</h4>
+            <p><code>DashboardHandler</code>는 usecase 외에 <code>stackRepo</code>, <code>pool</code>, <code>kubeconfigProvider</code>도 받아서 배포 앱 상태 조회를 보강합니다.</p>
+          </div>
+          <div class="card">
+            <h4>대시보드 데이터 소스</h4>
+            <p>Prometheus가 설정되지 않으면 인메모리 fallback을 사용합니다. 즉, 운영/개발 환경의 동작 수준이 다를 수 있습니다.</p>
+          </div>
+        </div>
+
+        <div class="file-list">
+          <div class="file-item"><b>Dashboard Handler</b><code>internal/observability/adapter/handler/dashboard_handler.go</code></div>
+          <div class="file-item"><b>Alert Handler</b><code>internal/observability/adapter/handler/alert_handler.go</code></div>
+          <div class="file-item"><b>Dashboard UseCase</b><code>internal/observability/usecase/get_dashboard.go</code></div>
+          <div class="file-item"><b>Ports</b><code>internal/observability/port/repository.go</code></div>
+        </div>
+      </section>
+
+      <section class="section" id="admin">
+        <h2>Admin 로직</h2>
+        <p>Admin은 조직, 사용자, 클러스터, 리소스 프로필, 토큰 소스 관리로 나뉩니다. 이 중 PM 관점에서 중요한 것은 <b>클러스터 등록</b>과 <b>토큰 소스 관리</b>입니다.</p>
+
+        <h3>클러스터 등록/조회 흐름</h3>
+        <pre>ClusterUseCase.RegisterCluster()
+  1. 입력값으로 Cluster aggregate 생성
+  2. type/types 정규화
+  3. cloud provider 기본값 보정(on-premise)
+  4. connection status = pending
+  5. clusterRepo.Create()
+
+ClusterUseCase.GetCluster()
+  1. clusterRepo.GetByID()
+  2. 없으면 AppError(CLUSTER_NOT_FOUND)
+  3. type/types 정규화
+  4. cloud provider 기본값 보정</pre>
+
+        <h3>왜 discoverer 와 decryptFn 이 있나</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>discoverer</h4>
+            <p><code>ClusterDiscoverer</code> 포트는 실제 Kubernetes 클러스터에 붙어 서버 버전, node architecture 같은 사실을 조사하기 위한 인터페이스입니다.</p>
+          </div>
+          <div class="card">
+            <h4>decryptFn</h4>
+            <p>DB에 저장된 kubeconfig는 암호화돼 있으므로, usecase가 직접 crypto 패키지에 의존하지 않도록 복호화 함수를 주입받습니다.</p>
+          </div>
+        </div>
+
+        <h3>토큰 소스 관리 흐름</h3>
+        <pre>TokenSourceUseCase.ApplyAction(tokenSourceID, action, reason, details)
+  1. action 을 status 로 매핑
+     rotate -&gt; rotated
+     approve/resume -&gt; renewing
+     pause -&gt; failed_manual
+  2. repo.UpdateSourceStatus()
+  3. repo.InsertEvent()
+
+TokenSourceUseCase.RevealMeta()
+  1. repo.GetSource()
+  2. metadata.secret_manager 확인 (기본 openbao)
+  3. secretRouter 가 있으면 실제 token 값을 읽어옴
+  4. token source 메타 정보 응답</pre>
+
+        <div class="file-list">
+          <div class="file-item"><b>Org Handler</b><code>internal/admin/adapter/handler/org_handler.go</code></div>
+          <div class="file-item"><b>Cluster UseCase</b><code>internal/admin/usecase/cluster_usecase.go</code></div>
+          <div class="file-item"><b>Token Source UseCase</b><code>internal/admin/usecase/token_source_usecase.go</code></div>
+          <div class="file-item"><b>Ports</b><code>internal/admin/port/repository.go</code></div>
+        </div>
+      </section>
+
+      <section class="section" id="auth">
+        <h2>Auth 로직</h2>
+        <p>현재 인증은 "개발 모드 단순 헤더 인증"과 "운영 모드 JWT/OIDC 인증"을 함께 지원하는 구조입니다.</p>
+
+        <h3>개발 모드</h3>
+        <pre>AuthMiddleware()
+  1. X-User-ID 헤더 확인
+  2. X-User-Email, X-User-Name, X-User-Role, X-User-OrgID로 User 생성
+  3. echo context 의 current_user 에 저장</pre>
+
+        <h3>운영 모드 JWT 흐름</h3>
+        <pre>JWTAuthMiddleware()
+  1. Authorization: Bearer ... 확인
+  2. jwt.ParseWithClaims()
+  3. kid 로 JWKS 조회
+  4. issuer / audience / RS256 검증
+  5. claims 에서 sub, email, preferred_username 추출
+  6. provider.ExtractRoles() 로 provider별 role 해석
+  7. current_user 로 context 저장
+
+getJWKS()
+  1. issuerURL 기준 캐시 확인
+  2. 없으면 /protocol/openid-connect/certs 호출
+  3. RSA public key 집합으로 변환
+  4. 1시간 캐시</pre>
+
+        <h3>PM 관점에서 중요한 점</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>역할 추출은 provider 별로 다름</h4>
+            <p>Keycloak과 Authentik은 JWT claims 구조가 달라서 <code>OIDCProvider.ExtractRoles()</code>로 추상화합니다.</p>
+          </div>
+          <div class="card">
+            <h4>RBAC는 path prefix 기반</h4>
+            <p><code>RBACMiddleware()</code>는 역할별로 접근 가능한 API prefix를 검사합니다.</p>
+          </div>
+          <div class="card">
+            <h4>개발/운영 간 차이</h4>
+            <p>개발 모드는 헤더만 있으면 통과하지만, 운영 모드는 실제 OIDC issuer와 audience 검증이 필요합니다.</p>
+          </div>
+        </div>
+
+        <div class="file-list">
+          <div class="file-item"><b>Simple Auth</b><code>internal/auth/adapter/middleware/auth_middleware.go</code></div>
+          <div class="file-item"><b>JWT Auth</b><code>internal/auth/adapter/middleware/jwt_middleware.go</code></div>
+          <div class="file-item"><b>OIDC Port</b><code>internal/auth/port/oidc_provider.go</code></div>
+          <div class="file-item"><b>Provider 구현</b><code>adapter/keycloak/oidc_provider.go</code>, <code>adapter/authentik/oidc_provider.go</code></div>
+        </div>
+      </section>
+
+      <section class="section" id="airgap-chapter">
+        <h2>Airgap 운영 챕터</h2>
+        <p>앞에서 설명한 Stack 설치 로직 중 에어갭 분기는 내부 OCI registry를 사용하는 기술 설명이었습니다. 이 챕터는 그보다 한 단계 위에서, <b>실제 에어갭 운영 흐름</b>을 문서와 스크립트 기준으로 정리한 부분입니다.</p>
+
+        <h3>무엇을 준비해야 하나</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>이미지 번들</h4>
+            <p>필요 이미지 목록 생성, pull, save, load 절차가 필요합니다. 관련 스크립트는 <code>airgap/scripts/00-generate-images.sh</code>, <code>01-pull-images.sh</code>, <code>02-save-bundle.sh</code>, <code>03-load-bundle.sh</code> 입니다.</p>
+          </div>
+          <div class="card">
+            <h4>내부 registry</h4>
+            <p><code>10-setup-registry.sh</code>, <code>12-push-to-registry.sh</code>, <code>28-push-charts-oci.sh</code>가 내부 registry와 chart/image push를 담당합니다.</p>
+          </div>
+          <div class="card">
+            <h4>클러스터와 플랫폼</h4>
+            <p><code>11-create-cluster.sh</code>, <code>21-install-nullus.sh</code>, <code>22-install-platform-stack.sh</code>, <code>27-install-stacks.sh</code>로 실제 배포가 이어집니다.</p>
+          </div>
+        </div>
+
+        <h3>에어갭 전체 흐름</h3>
+        <pre>1. 필요 이미지/차트 목록 산출
+2. 인터넷 가능한 환경에서 이미지/차트 수집
+3. 번들 생성 및 반입
+4. 내부 registry 구성
+5. chart OCI push
+6. 이미지 registry push 또는 cluster load
+7. Nullus API / DB / 플랫폼 스택 설치
+8. Stack install 실행
+9. Gateway / hosts / verify / port-forward 후속 작업</pre>
+
+        <h3>실제 스크립트 체인</h3>
+        <pre>이미지 경로
+00-generate-images.sh
+  -&gt; 설치에 필요한 이미지 목록 생성
+
+01-pull-images.sh
+  -&gt; 인터넷 가능한 환경에서 외부 registry로부터 이미지 pull
+
+02-save-bundle.sh
+  -&gt; pull한 이미지를 tar bundle로 저장
+
+03-load-bundle.sh
+  -&gt; 에어갭 환경으로 옮긴 bundle을 로컬 Docker/Containerd에 load
+
+10-setup-registry.sh
+  -&gt; 내부 registry 준비
+
+12-push-to-registry.sh
+  -&gt; 로컬에 load된 이미지를 내부 registry로 push
+
+차트 경로
+20-bundle-charts.sh
+  -&gt; chart bundle 준비
+
+28-push-charts-oci.sh
+  -&gt; chart를 내부 OCI registry로 push</pre>
+
+        <div class="grid-2">
+          <div class="card">
+            <h4>이미지 기준으로 보면</h4>
+            <p><b>외부에서 pull</b> -&gt; <b>bundle로 저장</b> -&gt; <b>에어갭 환경에서 load</b> -&gt; <b>내부 registry로 push</b> 순서입니다. 즉 내부 registry가 인터넷에서 직접 받는 게 아니라, 중간 번들 단계를 거칩니다.</p>
+          </div>
+          <div class="card">
+            <h4>차트 기준으로 보면</h4>
+            <p>차트도 비슷하게 내부 OCI registry로 옮깁니다. 이후 Nullus 설치 시 <code>NULLUS_HELM_OCI_REGISTRY</code>가 이 내부 chart registry를 바라보게 됩니다.</p>
+          </div>
+        </div>
+
+        <h3>문서 기준 어디를 보면 되나</h3>
+        <div class="file-list">
+          <div class="file-item"><b>메인 개요</b><code>airgap/README.md</code></div>
+          <div class="file-item"><b>설치 절차</b><code>airgap/INSTALL.md</code></div>
+          <div class="file-item"><b>실행 런북</b><code>airgap/docs/runbook.md</code></div>
+          <div class="file-item"><b>사전 준비</b><code>airgap/docs/prerequisites.md</code></div>
+          <div class="file-item"><b>문제 해결</b><code>airgap/docs/troubleshooting.md</code></div>
+          <div class="file-item"><b>설계/구성</b><code>airgap/docs/architecture.md</code></div>
+        </div>
+
+        <h3>PM 관점 체크포인트</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>기능 완성 판단 기준</h4>
+            <p>에어갭은 단순히 설치 명령이 성공하는지보다, chart와 이미지가 모두 내부 자산으로 관리되고 외부 네트워크 없이 재현 가능해야 완성으로 볼 수 있습니다.</p>
+          </div>
+          <div class="card">
+            <h4>가장 흔한 리스크</h4>
+            <p>chart는 내부 registry에 있지만 이미지 미러링이 빠져 실제 Pod가 기동하지 않는 경우, 또는 환경변수/hosts/gateway 후속 설정이 누락되는 경우입니다.</p>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:14px;">
+          <b>읽는 순서 추천</b>
+          에어갭만 따로 이해하려면 <code>airgap/README.md</code> → <code>airgap/INSTALL.md</code> → <code>airgap/docs/runbook.md</code> 순서로 읽고, 그 다음 이 문서의 <code>Stack Airgap 설치</code> 설명을 보면 전체 그림이 가장 잘 연결됩니다.
+        </div>
+      </section>
+
+      <section class="section" id="study-order">
+        <h2>추천 학습 순서</h2>
+        <ol>
+          <li><code>cmd/api/main.go</code>를 읽고 어떤 모듈이 어떤 구현체로 조립되는지 본다.</li>
+          <li>Stack 설치가 가장 복잡하므로 <code>deploy_handler.go</code> → <code>install_stack.go</code> → <code>orchestrator.go</code> → <code>installer.go</code> 순서로 읽는다.</li>
+          <li>CI/CD는 <code>pipeline_handler.go</code> → <code>deploy_pipeline.go</code> → <code>applier.go</code>를 읽는다.</li>
+          <li>Observability는 <code>dashboard_handler.go</code>와 <code>alert_handler.go</code>를 먼저 보고, 그다음 repository를 읽는다.</li>
+          <li>Admin은 <code>cluster_usecase.go</code>, <code>token_source_usecase.go</code>를 보면 운영 기능의 핵심이 보인다.</li>
+          <li>Auth는 마지막에 <code>auth_middleware.go</code>와 <code>jwt_middleware.go</code>를 읽으면 실제 접근 제어 모델이 보인다.</li>
+        </ol>
+        <div class="callout" style="margin-top:14px;">
+          <b>PM에게 추천하는 실제 사용법</b>
+          새로운 기능 논의가 생기면 먼저 이 페이지에서 해당 모듈의 <b>진입점</b>과 <b>핵심 usecase</b>를 찾고, 그 다음 실제 파일로 내려가면 됩니다. 그러면 "이 기능을 넣으면 어느 단계가 바뀌는지"를 더 빨리 파악할 수 있습니다.
+        </div>
+      </section>
+    </main>
+  </div>
+
+
+</body></html>
