@@ -2,13 +2,13 @@
 set -euo pipefail
 
 STACK_NAMESPACE="${STACK_NAMESPACE:-nullus}"
-GATEWAY_NAME="${GATEWAY_NAME:-nullus-devsecops-stack-gateway}"
+GATEWAY_NAME="${GATEWAY_NAME:-nullus-gateway}"
 LOCAL_HTTP_PORT="${LOCAL_HTTP_PORT:-80}"
 REMOTE_HTTP_PORT="${REMOTE_HTTP_PORT:-80}"
 LOCAL_HTTPS_PORT="${LOCAL_HTTPS_PORT:-443}"
 REMOTE_HTTPS_PORT="${REMOTE_HTTPS_PORT:-443}"
 FORWARD_HTTPS="${FORWARD_HTTPS:-true}"
-ACCESS_HOST="${ACCESS_HOST:-nullus-devsecops-stack.internal}"
+ACCESS_HOST="${ACCESS_HOST:-nullus.internal}"
 KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
 
 if [[ ! -f "$KUBECONFIG_PATH" && "${EUID:-0}" -eq 0 && -n "${SUDO_USER:-}" ]]; then
@@ -91,7 +91,7 @@ if [[ -z "$GW_SVC" ]]; then
   echo "Gateway 데이터플레인 서비스가 없습니다."
   echo "또는 후보 서비스가 여러 개라 자동 선택이 불가능합니다."
   echo "필요 시 GATEWAY_NAME 환경변수를 명시하세요. 예)"
-  echo "  GATEWAY_NAME=nullus-devsecops-stack-gateway ./scripts/port-forward-gateway.sh"
+  echo "  GATEWAY_NAME=nullus-gateway ./scripts/port-forward-gateway.sh"
   echo "확인 항목:"
   echo "  1) Gateway 리소스 존재 여부"
   kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$KUBE_CONTEXT" -n "$STACK_NAMESPACE" get gateway || true

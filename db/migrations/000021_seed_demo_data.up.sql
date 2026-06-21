@@ -13,7 +13,7 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'Production Stack',
   'gitlab-allinone-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
+  (SELECT id FROM clusters WHERE name = 'kind-nullus-platform' LIMIT 1),
   'completed',
   'nullus-prod',
   '{
@@ -31,7 +31,7 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'Development Stack',
   'gitlab-argocd-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
+  (SELECT id FROM clusters WHERE name = 'kind-nullus-platform' LIMIT 1),
   'completed',
   'nullus-dev',
   '{
@@ -49,7 +49,7 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'Staging Environment',
   'github-argocd-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id FROM clusters WHERE name = 'app-cluster-prod' LIMIT 1),
+  (SELECT id FROM clusters WHERE name = 'kind-nullus-develop' LIMIT 1),
   'installing',
   'nullus-staging',
   '{
@@ -67,7 +67,7 @@ INSERT INTO stacks (id, name, template_id, org_id, cluster_id, state, namespace,
   'Microservices Platform',
   'gitlab-argocd-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id FROM clusters WHERE name = 'app-cluster-prod' LIMIT 1),
+  (SELECT id FROM clusters WHERE name = 'kind-nullus-develop' LIMIT 1),
   'failed',
   'nullus-msa',
   '{
@@ -132,7 +132,7 @@ INSERT INTO pipelines (id, name, template_id, org_id, cluster_id, namespace, app
   'Frontend Web App',
   'web-frontend-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
+  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-platform' LIMIT 1),
   'nullus-prod',
   'web',
   'https://github.com/nullus/web-frontend.git',
@@ -144,7 +144,7 @@ INSERT INTO pipelines (id, name, template_id, org_id, cluster_id, namespace, app
   'Backend API Server',
   'web-backend-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-test' LIMIT 1),
+  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-platform' LIMIT 1),
   'nullus-prod',
   'backend',
   'https://github.com/nullus/backend-api.git',
@@ -156,7 +156,7 @@ INSERT INTO pipelines (id, name, template_id, org_id, cluster_id, namespace, app
   'ML Prediction Service',
   'batch-job-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id::varchar FROM clusters WHERE name = 'app-cluster-prod' LIMIT 1),
+  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-develop' LIMIT 1),
   'nullus-ml',
   'batch',
   'https://github.com/nullus/ml-service.git',
@@ -168,7 +168,7 @@ INSERT INTO pipelines (id, name, template_id, org_id, cluster_id, namespace, app
   'Nightly Batch Runner',
   'batch-job-v1',
   '11111111-1111-1111-1111-111111111111',
-  (SELECT id::varchar FROM clusters WHERE name = 'app-cluster-prod' LIMIT 1),
+  (SELECT id::varchar FROM clusters WHERE name = 'kind-nullus-develop' LIMIT 1),
   'nullus-batch',
   'batch',
   'https://github.com/nullus/batch-runner.git',
@@ -205,10 +205,10 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO alerts (id, rule_id, severity, message, fired_at, resolved_at) VALUES
 ('al-1', 'ar-1', 'critical', 'frontend-web 파이프라인 빌드 실패율 15% 초과 (최근 1시간)',           '2026-03-19T10:15:00Z', '2026-03-19T11:30:00Z'),
 ('al-2', 'ar-3', 'warning',  'backend-api 파이프라인 실행 시간 420초 (임계값 300초 초과)',           '2026-03-18T14:00:00Z', '2026-03-18T14:30:00Z'),
-('al-3', 'ar-4', 'info',     'devops-cluster CPU 사용률 88% — 스케일링 검토 필요',                  '2026-03-20T09:00:00Z', NULL),
+('al-3', 'ar-4', 'info',     'kind-nullus-platform CPU 사용률 88% — 스케일링 검토 필요',          '2026-03-20T09:00:00Z', NULL),
 ('al-4', 'ar-1', 'critical', 'ml-service 파이프라인 빌드 3회 연속 실패',                            '2026-03-14T15:20:00Z', '2026-03-14T16:00:00Z'),
 ('al-5', 'ar-2', 'warning',  'frontend-web v1.2.2 배포 실패 후 자동 롤백 발생',                    '2026-03-19T10:10:00Z', '2026-03-19T10:12:00Z'),
-('al-6', 'ar-5', 'info',     'app-cluster-prod 스토리지 사용률 82% — 정리 권장',                    '2026-03-21T08:00:00Z', NULL)
+('al-6', 'ar-5', 'info',     'kind-nullus-develop 스토리지 사용률 82% — 정리 권장',                '2026-03-21T08:00:00Z', NULL)
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Notification Configs (2개) ──────────────────────────────────────────────
@@ -263,7 +263,7 @@ INSERT INTO notification_history (id, org_id, channel, event, status, payload, e
   'slack',
   'high_cpu',
   'sent',
-  '{"cluster": "devops-cluster", "cpu": 88, "threshold": 85}'::jsonb,
+  '{"cluster": "kind-nullus-platform", "cpu": 88, "threshold": 85}'::jsonb,
   NULL,
   '2026-03-20T09:01:00Z'
 ),
@@ -273,7 +273,7 @@ INSERT INTO notification_history (id, org_id, channel, event, status, payload, e
   'email',
   'storage_warning',
   'failed',
-  '{"cluster": "app-cluster-prod", "storage": 82, "threshold": 80}'::jsonb,
+  '{"cluster": "kind-nullus-develop", "storage": 82, "threshold": 80}'::jsonb,
   'SMTP connection timeout',
   '2026-03-21T08:01:00Z'
 )
@@ -283,7 +283,7 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, details, ip_address, created_at) VALUES
 (gen_random_uuid(), 'admin@nullus.io', 'create',    'organization', '11111111-1111-1111-1111-111111111111', '{"name": "Nullus DevOps Team"}'::jsonb,           '192.168.1.10', '2026-01-10T08:00:00Z'),
-(gen_random_uuid(), 'admin@nullus.io', 'register',  'cluster',      'devops-cluster',                       '{"name": "devops-cluster", "type": "pipeline"}'::jsonb, '192.168.1.10', '2026-01-10T08:30:00Z'),
+(gen_random_uuid(), 'admin@nullus.io', 'register',  'cluster',      'kind-nullus-platform',                 '{"name": "kind-nullus-platform", "type": "pipeline"}'::jsonb, '192.168.1.10', '2026-01-10T08:30:00Z'),
 (gen_random_uuid(), 'admin@nullus.io', 'deploy',    'stack',        'production-stack',                     '{"template": "gitlab-allinone-v1", "status": "completed"}'::jsonb, '192.168.1.10', '2026-01-10T09:00:00Z'),
 (gen_random_uuid(), 'kim@nullus.io',   'deploy',    'pipeline',     'frontend-web',                         '{"version": "v1.2.3", "status": "success"}'::jsonb, '192.168.1.20', '2026-03-20T14:22:00Z'),
 (gen_random_uuid(), 'park@nullus.io',  'deploy',    'pipeline',     'frontend-web',                         '{"version": "v1.2.2", "status": "failed"}'::jsonb,  '192.168.1.30', '2026-03-19T10:00:00Z'),

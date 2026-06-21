@@ -22,7 +22,7 @@ REDIS_PORT=6380
 KEYCLOAK_PORT=8180
 
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!}"
-OPENBAO_ADDR="${OPENBAO_ADDR:-http://openbao.nullus-devsecops-stack.internal}"
+OPENBAO_ADDR="${OPENBAO_ADDR:-http://openbao.nullus.internal}"
 OPENBAO_TOKEN="${OPENBAO_TOKEN:-root}"
 KIND_CONFIG="$PROJECT_ROOT/scripts/kind-cluster.yaml"
 AUTHENTIK_PORT=9090
@@ -553,7 +553,7 @@ do_up() {
 
   echo ""
   echo "[nullus] installing frontend dependencies..."
-  (cd "$PROJECT_ROOT/web" && npm install --legacy-peer-deps --silent 2>/dev/null || npm install --legacy-peer-deps)
+  (cd "$PROJECT_ROOT/web" && npm ci --legacy-peer-deps --silent 2>/dev/null || npm ci --legacy-peer-deps)
 
   echo "[nullus] starting frontend dev server on :$WEB_PORT..."
   run_bg "web" "$PROJECT_ROOT/web" "npx vite --port $WEB_PORT" "$WEB_PORT"
