@@ -1,5 +1,5 @@
 UPDATE organizations
-SET cluster_access_scope = ARRAY['kind-nullus-test'],
+SET cluster_access_scope = ARRAY['kind-nullus-platform', 'kind-nullus-develop'],
     updated_at = NOW()
 WHERE id = '11111111-1111-1111-1111-111111111111';
 

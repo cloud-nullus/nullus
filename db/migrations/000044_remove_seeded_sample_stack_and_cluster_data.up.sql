@@ -40,8 +40,8 @@ SET cluster_access_scope = array_remove(
   array_remove(
     array_remove(
       array_remove(
-        array_remove(COALESCE(cluster_access_scope, '{}'), 'kind-nullus-test'),
-        'app-cluster-prod'
+        array_remove(COALESCE(cluster_access_scope, '{}'), 'kind-nullus-platform'),
+        'kind-nullus-develop'
       ),
       'staging-cluster'
     ),

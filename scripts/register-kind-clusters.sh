@@ -47,15 +47,18 @@ get_org_id() {
   echo "$org_id"
 }
 
-cluster_already_registered() {
+lookup_cluster_id() {
   local name="$1"
   curl -fsS "$API_BASE/api/v1/admin/clusters" 2>/dev/null \
     | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 items = data if isinstance(data, list) else data.get('items', [])
-print('yes' if any(c.get('name') == '$name' for c in items) else 'no')
-" 2>/dev/null || echo "no"
+for c in items:
+    if c.get('name') == '$name':
+        print(c.get('id', ''))
+        break
+" 2>/dev/null || true
 }
 
 register_cluster() {
@@ -69,11 +72,6 @@ register_cluster() {
   fi
 
   local context="kind-${kind_name}"
-
-  if [[ "$(cluster_already_registered "$context")" == "yes" ]]; then
-    log "$context is already registered — skipping"
-    return 0
-  fi
 
   local endpoint kubeconfig
   endpoint=$(kubectl config view --context "$context" --minify --raw \
@@ -90,8 +88,6 @@ register_cluster() {
     cluster_type="target"
   fi
 
-  log "Registering $context (type=$cluster_type)..."
-
   local payload
   payload=$(echo "$kubeconfig" | python3 -c "
 import json, sys
@@ -107,8 +103,20 @@ print(json.dumps({
 }))
 " "kind-${kind_name}" "${cluster_type}" "${endpoint}" "${org_id}")
 
+  local cluster_id method path response
+  cluster_id=$(lookup_cluster_id "$context")
+  if [[ -n "$cluster_id" ]]; then
+    method="PATCH"
+    path="$API_BASE/api/v1/admin/clusters/$cluster_id"
+    log "Updating existing $context (id=$cluster_id)..."
+  else
+    method="POST"
+    path="$API_BASE/api/v1/admin/clusters"
+    log "Registering $context (type=$cluster_type)..."
+  fi
+
   local response
-  response=$(curl -sS -w "\n%{http_code}" -X POST "$API_BASE/api/v1/admin/clusters" \
+  response=$(curl -sS -w "\n%{http_code}" -X "$method" "$path" \
     -H "Content-Type: application/json" \
     -d "$payload")
 
@@ -116,10 +124,15 @@ print(json.dumps({
   http_code=$(echo "$response" | tail -1)
   body=$(echo "$response" | sed '$d')
 
-  if [[ "$http_code" == "201" ]]; then
-    local cluster_id
-    cluster_id=$(echo "$body" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
-    log "$context registered successfully (id=$cluster_id)"
+  if [[ "$http_code" == "201" || "$http_code" == "200" ]]; then
+    if [[ -z "$cluster_id" ]]; then
+      cluster_id=$(echo "$body" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+    fi
+    if [[ "$http_code" == "201" ]]; then
+      log "$context registered successfully (id=$cluster_id)"
+    else
+      log "$context updated successfully (id=$cluster_id)"
+    fi
 
     log "Verifying connection for $context..."
     local verify_code
