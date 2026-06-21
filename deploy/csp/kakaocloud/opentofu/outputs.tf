@@ -49,12 +49,12 @@ output "airgap_private_ip" {
 #####################################################################
 output "ssh_builder" {
   description = "Builder VM SSH 접속 커맨드"
-  value       = "ssh -i ${var.ssh_key_path} ubuntu@${module.compute.builder_public_ip}"
+  value       = "ssh -i ${local_sensitive_file.private_key.filename} ubuntu@${module.compute.builder_public_ip}"
 }
 
 output "ssh_airgap" {
   description = "Airgap VM SSH 접속 커맨드"
-  value       = "ssh -i ${var.ssh_key_path} ubuntu@${module.compute.airgap_public_ip}"
+  value       = "ssh -i ${local_sensitive_file.private_key.filename} ubuntu@${module.compute.airgap_public_ip}"
 }
 
 #####################################################################
@@ -63,8 +63,8 @@ output "ssh_airgap" {
 output "next_steps" {
   description = "프로비저닝 완료 후 실행할 스크립트 순서"
   value = {
-    step1 = "BUILDER_IP=${module.compute.builder_public_ip} AIRGAP_IP=${module.compute.airgap_public_ip} SSH_KEY=${var.ssh_key_path} ../scripts/10-build-on-builder.sh"
-    step2 = "BUILDER_IP=${module.compute.builder_public_ip} AIRGAP_IP=${module.compute.airgap_public_ip} SSH_KEY=${var.ssh_key_path} ../scripts/20-transfer-bundle.sh"
-    step3 = "AIRGAP_IP=${module.compute.airgap_public_ip} SSH_KEY=${var.ssh_key_path} ../scripts/30-install-on-airgap.sh"
+    step1 = "BUILDER_IP=${module.compute.builder_public_ip} AIRGAP_IP=${module.compute.airgap_public_ip} SSH_KEY=${local_sensitive_file.private_key.filename} ../scripts/10-build-on-builder.sh"
+    step2 = "BUILDER_IP=${module.compute.builder_public_ip} AIRGAP_IP=${module.compute.airgap_public_ip} SSH_KEY=${local_sensitive_file.private_key.filename} ../scripts/20-transfer-bundle.sh"
+    step3 = "AIRGAP_IP=${module.compute.airgap_public_ip} SSH_KEY=${local_sensitive_file.private_key.filename} ../scripts/30-install-on-airgap.sh"
   }
 }

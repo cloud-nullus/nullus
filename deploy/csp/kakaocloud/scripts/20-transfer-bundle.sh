@@ -29,7 +29,7 @@ echo "[INFO] Builder VM (${BUILDER_IP}) 에서 최신 번들 경로 조회 ..." 
 
 # Builder VM 에서 가장 최신 번들 파일명 가져오기
 BUNDLE_NAME=$(ssh ${SSH_OPTS} ubuntu@"${BUILDER_IP}" \
-  "ls -t ~/draft/airgap/dist/nullus-airgap-bundle-*.tar.gz 2>/dev/null | head -1 | xargs -r basename")
+  "ls -t ~/draft/airgap/dist/nullus-airgap-bundle-*.tar.gz 2>/dev/null | head -1 | sed 's#.*/##'")
 
 if [[ -z "${BUNDLE_NAME}" ]]; then
   echo "[ERR] Builder VM 에서 번들 파일을 찾을 수 없습니다. 10-build-on-builder.sh 를 먼저 실행하세요." >&2

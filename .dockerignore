@@ -14,4 +14,12 @@ postgres_data
 *.zip
 *.tar.gz
 terraform_*
-/deploy/csp/kakaocloud/opentofu/terraform.tfvars
+# OpenTofu/Terraform 시크릿·상태·키 — 빌드 컨텍스트 전면 차단 (디렉토리 무관)
+**/*.tfvars
+!**/*.tfvars.example
+**/*.tfstate
+**/*.tfstate.*
+**/tfplan
+**/*.tfplan
+**/*.pem
+**/.terraform/

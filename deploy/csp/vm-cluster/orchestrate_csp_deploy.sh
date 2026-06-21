@@ -48,7 +48,7 @@ echo " -> 전체 6대 bootstrap 완료!"
 log "4. 첫 번째 마스터($M1) 클러스터 초기화 및 토큰 재생성"
 if [ ! -f /etc/kubernetes/admin.conf ]; then
     export CONTROL_PLANE_ENDPOINT="$M1"
-    export APISERVER_EXTRA_SANS="61.109.239.220"
+    export APISERVER_EXTRA_SANS="${APISERVER_EXTRA_SANS:-<PUBLIC_IP>}"  # 실행 시 환경변수로 공인 IP 주입
     sudo -E /scripts/runbook_csp.sh init-master
 else
     log "  -> /etc/kubernetes/admin.conf 가 이미 존재함. 토큰만 재생성합니다."
@@ -90,9 +90,9 @@ kubectl get nodes
 log "9. Nullus 전체 배포 수행"
 export METALLB_IP_RANGE="172.16.2.200-172.16.2.220" # CSP망의 가용 IP 대역 사용
 export INGRESS_HOST="nullus.local"
-export APISERVER_EXTRA_SANS="61.109.239.220"
-export DB_PASSWORD="change-me-in-production"
-export ENCRYPTION_KEY="nullus-dev-key-32bytes-padding!!"
+export APISERVER_EXTRA_SANS="${APISERVER_EXTRA_SANS:-<PUBLIC_IP>}"  # 실행 시 환경변수로 공인 IP 주입
+export DB_PASSWORD="${DB_PASSWORD:?DB_PASSWORD 를 환경변수로 주입하세요}"
+export ENCRYPTION_KEY="${ENCRYPTION_KEY:?ENCRYPTION_KEY(32바이트)를 환경변수로 주입하세요}"
 export IMAGE_TAG="0.1.0-alpha"
 export NULLUS_NAMESPACE="nullus"
 
