@@ -30,7 +30,7 @@ echo "[INFO] Airgap VM (${AIRGAP_IP}) 에 연결 중 ..." >&2
 if [[ -z "${BUNDLE_NAME:-}" ]]; then
   echo "[INFO] BUNDLE_NAME 미지정 — Airgap VM 홈 디렉토리에서 최신 번들 탐색 ..." >&2
   BUNDLE_NAME=$(ssh ${SSH_OPTS} ubuntu@"${AIRGAP_IP}" \
-    "ls -t ~/nullus-airgap-bundle-*.tar.gz 2>/dev/null | head -1 | xargs -r basename")
+    "ls -t ~/nullus-airgap-bundle-*.tar.gz 2>/dev/null | head -1 | sed 's#.*/##'")
   if [[ -z "${BUNDLE_NAME}" ]]; then
     echo "[ERR] Airgap VM 홈에서 번들 파일을 찾을 수 없습니다. 20-transfer-bundle.sh 를 먼저 실행하세요." >&2
     exit 1
