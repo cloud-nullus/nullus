@@ -18,6 +18,10 @@ spec:
       labels:
         {{- include "nullus.api.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "nullus.fullname" . }}
       securityContext:
         runAsNonRoot: true
@@ -169,6 +173,10 @@ spec:
       labels:
         {{- include "nullus.web.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
