@@ -16,8 +16,8 @@
 ### 2-VM 토폴로지 (builder + airgap 분리)
 | VM | 역할 | 스펙 | 비고 |
 |----|------|------|------|
-| **builder** | 온라인 — amd64 번들 빌드 | t1i.xlarge (4c/8GB), 500GB | 인터넷에서 이미지 pull → `pre-build.sh` 로 번들 생성 |
-| **airgap** | 오프라인 — kind 클러스터 설치 대상 | t1i.2xlarge (8c/16GB), 500GB | 번들 수신 → `install.sh` → registry + kind + Nullus |
+| **builder** | 온라인 — amd64 번들 빌드 | t1i.xlarge (4c/16GB), 500GB | 인터넷에서 이미지 pull → `pre-build.sh` 로 번들 생성 |
+| **airgap** | 오프라인 — kind 클러스터 설치 대상 | t1i.2xlarge (8c/32GB), 500GB | 번들 수신 → `install.sh` → registry + kind + Nullus |
 
 > kind 는 단일 호스트의 Docker 안에 클러스터를 띄우는 도구다. airgap 설치(`install.sh`)는
 > **registry:2 컨테이너 + kind 클러스터(control-plane1 + worker1) + Nullus** 를 한 VM 안에서 모두 구성한다.

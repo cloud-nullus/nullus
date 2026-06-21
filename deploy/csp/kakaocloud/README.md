@@ -13,7 +13,7 @@ OpenTofu 로 Kakao Cloud 에 VM 2대를 프로비저닝하고, 기존 `airgap/` 
 ┌─────────────┐   SCP 번들 전송     ┌──────────────────┐
 │ builder VM  │ ─────────────── ▶ │   airgap VM      │
 │ (온라인)      │                   │ (오프라인 타겟)     │
-│ t1i.large   │                   │ t1i.xlarge       │
+│ t1i.xlarge  │                   │ t1i.2xlarge      │
 │             │                   │                  │
 │ · git clone │                   │ · registry:2     │
 │ · pre-build │                   │ · kind 클러스터    │
@@ -35,7 +35,7 @@ OpenTofu 로 Kakao Cloud 에 VM 2대를 프로비저닝하고, 기존 `airgap/` 
 |------|----------|
 | OpenTofu | >= 1.13.5 (`tofu` 커맨드) |
 | Kakao Cloud 계정 | Application Credential (ID + Secret) |
-| Kakao Cloud 키페어 | 콘솔 > Compute > Key Pairs 에서 생성 |
+| Kakao Cloud 키페어 | 콘솔 생성 불필요 — IaC 가 `key_name` 으로 생성하고 private key 를 `opentofu/<key_name>.pem` 에 저장 |
 | 로컬 SSH 클라이언트 | `ssh`, `scp` 필요 |
 
 ---
