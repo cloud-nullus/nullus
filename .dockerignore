@@ -14,3 +14,4 @@ postgres_data
 *.zip
 *.tar.gz
 terraform_*
+/deploy/csp/kakaocloud/opentofu/terraform.tfvars

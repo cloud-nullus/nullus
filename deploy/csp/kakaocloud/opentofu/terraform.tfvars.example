@@ -1,0 +1,42 @@
+# terraform.tfvars.example
+# 실제 사용 시: cp terraform.tfvars.example terraform.tfvars 후 값 채우기
+# terraform.tfvars 는 .gitignore 에 의해 커밋되지 않음
+
+# ─── Kakao Cloud 인증 ─────────────────────────────────────────────────────────
+# Kakao Cloud 콘솔 > IAM > Application Credential 에서 생성
+application_credential_id     = "YOUR_CREDENTIAL_ID"
+application_credential_secret = "YOUR_CREDENTIAL_SECRET"
+
+# ─── SSH 키페어 ───────────────────────────────────────────────────────────────
+# Kakao Cloud 콘솔 > Compute > Key Pairs 에서 생성한 키페어 이름
+key_name     = "my-keypair"
+ssh_key_path = "~/.ssh/my-keypair.pem"
+
+# ─── 네트워크 ─────────────────────────────────────────────────────────────────
+# vpc_* 는 VPC·기본서브넷에 반영된다.
+vpc_name                = "nullus-airgap"
+vpc_cidr                = "172.16.0.0/16"
+vpc_default_subnet_cidr = "172.16.255.0/24"
+subnet_name             = "main_subnet"
+subnet_cidr             = "172.16.0.0/24"
+availability_zone       = "kr-central-2-a"
+
+# ─── 보안 그룹 ────────────────────────────────────────────────────────────────
+security_group_name = "nullus-airgap-sg"
+# 웹(80) 외부 접근 허용 CIDR — 운영자 IP/32 권장 (전체 공개: 0.0.0.0/0)
+web_allowed_cidr = "0.0.0.0/0"
+
+# ─── 컴퓨트 ───────────────────────────────────────────────────────────────────
+# 중요: t1i.* 플레이버는 x86_64/amd64 전용
+# 로컬 arm64 번들(airgap/dist/)은 사용 불가 — builder 가 amd64 를 직접 빌드함
+#
+# kakaocloud t1i 사이즈 사다리 (실측, 모두 burstable=true):
+#   t1i.large=2c/8GB · t1i.xlarge=4c/16GB · t1i.2xlarge=8c/32GB
+# 비-burstable 동일 스펙 대안(AMD x86_64, amd64 호환): m2a.xlarge=4c/16GB · m2a.2xlarge=8c/32GB
+#   → 설치 후 플랫폼을 상시 부하로 운영한다면 burst 한도에 걸리지 않는 m2a 계열 고려.
+# 사이징 근거: 배포 실측 idle 기준 airgap 2.5GB/32GB·load 0.25/8, builder 0.65GB/16GB·load 0
+#   → CPU/RAM 모두 여유. 현 flavor 유지(설치 피크 + 플랫폼 실부하 헤드룸 확보).
+image_name     = "Ubuntu 24.04"
+builder_flavor = "t1i.xlarge"   # builder VM: 4c/16GB — 이미지 pull + 번들 빌드
+airgap_flavor  = "t1i.2xlarge"  # airgap VM: 8c/32GB — kind 클러스터 + 레지스트리 + Nullus
+volume_size    = 500            # GB (builder/airgap 동일 500GB 부트 볼륨)

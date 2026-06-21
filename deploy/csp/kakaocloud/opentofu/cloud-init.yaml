@@ -1,0 +1,40 @@
+#cloud-config
+# Ubuntu 24.04 용 cloud-init
+# builder VM 과 airgap VM 이 동일한 cloud-init 을 공유함
+# - Docker Engine + Compose plugin 설치
+# - docker 그룹에 ubuntu 사용자 추가
+# - 완료 센티넬 파일 /tmp/cloud-init-done 생성
+# 비밀번호 인증 없음 — 키페어 기반 SSH 만 사용
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - git
+  - make
+  - curl
+  - tar
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+runcmd:
+  # Docker GPG 키 및 레포지토리 추가 (Ubuntu 24.04 공식 방법)
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - |
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null
+  - apt-get update -y
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  # docker 서비스 활성화 및 시작
+  - systemctl enable docker
+  - systemctl start docker
+  # ubuntu 사용자를 docker 그룹에 추가 (재로그인 없이 작동하도록 newgrp 불필요)
+  - usermod -aG docker ubuntu
+  # 완료 센티넬
+  - touch /tmp/cloud-init-done
