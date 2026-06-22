@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
@@ -86,6 +88,16 @@ func main() {
 	userUC := usecase.NewUserUseCase(userRepo)
 	auditLogger := audit.NewAuditLogger(pool)
 
+	secretRouter := secrets.NewRouter()
+	if openbaoAddr := strings.TrimSpace(os.Getenv("OPENBAO_ADDR")); openbaoAddr != "" {
+		openbaoToken := strings.TrimSpace(os.Getenv("OPENBAO_TOKEN"))
+		if openbaoToken != "" {
+			secretRouter.Register("openbao", secrets.NewOpenBaoStore(openbaoAddr, openbaoToken))
+		}
+	}
+	tokenSourceRepo := adminrepo.NewPostgresTokenSourceRepository(pool)
+	tokenSourceUC := usecase.NewTokenSourceUseCase(tokenSourceRepo, usecase.WithSecretRouter(secretRouter))
+
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
 	clusterHandler := adminhandler.NewClusterHandler(clusterUC, auditLogger)
 	memberHandler := adminhandler.NewMemberHandler(userUC, auditLogger)
@@ -105,6 +117,8 @@ func main() {
 		pgStackRepo,
 		memStreamer,
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
+		stackuc.WithTokenSourceRegistry(stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter), tokenSourceEnvironment(cfg.Server.Mode)),
+		stackuc.WithSecretRouter(secretRouter),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
 			return stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo))
@@ -235,6 +249,7 @@ func main() {
 	knownIssuesHandler := adminhandler.NewKnownIssuesHandler(knownIssuesRepo)
 	auditHandler := adminhandler.NewAuditHandler(auditLogger)
 	notificationHandler := adminhandler.NewNotificationHandler(pool)
+	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
 
 	orgHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
@@ -243,6 +258,7 @@ func main() {
 	knownIssuesHandler.RegisterRoutes(admin)
 	auditHandler.RegisterRoutes(admin)
 	notificationHandler.RegisterRoutes(admin)
+	tokenSourceHandler.RegisterRoutes(admin)
 	deployHandler.RegisterRoutes(v1, e)
 	stackHandler.RegisterRoutes(stacks)
 	templateHandler.RegisterRoutes(stacks)
@@ -295,4 +311,19 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 	}
 	slog.Info("server stopped")
+}
+
+func tokenSourceEnvironment(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "development", "dev":
+		return "dev"
+	case "staging":
+		return "staging"
+	case "production", "prod":
+		return "prod"
+	case "local":
+		return "local"
+	default:
+		return "dev"
+	}
 }

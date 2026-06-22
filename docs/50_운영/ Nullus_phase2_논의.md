@@ -149,6 +149,8 @@
 | `TASK: token source 목록 조회 수동 테스트` | 1h | 정상 응답 확인 |
 | `TASK: rotate approve reveal 최소 테스트 추가` | 1~2h | 회귀 방지 |
 
+- 완료 메모: `cmd/api/main.go` wiring, `rotate/approve/reveal` smoke, `scripts/seed-token-sources.sh`, `down --volumes` 초기화 경로 반영 완료.
+
 ### 5. `EPIC: GitHub Runner 안정화 조사/수정`
 
 | Task 카드 제목 | 예상 시간 | 결과물 |
