@@ -14,8 +14,9 @@
 #   SKIP_IMAGES=1 ./pre-build.sh    # 이미지 pull/save 건너뜀 (이미 있을 때)
 #   SKIP_BIN=1    ./pre-build.sh    # 바이너리 다운로드 건너뜀
 #   SKIP_CHARTS=1 ./pre-build.sh    # helm 차트 번들 건너뜀
+#   SKIP_SBOM=1   ./pre-build.sh    # SBOM 생성 건너뜀 (syft 미설치 시 자동 건너뜀)
 #
-# 환경 변수: pull-binaries.sh / package-bundle.sh 의 ENV 모두 통과
+# 환경 변수: pull-binaries.sh / package-bundle.sh / generate-sbom.sh 의 ENV 모두 통과
 #
 # 종료 코드:
 #   0 — 성공
@@ -31,6 +32,7 @@ SCRIPTS="${ROOT_DIR}/scripts"
 SKIP_IMAGES="${SKIP_IMAGES:-0}"
 SKIP_BIN="${SKIP_BIN:-0}"
 SKIP_CHARTS="${SKIP_CHARTS:-0}"
+SKIP_SBOM="${SKIP_SBOM:-0}"
 
 if [[ -t 1 ]]; then
   CL_INFO=$'\033[1;34m'; CL_OK=$'\033[1;32m'; CL_RST=$'\033[0m'
@@ -90,7 +92,14 @@ else
   hdr "4/5 바이너리 단계 — SKIP_BIN=1 건너뜀"
 fi
 
-hdr "5/5 마스터 번들 패키징"
+if [[ "$SKIP_SBOM" != "1" ]]; then
+  hdr "5/6 SBOM 생성 (syft) — bundle/sbom/"
+  bash "${SCRIPTS}/pre/generate-sbom.sh"
+else
+  hdr "5/6 SBOM 단계 — SKIP_SBOM=1 건너뜀"
+fi
+
+hdr "6/6 마스터 번들 패키징"
 bash "${SCRIPTS}/pre/package-bundle.sh"
 
 DUR=$(( $(date +%s) - START_TS ))

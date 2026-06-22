@@ -111,6 +111,7 @@ cert-manager v1.16.3 · metrics-server 3.12.2 · minio 5.4.0 · gitlab 8.7.2 · 
 - ✅ **이미지/차트/번들 인벤토리 단일 출처** + 71 vs 75 불일치 해설 — §3.
 - ➡️ **라이선스 고지**: 별도 [`airgap/THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) 로 분리(번들 재배포 시 필수 검토).
 
-### 남은 보강 권장(후속)
-- SBOM 생성 자동화(`syft packages dir:airgap/bundle -o spdx-json`)를 빌드 파이프라인에 추가.
-- `99-verify.sh` 에 아키텍처 검증(이미지 `.Architecture == amd64`) 단계 추가 검토.
+### 보강 완료 / 후속
+- ✅ **SBOM 생성 자동화**: `scripts/pre/generate-sbom.sh`(syft) — `pre-build.sh` 5/6 단계, 출력 `bundle/sbom/`(번들 포함).
+- ✅ **`99-verify.sh` 아키텍처 검증**: 노드 `.status.nodeInfo.architecture` 를 `EXPECTED_ARCH`(기본 amd64)와 대조.
+- ➡️ 후속: 각 구성요소 원본 LICENSE 전문 동봉, §1 재배포 민감 항목 법무 검토.
