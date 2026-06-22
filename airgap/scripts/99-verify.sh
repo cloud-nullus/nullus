@@ -4,6 +4,7 @@
 # 사용법: ./99-verify.sh
 # 필수 환경변수:
 #   CLUSTER_NAME  - kind 클러스터 이름 (기본값: nullus-airgap)
+#   EXPECTED_ARCH - 기대 노드 아키텍처 (기본값: amd64. arm64 번들이면 arm64)
 # 종료 코드:
 #   0 - 전체 검증 통과
 #   1 - 하나 이상 검증 실패
@@ -18,6 +19,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # ── 설정값 ───────────────────────────────────────────────────
 CLUSTER_NAME="${CLUSTER_NAME:-nullus-airgap}"
 KUBE_CONTEXT="kind-${CLUSTER_NAME}"
+EXPECTED_ARCH="${EXPECTED_ARCH:-amd64}"
 
 # ── 로그 헬퍼 ────────────────────────────────────────────────
 _tty() { [[ -t 1 ]]; }
@@ -62,6 +64,30 @@ check_nodes() {
     --no-headers | grep -v " Ready" | wc -l | tr -d ' ')"
   if [[ "${not_ready}" -gt 0 ]]; then
     log_warn "Ready 상태가 아닌 노드: ${not_ready}개"
+    return 1
+  fi
+}
+
+check_architecture() {
+  log_info "── 노드 아키텍처 검증 (기대값: ${EXPECTED_ARCH}) ──"
+  local archs node_name node_arch mismatched=0
+  archs="$(kubectl get nodes --context "${KUBE_CONTEXT}" \
+    -o jsonpath='{range .items[*]}{.metadata.name}={.status.nodeInfo.architecture}{"\n"}{end}')"
+  if [[ -z "${archs}" ]]; then
+    log_warn "노드 아키텍처 정보를 가져올 수 없음"
+    return 1
+  fi
+  while IFS='=' read -r node_name node_arch; do
+    [[ -z "${node_name}" ]] && continue
+    if [[ "${node_arch}" == "${EXPECTED_ARCH}" ]]; then
+      log_info "  ${node_name}: ${node_arch} (일치)"
+    else
+      log_err "  ${node_name}: ${node_arch} — 기대값 ${EXPECTED_ARCH} 와 불일치"
+      mismatched=$((mismatched + 1))
+    fi
+  done <<< "${archs}"
+  if [[ "${mismatched}" -gt 0 ]]; then
+    log_err "아키텍처 불일치 노드 ${mismatched}개 — 번들 플랫폼과 타겟 호스트 아키텍처를 확인하세요 (arm64 번들을 x86 에 반입했을 가능성)."
     return 1
   fi
 }
@@ -142,6 +168,7 @@ main() {
 
   run_check "클러스터 API 서버 응답" check_cluster_info
   run_check "노드 Ready 상태" check_nodes
+  run_check "노드 아키텍처 (${EXPECTED_ARCH})" check_architecture
   run_check "전체 파드 조회" check_pods
   run_check "로컬 레지스트리 응답" check_registry_reachable
   run_check "노드 이미지 목록 (crictl)" check_node_images
