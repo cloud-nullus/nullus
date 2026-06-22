@@ -59,6 +59,6 @@ cert-manager v1.16.3 · metrics-server 3.12.2 · minio 5.4.0 · gitlab 8.7.2 · 
 ---
 
 ## 4. 후속 (권장)
-- [ ] **SBOM 생성**을 빌드 파이프라인에 추가(syft/grype) → 구성요소·버전·라이선스 자동 추출.
+- [x] **SBOM 생성**을 빌드 파이프라인에 추가 → `airgap/scripts/pre/generate-sbom.sh`(syft), `pre-build.sh` 5/6 단계. 출력 `bundle/sbom/`(번들 포함).
 - [ ] 각 구성요소의 **원본 LICENSE 전문 수집** → `airgap/licenses/<component>/LICENSE` 동봉.
 - [ ] §1 항목(AGPL/GitLab/OpenBao 등) 재배포 가부 **법무 확인** 후 본 문서에 결론 반영.
