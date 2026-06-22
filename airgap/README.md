@@ -58,7 +58,8 @@ airgap/
 │   ├── architecture.md         # 데이터 흐름 및 컴포넌트 설계
 │   ├── prerequisites.md        # 머신별 사전 요구사항 체크리스트
 │   ├── runbook.md              # 단계별 운영 런북
-│   └── troubleshooting.md      # 증상별 문제 해결 가이드
+│   ├── troubleshooting.md      # 증상별 문제 해결 가이드
+│   └── x86-verification.md     # x86(amd64) 검증 포인트 + 운영/인벤토리 정리
 ├── helm/                       # Helm 차트 번들 (Agent 3 소유)
 │   └── README.md               # Helm 번들 사용법
 ├── images/
@@ -114,6 +115,8 @@ airgap/
 | [docs/prerequisites.md](docs/prerequisites.md) | 온라인/오프라인 머신 사전 요구사항, 반입 체크리스트, 권한 설정 |
 | [docs/runbook.md](docs/runbook.md) | 단계별 절차, 재설치/업그레이드/클린업 시나리오 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 증상별 원인 및 해결, 로그 수집 명령 |
+| [docs/x86-verification.md](docs/x86-verification.md) | x86(amd64) 검증 체크리스트, 스크립트 역할, 번들/이미지/차트 인벤토리 |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | 번들 서드파티 라이선스 고지 인벤토리(재배포 전 검토) |
 | [images/README.md](images/README.md) | 이미지 목록(`images.txt`) 갱신 방법 |
 | [helm/README.md](helm/README.md) | Helm 차트 번들 사용법 및 values-airgap.yaml 설명 |
 
