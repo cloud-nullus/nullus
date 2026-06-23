@@ -195,6 +195,42 @@ curl http://localhost:8090/api/v1/admin/notifications/configs
 curl http://localhost:8090/api/v1/admin/notifications/history
 ```
 
+### 4.6 Admin — OpenBao Token Sources
+
+```bash
+# token source 목록 조회 (org header 필요)
+curl http://localhost:8090/api/v1/admin/token-sources \
+  -H "X-Org-ID: 11111111-1111-1111-1111-111111111111"
+
+# rotate
+curl -X POST http://localhost:8090/api/v1/admin/token-sources/{tokenSourceId}/rotate \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"manual trigger"}'
+
+# approve
+curl -X POST http://localhost:8090/api/v1/admin/token-sources/{tokenSourceId}/approve \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"manual approve"}'
+
+# re-auth -> reveal
+STEP_UP_TOKEN=$(curl -sS -X POST http://localhost:8090/api/v1/admin/token-sources/{tokenSourceId}/re-auth \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: user-1" \
+  -d '{"reason":"security"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['step_up_token'])")
+
+curl -X POST http://localhost:8090/api/v1/admin/token-sources/{tokenSourceId}/reveal \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: user-1" \
+  -d "{\"step_up_token\":\"$STEP_UP_TOKEN\"}"
+```
+
+토큰 소스 테스트 데이터는 아래 런북으로 초기화할 수 있습니다.
+
+```bash
+./scripts/runbook_local.sh down --kind --volumes
+OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=root ./scripts/runbook_local.sh up --kind --seed
+```
+
 ### 4.6 Stack
 
 ```bash

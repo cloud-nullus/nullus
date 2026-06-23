@@ -61,6 +61,23 @@ func TestTokenSourceHandler_Rotate_200(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestTokenSourceHandler_Approve_200(t *testing.T) {
+	t.Parallel()
+	h := &TokenSourceHandler{}
+	h.actionFn = func(_ context.Context, tokenSourceID, action, reason string, _ map[string]any) error {
+		assert.Equal(t, "ts-1", tokenSourceID)
+		assert.Equal(t, "approve", action)
+		assert.Equal(t, "manual approve", reason)
+		return nil
+	}
+	e := newTokenSourceEcho(h)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/token-sources/ts-1/approve", strings.NewReader(`{"reason":"manual approve"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
 func TestTokenSourceHandler_ReAuthReveal_200(t *testing.T) {
 	t.Parallel()
 	h := &TokenSourceHandler{stepUpTTL: time.Minute}

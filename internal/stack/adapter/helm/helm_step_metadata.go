@@ -94,6 +94,12 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Values:    DefaultValues("installing_gitlab"),
 			Wait:      false,
 		}, true
+	case "installing_openbao":
+		return ChartSpec{
+			ReleaseName: "openbao",
+			Values:      DefaultValues("installing_openbao"),
+			Wait:        false,
+		}, true
 	case "installing_argocd":
 		return ChartSpec{
 			ChartName: "argo-cd",

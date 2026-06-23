@@ -116,6 +116,17 @@ seed_cicd_templates_if_needed() {
   fi
 }
 
+seed_token_sources_if_needed() {
+  local count
+  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM token_sources WHERE deleted_at IS NULL;" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ -z "$count" || "$count" == "0" ]]; then
+    echo "[nullus] seeding token_sources..."
+    bash "$PROJECT_ROOT/scripts/seed-token-sources.sh"
+  else
+    echo "[nullus] token_sources already seeded ($count rows)"
+  fi
+}
+
 ensure_golden_path_seed() {
   seed_golden_path_templates_if_needed
   seed_cicd_templates_if_needed
@@ -130,7 +141,7 @@ Usage:
   ./scripts/runbook_local.sh info
   ./scripts/runbook_local.sh smoke
   ./scripts/runbook_local.sh logs [api|web|all]
-  ./scripts/runbook_local.sh down [--kind] [--authentik]
+  ./scripts/runbook_local.sh down [--kind] [--authentik] [--volumes]
   ./scripts/runbook_local.sh all [--seed] [--kind] [--authentik]
   ./scripts/runbook_local.sh refresh
   ./scripts/runbook_local.sh kind-up
@@ -145,8 +156,8 @@ Commands:
   info              Show access URLs and credentials
   smoke             Run API smoke tests (13 endpoints)
   logs [svc]        Tail logs for a service (api, web) or all
-  down [--kind]     Stop API, frontend, docker infra
-       [--authentik] Also stop Authentik services
+  down [--kind] [--volumes]  Stop API, frontend, docker infra
+        [--authentik] Also stop Authentik services
   all               Full lifecycle: up -> smoke -> keep running
   refresh           Rebuild backend + frontend, run pending migrations, restart
   kind-up           Create kind K8s cluster only
@@ -578,6 +589,7 @@ do_up() {
   if [[ "$seed" == "true" ]]; then
     echo ""
     ensure_golden_path_seed
+    seed_token_sources_if_needed
   fi
 
   # 6. Authentik OIDC provider (optional)
@@ -741,11 +753,12 @@ do_logs() {
 }
 
 do_down() {
-  local with_kind="false" with_authentik="false"
+  local with_kind="false" with_authentik="false" with_volumes="false"
   for arg in "$@"; do
     case "$arg" in
       --kind) with_kind="true" ;;
       --authentik) with_authentik="true" ;;
+      --volumes) with_volumes="true" ;;
     esac
   done
 
@@ -758,10 +771,18 @@ do_down() {
 
   if [[ "$with_authentik" == "true" ]]; then
     echo "[nullus] stopping Authentik services..."
-    docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" -f "$COMPOSE_AUTH" down 2>/dev/null || true
+    if [[ "$with_volumes" == "true" ]]; then
+      docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" -f "$COMPOSE_AUTH" down -v 2>/dev/null || true
+    else
+      docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" -f "$COMPOSE_AUTH" down 2>/dev/null || true
+    fi
   else
     echo "[nullus] stopping docker infra..."
-    docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" down 2>/dev/null || true
+    if [[ "$with_volumes" == "true" ]]; then
+      docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" down -v 2>/dev/null || true
+    else
+      docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" down 2>/dev/null || true
+    fi
   fi
 
   if [[ "$with_kind" == "true" ]]; then

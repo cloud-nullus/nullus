@@ -8,6 +8,9 @@
 - [x] Stack Gateway 기본 번들에 `openbao.<access_domain>` HTTPRoute 자동 생성
 - [x] OpenBao UI 접속 경로 확보 (`/ui/`)
 - [x] 토큰 소스 저장 시 `metadata.secret_manager=openbao` 저장 및 path 정규화(`kv/nullus/dev/...`)
+- [x] `cmd/api/main.go`에 token source handler wiring 완료 및 `rotate/approve/reveal` smoke 검증 완료
+- [x] `scripts/seed-token-sources.sh`로 token source 테스트 데이터 seed 분리
+- [x] `runbook_local.sh down --volumes`로 PostgreSQL 볼륨까지 초기화하는 경로 추가
 - [x] Admin `reveal` API가 placeholder 대신 OpenBao 실조회 값을 우선 반환
 - [x] Secret backend 추상화 계층(`internal/shared/secrets`) 도입으로 provider 확장 포인트 확보
 - [ ] OpenBao HA/스토리지/TLS 운영 구성을 공식 배포 스펙으로 전환 (현재 dev 모드)
