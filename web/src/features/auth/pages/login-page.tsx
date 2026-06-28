@@ -39,7 +39,10 @@ const ROLE_HOME: Record<string, string> = {
   developer: '/cicd/developer-deploy',
 }
 
+import { useAuth } from 'react-oidc-context'
+
 function OidcLoginContent() {
+  const auth = useAuth()
   const providerLabel = getProviderConfig().type === 'authentik' ? 'Authentik' : 'Keycloak'
 
   return (
@@ -50,7 +53,7 @@ function OidcLoginContent() {
       <button
         type="button"
         onClick={() => {
-          // When react-oidc-context is installed, call auth.signinRedirect() here
+          auth.signinRedirect()
         }}
         className="w-full rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] p-3 text-sm font-bold text-[#1a1d29]"
       >

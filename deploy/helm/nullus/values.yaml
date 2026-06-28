@@ -34,10 +34,13 @@ config:
     connMaxLifetime: 5m
     connMaxIdleTime: 1m
   auth:
-    mode: session
+    # mode: session
+    mode: oidc
     sessionMaxAge: 86400
-    oidcIssuerUrl: ""
-    oidcAudience: nullus-app
+    # oidcIssuerUrl: ""
+    oidcIssuerUrl: "http://keycloak.nullus.internal/realms/nullus"
+    # oidcAudience: nullus-app
+    oidcAudience: account
   helm:
     timeout: 600s
     namespacePrefix: nullus-

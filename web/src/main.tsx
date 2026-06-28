@@ -9,8 +9,13 @@ import { isOidcMode } from './lib/oidc-providers'
 //   import { AuthProvider } from 'react-oidc-context'
 //   const authProps = toAuthProviderProps(getProviderConfig())
 //   return <AuthProvider {...authProps}>{children}</AuthProvider>
+import { getProviderConfig, toAuthProviderProps } from './lib/oidc-providers'
+import { AuthProvider } from 'react-oidc-context'
+
+const authProps = toAuthProviderProps(getProviderConfig())
+
 function OIDCWrapper({ children }: { children: ReactNode }) {
-  return <>{children}</>
+  return <AuthProvider {...authProps}>{children}</AuthProvider>
 }
 
 function AppWrapper() {
