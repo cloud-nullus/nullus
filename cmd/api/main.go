@@ -19,6 +19,8 @@ import (
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	cicdargoclient "github.com/cloud-nullus/draft/internal/cicd/adapter/argocd"
+	cicdgitlabclient "github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
@@ -164,10 +166,19 @@ func main() {
 	manifestApplier := cicdkube.NewManifestApplier()
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
-	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
+	pgStackIntegrationReader := cicdrepo.NewPostgresStackIntegrationReader(pool)
+	gitlabClient := cicdgitlabclient.NewClient()
+	argocdClient := cicdargoclient.NewClient()
+	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier,
+		cicduc.WithArgoCDClient(argocdClient),
+		cicduc.WithStackIntegrationReader(pgStackIntegrationReader),
+	)
+	provisionPipelineUC := cicduc.NewProvisionPipeline(pgPipelineRepo, pgStackIntegrationReader, gitlabClient, argocdClient)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
-	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool)
+	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool,
+		cicdhandler.WithProvisionPipeline(provisionPipelineUC),
+	)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository

@@ -13,6 +13,8 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
+const executionModeStackIntegrated = "stack_integrated"
+
 const (
 	envManifestDeployment = "NULLUS_MANIFEST_DEPLOYMENT"
 	envManifestService    = "NULLUS_MANIFEST_SERVICE"
@@ -41,6 +43,8 @@ type DeployPipeline struct {
 	applier               port.ManifestApplier
 	imagePreparer         port.ImagePreparer
 	clusterTargetProvider port.ClusterTargetProvider
+	argocdClient          port.ArgoCDProvisioner
+	integrationReader     port.StackIntegrationReader
 }
 
 func NewDeployPipeline(
@@ -70,6 +74,14 @@ func WithImagePreparer(p port.ImagePreparer) DeployOption {
 
 func WithClusterTargetProvider(p port.ClusterTargetProvider) DeployOption {
 	return func(dp *DeployPipeline) { dp.clusterTargetProvider = p }
+}
+
+func WithArgoCDClient(c port.ArgoCDProvisioner) DeployOption {
+	return func(dp *DeployPipeline) { dp.argocdClient = c }
+}
+
+func WithStackIntegrationReader(r port.StackIntegrationReader) DeployOption {
+	return func(dp *DeployPipeline) { dp.integrationReader = r }
 }
 
 func includesOptionalManifest(manifestTypes []string, target string) bool {
@@ -199,6 +211,10 @@ func (uc *DeployPipeline) failDeployment(ctx context.Context, deployment *domain
 }
 
 func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.Pipeline, deploymentID string, manifestTypes []string) error {
+	if pipeline.ExecutionMode == executionModeStackIntegrated {
+		return uc.triggerStackIntegratedDeploy(ctx, pipeline)
+	}
+
 	namespace := pipeline.Namespace
 	if namespace == "" {
 		namespace = "default"
@@ -294,6 +310,42 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 	}
 
 	return uc.applier.ApplyWithTracking(ctx, kubeconfig, yamlDocs, deploymentID, stepOffset)
+}
+
+func (uc *DeployPipeline) triggerStackIntegratedDeploy(ctx context.Context, pipeline *domain.Pipeline) error {
+	if uc.integrationReader == nil {
+		return fmt.Errorf("stack_integrated deploy requires StackIntegrationReader — not wired up")
+	}
+	if uc.argocdClient == nil {
+		return fmt.Errorf("stack_integrated deploy requires ArgoCDProvisioner — not wired up")
+	}
+	if pipeline.StackID == "" {
+		return fmt.Errorf("pipeline %q has no stack_id", pipeline.ID)
+	}
+
+	profile, err := uc.integrationReader.GetStackIntegrationProfile(ctx, pipeline.StackID)
+	if err != nil {
+		return fmt.Errorf("read stack integrations: %w", err)
+	}
+	if profile == nil {
+		return fmt.Errorf("stack %q not found", pipeline.StackID)
+	}
+
+	argocd := profile.ByType("cd_tool")
+	if argocd == nil || argocd.Endpoint == "" {
+		return fmt.Errorf("stack %q has no cd_tool integration configured", pipeline.StackID)
+	}
+	if argocd.Token == "" {
+		return fmt.Errorf("stack %q: argocd_token not set in stack credentials", pipeline.StackID)
+	}
+
+	appName := pipeline.Name
+	if err := uc.argocdClient.TriggerSync(ctx, argocd.Endpoint, argocd.Token, appName); err != nil {
+		return fmt.Errorf("argocd sync trigger for app %q: %w", appName, err)
+	}
+
+	slog.Info("stack_integrated: argocd sync triggered", "app", appName, "pipeline", pipeline.ID)
+	return nil
 }
 
 func firstNonEmptyManifest(value, fallback string) string {

@@ -611,3 +611,30 @@ export function useDeleteGoldenPath() {
     },
   });
 }
+
+export interface ProvisionPipelineRequest {
+  envRepoUrl?: string;
+  envRepoPath?: string;
+}
+
+export interface ProvisionPipelineResult {
+  gitlab_project_url: string;
+  argocd_app_name: string;
+  argocd_sync_url: string;
+}
+
+export function useProvisionPipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pipelineId, ...body }: ProvisionPipelineRequest & { pipelineId: string }) =>
+      api
+        .post<ProvisionPipelineResult>(`/cicd/pipelines/${pipelineId}/provision`, {
+          env_repo_url: body.envRepoUrl,
+          env_repo_path: body.envRepoPath,
+        })
+        .then((r) => r.data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["cicd", "pipelines"] });
+    },
+  });
+}

@@ -31,14 +31,15 @@ const resourceStatusRunning = "running"
 
 // PipelineHandler handles HTTP requests for pipeline operations.
 type PipelineHandler struct {
-	createPipeline *usecase.CreatePipeline
-	listPipelines  *usecase.ListPipelines
-	deployPipeline *usecase.DeployPipeline
-	pipelineRepo   port.PipelineRepository
-	deploymentRepo port.DeploymentRepository
-	kubeconfig     port.KubeconfigProvider
-	stepTracker    *kube.StepTracker
-	pool           *pgxpool.Pool
+	createPipeline   *usecase.CreatePipeline
+	listPipelines    *usecase.ListPipelines
+	deployPipeline   *usecase.DeployPipeline
+	provisionPipeline *usecase.ProvisionPipeline
+	pipelineRepo     port.PipelineRepository
+	deploymentRepo   port.DeploymentRepository
+	kubeconfig       port.KubeconfigProvider
+	stepTracker      *kube.StepTracker
+	pool             *pgxpool.Pool
 }
 
 // NewPipelineHandler constructs a PipelineHandler.
@@ -51,8 +52,9 @@ func NewPipelineHandler(
 	kubeconfigProvider port.KubeconfigProvider,
 	stepTracker *kube.StepTracker,
 	pool *pgxpool.Pool,
+	opts ...PipelineHandlerOption,
 ) *PipelineHandler {
-	return &PipelineHandler{
+	h := &PipelineHandler{
 		createPipeline: createPipeline,
 		listPipelines:  listPipelines,
 		deployPipeline: deployPipeline,
@@ -62,6 +64,18 @@ func NewPipelineHandler(
 		stepTracker:    stepTracker,
 		pool:           pool,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
+// PipelineHandlerOption is a functional option for PipelineHandler.
+type PipelineHandlerOption func(*PipelineHandler)
+
+// WithProvisionPipeline wires in the ProvisionPipeline use case.
+func WithProvisionPipeline(uc *usecase.ProvisionPipeline) PipelineHandlerOption {
+	return func(h *PipelineHandler) { h.provisionPipeline = uc }
 }
 
 // RegisterRoutes registers pipeline routes on the given Echo group.
@@ -70,6 +84,7 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/pipelines", h.CreatePipeline)
 	g.DELETE("/pipelines/:id", h.DeletePipeline)
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
+	g.POST("/pipelines/:id/provision", h.ProvisionPipeline)
 	g.GET("/pipelines/:id/resources", h.GetPipelineResources)
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
@@ -224,6 +239,40 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 	}()
 
 	return c.JSON(http.StatusAccepted, map[string]any{"deploymentId": depID})
+}
+
+type provisionRequest struct {
+	EnvRepoURL  string `json:"env_repo_url,omitempty"`
+	EnvRepoPath string `json:"env_repo_path,omitempty"`
+}
+
+// ProvisionPipeline handles POST /api/v1/pipelines/:id/provision.
+// Creates the GitLab project, commits .gitlab-ci.yml, and registers the ArgoCD Application.
+func (h *PipelineHandler) ProvisionPipeline(c echo.Context) error {
+	if h.provisionPipeline == nil {
+		return errorResponse(c, http.StatusNotImplemented, "PROVISION_NOT_CONFIGURED", "provision use case is not wired up")
+	}
+
+	id := c.Param("id")
+	var req provisionRequest
+	if err := c.Bind(&req); err != nil {
+		return errorResponse(c, http.StatusBadRequest, "PROVISION_REQUEST_INVALID", err.Error())
+	}
+
+	out, err := h.provisionPipeline.Execute(c.Request().Context(), usecase.ProvisionPipelineInput{
+		PipelineID:  id,
+		EnvRepoURL:  req.EnvRepoURL,
+		EnvRepoPath: req.EnvRepoPath,
+	})
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "PROVISION_FAILED", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"gitlab_project_url": out.GitLabProjectURL,
+		"argocd_app_name":    out.ArgoCDAppName,
+		"argocd_sync_url":    out.ArgoCDSyncURL,
+	})
 }
 
 // DeletePipeline handles DELETE /api/v1/pipelines/:id.
