@@ -215,7 +215,37 @@ provision_keycloak() {
   _provision_client "gitlab"   "gitlab-dev-secret"   \
     "[\"http://gitlab.nullus.internal/users/auth/openid_connect/callback\"]"
 
+  # 포털(nullus-web) — public client (SPA, PKCE S256)
+  _provision_public_client "nullus-web" \
+    "[\"http://nullus.internal/*\",\"http://nullus.internal/callback\"]"
+
   log_ok "Keycloak 프로비저닝 완료"
+}
+
+# public client (브라우저 SPA용 — secret 없음, PKCE 필수)
+_provision_public_client() {
+  local cid="$1" redirect_uris="$2"
+  local EXISTING
+  EXISTING=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
+    'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo "0")
+  if [[ "$EXISTING" -gt 0 ]]; then
+    log_ok "public client '${cid}' 이미 존재 — 건너뜀"
+    return 0
+  fi
+  curl -s -X POST "${KC_API}/${REALM}/clients" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d "{
+      \"clientId\": \"${cid}\",
+      \"enabled\": true,
+      \"publicClient\": true,
+      \"redirectUris\": ${redirect_uris},
+      \"webOrigins\": [\"+\"],
+      \"standardFlowEnabled\": true,
+      \"protocol\": \"openid-connect\",
+      \"attributes\": {\"pkce.code.challenge.method\": \"S256\", \"post.logout.redirect.uris\": \"http://nullus.internal/*\"}
+    }" -o /dev/null
+  log_ok "public client '${cid}' 생성"
 }
 
 _provision_client() {

@@ -100,6 +100,12 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
+          # OIDC SSO 빌드 설정을 정적 번들에 주입 (repo Variables 로 오버라이드 가능)
+          build-args: |
+            VITE_AUTH_MODE=${{ vars.VITE_AUTH_MODE || 'oidc' }}
+            VITE_OIDC_PROVIDER=${{ vars.VITE_OIDC_PROVIDER || 'keycloak' }}
+            VITE_OIDC_AUTHORITY=${{ vars.VITE_OIDC_AUTHORITY || 'http://keycloak.nullus.internal/realms/nullus' }}
+            VITE_OIDC_CLIENT_ID=${{ vars.VITE_OIDC_CLIENT_ID || 'nullus-web' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
