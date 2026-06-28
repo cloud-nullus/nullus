@@ -166,7 +166,10 @@ func main() {
 	manifestApplier := cicdkube.NewManifestApplier()
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
-	pgStackIntegrationReader := cicdrepo.NewPostgresStackIntegrationReader(pool)
+	pgStackIntegrationReader := cicdrepo.NewPostgresStackIntegrationReader(pool,
+		cicdrepo.WithSecretReader(&secretRouterAdapter{router: secretRouter, provider: "openbao"}),
+		cicdrepo.WithEnv(tokenSourceEnvironment(cfg.Server.Mode)),
+	)
 	gitlabClient := cicdgitlabclient.NewClient()
 	argocdClient := cicdargoclient.NewClient()
 	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier,
@@ -322,6 +325,18 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 	}
 	slog.Info("server stopped")
+}
+
+// secretRouterAdapter bridges secrets.Router to cicd/port.SecretReader for a fixed provider.
+type secretRouterAdapter struct {
+	router   interface {
+		GetToken(ctx context.Context, provider, path string) (string, error)
+	}
+	provider string
+}
+
+func (a *secretRouterAdapter) GetToken(ctx context.Context, path string) (string, error) {
+	return a.router.GetToken(ctx, a.provider, path)
 }
 
 func tokenSourceEnvironment(mode string) string {

@@ -118,9 +118,5 @@ func splitKVPath(path string) (string, string, error) {
 	if len(parts) < 2 {
 		return "", "", fmt.Errorf("invalid openbao path: %s", path)
 	}
-	mount := parts[0]
-	if mount == "kv" {
-		mount = "secret"
-	}
-	return mount, strings.Join(parts[1:], "/"), nil
+	return parts[0], strings.Join(parts[1:], "/"), nil
 }

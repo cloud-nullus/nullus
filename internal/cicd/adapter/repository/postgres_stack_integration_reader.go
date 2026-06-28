@@ -14,15 +14,31 @@ import (
 )
 
 // PostgresStackIntegrationReader implements port.StackIntegrationReader.
-// It reads stack.config JSONB directly to build the integration profile.
-// Token fields (GITLAB_TOKEN, ARGOCD_TOKEN) are expected in stack.config under
-// "credentials": { "gitlab_token": "...", "argocd_token": "..." }.
+// Token resolution order:
+//  1. OpenBao (if secretReader is set and stack uses openbao auth)
+//  2. stack.config.credentials JSON (fallback / OpenBao 미선택 시)
 type PostgresStackIntegrationReader struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	secretReader port.SecretReader
+	env          string // "dev" | "prod" — OpenBao KV path prefix
 }
 
-func NewPostgresStackIntegrationReader(pool *pgxpool.Pool) *PostgresStackIntegrationReader {
-	return &PostgresStackIntegrationReader{pool: pool}
+type IntegrationReaderOption func(*PostgresStackIntegrationReader)
+
+func WithSecretReader(r port.SecretReader) IntegrationReaderOption {
+	return func(s *PostgresStackIntegrationReader) { s.secretReader = r }
+}
+
+func WithEnv(env string) IntegrationReaderOption {
+	return func(s *PostgresStackIntegrationReader) { s.env = env }
+}
+
+func NewPostgresStackIntegrationReader(pool *pgxpool.Pool, opts ...IntegrationReaderOption) *PostgresStackIntegrationReader {
+	r := &PostgresStackIntegrationReader{pool: pool, env: "dev"}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
 }
 
 type stackRow struct {
@@ -38,7 +54,10 @@ type stackRow struct {
 // Mirrors domain.StackConfig but lives in the CI/CD adapter to avoid cross-module imports.
 type stackConfigShape struct {
 	AccessDomain string `json:"access_domain"`
-	Artifacts    struct {
+	Authentication *struct {
+		Provider string `json:"provider"` // "openbao" when OpenBao is selected
+	} `json:"authentication"`
+	Artifacts struct {
 		SourceRepository  struct{ Name string `json:"name"` } `json:"source_repository"`
 		ContainerRegistry struct{ Name string `json:"name"` } `json:"container_registry"`
 	} `json:"artifacts"`
@@ -67,13 +86,12 @@ func (r *PostgresStackIntegrationReader) GetStackIntegrationProfile(ctx context.
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Try without helm_namespaces join
 			return r.getWithoutNamespace(ctx, stackID)
 		}
 		return nil, fmt.Errorf("query stack integration: %w", err)
 	}
 	row.Config = rawCfg
-	return r.buildProfile(row)
+	return r.buildProfile(ctx, row)
 }
 
 func (r *PostgresStackIntegrationReader) getWithoutNamespace(ctx context.Context, stackID string) (*port.StackIntegrationProfile, error) {
@@ -88,10 +106,10 @@ func (r *PostgresStackIntegrationReader) getWithoutNamespace(ctx context.Context
 	if err != nil {
 		return nil, fmt.Errorf("query stack: %w", err)
 	}
-	return r.buildProfile(row)
+	return r.buildProfile(ctx, row)
 }
 
-func (r *PostgresStackIntegrationReader) buildProfile(row stackRow) (*port.StackIntegrationProfile, error) {
+func (r *PostgresStackIntegrationReader) buildProfile(ctx context.Context, row stackRow) (*port.StackIntegrationProfile, error) {
 	var cfg stackConfigShape
 	if err := json.Unmarshal(row.Config, &cfg); err != nil {
 		return nil, fmt.Errorf("parse stack config: %w", err)
@@ -100,6 +118,37 @@ func (r *PostgresStackIntegrationReader) buildProfile(row stackRow) (*port.Stack
 	namespace := "nullus-stack"
 	if row.Namespace != nil && *row.Namespace != "" {
 		namespace = *row.Namespace
+	}
+
+	useOpenBao := r.secretReader != nil &&
+		cfg.Authentication != nil &&
+		strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
+
+	gitlabToken := cfg.Credentials.GitLabToken
+	argocdToken := cfg.Credentials.ArgoCDToken
+
+	if useOpenBao {
+		env := r.env
+		if env == "" {
+			env = "dev"
+		}
+		orgID := row.OrgID
+
+		gitlabProvider := normalizeProvider(cfg.Artifacts.SourceRepository.Name)
+		if gitlabProvider != "" {
+			path := fmt.Sprintf("kv/nullus/%s/%s/artifacts/%s/token", env, orgID, gitlabProvider)
+			if tok, err := r.secretReader.GetToken(ctx, path); err == nil && tok != "" && tok != "managed-by-nullus" {
+				gitlabToken = tok
+			}
+		}
+
+		argocdProvider := normalizeProvider(cfg.Pipeline.CDTool.Name)
+		if argocdProvider != "" {
+			path := fmt.Sprintf("kv/nullus/%s/%s/pipeline/%s/token", env, orgID, argocdProvider)
+			if tok, err := r.secretReader.GetToken(ctx, path); err == nil && tok != "" && tok != "managed-by-nullus" {
+				argocdToken = tok
+			}
+		}
 	}
 
 	gitlabEndpoint := buildEndpoint(cfg.AccessDomain, namespace, "code_repository", cfg.Artifacts.SourceRepository.Name)
@@ -111,25 +160,25 @@ func (r *PostgresStackIntegrationReader) buildProfile(row stackRow) (*port.Stack
 			ComponentType: "code_repository",
 			Provider:      cfg.Artifacts.SourceRepository.Name,
 			Endpoint:      gitlabEndpoint,
-			Token:         cfg.Credentials.GitLabToken,
+			Token:         gitlabToken,
 		},
 		{
 			ComponentType: "image_registry",
 			Provider:      cfg.Artifacts.ContainerRegistry.Name,
 			Endpoint:      imageRegistryEndpoint,
-			Token:         cfg.Credentials.GitLabToken,
+			Token:         gitlabToken,
 		},
 		{
 			ComponentType: "ci_platform",
 			Provider:      cfg.Pipeline.CIPlatform.Name,
 			Endpoint:      gitlabEndpoint,
-			Token:         cfg.Credentials.GitLabToken,
+			Token:         gitlabToken,
 		},
 		{
 			ComponentType: "cd_tool",
 			Provider:      cfg.Pipeline.CDTool.Name,
 			Endpoint:      argocdEndpoint,
-			Token:         cfg.Credentials.ArgoCDToken,
+			Token:         argocdToken,
 		},
 	}
 
@@ -183,7 +232,10 @@ func buildEndpoint(accessDomain, namespace, componentType, provider string) stri
 	return ""
 }
 
+func normalizeProvider(name string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), " ", "-")
+}
+
 func isGitLab(normalized string) bool {
 	return normalized == "gitlab" || strings.HasPrefix(normalized, "gitlab-")
 }
-
