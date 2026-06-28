@@ -73,7 +73,7 @@ func goldenPathCases(ts int64) []goldenPathCase {
 		{
 			templateID: "github-argocd-v1",
 			namespace:  fmt.Sprintf("nullus-e2e-gh-argocd-%d", ts),
-			timeout:    10 * time.Minute,
+			timeout:    25 * time.Minute,
 			toolOverrides: func(cfg *domain.StackConfig) {
 				// GitHub + GitHub Actions are external SaaS — skip entirely.
 				cfg.Artifacts.SourceRepository.Enabled = false

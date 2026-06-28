@@ -29,6 +29,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
@@ -68,6 +69,8 @@ func main() {
 	}
 	defer pool.Close()
 
+	secretRouter := newSecretRouterFromEnv()
+
 	// Admin: postgres repos
 	orgRepo := adminrepo.NewPostgresOrgRepository(pool)
 	clusterRepo := adminrepo.NewPostgresClusterRepository(pool)
@@ -89,6 +92,9 @@ func main() {
 	orgHandler := adminhandler.NewOrgHandler(orgUC, auditLogger)
 	clusterHandler := adminhandler.NewClusterHandler(clusterUC, auditLogger)
 	memberHandler := adminhandler.NewMemberHandler(userUC, auditLogger)
+	tokenSourceRepo := adminrepo.NewPostgresTokenSourceRepository(pool)
+	tokenSourceUC := usecase.NewTokenSourceUseCase(tokenSourceRepo, usecase.WithSecretRouter(secretRouter))
+	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
 	pgResourceProfileRepo := adminrepo.NewPostgresResourceProfileRepository(pool)
 	resourceProfileHandler := adminhandler.NewResourceProfileHandler(orgUC, pgResourceProfileRepo, auditLogger)
 
@@ -97,6 +103,7 @@ func main() {
 	pgTemplateRepo := stackrepo.NewPostgresTemplateRepository(pool)
 	memStreamer := logadapter.NewMemoryStreamer()
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
+	tokenRegistry := stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter)
 
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
@@ -106,6 +113,8 @@ func main() {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
 			return stackhelm.NewOrchestrator(installer, kubeconfig, "")
 		}),
+		stackuc.WithTokenSourceRegistry(tokenRegistry, os.Getenv("NULLUS_ENV")),
+		stackuc.WithSecretRouter(secretRouter),
 	)
 	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo)
 	listStacksUC := stackuc.NewListStacks(pgStackRepo)
@@ -239,6 +248,7 @@ func main() {
 	clusterHandler.RegisterRoutes(admin)
 	memberHandler.RegisterRoutes(admin)
 	resourceProfileHandler.RegisterRoutes(admin)
+	tokenSourceHandler.RegisterRoutes(admin)
 	knownIssuesHandler.RegisterRoutes(admin)
 	auditHandler.RegisterRoutes(admin)
 	notificationHandler.RegisterRoutes(admin)
@@ -294,4 +304,15 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 	}
 	slog.Info("server stopped")
+}
+
+func newSecretRouterFromEnv() *secrets.Router {
+	addr := os.Getenv("OPENBAO_ADDR")
+	token := os.Getenv("OPENBAO_TOKEN")
+	if addr == "" || token == "" {
+		return nil
+	}
+	router := secrets.NewRouter()
+	router.Register("openbao", secrets.NewOpenBaoStore(addr, token))
+	return router
 }

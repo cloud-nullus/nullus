@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -377,7 +378,7 @@ func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *do
 			TokenType:     "reissue",
 			Status:        "healthy",
 			SecretManager: strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)),
-			TokenValue:    "managed-by-nullus",
+			TokenValue:    tokenValueForProvider(provider),
 		})
 	}
 
@@ -435,6 +436,20 @@ func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *do
 		}
 	}
 	return nil
+}
+
+func tokenValueForProvider(provider string) string {
+	normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(provider)), " ", "-")
+	switch normalized {
+	case "github", "github-actions":
+		if token := strings.TrimSpace(os.Getenv("NULLUS_GITHUB_TOKEN")); token != "" {
+			return token
+		}
+		if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+			return token
+		}
+	}
+	return "managed-by-nullus"
 }
 
 func (uc *InstallStack) verifyDeployment(ctx context.Context, stack *domain.Stack, executor port.StepExecutor) error {

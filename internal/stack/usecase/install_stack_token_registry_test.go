@@ -22,7 +22,7 @@ func (m *mockTokenRegistry) Upsert(_ context.Context, input port.TokenSourceInpu
 }
 
 func TestInstallStack_RegisterStackTokenSources_OpenBao(t *testing.T) {
-	t.Parallel()
+	t.Setenv("NULLUS_GITHUB_TOKEN", "ghp_test_token")
 	registry := &mockTokenRegistry{}
 	uc := &InstallStack{tokenRegistry: registry, tokenRegistryEnv: "dev"}
 	stack := &domain.Stack{
@@ -48,6 +48,7 @@ func TestInstallStack_RegisterStackTokenSources_OpenBao(t *testing.T) {
 	require.NoError(t, uc.registerStackTokenSources(context.Background(), stack))
 	assert.Len(t, registry.inputs, 7)
 	assert.Equal(t, "kv/nullus/dev/org-1/artifacts/github/token", registry.inputs[0].Path)
+	assert.Equal(t, "ghp_test_token", registry.inputs[0].TokenValue)
 
 	paths := make([]string, 0, len(registry.inputs))
 	for _, in := range registry.inputs {
