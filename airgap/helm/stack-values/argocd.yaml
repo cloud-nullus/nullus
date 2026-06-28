@@ -1,8 +1,32 @@
 # argo-cd airgap install values
 # Source: helm get values argo-cd -n nullus
+
+# ---------------------------------------------------------------------------
+# Keycloak OIDC SSO
+# clientSecret: argocd-secret의 $oidc.keycloak.clientSecret 키로 참조
+# 자동 로그인: ArgoCD는 OIDC 단독 구성 시 "LOG IN VIA KEYCLOAK" 버튼 1클릭 방식.
+#   완전 무클릭이 필요하면 후속 작업에서 게이트웨이 수준 보강 검토.
+# Redirect URI (Keycloak client 등록 시 동일하게 지정):
+#   https://argocd.{accessDomain}/auth/callback
+# ---------------------------------------------------------------------------
 configs:
   params:
     server.insecure: "true"
+  cm:
+    url: http://argocd.nullus.internal
+    oidc.config: |
+      name: Keycloak
+      issuer: http://keycloak.nullus.internal/realms/nullus
+      clientID: argocd
+      clientSecret: $oidc.keycloak.clientSecret
+      requestedScopes:
+        - openid
+        - profile
+        - email
+        - groups
+  secret:
+    extra:
+      oidc.keycloak.clientSecret: argocd-dev-secret
 crds:
   install: true
   keep: false

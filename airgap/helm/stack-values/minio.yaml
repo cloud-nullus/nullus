@@ -14,3 +14,18 @@ resources:
     memory: 512Mi
 rootPassword: nullus-minio-secret
 rootUser: nullus-admin
+
+# ---------------------------------------------------------------------------
+# Keycloak OIDC — MinIO Console SSO
+# ---------------------------------------------------------------------------
+oidc:
+  enabled: true
+  configUrl: "http://keycloak.nullus.internal/realms/nullus/.well-known/openid-configuration"
+  clientId: "minio"
+  clientSecret: "minio-dev-secret"
+  scopes: "openid,profile,email"
+  redirectUri: "http://minio.nullus.internal/oauth_callback"
+  displayName: "Keycloak"
+
+environment:
+  MINIO_BROWSER_REDIRECT_URL: "http://minio.nullus.internal"

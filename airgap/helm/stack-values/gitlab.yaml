@@ -18,6 +18,13 @@ gitlab-runner:
   install: false
 global:
   appConfig:
+    omniauth:
+      enabled: true
+      allowSingleSignOn: ["openid_connect"]
+      blockAutoCreatedUsers: false
+      providers:
+        - secret: gitlab-oidc-provider
+          key: provider
     object_store:
       connection:
         key: connection

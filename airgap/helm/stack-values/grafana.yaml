@@ -6,3 +6,31 @@ ingress:
   enabled: false
 persistence:
   enabled: false
+
+# ---------------------------------------------------------------------------
+# Keycloak OIDC SSO (자동 로그인)
+# root_url은 실제 accessDomain으로 교체 필요
+# client_secret: Keycloak provisioner가 생성한 값으로 교체 (현재 플레이스홀더)
+# ---------------------------------------------------------------------------
+grafana.ini:
+  server:
+    root_url: https://grafana.__REPLACE_ACCESS_DOMAIN__
+  auth:
+    # 구버전 Grafana 호환용 전역 자동 로그인 키
+    oauth_auto_login: "true"
+  auth.generic_oauth:
+    enabled: "true"
+    name: Keycloak
+    # 핵심: 로그인 페이지를 건너뛰고 Keycloak으로 즉시 redirect
+    auto_login: "true"
+    client_id: grafana
+    # TODO: Keycloak provisioner가 생성한 client_secret으로 교체
+    client_secret: __REPLACE_GRAFANA_CLIENT_SECRET__
+    scopes: openid profile email
+    auth_url: http://localhost:8180/realms/nullus/protocol/openid-connect/auth
+    token_url: http://localhost:8180/realms/nullus/protocol/openid-connect/token
+    api_url: http://localhost:8180/realms/nullus/protocol/openid-connect/userinfo
+    # realm_access.roles 에 'admin' 포함 시 Admin, 아니면 Viewer
+    role_attribute_path: "contains(realm_access.roles[*], 'admin') && 'Admin' || 'Viewer'"
+    # Redirect URI (Keycloak client 등록 시 동일하게 지정)
+    # https://grafana.{accessDomain}/login/generic_oauth

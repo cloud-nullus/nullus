@@ -2,6 +2,25 @@
 # Source: helm get values kps -n nullus-monitoring
 grafana:
   adminPassword: admin
+  # assertNoLeakedSecrets 비활성화 — client_secret은 env var 참조로만 설정
+  assertNoLeakedSecrets: false
+  grafana.ini:
+    server:
+      root_url: "http://grafana.nullus.internal"
+    auth:
+      oauth_auto_login: "true"
+    "auth.generic_oauth":
+      enabled: "true"
+      name: Keycloak
+      auto_login: "true"
+      client_id: grafana
+      client_secret: "grafana-dev-secret"
+      scopes: "openid profile email"
+      auth_url: "http://keycloak.nullus.internal/realms/nullus/protocol/openid-connect/auth"
+      token_url: "http://keycloak.nullus.internal/realms/nullus/protocol/openid-connect/token"
+      api_url: "http://keycloak.nullus.internal/realms/nullus/protocol/openid-connect/userinfo"
+      role_attribute_path: "contains(realm_access.roles[*], 'admin') && 'Admin' || 'Viewer'"
+      allow_sign_up: "true"
 prometheus:
   prometheusSpec:
     resources:
