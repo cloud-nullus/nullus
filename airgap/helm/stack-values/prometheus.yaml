@@ -16,6 +16,8 @@ grafana:
       client_id: grafana
       client_secret: "grafana-dev-secret"
       scopes: "openid profile email"
+      # Keycloak grafana 클라이언트가 PKCE(S256) 필수 → Grafana도 code_challenge 전송해야 함
+      use_pkce: "true"
       auth_url: "http://keycloak.nullus.internal/realms/nullus/protocol/openid-connect/auth"
       token_url: "http://keycloak.nullus.internal/realms/nullus/protocol/openid-connect/token"
       api_url: "http://keycloak.nullus.internal/realms/nullus/protocol/openid-connect/userinfo"

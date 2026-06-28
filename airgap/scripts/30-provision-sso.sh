@@ -252,6 +252,111 @@ _provision_client() {
 }
 
 # =============================================================================
+# 3b. Keycloak — 테스트 사용자 프로비저닝 (idempotent)
+# =============================================================================
+provision_users() {
+  log_info "── Keycloak 테스트 사용자 프로비저닝 ──"
+
+  # port-forward 재사용 (start_pf idempotent)
+  start_pf nullus-auth keycloak "$KC_PORT_FWD" 80
+
+  # 토큰 재획득 (provision_keycloak 이후 만료 가능성 대비)
+  U_TOKEN=$(curl -s -X POST \
+    "${KC_LOCAL}/realms/master/protocol/openid-connect/token" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "client_id=admin-cli&grant_type=password&username=${KC_ADMIN}&password=${KC_ADMIN_PASS}" | \
+    python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+  [[ -n "$U_TOKEN" ]] || { log_err "Keycloak admin token 획득 실패 (provision_users)"; return 1; }
+
+  U_API="${KC_LOCAL}/admin/realms/${REALM}"
+
+  # realm role 'admin' 전체 객체 획득 (role-mappings 부여에 필요)
+  ADMIN_ROLE_JSON=$(curl -s -H "Authorization: Bearer $U_TOKEN" "${U_API}/roles/admin")
+  ADMIN_ROLE_ID=$(echo "$ADMIN_ROLE_JSON" | \
+    python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
+  [[ -n "$ADMIN_ROLE_ID" ]] || { log_err "realm role 'admin' 조회 실패"; return 1; }
+
+  _provision_user "admin@nullus.io" "admin@nullus.io" "Admin" "User" "nullus123!" "true"
+  _provision_user "dev@nullus.io"   "dev@nullus.io"   "Dev"   "User" "nullus123!" "false"
+
+  log_ok "테스트 사용자 프로비저닝 완료"
+}
+
+_provision_user() {
+  local username="$1" email="$2" first="$3" last="$4" password="$5" assign_admin="$6"
+
+  # 사용자 존재 여부 확인 (exact=true: Keycloak 18+ 지원)
+  local EXISTING_ID
+  EXISTING_ID=$(curl -s -H "Authorization: Bearer $U_TOKEN" \
+    "${U_API}/users?username=${username}&exact=true" | \
+    python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' \
+    2>/dev/null || echo "")
+
+  if [[ -n "$EXISTING_ID" ]]; then
+    log_ok "user '${username}' 이미 존재 (id=${EXISTING_ID:0:8}…) — 건너뜀"
+  else
+    # python3으로 JSON 직렬화 (BSD sed/특수문자 회피)
+    local USER_JSON
+    USER_JSON=$(python3 - <<PYEOF
+import json
+print(json.dumps({
+  "username": "${username}",
+  "email": "${email}",
+  "firstName": "${first}",
+  "lastName": "${last}",
+  "enabled": True,
+  "emailVerified": True,
+  "credentials": [{"type": "password", "value": "${password}", "temporary": False}]
+}))
+PYEOF
+)
+    local CREATE_STATUS
+    CREATE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${U_API}/users" \
+      -H "Authorization: Bearer $U_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$USER_JSON")
+    if [[ "$CREATE_STATUS" == "201" ]]; then
+      log_ok "user '${username}' 생성"
+    else
+      log_err "user '${username}' 생성 실패 (HTTP ${CREATE_STATUS})"; return 1
+    fi
+    # 생성 직후 ID 조회
+    EXISTING_ID=$(curl -s -H "Authorization: Bearer $U_TOKEN" \
+      "${U_API}/users?username=${username}&exact=true" | \
+      python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' \
+      2>/dev/null || echo "")
+  fi
+
+  [[ -n "$EXISTING_ID" ]] || { log_err "user '${username}' ID 조회 실패"; return 1; }
+
+  # admin role 부여 (assign_admin=true 이고 미보유 시)
+  if [[ "$assign_admin" == "true" ]]; then
+    local HAS_ROLE
+    HAS_ROLE=$(curl -s -H "Authorization: Bearer $U_TOKEN" \
+      "${U_API}/users/${EXISTING_ID}/role-mappings/realm" | \
+      python3 -c \
+      'import sys,json; d=json.load(sys.stdin); print("yes" if any(r.get("name")=="admin" for r in d) else "no")' \
+      2>/dev/null || echo "no")
+
+    if [[ "$HAS_ROLE" == "yes" ]]; then
+      log_ok "user '${username}' 이미 realm role 'admin' 보유 — 건너뜀"
+    else
+      local ROLE_STATUS
+      ROLE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        "${U_API}/users/${EXISTING_ID}/role-mappings/realm" \
+        -H "Authorization: Bearer $U_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "[${ADMIN_ROLE_JSON}]")
+      if [[ "$ROLE_STATUS" == "204" ]]; then
+        log_ok "user '${username}' → realm role 'admin' 부여"
+      else
+        log_err "user '${username}' admin role 부여 실패 (HTTP ${ROLE_STATUS})"; return 1
+      fi
+    fi
+  fi
+}
+
+# =============================================================================
 # 4. GitLab — gitlab-oidc-provider Secret
 # =============================================================================
 create_gitlab_secret() {
@@ -463,6 +568,8 @@ main() {
   upgrade_keycloak_hostname
   echo ""
   provision_keycloak
+  echo ""
+  provision_users
   echo ""
   create_gitlab_secret
   echo ""
