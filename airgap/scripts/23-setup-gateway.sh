@@ -62,7 +62,7 @@ ROUTES=(
   "@|nullus|nullus-web|80"
   "api|nullus|nullus-api|8080"
   "argocd|nullus|argo-cd-argocd-server|80"
-  "harbor|nullus|harbor-portal|80"
+  "harbor|nullus|harbor|80"
   "minio|nullus|nullus-minio-console|9001"
   "opensearch|nullus|opensearch-cluster-master|9200"
   "gitlab|gitlab|gitlab-webservice-default|8080"

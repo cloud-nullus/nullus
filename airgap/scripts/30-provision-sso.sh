@@ -402,12 +402,11 @@ verify_all() {
     "keycloak.nullus.internal" \
     "argocd.nullus.internal"
 
-  # Harbor — /c/oidc/login (through harbor nginx port-forward)
-  if lsof -i ":8086" -sTCP:LISTEN -t >/dev/null 2>&1; then
-    _check_redirect "Harbor" "http://127.0.0.1:8086/c/oidc/login" "keycloak.nullus.internal"
-  else
-    log_warn "Harbor: port-forward :8086 없음 — 검증 건너뜀"
-  fi
+  # Harbor — /c/oidc/login (through gateway; backendRef=harbor nginx, not portal)
+  _check_redirect "Harbor" \
+    "http://127.0.0.1:${GW_PORT_FWD}/c/oidc/login" \
+    "keycloak.nullus.internal" \
+    "harbor.nullus.internal"
 
   # MinIO — loginStrategy:redirect API
   STRATEGY=$(curl -s --max-time 5 "http://127.0.0.1:9001/api/v1/login" 2>/dev/null | \
