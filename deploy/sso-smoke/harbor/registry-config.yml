@@ -1,0 +1,31 @@
+version: 0.1
+log:
+  level: info
+  formatter: text
+  fields:
+    service: registry
+storage:
+  filesystem:
+    rootdirectory: /storage
+  delete:
+    enabled: true
+  redirect:
+    disable: true
+  cache:
+    blobdescriptor: inmemory
+http:
+  addr: :5000
+  relativeurls: false
+  secret: dev-registry-http-secret
+  debug:
+    addr: localhost:5001
+redis:
+  addr: harbor-redis:6379
+  db: 1
+  dialtimeout: 10ms
+  readtimeout: 10ms
+  writetimeout: 10ms
+  pool:
+    maxidle: 16
+    maxactive: 64
+    idletimeout: 300s

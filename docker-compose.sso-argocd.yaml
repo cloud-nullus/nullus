@@ -1,0 +1,55 @@
+# ArgoCD ↔ Keycloak SSO 스모크 테스트 오버레이
+# 사용법: docker compose -f docker-compose.dev.yaml -f docker-compose.sso-argocd.yaml up -d
+#
+# issuer 정합 전략 (docker-compose.sso.yaml 패턴 차용):
+#   1. KC_HOSTNAME_URL=http://localhost:8180 → Keycloak 토큰 iss 를 localhost:8180 고정
+#   2. argocd-server extra_hosts localhost→host-gateway → 컨테이너 안에서 localhost:8180 접근
+#   3. argocd-server kubeconfig 마운트 → 로컬 K8s(192.168.56.100:6443)에서 argocd-cm/argocd-secret 읽기
+#      smoke-sso-argocd.sh 가 argocd 네임스페이스 + ConfigMap + Secret 을 먼저 생성
+#   → KC iss, argocd oidc.config issuer, argocd redirect_uri 모두 http://localhost:8180/http://localhost:8081 로 일치
+
+services:
+  # Grafana SSO 오버레이(docker-compose.sso.yaml)의 keycloak 블록과 동일한 issuer 고정 패턴
+  keycloak:
+    environment:
+      KC_HOSTNAME_URL: "http://localhost:8180"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+
+  argocd-redis:
+    image: redis:7-alpine
+    # ArgoCD 세션 캐시 전용 — 호스트 포트 미노출(충돌 방지)
+
+  argocd-server:
+    image: quay.io/argoproj/argocd:v2.13.3
+    ports:
+      - "8081:8080"
+    # argocd-server 컨테이너 안에서 localhost → Docker 호스트(8180) 로 라우팅
+    # → Keycloak issuer(http://localhost:8180) 토큰 검증 가능
+    extra_hosts:
+      - "localhost:host-gateway"
+    volumes:
+      # 호스트 kubeconfig → argocd-server(uid=999) 가 K8s 에서 argocd-cm/argocd-secret 읽기
+      # /root/.kube 는 uid=999 에서 접근 불가 → /tmp/kubeconfig 사용
+      - "${HOME}/.kube/config:/tmp/kubeconfig:ro"
+    environment:
+      KUBECONFIG: /tmp/kubeconfig
+    command:
+      - argocd-server
+      - --insecure
+      - --redis
+      - argocd-redis:6379
+      - --namespace
+      - argocd
+      - --kubeconfig
+      - /tmp/kubeconfig
+      - --loglevel
+      - debug
+    depends_on:
+      - argocd-redis
+      - keycloak
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
