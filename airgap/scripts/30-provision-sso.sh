@@ -229,26 +229,69 @@ _provision_client() {
     "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
     'import sys,json; d=json.load(sys.stdin); print(len(d))' 2>/dev/null || echo "0")
 
-  if [[ "$EXISTING" -gt 0 ]]; then
-    log_ok "client '${cid}' 이미 존재 — 건너뜀"
-    return 0
+  # PKCE: grafana(use_pkce)·harbor·gitlab 은 code_challenge 전송 → S256 요구 유지.
+  # argocd 웹 UI·minio 콘솔은 PKCE 미전송 → 클라이언트에서 PKCE 요구 해제.
+  local pkce_method="S256"
+  if [[ "$cid" == "minio" || "$cid" == "argocd" ]]; then
+    pkce_method=""
   fi
 
-  curl -s -X POST "${KC_API}/${REALM}/clients" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"clientId\": \"${cid}\",
-      \"secret\": \"${secret}\",
-      \"enabled\": true,
-      \"publicClient\": false,
-      \"redirectUris\": ${redirect_uris},
-      \"webOrigins\": [\"+\"],
-      \"standardFlowEnabled\": true,
-      \"protocol\": \"openid-connect\",
-      \"attributes\": {\"pkce.code.challenge.method\": \"S256\"}
-    }" -o /dev/null
-  log_ok "client '${cid}' 생성"
+  if [[ "$EXISTING" -gt 0 ]]; then
+    log_ok "client '${cid}' 이미 존재 — 건너뜀"
+  else
+    curl -s -X POST "${KC_API}/${REALM}/clients" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"clientId\": \"${cid}\",
+        \"secret\": \"${secret}\",
+        \"enabled\": true,
+        \"publicClient\": false,
+        \"redirectUris\": ${redirect_uris},
+        \"webOrigins\": [\"+\"],
+        \"standardFlowEnabled\": true,
+        \"protocol\": \"openid-connect\",
+        \"attributes\": {\"pkce.code.challenge.method\": \"${pkce_method}\"}
+      }" -o /dev/null
+    log_ok "client '${cid}' 생성"
+  fi
+
+  # minio 클라이언트 매퍼 추가 (idempotent)
+  if [[ "$cid" == "minio" ]]; then
+    local CLIENT_UUID
+    CLIENT_UUID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+      "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
+      'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null || echo "")
+    
+    if [[ -n "$CLIENT_UUID" ]]; then
+      local MAPPER_EXISTS
+      MAPPER_EXISTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
+        "${KC_API}/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" | python3 -c \
+        'import sys,json; d=json.load(sys.stdin); print("yes" if any(m.get("name")=="minio-policy" for m in d) else "no")' 2>/dev/null || echo "no")
+      
+      if [[ "$MAPPER_EXISTS" != "yes" ]]; then
+        curl -s -X POST "${KC_API}/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "minio-policy",
+            "protocol": "openid-connect",
+            "protocolMapper": "oidc-hardcoded-claim-mapper",
+            "config": {
+              "claim.name": "policy",
+              "claim.value": "consoleAdmin",
+              "jsonType.label": "String",
+              "id.token.claim": "true",
+              "access.token.claim": "true",
+              "userinfo.token.claim": "true"
+            }
+          }' -o /dev/null
+        log_ok "client '\''${cid}'\''에 '\''minio-policy'\'' 프로토콜 매퍼 추가 완료"
+      else
+        log_ok "client '\''${cid}'\''에 '\''minio-policy'\'' 매퍼 이미 존재 — 건너뜀"
+      fi
+    fi
+  fi
 }
 
 # =============================================================================
@@ -388,11 +431,11 @@ p = {
       "scheme": "http",
       "host": kc_host,
       "port": 80,
-      "authorization_endpoint": realm_path + "/protocol/openid-connect/auth",
-      "token_endpoint": realm_path + "/protocol/openid-connect/token",
-      "userinfo_endpoint": realm_path + "/protocol/openid-connect/userinfo",
-      "end_session_endpoint": realm_path + "/protocol/openid-connect/logout",
-      "jwks_uri": realm_path + "/protocol/openid-connect/certs"
+      "authorization_endpoint": base + "/protocol/openid-connect/auth",
+      "token_endpoint": base + "/protocol/openid-connect/token",
+      "userinfo_endpoint": base + "/protocol/openid-connect/userinfo",
+      "end_session_endpoint": base + "/protocol/openid-connect/logout",
+      "jwks_uri": base + "/protocol/openid-connect/certs"
     }
   }
 }
