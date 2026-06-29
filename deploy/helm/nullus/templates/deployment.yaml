@@ -28,6 +28,23 @@ spec:
         runAsUser: 1000
         fsGroup: 1000
       initContainers:
+      - name: merge-ca-certs
+        image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag | default .Chart.AppVersion }}"
+        command:
+        - sh
+        - -c
+        - |
+          cat /etc/ssl/certs/ca-certificates.crt /nullus-ca/ca.crt > /ssl-merged/ca-certificates.crt
+          echo "CA bundle merged ($(wc -l < /ssl-merged/ca-certificates.crt) lines)"
+        securityContext:
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - name: nullus-ca
+          mountPath: /nullus-ca
+          readOnly: true
+        - name: ssl-certs
+          mountPath: /ssl-merged
       - name: wait-for-db
         image: busybox:1.37
         command:
@@ -83,6 +100,9 @@ spec:
         - name: NULLUS_AUTH_OIDC_AUDIENCE
           value: {{ .Values.config.auth.oidcAudience | quote }}
         {{- end }}
+        # 자체서명 CA를 포함한 merged CA bundle 경로 (initContainer가 생성)
+        - name: SSL_CERT_FILE
+          value: /ssl-certs/ca-certificates.crt
         - name: NULLUS_HELM_TIMEOUT
           value: {{ .Values.config.helm.timeout | quote }}
         - name: NULLUS_HELM_NAMESPACE_PREFIX
@@ -149,12 +169,23 @@ spec:
         - name: config
           mountPath: /configs
           readOnly: true
+        - name: ssl-certs
+          mountPath: /ssl-certs
+          readOnly: true
       volumes:
       - name: tmp
         emptyDir: {}
       - name: config
         configMap:
           name: {{ include "nullus.fullname" . }}-config
+      - name: nullus-ca
+        secret:
+          secretName: nullus-wildcard-tls
+          items:
+          - key: ca.crt
+            path: ca.crt
+      - name: ssl-certs
+        emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment

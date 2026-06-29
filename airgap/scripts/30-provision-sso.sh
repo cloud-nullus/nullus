@@ -215,25 +215,50 @@ provision_keycloak() {
   _provision_client "gitlab"   "gitlab-dev-secret"   \
     "[\"http://gitlab.nullus.internal/users/auth/openid_connect/callback\"]"
 
-  # 포털(nullus-web) — public client (SPA, PKCE S256)
+  # 포털(nullus-web) — public client (SPA, PKCE S256): http + https 모두 허용
   _provision_public_client "nullus-web" \
-    "[\"http://nullus.internal/*\",\"http://nullus.internal/callback\"]"
+    "[\"http://nullus.internal/*\",\"http://nullus.internal/callback\",\"https://nullus.internal/*\",\"https://nullus.internal/callback\"]" \
+    "[\"http://nullus.internal\",\"https://nullus.internal\",\"+\"]" \
+    "http://nullus.internal/*##https://nullus.internal/*"
 
   log_ok "Keycloak 프로비저닝 완료"
 }
 
 # public client (브라우저 SPA용 — secret 없음, PKCE 필수)
+# 이미 존재하면 redirectUris/webOrigins/postLogoutRedirectUris 를 최신 값으로 upsert
 _provision_public_client() {
-  local cid="$1" redirect_uris="$2"
-  local EXISTING
+  local cid="$1" redirect_uris="$2" web_origins="${3:-[\"+\"]}" post_logout="${4:-}"
+  local EXISTING CLIENT_UUID
   EXISTING=$(curl -s -H "Authorization: Bearer $TOKEN" \
     "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
-    'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo "0")
+    'import sys,json; d=json.load(sys.stdin); print(len(d))' 2>/dev/null || echo "0")
   if [[ "$EXISTING" -gt 0 ]]; then
-    log_ok "public client '${cid}' 이미 존재 — 건너뜀"
+    # 이미 있으면 PUT으로 upsert (redirectUris/webOrigins/post.logout.redirect.uris 갱신)
+    CLIENT_UUID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+      "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
+      'import sys,json; print(json.load(sys.stdin)[0]["id"])' 2>/dev/null)
+    if [[ -n "$CLIENT_UUID" ]]; then
+      local PATCH_STATUS
+      PATCH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X PUT "${KC_API}/${REALM}/clients/${CLIENT_UUID}" \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -d "{
+          \"clientId\": \"${cid}\",
+          \"enabled\": true,
+          \"publicClient\": true,
+          \"redirectUris\": ${redirect_uris},
+          \"webOrigins\": ${web_origins},
+          \"standardFlowEnabled\": true,
+          \"protocol\": \"openid-connect\",
+          \"attributes\": {\"pkce.code.challenge.method\": \"S256\", \"post.logout.redirect.uris\": \"${post_logout}\"}
+        }")
+      log_ok "public client '${cid}' upsert (HTTP ${PATCH_STATUS})"
+    fi
     return 0
   fi
-  curl -s -X POST "${KC_API}/${REALM}/clients" \
+  local POST_STATUS
+  POST_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "${KC_API}/${REALM}/clients" \
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     -d "{
       \"clientId\": \"${cid}\",

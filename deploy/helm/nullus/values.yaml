@@ -4,8 +4,8 @@ imagePullSecrets: []
 api:
   replicaCount: 2
   image:
-    repository: ghcr.io/cloud-nullus/nullus-api
-    tag: "0.1.0-alpha"
+    repository: localhost:5001/cloud-nullus/draft/nullus-api
+    tag: "main"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -15,8 +15,8 @@ api:
 web:
   replicaCount: 2
   image:
-    repository: ghcr.io/cloud-nullus/nullus-web
-    tag: "0.1.0-alpha"
+    repository: localhost:5001/cloud-nullus/draft/nullus-web
+    tag: "https"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -38,7 +38,7 @@ config:
     mode: oidc
     sessionMaxAge: 86400
     # oidcIssuerUrl: ""
-    oidcIssuerUrl: "http://keycloak.nullus.internal/realms/nullus"
+    oidcIssuerUrl: "https://keycloak.nullus.internal/realms/nullus"
     # oidcAudience: nullus-app
     oidcAudience: account
   helm:
@@ -57,6 +57,10 @@ secrets:
 
 postgresql:
   enabled: true
+  image:
+    registry: localhost:5001
+    repository: bitnamilegacy/postgresql
+    tag: "17.5.0-debian-12-r20"
   auth:
     username: nullus
     password: nullus
@@ -65,6 +69,10 @@ postgresql:
     service:
       ports:
         postgresql: 5432
+
+global:
+  security:
+    allowInsecureImages: true
 
 ingress:
   enabled: false
