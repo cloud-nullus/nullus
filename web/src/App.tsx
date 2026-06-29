@@ -53,21 +53,30 @@ function OidcGate({ children }: { children: ReactNode }) {
   const logout = useAuthStore((s) => s.logout)
   const storeUser = useAuthStore((s) => s.user)
 
+  // 로그인 동기화: auth 상태 변화에만 반응. storeUser 를 deps 에 넣으면
+  // login() 이 storeUser 를 갱신 → effect 재실행 → 무한 루프(React #185)가 되므로 제외.
+  // 토큰이 동일하면 set 안 하도록 가드해 추가 렌더도 방지.
   useEffect(() => {
-    if (auth.isAuthenticated && auth.user) {
-      const role = extractRoleFromOidc(auth.user)
-      const user: User = {
-        id: auth.user.profile.sub || '',
-        name: (auth.user.profile.name || auth.user.profile.preferred_username || 'OIDC User') as string,
-        email: (auth.user.profile.email || '') as string,
-        role,
-        orgId: ORG_ID,
-      }
-      login(user, auth.user.access_token)
-    } else if (!auth.isLoading && !auth.isAuthenticated && storeUser) {
-      logout()
+    if (!auth.isAuthenticated || !auth.user) return
+    const role = extractRoleFromOidc(auth.user)
+    const user: User = {
+      id: auth.user.profile.sub || '',
+      name: (auth.user.profile.name || auth.user.profile.preferred_username || 'OIDC User') as string,
+      email: (auth.user.profile.email || '') as string,
+      role,
+      orgId: ORG_ID,
     }
-  }, [auth.isAuthenticated, auth.user, auth.isLoading, login, logout, storeUser])
+    const st = useAuthStore.getState()
+    if (st.token === auth.user.access_token && st.user?.id === user.id) return
+    login(user, auth.user.access_token)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.isAuthenticated, auth.user])
+
+  // 로그아웃 동기화: OIDC 세션이 끝났는데 store 에 user 가 남아있으면 정리
+  useEffect(() => {
+    if (!auth.isLoading && !auth.isAuthenticated && storeUser) logout()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.isLoading, auth.isAuthenticated, storeUser])
 
   if (auth.error) return <Splash text={`로그인 오류: ${auth.error.message}`} />
   if (auth.isLoading || auth.activeNavigator) return <Splash text="Authenticating…" />
