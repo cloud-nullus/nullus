@@ -211,13 +211,28 @@ export function Sidebar() {
             if (isOidcMode) {
               const config = getProviderConfig()
               if (config.getLogoutUrl) {
-                const idToken = sessionStorage.getItem('nullus-id-token') ?? ''
-                const redirectUri = window.location.origin
+                // react-oidc-context(oidc-client-ts) 가 저장한 user 를 비워야
+                // 로그아웃 후 복귀 시 stale 세션으로 재로그인되지 않는다.
+                let idToken = ''
+                try {
+                  for (const k of Object.keys(sessionStorage)) {
+                    if (k.startsWith('oidc.')) {
+                      try {
+                        const u = JSON.parse(sessionStorage.getItem(k) || '{}')
+                        if (u && u.id_token) idToken = u.id_token
+                      } catch { /* ignore */ }
+                      sessionStorage.removeItem(k)
+                    }
+                  }
+                  for (const k of Object.keys(localStorage)) {
+                    if (k.startsWith('oidc.')) localStorage.removeItem(k)
+                  }
+                } catch { /* ignore */ }
+                const redirectUri = window.location.origin + '/'
                 logout()
                 window.location.href = config.getLogoutUrl(idToken, redirectUri)
                 return
               }
-              // When react-oidc-context is installed, call auth.signoutRedirect() here
             }
             logout()
             navigate('/login')
