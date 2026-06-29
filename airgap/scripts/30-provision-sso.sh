@@ -3,33 +3,8 @@
 # 30-provision-sso.sh — Nullus 플랫폼 Keycloak SSO 프로비저닝 (in-cluster)
 # =============================================================================
 # 목적: kind-nullus-airgap 클러스터에서 모든 스택(Grafana, ArgoCD, Harbor,
-#       MinIO, GitLab)이 realm=nullus / issuer=http://keycloak.nullus.internal
+#       MinIO, GitLab)이 realm=nullus / issuer=https://keycloak.nullus.internal
 #       를 통해 SSO 인증하도록 idempotent 하게 구성한다.
-#
-# 수행 작업:
-#   1. CoreDNS — *.nullus.internal rewrite rule 패치
-#   2. Keycloak — KC_HOSTNAME/KC_HOSTNAME_PORT env var helm upgrade
-#   3. Keycloak — realm nullus + 5개 OIDC client 프로비저닝 (Admin REST API)
-#   4. GitLab  — gitlab-oidc-provider k8s Secret 생성/갱신
-#   5. Helm    — Grafana(kps), ArgoCD, MinIO values upgrade
-#   6. Harbor  — Admin REST API로 oidc_auth 설정
-#   7. 검증    — 각 앱 curl redirect 확인
-#
-# 사용법:
-#   ./30-provision-sso.sh                        # 전체 실행
-#   SKIP_VERIFY=1 ./30-provision-sso.sh          # 검증 단계 생략
-#   KC_PORT_FWD=8180 ./30-provision-sso.sh       # 커스텀 KC port-forward 포트
-#
-# 환경 변수:
-#   KC_ADMIN         Keycloak 관리자 계정   (기본: admin)
-#   KC_ADMIN_PASS    Keycloak 관리자 비밀번호 (기본: admin)
-#   KC_PORT_FWD      로컬 Keycloak port-forward 포트 (기본: 18180)
-#   GW_PORT_FWD      Envoy Gateway 로컬 포트 (기본: 8088)
-#   HARBOR_ADMIN_PASS Harbor 관리자 비밀번호 (기본: Harbor12345)
-#   HARBOR_CORE_PORT Harbor-core 직접 port-forward 포트 (기본: 18085)
-#   SKIP_VERIFY      1 이면 curl 검증 단계 생략
-#
-# 종료 코드: 0=성공, 1=실패
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -42,12 +17,13 @@ KC_ADMIN="${KC_ADMIN:-admin}"
 KC_ADMIN_PASS="${KC_ADMIN_PASS:-admin}"
 KC_PORT_FWD="${KC_PORT_FWD:-18180}"
 GW_PORT_FWD="${GW_PORT_FWD:-8088}"
+GW_HTTPS_PORT_FWD="${GW_HTTPS_PORT_FWD:-8443}"
 HARBOR_ADMIN_PASS="${HARBOR_ADMIN_PASS:-Harbor12345}"
 HARBOR_CORE_PORT="${HARBOR_CORE_PORT:-18085}"
 SKIP_VERIFY="${SKIP_VERIFY:-0}"
 
 REALM="nullus"
-KC_BASE="http://keycloak.nullus.internal/realms/${REALM}"
+KC_BASE="https://keycloak.nullus.internal/realms/${REALM}"
 KC_LOCAL="http://127.0.0.1:${KC_PORT_FWD}"
 
 if [[ -t 1 ]]; then
@@ -201,19 +177,19 @@ provision_keycloak() {
 
   # 5개 confidential OIDC client 프로비저닝
   _provision_client "grafana"  "grafana-dev-secret"  \
-    "[\"http://grafana.nullus.internal/login/generic_oauth\"]"
+    "[\"http://grafana.nullus.internal/login/generic_oauth\",\"https://grafana.nullus.internal/login/generic_oauth\"]"
 
   _provision_client "argocd"   "argocd-dev-secret"   \
-    "[\"http://argocd.nullus.internal/auth/callback\"]"
+    "[\"http://argocd.nullus.internal/auth/callback\",\"https://argocd.nullus.internal/auth/callback\"]"
 
   _provision_client "harbor"   "harbor-dev-secret"   \
-    "[\"http://harbor.nullus.internal/c/oidc/callback\"]"
+    "[\"http://harbor.nullus.internal/c/oidc/callback\",\"https://harbor.nullus.internal/c/oidc/callback\"]"
 
   _provision_client "minio"    "minio-dev-secret"    \
-    "[\"http://minio.nullus.internal/oauth_callback\"]"
+    "[\"http://minio.nullus.internal/oauth_callback\",\"https://minio.nullus.internal/oauth_callback\"]"
 
   _provision_client "gitlab"   "gitlab-dev-secret"   \
-    "[\"http://gitlab.nullus.internal/users/auth/openid_connect/callback\"]"
+    "[\"http://gitlab.nullus.internal/users/auth/openid_connect/callback\",\"https://gitlab.nullus.internal/users/auth/openid_connect/callback\"]"
 
   # 포털(nullus-web) — public client (SPA, PKCE S256): http + https 모두 허용
   _provision_public_client "nullus-web" \
@@ -225,7 +201,6 @@ provision_keycloak() {
 }
 
 # public client (브라우저 SPA용 — secret 없음, PKCE 필수)
-# 이미 존재하면 redirectUris/webOrigins/postLogoutRedirectUris 를 최신 값으로 upsert
 _provision_public_client() {
   local cid="$1" redirect_uris="$2" web_origins="${3:-[\"+\"]}" post_logout="${4:-}"
   local EXISTING CLIENT_UUID
@@ -233,14 +208,12 @@ _provision_public_client() {
     "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
     'import sys,json; d=json.load(sys.stdin); print(len(d))' 2>/dev/null || echo "0")
   if [[ "$EXISTING" -gt 0 ]]; then
-    # 이미 있으면 PUT으로 upsert (redirectUris/webOrigins/post.logout.redirect.uris 갱신)
+    # 이미 있으면 PUT으로 upsert
     CLIENT_UUID=$(curl -s -H "Authorization: Bearer $TOKEN" \
       "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
       'import sys,json; print(json.load(sys.stdin)[0]["id"])' 2>/dev/null)
     if [[ -n "$CLIENT_UUID" ]]; then
-      local PATCH_STATUS
-      PATCH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X PUT "${KC_API}/${REALM}/clients/${CLIENT_UUID}" \
+      curl -s -X PUT "${KC_API}/${REALM}/clients/${CLIENT_UUID}" \
         -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
         -d "{
           \"clientId\": \"${cid}\",
@@ -251,14 +224,12 @@ _provision_public_client() {
           \"standardFlowEnabled\": true,
           \"protocol\": \"openid-connect\",
           \"attributes\": {\"pkce.code.challenge.method\": \"S256\", \"post.logout.redirect.uris\": \"${post_logout}\"}
-        }")
-      log_ok "public client '${cid}' upsert (HTTP ${PATCH_STATUS})"
+        }" -o /dev/null
+      log_ok "public client '${cid}' upsert 완료"
     fi
     return 0
   fi
-  local POST_STATUS
-  POST_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X POST "${KC_API}/${REALM}/clients" \
+  curl -s -X POST "${KC_API}/${REALM}/clients" \
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     -d "{
       \"clientId\": \"${cid}\",
@@ -270,29 +241,41 @@ _provision_public_client() {
       \"protocol\": \"openid-connect\",
       \"attributes\": {\"pkce.code.challenge.method\": \"S256\", \"post.logout.redirect.uris\": \"http://nullus.internal/*\"}
     }" -o /dev/null
-  log_ok "public client '${cid}' 생성"
+  log_ok "public client '${cid}' 생성 완료"
 }
 
 _provision_client() {
   local cid="$1" secret="$2" redirect_uris="$3"
-  local STATUS
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "Authorization: Bearer $TOKEN" "${KC_API}/${REALM}/clients?clientId=${cid}")
-
-  # 클라이언트가 이미 있으면 건너뜀 (200 + 비어있지 않은 배열)
+  local EXISTING CLIENT_UUID
   EXISTING=$(curl -s -H "Authorization: Bearer $TOKEN" \
     "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
     'import sys,json; d=json.load(sys.stdin); print(len(d))' 2>/dev/null || echo "0")
 
-  # PKCE: grafana(use_pkce)·harbor·gitlab 은 code_challenge 전송 → S256 요구 유지.
-  # argocd 웹 UI·minio 콘솔은 PKCE 미전송 → 클라이언트에서 PKCE 요구 해제.
   local pkce_method="S256"
   if [[ "$cid" == "minio" || "$cid" == "argocd" ]]; then
     pkce_method=""
   fi
 
   if [[ "$EXISTING" -gt 0 ]]; then
-    log_ok "client '${cid}' 이미 존재 — 건너뜀"
+    CLIENT_UUID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+      "${KC_API}/${REALM}/clients?clientId=${cid}" | python3 -c \
+      'import sys,json; print(json.load(sys.stdin)[0]["id"])' 2>/dev/null)
+    if [[ -n "$CLIENT_UUID" ]]; then
+      curl -s -X PUT "${KC_API}/${REALM}/clients/${CLIENT_UUID}" \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -d "{
+          \"clientId\": \"${cid}\",
+          \"secret\": \"${secret}\",
+          \"enabled\": true,
+          \"publicClient\": false,
+          \"redirectUris\": ${redirect_uris},
+          \"webOrigins\": [\"+\"],
+          \"standardFlowEnabled\": true,
+          \"protocol\": \"openid-connect\",
+          \"attributes\": {\"pkce.code.challenge.method\": \"${pkce_method}\"}
+        }" -o /dev/null
+      log_ok "client '${cid}' upsert (HTTP 204)"
+    fi
   else
     curl -s -X POST "${KC_API}/${REALM}/clients" \
       -H "Authorization: Bearer $TOKEN" \
@@ -308,7 +291,7 @@ _provision_client() {
         \"protocol\": \"openid-connect\",
         \"attributes\": {\"pkce.code.challenge.method\": \"${pkce_method}\"}
       }" -o /dev/null
-    log_ok "client '${cid}' 생성"
+    log_ok "client '${cid}' 생성 완료"
   fi
 
   # minio 클라이언트 매퍼 추가 (idempotent)
@@ -341,9 +324,9 @@ _provision_client() {
               "userinfo.token.claim": "true"
             }
           }' -o /dev/null
-        log_ok "client '\''${cid}'\''에 '\''minio-policy'\'' 프로토콜 매퍼 추가 완료"
+        log_ok "client '${cid}'에 'minio-policy' 프로토콜 매퍼 추가 완료"
       else
-        log_ok "client '\''${cid}'\''에 '\''minio-policy'\'' 매퍼 이미 존재 — 건너뜀"
+        log_ok "client '${cid}'에 'minio-policy' 매퍼 이미 존재 — 건너뜀"
       fi
     fi
   fi
@@ -355,10 +338,8 @@ _provision_client() {
 provision_users() {
   log_info "── Keycloak 테스트 사용자 프로비저닝 ──"
 
-  # port-forward 재사용 (start_pf idempotent)
   start_pf nullus-auth keycloak "$KC_PORT_FWD" 80
 
-  # 토큰 재획득 (provision_keycloak 이후 만료 가능성 대비)
   U_TOKEN=$(curl -s -X POST \
     "${KC_LOCAL}/realms/master/protocol/openid-connect/token" \
     -H "Content-Type: application/x-www-form-urlencoded" \
@@ -368,7 +349,6 @@ provision_users() {
 
   U_API="${KC_LOCAL}/admin/realms/${REALM}"
 
-  # realm role 'admin' 전체 객체 획득 (role-mappings 부여에 필요)
   ADMIN_ROLE_JSON=$(curl -s -H "Authorization: Bearer $U_TOKEN" "${U_API}/roles/admin")
   ADMIN_ROLE_ID=$(echo "$ADMIN_ROLE_JSON" | \
     python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
@@ -383,7 +363,6 @@ provision_users() {
 _provision_user() {
   local username="$1" email="$2" first="$3" last="$4" password="$5" assign_admin="$6"
 
-  # 사용자 존재 여부 확인 (exact=true: Keycloak 18+ 지원)
   local EXISTING_ID
   EXISTING_ID=$(curl -s -H "Authorization: Bearer $U_TOKEN" \
     "${U_API}/users?username=${username}&exact=true" | \
@@ -393,7 +372,6 @@ _provision_user() {
   if [[ -n "$EXISTING_ID" ]]; then
     log_ok "user '${username}' 이미 존재 (id=${EXISTING_ID:0:8}…) — 건너뜀"
   else
-    # python3으로 JSON 직렬화 (BSD sed/특수문자 회피)
     local USER_JSON
     USER_JSON=$(python3 - <<PYEOF
 import json
@@ -418,7 +396,6 @@ PYEOF
     else
       log_err "user '${username}' 생성 실패 (HTTP ${CREATE_STATUS})"; return 1
     fi
-    # 생성 직후 ID 조회
     EXISTING_ID=$(curl -s -H "Authorization: Bearer $U_TOKEN" \
       "${U_API}/users?username=${username}&exact=true" | \
       python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' \
@@ -427,7 +404,6 @@ PYEOF
 
   [[ -n "$EXISTING_ID" ]] || { log_err "user '${username}' ID 조회 실패"; return 1; }
 
-  # admin role 부여 (assign_admin=true 이고 미보유 시)
   if [[ "$assign_admin" == "true" ]]; then
     local HAS_ROLE
     HAS_ROLE=$(curl -s -H "Authorization: Bearer $U_TOKEN" \
@@ -460,7 +436,7 @@ PYEOF
 create_gitlab_secret() {
   log_info "── GitLab OIDC Provider Secret ──"
 
-  local BASE="http://keycloak.nullus.internal/realms/${REALM}"
+  local BASE="https://keycloak.nullus.internal/realms/${REALM}"
   PROVIDER=$(python3 - <<PYEOF
 import json
 base = "${BASE}"
@@ -482,15 +458,18 @@ p = {
     "client_options": {
       "identifier": "gitlab",
       "secret": "gitlab-dev-secret",
-      "redirect_uri": "http://gitlab.nullus.internal/users/auth/openid_connect/callback",
-      "scheme": "http",
+      "redirect_uri": "https://gitlab.nullus.internal/users/auth/openid_connect/callback",
+      "scheme": "https",
       "host": kc_host,
-      "port": 80,
+      "port": 443,
       "authorization_endpoint": base + "/protocol/openid-connect/auth",
       "token_endpoint": base + "/protocol/openid-connect/token",
       "userinfo_endpoint": base + "/protocol/openid-connect/userinfo",
       "end_session_endpoint": base + "/protocol/openid-connect/logout",
-      "jwks_uri": base + "/protocol/openid-connect/certs"
+      "jwks_uri": base + "/protocol/openid-connect/certs",
+      "ssl": {
+        "verify": False
+      }
     }
   }
 }
@@ -517,18 +496,51 @@ upgrade_app_helm() {
     chart="$(ls "${ROOT_DIR}/helm/charts-catalog"/${prefix}-*.tgz 2>/dev/null | head -1 || true)"
     [[ -n "$chart" ]] || { log_warn "${name}: chart .tgz 없음 — 건너뜀"; return 0; }
     helm upgrade "$name" "$chart" -n "$ns" -f "$values_file" \
-      --wait --timeout 5m --reuse-values 2>&1 | tail -2
+      --wait --timeout 5m --reset-values 2>&1 | tail -2
     log_ok "${name} helm upgrade 완료"
   }
 
   _helm_upgrade_if_chart kps             nullus-monitoring  kube-prometheus-stack \
     "${VALUES_DIR}/prometheus.yaml"
+  kubectl delete configmap argocd-cm -n nullus --ignore-not-found
   _helm_upgrade_if_chart argo-cd         nullus             argo-cd \
     "${VALUES_DIR}/argocd.yaml"
+
+  log_info "── ArgoCD TLS certs ConfigMap 패치 ──"
+  local CA_CRT
+  CA_CRT=$(kubectl get secret -n nullus nullus-wildcard-tls -o jsonpath='{.data.ca\.crt}' | base64 -d)
+  kubectl create configmap argocd-tls-certs-cm -n nullus \
+    --from-literal=keycloak.nullus.internal="$CA_CRT" \
+    --from-literal=keycloak.nullus.internal.crt="$CA_CRT" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  log_info "── ArgoCD ConfigMap oidc.config rootCA 패치 ──"
+  export CA_CRT
+  kubectl get cm argocd-cm -n nullus -o json | python3 -c "
+import sys, json, os, yaml
+cm = json.load(sys.stdin)
+if 'data' in cm and 'oidc.config' in cm['data']:
+    oidc = yaml.safe_load(cm['data']['oidc.config'])
+    oidc['rootCA'] = os.environ.get('CA_CRT', '')
+    cm['data']['oidc.config'] = yaml.dump(oidc)
+    print(json.dumps(cm))
+else:
+    print(json.dumps(cm))
+" | kubectl apply -f - >/dev/null
+
+  log_info "── ArgoCD server rollout restart ──"
+  kubectl rollout restart deployment/argo-cd-argocd-server -n nullus
+  kubectl rollout restart deployment/argo-cd-argocd-repo-server -n nullus
+  kubectl rollout status deployment/argo-cd-argocd-server -n nullus --timeout=2m
+
   _helm_upgrade_if_chart nullus-minio    nullus             minio \
     "${VALUES_DIR}/minio.yaml"
   _helm_upgrade_if_chart gitlab          gitlab             gitlab \
     "${VALUES_DIR}/gitlab.yaml"
+
+  log_info "── GitLab webservice rollout restart ──"
+  kubectl rollout restart deployment/gitlab-webservice-default -n gitlab
+  kubectl rollout status deployment/gitlab-webservice-default -n gitlab --timeout=3m
 }
 
 # =============================================================================
@@ -537,19 +549,20 @@ upgrade_app_helm() {
 configure_harbor_oidc() {
   log_info "── Harbor OIDC 설정 ──"
 
-  start_pf nullus harbor-core "$HARBOR_CORE_PORT" 8080
+  start_pf nullus harbor-core "$HARBOR_CORE_PORT" 80
+  local KC_ISSUER="https://keycloak.nullus.internal/realms/${REALM}"
 
-  CURRENT_MODE=$(curl -s -u "admin:${HARBOR_ADMIN_PASS}" \
-    "http://127.0.0.1:${HARBOR_CORE_PORT}/api/v2.0/configurations" | \
-    python3 -c 'import sys,json; print(json.load(sys.stdin).get("auth_mode",{}).get("value",""))' \
-    2>/dev/null || echo "")
+  CONFIGS=$(curl -s -u "admin:${HARBOR_ADMIN_PASS}" \
+    "http://127.0.0.1:${HARBOR_CORE_PORT}/api/v2.0/configurations")
 
-  if [[ "$CURRENT_MODE" == "oidc_auth" ]]; then
-    log_ok "Harbor auth_mode 이미 oidc_auth — 건너뜀"
+  CURRENT_MODE=$(echo "$CONFIGS" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("auth_mode",{}).get("value",""))' 2>/dev/null || echo "")
+  CURRENT_ENDPOINT=$(echo "$CONFIGS" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("oidc_endpoint",{}).get("value",""))' 2>/dev/null || echo "")
+
+  if [[ "$CURRENT_MODE" == "oidc_auth" && "$CURRENT_ENDPOINT" == "$KC_ISSUER" ]]; then
+    log_ok "Harbor auth_mode 이미 oidc_auth 이고 endpoint 가 https — 건너뜀"
     return 0
   fi
 
-  local KC_ISSUER="http://keycloak.nullus.internal/realms/${REALM}"
   curl -s -X PUT \
     -u "admin:${HARBOR_ADMIN_PASS}" \
     "http://127.0.0.1:${HARBOR_CORE_PORT}/api/v2.0/configurations" \
@@ -577,7 +590,7 @@ verify_all() {
   log_info "── SSO redirect 검증 ──"
   local PASS=0 FAIL=0
 
-  _check_redirect() {
+  _check_redirect_http() {
     local app="$1" url="$2" expected_loc="$3" host_hdr="${4:-}"
     local HARGS=()
     [[ -n "$host_hdr" ]] && HARGS=(-H "Host: $host_hdr")
@@ -585,34 +598,59 @@ verify_all() {
     REDIR=$(curl -s --max-time 8 "${HARGS[@]}" -o /dev/null \
       -w "%{redirect_url}" "$url" 2>/dev/null || true)
     if echo "$REDIR" | grep -q "$expected_loc"; then
-      log_ok "${app}: 302 → ${REDIR:0:80}..."
+      log_ok "${app} (HTTP): 302 → ${REDIR:0:80}..."
       PASS=$((PASS+1))
     else
-      log_err "${app}: FAIL (redirect='${REDIR:0:80}')"
+      log_err "${app} (HTTP): FAIL (redirect='${REDIR:0:80}')"
       FAIL=$((FAIL+1))
     fi
   }
 
-  # Grafana — /login/generic_oauth → Keycloak
-  _check_redirect "Grafana" \
+  _check_redirect_https() {
+    local app="$1" domain="$2" path="$3" expected_loc="$4"
+    local REDIR
+    REDIR=$(curl -k -s --max-time 8 \
+      --connect-to "${domain}:443:127.0.0.1:${GW_HTTPS_PORT_FWD}" \
+      -o /dev/null -w "%{redirect_url}" \
+      "https://${domain}${path}" 2>/dev/null || true)
+    if echo "$REDIR" | grep -q "$expected_loc"; then
+      log_ok "${app} (HTTPS): 302 → ${REDIR:0:80}..."
+      PASS=$((PASS+1))
+    else
+      log_err "${app} (HTTPS): FAIL (redirect='${REDIR:0:80}')"
+      FAIL=$((FAIL+1))
+    fi
+  }
+
+  # 1. Grafana
+  _check_redirect_http "Grafana" \
     "http://127.0.0.1:${GW_PORT_FWD}/login/generic_oauth?redirectTo=" \
     "keycloak.nullus.internal" \
     "grafana.nullus.internal"
+  _check_redirect_https "Grafana" \
+    "grafana.nullus.internal" "/login/generic_oauth?redirectTo=" \
+    "keycloak.nullus.internal"
 
-  # ArgoCD — /auth/login → Keycloak
-  _check_redirect "ArgoCD" \
+  # 2. ArgoCD
+  _check_redirect_http "ArgoCD" \
     "http://127.0.0.1:${GW_PORT_FWD}/auth/login" \
     "keycloak.nullus.internal" \
     "argocd.nullus.internal"
+  _check_redirect_https "ArgoCD" \
+    "argocd.nullus.internal" "/auth/login" \
+    "keycloak.nullus.internal"
 
-  # Harbor — /c/oidc/login (through gateway; backendRef=harbor nginx, not portal)
-  _check_redirect "Harbor" \
+  # 3. Harbor
+  _check_redirect_http "Harbor" \
     "http://127.0.0.1:${GW_PORT_FWD}/c/oidc/login" \
     "keycloak.nullus.internal" \
     "harbor.nullus.internal"
+  _check_redirect_https "Harbor" \
+    "harbor.nullus.internal" "/c/oidc/login" \
+    "keycloak.nullus.internal"
 
-  # MinIO — loginStrategy:redirect API
-  STRATEGY=$(curl -s --max-time 5 "http://127.0.0.1:9001/api/v1/login" 2>/dev/null | \
+  # 4. MinIO
+  STRATEGY=$(curl -s -k --max-time 5 -H "Host: minio.nullus.internal" "http://127.0.0.1:${GW_PORT_FWD}/api/v1/login" 2>/dev/null | \
     python3 -c 'import sys,json; print(json.load(sys.stdin).get("loginStrategy","?"))' \
     2>/dev/null || echo "unknown")
   if [[ "$STRATEGY" == "redirect" ]]; then
@@ -623,7 +661,7 @@ verify_all() {
     FAIL=$((FAIL+1))
   fi
 
-  # GitLab — POST /users/auth/openid_connect
+  # 5. GitLab (HTTP)
   if lsof -i ":8087" -sTCP:LISTEN -t >/dev/null 2>&1; then
     COOKIES=$(mktemp /tmp/gcsso-XXXX)
     HTML=$(curl -s -c "$COOKIES" -b "$COOKIES" \
@@ -638,15 +676,43 @@ verify_all() {
       "http://127.0.0.1:8087/users/auth/openid_connect" 2>/dev/null || true)
     rm -f "$COOKIES"
     if echo "$REDIR" | grep -q "keycloak.nullus.internal"; then
-      log_ok "GitLab: 302 → ${REDIR:0:80}..."
+      log_ok "GitLab (HTTP): 302 → ${REDIR:0:80}..."
       PASS=$((PASS+1))
     else
-      log_err "GitLab: FAIL (redirect='${REDIR:0:80}')"
+      log_err "GitLab (HTTP): FAIL (redirect='${REDIR:0:80}')"
       FAIL=$((FAIL+1))
     fi
   else
-    log_warn "GitLab: port-forward :8087 없음 — 검증 건너뜀"
+    log_warn "GitLab: port-forward :8087 없음 — HTTP 검증 건너뜀"
   fi
+
+  # 6. GitLab (HTTPS via gateway)
+  COOKIES_HTTPS=$(mktemp /tmp/gcsso-https-XXXX)
+  HTML_HTTPS=$(curl -k -s -c "$COOKIES_HTTPS" -b "$COOKIES_HTTPS" \
+    --connect-to "gitlab.nullus.internal:443:127.0.0.1:${GW_HTTPS_PORT_FWD}" \
+    "https://gitlab.nullus.internal/users/sign_in")
+  AUTH_TOKEN_HTTPS=$(echo "$HTML_HTTPS" | grep -o 'name="authenticity_token" value="[^"]*"' | \
+    head -1 | sed 's/name="authenticity_token" value="//;s/"//' || echo "")
+  
+  if [[ -n "$AUTH_TOKEN_HTTPS" ]]; then
+    REDIR_HTTPS=$(curl -k -s -b "$COOKIES_HTTPS" -c "$COOKIES_HTTPS" \
+      --connect-to "gitlab.nullus.internal:443:127.0.0.1:${GW_HTTPS_PORT_FWD}" \
+      -X POST --max-time 10 \
+      --data-urlencode "authenticity_token=$AUTH_TOKEN_HTTPS" \
+      -o /dev/null -w "%{redirect_url}" \
+      "https://gitlab.nullus.internal/users/auth/openid_connect" 2>/dev/null || true)
+    if echo "$REDIR_HTTPS" | grep -q "keycloak.nullus.internal"; then
+      log_ok "GitLab (HTTPS): 302 → ${REDIR_HTTPS:0:80}..."
+      PASS=$((PASS+1))
+    else
+      log_err "GitLab (HTTPS): FAIL (redirect='${REDIR_HTTPS:0:80}')"
+      FAIL=$((FAIL+1))
+    fi
+  else
+    log_warn "GitLab (HTTPS): authenticity_token 획득 실패 (접근 불가 또는 토큰 없음)"
+    FAIL=$((FAIL+1))
+  fi
+  rm -f "$COOKIES_HTTPS"
 
   echo ""
   log_info "검증 결과: PASS=${PASS}  FAIL=${FAIL}"

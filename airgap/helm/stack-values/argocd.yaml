@@ -4,19 +4,15 @@
 # ---------------------------------------------------------------------------
 # Keycloak OIDC SSO
 # clientSecret: argocd-secret의 $oidc.keycloak.clientSecret 키로 참조
-# 자동 로그인: ArgoCD는 OIDC 단독 구성 시 "LOG IN VIA KEYCLOAK" 버튼 1클릭 방식.
-#   완전 무클릭이 필요하면 후속 작업에서 게이트웨이 수준 보강 검토.
-# Redirect URI (Keycloak client 등록 시 동일하게 지정):
-#   https://argocd.{accessDomain}/auth/callback
 # ---------------------------------------------------------------------------
 configs:
   params:
     server.insecure: "true"
   cm:
-    url: http://argocd.nullus.internal
+    url: https://argocd.nullus.internal
     oidc.config: |
       name: Keycloak
-      issuer: http://keycloak.nullus.internal/realms/nullus
+      issuer: https://keycloak.nullus.internal/realms/nullus
       clientID: argocd
       clientSecret: $oidc.keycloak.clientSecret
       enablePKCEAuthentication: true
@@ -27,6 +23,27 @@ configs:
   secret:
     extra:
       oidc.keycloak.clientSecret: argocd-dev-secret
+  certs:
+    keycloak.nullus.internal: |
+      -----BEGIN CERTIFICATE-----
+      MIIEDTCCAfWgAwIBAgIQNaa4TJuHwwsXstQGeWm6cDANBgkqhkiG9w0BAQsFADAa
+      MRgwFgYDVQQDEw9udWxsdXMuaW50ZXJuYWwwHhcNMjYwNjI5MTIxNTQzWhcNMjcw
+      NjI5MTIxNTQzWjAaMRgwFgYDVQQDEw9udWxsdXMuaW50ZXJuYWwweTCCASIwDQYJ
+      KoZIhvcNAQEBBQADggEPADCCAQoCggEBAMxKN+wgYnLEWl3ZGsnZCGs3gwPeh5rv
+      kgvErtDRINRFHhRl/LTy6GVH/MzDL2dd/R0klTodf6vFGJfestyLhXwml7E0afWB
+      cRYKfK33BRGnVOt0ZhXK/V0rcR9ZV/70hF1Zg2Re64Ce56eqLs7L7fv27T1Mnd0x
+      OMtkI2nCBWXjAq8biTTUaAygb9QBivMSnXnTKxJAGe5zquQAMw5SAPIj3OzyRuWn
+      i08VqjqxO5+fkIKU7BmuXRMk6Jb4yprb4p1jt3canhGsZUNvLN9/TQG65vrfWlJ/
+      ERANbDXKhLQ19g7TEpRuXS6pmCoE8blSawKLHX9zISPUbk0V1+e1563RAgMBAAGj
+      TzBNMA4GA1UdDwEB/wQEAwIGoDAMBgNVHRMBAf8EAjAAMCsGA1UdEQQkMCKCCDky
+      Ly5pbnRlcm5hbIIOKi5udWxsdXMuaW50ZXJuYWwwDQYJKoZIhvcNAQELBQADggEB
+      ADN3+H8yxLaLnnoxxzsfZkmpQphPG0w112GjF/HXwudq9cRTabaOeF0qp5or/lON
+      jTCccyC9hzGwodZTrPMeGC/W66jOCcqZFAu4zx8MGVzpf5McfbhM7FCpBb9MpD2s
+      ZJdWEadOmw2eRIm3HtYdklzjlnagJ9psOjl3TLzpElxLJWvRyN9Zp62pMy5CWfsJ
+      x/6Hw00GvzvdR4FGPHo33OW6BucNsI1H+DBKysb9HaZlZekgPp353tf1h/xAiiqN
+      SioZ8hfIogumCDfxDGtzLRmJoWHP/GPMLb9kb20efDqUKOfy3g8EPyrguUYCb0m3
+      gK6edVEtvdvrPCOtIkzcU58=
+      -----END CERTIFICATE-----
 crds:
   install: true
   keep: false

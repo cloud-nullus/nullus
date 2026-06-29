@@ -20,12 +20,25 @@ rootUser: nullus-admin
 # ---------------------------------------------------------------------------
 oidc:
   enabled: true
-  configUrl: "http://keycloak.nullus.internal/realms/nullus/.well-known/openid-configuration"
+  configUrl: "https://keycloak.nullus.internal/realms/nullus/.well-known/openid-configuration"
   clientId: "minio"
   clientSecret: "minio-dev-secret"
   scopes: "openid,profile,email"
-  redirectUri: "http://minio.nullus.internal/oauth_callback"
+  redirectUri: "https://minio.nullus.internal/oauth_callback"
   displayName: "Keycloak"
 
 environment:
-  MINIO_BROWSER_REDIRECT_URL: "http://minio.nullus.internal"
+  MINIO_BROWSER_REDIRECT_URL: "https://minio.nullus.internal"
+
+extraVolumes:
+  - name: ca-certs
+    secret:
+      secretName: nullus-wildcard-tls
+      items:
+        - key: ca.crt
+          path: public.crt
+
+extraVolumeMounts:
+  - name: ca-certs
+    mountPath: /etc/minio/certs/CAs/public.crt
+    subPath: public.crt

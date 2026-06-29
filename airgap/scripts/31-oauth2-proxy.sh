@@ -60,44 +60,57 @@ KC_TOKEN=$(curl -sf -X POST \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 create_kc_client() {
-  local client_id="$1" secret="$2" redirect_uri="$3"
+  local client_id="$1" secret="$2" redirect_uris="$3"
   # Check if client already exists
-  EXISTING=$(curl -sf \
+  CLIENT_UUID=$(curl -sf \
     "http://localhost:${KC_LOCAL_PORT}/admin/realms/${KC_REALM}/clients?clientId=${client_id}" \
     -H "Authorization: Bearer ${KC_TOKEN}" \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['id'] if d else '')" 2>/dev/null || true)
 
-  if [ -n "${EXISTING}" ]; then
-    log "Keycloak client '${client_id}' already exists (${EXISTING}), skipping."
-    return
+  if [ -n "${CLIENT_UUID}" ]; then
+    curl -sf -X PUT "http://localhost:${KC_LOCAL_PORT}/admin/realms/${KC_REALM}/clients/${CLIENT_UUID}" \
+      -H "Authorization: Bearer ${KC_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"clientId\": \"${client_id}\",
+        \"enabled\": true,
+        \"protocol\": \"openid-connect\",
+        \"publicClient\": false,
+        \"secret\": \"${secret}\",
+        \"redirectUris\": ${redirect_uris},
+        \"webOrigins\": [\"*\"],
+        \"standardFlowEnabled\": true,
+        \"directAccessGrantsEnabled\": false
+      }"
+    log "Updated Keycloak client '${client_id}'"
+  else
+    curl -sf -X POST "http://localhost:${KC_LOCAL_PORT}/admin/realms/${KC_REALM}/clients" \
+      -H "Authorization: Bearer ${KC_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"clientId\": \"${client_id}\",
+        \"enabled\": true,
+        \"protocol\": \"openid-connect\",
+        \"publicClient\": false,
+        \"secret\": \"${secret}\",
+        \"redirectUris\": ${redirect_uris},
+        \"webOrigins\": [\"*\"],
+        \"standardFlowEnabled\": true,
+        \"directAccessGrantsEnabled\": false
+      }"
+    log "Created Keycloak client '${client_id}'"
   fi
-
-  curl -sf -X POST "http://localhost:${KC_LOCAL_PORT}/admin/realms/${KC_REALM}/clients" \
-    -H "Authorization: Bearer ${KC_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"clientId\": \"${client_id}\",
-      \"enabled\": true,
-      \"protocol\": \"openid-connect\",
-      \"publicClient\": false,
-      \"secret\": \"${secret}\",
-      \"redirectUris\": [\"${redirect_uri}/*\", \"${redirect_uri}/oauth2/callback\"],
-      \"webOrigins\": [\"*\"],
-      \"standardFlowEnabled\": true,
-      \"directAccessGrantsEnabled\": false
-    }"
-  log "Created Keycloak client '${client_id}'"
 }
 
 create_kc_client \
   "oauth2-proxy-prometheus" \
   "prometheus-proxy-secret-2026" \
-  "http://prometheus.nullus.internal"
+  "[\"http://prometheus.nullus.internal/*\", \"http://prometheus.nullus.internal/oauth2/callback\", \"https://prometheus.nullus.internal/*\", \"https://prometheus.nullus.internal/oauth2/callback\"]"
 
 create_kc_client \
   "oauth2-proxy-opensearch" \
   "opensearch-proxy-secret-2026" \
-  "http://opensearch.nullus.internal"
+  "[\"http://opensearch.nullus.internal/*\", \"http://opensearch.nullus.internal/oauth2/callback\", \"https://opensearch.nullus.internal/*\", \"https://opensearch.nullus.internal/oauth2/callback\"]"
 
 kill "${KC_PF_PID}" 2>/dev/null || true
 trap - EXIT INT TERM
