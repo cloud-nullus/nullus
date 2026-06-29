@@ -29,6 +29,7 @@ oidc:
 
 environment:
   MINIO_BROWSER_REDIRECT_URL: "https://minio.nullus.internal"
+  SSL_CERT_FILE: "/etc/minio/certs/CAs/public.crt"
 
 extraVolumes:
   - name: ca-certs

@@ -36,7 +36,7 @@ expose:
   type: clusterIP
   tls:
     enabled: false
-externalURL: http://harbor.nullus.internal
+externalURL: https://harbor.nullus.internal
 harborAdminPassword: Harbor12345
 
 nginx:

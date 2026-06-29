@@ -33,7 +33,10 @@ global:
   edition: ce
   hosts:
     domain: nullus.internal
-    https: false
+    https: true
+  certificates:
+    customCAs:
+      - secret: nullus-gateway-ca
   ingress:
     configureCertmanager: false
     enabled: false
