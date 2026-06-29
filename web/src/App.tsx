@@ -6,7 +6,7 @@ import { ToastProvider } from './components/ui/toast-provider'
 import { queryClient } from './lib/query-client'
 import i18n from './i18n'
 
-import { useEffect, type ReactNode } from 'react'
+import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { useAuthStore, extractRoleFromOidc } from './stores/auth-store'
 import { isOidcMode } from './lib/oidc-config'
@@ -22,8 +22,31 @@ function Splash({ text }: { text: string }) {
   )
 }
 
-// OIDC 모드 전용: react-oidc-context 사용자 → auth-store 브릿지 + 동기화 완료 전 렌더 차단.
-// (가드/레이아웃/페이지가 store.user 를 읽으므로, 동기화 전 렌더하면 null 참조로 화면이 비는 문제 방지)
+// 화면이 비는(blank) 원인을 노출하기 위한 최상위 에러 바운더리 — 콘솔 없이도 에러 표시
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // 콘솔에도 남김
+    console.error('[AppErrorBoundary]', error, info)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, fontFamily: 'monospace', color: '#f87171', background: '#0b0e14', minHeight: '100vh' }}>
+          <h2 style={{ color: '#fca5a5' }}>App render error</h2>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', color: '#9ca3af', fontSize: 12 }}>{this.state.error.stack}</pre>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+// OIDC 모드: react-oidc-context 사용자 → auth-store 브릿지 + 동기화 완료 전 렌더 차단
 function OidcGate({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const login = useAuthStore((s) => s.login)
@@ -46,8 +69,8 @@ function OidcGate({ children }: { children: ReactNode }) {
     }
   }, [auth.isAuthenticated, auth.user, auth.isLoading, login, logout, storeUser])
 
+  if (auth.error) return <Splash text={`로그인 오류: ${auth.error.message}`} />
   if (auth.isLoading || auth.activeNavigator) return <Splash text="Authenticating…" />
-  // 인증은 됐으나 store 브릿지(useEffect)가 아직 user 를 채우지 못한 구간 — 라우터 렌더 보류
   if (auth.isAuthenticated && !storeUser) return <Splash text="Loading…" />
 
   return <>{children}</>
@@ -55,18 +78,20 @@ function OidcGate({ children }: { children: ReactNode }) {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <I18nextProvider i18n={i18n}>
-        {isOidcMode ? (
-          <OidcGate>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={i18n}>
+          {isOidcMode ? (
+            <OidcGate>
+              <RouterProvider router={router} />
+            </OidcGate>
+          ) : (
             <RouterProvider router={router} />
-          </OidcGate>
-        ) : (
-          <RouterProvider router={router} />
-        )}
-        <ToastProvider />
-      </I18nextProvider>
-    </QueryClientProvider>
+          )}
+          <ToastProvider />
+        </I18nextProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 
