@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -44,16 +44,39 @@ import { useAuth } from 'react-oidc-context'
 function OidcLoginContent() {
   const auth = useAuth()
   const providerLabel = getProviderConfig().type === 'authentik' ? 'Authentik' : 'Keycloak'
+  const triedRef = useRef(false)
+
+  // Seamless SSO: 로그인 안 됐으면 자동으로 Keycloak 으로 redirect (버튼 클릭 불필요)
+  useEffect(() => {
+    if (
+      !auth.isLoading &&
+      !auth.isAuthenticated &&
+      !auth.activeNavigator &&
+      !auth.error &&
+      !triedRef.current
+    ) {
+      triedRef.current = true
+      void auth.signinRedirect()
+    }
+  }, [auth.isLoading, auth.isAuthenticated, auth.activeNavigator, auth.error])
 
   return (
     <>
       <p className="mb-4 text-center text-[13px] text-[var(--color-text-secondary)]">
-        You will be redirected to your Identity Provider ({providerLabel}) to sign in.
+        {auth.error
+          ? `${providerLabel} 로그인 중 오류가 발생했습니다.`
+          : `${providerLabel}(으)로 이동 중입니다…`}
       </p>
+      {auth.error && (
+        <div className="mb-4 rounded-lg border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.1)] px-3 py-2.5 text-[13px] text-[#f87171]">
+          {auth.error.message}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => {
-          auth.signinRedirect()
+          triedRef.current = true
+          void auth.signinRedirect()
         }}
         className="w-full rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] p-3 text-sm font-bold text-[#1a1d29]"
       >
