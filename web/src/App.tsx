@@ -6,7 +6,7 @@ import { ToastProvider } from './components/ui/toast-provider'
 import { queryClient } from './lib/query-client'
 import i18n from './i18n'
 
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { useAuthStore, extractRoleFromOidc } from './stores/auth-store'
 import { isOidcMode } from './lib/oidc-config'
@@ -14,7 +14,17 @@ import type { User } from './types'
 
 const ORG_ID = '11111111-1111-1111-1111-111111111111'
 
-function OidcSync() {
+function Splash({ text }: { text: string }) {
+  return (
+    <div className="flex h-screen items-center justify-center bg-[var(--color-surface-base)] text-[var(--color-text-secondary)]">
+      {text}
+    </div>
+  )
+}
+
+// OIDC 모드 전용: react-oidc-context 사용자 → auth-store 브릿지 + 동기화 완료 전 렌더 차단.
+// (가드/레이아웃/페이지가 store.user 를 읽으므로, 동기화 전 렌더하면 null 참조로 화면이 비는 문제 방지)
+function OidcGate({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const login = useAuthStore((s) => s.login)
   const logout = useAuthStore((s) => s.logout)
@@ -36,15 +46,24 @@ function OidcSync() {
     }
   }, [auth.isAuthenticated, auth.user, auth.isLoading, login, logout, storeUser])
 
-  return null
+  if (auth.isLoading || auth.activeNavigator) return <Splash text="Authenticating…" />
+  // 인증은 됐으나 store 브릿지(useEffect)가 아직 user 를 채우지 못한 구간 — 라우터 렌더 보류
+  if (auth.isAuthenticated && !storeUser) return <Splash text="Loading…" />
+
+  return <>{children}</>
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={i18n}>
-        {isOidcMode && <OidcSync />}
-        <RouterProvider router={router} />
+        {isOidcMode ? (
+          <OidcGate>
+            <RouterProvider router={router} />
+          </OidcGate>
+        ) : (
+          <RouterProvider router={router} />
+        )}
         <ToastProvider />
       </I18nextProvider>
     </QueryClientProvider>
