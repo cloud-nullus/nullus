@@ -42,11 +42,14 @@ spec:
             - --upstream=http://kps-kube-prometheus-stack-prometheus.nullus-monitoring.svc.cluster.local:9090
             - --email-domain=*
             - --cookie-secure=true
+            - --cookie-samesite=lax
             - --reverse-proxy=true
             - --skip-provider-button=true
             - --insecure-oidc-allow-unverified-email=true
             - --pass-access-token=true
             - --pass-authorization-header=true
+            - --redirect-url=https://prometheus.nullus.internal/oauth2/callback
+            - --whitelist-domain=.nullus.internal
           env:
             - name: CLIENT_ID
               valueFrom:

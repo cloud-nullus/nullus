@@ -42,11 +42,14 @@ spec:
             - --upstream=http://opensearch-cluster-master.nullus.svc.cluster.local:9200
             - --email-domain=*
             - --cookie-secure=true
+            - --cookie-samesite=lax
             - --reverse-proxy=true
             - --skip-provider-button=true
             - --insecure-oidc-allow-unverified-email=true
             - --pass-access-token=true
             - --pass-authorization-header=true
+            - --redirect-url=https://opensearch.nullus.internal/oauth2/callback
+            - --whitelist-domain=.nullus.internal
           env:
             - name: CLIENT_ID
               valueFrom:

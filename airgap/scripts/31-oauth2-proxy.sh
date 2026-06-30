@@ -105,12 +105,12 @@ create_kc_client() {
 create_kc_client \
   "oauth2-proxy-prometheus" \
   "prometheus-proxy-secret-2026" \
-  "[\"http://prometheus.nullus.internal/*\", \"http://prometheus.nullus.internal/oauth2/callback\", \"https://prometheus.nullus.internal/*\", \"https://prometheus.nullus.internal/oauth2/callback\"]"
+  "[\"https://prometheus.nullus.internal/*\", \"https://prometheus.nullus.internal/oauth2/callback\", \"https://prometheus.nullus.internal:8443/*\", \"https://prometheus.nullus.internal:8443/oauth2/callback\"]"
 
 create_kc_client \
   "oauth2-proxy-opensearch" \
   "opensearch-proxy-secret-2026" \
-  "[\"http://opensearch.nullus.internal/*\", \"http://opensearch.nullus.internal/oauth2/callback\", \"https://opensearch.nullus.internal/*\", \"https://opensearch.nullus.internal/oauth2/callback\"]"
+  "[\"https://opensearch.nullus.internal/*\", \"https://opensearch.nullus.internal/oauth2/callback\", \"https://opensearch.nullus.internal:8443/*\", \"https://opensearch.nullus.internal:8443/oauth2/callback\"]"
 
 kill "${KC_PF_PID}" 2>/dev/null || true
 trap - EXIT INT TERM

@@ -16,7 +16,6 @@ VALUES_DIR="${ROOT_DIR}/helm/stack-values"
 KC_ADMIN="${KC_ADMIN:-admin}"
 KC_ADMIN_PASS="${KC_ADMIN_PASS:-admin}"
 KC_PORT_FWD="${KC_PORT_FWD:-18180}"
-GW_PORT_FWD="${GW_PORT_FWD:-8088}"
 GW_HTTPS_PORT_FWD="${GW_HTTPS_PORT_FWD:-8443}"
 HARBOR_ADMIN_PASS="${HARBOR_ADMIN_PASS:-Harbor12345}"
 HARBOR_CORE_PORT="${HARBOR_CORE_PORT:-18085}"
@@ -177,19 +176,19 @@ provision_keycloak() {
 
   # 5개 confidential OIDC client 프로비저닝
   _provision_client "grafana"  "grafana-dev-secret"  \
-    "[\"http://grafana.nullus.internal/login/generic_oauth\",\"https://grafana.nullus.internal/login/generic_oauth\"]"
+    "[\"https://grafana.nullus.internal/login/generic_oauth\"]"
 
   _provision_client "argocd"   "argocd-dev-secret"   \
-    "[\"http://argocd.nullus.internal/auth/callback\",\"https://argocd.nullus.internal/auth/callback\"]"
+    "[\"https://argocd.nullus.internal/auth/callback\"]"
 
   _provision_client "harbor"   "harbor-dev-secret"   \
-    "[\"http://harbor.nullus.internal/c/oidc/callback\",\"https://harbor.nullus.internal/c/oidc/callback\"]"
+    "[\"https://harbor.nullus.internal/c/oidc/callback\"]"
 
   _provision_client "minio"    "minio-dev-secret"    \
-    "[\"http://minio.nullus.internal/oauth_callback\",\"https://minio.nullus.internal/oauth_callback\"]"
+    "[\"https://minio.nullus.internal/oauth_callback\"]"
 
   _provision_client "gitlab"   "gitlab-dev-secret"   \
-    "[\"http://gitlab.nullus.internal/users/auth/openid_connect/callback\",\"https://gitlab.nullus.internal/users/auth/openid_connect/callback\"]"
+    "[\"https://gitlab.nullus.internal/users/auth/openid_connect/callback\"]"
 
   # 포털(nullus-web) — public client (SPA, PKCE S256): http + https 모두 허용
   _provision_public_client "nullus-web" \
@@ -582,29 +581,15 @@ configure_harbor_oidc() {
 }
 
 # =============================================================================
-# 7. 검증 — 각 앱 curl redirect
+# 7. 검증 — HTTPS 전용 SSO redirect 검증
+#    모든 접근이 HTTPS로 통일됐으므로 HTTP 경로는 더 이상 검증하지 않는다.
+#    GW_HTTPS_PORT_FWD(기본 8443): 25-port-forward.sh 가 envoy:443 을 포워딩하는 포트.
 # =============================================================================
 verify_all() {
   [[ "$SKIP_VERIFY" == "1" ]] && { log_warn "검증 단계 건너뜀 (SKIP_VERIFY=1)"; return 0; }
 
-  log_info "── SSO redirect 검증 ──"
+  log_info "── SSO redirect 검증 (HTTPS only, GW_HTTPS_PORT_FWD=${GW_HTTPS_PORT_FWD}) ──"
   local PASS=0 FAIL=0
-
-  _check_redirect_http() {
-    local app="$1" url="$2" expected_loc="$3" host_hdr="${4:-}"
-    local HARGS=()
-    [[ -n "$host_hdr" ]] && HARGS=(-H "Host: $host_hdr")
-    local REDIR
-    REDIR=$(curl -s --max-time 8 "${HARGS[@]}" -o /dev/null \
-      -w "%{redirect_url}" "$url" 2>/dev/null || true)
-    if echo "$REDIR" | grep -q "$expected_loc"; then
-      log_ok "${app} (HTTP): 302 → ${REDIR:0:80}..."
-      PASS=$((PASS+1))
-    else
-      log_err "${app} (HTTP): FAIL (redirect='${REDIR:0:80}')"
-      FAIL=$((FAIL+1))
-    fi
-  }
 
   _check_redirect_https() {
     local app="$1" domain="$2" path="$3" expected_loc="$4"
@@ -614,43 +599,35 @@ verify_all() {
       -o /dev/null -w "%{redirect_url}" \
       "https://${domain}${path}" 2>/dev/null || true)
     if echo "$REDIR" | grep -q "$expected_loc"; then
-      log_ok "${app} (HTTPS): 302 → ${REDIR:0:80}..."
+      log_ok "${app}: 302 → ${REDIR:0:80}..."
       PASS=$((PASS+1))
     else
-      log_err "${app} (HTTPS): FAIL (redirect='${REDIR:0:80}')"
+      log_err "${app}: FAIL (redirect='${REDIR:0:80}')"
       FAIL=$((FAIL+1))
     fi
   }
 
   # 1. Grafana
-  _check_redirect_http "Grafana" \
-    "http://127.0.0.1:${GW_PORT_FWD}/login/generic_oauth?redirectTo=" \
-    "keycloak.nullus.internal" \
-    "grafana.nullus.internal"
   _check_redirect_https "Grafana" \
     "grafana.nullus.internal" "/login/generic_oauth?redirectTo=" \
     "keycloak.nullus.internal"
 
-  # 2. ArgoCD
-  _check_redirect_http "ArgoCD" \
-    "http://127.0.0.1:${GW_PORT_FWD}/auth/login" \
-    "keycloak.nullus.internal" \
-    "argocd.nullus.internal"
+  # 2. ArgoCD — PKCE(crypto.subtle) 가 secure context(HTTPS) 에서만 동작하므로
+  #    HTTPS 리다이렉트가 keycloak 으로 가는지 확인한다.
   _check_redirect_https "ArgoCD" \
     "argocd.nullus.internal" "/auth/login" \
     "keycloak.nullus.internal"
 
   # 3. Harbor
-  _check_redirect_http "Harbor" \
-    "http://127.0.0.1:${GW_PORT_FWD}/c/oidc/login" \
-    "keycloak.nullus.internal" \
-    "harbor.nullus.internal"
   _check_redirect_https "Harbor" \
     "harbor.nullus.internal" "/c/oidc/login" \
     "keycloak.nullus.internal"
 
-  # 4. MinIO
-  STRATEGY=$(curl -s -k --max-time 5 -H "Host: minio.nullus.internal" "http://127.0.0.1:${GW_PORT_FWD}/api/v1/login" 2>/dev/null | \
+  # 4. MinIO — loginStrategy=redirect 이면 OIDC 활성화됨
+  local STRATEGY
+  STRATEGY=$(curl -k -s --max-time 5 \
+    --connect-to "minio.nullus.internal:443:127.0.0.1:${GW_HTTPS_PORT_FWD}" \
+    "https://minio.nullus.internal/api/v1/login" 2>/dev/null | \
     python3 -c 'import sys,json; print(json.load(sys.stdin).get("loginStrategy","?"))' \
     2>/dev/null || echo "unknown")
   if [[ "$STRATEGY" == "redirect" ]]; then
@@ -661,39 +638,15 @@ verify_all() {
     FAIL=$((FAIL+1))
   fi
 
-  # 5. GitLab (HTTP)
-  if lsof -i ":8087" -sTCP:LISTEN -t >/dev/null 2>&1; then
-    COOKIES=$(mktemp /tmp/gcsso-XXXX)
-    HTML=$(curl -s -c "$COOKIES" -b "$COOKIES" \
-      -H "Host: gitlab.nullus.internal" "http://127.0.0.1:8087/users/sign_in")
-    AUTH_TOKEN=$(echo "$HTML" | grep -o 'name="authenticity_token" value="[^"]*"' | \
-      head -1 | sed 's/name="authenticity_token" value="//;s/"//')
-    REDIR=$(curl -s -b "$COOKIES" -c "$COOKIES" \
-      -H "Host: gitlab.nullus.internal" \
-      -X POST --max-time 10 \
-      --data-urlencode "authenticity_token=$AUTH_TOKEN" \
-      -o /dev/null -w "%{redirect_url}" \
-      "http://127.0.0.1:8087/users/auth/openid_connect" 2>/dev/null || true)
-    rm -f "$COOKIES"
-    if echo "$REDIR" | grep -q "keycloak.nullus.internal"; then
-      log_ok "GitLab (HTTP): 302 → ${REDIR:0:80}..."
-      PASS=$((PASS+1))
-    else
-      log_err "GitLab (HTTP): FAIL (redirect='${REDIR:0:80}')"
-      FAIL=$((FAIL+1))
-    fi
-  else
-    log_warn "GitLab: port-forward :8087 없음 — HTTP 검증 건너뜀"
-  fi
-
-  # 6. GitLab (HTTPS via gateway)
+  # 5. GitLab (HTTPS via gateway)
+  local COOKIES_HTTPS HTML_HTTPS AUTH_TOKEN_HTTPS REDIR_HTTPS
   COOKIES_HTTPS=$(mktemp /tmp/gcsso-https-XXXX)
   HTML_HTTPS=$(curl -k -s -c "$COOKIES_HTTPS" -b "$COOKIES_HTTPS" \
     --connect-to "gitlab.nullus.internal:443:127.0.0.1:${GW_HTTPS_PORT_FWD}" \
     "https://gitlab.nullus.internal/users/sign_in")
   AUTH_TOKEN_HTTPS=$(echo "$HTML_HTTPS" | grep -o 'name="authenticity_token" value="[^"]*"' | \
     head -1 | sed 's/name="authenticity_token" value="//;s/"//' || echo "")
-  
+
   if [[ -n "$AUTH_TOKEN_HTTPS" ]]; then
     REDIR_HTTPS=$(curl -k -s -b "$COOKIES_HTTPS" -c "$COOKIES_HTTPS" \
       --connect-to "gitlab.nullus.internal:443:127.0.0.1:${GW_HTTPS_PORT_FWD}" \
@@ -702,14 +655,14 @@ verify_all() {
       -o /dev/null -w "%{redirect_url}" \
       "https://gitlab.nullus.internal/users/auth/openid_connect" 2>/dev/null || true)
     if echo "$REDIR_HTTPS" | grep -q "keycloak.nullus.internal"; then
-      log_ok "GitLab (HTTPS): 302 → ${REDIR_HTTPS:0:80}..."
+      log_ok "GitLab: 302 → ${REDIR_HTTPS:0:80}..."
       PASS=$((PASS+1))
     else
-      log_err "GitLab (HTTPS): FAIL (redirect='${REDIR_HTTPS:0:80}')"
+      log_err "GitLab: FAIL (redirect='${REDIR_HTTPS:0:80}')"
       FAIL=$((FAIL+1))
     fi
   else
-    log_warn "GitLab (HTTPS): authenticity_token 획득 실패 (접근 불가 또는 토큰 없음)"
+    log_warn "GitLab: authenticity_token 획득 실패 (접근 불가 또는 토큰 없음)"
     FAIL=$((FAIL+1))
   fi
   rm -f "$COOKIES_HTTPS"
