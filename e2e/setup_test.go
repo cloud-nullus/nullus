@@ -74,13 +74,14 @@ func newEchoServer() *echo.Echo {
 	listStacksUC := stackuc.NewListStacks(memStackRepo)
 	deleteStackUC := stackuc.NewDeleteStack(memStackRepo, nil, nil)
 	addToolsUC := stackuc.NewAddToolsUseCase(memStackRepo)
+	importConfigUC := stackuc.NewImportConfig(createStackUC, addToolsUC, installStackUC)
 	getTemplateUC := stackuc.NewGetTemplate(memTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(memTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(memStackRepo)
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, memStackRepo, memStreamer)
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, memStackRepo, nil, stackhandler.WithStackManageHistory(manageHistoryUC))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, memTemplateRepo)
-	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
+	exportHandler := stackhandler.NewExportHandler(exportConfigUC, importConfigUC)
 
 	// Compatibility + History
 	memCompatRepo := stackrepo.NewMemoryCompatibilityRepository()

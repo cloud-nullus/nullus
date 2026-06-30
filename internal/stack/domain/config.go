@@ -13,6 +13,9 @@ type StackConfig struct {
 	Monitoring      MonitoringConfig       `json:"monitoring"`
 	Logging         LoggingConfig          `json:"logging"`
 	Resources       ResourcesConfig        `json:"resources"`
+	OptionOverrides          map[string]map[string]float64 `json:"option_overrides,omitempty"`
+	AppliedResourceOverrides map[string]ResourceVector     `json:"applied_resource_overrides,omitempty"`
+	RowUnits                 map[string]PlanningRowUnit    `json:"row_units,omitempty"`
 	Storage         *StorageConfig         `json:"storage,omitempty"`
 }
 
@@ -80,6 +83,22 @@ type ResourcesConfig struct {
 	CommitsPerWeek    int              `json:"weekly_commits"`
 	BuildFrequency    string           `json:"build_frequency"` // low/medium/high or hourly/daily/on-push
 	Calculated        ResourceEstimate `json:"calculated,omitempty"`
+}
+
+// ResourceVector captures per-OSS applied request/limit values.
+type ResourceVector struct {
+	CPURequest       float64 `json:"cpuRequest"`
+	CPULimit         float64 `json:"cpuLimit"`
+	MemoryRequestGi  float64 `json:"memoryRequestGi"`
+	MemoryLimitGi    float64 `json:"memoryLimitGi"`
+	StorageRequestGi float64 `json:"storageRequestGi"`
+	StorageLimitGi   float64 `json:"storageLimitGi"`
+}
+
+// PlanningRowUnit preserves display units chosen in the installer.
+type PlanningRowUnit struct {
+	Memory  string `json:"memory"`
+	Storage string `json:"storage"`
 }
 
 // ToolSelection identifies a chosen tool by name and version.

@@ -11,10 +11,14 @@ else
   PSQL=(docker exec -i draft-postgres-1 psql -U nullus -d nullus)
 fi
 
-ORG_ID="${TOKEN_SOURCE_ORG_ID:-11111111-1111-1111-1111-111111111111}"
+ORG_ID="${TOKEN_SOURCE_ORG_ID:-}"
+if [[ -z "$ORG_ID" ]] && command -v curl >/dev/null 2>&1; then
+  ORG_ID="$(curl -fsS http://localhost:8090/api/v1/admin/organization 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)"
+fi
+ORG_ID="${ORG_ID:-11111111-1111-1111-1111-111111111111}"
 MODULE="${TOKEN_SOURCE_MODULE:-artifacts}"
 PROVIDER="${TOKEN_SOURCE_PROVIDER:-github}"
-TOKEN_PATH="${TOKEN_SOURCE_PATH:-kv/nullus/dev/11111111-1111-1111-1111-111111111111/artifacts/github/token}"
+TOKEN_PATH="${TOKEN_SOURCE_PATH:-kv/nullus/dev/${ORG_ID}/artifacts/github/token}"
 TOKEN_VALUE="${TOKEN_SOURCE_VALUE:-mock-github-token-123}"
 TOKEN_TYPE="${TOKEN_SOURCE_TYPE:-reissue}"
 STATUS="${TOKEN_SOURCE_STATUS:-healthy}"
