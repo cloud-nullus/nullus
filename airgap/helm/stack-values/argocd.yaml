@@ -15,7 +15,7 @@ configs:
       issuer: https://keycloak.nullus.internal/realms/nullus
       clientID: argocd
       clientSecret: $oidc.keycloak.clientSecret
-      enablePKCEAuthentication: true
+      enablePKCEAuthentication: false
       requestedScopes:
         - openid
         - profile

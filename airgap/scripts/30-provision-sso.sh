@@ -174,21 +174,21 @@ provision_keycloak() {
     log_ok "realm role 'admin' 생성"
   fi
 
-  # 5개 confidential OIDC client 프로비저닝
+  # 5개 confidential OIDC client 프로비저닝 (HTTP, HTTPS, 8443, 8088 모든 포트 지원)
   _provision_client "grafana"  "grafana-dev-secret"  \
-    "[\"https://grafana.nullus.internal/login/generic_oauth\"]"
-
+    "[\"https://grafana.nullus.internal/login/generic_oauth\",\"http://grafana.nullus.internal/login/generic_oauth\",\"https://grafana.nullus.internal:8443/login/generic_oauth\",\"http://grafana.nullus.internal:8088/login/generic_oauth\"]"
+ 
   _provision_client "argocd"   "argocd-dev-secret"   \
-    "[\"https://argocd.nullus.internal/auth/callback\"]"
-
+    "[\"https://argocd.nullus.internal/auth/callback\",\"http://argocd.nullus.internal/auth/callback\",\"https://argocd.nullus.internal:8443/auth/callback\",\"http://argocd.nullus.internal:8088/auth/callback\",\"https://argocd.nullus.internal/pkce/verify\",\"http://argocd.nullus.internal/pkce/verify\",\"https://argocd.nullus.internal:8443/pkce/verify\",\"http://argocd.nullus.internal:8088/pkce/verify\"]"
+ 
   _provision_client "harbor"   "harbor-dev-secret"   \
-    "[\"https://harbor.nullus.internal/c/oidc/callback\"]"
-
+    "[\"https://harbor.nullus.internal/c/oidc/callback\",\"http://harbor.nullus.internal/c/oidc/callback\",\"https://harbor.nullus.internal:8443/c/oidc/callback\",\"http://harbor.nullus.internal:8088/c/oidc/callback\"]"
+ 
   _provision_client "minio"    "minio-dev-secret"    \
-    "[\"https://minio.nullus.internal/oauth_callback\"]"
-
+    "[\"https://minio.nullus.internal/oauth_callback\",\"http://minio.nullus.internal/oauth_callback\",\"https://minio.nullus.internal:8443/oauth_callback\",\"http://minio.nullus.internal:8088/oauth_callback\"]"
+ 
   _provision_client "gitlab"   "gitlab-dev-secret"   \
-    "[\"https://gitlab.nullus.internal/users/auth/openid_connect/callback\"]"
+    "[\"https://gitlab.nullus.internal/users/auth/openid_connect/callback\",\"http://gitlab.nullus.internal/users/auth/openid_connect/callback\",\"https://gitlab.nullus.internal:8443/users/auth/openid_connect/callback\",\"http://gitlab.nullus.internal:8088/users/auth/openid_connect/callback\"]"
 
   # 포털(nullus-web) — public client (SPA, PKCE S256): http + https 모두 허용
   _provision_public_client "nullus-web" \

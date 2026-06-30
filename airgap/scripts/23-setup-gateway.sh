@@ -146,11 +146,51 @@ spec:
         certificateRefs:
           - name: nullus-wildcard-tls
             namespace: ${GATEWAY_NS}
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.${ACCESS_DOMAIN}"
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: http-apex
+      protocol: HTTP
+      port: 80
+      hostname: "${ACCESS_DOMAIN}"
       allowedRoutes:
         namespaces:
           from: All
 EOF
   log_ok "GatewayClass + Gateway 적용 완료"
+
+  # 2b) HTTP to HTTPS redirect HTTPRoute
+  apply_manifest <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https-redirect
+  namespace: ${GATEWAY_NS}
+  labels:
+    nullus.io/stack-name: ${STACK_LABEL}
+spec:
+  parentRefs:
+    - name: ${GATEWAY_NAME}
+      namespace: ${GATEWAY_NS}
+      sectionName: http
+    - name: ${GATEWAY_NAME}
+      namespace: ${GATEWAY_NS}
+      sectionName: http-apex
+  hostnames:
+    - "${ACCESS_DOMAIN}"
+    - "*.${ACCESS_DOMAIN}"
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+EOF
+  log_ok "HTTP to HTTPS Redirect HTTPRoute 적용 완료"
 fi
 
 # 3) HTTPRoute — 존재하는 서비스만 (각 서비스 ns 에 co-locate)
@@ -179,6 +219,7 @@ spec:
   parentRefs:
     - name: ${GATEWAY_NAME}
       namespace: ${GATEWAY_NS}
+      sectionName: $( [[ "$sub" == "@" ]] && echo "https-apex" || echo "https" )
   hostnames:
     - ${host}
   rules:
