@@ -2,7 +2,7 @@
 set -euo pipefail
 
 API_BASE="${NULLUS_API:-http://localhost:8090}"
-ORG_ID="${NULLUS_ORG_ID:-11111111-1111-1111-1111-111111111111}"
+ORG_ID="${NULLUS_ORG_ID:-}"
 CLUSTERS=("nullus-platform" "nullus-develop")
 
 RED='\033[0;31m'

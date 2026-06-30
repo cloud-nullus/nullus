@@ -73,6 +73,6 @@ describe('LoginPage', () => {
         orgId: '11111111-1111-1111-1111-111111111111',
       }),
     )
-    expect(mockNavigate).toHaveBeenCalledWith('/')
-  })
+		expect(mockNavigate).toHaveBeenCalledWith('/stack/templates')
+	})
 })

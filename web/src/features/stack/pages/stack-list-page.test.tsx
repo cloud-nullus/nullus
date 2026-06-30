@@ -6,6 +6,7 @@ import { StackListPage } from "./stack-list-page";
 const mockNavigate = vi.fn();
 const mockUseStacks = vi.fn();
 const mockUseDeleteStack = vi.fn();
+const mockUseImportStackConfig = vi.fn();
 const mockUseStackHistory = vi.fn();
 const mockUseStackMonitoring = vi.fn();
 const mockUseClusters = vi.fn();
@@ -82,6 +83,9 @@ vi.mock("react-router-dom", async () => {
 vi.mock("../api/stack-api", () => ({
   useStacks: (...args: unknown[]) => mockUseStacks(...args),
   useDeleteStack: (...args: unknown[]) => mockUseDeleteStack(...args),
+  useImportStackConfig: (...args: unknown[]) => mockUseImportStackConfig(...args),
+  usePreviewImportStackConfig: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useExportStackConfig: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useStackHistory: (...args: unknown[]) => mockUseStackHistory(...args),
   useStackMonitoring: (...args: unknown[]) => mockUseStackMonitoring(...args),
   useClusters: (...args: unknown[]) => mockUseClusters(...args),
@@ -194,6 +198,7 @@ describe("StackListPage", () => {
     mockNavigate.mockReset();
     mockUseStacks.mockReset();
     mockUseDeleteStack.mockReset();
+    mockUseImportStackConfig.mockReset();
     mockUseStackHistory.mockReset();
     mockUseStackMonitoring.mockReset();
     mockUseClusters.mockReset();
@@ -203,6 +208,7 @@ describe("StackListPage", () => {
       isLoading: false,
     });
     mockUseDeleteStack.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mockUseImportStackConfig.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
     mockUseStackHistory.mockReturnValue({ data: [], isLoading: false });
     mockUseStackMonitoring.mockReturnValue({ data: null, isLoading: false });
     mockUseClusters.mockReturnValue({

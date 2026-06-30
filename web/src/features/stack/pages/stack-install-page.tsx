@@ -2152,6 +2152,12 @@ export function StackInstallPage() {
 
   const buildStackRequest = (): CreateStackRequest => {
     const storageConfig = draft.storage.planMode === 'none' ? undefined : draft.storage
+    const currentAppliedResources = planningRows.reduce<Record<string, ResourceVector>>((acc, row) => {
+      if (row.applied) {
+        acc[row.rowKey] = row.applied
+      }
+      return acc
+    }, {})
     return {
       templateId: draft.selectedTemplateId,
       clusterId: draft.clusterId,
@@ -2166,6 +2172,9 @@ export function StackInstallPage() {
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
+      optionOverrides: planningOptionOverrides,
+      appliedResourceOverrides: currentAppliedResources,
+      rowUnits: planningRowUnits,
       storage: storageConfig,
     }
   }
