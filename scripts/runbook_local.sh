@@ -76,6 +76,7 @@ kind_print_status() {
   done < <(kind_cluster_names)
 
   [[ "$has_cluster" == "true" ]] && echo ""
+  return 0
 }
 
 register_kind_cluster_endpoints() {
@@ -530,8 +531,6 @@ do_up() {
     esac
   done
   validate_auth_provider
-  local with_authentik="false"
-  [[ "$AUTH_PROVIDER" == "authentik" ]] && with_authentik="true"
 
   ensure_dirs
   do_preflight
@@ -541,21 +540,27 @@ do_up() {
 
   : >"$PID_FILE"
 
-  # 1. Docker infra (PostgreSQL, Redis, MinIO, Keycloak)
+  # 1. Docker infra (auth provider에 따라 서비스 선택)
   echo ""
-  echo "[nullus] starting docker infra (postgres, redis, minio, keycloak)..."
-  docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" up -d
+  local infra_services=(postgres redis minio)
+  [[ "$AUTH_PROVIDER" == "keycloak" ]] && infra_services+=(keycloak)
+  echo "[nullus] starting docker infra (${infra_services[*]}) [auth=$AUTH_PROVIDER]..."
+  docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" up -d "${infra_services[@]}"
   echo "[nullus] waiting for postgres..."
   wait_for_port_listen "$POSTGRES_PORT" 30 || {
     echo "[nullus] postgres did not start"; exit 1
   }
   sleep 2
 
-  echo "[nullus] waiting for keycloak..."
-  if wait_for_http "http://localhost:${KEYCLOAK_PORT}" 60 2; then
-    echo "[nullus] keycloak is ready"
-  else
-    echo "[nullus] keycloak did not start (non-blocking, continuing...)"
+  if [[ "$AUTH_PROVIDER" == "keycloak" ]]; then
+    echo "[nullus] waiting for keycloak..."
+    if wait_for_http "http://localhost:${KEYCLOAK_PORT}" 60 2; then
+      echo "[nullus] keycloak is ready, running realm setup..."
+      "$PROJECT_ROOT/scripts/setup-keycloak.sh" || \
+        echo "[nullus] keycloak realm setup failed (non-blocking, run scripts/setup-keycloak.sh manually)"
+    else
+      echo "[nullus] keycloak did not start (non-blocking, continuing...)"
+    fi
   fi
 
   # 2. Database migrations
@@ -623,7 +628,7 @@ do_up() {
   fi
 
   # 6. Authentik OIDC provider (optional)
-  if [[ "$with_authentik" == "true" ]]; then
+  if [[ "$AUTH_PROVIDER" == "authentik" ]]; then
     echo ""
     echo "[nullus] starting Authentik OIDC provider..."
     docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" -f "$COMPOSE_AUTH" up -d \
@@ -648,15 +653,15 @@ do_up() {
   echo "  Health        http://localhost:$API_PORT/health"
   echo ""
   echo "  PostgreSQL    localhost:$POSTGRES_PORT  (nullus/nullus_dev)"
-  echo "  Keycloak      http://localhost:$KEYCLOAK_PORT  (admin/admin)"
+  case "$AUTH_PROVIDER" in
+    keycloak)  echo "  Keycloak      http://localhost:$KEYCLOAK_PORT  (admin/admin)" ;;
+    authentik) echo "  Authentik     http://localhost:$AUTHENTIK_PORT  (admin@nullus.io/nullus123!)" ;;
+    none)      echo "  Auth          none (frontend mock auth: VITE_AUTH_MODE=mock)" ;;
+  esac
   echo "  MinIO         http://localhost:$MINIO_CONSOLE_PORT  (nullus/nullus_dev)"
   echo "  Redis         localhost:$REDIS_PORT"
   echo ""
   kind_print_status
-  if [[ "$with_authentik" == "true" ]]; then
-    echo "  Authentik     http://localhost:$AUTHENTIK_PORT  (admin@nullus.io/nullus123!)"
-    echo ""
-  fi
   echo "  Logs:         ./scripts/runbook_local.sh logs"
   echo "  Stop:         ./scripts/runbook_local.sh down"
   echo "══════════════════════════════════════════════════"
@@ -792,8 +797,6 @@ do_down() {
     esac
   done
   validate_auth_provider
-  local with_authentik="false"
-  [[ "$AUTH_PROVIDER" == "authentik" ]] && with_authentik="true"
 
   echo "[nullus] stopping services..."
   if [[ -f "$PID_FILE" ]]; then
@@ -802,8 +805,8 @@ do_down() {
     rm -f "$PID_FILE"
   fi
 
-  if [[ "$with_authentik" == "true" ]]; then
-    echo "[nullus] stopping Authentik services..."
+  if [[ "$AUTH_PROVIDER" == "authentik" ]]; then
+    echo "[nullus] stopping docker infra (incl. authentik)..."
     if [[ "$with_volumes" == "true" ]]; then
       docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" -f "$COMPOSE_AUTH" down -v 2>/dev/null || true
     else
