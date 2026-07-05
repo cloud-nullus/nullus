@@ -28,6 +28,28 @@ KIND_CONFIG="$PROJECT_ROOT/scripts/kind-cluster.yaml"
 AUTHENTIK_PORT=9090
 COMPOSE_AUTH="$PROJECT_ROOT/docker-compose.auth.yaml"
 
+# OIDC provider 선택: --auth=<keycloak|authentik|none> 또는 NULLUS_AUTH_PROVIDER env
+AUTH_PROVIDER="${NULLUS_AUTH_PROVIDER:-keycloak}"
+
+validate_auth_provider() {
+  case "$AUTH_PROVIDER" in
+    keycloak|authentik|none) ;;
+    *)
+      echo "[nullus] invalid auth provider: '$AUTH_PROVIDER' (allowed: keycloak | authentik | none)"
+      exit 1
+      ;;
+  esac
+}
+
+# 공통 --auth 인자 파서: 매칭하면 0, 아니면 1
+parse_auth_arg() {
+  case "$1" in
+    --auth=*) AUTH_PROVIDER="${1#--auth=}"; return 0 ;;
+    --authentik) AUTH_PROVIDER="authentik"; return 0 ;;  # deprecated alias
+    *) return 1 ;;
+  esac
+}
+
 kind_cluster_exists() {
   local name="$1"
   kind get clusters 2>/dev/null | grep -q "^${name}$"
@@ -136,13 +158,18 @@ usage() {
   cat <<'EOF'
 Usage:
   ./scripts/runbook_local.sh preflight
-  ./scripts/runbook_local.sh up [--seed] [--kind] [--authentik]
+  ./scripts/runbook_local.sh up [--seed] [--kind] [--auth=<keycloak|authentik|none>]
+     --auth=keycloak   (기본) Keycloak 기동 + realm 셋업
+     --auth=authentik  Authentik 스택 기동 + 셋업 (Keycloak 미기동)
+     --auth=none       IdP 미기동 (프론트 mock auth 전용)
+     --authentik       (deprecated) --auth=authentik 별칭
+  환경변수 NULLUS_AUTH_PROVIDER 로도 지정 가능 (플래그가 우선)
   ./scripts/runbook_local.sh status
   ./scripts/runbook_local.sh info
   ./scripts/runbook_local.sh smoke
   ./scripts/runbook_local.sh logs [api|web|all]
-  ./scripts/runbook_local.sh down [--kind] [--authentik] [--volumes]
-  ./scripts/runbook_local.sh all [--seed] [--kind] [--authentik]
+  ./scripts/runbook_local.sh down [--kind] [--auth=<keycloak|authentik|none>] [--volumes]
+  ./scripts/runbook_local.sh all [--seed] [--kind] [--auth=<keycloak|authentik|none>]
   ./scripts/runbook_local.sh refresh
   ./scripts/runbook_local.sh kind-up
   ./scripts/runbook_local.sh kind-down
@@ -151,13 +178,13 @@ Commands:
   preflight         Validate toolchain prerequisites
   up [--seed]       Start infra (PostgreSQL, Redis, MinIO, Keycloak) + migrate + API + frontend
      [--kind]       Also create a kind K8s cluster
-     [--authentik]  Also start Authentik OIDC provider (localhost:9090) and run setup
+     [--auth=...]   Select OIDC provider: keycloak (default) | authentik | none
   status            Show health of all services (including kind cluster, Authentik)
   info              Show access URLs and credentials
   smoke             Run API smoke tests (13 endpoints)
   logs [svc]        Tail logs for a service (api, web) or all
   down [--kind] [--volumes]  Stop API, frontend, docker infra
-        [--authentik] Also stop Authentik services
+        [--auth=authentik] Also stop Authentik services
   all               Full lifecycle: up -> smoke -> keep running
   refresh           Rebuild backend + frontend, run pending migrations, restart
   kind-up           Create kind K8s cluster only
@@ -493,15 +520,18 @@ do_info() {
 }
 
 do_up() {
-  local seed="false" with_kind="false" with_authentik="false"
+  local seed="false" with_kind="false"
   for arg in "$@"; do
+    if parse_auth_arg "$arg"; then continue; fi
     case "$arg" in
       --seed) seed="true" ;;
       --kind) with_kind="true" ;;
-      --authentik) with_authentik="true" ;;
       *) echo "[nullus] unknown option: $arg"; exit 1 ;;
     esac
   done
+  validate_auth_provider
+  local with_authentik="false"
+  [[ "$AUTH_PROVIDER" == "authentik" ]] && with_authentik="true"
 
   ensure_dirs
   do_preflight
@@ -753,14 +783,17 @@ do_logs() {
 }
 
 do_down() {
-  local with_kind="false" with_authentik="false" with_volumes="false"
+  local with_kind="false" with_volumes="false"
   for arg in "$@"; do
+    if parse_auth_arg "$arg"; then continue; fi
     case "$arg" in
       --kind) with_kind="true" ;;
-      --authentik) with_authentik="true" ;;
       --volumes) with_volumes="true" ;;
     esac
   done
+  validate_auth_provider
+  local with_authentik="false"
+  [[ "$AUTH_PROVIDER" == "authentik" ]] && with_authentik="true"
 
   echo "[nullus] stopping services..."
   if [[ -f "$PID_FILE" ]]; then
