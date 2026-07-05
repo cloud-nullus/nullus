@@ -132,6 +132,8 @@ urlencode() {
 ensure_user_with_role() {
    local username="$1"
    local role="$2"
+   local first_name="${3:-}"
+   local last_name="${4:-}"
 
    local users_json
    users_json=$(auth_get "/admin/realms/${REALM}/users?username=$(urlencode "$username")")
@@ -144,6 +146,8 @@ ensure_user_with_role() {
 {
   "username": "${username}",
   "email": "${username}",
+  "firstName": "${first_name}",
+  "lastName": "${last_name}",
   "enabled": true,
   "emailVerified": true,
   "credentials": [
@@ -159,6 +163,17 @@ EOF
      auth_post "/admin/realms/${REALM}/users" "$user_payload" >/dev/null
      users_json=$(auth_get "/admin/realms/${REALM}/users?username=$(urlencode "$username")")
      user_id=$(lookup_first_id "$users_json")
+   else
+     # Ensure firstName/lastName are set for existing users (required by User Profile)
+     local update_payload
+     update_payload=$(cat <<EOF
+{
+  "firstName": "${first_name}",
+  "lastName": "${last_name}"
+}
+EOF
+)
+     auth_put "/admin/realms/${REALM}/users/${user_id}" "$update_payload" >/dev/null
    fi
 
    # Check if role is already assigned
@@ -187,8 +202,8 @@ ensure_role admin
 ensure_role devops
 ensure_role developer
 
-ensure_user_with_role admin@nullus.io admin
-ensure_user_with_role devops@nullus.io devops
-ensure_user_with_role dev@nullus.io developer
+ensure_user_with_role admin@nullus.io admin Admin User
+ensure_user_with_role devops@nullus.io devops Devops User
+ensure_user_with_role dev@nullus.io developer Dev User
 
 echo "Keycloak realm '${REALM}' configured."

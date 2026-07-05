@@ -750,6 +750,11 @@ do_status() {
 }
 
 do_smoke() {
+  for arg in "$@"; do
+    parse_auth_arg "$arg" || true
+  done
+  validate_auth_provider
+
   echo "[nullus] running smoke tests..."
   echo ""
 
@@ -782,6 +787,37 @@ do_smoke() {
   smoke_get "GET /api/v1/observability/dashboard"      "http://localhost:${API_PORT}/api/v1/observability/dashboard"
   smoke_get "GET /api/v1/observability/alert-rules"    "http://localhost:${API_PORT}/api/v1/observability/alert-rules"
   smoke_get "Frontend reachable"                       "http://localhost:${WEB_PORT}"
+
+  echo ""
+  echo "  [auth smoke: provider=$AUTH_PROVIDER]"
+  case "$AUTH_PROVIDER" in
+    keycloak)
+      smoke_get "GET keycloak openid-configuration" \
+        "http://localhost:${KEYCLOAK_PORT}/realms/nullus/.well-known/openid-configuration"
+      local token
+      token="$(curl -sS -X POST \
+        "http://localhost:${KEYCLOAK_PORT}/realms/nullus/protocol/openid-connect/token" \
+        -d grant_type=password -d client_id=nullus-app \
+        -d username=admin@nullus.io -d 'password=nullus123!' 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)"
+      if [[ -n "$token" ]]; then
+        printf '  %-45s %s\n' "POST keycloak token (login smoke)" "OK"
+        ((passed++)) || true
+      else
+        printf '  %-45s %s\n' "POST keycloak token (login smoke)" "FAIL (no access_token)"
+        ((failed++)) || true
+      fi
+      ;;
+    authentik)
+      smoke_get "GET authentik health" \
+        "http://localhost:${AUTHENTIK_PORT}/-/health/ready/"
+      smoke_get "GET authentik openid-configuration" \
+        "http://localhost:${AUTHENTIK_PORT}/application/o/nullus/.well-known/openid-configuration"
+      ;;
+    none)
+      printf '  %-45s %s\n' "auth=none" "SKIPPED (mock auth)"
+      ;;
+  esac
 
   echo ""
   echo "[nullus] smoke: $passed passed, $failed failed"
@@ -926,7 +962,7 @@ do_all() {
   local extra_args=()
   for arg in "$@"; do
     case "$arg" in
-      --seed|--kind|--authentik) extra_args+=("$arg") ;;
+      --seed|--kind|--authentik|--auth=*) extra_args+=("$arg") ;;
     esac
   done
 
@@ -947,7 +983,7 @@ main() {
     up) do_up "$@" ;;
     status) do_status ;;
     info) do_info ;;
-    smoke) do_smoke ;;
+    smoke) do_smoke "$@" ;;
     logs) do_logs "${1:-all}" ;;
     down) do_down "$@" ;;
     all) do_all "$@" ;;
