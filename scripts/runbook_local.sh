@@ -586,6 +586,13 @@ do_up() {
   export NULLUS_DATABASE_HOST=localhost
   export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
   export NULLUS_SERVER_MODE=development
+  if [[ "$AUTH_PROVIDER" != "none" ]]; then
+    export NULLUS_AUTH_OIDC_PROVIDER="$AUTH_PROVIDER"
+    case "$AUTH_PROVIDER" in
+      keycloak)  export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${KEYCLOAK_PORT}/realms/nullus" ;;
+      authentik) export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${AUTHENTIK_PORT}/application/o/nullus/" ;;
+    esac
+  fi
   run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
 
   echo "[nullus] waiting for API health (up to 60s)..."
@@ -658,6 +665,16 @@ do_up() {
     authentik) echo "  Authentik     http://localhost:$AUTHENTIK_PORT  (admin@nullus.io/nullus123!)" ;;
     none)      echo "  Auth          none (frontend mock auth: VITE_AUTH_MODE=mock)" ;;
   esac
+  if [[ "$AUTH_PROVIDER" != "none" ]]; then
+    echo ""
+    echo "  Web OIDC env (web/.env.development):"
+    echo "    VITE_AUTH_MODE=oidc"
+    echo "    VITE_OIDC_PROVIDER=$AUTH_PROVIDER"
+    [[ "$AUTH_PROVIDER" == "keycloak" ]] && \
+      echo "    VITE_OIDC_AUTHORITY=http://localhost:$KEYCLOAK_PORT/realms/nullus" || \
+      echo "    VITE_OIDC_AUTHORITY=http://localhost:$AUTHENTIK_PORT/application/o/nullus/"
+    echo "    VITE_OIDC_CLIENT_ID=nullus-app"
+  fi
   echo "  MinIO         http://localhost:$MINIO_CONSOLE_PORT  (nullus/nullus_dev)"
   echo "  Redis         localhost:$REDIS_PORT"
   echo ""
