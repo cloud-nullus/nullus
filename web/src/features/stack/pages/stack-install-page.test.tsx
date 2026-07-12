@@ -102,6 +102,7 @@ const mockTemplates = [
 // server-verdict test cases to flip the gate response per scenario.
 const mockCreateStackAsync = vi.fn(async () => ({ id: 'stk-test' }))
 const mockDeployStackAsync = vi.fn(async () => ({}))
+const mockSaveDraftMutate = vi.fn()
 const mockOrgResourceProfiles: Array<{
   id: string
   name: string
@@ -130,7 +131,7 @@ const mockValidateCompatibilityAsync = vi.fn(async () => ({
 
 vi.mock('../api/stack-api', () => ({
   useCreateStack: () => ({ mutate: vi.fn(), mutateAsync: mockCreateStackAsync, isPending: false }),
-  useSaveDraft: () => ({ mutate: vi.fn(), isPending: false }),
+  useSaveDraft: () => ({ mutate: mockSaveDraftMutate, isPending: false }),
   useEstimateResources: () => ({ mutate: vi.fn(), isPending: false, data: undefined }),
   useTemplates: () => ({ data: mockTemplates, isFetched: true }),
   useStacks: () => ({ data: mockStacks }),
@@ -195,6 +196,7 @@ beforeEach(() => {
   mockUpdateOrgResourceProfileMutate.mockReset()
   mockCreateStackAsync.mockReset()
   mockCreateStackAsync.mockResolvedValue({ id: 'stk-test' })
+  mockSaveDraftMutate.mockReset()
   mockDeployStackAsync.mockReset()
   mockDeployStackAsync.mockResolvedValue({})
   mockValidateCompatibilityAsync.mockReset()
@@ -733,7 +735,6 @@ describe('StackInstallPage', () => {
     expect(screen.getByText('Save Draft')).toBeTruthy()
     expect(screen.getByText('Deploy')).toBeTruthy()
   })
-
 
   it('shows compatibility gate baseline in k8s/minio/postgres/setup order', () => {
     renderWithProviders(<StackInstallPage />)

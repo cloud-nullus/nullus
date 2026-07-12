@@ -29,6 +29,10 @@ import type {
   StackResourceDefault,
   StackWorkloads,
 } from "../../../types";
+import {
+  parseContentDispositionFilename,
+  type StackExportFormat,
+} from "../utils/export-utils";
 
 export * from "./stack-api-types";
 export { toCreateStackBody } from "./stack-normalizers";
@@ -320,6 +324,24 @@ const stackApiCalls = {
     api
       .get<StackIntegrationsResponse>(`/stacks/${stackId}/integrations`)
       .then((r) => r.data),
+
+  exportStackConfig: async (stackId: string, format: StackExportFormat) => {
+    const response = await api.get<Blob>(`/stacks/${stackId}/export`, {
+      params: { format },
+      responseType: "blob",
+    });
+
+    return {
+      blob: response.data,
+      filename:
+        parseContentDispositionFilename(
+          response.headers?.["content-disposition"],
+        ) ?? `stack-${stackId}.${format}`,
+      contentType:
+        response.headers?.["content-type"] ??
+        (format === "yaml" ? "application/x-yaml" : "application/json"),
+    };
+  },
 };
 
 // --- Hooks ---
@@ -631,5 +653,54 @@ export function useStackWorkloads(stackId: string) {
     queryFn: () => stackApiCalls.getWorkloads(stackId),
     enabled: !!stackId,
     refetchInterval: 30_000,
+  });
+}
+
+export function useExportStackConfig() {
+  return useMutation({
+    mutationFn: ({
+      stackId,
+      format,
+    }: {
+      stackId: string;
+      format: StackExportFormat;
+    }) => stackApiCalls.exportStackConfig(stackId, format),
+  });
+}
+
+export function useImportStackConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ payload, replaceExisting = false }: { payload: string; replaceExisting?: boolean }) =>
+      api
+        .post<{ id: string }>(`/stacks/import?replace_existing=${replaceExisting}`, payload, {
+          headers: { "Content-Type": "text/plain" },
+        })
+        .then((r) => r.data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.list() });
+    },
+  });
+}
+
+export function usePreviewImportStackConfig() {
+  return useMutation({
+    mutationFn: (payload: string) =>
+      api
+        .post<{
+          mode: "create" | "update";
+          name: string;
+          cluster_id: string;
+          existing_stack_id?: string;
+          existing_state?: string;
+          changes?: {
+            added: Record<string, unknown>;
+            removed: Record<string, unknown>;
+            changed: Record<string, [unknown, unknown]>;
+          };
+        }>("/stacks/import/preview", payload, {
+          headers: { "Content-Type": "text/plain" },
+        })
+        .then((r) => r.data),
   });
 }

@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ClipboardList, ExternalLink, GitBranch, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
+import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
-import { useStackHistory, useStackMonitoring } from "../api/stack-api";
+import {
+  useExportStackConfig,
+  useStackHistory,
+  useStackMonitoring,
+} from "../api/stack-api";
 import { RetryStackButton } from "./retry-stack-button";
 import type { StackStatus as RetryStackStatus } from "../utils/retry-policy";
 import type { PipelineNode, LaunchTool } from "../utils/stack-list-utils";
@@ -25,6 +31,13 @@ import {
   copyTextToClipboard,
   getStackStatusLabel,
 } from "../utils/stack-list-utils";
+import {
+  buildStackExportBaseName,
+  buildStackExportFilename,
+  downloadBlob,
+  normalizeExportFilename,
+  type StackExportFormat,
+} from "../utils/export-utils";
 import {
   ArtifactsPanel,
   PipelineToolsPanel,
@@ -83,8 +96,14 @@ export function StackInfoTab({
   const [connCopyState, setConnCopyState] = useState<
     "idle" | "copied" | "failed"
   >("idle");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<StackExportFormat>("json");
+  const [exportFileName, setExportFileName] = useState(() =>
+    buildStackExportBaseName(stack.name),
+  );
   const { data: historyData } = useStackHistory(stack.id);
   const { data: monitoringData } = useStackMonitoring(stack.id, 30_000);
+  const exportMutation = useExportStackConfig();
   const latestSnapshot =
     Array.isArray(historyData) && historyData.length > 0
       ? historyData[historyData.length - 1].snapshot
@@ -204,6 +223,37 @@ export function StackInfoTab({
       setGatewayCopyState("failed");
     }
     setTimeout(() => setGatewayCopyState("idle"), 2200);
+  };
+
+  const openExportModal = () => {
+    setExportFormat("json");
+    setExportFileName(buildStackExportBaseName(stack.name));
+    setExportOpen(true);
+  };
+
+  const handleExportStack = async () => {
+    const filename = normalizeExportFilename(
+      exportFileName,
+      exportFormat,
+      buildStackExportBaseName(stack.name),
+    );
+
+    try {
+      const result = await exportMutation.mutateAsync({
+        stackId: stack.id,
+        format: exportFormat,
+      });
+      downloadBlob(result.blob, filename);
+      toast.success(
+        t("stackList.export.success", "Export download started."),
+      );
+      setExportOpen(false);
+    } catch (error) {
+      toast.error(
+        (error as { message?: string })?.message ??
+          t("stackList.export.failure", "Failed to export stack config."),
+      );
+    }
   };
 
   const observabilitySummary =
@@ -390,14 +440,24 @@ export function StackInfoTab({
             )}
           </div>
           <div className="mt-3 flex justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              type="button"
-              onClick={() => setConnOpen(true)}
-            >
-              {t("stackList.connection.open", "Connection Info")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={openExportModal}
+              >
+                {t("stackList.export.open", "Export")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={() => setConnOpen(true)}
+              >
+                {t("stackList.connection.open", "Connection Info")}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -569,6 +629,75 @@ export function StackInfoTab({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        title={t("stackList.export.title", "Export Stack")}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => setExportOpen(false)}
+              disabled={exportMutation.isPending}
+            >
+              {t("common.cancel", "Cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              onClick={handleExportStack}
+              loading={exportMutation.isPending}
+            >
+              {t("stackList.export.confirm", "Download")}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4 text-[13px]">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[var(--color-text-secondary)]">
+            <span className="font-semibold text-[var(--color-text-primary)]">
+              {t("stackList.export.stack", "Stack")}
+            </span>{" "}
+            {stack.name}
+          </div>
+
+          <NativeSelect
+            label={t("stackList.export.format", "Format")}
+            value={exportFormat}
+            onChange={(event) =>
+              setExportFormat(event.target.value as StackExportFormat)
+            }
+          >
+            <option value="json">JSON</option>
+            <option value="yaml">YAML</option>
+          </NativeSelect>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
+              {t("stackList.export.fileName", "File name")}
+            </span>
+            <input
+              value={exportFileName}
+              onChange={(event) => setExportFileName(event.target.value)}
+              placeholder={buildStackExportFilename(stack.name, exportFormat)}
+              aria-label={t("stackList.export.fileName", "File name")}
+              className="box-border w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out focus:border-[#6366f1]"
+              data-testid="export-file-name"
+            />
+          </label>
+
+          <div className="text-[12px] text-[var(--color-text-secondary)]">
+            {t(
+              "stackList.export.hint",
+              "The selected format extension is added automatically.",
+            )}
           </div>
         </div>
       </Modal>

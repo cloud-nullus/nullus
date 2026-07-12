@@ -449,6 +449,9 @@ export function toCreateStackBody(req: CreateStackRequest) {
         weekly_commits: req.resources?.commitsPerDay ?? 0,
         build_frequency: req.resources?.buildFrequency ?? 'medium',
       },
+      option_overrides: req.optionOverrides,
+      applied_resource_overrides: req.appliedResourceOverrides,
+      row_units: req.rowUnits,
       storage: req.storage && backendStoragePlanMode
         ? {
             plan_mode: backendStoragePlanMode,

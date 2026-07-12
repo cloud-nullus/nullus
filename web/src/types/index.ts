@@ -207,6 +207,19 @@ export interface StackConfig {
   monitoring: Record<string, ToolSelection>;
   logging: Record<string, ToolSelection>;
   resources: StackResourcesInput;
+  optionOverrides?: Record<string, Record<string, number>>;
+  appliedResourceOverrides?: Record<
+    string,
+    {
+      cpuRequest: number;
+      cpuLimit: number;
+      memoryRequestGi: number;
+      memoryLimitGi: number;
+      storageRequestGi: number;
+      storageLimitGi: number;
+    }
+  >;
+  rowUnits?: Record<string, { memory: "Gi" | "Mi"; storage: "Gi" | "Mi" }>;
   storage?: StackStorageInput;
 }
 

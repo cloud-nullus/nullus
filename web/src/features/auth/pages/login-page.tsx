@@ -14,8 +14,7 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>
 
-// Must match an existing row in the `organizations` table.
-// Nullus DevOps Team — also owns the seed stacks visible in stack list / monitoring.
+// Must match the single local seed organization used by mock auth.
 const ORG_ID = '11111111-1111-1111-1111-111111111111'
 
 const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {

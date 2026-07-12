@@ -20,13 +20,21 @@ import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
 import { Button } from "../../../components/ui/button";
+import { Modal } from "../../../components/ui/modal";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { cn } from "../../../lib/utils";
 import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
-import { useDeleteStack, useStackHistory, useStacks } from "../api/stack-api";
+import {
+	useDeleteStack,
+	useImportStackConfig,
+	usePreviewImportStackConfig,
+	useStackHistory,
+	useStacks,
+} from "../api/stack-api";
 import { useScopedClusters } from "../../admin/api/admin-api";
 import { STATUS_STYLES } from "../utils/status-style";
+import { summarizeImportPreview } from "../utils/import-preview";
 import { useKeyboardShortcut } from "../../../hooks/use-keyboard-shortcut";
 import {
 	formatDate,
@@ -379,15 +387,33 @@ export function StackListPage() {
 	const [statusFilter, setStatusFilter] = useState("");
 	const [clusterFilter, setClusterFilter] = useState("");
 	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
-	const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
-	const [terminatingStatusByID, setTerminatingStatusByID] = useState<Record<string, true>>({});
+  const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFileError, setImportFileError] = useState("");
+  const [importPayload, setImportPayload] = useState("");
+  const [importPreview, setImportPreview] = useState<null | {
+    mode: "create" | "update";
+    name: string;
+    cluster_id: string;
+    existing_stack_id?: string;
+    existing_state?: string;
+    changes?: {
+      added: Record<string, unknown>;
+      removed: Record<string, unknown>;
+      changed: Record<string, [unknown, unknown]>;
+    };
+  }>(null);
+  const [terminatingStatusByID, setTerminatingStatusByID] = useState<Record<string, true>>({});
 	const [viewportHeight, setViewportHeight] = useState(() =>
 		typeof window !== "undefined" ? window.innerHeight : 960,
 	);
 	const [viewportWidth, setViewportWidth] = useState(() =>
 		typeof window !== "undefined" ? window.innerWidth : 1440,
 	);
-	const deleteStack = useDeleteStack();
+  const deleteStack = useDeleteStack();
+  const importStack = useImportStackConfig();
+  const previewImportStack = usePreviewImportStackConfig();
 	const tablePageSize = Math.max(6, Math.min(14, Math.floor((viewportHeight - 340) / 52)));
 	const isDesktopLayout = viewportWidth >= 1280;
 
@@ -469,8 +495,9 @@ export function StackListPage() {
 	const expandedStack = selectedStackId
 		? filtered.find((s) => s.id === selectedStackId) ?? null
 		: null;
+	const importPreviewLines = importPreview ? summarizeImportPreview(importPreview) : [];
 
-	const handleDeleteStack = () => {
+  const handleDeleteStack = () => {
 		if (!deleteStackId) return;
 		const targetID = deleteStackId;
 		setDeleteStackId(null);
@@ -489,7 +516,57 @@ export function StackListPage() {
 				toast.error(t("stackList.delete.failed", "Failed to start stack deletion."));
 			},
 		});
-	};
+  };
+
+  const openImportModal = () => {
+    setImportFile(null);
+    setImportFileError("");
+    setImportPayload("");
+    setImportPreview(null);
+    setImportOpen(true);
+  };
+
+  const handlePreviewImportStack = async () => {
+    if (!importFile) {
+      setImportFileError(t("stackList.import.fileRequired", "Select an export file."));
+      return;
+    }
+
+    try {
+      const payload = await importFile.text();
+      const preview = await previewImportStack.mutateAsync(payload);
+      setImportPayload(payload);
+      setImportPreview(preview);
+      setImportFileError("");
+    } catch (error) {
+      toast.error((error as { message?: string })?.message ?? t("stackList.import.failure", "Failed to import stack."));
+    }
+  };
+
+  const handleImportStack = async () => {
+    if (!importPreview || !importPayload) {
+      return;
+    }
+
+    try {
+      const result = await importStack.mutateAsync({
+        payload: importPayload,
+        replaceExisting: importPreview.mode === "update",
+      });
+      setImportOpen(false);
+      setImportFile(null);
+      setImportFileError("");
+      setImportPayload("");
+      setImportPreview(null);
+      setSearch("");
+      setStatusFilter("");
+      setClusterFilter("");
+      toast.success(t("stackList.import.success", "Stack restored."));
+      setExpandedStackId(result.id);
+    } catch (error) {
+      toast.error((error as { message?: string })?.message ?? t("stackList.import.failure", "Failed to import stack."));
+    }
+  };
 
 	const columns: ColumnDef<Stack, unknown>[] = [
 		{
@@ -558,16 +635,25 @@ export function StackListPage() {
 						</p>
 					</div>
 				</div>
-				<Button
-					variant="primary"
-					size="md"
-					onClick={() =>
-						navigate("/stack/templates", { state: { from: "stack-list" } })
-					}
-				>
-					<Plus size={15} />
-					{t("stackList.actions.newStack", "New Stack")}
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button
+						variant="outline"
+						size="md"
+						onClick={openImportModal}
+					>
+						{t("stackList.actions.import", "Import")}
+					</Button>
+					<Button
+						variant="primary"
+						size="md"
+						onClick={() =>
+							navigate("/stack/templates", { state: { from: "stack-list" } })
+						}
+					>
+						<Plus size={15} />
+						{t("stackList.actions.newStack", "New Stack")}
+					</Button>
+				</div>
 			</div>
 
 			<div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
@@ -673,6 +759,98 @@ export function StackListPage() {
 				confirmLabel={t("common.delete", "Delete")}
 				loading={deleteStack.isPending}
 			/>
+
+			<Modal
+				open={importOpen}
+				onClose={() => setImportOpen(false)}
+				title={t("stackList.import.title", "Import Stack")}
+				footer={
+					<>
+						<Button
+							variant="outline"
+							size="sm"
+							type="button"
+							onClick={() => setImportOpen(false)}
+							disabled={importStack.isPending}
+						>
+							{t("common.cancel", "Cancel")}
+						</Button>
+						<Button
+							variant="primary"
+							size="sm"
+							type="button"
+							onClick={importPreview ? handleImportStack : handlePreviewImportStack}
+							loading={importStack.isPending || previewImportStack.isPending}
+						>
+							{importPreview
+								? t("stackList.import.confirm", "Restore")
+								: t("stackList.import.preview", "Review Import")}
+						</Button>
+					</>
+				}
+			>
+				<div className="space-y-4 text-[13px]">
+					{!importPreview ? (
+						<>
+							<p className="text-[var(--color-text-secondary)]">
+								{t("stackList.import.description", "Upload a stack export file to review and apply it.")}
+							</p>
+							<label className="flex flex-col gap-1">
+								<span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
+									{t("stackList.import.file", "Export file")}
+								</span>
+								<input
+									type="file"
+									accept=".json,.yaml,.yml,application/json,text/yaml,text/x-yaml"
+									onChange={(event) => {
+										const file = event.target.files?.[0] ?? null;
+										setImportFile(file);
+										setImportFileError("");
+									}}
+									aria-label={t("stackList.import.file", "Export file")}
+									className="box-border w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out file:mr-3 file:rounded-md file:border-0 file:bg-[rgba(99,102,241,0.15)] file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-[#a5b4fc] focus:border-[#6366f1]"
+								/>
+							</label>
+							{importFile && (
+								<div className="text-[12px] text-[var(--color-text-secondary)]">
+									{t("stackList.import.selectedFile", "Selected:")} {importFile.name}
+								</div>
+							)}
+							{importFileError && (
+								<div className="text-[12px] text-[#f87171]">{importFileError}</div>
+							)}
+						</>
+					) : (
+						<div className="space-y-3">
+							<div className="text-[12px] text-[var(--color-text-secondary)]">
+								{t("stackList.import.name", "Stack")}: <span className="text-[var(--color-text-primary)]">{importPreview.name}</span>
+							</div>
+							<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+								<div className="space-y-1 text-[12px] text-[var(--color-text-secondary)]">
+									{importPreviewLines.map((line) => (
+										<div key={line}>{line}</div>
+									))}
+								</div>
+							</div>
+							{importPreview.mode === "update" && importPreview.existing_state && (
+								<div className="text-[12px] text-[var(--color-text-secondary)]">
+									{t("stackList.import.currentState", "Current state")}: <span className="text-[var(--color-text-primary)]">{importPreview.existing_state}</span>
+								</div>
+							)}
+							{importPreview.changes && (
+								<div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+									<div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
+										{t("stackList.import.changes", "Import changes")}
+									</div>
+									<div className="text-[12px] text-[var(--color-text-secondary)]">
+										{t("stackList.import.diffHint", "Field-level differences are included in this review.")}
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			</Modal>
 		</div>
 	);
 }
