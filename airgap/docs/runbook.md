@@ -23,7 +23,7 @@ PODMAN=1 bash airgap/scripts/01-pull-images.sh
 **롤백**: 개별 이미지 Pull 실패 시 스크립트가 목록을 출력한다. 해당 이미지만 수동으로 Pull한 뒤 재실행한다.
 
 ```bash
-docker pull ghcr.io/cloud-nullus/draft/nullus-api:main
+docker pull ghcr.io/cloud-nullus/nullus/nullus-api:main
 ```
 
 ---
@@ -143,7 +143,7 @@ bash airgap/scripts/12-push-to-registry.sh
 
 ```bash
 curl -s http://localhost:5001/v2/_catalog
-# {"repositories":["cloud-nullus/draft/nullus-api","cloud-nullus/draft/nullus-web","bitnamilegacy/postgresql",...]}
+# {"repositories":["cloud-nullus/nullus/nullus-api","cloud-nullus/nullus/nullus-web","bitnamilegacy/postgresql",...]}
 ```
 
 **롤백**: Push 실패한 이미지만 수동으로 리태그 후 재Push한다. 스크립트 재실행도 안전하다 (멱등).

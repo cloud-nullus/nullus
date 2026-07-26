@@ -31,8 +31,8 @@ flowchart LR
         B2 -->|containerd mirror| B3["kind 클러스터\nnullus-airgap"]
 
         subgraph cluster["kind 클러스터 (nullus-airgap)"]
-            B3 --> C1["nullus-api pod\nghcr.io/cloud-nullus/draft/nullus-api:main"]
-            B3 --> C2["nullus-web pod\nghcr.io/cloud-nullus/draft/nullus-web:main"]
+            B3 --> C1["nullus-api pod\nghcr.io/cloud-nullus/nullus/nullus-api:main"]
+            B3 --> C2["nullus-web pod\nghcr.io/cloud-nullus/nullus/nullus-web:main"]
             B3 --> C3["postgresql pod\ndocker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r20"]
         end
     end
@@ -44,8 +44,8 @@ flowchart LR
 
 | 컴포넌트 | 목적 | 이미지 | 포트 | 의존성 |
 |----------|------|--------|------|--------|
-| **nullus-api** | Nullus 백엔드 API (Go / Echo v4) | `ghcr.io/cloud-nullus/draft/nullus-api:main` | 8080 (HTTP) | postgresql |
-| **nullus-web** | Nullus 프론트엔드 (React 19 / Vite) | `ghcr.io/cloud-nullus/draft/nullus-web:main` | 3000 (HTTP) | nullus-api |
+| **nullus-api** | Nullus 백엔드 API (Go / Echo v4) | `ghcr.io/cloud-nullus/nullus/nullus-api:main` | 8080 (HTTP) | postgresql |
+| **nullus-web** | Nullus 프론트엔드 (React 19 / Vite) | `ghcr.io/cloud-nullus/nullus/nullus-web:main` | 3000 (HTTP) | nullus-api |
 | **postgresql** | 애플리케이션 데이터베이스 (Bitnami 16.7.21) | `docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r20` | 5432 | PersistentVolumeClaim |
 | **postgresql init** | DB 초기화 셸 (initContainer) | `docker.io/bitnamilegacy/os-shell:12-debian-12-r49` | — | postgresql |
 | **kind-registry** | 로컬 이미지 레지스트리 (에어갭 내 이미지 서빙) | `registry:2` | 5001 (호스트 바인딩) | docker 네트워크 `kind` |
@@ -85,8 +85,8 @@ kind 클러스터 노드 (containerd pull from localhost:5001)
 
 | 원본 이미지 | 로컬 레지스트리 이미지 |
 |------------|----------------------|
-| `ghcr.io/cloud-nullus/draft/nullus-api:main` | `localhost:5001/cloud-nullus/draft/nullus-api:main` |
-| `ghcr.io/cloud-nullus/draft/nullus-web:main` | `localhost:5001/cloud-nullus/draft/nullus-web:main` |
+| `ghcr.io/cloud-nullus/nullus/nullus-api:main` | `localhost:5001/cloud-nullus/nullus/nullus-api:main` |
+| `ghcr.io/cloud-nullus/nullus/nullus-web:main` | `localhost:5001/cloud-nullus/nullus/nullus-web:main` |
 | `docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r20` | `localhost:5001/bitnamilegacy/postgresql:17.5.0-debian-12-r20` |
 | `docker.io/bitnamilegacy/os-shell:12-debian-12-r49` | `localhost:5001/bitnamilegacy/os-shell:12-debian-12-r49` |
 | `docker.io/bitnamilegacy/postgres-exporter:0.17.1-debian-12-r13` | `localhost:5001/bitnamilegacy/postgres-exporter:0.17.1-debian-12-r13` |

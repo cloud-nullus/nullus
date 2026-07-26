@@ -134,6 +134,7 @@ func main() {
 		},
 	)
 	addToolsUC := stackuc.NewAddToolsUseCase(pgStackRepo)
+	importConfigUC := stackuc.NewImportConfig(createStackUC, addToolsUC, installStackUC)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
@@ -146,7 +147,7 @@ func main() {
 		WithOptions(stackhandler.WithKubeconfigProvider(kubeconfigProvider), stackhandler.WithManageHistory(manageHistoryUC))
 	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithStackManageHistory(manageHistoryUC), stackhandler.WithPool(pool))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
-	exportHandler := stackhandler.NewExportHandler(exportConfigUC)
+	exportHandler := stackhandler.NewExportHandler(exportConfigUC, importConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
 
 	pgCompatRepo := stackrepo.NewPostgresCompatibilityRepository(pool)
