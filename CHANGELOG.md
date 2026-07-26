@@ -7,26 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha] - 2026-07-26
+
 ### Added
+
+- **에어갭(air-gap) 클린 설치 전 과정 자동화** (#75, #76): 오프라인 번들만으로 외부 접근·스택 설치·DB 마이그레이션까지 동작하도록 누락 단계를 자동화. 인-클러스터 오케스트레이터가 온라인 Helm 레포 대신 로컬 OCI 레지스트리(`kind-registry:5000/charts`)에서 차트를 pull 하도록 지원.
+- **카카오클라우드 air-gap 배포 자산** (#79): OpenTofu IaC 3모듈(network/security/compute)과 provision→build→transfer→install→expose 5단계 스크립트, 운영 문서를 추가. kind 기반 트랙과 kubeadm 멀티노드 트랙을 분리.
+- **에어갭 번들 SBOM 자동 생성** (#91): `scripts/pre/generate-sbom.sh`가 번들 이미지와 Helm 차트의 SBOM(SPDX/CycloneDX)을 `bundle/sbom/`에 생성. syft 미설치 시 경고 후 건너뛰어 번들 빌드를 막지 않음.
+- **에어갭 설치 검증에 노드 아키텍처 확인 추가** (#90): `99-verify.sh`가 각 노드의 `architecture`를 `EXPECTED_ARCH`(기본 `amd64`)와 대조해, arm64 번들을 x86 호스트에 반입하는 오반입을 설치 검증 시점에 검출.
+- **스택 설정 export/import** (#92): export API를 UI에 연결하고 파일명·포맷 선택 UX를 추가. import는 preview → apply 흐름으로 신규 스택 생성과 동일 이름 스택 업데이트를 모두 지원하며, OSS별 리소스 override와 round-trip 정합성을 함께 정리.
+- **공유 Prometheus용 ServiceMonitor** (#71): Argo CD / Envoy Gateway / GitLab Prometheus Server 메트릭을 공유 Prometheus가 수집하도록 `deploy/monitoring/prometheus-servicemonitors.yaml` 추가.
+- **Helm 차트 `imagePullSecrets` 지원** (#87): 차트에 top-level `imagePullSecrets`(기본 `[]`)를 추가하고 runbook이 생성한 `ghcr-pull-secret`을 실제로 전달하도록 배선 — private 이미지 pull에 시크릿이 적용되지 않던 문제 해소.
+- **GitLab object storage 버킷 사전 생성 단계** (#70): 설치 DAG에 `installing_object_storage_buckets`를 추가하고 `installing_gitlab`의 선행 단계로 연결.
+- **에어갭 차트 카탈로그 동기화** (#59): 스택 오케스트레이터가 사용하는 14개 Helm 차트 중 번들에 누락된 9개를 추가하고 버전이 어긋난 3개를 정렬 — 에어갭에서 일부 스택을 설치할 수 없던 문제 해소.
+- **스택 배포 재개 흐름 보강** (#58): 실패 지점부터의 재개 경로와 배포 로그 kubeconfig·Argo CD 시크릿 배선을 정리하고, kind 규모에 맞는 로컬 리소스 프로파일을 추가.
+- **로컬 개발 환경 자동화** (#55): `runbook_local.sh`가 kind 클러스터 등록과 템플릿 시드를 자동 수행.
 
 - **Stack Continue 배포** (`POST /api/v1/stacks/:id/continue`): 실패한 스택 배포를 rollback 없이 재개. 이미 설치된 Helm 릴리즈를 보존하고 실패 지점부터 재시작. `InstallStackInput`에 `Continue`/`PreserveLogs` 필드 추가, 실패 시 UI에 Continue 버튼 노출.
 - **Pod Watch WebSocket** (`GET /ws/deployments/:id/pods`): kubectl get pods -n <namespace> -w 출력을 WebSocket으로 실시간 스트리밍. 배포 로그 페이지에 Pod Watch 패널 추가 (네임스페이스, Ready, Status, Restarts, Age 표시).
 - **Org Resource Profile 저장** (`/api/v1/admin/org-resource-profiles`): 조직 단위 리소스 프로파일 CRUD. Stack Install Wizard Sizing 탭에서 프로파일 저장·불러오기 드롭다운 지원. DB 마이그레이션 `000049_org_resource_profiles`, `000050_allow_local_resource_profile`.
 - **`Orchestrator.IsStepEnabled` 공개 메서드**: `stepEnabledChecker` 인터페이스를 통해 usecase 레이어에서 각 설치 단계 활성화 여부를 조회 가능.
-
-### Changed
-
-- **배포 로그 페이지 UI 개선**: 타임라인 스텝, 세그먼트 프로그레스 바, Raw Logs 콘솔, Attention 패널(warn/error 필터), Pod Watch 패널로 구성한 새 레이아웃. WS 연결 전 "Connecting..." / 연결 후 파드 없음 "No pods in namespace yet." 으로 상태 구분.
-- **Status API `namespace` 필드**: `omitempty` 제거 — 스택 네임스페이스가 빈 값이어도 항상 필드 포함해 반환.
-- **`podNamespace` 폴백 처리**: `??` → `||` 변경으로 빈 문자열까지 폴백 처리.
-- **Stack Install 페이지**: Quick Start 카드 및 Kubernetes Preview 섹션 제거.
-
-### Fixed
-
-- **Sizing Profile 드롭다운 즉시 반영**: 프로파일 저장 후 드롭다운에 즉시 반영되지 않는 버그 수정 (캐시 invalidation 누락).
-- **`usePodWatch` 재연결 시 에러 초기화**: WS 재연결 성공 시 이전 연결의 stale 에러 메시지가 남는 문제 수정.
-
-### Added (기존)
 
 - OpenBao 선택형 배포 경로 구현: `authentication.provider=openbao` 선택 시 `installing_openbao` 단계에서 OpenBao(공식 이미지) Deployment/Service를 생성하고 Gateway 기본 번들에 `openbao.<access_domain>` 라우트를 자동 추가합니다.
 - Secret Manager 추상화 계층 추가: `internal/shared/secrets`에 provider 라우터(`Router`)와 OpenBao 구현체(`OpenBaoStore`)를 도입해, 토큰 저장/조회를 provider별 어댑터로 분리했습니다.
@@ -84,8 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 기존 v0.1 설계 문서를 현재 구현 기준으로 재구성한 `Nullus 상세 기능 명세 및 시스템 아키텍처_v0.2.md` 추가
 - Alert Rules edit modal now loads the latest rule payload directly from the database through `GET /observability/alert-rules/:id` before editing.
 - Stack Install supports leaving Storage unselected for Empty Template flows by omitting the storage block from create requests when no storage plan is chosen.
-- Alert Rules edit modal now loads the latest rule payload directly from the database through `GET /observability/alert-rules/:id` before editing.
-- Stack Install supports leaving Storage unselected for Empty Template flows by omitting the storage block from create requests when no storage plan is chosen.
 - CI/CD List에 클러스터 필터 드롭다운 추가 (`useClusters` 훅 연동)
 - Pipeline Logs 전용 페이지 신규 생성 (`/cicd/pipelines/:id/logs`, 터미널 콘솔 + 배포 이력 뷰)
 - CI/CD 배포 진행 UI를 WebSocket 기반 실시간 스트리밍으로 전환 (Stack Deploy 페이지 스타일)
@@ -119,6 +117,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **설치 단계 실행 방식을 DAG 의존성 기반으로 전환** (#61): 고정 phase 루프 대신 단계 간 의존성을 따라 실행하도록 변경. OpenBao는 PostgreSQL/MinIO 이후·핵심 서비스 직전으로 정렬.
+- **예시 시드 데이터 제거** (#82): 예시용 `nullus-devsecops-stack` 기본값을 제거하고, kind 클러스터 등록이 실제 endpoint를 사용하도록 수정.
+- **스택 툴 아이콘·분류 표시 정리** (#73): 툴 아이콘을 로컬 SVG로 교체하고 템플릿 툴을 카테고리별 색상으로 구분.
+- **배포 로그 페이지 UI 개선**: 타임라인 스텝, 세그먼트 프로그레스 바, Raw Logs 콘솔, Attention 패널(warn/error 필터), Pod Watch 패널로 구성한 새 레이아웃. WS 연결 전 "Connecting..." / 연결 후 파드 없음 "No pods in namespace yet." 으로 상태 구분.
+- **Status API `namespace` 필드**: `omitempty` 제거 — 스택 네임스페이스가 빈 값이어도 항상 필드 포함해 반환.
+- **`podNamespace` 폴백 처리**: `??` → `||` 변경으로 빈 문자열까지 폴백 처리.
+- **Stack Install 페이지**: Quick Start 카드 및 Kubernetes Preview 섹션 제거.
 - Monitoring Dashboard Cluster 뷰를 선택 클러스터 기준으로 재구성: Stack 모니터링 합산 + Stack 매핑이 없을 때 클러스터 실집계 자동 fallback
 - Monitoring Dashboard의 CI/CD 탭 표시 정책 변경: 탭은 항상 노출하고, 클러스터 타입이 `target`이 아닐 때 비활성화
 - CI/CD List 레이아웃을 Stack List 패턴으로 통일: 하단 확장 행 제거, 좌측 목록 + 우측 상세 패널(모바일은 하단)
@@ -159,6 +164,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **로그인 후 로그인 화면으로 튕기던 문제** (#78): 저장소가 `cloud-nullus/draft` → `cloud-nullus/nullus`로 리네임된 뒤에도 에어갭 설정이 옛 ghcr 경로를 참조해, 리네임 직전에 고정된 구버전 `nullus-web` 이미지가 설치되고 있었다. 해당 번들에는 세션 인증 헤더 전송 수정이 빠져 있어 API가 401을 반환하고 프론트가 로그아웃 처리했다. 이미지 경로를 새 경로로 교정.
+- **GitHub 선택 시 GitLab이 함께 설치되던 문제** (#56): `installing_gitlab`·`installing_runner` 실행 조건을 도구 이름 기준으로 제한.
+- **GitLab CE 표기 시 GitLab 설치 단계를 건너뛰던 문제** (#85): 템플릿 상세 모달의 버전 표기도 매트릭스 스냅샷 기준으로 정정.
+- **OpenBao 설치 순서·헬스 게이트 정합화** (#57, #61, #88): OpenBao 단계를 Phase A 초반으로 배치하고 미선택 시 자동 비활성화. 토큰 소스는 설치 시점과 별도 동기화 경로에서 공통 생성하도록 정리.
+- **kind 클러스터 재생성 후 설치 실패** (#62): kubeconfig 조회 시 endpoint drift를 자동 동기화해 cert-manager 단계에서 실패하던 문제를 완화.
+- **otel-collector 이미지 pull 실패** (#63): 실재하지 않는 image:tag 조합을 만들던 override를 제거하고 차트 기본값을 사용 (#59 회귀).
+- **클러스터 모니터링 Pod 목록 모달 복구** (#67): Pod Status 카드에서 파드 런타임 상태를 바로 확인하는 흐름을 원복.
+- **카카오클라우드 배포 정합성·이식성·스크립트 버그** (#86): #79에 대한 리뷰 지적 19건을 트리아지해 검증된 항목을 반영.
+- **Stack List 회귀** (#60): 머지 후 이전 버전 목록이 표시되던 문제 수정.
+- **Sizing Profile 드롭다운 즉시 반영**: 프로파일 저장 후 드롭다운에 즉시 반영되지 않는 버그 수정 (캐시 invalidation 누락).
+- **`usePodWatch` 재연결 시 에러 초기화**: WS 재연결 성공 시 이전 연결의 stale 에러 메시지가 남는 문제 수정.
 - 스택 재시도 안정화: cert-manager 네임스페이스/CRD ownership 감지, startupapicheck job optional 처리, GitLab rollout timeout 확장, rollback 잔존 리소스 정리를 반영해 rolled_back 재배포 경로를 안정화했습니다.
 - 설치 단계 정합성 수정: `installing_openbao` 단계가 Orchestrator/UseCase 순서와 일치하도록 정렬해 `integration_check out-of-order` 실패를 수정했습니다.
 - Stack 상세의 Gateway PF Copy 개선: 스택별 `GATEWAY_NAME`을 포함한 명령으로 잘못된 gateway service 선택을 방지하고, 접속정보 복사본에 Primary URLs + Gateway Port-Forward 섹션을 추가했습니다.
@@ -188,6 +204,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 클러스터 등록/수정 검증 흐름 통합 — 백엔드 핸들러와 프론트엔드 클러스터 페이지의 검증 로직 단일화
 - Register Cluster 다이얼로그의 클러스터 타입 옵션 순서 조정
 - Stack List 삭제 후 목록 즉시 반영 및 상세 패널 중복 표시 수정
+
+### Security
+
+- **OIDC를 설치 옵션으로 분리** (#93): IdP를 플랫폼 상시 기능이 아니라 runbook 선택 옵션(`--auth=<keycloak|authentik|none>`, 기본 `keycloak`)으로 정리하고, provider별 OIDC 환경변수를 API·웹에 주입하도록 배선. 기본값이 `keycloak`이므로 기존 동작은 보존된다. provider 선정 근거는 `docs/20_개발가이드/OIDC_Provider_선정기준.md` 참조.
 
 ## [0.2.0-alpha] - 2026-03-28
 
@@ -253,6 +273,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgresOrgRepository NULL default_admin_id 스캔 오류
 - estimated_install_time 나노초→분 변환 오버플로우
 
-[unreleased]: https://github.com/cloud-nullus/draft/compare/v0.2.0-alpha...HEAD
-[0.2.0-alpha]: https://github.com/cloud-nullus/draft/compare/v0.1.0-alpha...v0.2.0-alpha
-[0.1.0-alpha]: https://github.com/cloud-nullus/draft/releases/tag/v0.1.0-alpha
+<!--
+compare 링크는 실제로 발행된 태그만 가리킨다 (릴리즈 정책 §3).
+0.1.0-alpha / 0.2.0-alpha 는 CHANGELOG 기록만 존재하고 git 태그·GitHub Release 가 발행된 적이 없어
+링크를 두지 않는다. v0.3.0-alpha 태그 push 이후 아래 링크가 유효해진다.
+-->
+[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...HEAD
+[0.3.0-alpha]: https://github.com/cloud-nullus/nullus/releases/tag/v0.3.0-alpha
