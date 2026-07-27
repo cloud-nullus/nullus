@@ -26,9 +26,9 @@ const mockStacks = {
 
 const mockClusters = {
   items: [
-    { id: 'cluster-1', name: 'kind-nullus-platform', status: 'connected' },
-    { id: 'cluster-2', name: 'kind-nullus-develop', status: 'pending' },
-  ] as Array<{ id: string; name: string; status: string }>,
+    { id: 'cluster-1', name: 'kind-nullus-platform', status: 'connected', type: 'pipeline', types: ['pipeline'] },
+    { id: 'cluster-2', name: 'kind-nullus-develop', status: 'pending', type: 'target', types: ['target'] },
+  ] as Array<{ id: string; name: string; status: string; type: string; types: string[] }>,
   total: 2,
 }
 
@@ -187,8 +187,8 @@ beforeEach(() => {
   mockStacks.items = []
   mockStacks.total = 0
   mockClusters.items = [
-    { id: 'cluster-1', name: 'kind-nullus-platform', status: 'connected' },
-    { id: 'cluster-2', name: 'kind-nullus-develop', status: 'pending' },
+    { id: 'cluster-1', name: 'kind-nullus-platform', status: 'connected', type: 'pipeline', types: ['pipeline'] },
+    { id: 'cluster-2', name: 'kind-nullus-develop', status: 'pending', type: 'target', types: ['target'] },
   ]
   mockClusters.total = 2
   mockOrgResourceProfiles.splice(0)

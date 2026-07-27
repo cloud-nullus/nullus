@@ -22,6 +22,7 @@ import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useS
 import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useUpdateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces } from '../../admin/api/admin-api'
+import { findPlatformCluster } from '../../admin/utils/cluster-selection'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
@@ -437,11 +438,7 @@ export function StackInstallPage() {
       return
     }
 
-    const preferredCluster = clusters.find((cluster) => {
-      const name = (cluster.name ?? '').trim().toLowerCase()
-      const typeList = Array.isArray(cluster.types) ? cluster.types : []
-      return name === 'kind-nullus-platform' || typeList.includes('pipeline') || cluster.type === 'pipeline'
-    })
+    const preferredCluster = findPlatformCluster(clusters)
 
     if (!preferredCluster) {
       return
