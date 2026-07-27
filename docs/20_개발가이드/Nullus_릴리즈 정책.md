@@ -2,8 +2,8 @@
 
 Nullus Platform(`cloud-nullus/nullus`)의 GitHub Release · CHANGELOG · 버전(SemVer) 관리 규칙을 정의합니다.
 
-- 초안: 2026-07-25 / 개정: 2026-07-26 (v2)
-- 상태: **검토 중** — §13의 선행 과제가 끝나기 전까지는 이 문서대로 릴리즈할 수 없습니다.
+- 초안: 2026-07-25 / 개정: 2026-07-26 (v2) / 2026-07-28 (v2.1)
+- 상태: **적용 개시** — §13의 선행 과제 1·3·7이 끝나 `v0.3.0-alpha`부터 이 문서대로 릴리즈합니다. 남은 과제 2·4·5·6·8은 §13에 그대로 두고, 그중 §9.0의 품질 게이트(과제 2)는 `ci.yml` 재활성화 전까지 **릴리즈 담당의 로컬 검증 + PR 첨부**로 대체합니다.
 - 적용 대상: `cloud-nullus/nullus` (구 `cloud-nullus/draft`, 2026-05-25경 리네임)
 - 관련 문서: `Nullus_PR_커밋_컨벤션.md`, `Nullus_브랜치_관리_개선안.md`, `Nullus_CICD 흐름.md`, `CLAUDE.md`
 
@@ -273,7 +273,7 @@ helm install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version 0.3.0-alp
 
 > **드리프트 해소 (2026-07-26)**: `Chart.yaml`이 `version: 0.1.0` / `appVersion: "0.1.0-alpha"`로 CHANGELOG와 어긋나 있던 것을 `0.3.0` / `"0.3.0-alpha"`로 동기화했습니다.
 >
-> **다만 이 변경만으로는 렌더 결과가 바뀌지 않습니다.** `values.yaml`이 `tag: "0.1.0-alpha"`를 명시적으로 고정하고 있어 `helm template` 결과는 여전히 `...:0.1.0-alpha`입니다. §8.1대로 `tag`를 비워야 `Chart.AppVersion` 폴백이 동작합니다 — §13-3(보류 중)에서 함께 처리합니다. **이것이 v1에서 `values.yaml`을 동기화 대상에서 빠뜨린 결과가 실제로 드러난 사례입니다.**
+> **폴백 복구 (2026-07-28, §13-3 완료)**: 위 변경만으로는 렌더 결과가 바뀌지 않았습니다. `values.yaml`이 `tag: "0.1.0-alpha"`를 고정하고 있어 `helm template` 결과가 여전히 `...:0.1.0-alpha`였기 때문입니다. §8.1대로 `tag`를 비워 `Chart.AppVersion` 폴백을 복구했고, 이제 렌더 결과는 `ghcr.io/cloud-nullus/nullus/nullus-api:0.3.0-alpha`입니다. **이것이 v1에서 `values.yaml`을 동기화 대상에서 빠뜨린 결과가 실제로 드러난 사례입니다.**
 
 ### 8.1 차트 이미지 기본값 (v2 신설)
 
@@ -443,14 +443,15 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 
 ## 13. 선행 과제 (이 정책을 실행하기 위해 먼저 끝내야 할 것)
 
-이 문서는 위 항목들이 정리되기 전까지 **적용 불가** 상태입니다.
+릴리즈 산출물에 직접 걸리는 1·3·7이 끝나 `v0.3.0-alpha`부터 정책을 적용합니다. 남은 항목은 릴리즈를 막지는 않지만, **§9.0의 자동 품질 게이트와 §10의 강제 장치가 아직 없다는 뜻**이므로 그때까지는 릴리즈 담당의 수동 검증에 의존합니다.
 
 | # | 과제 | 관련 절 | 비고 |
 |---|---|---|---|
 | 1 | ~~CHANGELOG `Unreleased` 소급 정리~~ | §2, §4.2 | **완료 (2026-07-26)** — PR #54 이후 37건을 검토해 사용자 영향이 있는 26건을 24개 항목으로 `0.3.0-alpha` 섹션에 편입. 문서·테스트·CI 전용 11건(#69·#72·#74·#77·#80·#81·#84·#89·#94·#95·#96)은 §4.2의 `no-changelog` 기준으로 제외 |
-| 2 | `ci.yml` 재활성화 + 현재 실패 3종 수정 후 main ruleset 필수 체크 등록 | §9.0 | 실패 3종: `e2e` 2건, `tsc` 3건(`cicd-list-page.tsx`), `vitest` 38건 — 모두 기존 결함 |
-| 3 | 차트 이미지 기본값 교정 + `values-dev.yaml` 분리 + 관련 문서 동기화, `phase1` 트리거 제거 | §8.1, §10.4 | `fix(infra)` 별건 |
+| 2 | `ci.yml` 재활성화 + 현재 실패 2종 수정 후 main ruleset 필수 체크 등록 | §9.0 | 2026-07-28 재측정: `e2e` 2건(`TestScenario4_CICDPipelineFlow`, `TestUAT2_Jieun_Developer`), `vitest` 38건(9파일) — 모두 기존 결함. `tsc` 3건(`cicd-list-page.tsx`)은 해소되어 현재 통과 |
+| 3 | ~~차트 이미지 기본값 교정 + `values-dev.yaml` 분리 + 관련 문서 동기화~~ | §8.1 | **완료 (2026-07-28, #100)** — `repository`를 `ghcr.io/cloud-nullus/nullus/nullus-*`로, `tag`를 `""`로. `values-dev.yaml` 신설, `docs/agent-reference.md`·`airgap/helm/README.md` 동기화. `phase1` 트리거 제거는 §10.4에 미완으로 남김 |
 | 4 | 저장소 설정: `allowed_merge_methods: ["squash"]`, `delete_branch_on_merge: true`, 릴리즈 PR 승인 1인 이상 | §9.3, §10.2 | 설정 변경 |
 | 5 | tag ruleset 신설 (`refs/tags/v*`) | §10.3 | 설정 변경 |
 | 6 | 브랜치 명명 규칙을 `CLAUDE.md`와 `Nullus_PR_커밋_컨벤션.md` 중 한쪽으로 단일화 | §10.4 | 이 문서 범위 밖 |
-| 7 | `cd.yml`에 `publish-chart` 잡 추가 | §7.2 | `chore(infra)` 별건 |
+| 7 | ~~`cd.yml`에 `publish-chart` 잡 추가~~ | §7.2 | **완료 (2026-07-28, #100)** — `v*` 태그에서만 도는 잡으로 추가. 실제 게시 성공 여부는 v0.3.0-alpha 태그 push 시 확인 |
+| 8 | `cd.yml`의 `phase1` 브랜치 트리거 제거 | §10.4 | 과제 3에서 분리 |

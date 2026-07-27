@@ -190,24 +190,26 @@ RUN npm ci --legacy-peer-deps
 
 ### 이미지 Pull 실패 (ImagePullBackOff)
 
-**증상**: Pod이 `ImagePullBackOff` 상태. `Failed to pull image "ghcr.io/cloud-nullus/nullus-api:0.1.0-alpha"`
+**증상**: Pod이 `ImagePullBackOff` 상태. `Failed to pull image "ghcr.io/cloud-nullus/nullus/nullus-api:dev"`
 
 **원인**: kind 클러스터는 로컬 Docker 이미지에 직접 접근할 수 없음. 이미지를 kind에 명시적으로 로드해야 함.
 
-**해결**:
+**해결**: 로컬 빌드 값은 `deploy/helm/nullus/values-dev.yaml`에 모여 있으므로 `-f`로 넘긴다 (차트 기본값은 ghcr에 게시된 이미지를 가리킨다 — 릴리즈 정책 §8.1).
 
 ```bash
-# 1. 이미지 빌드
-docker build -t ghcr.io/cloud-nullus/nullus-api:0.1.0-alpha .
-docker build -t ghcr.io/cloud-nullus/nullus-web:0.1.0-alpha -f web/Dockerfile web/
+# 1. 이미지 빌드 (values-dev.yaml 의 tag: "dev" 와 일치시킬 것)
+docker build -t ghcr.io/cloud-nullus/nullus/nullus-api:dev .
+docker build -t ghcr.io/cloud-nullus/nullus/nullus-web:dev -f web/Dockerfile web/
 
 # 2. kind에 로드
-kind load docker-image ghcr.io/cloud-nullus/nullus-api:0.1.0-alpha --name nullus-platform
-kind load docker-image ghcr.io/cloud-nullus/nullus-web:0.1.0-alpha --name nullus-platform
+kind load docker-image ghcr.io/cloud-nullus/nullus/nullus-api:dev --name nullus-platform
+kind load docker-image ghcr.io/cloud-nullus/nullus/nullus-web:dev --name nullus-platform
 
-# 3. Helm에서 pullPolicy=Never 설정
---set api.image.pullPolicy=Never
---set web.image.pullPolicy=Never
+# 3. 로컬 오버레이로 설치 (pullPolicy=Never 포함)
+helm upgrade --install nullus deploy/helm/nullus \
+  -f deploy/helm/nullus/values-dev.yaml
+
+# PostgreSQL 이미지도 kind 에 로드했다면
 --set postgresql.image.pullPolicy=Never
 ```
 
