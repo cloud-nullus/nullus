@@ -1,0 +1,157 @@
+# Harbor ↔ Keycloak SSO 스모크 테스트 오버레이
+# 사용법: docker compose -f docker-compose.dev.yaml -f docker-compose.sso-harbor.yaml up -d
+#
+# issuer 정합 전략 (docker-compose.sso.yaml 패턴 차용):
+#   1. KC_HOSTNAME_URL=http://localhost:8180 → Keycloak 토큰 iss 를 localhost:8180 고정
+#   2. harbor-core extra_hosts localhost→host-gateway → 컨테이너 안에서 localhost:8180 접근
+#   → KC iss, harbor OIDC endpoint, redirect_uri 모두 http://localhost:8180/http://localhost:8082 로 일치
+#
+# Harbor OIDC 구성은 docker-compose values 로 불가 (DB 저장) →
+#   smoke-sso-harbor.sh 가 기동 후 PUT /api/v2.0/configurations 로 oidc_auth 설정
+#
+# Harbor 접속: http://localhost:8082  (admin / Harbor12345)
+# Keycloak harbor client redirect_uri: http://localhost:8082/c/oidc/callback
+#
+# !! arm64 Mac 제약 !!
+#   goharbor/* 이미지는 amd64 전용이며 QEMU 에뮬레이션 하에서 Go 런타임 lfstack
+#   포인터 패킹 오류로 crash.  Rosetta 2 활성화(Docker Desktop → Settings →
+#   "Use Rosetta for x86_64/amd64 emulation") 후 재시도하거나 x86_64 호스트에서 실행.
+#   arm64 QEMU 환경에서는 smoke-sso-harbor.sh 가 KC-level config 검증으로 대체 보고.
+
+services:
+  # ── Keycloak: issuer 고정 (smoke-sso.yaml 동일 패턴) ─────────────────────────
+  keycloak:
+    environment:
+      KC_HOSTNAME_URL: "http://localhost:8180"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+
+  # ── Harbor 전용 PostgreSQL (arm64 네이티브) ───────────────────────────────────
+  harbor-db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root123
+      POSTGRES_DB: registry
+    volumes:
+      - harbor_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d registry"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Harbor 전용 Redis (arm64 네이티브) ───────────────────────────────────────
+  harbor-redis:
+    image: redis:7-alpine
+    volumes:
+      - harbor_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Docker Registry (amd64 → Rosetta/QEMU 에뮬레이션) ────────────────────────
+  registry:
+    image: goharbor/registry-photon:v2.11.0
+    platform: linux/amd64
+    volumes:
+      - ./deploy/sso-smoke/harbor/registry-config.yml:/etc/registry/config.yml:ro
+      - harbor_registry_data:/storage
+    depends_on:
+      harbor-redis:
+        condition: service_healthy
+
+  # ── Harbor Core (API + OIDC 처리, amd64 → Rosetta/QEMU 에뮬레이션) ───────────
+  # arm64 QEMU 에서 Go lfstack crash 가 발생하면 기동 불가 — Rosetta 필요
+  harbor-core:
+    image: goharbor/harbor-core:v2.11.0
+    platform: linux/amd64
+    extra_hosts:
+      - "localhost:host-gateway"
+    volumes:
+      - ./deploy/sso-smoke/harbor/app.conf:/etc/core/app.conf:ro
+      - ./deploy/sso-smoke/harbor/private_key.pem:/etc/core/private_key.pem:ro
+      - harbor_core_data:/data
+    environment:
+      CORE_SECRET: dev-core-secret-32chars-long-ok!!
+      HARBOR_ADMIN_PASSWORD: Harbor12345
+      DATABASE_TYPE: postgresql
+      POSTGRESQL_HOST: harbor-db
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: root123
+      POSTGRESQL_DATABASE: registry
+      POSTGRESQL_SSLMODE: disable
+      POSTGRESQL_MAX_OPEN_CONNS: "100"
+      POSTGRESQL_MAX_IDLE_CONNS: "50"
+      _REDIS_URL_CORE: "redis://harbor-redis:6379/0?idle_timeout_seconds=30"
+      _REDIS_URL_REG: "redis://harbor-redis:6379/1?idle_timeout_seconds=30"
+      REGISTRY_URL: "http://registry:5000"
+      REGISTRY_CREDENTIAL_USERNAME: harbor_registry_user
+      REGISTRY_CREDENTIAL_PASSWORD: harbor_registry_password
+      TOKEN_SERVICE_URL: "http://harbor-core:8080/service/token"
+      JOBSERVICE_URL: "http://harbor-core:8080"
+      CORE_URL: "http://harbor-core:8080"
+      PORTAL_URL: "http://harbor-portal:8080"
+      EXT_ENDPOINT: "http://localhost:8082"
+      LOG_LEVEL: info
+      CSRF_KEY: dev-csrf-key-exactly-32-bytes-ok
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      NO_PROXY: "harbor-core,harbor-portal,harbor-db,harbor-redis,registry,jobservice,127.0.0.1,localhost,.local"
+      WITH_TRIVY: "false"
+      WITH_CHARTMUSEUM: "false"
+      CHART_CACHE_DRIVER: redis
+      CFG_EXPIRATION: "5"
+      ADMIRAL_URL: "NA"
+      WITH_NOTARY: "false"
+      RELOAD_KEY: ""
+      SYNC_REGISTRY: "false"
+      PERMITTED_REGISTRY_TYPES_FOR_PROXY_CACHE: ""
+    depends_on:
+      harbor-db:
+        condition: service_healthy
+      harbor-redis:
+        condition: service_healthy
+      registry:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v2.0/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # ── Harbor Portal (Web UI, amd64 → Rosetta/QEMU 에뮬레이션) ─────────────────
+  harbor-portal:
+    image: goharbor/harbor-portal:v2.11.0
+    platform: linux/amd64
+    depends_on:
+      harbor-core:
+        condition: service_healthy
+
+  # ── Harbor Nginx (Front Proxy → 호스트 포트 8082, amd64 → Rosetta/QEMU) ───────
+  harbor-nginx:
+    image: goharbor/nginx-photon:v2.11.0
+    platform: linux/amd64
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./deploy/sso-smoke/harbor/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      harbor-core:
+        condition: service_healthy
+      harbor-portal:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v2.0/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  harbor_db_data:
+  harbor_redis_data:
+  harbor_registry_data:
+  harbor_core_data:

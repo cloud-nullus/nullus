@@ -1,0 +1,52 @@
+# SSO 스모크 테스트 오버레이
+# 사용법: docker compose -f docker-compose.dev.yaml -f docker-compose.sso.yaml up -d
+#
+# 핵심 issuer 정합 전략:
+#   1. KC_HOSTNAME_URL=http://localhost:8180 으로 Keycloak 토큰의 iss 를 localhost:8180 으로 고정
+#   2. Grafana 컨테이너에 extra_hosts localhost→host-gateway 로 localhost:8180 접근 가능하게 설정
+#   → 호스트 curl, Keycloak iss, Grafana 검증 URL 모두 http://localhost:8180 으로 일치
+
+services:
+  keycloak:
+    environment:
+      # 프론트엔드 issuer를 http://localhost:8180 으로 고정 (KC 24+ 지원)
+      KC_HOSTNAME_URL: "http://localhost:8180"
+      # start-dev 에서는 HTTPS 강제 없음; strict 모드 비활성화
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    # Grafana 컨테이너 안에서 localhost → Docker 호스트(8180) 로 라우팅
+    extra_hosts:
+      - "localhost:host-gateway"
+    environment:
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+      # 전역 자동 로그인 (구버전 호환)
+      GF_AUTH_OAUTH_AUTO_LOGIN: "true"
+      # generic_oauth 설정
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: "Keycloak"
+      GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "true"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "grafana"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: "${GRAFANA_CLIENT_SECRET:-grafana-dev-secret}"
+      GF_AUTH_GENERIC_OAUTH_SCOPES: "openid profile email"
+      # Grafana 컨테이너에서 localhost:8180 = Docker 호스트의 Keycloak
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: "http://localhost:8180/realms/nullus/protocol/openid-connect/auth"
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "http://localhost:8180/realms/nullus/protocol/openid-connect/token"
+      GF_AUTH_GENERIC_OAUTH_API_URL: "http://localhost:8180/realms/nullus/protocol/openid-connect/userinfo"
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(realm_access.roles[*], 'admin') && 'Admin' || 'Viewer'"
+      # 신규 사용자 자동 등록 허용
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+      # 익명 접근 비활성화 (auto_login 이 즉시 redirect 하게)
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_LOG_LEVEL: "debug"
+    depends_on:
+      - keycloak
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20

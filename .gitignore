@@ -54,3 +54,4 @@ airgap/helm/*.tgz.sha256
 
 # airgap 로컬 실행 로그/오케스트레이션 (커밋 금지)
 airgap/.runlog/
+scratch/

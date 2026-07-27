@@ -7,7 +7,7 @@
 #         (defaultGatewayBundleManifest / defaultEnvoyGatewayClassManifest)
 #       의 Gateway API 스킴을 airgap 환경에 1:1 재현한다.
 #
-#   - GatewayClass(envoy) + Gateway(*.<domain>:80) 생성
+#   - GatewayClass(envoy) + Gateway(*.<domain>:443, HTTPS TLS 종단) 생성
 #   - 클러스터에 실제 존재하는 서비스만 탐지하여 HTTPRoute 생성 (부분 설치 대응)
 #   - 마지막에 /etc/hosts 항목 + port-forward 명령 + 접근 도메인 목록 출력
 #
@@ -62,10 +62,10 @@ ROUTES=(
   "@|nullus|nullus-web|80"
   "api|nullus|nullus-api|8080"
   "argocd|nullus|argo-cd-argocd-server|80"
-  "harbor|nullus|harbor-portal|80"
+  "harbor|nullus|harbor|80"
   "minio|nullus|nullus-minio-console|9001"
   "opensearch|nullus|opensearch-cluster-master|9200"
-  "gitlab|gitlab|gitlab-webservice-default|8080"
+  "gitlab|gitlab|gitlab-webservice-default|8181"
   "grafana|nullus-monitoring|kps-grafana|80"
   "prometheus|nullus-monitoring|kps-kube-prometheus-stack-prometheus|9090"
   "keycloak|nullus-auth|keycloak|80"
@@ -111,7 +111,8 @@ spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 EOF
 
-  # 2) Gateway — 와일드카드 리스너 + 크로스 네임스페이스 허용(from: All)
+  # 2) Gateway — HTTPS:443 와일드카드 리스너 + 크로스 네임스페이스 허용(from: All)
+  #    TLS 종단: nullus-wildcard-tls Secret 참조. argocd-server 등 백엔드는 HTTP(insecure).
   kubectl get ns "$GATEWAY_NS" >/dev/null 2>&1 || kubectl create namespace "$GATEWAY_NS" >/dev/null
   apply_manifest <<EOF
 apiVersion: gateway.networking.k8s.io/v1
@@ -124,6 +125,27 @@ metadata:
 spec:
   gatewayClassName: ${GATEWAY_CLASS}
   listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.${ACCESS_DOMAIN}"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: nullus-wildcard-tls
+            namespace: ${GATEWAY_NS}
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-apex
+      protocol: HTTPS
+      port: 443
+      hostname: "${ACCESS_DOMAIN}"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: nullus-wildcard-tls
+            namespace: ${GATEWAY_NS}
     - name: http
       protocol: HTTP
       port: 80
@@ -140,6 +162,35 @@ spec:
           from: All
 EOF
   log_ok "GatewayClass + Gateway 적용 완료"
+
+  # 2b) HTTP to HTTPS redirect HTTPRoute
+  apply_manifest <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https-redirect
+  namespace: ${GATEWAY_NS}
+  labels:
+    nullus.io/stack-name: ${STACK_LABEL}
+spec:
+  parentRefs:
+    - name: ${GATEWAY_NAME}
+      namespace: ${GATEWAY_NS}
+      sectionName: http
+    - name: ${GATEWAY_NAME}
+      namespace: ${GATEWAY_NS}
+      sectionName: http-apex
+  hostnames:
+    - "${ACCESS_DOMAIN}"
+    - "*.${ACCESS_DOMAIN}"
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+EOF
+  log_ok "HTTP to HTTPS Redirect HTTPRoute 적용 완료"
 fi
 
 # 3) HTTPRoute — 존재하는 서비스만 (각 서비스 ns 에 co-locate)
@@ -168,6 +219,7 @@ spec:
   parentRefs:
     - name: ${GATEWAY_NAME}
       namespace: ${GATEWAY_NS}
+      sectionName: $( [[ "$sub" == "@" ]] && echo "https-apex" || echo "https" )
   hostnames:
     - ${host}
   rules:
@@ -213,7 +265,7 @@ if [[ ${#CREATED[@]} -eq 0 ]]; then
 else
   for entry in "${CREATED[@]}"; do
     IFS='|' read -r host ns svc port <<<"$entry"
-    printf "  http://%-28s -> %s/%s:%s\n" "${host}" "$ns" "$svc" "$port"
+    printf "  https://%-27s -> %s/%s:%s\n" "${host}" "$ns" "$svc" "$port"
   done
 
   echo ""
@@ -236,13 +288,13 @@ else
   echo " 2) Gateway 데이터플레인 포트포워딩 (별도 터미널 유지):"
   echo "------------------------------------------------------------"
   if [[ -n "$ENVOY_SVC" ]]; then
-    echo "  sudo kubectl port-forward -n ${GATEWAY_NS} svc/${ENVOY_SVC} 80:80"
+    echo "  sudo kubectl port-forward -n ${GATEWAY_NS} svc/${ENVOY_SVC} 8443:443"
   else
     echo "  # 데이터플레인 svc 탐지 실패 — 아래로 확인 후 port-forward:"
     echo "  kubectl get svc -n ${GATEWAY_NS} -l gateway.envoyproxy.io/owning-gateway-name=${GATEWAY_NAME}"
   fi
   echo ""
-  echo "  → 이후 브라우저: http://${ACCESS_DOMAIN}/ (Nullus 포털), http://argocd.${ACCESS_DOMAIN}/ 등"
+  echo "  → 이후 브라우저(자체서명 인증서 허용 후): https://${ACCESS_DOMAIN}/ (Nullus 포털), https://argocd.${ACCESS_DOMAIN}/ 등"
 fi
 echo "============================================================"
 

@@ -19,6 +19,15 @@ postgresql:
     image:
       registry: localhost:5001
       repository: bitnamilegacy/os-shell
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: keycloak.nullus.internal
+  - name: KC_HOSTNAME_PORT
+    value: "80"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HTTP_ENABLED
+    value: "true"
 production: false
 proxy: edge
 resources:

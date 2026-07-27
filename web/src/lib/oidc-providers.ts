@@ -68,6 +68,15 @@ export function getProviderConfig(): OIDCProviderConfig {
     clientId,
     scope: 'openid profile email',
     extractRoles: keycloakExtractRoles,
+    // Keycloak end-session: id_token_hint 또는 client_id + post_logout_redirect_uri 필요
+    // (client 의 post.logout.redirect.uris 에 redirectUri 가 등록돼 있어야 함)
+    getLogoutUrl: (idToken, redirectUri) => {
+      const url = new URL(`${authority}/protocol/openid-connect/logout`)
+      url.searchParams.set('client_id', clientId)
+      url.searchParams.set('post_logout_redirect_uri', redirectUri)
+      if (idToken) url.searchParams.set('id_token_hint', idToken)
+      return url.toString()
+    },
   }
 }
 

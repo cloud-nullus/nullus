@@ -2,19 +2,19 @@
 # =============================================================================
 # 25-port-forward.sh — Envoy Gateway 데이터플레인 포트포워딩 (외부 접근 진입점)
 # =============================================================================
-# 용도: kind 에는 실 LoadBalancer/포트맵(80/443)이 없으므로, envoy 게이트웨이
+# 용도: kind 에는 실 LoadBalancer/포트맵(443)이 없으므로, envoy 게이트웨이
 #       데이터플레인 서비스를 로컬 포트로 포워딩해 모든 *.nullus.internal /
 #       nullus.internal 도메인 접근의 단일 진입점을 만든다.
 #       (Gateway 가 호스트네임으로 분기하므로 포워딩은 1개면 충분하다.)
 #
 # 사용법:
-#   ./25-port-forward.sh                # 127.0.0.1:8080 → gateway:80 (비특권, sudo 불필요)
-#   PORT=80 ./25-port-forward.sh        # 127.0.0.1:80 (특권포트 → sudo 자동 사용)
+#   ./25-port-forward.sh                # 127.0.0.1:8443 → gateway:443 (비특권, sudo 불필요)
+#   PORT=443 ./25-port-forward.sh       # 127.0.0.1:443 (특권포트 → sudo 자동 사용)
 #   ADDRESS=0.0.0.0 ./25-port-forward.sh  # 외부 인터페이스에도 바인드(원격 접근)
 #   BACKGROUND=1 ./25-port-forward.sh   # 백그라운드 실행(.runlog 로그)
 #
 # 환경 변수:
-#   PORT        로컬 포트 (기본: 8080). 1024 미만이면 sudo 사용.
+#   PORT        로컬 포트 (기본: 8443). 1024 미만이면 sudo 사용.
 #   ADDRESS     바인드 주소 (기본: 127.0.0.1)
 #   GATEWAY_NS  Gateway 네임스페이스 (기본: nullus)
 #   GATEWAY_NAME Gateway 이름 (기본: nullus-gateway)
@@ -35,7 +35,7 @@ log_warn() { printf '%s[WARN]%s %s\n' "$CL_WARN" "$CL_RST" "$*" >&2; }
 log_err()  { printf '%s[ERR ]%s %s\n' "$CL_ERR"  "$CL_RST" "$*" >&2; }
 log_ok()   { printf '%s[ OK ]%s %s\n' "$CL_OK"   "$CL_RST" "$*" >&2; }
 
-PORT="${PORT:-8080}"
+PORT="${PORT:-8443}"
 ADDRESS="${ADDRESS:-127.0.0.1}"
 GATEWAY_NS="${GATEWAY_NS:-nullus}"
 GATEWAY_NAME="${GATEWAY_NAME:-nullus-gateway}"
@@ -62,19 +62,20 @@ if [[ "$PORT" -lt 1024 && "$(id -u)" != "0" ]]; then
 fi
 
 # 기존 동일 포워딩 정리
-pkill -f "port-forward.*${ENVOY_SVC}.*${PORT}:80" 2>/dev/null || true
+pkill -f "port-forward.*${ENVOY_SVC}.*${PORT}:443" 2>/dev/null || true
 
-PF_CMD=(kubectl port-forward -n "$GATEWAY_NS" "svc/${ENVOY_SVC}" "${PORT}:80" --address "$ADDRESS")
+PF_CMD=(kubectl port-forward -n "$GATEWAY_NS" "svc/${ENVOY_SVC}" "${PORT}:443" --address "$ADDRESS")
 
 # 접근 URL 안내
-suffix=""; [[ "$PORT" != "80" ]] && suffix=":${PORT}"
+suffix=""; [[ "$PORT" != "443" ]] && suffix=":${PORT}"
 echo ""
 echo "============================================================"
-echo " 외부 접근 진입점: ${ADDRESS}:${PORT} → ${ENVOY_SVC}:80"
+echo " 외부 접근 진입점: ${ADDRESS}:${PORT} → ${ENVOY_SVC}:443 (HTTPS)"
 echo "============================================================"
-echo "  포털 : http://nullus.internal${suffix}/"
-echo "  ArgoCD: http://argocd.nullus.internal${suffix}/"
+echo "  포털 : https://nullus.internal${suffix}/"
+echo "  ArgoCD: https://argocd.nullus.internal${suffix}/"
 echo "  (그 외 등록된 *.nullus.internal 도메인 모두 동일 진입점)"
+echo "  ※ 자체서명 인증서: 브라우저에서 최초 접속 시 예외 허용 필요"
 echo "============================================================"
 
 if [[ "$BACKGROUND" == "1" ]]; then
