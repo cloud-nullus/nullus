@@ -4,8 +4,8 @@ imagePullSecrets: []
 api:
   replicaCount: 2
   image:
-    repository: ghcr.io/cloud-nullus/nullus-api
-    tag: "0.1.0-alpha"
+    repository: ghcr.io/cloud-nullus/nullus/nullus-api
+    tag: ""   # 비우면 Chart.AppVersion 으로 폴백. 로컬 빌드는 values-dev.yaml 사용
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -15,8 +15,8 @@ api:
 web:
   replicaCount: 2
   image:
-    repository: ghcr.io/cloud-nullus/nullus-web
-    tag: "0.1.0-alpha"
+    repository: ghcr.io/cloud-nullus/nullus/nullus-web
+    tag: ""   # 비우면 Chart.AppVersion 으로 폴백. 로컬 빌드는 values-dev.yaml 사용
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
