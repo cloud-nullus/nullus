@@ -329,6 +329,9 @@ func main() {
 		0,
 		slog.Default(),
 		rotation.NewRouterReissuer(),
+	).WithRestarter(
+		// 회전 후 반영: 소비자가 기동 시점에만 설정을 읽는 경우 rolling restart 한다.
+		adminrepo.NewClusterWorkloadRestarter(kubeconfigProvider),
 	).Start(rotationCtx)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
