@@ -154,7 +154,7 @@ func TestNewSSOProvisionerWithDomain(t *testing.T) {
 func TestProvisionSSO_UnknownStep(t *testing.T) {
 	p := NewSSOProvisioner(nil)
 	// ProvisionSSO should return error before reaching kc when spec is unknown
-	err := p.ProvisionSSO(t.Context(), "installing_unknown_tool")
+	err := p.ProvisionSSO(t.Context(), "installing_unknown_tool", "test-secret")
 	if err == nil {
 		t.Fatal("expected error for unknown step, got nil")
 	}

@@ -171,6 +171,10 @@ func TestSSOProvisioner_ProvisionSSO_UsesStepMapping(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/realms/master/protocol/openid-connect/token":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"access_token":"token-1","expires_in":300}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/admin/realms/nullus/clients":
+			// upsert 는 기존 클라이언트 존재 여부를 먼저 확인한다.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/admin/realms/nullus/clients":
 			body, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
@@ -185,7 +189,7 @@ func TestSSOProvisioner_ProvisionSSO_UsesStepMapping(t *testing.T) {
 	kc := NewKeycloakClient(server.URL, "nullus", "admin", "admin")
 	p := NewSSOProvisioner(kc)
 
-	err := p.ProvisionSSO(context.Background(), "installing_grafana")
+	err := p.ProvisionSSO(context.Background(), "installing_grafana", "test-secret")
 	require.NoError(t, err)
 	require.Contains(t, receivedPayload, `"clientId":"grafana"`)
 	require.Contains(t, receivedPayload, `"name":"Grafana"`)
@@ -228,7 +232,7 @@ func TestSSOProvisioner_UnknownStep_ReturnsErrorOnProvision(t *testing.T) {
 	kc := NewKeycloakClient("http://127.0.0.1:1", "nullus", "admin", "admin")
 	p := NewSSOProvisioner(kc)
 
-	err := p.ProvisionSSO(context.Background(), "installing_unknown_tool")
+	err := p.ProvisionSSO(context.Background(), "installing_unknown_tool", "test-secret")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unknown SSO tool")
 	require.NoError(t, p.DeprovisionSSO(context.Background(), "installing_unknown_tool"))

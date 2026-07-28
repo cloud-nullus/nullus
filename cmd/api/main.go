@@ -19,6 +19,7 @@ import (
 	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
+	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
@@ -117,6 +118,18 @@ func main() {
 	memStreamer := logadapter.NewMemoryStreamer()
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
+	// 플랫폼 Keycloak 에 OSS OIDC 클라이언트를 등록하는 팩토리.
+	// KEYCLOAK_URL 이 없으면 SSO 프로비저닝은 건너뛴다 (BYO / 미사용 모드).
+	var ssoFactory stackport.SSOProvisionerFactory
+	if kcURL := strings.TrimSpace(os.Getenv("KEYCLOAK_URL")); kcURL != "" {
+		ssoFactory = keycloakadapter.NewStackSSOFactory(keycloakadapter.NewKeycloakClient(
+			kcURL,
+			envOrDefault("KEYCLOAK_REALM", "nullus"),
+			envOrDefault("KEYCLOAK_ADMIN_USER", "admin"),
+			os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
+		))
+	}
+
 	// 스택별 OpenBao 해석기. OpenBao 는 스택마다 배포되므로 주소가 전역 하나일 수 없다.
 	// 대상 클러스터의 kubeconfig 로 Kubernetes Auth 기반 Store 를 만든다.
 	secretRouter.WithResolver(adminrepo.NewStackSecretResolver(pool, kubeconfigProvider))
@@ -129,7 +142,12 @@ func main() {
 		stackuc.WithSecretRouter(secretRouter),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			return stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo))
+			orch := stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo))
+			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
+			if ssoFactory != nil {
+				orch.SetSSOProvisionerFactory(ssoFactory)
+			}
+			return orch
 		}),
 	)
 	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo, stackuc.WithManageHistory(manageHistoryUC))

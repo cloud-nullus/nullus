@@ -73,3 +73,20 @@ ingress:
         - path: /
           pathType: Prefix
   tls: []
+
+# ---------------------------------------------------------------------------
+# Keycloak (플랫폼 IdP)
+#
+# 스택마다 IdP 를 띄우지 않고 플랫폼에 하나를 둔다. 스택 설치기는 이 Keycloak
+# 에 OSS 별 OIDC 클라이언트를 등록만 한다.
+#
+# 외부 IdP 를 쓰는 환경에서는 enabled=false 로 두고 issuer 를 직접 지정한다(BYO).
+# ---------------------------------------------------------------------------
+keycloak:
+  enabled: true
+  auth:
+    adminUser: admin
+    # 운영에서는 반드시 existingSecret 으로 교체한다.
+    existingSecret: ""
+  production: false
+  proxy: edge
