@@ -455,6 +455,8 @@ export function toCreateStackBody(req: CreateStackRequest) {
       storage: req.storage && backendStoragePlanMode
         ? {
             plan_mode: backendStoragePlanMode,
+            // 빈 문자열은 "클러스터 기본 StorageClass 사용"이므로 전송하지 않는다.
+            storage_class: req.storage.storageClass?.trim() || undefined,
             database: {
               mode: toBackendStorageTargetMode(req.storage.database.mode),
               existing_ref: req.storage.database.existingRef,

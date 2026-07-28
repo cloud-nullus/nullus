@@ -21,7 +21,7 @@ import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-s
 import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates, useTestStorageConnection } from '../api/stack-api'
 import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useUpdateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
-import { useClusterNamespaces } from '../../admin/api/admin-api'
+import { useClusterNamespaces, useClusterStorageClasses } from '../../admin/api/admin-api'
 import { findPlatformCluster } from '../../admin/utils/cluster-selection'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -353,6 +353,14 @@ export function StackInstallPage() {
   const { data: stackListData } = useStacks()
   const { data: compatibilityMatrixData } = useCompatibilityMatrix()
   const { data: namespaces } = useClusterNamespaces(draft.clusterId ?? '')
+  const { data: storageClasses } = useClusterStorageClasses(draft.clusterId ?? '')
+  // 기본 StorageClass 가 하나도 없으면 명시적 선택을 강제한다.
+  const storageClassSelectionRequired =
+    Array.isArray(storageClasses) && storageClasses.length > 0 && !storageClasses.some((sc) => sc.is_default)
+  // Retain 정책은 스택 삭제 후에도 볼륨이 남으므로 경고 대상이다.
+  const selectedStorageClassRetains = (storageClasses ?? []).some(
+    (sc) => sc.name === draft.storage.storageClass && sc.reclaim_policy === 'Retain'
+  )
   const [createNewNs, setCreateNewNs] = useState(false)
   const [selectedClusterId, setSelectedClusterId] = useState(draft.clusterId ?? '')
   const [activeTab, setLocalTab] = useState<InstallTab>(draft.activeTab)
@@ -3305,6 +3313,53 @@ export function StackInstallPage() {
                       </button>
                     )
                   })}
+                </div>
+
+                {/*
+                  StorageClass 선택. 기본 SC 가 없는 클러스터에서 미선택 상태로 진행하면
+                  PVC 가 Pending 에 머물러 설치가 멈추므로, 실패를 설치 전으로 앞당긴다.
+                */}
+                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">StorageClass</h3>
+                    {storageClassSelectionRequired && !draft.storage.storageClass && (
+                      <span className="rounded bg-[rgba(239,68,68,0.15)] px-2 py-0.5 text-[11px] font-semibold text-[#fca5a5]">
+                        선택 필요
+                      </span>
+                    )}
+                  </div>
+                  <p className="mb-2 mt-1 text-xs text-[var(--color-text-secondary)]">
+                    스택이 생성하는 모든 PVC가 사용할 StorageClass입니다.
+                  </p>
+                  <select
+                    value={draft.storage.storageClass}
+                    onChange={(e) => updateStorage({ storageClass: e.target.value })}
+                    className="w-full rounded-md border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                  >
+                    <option value="">
+                      {storageClassSelectionRequired
+                        ? '— StorageClass를 선택하세요 —'
+                        : '클러스터 기본 StorageClass 사용'}
+                    </option>
+                    {(storageClasses ?? []).map((sc) => (
+                      <option key={sc.name} value={sc.name}>
+                        {sc.name}
+                        {sc.is_default ? ' (기본)' : ''} · {sc.provisioner}
+                      </option>
+                    ))}
+                  </select>
+                  {storageClassSelectionRequired && (
+                    <p className="mb-0 mt-2 text-xs text-[#fca5a5]">
+                      이 클러스터에는 기본 StorageClass가 없습니다. 선택하지 않으면 PVC가 Pending 상태로 남아
+                      설치가 진행되지 않습니다.
+                    </p>
+                  )}
+                  {selectedStorageClassRetains && (
+                    <p className="mb-0 mt-2 text-xs text-[#fcd34d]">
+                      이 StorageClass는 reclaimPolicy가 Retain입니다. 스택을 삭제해도 볼륨이 남으므로 완전 파기가
+                      필요하면 PV를 직접 확인해야 합니다.
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

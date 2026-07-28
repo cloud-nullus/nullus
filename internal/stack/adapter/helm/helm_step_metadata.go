@@ -95,9 +95,24 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Wait:      false,
 		}, true
 	case "installing_openbao":
+		// 공식 OpenBao 차트를 사용한다. 차트가 StatefulSet·PVC·ServiceAccount 와
+		// system:auth-delegator 바인딩까지 제공하므로 자체 매니페스트가 필요 없다.
+		// Values 는 선택된 StorageClass 를 반영해야 하므로 valuesForStep 에서 채운다.
 		return ChartSpec{
 			ReleaseName: "openbao",
-			Values:      DefaultValues("installing_openbao"),
+			ChartName:   "openbao",
+			RepoURL:     "https://openbao.github.io/openbao-helm",
+			Version:     "0.28.4",
+			Wait:        false,
+		}, true
+	case "installing_external_secrets":
+		// 공식 ESO 차트. OpenBao → K8s Secret 복제를 표준 오퍼레이터에 위임한다.
+		return ChartSpec{
+			ReleaseName: "external-secrets",
+			ChartName:   ESOChartName,
+			RepoURL:     ESOChartRepo,
+			Version:     ESOChartVersion,
+			Values:      externalSecretsValues(),
 			Wait:        false,
 		}, true
 	case "installing_argocd":

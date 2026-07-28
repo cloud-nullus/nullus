@@ -79,20 +79,12 @@ type objectStorageTarget struct {
 func (o *Orchestrator) resolveObjectStorageTarget(ctx context.Context, namespace string) (objectStorageTarget, error) {
 	cfg := o.currentStackConfig()
 	if cfg == nil || cfg.Storage == nil {
-		return objectStorageTarget{
-			Endpoint:  fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace),
-			AccessKey: "nullus-admin",
-			SecretKey: "nullus-minio-secret",
-		}, nil
+		return o.internalMinIOTarget(ctx, namespace)
 	}
 
 	target := cfg.Storage.ObjectStorage
 	if strings.TrimSpace(target.Mode) != "existing-connect" {
-		return objectStorageTarget{
-			Endpoint:  fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace),
-			AccessKey: "nullus-admin",
-			SecretKey: "nullus-minio-secret",
-		}, nil
+		return o.internalMinIOTarget(ctx, namespace)
 	}
 
 	endpoint := strings.TrimSpace(target.Endpoint)
@@ -189,6 +181,46 @@ func decodeBase64String(value string) (string, error) {
 	decoded, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
 		return "", err
+	}
+	return string(decoded), nil
+}
+
+// internalMinIOTarget 은 내장 MinIO 접속 정보를 만든다.
+//
+// 자격증명은 하드코딩하지 않고 프로비저닝된 Secret 에서 읽는다. ESO 가 그
+// Secret 의 소유자이며 원천은 OpenBao 다.
+func (o *Orchestrator) internalMinIOTarget(ctx context.Context, namespace string) (objectStorageTarget, error) {
+	target := objectStorageTarget{
+		Endpoint:  fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace),
+		AccessKey: MinIORootUser,
+	}
+
+	secretKey, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, "rootPassword")
+	if err != nil {
+		return objectStorageTarget{}, fmt.Errorf("MinIO 자격증명을 읽지 못했습니다 (%s): %w", ProvisionedMinIOSecret, err)
+	}
+	target.SecretKey = secretKey
+
+	if user, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, "rootUser"); err == nil && strings.TrimSpace(user) != "" {
+		target.AccessKey = user
+	}
+	return target, nil
+}
+
+// readSecretValue 는 Kubernetes Secret 의 값 하나를 디코드해 돌려준다.
+func (o *Orchestrator) readSecretValue(ctx context.Context, namespace, name, key string) (string, error) {
+	out, err := o.runKubectl(ctx, "get", "secret", name, "-n", namespace,
+		"-o", fmt.Sprintf("jsonpath={.data.%s}", key))
+	if err != nil {
+		return "", err
+	}
+	encoded := strings.TrimSpace(string(out))
+	if encoded == "" {
+		return "", fmt.Errorf("secret %s 에 %s 키가 없습니다", name, key)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", fmt.Errorf("secret %s/%s 디코드 실패: %w", name, key, err)
 	}
 	return string(decoded), nil
 }

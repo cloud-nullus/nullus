@@ -21,6 +21,7 @@ import (
 
 var stackHelmReleaseNames = []string{
 	"cert-manager",
+	"openbao",
 	"nullus-postgresql",
 	"postgresql",
 	"nullus-minio",
@@ -60,6 +61,12 @@ var legacyReleaseArtifactExactNames = map[string]struct{}{
 	"opensearch-cluster-master-opensearch-cluster-master-0": {},
 	"redis-data-gitlab-redis-master-0":                      {},
 	"repo-data-gitlab-gitaly-0":                             {},
+	// OpenBao 금고 데이터와 unseal key. 반드시 함께 삭제해야 한다 —
+	// 한쪽만 남으면 재설치 시 init 이 "이미 초기화됨"으로 건너뛰는데
+	// 금고를 열 키가 없어 영구 봉인 상태가 된다.
+	"data-openbao-0":      {},
+	"openbao-unseal-keys": {},
+	"openbao-init":        {},
 }
 
 var legacyReleaseArtifactPrefixes = []string{
@@ -154,6 +161,10 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	gatewayNames := uc.collectGatewayNames(ctx, kubeconfig, stack)
 	gatewayNames = uc.mergeGatewayNames(gatewayNames, uc.collectGatewayNamesFromManagedResources(ctx, kubeconfig, stack))
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
+	// ESO 커스텀 리소스를 오퍼레이터보다 먼저 지운다.
+	// 순서가 뒤바뀌면 ExternalSecret 의 finalizer 를 처리할 컨트롤러가 사라져
+	// 네임스페이스와 CRD 가 영구 Terminating 상태로 남는다.
+	uc.bestEffortDeleteExternalSecretResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortUninstall(ctx, kubeconfig, stack.Namespace, stackID)
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
@@ -912,4 +923,36 @@ func isStackNotFoundError(err error) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
+// externalSecretResourceKinds 는 ESO 오퍼레이터 제거 전에 먼저 지워야 하는
+// 커스텀 리소스 종류다.
+var externalSecretResourceKinds = []string{
+	"externalsecrets.external-secrets.io",
+	"secretstores.external-secrets.io",
+}
+
+// bestEffortDeleteExternalSecretResources 는 ESO 커스텀 리소스를 먼저 정리한다.
+//
+// ExternalSecret 에는 finalizer 가 붙어 있어 컨트롤러가 있어야 삭제가 끝난다.
+// 오퍼레이터를 먼저 uninstall 하면 finalizer 를 처리할 주체가 사라져
+// 네임스페이스가 Terminating 에서 벗어나지 못하고, CRD 도 함께 묶인다.
+// 그 상태에서는 같은 클러스터에 스택을 다시 설치할 수 없다.
+func (uc *DeleteStack) bestEffortDeleteExternalSecretResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil {
+		return
+	}
+	namespace := strings.TrimSpace(stack.Namespace)
+	if namespace == "" {
+		return
+	}
+
+	for _, kind := range externalSecretResourceKinds {
+		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", kind,
+			"-n", namespace, "--all", "--ignore-not-found", "--timeout=60s"); err != nil {
+			slog.Warn("external-secrets 리소스 삭제 경고", "kind", kind, "namespace", namespace, "error", err)
+			uc.emit(ctx, stackID, "deleting_external_secrets", "warn",
+				fmt.Sprintf("%s 삭제 경고 (%s): %v", kind, namespace, err))
+		}
+	}
 }

@@ -15,6 +15,8 @@ import (
 	adminhandler "github.com/cloud-nullus/draft/internal/admin/adapter/handler"
 	adminkube "github.com/cloud-nullus/draft/internal/admin/adapter/kube"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
+	"github.com/cloud-nullus/draft/internal/admin/rotation"
+	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
@@ -89,6 +91,8 @@ func main() {
 	auditLogger := audit.NewAuditLogger(pool)
 
 	secretRouter := secrets.NewRouter()
+	// 로컬 개발 전용 fallback: 고정 주소/토큰으로 전역 등록한다.
+	// 운영 경로는 아래 resolver 가 스택별로 Kubernetes Auth Store 를 만든다.
 	if openbaoAddr := strings.TrimSpace(os.Getenv("OPENBAO_ADDR")); openbaoAddr != "" {
 		openbaoToken := strings.TrimSpace(os.Getenv("OPENBAO_TOKEN"))
 		if openbaoToken != "" {
@@ -112,6 +116,10 @@ func main() {
 	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
 	memStreamer := logadapter.NewMemoryStreamer()
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
+
+	// 스택별 OpenBao 해석기. OpenBao 는 스택마다 배포되므로 주소가 전역 하나일 수 없다.
+	// 대상 클러스터의 kubeconfig 로 Kubernetes Auth 기반 Store 를 만든다.
+	secretRouter.WithResolver(adminrepo.NewStackSecretResolver(pool, kubeconfigProvider))
 
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
@@ -291,6 +299,20 @@ func main() {
 		})
 	})
 
+	// 토큰 회전 스케줄러 기동.
+	// 그동안 이 스케줄러는 정의만 되어 있고 어디서도 호출되지 않아 실제로는
+	// 회전이 한 번도 일어나지 않았다.
+	rotationCtx, stopRotation := context.WithCancel(context.Background())
+	defer stopRotation()
+	go adminscheduler.NewTokenRotationScheduler(
+		pool,
+		secretRouter,
+		tokenRotationInterval(),
+		0,
+		slog.Default(),
+		rotation.NewRouterReissuer(),
+	).Start(rotationCtx)
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
 		slog.Info("starting server", "addr", addr)
@@ -312,6 +334,25 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 	}
 	slog.Info("server stopped")
+}
+
+// tokenRotationInterval 은 회전 스케줄러의 점검 주기다.
+// TOKEN_ROTATION_INTERVAL 로 재정의할 수 있으며 기본값은 5분이다.
+// envOrDefault 는 환경변수 값이 비어 있으면 기본값을 돌려준다.
+func envOrDefault(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func tokenRotationInterval() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("TOKEN_ROTATION_INTERVAL")); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	return 5 * time.Minute
 }
 
 func tokenSourceEnvironment(mode string) string {

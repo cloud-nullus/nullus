@@ -117,7 +117,6 @@ func (h *HelmInstaller) installAirgapOCI(ctx context.Context, req port.HelmInsta
 	}, nil
 }
 
-
 func (h *HelmInstaller) Install(ctx context.Context, req port.HelmInstallRequest) (*port.HelmInstallResult, error) {
 	if airgapOCIRegistry() != "" {
 		return h.installAirgapOCI(ctx, req)

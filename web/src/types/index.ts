@@ -182,6 +182,8 @@ export interface StackStorageInput {
   planMode: StoragePlanMode;
   database: StorageTargetInput;
   objectStorage: StorageTargetInput;
+  /** 스택이 만드는 모든 PVC 가 사용할 StorageClass. 빈 값은 클러스터 기본값 사용 */
+  storageClass?: string;
 }
 
 export interface AccessDomainTlsInput {

@@ -65,11 +65,17 @@ func DefaultValues(stepName string) map[string]any {
 	case "installing_postgresql":
 		return map[string]any{
 			"architecture": "standalone",
+			// 비밀번호는 values 에 넣지 않는다. provisioning_secrets 가 생성해
+			// OpenBao 에 기록하고 ESO 가 복제한 Secret 을 참조한다.
 			"auth": map[string]any{
-				"username":         "gitlab",
-				"password":         "nullus-gitlab-password", // #nosec G101 -- default Helm value, expected to be overridden by operator
-				"database":         "gitlabhq_production",
-				"postgresPassword": "nullus-postgres-admin", // #nosec G101 -- default Helm value, expected to be overridden by operator
+				"username":       "gitlab",
+				"database":       "gitlabhq_production",
+				"existingSecret": ProvisionedPostgresSecret,
+				"secretKeys": map[string]any{
+					"userPasswordKey":        "password",
+					"adminPasswordKey":       "postgres-password",
+					"replicationPasswordKey": "replication-password",
+				},
 			},
 			"primary": map[string]any{
 				"resources": map[string]any{
@@ -90,9 +96,9 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_minio":
 		return map[string]any{
-			"mode":         "standalone",
-			"rootUser":     "nullus-admin",
-			"rootPassword": "nullus-minio-secret", // #nosec G101 -- default Helm value, expected to be overridden by operator
+			"mode": "standalone",
+			// rootUser/rootPassword 대신 프로비저닝된 Secret 을 참조한다.
+			"existingSecret": ProvisionedMinIOSecret,
 			"ingress": map[string]any{
 				"enabled": false,
 			},
