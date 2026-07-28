@@ -817,6 +817,46 @@ context: gke_project_zone_cluster
 
 ---
 
+#### GET /api/v1/admin/clusters/:id/storage-classes
+
+클러스터 StorageClass 목록 조회
+
+설치 마법사에서 스택 PVC가 사용할 StorageClass를 선택하기 위해 사용합니다. 선택값은 `StackConfig.Storage.StorageClass`에 저장됩니다.
+
+- **릴리스**: Alpha
+- **인증**: 필요
+- **권한**: Admin, DevOps Engineer
+
+**응답** (`200 OK`):
+```json
+{
+  "data": [
+    {
+      "name": "standard",
+      "provisioner": "rancher.io/local-path",
+      "is_default": true,
+      "reclaim_policy": "Delete",
+      "volume_binding_mode": "WaitForFirstConsumer"
+    },
+    {
+      "name": "nfs-client",
+      "provisioner": "cluster.local/nfs-subdir-external-provisioner",
+      "is_default": false,
+      "reclaim_policy": "Retain",
+      "volume_binding_mode": "Immediate"
+    }
+  ]
+}
+```
+
+**UI 처리 규칙**:
+
+- `is_default: true`인 항목을 기본 선택합니다
+- 기본 StorageClass가 하나도 없으면 선택을 필수로 강제합니다 (미선택 시 PVC가 Pending에 머물러 설치가 정지)
+- `reclaim_policy: "Retain"` 선택 시 스택 삭제 후에도 볼륨이 잔존함을 안내합니다
+
+---
+
 ### 6.4 Stack 모듈
 
 DevSecOps Stack 설정(노코드 UI 5단계 워크플로우) 관리를 담당합니다.
@@ -2785,6 +2825,7 @@ components:
 | 11 | PATCH | `/api/v1/admin/clusters/:id` | 클러스터 수정 | Alpha |
 | 12 | DELETE | `/api/v1/admin/clusters/:id` | 클러스터 삭제 | Alpha |
 | 13 | POST | `/api/v1/admin/clusters/:id/verify` | 연결 검증 | Alpha |
+| 13-1 | GET | `/api/v1/admin/clusters/:id/storage-classes` | StorageClass 목록 | Alpha |
 | 14 | GET | `/api/v1/admin/known-issues` | Known Issues 목록 | Alpha |
 | 15 | GET | `/api/v1/admin/audit-logs` | 감사 로그 조회 | Alpha |
 | 16 | GET | `/api/v1/admin/notifications/configs` | 알림 설정 목록 | Alpha |

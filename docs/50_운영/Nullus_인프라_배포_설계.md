@@ -1324,19 +1324,38 @@ kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
 | 민감 정보 | OpenBao + (필요 시) Secret 파생 주입 | 비밀번호, API 키, 암호화 키 |
 | Kubeconfig | OpenBao 키로 AES-256 암호화 후 DB | 사용자 등록 클러스터 정보 |
 
-### 8.5 OpenBao 연계 배포 순서 (신규)
+### 8.5 OpenBao 연계 배포 순서
 
-스택 배포 시 비밀관리 평면을 먼저 준비합니다.
+스택 배포 시 비밀관리 평면을 먼저 준비합니다. 상세 설계는 `OpenBao_시크릿_평면_구축_설계.md`를 따릅니다.
 
-1. Phase A-0: OpenBao 배포 및 health check
+1. Phase A-0: OpenBao 배포 → 초기화(init) → auto-unseal → 인증/정책 부트스트랩 → health check
 2. Phase A: Storage/DB/cert-manager
-3. Phase B: 플랫폼 앱 배포
-4. Phase C: OIDC/Webhook/ServiceMonitor 연동
+3. Phase A-1: External Secrets Operator 설치 및 시크릿 프로비저닝
+4. Phase B: 플랫폼 앱 배포 (`existingSecret` 참조)
+5. Phase C: OIDC/Webhook/ServiceMonitor 연동
 
 연동 규칙:
 
 - OIDC client secret, webhook token, registry credential은 OpenBao 경유로만 주입
 - values 파일/로그/에러 메시지에 원문 시크릿 노출 금지
+- 비밀번호는 Nullus가 생성해 OpenBao에 먼저 기록하고, Helm 차트는 파생된 K8s Secret을 `existingSecret`으로 참조합니다. values에 원문을 직접 넣지 않습니다
+
+### 8.6 Unseal Key 보관 정책 및 보안 트레이드오프
+
+OpenBao는 재시작 시 봉인(sealed) 상태로 기동하며, 개방하려면 unseal key가 필요합니다. Nullus는 온프레미스 설치를 기본 시나리오로 하므로 **외부 KMS(AWS/GCP KMS, Transit)를 전제하지 않습니다.** 대신 unseal key를 대상 클러스터의 Kubernetes Secret(`openbao-unseal-keys`)에 보관하고, OpenBao 파드 내 사이드카가 자동으로 개방합니다.
+
+> ⚠️ **트레이드오프 고지**
+>
+> 대상 클러스터가 침해되면 `openbao-unseal-keys` Secret도 함께 노출되어 금고가 열릴 수 있습니다. 이는 KMS 인프라 없이 온프레미스 설치를 지원하기 위해 감수한 선택입니다.
+>
+> 필수 완화 조치:
+> - `openbao-unseal-keys` Secret에 대한 RBAC를 `resourceNames` 단위로 제한합니다
+> - 네임스페이스 전체 Secret read 권한을 가진 주체를 만들지 않습니다
+> - 설치 시 1회 표시되는 unseal key와 root token을 **오프라인에 백업**합니다. 분실 시 금고를 복구할 수 없습니다
+>
+> KMS / Transit 기반 auto-unseal은 후속 옵션으로 제공 예정입니다.
+
+Nullus 컨트롤 플레인은 unseal key를 저장하지 않습니다. 설치 완료 시점에 1회 표시·다운로드만 제공하며, 조회 사실은 audit 로그에 기록됩니다.
 
 ---
 
