@@ -32,7 +32,8 @@ func (r *PostgresTokenSourceRegistry) Upsert(ctx context.Context, input port.Tok
 
 	const q = `
 		INSERT INTO token_sources (org_id, module, provider, path, token_type, status, next_check_at, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, now() + interval '24 hours', jsonb_build_object('secret_manager', $7::text))
+		VALUES ($1, $2, $3, $4, $5, $6, now() + interval '24 hours',
+			jsonb_build_object('secret_manager', $7::text, 'cluster_id', $8::text, 'namespace', $9::text))
 		ON CONFLICT (org_id, provider, path) WHERE deleted_at IS NULL
 		DO UPDATE SET
 			module = EXCLUDED.module,
@@ -41,6 +42,7 @@ func (r *PostgresTokenSourceRegistry) Upsert(ctx context.Context, input port.Tok
 			metadata = EXCLUDED.metadata,
 			next_check_at = EXCLUDED.next_check_at,
 			updated_at = now()`
-	_, err := r.pool.Exec(ctx, q, input.OrgID, input.Module, input.Provider, input.Path, input.TokenType, input.Status, manager)
+	_, err := r.pool.Exec(ctx, q, input.OrgID, input.Module, input.Provider, input.Path,
+		input.TokenType, input.Status, manager, input.ClusterID, input.Namespace)
 	return err
 }

@@ -25,6 +25,22 @@ type TokenRotationScheduler struct {
 	logger     *slog.Logger
 	inFlight   atomic.Bool
 	reissuer   rotation.Reissuer
+	// restarter 는 회전 후 소비자를 rolling restart 한다.
+	// nil 이면 반영 단계를 건너뛴다 (로컬/테스트).
+	restarter RotationRestarter
+}
+
+// RotationRestarter 는 회전 성공 후 소비자 재시작을 담당한다.
+type RotationRestarter interface {
+	RestartForProvider(ctx context.Context, clusterID, namespace, provider string) error
+}
+
+// WithRestarter 는 회전 후 반영 단계를 활성화한다.
+func (s *TokenRotationScheduler) WithRestarter(r RotationRestarter) *TokenRotationScheduler {
+	if s != nil {
+		s.restarter = r
+	}
+	return s
 }
 
 func NewTokenRotationScheduler(pool *pgxpool.Pool, secret *secrets.Router, interval, iterTimeout time.Duration, logger *slog.Logger, reissuer rotation.Reissuer) *TokenRotationScheduler {
@@ -146,10 +162,62 @@ func (s *TokenRotationScheduler) rotateOne(ctx context.Context, item dueTokenSou
 	if err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx, `
+	restartRequired := rotation.RequiresRestart(item.Provider)
+	if _, err := s.pool.Exec(ctx, `
 		INSERT INTO token_rotation_events (token_source_id, event_type, result, reason_code, detail_json)
-		VALUES ($1::uuid,'rotate','success',$2,$3::jsonb)`, item.ID, "ROTATION_SUCCESS", fmt.Sprintf(`{"provider":"%s"}`, item.Provider))
-	return err
+		VALUES ($1::uuid,'rotate','success',$2,$3::jsonb)`, item.ID, "ROTATION_SUCCESS",
+		fmt.Sprintf(`{"provider":"%s","restart_required":%t}`, item.Provider, restartRequired)); err != nil {
+		return err
+	}
+
+	// 회전 후 반영. ESO 가 K8s Secret 을 갱신해도 소비자가 기동 시점에만
+	// 설정을 읽는다면 이전 값을 계속 쓰므로 여기서 rolling restart 를 건다.
+	return s.applyRotation(ctx, item, restartRequired)
+}
+
+// applyRotation 은 회전된 값을 소비자에 반영한다.
+func (s *TokenRotationScheduler) applyRotation(ctx context.Context, item dueTokenSource, restartRequired bool) error {
+	if !restartRequired || s.restarter == nil {
+		return nil
+	}
+
+	clusterID := metadataString(item.Metadata, "cluster_id")
+	namespace := metadataString(item.Metadata, "namespace")
+	if namespace == "" || clusterID == "" {
+		s.logger.Warn("재시작 대상 위치를 알 수 없어 반영을 건너뜁니다",
+			"token_source_id", item.ID, "provider", item.Provider)
+		return nil
+	}
+
+	if err := s.restarter.RestartForProvider(ctx, clusterID, namespace, item.Provider); err != nil {
+		// 반영 실패가 회전 자체를 되돌리지는 않는다. 별도 이벤트로 남겨
+		// 운영자가 수동 재시작을 판단할 수 있게 한다.
+		s.logger.Warn("회전 후 재시작 실패", "token_source_id", item.ID, "provider", item.Provider, "error", err)
+		_, _ = s.pool.Exec(ctx, `
+			INSERT INTO token_rotation_events (token_source_id, event_type, result, reason_code, detail_json)
+			VALUES ($1::uuid,'apply','failed',$2,$3::jsonb)`, item.ID, "ROTATION_APPLY_FAILED",
+			fmt.Sprintf(`{"provider":"%s","namespace":"%s"}`, item.Provider, namespace))
+		return nil
+	}
+
+	_, _ = s.pool.Exec(ctx, `
+		INSERT INTO token_rotation_events (token_source_id, event_type, result, reason_code, detail_json)
+		VALUES ($1::uuid,'apply','success',$2,$3::jsonb)`, item.ID, "ROTATION_APPLIED",
+		fmt.Sprintf(`{"provider":"%s","namespace":"%s"}`, item.Provider, namespace))
+	return nil
+}
+
+// metadataString 은 token source metadata 에서 문자열 값을 읽는다.
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+	if raw, ok := metadata[key]; ok {
+		if typed, ok := raw.(string); ok {
+			return strings.TrimSpace(typed)
+		}
+	}
+	return ""
 }
 
 func (s *TokenRotationScheduler) issueToken(ctx context.Context, item dueTokenSource, currentToken string) (string, error) {
