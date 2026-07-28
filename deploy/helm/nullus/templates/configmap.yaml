@@ -15,7 +15,7 @@ data:
       port: {{ include "nullus.database.port" . }}
       name: {{ include "nullus.database.name" . | quote }}
       user: {{ include "nullus.database.username" . | quote }}
-      password: {{ .Values.secrets.dbPassword | quote }}
+      password: {{ include "nullus.database.password" . | quote }}
       sslmode: {{ .Values.config.database.sslmode | quote }}
       max_open_conns: {{ .Values.config.database.maxOpenConns }}
       max_idle_conns: {{ .Values.config.database.maxIdleConns }}
