@@ -61,6 +61,8 @@ dev: dev-up migrate-up
 # ─── 백엔드 ───
 build:
 	go build -o bin/api ./cmd/api
+	# 무인 설치용 부트스트랩 자격 CLI (에어갭 스크립트가 사용)
+	go build -o bin/nullus-bootstrap ./cmd/nullus-bootstrap
 
 run: build
 	@set -a && [ -f .env.dev ] && . ./.env.dev; \
