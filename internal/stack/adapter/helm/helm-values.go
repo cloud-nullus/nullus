@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -17,6 +18,11 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 	o.mu.Lock()
 	cfg := o.stackConfig
 	o.mu.Unlock()
+
+	// OpenBao values 는 선택된 StorageClass 에 의존하므로 여기서 조립한다.
+	if step == "installing_openbao" {
+		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))
+	}
 
 	base = mergeMaps(base, o.resourceDefaultValuesForStep(step, cfg))
 
@@ -180,11 +186,16 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 	}
 
 	return map[string]any{
+		// 비밀번호는 values 가 아니라 프로비저닝된 Secret 에서 온다.
 		"auth": map[string]any{
-			"username":         "gitlab",
-			"password":         "nullus-gitlab-password", // #nosec G101 -- default Helm value, expected to be overridden by operator
-			"database":         "gitlabhq_production",
-			"postgresPassword": "nullus-postgres-admin", // #nosec G101 -- default Helm value, expected to be overridden by operator
+			"username":       "gitlab",
+			"database":       "gitlabhq_production",
+			"existingSecret": ProvisionedPostgresSecret,
+			"secretKeys": map[string]any{
+				"userPasswordKey":        "password",
+				"adminPasswordKey":       "postgres-password",
+				"replicationPasswordKey": "replication-password",
+			},
 		},
 		"primary": map[string]any{
 			"persistence": map[string]any{
@@ -245,18 +256,30 @@ func (o *Orchestrator) gitlabExternalSharedServiceValues(_ *domain.StackConfig) 
 	}
 }
 
+// sharedObjectStorageSecretManifest 는 ESO 주입 평면을 쓰지 않는 구성을 위한
+// 폴백이다. authentication.provider=openbao 인 경우에는 호출되지 않으며,
+// nullus-object-storage 는 ExternalSecret 이 소유한다.
 func (o *Orchestrator) sharedObjectStorageSecretManifest(namespace string) string {
 	if strings.TrimSpace(namespace) == "" {
 		namespace = "nullus"
 	}
 
 	endpoint := fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace)
-	connection := fmt.Sprintf("provider: AWS\nregion: us-east-1\naws_access_key_id: nullus-admin\naws_secret_access_key: nullus-minio-secret\nendpoint: %s\npath_style: true\n", endpoint) // #nosec G101 -- default bootstrap credential, matches Helm default value
+	accessKey := MinIORootUser
+	secretKey, err := o.readSecretValue(context.Background(), namespace, ProvisionedMinIOSecret, "rootPassword")
+	if err != nil {
+		slog.Warn("MinIO 자격증명을 읽지 못해 object storage secret 생성을 건너뜁니다",
+			"namespace", namespace, "error", err)
+		return ""
+	}
+
+	connection := fmt.Sprintf("provider: AWS\nregion: us-east-1\naws_access_key_id: %s\naws_secret_access_key: %s\nendpoint: %s\npath_style: true\n",
+		accessKey, secretKey, endpoint)
 
 	return fmt.Sprintf(`apiVersion: v1
 kind: Secret
 metadata:
-  name: nullus-object-storage
+  name: %s
   namespace: %s
 type: Opaque
 stringData:
@@ -264,7 +287,7 @@ stringData:
 %s
   config: |
 %s
-`, namespace, indentYAML(connection, 4), indentYAML(connection, 4))
+`, ProvisionedObjectStorageSecret, namespace, indentYAML(connection, 4), indentYAML(connection, 4))
 }
 
 func indentYAML(value string, spaces int) string {

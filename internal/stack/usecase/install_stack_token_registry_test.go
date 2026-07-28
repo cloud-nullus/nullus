@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,24 +45,23 @@ func TestInstallStack_RegisterStackTokenSources_OpenBao(t *testing.T) {
 	}
 
 	require.NoError(t, uc.registerStackTokenSources(context.Background(), stack))
-	assert.Len(t, registry.inputs, 7)
+	// bootstrap 자격증명은 provisioning_secrets 로 이관되어 여기서는 도구
+	// 토큰 경로만 등록한다.
+	assert.Len(t, registry.inputs, 4)
 	assert.Equal(t, "kv/nullus/dev/org-1/artifacts/github/token", registry.inputs[0].Path)
 
 	paths := make([]string, 0, len(registry.inputs))
 	for _, in := range registry.inputs {
 		paths = append(paths, in.Path)
 	}
-	assert.Contains(t, paths, "kv/nullus/dev/org-1/storage/postgresql/access")
-	assert.Contains(t, paths, "kv/nullus/dev/org-1/artifacts/minio/access")
-	assert.Contains(t, paths, "kv/nullus/dev/org-1/pipeline/argocd/access")
+	assert.NotContains(t, paths, "kv/nullus/dev/org-1/storage/postgresql/access")
+	assert.NotContains(t, paths, "kv/nullus/dev/org-1/artifacts/minio/access")
+	assert.NotContains(t, paths, "kv/nullus/dev/org-1/pipeline/argocd/access")
 
-	var hasArgocdAccess bool
+	// 토큰 값은 실제 발급 시점에 회전 컨트롤러가 채운다.
 	for _, in := range registry.inputs {
-		if in.Path == "kv/nullus/dev/org-1/pipeline/argocd/access" {
-			hasArgocdAccess = strings.Contains(in.TokenValue, "argocd-initial-admin-secret")
-		}
+		assert.Empty(t, in.TokenValue)
 	}
-	assert.True(t, hasArgocdAccess)
 }
 
 func TestInstallStack_RegisterStackTokenSources_SkipWhenNotOpenBao(t *testing.T) {

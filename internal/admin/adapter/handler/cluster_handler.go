@@ -722,6 +722,7 @@ func (h *ClusterHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/clusters", h.ListClusters)
 	g.GET("/clusters/:id", h.GetCluster)
 	g.GET("/clusters/:id/namespaces", h.ListNamespaces)
+	g.GET("/clusters/:id/storage-classes", h.ListStorageClasses)
 	g.GET("/clusters/:id/monitoring-summary", h.GetMonitoringSummary)
 	g.GET("/clusters/:id/pods", h.ListPods)
 	g.PATCH("/clusters/:id", h.UpdateCluster)

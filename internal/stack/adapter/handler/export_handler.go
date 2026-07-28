@@ -76,8 +76,8 @@ func (h *ExportHandler) ImportStack(c echo.Context) error {
 	replaceExisting := strings.EqualFold(c.QueryParam("replace_existing"), "true")
 
 	out, err := h.importConfig.Execute(c.Request().Context(), usecase.ImportConfigInput{
-		OrgID:   resolveOrgID(c),
-		Payload: body,
+		OrgID:           resolveOrgID(c),
+		Payload:         body,
 		ReplaceExisting: replaceExisting,
 	})
 	if err != nil {

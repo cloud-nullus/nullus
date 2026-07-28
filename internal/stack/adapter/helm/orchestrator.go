@@ -75,6 +75,9 @@ type Orchestrator struct {
 	resourceDefaults     map[string]*domain.ResourceDefault
 	defaultsLoaded       bool
 	sharedClusterScoped  bool
+	// 시크릿 경로 접두사(kv/nullus/{env}/{org}/)에 쓰이는 스코프
+	secretEnv   string
+	secretOrgID string
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -292,16 +295,18 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_object_storage_buckets":    5,
 			"installing_database_connection_check": 6,
 			"installing_openbao":                   7,
-			"installing_gitlab":                    8,
-			"installing_argocd":                    9,
-			stepInstallingRunner:                   10,
-			"installing_prometheus":                11,
-			"installing_grafana":                   12,
-			"installing_logging":                   13,
-			"installing_log_search":                14,
-			"installing_opentelemetry":             15,
-			"installing_gateway":                   16,
-			"integration_check":                    17,
+			"installing_external_secrets":          8,
+			"provisioning_secrets":                 9,
+			"installing_gitlab":                    10,
+			"installing_argocd":                    11,
+			stepInstallingRunner:                   12,
+			"installing_prometheus":                13,
+			"installing_grafana":                   14,
+			"installing_logging":                   15,
+			"installing_log_search":                16,
+			"installing_opentelemetry":             17,
+			"installing_gateway":                   18,
+			"integration_check":                    19,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -312,6 +317,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_object_storage_buckets",
 			"installing_database_connection_check",
 			"installing_openbao",
+			"installing_external_secrets",
+			"provisioning_secrets",
 			"installing_gitlab",
 			"installing_argocd",
 			stepInstallingRunner,
@@ -330,6 +337,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_object_storage_buckets":    "config.storage.object_storage",
 			"installing_database_connection_check": "config.storage.database",
 			"installing_openbao":                   "config.authentication.provider",
+			"installing_external_secrets":          "config.authentication.provider",
+			"provisioning_secrets":                 "config.authentication.provider",
 			"installing_gitlab":                    "config.artifacts.source_repository",
 			"installing_argocd":                    "config.pipeline.cd_tool",
 			stepInstallingRunner:                   "config.pipeline.ci_platform",
@@ -365,6 +374,19 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_openbao": func(cfg domain.StackConfig) bool {
+				if cfg.Authentication == nil {
+					return false
+				}
+				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
+			},
+			// ESO 는 OpenBao 를 원천으로 하는 주입 평면이므로 동일 조건에서만 설치한다.
+			"installing_external_secrets": func(cfg domain.StackConfig) bool {
+				if cfg.Authentication == nil {
+					return false
+				}
+				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
+			},
+			"provisioning_secrets": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
 					return false
 				}
@@ -518,6 +540,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			o.markCompleted(stackID, order)
 			return nil
 		}
+		// ESO 주입 평면이 켜져 있으면 nullus-object-storage 는 ExternalSecret 이
+		// 소유한다. 여기서 같은 이름의 Secret 을 직접 만들면 ESO 가 주기적으로
+		// 덮어써 소유권이 충돌하므로 건너뛴다.
+		if o.isStepEnabled("installing_external_secrets") {
+			slog.Info("object storage secret 은 ESO 가 소유하므로 직접 생성하지 않습니다", "namespace", o.namespace)
+			o.markCompleted(stackID, order)
+			return nil
+		}
 		manifest := o.sharedObjectStorageSecretManifest(o.namespace)
 		if strings.TrimSpace(manifest) != "" {
 			if err := o.applyManifest(ctx, o.namespace, manifest); err != nil {
@@ -577,6 +607,25 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		}
 	}
 
+	if step == "provisioning_secrets" {
+		// 시크릿을 생성해 OpenBao 에 기록하고 ESO 가 K8s Secret 을 만들 때까지 기다린다.
+		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
+		if err := o.runSecretProvisioning(ctx, namespace); err != nil {
+			return fmt.Errorf("시크릿 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
+	if step == "installing_external_secrets" {
+		// ESO 는 CRD 소유권 보정이 필요해 전용 경로로 설치한다.
+		if err := o.InstallExternalSecrets(ctx, namespace); err != nil {
+			return fmt.Errorf("external-secrets 설치 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if hasManifest && step != "installing_gateway" {
 		if err := o.applyManifest(ctx, namespace, manifest); err != nil {
 			return fmt.Errorf("apply yaml manifest for step %s: %w", step, err)
@@ -590,6 +639,10 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 	if step == stepInstallingCertManager {
+		// 첫 스텝에서 StorageClass 를 검증해 PVC 실패를 빠르게 드러낸다.
+		if err := o.ensureStorageClassExists(ctx); err != nil {
+			return fmt.Errorf("storageclass preflight 실패: %w", err)
+		}
 		installed, checkErr := checkExistingCertManagerInstallation(ctx, o)
 		if checkErr != nil {
 			return fmt.Errorf("detect existing cert-manager installation: %w", checkErr)
@@ -658,6 +711,16 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		}
 		if err := bootstrapInternalCAInstallation(ctx, o, namespace); err != nil {
 			return fmt.Errorf("bootstrap internal ca: %w", err)
+		}
+	}
+	if step == "installing_openbao" {
+		// 차트 설치 직후 금고를 초기화한다. Job 이 멱등하므로 재시도해도 안전하다.
+		if err := o.runOpenBaoInit(ctx, namespace); err != nil {
+			return fmt.Errorf("openbao 초기화 실패: %w", err)
+		}
+		// 이어서 시크릿 엔진·Kubernetes Auth·정책·role 을 구성한다.
+		if err := o.runOpenBaoBootstrap(ctx, namespace); err != nil {
+			return fmt.Errorf("openbao 부트스트랩 실패: %w", err)
 		}
 	}
 	if step == "installing_gateway" {
@@ -737,7 +800,10 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	cfg := o.stackConfig
 	o.mu.Unlock()
 	if cfg == nil {
-		return step != "installing_openbao"
+		// 시크릿 평면(OpenBao + ESO)은 authentication.provider=openbao 를
+		// 명시적으로 선택했을 때만 설치한다. 설정이 없으면 둘 다 비활성이다.
+		return step != "installing_openbao" && step != "installing_external_secrets" &&
+			step != "provisioning_secrets"
 	}
 
 	enabledFn, ok := o.stepConfigEnabled[step]

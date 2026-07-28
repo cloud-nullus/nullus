@@ -169,9 +169,9 @@ type fakeSelectableExecutor struct {
 
 type fakeSecretStore struct{}
 
-func (s *fakeSecretStore) PutToken(_ context.Context, _, _ string) error { return nil }
+func (s *fakeSecretStore) PutToken(_ context.Context, _, _ string) error        { return nil }
 func (s *fakeSecretStore) GetToken(_ context.Context, _ string) (string, error) { return "", nil }
-func (s *fakeSecretStore) Check(_ context.Context) error { return nil }
+func (s *fakeSecretStore) Check(_ context.Context) error                        { return nil }
 
 func (e *fakeSelectableExecutor) ExecuteStep(_ context.Context, _ string, step, _ string) error {
 	if !e.IsStepEnabled(step) {

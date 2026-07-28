@@ -67,6 +67,11 @@ type namespaceAwareExecutor interface {
 	SetNamespace(namespace string)
 }
 
+// secretScopeAwareExecutor 는 OpenBao 경로 접두사에 필요한 스코프를 받는다.
+type secretScopeAwareExecutor interface {
+	SetSecretScope(env, orgID string)
+}
+
 type resumeAwareExecutor interface {
 	ResumeFromStep(stackID, step string)
 }
@@ -222,6 +227,14 @@ func (uc *InstallStack) configureExecutorForStack(stack *domain.Stack, executor 
 	}
 
 	awareExecutor.SetStackConfig(cfg)
+
+	if scopeAware, ok := executor.(secretScopeAwareExecutor); ok {
+		env := strings.TrimSpace(uc.tokenRegistryEnv)
+		if env == "" {
+			env = "dev"
+		}
+		scopeAware.SetSecretScope(env, stack.OrgID)
+	}
 }
 
 func stackConfigFromInterface(rawConfig any) (domain.StackConfig, bool) {

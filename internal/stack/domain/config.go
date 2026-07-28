@@ -4,19 +4,19 @@ import "encoding/json"
 
 // StackConfig holds the full configuration for a DevSecOps stack.
 type StackConfig struct {
-	AccessDomain    string                 `json:"access_domain,omitempty"`
-	AccessDomainTLS *AccessDomainTLSConfig `json:"access_domain_tls,omitempty"`
-	Authentication  *AuthenticationConfig  `json:"authentication,omitempty"`
-	YAMLOverrides   map[string]string      `json:"yaml_overrides,omitempty"`
-	Artifacts       ArtifactsConfig        `json:"artifacts"`
-	Pipeline        PipelineConfig         `json:"pipeline"`
-	Monitoring      MonitoringConfig       `json:"monitoring"`
-	Logging         LoggingConfig          `json:"logging"`
-	Resources       ResourcesConfig        `json:"resources"`
+	AccessDomain             string                        `json:"access_domain,omitempty"`
+	AccessDomainTLS          *AccessDomainTLSConfig        `json:"access_domain_tls,omitempty"`
+	Authentication           *AuthenticationConfig         `json:"authentication,omitempty"`
+	YAMLOverrides            map[string]string             `json:"yaml_overrides,omitempty"`
+	Artifacts                ArtifactsConfig               `json:"artifacts"`
+	Pipeline                 PipelineConfig                `json:"pipeline"`
+	Monitoring               MonitoringConfig              `json:"monitoring"`
+	Logging                  LoggingConfig                 `json:"logging"`
+	Resources                ResourcesConfig               `json:"resources"`
 	OptionOverrides          map[string]map[string]float64 `json:"option_overrides,omitempty"`
 	AppliedResourceOverrides map[string]ResourceVector     `json:"applied_resource_overrides,omitempty"`
 	RowUnits                 map[string]PlanningRowUnit    `json:"row_units,omitempty"`
-	Storage         *StorageConfig         `json:"storage,omitempty"`
+	Storage                  *StorageConfig                `json:"storage,omitempty"`
 }
 
 type AuthenticationConfig struct {
@@ -34,6 +34,10 @@ type StorageConfig struct {
 	PlanMode      string        `json:"plan_mode"`
 	Database      StorageTarget `json:"database"`
 	ObjectStorage StorageTarget `json:"object_storage"`
+	// StorageClass is the Kubernetes StorageClass used by every PVC the stack
+	// creates. Empty means "use the cluster default StorageClass"; installs on
+	// clusters without a default SC must set it explicitly or PVCs stay Pending.
+	StorageClass string `json:"storage_class,omitempty"`
 }
 
 type StorageTarget struct {

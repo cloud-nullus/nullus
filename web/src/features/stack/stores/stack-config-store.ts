@@ -131,6 +131,22 @@ export interface StorageConfig {
   planMode: StoragePlanMode
   database: StorageTargetConfig
   objectStorage: StorageTargetConfig
+  /**
+   * 스택이 만드는 모든 PVC 가 사용할 StorageClass.
+   * 빈 값은 "클러스터 기본 StorageClass 사용"을 뜻한다. 기본 SC 가 없는
+   * 클러스터에서는 반드시 선택해야 하며, 미선택 시 PVC 가 Pending 에 머물러
+   * 설치가 멈춘다.
+   */
+  storageClass: string
+}
+
+/** 대상 클러스터에서 조회한 StorageClass 정보 */
+export interface StorageClassOption {
+  name: string
+  provisioner: string
+  is_default: boolean
+  reclaim_policy: string
+  volume_binding_mode: string
 }
 
 export interface AccessDomainTlsConfig {
@@ -231,6 +247,7 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   },
   storage: {
     planMode: 'integrated-create',
+    storageClass: '',
     database: {
       mode: 'create',
       existingRef: 'local-docker-postgres',

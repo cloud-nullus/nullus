@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
 import { useAuthStore } from '../../../stores/auth-store'
+import type { StorageClassOption } from '../../stack/stores/stack-config-store'
 import type {
   Cluster,
   CreateClusterRequest,
@@ -247,6 +248,11 @@ const adminApiCalls = {
 
   getClusterNamespaces: (clusterId: string) =>
     api.get<{ items: { name: string }[] }>(`/admin/clusters/${clusterId}/namespaces`).then((r) => r.data?.items ?? []),
+
+  getClusterStorageClasses: (clusterId: string) =>
+    api
+      .get<{ data: StorageClassOption[] }>(`/admin/clusters/${clusterId}/storage-classes`)
+      .then((r) => r.data?.data ?? []),
 
   getClusterMonitoringSummary: (clusterId: string) =>
     api.get<ClusterMonitoringSummary>(`/admin/clusters/${clusterId}/monitoring-summary`).then((r) => r.data),
@@ -573,6 +579,14 @@ export function useClusterNamespaces(clusterId: string) {
   return useQuery({
     queryKey: ['admin', 'clusters', clusterId, 'namespaces'],
     queryFn: () => adminApiCalls.getClusterNamespaces(clusterId),
+    enabled: !!clusterId,
+  })
+}
+
+export function useClusterStorageClasses(clusterId: string) {
+  return useQuery({
+    queryKey: ['admin', 'clusters', clusterId, 'storage-classes'],
+    queryFn: () => adminApiCalls.getClusterStorageClasses(clusterId),
     enabled: !!clusterId,
   })
 }

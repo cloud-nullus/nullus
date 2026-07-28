@@ -6,9 +6,8 @@ import (
 )
 
 func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
-	if step == "installing_openbao" {
-		return o.openBaoManifest(o.namespace), true
-	}
+	// installing_openbao 는 더 이상 자체 매니페스트를 쓰지 않는다.
+	// 공식 Helm 차트로 설치되며 초기화는 openbao-init.go 의 Job 이 담당한다.
 	if step != "installing_prometheus" && step != "installing_grafana" && step != "installing_logging" && step != "installing_log_search" && step != "installing_opentelemetry" && step != "installing_gateway" {
 		return "", false
 	}
@@ -59,70 +58,6 @@ func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
 	}
 
 	return "", false
-}
-
-func (o *Orchestrator) openBaoManifest(namespace string) string {
-	if strings.TrimSpace(namespace) == "" {
-		namespace = "nullus"
-	}
-	return fmt.Sprintf(`apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: openbao
-  namespace: %s
-  labels:
-    app.kubernetes.io/name: openbao
-    app.kubernetes.io/instance: openbao
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: openbao
-      app.kubernetes.io/instance: openbao
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: openbao
-        app.kubernetes.io/instance: openbao
-    spec:
-      containers:
-        - name: openbao
-          image: openbao/openbao:latest
-          imagePullPolicy: IfNotPresent
-          args: ["server", "-dev", "-dev-root-token-id=root"]
-          env:
-            - name: VAULT_DEV_LISTEN_ADDRESS
-              value: 0.0.0.0:8200
-            - name: VAULT_UI
-              value: "true"
-          ports:
-            - containerPort: 8200
-              name: http
-          readinessProbe:
-            httpGet:
-              path: /v1/sys/health?standbyok=true
-              port: 8200
-            initialDelaySeconds: 10
-            periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: openbao
-  namespace: %s
-  labels:
-    app.kubernetes.io/name: openbao
-    app.kubernetes.io/instance: openbao
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: openbao
-    app.kubernetes.io/instance: openbao
-  ports:
-    - name: http
-      port: 8200
-      targetPort: 8200
-`, namespace, namespace)
 }
 
 func (o *Orchestrator) defaultGatewayBundleManifest(namespace string) string {

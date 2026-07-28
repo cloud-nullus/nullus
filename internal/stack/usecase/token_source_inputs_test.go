@@ -31,7 +31,10 @@ func TestBuildStackTokenSourceInputs_OpenBao(t *testing.T) {
 	}
 
 	inputs := BuildStackTokenSourceInputs(stack, "dev")
-	require.Len(t, inputs, 7)
+	// bootstrap 자격증명(postgresql/minio/argocd access)은 더 이상 여기서
+	// 만들지 않는다. provisioning_secrets 가 생성해 OpenBao 에 기록하고
+	// ESO 가 K8s Secret 으로 복제하므로 이중 관리를 없앴다.
+	require.Len(t, inputs, 4)
 	assert.Equal(t, "kv/nullus/dev/org-1/artifacts/gitlab-ce/token", inputs[0].Path)
 	assert.Contains(t, inputs[0].Provider, "gitlab")
 	assert.Contains(t, inputs, inputs[0])
@@ -42,9 +45,8 @@ func TestBuildStackTokenSourceInputs_OpenBao(t *testing.T) {
 	}
 	assert.Contains(t, paths, "kv/nullus/dev/org-1/pipeline/argo-cd/token")
 	assert.Contains(t, paths, "kv/nullus/dev/org-1/pipeline/gitlab-ci/token")
-	assert.Contains(t, paths, "kv/nullus/dev/org-1/storage/postgresql/access")
-	assert.Contains(t, paths, "kv/nullus/dev/org-1/artifacts/minio/access")
-	assert.Contains(t, paths, "kv/nullus/dev/org-1/pipeline/argocd/access")
+	assert.NotContains(t, paths, "kv/nullus/dev/org-1/storage/postgresql/access")
+	assert.NotContains(t, paths, "kv/nullus/dev/org-1/artifacts/minio/access")
 }
 
 func TestBuildStackTokenSourceInputs_SkipsWhenNotOpenBao(t *testing.T) {

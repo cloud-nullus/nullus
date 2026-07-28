@@ -94,7 +94,7 @@ func TestSSOProvisioner_DefaultDomainRedirectURIs(t *testing.T) {
 	p := NewSSOProvisioner(nil)
 
 	tests := []struct {
-		stepName    string
+		stepName      string
 		wantSubdomain string
 		wantCallback  string
 	}{

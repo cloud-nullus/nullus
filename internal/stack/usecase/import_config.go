@@ -19,8 +19,8 @@ var ErrImportConfirmationRequired = errors.New("import confirmation required")
 
 // ImportConfigInput holds the raw export payload and target org context.
 type ImportConfigInput struct {
-	OrgID   string
-	Payload []byte
+	OrgID           string
+	Payload         []byte
 	ReplaceExisting bool
 }
 
@@ -40,8 +40,8 @@ type ImportPreviewOutput struct {
 
 // ImportConfig restores a stack from an export payload.
 type ImportConfig struct {
-	createStack *CreateStack
-	addTools    *AddToolsUseCase
+	createStack  *CreateStack
+	addTools     *AddToolsUseCase
 	installStack *InstallStack
 }
 
@@ -208,7 +208,12 @@ func (uc *ImportConfig) Execute(ctx context.Context, input ImportConfigInput) (*
 
 func (uc *ImportConfig) triggerImportDeploy(ctx context.Context, stack *domain.Stack, partial bool, resumeFromStep string) error {
 	if uc.installStack == nil || stack == nil {
-		slog.Info("import deploy skipped", "stack_id", func() string { if stack != nil { return stack.ID }; return "" }(), "reason", "install usecase not configured")
+		slog.Info("import deploy skipped", "stack_id", func() string {
+			if stack != nil {
+				return stack.ID
+			}
+			return ""
+		}(), "reason", "install usecase not configured")
 		return nil
 	}
 	if partial {
@@ -251,9 +256,15 @@ func importResumeStep(diff *DiffResult) string {
 		return "installing_cert_manager"
 	}
 	keys := make([]string, 0, len(diff.Added)+len(diff.Removed)+len(diff.Changed))
-	for k := range diff.Added { keys = append(keys, k) }
-	for k := range diff.Removed { keys = append(keys, k) }
-	for k := range diff.Changed { keys = append(keys, k) }
+	for k := range diff.Added {
+		keys = append(keys, k)
+	}
+	for k := range diff.Removed {
+		keys = append(keys, k)
+	}
+	for k := range diff.Changed {
+		keys = append(keys, k)
+	}
 
 	stepOrder := []string{
 		"installing_cert_manager",
@@ -393,8 +404,12 @@ func (uc *ImportConfig) buildDiff(existing *domain.Stack, spec ExportSpec) (*Dif
 	flattenMeaningful("", right, flatB)
 	result := &DiffResult{Added: map[string]any{}, Removed: map[string]any{}, Changed: map[string][2]any{}}
 	keys := map[string]struct{}{}
-	for k := range flatA { keys[k] = struct{}{} }
-	for k := range flatB { keys[k] = struct{}{} }
+	for k := range flatA {
+		keys[k] = struct{}{}
+	}
+	for k := range flatB {
+		keys[k] = struct{}{}
+	}
 	for k := range keys {
 		av, aok := flatA[k]
 		bv, bok := flatB[k]

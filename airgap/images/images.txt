@@ -79,4 +79,6 @@ registry.k8s.io/metrics-server/metrics-server:v0.7.2
 # --- Infra images (not part of helm render) ---
 kindest/node:v1.30.0
 registry:2
-openbao/openbao:latest
+openbao/openbao:2.5.5
+docker.io/bitnamilegacy/kubectl:1.33.4
+oci.external-secrets.io/external-secrets/external-secrets:v2.7.0

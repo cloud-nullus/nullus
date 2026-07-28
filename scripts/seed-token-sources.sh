@@ -25,8 +25,11 @@ STATUS="${TOKEN_SOURCE_STATUS:-healthy}"
 SECRET_MANAGER="${TOKEN_SOURCE_SECRET_MANAGER:-openbao}"
 
 if [[ -n "$OPENBAO_ADDR" && -n "$OPENBAO_TOKEN" ]]; then
-  openbao_path="${TOKEN_PATH#kv/}"
-  curl -fsS -X POST "${OPENBAO_ADDR%/}/v1/secret/data/${openbao_path}" \
+  # 경로 규약(kv/nullus/...)과 실제 마운트 이름이 일치한다.
+  # 부트스트랩 Job 이 KV v2 를 'kv' 로 마운트하므로 재작성하지 않는다.
+  openbao_mount="${TOKEN_PATH%%/*}"
+  openbao_path="${TOKEN_PATH#*/}"
+  curl -fsS -X POST "${OPENBAO_ADDR%/}/v1/${openbao_mount}/data/${openbao_path}" \
     -H 'Content-Type: application/json' \
     -H "X-Vault-Token: $OPENBAO_TOKEN" \
     -d "$(printf '{"data":{"token":"%s"}}' "$TOKEN_VALUE")" >/dev/null
