@@ -1453,18 +1453,26 @@ PRD 요구사항에 따라 Kubeconfig는 서버 측 DB에 AES-256-GCM으로 암�
 
 | 항목 | 정책 |
 |------|------|
-| **암호화 키 소스** | **OpenBao KV 경로(기본)** + 로컬 개발용 `NULLUS_ENCRYPTION_KEY` fallback |
-| **키 로테이션 주기** | 90일 (보안 운영 정책) |
+| **암호화 키 소스** | **OpenBao KV 경로(목표)** + 로컬 개발용 `ENCRYPTION_KEY` 환경변수 fallback |
+| **키 로테이션 주기** | 90일 (보안 운영 정책, 목표) |
 | **키 로테이션 방식** | 새 키 ID 발급 -> 새 암호화에 새 키 사용 -> 기존 데이터는 배치 작업으로 재암호화 |
 | **키 백업** | OpenBao snapshot/replication 기반 백업 권장 (K8s Secret 직접 저장 지양) |
 | **IV 생성** | `crypto/rand`로 매 암호화마다 12 bytes 랜덤 생성 (IV 재사용 금지) |
 
-### 13.2.1 OpenBao-first 운영 정책 (신규)
+> **구현 정합성 (2026-07-28)**
+>
+> - 실제 컬럼명은 `clusters.kubeconfig` (BYTEA)이며, 문서의 `kubeconfig_encrypted` 및 `_encrypted` 접미사 규약과 다르다. 저장되는 값은 AES-256-GCM으로 암호화된 base64 문자열이다
+> - 환경변수명은 `ENCRYPTION_KEY`다 (`NULLUS_ENCRYPTION_KEY` 아님)
+> - `encryption_key_id` 컬럼이 존재하지 않아 **현재 구조에서는 키 로테이션을 수행할 수 없다.** 90일 로테이션 정책을 적용하려면 컬럼 추가 마이그레이션이 선행되어야 한다
 
-- 운영/스테이징 환경에서는 `NULLUS_ENCRYPTION_KEY`를 직접 주입하지 않고 OpenBao에서 조회한다.
-- 앱은 OpenBao auth(kubernetes) 기반 short-lived credential로 키를 조회한다.
+### 13.2.1 OpenBao-first 운영 정책 (목표)
+
+- 운영/스테이징 환경에서는 `ENCRYPTION_KEY`를 직접 주입하지 않고 OpenBao에서 조회한다.
+- 앱은 OpenBao auth(kubernetes) 기반 short-lived credential로 키를 조회한다. 인증 전환은 `OpenBao_시크릿_평면_구축_설계.md` P2에서 다룬다.
 - 키 로테이션 시 `encryption_key_id`를 기준으로 점진 재암호화를 수행한다.
 - 예외적으로 로컬 개발 환경에서만 `.env.dev` fallback 키를 허용한다.
+
+> 현재는 `ENCRYPTION_KEY` 환경변수를 직접 주입하는 방식이며, 위 정책은 미적용 상태다. OpenBao 이관은 P2 완료 이후의 후속 과제다.
 
 ### 13.3 Go 구현 예시
 

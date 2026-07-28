@@ -1,13 +1,15 @@
 # OpenBao 기반 OSS 토큰 자동 갱신(자동 업데이트) 설계
 
 **작성일**: 2026-05-02  
-**버전**: 1.1  
+**버전**: 1.2  
 **대상**: DevOps Engineer, Backend Engineer, Platform Engineer  
-**연관 문서**: `nullus_PRD_1.3.md`, `Nullus_API_설계.md`, `Nullus_DB_스키마.md`, `Nullus_인프라_배포_설계.md`
+**연관 문서**: `OpenBao_시크릿_평면_구축_설계.md`, `nullus_PRD_1.3.md`, `Nullus_API_설계.md`, `Nullus_DB_스키마.md`, `Nullus_인프라_배포_설계.md`
+
+> **범위 구분**: 이 문서는 토큰의 **회전 정책과 상태 머신**을 다룬다. 회전이 성립하기 위한 전제 — OpenBao 영속화·인증·주입 평면 구축 — 은 `OpenBao_시크릿_평면_구축_설계.md`가 다룬다. 8장(배포/주입 방식)과 4장(반영 전략)은 그 문서의 P1~P3 완료를 전제한다.
 
 ---
 
-## 0. 구현 정합성 상태 (2026-05-10)
+## 0. 구현 정합성 상태 (2026-07-28)
 
 이 문서는 설계 문서이며, 현재 브랜치 구현 상태를 아래와 같이 반영한다.
 
@@ -25,14 +27,17 @@
 
 ### 0.2 부분 구현/주의사항
 
-- 현재 OpenBao 배포는 개발 편의(dev mode) 구성이며, 운영 HA/TLS/스토리지 구성은 별도 운영 스펙 필요
+- 현재 OpenBao 배포는 개발 편의(dev mode) 구성이며, 운영 HA/TLS/스토리지 구성은 별도 운영 스펙 필요 → `OpenBao_시크릿_평면_구축_설계.md` P1
+- 현재 인증은 정적 토큰(`OPENBAO_TOKEN`) 방식이며, PRD 5.2의 "정적 토큰 하드코딩 금지" 원칙과 어긋난다 → 같은 문서 P2
 - Provider별 metadata 요구사항(예: GitHub app_id/installation_id/private_key_pem)이 충족되어야 실제 reissue 수행
 - 미구현 provider(예: Harbor/Slack 등)는 `ErrReissueUnsupported` 경로로 fallback 처리
+- **fallback 시 랜덤 문자열을 생성해 OpenBao에 저장하고 성공 이벤트를 기록한다.** 외부 시스템의 실제 자격증명과 동기화되지 않은 값이 SoT에 남으므로, 미지원 provider는 회전을 시도하지 않고 `FAILED_MANUAL`로 분기하도록 수정이 필요하다
 
 ### 0.3 미구현 항목
 
+- **회전 스케줄러 기동 배선** — `TokenRotationScheduler`가 정의부 외에 호출되는 곳이 없어 실제로 동작하지 않는다
 - 승인 워크플로우(`requires_approval`)와 회전 스케줄러의 강결합 상태전이(FAILED_MANUAL -> AWAITING_APPROVAL -> RENEWING) 완성
-- 앱 무중단 반영(ESO/CSI/rolling restart 자동화)과 회전 성공 후 반영 검증 자동화
+- 앱 무중단 반영(ESO/CSI/rolling restart 자동화)과 회전 성공 후 반영 검증 자동화 → `OpenBao_시크릿_평면_구축_설계.md` P3
 - provider별 세분화 백오프 정책 및 rate-limit/jitter 튜닝
 - rotation 메트릭/알림(`token_rotation_total`, `token_expiry_seconds`)의 운영 대시보드 연동
 
