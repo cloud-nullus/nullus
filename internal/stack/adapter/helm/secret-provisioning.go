@@ -239,7 +239,9 @@ func (o *Orchestrator) ProvisionSecrets(
 
 	prefix := secretPathPrefix(env, orgID)
 
-	items := managedSecrets(namespace)
+	// 기본 시크릿에 SSO client secret 을 더한다.
+	// 설치되는 도구가 스택마다 다르므로 목록도 스택 구성에서 파생된다.
+	items := append(managedSecrets(namespace), o.ssoManagedSecrets()...)
 
 	for _, item := range items {
 		for _, entry := range item.Entries {

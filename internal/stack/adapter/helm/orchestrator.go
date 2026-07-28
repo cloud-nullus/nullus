@@ -78,6 +78,8 @@ type Orchestrator struct {
 	// 시크릿 경로 접두사(kv/nullus/{env}/{org}/)에 쓰이는 스코프
 	secretEnv   string
 	secretOrgID string
+	// ssoFactory 는 스택별 SSO provisioner 생성기다 (auth 모듈 구현체 주입).
+	ssoFactory port.SSOProvisionerFactory
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -297,16 +299,17 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_openbao":                   7,
 			"installing_external_secrets":          8,
 			"provisioning_secrets":                 9,
-			"installing_gitlab":                    10,
-			"installing_argocd":                    11,
-			stepInstallingRunner:                   12,
-			"installing_prometheus":                13,
-			"installing_grafana":                   14,
-			"installing_logging":                   15,
-			"installing_log_search":                16,
-			"installing_opentelemetry":             17,
-			"installing_gateway":                   18,
-			"integration_check":                    19,
+			"provisioning_sso":                     10,
+			"installing_gitlab":                    11,
+			"installing_argocd":                    12,
+			stepInstallingRunner:                   13,
+			"installing_prometheus":                14,
+			"installing_grafana":                   15,
+			"installing_logging":                   16,
+			"installing_log_search":                17,
+			"installing_opentelemetry":             18,
+			"installing_gateway":                   19,
+			"integration_check":                    20,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -319,6 +322,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_openbao",
 			"installing_external_secrets",
 			"provisioning_secrets",
+			"provisioning_sso",
 			"installing_gitlab",
 			"installing_argocd",
 			stepInstallingRunner,
@@ -339,6 +343,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_openbao":                   "config.authentication.provider",
 			"installing_external_secrets":          "config.authentication.provider",
 			"provisioning_secrets":                 "config.authentication.provider",
+			"provisioning_sso":                     "config.authentication.provider",
 			"installing_gitlab":                    "config.artifacts.source_repository",
 			"installing_argocd":                    "config.pipeline.cd_tool",
 			stepInstallingRunner:                   "config.pipeline.ci_platform",
@@ -387,6 +392,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
 			},
 			"provisioning_secrets": func(cfg domain.StackConfig) bool {
+				if cfg.Authentication == nil {
+					return false
+				}
+				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
+			},
+			"provisioning_sso": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
 					return false
 				}
@@ -607,6 +618,15 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		}
 	}
 
+	if step == "provisioning_sso" {
+		// Keycloak 이 기동된 뒤여야 하므로 시크릿 프로비저닝보다 뒤에 온다.
+		if err := o.runSSOProvisioning(ctx, namespace); err != nil {
+			return fmt.Errorf("SSO 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if step == "provisioning_secrets" {
 		// 시크릿을 생성해 OpenBao 에 기록하고 ESO 가 K8s Secret 을 만들 때까지 기다린다.
 		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
@@ -803,7 +823,7 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 		// 시크릿 평면(OpenBao + ESO)은 authentication.provider=openbao 를
 		// 명시적으로 선택했을 때만 설치한다. 설정이 없으면 둘 다 비활성이다.
 		return step != "installing_openbao" && step != "installing_external_secrets" &&
-			step != "provisioning_secrets"
+			step != "provisioning_secrets" && step != "provisioning_sso"
 	}
 
 	enabledFn, ok := o.stepConfigEnabled[step]

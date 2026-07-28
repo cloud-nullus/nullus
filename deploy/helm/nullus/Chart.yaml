@@ -9,3 +9,10 @@ dependencies:
     version: 16.7.21
     repository: https://charts.bitnami.com/bitnami
     condition: postgresql.enabled
+  # Keycloak 은 플랫폼 구성요소다. 스택마다 IdP 를 띄우면 Nullus 자체 로그인용
+  # Keycloak 과 이중화되므로, 하나를 공유하고 스택 설치기는 클라이언트만 등록한다.
+  # keycloak.enabled=false 로 두면 외부 IdP(BYO) 모드가 된다.
+  - name: keycloak
+    version: 24.4.5
+    repository: https://charts.bitnami.com/bitnami
+    condition: keycloak.enabled
