@@ -8,6 +8,7 @@ import (
 
 	obskube "github.com/cloud-nullus/draft/internal/observability/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/observability/usecase"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	stackdomain "github.com/cloud-nullus/draft/internal/stack/domain"
 	stackport "github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -151,7 +152,7 @@ func (h *DashboardHandler) GetDeployedApps(c echo.Context) error {
 	ctx := c.Request().Context()
 	orgID := c.Request().Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = "00000000-0000-0000-0000-000000000001"
+		orgID = shareddomain.DefaultOrgID()
 	}
 
 	stacks, err := h.stackRepo.List(ctx, orgID, false)

@@ -105,6 +105,7 @@ func (m *JWTMiddleware) Handler() echo.MiddlewareFunc {
 				Email:    claimString(claims, "email"),
 				Name:     claimString(claims, "preferred_username"),
 				Role:     m.extractRole(claims),
+				OrgID:    orgIDFromClaims(claims),
 				IsActive: true,
 			}
 
@@ -212,6 +213,24 @@ func toRSAPublicKey(n, e string) (*rsa.PublicKey, error) {
 func claimString(claims jwt.MapClaims, key string) string {
 	v, _ := claims[key].(string)
 	return v
+}
+
+// orgIDClaimKeys 는 조직 식별자가 실려 올 수 있는 클레임 이름이다.
+// IdP 마다 사용자 속성 매퍼의 클레임 이름이 달라 몇 가지를 함께 본다.
+var orgIDClaimKeys = []string{"org_id", "organization_id", "organization", "org"}
+
+// orgIDFromClaims 는 토큰에서 조직 식별자를 찾아 반환한다.
+//
+// 없으면 빈 문자열을 반환한다 — 임의의 기본 조직을 지어내면 존재하지 않는
+// org_id 로 INSERT 가 나가 FK 위반으로 실패하므로, 없음을 그대로 전달해
+// 호출측이 판단하게 한다.
+func orgIDFromClaims(claims jwt.MapClaims) string {
+	for _, key := range orgIDClaimKeys {
+		if v := strings.TrimSpace(claimString(claims, key)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (m *JWTMiddleware) extractRole(claims jwt.MapClaims) admindomain.Role {
