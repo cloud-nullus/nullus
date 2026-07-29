@@ -19,27 +19,11 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
-var stackHelmReleaseNames = []string{
-	"cert-manager",
-	"openbao",
-	"nullus-postgresql",
-	"postgresql",
-	"nullus-minio",
-	"minio",
-	"gitlab",
-	"argo-cd",
-	"gitlab-runner",
-	"kube-prometheus-stack",
-	"grafana",
-	"loki",
-	"opensearch",
-	"elasticsearch",
-	"tempo",
-	"jaeger",
-	"opentelemetry-collector",
-	"eg",
-	"envoy-gateway",
-}
+// stackHelmReleaseNames 는 삭제가 훑는 릴리스 목록이다.
+//
+// 설치 목록과 따로 관리하면 반드시 어긋나므로 domain 의 단일 출처를 쓴다.
+// (external-secrets 가 빠져 있어 ESO 의 CRD·ClusterRole 이 고아로 남던 문제)
+var stackHelmReleaseNames = domain.AllHelmReleaseNames()
 
 const legacyEnvoyGatewayNamespace = "envoy-gateway-system"
 
