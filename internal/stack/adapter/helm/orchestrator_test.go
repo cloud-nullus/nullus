@@ -108,6 +108,9 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -130,6 +133,7 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 	assert.Equal(t, []string{
 		"cert-manager",
 		"metrics-server",
+		"openbao",
 		"nullus-postgresql",
 		"nullus-minio",
 		"gitlab",
@@ -144,16 +148,23 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 	}, installer.installed)
 }
 
+// 시크릿 평면은 선택형이 아니다 — PostgreSQL/MinIO 차트가 provisioning_secrets
+// 가 만든 Secret 을 existingSecret 으로 참조하므로 항상 켜져 있어야 하고,
+// 스토리지 차트보다 먼저 실행되어야 한다.
+// (열거형 전수 검증: TestSecretPlane_EnabledRegardlessOfAuthProvider)
 func TestOrchestrator_OpenBaoOrderAndEnablement(t *testing.T) {
 	installer := &mockInstaller{}
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
 
-	assert.False(t, orch.IsStepEnabled("installing_openbao"))
+	assert.True(t, orch.IsStepEnabled("installing_openbao"))
 
 	orch.SetStackConfig(domain.StackConfig{
 		Authentication: &domain.AuthenticationConfig{Provider: "openbao"},
 	})
 	assert.True(t, orch.IsStepEnabled("installing_openbao"))
+
+	assert.Less(t, orch.stepOrder["installing_openbao"], orch.stepOrder["installing_postgresql"])
+	assert.Less(t, orch.stepOrder["provisioning_secrets"], orch.stepOrder["installing_postgresql"])
 }
 
 func TestOrchestrator_GitLabSourceRepositoryEnablement(t *testing.T) {
@@ -179,6 +190,9 @@ func TestOrchestrator_ExecuteStep_SkipsSharedClusterScopedComponents(t *testing.
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 	}
 
@@ -186,7 +200,7 @@ func TestOrchestrator_ExecuteStep_SkipsSharedClusterScopedComponents(t *testing.
 		require.NoError(t, orch.ExecuteStep(context.Background(), "stk_shared", step.name, step.phase))
 	}
 
-	assert.Equal(t, []string{"nullus-postgresql"}, installer.installed)
+	assert.Equal(t, []string{"openbao", "nullus-postgresql"}, installer.installed)
 }
 
 func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
@@ -215,6 +229,9 @@ func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -278,6 +295,9 @@ func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsWebserviceAndSidekiqF
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_cert_manager", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_metrics_server", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_openbao", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_external_secrets", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "provisioning_secrets", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_postgresql", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_minio", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_resource_clamp", "installing_object_storage_secret", "A"))
@@ -496,6 +516,9 @@ func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -527,6 +550,9 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -595,6 +621,8 @@ func TestOrchestrator_VerifyDeployment_RepairsMissingGatewayRelease(t *testing.T
 	installer.installed = []string{
 		"cert-manager",
 		"metrics-server",
+		"openbao",
+		"external-secrets",
 		"nullus-postgresql",
 		"nullus-minio",
 		"gitlab",
@@ -633,6 +661,9 @@ func TestOrchestrator_ExecuteStep_AppliesYAMLOverrideByChartName(t *testing.T) {
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_cert_manager", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_metrics_server", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_openbao", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_external_secrets", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "provisioning_secrets", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_postgresql", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_minio", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_override", "installing_object_storage_secret", "A"))
@@ -658,6 +689,9 @@ func TestOrchestrator_ExecuteStep_AppliesAccessDomainToGitLabValues(t *testing.T
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_cert_manager", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_metrics_server", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_openbao", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_external_secrets", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "provisioning_secrets", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_postgresql", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_minio", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_access_domain", "installing_object_storage_secret", "A"))
@@ -684,6 +718,9 @@ func TestOrchestrator_ExecuteStep_SkipsManifestOverride(t *testing.T) {
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_cert_manager", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_metrics_server", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_openbao", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_external_secrets", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "provisioning_secrets", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_postgresql", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_minio", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_manifest", "installing_object_storage_secret", "A"))
@@ -820,6 +857,9 @@ func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -844,6 +884,10 @@ func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
 
 func TestOrchestrator_VerifyDeployment_UsesResolvedChartsForLoggingAndTrace(t *testing.T) {
 	installer := &mockInstaller{strictStatus: true}
+	// ESO 는 전용 설치 경로를 타는데, 테스트의 가짜 kubeconfig 에서는
+	// 조기 반환해 릴리스를 남기지 않는다. 실제 클러스터에서는 설치되므로
+	// 검증 대상이 되도록 릴리스를 미리 채워 둔다.
+	installer.installed = []string{"external-secrets"}
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
 	orch.SetStackConfig(domain.StackConfig{
 		Artifacts: domain.ArtifactsConfig{SourceRepository: domain.ToolSelection{Enabled: true}},
@@ -864,6 +908,9 @@ func TestOrchestrator_VerifyDeployment_UsesResolvedChartsForLoggingAndTrace(t *t
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -905,6 +952,9 @@ func TestOrchestrator_ExecuteStep_AppliesRunnerGitlabURL(t *testing.T) {
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -942,6 +992,9 @@ func TestOrchestrator_ExecuteStep_SkipsGitLabAndRunnerForGitHubSelection(t *test
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -979,6 +1032,9 @@ func TestOrchestrator_ExecuteStep_InstallsGitLabAndRunnerForGitLabSelection(t *t
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},
@@ -1020,6 +1076,9 @@ func TestOrchestrator_ExecuteStep_InstallsRunnerWhenGitLabSourceRepositoryIsInst
 	}{
 		{name: "installing_cert_manager", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
+		{name: "installing_openbao", phase: "A"},
+		{name: "installing_external_secrets", phase: "A"},
+		{name: "provisioning_secrets", phase: "A"},
 		{name: "installing_postgresql", phase: "A"},
 		{name: "installing_minio", phase: "A"},
 		{name: "installing_object_storage_secret", phase: "A"},

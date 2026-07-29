@@ -652,6 +652,7 @@ _deploy_nullus_app() {
     --set web.image.repository="${REGISTRY}/nullus-web" \
     --set web.image.tag="${IMAGE_TAG}" \
     --set secrets.dbPassword="${DB_PASSWORD}" \
+    --set postgresql.auth.password="${DB_PASSWORD}" \
     --set secrets.encryptionKey="${ENCRYPTION_KEY}" \
     --set config.server.mode=production \
     --set ingress.enabled=true \

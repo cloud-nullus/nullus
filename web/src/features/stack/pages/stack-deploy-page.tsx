@@ -40,7 +40,9 @@ interface DeployStage {
 
 const DEPLOY_STAGES: DeployStage[] = [
   { key: 'validate', label: 'Validate', steps: ['validate'], progressAt: 5 },
-  { key: 'install', label: 'Install', steps: ['installing_'], progressAt: 15 },
+  // provisioning_secrets 는 installing_ 접두사를 쓰지 않지만 설치 단계에 속한다.
+  // 빠뜨리면 이 단계의 로그가 어느 스테이지에도 잡히지 않아 타임라인에서 사라진다.
+  { key: 'install', label: 'Install', steps: ['installing_', 'provisioning_secrets'], progressAt: 15 },
   { key: 'configure', label: 'Configure', steps: ['integration_check', 'configuring'], progressAt: 90 },
   { key: 'health', label: 'Health Check', steps: ['health_check'], progressAt: 96 },
   { key: 'complete', label: 'Complete', steps: ['completed'], progressAt: 100 },

@@ -28,16 +28,29 @@ type installStep struct {
 var installDAG = []installStep{
 	{name: "installing_cert_manager", phase: "A", duration: time.Second},
 	{name: "installing_metrics_server", phase: "A", duration: time.Second},
-	{name: "installing_postgresql", phase: "A", duration: time.Second, deps: []string{"installing_cert_manager", "installing_metrics_server"}},
+
+	// 시크릿 평면(OpenBao → ESO → provisioning)이 스토리지보다 먼저 선다.
+	// PostgreSQL/MinIO 차트는 비밀번호를 values 로 받지 않고 여기서 만든
+	// Secret 을 existingSecret 으로 참조하므로, 순서가 뒤바뀌면 파드가
+	// FailedMount 로 영원히 기동하지 못한다.
+	//
+	// OpenBao 는 file 스토리지 백엔드를 쓰므로 PostgreSQL/MinIO 에 의존하지
+	// 않는다 — 그래서 스토리지 앞으로 옮길 수 있다.
+	// 평면 내부 순서는 강제된다: init 이 만든 root token 으로 부트스트랩이
+	// 인증을 구성하고, 그 role 이 있어야 ESO 가 로그인한다.
+	{name: "installing_openbao", phase: "A", duration: time.Second, deps: []string{"installing_cert_manager", "installing_metrics_server"}},
+	{name: "installing_external_secrets", phase: "A", duration: time.Second, deps: []string{"installing_openbao"}},
+	{name: "provisioning_secrets", phase: "A", duration: time.Second, deps: []string{"installing_external_secrets"}},
+
+	{name: "installing_postgresql", phase: "A", duration: time.Second, deps: []string{"provisioning_secrets"}},
 	{name: "installing_minio", phase: "A", duration: time.Second, deps: []string{"installing_postgresql"}},
 	{name: "installing_object_storage_secret", phase: "A", duration: time.Second, deps: []string{"installing_minio"}},
 	{name: "installing_object_storage_buckets", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
 	{name: "installing_database_connection_check", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
 
-	{name: "installing_openbao", phase: "B", duration: time.Second, deps: []string{"installing_postgresql", "installing_minio"}},
-	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"installing_openbao", "installing_object_storage_secret", "installing_object_storage_buckets", "installing_database_connection_check"}},
-	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"installing_openbao"}},
-	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"installing_openbao", "installing_gitlab"}},
+	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_secrets", "installing_object_storage_secret", "installing_object_storage_buckets", "installing_database_connection_check"}},
+	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_secrets"}},
+	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_secrets", "installing_gitlab"}},
 
 	{name: "installing_prometheus", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
 	{name: "installing_grafana", phase: "C", duration: time.Second, deps: []string{"installing_prometheus"}},

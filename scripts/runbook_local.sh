@@ -155,6 +155,44 @@ ensure_golden_path_seed() {
   seed_cicd_templates_if_needed
 }
 
+KEYCLOAK_CONTAINER=""
+keycloak_container() {
+  if [[ -z "$KEYCLOAK_CONTAINER" ]]; then
+    KEYCLOAK_CONTAINER="$(docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" ps -q keycloak 2>/dev/null | head -1)"
+  fi
+  printf '%s' "$KEYCLOAK_CONTAINER"
+}
+
+# Keycloak realm 의 sslRequired 기본값이 'external' 이라, 호스트 → 컨테이너(:8180)
+# 요청을 외부 요청으로 판정해 HTTP 를 거부한다. 그 결과 setup-keycloak.sh 의 admin
+# 토큰 발급이 "failed to obtain admin token" 으로 실패한다. 호스트에서는 SSL 을 붙일
+# 수 없으므로 컨테이너 안에서 kcadm 으로 요구 조건을 해제한다.
+# docker-compose.dev.yaml 의 Keycloak 은 KC_DB=dev-mem(인메모리)이라 컨테이너를
+# 재시작하면 초기화된다 — 따라서 up 할 때마다 다시 적용한다.
+keycloak_relax_ssl() {
+  local realm="$1" cid
+  cid="$(keycloak_container)"
+  if [[ -z "$cid" ]]; then
+    echo "[nullus] keycloak container not found; skipping sslRequired relax ($realm)"
+    return 0
+  fi
+
+  if ! docker exec "$cid" /opt/keycloak/bin/kcadm.sh config credentials \
+      --server http://localhost:8080 --realm master \
+      --user "${KEYCLOAK_ADMIN_USER:-admin}" \
+      --password "${KEYCLOAK_ADMIN_PASSWORD:-admin}" >/dev/null 2>&1; then
+    echo "[nullus] kcadm login failed; skipping sslRequired relax ($realm)"
+    return 0
+  fi
+
+  if docker exec "$cid" /opt/keycloak/bin/kcadm.sh update "realms/${realm}" \
+      -s sslRequired=NONE >/dev/null 2>&1; then
+    echo "[nullus] keycloak realm '$realm': sslRequired=NONE"
+  else
+    echo "[nullus] keycloak realm '$realm': sslRequired update skipped"
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -556,8 +594,14 @@ do_up() {
     echo "[nullus] waiting for keycloak..."
     if wait_for_http "http://localhost:${KEYCLOAK_PORT}" 60 2; then
       echo "[nullus] keycloak is ready, running realm setup..."
-      "$PROJECT_ROOT/scripts/setup-keycloak.sh" || \
+      keycloak_relax_ssl master
+      if "$PROJECT_ROOT/scripts/setup-keycloak.sh"; then
+        # nullus realm 은 setup 이 만든 뒤에야 존재하므로 생성 후 별도로 해제한다
+        # (해제 전에는 호스트에서 direct grant 토큰 요청이 실패한다).
+        keycloak_relax_ssl nullus
+      else
         echo "[nullus] keycloak realm setup failed (non-blocking, run scripts/setup-keycloak.sh manually)"
+      fi
     else
       echo "[nullus] keycloak did not start (non-blocking, continuing...)"
     fi
