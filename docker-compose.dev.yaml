@@ -49,9 +49,16 @@ services:
     image: quay.io/keycloak/keycloak:26.0
     command: start-dev
     environment:
-      KC_DB: dev-mem
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      # dev-mem(H2 인메모리)은 마지막 커넥션이 닫히면 DB 가 통째로 사라진다.
+      # 기동 15분쯤 뒤 "Table \"REALM\" not found (this database is empty)" 가
+      # 뜨면서 realm/유저가 전부 날아가고 토큰 엔드포인트가 500 을 반환했다.
+      # dev-file 은 같은 개발용 H2 이지만 파일로 유지되어 세션 중 증발하지 않는다.
+      KC_DB: dev-file
+      # KC 26 에서 KEYCLOAK_ADMIN/KEYCLOAK_ADMIN_PASSWORD 는 deprecated 다.
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    volumes:
+      - keycloak_data:/opt/keycloak/data
     ports:
       - "8180:8080"
 
@@ -59,3 +66,4 @@ volumes:
   postgres_data:
   minio_data:
   redis_data:
+  keycloak_data:
