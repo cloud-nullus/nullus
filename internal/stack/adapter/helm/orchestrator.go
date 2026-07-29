@@ -832,6 +832,11 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		}
 	}
 
+	// 이전 설치가 남긴 cluster-scoped 리소스(CRD/RBAC/webhook)의 소유권을 먼저
+	// 인수한다. 옛 네임스페이스가 주석에 박혀 있으면 Helm 이 ownership 충돌로
+	// 설치를 거부한다. 살아 있는 다른 릴리스 소유는 건드리지 않는다.
+	o.adoptClusterScopedResources(ctx, releaseName, namespace)
+
 	result, err := o.installer.Install(ctx, port.HelmInstallRequest{
 		ReleaseName: releaseName,
 		ChartName:   spec.ChartName,

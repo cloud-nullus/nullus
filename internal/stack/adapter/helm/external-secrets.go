@@ -108,11 +108,22 @@ func (o *Orchestrator) adoptExistingESOCRDs(ctx context.Context, namespace, rele
 		if _, err := o.runKubectl(ctx, "get", "crd", crd); err != nil {
 			continue // 없으면 Helm 이 새로 만든다
 		}
-		patch := fmt.Sprintf(
-			`{"metadata":{"labels":{"app.kubernetes.io/managed-by":"Helm"},`+
-				`"annotations":{"meta.helm.sh/release-name":%q,"meta.helm.sh/release-namespace":%q}}}`,
-			releaseName, namespace)
-		if _, err := o.runKubectl(ctx, "patch", "crd", crd, "--type=merge", "-p", patch); err != nil {
+
+		// 이미 다른 스택이 살아 있는 채로 소유 중이면 탈취하지 않는다.
+		// (CRD 는 클러스터 전역이라 소유권을 뺏으면 그 스택 삭제 시 함께 사라진다)
+		//
+		// 소유권 조회 자체가 실패하면 예전대로 인수한다 — 조회 실패를 이유로
+		// 인수를 건너뛰면 다중 네임스페이스 재설치가 다시 막힌다.
+		if owner, err := o.clusterScopedOwnerOf(ctx, "crd", crd); err == nil {
+			if strings.TrimSpace(owner.ReleaseName) != "" && owner.ReleaseNamespace != namespace &&
+				releaseAliveInNamespace(ctx, o, owner.ReleaseName, owner.ReleaseNamespace) {
+				slog.Warn("ESO CRD 를 인수하지 않습니다 — 다른 네임스페이스의 릴리스가 아직 살아 있습니다",
+					"crd", crd, "owner_namespace", owner.ReleaseNamespace, "target_namespace", namespace)
+				continue
+			}
+		}
+
+		if err := o.patchClusterScopedOwnership(ctx, "crd", crd, releaseName, namespace); err != nil {
 			slog.Warn("ESO CRD 소유권 인수 실패", "crd", crd, "error", err)
 			continue
 		}
