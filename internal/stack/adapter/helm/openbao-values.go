@@ -43,14 +43,24 @@ while true; do
       if [ ! -d "${KEYS_DIR}" ]; then
         echo "unseal: 키가 아직 프로비저닝되지 않음, 대기"
       else
+        # 제출한 조각 수를 세어 로그로 남긴다. Secret 이 만들어지기 전이나
+        # kubelet 이 마운트를 동기화하기 전에는 glob 이 아무것도 잡지 못하는데,
+        # 이때도 "제출 완료" 를 찍으면 키를 보냈는데 안 열리는 것처럼 보여
+        # 원인 파악을 방해한다.
+        submitted=0
         for f in "${KEYS_DIR}"/key*; do
           [ -f "${f}" ] || continue
           key="$(cat "${f}")"
           [ -n "${key}" ] || continue
           wget -q -O /dev/null --header='Content-Type: application/json' \
             --post-data="{\"key\":\"${key}\"}" "${ADDR}/v1/sys/unseal" 2>/dev/null || true
+          submitted=$((submitted+1))
         done
-        echo "unseal: key share 제출 완료"
+        if [ "${submitted}" -eq 0 ]; then
+          echo "unseal: 키 파일이 아직 마운트되지 않음, 대기"
+        else
+          echo "unseal: key share ${submitted}개 제출"
+        fi
       fi
       ;;
     *'"sealed":false'*)
