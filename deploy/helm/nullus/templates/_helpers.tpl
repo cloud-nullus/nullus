@@ -82,6 +82,20 @@ app.kubernetes.io/component: web
 {{- end }}
 {{- end -}}
 
+{{- /*
+번들 PostgreSQL 을 쓸 때 API 가 참조하는 비밀번호는 서브차트가 실제로 설정한
+postgresql.auth.password 여야 한다. secrets.dbPassword 를 그대로 쓰면 두 값이
+어긋났을 때 API 가 DB 인증에 실패한다(기본값이 change-me / nullus 로 불일치).
+host/port/name/username 과 같은 규칙으로 한쪽에서만 결정한다.
+*/ -}}
+{{- define "nullus.database.password" -}}
+{{- if .Values.postgresql.enabled }}
+{{- .Values.postgresql.auth.password }}
+{{- else }}
+{{- .Values.secrets.dbPassword }}
+{{- end }}
+{{- end -}}
+
 {{- define "nullus.database.username" -}}
 {{- if .Values.postgresql.enabled }}
 {{- .Values.postgresql.auth.username }}

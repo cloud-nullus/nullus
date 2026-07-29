@@ -49,11 +49,30 @@ config:
     format: json
 
 secrets:
+  # 번들 PostgreSQL(postgresql.enabled=true)을 쓸 때는 이 값이 무시되고
+  # postgresql.auth.password 가 사용된다 — 두 값이 어긋나면 API 가 DB 인증에
+  # 실패하므로 차트가 한쪽으로 통일한다(nullus.database.password 헬퍼).
+  # 외부 DB(postgresql.enabled=false)일 때만 이 값이 쓰인다.
   dbPassword: change-me
-  encryptionKey: change-me-32-bytes-minimum
+  # AES-256 키라 정확히 32바이트여야 한다. 길이가 다르면 클러스터 등록/조회가
+  # "ENCRYPTION_KEY must be 32 bytes" 로 HTTP 500 을 낸다(기동 자체는 된다).
+  encryptionKey: change-me-32byte-encryption-key!
+
+# Bitnami 가 2025년에 카탈로그를 정리하면서 docker.io/bitnami/postgresql 의
+# 구버전 태그가 bitnamilegacy 네임스페이스로 옮겨갔다. 서브차트 기본값
+# (bitnami/postgresql:17.5.0-debian-12-r20)은 더 이상 pull 되지 않으므로
+# 동일 다이제스트가 남아 있는 bitnamilegacy 를 가리킨다.
+# 비공식 레포로 바꾸면 서브차트의 이미지 검증이 막아서 allowInsecureImages 가 필요하다.
+global:
+  security:
+    allowInsecureImages: true
 
 postgresql:
   enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 17.5.0-debian-12-r20
   auth:
     username: nullus
     password: nullus
