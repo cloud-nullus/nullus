@@ -110,3 +110,189 @@ oidc.config: |
 ## 6. 결정 로그
 - **D1**: 핸드오프 검증 PoC = Grafana 1종(docker-compose). 이유: 가장 가벼움·`auto_login` 무중단 통과를 가장 명확히 증명. 비용: ArgoCD/Harbor는 설정 레벨 검증에 그침. 탈출구: 후속 W에서 k8s e2e.
 - **D2**: redirect/callback은 신규 구현하지 않고 OSS 내장 OIDC에 위임. 이유: "핸드오프만" 범위·중복 회피. 비용: OSS별 옵션 차이 흡수 필요. 탈출구: 무중단이 부족한 앱은 후속에서 게이트웨이 보강.
+
+---
+
+## 7. 일반 설치 경로 적용 설계 (W7)
+
+**작성일**: 2026-07-28
+**연관 문서**: `OpenBao_시크릿_평면_구축_설계.md` (P3)
+
+### 7.1 현재 상태 — SSO가 에어갭에만 존재한다
+
+| 항목 | 에어갭 경로 | 일반 설치 경로 |
+|---|---|---|
+| Keycloak 설치 | `27-install-stacks.sh`가 `NAMESPACE_AUTH`에 설치 | **없음** — 설치 DAG에 `installing_keycloak` 부재 |
+| OIDC client 등록 | `30-provision-sso.sh`가 Keycloak API 직접 호출 | **없음** — `ProvisionSSO`가 어디서도 호출되지 않음 |
+| OSS values의 OIDC 블록 | `airgap/helm/stack-values/*.yaml`에 존재 | **없음** — 코드 생성 values에 OIDC 설정 없음 |
+| client secret | `*-dev-secret` 리터럴 5종을 Keycloak에 push | 해당 없음 |
+
+즉 일반 설치는 IdP도, 클라이언트 등록도, OSS 설정도 없다. 세 가지를 모두 채워야 SSO가 성립한다.
+
+### 7.2 Keycloak 조달 경로
+
+**Keycloak은 스택 구성요소가 아니라 플랫폼 구성요소로 둔다.** 스택마다 IdP를 띄우지 않는다.
+
+근거: Nullus 자체 로그인도 Keycloak을 사용하므로 스택별 설치는 IdP를 이중화한다. 에어갭 경로가 이미 `NAMESPACE_AUTH`로 분리한 구조와도 일치한다. 스택 설치기는 **기존 Keycloak에 클라이언트를 등록만** 한다.
+
+`authentication.provider`는 현재 `'' | 'openbao'`만 받는다. OIDC issuer 정보를 받을 필드를 별도로 추가한다.
+
+| 모드 | 동작 |
+|---|---|
+| 플랫폼 Keycloak (기본) | Nullus가 관리하는 Keycloak의 issuer를 자동 주입 |
+| 외부 IdP (BYO) | 운영자가 issuer/realm을 직접 입력. 기존 IdP를 쓰는 온프레 고객 대응 |
+| 미사용 | OIDC 블록을 생성하지 않는다. 각 OSS 자체 로그인 유지 |
+
+**결정: Keycloak을 `deploy/helm/nullus` 차트의 조건부 의존성으로 포함한다.**
+
+현재 차트 의존성은 `postgresql` 하나뿐이며, Keycloak은 에어갭 스크립트(`22-install-platform-stack.sh`)가 `nullus-auth` 네임스페이스에 설치한다. 그 스크립트는 이미 Keycloak을 "기본(필수)"로 분류하고 있으므로, 차트로 올리면 에어갭과 일반 설치가 같은 경로로 통일된다.
+
+```yaml
+# deploy/helm/nullus/Chart.yaml
+dependencies:
+  - name: postgresql
+    condition: postgresql.enabled
+  - name: keycloak          # 신규
+    condition: keycloak.enabled
+```
+
+동반 변경:
+
+- `22-install-platform-stack.sh`의 Keycloak 설치 블록을 제거한다 (차트가 흡수)
+- `airgap/images/images.txt`는 `helm template deploy/helm/nullus` 결과로 자동 생성되므로, Keycloak 이미지가 "카탈로그" 섹션에서 "차트 의존성" 섹션으로 자연히 이동한다
+- **realm/client 부트스트랩은 차트가 아니라 백엔드가 담당한다.** realm 자체는 기동 시 멱등 보장, client는 스택 설치마다 추가되는 런타임 관심사이기 때문이다. `setup-keycloak.sh`가 하던 역할을 백엔드로 옮긴다
+- `keycloak.enabled=false`로 두면 BYO 모드가 된다
+
+### 7.3 Client ID 네임스페이싱
+
+`ToolSSOSpec`의 ClientID는 `grafana`, `argocd` 등으로 고정돼 있다. 공용 realm에 여러 스택이 등록하면 **client ID가 충돌**한다 — 두 스택의 Grafana가 같은 clientId를 두고 redirect URI를 서로 덮어쓴다.
+
+**client ID를 스택 단위로 네임스페이싱한다.**
+
+```text
+{stack-slug}-{tool}     예) prod-devops-grafana, staging-devops-argocd
+```
+
+realm 분리(org별 realm)는 사용자·그룹 관리까지 쪼개져 운영 복잡도가 크므로 후속 과제로 둔다.
+
+### 7.4 Client Secret 생명주기 — P3와의 통합
+
+**생성 주체는 Nullus다.** Keycloak이 생성한 secret을 읽어오지 않고, Nullus가 만든 값을 Keycloak에 push한다.
+
+근거: OpenBao가 Source of Truth여야 하며(PRD 5.2 "OIDC client secret은 OpenBao 경유로만 주입"), push 방식이면 Keycloak이 유실돼도 OpenBao에서 복원할 수 있다. 현재 에어갭 스크립트도 `"secret": "${secret}"`로 push하는 구조라 방식이 동일하다 — 값의 출처만 리터럴에서 생성값으로 바뀐다.
+
+```text
+provisioning_secrets   random(32) → OpenBao write
+                       → ExternalSecret → K8s Secret
+        ↓
+provisioning_sso       OpenBao read → Keycloak upsert(clientId, secret, redirectURIs)
+        ↓
+installing_{oss}       K8s Secret 참조 (env / secretKeyRef)
+```
+
+OpenBao 경로: `kv/nullus/{env}/{org_id}/auth/{client_id}/client-secret`
+
+`provisioning_sso`는 **Keycloak 기동 이후**여야 한다. 설치 스텝 의존성에 이 제약을 반영한다.
+
+### 7.5 Go 프로비저너 보강
+
+현재 `internal/auth/adapter/keycloak/sso_provisioner.go`는 다음 네 가지가 비어 있다.
+
+| # | 항목 | 현재 | 조치 |
+|---|---|---|---|
+| G1 | client secret | `RegisterOIDCClient`에 secret 파라미터 없음. confidential client(`publicClient: false`)를 만들지만 Keycloak 생성 secret을 되읽지도 않아 값이 어디에도 없다 | secret 파라미터 추가, push 방식 |
+| G2 | **upsert 미지원** | `409 Conflict`를 성공으로 처리해 **기존 클라이언트가 갱신되지 않는다**. secret을 회전해도 Keycloak에 반영되지 않아 로그인이 깨진다 | 존재 시 PUT으로 갱신 |
+| G3 | PKCE / webOrigins | 설정하지 않음. values는 PKCE를 전제하므로 불일치 | `ToolSSOSpec`에 필드 추가. Grafana/Harbor/GitLab은 `S256`, MinIO/ArgoCD는 미설정 (에어갭 스크립트의 기존 분기와 동일) |
+| G4 | 파이프라인 배선 | `ProvisionSSO`가 정의부와 테스트 외에 호출되지 않음 | `provisioning_sso` 스텝에서 호출 |
+
+**G2가 가장 중요하다.** 시크릿 회전 파이프라인과 직결되며, 증상이 "회전 후 SSO 로그인 실패"로만 나타나 원인 추적이 어렵다.
+
+**모듈 경계**: stack usecase가 `internal/auth/adapter/keycloak`을 직접 import하면 모듈 간 직접 의존 금지 규칙에 위배된다. `internal/stack/port`에 인터페이스를 정의하고 `cmd/api/main.go`에서 auth 구현체를 주입한다 — `TokenSourceRegistry`, `secrets.Router`와 동일한 패턴이다.
+
+### 7.6 코드 생성 values에 OIDC 주입
+
+`internal/stack/adapter/helm/`의 values 생성기에 도구별 OIDC 블록을 추가한다. 기준 구성은 `airgap/helm/stack-values/*.yaml`에 이미 검증된 형태로 존재하므로 그대로 옮기되, 두 가지를 바꾼다.
+
+- **issuer/auth_url을 accessDomain 기반으로 생성** — 에어갭 values는 `keycloak.nullus.internal`이 하드코딩돼 있다
+- **client secret은 값이 아니라 참조로** — Grafana는 `secretKeyRef` env, ArgoCD는 ESO가 소유하는 `argocd-secret`
+
+| OSS | 주입 위치 | secret 참조 방식 |
+|---|---|---|
+| Grafana | `grafana.ini.auth\.generic_oauth` + `auto_login` | env `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET` ← `secretKeyRef` |
+| ArgoCD | `configs.cm.oidc.config` | `$oidc.keycloak.clientSecret` ← ESO 소유 `argocd-secret` |
+| Harbor | 설치 후 API로 `auth_mode=oidc_auth` 설정 | 부트스트랩 시 K8s Secret에서 로드 |
+| MinIO | `oidc.clientSecret` | `secretKeyRef` |
+| GitLab | `omniauth` provider 블록 | K8s Secret 마운트 |
+
+### 7.7 argocd-secret 소유권 (P3 예외)
+
+P3는 "`existingSecret` 패턴이면 Helm과 ESO의 Secret 소유권 충돌이 사라진다"를 전제하지만 **ArgoCD는 예외다.**
+
+`argocd-secret` 하나에 admin 비밀번호 해시와 OIDC client secret이 함께 들어간다. 차트는 `configs.secret.extra`로, ESO는 admin 해시로 같은 Secret을 건드리려 하므로 `creationPolicy: Owner`가 차트가 넣은 키를 덮어쓴다.
+
+**해결**: `argocd-secret`을 ESO가 통째로 소유하고 차트의 Secret 생성을 끈다(`configs.secret.createSecret: false`). admin 해시와 OIDC client secret을 **하나의 ExternalSecret에 함께** 담는다.
+
+### 7.8 에어갭 경로 통합
+
+**결정: 에어갭도 Nullus 백엔드 설치 경로를 사용한다. 설치 구현은 하나로 통일한다.**
+
+현재 에어갭에는 백엔드를 우회하는 **중복 설치 구현**이 존재한다.
+
+| 스크립트 | 현재 역할 | 조치 |
+|---|---|---|
+| `21-install-nullus.sh` | 플랫폼 Helm 설치 | 유지 (정본) |
+| `22-install-platform-stack.sh` | Keycloak 설치 | Keycloak 블록 제거 → 차트가 흡수 (7.2) |
+| `27-install-stacks.sh` | **스택 15종을 helm으로 직접 설치** | helm 직접 호출 → **백엔드 API 호출로 재작성** |
+| `30-provision-sso.sh` | SSO 클라이언트 등록 | **폐기** → 백엔드 `provisioning_sso`가 대체 |
+
+`22-install-platform-stack.sh`는 이미 주석에 *"Harbor / MinIO / ArgoCD는 Nullus UI의 Stack 설치 기능에서 사용자가 선택 시 설치된다"* 고 정본 경로를 명시하고 있다. `27`은 백엔드 없이 검증하기 위한 보조 수단이었으므로, 무인 검증 목적만 남기고 호출 방식을 API로 바꾼다.
+
+**선행 작업 2가지**
+
+**① 자기 클러스터 등록(self-registration)** — 현재 스택 설치는 kubeconfig가 등록된 클러스터를 대상으로 한다. 에어갭에서는 Nullus가 자기가 떠 있는 클러스터에 설치해야 하므로, in-cluster ServiceAccount 기반으로 자신을 대상 클러스터로 자동 등록하는 경로가 필요하다.
+
+현재 `ClusterType`은 `pipeline` / `target` 두 가지뿐이며 self 개념이 없다. 이 기능은 에어갭 전용이 아니라 **단일 클러스터 설치 시나리오 전반에 유용**하므로 제품 기능으로 설계한다.
+
+**② 부트스트랩 인증** — 스크립트가 Admin API를 호출할 자격이 필요하다. Keycloak service account(client credentials) 방식을 사용하고, 부트스트랩 전용 자격은 설치 완료 후 폐기한다.
+
+**통합 후 에어갭 파이프라인**
+
+```text
+21  플랫폼 Helm 설치 (Keycloak 포함)
+26  DB 마이그레이션
+--  자기 클러스터 등록 (신규)
+27  스택 설치 요청 → 백엔드 API  ← helm 직접 호출에서 전환
+    └ 백엔드가 P1~P3 스텝을 수행 (OpenBao init/unseal → auth → ESO → provisioning_secrets → provisioning_sso → OSS 설치)
+23  게이트웨이 구성
+99  검증
+```
+
+하드코딩 secret 5종(`grafana-dev-secret` 등)은 `provisioning_secrets`가 생성값으로 대체하므로 자연히 제거된다.
+
+> 통합 완료 전까지는 두 경로가 병존한다. 그 기간에는 에어갭 경로와 일반 경로가 동일한 구성을 산출하는지 확인하는 회귀 검증이 필요하다.
+
+### 7.9 작업 순서
+
+```text
+[플랫폼]
+ 1. Keycloak을 nullus 차트 조건부 의존성으로 추가 (7.2)
+ 2. realm 부트스트랩을 백엔드 기동 경로로 이관
+ 3. authentication에 OIDC issuer 필드 추가 (플랫폼 / BYO / 미사용)
+
+[프로비저닝]
+ 4. Go 프로비저너 보강 G1~G3 + 단위 테스트
+ 5. provisioning_secrets에 OIDC client secret 추가 (P3)
+ 6. provisioning_sso 스텝 신설 + port 인터페이스 정의 + main.go 주입 (G4)
+ 7. 코드 생성 values에 OIDC 블록 추가 (7.6)
+ 8. argocd-secret 소유권 전환 (7.7)
+
+[에어갭 통합]
+ 9. 자기 클러스터 등록(self-registration) 구현
+10. 부트스트랩 인증 경로 구현
+11. 27-install-stacks.sh를 API 호출로 재작성, 30-provision-sso.sh 폐기
+12. 22-install-platform-stack.sh의 Keycloak 블록 제거
+```
+
+4~8은 P3와 같은 릴리스에 묶인다. client secret이 생성 방식으로 바뀌는 breaking change를 한 번에 처리하기 위해서다.
+
+9~12(에어갭 통합)은 **P3 완료 후 별도 단계**로 진행한다. 자기 클러스터 등록이 제품 기능이라 범위가 크고, P1~P3가 끝나야 백엔드 경로가 에어갭에서 실제로 동작하기 때문이다.

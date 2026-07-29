@@ -5,6 +5,9 @@
 # 용도: airgap/helm/charts-catalog/ 에 번들된 chart 로 다음을 설치한다.
 #
 #   기본 (필수): Keycloak — OIDC 인증 (auth.mode=oidc 일 때 필요)
+#     [NOTE] Keycloak 은 nullus 차트의 조건부 의존성(keycloak.enabled)으로
+#            이관되었습니다. 21-install-nullus.sh 가 함께 설치하므로 이 블록은
+#            SKIP_KEYCLOAK=1 로 건너뛸 수 있습니다.
 #   옵션 (INSTALL_FULL=1):
 #     - kube-prometheus-stack — 모니터링 (Prometheus + Grafana)
 #

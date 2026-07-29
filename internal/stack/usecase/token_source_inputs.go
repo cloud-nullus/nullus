@@ -43,6 +43,8 @@ func BuildStackTokenSourceInputs(stack *domain.Stack, env string) []port.TokenSo
 			// 실제 토큰 값은 provider 발급 시점에 회전 컨트롤러가 기록한다.
 			// 여기서는 경로만 등록하고 값은 비워 둔다.
 			TokenValue: "",
+			ClusterID:  stack.ClusterID,
+			Namespace:  stack.Namespace,
 		})
 	}
 

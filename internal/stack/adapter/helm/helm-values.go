@@ -24,6 +24,12 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))
 	}
 
+	// OIDC 블록은 스택별 client ID / accessDomain 에 의존한다.
+	// 에어갭 values 파일에만 있던 설정을 코드 경로로 끌어와 일반 설치에도 적용한다.
+	if oidc := o.oidcValuesForStep(step); len(oidc) > 0 {
+		base = mergeMaps(base, oidc)
+	}
+
 	base = mergeMaps(base, o.resourceDefaultValuesForStep(step, cfg))
 
 	if cfg == nil || len(cfg.YAMLOverrides) == 0 {

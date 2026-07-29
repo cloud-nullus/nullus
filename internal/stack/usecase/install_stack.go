@@ -48,9 +48,14 @@ var installDAG = []installStep{
 	{name: "installing_object_storage_buckets", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
 	{name: "installing_database_connection_check", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
 
-	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_secrets", "installing_object_storage_secret", "installing_object_storage_buckets", "installing_database_connection_check"}},
-	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_secrets"}},
-	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_secrets", "installing_gitlab"}},
+	// SSO 프로비저닝은 OIDC 클라이언트를 만들어 두는 단계라 이를 소비하는
+	// GitLab/Argo CD/Grafana 보다 앞서야 한다. orderedStep 에만 있고 여기에
+	// 없으면 단계가 영원히 실행되지 않는다.
+	{name: "provisioning_sso", phase: "A", duration: time.Second, deps: []string{"provisioning_secrets", "installing_object_storage_secret", "installing_object_storage_buckets", "installing_database_connection_check"}},
+
+	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
+	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_sso", "installing_gitlab"}},
 
 	{name: "installing_prometheus", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
 	{name: "installing_grafana", phase: "C", duration: time.Second, deps: []string{"installing_prometheus"}},

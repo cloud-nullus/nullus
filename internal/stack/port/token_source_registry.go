@@ -11,6 +11,9 @@ type TokenSourceInput struct {
 	Status        string
 	SecretManager string
 	TokenValue    string
+	// ClusterID / Namespace 는 회전 후 반영(rolling restart) 대상을 찾는 데 쓴다.
+	ClusterID string
+	Namespace string
 }
 
 // TokenSourceRegistry tracks OpenBao token metadata for stack integrations.

@@ -22,6 +22,7 @@ var canonicalInstallOrder = []string{
 	"installing_object_storage_secret",
 	"installing_object_storage_buckets",
 	"installing_database_connection_check",
+	"provisioning_sso",
 	"installing_gitlab",
 	"installing_argocd",
 	"installing_runner",

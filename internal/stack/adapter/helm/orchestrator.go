@@ -78,6 +78,8 @@ type Orchestrator struct {
 	// 시크릿 경로 접두사(kv/nullus/{env}/{org}/)에 쓰이는 스코프
 	secretEnv   string
 	secretOrgID string
+	// ssoFactory 는 스택별 SSO provisioner 생성기다 (auth 모듈 구현체 주입).
+	ssoFactory port.SSOProvisionerFactory
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -301,16 +303,19 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_object_storage_secret":     7,
 			"installing_object_storage_buckets":    8,
 			"installing_database_connection_check": 9,
-			"installing_gitlab":                    10,
-			"installing_argocd":                    11,
-			stepInstallingRunner:                   12,
-			"installing_prometheus":                13,
-			"installing_grafana":                   14,
-			"installing_logging":                   15,
-			"installing_log_search":                16,
-			"installing_opentelemetry":             17,
-			"installing_gateway":                   18,
-			"integration_check":                    19,
+			// SSO 프로비저닝은 OIDC 클라이언트를 만들어 두는 단계라
+			// 이를 소비하는 GitLab/Argo CD/Grafana 보다 앞서야 한다.
+			"provisioning_sso":         10,
+			"installing_gitlab":        11,
+			"installing_argocd":        12,
+			stepInstallingRunner:       13,
+			"installing_prometheus":    14,
+			"installing_grafana":       15,
+			"installing_logging":       16,
+			"installing_log_search":    17,
+			"installing_opentelemetry": 18,
+			"installing_gateway":       19,
+			"integration_check":        20,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -323,6 +328,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_object_storage_secret",
 			"installing_object_storage_buckets",
 			"installing_database_connection_check",
+			"provisioning_sso",
 			"installing_gitlab",
 			"installing_argocd",
 			stepInstallingRunner,
@@ -343,6 +349,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 시크릿 평면 3단계는 항상 켜지므로 "비활성 스텝" 로그 경로를 타지
 			// 않는다. config.authentication.provider 로 매핑해 두면 이 값이
 			// 설치 여부를 좌우하는 것처럼 읽혀 오해를 부르므로 넣지 않는다.
+			// provisioning_sso 는 선택형이라 매핑을 유지한다.
+			"provisioning_sso":         "config.authentication.provider",
 			"installing_gitlab":        "config.artifacts.source_repository",
 			"installing_argocd":        "config.pipeline.cd_tool",
 			stepInstallingRunner:       "config.pipeline.ci_platform",
@@ -386,6 +394,15 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 바뀌면서 선택형일 수 없게 되었다. 이 Secret 을 만드는 경로는
 			// provisioning_secrets 하나뿐이라, 꺼지면 파드가 FailedMount 로
 			// 기동하지 못한다. (기본값 provider='' 에서 설치가 멈추던 원인)
+			//
+			// 반면 provisioning_sso 는 OSS OIDC 연동을 켤 때만 필요하므로
+			// 선택형으로 유지한다.
+			"provisioning_sso": func(cfg domain.StackConfig) bool {
+				if cfg.Authentication == nil {
+					return false
+				}
+				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
+			},
 			"installing_argocd": func(cfg domain.StackConfig) bool {
 				return cfg.Pipeline.CDTool.Enabled
 			},
@@ -576,13 +593,24 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
-	// provisioning_secrets 는 차트가 없는 단계다. chartSpecForStep 아래에 두면
-	// spec 조회에 실패해 "unknown step" 으로 떨어지므로 그 앞에서 처리한다.
+	// provisioning_secrets / provisioning_sso 는 차트가 없는 단계다.
+	// chartSpecForStep 아래에 두면 spec 조회에 실패해 "unknown step" 으로
+	// 떨어지므로 그 앞에서 처리한다.
 	if step == "provisioning_secrets" {
 		// 시크릿을 생성해 OpenBao 에 기록하고 ESO 가 K8s Secret 을 만들 때까지 기다린다.
 		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
 		if err := o.runSecretProvisioning(ctx, o.namespace); err != nil {
 			return fmt.Errorf("시크릿 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
+	if step == "provisioning_sso" {
+		// OIDC 클라이언트를 미리 만들어 둔다. 이를 소비하는 GitLab/Argo CD/
+		// Grafana 설치보다 앞서야 한다.
+		if err := o.runSSOProvisioning(ctx, o.namespace); err != nil {
+			return fmt.Errorf("SSO 프로비저닝 실패: %w", err)
 		}
 		o.markCompleted(stackID, order)
 		return nil
@@ -798,7 +826,8 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	if cfg == nil {
 		// 시크릿 평면은 설정과 무관하게 항상 켜진다 — 차트가 참조하는
 		// existingSecret 을 만드는 유일한 경로이기 때문이다.
-		return true
+		// 반면 provisioning_sso 는 선택형이므로 설정이 없으면 끈다.
+		return step != "provisioning_sso"
 	}
 
 	enabledFn, ok := o.stepConfigEnabled[step]
