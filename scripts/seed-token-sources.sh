@@ -29,10 +29,18 @@ if [[ -n "$OPENBAO_ADDR" && -n "$OPENBAO_TOKEN" ]]; then
   # 부트스트랩 Job 이 KV v2 를 'kv' 로 마운트하므로 재작성하지 않는다.
   openbao_mount="${TOKEN_PATH%%/*}"
   openbao_path="${TOKEN_PATH#*/}"
-  curl -fsS -X POST "${OPENBAO_ADDR%/}/v1/${openbao_mount}/data/${openbao_path}" \
-    -H 'Content-Type: application/json' \
-    -H "X-Vault-Token: $OPENBAO_TOKEN" \
-    -d "$(printf '{"data":{"token":"%s"}}' "$TOKEN_VALUE")" >/dev/null
+  # OpenBao 쓰기는 best-effort 다. 실제 시드는 아래 token_sources row 이고,
+  # OpenBao 는 로컬(런북)에 없을 수 있다 — 기본값 openbao.nullus.internal 은
+  # 클러스터 내부 주소라 호스트에서 DNS 해석이 안 된다. 여기서 죽으면
+  # `runbook_local.sh up --seed` 전체가 exit 6 으로 끝나므로 경고만 남기고 계속한다.
+  if curl -fsS -X POST "${OPENBAO_ADDR%/}/v1/${openbao_mount}/data/${openbao_path}" \
+      -H 'Content-Type: application/json' \
+      -H "X-Vault-Token: $OPENBAO_TOKEN" \
+      -d "$(printf '{"data":{"token":"%s"}}' "$TOKEN_VALUE")" >/dev/null 2>&1; then
+    echo "wrote token to OpenBao: ${OPENBAO_ADDR%/}/v1/${openbao_mount}/data/${openbao_path}"
+  else
+    echo "warn: OpenBao 쓰기 실패 (${OPENBAO_ADDR}) — DB row 만 시드합니다" >&2
+  fi
 fi
 
 "${PSQL[@]}" -v ON_ERROR_STOP=1 <<SQL

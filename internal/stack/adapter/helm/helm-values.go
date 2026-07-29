@@ -231,9 +231,11 @@ func (o *Orchestrator) gitlabExternalSharedServiceValues(_ *domain.StackConfig) 
 				"port":     5432,
 				"database": "gitlabhq_production",
 				"username": "gitlab",
+				// PostgreSQL 차트를 existingSecret 으로 설치하므로 bitnami 차트는
+				// 자기 이름의 Secret 을 만들지 않는다. 프로비저닝된 Secret 을 가리켜야 한다.
 				"password": map[string]any{
 					"useSecret": true,
-					"secret":    "nullus-postgresql",
+					"secret":    ProvisionedPostgresSecret,
 					"key":       "password",
 				},
 			},

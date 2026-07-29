@@ -7,10 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-alpha] - 2026-07-26
+### Fixed
+
+- **OIDC 로그인이 유효한 토큰에도 401 로 거부되던 문제**: `setup-keycloak.sh` 가 `nullus-app` 클라이언트에 audience 매퍼를 만들지 않아 Keycloak 이 기본값 `aud: account` 로 토큰을 발급했고, `NULLUS_AUTH_OIDC_AUDIENCE=nullus-app` 를 검증하는 JWT 미들웨어가 이를 거부했다. audience 프로토콜 매퍼를 추가한다.
+- **OIDC 로그인 후 스택 생성이 FK 위반으로 실패하던 문제**: JWT 미들웨어가 `User.OrgID` 를 채우지 않고 토큰에도 `org_id` 클레임이 없어, `resolveOrgID` 가 어떤 마이그레이션에도 존재하지 않는 `00000000-0000-0000-0000-000000000001` 로 폴백해 `stacks_org_id_fkey` 위반이 났다. 미들웨어가 `org_id`(및 `organization_id`/`org` 별칭) 클레임을 principal 로 전달하고, `setup-keycloak.sh` 가 사용자 속성과 클레임 매퍼를 등록한다. 폴백 조직도 시드 마이그레이션이 실제로 만드는 조직(`internal/shared/domain.SeededDefaultOrgID`)으로 바로잡고 `NULLUS_DEFAULT_ORG_ID` 로 덮어쓸 수 있게 했다.
+- **로컬 Keycloak 이 기동 15분 뒤 realm 을 통째로 잃던 문제**: `KC_DB: dev-mem`(H2 인메모리)이 마지막 커넥션과 함께 사라져 `Table "REALM" not found (this database is empty)` 로그와 함께 토큰 엔드포인트가 500 을 반환했다. `dev-file` + 볼륨으로 바꾸고, KC 26 에서 deprecated 된 `KEYCLOAK_ADMIN*` 을 `KC_BOOTSTRAP_ADMIN_*` 로 교체했다.
+- **`setup-keycloak.sh` 가 수동 개입 없이는 완주하지 못하던 문제**: master realm 의 `sslRequired` 기본값 때문에 평문 HTTP 관리 API 호출이 `HTTPS required` 로 막혔다. 실패 시 컨테이너 안에서 `kcadm` 으로 한 번 완화하고 재시도하도록 자동화하고, `nullus` realm 도 `sslRequired=none` 으로 생성한다. 응답이 비었을 때 JSON 파서가 traceback 으로 죽던 문제, Keycloak 24+ User Profile 이 선언되지 않은 `org_id` 속성을 조용히 버리던 문제도 함께 정리했다.
+- **스택 설치 DAG에서 시크릿 평면 단계 누락 — GitLab+Argo CD 배포가 MinIO에서 멈추던 문제**: 오케스트레이터의 정식 순서(`orderedStep`)에는 `installing_external_secrets`·`provisioning_secrets`가 있었으나, 실제 실행을 구동하는 `internal/stack/usecase/install_stack.go`의 `installDAG`에는 두 단계가 없었다. PostgreSQL/MinIO 차트는 비밀번호를 values 로 받지 않고 `nullus-postgresql-credentials`·`nullus-minio-credentials`를 `existingSecret`으로 참조하는데, 이 Secret 을 만드는 경로가 `provisioning_secrets` 하나뿐이라 파드가 `FailedMount`로 영원히 기동하지 못하고 Helm 릴리스가 `pending-install`에 고착됐다. 두 단계를 DAG 에 추가하고, 시크릿 평면(OpenBao → ESO → provisioning)을 스토리지 차트 **앞으로** 재배치했다. OpenBao 는 file 스토리지 백엔드를 쓰므로 PostgreSQL/MinIO 에 의존하지 않아, `installing_openbao`의 잘못된 선행 의존도 함께 제거했다. `installDAG` 와 `orderedStep` 의 순서 일치를 양쪽 패키지에서 테스트로 고정한다.
+- **시크릿 평면이 `authentication.provider=openbao` 에서만 동작하던 문제**: 차트가 프로비저닝된 Secret 을 무조건 참조하므로 선택형일 수 없는데도 opt-in 으로 게이팅되어 있었다. 프런트엔드 기본값이 `provider: ''` 라 기본 구성에서 항상 설치가 실패했다. 게이팅을 제거해 항상 실행되도록 했다.
+- **`provisioning_secrets` 단계가 `unknown step` 으로 실패하던 문제**: 차트가 없는 단계인데 처리 블록이 `chartSpecForStep()` 뒤에 있어 spec 조회 실패로 떨어졌다. OpenBao 를 켜더라도 실행될 수 없던 잠재 결함으로, 다른 무차트 단계와 같이 spec 조회 앞으로 옮겼다.
+- **GitLab 이 존재하지 않는 DB Secret 을 참조하던 문제**: PostgreSQL 차트를 `auth.existingSecret=nullus-postgresql-credentials` 로 설치하면 bitnami 차트가 릴리스 이름(`nullus-postgresql`)으로 Secret 을 만들지 않는데, GitLab values 의 `global.psql.password.secret` 은 그 이름을 가리키고 있었다. 그 결과 migrations·webservice·toolbox·sidekiq 파드가 `MountVolume.SetUp failed ... secret "nullus-postgresql" not found` 로 기동하지 못했다. 두 참조가 같은 상수(`ProvisionedPostgresSecret`)를 쓰도록 맞추고, 어긋나면 실패하는 테스트를 추가했다.
+- **`OnDelete` 전략 워크로드에서 준비 검사가 실패하던 문제**: `kubectl rollout status` 는 RollingUpdate 전략에서만 동작하는데, OpenBao 차트의 StatefulSet 은 `OnDelete` 를 쓴다. 그래서 모든 차트가 정상 설치된 뒤에도 health_check 가 `rollout status is only available for RollingUpdate strategy type` 으로 실패해 배포가 통째로 failed 로 떨어졌다. 전략을 먼저 확인해 `OnDelete` 면 `readyReplicas` 도달을 기다리는 경로로 전환한다(에러 문구 기반 폴백 포함).
+- **배포 타임라인에서 `provisioning_secrets` 로그가 사라지던 문제**: UI 의 `DEPLOY_STAGES` 가 설치 단계를 `installing_` 접두사로만 매칭해, 접두사를 쓰지 않는 `provisioning_secrets` 가 어느 스테이지에도 잡히지 않았다. 이 단계가 실제로 실행되기 시작하면서 드러난 문제로, Install 스테이지에 명시적으로 추가했다.
+- **OpenBao unseal 사이드카가 키를 보내지 않고도 "제출 완료" 를 찍던 문제**: Secret 이 만들어지기 전이나 kubelet 이 마운트를 동기화하기 전에는 glob 이 아무것도 잡지 못하는데, 그때도 성공 로그를 남겨 "키를 보냈는데 안 열린다" 로 오독되었다. 제출한 조각 수를 세어 0 이면 대기 중임을 그대로 로그에 남긴다.
+
+
+## [0.3.0-alpha] - 2026-07-28
+
+첫 GitHub Release·태그입니다. 이전 `0.1.0-alpha`·`0.2.0-alpha` 섹션은 태그가 발행되지 않은 기록상의 버전입니다 (릴리즈 정책 §0).
 
 ### Added
 
+- **Helm 차트 OCI 게시** (#100): `v*` 태그 push 시 `cd.yml`의 `publish-chart` 잡이 차트를 `oci://ghcr.io/cloud-nullus/charts`에 게시. 이제 저장소를 clone하지 않고 `helm install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version 0.3.0-alpha`로 설치할 수 있다.
+- **로컬 kind 개발용 값 파일 분리** (#100): `deploy/helm/nullus/values-dev.yaml` 신규 — 로컬 빌드 이미지 태그(`dev`), `pullPolicy: Never`, 단일 레플리카, 개발 로그 설정. 차트 기본값에 로컬 환경 값을 커밋하던 문제를 구조적으로 차단한다.
 - **에어갭(air-gap) 클린 설치 전 과정 자동화** (#75, #76): 오프라인 번들만으로 외부 접근·스택 설치·DB 마이그레이션까지 동작하도록 누락 단계를 자동화. 인-클러스터 오케스트레이터가 온라인 Helm 레포 대신 로컬 OCI 레지스트리(`kind-registry:5000/charts`)에서 차트를 pull 하도록 지원.
 - **카카오클라우드 air-gap 배포 자산** (#79): OpenTofu IaC 3모듈(network/security/compute)과 provision→build→transfer→install→expose 5단계 스크립트, 운영 문서를 추가. kind 기반 트랙과 kubeadm 멀티노드 트랙을 분리.
 - **에어갭 번들 SBOM 자동 생성** (#91): `scripts/pre/generate-sbom.sh`가 번들 이미지와 Helm 차트의 SBOM(SPDX/CycloneDX)을 `bundle/sbom/`에 생성. syft 미설치 시 경고 후 건너뛰어 번들 빌드를 막지 않음.
@@ -164,6 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **차트 기본 이미지가 존재하지 않는 경로를 가리키던 문제** (#100): 저장소 리네임 이후 `values.yaml`의 기본값이 `ghcr.io/cloud-nullus/nullus-api`(세그먼트 부족) + ghcr에 없는 태그 `0.1.0-alpha`를 가리켜, 차트만으로는 설치가 불가능했다. 실재 경로 `ghcr.io/cloud-nullus/nullus/nullus-*`로 교정하고 `tag`를 비워 `Chart.appVersion` 폴백이 동작하도록 변경 — 릴리즈 시 동기화할 지점이 `Chart.yaml` 한 곳으로 줄었다.
+- **스택 설치 기본 클러스터 선택** (#97): 클러스터 이름 하드코딩(`kind-nullus-platform`) 폴백에 의존해, name/type 데이터가 어긋나면 의도와 다른 클러스터가 선택될 수 있었다. `type`/`types` 필드만으로 판단하는 `findPlatformCluster`로 통일.
 - **로그인 후 로그인 화면으로 튕기던 문제** (#78): 저장소가 `cloud-nullus/draft` → `cloud-nullus/nullus`로 리네임된 뒤에도 에어갭 설정이 옛 ghcr 경로를 참조해, 리네임 직전에 고정된 구버전 `nullus-web` 이미지가 설치되고 있었다. 해당 번들에는 세션 인증 헤더 전송 수정이 빠져 있어 API가 401을 반환하고 프론트가 로그아웃 처리했다. 이미지 경로를 새 경로로 교정.
 - **GitHub 선택 시 GitLab이 함께 설치되던 문제** (#56): `installing_gitlab`·`installing_runner` 실행 조건을 도구 이름 기준으로 제한.
 - **GitLab CE 표기 시 GitLab 설치 단계를 건너뛰던 문제** (#85): 템플릿 상세 모달의 버전 표기도 매트릭스 스냅샷 기준으로 정정.
@@ -207,7 +228,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **OSS SSO 자동로그인** (#98): Keycloak을 IdP로 포털(nullus-web)과 OSS 스택 앱(Argo CD·Grafana·Harbor·MinIO·GitLab·Prometheus·OpenSearch)을 단일 SSO로 묶었다. 포털 OIDC 로그인·로그아웃(end-session), OSS 앱 confidential client 자동 프로비저닝, OIDC 미지원 앱(Prometheus·OpenSearch)의 oauth2-proxy 우회를 포함. 브라우저 `crypto.subtle`이 secure context를 요구해 PKCE의 전제가 되므로 게이트웨이 HTTP 80 → HTTPS 443 강제 리다이렉트를 함께 배선했다. #93·#95의 provider 추상화와는 층위가 다르다 — 그쪽은 IdP 기동·주입, 이쪽은 기동된 IdP에 앱을 물리는 부분이다.
 - **OIDC를 설치 옵션으로 분리** (#93): IdP를 플랫폼 상시 기능이 아니라 runbook 선택 옵션(`--auth=<keycloak|authentik|none>`, 기본 `keycloak`)으로 정리하고, provider별 OIDC 환경변수를 API·웹에 주입하도록 배선. 기본값이 `keycloak`이므로 기존 동작은 보존된다. provider 선정 근거는 `docs/20_개발가이드/OIDC_Provider_선정기준.md` 참조.
+
+### Known Issues
+
+alpha 단계이므로 아래 결함을 안고 릴리즈합니다 (릴리즈 정책 §9.0-3). `ci.yml`이 `disabled_manually` 상태라 자동 게이트가 없고, 2026-07-28 릴리즈 담당 로컬 검증에서 확인한 값입니다.
+
+- **Go e2e 테스트 2건 실패**: `TestScenario4_CICDPipelineFlow`, `TestUAT2_Jieun_Developer`. 나머지 32개 패키지와 `make build`는 통과.
+- **프론트엔드 단위 테스트 38건 실패** (9파일 / 490건 중). 타입체크(`tsc --noEmit`)는 통과.
+- 위 실패는 이번 릴리즈에서 새로 생긴 것이 아니라 기존 결함이며, `ci.yml` 재활성화와 함께 수정합니다 (정책 §13-2).
+- **`0.1.0-alpha`·`0.2.0-alpha`에는 태그·Release가 없습니다.** 해당 섹션은 기록상의 버전이므로 compare 링크도 걸리지 않습니다 (정책 §3).
 
 ## [0.2.0-alpha] - 2026-03-28
 

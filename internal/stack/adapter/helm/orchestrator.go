@@ -288,40 +288,46 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		rollback:   &RollbackManager{},
 		kubeconfig: kubeconfig,
 		namespace:  namespace,
+		// 시크릿 평면(OpenBao → ESO → provisioning)이 스토리지보다 앞선다.
+		// PostgreSQL/MinIO 차트가 provisioning_secrets 가 만든 Secret 을
+		// existingSecret 으로 참조하기 때문이다. usecase 의 installDAG 와
+		// 순서가 일치해야 한다 — ensureOrder 가 이 순서를 강제한다.
 		stepOrder: map[string]int{
 			stepInstallingCertManager:              0,
 			"installing_metrics_server":            1,
-			"installing_postgresql":                2,
-			"installing_minio":                     3,
-			"installing_object_storage_secret":     4,
-			"installing_object_storage_buckets":    5,
-			"installing_database_connection_check": 6,
-			"installing_openbao":                   7,
-			"installing_external_secrets":          8,
-			"provisioning_secrets":                 9,
-			"provisioning_sso":                     10,
-			"installing_gitlab":                    11,
-			"installing_argocd":                    12,
-			stepInstallingRunner:                   13,
-			"installing_prometheus":                14,
-			"installing_grafana":                   15,
-			"installing_logging":                   16,
-			"installing_log_search":                17,
-			"installing_opentelemetry":             18,
-			"installing_gateway":                   19,
-			"integration_check":                    20,
+			"installing_openbao":                   2,
+			"installing_external_secrets":          3,
+			"provisioning_secrets":                 4,
+			"installing_postgresql":                5,
+			"installing_minio":                     6,
+			"installing_object_storage_secret":     7,
+			"installing_object_storage_buckets":    8,
+			"installing_database_connection_check": 9,
+			// SSO 프로비저닝은 OIDC 클라이언트를 만들어 두는 단계라
+			// 이를 소비하는 GitLab/Argo CD/Grafana 보다 앞서야 한다.
+			"provisioning_sso":         10,
+			"installing_gitlab":        11,
+			"installing_argocd":        12,
+			stepInstallingRunner:       13,
+			"installing_prometheus":    14,
+			"installing_grafana":       15,
+			"installing_logging":       16,
+			"installing_log_search":    17,
+			"installing_opentelemetry": 18,
+			"installing_gateway":       19,
+			"integration_check":        20,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
 			"installing_metrics_server",
+			"installing_openbao",
+			"installing_external_secrets",
+			"provisioning_secrets",
 			"installing_postgresql",
 			"installing_minio",
 			"installing_object_storage_secret",
 			"installing_object_storage_buckets",
 			"installing_database_connection_check",
-			"installing_openbao",
-			"installing_external_secrets",
-			"provisioning_secrets",
 			"provisioning_sso",
 			"installing_gitlab",
 			"installing_argocd",
@@ -340,18 +346,19 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_object_storage_secret":     "config.storage.object_storage",
 			"installing_object_storage_buckets":    "config.storage.object_storage",
 			"installing_database_connection_check": "config.storage.database",
-			"installing_openbao":                   "config.authentication.provider",
-			"installing_external_secrets":          "config.authentication.provider",
-			"provisioning_secrets":                 "config.authentication.provider",
-			"provisioning_sso":                     "config.authentication.provider",
-			"installing_gitlab":                    "config.artifacts.source_repository",
-			"installing_argocd":                    "config.pipeline.cd_tool",
-			stepInstallingRunner:                   "config.pipeline.ci_platform",
-			"installing_prometheus":                "config.monitoring.collection",
-			"installing_grafana":                   "config.monitoring.visualization",
-			"installing_logging":                   "config.logging.collection",
-			"installing_log_search":                "config.logging.search",
-			"installing_opentelemetry":             "config.logging.trace_layer",
+			// 시크릿 평면 3단계는 항상 켜지므로 "비활성 스텝" 로그 경로를 타지
+			// 않는다. config.authentication.provider 로 매핑해 두면 이 값이
+			// 설치 여부를 좌우하는 것처럼 읽혀 오해를 부르므로 넣지 않는다.
+			// provisioning_sso 는 선택형이라 매핑을 유지한다.
+			"provisioning_sso":         "config.authentication.provider",
+			"installing_gitlab":        "config.artifacts.source_repository",
+			"installing_argocd":        "config.pipeline.cd_tool",
+			stepInstallingRunner:       "config.pipeline.ci_platform",
+			"installing_prometheus":    "config.monitoring.collection",
+			"installing_grafana":       "config.monitoring.visualization",
+			"installing_logging":       "config.logging.collection",
+			"installing_log_search":    "config.logging.search",
+			"installing_opentelemetry": "config.logging.trace_layer",
 		},
 		stepConfigEnabled: map[string]func(domain.StackConfig) bool{
 			"installing_postgresql": func(cfg domain.StackConfig) bool {
@@ -378,25 +385,18 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
-			"installing_openbao": func(cfg domain.StackConfig) bool {
-				if cfg.Authentication == nil {
-					return false
-				}
-				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
-			},
-			// ESO 는 OpenBao 를 원천으로 하는 주입 평면이므로 동일 조건에서만 설치한다.
-			"installing_external_secrets": func(cfg domain.StackConfig) bool {
-				if cfg.Authentication == nil {
-					return false
-				}
-				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
-			},
-			"provisioning_secrets": func(cfg domain.StackConfig) bool {
-				if cfg.Authentication == nil {
-					return false
-				}
-				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
-			},
+			// 시크릿 평면(installing_openbao / installing_external_secrets /
+			// provisioning_secrets)은 stepConfigEnabled 에 넣지 않는다 — 항상 켜진다.
+			//
+			// 과거에는 authentication.provider=openbao 일 때만 설치하는 선택형
+			// 경로였으나, PostgreSQL/MinIO 차트가 비밀번호를 values 로 받지 않고
+			// provisioning_secrets 가 만든 Secret 을 existingSecret 으로 참조하도록
+			// 바뀌면서 선택형일 수 없게 되었다. 이 Secret 을 만드는 경로는
+			// provisioning_secrets 하나뿐이라, 꺼지면 파드가 FailedMount 로
+			// 기동하지 못한다. (기본값 provider='' 에서 설치가 멈추던 원인)
+			//
+			// 반면 provisioning_sso 는 OSS OIDC 연동을 켤 때만 필요하므로
+			// 선택형으로 유지한다.
 			"provisioning_sso": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
 					return false
@@ -593,6 +593,29 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	// provisioning_secrets / provisioning_sso 는 차트가 없는 단계다.
+	// chartSpecForStep 아래에 두면 spec 조회에 실패해 "unknown step" 으로
+	// 떨어지므로 그 앞에서 처리한다.
+	if step == "provisioning_secrets" {
+		// 시크릿을 생성해 OpenBao 에 기록하고 ESO 가 K8s Secret 을 만들 때까지 기다린다.
+		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
+		if err := o.runSecretProvisioning(ctx, o.namespace); err != nil {
+			return fmt.Errorf("시크릿 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
+	if step == "provisioning_sso" {
+		// OIDC 클라이언트를 미리 만들어 둔다. 이를 소비하는 GitLab/Argo CD/
+		// Grafana 설치보다 앞서야 한다.
+		if err := o.runSSOProvisioning(ctx, o.namespace); err != nil {
+			return fmt.Errorf("SSO 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	spec, ok := o.chartSpecForStep(step)
 	if !ok {
 		return fmt.Errorf("unknown step %q", step)
@@ -616,25 +639,6 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			manifest = generated
 			hasManifest = true
 		}
-	}
-
-	if step == "provisioning_sso" {
-		// Keycloak 이 기동된 뒤여야 하므로 시크릿 프로비저닝보다 뒤에 온다.
-		if err := o.runSSOProvisioning(ctx, namespace); err != nil {
-			return fmt.Errorf("SSO 프로비저닝 실패: %w", err)
-		}
-		o.markCompleted(stackID, order)
-		return nil
-	}
-
-	if step == "provisioning_secrets" {
-		// 시크릿을 생성해 OpenBao 에 기록하고 ESO 가 K8s Secret 을 만들 때까지 기다린다.
-		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
-		if err := o.runSecretProvisioning(ctx, namespace); err != nil {
-			return fmt.Errorf("시크릿 프로비저닝 실패: %w", err)
-		}
-		o.markCompleted(stackID, order)
-		return nil
 	}
 
 	if step == "installing_external_secrets" {
@@ -820,10 +824,10 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	cfg := o.stackConfig
 	o.mu.Unlock()
 	if cfg == nil {
-		// 시크릿 평면(OpenBao + ESO)은 authentication.provider=openbao 를
-		// 명시적으로 선택했을 때만 설치한다. 설정이 없으면 둘 다 비활성이다.
-		return step != "installing_openbao" && step != "installing_external_secrets" &&
-			step != "provisioning_secrets" && step != "provisioning_sso"
+		// 시크릿 평면은 설정과 무관하게 항상 켜진다 — 차트가 참조하는
+		// existingSecret 을 만드는 유일한 경로이기 때문이다.
+		// 반면 provisioning_sso 는 선택형이므로 설정이 없으면 끈다.
+		return step != "provisioning_sso"
 	}
 
 	enabledFn, ok := o.stepConfigEnabled[step]

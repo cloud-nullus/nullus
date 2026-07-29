@@ -37,8 +37,8 @@ run() {
 }
 
 # ── 레지스트리 경로 계산 ─────────────────────────────────────
-# 입력: ghcr.io/cloud-nullus/nullus-api:0.1.0-alpha
-# 출력: localhost:5001/cloud-nullus/nullus-api:0.1.0-alpha
+# 입력: ghcr.io/cloud-nullus/nullus/nullus-api:0.3.0-alpha
+# 출력: localhost:5001/cloud-nullus/nullus/nullus-api:0.3.0-alpha
 #
 # 입력: docker.io/library/nginx:1.25
 # 출력: localhost:5001/library/nginx:1.25

@@ -21,10 +21,10 @@ airgap/helm/
 
 | 항목 | 기본값 (values.yaml) | Air-Gap 재정의 |
 |------|----------------------|----------------|
-| `api.image.repository` | `ghcr.io/cloud-nullus/nullus-api` | `localhost:5001/cloud-nullus/nullus/nullus-api` |
-| `api.image.tag` | `0.1.0-alpha` | `main` |
-| `web.image.repository` | `ghcr.io/cloud-nullus/nullus-web` | `localhost:5001/cloud-nullus/nullus/nullus-web` |
-| `web.image.tag` | `0.1.0-alpha` | `main` |
+| `api.image.repository` | `ghcr.io/cloud-nullus/nullus/nullus-api` | `localhost:5001/cloud-nullus/nullus/nullus-api` |
+| `api.image.tag` | `""` (→ `Chart.appVersion` 폴백) | `main` |
+| `web.image.repository` | `ghcr.io/cloud-nullus/nullus/nullus-web` | `localhost:5001/cloud-nullus/nullus/nullus-web` |
+| `web.image.tag` | `""` (→ `Chart.appVersion` 폴백) | `main` |
 | `postgresql.image.registry` | `docker.io` | `localhost:5001` |
 | `postgresql.image.repository` | `bitnami/postgresql` | `bitnamilegacy/postgresql` (2025-08 Bitnami 정책 변경) |
 | `postgresql.volumePermissions.image.registry` | `docker.io` | `localhost:5001` |

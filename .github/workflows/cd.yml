@@ -110,3 +110,32 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # 태그 push 시에만 Helm 차트를 ghcr OCI 레지스트리에 게시한다 (릴리즈 정책 §7.2).
+  # 이미지와 동일한 레지스트리·인증을 쓰므로 별도 gh-pages 운영이 필요 없다.
+  publish-chart:
+    name: Package & Push Helm Chart
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to the Container registry
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" \
+            | helm registry login ghcr.io -u "$REGISTRY_USER" --password-stdin
+
+      - name: Package & push chart
+        run: |
+          # 차트 version/appVersion 은 태그에서 주입한다 — Chart.yaml 커밋값은 clone 설치용 기본값
+          VERSION="${GITHUB_REF_NAME#v}"
+          helm dependency update deploy/helm/nullus
+          helm package deploy/helm/nullus --version "$VERSION" --app-version "$VERSION"
+          helm push "nullus-${VERSION}.tgz" oci://ghcr.io/cloud-nullus/charts

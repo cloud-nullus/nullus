@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/shared/audit"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
@@ -666,7 +667,7 @@ func resolveOrgID(c echo.Context) string {
 		return orgID
 	}
 
-	return "00000000-0000-0000-0000-000000000001"
+	return shareddomain.DefaultOrgID()
 }
 
 func orgIDFromPrincipal(principal any) string {

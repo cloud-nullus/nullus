@@ -1,0 +1,58 @@
+# =============================================================================
+# 로컬 kind 개발용 오버레이
+#
+#   helm upgrade --install nullus deploy/helm/nullus -f deploy/helm/nullus/values-dev.yaml
+#
+# values.yaml(차트 기본값)은 ghcr 에 실제로 게시된 이미지를 가리킵니다.
+# 로컬에서 직접 빌드한 이미지를 쓰려면 이 파일을 -f 로 넘기세요.
+# 기본값에 로컬 환경 값을 커밋하지 않기 위해 분리했습니다 (릴리즈 정책 §8.1).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 로컬 빌드 이미지
+#
+#   docker build -t ghcr.io/cloud-nullus/nullus/nullus-api:dev .
+#   docker build -t ghcr.io/cloud-nullus/nullus/nullus-web:dev -f web/Dockerfile web/
+#   kind load docker-image ghcr.io/cloud-nullus/nullus/nullus-api:dev --name nullus-platform
+#   kind load docker-image ghcr.io/cloud-nullus/nullus/nullus-web:dev --name nullus-platform
+#
+# kind 는 로컬 Docker 이미지를 자동으로 보지 못하므로 kind load 가 필요하고,
+# 로드한 이미지를 다시 pull 하지 않도록 pullPolicy 를 Never 로 둡니다.
+# -----------------------------------------------------------------------------
+api:
+  replicaCount: 1
+  image:
+    tag: "dev"
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+web:
+  replicaCount: 1
+  image:
+    tag: "dev"
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+config:
+  server:
+    mode: development
+  log:
+    level: debug
+    format: text
+
+# Bitnami PostgreSQL 이미지도 kind 에 로드해서 쓰는 경우 주석을 해제하세요.
+# postgresql:
+#   image:
+#     pullPolicy: Never
