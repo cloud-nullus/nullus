@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **스택 설치 DAG에서 시크릿 평면 단계 누락 — GitLab+Argo CD 배포가 MinIO에서 멈추던 문제**: 오케스트레이터의 정식 순서(`orderedStep`)에는 `installing_external_secrets`·`provisioning_secrets`가 있었으나, 실제 실행을 구동하는 `internal/stack/usecase/install_stack.go`의 `installDAG`에는 두 단계가 없었다. PostgreSQL/MinIO 차트는 비밀번호를 values 로 받지 않고 `nullus-postgresql-credentials`·`nullus-minio-credentials`를 `existingSecret`으로 참조하는데, 이 Secret 을 만드는 경로가 `provisioning_secrets` 하나뿐이라 파드가 `FailedMount`로 영원히 기동하지 못하고 Helm 릴리스가 `pending-install`에 고착됐다. 두 단계를 DAG 에 추가하고, 시크릿 평면(OpenBao → ESO → provisioning)을 스토리지 차트 **앞으로** 재배치했다. OpenBao 는 file 스토리지 백엔드를 쓰므로 PostgreSQL/MinIO 에 의존하지 않아, `installing_openbao`의 잘못된 선행 의존도 함께 제거했다. `installDAG` 와 `orderedStep` 의 순서 일치를 양쪽 패키지에서 테스트로 고정한다.
+- **시크릿 평면이 `authentication.provider=openbao` 에서만 동작하던 문제**: 차트가 프로비저닝된 Secret 을 무조건 참조하므로 선택형일 수 없는데도 opt-in 으로 게이팅되어 있었다. 프런트엔드 기본값이 `provider: ''` 라 기본 구성에서 항상 설치가 실패했다. 게이팅을 제거해 항상 실행되도록 했다.
+- **`provisioning_secrets` 단계가 `unknown step` 으로 실패하던 문제**: 차트가 없는 단계인데 처리 블록이 `chartSpecForStep()` 뒤에 있어 spec 조회 실패로 떨어졌다. OpenBao 를 켜더라도 실행될 수 없던 잠재 결함으로, 다른 무차트 단계와 같이 spec 조회 앞으로 옮겼다.
+- **GitLab 이 존재하지 않는 DB Secret 을 참조하던 문제**: PostgreSQL 차트를 `auth.existingSecret=nullus-postgresql-credentials` 로 설치하면 bitnami 차트가 릴리스 이름(`nullus-postgresql`)으로 Secret 을 만들지 않는데, GitLab values 의 `global.psql.password.secret` 은 그 이름을 가리키고 있었다. 그 결과 migrations·webservice·toolbox·sidekiq 파드가 `MountVolume.SetUp failed ... secret "nullus-postgresql" not found` 로 기동하지 못했다. 두 참조가 같은 상수(`ProvisionedPostgresSecret`)를 쓰도록 맞추고, 어긋나면 실패하는 테스트를 추가했다.
+- **`OnDelete` 전략 워크로드에서 준비 검사가 실패하던 문제**: `kubectl rollout status` 는 RollingUpdate 전략에서만 동작하는데, OpenBao 차트의 StatefulSet 은 `OnDelete` 를 쓴다. 그래서 모든 차트가 정상 설치된 뒤에도 health_check 가 `rollout status is only available for RollingUpdate strategy type` 으로 실패해 배포가 통째로 failed 로 떨어졌다. 전략을 먼저 확인해 `OnDelete` 면 `readyReplicas` 도달을 기다리는 경로로 전환한다(에러 문구 기반 폴백 포함).
+- **배포 타임라인에서 `provisioning_secrets` 로그가 사라지던 문제**: UI 의 `DEPLOY_STAGES` 가 설치 단계를 `installing_` 접두사로만 매칭해, 접두사를 쓰지 않는 `provisioning_secrets` 가 어느 스테이지에도 잡히지 않았다. 이 단계가 실제로 실행되기 시작하면서 드러난 문제로, Install 스테이지에 명시적으로 추가했다.
+- **OpenBao unseal 사이드카가 키를 보내지 않고도 "제출 완료" 를 찍던 문제**: Secret 이 만들어지기 전이나 kubelet 이 마운트를 동기화하기 전에는 glob 이 아무것도 잡지 못하는데, 그때도 성공 로그를 남겨 "키를 보냈는데 안 열린다" 로 오독되었다. 제출한 조각 수를 세어 0 이면 대기 중임을 그대로 로그에 남긴다.
+
 ## [0.3.0-alpha] - 2026-07-28
 
 첫 GitHub Release·태그입니다. 이전 `0.1.0-alpha`·`0.2.0-alpha` 섹션은 태그가 발행되지 않은 기록상의 버전입니다 (릴리즈 정책 §0).

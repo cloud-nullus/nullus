@@ -131,9 +131,11 @@ func DefaultValues(stepName string) map[string]any {
 					"port":     5432,
 					"database": "gitlabhq_production",
 					"username": "gitlab",
+					// existingSecret 으로 설치되는 PostgreSQL 차트는 자기 이름의
+					// Secret 을 만들지 않으므로 프로비저닝된 Secret 을 가리킨다.
 					"password": map[string]any{
 						"useSecret": true,
-						"secret":    "nullus-postgresql",
+						"secret":    ProvisionedPostgresSecret,
 						"key":       "password",
 					},
 				},
