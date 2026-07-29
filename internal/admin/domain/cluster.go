@@ -22,6 +22,9 @@ type ClusterType string
 const (
 	ClusterTypePipeline ClusterType = "pipeline"
 	ClusterTypeTarget   ClusterType = "target"
+	// ClusterTypeSelf 는 Nullus 가 떠 있는 클러스터 자신을 가리킨다.
+	// 에어갭 무인 설치와 단일 클러스터 배포에서 대상 클러스터로 쓰인다.
+	ClusterTypeSelf ClusterType = "self"
 )
 
 type CloudProvider string
