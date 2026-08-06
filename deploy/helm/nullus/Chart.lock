@@ -2,5 +2,8 @@ dependencies:
 - name: postgresql
   repository: https://charts.bitnami.com/bitnami
   version: 16.7.21
-digest: sha256:3c217baaca73979a6765946ae7294b459b8e3edc95981b03b1f62cd44dab5c60
-generated: "2026-05-13T00:29:30.363053+09:00"
+- name: keycloak
+  repository: https://charts.bitnami.com/bitnami
+  version: 24.4.5
+digest: sha256:6e184c42d107bca8098aa2e9b1e0e65b2ca01c6d64e7ea0394638c7aa561e080
+generated: "2026-08-07T06:50:30.942171+09:00"

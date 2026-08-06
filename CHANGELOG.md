@@ -20,7 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`OnDelete` 전략 워크로드에서 준비 검사가 실패하던 문제**: `kubectl rollout status` 는 RollingUpdate 전략에서만 동작하는데, OpenBao 차트의 StatefulSet 은 `OnDelete` 를 쓴다. 그래서 모든 차트가 정상 설치된 뒤에도 health_check 가 `rollout status is only available for RollingUpdate strategy type` 으로 실패해 배포가 통째로 failed 로 떨어졌다. 전략을 먼저 확인해 `OnDelete` 면 `readyReplicas` 도달을 기다리는 경로로 전환한다(에러 문구 기반 폴백 포함).
 - **배포 타임라인에서 `provisioning_secrets` 로그가 사라지던 문제**: UI 의 `DEPLOY_STAGES` 가 설치 단계를 `installing_` 접두사로만 매칭해, 접두사를 쓰지 않는 `provisioning_secrets` 가 어느 스테이지에도 잡히지 않았다. 이 단계가 실제로 실행되기 시작하면서 드러난 문제로, Install 스테이지에 명시적으로 추가했다.
 - **OpenBao unseal 사이드카가 키를 보내지 않고도 "제출 완료" 를 찍던 문제**: Secret 이 만들어지기 전이나 kubelet 이 마운트를 동기화하기 전에는 glob 이 아무것도 잡지 못하는데, 그때도 성공 로그를 남겨 "키를 보냈는데 안 열린다" 로 오독되었다. 제출한 조각 수를 세어 0 이면 대기 중임을 그대로 로그에 남긴다.
+- **사설 CA 시크릿이 필수 마운트로 걸려 있던 문제**: API 파드가 `nullus-wildcard-tls` 시크릿을 `optional` 없이 마운트해, 해당 시크릿이 없는 환경에서는 파드가 `FailedMount`로 Pending에 갇혔다. 실 클러스터 서버 사이드 dry-run 에서만 드러나고 로컬 `helm template`은 통과시킨다. 시크릿을 선택 사항으로 바꾸고, `merge-ca-certs` 초기화 컨테이너가 CA 파일이 없으면 시스템 번들만 쓰도록 수정했다. 시크릿 이름은 `caBundle.secretName` 값으로 분리했다.
+- **keycloak 서브차트 벤더링 누락으로 차트가 렌더조차 되지 않던 문제**: `Chart.yaml` 에 `keycloak` 의존성이 추가되었으나 `Chart.lock` 과 `charts/keycloak-24.4.5.tgz` 가 함께 커밋되지 않아, 저장소를 클론한 상태에서 `found in Chart.yaml, but missing in charts/ directory: keycloak` 으로 실패했다. 같은 디렉토리의 `postgresql` 은 벤더링되어 있어 규칙이 어긋나 있었다. 잠금 파일과 차트를 함께 커밋한다.
+- **`bitnami/*` 이미지 소멸로 차트 기본값이 pull 되지 않던 나머지 3건**: #106 이 `postgresql.image` 를 `bitnamilegacy/*` 로 옮겼으나, 같은 원인의 참조가 세 군데 남아 있었다 — 번들 PostgreSQL 의 `volumePermissions.image`(`bitnami/os-shell`), 그리고 keycloak 서브차트가 쓰는 `bitnami/keycloak:26.1.0-debian-12-r0` 와 그 서브차트 자신의 PostgreSQL `bitnami/postgresql:17.2.0-debian-12-r6`. 뒤의 두 건은 차트 기본값 렌더에 그대로 나타나 **기본 설치가 `ImagePullBackOff` 로 실패**했다. 세 건 모두 legacy 경로로 고정해, 이제 기본값이 참조하는 이미지 6종이 모두 익명 pull 된다.
 
+### Added
+
+- **Zadara Cloud PoC 배포 산출물** (`deploy/csp/zadara/`): `values-zadara.yaml`(워커 1대·NodePort ingress·local-path 스토리지 기준)과 배포 런북 `README.md`.
+
+### Changed
+
+- **`runbook_csp.sh`의 레지스트리·이미지 태그 기본값 교정**: `REGISTRY`를 실재 경로(`ghcr.io/cloud-nullus/nullus`)로 바로잡고, 프리릴리즈에 존재하지 않는 `IMAGE_TAG=latest` 대신 비워 두어 차트 `appVersion`으로 폴백한다. 마이그레이션 Job이 이미지 레퍼런스를 문자열로 조립하므로 배포 시작 전에 태그를 한 번 확정한다.
 
 ## [0.3.0-alpha] - 2026-07-28
 

@@ -1,0 +1,93 @@
+# =============================================================================
+# Zadara Cloud PoC — platform 클러스터용 Helm 값
+#
+#   helm upgrade --install nullus deploy/helm/nullus \
+#     --namespace nullus --create-namespace \
+#     -f deploy/csp/zadara/values-zadara.yaml \
+#     --set secrets.dbPassword="$DB_PASSWORD" \
+#     --set secrets.encryptionKey="$ENCRYPTION_KEY"
+#
+# 이미지 경로·태그는 차트 기본값(values.yaml + Chart.appVersion)을 그대로 쓴다.
+# 다른 버전을 배포하려면 --set api.image.tag=<버전> 으로 덮어쓴다.
+# 클러스터 구성은 docs/50_운영/zadara_cloud_poc.md 참조.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 리소스 배치
+#
+# node-10(control-plane, 2vCPU/4GB)은 bastion 겸용이라 여유가 없다.
+# 워크로드는 node-11(8vCPU/16GB)에만 올라가도록 control-plane taint 를 그대로 두고
+# replicaCount 를 1로 낮춘다 — 워커가 1대뿐이라 2로 두면 한 파드가 Pending 된다.
+# -----------------------------------------------------------------------------
+api:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+web:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Ingress
+#
+# Zadara 에는 LoadBalancer 연동이 없어 ingress-nginx 를 NodePort(30080/30443)로
+# 설치했다. 외부 접근은 node-10 공인 IP + NodePort 로 들어온다.
+#   http://<node-10-public-ip>:30080  (Host 헤더가 아래 host 와 일치해야 함)
+# MetalLB 는 VPC 여유 IP 대역이 확정되지 않아 쓰지 않는다.
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: nullus.zadara.poc
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# -----------------------------------------------------------------------------
+# PostgreSQL
+#
+# StorageClass 는 local-path-provisioner(rancher.io/local-path, default)를 쓴다.
+# WaitForFirstConsumer 라 PVC 는 파드가 스케줄된 노드의 로컬 디스크에 바인딩된다.
+# 노드를 재생성하면 데이터가 사라지므로 PoC 한정이다 — 프로덕션 전환 시
+# Zadara 볼륨 CSI 로 교체할 것 (zadara_cloud_poc.md §11).
+# -----------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+
+config:
+  server:
+    mode: production
+  log:
+    level: info
+    format: json
+
+# ghcr 패키지는 2026-08-07 에 public 으로 전환되어 익명 pull 이 된다 — 비워 둔다.
+# 다시 private 이 되면 pull secret 을 만들고 [{name: ghcr-pull-secret}] 로 바꾼다.
+#   kubectl -n nullus create secret docker-registry ghcr-pull-secret \
+#     --docker-server=ghcr.io --docker-username="$GHCR_USER" --docker-password="$GHCR_PAT"
+imagePullSecrets: []

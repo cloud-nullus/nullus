@@ -2,8 +2,9 @@
 
 Nullus Platform(`cloud-nullus/nullus`)의 GitHub Release · CHANGELOG · 버전(SemVer) 관리 규칙을 정의합니다.
 
-- 초안: 2026-07-25 / 개정: 2026-07-26 (v2) / 2026-07-28 (v2.1)
-- 상태: **적용 개시** — §13의 선행 과제 1·3·7이 끝나 `v0.3.0-alpha`부터 이 문서대로 릴리즈합니다. 남은 과제 2·4·5·6·8은 §13에 그대로 두고, 그중 §9.0의 품질 게이트(과제 2)는 `ci.yml` 재활성화 전까지 **릴리즈 담당의 로컬 검증 + PR 첨부**로 대체합니다.
+- 초안: 2026-07-25 / 개정: 2026-07-26 (v2) / 2026-07-28 (v2.1) / 2026-08-07 (v2.2)
+- 상태: **적용 개시** — §13의 선행 과제 1·3·7·9·10이 끝나 `v0.3.0-alpha`부터 이 문서대로 릴리즈합니다. 남은 과제 2·4·5·6·8·11은 §13에 그대로 두고, 그중 §9.0의 품질 게이트(과제 2)는 `ci.yml` 재활성화 전까지 **릴리즈 담당의 로컬 검증 + PR 첨부**로 대체합니다.
+- v2.2 개정 사유: `v0.3.0-alpha`를 실제로 릴리즈하고 실 클러스터에 배포해 보니, 문서대로 밟았는데도 산출물이 설치되지 않았습니다. 원인을 §7.1(패키지 가시성)과 §9.1 step 11(실 클러스터 검증)에 반영했습니다.
 - 적용 대상: `cloud-nullus/nullus` (구 `cloud-nullus/draft`, 2026-05-25경 리네임)
 - 관련 문서: `Nullus_PR_커밋_컨벤션.md`, `Nullus_브랜치_관리_개선안.md`, `Nullus_CICD 흐름.md`, `CLAUDE.md`
 
@@ -43,6 +44,8 @@ Nullus는 릴리즈마다 아래 3가지 산출물이 함께 나갑니다.
 | Web 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-web` |
 | Helm 차트 | `oci://ghcr.io/cloud-nullus/charts/nullus` (§7.2로 신설) |
 
+> **세 산출물은 모두 ghcr 패키지 가시성이 `public`이어야 합니다.** 저장소가 public이어도 패키지는 **기본 private으로 생성**되며, private이면 위 경로는 익명 pull이 되지 않아 사실상 산출물이 아닙니다. 전환은 REST API로 불가능하고 `https://github.com/orgs/cloud-nullus/packages` 아래 **패키지별 Settings → Danger Zone**에서만 됩니다 — 저장소 Settings의 "Make … private"과 혼동하면 저장소 자체를 비공개로 만들게 되니 주의하십시오. 확인은 §9.1 step 11에서 합니다.
+>
 > 경로에 `nullus`가 두 번 들어가는 것은 오타가 아닙니다. `cd.yml`이 `ghcr.io/${{ github.repository }}/nullus-api`를 쓰고 `github.repository`가 `cloud-nullus/nullus`이기 때문입니다. 리네임 이전 경로(`ghcr.io/cloud-nullus/draft/*`)의 패키지도 ghcr에 남아 있으나 **더 이상 갱신되지 않으므로 참조 금지**입니다 — 이 혼동이 실제 로그인 장애를 일으킨 적이 있습니다(#78).
 
 사용자는 "어떤 버전을 클러스터에 설치했는지"를 정확히 알아야 지원·롤백·업그레이드가 가능하므로, 태그 기반 Release 관리가 특히 중요합니다.
@@ -344,7 +347,24 @@ v1에는 품질 확인 단계가 없어, **테스트가 깨진 상태에서도 �
 8. `cd.yml` 실행을 Actions 탭에서 확인한다 — 이미지 2종 + 차트(§7.2) 푸시 성공.
 9. GitHub Release를 생성한다 — 제목 `vX.Y.Z`, 본문은 `CHANGELOG.md`의 해당 섹션(§5).
 10. GA(`1.0.0`) 이전 버전은 Release 생성 시 **"Set as a pre-release"**를 반드시 체크한다.
-11. 설치 경로를 한 번 검증한다: `helm install`(OCI) → Pod Running → 로그인까지. 이미지 경로 오류는 설치 시점에만 드러납니다(#78).
+11. 설치 경로를 검증한다 — **실 Kubernetes 클러스터에서, 인증 없이, 차트 기본값으로** 수행한다. 로컬 `helm template`은 이 단계를 대체하지 못한다.
+
+    ```bash
+    # (a) 산출물 3종이 익명 접근 가능한가 (§7.1)
+    gh api /orgs/cloud-nullus/packages/container/nullus%2Fnullus-api --jq .visibility   # public
+    gh api /orgs/cloud-nullus/packages/container/nullus%2Fnullus-web --jq .visibility   # public
+    gh api /orgs/cloud-nullus/packages/container/charts%2Fnullus     --jq .visibility   # public
+    helm registry logout ghcr.io 2>/dev/null
+    helm pull oci://ghcr.io/cloud-nullus/charts/nullus --version X.Y.Z
+
+    # (b) 클러스터가 실제로 받아들이는가 — 서버 사이드 렌더 후 설치
+    helm upgrade --install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version X.Y.Z \
+      --namespace nullus --create-namespace --dry-run=server
+    ```
+
+    이어서 실제 설치 → 전 Pod Running → 로그인까지 확인한다.
+
+    > 이 단계를 로컬 렌더로 대신하면 놓치는 유형: 이미지 경로 오류(#78), 존재하지 않는 이미지 태그, 필수 마운트된 시크릿 부재로 인한 `FailedMount`, 패키지 가시성. **v0.3.0-alpha에서 실제로 4종 모두 발생했습니다** (§13-9, §13-10).
 
 ### 9.2 롤백 절차 (v2 신설)
 
@@ -445,6 +465,8 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 
 릴리즈 산출물에 직접 걸리는 1·3·7이 끝나 `v0.3.0-alpha`부터 정책을 적용합니다. 남은 항목은 릴리즈를 막지는 않지만, **§9.0의 자동 품질 게이트와 §10의 강제 장치가 아직 없다는 뜻**이므로 그때까지는 릴리즈 담당의 수동 검증에 의존합니다.
 
+과제 9~11은 **`v0.3.0-alpha`를 실제로 릴리즈하고 실 클러스터에 배포해 보고서 드러난 것**입니다. 셋 다 "정책 문서에 쓰인 절차를 그대로 밟았는데도 산출물이 쓸 수 없는 상태로 나온" 사례입니다. 9·10은 v2.2에서 §7.1·§9.1에 반영해 닫았고, **11은 `cd.yml` 수정이 필요해 열려 있습니다** — 차트 전용 패치를 태그로 게시하기 전에 반드시 처리해야 합니다.
+
 | # | 과제 | 관련 절 | 비고 |
 |---|---|---|---|
 | 1 | ~~CHANGELOG `Unreleased` 소급 정리~~ | §2, §4.2 | **완료 (2026-07-26)** — PR #54 이후 37건을 검토해 사용자 영향이 있는 26건을 24개 항목으로 `0.3.0-alpha` 섹션에 편입. 문서·테스트·CI 전용 11건(#69·#72·#74·#77·#80·#81·#84·#89·#94·#95·#96)은 §4.2의 `no-changelog` 기준으로 제외 |
@@ -455,3 +477,6 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 | 6 | 브랜치 명명 규칙을 `CLAUDE.md`와 `Nullus_PR_커밋_컨벤션.md` 중 한쪽으로 단일화 | §10.4 | 이 문서 범위 밖 |
 | 7 | ~~`cd.yml`에 `publish-chart` 잡 추가~~ | §7.2 | **완료 (2026-07-28, #100)** — `v*` 태그에서만 도는 잡으로 추가. 실제 게시 성공 여부는 v0.3.0-alpha 태그 push 시 확인 |
 | 8 | `cd.yml`의 `phase1` 브랜치 트리거 제거 | §10.4 | 과제 3에서 분리 |
+| 9 | ~~ghcr 패키지 가시성을 릴리즈 산출물 정의(§7.1)와 §9.1 체크리스트에 포함~~ | §7.1, §9.1 | **완료 (2026-08-07, v2.2)** — 저장소가 public이어도 패키지는 기본 private이다. 2026-07-28 확인 시점에 `nullus-api`·`nullus-web`·`charts/nullus` 3건 모두 private이라 §7.1이 광고하는 `helm install oci://…` 익명 설치 경로가 동작하지 않았다. **2026-08-07 public 전환 완료** — 익명 `helm pull`과 클러스터의 pull secret 없는 이미지 pull로 검증했다. 다만 이는 **1회성 수동 조치**이고 새 패키지는 다시 private으로 생성되므로, §9.1에 확인 항목이 남아야 한다. 전환은 REST API로 불가능하고 패키지 설정 UI에서만 된다 (저장소 Settings가 아님 — 혼동 시 저장소 자체를 private으로 만들 위험) |
+| 10 | ~~§9.1 step 11(설치 검증)을 **실 클러스터 서버 사이드**로 명시~~ | §9.1 | **완료 (2026-08-07, v2.2)** — step 11을 가시성 확인 + 익명 `helm pull` + `--dry-run=server` + 실제 설치 4단계로 구체화. v0.3.0-alpha 릴리즈 후 Zadara PoC 클러스터에 `--dry-run=server`를 돌려서야 차트 결함 2건(사설 CA 시크릿 필수 마운트, `bitnami/postgresql` 이미지 소멸)이 드러났다. 로컬 `helm template`은 둘 다 통과시킨다 — step 11이 로컬 렌더로 충족된다고 읽히면 같은 유형을 계속 놓친다 |
+| 11 | §7.2 `publish-chart`가 `--version`/`--app-version`을 함께 주입하는 문제 | §7.2, §8.2 | §8.2는 "차트만 바뀐 경우 `version`만 올리고 `appVersion`은 유지"라고 규정하지만, §7.2 잡은 태그 하나를 두 값에 모두 넣는다. 차트 전용 패치를 태그로 게시하면 **이미지가 없는 `appVersion`이 찍힌 차트**가 나온다. 2026-08-07 게시본에서 실증: 커밋된 `Chart.yaml`은 `version: 0.3.0`인데 게시된 차트는 `version: 0.3.0-alpha`로, `helm pull --version 0.3.0`으로는 조회되지 않는다. 잡이 `appVersion`은 `Chart.yaml` 값을 그대로 쓰도록 바꾸거나, §8.2에 "태그 릴리즈에서는 차트 전용 패치를 하지 않는다"를 명시해 규칙을 일치시켜야 한다 |
