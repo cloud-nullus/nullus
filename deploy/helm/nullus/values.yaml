@@ -48,6 +48,11 @@ config:
     level: info
     format: json
 
+# 사설 CA 번들. API 파드가 사내 CA 로 서명된 엔드포인트를 호출해야 할 때만 쓴다.
+# 시크릿(ca.crt 키)이 없으면 시스템 CA 번들만 사용하고 그대로 기동한다.
+caBundle:
+  secretName: nullus-wildcard-tls
+
 secrets:
   # 번들 PostgreSQL(postgresql.enabled=true)을 쓸 때는 이 값이 무시되고
   # postgresql.auth.password 가 사용된다 — 두 값이 어긋나면 API 가 DB 인증에
@@ -77,6 +82,14 @@ postgresql:
     username: nullus
     password: nullus
     database: nullus
+  # postgresql.image 와 같은 이유로 os-shell 도 legacy 경로를 쓴다.
+  # volumePermissions.enabled=true 인 환경에서만 pull 되지만, 기본값이
+  # 유효하지 않은 채로 남아 있으면 켜는 순간 ImagePullBackOff 가 된다.
+  volumePermissions:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/os-shell
+      tag: 12-debian-12-r49
   primary:
     service:
       ports:
@@ -109,3 +122,21 @@ keycloak:
     existingSecret: ""
   production: false
   proxy: edge
+  # postgresql 과 같은 이유로 legacy 경로를 쓴다. keycloak 서브차트(24.4.5)의
+  # 기본값 bitnami/keycloak:26.1.0-debian-12-r0 과 bitnami/postgresql:17.2.0
+  # 은 둘 다 Docker Hub 에서 pull 되지 않는다.
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/keycloak
+    tag: 26.1.0-debian-12-r0
+  # 서브차트가 자기 PostgreSQL 을 함께 띄운다 — 상위 postgresql 과 별개다.
+  postgresql:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/postgresql
+      tag: 17.2.0-debian-12-r6
+    volumePermissions:
+      image:
+        registry: docker.io
+        repository: bitnamilegacy/os-shell
+        tag: 12-debian-12-r35

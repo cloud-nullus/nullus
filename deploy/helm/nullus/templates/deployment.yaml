@@ -34,8 +34,14 @@ spec:
         - sh
         - -c
         - |
-          cat /etc/ssl/certs/ca-certificates.crt /nullus-ca/ca.crt > /ssl-merged/ca-certificates.crt
-          echo "CA bundle merged ($(wc -l < /ssl-merged/ca-certificates.crt) lines)"
+          # 사설 CA(nullus-wildcard-tls)는 선택 사항이다. 없으면 시스템 번들만 쓴다.
+          if [ -f /nullus-ca/ca.crt ]; then
+            cat /etc/ssl/certs/ca-certificates.crt /nullus-ca/ca.crt > /ssl-merged/ca-certificates.crt
+            echo "CA bundle merged ($(wc -l < /ssl-merged/ca-certificates.crt) lines)"
+          else
+            cp /etc/ssl/certs/ca-certificates.crt /ssl-merged/ca-certificates.crt
+            echo "custom CA not mounted - using system bundle only"
+          fi
         securityContext:
           runAsNonRoot: false
           runAsUser: 0
@@ -180,7 +186,10 @@ spec:
           name: {{ include "nullus.fullname" . }}-config
       - name: nullus-ca
         secret:
-          secretName: nullus-wildcard-tls
+          secretName: {{ .Values.caBundle.secretName }}
+          # 시크릿이 없으면 빈 디렉토리로 마운트된다. optional 이 없으면 파드가
+          # FailedMount 로 Pending 에 갇혀 기본값 설치가 아예 되지 않는다.
+          optional: true
           items:
           - key: ca.crt
             path: ca.crt
