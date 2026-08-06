@@ -53,11 +53,15 @@ CHART_PATH="${CHART_PATH:-./deploy/helm/nullus}"
 # Nullus 네임스페이스
 NULLUS_NAMESPACE="${NULLUS_NAMESPACE:-nullus}"
 
-# 컨테이너 레지스트리 (ghcr.io 기본)
-REGISTRY="${REGISTRY:-ghcr.io/cloud-nullus}"
+# 컨테이너 레지스트리
+# cd.yml 이 ghcr.io/${github.repository}/nullus-* 로 푸시하고 repository 가
+# 2세그먼트(cloud-nullus/nullus)라, 실재 경로에는 nullus 가 두 번 들어간다.
+REGISTRY="${REGISTRY:-ghcr.io/cloud-nullus/nullus}"
 
-# 이미지 태그 (CD 파이프라인에서 주입되거나 수동 설정)
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+# 이미지 태그. 비우면 차트의 appVersion 을 그대로 쓴다 (릴리즈 정책 §8.1).
+# 프리릴리즈는 latest/major.minor rolling 태그를 만들지 않으므로(§7.1),
+# 값을 지정할 때는 0.3.0-alpha 처럼 patch 까지 명시된 전체 버전이어야 한다.
+IMAGE_TAG="${IMAGE_TAG:-}"
 
 # DB 패스워드 (반드시 변경할 것)
 DB_PASSWORD="${DB_PASSWORD:-change-me-in-production}"
@@ -521,8 +525,17 @@ do_deploy() {
     die "ENCRYPTION_KEY 길이가 ${#ENCRYPTION_KEY}바이트입니다 — 정확히 32바이트여야 합니다."
   fi
 
+  # IMAGE_TAG 가 비어 있으면 차트의 appVersion 을 쓴다. 마이그레이션 Job 은
+  # 이미지 레퍼런스를 문자열로 조립하므로 여기서 한 번 확정해 둔다.
+  if [[ -z "$IMAGE_TAG" ]]; then
+    IMAGE_TAG=$(awk '/^appVersion:/{gsub(/["'\'']/,"",$2); print $2}' "${CHART_PATH}/Chart.yaml" 2>/dev/null)
+    [[ -n "$IMAGE_TAG" ]] || die "IMAGE_TAG 를 정할 수 없습니다. ${CHART_PATH}/Chart.yaml 의 appVersion 을 확인하거나 'export IMAGE_TAG=<버전>' 로 지정하세요."
+    log "IMAGE_TAG 미지정 — 차트 appVersion 사용: ${IMAGE_TAG}"
+  fi
+
   log "=== Nullus 배포 시작 ==="
   log "  Namespace: ${NULLUS_NAMESPACE}"
+  log "  Registry:  ${REGISTRY}"
   log "  Image Tag: ${IMAGE_TAG}"
   log "  Chart:     ${CHART_PATH}"
 
@@ -798,7 +811,8 @@ do_upgrade() {
   require_cmd kubectl
   require_cmd helm
 
-  [[ -n "${IMAGE_TAG}" ]] || die "IMAGE_TAG 환경 변수를 설정하세요. 예: export IMAGE_TAG=v1.2.0"
+  # 이미지 태그에는 v 접두사가 없다 — git 태그 v0.3.0-alpha → 이미지 0.3.0-alpha
+  [[ -n "${IMAGE_TAG}" ]] || die "IMAGE_TAG 환경 변수를 설정하세요. 예: export IMAGE_TAG=0.3.0-alpha"
 
   log "Nullus 업그레이드 시작 (태그: ${IMAGE_TAG})..."
 
