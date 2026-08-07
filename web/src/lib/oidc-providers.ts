@@ -42,6 +42,36 @@ function authentikExtractRoles(user: OIDCUser): string[] {
   return (user.profile?.groups as string[]) ?? []
 }
 
+/**
+ * ID 토큰이 지금 쓰는 클라이언트로 발급된 것인지 확인한다.
+ *
+ * Keycloak 은 `id_token_hint` 가 오면 그 토큰의 발급 대상과 `client_id` 가 같은지
+ * 대조하고, 다르면 로그아웃을 통째로 거부한다.
+ *
+ *   We are sorry... Invalid parameter: id_token_hint
+ *
+ * 클라이언트 ID 를 바꾼 뒤 브라우저에 이전 세션이 남아 있으면 정확히 이 상태가 되고,
+ * 사용자는 **로그아웃도 못 하는** 막다른 화면에 갇힌다. 그래서 어긋난 토큰은
+ * 힌트로 쓰지 않고 client_id 만으로 로그아웃한다.
+ *
+ * 서명은 검증하지 않는다 — 여기서 필요한 건 "이 힌트를 보내도 되는가" 뿐이고,
+ * 실제 검증은 Keycloak 이 한다.
+ */
+export function isTokenForClient(idToken: string, clientId: string): boolean {
+  if (!idToken || !clientId) return false
+  const payload = idToken.split('.')[1]
+  if (!payload) return false
+  try {
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    const claims = JSON.parse(json) as { azp?: string; aud?: string | string[] }
+    if (claims.azp) return claims.azp === clientId
+    if (Array.isArray(claims.aud)) return claims.aud.includes(clientId)
+    return claims.aud === clientId
+  } catch {
+    return false
+  }
+}
+
 export function getProviderConfig(): OIDCProviderConfig {
   const provider = resolveConfig(
     'oidcProvider',
@@ -67,7 +97,9 @@ export function getProviderConfig(): OIDCProviderConfig {
       // Authentik's post_logout_redirect_uri is unreliable — requires manual end-session URL
       getLogoutUrl: (idToken, redirectUri) => {
         const url = new URL(`${authority}/end-session/`)
-        url.searchParams.set('id_token_hint', idToken)
+        if (isTokenForClient(idToken, clientId)) {
+          url.searchParams.set('id_token_hint', idToken)
+        }
         url.searchParams.set('post_logout_redirect_uri', redirectUri)
         return url.toString()
       },
@@ -86,7 +118,11 @@ export function getProviderConfig(): OIDCProviderConfig {
       const url = new URL(`${authority}/protocol/openid-connect/logout`)
       url.searchParams.set('client_id', clientId)
       url.searchParams.set('post_logout_redirect_uri', redirectUri)
-      if (idToken) url.searchParams.set('id_token_hint', idToken)
+      // 다른 클라이언트로 발급된 토큰을 힌트로 보내면 Keycloak 이 로그아웃 자체를
+      // 거부한다. 남은 세션이 어긋난 경우에도 빠져나올 수 있도록 힌트를 버린다.
+      if (isTokenForClient(idToken, clientId)) {
+        url.searchParams.set('id_token_hint', idToken)
+      }
       return url.toString()
     },
   }

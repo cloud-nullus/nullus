@@ -111,12 +111,15 @@ fix_redirect_uris() {
           | grep -E '^[0-9a-f-]{36}$' | head -1)"
   [[ -n "$uuid" ]] || die "클라이언트 ${CLIENT_ID} 를 찾지 못했습니다"
 
+  # post.logout.redirect.uris 를 명시하지 않으면 로그아웃 복귀 주소가 거부될 수 있다.
+  # "+" 는 redirectUris 를 그대로 쓰겠다는 Keycloak 의 관용 표기다.
   "${K[@]}" exec -i "$POD" -c keycloak -- "$kcadm" update "clients/${uuid}" -r "$REALM" \
     -s "redirectUris=[\"${PUBLIC_URL}/*\",\"http://localhost:5173/*\"]" \
     -s "webOrigins=[\"${PUBLIC_URL}\",\"http://localhost:5173\"]" \
     -s "rootUrl=${PUBLIC_URL}" \
+    -s 'attributes."post.logout.redirect.uris"=+' \
     --config /tmp/nullus-kcadm.config >/dev/null || die "리다이렉트 URI 갱신 실패"
-  ok "리다이렉트 URI 교정 — ${PUBLIC_URL}/* (+ localhost:5173)"
+  ok "리다이렉트 URI 교정 — ${PUBLIC_URL}/* (+ localhost:5173), post-logout 허용"
 }
 
 do_setup() {
