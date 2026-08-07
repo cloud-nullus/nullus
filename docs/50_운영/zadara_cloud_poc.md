@@ -282,18 +282,30 @@ cp ~/kubespray/inventory/develop/artifacts/admin.conf  ~/.kube/develop.conf
 chmod 600 ~/.kube/*.conf
 ```
 
-두 클러스터 모두 기본 컨텍스트명이 `kubernetes-admin@cluster.local`로 동일하므로, 병합 전에 이름을 바꾼다.
+두 클러스터 모두 컨텍스트명이 `kubernetes-admin@cluster.local`로 동일하므로 병합 전에 이름을 바꾼다.
+**컨텍스트만 바꾸면 안 된다** — cluster 항목 이름도 양쪽 다 `cluster.local`이라, 그대로 병합하면
+cluster가 하나로 합쳐져 `--context=develop`이 **platform 클러스터로 연결된다**. 의도하지 않은
+클러스터에 배포하게 되므로 식별자까지 치환한다.
 
 ```bash
-kubectl --kubeconfig ~/.kube/platform.conf config rename-context \
-    kubernetes-admin-cluster.local@cluster.local platform
-kubectl --kubeconfig ~/.kube/develop.conf config rename-context \
-    kubernetes-admin-cluster.local@cluster.local develop
+for c in platform develop; do
+  sed "s/cluster\.local/$c/g" ~/kubespray/inventory/$c/artifacts/admin.conf > /tmp/$c.conf
+  kubectl --kubeconfig /tmp/$c.conf config rename-context "kubernetes-admin-$c@$c" "$c"
+done
 
 # 병합
-KUBECONFIG=~/.kube/platform.conf:~/.kube/develop.conf \
-    kubectl config view --flatten > ~/.kube/config
-chmod 600 ~/.kube/config
+KUBECONFIG=/tmp/platform.conf:/tmp/develop.conf \
+    kubectl config view --flatten > /tmp/merged.conf
+install -m 600 /tmp/merged.conf ~/.kube/config
+rm -f /tmp/platform.conf /tmp/develop.conf /tmp/merged.conf
+```
+
+검증 — cluster 항목이 2개이고 서버 주소가 서로 달라야 한다.
+
+```bash
+kubectl config view -o jsonpath='{range .clusters[*]}{.name}{"\t"}{.cluster.server}{"\n"}{end}'
+# develop   https://172.31.1.20:6443
+# platform  https://172.31.0.10:6443
 ```
 
 컨텍스트 전환:
@@ -304,6 +316,10 @@ kubectl config use-context develop
 ```
 
 > kubectl 바이너리가 없다면 platform 마스터인 node-10에는 Kubespray가 이미 설치해 두었다 (`/usr/local/bin/kubectl`).
+
+> **로컬 PC에서 kubectl을 쓰려면** apiserver를 외부에 노출하지 말고 SSH 터널을 쓴다 — §1.3대로
+> 외부에 열린 포트는 node-10의 `22/tcp`뿐이다. `deploy/csp/zadara/kubeconfig.sh`가 터널 생성과
+> kubeconfig 작성을 함께 처리한다 (`deploy/csp/zadara/README.md` §6).
 
 ### 7.1 편의 유틸리티 — k alias / kube-ps1 / k9s
 

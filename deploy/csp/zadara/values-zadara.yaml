@@ -38,6 +38,61 @@ web:
     limits:
       cpu: 500m
       memory: 512Mi
+  # SPA 가 기동 시 /config.js 로 받는 값. 브라우저에서 직접 접근 가능한 주소여야
+  # 하므로 클러스터 내부 서비스명(nullus-keycloak)을 쓰면 안 된다.
+  auth:
+    mode: oidc
+    oidcProvider: keycloak
+    oidcAuthority: https://keycloak.121.78.39.184.nip.io/realms/nullus
+    # 업스트림 setup-keycloak.sh 가 만드는 클라이언트가 nullus-app 이고 차트의
+    # audience 기본값도 nullus-app 이다. 프런트엔드 빌드 기본값(nullus-web)과
+    # 어긋나 있어 배포에서는 nullus-app 으로 통일한다.
+    oidcClientId: nullus-app
+
+# -----------------------------------------------------------------------------
+# Keycloak
+#
+# 브라우저가 OIDC 리다이렉트로 직접 접근해야 하므로 별도 호스트로 노출한다.
+# nip.io 는 하위 라벨을 붙여도 뒤의 IP 로 해석되므로 keycloak.<IP>.nip.io 가 그대로
+# 동작한다 — DNS 를 따로 두지 않아도 된다.
+#
+# TLS 는 ingress 가 종단하고 Let's Encrypt 실인증서를 쓴다 (setup-tls.sh).
+# 로그인이 HTTPS 를 요구하기 때문이다 — PKCE 가 쓰는 crypto.subtle 은 secure
+# context 에서만 노출된다.
+# -----------------------------------------------------------------------------
+keycloak:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: keycloak.121.78.39.184.nip.io
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+    # true 로 두면 서브차트가 <hostname>-tls 시크릿을 tls 항목에 넣는다.
+    # cert-manager 가 그 시크릿에 발급 결과를 채운다.
+    tls: true
+  # KC_HOSTNAME 을 주지 않으면 Keycloak 이 요청에서 스킴을 추정해 issuer 에 https 를
+  # 찍는다. 그러면 SPA 가 받은 discovery 의 issuer(https)와 실제 접속 스킴(http)이
+  # 어긋나 로그인이 깨진다. 전체 URL 로 못박아 결정적으로 만든다.
+  # TLS 종단은 ingress 가 하고 Keycloak 은 평문으로 받는다. 그래서 스킴을 스스로
+  # 알 수 없어 KC_HOSTNAME 에 https 를 못박고 X-Forwarded-* 를 신뢰하게 한다.
+  extraEnvVars:
+    - name: KC_HOSTNAME
+      value: https://keycloak.121.78.39.184.nip.io
+    - name: KC_HOSTNAME_STRICT
+      value: "false"
+    - name: KC_PROXY_HEADERS
+      value: xforwarded
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+  postgresql:
+    primary:
+      persistence:
+        size: 8Gi
 
 # -----------------------------------------------------------------------------
 # Ingress
@@ -50,12 +105,29 @@ web:
 ingress:
   enabled: true
   className: nginx
+  annotations:
+    # cert-manager 가 아래 tls 항목을 보고 Let's Encrypt 인증서를 발급·갱신한다.
+    cert-manager.io/cluster-issuer: letsencrypt
   hosts:
+    # PoC 용 임의 이름. 실재하지 않으므로 접속 측 /etc/hosts 에 매핑이 필요하다.
     - host: nullus.zadara.poc
       paths:
         - path: /
           pathType: Prefix
-  tls: []
+    # nip.io 는 <IP>.nip.io 를 그대로 그 IP 로 해석해 주는 공개 DNS 다.
+    # hosts 파일을 건드리지 않고 브라우저로 바로 열 수 있어 PoC 에 편하다.
+    # 공인 IP 가 바뀌면 이 값도 바꿔야 한다.
+    - host: 121.78.39.184.nip.io
+      paths:
+        - path: /
+          pathType: Prefix
+  # HTTPS 는 선택이 아니다 — OIDC PKCE 가 crypto.subtle 을 쓰고, 브라우저는 secure
+  # context 에서만 이를 노출한다. 평문 HTTP 에서는 로그인이 성립하지 않는다.
+  # nullus.zadara.poc 는 공인 DNS 가 없어 ACME 검증이 불가능하므로 제외한다.
+  tls:
+    - secretName: nullus-web-tls
+      hosts:
+        - 121.78.39.184.nip.io
 
 # -----------------------------------------------------------------------------
 # PostgreSQL
@@ -82,6 +154,13 @@ postgresql:
 config:
   server:
     mode: production
+  # API 의 JWT 검증. issuer 는 Keycloak 이 토큰에 찍는 값과 **문자열이 같아야** 하고,
+  # 그 값은 브라우저가 쓰는 공개 주소다. audience 는 setup-keycloak 이 붙이는
+  # audience 매퍼 값과 맞춘다.
+  auth:
+    mode: oidc
+    oidcIssuerUrl: https://keycloak.121.78.39.184.nip.io/realms/nullus
+    oidcAudience: nullus-app
   log:
     level: info
     format: json

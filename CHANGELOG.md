@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **게시된 web 이미지로는 어떤 환경에서도 SSO 로그인이 되지 않던 문제**: Vite 는 `import.meta.env.VITE_*` 를 빌드 시점에 문자열로 인라인한다. 그래서 `cd.yml` 이 주입한 OIDC issuer(`http://keycloak.nullus.internal/realms/nullus`)가 이미지에 박혀, 그 호스트가 존재하지 않는 모든 배포에서 로그인 화면이 `Failed to fetch` 로 끝났다. 차트의 `config.auth.oidcIssuerUrl` 은 API 에만 적용되어 프런트엔드에는 닿지 않는다. 컨테이너 기동 시 `/config.js` 를 생성해 `window.__NULLUS_CONFIG__` 로 주입하는 런타임 설정을 도입한다 — 우선순위는 `런타임 > 빌드타임 > 기본값` 이라 로컬 개발 동작은 그대로다. 이제 환경마다 이미지를 다시 빌드하지 않아도 된다.
+- **`setup-keycloak.sh` 를 재실행하면 사용자 `email` 이 지워지던 문제**: 신규 생성 경로는 `email` 을 넣지만 기존 사용자 갱신 경로가 이를 빠뜨렸다. Keycloak 의 사용자 PUT 은 표현을 통째로 교체하므로 두 번째 실행부터 `email` 이 비었고, API 는 토큰의 `email` 클레임으로 사용자를 조회하므로 로그인 후 사용자 매칭이 깨졌다. 갱신 payload 에 `email`·`emailVerified`·`enabled` 를 함께 보낸다.
+- **OIDC 클라이언트 ID 가 프런트엔드와 나머지에서 어긋나던 문제**: 프런트엔드 기본값과 `cd.yml` 은 `nullus-web`, `setup-keycloak.sh` 가 만드는 클라이언트와 API audience 기본값(`configs/config.yaml`, 차트 values)은 `nullus-app` 이었다. 실제로 존재하는 클라이언트인 `nullus-app` 으로 통일한다.
+
+### Added
+
+- **Zadara Cloud PoC 운영 스크립트** (`deploy/csp/zadara/`): 웹 UI 터널(`tunnel.sh`), 로컬 kubectl kubeconfig(`kubeconfig.sh`), 표준 포트 노출(`expose-web.sh`), apiserver 노출(`expose-apiserver.sh`, 기본 미사용), Keycloak realm 구성(`setup-keycloak-realm.sh`), Let's Encrypt TLS(`setup-tls.sh`).
+- **차트에 SPA 런타임 설정 값 추가**: `web.auth.{mode,oidcProvider,oidcAuthority,oidcClientId}`. 비우면 이미지에 빌드된 값을 그대로 쓴다.
+
+
+### Fixed
+
 - **OIDC 로그인이 유효한 토큰에도 401 로 거부되던 문제**: `setup-keycloak.sh` 가 `nullus-app` 클라이언트에 audience 매퍼를 만들지 않아 Keycloak 이 기본값 `aud: account` 로 토큰을 발급했고, `NULLUS_AUTH_OIDC_AUDIENCE=nullus-app` 를 검증하는 JWT 미들웨어가 이를 거부했다. audience 프로토콜 매퍼를 추가한다.
 - **OIDC 로그인 후 스택 생성이 FK 위반으로 실패하던 문제**: JWT 미들웨어가 `User.OrgID` 를 채우지 않고 토큰에도 `org_id` 클레임이 없어, `resolveOrgID` 가 어떤 마이그레이션에도 존재하지 않는 `00000000-0000-0000-0000-000000000001` 로 폴백해 `stacks_org_id_fkey` 위반이 났다. 미들웨어가 `org_id`(및 `organization_id`/`org` 별칭) 클레임을 principal 로 전달하고, `setup-keycloak.sh` 가 사용자 속성과 클레임 매퍼를 등록한다. 폴백 조직도 시드 마이그레이션이 실제로 만드는 조직(`internal/shared/domain.SeededDefaultOrgID`)으로 바로잡고 `NULLUS_DEFAULT_ORG_ID` 로 덮어쓸 수 있게 했다.
 - **로컬 Keycloak 이 기동 15분 뒤 realm 을 통째로 잃던 문제**: `KC_DB: dev-mem`(H2 인메모리)이 마지막 커넥션과 함께 사라져 `Table "REALM" not found (this database is empty)` 로그와 함께 토큰 엔드포인트가 500 을 반환했다. `dev-file` + 볼륨으로 바꾸고, KC 26 에서 deprecated 된 `KEYCLOAK_ADMIN*` 을 `KC_BOOTSTRAP_ADMIN_*` 로 교체했다.

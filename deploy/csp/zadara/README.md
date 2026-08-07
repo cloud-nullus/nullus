@@ -223,7 +223,63 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nullus.zadara.poc' http://<no
 
 ---
 
-## 6. 알려진 제약
+## 6. 로컬에서 접근하기 (스크립트)
+
+기본 설계는 **외부에서 열리는 포트가 node-10 의 `22/tcp` 하나뿐**이라는 것이다
+(`zadara_cloud_poc.md` §1.2·§1.3, §11 "보안 그룹 최소화"). 아래 스크립트는 모두
+그 22/tcp 위로 터널을 뚫어, 보안 그룹을 건드리지 않고 로컬에서 쓰게 해 준다.
+
+| 스크립트 | 하는 일 | 기본 로컬 포트 |
+|---|---|---|
+| `tunnel.sh` | 웹 UI 를 브라우저로 연다 | 30080 |
+| `kubeconfig.sh` | `kubectl`·`helm` 을 붙인다 | 16443 |
+| `expose-apiserver.sh` | apiserver 를 외부에 노출 — **기본적으로 쓰지 않는다** | — |
+
+### 6.1 웹 UI
+
+```bash
+./deploy/csp/zadara/tunnel.sh          # direct 모드 — hosts/sudo 불필요
+# → http://127.0.0.1:30080
+./deploy/csp/zadara/tunnel.sh stop
+```
+
+`direct` 는 bastion 에서 `kubectl port-forward svc/nullus-web` 를 띄워 그 포트를 당겨온다.
+실제 외부 접근 경로(ingress-nginx NodePort)를 그대로 재현하려면 `MODE=ingress` 를 쓴다 —
+이 경우 ingress 가 Host 헤더로 라우팅하므로 `nullus.zadara.poc` hosts 매핑(sudo)이 필요하다.
+
+### 6.2 kubectl / helm
+
+```bash
+./deploy/csp/zadara/kubeconfig.sh                  # 터널 + ~/.kube/nullus-zadara.conf 생성
+export KUBECONFIG=$HOME/.kube/nullus-zadara.conf
+kubectl get pods -A
+./deploy/csp/zadara/kubeconfig.sh stop
+```
+
+`~/.kube/config` 에 **병합하지 않고 별도 파일로** 쓴다 — §2.1 의 `cluster.local` 충돌과 같은
+이유다. cluster/user/context 이름을 모두 `nullus-zadara` 로 다시 지어 넣으므로, 나중에
+`KUBECONFIG=a:b` 로 합쳐도 충돌하지 않는다. `develop` 은 `CLUSTER=develop` 으로.
+
+`insecure-skip-tls-verify` 는 쓰지 않는다. API 서버 인증서 SAN 에 `127.0.0.1` 과 `localhost`
+가 있어 터널 주소로 붙어도 검증이 통과한다.
+
+### 6.3 apiserver 외부 노출 — 예외 경로
+
+`expose-apiserver.sh` 는 apiserver 를 비표준 포트(36443)로 열고, **노드 iptables 에서 소스 IP
+를 한 번 더 검사**한다(보안 그룹이 넓게 열려도 노드가 DROP). 6443 자체는 열지 않는다.
+
+그래도 **문서 설계에 없던 외부 노출면을 만드는 선택**이므로 터널로 감당이 안 될 때만 쓰고,
+끝나면 `close` 로 되돌린다. 보안 그룹 규칙 자체는 이 스크립트가 넣지 못한다 — 이 환경에는
+zCompute API 자격증명도 IAM 롤도 없다(메타데이터 `iam/security-credentials` 가 404).
+
+```bash
+./deploy/csp/zadara/expose-apiserver.sh open    # 노드 규칙 + 보안 그룹 안내
+./deploy/csp/zadara/expose-apiserver.sh close   # 되돌리기
+```
+
+---
+
+## 7. 알려진 제약
 
 | 항목 | 내용 |
 |---|---|
