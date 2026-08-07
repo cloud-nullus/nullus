@@ -2,6 +2,8 @@
 //   import type { User } from 'oidc-client-ts'
 //   import type { AuthProviderProps } from 'react-oidc-context'
 
+import { resolveConfig } from './runtime-config'
+
 export interface OIDCUser {
   profile: Record<string, unknown>
   id_token?: string
@@ -41,9 +43,19 @@ function authentikExtractRoles(user: OIDCUser): string[] {
 }
 
 export function getProviderConfig(): OIDCProviderConfig {
-  const provider = (import.meta.env.VITE_OIDC_PROVIDER || 'keycloak') as OIDCProviderType
-  const authority = import.meta.env.VITE_OIDC_AUTHORITY || 'http://localhost:8180/realms/nullus'
-  const clientId = import.meta.env.VITE_OIDC_CLIENT_ID || 'nullus-web'
+  const provider = resolveConfig(
+    'oidcProvider',
+    import.meta.env.VITE_OIDC_PROVIDER,
+    'keycloak',
+  ) as OIDCProviderType
+  const authority = resolveConfig(
+    'oidcAuthority',
+    import.meta.env.VITE_OIDC_AUTHORITY,
+    'http://localhost:8180/realms/nullus',
+  )
+  // 기본값은 'nullus-app' 이다 — scripts/setup-keycloak.sh 가 만드는 클라이언트이고
+  // API 의 audience 기본값(configs/config.yaml, 차트 values)도 같은 값이다.
+  const clientId = resolveConfig('oidcClientId', import.meta.env.VITE_OIDC_CLIENT_ID, 'nullus-app')
 
   if (provider === 'authentik') {
     return {
@@ -94,4 +106,7 @@ export function toAuthProviderProps(config: OIDCProviderConfig): OIDCAuthProvide
   }
 }
 
-export const isOidcMode = import.meta.env.VITE_AUTH_MODE === 'oidc'
+// 모듈 로드 시점에 한 번 평가된다. /config.js 는 앱 번들보다 먼저 실행되므로
+// (index.html 에서 일반 script 로 선언) 이 시점에 런타임 값이 이미 들어와 있다.
+export const isOidcMode =
+  resolveConfig('authMode', import.meta.env.VITE_AUTH_MODE, 'session') === 'oidc'

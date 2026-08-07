@@ -8,6 +8,13 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      런타임 설정. 컨테이너 기동 시 nginx 가 환경변수로 만들어 넣는다.
+      type="module" 이 아니어서 아래 앱 번들보다 먼저 동기 실행된다 — 앱이 읽을 때는
+      window.__NULLUS_CONFIG__ 가 이미 채워져 있다. 로컬 dev 서버에서는
+      web/public/config.js(빈 설정)가 서빙되어 빌드 시 값으로 폴백한다.
+    -->
+    <script src="/config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
