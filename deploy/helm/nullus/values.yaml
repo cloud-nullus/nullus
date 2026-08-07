@@ -130,7 +130,11 @@ keycloak:
     repository: bitnamilegacy/keycloak
     tag: 26.1.0-debian-12-r0
   # 서브차트가 자기 PostgreSQL 을 함께 띄운다 — 상위 postgresql 과 별개다.
+  # 둘 다 <릴리즈>-postgresql 로 이름이 잡혀 StatefulSet/Service/Secret 등
+  # 7종이 그대로 충돌한다. 설치가 "already exists" 로 실패하므로 이름을 분리한다.
+  # (keycloak.databaseHost 도 이 값을 따라 nullus-keycloak-postgresql 이 된다)
   postgresql:
+    nameOverride: keycloak-postgresql
     image:
       registry: docker.io
       repository: bitnamilegacy/postgresql
