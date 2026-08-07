@@ -349,10 +349,15 @@ EOF
      users_json=$(auth_get "/admin/realms/${REALM}/users?username=$(urlencode "$username")")
      user_id=$(lookup_first_id "$users_json")
    else
-     # Ensure firstName/lastName are set for existing users (required by User Profile)
+     # 기존 사용자 갱신. PUT 은 표현을 통째로 교체하므로 **유지해야 할 필드를 모두
+     # 다시 보내야 한다**. email 을 빠뜨리면 재실행할 때마다 지워지고, API 는 토큰의
+     # email 클레임으로 사용자를 찾으므로 로그인 후 조회가 깨진다.
      local update_payload
      update_payload=$(cat <<EOF
 {
+  "email": "${username}",
+  "emailVerified": true,
+  "enabled": true,
   "firstName": "${first_name}",
   "lastName": "${last_name}",
   "attributes": {

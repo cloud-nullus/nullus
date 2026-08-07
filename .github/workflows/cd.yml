@@ -105,7 +105,7 @@ jobs:
             VITE_AUTH_MODE=${{ vars.VITE_AUTH_MODE || 'oidc' }}
             VITE_OIDC_PROVIDER=${{ vars.VITE_OIDC_PROVIDER || 'keycloak' }}
             VITE_OIDC_AUTHORITY=${{ vars.VITE_OIDC_AUTHORITY || 'http://keycloak.nullus.internal/realms/nullus' }}
-            VITE_OIDC_CLIENT_ID=${{ vars.VITE_OIDC_CLIENT_ID || 'nullus-web' }}
+            VITE_OIDC_CLIENT_ID=${{ vars.VITE_OIDC_CLIENT_ID || 'nullus-app' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
