@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **게시된 web 이미지로는 어떤 환경에서도 SSO 로그인이 되지 않던 문제**: Vite 는 `import.meta.env.VITE_*` 를 빌드 시점에 문자열로 인라인한다. 그래서 `cd.yml` 이 주입한 OIDC issuer(`http://keycloak.nullus.internal/realms/nullus`)가 이미지에 박혀, 그 호스트가 존재하지 않는 모든 배포에서 로그인 화면이 `Failed to fetch` 로 끝났다. 차트의 `config.auth.oidcIssuerUrl` 은 API 에만 적용되어 프런트엔드에는 닿지 않는다. 컨테이너 기동 시 `/config.js` 를 생성해 `window.__NULLUS_CONFIG__` 로 주입하는 런타임 설정을 도입한다 — 우선순위는 `런타임 > 빌드타임 > 기본값` 이라 로컬 개발 동작은 그대로다. 이제 환경마다 이미지를 다시 빌드하지 않아도 된다.
 - **`setup-keycloak.sh` 를 재실행하면 사용자 `email` 이 지워지던 문제**: 신규 생성 경로는 `email` 을 넣지만 기존 사용자 갱신 경로가 이를 빠뜨렸다. Keycloak 의 사용자 PUT 은 표현을 통째로 교체하므로 두 번째 실행부터 `email` 이 비었고, API 는 토큰의 `email` 클레임으로 사용자를 조회하므로 로그인 후 사용자 매칭이 깨졌다. 갱신 payload 에 `email`·`emailVerified`·`enabled` 를 함께 보낸다.
+- **SSO 계정과 DB 시드 사용자의 이메일이 어긋나 있던 문제**: 인증이 OIDC 로 넘어가면서 API 는 토큰의 `email` 클레임으로 `users` 행을 찾는데, `scripts/setup-keycloak.sh` 가 만드는 계정(`admin@nullus.io`·`devops@nullus.io`·`dev@nullus.io`)과 시드 마이그레이션의 사용자(`admin@nullus.io`·`kim@nullus.io`·`park@nullus.io`)가 달랐다. `admin` 을 뺀 두 계정은 로그인은 되지만 사용자 매칭이 되지 않는다. Keycloak 쪽을 정본으로 삼아 대응 사용자와 조직 소속을 시드한다(`000058_seed_sso_users`). `kim@`·`park@` 는 여러 시드에서 문자열로 참조되는 화면 샘플이라 지우지 않고 추가만 한다.
 - **OIDC 클라이언트 ID 가 프런트엔드와 나머지에서 어긋나던 문제**: 프런트엔드 기본값과 `cd.yml` 은 `nullus-web`, `setup-keycloak.sh` 가 만드는 클라이언트와 API audience 기본값(`configs/config.yaml`, 차트 values)은 `nullus-app` 이었다. 실제로 존재하는 클라이언트인 `nullus-app` 으로 통일한다.
 
 ### Added
