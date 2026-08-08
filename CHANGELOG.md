@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **게시된 web 이미지로는 어떤 환경에서도 SSO 로그인이 되지 않던 문제**: Vite 는 `import.meta.env.VITE_*` 를 빌드 시점에 문자열로 인라인한다. 그래서 `cd.yml` 이 주입한 OIDC issuer(`http://keycloak.nullus.internal/realms/nullus`)가 이미지에 박혀, 그 호스트가 존재하지 않는 모든 배포에서 로그인 화면이 `Failed to fetch` 로 끝났다. 차트의 `config.auth.oidcIssuerUrl` 은 API 에만 적용되어 프런트엔드에는 닿지 않는다. 컨테이너 기동 시 `/config.js` 를 생성해 `window.__NULLUS_CONFIG__` 로 주입하는 런타임 설정을 도입한다 — 우선순위는 `런타임 > 빌드타임 > 기본값` 이라 로컬 개발 동작은 그대로다. 이제 환경마다 이미지를 다시 빌드하지 않아도 된다.
+- **`setup-keycloak.sh` 를 재실행하면 사용자 `email` 이 지워지던 문제**: 신규 생성 경로는 `email` 을 넣지만 기존 사용자 갱신 경로가 이를 빠뜨렸다. Keycloak 의 사용자 PUT 은 표현을 통째로 교체하므로 두 번째 실행부터 `email` 이 비었고, API 는 토큰의 `email` 클레임으로 사용자를 조회하므로 로그인 후 사용자 매칭이 깨졌다. 갱신 payload 에 `email`·`emailVerified`·`enabled` 를 함께 보낸다.
+- **재배포하면 열려 있던 탭이 죽던 문제**: 빌드 산출물은 파일명에 내용 해시가 들어가므로 재배포하면 이전 청크가 사라진다. 배포 전에 열려 있던 탭이 lazy import 를 시도하면 `Failed to fetch dynamically imported module` 로 화면이 죽고, 「다시 시도」를 눌러도 같은 옛 모듈 그래프를 다시 써서 복구되지 않았다. 게다가 nginx 의 SPA 폴백이 없는 `.js` 요청에도 `index.html` 을 200 으로 돌려줘, 브라우저가 HTML 을 모듈로 파싱하다 실패하는 혼란스러운 오류가 됐다. `/assets/` 는 없으면 404 를 주고(내용 해시가 있으므로 장기 캐시), 앱은 청크 오류를 감지해 **한 번만** 자동 새로고침한다.
+- **SSO 로그인 시 모든 사용자가 developer 로 보이던 문제**: Keycloak 은 `realm_access` 를 기본적으로 **액세스 토큰에만** 싣는데, 프런트엔드는 ID 토큰 클레임(`user.profile`)에서 롤을 찾았다. 항상 빈 배열이 나와 `admin`·`devops` 계정까지 전부 최저 권한인 `developer` 로 떨어졌고, 관리자 화면을 아무도 쓸 수 없었다. ID 토큰을 먼저 보고 없으면 액세스 토큰을 직접 열어 읽는다 — 액세스 토큰의 `realm_access` 는 Keycloak 이 항상 넣어 주므로 서버 매퍼 설정과 무관하게 동작한다. 프로비저닝 스크립트에는 ID 토큰에도 롤을 싣는 realm-roles 매퍼를 추가한다(보강).
+- **인증 오류가 나면 빠져나올 방법이 없던 문제**: 브라우저에 남은 세션과 서버 상태가 어긋나면 로그인 흐름이 화면에 문구만 남긴 채 끝났다(`Session not active`, `No matching state found in storage`, `login_required`). 개발자 도구로 저장소를 비우지 않으면 복구가 불가능했다. 저장소를 비우고 다시 시도하면 풀리는 오류를 가려내 **원인당 한 번만** 자동 재시도하고, 실패하면 「다시 로그인」 버튼을 함께 보여 준다. 무한 리다이렉트를 피하려고 마커를 `sessionStorage` 에 두어 새로고침해도 반복되지 않게 했다.
+- **클라이언트가 바뀐 뒤 로그아웃도 되지 않던 문제**: Keycloak 은 `id_token_hint` 가 오면 그 토큰의 발급 대상과 `client_id` 가 같은지 대조하고, 다르면 로그아웃을 통째로 거부한다(`Invalid parameter: id_token_hint`). 클라이언트 ID 를 바꾼 뒤 브라우저에 이전 세션이 남아 있으면 정확히 이 상태가 되어, 사용자가 **로그아웃도 못 하는** 막다른 화면에 갇힌다. 힌트로 쓸 토큰이 현재 클라이언트의 것인지(`azp`/`aud`) 확인하고, 어긋나면 힌트를 버리고 `client_id` 만으로 로그아웃한다. 클라이언트의 `post.logout.redirect.uris` 도 함께 설정한다.
+- **SSO 계정과 DB 시드 사용자의 이메일이 어긋나 있던 문제**: 인증이 OIDC 로 넘어가면서 API 는 토큰의 `email` 클레임으로 `users` 행을 찾는데, `scripts/setup-keycloak.sh` 가 만드는 계정(`admin@nullus.io`·`devops@nullus.io`·`dev@nullus.io`)과 시드 마이그레이션의 사용자(`admin@nullus.io`·`kim@nullus.io`·`park@nullus.io`)가 달랐다. `admin` 을 뺀 두 계정은 로그인은 되지만 사용자 매칭이 되지 않는다. Keycloak 쪽을 정본으로 삼아 대응 사용자와 조직 소속을 시드한다(`000058_seed_sso_users`). `kim@`·`park@` 는 여러 시드에서 문자열로 참조되는 화면 샘플이라 지우지 않고 추가만 한다.
+- **OIDC 클라이언트 ID 가 프런트엔드와 나머지에서 어긋나던 문제**: 프런트엔드 기본값과 `cd.yml` 은 `nullus-web`, `setup-keycloak.sh` 가 만드는 클라이언트와 API audience 기본값(`configs/config.yaml`, 차트 values)은 `nullus-app` 이었다. 실제로 존재하는 클라이언트인 `nullus-app` 으로 통일한다.
+
+### Added
+
+- **태그 push 로 릴리즈·배포까지 자동화** (`cd.yml`): `create-release` 가 CHANGELOG 의 해당 버전 섹션을 릴리즈 본문으로 쓰고(없으면 자동 생성 노트) GA 이전 버전은 프리릴리즈로 표시한다. `deploy-zadara` 가 bastion SSH 로 Zadara 클러스터에 `helm upgrade` 를 수행하고 공개 엔드포인트 2곳이 200 인지까지 확인한다. `environment: zadara` 로 실배포 직전 승인 게이트를 걸 수 있다. 필요한 secrets: `ZADARA_SSH_KEY`·`ZADARA_HOST`·`ZADARA_USER`·`NULLUS_DB_PASSWORD`·`NULLUS_ENCRYPTION_KEY`.
+- **Zadara Cloud PoC 운영 스크립트** (`deploy/csp/zadara/`): 웹 UI 터널(`tunnel.sh`), 로컬 kubectl kubeconfig(`kubeconfig.sh`), 표준 포트 노출(`expose-web.sh`), apiserver 노출(`expose-apiserver.sh`, 기본 미사용), Keycloak realm 구성(`setup-keycloak-realm.sh`), Let's Encrypt TLS(`setup-tls.sh`).
+- **차트에 SPA 런타임 설정 값 추가**: `web.auth.{mode,oidcProvider,oidcAuthority,oidcClientId}`. 비우면 이미지에 빌드된 값을 그대로 쓴다.
+
+
+### Fixed
+
 - **OIDC 로그인이 유효한 토큰에도 401 로 거부되던 문제**: `setup-keycloak.sh` 가 `nullus-app` 클라이언트에 audience 매퍼를 만들지 않아 Keycloak 이 기본값 `aud: account` 로 토큰을 발급했고, `NULLUS_AUTH_OIDC_AUDIENCE=nullus-app` 를 검증하는 JWT 미들웨어가 이를 거부했다. audience 프로토콜 매퍼를 추가한다.
 - **OIDC 로그인 후 스택 생성이 FK 위반으로 실패하던 문제**: JWT 미들웨어가 `User.OrgID` 를 채우지 않고 토큰에도 `org_id` 클레임이 없어, `resolveOrgID` 가 어떤 마이그레이션에도 존재하지 않는 `00000000-0000-0000-0000-000000000001` 로 폴백해 `stacks_org_id_fkey` 위반이 났다. 미들웨어가 `org_id`(및 `organization_id`/`org` 별칭) 클레임을 principal 로 전달하고, `setup-keycloak.sh` 가 사용자 속성과 클레임 매퍼를 등록한다. 폴백 조직도 시드 마이그레이션이 실제로 만드는 조직(`internal/shared/domain.SeededDefaultOrgID`)으로 바로잡고 `NULLUS_DEFAULT_ORG_ID` 로 덮어쓸 수 있게 했다.
 - **로컬 Keycloak 이 기동 15분 뒤 realm 을 통째로 잃던 문제**: `KC_DB: dev-mem`(H2 인메모리)이 마지막 커넥션과 함께 사라져 `Table "REALM" not found (this database is empty)` 로그와 함께 토큰 엔드포인트가 500 을 반환했다. `dev-file` + 볼륨으로 바꾸고, KC 26 에서 deprecated 된 `KEYCLOAK_ADMIN*` 을 `KC_BOOTSTRAP_ADMIN_*` 로 교체했다.

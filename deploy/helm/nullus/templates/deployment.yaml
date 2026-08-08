@@ -225,6 +225,17 @@ spec:
       - name: web
         image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+        # 런타임 설정. 컨테이너가 기동 시 /config.js 를 만들어 SPA 에 전달한다.
+        # 이 값들이 없으면 앱은 이미지에 빌드된 값으로 폴백한다.
+        env:
+        - name: NULLUS_AUTH_MODE
+          value: {{ .Values.web.auth.mode | quote }}
+        - name: NULLUS_OIDC_PROVIDER
+          value: {{ .Values.web.auth.oidcProvider | quote }}
+        - name: NULLUS_OIDC_AUTHORITY
+          value: {{ .Values.web.auth.oidcAuthority | quote }}
+        - name: NULLUS_OIDC_CLIENT_ID
+          value: {{ .Values.web.auth.oidcClientId | quote }}
         ports:
         - name: http
           containerPort: 8080
@@ -258,8 +269,14 @@ spec:
           mountPath: /var/cache/nginx
         - name: run
           mountPath: /var/run
+        # 기동 시 생성하는 /config.js 를 둘 곳. 루트 파일시스템이 읽기 전용이라
+        # 도큐먼트 루트에는 쓸 수 없다.
+        - name: runtime-config
+          mountPath: /var/lib/nullus
       volumes:
       - name: cache
         emptyDir: {}
       - name: run
+        emptyDir: {}
+      - name: runtime-config
         emptyDir: {}
