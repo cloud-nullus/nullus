@@ -3,6 +3,8 @@ package helm
 import (
 	"fmt"
 	"strings"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
@@ -136,7 +138,7 @@ spec:
 		routes = append(routes, routeSpec{name: "prometheus-route", host: fmt.Sprintf("prometheus.%s", accessDomain), service: "kube-prometheus-stack-prometheus", port: 9090})
 	}
 	if cfg.Artifacts.StorageBackend.Enabled && strings.EqualFold(cfg.Artifacts.StorageBackend.Name, "minio") {
-		routes = append(routes, routeSpec{name: "minio-route", host: fmt.Sprintf("minio.%s", accessDomain), service: "nullus-minio-console", port: 9001})
+		routes = append(routes, routeSpec{name: "minio-route", host: fmt.Sprintf("minio.%s", accessDomain), service: domain.MinIOConsoleServiceName, port: domain.MinIOConsoleServicePort})
 	}
 	if cfg.Authentication != nil && strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao") {
 		routes = append(routes, routeSpec{name: "openbao-route", host: fmt.Sprintf("openbao.%s", accessDomain), service: "openbao", port: 8200})

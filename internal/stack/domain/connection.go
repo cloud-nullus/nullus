@@ -1,5 +1,7 @@
 package domain
 
+import shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
+
 // 설치가 만들어내는 리소스 이름들. 여기가 단일 출처다.
 //
 // 이 값들은 두 곳에서 필요하다 — 설치 경로(Helm values 가 existingSecret 으로
@@ -28,15 +30,26 @@ const (
 	// PostgresPasswordKey 는 앱 계정 비밀번호 키다.
 	// postgres-password 는 superuser 용이라 앱 접속에는 쓰지 않는다.
 	PostgresPasswordKey = "password"
-	// MinIOPasswordKey 는 MinIO 루트 비밀번호 키다.
+	// MinIOUserKey / MinIOPasswordKey 는 charts.min.io 의 existingSecret 이
+	// 읽는 키 이름이다. 프로비저닝과 안내가 같은 키를 봐야 한다.
+	MinIOUserKey     = "rootUser"
 	MinIOPasswordKey = "rootPassword"
 
 	// PostgresServiceName / MinIOServiceName 은 Helm 릴리스명에서 온다.
 	// 네임스페이스와 무관하므로 네임스페이스로 조립하면 안 된다.
-	PostgresServiceName = "nullus-postgresql"
+	// 릴리스명 자체는 admin 의 시크릿 회전도 봐야 하므로 shared 가 소유한다.
+	PostgresServiceName = shareddomain.PostgresReleaseName
 	PostgresServicePort = 5432
-	MinIOServiceName    = "nullus-minio"
+	MinIOServiceName    = shareddomain.MinIOReleaseName
 	MinIOServicePort    = 9000
+
+	// MinIO 콘솔(웹 UI)은 API 와 다른 Service·포트를 쓴다.
+	MinIOConsoleServiceName = MinIOServiceName + "-console"
+	MinIOConsoleServicePort = 9001
+
+	// GitLabArtifactsBucket 은 설치가 만드는 아티팩트 버킷이다.
+	// 연결정보가 오브젝트 스토리지의 resource_name 으로 안내한다.
+	GitLabArtifactsBucket = "gitlab-artifacts"
 )
 
 // OSS 도구의 초기 자격증명이 담기는 Secret.

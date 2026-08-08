@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // 회전 후 반영(restart_required) 전략.
@@ -157,9 +159,9 @@ func normalizeReleaseName(provider string) string {
 	case "gitlab-ce", "gitlab-ci", "gitlab-registry":
 		return "gitlab"
 	case "postgresql":
-		return "nullus-postgresql"
+		return shareddomain.PostgresReleaseName
 	case "minio":
-		return "nullus-minio"
+		return shareddomain.MinIOReleaseName
 	default:
 		return p
 	}

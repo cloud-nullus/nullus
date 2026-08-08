@@ -12,7 +12,8 @@ import (
 const objectStorageBucketJobName = "nullus-gitlab-bucket-bootstrap"
 
 var gitLabRequiredBuckets = []string{
-	"gitlab-artifacts",
+	// 연결정보가 오브젝트 스토리지의 resource_name 으로 안내하는 버킷이다.
+	domain.GitLabArtifactsBucket,
 	"git-lfs",
 	"gitlab-uploads",
 	"gitlab-packages",
@@ -194,17 +195,17 @@ func decodeBase64String(value string) (string, error) {
 // Secret 의 소유자이며 원천은 OpenBao 다.
 func (o *Orchestrator) internalMinIOTarget(ctx context.Context, namespace string) (objectStorageTarget, error) {
 	target := objectStorageTarget{
-		Endpoint:  fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace),
+		Endpoint:  fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", domain.MinIOServiceName, namespace, domain.MinIOServicePort),
 		AccessKey: MinIORootUser,
 	}
 
-	secretKey, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, "rootPassword")
+	secretKey, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, domain.MinIOPasswordKey)
 	if err != nil {
 		return objectStorageTarget{}, fmt.Errorf("MinIO 자격증명을 읽지 못했습니다 (%s): %w", ProvisionedMinIOSecret, err)
 	}
 	target.SecretKey = secretKey
 
-	if user, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, "rootUser"); err == nil && strings.TrimSpace(user) != "" {
+	if user, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, domain.MinIOUserKey); err == nil && strings.TrimSpace(user) != "" {
 		target.AccessKey = user
 	}
 	return target, nil

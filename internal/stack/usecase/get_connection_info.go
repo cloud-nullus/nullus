@@ -89,7 +89,7 @@ func objectStorageConnection(cfg domain.StackConfig) domain.StorageConnection {
 		Mode:         "create",
 		Engine:       "minio",
 		Endpoint:     fmt.Sprintf("http://%s:%d", domain.MinIOServiceName, domain.MinIOServicePort),
-		ResourceName: "gitlab-artifacts",
+		ResourceName: domain.GitLabArtifactsBucket,
 		AuthID:       domain.MinIORootUser,
 		SecretRef:    domain.ProvisionedMinIOSecret,
 		SecretKey:    domain.MinIOPasswordKey,

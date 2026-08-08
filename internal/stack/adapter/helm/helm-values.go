@@ -194,11 +194,11 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 	return map[string]any{
 		// 비밀번호는 values 가 아니라 프로비저닝된 Secret 에서 온다.
 		"auth": map[string]any{
-			"username":       "gitlab",
-			"database":       "gitlabhq_production",
+			"username":       domain.PostgresAppUser,
+			"database":       domain.PostgresAppDatabase,
 			"existingSecret": ProvisionedPostgresSecret,
 			"secretKeys": map[string]any{
-				"userPasswordKey":        "password",
+				"userPasswordKey":        domain.PostgresPasswordKey,
 				"adminPasswordKey":       "postgres-password",
 				"replicationPasswordKey": "replication-password",
 			},
@@ -215,7 +215,7 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 func (o *Orchestrator) gitlabExternalSharedServiceValues(_ *domain.StackConfig) map[string]any {
 	namespace := strings.TrimSpace(o.namespace)
 	if namespace == "" {
-		namespace = "nullus"
+		namespace = defaultStackNamespace
 	}
 
 	return map[string]any{
@@ -227,23 +227,23 @@ func (o *Orchestrator) gitlabExternalSharedServiceValues(_ *domain.StackConfig) 
 				"enabled": false,
 			},
 			"psql": map[string]any{
-				"host":     fmt.Sprintf("nullus-postgresql.%s.svc.cluster.local", namespace),
-				"port":     5432,
-				"database": "gitlabhq_production",
-				"username": "gitlab",
+				"host":     fmt.Sprintf("%s.%s.svc.cluster.local", domain.PostgresServiceName, namespace),
+				"port":     domain.PostgresServicePort,
+				"database": domain.PostgresAppDatabase,
+				"username": domain.PostgresAppUser,
 				// PostgreSQL 차트를 existingSecret 으로 설치하므로 bitnami 차트는
 				// 자기 이름의 Secret 을 만들지 않는다. 프로비저닝된 Secret 을 가리켜야 한다.
 				"password": map[string]any{
 					"useSecret": true,
 					"secret":    ProvisionedPostgresSecret,
-					"key":       "password",
+					"key":       domain.PostgresPasswordKey,
 				},
 			},
 			"appConfig": map[string]any{
 				"object_store": map[string]any{
 					"enabled": true,
 					"connection": map[string]any{
-						"secret": "nullus-object-storage",
+						"secret": ProvisionedObjectStorageSecret,
 						"key":    "connection",
 					},
 				},

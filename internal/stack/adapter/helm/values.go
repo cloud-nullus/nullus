@@ -3,7 +3,14 @@ package helm
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
+
+// defaultStackNamespace 는 스택 네임스페이스가 정해지지 않았을 때의 기본값이다.
+// 설치 시점에는 valuesForStep 이 실제 네임스페이스로 다시 덮어쓴다.
+const defaultStackNamespace = "nullus"
 
 func DefaultValues(stepName string) map[string]any {
 	switch stepName {
@@ -68,11 +75,11 @@ func DefaultValues(stepName string) map[string]any {
 			// 비밀번호는 values 에 넣지 않는다. provisioning_secrets 가 생성해
 			// OpenBao 에 기록하고 ESO 가 복제한 Secret 을 참조한다.
 			"auth": map[string]any{
-				"username":       "gitlab",
-				"database":       "gitlabhq_production",
+				"username":       domain.PostgresAppUser,
+				"database":       domain.PostgresAppDatabase,
 				"existingSecret": ProvisionedPostgresSecret,
 				"secretKeys": map[string]any{
-					"userPasswordKey":        "password",
+					"userPasswordKey":        domain.PostgresPasswordKey,
 					"adminPasswordKey":       "postgres-password",
 					"replicationPasswordKey": "replication-password",
 				},
@@ -127,16 +134,16 @@ func DefaultValues(stepName string) map[string]any {
 					"enabled": false,
 				},
 				"psql": map[string]any{
-					"host":     "nullus-postgresql.nullus.svc.cluster.local",
-					"port":     5432,
-					"database": "gitlabhq_production",
-					"username": "gitlab",
+					"host":     fmt.Sprintf("%s.%s.svc.cluster.local", domain.PostgresServiceName, defaultStackNamespace),
+					"port":     domain.PostgresServicePort,
+					"database": domain.PostgresAppDatabase,
+					"username": domain.PostgresAppUser,
 					// existingSecret 으로 설치되는 PostgreSQL 차트는 자기 이름의
 					// Secret 을 만들지 않으므로 프로비저닝된 Secret 을 가리킨다.
 					"password": map[string]any{
 						"useSecret": true,
 						"secret":    ProvisionedPostgresSecret,
-						"key":       "password",
+						"key":       domain.PostgresPasswordKey,
 					},
 				},
 				"hosts": map[string]any{

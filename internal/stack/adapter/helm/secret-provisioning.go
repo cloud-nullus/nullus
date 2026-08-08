@@ -76,9 +76,9 @@ const (
 // 이후에만 얻을 수 있으므로 이 단계가 아니라 회전 컨트롤러가 담당한다.
 func managedSecrets(namespace string) []ManagedSecret {
 	if strings.TrimSpace(namespace) == "" {
-		namespace = "nullus"
+		namespace = defaultStackNamespace
 	}
-	minioEndpoint := fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace)
+	minioEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", domain.MinIOServiceName, namespace, domain.MinIOServicePort)
 
 	return []ManagedSecret{
 		{
@@ -99,8 +99,8 @@ func managedSecrets(namespace string) []ManagedSecret {
 			Consumer:        "MinIO, GitLab(object storage)",
 			RestartRequired: true,
 			Entries: []SecretEntry{
-				{PathSuffix: "artifacts/minio/root-user", TargetKey: "rootUser", Fixed: MinIORootUser},
-				{PathSuffix: "artifacts/minio/root-password", TargetKey: "rootPassword"},
+				{PathSuffix: "artifacts/minio/root-user", TargetKey: domain.MinIOUserKey, Fixed: MinIORootUser},
+				{PathSuffix: "artifacts/minio/root-password", TargetKey: domain.MinIOPasswordKey},
 			},
 		},
 		{
