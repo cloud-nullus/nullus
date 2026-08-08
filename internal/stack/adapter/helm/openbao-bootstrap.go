@@ -27,6 +27,11 @@ const (
 	OpenBaoESOServiceAccount        = "external-secrets"
 
 	openBaoBootstrapTimeout = 5 * time.Minute
+
+	// 컨텍스트는 kubectl --timeout 보다 넉넉해야 한다. 같은 값이면 컨텍스트가
+	// 먼저(또는 동시에) 만료돼 프로세스가 kill 되고, kubectl 이 남기는 실제
+	// 원인 대신 "signal: killed" 만 보인다.
+	openBaoBootstrapWaitContextTimeout = openBaoBootstrapTimeout + 30*time.Second
 )
 
 // openBaoBootstrapScript 는 시크릿 엔진·인증 백엔드·정책·role 을 구성한다.
@@ -44,15 +49,23 @@ const (
 const openBaoBootstrapScript = `set -eu
 export BAO_ADDR="http://openbao.${NAMESPACE}.svc.cluster.local:8200"
 
-# root token 이 이미 폐기된 뒤 다시 실행될 수 있다.
-# 그 경우 컨트롤러 role 로 로그인해 부트스트랩이 끝나 있는지 확인하고 종료한다.
+# root token 은 부트스트랩 성공 뒤 폐기되고 Secret 에서도 제거된다(설계대로).
+# 따라서 두 번째 실행부터는 BAO_TOKEN 이 비어 있는 상태로 들어온다.
+#
+# 이때 부트스트랩 완료 여부를 인증이 필요한 호출(bao list 등)로 확인하면
+# 확인 자체가 불가능해 항상 실패한다. Kubernetes Auth 로그인으로 확인한다 —
+# 로그인에 성공한다는 것은 auth 활성화 + role + policy 가 모두 갖춰졌다는 뜻이다.
 if [ -z "${BAO_TOKEN:-}" ] || ! bao token lookup >/dev/null 2>&1; then
-  echo "root token 을 쓸 수 없음 — 이미 부트스트랩되었는지 확인"
-  if bao list auth/kubernetes/role >/dev/null 2>&1; then
+  echo "root token 을 쓸 수 없음 — Kubernetes Auth 로 부트스트랩 여부 확인"
+  SA_TOKEN_PATH=/var/run/secrets/kubernetes.io/serviceaccount/token
+  if [ -r "${SA_TOKEN_PATH}" ] && bao write -field=token \
+      auth/kubernetes/login \
+      role=` + OpenBaoControllerRole + ` \
+      jwt="$(cat ${SA_TOKEN_PATH})" >/dev/null 2>&1; then
     echo "부트스트랩 완료 상태로 확인됨 - 건너뜀"
     exit 0
   fi
-  echo "root token 없이 부트스트랩할 수 없습니다" >&2
+  echo "root token 없이 부트스트랩할 수 없습니다 (Kubernetes Auth 로그인 실패)" >&2
   exit 1
 fi
 
@@ -142,6 +155,9 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      # role 에 바인딩된 SA 로 떠야 Kubernetes Auth 로그인이 통과한다.
+      # default SA 로 뜨면 재실행 시 부트스트랩 완료 확인이 거부된다.
+      serviceAccountName: %[1]s
       containers:
         - name: bootstrap
           image: %[4]s
@@ -192,12 +208,20 @@ func (o *Orchestrator) runOpenBaoBootstrapJob(ctx context.Context, namespace str
 		return fmt.Errorf("openbao bootstrap job 적용 실패: %w", err)
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, openBaoBootstrapTimeout)
+	waitCtx, cancel := context.WithTimeout(ctx, openBaoBootstrapWaitContextTimeout)
 	defer cancel()
 	if _, err := o.runKubectl(waitCtx, "wait", "--for=condition=complete",
 		fmt.Sprintf("job/%s", openBaoBootstrapJobName), "-n", namespace,
 		fmt.Sprintf("--timeout=%ds", int(openBaoBootstrapTimeout.Seconds()))); err != nil {
-		return fmt.Errorf("openbao bootstrap job 완료 대기 실패: %w", err)
+		// 실패 원인은 job 파드 로그에만 있다. 대기 오류만 올리면
+		// "timed out waiting for the condition" 밖에 남지 않아 진단이 불가능하다.
+		logs, logErr := o.runKubectl(ctx, "logs", fmt.Sprintf("job/%s", openBaoBootstrapJobName),
+			"-n", namespace, "--tail=40")
+		if logErr != nil || strings.TrimSpace(string(logs)) == "" {
+			return fmt.Errorf("openbao bootstrap job 완료 대기 실패: %w", err)
+		}
+		return fmt.Errorf("openbao bootstrap job 완료 대기 실패: %w (job logs: %s)",
+			err, strings.TrimSpace(string(logs)))
 	}
 	return nil
 }
