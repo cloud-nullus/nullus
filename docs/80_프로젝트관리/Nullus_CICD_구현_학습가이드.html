@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nullus CI/CD 구현 학습 가이드</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --panel-2: #f1f5f9;
+      --line: #e2e8f0;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #0891b2;
+      --accent-soft: #ecfeff;
+      --warn: #92400e;
+      --warn-bg: #fffbeb;
+      --danger: #9f1239;
+      --danger-bg: #fff1f2;
+      --ok: #065f46;
+      --ok-bg: #ecfdf5;
+      --shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #ffffff 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    .layout {
+      max-width: 1580px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 24px;
+      padding: 24px 18px 40px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.88);
+      backdrop-filter: blur(10px);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .sidebar h1 { margin: 0 0 8px; font-size: 20px; line-height: 1.25; }
+    .sidebar p { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+
+    .nav { display: grid; gap: 6px; }
+    .nav a {
+      display: block;
+      padding: 8px 11px;
+      border-radius: 10px;
+      color: var(--text);
+      text-decoration: none;
+      background: transparent;
+      border: 1px solid transparent;
+      font-size: 13.5px;
+    }
+    .nav a:hover { background: var(--accent-soft); border-color: #bae6fd; }
+    .nav .nav-group {
+      margin-top: 10px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding: 0 11px;
+    }
+
+    .content { display: grid; gap: 18px; }
+
+    .hero, .section, .callout {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 26px;
+      background:
+        radial-gradient(circle at top right, rgba(8,145,178,0.08), transparent 28%),
+        linear-gradient(180deg, #ffffff 0%, #f8fdff 100%);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .hero h2 { margin: 8px 0 10px; font-size: 34px; line-height: 1.15; }
+    .hero p { margin: 0 0 10px; max-width: 980px; color: var(--muted); font-size: 15px; }
+
+    .section { padding: 22px; }
+    .section h2 { margin: 0 0 10px; font-size: 24px; }
+    .section h3 { margin: 22px 0 8px; font-size: 18px; }
+    .section h4 { margin: 16px 0 6px; font-size: 15px; }
+    .section p { margin: 0 0 10px; color: var(--muted); }
+
+    .grid-2, .grid-3, .grid-4 { display: grid; gap: 14px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+    .card h4 { margin: 0 0 6px; font-size: 15px; }
+    .card p, .card li { color: var(--muted); font-size: 14px; }
+    .card ul, .section ul, .section ol { margin: 8px 0 0; padding-left: 20px; }
+    .card ul { padding-left: 18px; }
+    .section li { color: var(--muted); margin-bottom: 4px; }
+
+    .code, pre {
+      margin: 12px 0 0;
+      border-radius: 14px;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 14px 16px;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.65;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    pre .c { color: #94a3b8; }
+    pre .k { color: #7dd3fc; }
+    pre .s { color: #fca5a5; }
+
+    code {
+      background: #eef2ff;
+      color: #1e293b;
+      padding: 2px 6px;
+      border-radius: 7px;
+      font-size: 0.92em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .file-list { display: grid; gap: 8px; margin-top: 10px; }
+    .file-item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fff;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .file-item b { display: block; color: var(--text); margin-bottom: 4px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+
+    .callout { padding: 16px 18px; background: var(--warn-bg); border-color: #fcd34d; color: var(--warn); }
+    .callout b { display: block; margin-bottom: 6px; }
+    .callout.danger { background: var(--danger-bg); border-color: #fda4af; color: var(--danger); }
+    .callout.ok { background: var(--ok-bg); border-color: #6ee7b7; color: var(--ok); }
+    .callout code { background: rgba(255,255,255,0.7); }
+
+    .flow { display: grid; gap: 10px; margin-top: 10px; }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 12px 14px;
+      position: relative;
+      padding-left: 46px;
+      counter-increment: flowstep;
+    }
+    .flow { counter-reset: flowstep; }
+    .step::before {
+      content: counter(flowstep);
+      position: absolute;
+      left: 14px;
+      top: 12px;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step b { display: block; margin-bottom: 4px; font-size: 14px; }
+    .step span { color: var(--muted); font-size: 14px; }
+    .step code { font-size: 12px; }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .tag {
+      border: 1px solid #bae6fd;
+      background: var(--accent-soft);
+      color: #155e75;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .tag.gray { border-color: var(--line); background: var(--panel-2); color: var(--muted); }
+
+    .table-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+    table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 640px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { background: var(--panel-2); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    tbody tr:last-child td { border-bottom: none; }
+    td code { font-size: 12px; }
+
+    .layer-stack { display: grid; gap: 0; margin-top: 12px; }
+    .layer {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+    .layer:first-child { border-radius: 14px 14px 0 0; }
+    .layer:last-child { border-radius: 0 0 14px 14px; }
+    .layer + .layer { border-top: none; }
+    .layer b { font-size: 14px; }
+    .layer span { color: var(--muted); }
+    .layer-arrow { text-align: center; color: var(--accent); font-weight: 800; font-size: 13px; padding: 2px 0; }
+
+    .quiz { border: 1px solid var(--line); background: #fff; border-radius: 14px; padding: 14px 16px; margin-top: 10px; }
+    .quiz b { display: block; margin-bottom: 6px; }
+    .quiz details { margin-top: 8px; }
+    .quiz summary { cursor: pointer; color: var(--accent); font-weight: 700; font-size: 13.5px; }
+    .quiz details p { margin: 8px 0 0; font-size: 14px; }
+
+    footer { color: var(--muted); font-size: 13px; padding: 4px 6px 0; }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; max-height: none; }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .layout { padding: 12px; }
+      .hero h2 { font-size: 28px; }
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <h1>Nullus CI/CD 구현 학습 가이드</h1>
+    <p>제품 기능으로서의 CI/CD 모듈과, 저장소 자체 CI/CD 파이프라인의 전체 로직</p>
+    <nav class="nav">
+      <a href="#intro">0. 시작하기 전에</a>
+      <div class="nav-group">제품 CI/CD 모듈</div>
+      <a href="#map">1. 모듈 지도</a>
+      <a href="#domain">2. 도메인 모델</a>
+      <a href="#port">3. Port(인터페이스)</a>
+      <a href="#usecase">4. UseCase 로직</a>
+      <a href="#sequence">5. 배포 전체 시퀀스</a>
+      <a href="#adapter">6. Adapter 상세</a>
+      <a href="#persistence">7. 영속성 계층</a>
+      <a href="#api">8. HTTP API &amp; 인가</a>
+      <a href="#frontend">9. 프론트엔드 흐름</a>
+      <a href="#resources">10. 리소스 조회 로직</a>
+      <a href="#goldenpath">11. Golden Path</a>
+      <a href="#tests">12. 테스트 전략</a>
+      <div class="nav-group">저장소 파이프라인</div>
+      <a href="#actions">13. GitHub Actions</a>
+      <div class="nav-group">정리</div>
+      <a href="#gaps">14. 현재 배선 상태와 갭</a>
+      <a href="#quiz">15. 이해도 점검</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <section class="hero">
+      <div class="eyebrow">Nullus Platform · 학습자료</div>
+      <h2>CI/CD는 어떻게 구현되어 있는가</h2>
+      <p>
+        이 문서는 Nullus 저장소의 CI/CD 관련 코드를 <b>실제 소스 기준</b>으로 따라가며 정리한 학습자료다.
+        도메인 모델 → 유스케이스 → 어댑터 → HTTP → 프론트엔드 순으로, "요청 하나가 들어와서 쿠버네티스 리소스가 생기기까지"
+        무슨 일이 벌어지는지를 코드 경로 그대로 추적한다.
+      </p>
+      <p>
+        읽는 대상은 이 모듈에 처음 들어오는 개발자다. 아키텍처 원칙(Modular Monolith / Clean Architecture / DDD)이
+        코드에서 실제로 어떤 모양으로 나타나는지 확인하는 것이 목표다.
+      </p>
+      <div class="tag-row">
+        <span class="tag">Go 1.24 · Echo v4</span>
+        <span class="tag">PostgreSQL (pgx)</span>
+        <span class="tag">client-go dynamic client</span>
+        <span class="tag">React 19 · TanStack Query</span>
+        <span class="tag">GitHub Actions</span>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="intro">
+      <h2>0. 시작하기 전에 — "CI/CD"라는 말이 두 가지를 가리킨다</h2>
+      <p>
+        이 저장소에서 CI/CD라는 단어는 서로 다른 두 대상을 가리킨다. 코드를 읽을 때 이 둘을 섞으면 바로 헷갈리므로 먼저 분리해 둔다.
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <h4>① 제품 기능으로서의 CI/CD 모듈</h4>
+          <p>
+            Nullus 사용자가 자기 애플리케이션을 위한 파이프라인을 만들고 쿠버네티스에 배포하는 기능.
+            <code>internal/cicd/</code> + <code>web/src/features/cicd/</code>가 여기에 해당한다.
+          </p>
+          <p><b>이 문서 분량의 대부분(1~12장)이 여기다.</b></p>
+        </div>
+        <div class="card">
+          <h4>② 저장소 자신의 CI/CD 파이프라인</h4>
+          <p>
+            Nullus 자체를 빌드·테스트·이미지 푸시·차트 배포하는 GitHub Actions 워크플로.
+            <code>.github/workflows/</code>가 여기에 해당한다.
+          </p>
+          <p><b>13장에서 다룬다.</b></p>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:14px;">
+        <b>Bounded Context로서의 CI/CD</b>
+        CLAUDE.md의 모듈 표에서 <code>internal/cicd/</code>는 <b>CI/CD Pipeline</b> 바운디드 컨텍스트이고,
+        핵심 Aggregate는 <b>Pipeline</b>과 <b>Deployment</b>다. 다른 모듈(<code>stack</code>, <code>admin</code>)의
+        internal 패키지를 직접 import하지 않는다는 규칙이 이 모듈에서 어떻게 지켜지는지는 3장 <code>StackReader</code>에서 확인한다.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="map">
+      <h2>1. 모듈 지도 — 파일이 어디에 왜 있는가</h2>
+      <p>
+        <code>internal/cicd/</code>는 Clean Architecture 레이어를 디렉토리로 그대로 표현한다.
+        의존성 화살표는 항상 안쪽(domain)을 향하고, 바깥쪽(adapter)은 port 인터페이스를 구현할 뿐이다.
+      </p>
+
+      <div class="layer-stack">
+        <div class="layer" style="background:#f8fafc;">
+          <b>adapter/handler</b> — <span>Echo HTTP 핸들러, WebSocket 핸들러. 요청 바인딩과 에러 코드 매핑만 담당</span>
+        </div>
+        <div class="layer-arrow">↓ 호출</div>
+        <div class="layer" style="background:#fff;">
+          <b>usecase</b> — <span>CreatePipeline / ListPipelines / DeployPipeline. 애플리케이션 로직. port 인터페이스에만 의존</span>
+        </div>
+        <div class="layer-arrow">↓ 사용</div>
+        <div class="layer" style="background:var(--accent-soft); border-color:#bae6fd;">
+          <b>domain</b> — <span>Pipeline, Deployment, PipelineTemplate, CICDGoldenPath, DeployStep. 외부 의존 0. 프레임워크 import 없음</span>
+        </div>
+        <div class="layer-arrow">↑ 구현</div>
+        <div class="layer" style="background:#fff;">
+          <b>port</b> — <span>Repository / Deployer / StackReader 인터페이스. usecase가 요구하는 계약</span>
+        </div>
+        <div class="layer-arrow">↑ 구현</div>
+        <div class="layer" style="background:#f8fafc;">
+          <b>adapter/{repository, kube, docker, manifests}</b> — <span>Postgres, client-go, docker CLI, YAML 생성기</span>
+        </div>
+      </div>
+
+      <h3>파일별 역할</h3>
+      <div class="file-list">
+        <div class="file-item"><b>internal/cicd/domain/pipeline.go</b>Pipeline / PipelineTemplate / Deployment / DeployStep 엔티티와 상태 enum. time 외 import 없음.</div>
+        <div class="file-item"><b>internal/cicd/domain/cicd_golden_path.go</b>검증된 CI/CD 도구 조합(Golden Path) 엔티티.</div>
+        <div class="file-item"><b>internal/cicd/port/repository.go</b>4개 Repository 인터페이스(Pipeline, PipelineTemplate, Deployment, CICDGoldenPath).</div>
+        <div class="file-item"><b>internal/cicd/port/deployer.go</b>ManifestApplier / KubeconfigProvider / ImagePreparer / ClusterTargetProvider.</div>
+        <div class="file-item"><b>internal/cicd/port/stack_reader.go</b>Stack 컨텍스트를 <i>읽기 전용</i>으로 참조하는 안티커럽션 포트.</div>
+        <div class="file-item"><b>internal/cicd/usecase/create_pipeline.go</b>파이프라인 생성 + 템플릿 병합 + 스택 교차검증 + ExecutionMode 결정.</div>
+        <div class="file-item"><b>internal/cicd/usecase/deploy_pipeline.go</b>배포의 심장. Start / ApplyAsync / applyToCluster / BuildStepPlan.</div>
+        <div class="file-item"><b>internal/cicd/usecase/list_pipelines.go</b>조직 단위 목록, stack_id 필터 분기.</div>
+        <div class="file-item"><b>internal/cicd/usecase/id.go</b><code>pip_</code>/<code>dep_</code> 접두사 + crypto/rand 6바이트 hex ID 생성기.</div>
+        <div class="file-item"><b>internal/cicd/adapter/manifests/generator.go</b>템플릿 → Namespace/Deployment/Service/Ingress YAML 생성 (k8s 타입 구조체 → sigs.k8s.io/yaml).</div>
+        <div class="file-item"><b>internal/cicd/adapter/kube/applier.go</b>dynamic client + RESTMapper로 임의 매니페스트 create-or-update.</div>
+        <div class="file-item"><b>internal/cicd/adapter/kube/step_tracker.go</b>진행 상태 인메모리 저장 + 구독자 pub/sub.</div>
+        <div class="file-item"><b>internal/cicd/adapter/docker/builder.go</b>git clone → docker build → push 또는 kind load.</div>
+        <div class="file-item"><b>internal/cicd/adapter/repository/postgres_*.go</b>pgx 기반 영속화 구현체.</div>
+        <div class="file-item"><b>internal/cicd/adapter/repository/memory_*.go</b>템플릿·Golden Path의 하드코딩 시드 저장소.</div>
+        <div class="file-item"><b>internal/cicd/adapter/handler/*.go</b>Echo 라우트 등록과 요청/응답 DTO.</div>
+      </div>
+
+      <div class="callout ok" style="margin-top:14px;">
+        <b>학습 포인트 — 왜 이렇게 나눴나</b>
+        <code>usecase</code>는 <code>pgxpool</code>도 <code>client-go</code>도 모른다. 그래서 DB 없이 순수 단위 테스트가 가능하고,
+        실제로 <code>deploy_pipeline_test.go</code>는 메모리 fake만 써서 9개 시나리오를 검증한다.
+        레이어 분리가 "이론"이 아니라 "테스트 가능성"으로 돌아온다는 점을 확인하라.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="domain">
+      <h2>2. 도메인 모델 — 무엇을 다루는가</h2>
+      <p><code>internal/cicd/domain/pipeline.go</code>. 이 파일에는 <code>time</code> 말고 어떤 import도 없다. 이게 Clean Architecture의 domain 레이어 규칙이다.</p>
+
+      <h3>Pipeline — 배포 설정 Aggregate Root</h3>
+      <pre><span class="k">type</span> Pipeline <span class="k">struct</span> {
+    ID             string            <span class="c">// "pip_a1b2c3d4e5f6"</span>
+    Name           string
+    ExecutionMode  string            <span class="c">// "ci" | "cd" | "ci_cd" | "stack_integrated" | "emergency_direct"</span>
+    TemplateID     string
+    OrgID          string            <span class="c">// 조직 경계 — 목록 조회의 기준</span>
+    ClusterID      string            <span class="c">// 배포 대상 클러스터</span>
+    StackID        string            <span class="c">// 선택 — Stack 컨텍스트와의 연결고리</span>
+    Namespace      string
+    AppType        AppType           <span class="c">// web | backend | batch</span>
+    GitRepoURL     string
+    DockerfilePath string            <span class="c">// 비어 있지 않으면 "이미지 빌드가 필요한 파이프라인"</span>
+    DockerContext  string
+    EnvVars        map[string]string <span class="c">// 설정 + 매니페스트 원문 + 레지스트리 자격증명이 모두 여기 들어간다</span>
+    Status         PipelineStatus    <span class="c">// active | inactive</span>
+    CreatedAt      time.Time
+}</pre>
+
+      <div class="callout" style="margin-top:14px;">
+        <b>EnvVars가 하는 세 가지 일 — 이 모듈에서 가장 중요한 설계 관찰</b>
+        <code>EnvVars</code>는 이름과 달리 단순한 "환경변수 맵"이 아니다. 실제로 세 가지 용도로 겸용된다.
+        <ul>
+          <li><b>컨테이너 환경변수</b> — 생성된 Deployment의 <code>env:</code>로 주입</li>
+          <li><b>매니페스트 원문 저장소</b> — <code>NULLUS_MANIFEST_DEPLOYMENT</code> / <code>_SERVICE</code> / <code>_INGRESS</code> 키에 사용자가 편집한 YAML 전문이 통째로 들어간다</li>
+          <li><b>레지스트리 자격증명</b> — <code>IMAGE_REGISTRY_URL</code>, <code>REGISTRY_USERNAME</code>, <code>REGISTRY_PASSWORD</code></li>
+        </ul>
+        전용 컬럼/테이블 대신 JSONB 맵 하나에 몰아넣은 구조라, 스키마 마이그레이션 없이 기능을 붙일 수 있는 대신
+        타입 안전성과 관심사 분리를 잃었다. 확장할 때 이 트레이드오프를 인지하고 손대야 한다.
+      </div>
+
+      <h3>Deployment — 실행 1회분 Aggregate Root</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4>구조</h4>
+          <ul>
+            <li><code>ID</code> — <code>dep_</code> 접두사</li>
+            <li><code>PipelineID</code> — 소속 파이프라인</li>
+            <li><code>Version</code> — 프론트가 <code>v0.1.{ms%1000}</code>로 생성</li>
+            <li><code>Status</code> — 아래 상태값</li>
+            <li><code>Steps []DeployStep</code> — <b>DB에 저장되지 않음</b>. 조회 시점에 StepTracker(메모리)에서 채워 넣는다</li>
+            <li><code>StartedAt / CompletedAt / DeployedBy</code></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>상태값 5개 — 그중 실제로 쓰이는 건 3개</h4>
+          <ul>
+            <li><code>pending</code> — 선언만 되어 있고 코드에서 대입되는 곳이 없다</li>
+            <li><code>running</code> — <code>Start()</code>에서 즉시 설정</li>
+            <li><code>success</code> — <code>ApplyAsync()</code> 정상 종료</li>
+            <li><code>failed</code> — <code>failDeployment()</code></li>
+            <li><code>rolled_back</code> — 선언만 되어 있고 롤백 로직은 미구현 (14장 참고)</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>DeployStep — 진행률의 단위</h3>
+      <pre><span class="k">type</span> DeployStep <span class="k">struct</span> {
+    Name      string   <span class="c">// "Namespace 생성", "Docker Build" ...</span>
+    Status    string   <span class="c">// pending | running | success | failed</span>
+    Kind      string
+    Message   string
+    AppliedAt string
+    Logs      []string <span class="c">// 이 스텝에서 출력된 로그 라인들</span>
+}</pre>
+      <p>
+        Deployment의 "진행 상태"는 DB가 아니라 <b>메모리(StepTracker)</b>에만 존재한다.
+        API 서버가 재시작되면 진행 중이던 배포의 스텝 정보는 사라지고, DB의 status만 남는다.
+        또한 배포 종료 5분 뒤 <code>time.AfterFunc</code>로 트래커에서 제거된다. 이 수명주기를 6장에서 다시 본다.
+      </p>
+
+      <h3>PipelineTemplate / CICDGoldenPath</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4>PipelineTemplate</h4>
+          <p>재사용 가능한 파이프라인 골격. <code>Stages []string</code>(예: Build, Test, ImageBuild, Deploy)과 기본 EnvVars를 가진다.
+             파이프라인 생성 시 템플릿의 EnvVars가 먼저 깔리고 사용자 입력이 덮어쓴다.</p>
+        </div>
+        <div class="card">
+          <h4>CICDGoldenPath</h4>
+          <p>검증된 <i>도구 조합</i>. <code>Tools []CICDTool</code>에 카테고리별 도구와 Helm/App 버전을 못 박아 둔다.
+             파이프라인 실행이 아니라 "무엇을 설치할지"의 카탈로그다. 11장 참고.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="port">
+      <h2>3. Port — usecase가 바깥에 요구하는 계약</h2>
+      <p>
+        port 패키지는 인터페이스만 있다. 구현은 전부 adapter에 있고, 조립은 <code>cmd/api/main.go</code>가 한다.
+        이것이 의존성 역전(DIP)이 코드에서 나타나는 모습이다.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>인터페이스</th><th>주요 메서드</th><th>운영 구현체</th><th>테스트 구현체</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>PipelineRepository</code></td><td>Create / GetByID / List / ListByStackID / Update / Delete</td><td><code>PostgresPipelineRepository</code></td><td><code>MemoryPipelineRepository</code></td></tr>
+            <tr><td><code>PipelineTemplateRepository</code></td><td>GetByID / List / Create / Update / Delete</td><td><code>PostgresCICDTemplateRepository</code></td><td><code>MemoryCICDTemplateRepository</code></td></tr>
+            <tr><td><code>DeploymentRepository</code></td><td>Create / GetByID / ListByPipelineID / Update</td><td><code>PostgresDeploymentRepository</code></td><td><code>MemoryDeploymentRepository</code></td></tr>
+            <tr><td><code>CICDGoldenPathRepository</code></td><td>GetByID / List / Create / Update / Delete</td><td colspan="2"><code>MemoryCICDGoldenPathRepository</code> (운영에서도 메모리)</td></tr>
+            <tr><td><code>ManifestApplier</code></td><td>Apply / ApplyWithTracking</td><td><code>kube.ManifestApplier</code></td><td>테스트용 fake</td></tr>
+            <tr><td><code>KubeconfigProvider</code></td><td>GetKubeconfig(clusterID)</td><td>admin 모듈이 제공</td><td>fake</td></tr>
+            <tr><td><code>ImagePreparer</code></td><td>PrepareImage(opts) → imageRef</td><td><code>docker.Builder</code></td><td>fake</td></tr>
+            <tr><td><code>ClusterTargetProvider</code></td><td>GetTarget(clusterID) → kubeconfig + 클러스터명</td><td><code>PostgresClusterTargetProvider</code></td><td>fake</td></tr>
+            <tr><td><code>StackReader</code></td><td>GetStackSummary(stackID)</td><td><code>PostgresStackReader</code></td><td>fake</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>StackReader — 모듈 경계를 지키는 방법</h3>
+      <p>
+        CI/CD 파이프라인은 스택에 연결될 수 있다. 그러면 스택이 존재하는지, 같은 조직인지 검증해야 한다.
+        하지만 <b>CI/CD 모듈이 Stack 모듈의 domain을 import하면 모듈 경계가 깨진다.</b>
+        해결책은 CI/CD 쪽이 필요한 최소 정보만 담은 자기 소유 타입을 정의하는 것이다.
+      </p>
+      <pre><span class="c">// internal/cicd/port/stack_reader.go</span>
+<span class="k">type</span> StackSummary <span class="k">struct</span> {
+    ID        string
+    OrgID     string
+    ClusterID string
+    State     string <span class="c">// "completed", "failed", ...</span>
+}
+
+<span class="k">type</span> StackReader <span class="k">interface</span> {
+    <span class="c">// 스택이 없으면 (nil, nil) — 에러가 아니라 nil로 표현</span>
+    GetStackSummary(ctx context.Context, stackID string) (*StackSummary, error)
+}</pre>
+      <p>
+        구현체 <code>PostgresStackReader</code>는 <code>stacks</code> 테이블을 직접 SELECT한다.
+        DDD 용어로는 <b>Anti-Corruption Layer</b>이고, 헥사고날 아키텍처 용어로는 <b>아웃바운드 포트</b>다.
+        같은 원리가 반대 방향에도 적용된다 — <code>PipelineHandler.RegisterStackRoutes()</code>는
+        <code>GET /api/v1/stacks/:stackId/pipelines</code>를 CI/CD 핸들러가 직접 등록해서,
+        Stack 모듈이 CI/CD를 import하지 않고도 해당 URL이 존재하게 만든다.
+      </p>
+      <div class="callout ok">
+        <b>컴파일 타임 계약 검증</b>
+        <code>internal/cicd/port/interface_compliance_test.go</code>는 테스트 함수가 하나도 없다. 대신
+        <code>var _ port.PipelineRepository = (*cicdrepo.PostgresPipelineRepository)(nil)</code> 같은 선언만 나열한다.
+        구현체가 인터페이스를 만족하지 않으면 <b>테스트 실행 전에 컴파일이 깨진다.</b> Go에서 흔히 쓰는 관용구다.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="usecase">
+      <h2>4. UseCase 로직</h2>
+
+      <h3>4-1. CreatePipeline — 검증 · 병합 · 모드 결정</h3>
+      <p><code>usecase/create_pipeline.go</code>. 순서대로 다섯 단계를 밟는다.</p>
+      <div class="flow">
+        <div class="step"><b>필수값 검증</b><span><code>Name</code>, <code>OrgID</code>, <code>ClusterID</code>가 비면 즉시 에러.</span></div>
+        <div class="step"><b>템플릿 조회</b><span><code>TemplateID</code>가 있으면 <code>templateRepo.GetByID</code>. 없는 템플릿이면 에러로 중단.</span></div>
+        <div class="step"><b>EnvVars 병합</b><span><code>maps.Copy(envVars, tmpl.EnvVars)</code> 후 <code>maps.Copy(envVars, input.EnvVars)</code> — <b>사용자 입력이 템플릿을 덮어쓴다.</b></span></div>
+        <div class="step"><b>스택 교차 검증</b><span><code>StackID</code>가 있고 <code>stackReader</code>가 주입돼 있을 때만 수행. 없는 스택 → <code>ErrStackNotFound</code>(400), 다른 조직 → <code>ErrStackOrgMismatch</code>(403), 스택이 <code>completed</code>가 아니면 <b>거부하지 않고 경고 문자열만 반환</b>.</span></div>
+        <div class="step"><b>ExecutionMode 기본값</b><span>명시되지 않았다면 <code>StackID</code> 유무로 결정: 있으면 <code>stack_integrated</code>, 없으면 <code>emergency_direct</code>.</span></div>
+      </div>
+      <pre><span class="c">// 경고는 막지 않고 알리기만 한다 — "스택이 아직 준비 안 됐지만 진행은 허용"</span>
+<span class="k">if</span> summary.State != <span class="s">"completed"</span> {
+    stackWarning = fmt.Sprintf(
+        <span class="s">"stack %q is in state %q — CI/CD tools may not be available yet"</span>,
+        input.StackID, summary.State,
+    )
+}</pre>
+      <p>
+        핸들러는 이 경고를 응답 JSON의 <code>warning</code> 필드로 올려보낸다.
+        <b>차단(error)과 경고(warning)를 구분한 설계</b>가 이 유스케이스의 핵심 판단이다.
+      </p>
+
+      <h3>4-2. ListPipelines — 단순하지만 분기 하나</h3>
+      <p>
+        <code>StackID</code>가 있으면 <code>ListByStackID</code>, 없으면 조직 기준 <code>List</code>.
+        Postgres 구현은 양쪽 모두 <code>ORDER BY created_at DESC LIMIT 100</code>이다. 페이지네이션은 없고 상한만 걸려 있다.
+      </p>
+
+      <h3>4-3. DeployPipeline — 이 모듈의 심장</h3>
+      <p>
+        진입점이 세 개다. 이 세 개의 관계를 이해하는 것이 배포 로직 이해의 전부다.
+      </p>
+      <div class="grid-3">
+        <div class="card">
+          <h4><code>Start(ctx, input)</code></h4>
+          <p>검증 → 파이프라인 존재 확인 → <code>Deployment</code> 레코드를 <code>running</code>으로 생성하고 <b>즉시 반환</b>.
+             HTTP는 여기까지만 기다린다.</p>
+        </div>
+        <div class="card">
+          <h4><code>ApplyAsync(deploymentID, ...)</code></h4>
+          <p>고루틴에서 실행. 실제 이미지 빌드와 K8s apply를 수행하고 최종 상태를 DB에 기록.
+             <code>context.Background()</code>를 새로 만들어 <b>HTTP 요청 취소와 분리</b>한다.</p>
+        </div>
+        <div class="card">
+          <h4><code>Execute(ctx, input)</code></h4>
+          <p><code>Start</code> + <code>ApplyAsync</code>를 동기로 이어붙인 뒤 DB를 다시 읽어 결과 반환.
+             주석에 명시된 대로 <b>테스트와 하위호환용</b>이다. 운영 핸들러는 쓰지 않는다.</p>
+        </div>
+      </div>
+
+      <h4>Option 패턴으로 붙는 선택적 의존성</h4>
+      <pre><span class="k">func</span> NewDeployPipeline(
+    pipelineRepo port.PipelineRepository,
+    deploymentRepo port.DeploymentRepository,
+    kubeconfigProvider port.KubeconfigProvider,
+    applier port.ManifestApplier,
+    opts ...DeployOption,     <span class="c">// ← 가변 옵션</span>
+) *DeployPipeline
+
+WithImagePreparer(p port.ImagePreparer)          <span class="c">// docker build 능력 부여</span>
+WithClusterTargetProvider(p port.ClusterTargetProvider) <span class="c">// kind 클러스터명 조회 능력 부여</span></pre>
+      <p>
+        필수 4개는 위치 인자, 선택 2개는 옵션. <b>이 두 옵션이 주입되지 않으면 이미지 빌드 단계 전체가 건너뛰어진다.</b>
+        현재 <code>cmd/api/main.go</code>의 배선이 정확히 그 상태다 — 14장에서 그 결과를 자세히 본다.
+      </p>
+
+      <h4>BuildStepPlan — UI에 보여줄 단계 목록을 미리 계산</h4>
+      <pre><span class="k">func</span> BuildStepPlan(pipeline *domain.Pipeline, manifestTypes ...[]string) []string {
+    steps := []string{<span class="s">"Namespace 생성"</span>, <span class="s">"Deployment 생성"</span>}
+
+    <span class="k">if</span> pipeline != <span class="k">nil</span> && pipeline.DockerfilePath != <span class="s">""</span> {
+        hasRegistry := pipeline.EnvVars[<span class="s">"IMAGE_REGISTRY_URL"</span>] != <span class="s">""</span>
+        imageStep := <span class="s">"Image Load"</span>          <span class="c">// 레지스트리 없으면 kind load</span>
+        <span class="k">if</span> hasRegistry { imageStep = <span class="s">"Image Push"</span> }
+        <span class="c">// 빌드 3단계를 앞에 붙인다</span>
+        steps = append([]string{<span class="s">"Git Clone"</span>, <span class="s">"Docker Build"</span>, imageStep}, steps...)
+    }
+    <span class="k">if</span> includesOptionalManifest(selected, <span class="s">"service"</span>) { steps = append(steps, <span class="s">"Service 생성"</span>) }
+    <span class="k">if</span> includesOptionalManifest(selected, <span class="s">"ingress"</span>) { steps = append(steps, <span class="s">"Ingress 생성"</span>) }
+    <span class="k">return</span> steps
+}</pre>
+      <div class="callout">
+        <b>includesOptionalManifest의 "빈 목록 = 전부 포함" 규칙</b>
+        <code>manifestTypes</code>가 비어 있으면 <code>true</code>를 반환한다. 즉 클라이언트가 아무것도 지정하지 않으면
+        Service와 Ingress가 <b>모두</b> 배포된다. 옵트아웃 방식이라는 점을 기억하라 —
+        "빈 배열 = 아무것도 안 함"이라고 착각하기 쉽다.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="sequence">
+      <h2>5. 배포 전체 시퀀스 — 버튼 클릭에서 Pod까지</h2>
+      <p>
+        <code>POST /api/v1/cicd/pipelines/:id/deploy</code> 한 번의 요청이 만들어내는 전체 흐름이다.
+        핸들러(<code>pipeline_handler.go:196</code>)부터 순서대로 따라간다.
+      </p>
+
+      <div class="flow">
+        <div class="step">
+          <b>요청 바인딩</b>
+          <span><code>{ version, deployed_by, manifest_types }</code>를 받는다. 실패 시 400 <code>PIPELINE_DEPLOY_INVALID</code>.</span>
+        </div>
+        <div class="step">
+          <b>Deployment 레코드 생성 (동기)</b>
+          <span><code>deployPipeline.Start()</code> → <code>dep_xxxxxxxxxxxx</code> ID 발급, status=<code>running</code>으로 INSERT.</span>
+        </div>
+        <div class="step">
+          <b>스텝 계획 수립 및 트래커 초기화</b>
+          <span>파이프라인을 다시 조회해 <code>BuildStepPlan(pipeline, manifestTypes)</code> 계산 → <code>stepTracker.Init(depID, steps)</code>로 모든 스텝을 <code>pending</code>으로 등록.</span>
+        </div>
+        <div class="step">
+          <b>고루틴 분기 + 즉시 202 응답</b>
+          <span><code>go func(){ ApplyAsync(depID, manifestTypes); time.AfterFunc(5*time.Minute, ...Remove) }()</code> 후
+                <code>202 Accepted { "deploymentId": "dep_..." }</code>를 바로 반환. <b>여기서 HTTP 요청은 끝난다.</b></span>
+        </div>
+        <div class="step">
+          <b>[비동기] 이미지 준비 — 조건부</b>
+          <span><code>DockerfilePath != "" && imagePreparer != nil && clusterTargetProvider != nil</code>일 때만 수행.
+                클러스터 타깃 조회 → 이미지 태그를 <code>{파이프라인명}:{deploymentID 뒤 8자}</code>로 생성 →
+                git clone → docker build → (레지스트리 있으면 login+tag+push, 없으면 <code>kind load docker-image</code>) →
+                <code>stepOffset = 3</code> 설정.</span>
+        </div>
+        <div class="step">
+          <b>[비동기] kubeconfig 조회</b>
+          <span><code>kubeconfigProvider.GetKubeconfig(pipeline.ClusterID)</code>. admin 모듈이 암호화 저장한 kubeconfig를 복호화해 돌려준다.</span>
+        </div>
+        <div class="step">
+          <b>[비동기] 템플릿·포트 결정</b>
+          <span>AppType으로 매니페스트 템플릿 선택: <code>web → react-spa</code>, <code>batch → python-fastapi</code>, <b>그 외(backend 포함) → go-web-api</b>.
+                포트는 <code>imageRef</code>가 있을 때만 명시(backend 8080 / batch 8000), 없으면 템플릿 기본값 사용.</span>
+        </div>
+        <div class="step">
+          <b>[비동기] 매니페스트 생성</b>
+          <span><code>manifests.Generate()</code>가 Namespace/Deployment/Service/Ingress YAML 4종을 만든다.
+                고정 라벨 <code>app.kubernetes.io/managed-by=nullus-cicd</code>, <code>nullus.io/pipeline-id={ID}</code>가 여기서 붙는다.</span>
+        </div>
+        <div class="step">
+          <b>[비동기] 사용자 편집 YAML로 치환</b>
+          <span><code>firstNonEmptyManifest(pipeline.EnvVars["NULLUS_MANIFEST_DEPLOYMENT"], generated.Deployment)</code> —
+                EnvVars에 저장된 원문이 있으면 <b>생성된 YAML 대신 그것을 쓴다.</b> Service/Ingress도 동일. 위저드는 항상 이 값을 채워 보낸다.</span>
+        </div>
+        <div class="step">
+          <b>[비동기] 클러스터에 적용</b>
+          <span><code>applier.ApplyWithTracking(kubeconfig, yamlDocs, deploymentID, stepOffset)</code>.
+                문서 하나씩 create 시도 → <code>AlreadyExists</code>면 get으로 resourceVersion을 얻어 update. 매 문서마다 트래커에 진행 상황 기록.</span>
+        </div>
+        <div class="step">
+          <b>[비동기] 최종 상태 기록</b>
+          <span>성공: <code>CompletedAt=now, Status=success</code>로 UPDATE. 실패: <code>failDeployment()</code>가 <code>failed</code>로 UPDATE.
+                <b>실패 사유(에러 원문)는 DB에 저장되지 않고 로그와 메모리 트래커에만 남는다.</b></span>
+        </div>
+        <div class="step">
+          <b>[비동기] 5분 뒤 트래커 정리</b>
+          <span><code>stepTracker.Remove(depID)</code> — 구독 채널을 닫고 스텝/구독자 맵에서 삭제. 이후 조회하면 스텝 정보가 없다.</span>
+        </div>
+      </div>
+
+      <h3>동기 구간과 비동기 구간의 경계</h3>
+      <pre>[클라이언트]  POST /cicd/pipelines/:id/deploy
+     │
+     ├─ 동기 ──► Start() ─► INSERT deployment(running) ─► Init(stepTracker)
+     │                                                          │
+     ◄── 202 { deploymentId } ───────────────────────────────────┘
+     │
+     │            (별도 고루틴, context.Background())
+     │              ApplyAsync()
+     │                ├─ PrepareImage()        <span class="c">// 선택</span>
+     │                ├─ GetKubeconfig()
+     │                ├─ manifests.Generate()
+     │                ├─ ApplyWithTracking()   <span class="c">// → StepTracker.publish()</span>
+     │                └─ UPDATE deployment(success|failed)
+     │
+     └─ 2초 폴링 ──► GET /cicd/deployments/:id  <span class="c">// DB status + 메모리 steps 병합</span></pre>
+
+      <div class="callout ok">
+        <b>왜 202 + 폴링인가</b>
+        헬름 설치나 이미지 빌드는 분 단위로 걸린다. HTTP 요청을 그동안 붙잡으면 프록시 타임아웃, 재시도 중복 실행,
+        요청 취소 시 배포 중단 같은 문제가 생긴다. 그래서 <b>작업 등록(202)과 상태 조회(폴링)를 분리</b>했다.
+        <code>ApplyAsync</code>가 <code>context.Background()</code>를 새로 만드는 이유도 같다 — 클라이언트가 연결을 끊어도 배포는 계속돼야 한다.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="adapter">
+      <h2>6. Adapter 상세</h2>
+
+      <h3>6-1. manifests.Generate — 문자열 템플릿이 아니라 타입 구조체</h3>
+      <p>
+        <code>adapter/manifests/generator.go</code>는 YAML을 문자열로 조립하지 않는다.
+        <code>appsv1.Deployment</code>, <code>corev1.Service</code> 같은 <b>실제 쿠버네티스 Go 타입</b>을 만들고
+        <code>sigs.k8s.io/yaml</code>로 직렬화한다. 오타나 잘못된 필드가 컴파일 타임에 걸린다.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>템플릿 ID</th><th>기본 이미지</th><th>기본 포트</th></tr></thead>
+          <tbody>
+            <tr><td><code>react-spa</code></td><td>nginx:alpine</td><td>80</td></tr>
+            <tr><td><code>next-app</code></td><td>node:20-alpine</td><td>3000</td></tr>
+            <tr><td><code>express-api</code></td><td>node:20-alpine</td><td>3000</td></tr>
+            <tr><td><code>spring-boot</code></td><td>eclipse-temurin:21-jre</td><td>8080</td></tr>
+            <tr><td><code>python-fastapi</code></td><td>python:3.12-slim</td><td>8000</td></tr>
+            <tr><td><code>go-web-api</code></td><td>nginx:alpine</td><td>80</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><b>이미지 결정</b> — <code>imageForContainer(imageRef, templateImage)</code>. 빌드된 이미지가 있으면 그것을, 없으면 템플릿 기본 이미지를 쓴다. 즉 <b>빌드가 없으면 앱 코드가 아니라 플레이스홀더 이미지가 뜬다.</b></li>
+        <li><b>리소스 기본값</b> — requests <code>100m / 128Mi</code>, limits <code>500m / 512Mi</code>. <code>resource.ParseQuantity</code>로 파싱해 잘못된 값은 생성 단계에서 에러.</li>
+        <li><b>EnvVar 정렬</b> — 맵 키를 <code>sort.Strings</code>로 정렬해 넣는다. Go 맵 순회는 무작위라서, 정렬하지 않으면 같은 입력에 다른 YAML이 나온다(결정적 출력 확보).</li>
+        <li><b>Ingress 호스트</b> — <code>{앱이름}.{네임스페이스}.nullus.local</code> 규칙으로 자동 생성.</li>
+        <li><b>알 수 없는 템플릿</b> — <code>unsupported template: %s</code> 에러. 화이트리스트 방식.</li>
+      </ul>
+      <div class="callout">
+        <b>주의: <code>deployEnvVars()</code>는 매니페스트 키만 걸러낸다</b>
+        <pre style="margin-top:8px;"><span class="k">func</span> deployEnvVars(envVars map[string]string) map[string]string {
+    filtered := make(map[string]string)
+    maps.Copy(filtered, envVars)
+    delete(filtered, <span class="s">"NULLUS_MANIFEST_DEPLOYMENT"</span>)
+    delete(filtered, <span class="s">"NULLUS_MANIFEST_SERVICE"</span>)
+    delete(filtered, <span class="s">"NULLUS_MANIFEST_INGRESS"</span>)
+    <span class="k">return</span> filtered
+}</pre>
+        제거 대상은 세 개의 매니페스트 키뿐이다. <code>REGISTRY_USERNAME</code>·<code>REGISTRY_PASSWORD</code>·<code>IMAGE_REGISTRY_URL</code>은
+        걸러지지 않으므로 <b>생성된 Deployment의 컨테이너 env로 그대로 주입</b>된다. 레지스트리 자격증명을 사용하는 배포에서는
+        이 점을 인지하고 Secret 참조로 바꾸는 것이 정석이다.
+      </div>
+
+      <h3>6-2. kube.ManifestApplier — kubectl apply를 직접 구현</h3>
+      <p>
+        임의의 YAML을 적용하려면 리소스 종류를 미리 알 수 없다. 그래서 typed client가 아니라
+        <b>dynamic client + RESTMapper</b> 조합을 쓴다.
+      </p>
+      <div class="flow">
+        <div class="step"><b>kubeconfig → REST config</b><span><code>clientcmd.RESTConfigFromKubeConfig()</code>, 타임아웃 10초 고정.</span></div>
+        <div class="step"><b>클라이언트 2종 생성</b><span><code>dynamic.NewForConfig</code>(임의 리소스 조작) + <code>discovery</code>(API 서버가 뭘 아는지 질의).</span></div>
+        <div class="step"><b>RESTMapper 구성</b><span><code>restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(...))</code> — GroupVersionKind를 실제 리소스 경로로 변환. 캐시 포함.</span></div>
+        <div class="step"><b>문서 분할</b><span><code>utilyaml.NewYAMLReader</code>로 <code>---</code> 구분자를 처리. 매니페스트 하나에 여러 문서가 있어도 동작한다.</span></div>
+        <div class="step"><b>디코딩 → 매핑 → 스코프 판정</b><span>네임스페이스 스코프면 <code>.Namespace(ns)</code>를 붙이고(비어 있으면 <code>default</code>), 클러스터 스코프면 붙이지 않는다.</span></div>
+        <div class="step"><b>create-or-update</b><span><code>Create()</code> 시도 → 성공하면 action=<code>created</code>. <code>IsAlreadyExists</code>면 <code>Get()</code>으로 <code>resourceVersion</code>을 읽어 세팅한 뒤 <code>Update()</code> → action=<code>configured</code>.</span></div>
+      </div>
+      <div class="callout">
+        <b>진짜 <code>kubectl apply</code>와의 차이</b>
+        kubectl apply는 3-way strategic merge patch(또는 server-side apply)를 쓰지만, 여기는
+        <b>get → resourceVersion 복사 → 전체 Update</b>다. 결과적으로 매니페스트에 없는 필드는 지워지는
+        "전체 교체" 의미론에 가깝다. 그리고 <code>metadata.name</code>이 없는 문서는 명시적으로 에러 처리한다.
+      </div>
+
+      <h3>6-3. StepTracker — 진행 상태 저장소이자 pub/sub 허브</h3>
+      <pre><span class="k">type</span> StepTracker <span class="k">struct</span> {
+    mu          sync.RWMutex
+    steps       map[string][]domain.DeployStep <span class="c">// deploymentID → 스텝들</span>
+    subscribers map[string][]chan LogEvent     <span class="c">// deploymentID → 구독 채널들</span>
+}</pre>
+      <div class="grid-2">
+        <div class="card">
+          <h4>상태 변경 API</h4>
+          <ul>
+            <li><code>Init(id, names)</code> — 전부 <code>pending</code>으로 초기화</li>
+            <li><code>MarkRunning / MarkSuccess / MarkFailed(id, idx, msg)</code></li>
+            <li><code>AppendLog(id, idx, line)</code> — 스텝에 로그 한 줄 추가</li>
+            <li><code>Get(id)</code> — <b>복사본</b> 반환(외부에서 내부 슬라이스를 못 건드리게)</li>
+            <li><code>Remove(id)</code> — 채널 close + 맵 삭제</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>동시성 처리 두 가지</h4>
+          <ul>
+            <li><b>락 밖에서 publish</b> — 상태 변경은 <code>mu.Lock()</code> 안에서, 이벤트 발행은 락을 푼 뒤에.
+                구독자가 느려도 락을 붙잡지 않는다.</li>
+            <li><b>논블로킹 전송</b> — <code>select { case ch &lt;- event: default: }</code>.
+                버퍼(64)가 차면 이벤트를 <b>버린다</b>. 느린 구독자 하나가 배포 전체를 멈추지 않도록 한 트레이드오프.</li>
+          </ul>
+        </div>
+      </div>
+      <p>진행률은 단순히 <code>(index+1) * 100 / len(steps)</code>다. 마지막 스텝이 성공하면 이벤트에 <code>Status: "success"</code>가 실린다.</p>
+
+      <h3>6-4. docker.Builder — 이미지 준비</h3>
+      <p>
+        <code>os/exec</code>로 CLI를 직접 호출한다(Docker SDK가 아니라). 각 명령 전에 실행할 커맨드 문자열을
+        <code>AppendLog</code>로 남겨서, UI에 <code>$ docker build -t ...</code>처럼 터미널 느낌으로 보이게 한다.
+      </p>
+      <pre>tmpDir := os.MkdirTemp(<span class="s">"nullus-build-*"</span>)   <span class="c">// defer os.RemoveAll</span>
+
+step 0: git clone --depth=1 {GitRepoURL} {tmpDir}
+step 1: docker build -t {ImageName} -f {tmpDir/DockerfilePath} {tmpDir/DockerContext}
+step 2: <span class="k">if</span> RegistryURL != <span class="s">""</span> {
+            docker login {URL} --username {u} --password-stdin   <span class="c">// 비밀번호는 stdin으로</span>
+            docker tag  {ImageName} {URL}/{ImageName}
+            docker push {URL}/{ImageName}      → imageRef = 원격 참조
+        } <span class="k">else</span> {
+            kind load docker-image {ImageName} --name {ClusterName}
+                                               → imageRef = 로컬 태그
+        }</pre>
+      <p>
+        각 단계는 실패 시 <code>CombinedOutput()</code> 결과를 로그로 남기고 <code>MarkFailed</code> 후 에러를 올린다.
+        스텝 인덱스가 0/1/2로 고정이라, 이 세 단계가 실행될 때 <code>applyToCluster</code>는
+        <code>stepOffset = 3</code>을 넘겨 매니페스트 적용을 인덱스 3부터 기록한다.
+      </p>
+      <div class="callout">
+        <b>보안 관점 메모</b>
+        비밀번호는 <code>--password-stdin</code>으로 전달해 프로세스 인자에 노출되지 않게 했다(좋은 습관).
+        다만 <code>GitRepoURL</code>과 경로들이 셸을 거치지 않고 <code>exec.CommandContext</code> 인자로 직접 들어가므로
+        셸 인젝션은 없지만, <code>filepath.Join(tmpDir, opts.DockerfilePath)</code>는 경로 탈출(<code>../</code>)을
+        검증하지 않는다. 신뢰 경계를 설계할 때 확인할 지점이다.
+      </div>
+
+      <h3>6-5. WebSocket 로그 스트리밍 핸들러</h3>
+      <p>
+        <code>adapter/handler/deploy_ws_handler.go</code>의 <code>StreamCicdLogs</code>는
+        gorilla/websocket으로 업그레이드하고 <code>tracker.Subscribe(deploymentID)</code>로 이벤트를 받아 JSON으로 흘려보낸다.
+      </p>
+      <ul>
+        <li>ping 27초(= pongWait 60초 × 9/10) 주기, write deadline 10초</li>
+        <li>읽기 전용 고루틴이 pong을 처리하며 read deadline을 갱신 → 죽은 연결 감지</li>
+        <li>메시지 타입은 <code>log</code>(레벨·메시지·진행률) 또는 <code>status</code>(최종 상태)</li>
+        <li><code>CheckOrigin</code>이 무조건 <code>true</code> — 오리진 검증 없음</li>
+      </ul>
+      <div class="callout danger">
+        <b>중요: 이 핸들러는 현재 라우트에 등록되어 있지 않다</b>
+        <code>PipelineHandler.StreamDeployLogs</code>는 정의되어 있지만 <code>RegisterRoutes</code>에도, <code>cmd/api/main.go</code>에도
+        연결되어 있지 않다. 비교하자면 Stack 모듈은 <code>e.GET("/ws/deployments/:id/logs", h.StreamLogs)</code>로 명시적으로 등록한다.
+        따라서 <b>CI/CD 배포 로그는 WebSocket이 아니라 2초 폴링으로 표시된다.</b> 자세한 내용은 14장.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="persistence">
+      <h2>7. 영속성 계층</h2>
+
+      <h3>테이블 3개 (최초 정의: <code>db/migrations/000002_cicd.up.sql</code>)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>테이블</th><th>핵심 컬럼</th><th>인덱스 / 제약</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>pipeline_templates</code></td>
+              <td>id(PK), name, description, app_type, stages(JSONB)</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><code>pipelines</code></td>
+              <td>id(PK), name, execution_mode, template_id, org_id(UUID), cluster_id(UUID), stack_id, namespace, app_type, git_repo_url, dockerfile_path, docker_context, env_vars(JSONB), status</td>
+              <td>org_id / status / stack_id 인덱스, org·cluster FK, stack FK(<code>ON DELETE SET NULL</code>)</td>
+            </tr>
+            <tr>
+              <td><code>pipeline_deployments</code></td>
+              <td>id(PK), pipeline_id(FK <code>ON DELETE CASCADE</code>), version, status, started_at, completed_at, deployed_by</td>
+              <td>pipeline_id / status 인덱스</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>스키마가 진화한 흔적 — 마이그레이션으로 읽는 역사</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4>000002 → 초기 스키마</h4>
+          <p><code>pipeline_status</code>, <code>pipeline_app_type</code>, <code>deployment_status</code> 세 개의 ENUM 타입과 테이블 3개.</p>
+        </div>
+        <div class="card">
+          <h4>000022 → 스택 연결</h4>
+          <p><code>org_id</code>/<code>cluster_id</code>를 VARCHAR에서 <b>UUID로 변환</b>하고 FK를 걸었다. <code>stack_id</code> 컬럼과 인덱스 추가.</p>
+        </div>
+        <div class="card">
+          <h4>000037 → 빌드 설정</h4>
+          <p><code>dockerfile_path</code>, <code>docker_context</code> 추가. 이미지 빌드 기능이 나중에 붙었다는 증거.</p>
+        </div>
+        <div class="card">
+          <h4>000053 → 템플릿 정리</h4>
+          <p><code>web-backend-v1</code>을 "User Custom Pipeline"으로 개명하고 <code>web-frontend-v1</code>을 삭제.</p>
+        </div>
+      </div>
+
+      <h3>Repository 구현에서 눈여겨볼 점</h3>
+      <ul>
+        <li><b><code>nilIfEmpty()</code></b> — 빈 문자열 <code>stack_id</code>를 그대로 넣으면 FK 위반이 난다. <code>NULL</code>로 변환해 넣는다.</li>
+        <li><b><code>COALESCE</code> 방어</b> — SELECT마다 <code>COALESCE(dockerfile_path,'')</code>, <code>COALESCE(env_vars,'{}'::jsonb)</code>, <code>COALESCE(stack_id,'')</code>.
+            나중에 추가된 nullable 컬럼을 Go의 non-pointer 필드로 스캔하기 위한 처리다.</li>
+        <li><b>스캐너 추상화</b> — <code>pipelineScanner</code> 인터페이스(<code>Scan(dest ...any) error</code>) 하나로
+            <code>pgx.Row</code>와 <code>pgx.Rows</code>를 같은 <code>scanPipeline()</code> 함수로 처리한다.</li>
+        <li><b>UPDATE 결과 확인</b> — <code>res.RowsAffected() == 0</code>이면 "not found" 에러를 만든다. 조용한 무시 방지.</li>
+        <li><b>메모리 저장소의 이중 역할</b> — <code>MemoryCICDTemplateRepository</code>는 테스트 대역이자
+            <b>표준 템플릿 시드 데이터의 원천</b>이다. <code>MemoryCICDGoldenPathRepository</code>는 아예 운영에서도 그대로 쓰인다(11장).</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="api">
+      <h2>8. HTTP API와 인가</h2>
+
+      <h3>라우트 전체 목록 (prefix: <code>/api/v1/cicd</code>)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>메서드 · 경로</th><th>핸들러</th><th>동작 요약</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /templates</code></td><td rowspan="5">CICDTemplateHandler</td><td>파이프라인 템플릿 목록</td></tr>
+            <tr><td><code>GET /templates/:id</code></td><td>단건 조회 (404: <code>CICD_TEMPLATE_NOT_FOUND</code>)</td></tr>
+            <tr><td><code>POST /templates</code></td><td>생성 (201)</td></tr>
+            <tr><td><code>PUT /templates/:id</code></td><td>수정</td></tr>
+            <tr><td><code>DELETE /templates/:id</code></td><td>삭제 (204)</td></tr>
+            <tr><td><code>GET /golden-paths</code></td><td rowspan="5">CICDGoldenPathHandler</td><td>Golden Path 목록</td></tr>
+            <tr><td><code>GET /golden-paths/:id</code></td><td>단건 조회</td></tr>
+            <tr><td><code>POST /golden-paths</code></td><td>생성</td></tr>
+            <tr><td><code>PUT /golden-paths/:id</code></td><td>수정</td></tr>
+            <tr><td><code>DELETE /golden-paths/:id</code></td><td>삭제</td></tr>
+            <tr><td><code>GET /pipelines</code></td><td rowspan="8">PipelineHandler</td><td>조직 기준 목록. <code>?stack_id=</code>로 필터</td></tr>
+            <tr><td><code>POST /pipelines</code></td><td>생성 (201). 경고 시 <code>warning</code> 필드 동봉</td></tr>
+            <tr><td><code>DELETE /pipelines/:id</code></td><td>삭제 (204). 배포 이력은 FK CASCADE로 함께 삭제</td></tr>
+            <tr><td><code>POST /pipelines/:id/deploy</code></td><td><b>202 Accepted</b> + <code>deploymentId</code></td></tr>
+            <tr><td><code>GET /pipelines/:id/resources</code></td><td>클러스터 실물 리소스 조회 (10장)</td></tr>
+            <tr><td><code>GET /deployments</code></td><td>조직 내 전 파이프라인의 배포 이력</td></tr>
+            <tr><td><code>GET /deployments/:id</code></td><td>DB 레코드 + 메모리 스텝 병합</td></tr>
+            <tr><td><code>GET /app-templates</code> · <code>POST /deploy-app</code></td><td>간이 앱 배포 경로</td></tr>
+            <tr><td><code>GET /api/v1/stacks/:stackId/pipelines</code></td><td>PipelineHandler<br>(<code>RegisterStackRoutes</code>)</td><td>스택에 연결된 파이프라인. <b>Stack 모듈이 CI/CD를 import하지 않게 하는 장치</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>인증·인가 배선 (<code>cmd/api/main.go</code>)</h3>
+      <pre><span class="k">if</span> cfg.Server.Mode == <span class="s">"development"</span> {
+    cicd = v1.Group(<span class="s">"/cicd"</span>)                     <span class="c">// 인증 미들웨어 없음</span>
+} <span class="k">else</span> {
+    authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW)
+    cicd = v1.Group(<span class="s">"/cicd"</span>, authMW,
+        authmw.RequireRole(<span class="s">"admin"</span>, <span class="s">"devops"</span>, <span class="s">"developer"</span>))
+}</pre>
+      <p>
+        모듈별 역할 요구치가 다르다: <code>/admin</code>은 admin만, <code>/stacks</code>는 admin+devops,
+        <b><code>/cicd</code>는 developer까지 허용</b>한다. "개발자가 자기 앱을 배포한다"는 제품 의도가 인가 정책에 반영된 것이다.
+        레이트 리밋은 전역으로 인증 300 / 미인증 30이 걸린다.
+      </p>
+
+      <h3>조직 식별 — X-Org-ID 헤더의 폴백 체인</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4><code>validatedOrgID()</code></h4>
+          <p>헤더의 org를 <code>SELECT EXISTS(... FROM organizations ...)</code>로 검증하고, 없으면
+             하드코딩된 기본 조직 <code>11111111-1111-1111-1111-111111111111</code>로 폴백.</p>
+        </div>
+        <div class="card">
+          <h4><code>resolveOrgID()</code></h4>
+          <p><code>DeployApp</code> 전용. 헤더 → 실패 시 <code>SELECT org_id FROM clusters WHERE id=$1</code> →
+             그것도 실패하면 에러. 클러스터 소속으로 조직을 역추적한다.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <b>학습 포인트</b> 두 함수 모두 핸들러 안에서 <code>pgxpool</code>을 직접 쓴다. 즉 <b>Clean Architecture 레이어를 우회하는 지점</b>이다.
+        엄밀히는 조직 검증도 usecase/port를 거쳐야 하지만, 편의를 위해 핸들러가 DB를 직접 만졌다.
+        레이어 규칙이 어디서 느슨해졌는지 인지하고 읽는 것이 중요하다.
+      </div>
+
+      <h3>에러 응답 규약</h3>
+      <pre>{ <span class="s">"error"</span>: { <span class="s">"code"</span>: <span class="s">"PIPELINE_CONFIG_INVALID"</span>,
+             <span class="s">"http_status"</span>: 400,
+             <span class="s">"message"</span>: <span class="s">"pipeline name is required"</span> } }</pre>
+      <p>
+        <code>handler/errors.go</code>의 <code>errorResponse()</code> 하나로 통일한다.
+        도메인 sentinel 에러를 HTTP 상태로 옮기는 매핑이 핸들러의 책임이다 —
+        <code>ErrStackNotFound → 400 STACK_NOT_FOUND</code>, <code>ErrStackOrgMismatch → 403 STACK_ORG_MISMATCH</code>.
+        <code>DeletePipeline</code>은 에러 메시지 문자열에 "not found"/"no rows"가 들어 있는지 검사해 404를 만드는데,
+        이건 sentinel 에러보다 약한 방식이다.
+      </p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="frontend">
+      <h2>9. 프론트엔드 흐름</h2>
+      <p><code>web/src/features/cicd/</code>. 기능 단위 폴더 구조(api / components / hooks / pages / utils)를 따른다.</p>
+
+      <h3>라우트</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>경로</th><th>페이지</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td><code>/cicd/list</code></td><td>CicdListPage (2,077줄)</td><td>파이프라인 목록·상세·배포 트리거</td></tr>
+            <tr><td><code>/cicd/create</code>, <code>/cicd/developer-deploy</code></td><td>DeveloperDeployPage (1,421줄)</td><td>6단계 파이프라인 생성 위저드</td></tr>
+            <tr><td><code>/cicd/templates</code></td><td>CicdTemplatePage</td><td>템플릿 CRUD</td></tr>
+            <tr><td><code>/cicd/history</code></td><td>CicdHistoryPage</td><td>배포 이력</td></tr>
+            <tr><td><code>/cicd/pipelines/:id/logs</code></td><td>CicdPipelineLogsPage</td><td>배포 로그·스텝 진행 표시</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>모두 <code>React.lazy</code> + Suspense로 코드 스플리팅되어 있다.</p>
+
+      <h3>위저드 6단계 (DeveloperDeployPage)</h3>
+      <div class="flow">
+        <div class="step"><b>Basic Info</b><span>앱 이름, Git URL, 클러스터, 네임스페이스, AppType, 연결할 스택</span></div>
+        <div class="step"><b>Code Checkout</b><span>Dockerfile 브랜치·경로, 매니페스트 저장소 경로. 원격 저장소에서 <code>deployment.yaml / service.yaml / ingress.yaml</code>을 <code>fetch</code>로 직접 불러오는 기능도 있다</span></div>
+        <div class="step"><b>Build</b><span>Docker 컨텍스트, 레지스트리 URL, 리소스 요청/제한, replicas, 환경변수</span></div>
+        <div class="step"><b>Test</b><span>Capability로 노출되지만 <code>DISABLED_CAPABILITIES</code>에 포함 — <b>현재 비활성</b></span></div>
+        <div class="step"><b>Security</b><span>동일하게 비활성</span></div>
+        <div class="step"><b>Create</b><span>생성될 매니페스트 YAML을 미리 보고 확정</span></div>
+      </div>
+
+      <h4>제출 시 벌어지는 일 (<code>onSubmit</code>)</h4>
+      <pre><span class="c">// 1) Capability 선택으로 ExecutionMode 결정</span>
+executionMode = hasCI && hasCD ? <span class="s">"ci_cd"</span> : hasCI ? <span class="s">"ci"</span> : <span class="s">"cd"</span>
+
+<span class="c">// 2) 파이프라인 생성 — 검토 화면의 YAML 원문을 EnvVars에 실어 보낸다</span>
+createPipelineMutation.mutateAsync({ ..., envVars: {
+    ...envVars,
+    IMAGE_REGISTRY_URL: imageRegistryUrl,
+    NULLUS_MANIFEST_DEPLOYMENT: reviewManifests.deployment,
+    NULLUS_MANIFEST_SERVICE:    reviewManifests.service,
+    NULLUS_MANIFEST_INGRESS:    reviewManifests.ingress,
+}})
+
+<span class="c">// 3) 즉시 배포</span>
+result = deployPipelineMutation.mutateAsync({ pipelineId: pipeline.id })
+
+<span class="c">// 4) 로그 화면으로 이동</span>
+navigate(`/cicd/pipelines/${pipeline.id}/logs?deploymentId=${result.deploymentId}`)</pre>
+      <p>
+        여기서 <b>백엔드 <code>applyToCluster</code>의 <code>firstNonEmptyManifest</code> 분기와 연결된다.</b>
+        위저드는 항상 세 매니페스트를 채워 보내므로, 실제 배포되는 YAML은 백엔드가 생성한 것이 아니라
+        <b>사용자가 검토 화면에서 확인한 그 YAML</b>이다. 생성기(<code>manifests.Generate</code>)는 초안 제공자 역할에 가깝다.
+      </p>
+
+      <h3>데이터 계층 — TanStack Query</h3>
+      <ul>
+        <li><b>쿼리 키 네임스페이스</b> — <code>["cicd", "pipelines", filters]</code> 형태. 변경 후 <code>["cicd","pipelines"]</code> prefix로 일괄 무효화.</li>
+        <li><b>snake_case → camelCase 매핑</b> — API 응답을 그대로 쓰지 않고 <code>cicdApiCalls</code>에서 프론트 타입으로 변환한다. 백엔드 필드명 변경의 충격을 이 계층이 흡수한다.</li>
+        <li><b>클라이언트 사이드 조인</b> — <code>getPipelines()</code>는 파이프라인·클러스터·템플릿·배포이력 <b>4개 엔드포인트를 호출</b>해 클러스터 이름과 최근 배포 시각을 채운다. 요청 수와 백엔드 단순성을 맞바꾼 설계다.</li>
+        <li><b><code>resolvePipelineMode()</code></b> — 템플릿의 stage 이름을 문자열로 분석해 모드를 추론한다.
+            <code>build/test/lint/scan/package</code> → CI, <code>deploy/release/rollout/sync/apply</code> → CD, 둘 다면 <code>ci_cd</code>.</li>
+      </ul>
+
+      <h4>진행 상태 조회 — 적응형 폴링</h4>
+      <pre>useDeploymentStatus(deploymentId) {
+  refetchInterval: (query) => {
+    <span class="k">const</span> status = query.state.data?.status
+    <span class="k">if</span> (status === <span class="s">'success'</span> || status === <span class="s">'failed'</span>) <span class="k">return</span> <span class="k">false</span>  <span class="c">// 끝나면 폴링 중단</span>
+    <span class="k">return</span> 2000                                                <span class="c">// 아니면 2초마다</span>
+  },
+  staleTime: 0,
+}</pre>
+      <p>
+        응답 정규화 로직이 꽤 방어적이다 — <code>step.name ?? step.Name</code>처럼 Go의 JSON 태그 유무 양쪽을 받아내고,
+        스텝별 로그가 비면 <code>message</code>를 로그로 승격시키고, 스텝이 아예 없으면 최상위 <code>logs</code>를
+        "Output"이라는 가상 스텝으로 감싼다. 백엔드 응답 형태가 환경마다 달랐던 이력이 코드에 남아 있는 셈이다.
+      </p>
+
+      <div class="callout danger">
+        <b><code>use-cicd-deploy-log.ts</code>는 어디서도 쓰이지 않는다</b>
+        WebSocket으로 <code>/ws/cicd/deployments/:id/logs</code>에 붙는 훅이 구현되어 있지만,
+        <code>useCicdDeployLog</code>를 import하는 컴포넌트가 하나도 없다. 백엔드 라우트도 등록되어 있지 않다(6-5 참고).
+        <b>실시간 스트리밍은 준비만 되어 있고 연결되지 않은 상태</b>이며, 실제 화면은 위의 2초 폴링으로 동작한다.
+        Stack 모듈의 <code>use-deploy-log.ts</code>는 정상 동작하므로, 비교해서 읽으면 무엇이 빠졌는지 명확하다.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="resources">
+      <h2>10. 리소스 조회 로직 — 배포한 것을 어떻게 다시 찾는가</h2>
+      <p>
+        <code>GET /cicd/pipelines/:id/resources</code>는 "이 파이프라인이 만든 쿠버네티스 오브젝트"를 찾아 돌려준다.
+        문제는 <b>사용자가 직접 편집한 YAML로 배포되면 우리가 붙인 라벨이 없을 수 있다</b>는 점이다.
+        그래서 3단계 폴백을 쓴다.
+      </p>
+      <div class="flow">
+        <div class="step"><b>정확한 라벨 매칭</b><span><code>nullus.io/pipeline-id={ID},app.kubernetes.io/managed-by=nullus-cicd</code></span></div>
+        <div class="step"><b>느슨한 라벨 매칭</b><span><code>nullus.io/pipeline-id={ID}</code>만으로 재시도</span></div>
+        <div class="step"><b>이름 기반 조회</b><span>라벨로 못 찾으면 <code>Get(ctx, pipeline.Name)</code>으로 앱 이름과 같은 리소스를 직접 집는다</span></div>
+      </div>
+      <p>
+        이 폴백을 Deployment / StatefulSet / Job / CronJob / Service / Ingress 각각에 적용한다.
+        Pod은 한 단계 더 복잡해서, 라벨 → <b>OwnerReference가 위에서 찾은 워크로드와 일치</b> → <code>{앱이름}-</code> 접두사 + managed-by 라벨,
+        순으로 매칭한다.
+      </p>
+
+      <h3>상태 판정 규칙</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Kind</th><th>판정 로직</th></tr></thead>
+          <tbody>
+            <tr><td>Deployment</td><td><code>ReadyReplicas == desired</code> → running / <code>UnavailableReplicas &gt; 0</code> → degraded / <code>UpdatedReplicas &lt; desired</code> → updating / 그 외 progressing</td></tr>
+            <tr><td>StatefulSet</td><td>ready==desired → running / <code>CurrentReplicas==0</code> → pending / 그 외 progressing</td></tr>
+            <tr><td>Job</td><td>Failed&gt;0 → failed / Succeeded&gt;0 → completed / Active&gt;0 → running / 그 외 pending</td></tr>
+            <tr><td>CronJob</td><td>Suspend → suspended / Active 있으면 running / 그 외 scheduled</td></tr>
+            <tr><td>Pod</td><td><b>Waiting/Terminated의 reason을 소문자로 그대로 노출</b>(예: <code>imagepullbackoff</code>, <code>crashloopbackoff</code>) → 없으면 Running+모두 Ready면 running, 아니면 not_ready</td></tr>
+            <tr><td>Ingress</td><td>LoadBalancer 주소가 잡히면 running, 아니면 configured</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Pod 상태를 자체 어휘로 번역하지 않고 <b>쿠버네티스의 reason을 그대로 보여주는 선택</b>이 눈에 띈다.
+        사용자가 그 문자열로 바로 검색할 수 있게 하려는 의도로 읽힌다.
+      </p>
+      <p>
+        접속 URL도 만들어 준다 — Ingress 규칙의 host, <code>{svc}.{ns}.svc.cluster.local:{port}</code>,
+        ClusterIP 주소, NodePort면 <code>&lt;node-ip&gt;:{nodePort}</code>까지. 결과는 stage(ingress → service → workload → job → pod) → kind → name 순으로 안정 정렬한다.
+      </p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="goldenpath">
+      <h2>11. Golden Path — 검증된 도구 조합 카탈로그</h2>
+      <p>
+        Golden Path는 파이프라인 실행 로직이 아니라 <b>"어떤 CI/CD 도구 세트를 설치할 것인가"의 사전 검증된 답</b>이다.
+        저장소 루트의 <code>cicd-golden-path.md</code>에 GitLab+ArgoCD / GitLab 단독 / FluxCD / werf 네 후보를 비교한
+        의사결정 기록이 있고, 그 결론이 코드의 세 가지 프리셋으로 굳어졌다.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>이름</th><th>설치 예상</th><th>최소 리소스</th><th>권장 대상</th></tr></thead>
+          <tbody>
+            <tr><td><code>gitlab-allinone-v1</code></td><td>GitLab All-in-One</td><td>90분</td><td>8 vCPU / 16Gi / 100Gi</td><td>중견기업, 단일 플랫폼 선호</td></tr>
+            <tr><td><code>gitlab-argocd-v1</code></td><td>GitLab + Argo CD</td><td>120분</td><td>10 vCPU / 20Gi / 130Gi</td><td>GitOps 중심 조직</td></tr>
+            <tr><td><code>github-argocd-v1</code></td><td>GitHub + Argo CD</td><td>60분</td><td>6 vCPU / 12Gi / 80Gi</td><td>GitHub 사용 조직</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        각 Golden Path는 카테고리별 도구와 <b>Helm 차트 버전 · 앱 버전을 못 박아</b> 둔다
+        (예: Argo CD chart 7.7.2 / app 2.13.2, Prometheus chart 67.0.0 / app 3.1.0).
+        GitHub 조합은 소스·CI를 <code>external</code>로 표시해 클러스터에 설치하지 않는다 —
+        그래서 설치 시간과 리소스 요구가 가장 낮다.
+      </p>
+      <div class="callout">
+        <b>메모리 저장소가 운영에서도 쓰인다</b>
+        <code>cmd/api/main.go</code>는 <code>NewMemoryCICDGoldenPathRepository()</code>를 그대로 주입한다.
+        즉 <b>POST/PUT/DELETE로 Golden Path를 수정해도 서버 재시작 시 초기 세 개로 되돌아간다.</b>
+        Postgres 구현체가 아직 없다는 뜻이며, 이 카탈로그를 사용자가 영구 편집하게 하려면 저장소 구현부터 필요하다.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="tests">
+      <h2>12. 테스트 전략 — TDD가 코드에 남긴 흔적</h2>
+      <p>CLAUDE.md의 레이어별 테스트 전략이 이 모듈에서 실제로 어떻게 지켜졌는지 확인한다.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>레이어</th><th>파일</th><th>테스트 수</th><th>대표 시나리오</th></tr></thead>
+          <tbody>
+            <tr><td>Domain</td><td><code>domain/pipeline_test.go</code></td><td>4</td><td>초기 상태, 상태 전이, 실패 상태, AppType 유효성</td></tr>
+            <tr><td>UseCase</td><td><code>usecase/deploy_pipeline_test.go</code></td><td>9</td><td>성공 / 선택 매니페스트만 적용 / 저장된 검토 YAML 사용 / 파이프라인 없음 / 필수값 누락 / 리포지토리 오류 / applier 오류</td></tr>
+            <tr><td>UseCase</td><td><code>usecase/create_pipeline_test.go</code></td><td>3</td><td>성공, stack_integrated 기본 모드, 템플릿 없음</td></tr>
+            <tr><td>UseCase</td><td><code>usecase/list_pipelines_test.go</code></td><td>2</td><td>목록, 빈 목록</td></tr>
+            <tr><td>Adapter</td><td><code>manifests/generator_test.go</code></td><td>8</td><td>템플릿별 이미지, imageRef 우선, 기본/커스텀 리소스, env 주입, 미지원 템플릿, YAML 역직렬화 가능성</td></tr>
+            <tr><td>Handler</td><td><code>handler/pipeline_handler_test.go</code></td><td>12</td><td>생성/목록/배포/삭제 성공·실패, org 헤더 없음, 배포 이력, 앱 템플릿, deploy-app</td></tr>
+            <tr><td>Handler</td><td><code>handler/cicd_template_handler_test.go</code></td><td>2</td><td>목록, 빈 결과</td></tr>
+            <tr><td>Repository</td><td><code>repository/memory_cicd_template_test.go</code></td><td>7</td><td>표준 템플릿 존재, 제거된 템플릿 부재 확인</td></tr>
+            <tr><td>Repository</td><td><code>repository/postgres_integration_test.go</code></td><td>1</td><td>실제 DB 연동 통합 테스트</td></tr>
+            <tr><td>Port</td><td><code>port/interface_compliance_test.go</code></td><td>0</td><td>컴파일 타임 인터페이스 만족 검증</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>테스트 설계에서 배울 점</h3>
+      <div class="grid-3">
+        <div class="card">
+          <h4>실패 경로가 더 많다</h4>
+          <p><code>deploy_pipeline_test.go</code>는 9개 중 5개가 실패 시나리오다. 성공 경로만 테스트하는 것과의 차이를 보라.</p>
+        </div>
+        <div class="card">
+          <h4>이름이 문서다</h4>
+          <p><code>TestDeployPipeline_AppliesSavedReviewManifests</code> — 이름만 읽어도 "EnvVars에 저장된 YAML이 우선한다"는 규칙을 알 수 있다.</p>
+        </div>
+        <div class="card">
+          <h4>DB 없이 도는 테스트</h4>
+          <p>Domain·UseCase 테스트는 메모리 fake만 쓴다. <code>go test ./internal/cicd/...</code>가 Postgres 없이 대부분 통과한다.</p>
+        </div>
+      </div>
+      <p>
+        프론트엔드도 <code>cicd-api.test.ts</code>, <code>cicd-list-page.test.tsx</code>, <code>developer-deploy-page.test.tsx</code>(506줄) 등으로
+        페이지 단위 테스트를 갖추고 있다.
+      </p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="actions">
+      <h2>13. 저장소 자신의 CI/CD — GitHub Actions</h2>
+      <p><code>.github/workflows/</code>에 워크플로 5개가 있다. 여기서부터는 "제품"이 아니라 "이 저장소를 만드는 파이프라인" 이야기다.</p>
+
+      <h3>ci.yml — 검증 (push to main, PR to main)</h3>
+      <div class="grid-3">
+        <div class="card">
+          <h4>backend</h4>
+          <p>PostgreSQL 18 서비스 컨테이너(5433 포트, pg_isready 헬스체크) 위에서
+             <code>go build ./...</code> → <code>./scripts/check-coverage.sh</code> → <code>go vet ./...</code></p>
+        </div>
+        <div class="card">
+          <h4>frontend</h4>
+          <p>Node 22 + npm 캐시. <code>npm ci</code> → <code>vite build</code> → <code>vitest run --coverage</code></p>
+        </div>
+        <div class="card">
+          <h4>e2e</h4>
+          <p><code>needs: [backend, frontend]</code>. API 빌드 → 마이그레이션 전부 적용 → API 기동 →
+             Playwright(chromium) 설치 → 프론트 빌드 → <code>playwright test</code></p>
+        </div>
+      </div>
+      <div class="callout">
+        <b>E2E 잡의 두 가지 관찰</b>
+        마이그레이션 루프에 <code>|| true</code>가 붙어 있어 <b>실패한 마이그레이션이 조용히 넘어간다.</b>
+        그리고 API 기동 후 <code>sleep 3</code>으로 준비를 기다린다 — 헬스체크 폴링이 아니라 고정 대기라
+        느린 러너에서는 불안정할 수 있다. 파이프라인 안정화를 다룰 때 먼저 볼 지점이다.
+      </div>
+
+      <h3>cd.yml — 배포 (tag <code>v*</code>, main/phase1 브랜치)</h3>
+      <div class="flow">
+        <div class="step">
+          <b>build-and-push-api</b>
+          <span>QEMU + Buildx로 <code>linux/amd64,linux/arm64</code> 멀티아치 빌드 → <code>ghcr.io/{repo}/nullus-api</code>에 푸시.
+                태그는 <code>metadata-action</code>이 semver / major.minor / 브랜치명 / short-sha로 자동 생성. GHA 캐시(<code>mode=max</code>) 사용.</span>
+        </div>
+        <div class="step">
+          <b>build-and-push-web</b>
+          <span>동일 방식으로 <code>nullus-web</code>. 차이점은 <b>build-args로 OIDC 설정을 정적 번들에 주입</b>한다는 것 —
+                <code>VITE_AUTH_MODE</code>, <code>VITE_OIDC_PROVIDER</code>, <code>VITE_OIDC_AUTHORITY</code>, <code>VITE_OIDC_CLIENT_ID</code>를
+                repo Variables로 오버라이드 가능하게 기본값과 함께 넘긴다.</span>
+        </div>
+        <div class="step">
+          <b>publish-chart</b>
+          <span><code>if: startsWith(github.ref, 'refs/tags/v')</code> — <b>태그일 때만</b> 실행.
+                <code>helm dependency update</code> → 태그에서 뽑은 버전으로 <code>helm package --version --app-version</code> →
+                <code>helm push ... oci://ghcr.io/cloud-nullus/charts</code>. OCI 레지스트리를 쓰므로 gh-pages 운영이 필요 없다.</span>
+        </div>
+      </div>
+      <p>
+        권한은 <code>contents: read</code> + <code>packages: write</code>로 최소화했고, 인증은 <code>secrets.GITHUB_TOKEN</code>만 쓴다.
+        차트 버전은 커밋된 <code>Chart.yaml</code> 값이 아니라 <b>Git 태그에서 주입</b>된다는 점이 중요하다.
+      </p>
+
+      <h3>lint-review.yml — PR 게이트</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4>pr-convention (실패 시 CI 실패)</h4>
+          <p>제목 정규식 <code>^(type)(\((module)\))?!?: .{1,72}$</code>를 검사한다.</p>
+          <ul>
+            <li>type: feat, fix, refactor, test, docs, chore, perf, ci</li>
+            <li>module: stack, cicd, admin, auth, o11y, product, ui, shared, infra</li>
+            <li>본문 필수: <code>## Summary</code>, <code>## Changes</code>, <code>## Testing</code>, <code>Scope:</code> 줄</li>
+          </ul>
+          <p>위반 시 PR에 실패 사유 코멘트를 남기고 <code>core.setFailed()</code>.</p>
+        </div>
+        <div class="card">
+          <h4>reviewdog 기반 린트 (경고 수준)</h4>
+          <ul>
+            <li><code>golangci-lint</code> — govet, errcheck, staticcheck, ineffassign</li>
+            <li><code>eslint</code> — <code>web/src</code></li>
+            <li><code>prettier</code> — 포맷 검사</li>
+          </ul>
+          <p>모두 <code>reporter: github-check</code>, <code>level: warning</code>이라 <b>병합을 막지는 않고</b> 인라인 코멘트만 남긴다.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <b>트리거가 <code>[opened, reopened]</code>뿐이다</b>
+        <code>synchronize</code>와 <code>edited</code>가 없다. 즉 <b>제목이나 본문만 고쳐서 푸시해도 재검사되지 않는다.</b>
+        CLAUDE.md에 적힌 대로 <code>gh pr close &lt;n&gt; && gh pr reopen &lt;n&gt;</code>으로 강제 재실행해야 한다.
+      </div>
+
+      <h3>나머지 둘</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4>pr-automation.yml</h4>
+          <p>PR 크기 자동 라벨링만 수행(xs≤10, s≤100, m≤500, l≤1000, 초과는 XL). <code>fail_if_xl: false</code>라 경고만.
+             AI PR 리뷰(Codium PR-Agent)는 API 키 과금 때문에 제거됐다고 주석에 명시되어 있다.</p>
+        </div>
+        <div class="card">
+          <h4>review-bot.yml</h4>
+          <p>gosec 보안 스캔 잡이 있으나 <b>본문이 전부 주석 처리</b>되어 있다.
+             "public 전환 후 해제 — GitHub Advanced Security 필요"라는 TODO가 달려 있다. 즉 현재 보안 스캔은 동작하지 않는다.</p>
+        </div>
+      </div>
+
+      <h3>제품 CI/CD와 저장소 CI/CD의 대조</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>항목</th><th>제품 CI/CD 모듈</th><th>저장소 GitHub Actions</th></tr></thead>
+          <tbody>
+            <tr><td>실행 주체</td><td>Nullus API 서버 프로세스(고루틴)</td><td>GitHub 러너</td></tr>
+            <tr><td>빌드 방식</td><td><code>docker build</code> CLI 직접 호출</td><td>Buildx 멀티아치 + GHA 캐시</td></tr>
+            <tr><td>배포 대상</td><td>사용자 쿠버네티스 클러스터</td><td>ghcr.io 이미지·Helm 차트 레지스트리</td></tr>
+            <tr><td>상태 추적</td><td>DB + 인메모리 StepTracker</td><td>GitHub Actions UI</td></tr>
+            <tr><td>트리거</td><td>UI 버튼 → HTTP POST</td><td>push / PR / tag</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="gaps">
+      <h2>14. 현재 배선 상태와 갭 — 코드와 런타임의 차이</h2>
+      <p>
+        구현된 코드와 <code>cmd/api/main.go</code>가 실제로 조립한 것 사이에 차이가 있다.
+        이걸 모르면 "코드에 있으니 동작하겠지"라고 오독하게 되므로, 학습자료로서 반드시 짚어야 할 부분이다.
+      </p>
+
+      <h3>실제 배선 (<code>cmd/api/main.go:187–197</code>)</h3>
+      <pre>pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
+pgPipelineRepo     := cicdrepo.NewPostgresPipelineRepository(pool)
+pgDeploymentRepo   := cicdrepo.NewPostgresDeploymentRepository(pool)
+memGoldenPathRepo  := cicdrepo.NewMemoryCICDGoldenPathRepository()   <span class="c">// ← 메모리</span>
+manifestApplier    := cicdkube.NewManifestApplier()
+
+createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
+                                       <span class="c">// ↑ StackReader 인자 없음</span>
+deployPipelineUC := cicduc.NewDeployPipeline(
+    pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
+                                       <span class="c">// ↑ WithImagePreparer / WithClusterTargetProvider 없음</span></pre>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>구현된 것</th><th>배선 상태</th><th>런타임 결과</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>docker.Builder</code> (ImagePreparer)</td>
+              <td>생성·주입되지 않음</td>
+              <td><code>uc.imagePreparer == nil</code> → <b>git clone / docker build / push가 전혀 실행되지 않음.</b> 컨테이너는 템플릿 기본 이미지(nginx:alpine 등)로 뜬다</td>
+            </tr>
+            <tr>
+              <td><code>PostgresClusterTargetProvider</code></td>
+              <td>어디서도 호출되지 않음</td>
+              <td>kind 클러스터명 조회 경로 미사용</td>
+            </tr>
+            <tr>
+              <td><code>PostgresStackReader</code></td>
+              <td><code>NewCreatePipeline</code>에 전달되지 않음</td>
+              <td><b>스택 존재·조직 일치 검증이 건너뛰어진다.</b> <code>ErrStackNotFound</code>/<code>ErrStackOrgMismatch</code>는 발생하지 않음</td>
+            </tr>
+            <tr>
+              <td><code>StreamCicdLogs</code> WebSocket</td>
+              <td>라우트 미등록</td>
+              <td>프론트 <code>useCicdDeployLog</code>도 미사용 → 실시간 스트리밍 없음, 2초 폴링으로 대체</td>
+            </tr>
+            <tr>
+              <td><code>useRollbackDeployment</code> (프론트)</td>
+              <td>백엔드 라우트 없음 + URL 오류</td>
+              <td>axios baseURL이 <code>/api/v1</code>인데 경로에 <code>/api/v1/...</code>을 또 붙여 <code>/api/v1/api/v1/...</code>이 된다. 호출하는 컴포넌트도 없음</td>
+            </tr>
+            <tr>
+              <td><code>DeploymentStatusPending</code> / <code>RolledBack</code></td>
+              <td>어디서도 대입되지 않음</td>
+              <td>배포는 running → success/failed 세 상태만 오간다</td>
+            </tr>
+            <tr>
+              <td>Golden Path CRUD</td>
+              <td>메모리 저장소</td>
+              <td>변경 사항이 재시작 시 소실</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>파생 효과 — 스텝 라벨 어긋남</h3>
+      <p>이 배선 상태가 만드는 구체적 증상 하나를 끝까지 따라가 보자.</p>
+      <div class="flow">
+        <div class="step"><b>위저드가 항상 dockerfilePath를 채워 보낸다</b><span><code>dockerfilePath: dockerfileUrl || data.dockerfilePath</code></span></div>
+        <div class="step"><b>BuildStepPlan이 빌드 3단계를 앞에 붙인다</b><span>스텝 목록이 <code>[Git Clone, Docker Build, Image Load, Namespace 생성, Deployment 생성, ...]</code>가 된다</span></div>
+        <div class="step"><b>트래커는 이 목록으로 초기화된다</b><span>UI에는 빌드 단계가 표시된다</span></div>
+        <div class="step"><b>그러나 applyToCluster는 imagePreparer가 nil이라 빌드를 건너뛰고 <code>stepOffset = 0</code>으로 남는다</b><span>ApplyWithTracking이 인덱스 <b>0</b>부터 기록을 시작한다</span></div>
+        <div class="step"><b>결과</b><span>Namespace 적용 결과가 "Git Clone" 칸에, Deployment 적용 결과가 "Docker Build" 칸에 찍힌다. <b>라벨과 실제 작업이 어긋난다.</b></span></div>
+      </div>
+      <div class="callout ok">
+        <b>이 갭을 어떻게 읽을 것인가</b>
+        위 항목들은 "버그 목록"이 아니라 <b>구현 완료와 배선 완료가 다른 단계</b>임을 보여주는 사례다.
+        빌드 파이프라인은 코드·테스트가 준비된 상태로 대기 중이고, <code>main.go</code>에서
+        <code>WithImagePreparer(docker.NewBuilder(manifestApplier.Tracker))</code>와
+        <code>WithClusterTargetProvider(...)</code>를 추가하면 활성화된다.
+        Option 패턴을 쓴 덕분에 <b>usecase 코드를 건드리지 않고 배선만으로 기능을 켤 수 있다</b> — 이게 DIP의 실용적 이득이다.
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="section" id="quiz">
+      <h2>15. 이해도 점검</h2>
+      <p>코드를 다시 열지 않고 답할 수 있는지 확인해 보라.</p>
+
+      <div class="quiz">
+        <b>Q1. 배포 요청에 왜 200이 아니라 202를 돌려주는가? 그리고 <code>ApplyAsync</code>가 <code>context.Background()</code>를 새로 만드는 이유는?</b>
+        <details><summary>답 보기</summary>
+          <p>이미지 빌드·클러스터 적용은 장시간 작업이라 HTTP 요청을 붙잡으면 타임아웃과 중복 실행 위험이 있다.
+             그래서 작업을 등록만 하고(202 + deploymentId) 상태는 별도 조회로 분리했다.
+             요청 컨텍스트를 그대로 쓰면 클라이언트가 연결을 끊는 순간 배포가 취소되므로, 요청 생명주기와 분리된 새 컨텍스트를 만든다.</p>
+        </details>
+      </div>
+
+      <div class="quiz">
+        <b>Q2. 사용자가 위저드에서 YAML을 편집했다. 그 YAML은 어디에 저장되고, 배포 시 어떻게 우선 적용되는가?</b>
+        <details><summary>답 보기</summary>
+          <p><code>pipelines.env_vars</code> JSONB의 <code>NULLUS_MANIFEST_DEPLOYMENT / _SERVICE / _INGRESS</code> 키에 원문이 저장된다.
+             <code>applyToCluster</code>의 <code>firstNonEmptyManifest(envVars[key], generated.X)</code>가
+             해당 키가 비어 있지 않으면 생성된 YAML 대신 저장된 원문을 쓴다.
+             컨테이너 env를 만들 때는 <code>deployEnvVars()</code>가 이 세 키를 제거한다.</p>
+        </details>
+      </div>
+
+      <div class="quiz">
+        <b>Q3. CI/CD 모듈이 스택 정보를 검증해야 하는데, 왜 <code>internal/stack/domain</code>을 import하지 않는가? 대신 무엇을 쓰는가?</b>
+        <details><summary>답 보기</summary>
+          <p>모듈 간 직접 import는 바운디드 컨텍스트 경계를 깨뜨린다. 대신 CI/CD가 자기 소유 타입
+             <code>port.StackSummary</code>와 인터페이스 <code>port.StackReader</code>를 정의하고,
+             구현체 <code>PostgresStackReader</code>가 <code>stacks</code> 테이블을 읽는다(Anti-Corruption Layer).
+             반대 방향 필요는 <code>RegisterStackRoutes</code>로 CI/CD 핸들러가 <code>/stacks/:id/pipelines</code>를 직접 등록해 해결한다.</p>
+        </details>
+      </div>
+
+      <div class="quiz">
+        <b>Q4. 배포가 끝난 지 10분 뒤 <code>GET /cicd/deployments/:id</code>를 호출하면 <code>steps</code>는 어떻게 되는가?</b>
+        <details><summary>답 보기</summary>
+          <p>비어 있다. 스텝 정보는 인메모리 <code>StepTracker</code>에만 있고, 배포 후 5분 뒤
+             <code>time.AfterFunc</code>이 <code>Remove(depID)</code>를 호출해 삭제한다.
+             DB에는 status·시각·실행자만 남는다. 서버 재시작 시에도 마찬가지다.</p>
+        </details>
+      </div>
+
+      <div class="quiz">
+        <b>Q5. <code>manifest_types</code>에 빈 배열을 보내면 Service와 Ingress는 배포되는가?</b>
+        <details><summary>답 보기</summary>
+          <p>배포된다. <code>includesOptionalManifest</code>는 목록이 비면 <code>true</code>를 반환하는
+             "빈 목록 = 전부 포함" 규칙이다. 제외하려면 원하는 것만 명시적으로 나열해야 한다(옵트아웃 방식).</p>
+        </details>
+      </div>
+
+      <div class="quiz">
+        <b>Q6. 현재 배선에서 <code>DockerfilePath</code>를 설정한 파이프라인을 배포하면 컨테이너 이미지는 무엇이 되는가?</b>
+        <details><summary>답 보기</summary>
+          <p><code>imagePreparer</code>가 주입되지 않아 빌드가 건너뛰어지고 <code>imageRef</code>가 빈 문자열로 남는다.
+             따라서 <code>imageForContainer("", tpl.image)</code>가 템플릿 기본 이미지를 반환한다 —
+             backend/web이면 <code>nginx:alpine</code>, batch면 <code>python:3.12-slim</code>.
+             게다가 스텝 라벨은 빌드 3단계를 포함한 채 초기화되므로 진행 표시가 한 칸씩 밀린다(14장).</p>
+        </details>
+      </div>
+
+      <h3>다음에 읽을 것</h3>
+      <div class="grid-3">
+        <div class="card">
+          <h4>Stack 모듈</h4>
+          <p><code>docs/20_아키텍처/Nullus 교육용 플랫폼 로직 가이드.html</code> — Helm 설치 DAG와 오케스트레이터.
+             CI/CD의 WebSocket 스트리밍이 어떻게 "되어야 하는지"의 참고 구현이기도 하다.</p>
+        </div>
+        <div class="card">
+          <h4>실제 코드</h4>
+          <p><code>internal/cicd/usecase/deploy_pipeline.go</code> 한 파일만 처음부터 끝까지 읽어도 이 문서 절반을 복습할 수 있다.</p>
+        </div>
+        <div class="card">
+          <h4>테스트부터</h4>
+          <p><code>usecase/deploy_pipeline_test.go</code>의 9개 시나리오를 읽으면 이 모듈이 무엇을 보장하려 하는지가 명세처럼 보인다.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      작성 기준: <code>main</code> 브랜치 소스 코드 (2026-07-30) · 대상 경로 <code>internal/cicd/</code>, <code>web/src/features/cicd/</code>, <code>db/migrations/</code>, <code>.github/workflows/</code>
+    </footer>
+
+  </main>
+</div>
+</body>
+</html>
