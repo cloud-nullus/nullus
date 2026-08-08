@@ -9,12 +9,15 @@ on:
       - phase1
   workflow_dispatch:
 
+# 기본은 최소 권한. 필요한 잡에서만 개별로 올린다.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   build-and-push-api:
+    permissions:
+      contents: read
+      packages: write
     name: Build & Push API Image
     runs-on: ubuntu-latest
     steps:
@@ -61,6 +64,9 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-web:
+    permissions:
+      contents: read
+      packages: write
     name: Build & Push Web Image
     runs-on: ubuntu-latest
     steps:
@@ -115,6 +121,9 @@ jobs:
   # 태그 push 시에만 Helm 차트를 ghcr OCI 레지스트리에 게시한다 (릴리즈 정책 §7.2).
   # 이미지와 동일한 레지스트리·인증을 쓰므로 별도 gh-pages 운영이 필요 없다.
   publish-chart:
+    permissions:
+      contents: read
+      packages: write
     name: Package & Push Helm Chart
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -144,6 +153,8 @@ jobs:
   # 태그 push 시 빌드 및 차트 게시가 성공하면 GitHub Release를 자동으로 생성한다.
   # CHANGELOG.md에서 해당 버전의 릴리즈 노트를 추출하며, GA 전 버전(0.x.x 또는 -alpha/-beta/-rc)은 prerelease로 지정한다.
   create-release:
+    permissions:
+      contents: write   # 릴리즈 생성에만 필요하다
     name: Create GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-and-push-api, build-and-push-web, publish-chart]
@@ -204,6 +215,8 @@ jobs:
   # Zadara Cloud 배포. 외부에서 열린 포트가 22/tcp 뿐이라 bastion 을 경유한다.
   # environment 를 지정해 실배포 직전에 승인 게이트를 걸 수 있게 한다.
   deploy-zadara:
+    permissions:
+      contents: read
     name: Deploy to Zadara Cloud
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: [build-and-push-api, build-and-push-web]
@@ -234,13 +247,22 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.ZADARA_SSH_KEY }}
 
-      - name: Add bastion to known_hosts
+      - name: Pin bastion host key
         env:
           ZADARA_HOST: ${{ secrets.ZADARA_HOST }}
+          ZADARA_SSH_HOST_KEY: ${{ secrets.ZADARA_SSH_HOST_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          ssh-keyscan -H "$ZADARA_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # ssh-keyscan 은 그때 응답한 키를 그대로 믿는다(TOFU). 중간자가 있으면
+          # 그 키를 신뢰하게 되고, 배포용 개인키가 그대로 넘어간다.
+          # 그래서 호스트 키를 secret 으로 고정한다.
+          if [ -z "${ZADARA_SSH_HOST_KEY:-}" ]; then
+            echo "ZADARA_SSH_HOST_KEY 가 없습니다. 아래 값을 secret 으로 등록하십시오:" >&2
+            ssh-keyscan -t ed25519 "$ZADARA_HOST" 2>/dev/null | grep -v '^#' >&2
+            exit 1
+          fi
+          printf '%s\n' "$ZADARA_SSH_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy via bastion
@@ -251,38 +273,49 @@ jobs:
           NULLUS_ENCRYPTION_KEY: ${{ secrets.NULLUS_ENCRYPTION_KEY }}
         run: |
           set -euo pipefail
-          # 태그 배포면 그 태그를, 수동 실행이면 현재 ref 를 체크아웃한다.
-          REF="${GITHUB_REF_NAME}"
+          # 원격 셸에 넘길 값은 전부 base64 로 감싼다.
+          #
+          # 왜: 값을 heredoc 안에 그대로 전개하면 따옴표를 포함한 값 하나로 원격
+          # 셸에서 임의 명령을 실행할 수 있다. 태그명(GITHUB_REF_NAME)도 push 권한만
+          # 있으면 임의로 만들 수 있는 외부 입력이라 같은 위험이 있다.
+          # base64 출력은 [A-Za-z0-9+/=] 뿐이라 따옴표를 벗어날 수 없다.
+          b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
+
+          REF_B64="$(b64 "$GITHUB_REF_NAME")"
           # 이미지 태그에는 v 접두사가 없다 (git v0.3.1 -> 이미지 0.3.1).
-          IMAGE_TAG="${GITHUB_REF_NAME#v}"
+          TAG_B64="$(b64 "${GITHUB_REF_NAME#v}")"
+          DB_B64="$(b64 "$NULLUS_DB_PASSWORD")"
+          KEY_B64="$(b64 "$NULLUS_ENCRYPTION_KEY")"
 
-          # 비밀값은 **stdin 으로만** 넘긴다. ssh 인자에 실으면 러너의 프로세스
-          # 목록(ps)에 그대로 노출된다.
-          ssh -o BatchMode=yes "${ZADARA_USER}@${ZADARA_HOST}" 'bash -s' <<EOF
+          # 스크립트 본문은 따옴표 친 heredoc('EOF')이라 로컬에서 전개되지 않는다.
+          # 값은 앞줄에서 base64 로만 주입하고, 비밀값은 stdin 으로만 흐른다
+          # (ssh 인자에 실으면 러너의 프로세스 목록에 노출된다).
+          {
+            printf 'REF=$(printf %%s %s | base64 -d)\n' "$REF_B64"
+            printf 'IMAGE_TAG=$(printf %%s %s | base64 -d)\n' "$TAG_B64"
+            printf 'NULLUS_DB_PASSWORD=$(printf %%s %s | base64 -d)\n' "$DB_B64"
+            printf 'NULLUS_ENCRYPTION_KEY=$(printf %%s %s | base64 -d)\n' "$KEY_B64"
+            cat <<'EOF'
           set -euo pipefail
-          export NULLUS_DB_PASSWORD='${NULLUS_DB_PASSWORD}'
-          export NULLUS_ENCRYPTION_KEY='${NULLUS_ENCRYPTION_KEY}'
-          REF='${REF}'
-          IMAGE_TAG='${IMAGE_TAG}'
-
           cd ~/nullus
           git fetch --tags --force origin
-          git checkout --detach "\$REF"
+          git checkout --detach "$REF"
 
           helm --kube-context=platform upgrade --install nullus deploy/helm/nullus \
             --namespace nullus --create-namespace \
             -f deploy/csp/zadara/values-zadara.yaml \
-            --set secrets.dbPassword="\$NULLUS_DB_PASSWORD" \
-            --set postgresql.auth.password="\$NULLUS_DB_PASSWORD" \
-            --set secrets.encryptionKey="\$NULLUS_ENCRYPTION_KEY" \
-            --set api.image.tag="\$IMAGE_TAG" \
-            --set web.image.tag="\$IMAGE_TAG" \
+            --set secrets.dbPassword="$NULLUS_DB_PASSWORD" \
+            --set postgresql.auth.password="$NULLUS_DB_PASSWORD" \
+            --set secrets.encryptionKey="$NULLUS_ENCRYPTION_KEY" \
+            --set api.image.tag="$IMAGE_TAG" \
+            --set web.image.tag="$IMAGE_TAG" \
             --wait --timeout 900s
 
           # kubectl 의 컨텍스트 플래그는 --context 다 (--kube-context 는 helm 전용).
           kubectl --context=platform -n nullus rollout status deployment/nullus-api --timeout=300s
           kubectl --context=platform -n nullus rollout status deployment/nullus-web --timeout=300s
           EOF
+          } | ssh -o BatchMode=yes "${ZADARA_USER}@${ZADARA_HOST}" 'bash -s'
 
       - name: Verify public endpoints
         run: |
