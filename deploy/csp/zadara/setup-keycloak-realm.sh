@@ -28,9 +28,9 @@
 #   NAMESPACE     (기본: nullus)
 #   KUBE_CONTEXT  (기본: 현재 컨텍스트)
 #   RELEASE       (기본: nullus)  → 파드 <RELEASE>-keycloak-0
-#   PUBLIC_URL    SPA 접속 주소      (기본: https://121.78.39.184.nip.io)
+#   PUBLIC_URL    SPA 접속 주소      (기본: https://nullus.io)
 #                 스킴까지 실제와 같아야 한다 — Keycloak 이 정확히 대조한다.
-#   KC_PUBLIC_URL Keycloak 공개 주소 (기본: https://keycloak.121.78.39.184.nip.io)
+#   KC_PUBLIC_URL Keycloak 공개 주소 (기본: https://auth.nullus.io)
 #   REALM         (기본: nullus)
 #   CLIENT_ID     (기본: nullus-app)
 #
@@ -46,8 +46,8 @@ NAMESPACE="${NAMESPACE:-nullus}"
 RELEASE="${RELEASE:-nullus}"
 REALM="${REALM:-nullus}"
 CLIENT_ID="${CLIENT_ID:-nullus-app}"
-PUBLIC_URL="${PUBLIC_URL:-https://121.78.39.184.nip.io}"
-KC_PUBLIC_URL="${KC_PUBLIC_URL:-https://keycloak.121.78.39.184.nip.io}"
+PUBLIC_URL="${PUBLIC_URL:-https://nullus.io}"
+KC_PUBLIC_URL="${KC_PUBLIC_URL:-https://auth.nullus.io}"
 POD="${RELEASE}-keycloak-0"
 
 if [[ -t 1 ]]; then

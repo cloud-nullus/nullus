@@ -6,18 +6,25 @@ import { ToastProvider } from './components/ui/toast-provider'
 import { queryClient } from './lib/query-client'
 import i18n from './i18n'
 
-import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
+import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { useAuthStore, extractRoleFromOidc } from './stores/auth-store'
+import {
+  clearOidcStorage,
+  clearRecoveryMarker,
+  isRecoverableAuthError,
+  shouldAttemptRecovery,
+} from './lib/oidc-recovery'
 import { isOidcMode } from './lib/oidc-config'
 import type { User } from './types'
 
 const ORG_ID = '11111111-1111-1111-1111-111111111111'
 
-function Splash({ text }: { text: string }) {
+function Splash({ text, children }: { text: string; children?: ReactNode }) {
   return (
-    <div className="flex h-screen items-center justify-center bg-[var(--color-surface-base)] text-[var(--color-text-secondary)]">
+    <div className="flex h-screen flex-col items-center justify-center bg-[var(--color-surface-base)] text-[var(--color-text-secondary)]">
       {text}
+      {children}
     </div>
   )
 }
@@ -78,7 +85,42 @@ function OidcGate({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.isLoading, auth.isAuthenticated, storeUser])
 
-  if (auth.error) return <Splash text={`로그인 오류: ${auth.error.message}`} />
+  // 브라우저에 남은 세션과 서버 상태가 어긋나면 로그인이 막다른 화면에서 끝난다
+  // (Session not active / No matching state found in storage 등). 사용자가 스스로
+  // 빠져나올 방법이 없으므로, 저장소를 비우고 한 번만 다시 시도한다.
+  // 같은 오류로는 재시도하지 않는다 — 무한 리다이렉트가 더 나쁘다.
+  const recoveringRef = useRef(false)
+  useEffect(() => {
+    if (!auth.error || recoveringRef.current) return
+    if (!isRecoverableAuthError(auth.error)) return
+    if (!shouldAttemptRecovery(auth.error.message)) return
+    recoveringRef.current = true
+    clearOidcStorage()
+    void auth.signinRedirect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.error])
+
+  // 로그인에 성공하면 다음 오류에서 다시 복구할 수 있도록 마커를 지운다.
+  useEffect(() => {
+    if (auth.isAuthenticated) clearRecoveryMarker()
+  }, [auth.isAuthenticated])
+
+  if (auth.error) {
+    return (
+      <Splash text={`로그인 오류: ${auth.error.message}`}>
+        <button
+          type="button"
+          onClick={() => {
+            clearOidcStorage()
+            void auth.signinRedirect()
+          }}
+          className="mt-4 rounded-lg border border-[var(--color-border)] bg-transparent px-4 py-2 text-sm text-[var(--color-text-primary)]"
+        >
+          다시 로그인
+        </button>
+      </Splash>
+    )
+  }
   if (auth.isLoading || auth.activeNavigator) return <Splash text="Authenticating…" />
   if (auth.isAuthenticated && !storeUser) return <Splash text="Loading…" />
 
