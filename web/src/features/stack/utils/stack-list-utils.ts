@@ -43,6 +43,8 @@ export type StorageConnectionInfo = {
 
 export type StackConnectionInfo = {
   accessDomain: string;
+  // 스택이 설치된 네임스페이스. 인증정보 조회 명령을 만들 때 필요하다.
+  namespace: string;
   database: StorageConnectionInfo;
   objectStorage: StorageConnectionInfo;
 };
@@ -569,28 +571,33 @@ export function extractConnectionInfo(
     "ObjectStorage",
   ]);
 
-  const ns = namespace.trim() || "nullus";
+  // 스냅샷에 값이 없을 때 화면에 그대로 노출되는 값이다.
+  // PostgreSQL/MinIO 의 Service·Secret 이름은 Helm 릴리스명 기준이라
+  // 네임스페이스와 무관하다 — ${ns} 로 조립하면 항상 어긋난 값을 보여준다.
+  // 아래 상수는 설치 경로(internal/stack/adapter/helm/secret-provisioning.go)의
+  // ProvisionedPostgresSecret / ProvisionedMinIOSecret / MinIORootUser 와 맞춘다.
   const dbFallback: Partial<StorageConnectionInfo> = {
     mode: "create",
     providerOrEngine: "postgres",
-    endpoint: `${ns}-postgresql:5432`,
-    resourceName: "nullus",
-    authId: "postgres",
-    accessSecretRef: `${ns}-postgresql`,
-    authPasswordKey: "postgres-password",
+    endpoint: "nullus-postgresql:5432",
+    resourceName: "gitlabhq_production",
+    authId: "gitlab",
+    accessSecretRef: "nullus-postgresql-credentials",
+    authPasswordKey: "password",
   };
   const objectFallback: Partial<StorageConnectionInfo> = {
     mode: "create",
     providerOrEngine: "minio",
-    endpoint: `http://${ns}-minio:9000`,
-    resourceName: "nullus-artifacts",
-    authId: "nullus",
-    accessSecretRef: `${ns}-minio`,
-    authPasswordKey: "root-password",
+    endpoint: "http://nullus-minio:9000",
+    resourceName: "gitlab-artifacts",
+    authId: "nullus-admin",
+    accessSecretRef: "nullus-minio-credentials",
+    authPasswordKey: "rootPassword",
   };
 
   return {
     accessDomain,
+    namespace: namespace.trim(),
     database: readStorageTarget(db, dbFallback),
     objectStorage: readStorageTarget(objectStorage, objectFallback),
   };
@@ -606,11 +613,18 @@ export function buildOssLoginHint(
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  // 스택은 사용자가 정한 네임스페이스에 설치된다. 고정값을 쓰면 안내대로
+  // 실행해도 NotFound 가 난다. 모를 때는 지어내지 말고 자리표시자를 남긴다.
+  const ns = conn.namespace?.trim() || "<namespace>";
+  const secretCmd = (secret: string, key = "password") =>
+    `kubectl -n ${ns} get secret ${secret} -o jsonpath='{.data.${key}}' | base64 -d`;
+
   if (["argocd", "argo cd"].includes(key)) {
-    return "ID: admin / Password: kubectl -n nullus get secret argo-cd-argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d";
+    // Argo CD 차트는 Secret 에 릴리스 접두사를 붙이지 않는다.
+    return `ID: admin / Password: ${secretCmd("argocd-initial-admin-secret")}`;
   }
   if (["gitlab", "gitlab ce", "gitlab ci", "gitlab registry"].includes(key)) {
-    return "ID: root / Password: kubectl -n nullus get secret gitlab-gitlab-initial-root-password -o jsonpath='{.data.password}' | base64 -d";
+    return `ID: root / Password: ${secretCmd("gitlab-gitlab-initial-root-password")}`;
   }
   if (key === "grafana") {
     return isKorean
