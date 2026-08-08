@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **태그 push 로 릴리즈·배포까지 자동화** (`cd.yml`): `create-release` 가 CHANGELOG 의 해당 버전 섹션을 릴리즈 본문으로 쓰고(없으면 자동 생성 노트) GA 이전 버전은 프리릴리즈로 표시한다. `deploy-zadara` 가 bastion SSH 로 Zadara 클러스터에 `helm upgrade` 를 수행하고 공개 엔드포인트 2곳이 200 인지까지 확인한다. `environment: zadara` 로 실배포 직전 승인 게이트를 걸 수 있다. 필요한 secrets: `ZADARA_SSH_KEY`·`ZADARA_HOST`·`ZADARA_USER`·`NULLUS_DB_PASSWORD`·`NULLUS_ENCRYPTION_KEY`.
 - **Zadara Cloud PoC 운영 스크립트** (`deploy/csp/zadara/`): 웹 UI 터널(`tunnel.sh`), 로컬 kubectl kubeconfig(`kubeconfig.sh`), 표준 포트 노출(`expose-web.sh`), apiserver 노출(`expose-apiserver.sh`, 기본 미사용), Keycloak realm 구성(`setup-keycloak-realm.sh`), Let's Encrypt TLS(`setup-tls.sh`).
 - **차트에 SPA 런타임 설정 값 추가**: `web.auth.{mode,oidcProvider,oidcAuthority,oidcClientId}`. 비우면 이미지에 빌드된 값을 그대로 쓴다.
 

@@ -7,9 +7,10 @@ on:
     branches:
       - main
       - phase1
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -139,3 +140,158 @@ jobs:
           helm dependency update deploy/helm/nullus
           helm package deploy/helm/nullus --version "$VERSION" --app-version "$VERSION"
           helm push "nullus-${VERSION}.tgz" oci://ghcr.io/cloud-nullus/charts
+
+  # 태그 push 시 빌드 및 차트 게시가 성공하면 GitHub Release를 자동으로 생성한다.
+  # CHANGELOG.md에서 해당 버전의 릴리즈 노트를 추출하며, GA 전 버전(0.x.x 또는 -alpha/-beta/-rc)은 prerelease로 지정한다.
+  create-release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-and-push-api, build-and-push-web, publish-chart]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract release notes and prerelease flag
+        id: notes
+        run: |
+          set -euo pipefail
+          # 태그에서 v 접두사를 뗀 값이 CHANGELOG 의 섹션 제목이자 이미지 태그다.
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # CHANGELOG 의 해당 버전 섹션만 잘라 릴리즈 본문으로 쓴다. 섹션이 없으면
+          # GitHub 자동 생성 노트로 폴백한다 — 빈 본문으로 릴리즈가 나가는 것보다 낫다.
+          python3 - "$VERSION" <<'PY'
+          import os, re, sys
+
+          version = sys.argv[1]
+          found = False
+          try:
+              content = open('CHANGELOG.md', encoding='utf-8').read()
+              m = re.search(
+                  r'(?m)^##\s*\[v?' + re.escape(version) + r'\][^\n]*\n(.*?)(?=\n^##\s|\Z)',
+                  content, re.DOTALL)
+              if m and m.group(1).strip():
+                  open('release_notes.md', 'w', encoding='utf-8').write(m.group(1).strip() + '\n')
+                  found = True
+          except OSError:
+              pass
+
+          # GA(1.0.0) 이전은 전부 프리릴리즈다 (릴리즈 정책 §7).
+          pre = bool(re.search(r'-(alpha|beta|rc)', version)) or version.split('.')[0] == '0'
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'has_notes={"true" if found else "false"}\n')
+              out.write(f'prerelease={"true" if pre else "false"}\n')
+          PY
+
+      - name: Create GitHub Release (with CHANGELOG notes)
+        if: steps.notes.outputs.has_notes == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          prerelease: ${{ steps.notes.outputs.prerelease == 'true' }}
+
+      # CHANGELOG 에 해당 섹션이 없을 때만. body_path 와 generate_release_notes 를
+      # 한 스텝에서 조건부로 섞으면 빈 경로가 넘어가 실패하므로 스텝을 나눈다.
+      - name: Create GitHub Release (generated notes)
+        if: steps.notes.outputs.has_notes != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ steps.notes.outputs.prerelease == 'true' }}
+
+  # Zadara Cloud 배포. 외부에서 열린 포트가 22/tcp 뿐이라 bastion 을 경유한다.
+  # environment 를 지정해 실배포 직전에 승인 게이트를 걸 수 있게 한다.
+  deploy-zadara:
+    name: Deploy to Zadara Cloud
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: [build-and-push-api, build-and-push-web]
+    environment: zadara
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required secrets
+        env:
+          ZADARA_SSH_KEY: ${{ secrets.ZADARA_SSH_KEY }}
+          ZADARA_HOST: ${{ secrets.ZADARA_HOST }}
+          ZADARA_USER: ${{ secrets.ZADARA_USER }}
+          NULLUS_DB_PASSWORD: ${{ secrets.NULLUS_DB_PASSWORD }}
+          NULLUS_ENCRYPTION_KEY: ${{ secrets.NULLUS_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          # 시크릿이 없으면 조용히 건너뛰지 않고 무엇이 빠졌는지 알리고 실패한다.
+          missing=""
+          for name in ZADARA_SSH_KEY ZADARA_HOST ZADARA_USER NULLUS_DB_PASSWORD NULLUS_ENCRYPTION_KEY; do
+            [ -z "${!name:-}" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "필수 secret 이 없습니다:$missing" >&2
+            exit 1
+          fi
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.ZADARA_SSH_KEY }}
+
+      - name: Add bastion to known_hosts
+        env:
+          ZADARA_HOST: ${{ secrets.ZADARA_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -H "$ZADARA_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy via bastion
+        env:
+          ZADARA_HOST: ${{ secrets.ZADARA_HOST }}
+          ZADARA_USER: ${{ secrets.ZADARA_USER }}
+          NULLUS_DB_PASSWORD: ${{ secrets.NULLUS_DB_PASSWORD }}
+          NULLUS_ENCRYPTION_KEY: ${{ secrets.NULLUS_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          # 태그 배포면 그 태그를, 수동 실행이면 현재 ref 를 체크아웃한다.
+          REF="${GITHUB_REF_NAME}"
+          # 이미지 태그에는 v 접두사가 없다 (git v0.3.1 -> 이미지 0.3.1).
+          IMAGE_TAG="${GITHUB_REF_NAME#v}"
+
+          # 비밀값은 **stdin 으로만** 넘긴다. ssh 인자에 실으면 러너의 프로세스
+          # 목록(ps)에 그대로 노출된다.
+          ssh -o BatchMode=yes "${ZADARA_USER}@${ZADARA_HOST}" 'bash -s' <<EOF
+          set -euo pipefail
+          export NULLUS_DB_PASSWORD='${NULLUS_DB_PASSWORD}'
+          export NULLUS_ENCRYPTION_KEY='${NULLUS_ENCRYPTION_KEY}'
+          REF='${REF}'
+          IMAGE_TAG='${IMAGE_TAG}'
+
+          cd ~/nullus
+          git fetch --tags --force origin
+          git checkout --detach "\$REF"
+
+          helm --kube-context=platform upgrade --install nullus deploy/helm/nullus \
+            --namespace nullus --create-namespace \
+            -f deploy/csp/zadara/values-zadara.yaml \
+            --set secrets.dbPassword="\$NULLUS_DB_PASSWORD" \
+            --set postgresql.auth.password="\$NULLUS_DB_PASSWORD" \
+            --set secrets.encryptionKey="\$NULLUS_ENCRYPTION_KEY" \
+            --set api.image.tag="\$IMAGE_TAG" \
+            --set web.image.tag="\$IMAGE_TAG" \
+            --wait --timeout 900s
+
+          # kubectl 의 컨텍스트 플래그는 --context 다 (--kube-context 는 helm 전용).
+          kubectl --context=platform -n nullus rollout status deployment/nullus-api --timeout=300s
+          kubectl --context=platform -n nullus rollout status deployment/nullus-web --timeout=300s
+          EOF
+
+      - name: Verify public endpoints
+        run: |
+          set -euo pipefail
+          # 파드가 Ready 인 것과 밖에서 실제로 열리는 것은 다르다. 공개 경로로 확인한다.
+          for url in \
+            "https://nullus.io/" \
+            "https://auth.nullus.io/realms/nullus/.well-known/openid-configuration"; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)"
+            echo "  $url -> $code"
+            [ "$code" = "200" ] || { echo "검증 실패: $url 이 200 이 아닙니다" >&2; exit 1; }
+          done
