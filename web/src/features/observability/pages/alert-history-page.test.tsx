@@ -42,7 +42,7 @@ describe('AlertHistoryPage', () => {
     renderWithProviders(<AlertHistoryPage />)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Alert History' })).not.toBeNull()
-    expect(screen.queryByText('알림 이력이 없습니다.')).not.toBeNull()
+    expect(screen.queryByText('No alert history found.')).not.toBeNull()
   })
 
   it('renders history rows when hook returns data', () => {
@@ -66,7 +66,7 @@ describe('AlertHistoryPage', () => {
 
     expect(screen.queryByText('High CPU')).not.toBeNull()
     expect(screen.queryByText('CPU usage exceeded threshold')).not.toBeNull()
-    expect(screen.queryByText('미해결')).not.toBeNull()
+    expect(screen.queryByText('Unresolved')).not.toBeNull()
   })
 
   it('shows empty state when there is no history', () => {
@@ -74,7 +74,7 @@ describe('AlertHistoryPage', () => {
 
     renderWithProviders(<AlertHistoryPage />)
 
-    expect(screen.queryByText('알림 이력이 없습니다.')).not.toBeNull()
+    expect(screen.queryByText('No alert history found.')).not.toBeNull()
   })
 
   it('passes selected severity filter to API hook', () => {

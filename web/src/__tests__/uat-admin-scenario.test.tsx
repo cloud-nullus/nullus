@@ -83,7 +83,8 @@ describe('UAT-3: Admin scenario', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
     })
     expect(useAuthStore.getState().role).toBe('admin')
-    expect(mockNavigate).toHaveBeenCalledWith('/')
+    // 로그인 후에는 역할별 홈으로 보낸다 (login-page.tsx 의 ROLE_HOME).
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/organization')
   })
 
   it('step 2: admin sidebar shows Admin group', () => {

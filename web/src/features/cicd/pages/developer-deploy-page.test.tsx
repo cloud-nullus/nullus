@@ -11,6 +11,8 @@ const mockUseClusterNamespaces = vi.fn();
 const mockUseStacks = vi.fn();
 const mockUseStackIntegrations = vi.fn();
 const mockCreatePipeline = vi.fn();
+const mockUseDeployPipeline = vi.fn();
+const mockDeployPipeline = vi.fn();
 
 vi.mock("react-router-dom", async () => {
   const actual =
@@ -23,6 +25,7 @@ vi.mock("react-router-dom", async () => {
 vi.mock("../api/cicd-api", () => ({
   useCicdTemplates: () => mockUseCicdTemplates(),
   useCreatePipeline: () => mockUseCreatePipeline(),
+  useDeployPipeline: () => mockUseDeployPipeline(),
 }));
 
 vi.mock("../../admin/api/admin-api", () => ({
@@ -62,6 +65,12 @@ const clusters = {
   total: 1,
 };
 
+// 제출 버튼. "Create" 는 섹션 헤더 이름이기도 해서 역할+이름으로 찾으면
+// 헤더가 함께 잡힌다 — 제출 버튼을 아는 곳을 여기 하나로 둔다.
+function submitButton() {
+  return screen.getByRole("button", { name: "Execute" });
+}
+
 function completeRequiredFields() {
   fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
     target: { value: "demo-app" },
@@ -95,6 +104,11 @@ describe("DeveloperDeployPage", () => {
       isPending: false,
     });
     mockCreatePipeline.mockResolvedValue({ id: "pipeline-1" });
+    mockUseDeployPipeline.mockReturnValue({
+      mutateAsync: mockDeployPipeline,
+      isPending: false,
+    });
+    mockDeployPipeline.mockResolvedValue({ deploymentId: "deployment-1" });
     mockUseClusters.mockReturnValue({ data: clusters });
     mockUseClusterNamespaces.mockReturnValue({ data: [] });
     mockUseStacks.mockReturnValue({
@@ -250,7 +264,7 @@ describe("DeveloperDeployPage", () => {
     expect(screen.queryByLabelText("Deploy YAML Repository")).toBeNull();
   });
 
-  it("shows the generated manifests in review and creates without deploying", async () => {
+  it("shows the generated manifests in review and creates then deploys", async () => {
     renderWithProviders(<DeveloperDeployPage />);
 
     completeRequiredFields();
@@ -258,10 +272,16 @@ describe("DeveloperDeployPage", () => {
     expect(await screen.findByText("demo-app-deployment.yaml")).not.toBeNull();
     expect(screen.getByText("demo-app-service.yaml")).not.toBeNull();
     expect(screen.getByText("demo-app-ingress.yaml")).not.toBeNull();
-    fireEvent.click(screen.getAllByRole("button", { name: "Create" }).at(-1)!);
+    fireEvent.click(submitButton());
     await waitFor(() => {
       expect(mockCreatePipeline).toHaveBeenCalled();
-      expect(mockNavigate).toHaveBeenCalledWith("/cicd/list");
+      // 생성 직후 배포까지 실행하고 그 배포의 로그로 보낸다.
+      expect(mockDeployPipeline).toHaveBeenCalledWith({
+        pipelineId: "pipeline-1",
+      });
+      expect(mockNavigate).toHaveBeenCalledWith(
+        "/cicd/pipelines/pipeline-1/logs?deploymentId=deployment-1",
+      );
     });
   });
 
@@ -326,7 +346,7 @@ describe("DeveloperDeployPage", () => {
     });
 
     expect(await screen.findByText("demo-app-deployment.yaml")).not.toBeNull();
-    fireEvent.click(screen.getAllByRole("button", { name: "Create" }).at(-1)!);
+    fireEvent.click(submitButton());
     await waitFor(() => {
       expect(mockCreatePipeline).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -444,13 +464,11 @@ describe("DeveloperDeployPage", () => {
     );
   });
 
-  it("navigates to the CI/CD list after creating from manifest review", async () => {
+  it("navigates to the deployment logs after creating from manifest review", async () => {
     renderWithProviders(<DeveloperDeployPage />);
     completeRequiredFields();
 
-    fireEvent.click(
-      (await screen.findAllByRole("button", { name: "Create" })).at(-1)!,
-    );
+    fireEvent.click(submitButton());
 
     await waitFor(() => {
       expect(mockCreatePipeline).toHaveBeenCalledWith(
@@ -463,7 +481,9 @@ describe("DeveloperDeployPage", () => {
           }),
         }),
       );
-      expect(mockNavigate).toHaveBeenCalledWith("/cicd/list");
+      expect(mockNavigate).toHaveBeenCalledWith(
+        "/cicd/pipelines/pipeline-1/logs?deploymentId=deployment-1",
+      );
     });
   });
 
@@ -474,9 +494,7 @@ describe("DeveloperDeployPage", () => {
     renderWithProviders(<DeveloperDeployPage />);
     completeRequiredFields();
 
-    fireEvent.click(
-      (await screen.findAllByRole("button", { name: "Create" })).at(-1)!,
-    );
+    fireEvent.click(submitButton());
 
     expect(
       await screen.findByText(
@@ -493,9 +511,7 @@ describe("DeveloperDeployPage", () => {
     renderWithProviders(<DeveloperDeployPage />);
     completeRequiredFields();
 
-    fireEvent.click(
-      (await screen.findAllByRole("button", { name: "Create" })).at(-1)!,
-    );
+    fireEvent.click(submitButton());
 
     expect(
       await screen.findByText(

@@ -22,9 +22,11 @@ import (
 var stackHelmReleaseNames = []string{
 	"cert-manager",
 	"openbao",
-	"nullus-postgresql",
+	// 설치가 쓰는 릴리스명. 이름이 바뀌면 삭제도 따라가야 하므로 domain 상수를 쓴다.
+	// 뒤따르는 접두사 없는 이름들은 예전 설치본을 지우기 위한 것이라 리터럴로 둔다.
+	domain.PostgresServiceName,
 	"postgresql",
-	"nullus-minio",
+	domain.MinIOServiceName,
 	"minio",
 	"gitlab",
 	"argo-cd",

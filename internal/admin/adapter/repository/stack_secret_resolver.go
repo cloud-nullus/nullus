@@ -37,11 +37,13 @@ func (r *StackSecretResolver) Resolve(ctx context.Context, provider, stackID str
 		return nil, secrets.ErrProviderNotConfigured
 	}
 
+	// stacks.id 는 UUID 가 아니라 "stk_..." 형식의 VARCHAR 다.
+	// ::uuid 로 캐스팅하면 모든 조회가 타입 오류로 실패한다.
 	var namespace, clusterID string
 	err := r.pool.QueryRow(ctx, `
 		SELECT COALESCE(namespace, ''), COALESCE(cluster_id::text, '')
 		FROM stacks
-		WHERE id = $1::uuid AND deleted_at IS NULL`, stackID).Scan(&namespace, &clusterID)
+		WHERE id = $1 AND deleted_at IS NULL`, stackID).Scan(&namespace, &clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("스택 %s 조회 실패: %w", stackID, err)
 	}

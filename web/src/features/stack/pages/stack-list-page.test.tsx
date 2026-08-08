@@ -86,6 +86,7 @@ vi.mock("../api/stack-api", () => ({
   useImportStackConfig: (...args: unknown[]) => mockUseImportStackConfig(...args),
   usePreviewImportStackConfig: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useExportStackConfig: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useStackConnectionInfo: () => ({ data: undefined }),
   useStackHistory: (...args: unknown[]) => mockUseStackHistory(...args),
   useStackMonitoring: (...args: unknown[]) => mockUseStackMonitoring(...args),
   useClusters: (...args: unknown[]) => mockUseClusters(...args),

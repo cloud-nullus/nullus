@@ -50,9 +50,10 @@ export type {
 	StackConnectionInfo,
 } from "../utils/stack-list-utils";
 export {
-	extractConnectionInfo,
-	buildOssLoginHint,
 	buildConnectionInfoText,
+	buildOssLoginHint,
+	findToolCredential,
+	toConnectionInfoView,
 } from "../utils/stack-list-utils";
 import { StackInfoTab } from "../components/stack-info-tab"
 

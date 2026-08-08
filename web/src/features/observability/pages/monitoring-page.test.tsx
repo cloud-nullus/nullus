@@ -85,11 +85,12 @@ describe('MonitoringPage', () => {
       refetch: vi.fn(),
     })
 
+    // CI/CD 탭은 target 타입 클러스터에서만 열리므로 types 를 준다.
     mockUseClusterStackFilterState.mockReturnValue({
-      clusters: [{ id: 'cluster-1', name: 'Prod Cluster', status: 'connected' }],
+      clusters: [{ id: 'cluster-1', name: 'Prod Cluster', status: 'connected', types: ['target'] }],
       stacks: [{ id: 'stack-1', name: 'Main Stack', clusterId: 'cluster-1', status: 'running' }],
       filteredStacks: [{ id: 'stack-1', name: 'Main Stack', status: 'running' }],
-      selectedCluster: { id: 'cluster-1', name: 'Prod Cluster', status: 'connected' },
+      selectedCluster: { id: 'cluster-1', name: 'Prod Cluster', status: 'connected', types: ['target'] },
       selectedStack: { id: 'stack-1', name: 'Main Stack', status: 'running' },
       hasContext: true,
     })
@@ -107,7 +108,8 @@ describe('MonitoringPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cluster' }))
 
     expect(screen.queryByText('Pipeline Success (this week)')).not.toBeNull()
-    expect(screen.queryByText('Nodes')).not.toBeNull()
+    // KPI 카드는 하드코딩된 Nodes 목업에서 실제 파드 지표로 바뀌었다.
+    expect(screen.queryByText('Running Pods')).not.toBeNull()
   })
 
   it('shows loading state in stack view while dashboard data is loading', () => {
@@ -156,8 +158,11 @@ describe('MonitoringPage', () => {
   it('shows embed-blocked message for non-embeddable host', () => {
     renderWithProviders(<MonitoringPage />)
 
-    fireEvent.click(screen.getByText('CI/CD'))
-    fireEvent.click(screen.getByText('Grafana'))
+    // CI/CD 탭은 클러스터를 고른 뒤에야 열린다.
+    fireEvent.click(screen.getByText('Mock Select Cluster'))
+    fireEvent.click(screen.getByRole('button', { name: 'CI/CD' }))
+    // Grafana 는 대시보드 도구 목록에도 있으므로 임베드 탭 버튼으로 좁힌다.
+    fireEvent.click(screen.getByRole('button', { name: 'Grafana' }))
 
     expect(screen.queryByText('Embedding blocked by target site')).not.toBeNull()
   })

@@ -2,6 +2,7 @@ package helm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -62,6 +63,24 @@ func installOCIChartWithHelmCLI(ctx context.Context, kubeconfig []byte, releaseN
 	return nil
 }
 
+// ErrRunnerTokenDiscovery 는 Runner 등록 토큰을 얻지 못했음을 알리는 sentinel 이다.
+//
+// 과거에는 이 실패를 무시하고 스텝을 completed 로 마킹했다. 그러면 CI 실행기가
+// 없는데도 스택이 completed 로 끝나 파이프라인이 한 건도 돌지 않는 상태가
+// 조용히 만들어진다. 설치 실패로 드러내야 재시도 경로를 탈 수 있다.
+var ErrRunnerTokenDiscovery = errors.New("gitlab runner 등록 토큰을 얻지 못했습니다")
+
+// wrapRunnerTokenDiscoveryError 는 토큰 발견 실패를 sentinel 로 감싼다.
+// nil 은 nil 로 통과시켜 호출부 분기를 단순하게 유지한다.
+func wrapRunnerTokenDiscoveryError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: GitLab 이 완전히 기동했는지 확인하세요 "+
+		"(kubectl -n <ns> get deploy gitlab-toolbox, gitlab-webservice-default): %v",
+		ErrRunnerTokenDiscovery, err)
+}
+
 func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context, namespace string) (string, error) {
 	const (
 		maxAttempts = 24
@@ -103,16 +122,27 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context
 
 func (o *Orchestrator) discoverGitLabRunnerRegistrationTokenOnce(ctx context.Context, namespace string) (string, error) {
 	authTokenScript := `runner = Ci::Runner.where(description: "nullus-shared-runner", runner_type: :instance_type).order(id: :desc).first; runner ||= Ci::Runner.create!(description: "nullus-shared-runner", runner_type: :instance_type, run_untagged: true, locked: false); puts runner.token.to_s`
-	if token, err := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, authTokenScript); err == nil {
+	token, authErr := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, authTokenScript)
+	if authErr == nil {
 		return token, nil
 	}
 
 	legacyRegistrationTokenScript := `puts ApplicationSetting.current.runners_registration_token`
-	if token, err := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, legacyRegistrationTokenScript); err == nil {
+	token, legacyErr := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, legacyRegistrationTokenScript)
+	if legacyErr == nil {
 		return token, nil
 	}
 
-	return "", fmt.Errorf("runner token not found in rails output")
+	return "", runnerTokenNotFoundError(authErr, legacyErr)
+}
+
+// runnerTokenNotFoundError 는 두 조회 경로의 원인을 모두 보존한다.
+//
+// 원인을 버리고 일반 메시지만 돌려주면 isRetryableRunnerTokenDiscoveryError 가
+// 힌트를 찾지 못해 재시도 루프가 한 번도 돌지 않는다. GitLab 이 아직 마이그레이션
+// 중인 정상 상황에서도 즉시 실패하게 되므로, 원인 문자열을 반드시 남긴다.
+func runnerTokenNotFoundError(authErr, legacyErr error) error {
+	return fmt.Errorf("runner token not found in rails output (auth: %v; legacy: %w)", authErr, legacyErr)
 }
 
 func (o *Orchestrator) discoverGitLabRunnerTokenFromRailsRunner(ctx context.Context, namespace, script string) (string, error) {

@@ -3,6 +3,8 @@ package helm
 import (
 	"fmt"
 	"strings"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
@@ -96,8 +98,10 @@ spec:
       port: 80
       hostname: "*.%s"
       allowedRoutes:
+        # 배포된 애플리케이션은 자기 네임스페이스에 산다. Same 으로 두면
+        # 앱이 게이트웨이에 라우트를 붙일 수 없어 외부에서 접근할 방법이 없다.
         namespaces:
-          from: Same
+          from: All
 `, gatewayName, namespace, stackLabel, accessDomain)}
 
 	type routeSpec struct {
@@ -108,14 +112,24 @@ spec:
 	}
 	routes := make([]routeSpec, 0, 6)
 
-	if cfg.Pipeline.CDTool.Enabled && (strings.EqualFold(cfg.Pipeline.CDTool.Name, "argocd") || strings.EqualFold(cfg.Pipeline.CDTool.Name, "argo-cd")) {
+	// 도구 이름은 카탈로그에서 "Argo CD" 처럼 공백을 포함해 온다.
+	// EqualFold 만으로 비교하면 공백 때문에 매칭에 실패해 라우트가 만들어지지
+	// 않고, 설치는 성공했는데 UI 에 접근할 수 없는 상태가 된다.
+	if cfg.Pipeline.CDTool.Enabled && isArgoCDSelection(cfg.Pipeline.CDTool.Name) {
 		routes = append(routes, routeSpec{name: "argocd-route", host: fmt.Sprintf("argocd.%s", accessDomain), service: "argo-cd-argocd-server", port: 80})
 	}
 	if cfg.Logging.Search.Enabled && strings.EqualFold(cfg.Logging.Search.Name, "opensearch") {
 		routes = append(routes, routeSpec{name: "opensearch-route", host: fmt.Sprintf("opensearch.%s", accessDomain), service: "opensearch-cluster-master", port: 9200})
 	}
 	if cfg.Artifacts.SourceRepository.Enabled || cfg.Pipeline.CIPlatform.Enabled || cfg.Artifacts.PackageRegistry.Enabled || cfg.Artifacts.ContainerRegistry.Enabled {
-		routes = append(routes, routeSpec{name: "gitlab-route", host: fmt.Sprintf("gitlab.%s", accessDomain), service: "gitlab-webservice-default", port: 8080})
+		// 8181(workhorse)로 보낸다. 8080 은 puma 직결이라 웹 UI 는 뜨지만
+		// git clone/push 가 workhorse 를 거치지 못해 "Nil JSON web token" 403 으로 실패한다.
+		routes = append(routes, routeSpec{name: "gitlab-route", host: fmt.Sprintf("gitlab.%s", accessDomain), service: "gitlab-webservice-default", port: 8181})
+	}
+	// 컨테이너 레지스트리는 GitLab webservice 와 다른 서비스다. 노출하지 않으면
+	// CI 가 빌드한 이미지를 올릴 곳이 없고 kubelet 도 그것을 받아올 수 없다.
+	if cfg.Artifacts.ContainerRegistry.Enabled {
+		routes = append(routes, routeSpec{name: "registry-route", host: fmt.Sprintf("registry.%s", accessDomain), service: "gitlab-registry", port: 5000})
 	}
 	if cfg.Monitoring.Visualization.Enabled && strings.EqualFold(cfg.Monitoring.Visualization.Name, "grafana") {
 		routes = append(routes, routeSpec{name: "grafana-route", host: fmt.Sprintf("grafana.%s", accessDomain), service: "grafana", port: 80})
@@ -124,7 +138,7 @@ spec:
 		routes = append(routes, routeSpec{name: "prometheus-route", host: fmt.Sprintf("prometheus.%s", accessDomain), service: "kube-prometheus-stack-prometheus", port: 9090})
 	}
 	if cfg.Artifacts.StorageBackend.Enabled && strings.EqualFold(cfg.Artifacts.StorageBackend.Name, "minio") {
-		routes = append(routes, routeSpec{name: "minio-route", host: fmt.Sprintf("minio.%s", accessDomain), service: "nullus-minio-console", port: 9001})
+		routes = append(routes, routeSpec{name: "minio-route", host: fmt.Sprintf("minio.%s", accessDomain), service: domain.MinIOConsoleServiceName, port: domain.MinIOConsoleServicePort})
 	}
 	if cfg.Authentication != nil && strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao") {
 		routes = append(routes, routeSpec{name: "openbao-route", host: fmt.Sprintf("openbao.%s", accessDomain), service: "openbao", port: 8200})
@@ -191,4 +205,14 @@ metadata:
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 `
+}
+
+// isArgoCDSelection 은 Argo CD 표기 흔들림을 흡수한다.
+// 카탈로그는 "Argo CD", 설정 파일은 "argocd" 를 쓰는 등 표기가 갈린다.
+func isArgoCDSelection(name string) bool {
+	switch normalizeToolName(name) {
+	case "argocd", "argo-cd":
+		return true
+	}
+	return false
 }

@@ -6,8 +6,9 @@ import { ClusterStackFilter, useClusterStackFilterState } from './cluster-stack-
 const mockUseClusters = vi.hoisted(() => vi.fn())
 const mockUseStacks = vi.hoisted(() => vi.fn())
 
+// 컴포넌트는 조직 권한으로 걸러진 useScopedClusters 를 쓴다.
 vi.mock('../../admin/api/admin-api', () => ({
-  useClusters: mockUseClusters,
+  useScopedClusters: mockUseClusters,
 }))
 
 vi.mock('../../stack/api/stack-api', () => ({

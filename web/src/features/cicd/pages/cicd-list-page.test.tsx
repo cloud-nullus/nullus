@@ -134,14 +134,22 @@ describe("CicdListPage", () => {
   it("deploys the selected pipeline from the list detail panel and opens logs", async () => {
     renderWithProviders(<CicdListPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+    // 상세 패널의 Execute 는 곧바로 배포하지 않고 확인 모달을 연다.
+    fireEvent.click(screen.getByRole("button", { name: "Execute" }));
+
+    // 모달의 확인 버튼도 이름이 Execute 라 둘이 함께 잡힌다.
+    // 나중에 렌더되는 모달 쪽이 실제 배포를 실행한다.
+    const executeButtons = screen.getAllByRole("button", { name: "Execute" });
+    expect(executeButtons.length).toBe(2);
+    fireEvent.click(executeButtons[executeButtons.length - 1]);
 
     await waitFor(() => {
       expect(mockDeployPipeline).toHaveBeenCalledWith({
         pipelineId: "pipeline-1",
       });
+      // 로그 화면이 어느 배포를 보여줄지 알아야 하므로 deploymentId 를 넘긴다.
       expect(mockNavigate).toHaveBeenCalledWith(
-        "/cicd/pipelines/pipeline-1/logs",
+        "/cicd/pipelines/pipeline-1/logs?deploymentId=deployment-1",
       );
     });
   });

@@ -43,16 +43,34 @@ if [[ -z "$KUBE_CONTEXT" ]]; then
 fi
 
 if ! kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$KUBE_CONTEXT" get namespace "$STACK_NAMESPACE" >/dev/null 2>&1; then
-  if kubectl --kubeconfig "$KUBECONFIG_PATH" --context "kind-nullus-platform" get namespace "$STACK_NAMESPACE" >/dev/null 2>&1; then
-    ORIGINAL_CONTEXT="$KUBE_CONTEXT"
-    KUBE_CONTEXT="kind-nullus-platform"
-    echo "현재 컨텍스트(${ORIGINAL_CONTEXT}) 대신 kind-nullus-platform 컨텍스트를 사용합니다."
-  else
-    echo "kubectl context 연결 실패: $KUBE_CONTEXT"
-    echo "올바른 컨텍스트를 지정하세요. 예) export KUBE_CONTEXT=kind-nullus-platform"
+  # 연결 자체가 안 되는 것과 네임스페이스가 없는 것은 원인이 전혀 다르다.
+  # 둘을 같은 메시지로 뭉뚱그리면 엉뚱한 곳을 고치게 된다.
+  if ! kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$KUBE_CONTEXT" version >/dev/null 2>&1; then
+    echo "kubectl 컨텍스트에 연결하지 못했습니다: $KUBE_CONTEXT"
+    echo "클러스터가 떠 있는지 확인하세요. 예) kind get clusters"
     kubectl --kubeconfig "$KUBECONFIG_PATH" config get-contexts
     exit 1
   fi
+
+  # 연결은 되는데 네임스페이스가 없다 — 다른 컨텍스트에 스택이 있는지 찾아 준다.
+  FOUND_CONTEXT=""
+  while IFS= read -r ctx; do
+    [[ -z "$ctx" || "$ctx" == "$KUBE_CONTEXT" ]] && continue
+    if kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$ctx" get namespace "$STACK_NAMESPACE" >/dev/null 2>&1; then
+      FOUND_CONTEXT="$ctx"
+      break
+    fi
+  done < <(kubectl --kubeconfig "$KUBECONFIG_PATH" config get-contexts -o name 2>/dev/null)
+
+  echo "컨텍스트 '${KUBE_CONTEXT}' 에 네임스페이스 '${STACK_NAMESPACE}' 가 없습니다."
+  if [[ -n "$FOUND_CONTEXT" ]]; then
+    echo "'${FOUND_CONTEXT}' 에 있습니다. 다시 실행하세요:"
+    echo "  KUBE_CONTEXT=${FOUND_CONTEXT} STACK_NAMESPACE=${STACK_NAMESPACE} ... $0"
+  else
+    echo "어떤 컨텍스트에서도 찾지 못했습니다. STACK_NAMESPACE 를 확인하세요."
+    kubectl --kubeconfig "$KUBECONFIG_PATH" config get-contexts
+  fi
+  exit 1
 fi
 
 GW_SVC=""

@@ -932,7 +932,7 @@ func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
 		tool("logging_collection", cfg.Logging.Collection, "loki"),
 		tool("logging_search", cfg.Logging.Search, "opensearch", "elasticsearch"),
 		tool("trace_layer", cfg.Logging.TraceLayer, "tempo", "jaeger"),
-		tool("storage_backend", cfg.Artifacts.StorageBackend, "nullus-minio", "minio"),
+		tool("storage_backend", cfg.Artifacts.StorageBackend, domain.MinIOServiceName, "minio"),
 	}
 
 	filtered := make([]selectedToolType, 0, len(out))

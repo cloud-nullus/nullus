@@ -24,14 +24,15 @@ import (
 
 // StackHandler handles HTTP requests for stack operations.
 type StackHandler struct {
-	createStack   *usecase.CreateStack
-	listStacks    *usecase.ListStacks
-	deleteStack   *usecase.DeleteStack
-	addToolsUC    *usecase.AddToolsUseCase
-	manageHistory *usecase.ManageHistory
-	stackRepo     port.StackRepository
-	audit         *audit.AuditLogger
-	pool          *pgxpool.Pool
+	createStack    *usecase.CreateStack
+	listStacks     *usecase.ListStacks
+	deleteStack    *usecase.DeleteStack
+	addToolsUC     *usecase.AddToolsUseCase
+	manageHistory  *usecase.ManageHistory
+	stackRepo      port.StackRepository
+	connectionInfo *usecase.GetConnectionInfo
+	audit          *audit.AuditLogger
+	pool           *pgxpool.Pool
 }
 
 // StackHandlerOption configures optional StackHandler dependencies.
@@ -59,6 +60,8 @@ func NewStackHandler(
 		addToolsUC:  addToolsUC,
 		stackRepo:   stackRepo,
 		audit:       auditLogger,
+		// stackRepo 가 GetByID 를 제공하므로 별도 주입 없이 조립한다.
+		connectionInfo: usecase.NewGetConnectionInfo(stackRepo),
 	}
 	for _, o := range opts {
 		o(h)
@@ -82,6 +85,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.GET("/:stackId/workloads", h.GetWorkloads)
 	g.GET("/:stackId/integrations", h.GetIntegrations)
+	g.GET("/:stackId/connection-info", h.GetConnectionInfo)
 	g.POST("/draft", h.SaveDraft)
 }
 

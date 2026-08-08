@@ -105,7 +105,7 @@ describe('StackTemplatePage', () => {
   it('labels template versions as matrix snapshot values', async () => {
     renderWithProviders(<StackTemplatePage />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'stackTemplatePage.actions.viewDetail' })[2])
+    fireEvent.click(screen.getAllByRole('button', { name: 'View Detail' })[2])
 
     const dialog = await screen.findByRole('dialog', { name: 'GitLab + ArgoCD' })
 
@@ -118,7 +118,7 @@ describe('StackTemplatePage', () => {
 
   it('renders 4 template detail buttons', () => {
     renderWithProviders(<StackTemplatePage />)
-    const buttons = screen.getAllByRole('button', { name: 'stackTemplatePage.actions.viewDetail' })
+    const buttons = screen.getAllByRole('button', { name: 'View Detail' })
     expect(buttons).toHaveLength(4)
   })
 
@@ -172,14 +172,14 @@ describe('StackTemplatePage', () => {
 
   it('clicking Use Base Template navigates to /stack/install', () => {
     renderWithProviders(<StackTemplatePage />)
-    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'View Detail' }))
     fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
   it('clicking Use Base Template sets template in store and clears unselected slots', () => {
     renderWithProviders(<StackTemplatePage />)
-    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'View Detail' }))
     fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
@@ -190,7 +190,7 @@ describe('StackTemplatePage', () => {
 
   it('clicking Empty Template clears install selections in store', () => {
     renderWithProviders(<StackTemplatePage />)
-    fireEvent.click(within(getTemplateCard('Empty Template')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    fireEvent.click(within(getTemplateCard('Empty Template')).getByRole('button', { name: 'View Detail' }))
     fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
 
     const { draft } = useStackConfigStore.getState()
@@ -311,7 +311,7 @@ describe('StackTemplatePage', () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'stackTemplatePage.actions.viewDetail' }))
+    fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'View Detail' }))
     expect(screen.getByRole('button', { name: 'Duplicate' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
 

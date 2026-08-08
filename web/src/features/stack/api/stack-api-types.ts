@@ -157,3 +157,39 @@ export interface DeployStackInput {
   // instead of silently installing.
   acknowledgeWarnings?: boolean;
 }
+
+/** 서버가 확정해 내려주는 스토리지 접속 정보. */
+export type StorageConnectionResponse = {
+  mode: string;
+  engine: string;
+  endpoint: string;
+  resource_name: string;
+  auth_id: string;
+  secret_ref?: string;
+  secret_key?: string;
+};
+
+/**
+ * OSS 도구 하나의 접속 안내.
+ * secret_ref 가 없으면 조회할 Secret 이 없다는 뜻이고 note 가 설명을 담는다.
+ */
+export type ToolCredentialResponse = {
+  name: string;
+  username?: string;
+  secret_ref?: string;
+  secret_key?: string;
+  note?: string;
+};
+
+/**
+ * 스택 접속 정보. 리소스 이름은 서버가 정한다 —
+ * 화면이 다시 조립하면 설치 경로와 규칙이 갈리는 순간 어긋난다.
+ */
+export type StackConnectionInfoResponse = {
+  stack_id: string;
+  namespace: string;
+  access_domain?: string;
+  database: StorageConnectionResponse;
+  object_storage: StorageConnectionResponse;
+  tools: ToolCredentialResponse[];
+};

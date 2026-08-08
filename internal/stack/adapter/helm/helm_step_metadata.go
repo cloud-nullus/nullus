@@ -71,7 +71,9 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		}, true
 	case "installing_postgresql":
 		return ChartSpec{
-			ReleaseName: "nullus-postgresql",
+			// Service 이름이 릴리스명에서 나오고, 연결정보가 그 이름으로 접속을
+			// 안내한다. 둘이 갈라지지 않도록 domain 상수를 쓴다.
+			ReleaseName: domain.PostgresServiceName,
 			ChartName:   "postgresql",
 			RepoURL:     "https://charts.bitnami.com/bitnami",
 			Values:      DefaultValues("installing_postgresql"),
@@ -79,7 +81,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		}, true
 	case "installing_minio":
 		return ChartSpec{
-			ReleaseName: "nullus-minio",
+			ReleaseName: domain.MinIOServiceName,
 			ChartName:   "minio",
 			RepoURL:     "https://charts.min.io/",
 			Version:     "5.4.0",

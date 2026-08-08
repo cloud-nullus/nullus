@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 // 시크릿 지도 — provisioning_secrets 스텝이 생성·저장하는 목록이다.
@@ -48,16 +49,25 @@ type ManagedSecret struct {
 	TemplateData map[string]string
 }
 
+// 프로비저닝된 Secret 이름. 차트 values 가 existingSecret 으로 참조한다.
+//
+// 값의 단일 출처는 domain 이다 — 설치 경로와 조회 경로(연결정보 안내)가 같은
+// 이름을 봐야 하는데, 양쪽에 각각 적어 두면 한쪽만 바뀌었을 때 조용히 어긋난다.
 const (
-	// 프로비저닝된 Secret 이름. 차트 values 가 existingSecret 으로 참조한다.
-	ProvisionedPostgresSecret      = "nullus-postgresql-credentials"
-	ProvisionedMinIOSecret         = "nullus-minio-credentials"
+	ProvisionedPostgresSecret      = domain.ProvisionedPostgresSecret
+	ProvisionedMinIOSecret         = domain.ProvisionedMinIOSecret
 	ProvisionedGitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
-	ProvisionedObjectStorageSecret = "nullus-object-storage"
+	ProvisionedObjectStorageSecret = domain.ProvisionedObjectStorageSecret
+
+	// Container Registry 전용 스토리지 설정. Rails 의 object_store 와 형식이
+	// 달라(Docker distribution 스키마) 같은 Secret 에 담을 수 없다.
+	ProvisionedRegistryStorageSecret = domain.ProvisionedRegistryStorageSecret
+	RegistryStorageSecretKey         = "config"
+	RegistryStorageBucket            = "gitlab-registry"
 
 	// MinIORootUser 는 비밀이 아니지만 차트의 existingSecret 이 같은 Secret 안에서
 	// 요구하므로 함께 프로비저닝한다.
-	MinIORootUser = "nullus-admin"
+	MinIORootUser = domain.MinIORootUser
 )
 
 // managedSecrets 는 현재 관리 대상 시크릿이다.
@@ -66,9 +76,9 @@ const (
 // 이후에만 얻을 수 있으므로 이 단계가 아니라 회전 컨트롤러가 담당한다.
 func managedSecrets(namespace string) []ManagedSecret {
 	if strings.TrimSpace(namespace) == "" {
-		namespace = "nullus"
+		namespace = defaultStackNamespace
 	}
-	minioEndpoint := fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace)
+	minioEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", domain.MinIOServiceName, namespace, domain.MinIOServicePort)
 
 	return []ManagedSecret{
 		{
@@ -89,8 +99,8 @@ func managedSecrets(namespace string) []ManagedSecret {
 			Consumer:        "MinIO, GitLab(object storage)",
 			RestartRequired: true,
 			Entries: []SecretEntry{
-				{PathSuffix: "artifacts/minio/root-user", TargetKey: "rootUser", Fixed: MinIORootUser},
-				{PathSuffix: "artifacts/minio/root-password", TargetKey: "rootPassword"},
+				{PathSuffix: "artifacts/minio/root-user", TargetKey: domain.MinIOUserKey, Fixed: MinIORootUser},
+				{PathSuffix: "artifacts/minio/root-password", TargetKey: domain.MinIOPasswordKey},
 			},
 		},
 		{
@@ -118,7 +128,44 @@ func managedSecrets(namespace string) []ManagedSecret {
 				"config":     objectStorageConnectionTemplate(minioEndpoint),
 			},
 		},
+		{
+			// Container Registry 스토리지. 차트 기본값은 filesystem(/tmp/registry)
+			// 이라 파드 재시작 시 이미지가 사라지고, replica 가 2개면 push 한 파드와
+			// pull 하는 파드가 달라 비결정적으로 실패한다. S3(MinIO) 로 고정한다.
+			TargetSecret:    ProvisionedRegistryStorageSecret,
+			Consumer:        "GitLab(container registry)",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "artifacts/minio/root-user", TargetKey: "accessKey", Fixed: MinIORootUser},
+				{PathSuffix: "artifacts/minio/root-password", TargetKey: "secretKey"},
+			},
+			TemplateData: map[string]string{
+				RegistryStorageSecretKey: registryStorageConfigTemplate(minioEndpoint),
+			},
+		},
 	}
+}
+
+// registryStorageConfigTemplate 은 Docker distribution 의 storage 블록이다.
+//
+// Rails 의 object_store(objectStorageConnectionTemplate)와 키 이름이 다르다 —
+// registry 는 distribution 스키마(accesskey/secretkey/regionendpoint)를 쓰므로
+// 같은 Secret 을 재사용할 수 없다.
+func registryStorageConfigTemplate(endpoint string) string {
+	return "s3:\n" +
+		"  bucket: " + RegistryStorageBucket + "\n" +
+		"  accesskey: {{ .accessKey }}\n" +
+		"  secretkey: {{ .secretKey }}\n" +
+		"  region: us-east-1\n" +
+		"  regionendpoint: " + endpoint + "\n" +
+		"  v4auth: true\n" +
+		"  pathstyle: true\n" +
+		// 리다이렉트를 끄면 레지스트리가 blob 을 직접 흘려보낸다.
+		// 켜두면 클라이언트를 MinIO 의 클러스터 내부 주소로 보내는데,
+		// kubelet 은 클러스터 DNS 를 쓰지 않아 그 주소를 해석하지 못하고
+		// 이미지 pull 이 타임아웃으로 실패한다.
+		"redirect:\n" +
+		"  disable: true\n"
 }
 
 // objectStorageConnectionTemplate 은 ESO template 으로 렌더링할 연결 YAML 이다.

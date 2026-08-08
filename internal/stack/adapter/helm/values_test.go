@@ -162,7 +162,14 @@ func TestDefaultValues_GitLabRunner(t *testing.T) {
 
 	runners, ok := values["runners"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, true, runners["privileged"])
+
+	// gitlab-runner 차트 0.72.0 은 runners.privileged 를 더 이상 읽지 않는다.
+	// 설정은 runners.config 의 TOML 로 들어가야 실제 config.toml 에 반영된다.
+	// (privileged 없이는 docker:dind 서비스가 기동하지 못해 이미지 빌드가 불가능하다)
+	config, ok := runners["config"].(string)
+	require.True(t, ok, "runners.config 로 넣지 않으면 차트가 무시한다")
+	assert.Contains(t, config, "[runners.kubernetes]")
+	assert.Contains(t, config, "privileged = true")
 }
 
 func TestDefaultValues_UnknownStepReturnsEmptyMap(t *testing.T) {

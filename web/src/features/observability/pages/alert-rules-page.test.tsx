@@ -182,22 +182,25 @@ describe('AlertRulesPage', () => {
       },
       refetch: vi.fn().mockResolvedValue(undefined),
     })
-    mockUseAlertRule.mockImplementation((id: string | null) => ({
-      data: id === 'rule-1'
-        ? {
-            id: 'rule-1',
-            name: 'Fresh CPU',
-            metric_name: 'cpu_usage',
-            condition: 'cpu_usage >= critical_threshold',
-            warning_threshold: 75,
-            critical_threshold: 90,
-            threshold: 90,
-            channel: 'email',
-            enabled: false,
-          }
-        : undefined,
-      isFetching: false,
-    }))
+    // 페이지는 useEffect([editingRule, reset]) 에서 reset 을 호출한다. 렌더마다
+    // 새 객체를 돌려주면 effect 가 스스로를 다시 트리거해 무한 렌더로 죽는다.
+    // 실제 react-query 는 data 참조를 유지하므로 여기서도 같은 객체를 돌려준다.
+    const freshRule = {
+      id: 'rule-1',
+      name: 'Fresh CPU',
+      metric_name: 'cpu_usage',
+      condition: 'cpu_usage >= critical_threshold',
+      warning_threshold: 75,
+      critical_threshold: 90,
+      threshold: 90,
+      channel: 'email',
+      enabled: false,
+    }
+    const freshResult = { data: freshRule, isFetching: false }
+    const emptyResult = { data: undefined, isFetching: false }
+    mockUseAlertRule.mockImplementation((id: string | null) =>
+      id === 'rule-1' ? freshResult : emptyResult,
+    )
 
     renderWithProviders(<AlertRulesPage />)
 

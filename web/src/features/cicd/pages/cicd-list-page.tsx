@@ -2056,11 +2056,6 @@ export function CicdListPage() {
           onOpenLogs={() =>
             navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)
           }
-          activeDeploymentId={
-            deployingPipelineId === expandedPipeline.id || activeDeploymentId
-              ? activeDeploymentId
-              : null
-          }
         />
       )}
 

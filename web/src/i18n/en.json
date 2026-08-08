@@ -165,6 +165,7 @@
       "delete": "Delete",
       "duplicateTemplate": "Duplicate",
       "useBaseTemplate": "Use As Base",
+      "viewDetail": "View Detail",
       "close": "Close",
       "baseTemplate": "Base Template",
       "create": "Create",
@@ -1150,7 +1151,8 @@
       "previous": "Previous",
       "next": "Next",
       "loadFromConfigRepository": "Load from Deploy YAML Repository",
-      "create": "Create"
+      "create": "Create",
+      "execute": "Execute"
     },
     "yamlPreview": "YAML Manifest Preview"
   },
