@@ -10,6 +10,11 @@ import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from 're
 import { useAuth } from 'react-oidc-context'
 import { useAuthStore, extractRoleFromOidc } from './stores/auth-store'
 import {
+  clearChunkReloadMarker,
+  isChunkLoadError,
+  shouldReloadForChunkError,
+} from './lib/chunk-recovery'
+import {
   clearOidcStorage,
   clearRecoveryMarker,
   isRecoverableAuthError,
@@ -38,6 +43,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // 콘솔에도 남김
     console.error('[AppErrorBoundary]', error, info)
+
+    // 재배포로 청크 해시가 바뀌면, 배포 전에 열려 있던 탭은 사라진 파일을 lazy
+    // import 하려다 여기서 죽는다. 「다시 시도」로는 같은 옛 모듈 그래프를 다시
+    // 쓸 뿐이라 복구되지 않고, 새 index.html 을 받아야 풀린다.
+    // 한 번만 새로고침한다 — 원인이 다른 것이면 무한 새로고침이 더 나쁘다.
+    if (isChunkLoadError(error) && shouldReloadForChunkError()) {
+      window.location.reload()
+    }
   }
   render() {
     if (this.state.error) {
@@ -49,6 +62,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
         </div>
       )
     }
+    clearChunkReloadMarker()
     return this.props.children
   }
 }
