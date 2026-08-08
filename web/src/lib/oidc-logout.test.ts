@@ -72,3 +72,35 @@ describe('keycloak getLogoutUrl', () => {
     expect(url.searchParams.get('client_id')).toBe('nullus-app')
   })
 })
+
+describe('keycloak role 추출', () => {
+  // Keycloak 은 realm_access 를 기본적으로 액세스 토큰에만 싣는다. ID 토큰에만
+  // 의존하면 서버 매퍼 설정에 따라 모든 사용자가 최저 권한으로 떨어진다.
+  function roles(profile: Record<string, unknown>, accessToken?: string): string[] {
+    window.__NULLUS_CONFIG__ = {
+      oidcProvider: 'keycloak',
+      oidcAuthority: 'https://kc.example.com/realms/nullus',
+      oidcClientId: 'nullus-app',
+    }
+    return getProviderConfig().extractRoles({ profile, access_token: accessToken })
+  }
+
+  it('should read roles from the access token when the id token has none', () => {
+    const at = fakeIdToken({ realm_access: { roles: ['default-roles-nullus', 'admin'] } })
+    expect(roles({}, at)).toContain('admin')
+  })
+
+  it('should prefer roles already present in the id token', () => {
+    const at = fakeIdToken({ realm_access: { roles: ['developer'] } })
+    expect(roles({ realm_access: { roles: ['admin'] } }, at)).toEqual(['admin'])
+  })
+
+  it('should return an empty list when neither token carries roles', () => {
+    expect(roles({}, fakeIdToken({ sub: 'x' }))).toEqual([])
+    expect(roles({})).toEqual([])
+  })
+
+  it('should survive a malformed access token', () => {
+    expect(roles({}, 'not-a-jwt')).toEqual([])
+  })
+})

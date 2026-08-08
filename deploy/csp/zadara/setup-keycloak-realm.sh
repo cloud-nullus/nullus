@@ -120,6 +120,32 @@ fix_redirect_uris() {
     -s 'attributes."post.logout.redirect.uris"=+' \
     --config /tmp/nullus-kcadm.config >/dev/null || die "리다이렉트 URI 갱신 실패"
   ok "리다이렉트 URI 교정 — ${PUBLIC_URL}/* (+ localhost:5173), post-logout 허용"
+
+  # Keycloak 은 realm_access 를 기본적으로 액세스 토큰에만 싣는다. ID 토큰에도
+  # 넣어 두면 토큰만 보고 권한을 알 수 있어 디버깅이 쉽다.
+  # (앱은 액세스 토큰도 읽으므로 이 매퍼가 없어도 동작한다 — 보강일 뿐이다.)
+  local mapper
+  mapper="$("${K[@]}" exec -i "$POD" -c keycloak -- "$kcadm" \
+            get "clients/${uuid}/protocol-mappers/models" -r "$REALM" \
+            --fields id,name --format csv --noquotes --config /tmp/nullus-kcadm.config 2>/dev/null \
+            | grep -i 'nullus-realm-roles' | cut -d, -f1 | tr -d '\r' | head -1 || true)"
+  if [[ -z "$mapper" ]]; then
+    "${K[@]}" exec -i "$POD" -c keycloak -- "$kcadm" \
+      create "clients/${uuid}/protocol-mappers/models" -r "$REALM" \
+      -s name=nullus-realm-roles \
+      -s protocol=openid-connect \
+      -s protocolMapper=oidc-usermodel-realm-role-mapper \
+      -s 'config."claim.name"=realm_access.roles' \
+      -s 'config."jsonType.label"=String' \
+      -s 'config."multivalued"=true' \
+      -s 'config."id.token.claim"=true' \
+      -s 'config."access.token.claim"=true' \
+      --config /tmp/nullus-kcadm.config >/dev/null 2>&1 \
+      && ok "realm 롤 매퍼 생성 (ID 토큰에도 realm_access 포함)" \
+      || warn "realm 롤 매퍼 생성 실패 — 앱은 액세스 토큰으로 폴백하므로 동작에는 지장 없음"
+  else
+    info "realm 롤 매퍼 이미 존재"
+  fi
 }
 
 do_setup() {

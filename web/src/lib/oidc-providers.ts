@@ -31,10 +31,22 @@ export interface OIDCProviderConfig {
   getLogoutUrl?: (idToken: string, redirectUri: string) => string
 }
 
-// Keycloak stores roles at profile.realm_access.roles (nested object)
+/**
+ * Keycloak 의 realm 롤을 읽는다.
+ *
+ * Keycloak 은 `realm_access` 를 기본적으로 **액세스 토큰에만** 싣는다. ID 토큰에도
+ * 넣으려면 realm-roles 매퍼에 `id.token.claim=true` 를 켜야 하는데, 그 설정에
+ * 의존하면 서버 구성이 조금만 달라져도 모든 사용자가 최저 권한으로 떨어진다
+ * (실제로 admin·devops 계정이 전부 developer 로 보였다).
+ *
+ * 그래서 ID 토큰(profile)을 먼저 보고, 없으면 액세스 토큰을 직접 열어 본다.
+ * 액세스 토큰의 realm_access 는 Keycloak 이 항상 넣어 주므로 설정과 무관하게 동작한다.
+ */
 function keycloakExtractRoles(user: OIDCUser): string[] {
-  const realmAccess = user.profile?.realm_access as { roles?: string[] } | undefined
-  return realmAccess?.roles ?? []
+  const fromProfile = (user.profile?.realm_access as { roles?: string[] } | undefined)?.roles
+  if (fromProfile?.length) return fromProfile
+  const claims = decodeJwtPayload(user.access_token)
+  return (claims?.realm_access as { roles?: string[] } | undefined)?.roles ?? []
 }
 
 // Authentik stores roles at profile.groups (flat array via profile scope)
@@ -57,19 +69,23 @@ function authentikExtractRoles(user: OIDCUser): string[] {
  * 서명은 검증하지 않는다 — 여기서 필요한 건 "이 힌트를 보내도 되는가" 뿐이고,
  * 실제 검증은 Keycloak 이 한다.
  */
+export function decodeJwtPayload(token: string | undefined): Record<string, unknown> | null {
+  const payload = token?.split('.')[1]
+  if (!payload) return null
+  try {
+    return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
 export function isTokenForClient(idToken: string, clientId: string): boolean {
   if (!idToken || !clientId) return false
-  const payload = idToken.split('.')[1]
-  if (!payload) return false
-  try {
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
-    const claims = JSON.parse(json) as { azp?: string; aud?: string | string[] }
-    if (claims.azp) return claims.azp === clientId
-    if (Array.isArray(claims.aud)) return claims.aud.includes(clientId)
-    return claims.aud === clientId
-  } catch {
-    return false
-  }
+  const claims = decodeJwtPayload(idToken) as { azp?: string; aud?: string | string[] } | null
+  if (!claims) return false
+  if (claims.azp) return claims.azp === clientId
+  if (Array.isArray(claims.aud)) return claims.aud.includes(clientId)
+  return claims.aud === clientId
 }
 
 export function getProviderConfig(): OIDCProviderConfig {
