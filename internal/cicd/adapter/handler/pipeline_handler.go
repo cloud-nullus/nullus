@@ -111,6 +111,12 @@ type createPipelineRequest struct {
 	DockerfilePath string            `json:"dockerfile_path"`
 	DockerContext  string            `json:"docker_context"`
 	EnvVars        map[string]string `json:"env_vars"`
+	// ProvisionRepository 가 true 면 앱 저장소를 만들고 스캐폴딩을 커밋한 뒤
+	// Argo CD Application 까지 연결한다. stack_id 가 필요하다.
+	ProvisionRepository bool              `json:"provision_repository"`
+	Port                int32             `json:"port"`
+	Replicas            int32             `json:"replicas"`
+	RegistryCredentials map[string]string `json:"registry_credentials"`
 }
 
 // CreatePipeline handles POST /api/v1/pipelines.
@@ -135,6 +141,11 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		DockerfilePath: req.DockerfilePath,
 		DockerContext:  req.DockerContext,
 		EnvVars:        req.EnvVars,
+
+		ProvisionRepository: req.ProvisionRepository,
+		Port:                req.Port,
+		Replicas:            req.Replicas,
+		RegistryCredentials: req.RegistryCredentials,
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrStackNotFound) {
@@ -149,6 +160,19 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 	resp := map[string]any{"pipeline": out.Pipeline}
 	if out.StackWarning != "" {
 		resp["warning"] = out.StackWarning
+	}
+	// 저장소를 만들었다면 후속 조치를 응답에 실어 보낸다.
+	// 등록해야 할 변수를 알리지 않으면 첫 파이프라인이 로그인 실패로 죽고
+	// 사용자가 원인을 찾기 어렵다.
+	if out.RepositoryPath != "" {
+		resp["repository_path"] = out.RepositoryPath
+		resp["argo_application_created"] = out.ArgoApplicationCreated
+	}
+	if len(out.MissingVariables) > 0 {
+		resp["missing_variables"] = out.MissingVariables
+	}
+	if len(out.Warnings) > 0 {
+		resp["warnings"] = out.Warnings
 	}
 	return c.JSON(http.StatusCreated, resp)
 }

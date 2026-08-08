@@ -7,6 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -21,8 +22,10 @@ import (
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
+	cicdgitlab "github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
+	cicdprovisioning "github.com/cloud-nullus/draft/internal/cicd/adapter/provisioning"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
@@ -189,7 +192,32 @@ func main() {
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
 	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
 	manifestApplier := cicdkube.NewManifestApplier()
-	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo)
+
+	// CI/CD 저장소 프로비저닝 배선.
+	// GitLab 주소·토큰·레지스트리 종류가 스택마다 달라 기동 시점에 클라이언트를
+	// 하나로 만들 수 없다. 팩토리가 요청 시점에 스택을 읽어 조립한다.
+	cicdStackReader := cicdrepo.NewPostgresStackReader(pool)
+	cicdTokenIssuer := cicdgitlab.NewTokenIssuer(
+		kubeconfigProvider,
+		cicdKubectlRunner,
+		secretRouter,
+	)
+	cicdBundleFactory := cicdprovisioning.NewBundleFactory(
+		cicdStackReader,
+		cicdTokenIssuer,
+		cicdprovisioning.Options{
+			Env:       tokenSourceEnvironment(cfg.Server.Mode),
+			GroupPath: cicdGroupPath(),
+			// 기본은 클러스터 내부 서비스 DNS 다. API 서버를 클러스터 밖에서
+			// 돌리거나 외부 GitLab 을 붙일 때만 지정한다.
+			GitLabBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
+		},
+	)
+	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
+		cicdBundleFactory, manifestApplier, kubeconfigProvider)
+
+	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, cicdStackReader).
+		WithRepositoryProvisioner(provisionRepoUC)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
 	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
@@ -365,6 +393,43 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// cicdGroupPath 는 CI/CD 프로젝트가 만들어질 GitLab 그룹 경로다.
+// NULLUS_SCM_GROUP 으로 재정의할 수 있다.
+func cicdGroupPath() string {
+	return envOrDefault("NULLUS_SCM_GROUP", "nullus")
+}
+
+// cicdKubectlRunner 는 CI/CD 모듈이 쓰는 kubectl 실행기다.
+//
+// 다른 모듈의 동일 구현을 재사용하지 않는다 — 모듈 간 직접 import 를 피하고
+// 각 컨텍스트가 자기 계약을 소유하도록 조립 지점에서 주입한다.
+func cicdKubectlRunner(ctx context.Context, kubeconfig []byte, args ...string) ([]byte, error) {
+	if len(kubeconfig) == 0 {
+		return nil, fmt.Errorf("kubeconfig is empty")
+	}
+	tmp, err := os.CreateTemp("", "nullus-cicd-kubeconfig-*.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("create kubeconfig temp file: %w", err)
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+
+	if _, err := tmp.Write(kubeconfig); err != nil {
+		_ = tmp.Close()
+		return nil, fmt.Errorf("write kubeconfig temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("close kubeconfig temp file: %w", err)
+	}
+
+	full := append([]string{"--kubeconfig", tmp.Name()}, args...)
+	out, err := exec.CommandContext(ctx, "kubectl", full...).CombinedOutput()
+	if err != nil {
+		return out, fmt.Errorf("kubectl %s: %w (%s)",
+			strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return out, nil
 }
 
 func tokenRotationInterval() time.Duration {
