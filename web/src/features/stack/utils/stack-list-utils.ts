@@ -31,6 +31,12 @@ export type LaunchTool = {
   logo: string;
 };
 
+import type {
+  StackConnectionInfoResponse,
+  StorageConnectionResponse,
+  ToolCredentialResponse,
+} from "../api/stack-api-types";
+
 export type StorageConnectionInfo = {
   mode: string;
   providerOrEngine: string;
@@ -511,160 +517,92 @@ export function extractAccessDomain(
   return fallbackAccessDomain(stackName);
 }
 
-function readStorageTarget(
-  record: Record<string, unknown>,
-  fallback: Partial<StorageConnectionInfo>,
-): StorageConnectionInfo {
+
+/**
+ * 서버 응답을 화면 표시용 모양으로 옮긴다.
+ *
+ * 값을 만들지 않고 옮기기만 한다 — 리소스 이름의 단일 출처는 서버
+ * (internal/stack/domain/connection.go)다. 아직 응답이 없으면 빈 값을 주어
+ * "-" 로 보이게 하고, 그럴듯한 이름을 지어내지 않는다.
+ */
+export function toConnectionInfoView(
+  server: StackConnectionInfoResponse | undefined,
+  fallbackAccessDomain = "",
+): StackConnectionInfo {
+  const storage = (s?: StorageConnectionResponse): StorageConnectionInfo => ({
+    mode: s?.mode ?? "",
+    providerOrEngine: s?.engine ?? "",
+    endpoint: s?.endpoint ?? "",
+    resourceName: s?.resource_name ?? "",
+    authId: s?.auth_id ?? "",
+    accessSecretRef: s?.secret_ref ?? "",
+    authPasswordKey: s?.secret_key ?? "",
+  });
+
   return {
-    mode: readString(record, ["mode", "Mode"]) || fallback.mode || "create",
-    providerOrEngine:
-      readString(record, [
-        "provider_or_engine",
-        "providerOrEngine",
-        "ProviderOrEngine",
-      ]) ||
-      fallback.providerOrEngine ||
-      "-",
-    endpoint:
-      readString(record, ["endpoint", "Endpoint"]) || fallback.endpoint || "-",
-    resourceName:
-      readString(record, ["resource_name", "resourceName", "ResourceName"]) ||
-      fallback.resourceName ||
-      "-",
-    authId:
-      readString(record, ["auth_id", "authId", "AuthID", "user", "username"]) ||
-      fallback.authId ||
-      "-",
-    accessSecretRef:
-      readString(record, [
-        "access_secret_ref",
-        "accessSecretRef",
-        "AccessSecretRef",
-        "secret",
-        "secretRef",
-      ]) ||
-      fallback.accessSecretRef ||
-      "-",
-    authPasswordKey:
-      readString(record, [
-        "auth_password_key",
-        "authPasswordKey",
-        "AuthPasswordKey",
-        "passwordKey",
-      ]) ||
-      fallback.authPasswordKey ||
-      "-",
+    accessDomain: server?.access_domain || fallbackAccessDomain,
+    namespace: server?.namespace ?? "",
+    database: storage(server?.database),
+    objectStorage: storage(server?.object_storage),
   };
 }
 
-export function extractConnectionInfo(
-  snapshot: unknown,
-  namespace: string,
-  accessDomain: string,
-): StackConnectionInfo {
-  const config = resolveSnapshotConfig(snapshot);
-  const storage = pickGroup(config, ["storage", "Storage"]);
-  const db = pickGroup(storage, ["database", "Database"]);
-  const objectStorage = pickGroup(storage, [
-    "object_storage",
-    "objectStorage",
-    "ObjectStorage",
-  ]);
+/**
+ * 실행 도구 이름으로 서버가 준 자격증명을 찾는다.
+ *
+ * 카탈로그 표기가 "Argo CD" / "argocd" 로 흔들리므로 정규화해서 맞춘다.
+ */
+export function findToolCredential(
+  tools: ToolCredentialResponse[] | undefined,
+  name: string,
+): ToolCredentialResponse | undefined {
+  const key = normalizeToolName(name);
+  return tools?.find((tool) => normalizeToolName(tool.name) === key);
+}
 
-  // 스냅샷에 값이 없을 때 화면에 그대로 노출되는 값이다.
-  // PostgreSQL/MinIO 의 Service·Secret 이름은 Helm 릴리스명 기준이라
-  // 네임스페이스와 무관하다 — ${ns} 로 조립하면 항상 어긋난 값을 보여준다.
-  // 아래 상수는 설치 경로(internal/stack/adapter/helm/secret-provisioning.go)의
-  // ProvisionedPostgresSecret / ProvisionedMinIOSecret / MinIORootUser 와 맞춘다.
-  const dbFallback: Partial<StorageConnectionInfo> = {
-    mode: "create",
-    providerOrEngine: "postgres",
-    endpoint: "nullus-postgresql:5432",
-    resourceName: "gitlabhq_production",
-    authId: "gitlab",
-    accessSecretRef: "nullus-postgresql-credentials",
-    authPasswordKey: "password",
-  };
-  const objectFallback: Partial<StorageConnectionInfo> = {
-    mode: "create",
-    providerOrEngine: "minio",
-    endpoint: "http://nullus-minio:9000",
-    resourceName: "gitlab-artifacts",
-    authId: "nullus-admin",
-    accessSecretRef: "nullus-minio-credentials",
-    authPasswordKey: "rootPassword",
-  };
-
-  return {
-    accessDomain,
-    namespace: namespace.trim(),
-    database: readStorageTarget(db, dbFallback),
-    objectStorage: readStorageTarget(objectStorage, objectFallback),
-  };
+// 표기 흔들림을 흡수한다 — "Argo CD" / "argo-cd" / "ArgoCD" 는 같은 도구다.
+// 구분자를 남겨 두면 서버가 "Argo CD" 로 준 항목을 "ArgoCD" 로 못 찾는다.
+function normalizeToolName(name: string): string {
+  return name.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 export function buildOssLoginHint(
-  toolName: string,
-  conn: StackConnectionInfo,
+  tool: ToolCredentialResponse | undefined,
+  namespace: string,
   isKorean = false,
 ): string {
-  const key = toolName
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  // 스택은 사용자가 정한 네임스페이스에 설치된다. 고정값을 쓰면 안내대로
-  // 실행해도 NotFound 가 난다. 모를 때는 지어내지 말고 자리표시자를 남긴다.
-  const ns = conn.namespace?.trim() || "<namespace>";
-  const secretCmd = (secret: string, key = "password") =>
-    `kubectl -n ${ns} get secret ${secret} -o jsonpath='{.data.${key}}' | base64 -d`;
+  if (!tool) {
+    return isKorean
+      ? "접속 정보를 불러오는 중입니다."
+      : "Loading connection info...";
+  }
+  if (!tool.secret_ref) {
+    return (
+      tool.note ??
+      (isKorean
+        ? "도구별 기본 인증정보를 확인하세요."
+        : "Check the default credentials for each tool.")
+    );
+  }
 
-  if (["argocd", "argo cd"].includes(key)) {
-    // Argo CD 차트는 Secret 에 릴리스 접두사를 붙이지 않는다.
-    return `ID: admin / Password: ${secretCmd("argocd-initial-admin-secret")}`;
-  }
-  if (["gitlab", "gitlab ce", "gitlab ci", "gitlab registry"].includes(key)) {
-    return `ID: root / Password: ${secretCmd("gitlab-gitlab-initial-root-password")}`;
-  }
-  if (key === "grafana") {
-    return isKorean
-      ? "기본값: admin / admin (또는 values override 확인)"
-      : "Default: admin / admin (or check values override)";
-  }
-  if (key === "minio") {
-    return `ID: ${conn.objectStorage.authId} / SecretRef: ${conn.objectStorage.accessSecretRef} (key: ${conn.objectStorage.authPasswordKey})`;
-  }
-  if (key === "opensearch") {
-    return isKorean
-      ? "ID: admin / 비밀번호: NullusAdmin123! (기본값, 변경 시 values 확인)"
-      : "ID: admin / Password: NullusAdmin123! (default value, check values if changed)";
-  }
-  if (key === "prometheus") {
-    return isKorean
-      ? "로그인 불필요 (기본 설정)"
-      : "No login required (default setting)";
-  }
-  if (key === "openbao") {
-    return isKorean
-      ? "관리자 인증 후 OpenBao UI에서 토큰/시크릿을 조회하세요."
-      : "After admin authentication, check tokens/secrets in OpenBao UI.";
-  }
-  return isKorean
-    ? "도구별 기본 인증정보를 확인하세요."
-    : "Check the default credentials for each tool.";
+  const ns = namespace.trim() || "<namespace>";
+  const key = tool.secret_key || "password";
+  const cmd = `kubectl -n ${ns} get secret ${tool.secret_ref} -o jsonpath='{.data.${key}}' | base64 -d`;
+  return tool.username ? `ID: ${tool.username} / Password: ${cmd}` : cmd;
 }
 
 export function buildConnectionInfoText(
   stackName: string,
   conn: StackConnectionInfo,
   launchTools: LaunchTool[],
+  toolCredentials: ToolCredentialResponse[] | undefined,
   isKorean = false,
   gatewayPFCommand?: string,
 ): string {
   const ossLines = launchTools
     .map(
       (tool) =>
-        `- ${tool.name}: ${tool.url ?? (isKorean ? "(URL 없음)" : "(No URL)")} | ${buildOssLoginHint(tool.name, conn, isKorean)}`,
+        `- ${tool.name}: ${tool.url ?? (isKorean ? "(URL 없음)" : "(No URL)")} | ${buildOssLoginHint(findToolCredential(toolCredentials, tool.name), conn.namespace, isKorean)}`,
     )
     .join("\n");
   const gatewayLines = gatewayPFCommand

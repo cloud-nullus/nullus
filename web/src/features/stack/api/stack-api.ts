@@ -23,6 +23,7 @@ import type {
   DeployStackInput,
   StackIntegrationsResponse,
   StackMonitoringSnapshot,
+  StackConnectionInfoResponse,
 } from "./stack-api-types";
 import type {
   ClusterStatus,
@@ -77,6 +78,8 @@ const queryKeys = {
   workloads: (stackId: string) => ["stacks", "workloads", stackId] as const,
   integrations: (stackId: string) =>
     ["stacks", "integrations", stackId] as const,
+  connectionInfo: (stackId: string) =>
+    ["stacks", "connection-info", stackId] as const,
   resourceDefaults: () => ["stacks", "resource-defaults"] as const,
 };
 
@@ -325,6 +328,11 @@ const stackApiCalls = {
       .get<StackIntegrationsResponse>(`/stacks/${stackId}/integrations`)
       .then((r) => r.data),
 
+  getConnectionInfo: (stackId: string) =>
+    api
+      .get<StackConnectionInfoResponse>(`/stacks/${stackId}/connection-info`)
+      .then((r) => r.data),
+
   exportStackConfig: async (stackId: string, format: StackExportFormat) => {
     const response = await api.get<Blob>(`/stacks/${stackId}/export`, {
       params: { format },
@@ -383,6 +391,14 @@ export function useStacks(
     queryFn: () => stackApiCalls.getList(filters),
     refetchInterval: (query) =>
       stackListRefetchInterval(query.state.data, options?.refetchIntervalMs),
+  });
+}
+
+export function useStackConnectionInfo(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.connectionInfo(stackId),
+    queryFn: () => stackApiCalls.getConnectionInfo(stackId),
+    enabled: !!stackId,
   });
 }
 

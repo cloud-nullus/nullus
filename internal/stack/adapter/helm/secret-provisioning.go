@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 // 시크릿 지도 — provisioning_secrets 스텝이 생성·저장하는 목록이다.
@@ -48,22 +49,25 @@ type ManagedSecret struct {
 	TemplateData map[string]string
 }
 
+// 프로비저닝된 Secret 이름. 차트 values 가 existingSecret 으로 참조한다.
+//
+// 값의 단일 출처는 domain 이다 — 설치 경로와 조회 경로(연결정보 안내)가 같은
+// 이름을 봐야 하는데, 양쪽에 각각 적어 두면 한쪽만 바뀌었을 때 조용히 어긋난다.
 const (
-	// 프로비저닝된 Secret 이름. 차트 values 가 existingSecret 으로 참조한다.
-	ProvisionedPostgresSecret      = "nullus-postgresql-credentials"
-	ProvisionedMinIOSecret         = "nullus-minio-credentials"
+	ProvisionedPostgresSecret      = domain.ProvisionedPostgresSecret
+	ProvisionedMinIOSecret         = domain.ProvisionedMinIOSecret
 	ProvisionedGitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
-	ProvisionedObjectStorageSecret = "nullus-object-storage"
+	ProvisionedObjectStorageSecret = domain.ProvisionedObjectStorageSecret
 
 	// Container Registry 전용 스토리지 설정. Rails 의 object_store 와 형식이
 	// 달라(Docker distribution 스키마) 같은 Secret 에 담을 수 없다.
-	ProvisionedRegistryStorageSecret = "nullus-registry-storage" // #nosec G101 -- Secret 리소스 이름
+	ProvisionedRegistryStorageSecret = domain.ProvisionedRegistryStorageSecret
 	RegistryStorageSecretKey         = "config"
 	RegistryStorageBucket            = "gitlab-registry"
 
 	// MinIORootUser 는 비밀이 아니지만 차트의 existingSecret 이 같은 Secret 안에서
 	// 요구하므로 함께 프로비저닝한다.
-	MinIORootUser = "nullus-admin"
+	MinIORootUser = domain.MinIORootUser
 )
 
 // managedSecrets 는 현재 관리 대상 시크릿이다.

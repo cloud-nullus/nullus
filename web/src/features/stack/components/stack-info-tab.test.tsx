@@ -11,6 +11,7 @@ vi.mock('../api/stack-api', () => ({
   useStackHistory: (...args: unknown[]) => mockUseStackHistory(...args),
   useStackMonitoring: (...args: unknown[]) => mockUseStackMonitoring(...args),
   useExportStackConfig: (...args: unknown[]) => mockUseExportStackConfig(...args),
+  useStackConnectionInfo: () => ({ data: undefined }),
 }))
 
 vi.mock('./stack-info-panels', () => ({
@@ -46,8 +47,9 @@ vi.mock('../utils/stack-list-utils', () => ({
   extractAccessDomain: () => '',
   toolLaunchURL: () => '',
   buildHostsText: () => '',
-  extractConnectionInfo: () => ({
+  toConnectionInfoView: () => ({
     accessDomain: '',
+    namespace: 'devsecops',
     database: {
       mode: 'none',
       providerOrEngine: '-',
@@ -69,6 +71,7 @@ vi.mock('../utils/stack-list-utils', () => ({
   }),
   buildConnectionInfoText: () => 'connection-info',
   buildOssLoginHint: () => 'hint',
+  findToolCredential: () => undefined,
   deriveGatewayName: () => 'gateway',
   toShellSingleQuoted: (value: string) => value,
   copyTextToClipboard: async () => undefined,

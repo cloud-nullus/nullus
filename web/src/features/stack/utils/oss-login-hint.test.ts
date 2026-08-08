@@ -1,114 +1,143 @@
 import { describe, it, expect } from "vitest";
 import {
   buildOssLoginHint,
-  extractConnectionInfo,
-  type StackConnectionInfo,
+  findToolCredential,
+  toConnectionInfoView,
 } from "./stack-list-utils";
+import type { StackConnectionInfoResponse } from "../api/stack-api-types";
 
-function connInfo(namespace: string): StackConnectionInfo {
+// 서버가 실제로 내려주는 모양. 리소스 이름의 단일 출처는
+// internal/stack/domain/connection.go 이고, 프론트는 그대로 옮기기만 한다.
+function serverResponse(namespace: string): StackConnectionInfoResponse {
   return {
-    accessDomain: "nullus-devsecops-stack.internal",
+    stack_id: "stk_1",
     namespace,
+    access_domain: "nullus-devsecops-stack.internal",
     database: {
       mode: "create",
-      providerOrEngine: "postgres",
+      engine: "postgres",
       endpoint: "nullus-postgresql:5432",
-      resourceName: "nullus",
-      authId: "gitlab",
-      accessSecretRef: "nullus-postgresql-credentials",
-      authPasswordKey: "password",
+      resource_name: "gitlabhq_production",
+      auth_id: "gitlab",
+      secret_ref: "nullus-postgresql-credentials",
+      secret_key: "password",
     },
-    objectStorage: {
+    object_storage: {
       mode: "create",
-      providerOrEngine: "minio",
+      engine: "minio",
       endpoint: "http://nullus-minio:9000",
-      resourceName: "nullus-artifacts",
-      authId: "nullus-admin",
-      accessSecretRef: "nullus-minio-credentials",
-      authPasswordKey: "rootPassword",
+      resource_name: "gitlab-artifacts",
+      auth_id: "nullus-admin",
+      secret_ref: "nullus-minio-credentials",
+      secret_key: "rootPassword",
     },
+    tools: [
+      {
+        name: "GitLab CE",
+        username: "root",
+        secret_ref: "gitlab-gitlab-initial-root-password",
+        secret_key: "password",
+      },
+      {
+        name: "Argo CD",
+        username: "admin",
+        secret_ref: "argocd-initial-admin-secret",
+        secret_key: "password",
+      },
+      { name: "Prometheus", note: "기본 설정에서는 로그인이 필요 없습니다." },
+    ],
   };
 }
 
 describe("buildOssLoginHint", () => {
+  const tools = serverResponse("devsecops").tools;
+
   // 스택은 사용자가 정한 네임스페이스에 설치된다. nullus 로 고정하면
   // 안내대로 명령을 실행해도 NotFound 가 난다.
   it("uses the stack namespace instead of a hardcoded one", () => {
-    const hint = buildOssLoginHint("Argo CD", connInfo("devsecops"));
+    const hint = buildOssLoginHint(
+      findToolCredential(tools, "Argo CD"),
+      "devsecops",
+    );
     expect(hint).toContain("-n devsecops");
     expect(hint).not.toContain("-n nullus");
   });
 
-  // Argo CD 차트는 Secret 에 릴리스 접두사를 붙이지 않는다.
-  // argo-cd-argocd-initial-admin-secret 은 존재하지 않는 이름이다.
-  it("points at the real Argo CD admin secret name", () => {
-    const hint = buildOssLoginHint("Argo CD", connInfo("devsecops"));
+  // Secret 이름은 서버가 준 값을 그대로 쓴다. 화면에서 릴리스 접두사를
+  // 붙이거나 떼면 차트 규칙과 갈린다.
+  it("uses the secret name the server returned verbatim", () => {
+    const hint = buildOssLoginHint(
+      findToolCredential(tools, "Argo CD"),
+      "devsecops",
+    );
     expect(hint).toContain("secret argocd-initial-admin-secret");
-    expect(hint).not.toContain("argo-cd-argocd-initial-admin-secret");
-  });
-
-  it("handles Argo CD name variants", () => {
-    for (const name of ["Argo CD", "argocd", "argo-cd", "ArgoCD"]) {
-      expect(buildOssLoginHint(name, connInfo("devsecops"))).toContain(
-        "secret argocd-initial-admin-secret",
-      );
-    }
+    expect(hint).toContain("ID: admin");
   });
 
   it("keeps the GitLab root secret name and scopes it to the namespace", () => {
-    const hint = buildOssLoginHint("GitLab CE", connInfo("devsecops"));
+    const hint = buildOssLoginHint(
+      findToolCredential(tools, "GitLab CE"),
+      "devsecops",
+    );
     expect(hint).toContain("gitlab-gitlab-initial-root-password");
     expect(hint).toContain("-n devsecops");
   });
 
   // 네임스페이스를 모르면 그럴듯한 명령을 지어내지 않는다.
   it("falls back to a placeholder when namespace is unknown", () => {
-    const hint = buildOssLoginHint("Argo CD", connInfo(""));
+    const hint = buildOssLoginHint(findToolCredential(tools, "Argo CD"), "");
     expect(hint).toContain("<namespace>");
   });
 
-  it("uses connection info for MinIO", () => {
-    const hint = buildOssLoginHint("MinIO", connInfo("devsecops"));
-    expect(hint).toContain("nullus-admin");
-    expect(hint).toContain("nullus-minio-credentials");
+  // 조회할 Secret 이 없는 도구는 명령 대신 안내문을 보여준다.
+  it("shows the note when the tool has no secret", () => {
+    const hint = buildOssLoginHint(
+      findToolCredential(tools, "Prometheus"),
+      "devsecops",
+    );
+    expect(hint).not.toContain("kubectl");
+    expect(hint).toContain("로그인이 필요 없습니다");
+  });
+
+  // 응답이 오기 전에 그럴듯한 명령을 만들어 보여주면 안 된다.
+  it("says it is loading when the server has not answered yet", () => {
+    expect(buildOssLoginHint(undefined, "devsecops", true)).toContain(
+      "불러오는 중",
+    );
   });
 });
 
-describe("extractConnectionInfo", () => {
-  // 힌트가 네임스페이스를 쓰려면 여기서 보존되어야 한다.
-  it("carries the namespace through", () => {
-    const conn = extractConnectionInfo({}, "devsecops", "example.internal");
-    expect(conn.namespace).toBe("devsecops");
+describe("findToolCredential", () => {
+  // 카탈로그 표기가 "Argo CD" / "argocd" 로 흔들린다.
+  it("matches tool name variants", () => {
+    const tools = serverResponse("devsecops").tools;
+    for (const name of ["Argo CD", "argocd", "argo-cd", "ArgoCD"]) {
+      expect(findToolCredential(tools, name)?.secret_ref).toBe(
+        "argocd-initial-admin-secret",
+      );
+    }
+  });
+
+  it("returns undefined for a tool the server did not list", () => {
+    expect(findToolCredential(serverResponse("x").tools, "Jenkins")).toBeUndefined();
   });
 });
 
-describe("extractConnectionInfo fallbacks", () => {
-  // 폴백은 스냅샷에 값이 없을 때 화면에 그대로 노출된다.
-  // 틀린 값을 보여주면 사용자가 그대로 실행했다가 NotFound 를 만난다.
-  //
-  // PostgreSQL/MinIO 서비스와 시크릿 이름은 Helm 릴리스명 기준이라
-  // 네임스페이스와 무관하다. ${ns} 로 조립하면 항상 어긋난다.
-  // (Go 쪽 상수: internal/stack/adapter/helm/secret-provisioning.go)
-  const conn = extractConnectionInfo({}, "devsecops", "example.internal");
-
-  it("points at the provisioned PostgreSQL secret", () => {
-    expect(conn.database.accessSecretRef).toBe("nullus-postgresql-credentials");
-    expect(conn.database.authPasswordKey).toBe("password");
-    expect(conn.database.endpoint).toBe("nullus-postgresql:5432");
-    expect(conn.database.accessSecretRef).not.toContain("devsecops");
+describe("toConnectionInfoView", () => {
+  it("carries the server namespace and secret names through", () => {
+    const view = toConnectionInfoView(serverResponse("devsecops"));
+    expect(view.namespace).toBe("devsecops");
+    expect(view.database.accessSecretRef).toBe("nullus-postgresql-credentials");
+    expect(view.objectStorage.accessSecretRef).toBe("nullus-minio-credentials");
+    expect(view.objectStorage.authId).toBe("nullus-admin");
   });
 
-  it("points at the provisioned MinIO secret", () => {
-    expect(conn.objectStorage.accessSecretRef).toBe("nullus-minio-credentials");
-    expect(conn.objectStorage.authPasswordKey).toBe("rootPassword");
-    expect(conn.objectStorage.authId).toBe("nullus-admin");
-    expect(conn.objectStorage.endpoint).toBe("http://nullus-minio:9000");
-    expect(conn.objectStorage.accessSecretRef).not.toContain("devsecops");
-  });
-
-  it("does not derive service names from the namespace", () => {
-    const other = extractConnectionInfo({}, "team-a", "example.internal");
-    expect(other.database.endpoint).toBe(conn.database.endpoint);
-    expect(other.objectStorage.endpoint).toBe(conn.objectStorage.endpoint);
+  // 응답 전에는 값을 지어내지 않고 비워 둔다 — 화면에는 "-" 로 보인다.
+  it("stays empty until the server answers", () => {
+    const view = toConnectionInfoView(undefined, "example.internal");
+    expect(view.accessDomain).toBe("example.internal");
+    expect(view.namespace).toBe("");
+    expect(view.database.endpoint).toBe("");
+    expect(view.database.accessSecretRef).toBe("");
   });
 });

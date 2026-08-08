@@ -9,6 +9,7 @@ import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
 import {
   useExportStackConfig,
+  useStackConnectionInfo,
   useStackHistory,
   useStackMonitoring,
 } from "../api/stack-api";
@@ -23,7 +24,8 @@ import {
   extractAccessDomain,
   toolLaunchURL,
   buildHostsText,
-  extractConnectionInfo,
+  toConnectionInfoView,
+  findToolCredential,
   buildConnectionInfoText,
   buildOssLoginHint,
   deriveGatewayName,
@@ -167,11 +169,10 @@ export function StackInfoTab({
     logo: toolLogoURL(tool.name),
   }));
   const hostsText = buildHostsText(stack.name, accessDomain, launchTools);
-  const connectionInfo = extractConnectionInfo(
-    latestSnapshot,
-    stack.namespace?.trim() || "nullus",
-    accessDomain,
-  );
+  // 접속 정보는 서버가 확정해 내려준다 — 리소스 이름을 화면에서 조립하면
+  // 설치 규칙이 바뀌는 순간 존재하지 않는 Secret 을 안내하게 된다.
+  const { data: serverConnection } = useStackConnectionInfo(stack.id);
+  const connectionInfo = toConnectionInfoView(serverConnection, accessDomain);
   const stackNamespace = stack.namespace?.trim() || "nullus";
   const stackNamespaceArg = toShellSingleQuoted(stackNamespace);
   const gatewayNameArg = toShellSingleQuoted(
@@ -190,6 +191,7 @@ export function StackInfoTab({
     stack.name,
     connectionInfo,
     launchTools,
+    serverConnection?.tools,
     isKorean,
     gatewayPFCommand,
   );
@@ -532,7 +534,11 @@ export function StackInfoTab({
                     </a>
                   </div>
                   <div className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-                    {buildOssLoginHint(tool.name, connectionInfo, isKorean)}
+                    {buildOssLoginHint(
+                      findToolCredential(serverConnection?.tools, tool.name),
+                      connectionInfo.namespace,
+                      isKorean,
+                    )}
                   </div>
                 </div>
               ))}
