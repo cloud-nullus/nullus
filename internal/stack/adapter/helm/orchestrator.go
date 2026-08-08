@@ -138,8 +138,10 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 				}
 			}
 			if step == stepInstallingRunner && isReleaseNotFoundError(err) {
-				slog.Warn("skipping runner runtime health check because release is absent", "release", releaseName, "namespace", namespace)
-				continue
+				// 릴리스 부재를 건너뛰면 러너 없는 스택이 health_check 를 통과한다.
+				// 설치 스텝이 성공했다면 릴리스는 반드시 존재해야 한다.
+				return fmt.Errorf("gitlab-runner 릴리스가 없습니다 (%s/%s): CI 실행기 없이 스택이 완료될 수 없습니다: %w",
+					namespace, releaseName, err)
 			}
 			return fmt.Errorf("status check failed for %s: %w", releaseName, err)
 		}
@@ -694,9 +696,9 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		if looksLikeKubeconfig(o.kubeconfig) {
 			runnerToken, tokenErr := o.discoverGitLabRunnerRegistrationToken(ctx, namespace)
 			if tokenErr != nil {
-				slog.Warn("gitlab runner installation skipped: runner token discovery failed", "namespace", namespace, "error", tokenErr)
-				o.markCompleted(stackID, order)
-				return nil
+				// 스킵하지 않는다 — 러너 없이 completed 로 끝나면 CI 가 한 건도
+				// 돌지 않는 스택이 성공으로 보고된다.
+				return wrapRunnerTokenDiscoveryError(tokenErr)
 			}
 			values = mergeMaps(values, map[string]any{
 				"runnerToken": runnerToken,

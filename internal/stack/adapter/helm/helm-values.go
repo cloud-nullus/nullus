@@ -254,11 +254,20 @@ func (o *Orchestrator) gitlabExternalSharedServiceValues(_ *domain.StackConfig) 
 				"backups": map[string]any{
 					"objectStorage": map[string]any{
 						"config": map[string]any{
-							"secret": "nullus-object-storage",
+							"secret": ProvisionedObjectStorageSecret,
 							"key":    "config",
 						},
 					},
 				},
+			},
+		},
+		// Container Registry 를 S3(MinIO) 백엔드로 고정한다. 차트 기본값인
+		// filesystem 은 PVC 없이 /tmp 를 쓰므로 파드 재시작 시 이미지가 사라지고,
+		// replica 2개 사이에 스토리지가 공유되지 않아 pull 이 비결정적으로 실패한다.
+		"registry": map[string]any{
+			"storage": map[string]any{
+				"secret": ProvisionedRegistryStorageSecret,
+				"key":    RegistryStorageSecretKey,
 			},
 		},
 	}

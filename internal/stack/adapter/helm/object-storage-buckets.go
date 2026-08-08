@@ -17,6 +17,9 @@ var gitLabRequiredBuckets = []string{
 	"gitlab-uploads",
 	"gitlab-packages",
 	"gitlab-pages",
+	// Container Registry 전용. 나머지 버킷은 Rails 의 object_store 가 쓰지만
+	// registry 는 Docker distribution 이 직접 S3 를 붙으므로 분리한다.
+	RegistryStorageBucket,
 }
 
 func (o *Orchestrator) currentStackConfig() *domain.StackConfig {

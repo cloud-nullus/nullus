@@ -55,6 +55,12 @@ const (
 	ProvisionedGitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
 	ProvisionedObjectStorageSecret = "nullus-object-storage"
 
+	// Container Registry 전용 스토리지 설정. Rails 의 object_store 와 형식이
+	// 달라(Docker distribution 스키마) 같은 Secret 에 담을 수 없다.
+	ProvisionedRegistryStorageSecret = "nullus-registry-storage" // #nosec G101 -- Secret 리소스 이름
+	RegistryStorageSecretKey         = "config"
+	RegistryStorageBucket            = "gitlab-registry"
+
 	// MinIORootUser 는 비밀이 아니지만 차트의 existingSecret 이 같은 Secret 안에서
 	// 요구하므로 함께 프로비저닝한다.
 	MinIORootUser = "nullus-admin"
@@ -118,7 +124,44 @@ func managedSecrets(namespace string) []ManagedSecret {
 				"config":     objectStorageConnectionTemplate(minioEndpoint),
 			},
 		},
+		{
+			// Container Registry 스토리지. 차트 기본값은 filesystem(/tmp/registry)
+			// 이라 파드 재시작 시 이미지가 사라지고, replica 가 2개면 push 한 파드와
+			// pull 하는 파드가 달라 비결정적으로 실패한다. S3(MinIO) 로 고정한다.
+			TargetSecret:    ProvisionedRegistryStorageSecret,
+			Consumer:        "GitLab(container registry)",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "artifacts/minio/root-user", TargetKey: "accessKey", Fixed: MinIORootUser},
+				{PathSuffix: "artifacts/minio/root-password", TargetKey: "secretKey"},
+			},
+			TemplateData: map[string]string{
+				RegistryStorageSecretKey: registryStorageConfigTemplate(minioEndpoint),
+			},
+		},
 	}
+}
+
+// registryStorageConfigTemplate 은 Docker distribution 의 storage 블록이다.
+//
+// Rails 의 object_store(objectStorageConnectionTemplate)와 키 이름이 다르다 —
+// registry 는 distribution 스키마(accesskey/secretkey/regionendpoint)를 쓰므로
+// 같은 Secret 을 재사용할 수 없다.
+func registryStorageConfigTemplate(endpoint string) string {
+	return "s3:\n" +
+		"  bucket: " + RegistryStorageBucket + "\n" +
+		"  accesskey: {{ .accessKey }}\n" +
+		"  secretkey: {{ .secretKey }}\n" +
+		"  region: us-east-1\n" +
+		"  regionendpoint: " + endpoint + "\n" +
+		"  v4auth: true\n" +
+		"  pathstyle: true\n" +
+		// 리다이렉트를 끄면 레지스트리가 blob 을 직접 흘려보낸다.
+		// 켜두면 클라이언트를 MinIO 의 클러스터 내부 주소로 보내는데,
+		// kubelet 은 클러스터 DNS 를 쓰지 않아 그 주소를 해석하지 못하고
+		// 이미지 pull 이 타임아웃으로 실패한다.
+		"redirect:\n" +
+		"  disable: true\n"
 }
 
 // objectStorageConnectionTemplate 은 ESO template 으로 렌더링할 연결 YAML 이다.

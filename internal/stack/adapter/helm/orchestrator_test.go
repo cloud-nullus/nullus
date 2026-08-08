@@ -1054,7 +1054,10 @@ func TestOrchestrator_ExecuteStep_InstallsGitLabAndRunnerForGitLabSelection(t *t
 	require.NotNil(t, runnerValues)
 	runners, ok := runnerValues["runners"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, true, runners["privileged"])
+	// 차트 0.72.0 은 runners.privileged 를 무시한다 — runners.config 로 들어가야 한다.
+	config, ok := runners["config"].(string)
+	require.True(t, ok)
+	assert.Contains(t, config, "privileged = true")
 }
 
 func TestOrchestrator_ExecuteStep_InstallsRunnerWhenGitLabSourceRepositoryIsInstalled(t *testing.T) {
@@ -1133,6 +1136,78 @@ func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *t
 	assert.Contains(t, manifest, "name: kube-prometheus-stack-prometheus")
 	assert.Contains(t, manifest, "name: nullus-minio-console")
 	assert.Contains(t, manifest, "name: openbao")
+}
+
+// 컨테이너 레지스트리가 노출되지 않으면 CI 가 빌드한 이미지를 올릴 곳이 없고,
+// kubelet 도 그 이미지를 받아올 수 없다. GitLab webservice 와는 다른 서비스라
+// 별도 라우트가 필요하다.
+func TestOrchestrator_DefaultGatewayBundleManifest_ExposesContainerRegistry(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		AccessDomain: "nullus-devsecops-stack.internal",
+		Artifacts: domain.ArtifactsConfig{
+			SourceRepository:  domain.ToolSelection{Name: "gitlab", Enabled: true},
+			ContainerRegistry: domain.ToolSelection{Name: "GitLab Registry", Enabled: true},
+		},
+	})
+
+	manifest := orch.defaultGatewayBundleManifest("nullus")
+	assert.Contains(t, manifest, "registry.nullus-devsecops-stack.internal")
+	assert.Contains(t, manifest, "name: gitlab-registry")
+}
+
+// 배포된 앱은 자기 네임스페이스에 산다. Same 이면 앱이 게이트웨이에
+// 라우트를 붙일 수 없어 외부 접근 경로가 아예 없다.
+func TestOrchestrator_DefaultGatewayBundleManifest_AllowsRoutesFromAllNamespaces(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		AccessDomain: "nullus-devsecops-stack.internal",
+		Artifacts: domain.ArtifactsConfig{
+			SourceRepository: domain.ToolSelection{Name: "gitlab", Enabled: true},
+		},
+	})
+
+	manifest := orch.defaultGatewayBundleManifest("nullus")
+	assert.Contains(t, manifest, "from: All")
+	assert.NotContains(t, manifest, "from: Same")
+}
+
+// git clone/push 는 workhorse(8181)를 거쳐야 한다. puma(8080)로 직결하면
+// 웹 UI 는 뜨지만 CI 의 소스 체크아웃이 403 "Nil JSON web token" 으로 실패한다.
+func TestOrchestrator_DefaultGatewayBundleManifest_RoutesGitLabThroughWorkhorse(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		AccessDomain: "nullus-devsecops-stack.internal",
+		Artifacts: domain.ArtifactsConfig{
+			SourceRepository: domain.ToolSelection{Name: "gitlab", Enabled: true},
+		},
+	})
+
+	manifest := orch.defaultGatewayBundleManifest("nullus")
+	require.Contains(t, manifest, "name: gitlab-webservice-default")
+
+	idx := strings.Index(manifest, "name: gitlab-webservice-default")
+	require.Greater(t, idx, 0)
+	tail := manifest[idx:]
+	if len(tail) > 80 {
+		tail = tail[:80]
+	}
+	assert.Contains(t, tail, "port: 8181")
+	assert.NotContains(t, tail, "port: 8080")
+}
+
+// 레지스트리를 고르지 않았으면 라우트도 없어야 한다.
+func TestOrchestrator_DefaultGatewayBundleManifest_SkipsRegistryWhenDisabled(t *testing.T) {
+	orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
+	orch.SetStackConfig(domain.StackConfig{
+		AccessDomain: "nullus-devsecops-stack.internal",
+		Artifacts: domain.ArtifactsConfig{
+			SourceRepository: domain.ToolSelection{Name: "gitlab", Enabled: true},
+		},
+	})
+
+	manifest := orch.defaultGatewayBundleManifest("nullus")
+	assert.NotContains(t, manifest, "registry.nullus-devsecops-stack.internal")
 }
 
 func TestFilterGatewayManifestDocuments_SkipsBackendTLSPolicy(t *testing.T) {
@@ -1259,4 +1334,23 @@ func TestNormalizeLegacyResourceOverrideForStep_LoggingAddsRootResourcesFromNest
 	assert.True(t, ok)
 	assert.Equal(t, "350m", requests["cpu"])
 	assert.Equal(t, "0.7Gi", requests["memory"])
+}
+
+// 카탈로그는 "Argo CD"(공백 포함)를 쓴다. EqualFold 로만 비교하면 매칭에
+// 실패해 라우트가 안 만들어지고, 설치는 됐는데 UI 접근이 안 되는 상태가 된다.
+func TestOrchestrator_DefaultGatewayBundleManifest_ArgoCDRouteHandlesNameVariants(t *testing.T) {
+	for _, name := range []string{"Argo CD", "argocd", "argo-cd", "ArgoCD"} {
+		t.Run(name, func(t *testing.T) {
+			orch := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus")
+			orch.SetStackConfig(domain.StackConfig{
+				AccessDomain: "nullus-devsecops-stack.internal",
+				Pipeline: domain.PipelineConfig{
+					CDTool: domain.ToolSelection{Name: name, Enabled: true},
+				},
+			})
+			manifest := orch.defaultGatewayBundleManifest("nullus")
+			assert.Contains(t, manifest, "argocd.nullus-devsecops-stack.internal")
+			assert.Contains(t, manifest, "name: argo-cd-argocd-server")
+		})
+	}
 }
