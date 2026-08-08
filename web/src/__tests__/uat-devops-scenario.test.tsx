@@ -31,10 +31,19 @@ vi.mock('../features/stack/api/stack-api', () => ({
   useClusters: () => ({ data: [{ id: 'cluster-1', name: 'dev-cluster', connection_status: 'connected' }] }),
   useResourceDefaults: () => ({ data: { items: [], total: 0 } }),
   useDeployStack: () => ({ mutate: vi.fn(), isPending: false }),
+  useStacks: () => ({ data: { items: [], total: 0 } }),
+  useCompatibilityMatrix: () => ({ data: [] }),
+  useTestStorageConnection: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
 }))
 
 vi.mock('../features/admin/api/admin-api', () => ({
+  useClusters: () => ({ data: { items: [{ id: 'cluster-1', name: 'dev-cluster', types: ['target'], status: 'connected' }], total: 1 } }),
   useClusterNamespaces: () => ({ data: [] }),
+  useClusterStorageClasses: () => ({ data: [] }),
+  useOrgResourceProfiles: () => ({ data: { items: [], total: 0 } }),
+  useCreateOrgResourceProfile: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useUpdateOrgResourceProfile: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useDeleteOrgResourceProfile: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
 }))
 
 vi.mock('../components/shared/yaml-editor', () => ({
@@ -71,14 +80,15 @@ describe('UAT-1: DevOps Engineer scenario', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
     })
     expect(useAuthStore.getState().role).toBe('devops')
-    expect(mockNavigate).toHaveBeenCalledWith('/')
+    // 로그인 후에는 역할별 홈으로 보낸다 (login-page.tsx 의 ROLE_HOME).
+    expect(mockNavigate).toHaveBeenCalledWith('/stack/templates')
   })
 
   it('step 2: home page shows CTA buttons for devops', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
     renderWithProviders(<HomePage />)
-    expect(screen.getByText('Stack 시작하기')).toBeInTheDocument()
-    expect(screen.getByText('CI/CD 파이프라인')).toBeInTheDocument()
+    expect(screen.getByText('Start Stack')).toBeInTheDocument()
+    expect(screen.getByText('CI/CD Pipeline')).toBeInTheDocument()
   })
 
   it('step 3: stack template page shows 4 cards', () => {
@@ -94,9 +104,11 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
-    const templateCard = screen.getByText('GitLab All-in-One').closest('[role="button"]')
-    expect(templateCard).toBeTruthy()
-    fireEvent.click(within(templateCard as HTMLElement).getByText('Use Base Template'))
+    // 카드에서 바로 적용하지 않고 상세 모달을 거친다.
+    const templateCard = screen.getByRole('heading', { name: 'GitLab All-in-One' })
+      .closest('div')!.parentElement!
+    fireEvent.click(within(templateCard).getByRole('button', { name: 'View Detail' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
 
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
     expect(useStackConfigStore.getState().draft.selectedTemplateId).toBe('gitlab-allinone-v1')

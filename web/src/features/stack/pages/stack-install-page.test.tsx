@@ -151,6 +151,7 @@ vi.mock('../api/stack-api', () => ({
 vi.mock('../../admin/api/admin-api', () => ({
   useClusters: () => ({ data: mockClusters }),
   useClusterNamespaces: () => ({ data: [] }),
+  useClusterStorageClasses: () => ({ data: [] }),
   useOrgResourceProfiles: () => ({ data: mockOrgResourceProfiles }),
   useCreateOrgResourceProfile: () => ({ mutate: mockCreateOrgResourceProfileMutate, mutateAsync: vi.fn(), isPending: false }),
   useUpdateOrgResourceProfile: () => ({ mutate: mockUpdateOrgResourceProfileMutate, mutateAsync: vi.fn(), isPending: false }),

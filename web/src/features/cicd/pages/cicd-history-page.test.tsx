@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { CicdHistoryPage } from './cicd-history-page'
 
-const mockMutate = vi.fn()
-
+// 롤백 UI 는 282cc8f 에서 제거됐다. useRollbackDeployment 훅과 그 테스트는
+// cicd-api 쪽에 남아 있으므로 여기서는 이력 표시만 검증한다.
 vi.mock('../api/cicd-api', () => ({
   useDeployments: () => ({
     data: {
@@ -18,16 +18,6 @@ vi.mock('../api/cicd-api', () => ({
           triggeredBy: 'kim.dev',
           startedAt: '2026-03-03T14:22:00Z',
           completedAt: '2026-03-03T14:28:00Z',
-        },
-        {
-          id: 'd-prev',
-          pipelineId: 'frontend-web',
-          pipelineName: 'frontend-web',
-          version: 'v1.2.2',
-          status: 'success',
-          triggeredBy: 'lee.devops',
-          startedAt: '2026-03-02T11:00:00Z',
-          completedAt: '2026-03-02T11:20:00Z',
         },
         {
           id: 'd-failed',
@@ -49,56 +39,38 @@ vi.mock('../api/cicd-api', () => ({
           startedAt: '2026-03-03T10:00:00Z',
           completedAt: null,
         },
-        {
-          id: 'd-pending',
-          pipelineId: 'batch-runner',
-          pipelineName: 'batch-runner',
-          version: 'v1.3.0',
-          status: 'pending',
-          triggeredBy: 'choi.devops',
-          startedAt: '2026-03-03T09:00:00Z',
-          completedAt: null,
-        },
       ],
-      total: 5,
+      total: 3,
     },
-  }),
-  useRollbackDeployment: () => ({
-    mutate: mockMutate,
-    isPending: false,
   }),
 }))
 
-describe('CicdHistoryPage rollback flow', () => {
-  beforeEach(() => {
-    mockMutate.mockReset()
-  })
-
-  it('shows rollback action only for success and failed deployments', () => {
+describe('CicdHistoryPage', () => {
+  it('renders the page heading', () => {
     renderWithProviders(<CicdHistoryPage />)
 
-    const rollbackButtons = screen.getAllByTestId('rollback-btn')
-    expect(rollbackButtons).toHaveLength(3)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'CI/CD History' }),
+    ).not.toBeNull()
   })
 
-  it('requires typing ROLLBACK before confirm and calls rollback mutation', async () => {
+  it('renders a row per deployment with pipeline, version and deployer', () => {
     renderWithProviders(<CicdHistoryPage />)
 
-    fireEvent.click(screen.getAllByTestId('rollback-btn')[0])
+    expect(screen.getAllByText('frontend-web').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('backend-api').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('batch-runner').length).toBeGreaterThan(0)
 
-    expect(screen.queryByText('배포 롤백 확인')).not.toBeNull()
-    const confirmButton = screen.getByTestId('rollback-confirm')
-    expect(confirmButton.hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText('v1.2.3')).not.toBeNull()
+    expect(screen.getByText('v2.1.0')).not.toBeNull()
+    expect(screen.getByText('kim.dev')).not.toBeNull()
+  })
 
-    fireEvent.change(screen.getByPlaceholderText('ROLLBACK'), { target: { value: 'ROLLBACK' } })
-    await waitFor(() => expect(confirmButton.hasAttribute('disabled')).toBe(false))
+  it('shows the deployment status of each row', () => {
+    renderWithProviders(<CicdHistoryPage />)
 
-    fireEvent.click(confirmButton)
-    await waitFor(() => {
-      expect(mockMutate).toHaveBeenCalledWith(
-        { pipelineId: 'frontend-web', deploymentId: 'd-success', preservePVC: true },
-        expect.any(Object)
-      )
-    })
+    expect(screen.getAllByText(/success/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/failed/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/running/i).length).toBeGreaterThan(0)
   })
 })

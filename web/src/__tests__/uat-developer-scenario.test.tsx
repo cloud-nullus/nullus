@@ -32,7 +32,8 @@ describe('UAT-2: Developer scenario', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
     })
     expect(useAuthStore.getState().role).toBe('developer')
-    expect(mockNavigate).toHaveBeenCalledWith('/')
+    // 로그인 후에는 역할별 홈으로 보낸다 (login-page.tsx 의 ROLE_HOME).
+    expect(mockNavigate).toHaveBeenCalledWith('/cicd/developer-deploy')
   })
 
   it('step 2: developer sidebar does not show DevSecOps Stack menu', () => {
