@@ -164,6 +164,7 @@
       "edit": "수정",
       "delete": "삭제",
       "useBaseTemplate": "기본 템플릿 사용",
+      "viewDetail": "상세 보기",
       "close": "닫기",
       "baseTemplate": "기본 템플릿",
       "create": "생성",
@@ -1142,7 +1143,8 @@
       "previous": "이전",
       "next": "다음",
       "loadFromConfigRepository": "Deploy YAML Repository에서 불러오기",
-      "create": "생성"
+      "create": "생성",
+      "execute": "실행"
     },
     "yamlPreview": "YAML 매니페스트 미리보기"
   },
