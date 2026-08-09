@@ -9,6 +9,15 @@ on:
       - phase1
   workflow_dispatch:
 
+# 같은 커밋에 브랜치 push 와 태그 push 가 잇따르면 CD 가 두 번 돈다. 릴리즈를
+# 머지하고 곧바로 태그를 밀면 반드시 발생한다 — 실제로 ec123dc 에서 arm64
+# 크로스빌드가 통째로 두 번 돌았다. 태그 런은 브랜치 런이 하는 일을 모두 하고
+# 차트·릴리즈·배포까지 더 하므로, 나중에 시작한 쪽을 남기고 앞선 것을 접는다.
+# 태그는 언제나 그 커밋이 브랜치에 올라간 뒤에 밀리므로 나중에 시작하는 쪽이 태그다.
+concurrency:
+  group: cd-${{ github.sha }}
+  cancel-in-progress: true
+
 # 기본은 최소 권한. 필요한 잡에서만 개별로 올린다.
 permissions:
   contents: read
@@ -162,28 +171,66 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # 직전 태그를 찾아 compare 링크를 만들려면 태그 이력이 필요하다.
+          fetch-depth: 0
 
       - name: Extract release notes and prerelease flag
         id: notes
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
           # 태그에서 v 접두사를 뗀 값이 CHANGELOG 의 섹션 제목이자 이미지 태그다.
           VERSION="${GITHUB_REF_NAME#v}"
 
-          # CHANGELOG 의 해당 버전 섹션만 잘라 릴리즈 본문으로 쓴다. 섹션이 없으면
-          # GitHub 자동 생성 노트로 폴백한다 — 빈 본문으로 릴리즈가 나가는 것보다 낫다.
-          python3 - "$VERSION" <<'PY'
+          # 직전 태그. 없으면(최초 릴리즈) 빈 값으로 두고 compare 링크를 생략한다.
+          PREV_TAG="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+
+          # CHANGELOG 의 해당 버전 섹션을 릴리즈 본문으로 쓰되, 앞에 설치·이미지·
+          # 전체 변경 내역 링크를 붙인다. 릴리즈 페이지만 보고도 무엇을 어떻게 받는지
+          # 알 수 있어야 한다 — 항목 55개를 먼저 읽게 두면 아무도 거기까지 안 간다.
+          # 섹션이 없으면 GitHub 자동 생성 노트로 폴백한다.
+          python3 - "$VERSION" "$PREV_TAG" <<'PY'
           import os, re, sys
 
-          version = sys.argv[1]
+          version, prev_tag = sys.argv[1], sys.argv[2]
+          tag = os.environ['GITHUB_REF_NAME']
+          repo = os.environ['REPO_URL']
           found = False
+
+          header = [
+              f'> 사전 릴리즈입니다. 프로덕션 사용은 권장하지 않습니다.\n'
+              if re.search(r'-(alpha|beta|rc)', version) or version.split('.')[0] == '0'
+              else '',
+              '### 설치\n',
+              '```bash',
+              f'helm install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version {version}',
+              '```\n',
+              '### 산출물\n',
+              '| 종류 | 경로 |',
+              '|---|---|',
+              f'| API 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-api:{version}` |',
+              f'| Web 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-web:{version}` |',
+              f'| Helm 차트 | `oci://ghcr.io/cloud-nullus/charts/nullus` `{version}` |',
+              '',
+              '### 문서\n',
+              f'- [CHANGELOG]({repo}/blob/{tag}/CHANGELOG.md) — 전체 변경 이력',
+              f'- [릴리즈 정책]({repo}/blob/{tag}/docs/20_개발가이드/Nullus_릴리즈%20정책.md)',
+          ]
+          if prev_tag:
+              header.append(f'- [{prev_tag} 이후 변경된 코드]({repo}/compare/{prev_tag}...{tag})')
+          header += ['', '---', '', '## 변경 내역', '']
+
           try:
               content = open('CHANGELOG.md', encoding='utf-8').read()
               m = re.search(
                   r'(?m)^##\s*\[v?' + re.escape(version) + r'\][^\n]*\n(.*?)(?=\n^##\s|\Z)',
                   content, re.DOTALL)
               if m and m.group(1).strip():
-                  open('release_notes.md', 'w', encoding='utf-8').write(m.group(1).strip() + '\n')
+                  body = '\n'.join(header)
+                  with open('release_notes.md', 'w', encoding='utf-8') as out:
+                      out.write(body + '\n' + m.group(1).strip() + '\n')
                   found = True
           except OSError:
               pass
