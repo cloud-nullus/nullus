@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **같은 커밋에서 CD 가 두 번 돌던 문제**: `cd.yml` 은 `main` push 와 `v*` 태그 push 양쪽에 걸려 있다. 릴리즈를 머지하고 곧바로 태그를 밀면 같은 커밋으로 두 런이 동시에 시작해 arm64 크로스빌드가 통째로 두 번 돈다 — `ec123dc` 에서 실제로 발생했다. 태그 런이 브랜치 런의 상위집합(차트·릴리즈·배포까지)이므로 커밋 SHA 기준 `concurrency` 로 묶어 앞선 런을 접는다. 태그는 언제나 그 커밋이 브랜치에 올라간 뒤에 밀리므로 남는 쪽이 태그 런이다.
+## [0.4.0-alpha] - 2026-08-09
 
 ### Added
 
 - **CHANGELOG 누락과 릴리즈 중복을 CI 가 차단** (`scripts/check_changelog.py`, `Lint Review` 의 `📝 CHANGELOG Check`): 릴리즈 정책 §4.2 는 CHANGELOG 갱신을 PR 작성자의 의무로 규정하고 PR 템플릿 체크박스를 두기로 했으나, 체크박스는 차단 장치가 아니라 실제로 #114 가 CHANGELOG 없이 머지됐다 — GitLab 저장소 프로비저닝과 Argo CD 연동이라는 기능 본체가 릴리즈 노트에서 통째로 빠졌고, 릴리즈를 자를 때 커밋 36건을 손으로 대조해 17건을 백필해야 했다. 이제 동작이 바뀌는 파일을 고치고 `CHANGELOG.md` 를 건드리지 않으면 CI 가 실패한다(`no-changelog` 라벨로 면제, 문서·테스트 전용은 자동 면제). 같은 검사가 릴리즈를 자른 뒤 `main` 을 되머지할 때 생기는 `[Unreleased]`↔릴리즈 섹션 중복도 잡는다 — 이 역시 실제로 발생해 8건이 양쪽에 남아 있었다. 검사기는 로컬에서도 그대로 돈다.
+- **Zadara Cloud PoC 배포 산출물** (`deploy/csp/zadara/`): `values-zadara.yaml`(워커 1대·NodePort ingress·local-path 스토리지 기준)과 배포 런북 `README.md`.
+- **태그 push 로 릴리즈·배포까지 자동화** (`cd.yml`): `create-release` 가 CHANGELOG 의 해당 버전 섹션을 릴리즈 본문으로 쓰고(없으면 자동 생성 노트) GA 이전 버전은 프리릴리즈로 표시한다. `deploy-zadara` 가 bastion SSH 로 Zadara 클러스터에 `helm upgrade` 를 수행하고 공개 엔드포인트 2곳이 200 인지까지 확인한다. `environment: zadara` 로 실배포 직전 승인 게이트를 걸 수 있다. 필요한 secrets: `ZADARA_SSH_KEY`·`ZADARA_HOST`·`ZADARA_USER`·`NULLUS_DB_PASSWORD`·`NULLUS_ENCRYPTION_KEY`.
+- **Zadara Cloud PoC 운영 스크립트** (`deploy/csp/zadara/`): 웹 UI 터널(`tunnel.sh`), 로컬 kubectl kubeconfig(`kubeconfig.sh`), 표준 포트 노출(`expose-web.sh`), apiserver 노출(`expose-apiserver.sh`, 기본 미사용), Keycloak realm 구성(`setup-keycloak-realm.sh`), Let's Encrypt TLS(`setup-tls.sh`).
+- **차트에 SPA 런타임 설정 값 추가**: `web.auth.{mode,oidcProvider,oidcAuthority,oidcClientId}`. 비우면 이미지에 빌드된 값을 그대로 쓴다.
 
 ### Changed
 
@@ -21,14 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **릴리즈 본문에 설치법·산출물 경로·CHANGELOG 링크 추가** (`create-release`): 기존에는 CHANGELOG 섹션만 그대로 실어, `v0.4.0-alpha` 기준 항목 55개가 아무 안내 없이 먼저 나왔다. 릴리즈 페이지만 보고도 무엇을 어떻게 받는지 알 수 있도록 `helm install` 명령, 이미지·차트 경로, CHANGELOG·릴리즈 정책 링크, 직전 태그와의 compare 링크를 앞에 붙인다. 프리릴리즈면 그 사실도 맨 위에 밝힌다.
 - **PR 이벤트 트리거에 `synchronize`·`edited` 추가** (`lint-review.yml`): 지적을 고쳐 push 해도 검사가 다시 돌지 않아, 통과시키려면 PR 을 close/reopen 해야 했다. CHANGELOG 검사처럼 "고치고 다시 밀면 통과" 가 전제인 검사는 이대로면 성립하지 않는다.
 
-## [0.4.0-alpha] - 2026-08-09
+### Fixed
 
-### Added
-
-- **Zadara Cloud PoC 배포 산출물** (`deploy/csp/zadara/`): `values-zadara.yaml`(워커 1대·NodePort ingress·local-path 스토리지 기준)과 배포 런북 `README.md`.
-- **태그 push 로 릴리즈·배포까지 자동화** (`cd.yml`): `create-release` 가 CHANGELOG 의 해당 버전 섹션을 릴리즈 본문으로 쓰고(없으면 자동 생성 노트) GA 이전 버전은 프리릴리즈로 표시한다. `deploy-zadara` 가 bastion SSH 로 Zadara 클러스터에 `helm upgrade` 를 수행하고 공개 엔드포인트 2곳이 200 인지까지 확인한다. `environment: zadara` 로 실배포 직전 승인 게이트를 걸 수 있다. 필요한 secrets: `ZADARA_SSH_KEY`·`ZADARA_HOST`·`ZADARA_USER`·`NULLUS_DB_PASSWORD`·`NULLUS_ENCRYPTION_KEY`.
-- **Zadara Cloud PoC 운영 스크립트** (`deploy/csp/zadara/`): 웹 UI 터널(`tunnel.sh`), 로컬 kubectl kubeconfig(`kubeconfig.sh`), 표준 포트 노출(`expose-web.sh`), apiserver 노출(`expose-apiserver.sh`, 기본 미사용), Keycloak realm 구성(`setup-keycloak-realm.sh`), Let's Encrypt TLS(`setup-tls.sh`).
-- **차트에 SPA 런타임 설정 값 추가**: `web.auth.{mode,oidcProvider,oidcAuthority,oidcClientId}`. 비우면 이미지에 빌드된 값을 그대로 쓴다.
+- **QEMU arm64 크로스빌드 시 npm ci Illegal instruction 크래시 방지** (`web/Dockerfile`): React/Vite 정적 자산 빌드 단계는 아키텍처에 독립적이므로 `FROM --platform=$BUILDPLATFORM node:22-alpine AS builder`를 도입해 호스트 네이티브(x86_64)에서 고속 빌드되도록 수정했다. QEMU 에뮬레이션 하에서 발생하는 Node 22 V8 JIT 크래시를 방지하고 Web 이미지 빌드 시간을 ~25분에서 59초로 단축했다.
+- **같은 커밋에서 CD 가 두 번 돌던 문제**: `cd.yml` 은 `main` push 와 `v*` 태그 push 양쪽에 걸려 있다. 릴리즈를 머지하고 곧바로 태그를 밀면 같은 커밋으로 두 런이 동시에 시작해 arm64 크로스빌드가 통째로 두 번 돈다 — `ec123dc` 에서 실제로 발생했다. 태그 런이 브랜치 런의 상위집합(차트·릴리즈·배포까지)이므로 커밋 SHA 기준 `concurrency` 로 묶어 앞선 런을 접는다. 태그는 언제나 그 커밋이 브랜치에 올라간 뒤에 밀리므로 남는 쪽이 태그 런이다.
 - **OpenBao 운영 모드 전환 및 ESO 시크릿 평면 구축**: dev 모드로 작동하던 OpenBao를 영속 스토리지 기반 운영 모드로 전환하고, 정적 토큰 인증을 Kubernetes Auth 기반 단기 자격으로 교체했다. OpenBao에 보관된 시크릿이 External Secrets Operator(ESO)를 거쳐 최종 애플리케이션 파드까지 안전하게 전달되도록 주입 경로를 구성했다.
 - **OSS OIDC 클라이언트 자동 프로비저닝 기능 추가**: 스택 설치 시 OSS 애플리케이션의 OIDC 클라이언트를 Keycloak에 자동으로 등록하는 SSO 핸드오프 경로를 구현했다. 클라이언트 시크릿을 플랫폼이 생성하여 OpenBao에 안전하게 기록하고 Keycloak에 즉시 동기화하도록 연동했다.
 - **시크릿 회전 후 소비자 워크로드 반영(Rolling Restart) 구현**: 회전된 시크릿이 실제 서비스에 즉시 반영되도록 시크릿 소비 워크로드를 재시작하는 단계를 추가했다. 시크릿 소비 방식(환경변수·파일 마운트 등)에 따라 재시작 필요 여부를 판별하여 프로바이더별 정책으로 분기 처리하도록 배선했다.
