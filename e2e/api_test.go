@@ -68,11 +68,28 @@ func TestScenario1_OrgAndCluster(t *testing.T) {
 
 // Scenario 2: Stack 템플릿 → 설정 → 배포 흐름
 func TestScenario2_StackDeployFlow(t *testing.T) {
-	// 1. GET /api/v1/stacks/templates → 200, 4개 (Golden Path)
+	// 1. GET /api/v1/stacks/templates → 200, 시드된 Golden Path 가 모두 나온다.
+	//
+	// 개수만 세면 템플릿이 하나 추가될 때마다 무엇이 달라졌는지 알 수 없는
+	// 숫자 불일치로 깨진다. 어떤 id 가 빠졌는지 바로 보이도록 집합으로 고정한다.
 	status, resp := doRequest(t, http.MethodGet, "/api/v1/stacks/templates", nil)
 	assertStatus(t, status, http.StatusOK)
 	templates := parseDataSlice(t, resp)
-	assert.Len(t, templates, 4)
+
+	gotTemplateIDs := make([]string, 0, len(templates))
+	for _, item := range templates {
+		tmplItem, ok := item.(map[string]any)
+		require.True(t, ok, "템플릿 항목이 객체가 아니다: %v", item)
+		gotTemplateIDs = append(gotTemplateIDs, getString(t, tmplItem, "id"))
+	}
+	assert.Subset(t, gotTemplateIDs, []string{
+		"empty-template-v1",
+		"gitlab-allinone-v1",
+		"gitlab-argocd-v1",
+		"gitlab-harbor-v1",
+		"gitlab-nexus-v1",
+		"github-argocd-v1",
+	}, "시드된 Golden Path 템플릿이 목록에서 빠지면 안 된다")
 
 	// 2. GET /api/v1/stacks/templates/gitlab-allinone-v1 → 200
 	status, resp = doRequest(t, http.MethodGet, "/api/v1/stacks/templates/gitlab-allinone-v1", nil)
