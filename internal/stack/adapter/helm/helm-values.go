@@ -40,14 +40,20 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 			}
 			base = mergeMaps(base, map[string]any{"namespace": namespace})
 		}
+		// 여기도 cfg 를 넘긴다. nil 이면 사용자가 고른 디스크 크기가 무시되고
+		// 기본값으로 깔린다 — 설치 후에 늘리기 어려운 값이라 조용히 틀리면 안 된다.
 		if step == "installing_postgresql" {
-			base = mergeMaps(base, o.sharedPostgresValues(nil))
+			base = mergeMaps(base, o.sharedPostgresValues(cfg))
 		}
 		if step == "installing_gitlab" {
-			base = mergeMaps(base, o.gitlabExternalSharedServiceValues(nil))
+			base = mergeMaps(base, o.gitlabExternalSharedServiceValues(cfg))
 		}
+		// cfg 를 그대로 넘긴다. nil 을 넘기면 externalURL 이 클러스터 내부
+		// 서비스 DNS 로 남고, 레지스트리가 그 주소를 토큰 realm 으로 광고한다.
+		// 노드의 containerd 는 클러스터 DNS 를 쓰지 않으므로 그 이름을 풀지 못해
+		// 배포된 앱이 ImagePullBackOff 에서 벗어나지 못한다.
 		if step == "installing_harbor" {
-			base = mergeMaps(base, o.harborExternalURLValues(nil))
+			base = mergeMaps(base, o.harborExternalURLValues(cfg))
 		}
 		if step == stepInstallingRunner {
 			namespace := strings.TrimSpace(o.namespace)
