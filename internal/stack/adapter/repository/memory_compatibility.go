@@ -139,10 +139,13 @@ var archMulti = []string{domain.ArchAMD64, domain.ArchARM64}
 // update both the refresh migration and the Narwhal sources doc in the same
 // commit so the three layers (DB / in-memory / docs) never drift.
 const (
-	narwhalGitLabHelmVersion  = "9.5.1"
-	narwhalGitLabAppVersion   = "18.5.1"
-	narwhalHarborHelmVersion  = "1.15.0"
-	narwhalHarborAppVersion   = "2.11.0"
+	narwhalGitLabHelmVersion = "9.5.1"
+	narwhalGitLabAppVersion  = "18.5.1"
+	// Harbor/Nexus 는 설치 경로도 같은 값을 써야 하므로 domain 이 소유한다.
+	narwhalHarborHelmVersion  = domain.HarborChartVersion
+	narwhalHarborAppVersion   = domain.HarborAppVersion
+	narwhalNexusHelmVersion   = domain.NexusChartVersion
+	narwhalNexusAppVersion    = domain.NexusAppVersion
 	narwhalMinIOHelmVersion   = "5.2.0"
 	narwhalMinIOAppVersion    = "RELEASE.2024-08-03T04-33-23Z"
 	narwhalArgoCDHelmVersion  = "6.8.0"
@@ -194,6 +197,45 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				"source_repository":        {Name: "GitLab CE", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
 				"ci_platform":              {Name: "GitLab CI", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
 				"container_registry":       {Name: "GitLab Registry", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: narwhalGrafanaHelmVersion, AppVersion: narwhalGrafanaAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+			},
+		},
+		{
+			ID:     "gitlab-harbor-v1",
+			Name:   "GitLab + Harbor",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         narwhalBaseMinK8sPlatform,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository":        {Name: "GitLab CE", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "Harbor", HelmVersion: narwhalHarborHelmVersion, AppVersion: narwhalHarborAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierBeta},
+				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: narwhalGrafanaHelmVersion, AppVersion: narwhalGrafanaAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+			},
+		},
+		{
+			ID:     "gitlab-nexus-v1",
+			Name:   "GitLab + Nexus",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         narwhalBaseMinK8sPlatform,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository":        {Name: "GitLab CE", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "Nexus", HelmVersion: narwhalNexusHelmVersion, AppVersion: narwhalNexusAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"package_registry":         {Name: "Nexus", HelmVersion: narwhalNexusHelmVersion, AppVersion: narwhalNexusAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},

@@ -43,9 +43,17 @@ func TestTemplateHandler_ListTemplates_ReturnsSeededTemplates(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var items []any
+	var items []map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &items))
-	assert.Len(t, items, 4)
+
+	// 개수가 아니라 시드된 템플릿이 실려 나오는지를 본다.
+	// 카탈로그에 하나 추가할 때마다 이 테스트가 깨질 이유가 없다.
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		id, _ := item["id"].(string)
+		ids = append(ids, id)
+	}
+	assert.Subset(t, ids, []string{"empty-template-v1", "gitlab-allinone-v1", "gitlab-harbor-v1", "gitlab-nexus-v1"})
 }
 
 func TestTemplateHandler_GetTemplate_200(t *testing.T) {
