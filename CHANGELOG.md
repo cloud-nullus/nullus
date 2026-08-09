@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-10
+
+### Added
+
+- **v0.4.1 릴리즈 파이프라인 검증**: `-alpha` 접미사를 뗀 `v0.4.1` 패치 릴리즈 자동화 파이프라인(멀티 아키텍처 이미지 빌드·Helm 차트 게시·Release 본문 자동 렌더링·Zadara Cloud 배포) 검증.
+
 ## [0.4.0-alpha] - 2026-08-09
 
 ### Added
