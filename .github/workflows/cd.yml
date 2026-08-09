@@ -265,7 +265,8 @@ jobs:
     permissions:
       contents: read
     name: Deploy to Zadara Cloud
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # main 머지 시 개발/검증용 자동 배포, v* 태그 push 시 운영/릴리즈 배포, workflow_dispatch 수동 배포
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     needs: [build-and-push-api, build-and-push-web]
     environment: zadara
     runs-on: ubuntu-latest
