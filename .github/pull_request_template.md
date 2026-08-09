@@ -23,3 +23,9 @@ Scope: <!-- 이 PR이 다루는 범위 1줄 -->
 
 ## Testing
 - 실행한 테스트와 결과
+
+## Checklist
+- [ ] `CHANGELOG.md` 의 `## [Unreleased]` 갱신 (해당 없으면 `no-changelog` 라벨)
+      <!-- 작성 규칙: docs/20_개발가이드/Nullus_PR_커밋_컨벤션.md §4 -->
+      <!-- 문서·테스트 전용 변경은 라벨 없이도 CI 가 자동 면제한다 -->
+- [ ] 새 브랜치는 `<type>/<module>/<desc>` 형식 (§1.2)
