@@ -52,6 +52,54 @@ const (
 	GitLabArtifactsBucket = "gitlab-artifacts"
 )
 
+// 독립 설치형 아티팩트 도구(Harbor / Nexus)의 리소스 이름.
+//
+// GitLab 내장 레지스트리와 달리 이 둘은 자체 릴리스로 선다. 서비스 이름은
+// 차트가 릴리스명에서 유도하므로 릴리스명이 곧 in-cluster 주소가 된다.
+const (
+	// HarborServiceName 은 Harbor 진입 Service 다. expose.type=clusterIP 로
+	// 설치하면 차트가 릴리스명과 같은 이름의 Service 를 만들고, 여기로 들어온
+	// 요청을 portal/core 로 갈라 보낸다. 이미지 push/pull 도 이 주소를 쓴다.
+	HarborReleaseName  = "harbor"
+	HarborServiceName  = HarborReleaseName
+	HarborServicePort  = 80
+	HarborAdminUser    = "admin"
+	HarborAdminSecret  = "nullus-harbor-credentials" // #nosec G101 -- Secret 리소스 이름
+	HarborAdminPassKey = "HARBOR_ADMIN_PASSWORD"     // 차트의 existingSecretAdminPasswordKey 기본값
+
+	// NexusServiceName 은 Nexus 진입 Service 다. 차트 기본 이름은
+	// {release}-nexus-repository-manager 라 길어지므로 fullnameOverride 로 맞춘다.
+	NexusReleaseName = "nexus"
+	NexusServiceName = NexusReleaseName
+	// NexusServicePort 는 웹 UI 와 Maven/npm 저장소가 함께 쓰는 포트다.
+	NexusServicePort = 8081
+	// NexusDockerServicePort 는 Docker 레지스트리 커넥터 포트다. Nexus 는
+	// Docker 레지스트리를 별도 HTTP 커넥터로 노출하며 기본값이 없다 —
+	// provisioning_nexus 단계가 이 포트로 커넥터를 만들고 Service 를 덧붙인다.
+	NexusDockerServicePort = 8082
+	NexusAdminUser         = "admin"
+	NexusAdminSecret       = "nullus-nexus-credentials" // #nosec G101 -- Secret 리소스 이름
+	NexusAdminPassKey      = "password"
+
+	// Nexus 가 만드는 저장소 이름. CI 가 이미지를 올리고 빌드가 패키지를
+	// 받아가는 곳이라 설치와 파이프라인이 같은 이름을 봐야 한다.
+	NexusDockerRepository = "docker-hosted"
+	NexusMavenRepository  = "maven-hosted"
+	NexusNpmRepository    = "npm-hosted"
+)
+
+// 설치가 사용하는 차트 버전.
+//
+// 화면은 호환성 매트릭스가 선언한 버전을 보여주고 설치는 이 값을 쓴다. 둘이
+// 갈라지면 "안내된 버전"과 "설치된 버전"이 달라지므로 같은 값을 봐야 한다.
+// (고정: TestChartVersionsMatchCompatibilityMatrix)
+const (
+	HarborChartVersion = "1.15.0"
+	HarborAppVersion   = "2.11.0"
+	NexusChartVersion  = "64.2.0"
+	NexusAppVersion    = "3.64.0"
+)
+
 // OSS 도구의 초기 자격증명이 담기는 Secret.
 //
 // 차트마다 이름 규칙이 다르다 — Argo CD 는 Deployment/Service 에는 릴리스

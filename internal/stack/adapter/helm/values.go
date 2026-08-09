@@ -72,6 +72,19 @@ func DefaultValues(stepName string) map[string]any {
 	case "installing_postgresql":
 		return map[string]any{
 			"architecture": "standalone",
+			// 이미지를 고정하지 않으면 차트 기본값(bitnami/postgresql:latest)을
+			// 쓰게 되고, 그 태그는 롤링이라 설치 시점마다 내용이 달라진다.
+			// bitnamilegacy 는 비공식 저장소로 분류돼 allowInsecureImages 가 필요하다.
+			"global": map[string]any{
+				"security": map[string]any{
+					"allowInsecureImages": true,
+				},
+			},
+			"image": map[string]any{
+				"registry":   "docker.io",
+				"repository": "bitnamilegacy/postgresql",
+				"tag":        "17.6.0-debian-12-r4",
+			},
 			// 비밀번호는 values 에 넣지 않는다. provisioning_secrets 가 생성해
 			// OpenBao 에 기록하고 ESO 가 복제한 Secret 을 참조한다.
 			"auth": map[string]any{
@@ -121,6 +134,93 @@ func DefaultValues(stepName string) map[string]any {
 					"cpu":    "1",
 					"memory": "2Gi",
 				},
+			},
+		}
+	case "installing_harbor":
+		return map[string]any{
+			// 인그레스는 게이트웨이가 담당하므로 차트는 Service 만 낸다.
+			// 기본값 ingress 로 두면 클러스터에 없는 IngressClass 를 요구해
+			// 설치가 Pending 으로 멈춘다.
+			"expose": map[string]any{
+				"type": "clusterIP",
+				"tls": map[string]any{
+					"enabled": false,
+				},
+			},
+			// externalURL 은 valuesForStep 이 accessDomain 으로 다시 채운다.
+			// 여기 값은 도메인을 모를 때의 폴백이다.
+			"externalURL": fmt.Sprintf("http://%s.%s.svc.cluster.local", domain.HarborServiceName, defaultStackNamespace),
+			// 관리자 비밀번호는 values 에 넣지 않는다. provisioning_secrets 가
+			// 만든 Secret 을 참조한다.
+			"existingSecretAdminPassword":    domain.HarborAdminSecret,
+			"existingSecretAdminPasswordKey": domain.HarborAdminPassKey,
+			// Trivy 는 기동 시 취약점 DB를 통째로 내려받는다. 로컬/소규모
+			// 클러스터에서 설치를 가장 자주 실패시키는 지점이라 기본은 끈다.
+			"trivy": map[string]any{
+				"enabled": false,
+			},
+			"persistence": map[string]any{
+				"enabled": true,
+			},
+			"core": map[string]any{
+				"resources": map[string]any{
+					"requests": map[string]any{"cpu": "100m", "memory": "256Mi"},
+					"limits":   map[string]any{"cpu": "1", "memory": "1Gi"},
+				},
+			},
+			"registry": map[string]any{
+				"registry": map[string]any{
+					"resources": map[string]any{
+						"requests": map[string]any{"cpu": "100m", "memory": "256Mi"},
+						"limits":   map[string]any{"cpu": "1", "memory": "1Gi"},
+					},
+				},
+			},
+			"database": map[string]any{
+				"type": "internal",
+			},
+			"redis": map[string]any{
+				"type": "internal",
+			},
+		}
+	case "installing_nexus":
+		return map[string]any{
+			// 차트 기본 이름은 {release}-nexus-repository-manager 라 길다.
+			// 연결정보와 CI 가 안내하는 주소를 짧게 유지하려고 맞춘다.
+			"fullnameOverride": domain.NexusServiceName,
+			"nexus": map[string]any{
+				"env": []any{
+					// 기본 JVM 값(2703M)은 소규모 클러스터에서 스케줄되지 않는다.
+					map[string]any{
+						"name":  "INSTALL4J_ADD_VM_PARAMS",
+						"value": "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=1200M -Djava.util.prefs.userRoot=/nexus-data/javaprefs",
+					},
+					// 초기 비밀번호를 무작위로 두고, provisioning_nexus 가 그것으로
+					// 로그인해 프로비저닝한 비밀번호로 바꾼다. false 로 두면
+					// 잘 알려진 기본 비밀번호가 그대로 남는다.
+					map[string]any{"name": "NEXUS_SECURITY_RANDOMPASSWORD", "value": "true"},
+				},
+				// properties.override 는 켜지 않는다.
+				//
+				// 켜면 차트가 /nexus-data/etc/nexus.properties 를 subPath 로
+				// 마운트하는데, 쿠버네티스가 그 상위 디렉터리 /nexus-data/etc 를
+				// root 소유로 만든다. 컨테이너는 UID 200 으로 돌아 그 안에
+				// logback 디렉터리를 만들지 못하고 기동 직후 죽는다(fsGroup 으로도
+				// 해결되지 않는다 — subPath 상위 경로는 fsGroup 적용 대상이 아니다).
+				//
+				// 저장소 생성은 provisioning_nexus 가 REST API 로 하므로
+				// nexus.scripts.allowCreation 도 필요 없다.
+				"resources": map[string]any{
+					"requests": map[string]any{"cpu": "200m", "memory": "1536Mi"},
+					"limits":   map[string]any{"cpu": "2", "memory": "3Gi"},
+				},
+			},
+			"ingress": map[string]any{
+				"enabled": false,
+			},
+			"persistence": map[string]any{
+				"enabled":     true,
+				"storageSize": "20Gi",
 			},
 		}
 	case "installing_gitlab":

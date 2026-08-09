@@ -312,7 +312,7 @@ func TestInstallStack_SuccessfulInstallation(t *testing.T) {
 	// After Execute returns, state should be Validating (goroutine may not have finished yet).
 	assert.Equal(t, domain.StateValidating, repo.getState("stk_test01"))
 
-	deadline := time.Now().Add(25 * time.Second)
+	deadline := time.Now().Add(dagTotalDuration() + 10*time.Second)
 	for time.Now().Before(deadline) {
 		if repo.getState("stk_test01") == domain.StateCompleted {
 			break
@@ -545,7 +545,9 @@ func TestInstallStack_RecordsFailedInstallStep(t *testing.T) {
 	got := repo.getStack(stack.ID)
 	assert.Equal(t, domain.StateFailed, got.State)
 	assert.Equal(t, "installing_argocd", got.LastFailedStep)
-	assert.Equal(t, "installing_gitlab", got.LastCompletedStep)
+	// 실패 직전 단계가 완료로 남아야 한다. 이름을 고정하면 DAG 에 단계가 하나
+	// 끼어들 때마다 무관한 테스트가 깨지므로 DAG 에서 구한다.
+	assert.Equal(t, dagStepNames()[dagIndexOf(t, "installing_argocd")-1], got.LastCompletedStep)
 	assert.Contains(t, got.LastFailureReason, "argocd timed out")
 }
 

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,11 @@ var canonicalInstallOrder = []string{
 	"installing_database_connection_check",
 	"provisioning_sso",
 	"installing_gitlab",
+	// 독립 레지스트리는 Argo CD 가 배포할 이미지를 받는 곳이라 앞에 선다.
+	// Nexus 는 설치만으로는 Docker 커넥터가 없어 프로비저닝이 뒤따른다.
+	"installing_harbor",
+	"installing_nexus",
+	"provisioning_nexus",
 	"installing_argocd",
 	"installing_runner",
 	"installing_prometheus",
@@ -33,6 +39,18 @@ var canonicalInstallOrder = []string{
 	"installing_opentelemetry",
 	"installing_gateway",
 	"integration_check",
+}
+
+// dagTotalDuration 은 DAG 전체가 소비하는 모의 소요시간이다.
+//
+// 완료를 기다리는 테스트가 상수를 쓰면 단계가 하나 늘 때마다 무관한 테스트가
+// 시간 초과로 깨진다. 기다릴 시간을 DAG 에서 직접 구한다.
+func dagTotalDuration() time.Duration {
+	var total time.Duration
+	for _, step := range installDAG {
+		total += step.duration
+	}
+	return total
 }
 
 func dagStepNames() []string {

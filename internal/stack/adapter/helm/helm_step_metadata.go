@@ -50,6 +50,14 @@ func chartSpecFromMetadata(item *domain.HelmStepMetadata) ChartSpec {
 	}
 }
 
+// DefaultChartSpecForStep 은 단계의 기본 차트 스펙을 돌려준다.
+//
+// 설치가 실제로 어떤 차트를 쓰는지 다른 패키지에서 확인할 수 있도록 공개한다 —
+// 화면에 안내하는 버전과 어긋나지 않는지 계약 테스트가 이 값을 본다.
+func DefaultChartSpecForStep(step string) (ChartSpec, bool) {
+	return defaultChartSpecForStep(step)
+}
+
 func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 	switch step {
 	case stepInstallingCertManager:
@@ -76,8 +84,20 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			ReleaseName: domain.PostgresServiceName,
 			ChartName:   "postgresql",
 			RepoURL:     "https://charts.bitnami.com/bitnami",
-			Values:      DefaultValues("installing_postgresql"),
-			Wait:        false,
+			// 버전이 비어 있어 매번 최신 차트를 가져갔고, 차트 기본 이미지도
+			// bitnami/postgresql:latest 라 설치 시점마다 PostgreSQL 이 달라졌다.
+			//
+			// bitnami 가 2025-08 에 버전 태그를 bitnamilegacy/* 로 옮기면서
+			// bitnami/postgresql 에는 latest 만 남았다. 재현 가능한 설치를 위해
+			// 차트와 이미지를 함께 고정한다 — bitnamilegacy 의 최신이 17.6.0 이므로
+			// appVersion 이 일치하는 차트 16.7.27 과 짝을 맞춘다.
+			//
+			// 트레이드오프: bitnamilegacy 는 동결된 저장소라 보안 패치가 없다.
+			// 그럼에도 latest 를 그대로 두는 것보다 낫다 — 무엇이 깔릴지 모르는
+			// 상태에서는 취약점이 있는지조차 알 수 없다.
+			Version: "16.7.27",
+			Values:  DefaultValues("installing_postgresql"),
+			Wait:    false,
 		}, true
 	case "installing_minio":
 		return ChartSpec{
@@ -95,6 +115,31 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Version:   "8.7.2",
 			Values:    DefaultValues("installing_gitlab"),
 			Wait:      false,
+		}, true
+	case "installing_harbor":
+		// 릴리스명이 곧 진입 Service 이름이 되므로 domain 상수를 쓴다.
+		return ChartSpec{
+			ReleaseName: domain.HarborReleaseName,
+			ChartName:   "harbor",
+			RepoURL:     "https://helm.goharbor.io",
+			// 호환성 매트릭스가 선언한 버전과 같아야 한다. 화면은 매트릭스 값을
+			// 보여주고 설치는 이 값을 쓰므로, 갈라지면 안내와 실제가 어긋난다.
+			// (고정: TestChartVersionsMatchCompatibilityMatrix)
+			Version: domain.HarborChartVersion,
+			Values:  DefaultValues("installing_harbor"),
+			Wait:    false,
+		}, true
+	case "installing_nexus":
+		// sonatype/nexus-repository-manager 는 상위 차트가 deprecated 로 표시돼
+		// 있으나, 대체재인 nxrm-ha 는 PostgreSQL 기반 HA 구성이라 Pro 라이선스가
+		// 필요하다. OSS 단일 인스턴스 경로는 아직 이 차트뿐이다.
+		return ChartSpec{
+			ReleaseName: domain.NexusReleaseName,
+			ChartName:   "nexus-repository-manager",
+			RepoURL:     "https://sonatype.github.io/helm3-charts/",
+			Version:     domain.NexusChartVersion,
+			Values:      DefaultValues("installing_nexus"),
+			Wait:        false,
 		}, true
 	case "installing_openbao":
 		// 공식 OpenBao 차트를 사용한다. 차트가 StatefulSet·PVC·ServiceAccount 와

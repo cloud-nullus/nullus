@@ -143,6 +143,27 @@ func managedSecrets(namespace string) []ManagedSecret {
 				RegistryStorageSecretKey: registryStorageConfigTemplate(minioEndpoint),
 			},
 		},
+		{
+			// Harbor 차트의 existingSecretAdminPassword 가 참조한다.
+			// 키 이름은 차트가 정한 값이라 임의로 바꿀 수 없다.
+			TargetSecret:    domain.HarborAdminSecret,
+			Consumer:        "Harbor",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "artifacts/harbor/admin-password", TargetKey: domain.HarborAdminPassKey},
+			},
+		},
+		{
+			// Nexus 는 차트가 비밀번호를 받지 않는다. 첫 기동 때 스스로 만든
+			// 무작위 비밀번호를 쓰므로, provisioning_nexus 가 이 Secret 의 값으로
+			// 바꿔 놓는다. 여기서는 "바꿀 목표값"을 미리 만들어 둔다.
+			TargetSecret:    domain.NexusAdminSecret,
+			Consumer:        "Nexus",
+			RestartRequired: false,
+			Entries: []SecretEntry{
+				{PathSuffix: "artifacts/nexus/admin-password", TargetKey: domain.NexusAdminPassKey},
+			},
+		},
 	}
 }
 
