@@ -2,7 +2,10 @@ name: Lint Review
 
 on:
   pull_request:
-    types: [opened, reopened]
+    # synchronize 가 없으면 지적을 고쳐 push 해도 검사가 다시 돌지 않아, 통과시키려면
+    # PR 을 close/reopen 해야 했다. edited 는 제목·본문을 고쳤을 때 컨벤션 체크가
+    # 다시 돌게 한다.
+    types: [opened, reopened, synchronize, edited]
     branches: [main]
   issue_comment:
     types: [created]        # /review, /describe 같은 명령어 지원
@@ -164,3 +167,35 @@ jobs:
           reporter: github-check
           level: warning
           workdir: web
+
+  # ─────────────────────────────────────────
+  # CHANGELOG: 항목 누락과 릴리즈 중복 차단
+  # ─────────────────────────────────────────
+  changelog:
+    name: 📝 CHANGELOG Check
+    # issue_comment 로도 이 워크플로가 도는데, 그때는 PR diff 를 잡을 수 없다.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # base 와의 공통 조상을 찾아야 PR 이 실제로 바꾼 파일만 나온다.
+          fetch-depth: 0
+
+      - name: 변경 파일 목록 수집
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+          # quotePath=false 가 없으면 한글 경로가 따옴표로 감싸여 나와
+          # docs/ 면제 패턴을 빗나간다. 이 저장소는 문서 경로가 전부 한글이다.
+          git -c core.quotePath=false diff --name-only \
+            "origin/${BASE_REF}...HEAD" > changed-files.txt
+          echo "변경 파일 $(wc -l < changed-files.txt)건"
+
+      - name: CHANGELOG 검사
+        env:
+          # 정말 필요 없는 PR 은 라벨로 빠져나간다. 구조 검사는 그래도 돈다.
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') && '--skip-entry-check' || '' }}
+        run: python3 scripts/check_changelog.py --changed changed-files.txt $SKIP
