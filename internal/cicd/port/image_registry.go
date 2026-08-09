@@ -15,6 +15,8 @@ const (
 	RegistryKindSCMProject RegistryKind = "scm_project"
 	// RegistryKindHarbor 는 독립 설치된 Harbor 다.
 	RegistryKindHarbor RegistryKind = "harbor"
+	// RegistryKindNexus 는 독립 설치된 Nexus 의 Docker 커넥터다.
+	RegistryKindNexus RegistryKind = "nexus"
 	// RegistryKindExternal 은 클러스터 밖의 레지스트리다 (ECR, GHCR 등).
 	RegistryKindExternal RegistryKind = "external"
 )
