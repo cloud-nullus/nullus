@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **같은 커밋에서 CD 가 두 번 돌던 문제**: `cd.yml` 은 `main` push 와 `v*` 태그 push 양쪽에 걸려 있다. 릴리즈를 머지하고 곧바로 태그를 밀면 같은 커밋으로 두 런이 동시에 시작해 arm64 크로스빌드가 통째로 두 번 돈다 — `ec123dc` 에서 실제로 발생했다. 태그 런이 브랜치 런의 상위집합(차트·릴리즈·배포까지)이므로 커밋 SHA 기준 `concurrency` 로 묶어 앞선 런을 접는다. 태그는 언제나 그 커밋이 브랜치에 올라간 뒤에 밀리므로 남는 쪽이 태그 런이다.
+
 ### Added
 
 - **CHANGELOG 누락과 릴리즈 중복을 CI 가 차단** (`scripts/check_changelog.py`, `Lint Review` 의 `📝 CHANGELOG Check`): 릴리즈 정책 §4.2 는 CHANGELOG 갱신을 PR 작성자의 의무로 규정하고 PR 템플릿 체크박스를 두기로 했으나, 체크박스는 차단 장치가 아니라 실제로 #114 가 CHANGELOG 없이 머지됐다 — GitLab 저장소 프로비저닝과 Argo CD 연동이라는 기능 본체가 릴리즈 노트에서 통째로 빠졌고, 릴리즈를 자를 때 커밋 36건을 손으로 대조해 17건을 백필해야 했다. 이제 동작이 바뀌는 파일을 고치고 `CHANGELOG.md` 를 건드리지 않으면 CI 가 실패한다(`no-changelog` 라벨로 면제, 문서·테스트 전용은 자동 면제). 같은 검사가 릴리즈를 자른 뒤 `main` 을 되머지할 때 생기는 `[Unreleased]`↔릴리즈 섹션 중복도 잡는다 — 이 역시 실제로 발생해 8건이 양쪽에 남아 있었다. 검사기는 로컬에서도 그대로 돈다.
@@ -14,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **브랜치 명명 규칙을 중첩형으로 단일화** (컨벤션 v3): `CLAUDE.md` 는 `feat/<module>/<description>`, `Nullus_PR_커밋_컨벤션.md` v2 는 `feat/stack-tools-wizard` 로 서로 다르게 규정해 실제 브랜치가 34:33 으로 갈려 있었다(릴리즈 정책 §13-6 미해결 과제). 최근 브랜치가 전부 중첩형이라 **`<type>/<module>/<desc>` + `feat`/`fix`/`chore` 3종**으로 정하고 세 문서를 맞췄다. 기존 브랜치는 그대로 두고 신규 생성만 따른다.
+- **릴리즈 본문에 설치법·산출물 경로·CHANGELOG 링크 추가** (`create-release`): 기존에는 CHANGELOG 섹션만 그대로 실어, `v0.4.0-alpha` 기준 항목 55개가 아무 안내 없이 먼저 나왔다. 릴리즈 페이지만 보고도 무엇을 어떻게 받는지 알 수 있도록 `helm install` 명령, 이미지·차트 경로, CHANGELOG·릴리즈 정책 링크, 직전 태그와의 compare 링크를 앞에 붙인다. 프리릴리즈면 그 사실도 맨 위에 밝힌다.
 - **PR 이벤트 트리거에 `synchronize`·`edited` 추가** (`lint-review.yml`): 지적을 고쳐 push 해도 검사가 다시 돌지 않아, 통과시키려면 PR 을 close/reopen 해야 했다. CHANGELOG 검사처럼 "고치고 다시 밀면 통과" 가 전제인 검사는 이대로면 성립하지 않는다.
 
 ## [0.4.0-alpha] - 2026-08-09
