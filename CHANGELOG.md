@@ -31,13 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **클라이언트가 바뀐 뒤 로그아웃도 되지 않던 문제**: Keycloak 은 `id_token_hint` 가 오면 그 토큰의 발급 대상과 `client_id` 가 같은지 대조하고, 다르면 로그아웃을 통째로 거부한다(`Invalid parameter: id_token_hint`). 클라이언트 ID 를 바꾼 뒤 브라우저에 이전 세션이 남아 있으면 정확히 이 상태가 되어, 사용자가 **로그아웃도 못 하는** 막다른 화면에 갇힌다. 힌트로 쓸 토큰이 현재 클라이언트의 것인지(`azp`/`aud`) 확인하고, 어긋나면 힌트를 버리고 `client_id` 만으로 로그아웃한다. 클라이언트의 `post.logout.redirect.uris` 도 함께 설정한다.
 - **SSO 계정과 DB 시드 사용자의 이메일이 어긋나 있던 문제**: 인증이 OIDC 로 넘어가면서 API 는 토큰의 `email` 클레임으로 `users` 행을 찾는데, `scripts/setup-keycloak.sh` 가 만드는 계정(`admin@nullus.io`·`devops@nullus.io`·`dev@nullus.io`)과 시드 마이그레이션의 사용자(`admin@nullus.io`·`kim@nullus.io`·`park@nullus.io`)가 달랐다. `admin` 을 뺀 두 계정은 로그인은 되지만 사용자 매칭이 되지 않는다. Keycloak 쪽을 정본으로 삼아 대응 사용자와 조직 소속을 시드한다(`000058_seed_sso_users`). `kim@`·`park@` 는 여러 시드에서 문자열로 참조되는 화면 샘플이라 지우지 않고 추가만 한다.
 - **OIDC 클라이언트 ID 가 프런트엔드와 나머지에서 어긋나던 문제**: 프런트엔드 기본값과 `cd.yml` 은 `nullus-web`, `setup-keycloak.sh` 가 만드는 클라이언트와 API audience 기본값(`configs/config.yaml`, 차트 values)은 `nullus-app` 이었다. 실제로 존재하는 클라이언트인 `nullus-app` 으로 통일한다.
+## [0.4.0-alpha] - 2026-08-09
 
 ### Added
 
+- **Zadara Cloud PoC 배포 산출물** (`deploy/csp/zadara/`): `values-zadara.yaml`(워커 1대·NodePort ingress·local-path 스토리지 기준)과 배포 런북 `README.md`.
 - **태그 push 로 릴리즈·배포까지 자동화** (`cd.yml`): `create-release` 가 CHANGELOG 의 해당 버전 섹션을 릴리즈 본문으로 쓰고(없으면 자동 생성 노트) GA 이전 버전은 프리릴리즈로 표시한다. `deploy-zadara` 가 bastion SSH 로 Zadara 클러스터에 `helm upgrade` 를 수행하고 공개 엔드포인트 2곳이 200 인지까지 확인한다. `environment: zadara` 로 실배포 직전 승인 게이트를 걸 수 있다. 필요한 secrets: `ZADARA_SSH_KEY`·`ZADARA_HOST`·`ZADARA_USER`·`NULLUS_DB_PASSWORD`·`NULLUS_ENCRYPTION_KEY`.
 - **Zadara Cloud PoC 운영 스크립트** (`deploy/csp/zadara/`): 웹 UI 터널(`tunnel.sh`), 로컬 kubectl kubeconfig(`kubeconfig.sh`), 표준 포트 노출(`expose-web.sh`), apiserver 노출(`expose-apiserver.sh`, 기본 미사용), Keycloak realm 구성(`setup-keycloak-realm.sh`), Let's Encrypt TLS(`setup-tls.sh`).
 - **차트에 SPA 런타임 설정 값 추가**: `web.auth.{mode,oidcProvider,oidcAuthority,oidcClientId}`. 비우면 이미지에 빌드된 값을 그대로 쓴다.
+- **OpenBao 운영 모드 전환 및 ESO 시크릿 평면 구축**: dev 모드로 작동하던 OpenBao를 영속 스토리지 기반 운영 모드로 전환하고, 정적 토큰 인증을 Kubernetes Auth 기반 단기 자격으로 교체했다. OpenBao에 보관된 시크릿이 External Secrets Operator(ESO)를 거쳐 최종 애플리케이션 파드까지 안전하게 전달되도록 주입 경로를 구성했다.
+- **OSS OIDC 클라이언트 자동 프로비저닝 기능 추가**: 스택 설치 시 OSS 애플리케이션의 OIDC 클라이언트를 Keycloak에 자동으로 등록하는 SSO 핸드오프 경로를 구현했다. 클라이언트 시크릿을 플랫폼이 생성하여 OpenBao에 안전하게 기록하고 Keycloak에 즉시 동기화하도록 연동했다.
+- **시크릿 회전 후 소비자 워크로드 반영(Rolling Restart) 구현**: 회전된 시크릿이 실제 서비스에 즉시 반영되도록 시크릿 소비 워크로드를 재시작하는 단계를 추가했다. 시크릿 소비 방식(환경변수·파일 마운트 등)에 따라 재시작 필요 여부를 판별하여 프로바이더별 정책으로 분기 처리하도록 배선했다.
+- **에어갭 무인 설치의 백엔드 API 경로 통합**: Helm CLI를 직접 호출해 백엔드를 우회하던 기존 에어갭 설치 방식을 정식 백엔드 API 경로로 통합했다. 설치 과정에서 인-클러스터 자기 자신을 클러스터 목록에 자동 등록하고, 부트스트랩 자격증명의 안전한 폐기 및 멱등한 재발급 흐름을 추가했다.
+- **GitLab 저장소 자동 프로비저닝 및 Argo CD 연동**: CI/CD 파이프라인 생성 시 GitLab 앱 저장소와 빌드 스캐폴딩(.gitlab-ci.yml, Dockerfile, K8s 매니페스트)을 자동으로 생성하고, GitLab Runner 빌드 이미지와 Argo CD GitOps 배포까지 이어지는 엔드투엔드 연동 경로를 구현했다.
+- **스택 접속 정보 API 도입 및 리소스 이름 단일 출처화**: Helm values와 프런트엔드 안내 문구에 파편화되어 하드코딩되어 있던 Secret·서비스 이름을 `internal/stack/domain/connection.go` 상수로 단일 출처화했다. `GET /api/v1/stacks/:stackId/connection-info` 엔드포인트를 통해 서버가 확정한 정합성 있는 접속 정보를 내려주고, 프런트엔드는 응답 데이터를 직접 구동해 표시하도록 개선했다.
 
+### Changed
+
+- **`runbook_csp.sh`의 레지스트리·이미지 태그 기본값 교정**: `REGISTRY`를 실재 경로(`ghcr.io/cloud-nullus/nullus`)로 바로잡고, 프리릴리즈에 존재하지 않는 `IMAGE_TAG=latest` 대신 비워 두어 차트 `appVersion`으로 폴백한다. 마이그레이션 Job이 이미지 레퍼런스를 문자열로 조립하므로 배포 시작 전에 태그를 한 번 확정한다.
+- **스택 설치 경로의 리소스 이름 리터럴을 도메인 상수로 통일**: 스택 설치 오케스트레이터 및 어댑터 곳곳에 흩어져 있던 리소스 이름 리터럴들을 `internal/stack/domain` 및 `internal/shared/domain` 상수로 통일했다. 설치 경로의 리소스 명칭과 상수 정의가 어긋나지 않도록 `connection_contract_test.go` 통합 검증 테스트를 추가해 정합성을 고정했다.
 
 ### Fixed
 
@@ -55,14 +67,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **사설 CA 시크릿이 필수 마운트로 걸려 있던 문제**: API 파드가 `nullus-wildcard-tls` 시크릿을 `optional` 없이 마운트해, 해당 시크릿이 없는 환경에서는 파드가 `FailedMount`로 Pending에 갇혔다. 실 클러스터 서버 사이드 dry-run 에서만 드러나고 로컬 `helm template`은 통과시킨다. 시크릿을 선택 사항으로 바꾸고, `merge-ca-certs` 초기화 컨테이너가 CA 파일이 없으면 시스템 번들만 쓰도록 수정했다. 시크릿 이름은 `caBundle.secretName` 값으로 분리했다.
 - **keycloak 서브차트 벤더링 누락으로 차트가 렌더조차 되지 않던 문제**: `Chart.yaml` 에 `keycloak` 의존성이 추가되었으나 `Chart.lock` 과 `charts/keycloak-24.4.5.tgz` 가 함께 커밋되지 않아, 저장소를 클론한 상태에서 `found in Chart.yaml, but missing in charts/ directory: keycloak` 으로 실패했다. 같은 디렉토리의 `postgresql` 은 벤더링되어 있어 규칙이 어긋나 있었다. 잠금 파일과 차트를 함께 커밋한다.
 - **`bitnami/*` 이미지 소멸로 차트 기본값이 pull 되지 않던 나머지 3건**: #106 이 `postgresql.image` 를 `bitnamilegacy/*` 로 옮겼으나, 같은 원인의 참조가 세 군데 남아 있었다 — 번들 PostgreSQL 의 `volumePermissions.image`(`bitnami/os-shell`), 그리고 keycloak 서브차트가 쓰는 `bitnami/keycloak:26.1.0-debian-12-r0` 와 그 서브차트 자신의 PostgreSQL `bitnami/postgresql:17.2.0-debian-12-r6`. 뒤의 두 건은 차트 기본값 렌더에 그대로 나타나 **기본 설치가 `ImagePullBackOff` 로 실패**했다. 세 건 모두 legacy 경로로 고정해, 이제 기본값이 참조하는 이미지 6종이 모두 익명 pull 된다.
-
-### Added
-
-- **Zadara Cloud PoC 배포 산출물** (`deploy/csp/zadara/`): `values-zadara.yaml`(워커 1대·NodePort ingress·local-path 스토리지 기준)과 배포 런북 `README.md`.
-
-### Changed
-
-- **`runbook_csp.sh`의 레지스트리·이미지 태그 기본값 교정**: `REGISTRY`를 실재 경로(`ghcr.io/cloud-nullus/nullus`)로 바로잡고, 프리릴리즈에 존재하지 않는 `IMAGE_TAG=latest` 대신 비워 두어 차트 `appVersion`으로 폴백한다. 마이그레이션 Job이 이미지 레퍼런스를 문자열로 조립하므로 배포 시작 전에 태그를 한 번 확정한다.
+- **게시된 web 이미지로는 어떤 환경에서도 SSO 로그인이 되지 않던 문제**: Vite 는 `import.meta.env.VITE_*` 를 빌드 시점에 문자열로 인라인한다. 그래서 `cd.yml` 이 주입한 OIDC issuer(`http://keycloak.nullus.internal/realms/nullus`)가 이미지에 박혀, 그 호스트가 존재하지 않는 모든 배포에서 로그인 화면이 `Failed to fetch` 로 끝났다. 차트의 `config.auth.oidcIssuerUrl` 은 API 에만 적용되어 프런트엔드에는 닿지 않는다. 컨테이너 기동 시 `/config.js` 를 생성해 `window.__NULLUS_CONFIG__` 로 주입하는 런타임 설정을 도입한다 — 우선순위는 `런타임 > 빌드타임 > 기본값` 이라 로컬 개발 동작은 그대로다. 이제 환경마다 이미지를 다시 빌드하지 않아도 된다.
+- **`setup-keycloak.sh` 를 재실행하면 사용자 `email` 이 지워지던 문제**: 신규 생성 경로는 `email` 을 넣지만 기존 사용자 갱신 경로가 이를 빠뜨렸다. Keycloak 의 사용자 PUT 은 표현을 통째로 교체하므로 두 번째 실행부터 `email` 이 비었고, API 는 토큰의 `email` 클레임으로 사용자를 조회하므로 로그인 후 사용자 매칭이 깨졌다. 갱신 payload 에 `email`·`emailVerified`·`enabled` 를 함께 보낸다.
+- **재배포하면 열려 있던 탭이 죽던 문제**: 빌드 산출물은 파일명에 내용 해시가 들어가므로 재배포하면 이전 청크가 사라진다. 배포 전에 열려 있던 탭이 lazy import 를 시도하면 `Failed to fetch dynamically imported module` 로 화면이 죽고, 「다시 시도」를 눌러도 같은 옛 모듈 그래프를 다시 써서 복구되지 않았다. 게다가 nginx 의 SPA 폴백이 없는 `.js` 요청에도 `index.html` 을 200 으로 돌려줘, 브라우저가 HTML 을 모듈로 파싱하다 실패하는 혼란스러운 오류가 됐다. `/assets/` 는 없으면 404 를 주고(내용 해시가 있으므로 장기 캐시), 앱은 청크 오류를 감지해 **한 번만** 자동 새로고침한다.
+- **SSO 로그인 시 모든 사용자가 developer 로 보이던 문제**: Keycloak 은 `realm_access` 를 기본적으로 **액세스 토큰에만** 싣는데, 프런트엔드는 ID 토큰 클레임(`user.profile`)에서 롤을 찾았다. 항상 빈 배열이 나와 `admin`·`devops` 계정까지 전부 최저 권한인 `developer` 로 떨어졌고, 관리자 화면을 아무도 쓸 수 없었다. ID 토큰을 먼저 보고 없으면 액세스 토큰을 직접 열어 읽는다 — 액세스 토큰의 `realm_access` 는 Keycloak 이 항상 넣어 주므로 서버 매퍼 설정과 무관하게 동작한다. 프로비저닝 스크립트에는 ID 토큰에도 롤을 싣는 realm-roles 매퍼를 추가한다(보강).
+- **인증 오류가 나면 빠져나올 방법이 없던 문제**: 브라우저에 남은 세션과 서버 상태가 어긋나면 로그인 흐름이 화면에 문구만 남긴 채 끝났다(`Session not active`, `No matching state found in storage`, `login_required`). 개발자 도구로 저장소를 비우지 않으면 복구가 불가능했다. 저장소를 비우고 다시 시도하면 풀리는 오류를 가려내 **원인당 한 번만** 자동 재시도하고, 실패하면 「다시 로그인」 버튼을 함께 보여 준다. 무한 리다이렉트를 피하려고 마커를 `sessionStorage` 에 두어 새로고침해도 반복되지 않게 했다.
+- **클라이언트가 바뀐 뒤 로그아웃도 되지 않던 문제**: Keycloak 은 `id_token_hint` 가 오면 그 토큰의 발급 대상과 `client_id` 가 같은지 대조하고, 다르면 로그아웃을 통째로 거부한다(`Invalid parameter: id_token_hint`). 클라이언트 ID 를 바꾼 뒤 브라우저에 이전 세션이 남아 있으면 정확히 이 상태가 되어, 사용자가 **로그아웃도 못 하는** 막다른 화면에 갇힌다. 힌트로 쓸 토큰이 현재 클라이언트의 것인지(`azp`/`aud`) 확인하고, 어긋나면 힌트를 버리고 `client_id` 만으로 로그아웃한다. 클라이언트의 `post.logout.redirect.uris` 도 함께 설정한다.
+- **SSO 계정과 DB 시드 사용자의 이메일이 어긋나 있던 문제**: 인증이 OIDC 로 넘어가면서 API 는 토큰의 `email` 클레임으로 `users` 행을 찾는데, `scripts/setup-keycloak.sh` 가 만드는 계정(`admin@nullus.io`·`devops@nullus.io`·`dev@nullus.io`)과 시드 마이그레이션의 사용자(`admin@nullus.io`·`kim@nullus.io`·`park@nullus.io`)가 달랐다. `admin` 을 뺀 두 계정은 로그인은 되지만 사용자 매칭이 되지 않는다. Keycloak 쪽을 정본으로 삼아 대응 사용자와 조직 소속을 시드한다(`000058_seed_sso_users`). `kim@`·`park@` 는 여러 시드에서 문자열로 참조되는 화면 샘플이라 지우지 않고 추가만 한다.
+- **OIDC 클라이언트 ID 가 프런트엔드와 나머지에서 어긋나던 문제**: 프런트엔드 기본값과 `cd.yml` 은 `nullus-web`, `setup-keycloak.sh` 가 만드는 클라이언트와 API audience 기본값(`configs/config.yaml`, 차트 values)은 `nullus-app` 이었다. 실제로 존재하는 클라이언트인 `nullus-app` 으로 통일한다.
+- **Keycloak 번들 PostgreSQL 리소스 이름 충돌로 스택 설치가 실패하던 문제**: Keycloak 서브차트가 자체 PostgreSQL을 띄울 때 상위 PostgreSQL 차트와 릴리스 리소스 이름(`<release>-postgresql`)이 동일하게 조립되어 StatefulSet·Service·Secret 등 7종 리소스가 충돌하며 설치가 거부되었다. `keycloak.postgresql.nameOverride`를 통해 서브차트 리소스 이름을 분리 지정하여 충돌을 해소했다.
+- **Helm 차트 기본값 불일치로 인한 API 암호화 에러 및 DB 인증 실패 문제**: 차트의 `secrets.encryptionKey` 기본값이 26바이트라 AES-256 검증(32바이트)에서 500 에러가 났고, `secrets.dbPassword`와 `postgresql.auth.password`가 어긋나 API의 DB 접속이 거부되었다. 암호화 키를 32바이트 placeholder로 교체하고 DB 비밀번호 헬퍼를 도입해 단일 출처로 맞추었으며, 소멸된 Bitnami 이미지 태그를 `bitnamilegacy` 경로로 교정했다.
+- **로컬 런북 기동 시 Keycloak TLS 요구 및 OpenBao 시드 실패로 무인 실행이 차단되던 문제**: Keycloak realm의 `sslRequired` 기본값 때문에 로컬 HTTP 환경에서 관리 API 토큰 발급이 거부되었고, `seed-token-sources.sh`에서 호스트 도메인 해석이 불가능한 OpenBao 쓰기 실패 시 스크립트 전체가 중단되었다. 컨테이너 내부 `kcadm`으로 SSL 요구를 비활성화하도록 자동화하고, OpenBao 시드 실패는 경고 로그 후 계속 진행되도록 완화했다.
+- **GitLab CI/CD 스택 설치 후 러너 미등록·레지스트리 통신 오류로 파이프라인이 동작하지 않던 문제**: GitLab Runner 등록 토큰 조회 실패 에러가 상쇄되어 러너 설치 없이 완료 처리되었고, `privileged` 설정 누락으로 DinD 실행이 불가능했으며, Container Registry가 미노출 및 내부 S3 리다이렉트 문제로 이미지 push/pull에 실패했다. 러너 재시도 에러 보존 및 TOML 규격 적용, Registry S3 백엔드·Gateway 8181 포트 라우팅 및 `allowedRoutes` 전면 허용 정책을 적용해 CI/CD 파이프라인 정상 구동을 복구했다.
+- **OpenBao 부트스트랩 재실행 시 인증 토큰 부재로 스택 재배포가 막히던 문제**: 첫 부트스트랩 성공 후 root token이 폐기되어 재실행 시 `BAO_TOKEN`이 비어 있었는데, 부트스트랩 여부를 검증하는 `bao list` 호출이 인증을 요구해 항상 에러로 중단되었다. 토큰 부재 시 마운트된 ServiceAccount 토큰으로 Kubernetes Auth 로그인을 시도해 상태를 파악하도록 복구하고, 대기 타임아웃 확장 및 파드 에러 로그를 덤프하도록 개선했다.
+- **스택 시크릿 리졸버의 잘못된 DB 캐스팅으로 인한 OpenBao 시크릿 조회 실패 문제**: VARCHAR 타입인 `stacks.id`를 조회하는 SQL 쿼리에 `$1::uuid` 타입 캐스팅이 들어가 있어 SQL 오류(`SQLSTATE 42883`)가 발생하고 스택 범위 OpenBao 시크릿 조회가 항상 실패했다. 불필요한 UUID 캐스팅을 제거해 조회 쿼리를 정상화했다.
+- **스택 상세 화면의 연결 정보 안내 명령어가 고정 네임스페이스 및 잘못된 Secret 이름을 참조하던 문제**: Stack List의 connection info가 실제 네임스페이스와 상관없이 `-n nullus`를 하드코딩하고 Argo CD 시크릿 이름을 잘못 안내하여 명령 실행 시 `NotFound` 오류가 발생했다. 연결 정보 헬퍼에 네임스페이스 파라미터를 연결하고 Argo CD·PostgreSQL·MinIO 시크릿 명칭을 실제 Helm 릴리스 규격에 맞게 정정했다.
+- **CI/CD 목록 모바일 화면에서 파이프라인 상세 클릭 시 ReferenceError로 페이지가 크래시되던 문제**: 모바일 레이아웃의 `PipelineDetailPanel` 컴포넌트에 정의되지 않은 `activeDeploymentId` 변수를 넘기고 있어 런타임 `ReferenceError`가 발생하고 화면이 죽던 현상을 해결했다. 미정의 prop 전달 코드를 제거해 모바일 상세 패널 렌더링을 정상화했다.
+- **개발자 배포 및 스택 템플릿 화면에서 번역 키 문자열이 그대로 노출되던 문제**: 다국어 파일(ko/en)에서 `developerDeployPage.actions.execute` 및 `stackTemplatePage.actions.viewDetail` 키가 누락되어 UI 버튼에 번역되지 않은 키 문자열이 그대로 노출되던 문제를 다국어 항목 정의 보충으로 해결했다.
+- **게이트웨이 포트포워딩 스크립트가 컨텍스트 오류와 네임스페이스 누락 원인을 구분하지 못하던 문제**: 포트포워딩 스크립트(`port-forward-gateway.sh`)가 K8s 컨텍스트 연결 불능 상황과 특정 네임스페이스 미존재 상황을 구별하지 않고 동일한 컨텍스트 에러 문구로 안내하던 문제를 수정했다. 실패 원인을 분리해 탐지하고 등록된 컨텍스트 목록을 검색해 올바른 실행 명령을 제안하도록 보강했다.
 
 ## [0.3.0-alpha] - 2026-07-28
 
@@ -351,5 +373,6 @@ compare 링크는 실제로 발행된 태그만 가리킨다 (릴리즈 정책 �
 0.1.0-alpha / 0.2.0-alpha 는 CHANGELOG 기록만 존재하고 git 태그·GitHub Release 가 발행된 적이 없어
 링크를 두지 않는다. v0.3.0-alpha 태그 push 이후 아래 링크가 유효해진다.
 -->
-[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...HEAD
+[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.4.0-alpha...HEAD
+[0.4.0-alpha]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/cloud-nullus/nullus/releases/tag/v0.3.0-alpha

@@ -92,6 +92,30 @@ func parseDataSlice(t *testing.T, resp map[string]any) []any {
 	return nil
 }
 
+// canonicalCICDTemplateIDs is the seeded CI/CD pipeline template set.
+//
+// 000053_user_custom_cicd_template 이 web-frontend-v1 을 지우고 web-backend-v1 의
+// 이름을 바꿨다. 마이그레이션·메모리 시드·프런트엔드·단위 테스트는 그때 함께
+// 갱신됐지만 e2e 만 개수 3 을 그대로 두어 두 달 넘게 실패한 채였다.
+var canonicalCICDTemplateIDs = []string{"web-backend-v1", "batch-job-v1"}
+
+// idsOf collects the "id" field of each item in a list payload.
+//
+// 개수만 세면 시드가 바뀌었을 때 "3개여야 함" 으로만 실패해 무엇이 달라졌는지
+// 알 수 없다. 그래서 ID 집합으로 비교한다.
+func idsOf(t *testing.T, items []any) []string {
+	t.Helper()
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("list item is not an object: %v", item)
+		}
+		ids = append(ids, getString(t, m, "id"))
+	}
+	return ids
+}
+
 // getString extracts a string field from a map.
 func getString(t *testing.T, m map[string]any, key string) string {
 	t.Helper()

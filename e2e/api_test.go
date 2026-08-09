@@ -216,11 +216,11 @@ func TestScenario3_CompatibilityMatrix(t *testing.T) {
 
 // Scenario 4: CI/CD 파이프라인 흐름
 func TestScenario4_CICDPipelineFlow(t *testing.T) {
-	// 1. GET /api/v1/cicd/templates → 200, 3개
+	// 1. GET /api/v1/cicd/templates → 200, 시드된 템플릿 전부
 	status, resp := doRequest(t, http.MethodGet, "/api/v1/cicd/templates", nil)
 	assertStatus(t, status, http.StatusOK)
 	templates := parseDataSlice(t, resp)
-	assert.Len(t, templates, 3)
+	assert.ElementsMatch(t, canonicalCICDTemplateIDs, idsOf(t, templates))
 
 	// 2. POST /api/v1/cicd/pipelines → 201
 	status, resp = doRequest(t, http.MethodPost, "/api/v1/cicd/pipelines", map[string]any{

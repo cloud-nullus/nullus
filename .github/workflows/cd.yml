@@ -298,8 +298,22 @@ jobs:
             cat <<'EOF'
           set -euo pipefail
           cd ~/nullus
-          git fetch --tags --force origin
-          git checkout --detach "$REF"
+          git fetch --force --prune --tags origin "+refs/heads/*:refs/remotes/origin/*"
+
+          # 브랜치 이름은 원격 추적 ref 로 풀어야 한다. fetch 는 origin/<브랜치>만
+          # 갱신하고 로컬 <브랜치>는 그대로 두므로, "$REF" 를 그대로 체크아웃하면
+          # 뒤처진 로컬 브랜치가 잡힌다 — 실제로 24 커밋 옛 소스로 배포됐다.
+          if git rev-parse -q --verify "refs/tags/${REF}^{commit}" >/dev/null; then
+            TARGET="refs/tags/${REF}"
+          else
+            TARGET="refs/remotes/origin/${REF}"
+          fi
+
+          # --force 와 reset 이 있어야 배포 디렉토리에 남은 손수정과 미추적 파일이
+          # 렌더에 섞이지 않는다. 배포는 저장소 내용만으로 재현 가능해야 한다.
+          git checkout --detach --force "$TARGET"
+          git reset --hard "$TARGET"
+          echo "[배포] $REF -> $(git rev-parse --short HEAD)"
 
           helm --kube-context=platform upgrade --install nullus deploy/helm/nullus \
             --namespace nullus --create-namespace \

@@ -101,7 +101,7 @@ func TestUAT2_Jieun_Developer(t *testing.T) {
 	status, resp := doRequest(t, http.MethodGet, "/api/v1/cicd/templates", nil)
 	require.Equal(t, http.StatusOK, status, "CI/CD 템플릿 목록 조회 실패")
 	templates := parseDataSlice(t, resp)
-	require.Len(t, templates, 3, "CI/CD 템플릿 3개여야 함")
+	require.ElementsMatch(t, canonicalCICDTemplateIDs, idsOf(t, templates), "시드된 CI/CD 템플릿과 목록이 어긋남")
 
 	// 2. "Web Backend" 템플릿으로 파이프라인 생성
 	status, resp = doRequest(t, http.MethodPost, "/api/v1/cicd/pipelines", map[string]any{
