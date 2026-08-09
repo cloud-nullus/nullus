@@ -157,20 +157,25 @@ func TestProvisionAppProject_IssuesAndRegistersDeployToken(t *testing.T) {
 }
 
 // 외부 레지스트리 자격증명은 사용자가 준 것만 등록할 수 있다.
+//
+// 값은 GitLab 마스킹 요건(8자 이상, Base64 문자+@:.~)을 만족하는 것으로 쓴다.
+// 예전에는 "s3cret"(6자) / "robot$ci"($ 포함) 처럼 실제 GitLab 이 masked 로는
+// 거부하는 값으로 masked=true 를 단언했는데, 그건 API 가 받아주지 않는 조합이라
+// 페이크에서만 통과하는 계약이었다.
 func TestProvisionAppProject_RegistersSuppliedRegistryCredentials(t *testing.T) {
 	scm, pipe, res := newFakeSCM(), newFakePipelineConfig(), harborResolver()
 	uc := NewProvisionAppProject(scm, pipe, res)
 
 	in := appInput()
 	in.RegistryCredentials = map[string]string{
-		"HARBOR_USERNAME": "robot$ci",
-		"HARBOR_PASSWORD": "s3cret",
+		"HARBOR_USERNAME": "robot-ci-account",
+		"HARBOR_PASSWORD": "s3cretPassw0rd",
 	}
 
 	out, err := uc.Execute(context.Background(), in)
 	require.NoError(t, err)
 
-	assert.Equal(t, "robot$ci", pipe.vars["HARBOR_USERNAME"].Value)
+	assert.Equal(t, "robot-ci-account", pipe.vars["HARBOR_USERNAME"].Value)
 	assert.True(t, pipe.vars["HARBOR_PASSWORD"].Masked)
 	assert.Empty(t, out.MissingVariables)
 }

@@ -40,6 +40,37 @@ type ProvisionAppProjectInput struct {
 // CI 의 쓰기 토큰과 분리한다 — Argo CD 에는 읽기 권한만 있으면 된다.
 const argoReadTokenName = "nullus-argocd-read"
 
+// maskableMinLength 는 GitLab 이 masked 변수에 요구하는 최소 길이다.
+const maskableMinLength = 8
+
+// canMaskVariableValue 는 GitLab 의 마스킹 요건을 값이 만족하는지 본다.
+//
+// 요건을 못 채우는 값을 masked 로 등록하면 GitLab 이 400
+// (`{"message":{"value":["is invalid"]}}`) 으로 거부한다. 거부되면 변수 자체가
+// 등록되지 않아 CI 가 `docker login` 에서 죽는데, 오류 메시지가 마스킹과
+// 무관해 보여 원인을 찾기 어렵다.
+//
+// 요건은 GitLab 의 Ci::Maskable::REGEX 와 같다 — 8자 이상이고
+// `a-zA-Z0-9_+=/@:.~-` 만 쓸 수 있다(공백·줄바꿈·`$` 불가).
+// 문서는 "Base64 알파벳 + @:.~" 라고만 적고 있으나 실제 API 는 `-` 와 `_` 도
+// 받는다 — GitLab 17.7 에 직접 질의해 확인한 집합이다.
+func canMaskVariableValue(value string) bool {
+	if len(value) < maskableMinLength {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case strings.ContainsRune("_+=/@:.~-", r):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // ProvisionAppProjectOutput 은 프로비저닝 결과다.
 type ProvisionAppProjectOutput struct {
 	Project     *port.SCMProject
@@ -199,8 +230,18 @@ func (uc *ProvisionAppProject) configurePipeline(
 			out.MissingVariables = append(out.MissingVariables, key)
 			continue
 		}
+		// 마스킹은 최선 노력이다. 요건을 못 채우는 값(예: Harbor 기본 계정명
+		// "admin")을 masked 로 밀면 GitLab 이 등록을 통째로 거부해 변수가 아예
+		// 없는 상태가 된다 — 가려지지 않더라도 등록되는 편이 낫다.
+		masked := canMaskVariableValue(value)
+		if !masked {
+			out.Warnings = append(out.Warnings, fmt.Sprintf(
+				"변수 %s 는 GitLab 마스킹 요건(한 줄, %d자 이상, Base64 문자+@:.~)을 "+
+					"만족하지 않아 마스킹 없이 등록합니다 — job 로그에 노출될 수 있습니다",
+				key, maskableMinLength))
+		}
 		if err := uc.pipeline.SetProjectVariable(ctx, project.ID, port.ProjectVariable{
-			Key: key, Value: value, Masked: true,
+			Key: key, Value: value, Masked: masked,
 		}); err != nil {
 			out.Warnings = append(out.Warnings, fmt.Sprintf("변수 %s 등록 실패: %v", key, err))
 			out.MissingVariables = append(out.MissingVariables, key)
