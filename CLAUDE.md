@@ -160,10 +160,15 @@ describe('useInstallStack', () => {
 
 ```
 main (프로덕션)
-  └── feat/<module>/<description>   # 기능 브랜치
-  └── fix/<module>/<description>    # 버그 수정
-  └── refactor/<module>/<description>
+  └── feat/<module>/<description>    # 기능 추가
+  └── fix/<module>/<description>     # 버그 수정
+  └── chore/<module>/<description>   # 그 외 (문서/테스트/리팩터링/CI/설정)
 ```
+
+브랜치 타입은 위 3종만 쓴다. `refactor`·`test`·`docs`·`perf`·`ci`는 **커밋 타입**으로만 쓴다.
+`<module>` 은 `stack | cicd | admin | auth | o11y | product | ui | shared | infra`.
+
+전체 규칙은 `docs/20_개발가이드/Nullus_PR_커밋_컨벤션.md` (v3).
 
 ### 커밋 메시지
 

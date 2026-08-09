@@ -137,7 +137,7 @@ v1은 CHANGELOG 갱신을 "PR 작성자의 의무"로만 규정했고 강제 수
 3. 사용자 영향이 없는 변경(내부 리팩터링, 테스트, 문서, CI 설정)은 `no-changelog` 라벨로 면제한다.
 4. 커밋 타입(`feat`/`fix`/`refactor`/...)과 CHANGELOG 카테고리(`Added`/`Changed`/`Fixed`/...)는 1:1로 매핑되지 않는다 — 사용자 관점에서 "무엇이 바뀌었는가"를 기준으로 분류한다.
 
-> 라벨 검사를 CI로 강제할지는 §13-5의 후속 과제로 둡니다. 체크박스는 리뷰어가 보는 장치일 뿐 차단 장치가 아닙니다.
+> **CI 강제 완료 (2026-08-09)**: 체크박스는 리뷰어가 보는 장치일 뿐 차단 장치가 아니어서, 실제로 #114가 CHANGELOG 없이 머지됐습니다. `Lint Review` 워크플로의 `📝 CHANGELOG Check`(`scripts/check_changelog.py`)가 이제 차단합니다 — 동작이 바뀌는 파일을 고치고 `CHANGELOG.md`를 건드리지 않으면 실패하고, `no-changelog` 라벨로 면제됩니다. 문서·테스트 전용 변경은 라벨 없이도 자동 면제됩니다. 같은 검사가 릴리즈 절단 후 되머지에서 생기는 `[Unreleased]`↔릴리즈 섹션 중복도 잡습니다(실제 발생). 작성 규칙은 `Nullus_PR_커밋_컨벤션.md` §4.
 
 ---
 
@@ -421,8 +421,8 @@ helm upgrade nullus oci://ghcr.io/cloud-nullus/charts/nullus --version <이전�
 
 ### 10.4 기타
 
-- 브랜치/PR 규칙은 `Nullus_PR_커밋_컨벤션.md`(v2)를 따른다.
-  > **주의**: 루트 `CLAUDE.md`는 `feat/<module>/<description>` 형식에 `refactor/`를 포함한 3종으로, `Nullus_PR_커밋_컨벤션.md`는 `feat`/`fix`/`chore` 3종에 `feat/stack-tools-wizard` 형식으로 서로 다르게 규정하고 있습니다. 실제 브랜치에는 `docs/`·`test/` 타입도 존재합니다. 어느 쪽으로 단일화할지는 이 문서 범위 밖이며 §13-6으로 넘깁니다.
+- 브랜치/PR 규칙은 `Nullus_PR_커밋_컨벤션.md`(v3)를 따른다.
+  > **해소 (2026-08-09, §13-6 완료)**: `CLAUDE.md`(중첩형 `feat/<module>/<description>` + `refactor` 포함 3종)와 `Nullus_PR_커밋_컨벤션.md` v2(평면형 `feat/stack-tools-wizard` + `feat`/`fix`/`chore` 3종)가 어긋나 있던 것을 **중첩형 + `feat`/`fix`/`chore` 3종**으로 단일화했습니다. 실제 브랜치가 두 형식으로 34:33 갈려 있었으나 최근 것은 전부 중첩형이라 그쪽을 정본으로 삼았습니다. 기존 평면형 브랜치는 그대로 두고 새로 만드는 것만 따릅니다. 실제 브랜치에 남아 있는 `docs/`·`test/` 타입도 legacy 로 두고 신규 생성만 막습니다.
 - `cd.yml` 트리거에 남아 있는 `phase1` 브랜치는 legacy이며 제거 대상입니다(§13-3).
 
 ---
@@ -474,7 +474,7 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 | 3 | ~~차트 이미지 기본값 교정 + `values-dev.yaml` 분리 + 관련 문서 동기화~~ | §8.1 | **완료 (2026-07-28, #100)** — `repository`를 `ghcr.io/cloud-nullus/nullus/nullus-*`로, `tag`를 `""`로. `values-dev.yaml` 신설, `docs/agent-reference.md`·`airgap/helm/README.md` 동기화. `phase1` 트리거 제거는 §10.4에 미완으로 남김 |
 | 4 | 저장소 설정: `allowed_merge_methods: ["squash"]`, `delete_branch_on_merge: true`, 릴리즈 PR 승인 1인 이상 | §9.3, §10.2 | 설정 변경 |
 | 5 | tag ruleset 신설 (`refs/tags/v*`) | §10.3 | 설정 변경 |
-| 6 | 브랜치 명명 규칙을 `CLAUDE.md`와 `Nullus_PR_커밋_컨벤션.md` 중 한쪽으로 단일화 | §10.4 | 이 문서 범위 밖 |
+| 6 | ~~브랜치 명명 규칙을 `CLAUDE.md`와 `Nullus_PR_커밋_컨벤션.md` 중 한쪽으로 단일화~~ | §10.4 | **완료 (2026-08-09, 컨벤션 v3)** — 중첩형 `<type>/<module>/<desc>` + `feat`/`fix`/`chore` 3종으로 단일화. 두 문서와 `CLAUDE.md`를 모두 갱신. 실제 브랜치가 평면형 34 : 중첩형 33으로 갈려 있었으나 최근 것이 전부 중첩형이라 그쪽을 정본으로 삼음 |
 | 7 | ~~`cd.yml`에 `publish-chart` 잡 추가~~ | §7.2 | **완료 (2026-07-28, #100)** — `v*` 태그에서만 도는 잡으로 추가. 실제 게시 성공 여부는 v0.3.0-alpha 태그 push 시 확인 |
 | 8 | `cd.yml`의 `phase1` 브랜치 트리거 제거 | §10.4 | 과제 3에서 분리 |
 | 9 | ~~ghcr 패키지 가시성을 릴리즈 산출물 정의(§7.1)와 §9.1 체크리스트에 포함~~ | §7.1, §9.1 | **완료 (2026-08-07, v2.2)** — 저장소가 public이어도 패키지는 기본 private이다. 2026-07-28 확인 시점에 `nullus-api`·`nullus-web`·`charts/nullus` 3건 모두 private이라 §7.1이 광고하는 `helm install oci://…` 익명 설치 경로가 동작하지 않았다. **2026-08-07 public 전환 완료** — 익명 `helm pull`과 클러스터의 pull secret 없는 이미지 pull로 검증했다. 다만 이는 **1회성 수동 조치**이고 새 패키지는 다시 private으로 생성되므로, §9.1에 확인 항목이 남아야 한다. 전환은 REST API로 불가능하고 패키지 설정 UI에서만 된다 (저장소 Settings가 아님 — 혼동 시 저장소 자체를 private으로 만들 위험) |
