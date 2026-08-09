@@ -41,7 +41,7 @@ export const TOOL_SECTIONS: ToolSectionDefinition[] = [
     categories: [
       { category: 'package_registry', label: 'Package Registry', options: ['Nexus', 'GitLab Package Registry', 'JFrog Artifactory'] },
       { category: 'source_repository', label: 'Source Repository', options: ['GitLab CE', 'Gitea', 'GitHub'] },
-      { category: 'container_registry', label: 'Container Registry', options: ['Harbor', 'GitLab Registry', 'Docker Registry'] },
+      { category: 'container_registry', label: 'Container Registry', options: ['Harbor', 'Nexus', 'GitLab Registry', 'Docker Registry'] },
     ],
   },
   {

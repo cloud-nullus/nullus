@@ -691,17 +691,29 @@ describe('StackInstallPage', () => {
     expect(screen.getByText(/last run:/)).toBeInTheDocument()
   })
 
+  // Nexus 는 패키지 저장소와 컨테이너 레지스트리 양쪽에 있어 같은 라벨이 두 번
+  // 나온다. 순서에 기대지 않도록 섹션 제목을 기준으로 좁힌다.
+  // Nexus 는 컨테이너 레지스트리와 패키지 저장소 양쪽에 있어 같은 라벨이 두 번
+  // 나온다. Artifacts 탭은 Container Registry 를 먼저, Package Registry 를 나중에
+  // 그리므로 두 번째가 패키지 저장소 항목이다. 순서가 바뀌면 아래 store 단언이
+  // 곧바로 깨지므로 조용히 틀리지 않는다.
+  const packageRegistryNexus = () => {
+    const options = screen.getAllByText('Nexus Repository')
+    expect(options).toHaveLength(2)
+    return options[1]
+  }
+
   it('selecting a tool in Artifacts updates the store', () => {
     renderWithProviders(<StackInstallPage />)
     // Click Nexus option in Package Registry
-    fireEvent.click(screen.getByText('Nexus Repository'))
+    fireEvent.click(packageRegistryNexus())
     expect(useStackConfigStore.getState().draft.artifacts.packageRegistry.tool).toBe('nexus')
   })
 
   it('allows clearing a tool selection with the none option', () => {
     renderWithProviders(<StackInstallPage />)
 
-    const packageRegistrySection = screen.getByText('Nexus Repository').closest('button')?.parentElement
+    const packageRegistrySection = packageRegistryNexus().closest('button')?.parentElement
     expect(packageRegistrySection).toBeTruthy()
     fireEvent.click(within(packageRegistrySection as HTMLElement).getAllByRole('button')[0])
 
