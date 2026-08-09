@@ -128,7 +128,11 @@ spec:
 	}
 	// 컨테이너 레지스트리는 GitLab webservice 와 다른 서비스다. 노출하지 않으면
 	// CI 가 빌드한 이미지를 올릴 곳이 없고 kubelet 도 그것을 받아올 수 없다.
-	if cfg.Artifacts.ContainerRegistry.Enabled {
+	//
+	// registry.<도메인> 은 "이 스택이 고른 이미지 레지스트리" 하나를 가리킨다.
+	// 선택과 무관하게 gitlab-registry 로 보내면 Harbor/Nexus 를 고른 스택이
+	// 존재하지도 않는(혹은 비어 있는) GitLab 레지스트리로 push 하게 된다.
+	if isGitLabContainerRegistrySelection(cfg.Artifacts.ContainerRegistry) {
 		routes = append(routes, routeSpec{name: "registry-route", host: fmt.Sprintf("registry.%s", accessDomain), service: "gitlab-registry", port: 5000})
 	}
 	if cfg.Monitoring.Visualization.Enabled && strings.EqualFold(cfg.Monitoring.Visualization.Name, "grafana") {
@@ -136,6 +140,19 @@ spec:
 	}
 	if cfg.Monitoring.Collection.Enabled && strings.EqualFold(cfg.Monitoring.Collection.Name, "prometheus") {
 		routes = append(routes, routeSpec{name: "prometheus-route", host: fmt.Sprintf("prometheus.%s", accessDomain), service: "kube-prometheus-stack-prometheus", port: 9090})
+	}
+	if isHarborRegistrySelection(cfg.Artifacts.ContainerRegistry) {
+		// Harbor 는 UI 와 레지스트리를 같은 포트로 서비스하므로 두 호스트가
+		// 같은 곳을 가리킨다. registry.<도메인> 을 함께 두는 이유는 레지스트리
+		// 주소를 도구와 무관하게 쓰려는 파이프라인이 있기 때문이다.
+		routes = append(routes, routeSpec{name: "harbor-route", host: fmt.Sprintf("harbor.%s", accessDomain), service: domain.HarborServiceName, port: domain.HarborServicePort})
+		routes = append(routes, routeSpec{name: "harbor-registry-route", host: fmt.Sprintf("registry.%s", accessDomain), service: domain.HarborServiceName, port: domain.HarborServicePort})
+	}
+	if isNexusSelection(cfg.Artifacts.ContainerRegistry) || isNexusSelection(cfg.Artifacts.PackageRegistry) {
+		routes = append(routes, routeSpec{name: "nexus-route", host: fmt.Sprintf("nexus.%s", accessDomain), service: domain.NexusServiceName, port: domain.NexusServicePort})
+		// Docker 레지스트리는 별도 포트라 호스트도 나눈다. 하나의 호스트로
+		// 합치면 docker push 가 UI 로 흘러들어 401 을 받는다.
+		routes = append(routes, routeSpec{name: "nexus-docker-route", host: fmt.Sprintf("registry.%s", accessDomain), service: domain.NexusServiceName + "-docker", port: domain.NexusDockerServicePort})
 	}
 	if cfg.Artifacts.StorageBackend.Enabled && strings.EqualFold(cfg.Artifacts.StorageBackend.Name, "minio") {
 		routes = append(routes, routeSpec{name: "minio-route", host: fmt.Sprintf("minio.%s", accessDomain), service: domain.MinIOConsoleServiceName, port: domain.MinIOConsoleServicePort})

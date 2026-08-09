@@ -125,7 +125,9 @@ func TestResolverFor_SelectsByStackToolName(t *testing.T) {
 	}
 }
 
-func TestResolverFor_UnknownToolFallsBackToExternalWhenPrefixGiven(t *testing.T) {
+// Nexus 를 골랐지만 클러스터 안 커넥터 주소를 모르는 구성(외부 Nexus)은
+// 외부 접두사로 흘려보낸다.
+func TestResolverFor_NexusWithoutHostFallsBackToExternalWhenPrefixGiven(t *testing.T) {
 	r, err := ResolverFor(Config{ToolName: "Nexus", ExternalRepositoryPrefix: "nexus.test/acme"})
 	require.NoError(t, err)
 
@@ -138,7 +140,22 @@ func TestResolverFor_UnknownToolFallsBackToExternalWhenPrefixGiven(t *testing.T)
 // 어디에 올릴지 정할 수 없으면 조용히 기본값으로 흘리지 않고 실패한다.
 // 잘못된 곳에 이미지를 올리면 배포가 엉뚱한 이미지를 집는다.
 func TestResolverFor_UnknownToolWithoutConfigFails(t *testing.T) {
-	_, err := ResolverFor(Config{ToolName: "Nexus"})
+	_, err := ResolverFor(Config{ToolName: "Quay"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Nexus")
+	assert.Contains(t, err.Error(), "Quay")
+}
+
+// 클러스터 안 Nexus 는 Docker 커넥터 호스트로 이미지를 올린다.
+// 웹 UI 주소로 push 하면 이미지 대신 HTML 을 받아 원인을 알기 어렵다.
+func TestResolverFor_NexusUsesDockerConnectorHost(t *testing.T) {
+	r, err := ResolverFor(Config{ToolName: "Nexus", NexusDockerHost: "registry.nullus.internal"})
+	require.NoError(t, err)
+
+	target, err := r.Resolve(context.Background(), port.ImageTargetSpec{AppName: "app"})
+	require.NoError(t, err)
+
+	assert.Equal(t, port.RegistryKindNexus, target.Kind)
+	assert.Equal(t, "registry.nullus.internal/app", target.Repository)
+	// 내장 변수가 없으므로 파이프라인에 등록해야 한다.
+	assert.Equal(t, []string{"NEXUS_USERNAME", "NEXUS_PASSWORD"}, target.RequiredVariables)
 }

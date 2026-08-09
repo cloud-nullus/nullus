@@ -34,6 +34,27 @@ var waitForCertManagerInstallation = func(ctx context.Context, o *Orchestrator) 
 var verifyReleaseRuntimeReadiness = func(ctx context.Context, o *Orchestrator, step, releaseName, namespace string) error {
 	return o.verifyReleaseRuntimeReadiness(ctx, step, releaseName, namespace)
 }
+
+// checkExistingMetricsServerInstallation 은 클러스터에 metrics-server 가 이미
+// 있는지 본다.
+//
+// metrics-server 는 클러스터 하나에 하나만 존재하는 컴포넌트인데, 차트가
+// ClusterRole 같은 클러스터 범위 리소스를 만든다. 같은 클러스터에 두 번째
+// 스택을 설치하면 그 리소스를 다른 릴리스가 이미 소유하고 있어
+// "invalid ownership metadata" 로 설치 전체가 멈춘다 — cert-manager 는 같은
+// 이유로 이미 재사용 경로를 갖고 있다.
+var checkExistingMetricsServerInstallation = func(ctx context.Context, o *Orchestrator) (bool, error) {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return false, nil
+	}
+	// APIService 는 metrics-server 가 동작 중일 때만 등록된다. Deployment 이름은
+	// 릴리스마다 다를 수 있어 이 쪽이 더 정확하다.
+	if _, err := o.runKubectl(ctx, "get", "apiservice", "v1beta1.metrics.k8s.io"); err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
 var checkExistingCertManagerInstallation = func(ctx context.Context, o *Orchestrator) (bool, error) {
 	if !looksLikeKubeconfig(o.kubeconfig) {
 		return false, nil
@@ -134,6 +155,14 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 		if err != nil {
 			if step == stepInstallingCertManager && isReleaseNotFoundError(err) {
 				if readinessErr := o.waitForCertManagerInstallation(ctx); readinessErr == nil {
+					continue
+				}
+			}
+			// 설치 단계에서 기존 metrics-server 를 재사용했다면 이 스택 이름의
+			// 릴리스는 존재하지 않는다. 그대로 두면 설치는 끝났는데 health check
+			// 에서만 실패하는, 원인이 멀리 떨어진 실패가 된다.
+			if step == "installing_metrics_server" && isReleaseNotFoundError(err) {
+				if reused, checkErr := checkExistingMetricsServerInstallation(ctx, o); checkErr == nil && reused {
 					continue
 				}
 			}
@@ -307,17 +336,23 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_database_connection_check": 9,
 			// SSO 프로비저닝은 OIDC 클라이언트를 만들어 두는 단계라
 			// 이를 소비하는 GitLab/Argo CD/Grafana 보다 앞서야 한다.
-			"provisioning_sso":         10,
-			"installing_gitlab":        11,
-			"installing_argocd":        12,
-			stepInstallingRunner:       13,
-			"installing_prometheus":    14,
-			"installing_grafana":       15,
-			"installing_logging":       16,
-			"installing_log_search":    17,
-			"installing_opentelemetry": 18,
-			"installing_gateway":       19,
-			"integration_check":        20,
+			"provisioning_sso":  10,
+			"installing_gitlab": 11,
+			// 독립 레지스트리는 GitLab 다음, Argo CD 앞이다. Argo CD 가 배포할
+			// 이미지를 여기서 받으므로 먼저 서 있어야 하고, Nexus 는 설치만으로는
+			// Docker 커넥터가 없어 provisioning_nexus 가 뒤따라야 쓸 수 있다.
+			"installing_harbor":        12,
+			"installing_nexus":         13,
+			"provisioning_nexus":       14,
+			"installing_argocd":        15,
+			stepInstallingRunner:       16,
+			"installing_prometheus":    17,
+			"installing_grafana":       18,
+			"installing_logging":       19,
+			"installing_log_search":    20,
+			"installing_opentelemetry": 21,
+			"installing_gateway":       22,
+			"integration_check":        23,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -332,6 +367,9 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_database_connection_check",
 			"provisioning_sso",
 			"installing_gitlab",
+			"installing_harbor",
+			"installing_nexus",
+			"provisioning_nexus",
 			"installing_argocd",
 			stepInstallingRunner,
 			"installing_prometheus",
@@ -354,6 +392,9 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// provisioning_sso 는 선택형이라 매핑을 유지한다.
 			"provisioning_sso":         "config.authentication.provider",
 			"installing_gitlab":        "config.artifacts.source_repository",
+			"installing_harbor":        "config.artifacts.container_registry",
+			"installing_nexus":         "config.artifacts.container_registry",
+			"provisioning_nexus":       "config.artifacts.container_registry",
 			"installing_argocd":        "config.pipeline.cd_tool",
 			stepInstallingRunner:       "config.pipeline.ci_platform",
 			"installing_prometheus":    "config.monitoring.collection",
@@ -386,6 +427,21 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+			},
+			// Harbor / Nexus 는 독립 레지스트리를 고른 경우에만 선다.
+			// GitLab Registry 를 고르면 GitLab 이 겸하므로 둘 다 꺼진다.
+			"installing_harbor": func(cfg domain.StackConfig) bool {
+				return isHarborRegistrySelection(cfg.Artifacts.ContainerRegistry)
+			},
+			"installing_nexus": func(cfg domain.StackConfig) bool {
+				return isNexusSelection(cfg.Artifacts.ContainerRegistry) ||
+					isNexusSelection(cfg.Artifacts.PackageRegistry)
+			},
+			// 설치 직후의 Nexus 는 Docker 커넥터도 저장소도 없다.
+			// 이 단계가 없으면 CI 가 이미지를 올릴 곳이 존재하지 않는다.
+			"provisioning_nexus": func(cfg domain.StackConfig) bool {
+				return isNexusSelection(cfg.Artifacts.ContainerRegistry) ||
+					isNexusSelection(cfg.Artifacts.PackageRegistry)
 			},
 			// 시크릿 평면(installing_openbao / installing_external_secrets /
 			// provisioning_secrets)은 stepConfigEnabled 에 넣지 않는다 — 항상 켜진다.
@@ -455,6 +511,50 @@ func isGitLabSourceRepositorySelection(sel domain.ToolSelection) bool {
 		return true
 	}
 	return name == "gitlab" || name == "gitlab-ce"
+}
+
+// isHarborRegistrySelection 은 컨테이너 레지스트리로 Harbor 를 골랐는지 본다.
+//
+// 이름이 비어 있으면 GitLab 판단과 달리 참으로 보지 않는다 — 레지스트리는
+// GitLab 내장이 기본이므로, 모르는 값에 Harbor 를 설치하면 쓰지도 않을 것을
+// 올리게 된다.
+func isHarborRegistrySelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled || isExternalSelection(sel) {
+		return false
+	}
+	return normalizeToolName(sel.Name) == "harbor"
+}
+
+// isGitLabContainerRegistrySelection 은 GitLab 내장 레지스트리를 골랐는지 본다.
+//
+// 이름이 비어 있으면 참으로 본다 — 레지스트리 기본값이 GitLab 내장이기 때문이다.
+// Harbor/Nexus 를 고른 경우는 명시적으로 제외한다.
+func isGitLabContainerRegistrySelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled || isExternalSelection(sel) {
+		return false
+	}
+	if isHarborRegistrySelection(sel) || isNexusSelection(sel) {
+		return false
+	}
+	return true
+}
+
+// isNexusSelection 은 컨테이너 레지스트리 또는 패키지 저장소로 Nexus 를
+// 골랐는지 본다. Nexus 는 둘 다 겸할 수 있어 양쪽에서 호출된다.
+func isNexusSelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled || isExternalSelection(sel) {
+		return false
+	}
+	switch normalizeToolName(sel.Name) {
+	case "nexus", "nexus3", "sonatype-nexus", "nexus-repository", "nexus-repository-manager":
+		return true
+	}
+	return false
+}
+
+// isExternalSelection 은 클러스터 밖 서비스를 가리키는 선택인지 본다.
+func isExternalSelection(sel domain.ToolSelection) bool {
+	return strings.EqualFold(strings.TrimSpace(sel.Version), "external")
 }
 
 func isGitLabCISelection(sel domain.ToolSelection) bool {
@@ -608,6 +708,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	if step == "provisioning_nexus" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureNexusProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("nexus 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if step == "provisioning_sso" {
 		// OIDC 클라이언트를 미리 만들어 둔다. 이를 소비하는 GitLab/Argo CD/
 		// Grafana 설치보다 앞서야 한다.
@@ -685,6 +797,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			return nil
 		}
 	}
+	if step == "installing_metrics_server" {
+		installed, checkErr := checkExistingMetricsServerInstallation(ctx, o)
+		if checkErr != nil {
+			return fmt.Errorf("detect existing metrics-server installation: %w", checkErr)
+		}
+		if installed {
+			slog.Info("reusing existing metrics-server installation", "namespace", namespace)
+			o.markCompleted(stackID, order)
+			return nil
+		}
+	}
+
 	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
 		if err := o.ensureGatewayAPICRDs(ctx); err != nil {
 			return fmt.Errorf("ensure gateway api crds: %w", err)
@@ -828,8 +952,9 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	if cfg == nil {
 		// 시크릿 평면은 설정과 무관하게 항상 켜진다 — 차트가 참조하는
 		// existingSecret 을 만드는 유일한 경로이기 때문이다.
-		// 반면 provisioning_sso 는 선택형이므로 설정이 없으면 끈다.
-		return step != "provisioning_sso"
+		// 반면 선택형 단계는 설정이 없으면 끈다. 켜 두면 아무도 고르지 않은
+		// 도구를 설치하게 되고, 순서 검증도 그 단계를 기다리다 멈춘다.
+		return !isOptInStep(step)
 	}
 
 	enabledFn, ok := o.stepConfigEnabled[step]
@@ -838,6 +963,18 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	}
 
 	return enabledFn(*cfg)
+}
+
+// isOptInStep 은 스택 설정에서 명시적으로 골라야만 도는 단계인지 본다.
+//
+// 설정을 모를 때의 기본값을 정하는 데 쓴다. 여기 없는 단계는 설정이 없으면
+// 켜진 것으로 본다 — 시크릿 평면처럼 항상 필요한 단계가 그렇다.
+func isOptInStep(step string) bool {
+	switch step {
+	case "provisioning_sso", "installing_harbor", "installing_nexus", "provisioning_nexus":
+		return true
+	}
+	return false
 }
 
 func isSharedClusterScopedStep(step string) bool {

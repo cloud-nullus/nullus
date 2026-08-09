@@ -152,6 +152,22 @@ func toolCredentials(cfg domain.StackConfig) []domain.ToolCredential {
 			Note:     "values 에서 관리자 비밀번호를 지정하지 않았다면 차트 기본값을 확인하세요.",
 		})
 	}
+	if sel := cfg.Artifacts.ContainerRegistry; sel.Enabled && normalizeTool(sel.Name) == "harbor" {
+		tools = append(tools, domain.ToolCredential{
+			Name:      sel.Name,
+			Username:  domain.HarborAdminUser,
+			SecretRef: domain.HarborAdminSecret,
+			SecretKey: domain.HarborAdminPassKey,
+		})
+	}
+	if isNexusTool(cfg.Artifacts.ContainerRegistry) || isNexusTool(cfg.Artifacts.PackageRegistry) {
+		tools = append(tools, domain.ToolCredential{
+			Name:      "Nexus",
+			Username:  domain.NexusAdminUser,
+			SecretRef: domain.NexusAdminSecret,
+			SecretKey: domain.NexusAdminPassKey,
+		})
+	}
 	if sel := cfg.Artifacts.StorageBackend; sel.Enabled && normalizeTool(sel.Name) == "minio" {
 		tools = append(tools, domain.ToolCredential{
 			Name:      sel.Name,
@@ -179,6 +195,19 @@ func toolCredentials(cfg domain.StackConfig) []domain.ToolCredential {
 func isGitLabTool(name string) bool {
 	switch normalizeTool(name) {
 	case "gitlab", "gitlab-ce", "gitlab-ee":
+		return true
+	}
+	return false
+}
+
+// isNexusTool 은 Nexus 선택을 알아본다. 컨테이너 레지스트리와 패키지 저장소
+// 양쪽에서 고를 수 있어 선택 하나가 아니라 도구 이름으로 판단한다.
+func isNexusTool(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	switch normalizeTool(sel.Name) {
+	case "nexus", "nexus3", "sonatype-nexus", "nexus-repository", "nexus-repository-manager":
 		return true
 	}
 	return false

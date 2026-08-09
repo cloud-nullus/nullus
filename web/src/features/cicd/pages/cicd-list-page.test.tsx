@@ -24,6 +24,10 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
+vi.mock("../../stack/api/stack-api", () => ({
+  useStacks: () => ({ data: { items: [{ id: "stack-1", name: "prod-stack" }], total: 1 } }),
+}));
+
 vi.mock("../api/cicd-api", () => ({
   usePipelines: (...args: unknown[]) => mockUsePipelines(...args),
   useDeletePipeline: (...args: unknown[]) => mockUseDeletePipeline(...args),
@@ -45,6 +49,7 @@ const pipelines = [
     clusterName: "prod-k8s",
     status: "success",
     lastDeployedAt: "2026-03-03T14:28:00Z",
+    stackId: "stack-1",
   },
 ];
 
@@ -129,6 +134,14 @@ describe("CicdListPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add Phase" }));
     expect(mockNavigate).toHaveBeenCalledWith("/cicd/developer-deploy");
+  });
+
+  // 파이프라인이 어느 스택 위에서 도는지 보여야 한다. 스택마다 레지스트리가
+  // 달라 이미지가 어디로 올라가는지가 스택에 따라 달라진다.
+  it("shows the stack a pipeline belongs to", () => {
+    renderWithProviders(<CicdListPage />);
+
+    expect(screen.getAllByText("prod-stack").length).toBeGreaterThan(0);
   });
 
   it("deploys the selected pipeline from the list detail panel and opens logs", async () => {

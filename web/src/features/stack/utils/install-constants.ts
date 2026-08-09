@@ -21,6 +21,8 @@ export const ARTIFACTS_OPTIONS: Record<string, ToolOption[]> = {
   containerRegistry: [
     { id: 'gitlab-registry', label: 'GitLab Container Registry', description: 'GitLab 내장 컨테이너 레지스트리' },
     { id: 'harbor', label: 'Harbor', description: '엔터프라이즈 컨테이너 레지스트리' },
+    // Nexus 는 이미지와 패키지를 함께 담을 수 있어 양쪽 목록에 모두 있다.
+    { id: 'nexus', label: 'Nexus Repository', description: '이미지와 패키지를 함께 보관' },
     { id: 'docker-hub', label: 'Docker Hub', description: 'Docker 공식 레지스트리' },
   ],
 }

@@ -86,8 +86,11 @@ func (f *BundleFactory) For(ctx context.Context, stackID string) (*port.SCMBundl
 	}
 
 	resolver, err := registry.ResolverFor(registry.Config{
-		ToolName:                 summary.ContainerRegistry,
-		HarborHost:               harborHostFor(summary.AccessDomain),
+		ToolName:   summary.ContainerRegistry,
+		HarborHost: harborHostFor(summary.AccessDomain),
+		// Nexus 의 Docker 커넥터는 스택 모듈이 registry.<domain> 으로 라우팅한다.
+		// 웹 UI(nexus.<domain>)로 push 하면 이미지 대신 HTML 을 받는다.
+		NexusDockerHost:          registryHostFor(summary.AccessDomain),
 		ExternalRepositoryPrefix: f.opts.ExternalRegistryPrefix,
 	})
 	if err != nil {

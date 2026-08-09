@@ -50,6 +50,7 @@ import {
 } from "../api/cicd-api";
 import type { Pipeline } from "../api/cicd-api";
 import { useScopedClusters as useClusters } from "../../admin/api/admin-api";
+import { useStacks } from "../../stack/api/stack-api";
 import { Button } from "../../../components/ui/button";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { YamlEditor } from "../../../components/shared/yaml-editor";
@@ -217,6 +218,14 @@ function ExecuteModal({
   isExecuting: boolean;
 }) {
   const { data: clustersData } = useClusters();
+  const { data: executeStacksData } = useStacks();
+  // 스택을 아직 못 받았거나 스택 없이 만든 파이프라인이면 아무것도 붙이지
+  // 않는다. 모르는 값을 그럴듯하게 지어내지 않는다.
+  const executeStackLabel = pipeline.stackId
+    ? ((executeStacksData?.items ?? []).find(
+        (stack) => stack.id === pipeline.stackId,
+      )?.name ?? pipeline.stackId)
+    : "";
   const clusterList = clustersData?.items ?? [];
   const targetClusters = clusterList.filter((c) => {
     const types = Array.isArray((c as any).types)
@@ -280,6 +289,9 @@ function ExecuteModal({
               </div>
               <div className="text-[12px] text-[var(--color-text-secondary)]">
                 {pipeline.name}
+                {/* 어느 스택 위에서 도는지 배포 직전에 밝힌다 — 스택마다
+                    이미지가 올라가는 레지스트리가 다르다. */}
+                {executeStackLabel ? ` · ${executeStackLabel}` : ""}
               </div>
             </div>
           </div>
@@ -1755,6 +1767,7 @@ export function CicdListPage() {
   }, []);
 
   const { data: clustersData } = useClusters();
+  const { data: stacksData } = useStacks();
   const { data: apiData } = usePipelines({
     status: statusFilter || undefined,
     search: search || undefined,
@@ -1782,6 +1795,12 @@ export function CicdListPage() {
   const expandedPipeline = selectedPipelineId
     ? (filtered.find((pipeline) => pipeline.id === selectedPipelineId) ?? null)
     : null;
+
+  // 파이프라인이 어느 스택 위에서 도는지 보여준다. 스택마다 레지스트리와
+  // 저장소가 달라 이미지가 어디로 가는지가 스택에 따라 달라진다.
+  const stackNameById = new Map(
+    (stacksData?.items ?? []).map((stack) => [stack.id, stack.name]),
+  );
 
   const columns: ColumnDef<Pipeline, unknown>[] = [
     {
@@ -1822,6 +1841,26 @@ export function CicdListPage() {
           {row.original.clusterName}
         </span>
       ),
+    },
+    {
+      id: "stack",
+      header: t("cicdListPage.table.stack", "Stack"),
+      cell: ({ row }) => {
+        const stackId = row.original.stackId;
+        // 스택 없이 만든 파이프라인도 있다. 이름을 지어내지 않고 없음을 밝힌다.
+        if (!stackId) {
+          return (
+            <span className="text-[var(--color-text-muted)]">
+              {t("cicdListPage.table.noStack", "—")}
+            </span>
+          );
+        }
+        return (
+          <span className="text-[var(--color-text-secondary)]">
+            {stackNameById.get(stackId) ?? stackId}
+          </span>
+        );
+      },
     },
     {
       accessorKey: "status",

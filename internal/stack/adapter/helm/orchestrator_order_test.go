@@ -24,6 +24,11 @@ var canonicalInstallOrder = []string{
 	"installing_database_connection_check",
 	"provisioning_sso",
 	"installing_gitlab",
+	// 독립 레지스트리는 Argo CD 가 배포할 이미지를 받는 곳이라 앞에 선다.
+	// Nexus 는 설치만으로는 Docker 커넥터가 없어 프로비저닝이 뒤따른다.
+	"installing_harbor",
+	"installing_nexus",
+	"provisioning_nexus",
 	"installing_argocd",
 	"installing_runner",
 	"installing_prometheus",

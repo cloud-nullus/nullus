@@ -46,6 +46,9 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 		if step == "installing_gitlab" {
 			base = mergeMaps(base, o.gitlabExternalSharedServiceValues(nil))
 		}
+		if step == "installing_harbor" {
+			base = mergeMaps(base, o.harborExternalURLValues(nil))
+		}
 		if step == stepInstallingRunner {
 			namespace := strings.TrimSpace(o.namespace)
 			if namespace == "" {
@@ -91,6 +94,10 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 
 	if step == "installing_gitlab" {
 		base = mergeMaps(base, o.gitlabExternalSharedServiceValues(cfg))
+	}
+
+	if step == "installing_harbor" {
+		base = mergeMaps(base, o.harborExternalURLValues(cfg))
 	}
 
 	if step == stepInstallingRunner {
@@ -209,6 +216,28 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 				"size":    fmt.Sprintf("%gGi", storageGi),
 			},
 		},
+	}
+}
+
+// harborExternalURLValues 는 Harbor 의 externalURL 을 실제 주소로 맞춘다.
+//
+// Harbor 는 이 값을 토큰 발급 엔드포인트로 클라이언트에게 되돌려준다. 기본값을
+// 그대로 두면 docker login/push 가 존재하지 않는 호스트로 토큰을 요청해
+// "no such host" 로 실패한다 — 레지스트리는 떠 있는데 push 만 안 되는,
+// 원인이 멀리 떨어진 실패다.
+func (o *Orchestrator) harborExternalURLValues(cfg *domain.StackConfig) map[string]any {
+	if cfg != nil {
+		if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
+			return map[string]any{"externalURL": fmt.Sprintf("http://harbor.%s", accessDomain)}
+		}
+	}
+
+	namespace := strings.TrimSpace(o.namespace)
+	if namespace == "" {
+		namespace = defaultStackNamespace
+	}
+	return map[string]any{
+		"externalURL": fmt.Sprintf("http://%s.%s.svc.cluster.local", domain.HarborServiceName, namespace),
 	}
 }
 

@@ -16,7 +16,44 @@ func TestMemoryTemplateRepository_ListReturnsSeededTemplates(t *testing.T) {
 
 	templates, err := repo.List(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, templates, 4, "should have exactly 4 Golden Path templates")
+
+	// 개수를 고정하면 템플릿을 하나 추가할 때마다 무관하게 깨진다.
+	// 있어야 하는 것이 있는지를 본다.
+	ids := make([]string, 0, len(templates))
+	for _, tmpl := range templates {
+		ids = append(ids, tmpl.ID)
+	}
+	assert.Subset(t, ids, []string{
+		"empty-template-v1",
+		"gitlab-allinone-v1",
+		"gitlab-argocd-v1",
+		"gitlab-harbor-v1",
+		"gitlab-nexus-v1",
+		"github-argocd-v1",
+	})
+}
+
+// 도구를 고른 템플릿에는 대응하는 호환성 매트릭스가 있어야 한다.
+// 없으면 Pre-Deploy Gate 가 판정할 근거가 없어 설치 직전에 막힌다 —
+// 템플릿만 추가하고 매트릭스를 빠뜨리는 실수를 여기서 잡는다.
+func TestSeededTemplates_HaveCompatibilityMatrix(t *testing.T) {
+	templates, err := NewMemoryTemplateRepository().List(context.Background())
+	require.NoError(t, err)
+	matrices, err := NewMemoryCompatibilityRepository().GetAll(context.Background())
+	require.NoError(t, err)
+
+	known := make(map[string]struct{}, len(matrices))
+	for _, m := range matrices {
+		known[m.ID] = struct{}{}
+	}
+
+	for _, tmpl := range templates {
+		if len(tmpl.Tools) == 0 {
+			continue // 빈 템플릿은 고른 도구가 없어 판정할 대상이 없다.
+		}
+		_, ok := known[tmpl.ID]
+		assert.Truef(t, ok, "template %s has no compatibility matrix", tmpl.ID)
+	}
 }
 
 func TestMemoryTemplateRepository_GetByID_EmptyTemplate(t *testing.T) {

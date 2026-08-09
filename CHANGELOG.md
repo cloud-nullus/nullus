@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **컨테이너 레지스트리로 Harbor / Nexus 선택 가능** (스택 템플릿 `gitlab-harbor-v1`·`gitlab-nexus-v1` 추가): 기존에는 GitLab 내장 레지스트리뿐이었다. 템플릿은 Harbor 를 도구로 명시하면서도 **설치 단계가 아예 없어**, 고르면 CI 가 이미지를 올릴 곳이 존재하지 않았다. `installing_harbor`·`installing_nexus`·`provisioning_nexus` 를 설치 DAG 에 추가하고, 자격증명은 다른 도구와 같이 OpenBao → ESO 로 프로비저닝한다. Nexus 는 설치만으로는 Docker 커넥터도 저장소도 없고 관리자 비밀번호를 컨테이너가 무작위로 만들기 때문에, `provisioning_nexus` 가 비밀번호를 교체하고 `DockerToken` realm 을 켜고 docker/maven/npm 저장소와 8082 Service 를 만든다(재실행 가능). CI/CD 쪽에는 Nexus resolver 를 추가해 이미지를 UI(8081)가 아닌 Docker 커넥터(8082)로 보낸다 — UI 주소로 push 하면 이미지 대신 HTML 을 받는다. 로컬 kind 에서 두 레지스트리 모두 설치·이미지 push 를 확인했고, Harbor 는 GitLab CI 빌드 → push → Argo CD 동기화 → 파드 구동까지 digest 일치로 검증했다.
+- **CI/CD 리스트와 배포 확인 모달에 사용 스택 표시**: 파이프라인은 이미 `stack_id` 를 저장하고 API 로도 내려주고 있었으나 화면에 없었다. 스택마다 레지스트리가 달라 이미지가 어디로 올라가는지가 달라지므로, 배포 직전과 목록에서 어느 스택 위에서 도는지 드러낸다.
+
+### Fixed
+
+- **같은 클러스터에 두 번째 스택을 설치하면 metrics-server 에서 항상 실패하던 문제**: metrics-server 는 클러스터당 하나인데 차트가 ClusterRole 등 클러스터 범위 리소스를 만든다. 기존 스택이 그것을 소유하고 있어 `invalid ownership metadata` 로 설치가 멈췄다. cert-manager 는 이미 재사용 경로를 갖고 있었으나 metrics-server 에는 없었다. `v1beta1.metrics.k8s.io` APIService 존재로 감지해 재사용하며, 설치를 건너뛴 경우 health check 도 릴리스 부재를 허용한다(설치는 끝났는데 검증에서만 실패하던 구멍).
+- **스택을 지우고 다시 설치하면 Argo CD 설치가 막히던 문제**: helm 은 uninstall 시 CRD 를 지우지 않아 `applications.argoproj.io` 등이 삭제된 릴리스 소유로 남았다. 삭제 경로가 Argo CD CRD 를 정리하되, 다른 스택이 아직 Application 을 갖고 있으면 건너뛴다(지우면 그 스택의 배포 정의가 사라진다). `external-secrets` 릴리스도 삭제 대상에 포함한다.
+- **`registry.<도메인>` 을 두 라우트가 주장하던 문제**: 기존 registry 라우트가 어떤 레지스트리를 골랐든 `gitlab-registry` 로 보내, Harbor/Nexus 를 고른 스택이 비어 있는 GitLab 레지스트리를 가리켰다. 선택한 레지스트리 하나만 이 호스트를 갖도록 정리했다(고정: `TestGatewayRoutes_RegistryHostHasSingleOwner`).
+- **PostgreSQL 이 설치 시점마다 달라지던 문제**: 차트 버전이 고정돼 있지 않았고(다른 스텝은 모두 고정), 차트 기본 이미지도 `bitnami/postgresql:latest` 였다. bitnami 가 2025-08 에 버전 태그를 `bitnamilegacy/*` 로 옮기면서 `bitnami/postgresql` 에는 `latest` 만 남았기 때문이다. 차트 `16.7.27` 과 이미지 `bitnamilegacy/postgresql:17.6.0-debian-12-r4` 로 짝을 맞춰 고정한다. **주의**: `bitnamilegacy` 는 동결 저장소라 18.x 가 없어 PostgreSQL 이 17.6.0 으로 내려간다. `latest` 로 이미 18.x 데이터가 생긴 스택은 재설치나 dump/restore 가 필요하다. 동결 저장소는 보안 패치가 오지 않으므로 장기적으로는 다른 차트로 이전해야 한다.
+- **Harbor 설치 시 `externalURL` 이 실제 주소로 채워지지 않던 문제**: Harbor 는 이 값을 토큰 발급 엔드포인트로 클라이언트에 돌려준다. 기본값이 그대로 남아 `docker login`/push 가 존재하지 않는 호스트로 토큰을 요청해 `no such host` 로 실패했다 — 레지스트리는 떠 있는데 push 만 안 되는 상태다. accessDomain(없으면 네임스페이스)으로 채운다.
+- **스택 설정이 없을 때 선택형 설치 단계가 켜져 있던 문제**: `isStepEnabled` 가 설정을 모르면 모든 단계를 활성으로 봤다. 선택형 도구가 추가될수록 아무도 고르지 않은 것을 설치하게 되고, 순서 검증도 그 단계를 기다리다 멈춘다.
+- **레지스트리 템플릿이 인메모리에만 있고 DB 시드에는 없던 문제**: 런타임은 PostgreSQL 을 읽으므로 실제 배포에서는 템플릿 목록에 뜨지 않았다. `000059` 마이그레이션으로 템플릿과 호환성 매트릭스를 함께 시드하고, 인메모리에만 있고 마이그레이션에 없는 항목을 계약 테스트가 잡는다.
+- **로컬 런북이 helm 없이 API 를 기동하던 문제**: OCI 차트(envoy gateway)는 helm CLI 로 폴백하는데, PATH 에 helm 이 없으면 게이트웨이 설치만 `executable file not found` 로 실패하고 원인이 설치 로그 깊은 곳에만 남았다. 기동 전에 확인해 즉시 드러낸다.
+
+- **게시된 web 이미지로는 어떤 환경에서도 SSO 로그인이 되지 않던 문제**: Vite 는 `import.meta.env.VITE_*` 를 빌드 시점에 문자열로 인라인한다. 그래서 `cd.yml` 이 주입한 OIDC issuer(`http://keycloak.nullus.internal/realms/nullus`)가 이미지에 박혀, 그 호스트가 존재하지 않는 모든 배포에서 로그인 화면이 `Failed to fetch` 로 끝났다. 차트의 `config.auth.oidcIssuerUrl` 은 API 에만 적용되어 프런트엔드에는 닿지 않는다. 컨테이너 기동 시 `/config.js` 를 생성해 `window.__NULLUS_CONFIG__` 로 주입하는 런타임 설정을 도입한다 — 우선순위는 `런타임 > 빌드타임 > 기본값` 이라 로컬 개발 동작은 그대로다. 이제 환경마다 이미지를 다시 빌드하지 않아도 된다.
+- **`setup-keycloak.sh` 를 재실행하면 사용자 `email` 이 지워지던 문제**: 신규 생성 경로는 `email` 을 넣지만 기존 사용자 갱신 경로가 이를 빠뜨렸다. Keycloak 의 사용자 PUT 은 표현을 통째로 교체하므로 두 번째 실행부터 `email` 이 비었고, API 는 토큰의 `email` 클레임으로 사용자를 조회하므로 로그인 후 사용자 매칭이 깨졌다. 갱신 payload 에 `email`·`emailVerified`·`enabled` 를 함께 보낸다.
+- **재배포하면 열려 있던 탭이 죽던 문제**: 빌드 산출물은 파일명에 내용 해시가 들어가므로 재배포하면 이전 청크가 사라진다. 배포 전에 열려 있던 탭이 lazy import 를 시도하면 `Failed to fetch dynamically imported module` 로 화면이 죽고, 「다시 시도」를 눌러도 같은 옛 모듈 그래프를 다시 써서 복구되지 않았다. 게다가 nginx 의 SPA 폴백이 없는 `.js` 요청에도 `index.html` 을 200 으로 돌려줘, 브라우저가 HTML 을 모듈로 파싱하다 실패하는 혼란스러운 오류가 됐다. `/assets/` 는 없으면 404 를 주고(내용 해시가 있으므로 장기 캐시), 앱은 청크 오류를 감지해 **한 번만** 자동 새로고침한다.
+- **SSO 로그인 시 모든 사용자가 developer 로 보이던 문제**: Keycloak 은 `realm_access` 를 기본적으로 **액세스 토큰에만** 싣는데, 프런트엔드는 ID 토큰 클레임(`user.profile`)에서 롤을 찾았다. 항상 빈 배열이 나와 `admin`·`devops` 계정까지 전부 최저 권한인 `developer` 로 떨어졌고, 관리자 화면을 아무도 쓸 수 없었다. ID 토큰을 먼저 보고 없으면 액세스 토큰을 직접 열어 읽는다 — 액세스 토큰의 `realm_access` 는 Keycloak 이 항상 넣어 주므로 서버 매퍼 설정과 무관하게 동작한다. 프로비저닝 스크립트에는 ID 토큰에도 롤을 싣는 realm-roles 매퍼를 추가한다(보강).
+- **인증 오류가 나면 빠져나올 방법이 없던 문제**: 브라우저에 남은 세션과 서버 상태가 어긋나면 로그인 흐름이 화면에 문구만 남긴 채 끝났다(`Session not active`, `No matching state found in storage`, `login_required`). 개발자 도구로 저장소를 비우지 않으면 복구가 불가능했다. 저장소를 비우고 다시 시도하면 풀리는 오류를 가려내 **원인당 한 번만** 자동 재시도하고, 실패하면 「다시 로그인」 버튼을 함께 보여 준다. 무한 리다이렉트를 피하려고 마커를 `sessionStorage` 에 두어 새로고침해도 반복되지 않게 했다.
+- **클라이언트가 바뀐 뒤 로그아웃도 되지 않던 문제**: Keycloak 은 `id_token_hint` 가 오면 그 토큰의 발급 대상과 `client_id` 가 같은지 대조하고, 다르면 로그아웃을 통째로 거부한다(`Invalid parameter: id_token_hint`). 클라이언트 ID 를 바꾼 뒤 브라우저에 이전 세션이 남아 있으면 정확히 이 상태가 되어, 사용자가 **로그아웃도 못 하는** 막다른 화면에 갇힌다. 힌트로 쓸 토큰이 현재 클라이언트의 것인지(`azp`/`aud`) 확인하고, 어긋나면 힌트를 버리고 `client_id` 만으로 로그아웃한다. 클라이언트의 `post.logout.redirect.uris` 도 함께 설정한다.
+- **SSO 계정과 DB 시드 사용자의 이메일이 어긋나 있던 문제**: 인증이 OIDC 로 넘어가면서 API 는 토큰의 `email` 클레임으로 `users` 행을 찾는데, `scripts/setup-keycloak.sh` 가 만드는 계정(`admin@nullus.io`·`devops@nullus.io`·`dev@nullus.io`)과 시드 마이그레이션의 사용자(`admin@nullus.io`·`kim@nullus.io`·`park@nullus.io`)가 달랐다. `admin` 을 뺀 두 계정은 로그인은 되지만 사용자 매칭이 되지 않는다. Keycloak 쪽을 정본으로 삼아 대응 사용자와 조직 소속을 시드한다(`000058_seed_sso_users`). `kim@`·`park@` 는 여러 시드에서 문자열로 참조되는 화면 샘플이라 지우지 않고 추가만 한다.
+- **OIDC 클라이언트 ID 가 프런트엔드와 나머지에서 어긋나던 문제**: 프런트엔드 기본값과 `cd.yml` 은 `nullus-web`, `setup-keycloak.sh` 가 만드는 클라이언트와 API audience 기본값(`configs/config.yaml`, 차트 values)은 `nullus-app` 이었다. 실제로 존재하는 클라이언트인 `nullus-app` 으로 통일한다.
 ## [0.4.0-alpha] - 2026-08-09
 
 ### Added

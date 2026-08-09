@@ -620,6 +620,15 @@ do_up() {
 
   # 3. Build + start API (with ENCRYPTION_KEY)
   echo ""
+  # OCI 차트(envoy gateway)는 helm CLI 로 폴백한다. API 프로세스의 PATH 에
+  # helm 이 없으면 게이트웨이 설치만 "executable file not found" 로 실패하는데,
+  # 원인이 설치 로그 깊은 곳에만 남아 찾기 어렵다. 여기서 미리 드러낸다.
+  if ! command -v helm >/dev/null 2>&1; then
+    echo "[nullus] ERROR: helm 을 찾을 수 없습니다. OCI 차트 설치(envoy gateway)가 실패합니다."
+    echo "[nullus]        brew install helm 후 다시 실행하세요."
+    return 1
+  fi
+
   echo "[nullus] building API server..."
   (cd "$PROJECT_ROOT" && go build -o bin/api ./cmd/api)
 

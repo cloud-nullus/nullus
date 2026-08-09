@@ -54,6 +54,16 @@ var installDAG = []installStep{
 	{name: "provisioning_sso", phase: "A", duration: time.Second, deps: []string{"provisioning_secrets", "installing_object_storage_secret", "installing_object_storage_buckets", "installing_database_connection_check"}},
 
 	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+
+	// 독립 레지스트리(Harbor / Nexus)는 Argo CD 앞에 선다. Argo CD 가 배포할
+	// 이미지를 여기서 받으므로 먼저 서 있어야 한다.
+	//
+	// 설치만 한 Nexus 는 Docker 커넥터도 저장소도 없어 CI 가 이미지를 올릴 곳이
+	// 없다. provisioning_nexus 가 커넥터·저장소·관리자 비밀번호를 맞춘다.
+	{name: "installing_harbor", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+	{name: "installing_nexus", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+	{name: "provisioning_nexus", phase: "B", duration: time.Second, deps: []string{"installing_nexus"}},
+
 	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_sso", "installing_gitlab"}},
 

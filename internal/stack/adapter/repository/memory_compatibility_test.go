@@ -17,7 +17,18 @@ func TestMemoryCompatibilityRepository_GetAll(t *testing.T) {
 
 	matrices, err := repo.GetAll(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, matrices, 3)
+
+	ids := make([]string, 0, len(matrices))
+	for _, m := range matrices {
+		ids = append(ids, m.ID)
+	}
+	assert.Subset(t, ids, []string{
+		"gitlab-allinone-v1",
+		"gitlab-argocd-v1",
+		"gitlab-harbor-v1",
+		"gitlab-nexus-v1",
+		"github-argocd-v1",
+	})
 }
 
 func TestMemoryCompatibilityRepository_GetByID(t *testing.T) {

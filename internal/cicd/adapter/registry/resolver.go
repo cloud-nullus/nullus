@@ -23,6 +23,9 @@ const (
 	harborUsernameVar = "HARBOR_USERNAME"
 	harborPasswordVar = "HARBOR_PASSWORD" // #nosec G101 -- CI 변수 이름
 
+	nexusUsernameVar = "NEXUS_USERNAME"
+	nexusPasswordVar = "NEXUS_PASSWORD" // #nosec G101 -- CI 변수 이름
+
 	externalUsernameVar = "REGISTRY_USERNAME"
 	externalPasswordVar = "REGISTRY_PASSWORD" // #nosec G101 -- CI 변수 이름
 
@@ -36,6 +39,11 @@ type Config struct {
 	ToolName string
 	// HarborHost 는 Harbor 를 고른 경우의 호스트다.
 	HarborHost string
+	// NexusDockerHost 는 Nexus 를 고른 경우의 Docker 커넥터 호스트다.
+	//
+	// Nexus 는 웹 UI 와 Docker 레지스트리를 다른 포트로 연다. UI 주소로 push
+	// 하면 이미지 대신 HTML 을 받아 원인을 알기 어려운 실패가 나므로 별도 값이다.
+	NexusDockerHost string
 	// ExternalRepositoryPrefix 는 외부 레지스트리의 저장소 접두사다
 	// (예: "ghcr.io/acme"). 알 수 없는 도구의 폴백으로도 쓴다.
 	ExternalRepositoryPrefix string
@@ -51,6 +59,12 @@ func ResolverFor(cfg Config) (port.ImageRegistryResolver, error) {
 		return NewSCMProjectResolver(), nil
 	case "harbor":
 		return NewHarborResolver(cfg.HarborHost), nil
+	case "nexus", "nexus3", "sonatype-nexus", "nexus-repository", "nexus-repository-manager":
+		// 커넥터 호스트를 모르면 여기서 결정하지 않고 아래 외부 접두사 경로로
+		// 넘긴다. 클러스터 밖 Nexus 를 가리키는 구성이 그 경우다.
+		if strings.TrimSpace(cfg.NexusDockerHost) != "" {
+			return NewNexusResolver(cfg.NexusDockerHost), nil
+		}
 	}
 
 	if strings.TrimSpace(cfg.ExternalRepositoryPrefix) != "" {
@@ -115,6 +129,39 @@ func (r *HarborResolver) Resolve(_ context.Context, spec port.ImageTargetSpec) (
 		UsernameVar:       harborUsernameVar,
 		PasswordVar:       harborPasswordVar,
 		RequiredVariables: []string{harborUsernameVar, harborPasswordVar},
+	}, nil
+}
+
+// NexusResolver 는 Nexus 의 Docker 커넥터를 쓴다.
+//
+// Harbor 와 달리 프로젝트 개념이 없다. 이미지는 커넥터 호스트 바로 아래에
+// 놓이므로 조직 경로를 끼워 넣지 않는다 — 넣으면 존재하지 않는 저장소를
+// 가리키게 되고 push 가 거부된다.
+type NexusResolver struct {
+	host string
+}
+
+// NewNexusResolver 는 Docker 커넥터 호스트(host:port)로 resolver 를 만든다.
+func NewNexusResolver(host string) *NexusResolver {
+	return &NexusResolver{host: strings.Trim(strings.TrimSpace(host), "/")}
+}
+
+// Resolve 는 {nexus-docker-host}/{app} 경로를 만든다.
+func (r *NexusResolver) Resolve(_ context.Context, spec port.ImageTargetSpec) (*port.ImageTarget, error) {
+	if r.host == "" {
+		return nil, fmt.Errorf("nexus docker 커넥터 호스트가 설정되지 않았습니다")
+	}
+	app := strings.TrimSpace(spec.AppName)
+	if app == "" {
+		return nil, fmt.Errorf("app_name is required")
+	}
+	return &port.ImageTarget{
+		Kind:              port.RegistryKindNexus,
+		Host:              r.host,
+		Repository:        fmt.Sprintf("%s/%s", r.host, app),
+		UsernameVar:       nexusUsernameVar,
+		PasswordVar:       nexusPasswordVar,
+		RequiredVariables: []string{nexusUsernameVar, nexusPasswordVar},
 	}, nil
 }
 

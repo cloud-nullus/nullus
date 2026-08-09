@@ -22,6 +22,9 @@ import (
 var stackHelmReleaseNames = []string{
 	"cert-manager",
 	"openbao",
+	// ESO 는 스택의 시크릿 평면이다. 남기면 다음 스택 설치가 클러스터 범위
+	// 리소스 소유권 충돌로 막힌다.
+	"external-secrets",
 	// 설치가 쓰는 릴리스명. 이름이 바뀌면 삭제도 따라가야 하므로 domain 상수를 쓴다.
 	// 뒤따르는 접두사 없는 이름들은 예전 설치본을 지우기 위한 것이라 리터럴로 둔다.
 	domain.PostgresServiceName,
@@ -86,6 +89,17 @@ var legacyReleaseArtifactPrefixes = []string{
 	"data-nullus-postgresql-",
 	"redis-data-gitlab-",
 	"repo-data-gitlab-",
+}
+
+// argoCDCRDNames 는 Argo CD 차트가 만드는 CRD 다.
+//
+// helm uninstall 은 CRD 를 지우지 않는다. 남으면 소유 애노테이션이 삭제된
+// 릴리스를 가리킨 채로 있어, 같은 클러스터에 다음 스택을 설치할 때
+// "invalid ownership metadata" 로 Argo CD 설치가 막힌다.
+var argoCDCRDNames = []string{
+	"applications.argoproj.io",
+	"applicationsets.argoproj.io",
+	"appprojects.argoproj.io",
 }
 
 var gatewayCRDNames = []string{
@@ -176,6 +190,7 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteGatewayCRDs(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteArgoCDCRDs(ctx, kubeconfig, stackID)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
@@ -356,6 +371,40 @@ func (uc *DeleteStack) bestEffortDeleteLegacyMonitoringResources(ctx context.Con
 		if err := uc.deleteResourceFunc(ctx, kubeconfig, stack.Namespace, trimmed); err != nil {
 			slog.Warn("legacy monitoring resource delete failed during stack delete", "resource", trimmed, "namespace", stack.Namespace, "error", err)
 			uc.emit(ctx, stackID, "deleting_manifest", "warn", fmt.Sprintf("legacy monitoring resource %s delete warning: %v", trimmed, err))
+		}
+	}
+}
+
+// bestEffortDeleteArgoCDCRDs 는 남은 Argo CD CRD 를 정리한다.
+//
+// 다른 스택이 아직 Application 을 갖고 있으면 지우지 않는다 — 지우면 그 스택의
+// 배포 정의가 통째로 사라진다.
+func (uc *DeleteStack) bestEffortDeleteArgoCDCRDs(ctx context.Context, kubeconfig []byte, stackID string) {
+	if len(kubeconfig) == 0 {
+		return
+	}
+
+	for _, args := range [][]string{
+		{"get", "applications.argoproj.io", "-A", "-o", "name"},
+		{"get", "appprojects.argoproj.io", "-A", "-o", "name"},
+	} {
+		out, err := runKubectlWithKubeconfig(ctx, kubeconfig, args...)
+		if err != nil {
+			// CRD 자체가 없으면 조회가 실패한다 — 지울 것도 없으므로 그냥 끝낸다.
+			slog.Warn("argocd crd cleanup skipped due to check failure", "args", strings.Join(args, " "), "error", err)
+			return
+		}
+		if strings.TrimSpace(out) != "" {
+			uc.emit(ctx, stackID, "deleting_crd", "info", "skipping argocd CRD delete because argocd resources still exist")
+			return
+		}
+	}
+
+	for _, crd := range argoCDCRDNames {
+		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting argocd crd %s", crd))
+		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "crd", crd, "--ignore-not-found"); err != nil {
+			slog.Warn("argocd crd delete warning", "crd", crd, "error", err)
+			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("argocd crd %s delete warning: %v", crd, err))
 		}
 	}
 }
