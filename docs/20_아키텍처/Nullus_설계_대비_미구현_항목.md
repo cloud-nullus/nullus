@@ -1,7 +1,8 @@
 # Nullus 설계 대비 미구현 항목
 
 **작성일**: 2026-03-30
-**버전**: 1.0
+**최종 재검증**: 2026-08-11
+**버전**: 1.1
 **기준 문서**: `docs/20_아키텍처/Nullus_시스템_아키텍처.md`
 **비교 대상 구현**: `draft` 실제 코드베이스 (`cmd/`, `internal/`, `web/`, `db/migrations/`, `deploy/`)
 
@@ -19,16 +20,27 @@
 
 ---
 
-## 2. 미구현 항목 요약
+## 2. 미구현 항목 요약 (2026-08-11 재검증)
 
-| 영역 | 미구현 항목 |
-|------|-------------|
-| 인증/API | `/api/v1/auth` REST 엔드포인트 세트, 세션 쿠키 기반 인증 완료형 플로우, 상위 `users` RBAC 관리 API |
-| 설치 엔진 | Operator/Agent 런타임, retry/timeout/partial_success 상태 및 재시도 API, 로그 DB 영속화, 파일 기반 카탈로그 엔진 |
-| 데이터 모델 | `deployments`, `deployment_logs`, `sessions`, `rbac_policies`, `menu_permissions` 등 설계 테이블 |
-| 이벤트/연동 | 도메인 이벤트 기반 컨텍스트 간 자동 동기화 |
-| 관측성/알림 | `metrics/summary` API, Alert Rule과 실제 알림 발송의 운영 연결 |
-| 프론트 인증 | OIDC 리디렉션/콜백/로그아웃의 완전한 프런트 런타임 연결 |
+3월 30일 목록을 코드로 다시 확인한 결과다. 그 사이 해소된 항목은 아래 2.1 로 옮겼다.
+
+| 영역 | 미구현 항목 | 확인 근거 |
+|------|-------------|-----------|
+| 인증/API | `/api/v1/auth` REST 엔드포인트 세트 | `internal/auth/` 에 미들웨어·프로바이더만 있고 핸들러가 없다. `main.go` 에 `/auth` 그룹 없음 |
+| 설치 엔진 | Operator/Agent 런타임, 파일 기반 카탈로그 엔진 | 설치는 API 프로세스 내 오케스트레이터가 직접 수행 |
+| 설치 엔진 | 설치 로그 DB 영속화 | `main.go` 가 `logadapter.NewMemoryStreamer()` 를 쓴다 — 재기동하면 로그가 사라진다 |
+| 데이터 모델 | `deployments`, `deployment_logs`, `sessions`, `rbac_policies`, `menu_permissions` | 마이그레이션 `000061` 기준으로 존재하지 않음. 일부는 다른 이름으로 대체됐다(DB 스키마 문서 0.1 참고) |
+| 이벤트/연동 | 도메인 이벤트 기반 컨텍스트 간 자동 동기화 | 모듈 간 연결은 포트 직접 호출 방식 |
+| 관측성 | `metrics/summary` API | observability 라우트는 `/dashboard`, `/deployed-apps`, `/alert-rules`, `/alert-history` 뿐 |
+| 프론트 인증 | OIDC 리디렉션/콜백/로그아웃의 완전한 런타임 연결 | 로컬 기본값이 `VITE_AUTH_MODE=mock` |
+
+### 2.1 3월 목록에서 해소된 항목
+
+| 항목 | 현재 상태 |
+|------|-----------|
+| retry/partial_success 상태 및 재시도 API | **구현됨** — `POST /api/v1/stacks/:id/retry`, `POST /api/v1/stacks/:id/continue` (`deploy_handler.go`) |
+| Alert Rule 과 실제 알림 발송의 운영 연결 | **구현됨** — `internal/shared/notification/notifier.go` + `notification_configs`·`notification_history` 테이블, `/admin/notifications/*` API |
+| 상위 `users` RBAC 관리 API | **부분 구현** — `/api/v1/admin/members/*` 로 조직 멤버·역할을 관리한다. 설계안의 전역 `users` RBAC 테이블 방식은 아니다 |
 
 ---
 

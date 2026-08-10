@@ -1,7 +1,48 @@
 # Nullus 구현 내역서
 
 **작성일**: 2026-03-22
+**최종 갱신**: 2026-08-11
 **범위**: Phase 1 (갭 해결) + Phase 2 (OIDC 추상화, D11, 컨벤션)
+
+> 2장 이하는 3월 시점의 Phase 1·2 작업 기록이다. 그 뒤의 누적 구현 현황은 아래 0장에
+> 요약했고, 변경 이력은 `CHANGELOG.md` 가 단일 출처다.
+
+---
+
+## 0. 구현 현황 요약 (2026-08-11)
+
+### 0.1 백엔드 모듈
+
+Clean Architecture 4계층(`domain` / `usecase` / `port` / `adapter`)을 모듈마다 유지한다.
+
+| 모듈 | 구현 파일 | 테스트 파일 | 계층 |
+|------|-----------|-------------|------|
+| `internal/stack` | 90 | 70 | adapter, domain, port, usecase |
+| `internal/cicd` | 50 | 33 | adapter, domain, port, usecase |
+| `internal/admin` | 42 | 22 | adapter, domain, port, usecase, rotation, scheduler |
+| `internal/observability` | 23 | 12 | adapter, domain, port, usecase |
+| `internal/shared` | 21 | 8 | audit, config, domain, middleware, notification, secrets |
+| `internal/auth` | 13 | 11 | adapter(keycloak/authentik/middleware), port |
+
+프로덕션 Go 코드 약 38,700 라인. 프론트엔드 feature 는 `admin`, `auth`, `cicd`,
+`common`, `home`, `observability`, `stack` 7개다.
+
+### 0.2 외부 연동 현황
+
+| 영역 | 지원 |
+|------|------|
+| 소스 저장소 | GitLab(스택 내 설치), **GitHub(외부 SaaS)** |
+| CI | GitLab CI, **GitHub Actions** |
+| 컨테이너 레지스트리 | Harbor, Nexus, GitLab Container Registry, **GHCR** |
+| CD | Argo CD |
+| 시크릿 | OpenBao(스택마다 배포, Kubernetes Auth) + External Secrets Operator |
+| 인증 | Keycloak / Authentik OIDC |
+| 모니터링 | Prometheus, Grafana |
+
+### 0.3 API·스키마 규모
+
+- REST 엔드포인트 **108개** (모듈별 내역은 `Nullus_API_설계.md` 6.0)
+- DB 테이블 **22개**, 마이그레이션 **000061** 까지 (`Nullus_DB_스키마.md` 0장)
 
 ---
 
