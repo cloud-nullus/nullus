@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# DESIGN.md lint 산출물 (CI 임시 파일)
+design-lint.json
