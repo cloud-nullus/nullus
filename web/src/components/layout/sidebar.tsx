@@ -21,6 +21,8 @@ import {
   ChevronRight,
   AlertTriangle,
   Database,
+  KeyRound,
+  Route,
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
@@ -66,6 +68,7 @@ const navGroups: NavGroup[] = [
     roles: ['admin', 'devops', 'developer'],
     items: [
       { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
+      { key: 'cicdGoldenPath', label: 'sidebar.cicdGoldenPath', path: '/cicd/golden-paths', icon: <Route size={16} />, roles: ['admin', 'devops'] },
       { key: 'cicdList', label: 'sidebar.cicdList', path: '/cicd/list', icon: <List size={16} />, roles: ['admin', 'devops', 'developer'] },
       { key: 'cicdHistory', label: 'sidebar.cicdHistory', path: '/cicd/history', icon: <History size={16} />, roles: ['admin', 'devops', 'developer'] },
     ],
@@ -91,6 +94,7 @@ const navGroups: NavGroup[] = [
       { key: 'userManagement', label: 'sidebar.userManagement', path: '/admin/users', icon: <Users size={16} />, roles: ['admin'] },
       { key: 'clusterManagement', label: 'sidebar.clusterManagement', path: '/admin/clusters', icon: <Network size={16} />, roles: ['admin'] },
       { key: 'knownIssues', label: 'sidebar.knownIssues', path: '/admin/known-issues', icon: <AlertTriangle size={16} />, roles: ['admin'] },
+      { key: 'tokenManagement', label: 'sidebar.tokenManagement', path: '/admin/token-management', icon: <KeyRound size={16} />, roles: ['admin'] },
     ],
   },
 ]

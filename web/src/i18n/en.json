@@ -21,7 +21,9 @@
     "userManagement": "User Management",
     "clusterManagement": "Cluster Management",
     "knownIssues": "Known Issues",
-    "logout": "Logout"
+    "logout": "Logout",
+    "cicdGoldenPath": "Golden Paths",
+    "tokenManagement": "Token Management"
   },
   "common": {
     "save": "Save",

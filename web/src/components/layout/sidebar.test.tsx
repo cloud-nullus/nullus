@@ -113,3 +113,25 @@ describe('Sidebar', () => {
     })
   })
 })
+
+describe('연결되지 않았던 화면의 메뉴 노출', () => {
+  // 백엔드에 토큰 소스 API 가 9개 있는데 화면이 메뉴에 없어 회전 실패나 승인 대기를
+  // UI 로 확인할 방법이 없었다.
+  it('admin 은 토큰 관리 메뉴를 본다', () => {
+    useAuthStore.setState({ role: 'admin', user: null, isAuthenticated: true })
+    renderWithProviders(<Sidebar />)
+    expect(screen.getByText('Token Management')).toBeInTheDocument()
+  })
+
+  it('devops 는 토큰 관리 메뉴를 보지 못한다', () => {
+    useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
+    renderWithProviders(<Sidebar />)
+    expect(screen.queryByText('Token Management')).not.toBeInTheDocument()
+  })
+
+  it('admin·devops 는 골든패스 메뉴를 본다', () => {
+    useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
+    renderWithProviders(<Sidebar />)
+    expect(screen.getByText('Golden Paths')).toBeInTheDocument()
+  })
+})

@@ -14,7 +14,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useAuthStore } from '../../../stores/auth-store'
-import type { Role } from '../../../types'
+import { roleLandingPath } from '../../auth/role-landing'
 
 const features = [
   {
@@ -110,14 +110,6 @@ export function HomePage() {
   const isDevops = role === 'devops'
   const isDeveloper = role === 'developer'
 
-  const getRoleLandingPath = (currentRole: Role): string => {
-    if (currentRole === 'developer') {
-      return '/cicd/templates'
-    }
-
-    return '/stack/templates'
-  }
-
   const enabledButtonClassName =
     'inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] px-6 py-3 text-sm font-bold text-[#1a1d29]'
   const disabledButtonClassName =
@@ -152,7 +144,7 @@ export function HomePage() {
           <button
             type="button"
             disabled={!canStartStack}
-            onClick={() => navigate(getRoleLandingPath(role))}
+            onClick={() => navigate(roleLandingPath(role))}
             className={canStartStack ? enabledButtonClassName : disabledButtonClassName}
           >
             <Rocket size={16} />
