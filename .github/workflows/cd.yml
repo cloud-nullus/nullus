@@ -383,10 +383,29 @@ jobs:
         run: |
           set -euo pipefail
           # 파드가 Ready 인 것과 밖에서 실제로 열리는 것은 다르다. 공개 경로로 확인한다.
+          #
+          # 다만 한 번만 찔러서는 안 된다. rollout status 가 끝나도 ingress 가 새 파드
+          # 엔드포인트로 수렴하고 옛 파드가 빠지기까지 짧은 틈이 있고, 그 사이에는
+          # 502 가 난다 — v0.4.1 배포에서 실제로 발생했다. helm upgrade 와 두 rollout
+          # 이 모두 성공한 뒤 곧바로 받은 502 였고, 잡이 실패로 끝난 뒤에도 서비스는
+          # 멀쩡했다. 배포가 아니라 검증이 불안정했던 것이다.
+          #
+          # 그래서 잠깐 기다려 준다. 그래도 안 열리면 그때는 진짜 실패다.
+          ATTEMPTS=10
+          INTERVAL=12
           for url in \
             "https://nullus.io/" \
             "https://auth.nullus.io/realms/nullus/.well-known/openid-configuration"; do
-            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)"
+            code=""
+            for i in $(seq 1 "$ATTEMPTS"); do
+              code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)"
+              [ "$code" = "200" ] && break
+              echo "  $url -> $code (${i}/${ATTEMPTS}, ${INTERVAL}초 후 재시도)"
+              sleep "$INTERVAL"
+            done
             echo "  $url -> $code"
-            [ "$code" = "200" ] || { echo "검증 실패: $url 이 200 이 아닙니다" >&2; exit 1; }
+            [ "$code" = "200" ] || {
+              echo "검증 실패: $url 이 $((ATTEMPTS * INTERVAL))초 동안 200 이 되지 않았습니다" >&2
+              exit 1
+            }
           done
