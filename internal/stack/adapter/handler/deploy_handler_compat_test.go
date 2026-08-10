@@ -56,7 +56,7 @@ func newDeployEchoWithGate(t *testing.T, clusterArchs []string) (*echo.Echo, *st
 		WithOptions(stackhandler.WithValidateCompatibility(validate))
 
 	v1 := e.Group("/api/v1")
-	h.RegisterRoutes(v1, e)
+	h.RegisterRoutes(v1.Group("/stacks"), e)
 	return e, stackRepo
 }
 
@@ -262,7 +262,7 @@ func TestDeployHandler_Gate_AuditRecordsAckAndVerdict(t *testing.T) {
 	h := stackhandler.NewDeployHandler(install, stackRepo, streamer, sink).
 		WithOptions(stackhandler.WithValidateCompatibility(validate))
 	v1 := e.Group("/api/v1")
-	h.RegisterRoutes(v1, e)
+	h.RegisterRoutes(v1.Group("/stacks"), e)
 
 	// Untested matrix + mixed-arch cluster → warn. Ack=true lets it through.
 	id := seedStackForGate(t, stackRepo, "stk-audit-ack", []domain.ToolConfig{
@@ -322,7 +322,7 @@ func TestDeployHandler_Gate_NoAuditOnBlockedWarn(t *testing.T) {
 	h := stackhandler.NewDeployHandler(install, stackRepo, streamer, sink).
 		WithOptions(stackhandler.WithValidateCompatibility(validate))
 	v1 := e.Group("/api/v1")
-	h.RegisterRoutes(v1, e)
+	h.RegisterRoutes(v1.Group("/stacks"), e)
 
 	id := seedStackForGate(t, stackRepo, "stk-audit-blocked", []domain.ToolConfig{
 		{Category: "source_repository", Name: "GitHub"},

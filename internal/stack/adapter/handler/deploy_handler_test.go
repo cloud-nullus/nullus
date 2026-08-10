@@ -29,7 +29,7 @@ func newDeployEcho(t *testing.T) (*echo.Echo, *stackrepo.MemoryStackRepository) 
 	h := stackhandler.NewDeployHandler(install, repo, streamer)
 
 	v1 := e.Group("/api/v1")
-	h.RegisterRoutes(v1, e)
+	h.RegisterRoutes(v1.Group("/stacks"), e)
 
 	return e, repo
 }
@@ -47,7 +47,7 @@ func newDeployEchoWithHistory(t *testing.T) (*echo.Echo, *stackrepo.MemoryStackR
 		WithOptions(stackhandler.WithManageHistory(manageHistory))
 
 	v1 := e.Group("/api/v1")
-	h.RegisterRoutes(v1, e)
+	h.RegisterRoutes(v1.Group("/stacks"), e)
 
 	return e, repo, historyRepo
 }

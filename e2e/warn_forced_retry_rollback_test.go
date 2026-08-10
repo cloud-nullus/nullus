@@ -115,7 +115,7 @@ func newWarnForcedTestServer(t *testing.T) *warnServer {
 
 	v1 := e.Group("/api/v1")
 	stacks := v1.Group("/stacks")
-	deployHandler.RegisterRoutes(v1, e)
+	deployHandler.RegisterRoutes(v1.Group("/stacks"), e)
 	compatHandler.RegisterRoutes(stacks)
 	historyHandler.RegisterRoutes(stacks)
 

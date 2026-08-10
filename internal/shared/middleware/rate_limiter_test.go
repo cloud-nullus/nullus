@@ -40,6 +40,114 @@ func TestRateLimiter_AuthenticatedUserLimit(t *testing.T) {
 	}
 }
 
+// development 모드는 인증 미들웨어를 아예 끄고 돌린다. 그래서 모든 요청이
+// "미인증" 으로 분류되는데, 여기에 30/분 을 씌우면 폴링하는 화면 하나만 열어도
+// 곧바로 429 가 난다. 로컬에서 인증이 없는 건 설계이지 익명 트래픽이 아니다.
+func TestRateLimitConfigForMode_DevelopmentDoesNotThrottleTheLocalOperator(t *testing.T) {
+	cfg := RateLimitConfigForMode("development")
+
+	if cfg.Unauthenticated != cfg.Authenticated {
+		t.Fatalf("development should treat every caller as the local operator: unauth=%d auth=%d",
+			cfg.Unauthenticated, cfg.Authenticated)
+	}
+	if cfg.Unauthenticated < defaultAuthenticatedLimit {
+		t.Fatalf("development limit must not be below the authenticated limit, got %d", cfg.Unauthenticated)
+	}
+}
+
+func TestRateLimitConfigForMode_NonDevelopmentKeepsAnonymousLimitTight(t *testing.T) {
+	for _, mode := range []string{"production", "staging", ""} {
+		cfg := RateLimitConfigForMode(mode)
+
+		if cfg.Unauthenticated != defaultUnauthenticatedLimit {
+			t.Fatalf("mode %q: expected anonymous limit %d, got %d",
+				mode, defaultUnauthenticatedLimit, cfg.Unauthenticated)
+		}
+		if cfg.Authenticated != defaultAuthenticatedLimit {
+			t.Fatalf("mode %q: expected authenticated limit %d, got %d",
+				mode, defaultAuthenticatedLimit, cfg.Authenticated)
+		}
+	}
+}
+
+// 전역 상한은 인증 미들웨어보다 먼저 도는 자리라 사용자를 알 수 없다. 그래서
+// 사용자 정보가 우연히 있더라도 무시하고 항상 IP 로 센다 — 폭주 방어 전용이다.
+func TestIPCeilingRateLimiter_AlwaysKeysByIPIgnoringUser(t *testing.T) {
+	e := echo.New()
+	mw := newRateLimiter(rateLimitCategoryIPCeiling, RateLimitConfig{
+		Authenticated: 300, Unauthenticated: 30, IPCeiling: 5,
+	}, time.Now, 10*time.Second)
+	h := mw(okHandler)
+
+	// 서로 다른 사용자라도 같은 IP 면 같은 버킷을 쓴다.
+	for i := range 5 {
+		rec := execRequest(t, e, h, "/api/v1/stacks", "", &testUser{ID: "u-" + strconv.Itoa(i)}, "203.0.113.9")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i+1, rec.Code)
+		}
+	}
+
+	rec := execRequest(t, e, h, "/api/v1/stacks", "", &testUser{ID: "u-other"}, "203.0.113.9")
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 once the IP ceiling is hit, got %d", rec.Code)
+	}
+
+	// 다른 IP 는 영향받지 않는다.
+	rec = execRequest(t, e, h, "/api/v1/stacks", "", &testUser{ID: "u-0"}, "203.0.113.10")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a different IP must have its own bucket, got %d", rec.Code)
+	}
+}
+
+// 이 테스트가 원래 버그를 고정한다: 전역 리미터가 인증보다 먼저 돌면 사용자를
+// 못 봐서 인증 한도가 영영 안 걸렸다. 2단 구성에서는 인증 뒤에 붙은 리미터가
+// 사용자 단위로 정확히 세야 한다.
+func TestRateLimiterTiers_UserLimitCountsPerUserAfterAuth(t *testing.T) {
+	e := echo.New()
+	cfg := RateLimitConfig{Authenticated: 3, Unauthenticated: 30, IPCeiling: 1000}
+
+	ceiling := newRateLimiter(rateLimitCategoryIPCeiling, cfg, time.Now, 10*time.Second)
+	perUser := newRateLimiter(rateLimitCategoryGeneral, cfg, time.Now, 10*time.Second)
+
+	// 실제 배선을 흉내낸다: 전역 상한 → (인증이 user 를 심음) → 사용자 리미터 → 핸들러.
+	authStub := func(userID string) echo.MiddlewareFunc {
+		return func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				c.Set("user", &testUser{ID: userID, OrgID: "o-1"})
+				return next(c)
+			}
+		}
+	}
+
+	chainFor := func(userID string) echo.HandlerFunc {
+		return ceiling(authStub(userID)(perUser(okHandler)))
+	}
+
+	// 같은 IP 를 공유해도 사용자별로 따로 센다.
+	for i := range 3 {
+		if rec := execRequest(t, e, chainFor("alice"), "/api/v1/stacks", "", nil, "198.51.100.7"); rec.Code != http.StatusOK {
+			t.Fatalf("alice request %d: expected 200, got %d", i+1, rec.Code)
+		}
+	}
+	if rec := execRequest(t, e, chainFor("alice"), "/api/v1/stacks", "", nil, "198.51.100.7"); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("alice should be limited on her 4th request, got %d", rec.Code)
+	}
+
+	if rec := execRequest(t, e, chainFor("bob"), "/api/v1/stacks", "", nil, "198.51.100.7"); rec.Code != http.StatusOK {
+		t.Fatalf("bob shares the IP but must have his own budget, got %d", rec.Code)
+	}
+}
+
+func TestRateLimitConfigForMode_SetsIPCeilingAboveTheUserLimit(t *testing.T) {
+	for _, mode := range []string{"development", "production"} {
+		cfg := RateLimitConfigForMode(mode)
+		if cfg.IPCeiling < cfg.Authenticated {
+			t.Fatalf("mode %q: an IP ceiling below the per-user limit would throttle a single legitimate user: ceiling=%d user=%d",
+				mode, cfg.IPCeiling, cfg.Authenticated)
+		}
+	}
+}
+
 func TestRateLimiter_UnauthenticatedLimit(t *testing.T) {
 	e := echo.New()
 	mw := newRateLimiter(rateLimitCategoryGeneral, RateLimitConfig{

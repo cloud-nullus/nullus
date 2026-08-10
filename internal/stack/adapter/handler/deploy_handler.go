@@ -16,6 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/cloud-nullus/draft/internal/shared/audit"
+	sharedmw "github.com/cloud-nullus/draft/internal/shared/middleware"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 	"github.com/cloud-nullus/draft/internal/stack/usecase"
@@ -107,16 +108,24 @@ func (h *DeployHandler) snapshotHistory(ctx context.Context, stackID, reason str
 	return err
 }
 
-// RegisterRoutes registers deployment routes on the given Echo instance and group.
-func (h *DeployHandler) RegisterRoutes(v1 *echo.Group, e *echo.Echo) {
-	stacks := v1.Group("/stacks")
+// RegisterRoutes registers deployment routes.
+//
+// stacks 는 **인증·권한 미들웨어가 이미 붙은** 그룹이어야 한다. 예전에는 v1 을 받아
+// 이 함수가 `v1.Group("/stacks")` 를 새로 만들었는데, 그러면 경로만 같을 뿐 다른 그룹이라
+// main.go 가 stacks 그룹에 붙여 둔 인증 체인을 타지 않았다 — 배포·재시도가 인증 없이
+// 열려 있었다.
+//
+// wsMiddleware 는 /ws/* 에만 적용한다. WebSocket 은 Echo 그룹 밖(루트)에 달려야 하고,
+// 브라우저가 헤더를 못 붙이는 제약 때문에 자격증명 전달 방식도 HTTP 와 다르다.
+func (h *DeployHandler) RegisterRoutes(stacks *echo.Group, e *echo.Echo, wsMiddleware ...echo.MiddlewareFunc) {
 	stacks.POST("/:id/deploy", h.Deploy)
 	stacks.POST("/:id/retry", h.Retry)
 	stacks.POST("/:id/continue", h.Continue)
-	v1.GET("/stacks/:id/status", h.Status)
-	v1.GET("/stacks/:id/deploy/logs", h.StreamLogs)
-	e.GET("/ws/deployments/:id/logs", h.StreamLogs)
-	e.GET("/ws/deployments/:id/pods", h.StreamPods)
+	stacks.GET("/:id/status", h.Status)
+	stacks.GET("/:id/deploy/logs", h.StreamLogs)
+
+	e.GET("/ws/deployments/:id/logs", h.StreamLogs, wsMiddleware...)
+	e.GET("/ws/deployments/:id/pods", h.StreamPods, wsMiddleware...)
 }
 
 // deployResponse is the response body for POST /stacks/:id/deploy.
@@ -486,6 +495,9 @@ var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
+	// 브라우저가 토큰을 서브프로토콜로 실어 보내므로, 핸드셰이크 응답에 협상된 값을
+	// 돌려줘야 한다. 여기에 "bearer" 가 없으면 브라우저가 연결을 거부한다.
+	Subprotocols: []string{sharedmw.WebSocketBearerProtocol},
 }
 
 const (

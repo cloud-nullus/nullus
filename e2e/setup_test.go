@@ -144,7 +144,7 @@ func newEchoServer() *echo.Echo {
 
 	orgHandler.RegisterRoutes(admin)
 	clusterHandler.RegisterRoutes(admin)
-	deployHandler.RegisterRoutes(v1, e)
+	deployHandler.RegisterRoutes(v1.Group("/stacks"), e)
 	stackHandler.RegisterRoutes(stacks)
 	templateHandler.RegisterRoutes(stacks)
 	exportHandler.RegisterRoutes(v1)
