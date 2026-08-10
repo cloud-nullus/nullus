@@ -579,3 +579,32 @@ func newPipelineEchoWithDelete(t *testing.T, pipelineRepo *mockPipelineRepositor
 	h.RegisterRoutes(v1)
 	return e
 }
+
+// 스택별 파이프라인 조회는 핸들러가 정의돼 있었지만 main.go 에서 등록되지 않아
+// 서비스되지 않았다. 라우트가 실제로 붙는지 확인한다.
+func TestPipelineHandler_RegisterStackRoutes_ServesStackPipelines(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(
+		&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "org-1", StackID: "stk-1"},
+		&domain.Pipeline{ID: "pip-2", Name: "billing", OrgID: "org-1", StackID: "stk-2"},
+	)
+	e := echo.New()
+	h := cicdhandler.NewPipelineHandler(
+		usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository()),
+		usecase.NewListPipelines(pipelineRepo),
+		usecase.NewDeployPipeline(pipelineRepo, &mockDeploymentRepository{}, &noopKubeconfigProvider{}, &noopManifestApplier{}),
+		pipelineRepo, &mockDeploymentRepository{}, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil)
+	h.RegisterStackRoutes(e.Group("/api/v1/stacks"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stacks/stk-1/pipelines", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Items []domain.Pipeline `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "pip-1", resp.Items[0].ID)
+}
