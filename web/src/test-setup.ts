@@ -26,9 +26,22 @@ function resolveKey(obj: Record<string, unknown>, key: string): string {
   return typeof cur === 'string' ? cur : key
 }
 
+// i18next 의 {{var}} 치환을 흉내낸다. 이게 없으면 테스트만 원문 그대로 렌더돼
+// 실제 화면과 어긋나고, 보간을 쓰는 문구는 테스트로 검증할 수 없다.
+function interpolate(template: string, values: Record<string, unknown>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+    values[name] === undefined ? match : String(values[name])
+  )
+}
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => resolveKey(en as unknown as Record<string, unknown>, key),
+    t: (key: string, options?: unknown) => {
+      const resolved = resolveKey(en as unknown as Record<string, unknown>, key)
+      return options !== null && typeof options === 'object'
+        ? interpolate(resolved, options as Record<string, unknown>)
+        : resolved
+    },
     i18n: { changeLanguage: vi.fn(), language: 'en' },
   }),
   I18nextProvider: ({ children }: { children: React.ReactNode }) => children,

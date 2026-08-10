@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	obskube "github.com/cloud-nullus/draft/internal/observability/adapter/kube"
@@ -112,7 +113,7 @@ type deployedAppResponse struct {
 func (h *DashboardHandler) GetDashboard(c echo.Context) error {
 	_ = c.QueryParam("scope")
 
-	out, err := h.getDashboard.Execute(c.Request().Context())
+	out, err := h.getDashboard.Execute(c.Request().Context(), resolveOrgID(c))
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "DASHBOARD_FETCH_FAILED", err.Error())
 	}
@@ -150,12 +151,7 @@ func (h *DashboardHandler) GetDeployedApps(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	orgID := c.Request().Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = shareddomain.DefaultOrgID()
-	}
-
-	stacks, err := h.stackRepo.List(ctx, orgID, false)
+	stacks, err := h.stackRepo.List(ctx, resolveOrgID(c), false)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "DEPLOYED_APPS_FETCH_FAILED", err.Error())
 	}
@@ -188,6 +184,15 @@ func (h *DashboardHandler) GetDeployedApps(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"items": apps, "total": len(apps)})
+}
+
+// resolveOrgID reads the caller's organization, falling back to the seeded default
+// so single-tenant local runs work without the header.
+func resolveOrgID(c echo.Context) string {
+	if orgID := strings.TrimSpace(c.Request().Header.Get("X-Org-ID")); orgID != "" {
+		return orgID
+	}
+	return shareddomain.DefaultOrgID()
 }
 
 // stackStatusForUI collapses domain deployment states into the three categories the

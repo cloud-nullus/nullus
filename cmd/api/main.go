@@ -31,6 +31,7 @@ import (
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
 	obsprom "github.com/cloud-nullus/draft/internal/observability/adapter/prometheus"
 	obsrepo "github.com/cloud-nullus/draft/internal/observability/adapter/repository"
+	obstoolhealth "github.com/cloud-nullus/draft/internal/observability/adapter/toolhealth"
 	obsport "github.com/cloud-nullus/draft/internal/observability/port"
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
@@ -236,7 +237,9 @@ func main() {
 	}
 	pgAlertRuleRepo := obsrepo.NewPostgresAlertRuleRepository(pool)
 	pgAlertRepo := obsrepo.NewPostgresAlertRepository(pool)
-	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
+	// 도구 건강도는 설치된 스택의 실제 파드에서 뽑는다. Prometheus 유무와 무관하다.
+	toolHealthReader := obstoolhealth.New(pgStackRepo, kubeconfigProvider)
+	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo, obsuc.WithToolHealth(toolHealthReader))
 	createAlertRuleUC := obsuc.NewCreateAlertRule(pgAlertRuleRepo)
 	getAlertRuleUC := obsuc.NewGetAlertRule(pgAlertRuleRepo)
 	listAlertRulesUC := obsuc.NewListAlertRules(pgAlertRuleRepo)
