@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **플랫폼 도구 상태를 실측으로 채우고 모니터링 화면에 노출** (`internal/observability/adapter/toolhealth/`, `web/.../platform-tool-health.tsx`): `/observability/dashboard` 의 `tool_health` 는 지금까지 죽은 필드였다 — 프로덕션 경로인 Prometheus 리포지토리는 목록을 아예 채우지 않았고, Prometheus 미설정 시 폴백만 하드코딩된 가짜 값(Harbor 는 늘 `running`, Nexus 는 아예 없음)을 돌려줬으며, 이 값을 그리는 화면도 없었다. 이제 설치된 스택의 실제 파드에서 상태를 뽑는다. 같은 도구가 여러 스택에 있으면 한 줄로 합치고 가장 나쁜 상태를 남긴다. 실측 조회에 실패하면 시뮬레이션 값으로 되돌아가지 않고 목록을 비운다 — 죽은 도구가 `running` 으로 보이는 것이 가장 나쁜 오답이기 때문이다. 화면은 Monitoring 페이지 상단 카드로, 클러스터·스택 선택과 무관하게 항상 보인다.
+
+### Changed
+
+- **⚠️ 차트 기본 인증 모드를 `session` 에서 `oidc` 로 변경** (`deploy/helm/nullus/values.yaml`): `session` 은 클라이언트가 보낸 `X-User-ID`·`X-User-Role` 헤더를 그대로 믿는 알파 시절 방식이라 아무나 `X-User-Role: admin` 을 붙이면 관리자가 된다(코드 주석도 "simplified for alpha" 라고 인정). 그런데 그것이 차트 기본값이었다. SPA 폴백 기본값도 `session` 이라 한쪽만 바꾸면 프론트는 세션 헤더를 보내는데 API 는 JWT 를 기다려 전부 401 이 되므로 `config.auth.mode` 와 `web.auth.mode` 를 함께 옮긴다. **기본값으로 설치하려면 이제 IdP 설정이 필요하다** — `config.auth.oidcIssuerUrl`, `web.auth.{oidcProvider,oidcAuthority,oidcClientId}`. 기존에 `oidc` 를 명시하던 배포(zadara 등)는 영향이 없다.
+- **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
+
+### Fixed
+
+- **Harbor·Nexus 가 모니터링에서 통째로 빠지던 문제** (`internal/stack/domain/tool_workload.go`): 설치 도구 목록을 만드는 함수가 9개 카테고리만 열거하고 `container_registry`·`package_registry` 를 누락해, 파드가 정상이어도 두 도구가 어느 화면에도 보이지 않았다. 이 함수 하나가 OSS 목록·요약 KPI·Tool Health 표를 모두 먹이므로 해당 파드는 CPU·메모리·Ready Pods 합계에서도 빠져 있었다. 판단 규칙을 `domain.InstalledToolWorkloads` 로 끌어올려 스택 화면과 플랫폼 대시보드가 같은 기준을 쓰게 한다. Nexus 는 컨테이너 레지스트리와 패키지 저장소를 겸할 수 있어 그대로 두면 같은 파드가 두 번 잡히므로 백엔드·프론트 양쪽에서 이름 기준으로 한 번만 남긴다.
+- **배포 API 5개가 인증 없이 열려 있던 문제** (`internal/stack/adapter/handler/deploy_handler.go`): `deployHandler` 가 인자로 받은 `v1` 에서 `v1.Group("/stacks")` 를 새로 만들어, 경로만 같고 `main.go` 가 구성한 `stacks` 그룹의 인증 체인을 타지 않았다. `deploy`·`retry`·`continue`·`status`·`deploy/logs` 가 운영 모드에서 미인증으로 호출 가능했다. 웹 파드가 `/api/` 를 백엔드로 프록시하므로 ingress 를 켠 배포에서는 인터넷에서 닿는다.
+- **레이트리밋의 인증 한도가 적용되지 않던 문제**: `RateLimiter` 를 전역 `e.Use` 로만 붙였는데 인증 미들웨어는 그룹에만 붙어, Echo 실행 순서상 리미터가 돌 때 사용자를 알 수 없었다. `Authenticated`(300/분) 는 도달 불가능한 죽은 설정이었고 운영에서도 전원이 IP당 30/분을 나눠 썼다.
+- **브라우저 WebSocket 이 인증을 통과할 수 없던 문제** (`internal/shared/middleware/ws_subprotocol.go`): 브라우저는 WebSocket 에 `Authorization` 헤더를 붙일 수 없다. `Sec-WebSocket-Protocol` 로 받은 토큰을 헤더로 옮긴 뒤 기존 검증을 그대로 태운다. 쿼리 파라미터를 쓰지 않은 것은 토큰이 액세스 로그·프록시 로그에 남기 때문이다.
+- **스택 삭제가 레지스트리 릴리스와 Argo CD CRD 를 남기던 문제** (`internal/stack/usecase/delete_stack.go`): 삭제 대상 릴리스 목록에 `harbor`·`nexus` 가 없어 파드와 PVC 가 그대로 남았다. 또 Argo CD 가 기동하며 스스로 만드는 `default` AppProject 는 `helm uninstall` 로 지워지지 않는데, CRD 정리 가드가 이를 "다른 스택이 사용 중" 으로 오인해 정리를 영구히 건너뛰었다 — 남은 CRD 가 이전 네임스페이스 소유권을 물고 있어 다음 스택 설치가 `invalid ownership metadata` 로 실패했다.
+- **`auth.mode=oidc` 인데 issuer 가 비면 조용히 전부 401 이 되던 문제** (`internal/shared/config/auth_validation.go`): JWKS 를 받을 수 없어 모든 요청이 거절되는데 원인이 로그에 드러나지 않았다. 기동 시점에 명시적으로 실패시킨다. `session` 을 운영 모드로 켜면 "인증이 강제되지 않는다" 는 경고를 남긴다. development 는 인증 미들웨어를 붙이지 않으므로 두 검사에서 제외한다.
+
 ## [0.4.1] - 2026-08-10
 
 ### Added
