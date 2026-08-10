@@ -19,36 +19,12 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
-var stackHelmReleaseNames = []string{
-	"cert-manager",
-	"openbao",
-	// ESO 는 스택의 시크릿 평면이다. 남기면 다음 스택 설치가 클러스터 범위
-	// 리소스 소유권 충돌로 막힌다.
-	"external-secrets",
-	// 설치가 쓰는 릴리스명. 이름이 바뀌면 삭제도 따라가야 하므로 domain 상수를 쓴다.
-	// 뒤따르는 접두사 없는 이름들은 예전 설치본을 지우기 위한 것이라 리터럴로 둔다.
-	domain.PostgresServiceName,
-	"postgresql",
-	domain.MinIOServiceName,
-	"minio",
-	// 레지스트리를 남기면 파드와 PVC 가 그대로 떠 있어 다음 스택이 같은
-	// 네임스페이스를 쓸 때 리소스를 물고 늘어진다.
-	domain.HarborReleaseName,
-	domain.NexusReleaseName,
-	"gitlab",
-	"argo-cd",
-	"gitlab-runner",
-	"kube-prometheus-stack",
-	"grafana",
-	"loki",
-	"opensearch",
-	"elasticsearch",
-	"tempo",
-	"jaeger",
-	"opentelemetry-collector",
-	"eg",
-	"envoy-gateway",
-}
+// stackHelmReleaseNames 는 삭제가 훑는 릴리스 목록이다.
+//
+// 설치 목록과 따로 관리하면 반드시 어긋나므로 domain 의 단일 출처를 쓴다.
+// (external-secrets 가 빠져 있어 ESO 의 CRD·ClusterRole 이 고아로 남던 문제,
+// harbor·nexus 가 빠져 있어 레지스트리 파드와 PVC 가 남던 문제)
+var stackHelmReleaseNames = domain.AllHelmReleaseNames()
 
 const legacyEnvoyGatewayNamespace = "envoy-gateway-system"
 
