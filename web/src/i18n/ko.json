@@ -181,7 +181,8 @@
       "removeSection": "{{section}} 섹션 제거",
       "add": "추가",
       "addTool": "도구 추가",
-      "addSection": "섹션 추가"
+      "addSection": "섹션 추가",
+      "duplicateTemplate": "복제"
     },
     "card": {
       "estimatedMinutes": "약 {{minutes}}분"
@@ -218,12 +219,16 @@
     },
     "errors": {
       "updateFailed": "템플릿 수정에 실패했습니다.",
-      "createFailed": "템플릿 생성에 실패했습니다."
+      "createFailed": "템플릿 생성에 실패했습니다.",
+      "duplicateFailed": "템플릿 복제에 실패했습니다."
     },
     "confirm": {
       "deleteTitle": "템플릿 삭제",
       "deleteDescription": "템플릿을 삭제하면 더 이상 목록에 표시되지 않습니다. 계속하시겠습니까?",
       "deleteConfirmLabel": "템플릿 삭제"
+    },
+    "duplicate": {
+      "suffix": "복사본"
     }
   },
   "cicdTemplatePage": {
@@ -734,10 +739,12 @@
       "stackName": "스택 이름",
       "template": "템플릿",
       "status": "상태",
-      "createdAt": "생성일"
+      "createdAt": "생성일",
+      "cluster": "클러스터"
     },
     "filters": {
-      "allStatus": "전체 상태"
+      "allStatus": "전체 상태",
+      "allClusters": "전체 클러스터"
     },
     "searchPlaceholder": "스택 검색...",
     "loading": "스택을 불러오는 중...",
@@ -762,7 +769,8 @@
       "rolledBack": "롤백됨",
       "running": "실행 중",
       "success": "성공",
-      "cancelled": "취소됨"
+      "cancelled": "취소됨",
+      "healthy": "실행 중"
     },
     "confirm": {
       "deleteTitle": "스택 삭제",
@@ -1188,11 +1196,13 @@
       "changedBy": "변경자",
       "changedAt": "변경 시간",
       "reason": "변경 사유",
-      "actions": "작업"
+      "actions": "작업",
+      "cluster": "클러스터"
     },
     "actions": {
       "rollback": "롤백",
-      "compareVersions": "버전 비교"
+      "compareVersions": "버전 비교",
+      "log": "로그"
     },
     "compare": {
       "versionA": "버전 A",
@@ -1205,6 +1215,9 @@
       "cleanMode": "Clean Mode — 볼륨 삭제",
       "cleanWarning": "이 작업은 Persistent Volume을 영구 삭제합니다.",
       "confirmDeletePlaceholder": "확인하려면 \"DELETE\" 입력"
+    },
+    "filters": {
+      "allClusters": "전체 클러스터"
     }
   },
   "stackOssDefault": {
