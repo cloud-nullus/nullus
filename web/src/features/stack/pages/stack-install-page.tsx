@@ -332,6 +332,7 @@ export function StackInstallPage() {
     updateStorageTarget,
     updateAccessDomainTls,
     setAuthenticationProvider,
+    updateSourceControl,
   } = useStackConfigStore()
   const toast = useAppToast()
   const currentOrgId = useAuthStore((state) => state.user?.orgId)
@@ -409,6 +410,9 @@ export function StackInstallPage() {
   })
 
   const effectiveNamespace = createNewNs ? draft.namespace.trim() : draft.namespace.trim() || 'nullus'
+  // GitHub 은 클러스터 밖이라 설치할 것이 없는 대신 연동 정보를 받아야 한다.
+  // 이것이 없으면 설치는 끝나도 파이프라인을 만들 수 없다.
+  const usesGitHubSource = draft.artifacts.sourceRepository.tool === 'github'
   const watchedStackName = watch('stackName')
   const templateIdFromQuery = searchParams.get('template')?.trim() || null
   const effectiveClusterId = selectedClusterId || draft.clusterId
@@ -2171,6 +2175,12 @@ export function StackInstallPage() {
       accessDomain: draft.accessDomain,
       accessDomainTls: draft.accessDomainTls,
       authentication: draft.authentication,
+      // PAT 는 넣지 않는다 — 스택 구성은 평문으로 저장되고 조회 API 로 다시
+      // 내려온다. 토큰은 배포 요청 본문으로만 보낸다.
+      sourceControl: {
+        owner: draft.sourceControl.owner,
+        apiBaseUrl: draft.sourceControl.apiBaseUrl,
+      },
       yamlOverrides: yamlOverridesPayload,
       artifacts: draft.artifacts as unknown as Record<string, { tool: string; version: string }>,
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
@@ -2225,6 +2235,7 @@ export function StackInstallPage() {
       await deployStack.mutateAsync({
         stackId,
         acknowledgeWarnings: serverWarnAcknowledged || compatWarnAcknowledged,
+        sourceControlToken: usesGitHubSource ? draft.sourceControl.personalAccessToken : undefined,
       })
       setPendingStackId(null)
       setServerVerdict(null)
@@ -2702,6 +2713,48 @@ export function StackInstallPage() {
                   value={draft.artifacts.sourceRepository}
                   onChange={(v) => setTool('artifacts', 'sourceRepository', v)}
                 />
+                {usesGitHubSource && (
+                  <div className="mt-3 rounded-md border border-[var(--color-border)] p-3">
+                    <div className="mb-2 text-[13px] font-semibold">
+                      {t('stackInstall.sourceControl.title', 'GitHub 연동')}
+                    </div>
+                    <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+                      {t(
+                        'stackInstall.sourceControl.description',
+                        'GitHub는 외부 서비스라 Nullus가 계정을 만들 수 없습니다. 파이프라인을 만들려면 리포지토리를 생성할 Organization과 접근 토큰이 필요합니다.',
+                      )}
+                    </p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Input
+                        label={t('stackInstall.sourceControl.owner', 'Organization / 사용자')}
+                        placeholder="acme"
+                        value={draft.sourceControl.owner}
+                        onChange={(e) => updateSourceControl({ owner: e.target.value })}
+                      />
+                      <Input
+                        label={t('stackInstall.sourceControl.apiBaseUrl', 'API 주소 (선택)')}
+                        placeholder="https://api.github.com"
+                        value={draft.sourceControl.apiBaseUrl}
+                        onChange={(e) => updateSourceControl({ apiBaseUrl: e.target.value })}
+                      />
+                    </div>
+                    <div className="mt-3">
+                      <Input
+                        type="password"
+                        label={t('stackInstall.sourceControl.token', 'Personal Access Token')}
+                        placeholder="ghp_..."
+                        value={draft.sourceControl.personalAccessToken}
+                        onChange={(e) => updateSourceControl({ personalAccessToken: e.target.value })}
+                      />
+                      <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                        {t(
+                          'stackInstall.sourceControl.tokenScopes',
+                          '필요한 스코프: repo, workflow, read:packages. 토큰은 스택 구성에 저장되지 않고 설치 시 스택의 OpenBao로 바로 들어갑니다.',
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <ToolSelector
                   label={t('stackInstall.labels.containerRegistry', 'Container Registry')}
                   options={ARTIFACTS_OPTIONS.containerRegistry}

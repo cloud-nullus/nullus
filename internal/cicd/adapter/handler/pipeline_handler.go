@@ -250,7 +250,6 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 	return c.JSON(http.StatusAccepted, map[string]any{"deploymentId": depID})
 }
 
-// DeletePipeline handles DELETE /api/v1/pipelines/:id.
 func (h *PipelineHandler) DeletePipeline(c echo.Context) error {
 	id := c.Param("id")
 	if id == "" {

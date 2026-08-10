@@ -220,7 +220,7 @@ func TestRetry_FailedWithWarn_NoAckBlocks(t *testing.T) {
 		[]domain.ToolConfig{
 			{Category: "source_repository", Name: "GitHub"},
 			{Category: "ci_platform", Name: "GitHub Actions"},
-			{Category: "container_registry", Name: "Harbor"},
+			{Category: "container_registry", Name: "GHCR"},
 		})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/retry", nil)
@@ -242,7 +242,7 @@ func TestRetry_FailedWithWarn_AckAccepted(t *testing.T) {
 		[]domain.ToolConfig{
 			{Category: "source_repository", Name: "GitHub"},
 			{Category: "ci_platform", Name: "GitHub Actions"},
-			{Category: "container_registry", Name: "Harbor"},
+			{Category: "container_registry", Name: "GHCR"},
 		})
 
 	body, _ := json.Marshal(map[string]any{"acknowledge_warnings": true})

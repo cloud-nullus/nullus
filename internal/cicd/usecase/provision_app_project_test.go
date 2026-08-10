@@ -250,3 +250,4 @@ func TestProvisionAppProject_IsRepeatable(t *testing.T) {
 	assert.Equal(t, first.Project.FullPath, second.Project.FullPath)
 	assert.Equal(t, first.ImageTarget.Repository, second.ImageTarget.Repository)
 }
+

@@ -61,6 +61,7 @@ func (f *fakeSCM) CommitFiles(_ context.Context, projectID string, spec port.Com
 	return nil
 }
 
+
 func TestProvisionCommonProject_CreatesGroupThenProject(t *testing.T) {
 	scm := newFakeSCM()
 	uc := NewProvisionCommonProject(scm)
@@ -165,3 +166,4 @@ func TestProvisionCommonProject_IsRepeatable(t *testing.T) {
 	assert.Equal(t, first.Project.FullPath, second.Project.FullPath)
 	assert.Equal(t, first.Project.RegistryURL, second.Project.RegistryURL)
 }
+

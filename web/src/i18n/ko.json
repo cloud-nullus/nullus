@@ -148,6 +148,14 @@
         "ackAria": "클라이언트 호환성 경고 확인"
       },
       "refreshDiscoveryCta": "관리자 페이지로 이동"
+    },
+    "sourceControl": {
+      "title": "GitHub 연동",
+      "description": "GitHub는 외부 서비스라 Nullus가 계정을 만들 수 없습니다. 파이프라인을 만들려면 리포지토리를 생성할 Organization과 접근 토큰이 필요합니다.",
+      "owner": "Organization / 사용자",
+      "apiBaseUrl": "API 주소 (선택)",
+      "token": "Personal Access Token",
+      "tokenScopes": "필요한 스코프: repo, workflow, read:packages. 토큰은 스택 구성에 저장되지 않고 설치 시 스택의 OpenBao로 바로 들어갑니다."
     }
   },
   "stackTemplatePage": {

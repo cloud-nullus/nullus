@@ -29,6 +29,16 @@ const (
 	externalUsernameVar = "REGISTRY_USERNAME"
 	externalPasswordVar = "REGISTRY_PASSWORD" // #nosec G101 -- CI 변수 이름
 
+	// GitHub Actions 가 잡에 넣어주는 값들. 사용자가 등록할 필요가 없다.
+	//
+	// GITHUB_ACTOR 는 러너가 자동으로 넣는 환경 변수이고, GITHUB_TOKEN 은
+	// secrets 로만 노출되므로 워크플로가 env 로 매핑해야 한다 — 렌더러의 책임이다.
+	githubActorVar = "GITHUB_ACTOR"
+	githubTokenVar = "GITHUB_TOKEN" // #nosec G101 -- CI 변수 이름
+
+	// GHCRHost 는 GitHub Container Registry 의 호스트다.
+	GHCRHost = "ghcr.io"
+
 	// harborDefaultProject 는 조직을 알 수 없을 때 쓰는 Harbor 기본 프로젝트다.
 	harborDefaultProject = "library"
 )
@@ -47,6 +57,9 @@ type Config struct {
 	// ExternalRepositoryPrefix 는 외부 레지스트리의 저장소 접두사다
 	// (예: "ghcr.io/acme"). 알 수 없는 도구의 폴백으로도 쓴다.
 	ExternalRepositoryPrefix string
+	// GitHubOwner 는 GHCR 을 고른 경우의 organization/사용자다.
+	// GHCR 경로가 ghcr.io/{owner}/{repo} 라서 소유자를 알아야 한다.
+	GitHubOwner string
 }
 
 // ResolverFor 는 스택 구성에 맞는 resolver 를 고른다.
@@ -59,6 +72,8 @@ func ResolverFor(cfg Config) (port.ImageRegistryResolver, error) {
 		return NewSCMProjectResolver(), nil
 	case "harbor":
 		return NewHarborResolver(cfg.HarborHost), nil
+	case "ghcr", "github-container-registry", "github-packages", "github-registry":
+		return NewGHCRResolver(cfg.GitHubOwner), nil
 	case "nexus", "nexus3", "sonatype-nexus", "nexus-repository", "nexus-repository-manager":
 		// 커넥터 호스트를 모르면 여기서 결정하지 않고 아래 외부 접두사 경로로
 		// 넘긴다. 클러스터 밖 Nexus 를 가리키는 구성이 그 경우다.
@@ -162,6 +177,57 @@ func (r *NexusResolver) Resolve(_ context.Context, spec port.ImageTargetSpec) (*
 		UsernameVar:       nexusUsernameVar,
 		PasswordVar:       nexusPasswordVar,
 		RequiredVariables: []string{nexusUsernameVar, nexusPasswordVar},
+	}, nil
+}
+
+// GHCRResolver 는 GitHub Container Registry 를 쓴다.
+//
+// 다른 레지스트리와 달리 자격증명을 등록받지 않는다 — GitHub Actions 잡은
+// 내장 GITHUB_TOKEN 으로 자기 리포의 패키지에 push 할 수 있다(packages: write).
+// 사용자에게 시크릿을 요구하면 쓸데없이 PAT 가 워크플로에 노출된다.
+type GHCRResolver struct {
+	owner string
+}
+
+// NewGHCRResolver 는 organization/사용자 이름으로 resolver 를 만든다.
+func NewGHCRResolver(owner string) *GHCRResolver {
+	return &GHCRResolver{owner: strings.Trim(strings.TrimSpace(owner), "/")}
+}
+
+// Resolve 는 ghcr.io/{owner}/{repo} 경로를 만든다.
+//
+// GitHub 어댑터가 알려준 경로가 있으면 그것을 쓴다 — 리포 이름이 앱 이름과
+// 다를 수 있고(이미 있는 리포를 재사용하는 경우), 그때 앱 이름으로 조립하면
+// 존재하지 않는 패키지를 가리키게 된다.
+func (r *GHCRResolver) Resolve(_ context.Context, spec port.ImageTargetSpec) (*port.ImageTarget, error) {
+	repository := strings.Trim(strings.TrimSpace(spec.SCMRegistryURL), "/")
+	if repository == "" {
+		app := strings.TrimSpace(spec.AppName)
+		if app == "" {
+			return nil, fmt.Errorf("app_name is required")
+		}
+		owner := r.owner
+		if owner == "" {
+			owner = strings.Trim(strings.TrimSpace(spec.OrgPath), "/")
+		}
+		if owner == "" {
+			return nil, fmt.Errorf("ghcr 경로를 만들 github owner 를 알 수 없습니다 (app=%q)", app)
+		}
+		repository = fmt.Sprintf("%s/%s/%s", GHCRHost, owner, app)
+	}
+
+	// GHCR 은 경로에 소문자만 받는다. 대문자가 섞이면 push 가 거부되는데,
+	// 오류가 권한 문제처럼 보여 원인을 찾기 어렵다.
+	repository = strings.ToLower(repository)
+
+	return &port.ImageTarget{
+		Kind:        port.RegistryKindGHCR,
+		Host:        hostOf(repository),
+		Repository:  repository,
+		UsernameVar: githubActorVar,
+		PasswordVar: githubTokenVar,
+		// 내장 값만 쓰므로 사람이 등록할 변수가 없다.
+		RequiredVariables: nil,
 	}, nil
 }
 

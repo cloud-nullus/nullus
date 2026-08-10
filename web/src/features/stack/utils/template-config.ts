@@ -41,7 +41,7 @@ export const TOOL_SECTIONS: ToolSectionDefinition[] = [
     categories: [
       { category: 'package_registry', label: 'Package Registry', options: ['Nexus', 'GitLab Package Registry', 'JFrog Artifactory'] },
       { category: 'source_repository', label: 'Source Repository', options: ['GitLab CE', 'Gitea', 'GitHub'] },
-      { category: 'container_registry', label: 'Container Registry', options: ['Harbor', 'Nexus', 'GitLab Registry', 'Docker Registry'] },
+      { category: 'container_registry', label: 'Container Registry', options: ['Harbor', 'GHCR', 'Nexus', 'GitLab Registry', 'Docker Registry'] },
     ],
   },
   {
@@ -91,8 +91,8 @@ export const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string 
     en: 'Combines GitLab and ArgoCD to provide Git-based CI and GitOps CD together.',
   },
   'github-argocd-v1': {
-    ko: 'GitHub와 ArgoCD 조합으로 GitHub 중심 개발팀에 최적화된 GitOps 스택입니다.',
-    en: 'A GitOps stack optimized for GitHub-centric teams using GitHub and ArgoCD.',
+    ko: 'GitHub·GitHub Actions·GHCR 을 그대로 쓰고 클러스터에는 ArgoCD 만 두는 GitOps 스택입니다.',
+    en: 'A GitOps stack that keeps GitHub, GitHub Actions, and GHCR external, installing only ArgoCD in the cluster.',
   },
 }
 
@@ -109,9 +109,9 @@ export const TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES: Record<string, { ko: string;
     ko: 'GitLab CI와 GitLab Registry를 사용하고 Argo CD로 GitOps 패턴을 강화한 구성입니다.',
     en: 'Uses GitLab CI and GitLab Registry, and strengthens the setup with Argo CD for a GitOps workflow.',
   },
-  'GitHub와 GitHub Actions를 외부 서비스로 사용하고, 클러스터 내에는 Harbor + Argo CD + 모니터링만 설치합니다.': {
-    ko: 'GitHub와 GitHub Actions를 외부 서비스로 사용하고, 클러스터 내에는 Harbor + Argo CD + 모니터링만 설치합니다.',
-    en: 'Use GitHub and GitHub Actions as external services, and install only Harbor + Argo CD + monitoring in the cluster.',
+  'GitHub·GitHub Actions·GHCR 을 외부 서비스로 사용하고, 클러스터 내에는 Argo CD + 모니터링만 설치합니다.': {
+    ko: 'GitHub·GitHub Actions·GHCR 을 외부 서비스로 사용하고, 클러스터 내에는 Argo CD + 모니터링만 설치합니다.',
+    en: 'Use GitHub, GitHub Actions, and GHCR as external services, and install only Argo CD + monitoring in the cluster.',
   },
 }
 

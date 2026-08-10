@@ -22,6 +22,7 @@ import (
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
+	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	cicdgitlab "github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
@@ -215,6 +216,11 @@ func main() {
 		cicdKubectlRunner,
 		secretRouter,
 	)
+	// GitHub 은 SaaS 라 토큰을 발급할 수 없다 — 사용자가 등록한 PAT 를 읽기만
+	// 하고, organization·API 주소는 token_sources 의 metadata 에서 가져온다.
+	cicdGitHubTokens := cicdgithub.NewTokenIssuer(secretRouter)
+	cicdGitHubConnections := cicdrepo.NewPostgresSCMConnectionReader(pool)
+
 	cicdBundleFactory := cicdprovisioning.NewBundleFactory(
 		cicdStackReader,
 		cicdTokenIssuer,
@@ -225,7 +231,7 @@ func main() {
 			// 돌리거나 외부 GitLab 을 붙일 때만 지정한다.
 			GitLabBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
 		},
-	)
+	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 

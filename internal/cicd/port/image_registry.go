@@ -17,7 +17,12 @@ const (
 	RegistryKindHarbor RegistryKind = "harbor"
 	// RegistryKindNexus 는 독립 설치된 Nexus 의 Docker 커넥터다.
 	RegistryKindNexus RegistryKind = "nexus"
-	// RegistryKindExternal 은 클러스터 밖의 레지스트리다 (ECR, GHCR 등).
+	// RegistryKindGHCR 은 GitHub Container Registry 다.
+	//
+	// 다른 종류와 달리 push 자격증명을 등록할 필요가 없다 — GitHub Actions 의
+	// 내장 GITHUB_TOKEN 이 packages:write 권한을 가질 수 있다.
+	RegistryKindGHCR RegistryKind = "ghcr"
+	// RegistryKindExternal 은 그 밖의 클러스터 외부 레지스트리다 (ECR 등).
 	RegistryKindExternal RegistryKind = "external"
 )
 

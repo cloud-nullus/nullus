@@ -30,13 +30,16 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   tempo: { appVersion: '2.5.0' },
   nexus: { appVersion: '3.68.1', chartVersion: '62.1.0' },
   jfrog: { appVersion: '7.77.3', chartVersion: '107.95.10' },
-  github: { appVersion: '2.45.0', chartVersion: '0.23.7' },
+  github: { appVersion: 'external' },
   gitea: { appVersion: '1.22.2', chartVersion: '10.4.0' },
   harbor: { appVersion: '2.11.0', chartVersion: '1.15.0' },
   'docker-hub': { appVersion: '2.0.0', chartVersion: '0.1.0' },
   s3: { appVersion: '1.0.0', chartVersion: '1.0.0' },
   gcs: { appVersion: '1.0.0', chartVersion: '1.0.0' },
-  'github-actions': { appVersion: 'v0.9.0', chartVersion: '0.9.0' },
+  // GitHub·GitHub Actions·GHCR 은 외부 SaaS 라 설치할 차트가 없다.
+  // 버전은 표시용 값일 뿐이므로 external 로 둔다.
+  'github-actions': { appVersion: 'external' },
+  ghcr: { appVersion: 'external' },
   jenkins: { appVersion: '2.452.3', chartVersion: '5.5.0' },
   flux: { appVersion: 'v2.3.0', chartVersion: '2.13.0' },
   spinnaker: { appVersion: '1.33.0', chartVersion: '2.32.1' },
@@ -156,6 +159,19 @@ export interface AccessDomainTlsConfig {
   issuerName: string
 }
 
+/**
+ * 클러스터 밖 소스 저장소(GitHub)에 붙기 위한 입력.
+ *
+ * personalAccessToken 은 이 초안에만 머문다 — 스택 구성으로 저장되지 않고
+ * 배포 요청 본문으로만 나간다. 구성은 평문으로 저장되고 조회 API 로 다시
+ * 내려오므로 토큰을 넣으면 스택을 볼 수 있는 누구에게나 노출된다.
+ */
+export interface SourceControlDraft {
+  owner: string
+  apiBaseUrl: string
+  personalAccessToken: string
+}
+
 export interface StackConfigDraft {
   selectedTemplateId: string | null
   clusterId: string | null
@@ -166,6 +182,7 @@ export interface StackConfigDraft {
   authentication: {
     provider: '' | 'openbao'
   }
+  sourceControl: SourceControlDraft
   artifacts: ArtifactsConfig
   pipeline: PipelineConfig
   monitoring: MonitoringConfig
@@ -185,6 +202,7 @@ interface StackConfigState {
   setAccessDomain: (domain: string) => void
   updateAccessDomainTls: (config: Partial<AccessDomainTlsConfig>) => void
   setAuthenticationProvider: (provider: '' | 'openbao') => void
+  updateSourceControl: (config: Partial<SourceControlDraft>) => void
   setTool: (
     section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging',
     field: string,
@@ -213,6 +231,11 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   },
   authentication: {
     provider: '',
+  },
+  sourceControl: {
+    owner: '',
+    apiBaseUrl: '',
+    personalAccessToken: '',
   },
   artifacts: {
     packageRegistry: { tool: 'gitlab', version: getToolAppVersion('gitlab') },
@@ -409,6 +432,18 @@ export const useStackConfigStore = create<StackConfigState>()((set) => ({
         authentication: {
           ...s.draft.authentication,
           provider,
+        },
+      },
+      isDirty: true,
+    })),
+
+  updateSourceControl: (config) =>
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        sourceControl: {
+          ...s.draft.sourceControl,
+          ...config,
         },
       },
       isDirty: true,

@@ -145,7 +145,7 @@ func TestDeployHandler_Gate_WarnWithoutAck(t *testing.T) {
 	id := seedStackForGate(t, repo, "stk-warn-unack", []domain.ToolConfig{
 		{Category: "source_repository", Name: "GitHub"},
 		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "Harbor"},
+		{Category: "container_registry", Name: "GHCR"},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/deploy", nil)
@@ -174,7 +174,7 @@ func TestDeployHandler_Gate_WarnWithAck(t *testing.T) {
 	id := seedStackForGate(t, repo, "stk-warn-ack", []domain.ToolConfig{
 		{Category: "source_repository", Name: "GitHub"},
 		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "Harbor"},
+		{Category: "container_registry", Name: "GHCR"},
 	})
 
 	body, _ := json.Marshal(map[string]any{"acknowledge_warnings": true})
@@ -268,7 +268,7 @@ func TestDeployHandler_Gate_AuditRecordsAckAndVerdict(t *testing.T) {
 	id := seedStackForGate(t, stackRepo, "stk-audit-ack", []domain.ToolConfig{
 		{Category: "source_repository", Name: "GitHub"},
 		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "Harbor"},
+		{Category: "container_registry", Name: "GHCR"},
 	})
 
 	body, _ := json.Marshal(map[string]any{"acknowledge_warnings": true})
@@ -327,7 +327,7 @@ func TestDeployHandler_Gate_NoAuditOnBlockedWarn(t *testing.T) {
 	id := seedStackForGate(t, stackRepo, "stk-audit-blocked", []domain.ToolConfig{
 		{Category: "source_repository", Name: "GitHub"},
 		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "Harbor"},
+		{Category: "container_registry", Name: "GHCR"},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/deploy", nil)

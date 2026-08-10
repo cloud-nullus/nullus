@@ -87,7 +87,10 @@ describe('stack-config-store', () => {
     it('updates pipeline section tool', () => {
       useStackConfigStore.getState().setTool('pipeline', 'cicdPlatform', { tool: 'github-actions', version: 'latest' })
       expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.tool).toBe('github-actions')
-      expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.version).toBe('v0.9.0')
+      // GitHub Actions 는 외부 SaaS 라 설치할 차트가 없다. 예전에는 이 자리에
+      // actions-runner-controller 버전이 들어갔지만, 백엔드가 external 로 표시해
+      // 설치를 건너뛰므로 러너 차트 버전을 노출하면 설치 계획이 실제와 어긋난다.
+      expect(useStackConfigStore.getState().draft.pipeline.cicdPlatform.version).toBe('external')
     })
 
     it('updates monitoring section tool', () => {

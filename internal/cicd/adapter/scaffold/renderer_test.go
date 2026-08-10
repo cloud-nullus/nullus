@@ -332,3 +332,4 @@ func TestRender_SkipsHTTPRouteWhenGatewayUnknown(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, fileMap(t, files), "deploy/httproute.yaml")
 }
+

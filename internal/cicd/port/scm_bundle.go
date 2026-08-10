@@ -11,7 +11,18 @@ type SCMBundle struct {
 	Pipeline    PipelineConfigurator
 	Registry    ImageRegistryResolver
 
-	// GroupPath 는 조직 그룹 경로다. 프로젝트가 이 아래에 만들어진다.
+	// Platform 은 이 묶음이 향하는 SCM 플랫폼이다.
+	// 파이프라인 파일 형식이 여기서 갈리므로 렌더러까지 전달돼야 한다.
+	Platform SCMPlatform
+	// RepoAccessToken 은 플랫폼이 리포 범위 토큰 발급을 지원하지 않을 때
+	// Argo CD·이미지 pull 인증에 재사용할 토큰이다.
+	//
+	// GitLab 에서는 비어 있다 — 프로젝트마다 최소 권한 토큰을 따로 발급한다.
+	// GitHub 에는 리포 단위 토큰 API 가 없어 조직 PAT 를 그대로 쓴다.
+	RepoAccessToken string
+
+	// GroupPath 는 프로젝트가 만들어질 네임스페이스다.
+	// GitLab 은 그룹 경로, GitHub 은 organization/사용자 이름이다.
 	GroupPath string
 	// ArgoNamespace 는 Argo CD 가 설치된 네임스페이스다.
 	// Application 리소스를 여기에 만들어야 컨트롤러가 인식한다.

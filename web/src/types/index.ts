@@ -193,6 +193,20 @@ export interface AccessDomainTlsInput {
   issuerName: string;
 }
 
+/**
+ * 클러스터 밖 소스 저장소(GitHub)에 붙기 위한 설정.
+ *
+ * 자격증명(PAT)은 여기 없다 — 배포 요청 본문으로만 보낸다. 이 구조는
+ * 스택 구성으로 저장되어 조회 API 로 다시 내려오므로 토큰을 넣으면
+ * 스택을 볼 수 있는 누구에게나 노출된다.
+ */
+export interface SourceControlInput {
+  /** 리포지토리가 만들어질 GitHub Organization 또는 사용자 계정. */
+  owner: string;
+  /** GitHub Enterprise Server 의 API 주소. 비면 github.com. */
+  apiBaseUrl: string;
+}
+
 export interface StackConfig {
   templateId: string | null;
   clusterId: string | null;
@@ -203,6 +217,7 @@ export interface StackConfig {
   authentication?: {
     provider?: "" | "openbao";
   };
+  sourceControl?: SourceControlInput;
   yamlOverrides?: Record<string, string>;
   artifacts: Record<string, ToolSelection>;
   pipeline: Record<string, ToolSelection>;

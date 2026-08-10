@@ -17,6 +17,23 @@ type StackConfig struct {
 	AppliedResourceOverrides map[string]ResourceVector     `json:"applied_resource_overrides,omitempty"`
 	RowUnits                 map[string]PlanningRowUnit    `json:"row_units,omitempty"`
 	Storage                  *StorageConfig                `json:"storage,omitempty"`
+	SourceControl            *SourceControlConfig          `json:"source_control,omitempty"`
+}
+
+// SourceControlConfig 는 클러스터 밖 소스 저장소에 붙기 위한 설정이다.
+//
+// GitHub 처럼 우리가 설치하지 않는 SCM 을 고른 스택에서만 채워진다. 주소도
+// 소유자도 우리가 정할 수 없으므로 설치 마법사에서 받아 둔다.
+//
+// 자격증명(PAT)은 여기 없다 — 배포 요청 본문으로만 흐르고 OpenBao 로 바로
+// 들어간다. 이 구조는 stacks.config JSONB 로 평문 저장되므로 토큰을 넣으면
+// DB 를 읽을 수 있는 누구에게나 노출된다.
+type SourceControlConfig struct {
+	// Owner 는 리포지토리가 만들어질 GitHub Organization 또는 사용자 계정이다.
+	Owner string `json:"owner,omitempty"`
+	// APIBaseURL 은 GitHub Enterprise Server 의 API 주소다.
+	// 비면 github.com 을 쓴다.
+	APIBaseURL string `json:"api_base_url,omitempty"`
 }
 
 type AuthenticationConfig struct {

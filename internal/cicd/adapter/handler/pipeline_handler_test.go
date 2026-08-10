@@ -483,3 +483,4 @@ func TestPipelineHandler_Create_TemplateNotFound(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, 0, pipelineRepo.created)
 }
+
