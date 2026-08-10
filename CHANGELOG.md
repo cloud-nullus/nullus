@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **배포는 성공했는데 공개 엔드포인트 검증만 실패하던 문제** (`cd.yml` 의 `deploy-zadara`): `v0.4.1` 태그 배포에서 `helm upgrade` 와 두 deployment 의 `rollout status` 가 모두 성공한 직후 `https://nullus.io/` 가 502 를 돌려줘 잡이 실패로 끝났다. 잡이 끝난 뒤에도 서비스는 멀쩡했다 — 파드가 Ready 인 것과 ingress 가 새 엔드포인트로 수렴하고 옛 파드가 빠지는 것은 다른 일이고, 그 짧은 틈에 한 번뿐인 curl 이 걸린 것이다. 배포가 아니라 검증이 불안정했다. 12초 간격으로 최대 10회까지 기다린다. 이미 열려 있으면 첫 시도에 통과하므로 정상 배포가 느려지지는 않는다.
 - **Harbor·Nexus 가 모니터링에서 통째로 빠지던 문제** (`internal/stack/domain/tool_workload.go`): 설치 도구 목록을 만드는 함수가 9개 카테고리만 열거하고 `container_registry`·`package_registry` 를 누락해, 파드가 정상이어도 두 도구가 어느 화면에도 보이지 않았다. 이 함수 하나가 OSS 목록·요약 KPI·Tool Health 표를 모두 먹이므로 해당 파드는 CPU·메모리·Ready Pods 합계에서도 빠져 있었다. 판단 규칙을 `domain.InstalledToolWorkloads` 로 끌어올려 스택 화면과 플랫폼 대시보드가 같은 기준을 쓰게 한다. Nexus 는 컨테이너 레지스트리와 패키지 저장소를 겸할 수 있어 그대로 두면 같은 파드가 두 번 잡히므로 백엔드·프론트 양쪽에서 이름 기준으로 한 번만 남긴다.
 - **배포 API 5개가 인증 없이 열려 있던 문제** (`internal/stack/adapter/handler/deploy_handler.go`): `deployHandler` 가 인자로 받은 `v1` 에서 `v1.Group("/stacks")` 를 새로 만들어, 경로만 같고 `main.go` 가 구성한 `stacks` 그룹의 인증 체인을 타지 않았다. `deploy`·`retry`·`continue`·`status`·`deploy/logs` 가 운영 모드에서 미인증으로 호출 가능했다. 웹 파드가 `/api/` 를 백엔드로 프록시하므로 ingress 를 켠 배포에서는 인터넷에서 닿는다.
 - **레이트리밋의 인증 한도가 적용되지 않던 문제**: `RateLimiter` 를 전역 `e.Use` 로만 붙였는데 인증 미들웨어는 그룹에만 붙어, Echo 실행 순서상 리미터가 돌 때 사용자를 알 수 없었다. `Authenticated`(300/분) 는 도달 불가능한 죽은 설정이었고 운영에서도 전원이 IP당 30/분을 나눠 썼다.
