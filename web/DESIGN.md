@@ -53,6 +53,12 @@ colors:
   dark-accent-alt: "#c4b5fd"
 
   # ─────────────────────────────────────────────────────────────
+  # Scrim — 모달·드롭다운 뒤에 깔리는 차폐막. 표면이 아니므로 별도 토큰이다.
+  # ─────────────────────────────────────────────────────────────
+  light-scrim: "rgba(15, 23, 42, 0.45)"
+  dark-scrim: "rgba(0, 0, 0, 0.7)"
+
+  # ─────────────────────────────────────────────────────────────
   # Brand — 면(배경)으로만 쓴다. 텍스트·보더·아이콘 색으로 쓰지 않는다.
   # ─────────────────────────────────────────────────────────────
   brand-gold: "#ffd700"
@@ -111,6 +117,16 @@ spacing:
   xl: 24px
   2xl: 32px
   3xl: 48px
+
+# 깊이. design.md 스펙에는 그림자 카테고리가 없어서 확장 키로 둔다
+# (스펙은 모르는 내용을 보존하며, lint 도 통과한다).
+# 라이트는 그림자로, 다크는 표면 밝기 차로 깊이를 만든다 → §Elevation & Depth
+elevation:
+  flat: none
+  raised: 0 1px 2px rgba(15, 23, 42, 0.06)
+  overlay: 0 8px 24px rgba(15, 23, 42, 0.12)
+  raised-dark: none
+  overlay-dark: none
 
 rounded:
   sm: 6px
@@ -302,6 +318,10 @@ components:
     textColor: "{colors.dark-text}"
     typography: "{typography.body-sm}"
     height: 40px
+  scrim:
+    backgroundColor: "{colors.light-scrim}"
+  scrim-dark:
+    backgroundColor: "{colors.dark-scrim}"
   brand-cta-gradient:
     backgroundColor: "{colors.brand-gold-end}"
     textColor: "{colors.on-brand-gold}"

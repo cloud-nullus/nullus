@@ -7,8 +7,11 @@ interface ThemeState {
   toggleTheme: () => void
 }
 
-const getInitialTheme = (): Theme => {
-  const stored = localStorage.getItem('nullus-theme')
+/** 테마 영속화 키. MUI 의 modeStorageKey 와 공유해 두 시스템이 갈라지지 않게 한다. */
+export const THEME_STORAGE_KEY = 'nullus-theme'
+
+export const getInitialTheme = (): Theme => {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY)
   if (stored === 'light' || stored === 'dark') return stored
   return 'dark'
 }
@@ -24,7 +27,7 @@ export const useThemeStore = create<ThemeState>()(
 useThemeStore.subscribe(
   (state) => state.theme,
   (theme) => {
-    localStorage.setItem('nullus-theme', theme)
+    localStorage.setItem(THEME_STORAGE_KEY, theme)
     document.documentElement.setAttribute('data-theme', theme)
   },
   { fireImmediately: true }

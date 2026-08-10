@@ -39,6 +39,12 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+
+      # DESIGN.md 와 생성물(src/theme/tokens.generated.*)이 어긋났는지 먼저 본다.
+      # 생성물을 손으로 고치거나 DESIGN.md 만 고치고 재생성을 잊으면 여기서 걸린다.
+      - name: 테마 생성물 신선도 검사
+        run: npm run theme:check
+
       - run: npx vite build
       - run: npx vitest run --coverage
 

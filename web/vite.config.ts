@@ -33,6 +33,14 @@ export default defineConfig({
           if (id.includes('zustand') || id.includes('lucide-react')) {
             return 'vendor-ui'
           }
+          // MUI + emotion 은 앱 전역에서 쓰이므로 별도 벤더 청크로 뺀다.
+          // 메인 청크에 섞이면 라우트 코드와 함께 무효화돼 캐시 효율이 떨어진다.
+          if (id.includes('@mui/') || id.includes('@emotion/')) {
+            return 'vendor-mui'
+          }
+          if (id.includes('ag-grid-')) {
+            return 'vendor-grid'
+          }
           if (id.includes('react-i18next') || id.includes('i18next')) {
             return 'vendor-i18n'
           }

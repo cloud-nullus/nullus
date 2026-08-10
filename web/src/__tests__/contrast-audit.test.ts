@@ -1,9 +1,12 @@
-// 대비 감사 — index.css 의 디자인 토큰을 파싱해 라이트/다크 양쪽에서 WCAG AA 를 강제한다.
+// 대비 감사 — 생성된 디자인 토큰이 라이트/다크 양쪽에서 WCAG AA 를 넘는지 강제한다.
 //
 // 배경: 배포본 가독성 지적(2026-08 팀 논의)의 원인이 라이트 테마에서
 //   ① 카드 배경과 페이지 배경이 같은 색이라 면이 구분되지 않고
 //   ② 보더가 거의 검정이라 와이어프레임처럼 보이고
 //   ③ 다크 기준으로 만든 상태색이 라이트에서 대비가 무너지는 것이었다.
+//
+// 대상은 src/theme/tokens.generated.css — web/DESIGN.md 의 파생물이다.
+// 즉 이 테스트는 DESIGN.md 의 값이 실제로 접근성 기준을 만족하는지 검사한다.
 // 스크린샷 회귀는 백엔드가 필요하지만 이 검사는 토큰만 보므로 항상 돌 수 있다.
 //
 // 기획안: docs/40_UI_UX/Nullus_UIUX_전면개편_기획안.md §2.1, §10
@@ -12,37 +15,23 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
+const CSS = readFileSync(join(__dirname, '..', 'theme', 'tokens.generated.css'), 'utf8')
 
 /** `selector { ... }` 블록에서 커스텀 프로퍼티를 뽑는다. */
 function tokensIn(blockPattern: RegExp): Record<string, string> {
   const out: Record<string, string> = {}
   for (const match of CSS.matchAll(blockPattern)) {
-    const body = match[1] ?? ''
-    for (const decl of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+    for (const decl of (match[1] ?? '').matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
       out[decl[1]] = decl[2].trim()
     }
   }
   return out
 }
 
-// `:root { ... }` 는 여러 번 나온다(토큰 블록 + color-scheme 블록) → 전부 병합
-const rootTokens = tokensIn(/:root\s*\{([^}]*)\}/g)
+const darkTokens = tokensIn(/:root\s*\{([^}]*)\}/g)
 const lightTokens = {
-  ...rootTokens,
+  ...darkTokens,
   ...tokensIn(/\[data-theme="light"\]\s*\{([^}]*)\}/g),
-}
-
-/** body 배경에서 대표 색 하나를 뽑는다(그라데이션이면 첫 색). */
-function bodyBackground(scoped: boolean): string {
-  const pattern = scoped
-    ? /\[data-theme="light"\]\s*body\s*\{([^}]*)\}/
-    : /(?<!\]\s)\bbody\s*\{([^}]*)\}/
-  const block = CSS.match(pattern)?.[1] ?? ''
-  const bg = block.match(/background\s*:\s*([^;]+);/)?.[1] ?? ''
-  const hex = bg.match(/#[0-9a-fA-F]{3,8}/)
-  if (!hex) throw new Error(`body 배경에서 색을 찾지 못했다: ${JSON.stringify(bg)}`)
-  return hex[0]
 }
 
 function srgbToLinear(channel: number): number {
@@ -82,38 +71,92 @@ const AA = 4.5
 const SURFACE_SEPARATION = 1.05
 
 const THEMES = [
-  { name: 'dark', tokens: rootTokens, pageBg: bodyBackground(false) },
-  { name: 'light', tokens: lightTokens, pageBg: bodyBackground(true) },
+  { name: 'dark', tokens: darkTokens },
+  { name: 'light', tokens: lightTokens },
 ] as const
 
+/** 본문·보조 텍스트 3단 — DESIGN.md §Colors */
 const TEXT_TOKENS = ['--color-text-primary', '--color-text-secondary', '--color-text-muted'] as const
 
+/**
+ * 상태색과 액센트. 이 값들이 텍스트·아이콘 색으로 쓰이므로 AA 를 넘어야 한다.
+ * 개편 전에는 다크용 400대 톤을 라이트에서도 그대로 써서 1.60~2.85:1 이었다.
+ */
+const ACCENT_TOKENS = [
+  '--color-primary',
+  '--color-success',
+  '--color-warning',
+  '--color-error',
+  '--color-info',
+  '--color-accent-alt',
+] as const
+
 describe('디자인 토큰 대비 감사', () => {
-  describe.each(THEMES)('$name 테마', ({ tokens, pageBg }) => {
-    it.each(TEXT_TOKENS)('%s 는 카드 배경에서 WCAG AA(4.5:1) 를 넘는다', (textToken) => {
-      const ratio = contrastRatio(resolve(tokens, textToken), resolve(tokens, '--color-surface-card'))
-      expect(ratio, `${textToken} on --color-surface-card = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
+  // 셀렉터가 안 맞으면 lightTokens 가 darkTokens 그대로가 되어 라이트 검사가
+  // 조용히 다크를 두 번 보게 된다. 실제로 생성기의 인용부호가 바뀌었을 때 그렇게 됐다.
+  it('라이트 토큰이 실제로 파싱됐다', () => {
+    expect(Object.keys(darkTokens).length, ':root 토큰이 파싱되지 않았다').toBeGreaterThan(20)
+    expect(
+      lightTokens['--color-surface-card'],
+      '[data-theme="light"] 블록이 파싱되지 않았다 — 라이트 검사가 다크를 보고 있다',
+    ).not.toBe(darkTokens['--color-surface-card'])
+  })
+
+  describe.each(THEMES)('$name 테마', ({ tokens }) => {
+    const card = () => resolve(tokens, '--color-surface-card')
+    const page = () => resolve(tokens, '--color-surface-base')
+
+    it.each(TEXT_TOKENS)('%s 는 카드 배경에서 AA(4.5:1) 를 넘는다', (token) => {
+      const ratio = contrastRatio(resolve(tokens, token), card())
+      expect(ratio, `${token} on card = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
     })
 
-    it.each(TEXT_TOKENS)('%s 는 페이지 배경에서 WCAG AA(4.5:1) 를 넘는다', (textToken) => {
-      const ratio = contrastRatio(resolve(tokens, textToken), pageBg)
-      expect(ratio, `${textToken} on body(${pageBg}) = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
+    it.each(TEXT_TOKENS)('%s 는 페이지 배경에서 AA(4.5:1) 를 넘는다', (token) => {
+      const ratio = contrastRatio(resolve(tokens, token), page())
+      expect(ratio, `${token} on page = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
+    })
+
+    it.each(ACCENT_TOKENS)('%s 는 카드 배경에서 AA(4.5:1) 를 넘는다', (token) => {
+      const ratio = contrastRatio(resolve(tokens, token), card())
+      expect(ratio, `${token} on card = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
+    })
+
+    it.each(ACCENT_TOKENS)('%s 는 페이지 배경에서 AA(4.5:1) 를 넘는다', (token) => {
+      const ratio = contrastRatio(resolve(tokens, token), page())
+      expect(ratio, `${token} on page = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
+    })
+
+    it('primary 버튼의 텍스트가 primary 배경에서 AA 를 넘는다', () => {
+      const ratio = contrastRatio(resolve(tokens, '--color-on-primary'), resolve(tokens, '--color-primary'))
+      expect(ratio, `on-primary on primary = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
     })
 
     it('카드 배경이 페이지 배경과 면으로 구분된다', () => {
-      const card = resolve(tokens, '--color-surface-card')
-      const ratio = contrastRatio(card, pageBg)
+      const ratio = contrastRatio(card(), page())
       expect(
         ratio,
-        `--color-surface-card(${card}) vs body(${pageBg}) = ${ratio.toFixed(2)}:1 — 같은 색이면 카드가 사라진다`,
+        `card(${card()}) vs page(${page()}) = ${ratio.toFixed(2)}:1 — 같은 색이면 카드가 사라진다`,
       ).toBeGreaterThanOrEqual(SURFACE_SEPARATION)
     })
 
     it('보더가 배경 대비 과하게 튀지 않는다 (와이어프레임 룩 방지)', () => {
       const border = resolve(tokens, '--color-border-default')
-      const ratio = contrastRatio(border, resolve(tokens, '--color-surface-card'))
+      const ratio = contrastRatio(border, card())
       // 경계선은 은은해야 한다. 본문 텍스트만큼 튀면 "흰 종이에 검은 선" = 스켈레톤처럼 보인다.
-      expect(ratio, `--color-border-default(${border}) on card = ${ratio.toFixed(2)}:1`).toBeLessThan(AA)
+      expect(ratio, `border(${border}) on card = ${ratio.toFixed(2)}:1`).toBeLessThan(AA)
     })
+  })
+
+  it('브랜드 골드 위의 텍스트가 AA 를 넘는다', () => {
+    const ratio = contrastRatio(
+      resolve(darkTokens, '--color-on-brand-gold'),
+      resolve(darkTokens, '--color-brand-gold'),
+    )
+    expect(ratio, `on-brand-gold on brand-gold = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
+  })
+
+  it('브랜드 골드는 라이트 카드에서 텍스트로 쓸 수 없다 (DESIGN.md 금지 규칙의 근거)', () => {
+    const ratio = contrastRatio(resolve(darkTokens, '--color-brand-gold'), resolve(lightTokens, '--color-surface-card'))
+    expect(ratio, `골드를 텍스트로 쓰면 ${ratio.toFixed(2)}:1 — 면으로만 써야 한다`).toBeLessThan(AA)
   })
 })

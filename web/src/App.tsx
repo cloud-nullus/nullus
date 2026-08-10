@@ -5,6 +5,11 @@ import { router } from './app/routes'
 import { ToastProvider } from './components/ui/toast-provider'
 import { queryClient } from './lib/query-client'
 import i18n from './i18n'
+import { StyledEngineProvider, ThemeProvider } from '@mui/material/styles'
+import GlobalStyles from '@mui/material/GlobalStyles'
+import { nullusTheme } from './theme/mui-theme'
+import { ThemeSync } from './theme/theme-sync'
+import { THEME_STORAGE_KEY, getInitialTheme } from './stores/theme-store'
 
 import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
@@ -144,18 +149,43 @@ function OidcGate({ children }: { children: ReactNode }) {
 function App() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <I18nextProvider i18n={i18n}>
-          {isOidcMode ? (
-            <OidcGate>
-              <RouterProvider router={router} />
-            </OidcGate>
-          ) : (
-            <RouterProvider router={router} />
-          )}
-          <ToastProvider />
-        </I18nextProvider>
-      </QueryClientProvider>
+      {/*
+        MUI × Tailwind v4 통합.
+
+        enableCssLayer 로 MUI 의 emotion 주입을 'mui' 레이어에 넣고, GlobalStyles 로
+        레이어 순서를 런타임에도 선언한다. index.css 의 @layer 선언과 반드시 같아야 하며,
+        이 순서 덕분에 Tailwind 유틸리티가 MUI 컴포넌트 스타일을 이긴다.
+
+        CssBaseline 을 쓰지 않는다 — 전역 리셋은 Tailwind preflight 가 이미 하고 있고
+        둘을 겹치면 body 배경·폰트가 서로를 덮어쓴다.
+      */}
+      <StyledEngineProvider enableCssLayer>
+        <GlobalStyles styles="@layer theme, base, mui, components, utilities;" />
+        {/*
+          defaultMode 와 modeStorageKey 를 theme-store 와 맞춘다.
+          MUI 도 data-theme 속성을 관리하므로 값이 갈라지면 테마가 뒤집힌다.
+          ThemeSync 가 스토어 → MUI 방향으로 계속 밀어 넣는다.
+        */}
+        <ThemeProvider
+          theme={nullusTheme}
+          defaultMode={getInitialTheme()}
+          modeStorageKey={THEME_STORAGE_KEY}
+        >
+          <ThemeSync />
+          <QueryClientProvider client={queryClient}>
+            <I18nextProvider i18n={i18n}>
+              {isOidcMode ? (
+                <OidcGate>
+                  <RouterProvider router={router} />
+                </OidcGate>
+              ) : (
+                <RouterProvider router={router} />
+              )}
+              <ToastProvider />
+            </I18nextProvider>
+          </QueryClientProvider>
+        </ThemeProvider>
+      </StyledEngineProvider>
     </ErrorBoundary>
   )
 }
