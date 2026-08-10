@@ -5,8 +5,50 @@
 **범위**: Phase 1 (DevOps) 전체 기능 + Phase 2-3 예정 기능 요약
 
 ## 변경 이력
+- 2026-08-11: 구현 상태 대조(0장 추가). 계획 표는 그대로 두고 현재 달성도를 별도로 기록
 - 2026-03-29: Empty Template/Storage 미선택 흐름, Alert Rule DB 동기화 편집, Home/Admin UX 보완사항 반영
 - 2026-03-08: PRD v1.2 기반으로 갱신 (Narwhal 강화 요구사항: known-issues, 3-Phase, OIDC 반영 확인)
+
+---
+
+## 0. 구현 상태 (2026-08-11)
+
+1장 이하의 표는 **계획**이다. 아래는 코드·DB 와 대조한 현재 상태이며, 계획과 다른
+부분은 사유를 함께 적었다.
+
+| ID | 기능 | 상태 | 근거 |
+|----|------|------|------|
+| F0 | Organization 설정 등록 | 구현 | `/admin/organization`, 리소스 프로파일 API 포함 |
+| F1 | K8S Cluster 등록 | 구현 | 등록·검증·디스커버리·네임스페이스/파드 조회 |
+| F2 | 노코드 스택 설정 UI | 구현 | 설치 위자드(`stack-install-page`), 스토리지·인증 단계 포함 |
+| F3 | Golden Path 템플릿 | **계획 초과** | **6개** — Empty, GitLab All-in-One, GitLab+Argo CD, GitLab+Harbor, GitLab+Nexus, GitHub+Argo CD. Phase 3 목표가 3개였다 |
+| F4 | 자동 설치/배포/이력 | 구현 | 설치·재시도(`/retry`)·이어하기(`/continue`)·이력·롤백 |
+| F5 | CI/CD 파이프라인 템플릿 | 구현 | **4개** (`pipeline_templates`) |
+| F6 | CI/CD 배포/이력 | 구현 | 파이프라인 CRUD·배포·이력. **저장소 프로비저닝까지 확장**(GitLab/GitHub) |
+| F7 | 모니터링/알림 | 구현 | 대시보드·알림 규칙·알림 이력·알림 발송(`notification_configs`/`history`) |
+| F8 | OSS 버전 호환성 | **계획 초과** | 매트릭스 **5개**. 설치 전 게이트로 동작 |
+| F9 | UI 권한 체계 | 구현 | 사이드바·라우트·API 3중 역할 검사 + Keycloak/Authentik OIDC |
+| F10 | 리소스 예상량 계산 | 구현 | 위자드 리소스 단계, 통화 선택 |
+
+### 0.1 계획에 없던 확장
+
+| 항목 | 내용 |
+|------|------|
+| 외부 SCM 지원 | GitHub(SaaS)에서 저장소 생성·워크플로 스캐폴딩·GHCR push 까지 지원. 계획은 GitLab 전제였다 |
+| 시크릿 평면 | OpenBao + External Secrets Operator 를 **스택마다** 배포. 계획 문서에 없던 축이다 |
+| 토큰 소스 관리 | 회전·승인·일시중지 API 9개(`/admin/token-sources/*`). **화면이 아직 연결되지 않았다**(메뉴체계 0.3 참고) |
+| 알려진 이슈 | `/admin/known-issues` 메뉴와 API |
+| OSS 기본 리소스 | `/stack/oss-resource-default` 로 도구별 기본 리소스를 조직이 조정 |
+
+### 0.2 아직 계획대로가 아닌 것
+
+| 항목 | 상태 |
+|------|------|
+| 설치 로그 영속화 | 메모리 스트리머만 있어 API 재기동 시 로그가 사라진다 |
+| `/api/v1/auth` REST | 미구현. 인증은 미들웨어와 OIDC 프로바이더로만 처리 |
+| 프론트 OIDC 런타임 | 로컬 기본값이 mock(`VITE_AUTH_MODE=mock`) |
+
+상세 근거는 `docs/20_아키텍처/Nullus_설계_대비_미구현_항목.md` 참고.
 
 ---
 

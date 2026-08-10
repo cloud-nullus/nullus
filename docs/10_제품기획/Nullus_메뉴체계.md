@@ -1,7 +1,73 @@
 # Nullus 메뉴 체계
 
 **작성일**: 2026-03-08  
+**최종 갱신**: 2026-08-11 (구현 대조)  
 **용도**: proto3, 기능목록, **기능분해도(Nullus_기능분해도.csv)** 간 메뉴 명칭 통일
+
+---
+
+## 0. 현행 사이드바 (2026-08-11)
+
+`web/src/components/layout/sidebar.tsx` 와 `web/src/i18n/ko.json` 에서 추출했다.
+아래가 실제로 화면에 뜨는 메뉴이며, 1장의 표는 초안이라 일부 다르다.
+
+| 대메뉴 | 하위 메뉴 | 경로 | 노출 역할 |
+|--------|-----------|------|-----------|
+| **데브섹옵스 스택** | 스택 템플릿 | `/stack/templates` | admin, devops |
+| | 스택 목록 | `/stack/list` | admin, devops |
+| | 스택 이력 | `/stack/history` | admin, devops |
+| | 스택 버전 | `/stack/version` | admin, devops |
+| | 스택 버전 관리 | `/admin/stack-versions` | **admin** |
+| | OSS 기본 리소스 | `/stack/oss-resource-default` | admin, devops |
+| **CI/CD** | CI/CD 템플릿 | `/cicd/templates` | admin, devops |
+| | CI/CD 목록 | `/cicd/list` | admin, devops, developer |
+| | CI/CD 이력 | `/cicd/history` | admin, devops, developer |
+| **관측성** | 모니터링 대시보드 | `/observability/monitoring` | admin, devops, developer |
+| | 알림 규칙 | `/observability/alerts` | admin, devops |
+| | 알림 이력 | `/observability/alert-history` | admin, devops, developer |
+| **관리** | 조직 | `/admin/organization` | **admin** |
+| | 사용자 관리 | `/admin/users` | **admin** |
+| | 클러스터 관리 | `/admin/clusters` | **admin** |
+| | 알려진 이슈 | `/admin/known-issues` | **admin** |
+
+### 0.1 1장 초안과 달라진 점
+
+- **스택 설치는 사이드바에 없다.** 스택 템플릿에서 템플릿을 고르면 설치 위자드
+  (`/stack/install`)로 들어가는 흐름이라 독립 항목을 두지 않았다.
+- 초안에 없던 메뉴 3개가 늘었다 — **OSS 기본 리소스**, **스택 버전 관리**(admin 전용),
+  **알려진 이슈**(admin 전용).
+- **초안에는 역할 제한이 없었다.** 실제로는 메뉴마다 노출 역할이 걸려 있고, 라우트에도
+  `allowedRoles` 로 한 번 더 막는다. developer 는 관측성 3개와 CI/CD 목록·이력만 본다.
+
+### 0.2 메뉴 없이 경로로만 접근하는 화면
+
+| 화면 | 경로 |
+|------|------|
+| 홈(역할별 요약) | `/` |
+| 스택 설치 위자드 | `/stack/install` |
+| 스택 도구 추가 | `/stack/:id/add-tools` |
+| 스택 배포 진행 | `/stack/deploy/:id` |
+| 스택 설치 로그 | `/stack/logs/:deploymentId` |
+| 스택 버전 목록 | `/stack/versions` |
+| 알림(규칙 상세) | `/observability/alert-rules` |
+| 앱 배포(Developer) | `/cicd/developer-deploy` |
+| 파이프라인 생성 | `/cicd/create` |
+| 파이프라인 로그 | `/cicd/pipelines/:id/logs` |
+| 조직 목록 | `/admin/organizations` |
+| 로그인 | `/login` |
+
+### 0.3 화면은 있으나 도달할 수 없는 페이지
+
+아래 4개는 컴포넌트 파일이 있지만 라우트에도 사이드바에도 연결돼 있지 않다.
+어디에서도 import 되지 않으므로 현재 사용자는 접근할 수 없다.
+
+- `cicd-golden-path-page.tsx`
+- `cicd-pipeline-setup-page.tsx`
+- `stack-deployment-logs-page.tsx`
+- `token-management-page.tsx`
+
+메뉴에 넣을지 지울지 판단이 필요하다. 특히 `token-management-page` 는 토큰 소스 관리
+API(`/api/v1/admin/token-sources`)가 백엔드에 있는데 화면만 끊겨 있는 상태다.
 
 ---
 
