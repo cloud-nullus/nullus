@@ -11,6 +11,22 @@ const NotFoundPage = lazy(() =>
   import('../features/common/pages/not-found-page').then((m) => ({ default: m.NotFoundPage }))
 )
 
+const CicdGoldenPathPage = lazy(() =>
+  import('../features/cicd/pages/cicd-golden-path-page').then((m) => ({ default: m.CicdGoldenPathPage }))
+)
+
+const CicdPipelineSetupPage = lazy(() =>
+  import('../features/cicd/pages/cicd-pipeline-setup-page').then((m) => ({ default: m.CicdPipelineSetupPage }))
+)
+
+const StackDeploymentLogsPage = lazy(() =>
+  import('../features/stack/pages/stack-deployment-logs-page').then((m) => ({ default: m.StackDeploymentLogsPage }))
+)
+
+const TokenManagementPage = lazy(() =>
+  import('../features/admin/pages/token-management-page').then((m) => ({ default: m.TokenManagementPage }))
+)
+
 const HomePage = lazy(() =>
   import('../features/home/pages/home-page').then((m) => ({ default: m.HomePage }))
 )
@@ -127,6 +143,7 @@ export const router = createBrowserRouter([
           { path: 'stack/templates', element: withSuspense(<StackTemplatePage />) },
           { path: 'stack/list', element: withSuspense(<StackListPage />) },
           { path: 'stack/logs/:deploymentId', element: withSuspense(<StackDeployPage />) },
+          { path: 'stack/deployments/:deploymentId/retry-history', element: withSuspense(<StackDeploymentLogsPage />) },
           { path: 'stack/history/:stackId?', element: withSuspense(<StackHistoryPage />) },
           { path: 'stack/versions', element: withSuspense(<StackVersionPage />) },
           { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
@@ -150,7 +167,8 @@ export const router = createBrowserRouter([
         children: [
           { path: 'cicd/developer-deploy', element: withSuspense(<DeveloperDeployPage />) },
           { path: 'cicd/templates', element: withSuspense(<CicdTemplatePage />) },
-          { path: 'cicd/create', element: withSuspense(<DeveloperDeployPage />) },
+          { path: 'cicd/create', element: withSuspense(<CicdPipelineSetupPage />) },
+          { path: 'cicd/golden-paths', element: withSuspense(<CicdGoldenPathPage />) },
           { path: 'cicd/list', element: withSuspense(<CicdListPage />) },
           { path: 'cicd/history', element: withSuspense(<CicdHistoryPage />) },
           { path: 'cicd/pipelines/:id/logs', element: withSuspense(<CicdPipelineLogsPage />) },
@@ -164,6 +182,7 @@ export const router = createBrowserRouter([
           { path: 'admin/users', element: withSuspense(<UserManagementPage />) },
           { path: 'admin/clusters', element: withSuspense(<ClusterPage />) },
           { path: 'admin/known-issues', element: withSuspense(<KnownIssuesPage />) },
+          { path: 'admin/token-management', element: withSuspense(<TokenManagementPage />) },
           { path: 'admin/stack-versions', element: withSuspense(<StackVersionsAdminPage />) },
         ],
       },

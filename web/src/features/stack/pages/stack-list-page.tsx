@@ -84,6 +84,14 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 					<Button variant="outline" size="sm" onClick={() => navigate(`/stack/history/${stack.id}`)} type="button">
 						Open Full History
 					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => navigate(`/stack/deployments/${stack.id}/retry-history`)}
+						type="button"
+					>
+						Retry History
+					</Button>
 				</div>
 			</div>
 			{isLoading && (

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../../stores/auth-store'
+import { roleLandingPath } from '../role-landing'
 import { isOidcMode, getProviderConfig } from '../../../lib/oidc-providers'
 import type { User } from '../../../types'
 
@@ -32,11 +33,6 @@ const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
   },
 }
 
-const ROLE_HOME: Record<string, string> = {
-  admin: '/admin/organization',
-  devops: '/stack/templates',
-  developer: '/cicd/developer-deploy',
-}
 
 import { useAuth } from 'react-oidc-context'
 
@@ -109,7 +105,7 @@ function MockLoginContent() {
     }
 
     login(account.user)
-    navigate(ROLE_HOME[account.user.role] ?? '/')
+    navigate(roleLandingPath(account.user.role))
   }
 
   return (
