@@ -196,6 +196,8 @@ func main() {
 	pgCompatRepo := stackrepo.NewPostgresCompatibilityRepository(pool)
 	validateCompatUC := stackuc.NewValidateCompatibility(pgCompatRepo)
 	compatHandler := stackhandler.NewCompatibilityHandler(pgCompatRepo, validateCompatUC)
+	// 재배포 기록 조회. 프론트의 재배포 기록 화면이 이 경로를 호출한다.
+	retryHistoryHandler := stackhandler.NewRetryHistoryHandler(auditLogger)
 
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
 	monitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
@@ -365,6 +367,7 @@ func main() {
 	historyHandler.RegisterRoutes(stacks)
 	monitoringHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
+	retryHistoryHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	cicdGoldenPathHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
