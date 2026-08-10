@@ -170,7 +170,9 @@ func (c *Client) EnsureProject(ctx context.Context, spec port.ProjectSpec) (*por
 	if err := c.send(ctx, http.MethodPost, endpoint, body, &created); err != nil {
 		return nil, fmt.Errorf("create repository %s/%s: %w", owner, repo, err)
 	}
-	return created.toDomain(), nil
+	project := created.toDomain()
+	project.Created = true
+	return project, nil
 }
 
 // isOrganization 은 소유자가 Organization 인지 본다.

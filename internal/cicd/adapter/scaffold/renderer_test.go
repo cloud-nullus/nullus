@@ -333,3 +333,36 @@ func TestRender_SkipsHTTPRouteWhenGatewayUnknown(t *testing.T) {
 	assert.NotContains(t, fileMap(t, files), "deploy/httproute.yaml")
 }
 
+// 기본 Dockerfile 은 고른 포트에서 실제로 들어야 한다.
+//
+// nginx 기본 설정은 80 에서 듣는다. EXPOSE 는 문서일 뿐 바인딩을 바꾸지 않으므로,
+// 포트만 바꿔 놓으면 Service·Deployment·HTTPRoute 가 가리키는 곳에 아무도 없다.
+// readinessProbe 도 없어서 파드는 Running 으로 보이고 Argo CD 도 Healthy 라고
+// 보고한다 — 첫 배포가 조용히 응답 없는 상태로 끝난다.
+func TestRender_DockerfileListensOnConfiguredPort(t *testing.T) {
+	in := baseInput()
+	in.Port = 8080
+	files, err := Render(in)
+	require.NoError(t, err)
+
+	dockerfile := fileMap(t, files)["Dockerfile"]
+	require.NotEmpty(t, dockerfile)
+
+	assert.Contains(t, dockerfile, "EXPOSE 8080")
+	// EXPOSE 만으로는 바인딩이 바뀌지 않는다. 이미지 안의 nginx 설정이 그 포트를
+	// 듣도록 실제로 바뀌어야 한다.
+	assert.Contains(t, dockerfile, "listen 8080",
+		"nginx 가 8080 을 듣도록 설정을 바꿔야 한다 — EXPOSE 는 문서일 뿐이다")
+}
+
+// 포트가 80 이면 기본 설정 그대로여야 한다 — 불필요한 치환을 넣지 않는다.
+func TestRender_DockerfileKeepsDefaultForPort80(t *testing.T) {
+	in := baseInput()
+	in.Port = 80
+	files, err := Render(in)
+	require.NoError(t, err)
+
+	dockerfile := fileMap(t, files)["Dockerfile"]
+	assert.Contains(t, dockerfile, "EXPOSE 80")
+	assert.NotContains(t, dockerfile, "sed -i")
+}

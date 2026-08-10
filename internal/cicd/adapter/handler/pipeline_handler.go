@@ -167,6 +167,9 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 	if out.RepositoryPath != "" {
 		resp["repository_path"] = out.RepositoryPath
 		resp["argo_application_created"] = out.ArgoApplicationCreated
+		// 기존 저장소를 그대로 쓴 경우를 알린다. 파일이 갱신된 줄 알면
+		// 배포가 예전 매니페스트로 도는 이유를 엉뚱한 데서 찾게 된다.
+		resp["scaffold_skipped"] = out.ScaffoldSkipped
 	}
 	if len(out.MissingVariables) > 0 {
 		resp["missing_variables"] = out.MissingVariables

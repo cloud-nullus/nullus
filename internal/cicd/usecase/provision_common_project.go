@@ -32,6 +32,8 @@ type ProvisionCommonProjectInput struct {
 type ProvisionCommonProjectOutput struct {
 	Group   *port.SCMGroup
 	Project *port.SCMProject
+	// DocsSkipped 는 이미 있던 프로젝트라 README 를 쓰지 않았음을 알린다.
+	DocsSkipped bool
 }
 
 // ProvisionCommonProject 는 조직 그룹과 공용 프로젝트를 보장한다.
@@ -81,6 +83,12 @@ func (uc *ProvisionCommonProject) Execute(
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ensure common project %q: %w", projectPath, err)
+	}
+
+	// 앱 저장소와 같은 이유로, 이미 있던 공용 프로젝트의 README 는 덮어쓰지 않는다.
+	// 조직이 직접 고쳐 쓰는 문서라 되돌려 놓으면 손실이 그대로 남는다.
+	if !project.Created {
+		return &ProvisionCommonProjectOutput{Group: group, Project: project, DocsSkipped: true}, nil
 	}
 
 	commit := port.CommitSpec{

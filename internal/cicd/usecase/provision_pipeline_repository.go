@@ -35,6 +35,8 @@ type ProvisionPipelineRepositoryOutput struct {
 	ArgoApplicationCreated bool
 	MissingVariables       []string
 	Warnings               []string
+	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
+	ScaffoldSkipped bool
 }
 
 // ProvisionPipelineRepository 는 파이프라인 하나가 돌기 위한 저장소 일체를 만든다.
@@ -110,6 +112,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 		ImageRepository:  appOut.ImageTarget.Repository,
 		MissingVariables: appOut.MissingVariables,
 		Warnings:         appOut.Warnings,
+		ScaffoldSkipped:  appOut.ScaffoldSkipped,
 	}
 
 	uc.applyArgoApplication(ctx, bundle, app, input.Namespace, appOut, out)

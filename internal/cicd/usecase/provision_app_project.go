@@ -88,6 +88,8 @@ type ProvisionAppProjectOutput struct {
 	MissingVariables []string
 	// Warnings 는 치명적이지 않지만 알려야 하는 문제다.
 	Warnings []string
+	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
+	ScaffoldSkipped bool
 }
 
 // ProvisionAppProject 는 앱 저장소를 만들고 CI/CD 가 돌 수 있는 상태로 만든다.
@@ -163,15 +165,33 @@ func (uc *ProvisionAppProject) Execute(
 		return nil, fmt.Errorf("render scaffold for %q: %w", app, err)
 	}
 
-	if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
-		Branch:  project.DefaultBranch,
-		Message: "chore(nullus): scaffold pipeline and deployment manifests",
-		Files:   files,
-	}); err != nil {
-		return nil, fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
+	// 이미 있던 저장소에는 스캐폴딩을 쓰지 않는다.
+	//
+	// CommitFiles 는 upsert 라 그대로 두면 CI 가 갱신해 둔 이미지 태그가 초기값
+	// (:bootstrap)으로 되돌아간다 — 그 태그는 레지스트리에 없으므로 돌던 배포가
+	// ImagePullBackOff 로 떨어졌다가 CI 가 다시 돌아야 복구된다. 사용자가 고친
+	// Dockerfile·워크플로·매니페스트도 같이 사라진다.
+	scaffoldSkipped := !project.Created
+	if !scaffoldSkipped {
+		if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
+			Branch:  project.DefaultBranch,
+			Message: "chore(nullus): scaffold pipeline and deployment manifests",
+			Files:   files,
+		}); err != nil {
+			return nil, fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
+		}
 	}
 
-	out := &ProvisionAppProjectOutput{Project: project, ImageTarget: target}
+	out := &ProvisionAppProjectOutput{
+		Project:         project,
+		ImageTarget:     target,
+		ScaffoldSkipped: scaffoldSkipped,
+	}
+	if scaffoldSkipped {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"%s 저장소가 이미 있어 스캐폴딩을 건너뛰었습니다 — 기존 파일을 덮어쓰지 않습니다",
+			project.FullPath))
+	}
 	uc.configurePipeline(ctx, project, target, input, out)
 
 	sort.Strings(out.MissingVariables)

@@ -155,7 +155,9 @@ func (c *Client) EnsureProject(ctx context.Context, spec port.ProjectSpec) (*por
 	if err := c.post(ctx, "/api/v4/projects", body, &created); err != nil {
 		return nil, fmt.Errorf("create project %q: %w", path, err)
 	}
-	return c.projectToDomain(created), nil
+	project := c.projectToDomain(created)
+	project.Created = true
+	return project, nil
 }
 
 // CommitFiles 는 여러 파일을 한 커밋으로 올린다.

@@ -251,3 +251,33 @@ func TestProvisionAppProject_IsRepeatable(t *testing.T) {
 	assert.Equal(t, first.ImageTarget.Repository, second.ImageTarget.Repository)
 }
 
+// 이미 있던 저장소에는 스캐폴딩을 다시 쓰지 않는다.
+//
+// CommitFiles 는 upsert 라 그대로 두면 CI 가 갱신해 둔 이미지 태그가 :bootstrap
+// 으로 되돌아간다. 그 태그는 레지스트리에 없으므로 돌던 배포가 ImagePullBackOff
+// 로 떨어졌다가 CI 가 다시 돌아야 복구되고, 사용자가 고친 Dockerfile·워크플로·
+// 매니페스트도 함께 사라진다.
+func TestProvisionAppProject_SkipsScaffoldForExistingRepository(t *testing.T) {
+	scm, pipe, res := newFakeSCM(), newFakePipelineConfig(), harborResolver()
+	scm.projectExists = true
+	uc := NewProvisionAppProject(scm, pipe, res)
+
+	out, err := uc.Execute(context.Background(), appInput())
+	require.NoError(t, err)
+
+	assert.True(t, out.ScaffoldSkipped)
+	assert.Empty(t, scm.commits[out.Project.ID], "기존 저장소의 파일을 덮어쓰지 않는다")
+	assert.NotEmpty(t, out.Warnings, "건너뛴 사실은 사용자에게 알려야 한다")
+}
+
+// 새로 만든 저장소에는 그대로 스캐폴딩을 넣는다 — 건너뛰기가 전부를 막으면 안 된다.
+func TestProvisionAppProject_CommitsScaffoldForNewRepository(t *testing.T) {
+	scm, pipe, res := newFakeSCM(), newFakePipelineConfig(), harborResolver()
+	uc := NewProvisionAppProject(scm, pipe, res)
+
+	out, err := uc.Execute(context.Background(), appInput())
+	require.NoError(t, err)
+
+	assert.False(t, out.ScaffoldSkipped)
+	assert.Len(t, scm.commits[out.Project.ID], 1)
+}

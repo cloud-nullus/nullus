@@ -40,6 +40,9 @@ const (
 
 	defaultPort     = 8080
 	defaultReplicas = 1
+
+	// nginxDefaultPort 는 자리표시자 이미지가 기본으로 듣는 포트다.
+	nginxDefaultPort = 80
 )
 
 // Input 은 스캐폴딩 렌더 요청이다.
@@ -285,13 +288,33 @@ func writeScriptLines(b *strings.Builder, lines []string) {
 	}
 }
 
+// renderDockerfile 은 자리표시자 Dockerfile 을 만든다.
+//
+// nginx 기본 설정은 80 에서 듣는데 Service·Deployment·HTTPRoute 는 사용자가 고른
+// 포트를 가리킨다. EXPOSE 는 문서일 뿐 바인딩을 바꾸지 않으므로, 설정을 함께
+// 고치지 않으면 첫 배포가 "파드는 Running 인데 아무도 응답하지 않는" 상태로 끝난다
+// — 자리표시자에는 readinessProbe 도 없어 Argo CD 까지 Healthy 로 보고한다.
 func renderDockerfile(appPort int32) string {
-	return fmt.Sprintf(`# Nullus 가 생성한 기본 Dockerfile 입니다. 애플리케이션에 맞게 수정하세요.
+	header := `# Nullus 가 생성한 기본 Dockerfile 입니다. 애플리케이션에 맞게 수정하세요.
 # 조직 공용 베이스 이미지를 쓰려면 common 프로젝트의 이미지를 FROM 에 지정하면 됩니다.
 FROM nginx:alpine
+`
+	// 80 이면 기본 설정 그대로다. 불필요한 치환을 넣으면 사용자가 이미지를 바꿀 때
+	// 지워야 할 것만 늘어난다.
+	if appPort == nginxDefaultPort {
+		return fmt.Sprintf("%s\nEXPOSE %d\n", header, appPort)
+	}
+
+	// 기본 설정을 통째로 바꿔 쓴다. sed 치환은 listen 지시자의 공백 폭과
+	// IPv6 줄이 이미지 버전마다 달라 조용히 어긋날 수 있고, 사용자가 읽고
+	// 고치기도 어렵다.
+	return fmt.Sprintf(`%s
+# nginx 기본 설정은 80 을 듣는다. 배포 매니페스트가 가리키는 포트로 맞춘다 —
+# EXPOSE 는 문서일 뿐 바인딩을 바꾸지 않는다.
+RUN printf 'server {\n    listen %d;\n    location / {\n        root  /usr/share/nginx/html;\n        index index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE %d
-`, appPort)
+`, header, appPort, appPort)
 }
 
 func renderDeployment(app, namespace, repository string, appPort, replicas int32) string {
