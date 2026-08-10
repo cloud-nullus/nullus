@@ -32,7 +32,7 @@
 
 | 영역 | 기술 |
 |------|------|
-| **Backend** | Go 1.24+ (Echo v4) + PostgreSQL 18+ |
+| **Backend** | Go 1.26+ (Echo v4) + PostgreSQL 18+ |
 | **Frontend** | React 19 + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui 패턴 |
 | **상태 관리** | Zustand 5 |
 | **API 통신** | TanStack Query 5 + Axios |

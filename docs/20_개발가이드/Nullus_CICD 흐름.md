@@ -2,6 +2,19 @@
 
 이 문서는 `Gitlab 파이프라인 구성(26)` 디렉토리 기준으로, 세부 구현값을 제외한 **전체 CI/CD 프로세스 흐름**과 **인증/토큰 연계 흐름**을 정리합니다.
 
+> **구현 현황 (2026-08-11)** — GitHub 경로는 이 문서의 토큰 흐름과 다르게 구현됐다.
+> 워크플로는 OpenBao 에 접근하지 않는다. GitHub 에는 리포 범위 토큰 발급 API 가 없어서,
+> 이미지 push 와 매니페스트 되쓰기 모두 Actions 가 주입하는 **내장 `GITHUB_TOKEN`**
+> (`packages: write`, `contents: write`)으로 처리한다. 사용자가 등록한 조직 PAT 는
+> 스택 OpenBao 에 보관되며 **플랫폼 쪽에서만** 쓴다 — 저장소 생성, Argo CD 저장소
+> 자격증명, kubelet 의 GHCR pull 시크릿이다.
+>
+> 즉 GitHub 스택에서 아래 표의 "GitHub + OpenBao 사용" 행처럼 러너가 OpenBao 에
+> 로그인하는 단계는 없다. GitLab 경로는 프로젝트 범위 토큰을 발급할 수 있어 문서의
+> 흐름이 그대로 유효하다.
+>
+> 상세는 `docs/20_아키텍처/Nullus_시스템_아키텍처.md` 4.2 와 `CHANGELOG.md` 참고.
+
 ## 1) 전체 CI/CD 파이프라인 프로세스
 
 ```mermaid

@@ -136,6 +136,25 @@ make kind-down
 
 ### 2.5 전체 Makefile 명령어
 
+> **⚠️ 아래 표는 설계안이며 현재 `Makefile` 과 다르다 (2026-08-11 확인).** 표에 있는
+> 명령 중 `dev`, `build`, `test`, `lint`, `migrate-up`, `migrate-down` 여섯 개만 실재하고
+> 나머지는 없다. 그대로 실행하면 `No rule to make target` 으로 실패한다.
+>
+> 실제 대응은 다음과 같다.
+>
+> | 이 표의 명령 | 실제 |
+> |---|---|
+> | `make infra-up` / `infra-down` | `make dev-up` / `make dev-down` |
+> | `make test-backend` | `make test` |
+> | `make test-frontend` | `make web-test` |
+> | `make test-e2e` | `make test-integration` |
+> | `make kind-up` / `kind-down` | `./scripts/runbook_local.sh kind-up` / `kind-down` |
+> | `make docker-build`, `fmt`, `migrate-create`, `seed`, `swagger`, `helm-lint`, `db-backup`, `db-restore`, `docker-scan`, `help` | 없음 |
+>
+> `make dev` 는 이름은 같지만 동작이 다르다. 설계안의 "백엔드+프론트 HMR 동시 실행" 이
+> 아니라 `dev-up` + `migrate-up`(인프라 기동 + 마이그레이션)이다. 실제로 쓸 수 있는
+> 명령의 전체 목록은 `docs/50_운영/Nullus 로컬 개발환경 세팅 가이드.md` 5.1 을 본다.
+
 | 명령어 | 설명 |
 |--------|------|
 | `make dev` | 백엔드(Air HMR) + 프론트엔드(Vite HMR) 동시 실행 |

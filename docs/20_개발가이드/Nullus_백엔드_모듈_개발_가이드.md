@@ -1,7 +1,11 @@
 # Nullus 백엔드 모듈 개발 가이드
 
 **작성일**: 2026-03-22
-**기술 스택**: Go 1.24+ · Echo v4 · PostgreSQL 18+ · Helm SDK
+**최종 갱신**: 2026-08-11
+**기술 스택**: Go 1.26 (`go.mod`) · Echo v4 · PostgreSQL 18+ · Helm SDK
+
+> 현재 모듈 구성은 `stack`, `cicd`, `admin`, `observability`, `auth`, `shared` 6개다.
+> 모듈별 규모와 바운디드 컨텍스트는 `docs/20_아키텍처/Nullus_시스템_아키텍처.md` 4.1 참고.
 
 ---
 
@@ -243,6 +247,15 @@ Request → Recover → RequestID → Logger → CORS → RateLimiter
 ## 7. 새 모듈 추가 Step-by-Step
 
 예시: `notification` 모듈 추가
+
+> **이 예제는 절차를 보여주기 위한 가상 시나리오이며 `internal/notification/` 은 존재하지
+> 않는다.** 알림은 이후 실제로 구현됐지만 모듈이 아니라 **공용 패키지 + 기존 모듈 핸들러**
+> 형태로 들어갔다 — `internal/shared/notification/notifier.go` 가 발송을 맡고, 설정·이력
+> API 는 `internal/admin` 의 `/admin/notifications/*` 에 있다.
+>
+> 판단 기준은 "독립된 바운디드 컨텍스트인가" 다. 알림은 여러 컨텍스트가 공통으로 쓰는
+> 횡단 관심사라 자체 도메인 모델을 가질 이유가 없었다. 새 기능을 넣을 때 모듈로 쪼갤지
+> 공용 패키지로 둘지는 이 기준으로 먼저 판단하고, 모듈이 맞다면 아래 절차를 따른다.
 
 ### Step 1: Domain 정의
 

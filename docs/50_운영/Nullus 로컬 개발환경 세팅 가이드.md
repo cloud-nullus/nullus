@@ -2,6 +2,7 @@
 
 **프로젝트**: Nullus - Kubernetes DevSecOps 플랫폼 빌더
 **작성일**: 2026-03-30
+**최종 갱신**: 2026-08-11 (런타임 버전·Makefile 타깃 현행화)
 **대상**: 개발팀 전원 (주니어 포함)
 **기반 문서**: Nullus PRD v1.3, 상세 기능 명세 및 시스템 아키텍처
 
@@ -59,12 +60,12 @@ Nullus 개발 환경은 단순히 코드를 작성하는 공간을 넘어, 실�
 | 계층 | 기술 | 버전 | 비고 |
 |------|------|------|------|
 | **Frontend** | React | 19 | Functional Components + Hooks |
-| | TypeScript | 5.4+ | Strict Mode 활성화 |
-| | Vite | 5.x | 빠른 빌드 및 HMR |
+| | TypeScript | 5.9 | Strict Mode 활성화 |
+| | Vite | 8.x | 빠른 빌드 및 HMR |
 | | Zustand | 5.x | 가벼운 상태 관리 |
 | | Tailwind CSS | 4.x | 유틸리티 퍼스트 스타일링 |
 | | shadcn/ui | latest | Radix UI 기반 컴포넌트 |
-| **Backend** | Go | 1.24+ | 최신 제네릭 및 성능 개선 적용 |
+| **Backend** | Go | 1.26 | `go.mod` 이 요구하는 버전 |
 | | Echo | v4 | 고성능 HTTP 웹 프레임워크 |
 | | PostgreSQL | 18+ | JSONB 및 고급 쿼리 기능 활용 |
 | | golang-migrate| latest | SQL 기반 마이그레이션 관리 |
@@ -194,7 +195,7 @@ Homebrew를 사용하여 필요한 런타임과 도구들을 설치합니다.
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 # 1. 언어 런타임
-brew install go@1.24
+brew install go@1.26
 brew install node@22
 
 # 2. Kubernetes 관리 도구
@@ -209,7 +210,7 @@ brew install jq            # JSON 처리 유틸리티
 brew install make          # 빌드 자동화 도구
 
 # 4. 환경 변수 반영
-echo 'export PATH="/opt/homebrew/opt/go@1.24/bin:$PATH"' >> ~/.zshrc
+echo 'export PATH="/opt/homebrew/opt/go@1.26/bin:$PATH"' >> ~/.zshrc
 echo 'export PATH=$(go env GOPATH)/bin:$PATH' >> ~/.zshrc
 source ~/.zshrc
 ```
@@ -331,9 +332,9 @@ WSL2 터미널을 열고 다음 과정을 진행합니다.
 # 1. 시스템 업데이트
 sudo apt update && sudo apt upgrade -y
 
-# 2. Go 1.24 설치
-curl -LO https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.1.linux-amd64.tar.gz
+# 2. Go 1.26 설치
+curl -LO https://go.dev/dl/go1.26.1.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.1.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin:$(go env GOPATH)/bin' >> ~/.bashrc
 source ~/.bashrc
 
@@ -391,7 +392,14 @@ Nullus는 복잡한 명령어를 단순화하기 위해 `Makefile`을 적극 활
 | `make migrate-up` | `db/migrations/`의 SQL을 DB에 적용합니다. |
 | `make migrate-down` | 가장 최근에 적용된 마이그레이션을 취소합니다. |
 | `make migrate-status` | 현재 마이그레이션 버전 확인. |
-| `make help` | 사용 가능한 모든 명령어 목록을 보여줍니다. |
+| `make dev-logs` | Docker 인프라 로그 확인. |
+| `make dev-status` | Docker 인프라 상태 확인. |
+| `make db-shell` | PostgreSQL 셸 접속. |
+| `make test-cover` | 커버리지 측정과 함께 테스트 실행. |
+| `make test-golden-path` | 골든패스 템플릿 관련 테스트만 실행. |
+| `make web-build` | 프론트엔드 프로덕션 빌드. |
+
+> `make help` 타깃은 없다. 사용 가능한 명령은 `Makefile` 을 직접 보거나 이 표를 참고한다.
 
 ### 5.2 백엔드 개발 프로세스 (Go)
 
@@ -711,7 +719,7 @@ export const useUIStore = create<UIState>((set) => ({
 1. [ ] **GitHub 저장소 접근 권한 확인**: 팀장에게 GitHub ID를 전달하고 `cloud-nullus` 조직에 초대받습니다.
 2. [ ] **저장소 클론**: `git clone git@github.com:cloud-nullus/draft.git`
 3. [ ] **가상화 환경 구축**: OrbStack(macOS) 또는 WSL2(Windows)를 설치하고 Kubernetes를 활성화합니다.
-4. [ ] **런타임 설치**: Go 1.24+ 및 Node.js 22+를 설치합니다. 버전이 정확한지 `go version`, `node -v`로 확인합니다.
+4. [ ] **런타임 설치**: Go 1.26+ 및 Node.js 22+를 설치합니다. 버전이 정확한지 `go version`, `node -v`로 확인합니다.
 5. [ ] **IDE 설정**: VS Code를 설치하고 추천 확장 프로그램을 모두 설치합니다.
 6. [ ] **인프라 실행**: `./scripts/runbook_local.sh up`으로 로컬 인프라/API/프론트를 기동합니다.
 7. [ ] **DB 초기화**: `make migrate-up` 명령으로 테이블을 생성합니다.

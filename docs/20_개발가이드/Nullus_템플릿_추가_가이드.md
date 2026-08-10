@@ -1,6 +1,7 @@
 # Nullus 템플릿 추가 가이드
 
 **작성일**: 2026-03-22
+**최종 갱신**: 2026-08-11
 **범위**: Stack Template + CI/CD Template 추가 방법
 
 ---
@@ -47,9 +48,12 @@ Template
 **Step 1**: 마이그레이션 파일 생성
 
 ```bash
-# 현재 최신 번호 + 1을 사용 (예: 000023)
-touch db/migrations/000023_seed_template_jenkins.up.sql
-touch db/migrations/000023_seed_template_jenkins.down.sql
+# 다음 번호를 먼저 확인한다 — 고정 번호를 쓰면 기존 마이그레이션과 충돌한다
+ls db/migrations/*.up.sql | tail -1
+
+# 확인한 번호 + 1 로 만든다 (아래 NNNNNN 자리에 채워 넣는다)
+touch db/migrations/NNNNNN_seed_template_jenkins.up.sql
+touch db/migrations/NNNNNN_seed_template_jenkins.down.sql
 ```
 
 **Step 2**: UP 마이그레이션 작성
@@ -199,9 +203,10 @@ PipelineTemplate
 **Step 1**: 마이그레이션 파일 생성
 
 ```bash
-# 현재 최신 번호 + 1을 사용 (예: 000024)
-touch db/migrations/000024_seed_cicd_template_ml.up.sql
-touch db/migrations/000024_seed_cicd_template_ml.down.sql
+# 위와 같이 다음 번호를 확인한 뒤 만든다
+ls db/migrations/*.up.sql | tail -1
+touch db/migrations/NNNNNN_seed_cicd_template_ml.up.sql
+touch db/migrations/NNNNNN_seed_cicd_template_ml.down.sql
 ```
 
 **Step 2**: UP 마이그레이션 작성
@@ -325,10 +330,10 @@ curl -X DELETE http://localhost:8090/api/v1/cicd/templates/ml-pipeline-v1
 | 자료 | 경로 |
 |------|------|
 | Stack Template 도메인 | `internal/stack/domain/template.go` |
-| Stack Template 시드 | `db/migrations/000007_seed_templates.up.sql` |
+| Stack Template 시드 | `db/migrations/000008_seed_templates.up.sql` |
 | Stack Template API | `internal/stack/adapter/handler/template_handler.go` |
 | Stack Template 페이지 | `web/src/features/stack/pages/stack-template-page.tsx` |
 | CI/CD Template 도메인 | `internal/cicd/domain/pipeline.go` |
-| CI/CD Template 시드 | `db/migrations/000009_seed_cicd_templates.up.sql` |
+| CI/CD Template 시드 | `db/migrations/000010_seed_cicd_templates.up.sql` |
 | CI/CD Template API | `internal/cicd/adapter/handler/cicd_template_handler.go` |
 | CI/CD Template 페이지 | `web/src/features/cicd/pages/cicd-template-page.tsx` |

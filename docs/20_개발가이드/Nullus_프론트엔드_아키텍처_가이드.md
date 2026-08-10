@@ -1,7 +1,12 @@
 # Nullus 프론트엔드 아키텍처 가이드
 
 **작성일**: 2026-03-22
-**기술 스택**: React 19 · TypeScript · Vite · Tailwind CSS 4 · shadcn/ui
+**최종 갱신**: 2026-08-11
+**기술 스택**: React 19.2 · TypeScript 5.9 · Vite 8 · Tailwind CSS 4 · shadcn/ui
+**주요 라이브러리**: React Router 7 · Zustand 5 · TanStack Query 5
+
+> 현재 feature 는 `admin`, `auth`, `cicd`, `common`, `home`, `observability`, `stack`
+> 7개다. 페이지는 28개.
 
 ---
 
@@ -240,6 +245,14 @@ function MyForm() {
 ## 7. 새 Feature 모듈 추가 방법
 
 예시: `notification` 모듈 추가
+
+> **절차를 보여주기 위한 가상 시나리오이며 `web/src/features/notification/` 은 존재하지
+> 않는다.** 알림 UI 는 이후 `admin` feature 안에 들어갔다 — 알림 설정·이력이 조직 관리
+> 화면의 일부라 별도 최상위 메뉴가 필요 없었기 때문이다.
+>
+> feature 를 새로 만들지, 기존 feature 에 페이지를 더할지는 **좌측 내비게이션에 독립
+> 항목으로 설 것인가**로 판단한다. 그렇지 않다면 기존 feature 의 `pages/` 에 넣는 편이
+> 라우팅·상태·API 훅이 흩어지지 않는다.
 
 ### Step 1: 디렉토리 생성
 

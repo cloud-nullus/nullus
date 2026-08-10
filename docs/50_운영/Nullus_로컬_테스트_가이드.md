@@ -7,7 +7,7 @@
 | 도구 | 버전 | 비고 |
 |------|------|------|
 | Docker + Docker Compose | 최신 | 인프라 기동 |
-| Go | 1.24+ | 백엔드 빌드/테스트 |
+| Go | 1.26+ | `go.mod` 기준 |
 | Node.js | 22+ | npm 포함 |
 | golang-migrate CLI | 최신 | `runbook_local.sh up` 시 자동 설치 |
 | Playwright Chromium | 최신 | `npx playwright install chromium` |
@@ -21,10 +21,28 @@
 ./scripts/runbook_local.sh up
 ```
 
+### 2.0 서브커맨드 일람
+
+| 명령 | 설명 |
+|------|------|
+| `preflight` | 필요한 도구가 깔려 있는지 검사 |
+| `up [--seed] [--kind] [--auth=<keycloak\|authentik\|none>]` | 인프라 + 마이그레이션 + API + 프론트 기동 |
+| `refresh` | **백엔드·프론트 재빌드 + 미적용 마이그레이션 실행 + 재기동.** 코드를 고친 뒤 이걸 쓴다 |
+| `status` | 도커·kind·API·프론트 상태 확인 |
+| `info` | 접속 URL 과 계정 출력 |
+| `smoke` | API 스모크 테스트 |
+| `logs [api\|web\|all]` | 로그 확인 |
+| `down [--kind] [--volumes]` | 종료 |
+| `all` | `up` → `smoke` 까지 한 번에 |
+| `kind-up` / `kind-down` | kind 클러스터만 생성/삭제 |
+
+`--auth` 기본값은 `keycloak` 이다. `none` 은 IdP 를 띄우지 않으며 프론트 mock 인증
+전용이다(`web/.env.development` 의 `VITE_AUTH_MODE=mock`).
+
 이 명령은 다음을 순서대로 실행합니다:
 
 1. Docker Compose로 PostgreSQL, Redis, MinIO, Keycloak 컨테이너 기동
-2. `golang-migrate`로 DB 마이그레이션 실행 (18개 파일)
+2. `golang-migrate`로 DB 마이그레이션 실행 (현재 `000061` 까지)
 3. Go API 서버 빌드 + 실행 (`:8090`, `ENCRYPTION_KEY` 자동 설정)
 4. React 프론트엔드 개발 서버 실행 (`:5173`)
 
