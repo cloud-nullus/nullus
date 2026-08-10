@@ -410,6 +410,36 @@ main
 브랜치 타입은 `docs/20_개발가이드/Nullus_PR_커밋_컨벤션.md`(v3)의 3종(`feat|fix|chore`) 제약을 받는다.
 `refactor` 는 커밋 타입 전용이므로 **브랜치명은 `chore/ui/design-system-overhaul`** 을 쓴다.
 
+**진행 현황 (2026-08-11 기준, 브랜치 `chore/ui/design-system-overhaul`)**
+
+| 상태 | 커밋 | 비고 |
+|------|------|------|
+| ✅ | 1 인벤토리 + 시각 회귀 베이스라인 | 화면 28개 / 스냅샷 58장 |
+| ✅ | 2 i18n 키 정합 | 누락 9개 + 정합 테스트 4건 |
+| ✅ | 3 라이트 테마 대비 교정 | **가독성 문제 해소** — 부록 A1·A2·A4 |
+| ✅ | 4 DESIGN.md 신설 | lint 0 errors / 0 warnings |
+| ✅ | 5 CI 게이트 | design.md lint + 인벤토리 대조 + 테마 신선도 |
+| ✅ | 6 토큰 파이프라인 | DESIGN.md → MUI · Tailwind · AG Grid. 깨진 토큰 3개 복구 |
+| ✅ | 7 프리미티브 6종 MUI 이관 | 화면 파일 0줄 수정 (커밋 8 포함) |
+| ⚠️ | 11 DataTable → AG Grid | **되돌렸다 — D6 결정 필요** (§Phase 3 참조) |
+| ✅ | 13 행 확장 → 메인·서브 테이블 | 순서를 11 앞으로 옮겼다 |
+| ✅ | 22 ESLint 규칙 | hex 1335건 warn, 상용 라이선스 error |
+| ✅ | 24 문서 갱신 | 디자인시스템 문서를 DESIGN.md 참조로 |
+| ⬜ | 9·10 생 태그 흡수 | button 95 / input·select 49 |
+| ⬜ | 12 수제 table 17곳 | D6 결과에 따라 대상이 달라진다 |
+| ⬜ | 14 StatusBadge 통합 | 현재 사용 1곳, 화면별 자체 배지 흡수 |
+| ⬜ | 15·16 앱 셸 · 밀도 | |
+| ⬜ | 17~19 거대 화면 순수 추출 | stack-install 3,662줄 등 |
+| ⬜ | 20 차트 단일화 | ESLint 경고로 표시해 뒀다 |
+| ⬜ | 21 하드코딩 색 청산 | ESLint 경고 1335건이 대상 목록 |
+| ⬜ | 23 tanstack-table 제거 | D6 에서 A 를 고르면 해당 없음 |
+
+측정값(모든 커밋에서 초록): vitest **634/634**, tsc 통과, vite build 통과,
+시각 회귀 **58/58**, 인벤토리 **정보 유실 0**, eslint **0 errors**,
+design.md lint **0 errors**, 대비 감사 **45/45**.
+
+---
+
 | # | 커밋 | Phase |
 |---|------|-------|
 | 1 | `test(ui): 개편 전 화면 정보 인벤토리와 시각/a11y 베이스라인 고정` | 0 |
