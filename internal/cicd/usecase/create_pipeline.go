@@ -60,6 +60,9 @@ type CreatePipelineOutput struct {
 	ArgoApplicationCreated bool     `json:"argo_application_created,omitempty"`
 	MissingVariables       []string `json:"missing_variables,omitempty"`
 	Warnings               []string `json:"warnings,omitempty"`
+	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
+	// 사용자가 파일이 갱신됐다고 오해하면 배포되지 않는 원인을 엉뚱한 데서 찾는다.
+	ScaffoldSkipped bool `json:"scaffold_skipped,omitempty"`
 }
 
 // CreatePipeline creates a new pipeline configuration.
@@ -196,6 +199,7 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 		out.ArgoApplicationCreated = provisionOut.ArgoApplicationCreated
 		out.MissingVariables = provisionOut.MissingVariables
 		out.Warnings = provisionOut.Warnings
+		out.ScaffoldSkipped = provisionOut.ScaffoldSkipped
 	}
 	return out, nil
 }

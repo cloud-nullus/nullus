@@ -147,17 +147,38 @@ func TestValidateCompatibility_Arch_MixedCluster_VerifiedMatrix_Fails(t *testing
 	assert.True(t, hasCode(out.Issues, "TOOL_ARCH_UNSUPPORTED"))
 }
 
-// Untested matrix + mixed cluster + Harbor (amd64-only) => warn, not fail.
+// Untested matrix + amd64-only tool + mixed cluster => warn, not fail.
 // The base verdict is already warn from MATRIX_UNTESTED; arch miss on an
 // unverified matrix stays recoverable via explicit ack in the UI.
+//
+// 행렬을 테스트 안에서 만든다. 예전에는 github-argocd-v1 의 Harbor 가 유일한
+// "untested + amd64 전용" 조합이었는데, 그 조합이 GHCR 로 바뀌면서 사라졌다.
+// 시드 데이터 모양에 기대면 이 분기가 조용히 커버리지에서 빠진다.
 func TestValidateCompatibility_Arch_UntestedMatrixMixedCluster_StaysWarn(t *testing.T) {
 	repo := repository.NewMemoryCompatibilityRepository()
+	require.NoError(t, repo.Create(context.Background(), &domain.CompatibilityMatrix{
+		ID:     "untested-amd64-only-v1",
+		Name:   "Untested amd64-only",
+		Status: "untested",
+		Kubernetes: domain.KubernetesCompat{
+			Min: "1.26", Max: "1.35", Recommended: "1.31",
+		},
+		Tools: map[string]domain.ToolVersion{
+			"source_repository": {
+				Name: "GitHub", HelmVersion: "external", AppVersion: "external",
+				MinK8sVersion: "1.26", ArchSupport: []string{"amd64", "arm64"}, Tier: "beta",
+			},
+			"container_registry": {
+				Name: "Harbor", HelmVersion: "1.15.0", AppVersion: "2.11.0",
+				MinK8sVersion: "1.26", ArchSupport: []string{"amd64"}, Tier: "beta",
+			},
+		},
+	}))
 	uc := NewValidateCompatibility(repo)
 
 	out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{
 		Tools: map[string]string{
 			"source_repository":  "GitHub",
-			"ci_platform":        "GitHub Actions",
 			"container_registry": "Harbor",
 		},
 		NodeArchitectures: []string{"amd64", "arm64"},
@@ -173,6 +194,29 @@ func TestValidateCompatibility_Arch_UntestedMatrixMixedCluster_StaysWarn(t *test
 			assert.Equal(t, "warning", issue.Severity)
 		}
 	}
+}
+
+// GitHub 조합은 이제 전부 클러스터 밖 서비스라 아키텍처 제약이 없다.
+// 그래도 행렬이 untested 라 경고는 남아야 한다 — 여기서 pass 가 되면
+// 검증되지 않은 조합이 아무 안내 없이 배포된다.
+func TestValidateCompatibility_GitHubGHCRWarnsFromUntestedMatrixOnly(t *testing.T) {
+	repo := repository.NewMemoryCompatibilityRepository()
+	uc := NewValidateCompatibility(repo)
+
+	out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{
+		Tools: map[string]string{
+			"source_repository":  "GitHub",
+			"ci_platform":        "GitHub Actions",
+			"container_registry": "GHCR",
+		},
+		NodeArchitectures: []string{"amd64", "arm64"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "warn", out.Overall.State)
+	assert.True(t, hasCode(out.Issues, "MATRIX_UNTESTED"))
+	assert.False(t, hasCode(out.Issues, "TOOL_ARCH_UNSUPPORTED"),
+		"GHCR 은 클러스터 밖이라 노드 아키텍처와 무관하다")
 }
 
 // ClusterID resolves through ClusterReader. When the admin DB reports

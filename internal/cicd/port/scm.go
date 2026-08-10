@@ -23,6 +23,12 @@ type SCMProject struct {
 	HTTPCloneURL  string `json:"http_clone_url"`
 	RegistryURL   string `json:"registry_url"`
 	DefaultBranch string `json:"default_branch"`
+	// Created 는 이번 호출이 저장소를 새로 만들었는지다.
+	//
+	// 스캐폴딩을 덮어쓸지 판단하는 데 쓴다. CommitFiles 는 upsert 라 이미 쓰이던
+	// 저장소에 다시 커밋하면 CI 가 갱신해 둔 이미지 태그가 초기값으로 되돌아가고,
+	// 사용자가 고친 Dockerfile·워크플로·매니페스트도 함께 사라진다.
+	Created bool `json:"created"`
 }
 
 // GroupSpec 은 그룹 생성 요청이다.
@@ -73,4 +79,9 @@ type SCMProvisioner interface {
 	EnsureProject(ctx context.Context, spec ProjectSpec) (*SCMProject, error)
 	// CommitFiles 는 파일이 이미 있으면 갱신한다(upsert).
 	CommitFiles(ctx context.Context, projectID string, spec CommitSpec) error
+	// DeleteProject 는 저장소를 지운다. 이미 없으면 성공으로 본다.
+	//
+	// 되돌릴 수 없다. 사용자가 명시적으로 요청했을 때만 호출해야 하며,
+	// 파이프라인 삭제의 기본 동작이어서는 안 된다 — 소스 코드는 사용자 자산이다.
+	DeleteProject(ctx context.Context, projectID string) error
 }

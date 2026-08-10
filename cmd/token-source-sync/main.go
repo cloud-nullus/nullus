@@ -65,7 +65,10 @@ func main() {
 			log.Fatalf("decode config for %s: %v", stackID, err)
 		}
 		stack := &domain.Stack{ID: stackID, OrgID: orgID, Namespace: namespace, Config: cfg}
-		inputs := stackusecase.BuildStackTokenSourceInputs(stack, env)
+		// 자격증명을 넘기지 않는다 — 이 도구는 저장된 구성만 보고 도는 백필이라
+		// 사용자가 준 GitHub PAT 를 알 수 없다. 그 결과 GitHub 항목은 생성되지
+		// 않으며, 등록은 설치(또는 재시도) 요청 경로에서만 이뤄진다.
+		inputs := stackusecase.BuildStackTokenSourceInputs(stack, env, stackusecase.SourceControlCredentials{})
 		for _, input := range inputs {
 			if strings.TrimSpace(input.TokenValue) == "" {
 				continue

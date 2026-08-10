@@ -148,6 +148,14 @@
         "ackAria": "Acknowledge client-side compatibility warning"
       },
       "refreshDiscoveryCta": "Open admin page"
+    },
+    "sourceControl": {
+      "title": "GitHub connection",
+      "description": "GitHub is an external service, so Nullus cannot create the account for you. Creating pipelines requires an organization to host the repositories and an access token.",
+      "owner": "Organization / user",
+      "apiBaseUrl": "API base URL (optional)",
+      "token": "Personal access token",
+      "tokenScopes": "Required scopes: repo, workflow, read:packages. The token is never stored in the stack config — it goes straight into the stack’s OpenBao during install."
     }
   },
   "stackTemplatePage": {
@@ -620,6 +628,19 @@
       "failed": "Failed",
       "pending": "Pending",
       "cancelled": "Cancelled"
+    },
+    "deleteDialog": {
+      "title": "Delete pipeline",
+      "confirm": "Delete",
+      "intro": "Deletes pipeline \"{{name}}\" and its deployment history.",
+      "alsoDelete": "Also delete",
+      "clusterResources": "Cluster resources",
+      "clusterResourcesHint": "Deletes the Argo CD Application and deployed workloads. If unchecked, the app keeps running.",
+      "images": "Container images",
+      "repository": "Source repository",
+      "irreversible": "This cannot be undone",
+      "typeToConfirm": "Type the repository name to confirm: {{path}}",
+      "typeToConfirmLabel": "Confirm repository name"
     }
   },
   "cicdListPage": {

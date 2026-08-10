@@ -252,9 +252,11 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository":        {Name: "GitHub", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"ci_platform":              {Name: "GitHub Actions", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"container_registry":       {Name: "Harbor", HelmVersion: narwhalHarborHelmVersion, AppVersion: narwhalHarborAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierBeta},
+				"source_repository": {Name: "GitHub", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"ci_platform":       {Name: "GitHub Actions", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				// GHCR 은 클러스터 밖이라 아키텍처 제약이 없다 — Harbor 의 amd64 전용
+				// 제약을 물려받으면 arm64 클러스터에서 호환성 검사가 잘못 막는다.
+				"container_registry":       {Name: "GHCR", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},

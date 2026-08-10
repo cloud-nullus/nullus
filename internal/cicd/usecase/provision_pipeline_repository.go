@@ -35,6 +35,8 @@ type ProvisionPipelineRepositoryOutput struct {
 	ArgoApplicationCreated bool
 	MissingVariables       []string
 	Warnings               []string
+	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
+	ScaffoldSkipped bool
 }
 
 // ProvisionPipelineRepository 는 파이프라인 하나가 돌기 위한 저장소 일체를 만든다.
@@ -78,6 +80,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 	commonOut, err := NewProvisionCommonProject(bundle.Provisioner).Execute(ctx, ProvisionCommonProjectInput{
 		GroupPath:   bundle.GroupPath,
 		ProjectPath: input.CommonProjectPath,
+		Platform:    bundle.Platform,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("provision common project: %w", err)
@@ -92,6 +95,8 @@ func (uc *ProvisionPipelineRepository) Execute(
 			Port:                input.Port,
 			Replicas:            input.Replicas,
 			RegistryCredentials: input.RegistryCredentials,
+			Platform:            bundle.Platform,
+			SharedAccessToken:   bundle.RepoAccessToken,
 			AccessDomain:        bundle.AccessDomain,
 			GatewayName:         bundle.GatewayName,
 			GatewayNamespace:    bundle.ArgoNamespace,
@@ -107,10 +112,24 @@ func (uc *ProvisionPipelineRepository) Execute(
 		ImageRepository:  appOut.ImageTarget.Repository,
 		MissingVariables: appOut.MissingVariables,
 		Warnings:         appOut.Warnings,
+		ScaffoldSkipped:  appOut.ScaffoldSkipped,
 	}
 
 	uc.applyArgoApplication(ctx, bundle, app, input.Namespace, appOut, out)
 	return out, nil
+}
+
+// pullSecretUsername 은 kubelet 이 레지스트리에 로그인할 사용자명을 고른다.
+//
+// GHCR 은 사용자명으로 GitHub 계정을 기대한다. GitLab 쪽 토큰 이름을 그대로
+// 넣으면 pull 이 인증 오류로 실패할 수 있고, 오류가 이미지 부재처럼 보인다.
+func pullSecretUsername(bundle *port.SCMBundle) string {
+	if bundle.Platform == port.SCMPlatformGitHub {
+		if owner := strings.TrimSpace(bundle.GroupPath); owner != "" {
+			return owner
+		}
+	}
+	return argoReadTokenName
 }
 
 // applyArgoApplication 은 Application 리소스를 클러스터에 적용한다.
@@ -142,7 +161,7 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 			if pullSecret, psErr := kube.RenderImagePullSecret(kube.ImagePullSecretSpec{
 				Namespace:    destNamespace,
 				RegistryHost: appOut.ImageTarget.Host,
-				Username:     argoReadTokenName,
+				Username:     pullSecretUsername(bundle),
 				Password:     token,
 			}); psErr == nil {
 				manifests = append(manifests, pullSecret)

@@ -143,6 +143,32 @@ type deployRequest struct {
 	// or false ⇒ treat as un-acknowledged and block with
 	// DEPLOY_COMPAT_WARN_UNACK.
 	AcknowledgeWarnings bool `json:"acknowledge_warnings"`
+
+	// SourceControl 은 외부 SCM 자격증명이다.
+	//
+	// 스택 구성이 아니라 배포 요청으로 받는다 — stacks.config 는 평문 JSONB 로
+	// 저장되므로 토큰을 넣으면 DB 를 읽을 수 있는 누구에게나 노출된다.
+	// 설치가 끝나면 이 값은 스택의 OpenBao 로 옮겨지고 그 뒤로는 쓰이지 않는다.
+	SourceControl *sourceControlRequest `json:"source_control,omitempty"`
+}
+
+// sourceControlRequest 는 외부 SCM 자격증명 입력이다.
+//
+// 이 구조는 감사 로그·에러 응답에 절대 실리면 안 된다. 아래 deployAuditDetails
+// 가 허용 목록 방식으로 필드를 고르는 이유다.
+type sourceControlRequest struct {
+	// PersonalAccessToken 은 GitHub PAT 다 (repo·workflow·read:packages).
+	PersonalAccessToken string `json:"personal_access_token,omitempty"`
+}
+
+// sourceControlCredentials 는 요청을 유스케이스 입력으로 옮긴다.
+func (r deployRequest) sourceControlCredentials() usecase.SourceControlCredentials {
+	if r.SourceControl == nil {
+		return usecase.SourceControlCredentials{}
+	}
+	return usecase.SourceControlCredentials{
+		PersonalAccessToken: r.SourceControl.PersonalAccessToken,
+	}
 }
 
 // deployGateErrorResponse writes a DEPLOY_COMPAT_* error with the full
@@ -269,7 +295,10 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "HISTORY_SAVE_FAILED", err.Error())
 	}
 
-	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{StackID: id}); err != nil {
+	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{
+		StackID:       id,
+		SourceControl: req.sourceControlCredentials(),
+	}); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_FAILED", err.Error())
 	}
 	if h.audit != nil {
@@ -346,7 +375,12 @@ func (h *DeployHandler) Retry(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_UPDATE_FAILED", err.Error())
 	}
 
-	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{StackID: id}); err != nil {
+	// 재시도도 자격증명을 다시 받는다. 첫 설치가 등록 직전에 실패했다면
+	// OpenBao 에 아무것도 없으므로, 여기서 안 받으면 채울 방법이 없다.
+	if err := h.installStack.Execute(c.Request().Context(), usecase.InstallStackInput{
+		StackID:       id,
+		SourceControl: req.sourceControlCredentials(),
+	}); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_FAILED", err.Error())
 	}
 	if h.audit != nil {
@@ -419,6 +453,7 @@ func (h *DeployHandler) Continue(c echo.Context) error {
 		Continue:       true,
 		PreserveLogs:   true,
 		ResumeFromStep: firstNonEmpty(stack.LastFailedStep, stack.CurrentStep),
+		SourceControl:  req.sourceControlCredentials(),
 	}); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "STACK_CONTINUE_FAILED", err.Error())
 	}

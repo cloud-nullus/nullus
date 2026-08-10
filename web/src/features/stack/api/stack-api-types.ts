@@ -151,6 +151,12 @@ export interface MatrixInput {
 
 export interface DeployStackInput {
   stackId: string;
+  /**
+   * 외부 SCM(GitHub) PAT. 스택 구성이 아니라 이 요청 본문으로만 보낸다 —
+   * 구성은 평문으로 저장되고 조회 API 로 다시 내려오기 때문이다.
+   * 서버는 값을 스택의 OpenBao 로 옮기고 응답·감사 로그에는 싣지 않는다.
+   */
+  sourceControlToken?: string;
   // acknowledgeWarnings opts in to proceeding when the server-side
   // Pre-Deploy Gate (F8-F3) returns overall.state == "warn". Defaults to
   // false so legacy clients that pass a bare stackId are blocked on warn

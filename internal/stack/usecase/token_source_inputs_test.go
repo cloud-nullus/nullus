@@ -30,7 +30,7 @@ func TestBuildStackTokenSourceInputs_OpenBao(t *testing.T) {
 		},
 	}
 
-	inputs := BuildStackTokenSourceInputs(stack, "dev")
+	inputs := BuildStackTokenSourceInputs(stack, "dev", SourceControlCredentials{})
 	// bootstrap 자격증명(postgresql/minio/argocd access)은 더 이상 여기서
 	// 만들지 않는다. provisioning_secrets 가 생성해 OpenBao 에 기록하고
 	// ESO 가 K8s Secret 으로 복제하므로 이중 관리를 없앴다.
@@ -49,9 +49,13 @@ func TestBuildStackTokenSourceInputs_OpenBao(t *testing.T) {
 	assert.NotContains(t, paths, "kv/nullus/dev/org-1/artifacts/minio/access")
 }
 
-func TestBuildStackTokenSourceInputs_SkipsWhenNotOpenBao(t *testing.T) {
+// 빈 설정은 등록할 것이 없다 — 회전 대상 도구도, GitHub 자격증명도 없다.
+//
+// Empty 로 보는 이유는 호출부가 결과를 range 로만 돌기 때문이다. nil 과 길이 0 을
+// 구분하면 구현이 어느 쪽을 돌려주는지에 테스트가 묶인다.
+func TestBuildStackTokenSourceInputs_EmptyConfigRegistersNothing(t *testing.T) {
 	t.Parallel()
 
 	stack := &domain.Stack{OrgID: "org-1", Config: domain.StackConfig{}}
-	assert.Nil(t, BuildStackTokenSourceInputs(stack, "dev"))
+	assert.Empty(t, BuildStackTokenSourceInputs(stack, "dev", SourceControlCredentials{}))
 }

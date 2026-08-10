@@ -30,6 +30,27 @@ export type {
 
 // --- Types ---
 
+/**
+ * 파이프라인 삭제 시 함께 지울 대상. 셋 다 선택이며 기본은 지우지 않는다.
+ *
+ * 소스 저장소와 이미지는 되돌릴 수 없고, 클러스터 리소스를 지우면 돌던 앱이
+ * 멈춘다. 그래서 파이프라인 삭제의 기본 동작에 포함하지 않는다.
+ */
+export interface DeletePipelineOptions {
+  id: string;
+  deleteClusterResources?: boolean;
+  deleteRepository?: boolean;
+  deleteImages?: boolean;
+}
+
+/** 실제로 무엇이 지워졌는지. 요청과 다를 수 있다(예: 미지원 레지스트리). */
+export interface DeletePipelineResult {
+  cluster_resources_deleted: boolean;
+  repository_deleted: boolean;
+  images_deleted: boolean;
+  warnings?: string[] | null;
+}
+
 export interface CICDTool {
   category: string;
   name: string;
@@ -136,8 +157,19 @@ const cicdApiCalls = {
   deleteGoldenPath: (id: string) =>
     api.delete<void>(`/cicd/golden-paths/${id}`).then((r) => r.data),
 
-  deletePipeline: (id: string) =>
-    api.delete<void>(`/cicd/pipelines/${id}`).then((r) => r.data),
+  // 부수 리소스 삭제는 각각 명시적으로 켠다. 기본값(옵션 없음)은 파이프라인
+  // 레코드만 지우는 종전 동작이다 — 되돌릴 수 없는 일은 요청에 드러나야 한다.
+  deletePipeline: (input: string | DeletePipelineOptions) => {
+    const { id, ...options } =
+      typeof input === "string" ? { id: input } : input;
+    const params: Record<string, string> = {};
+    if (options.deleteClusterResources) params.cluster_resources = "true";
+    if (options.deleteRepository) params.repository = "true";
+    if (options.deleteImages) params.images = "true";
+    return api
+      .delete<DeletePipelineResult | void>(`/cicd/pipelines/${id}`, { params })
+      .then((r) => r.data);
+  },
 
   getPipelines: async (filters?: { status?: string; search?: string }) => {
     const raw = await api

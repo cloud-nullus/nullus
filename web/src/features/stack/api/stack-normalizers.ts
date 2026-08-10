@@ -421,6 +421,14 @@ export function toCreateStackBody(req: CreateStackRequest) {
       authentication: req.authentication?.provider
         ? { provider: req.authentication.provider }
         : undefined,
+      // PAT 는 여기 실리지 않는다. 스택 구성은 평문으로 저장되고 조회 API 로
+      // 다시 내려오므로, 자격증명은 배포 요청 본문으로만 보낸다.
+      source_control: req.sourceControl?.owner?.trim()
+        ? {
+            owner: req.sourceControl.owner.trim(),
+            api_base_url: req.sourceControl.apiBaseUrl?.trim() || undefined,
+          }
+        : undefined,
       yaml_overrides: req.yamlOverrides,
       artifacts: {
         package_registry: toBackendTool(a.packageRegistry ?? a.package_registry ?? { tool: '', version: '' }),

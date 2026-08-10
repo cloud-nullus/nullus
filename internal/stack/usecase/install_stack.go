@@ -178,6 +178,9 @@ type InstallStackInput struct {
 	Continue       bool
 	PreserveLogs   bool
 	ResumeFromStep string
+	// SourceControl 은 외부 SCM 자격증명이다. 요청에서만 흐르고
+	// stacks.config 에는 저장되지 않는다 — 설치가 끝나면 OpenBao 로 옮겨진다.
+	SourceControl SourceControlCredentials
 }
 
 // Execute starts the installation in a goroutine and returns immediately.
@@ -362,8 +365,15 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	stack.LastFailureReason = ""
 	_ = uc.stackRepo.Update(ctx, stack)
 	uc.emit(ctx, deploymentID, "info", "completed", "C", "installation completed successfully")
-	if err := uc.registerStackTokenSources(ctx, stack); err != nil {
+	if err := uc.registerStackTokenSources(ctx, stack, input.SourceControl); err != nil {
 		slog.Warn("token source registration failed", "stack_id", stack.ID, "error", err)
+		// 사용자가 마법사에 직접 넣은 값이라 조용히 흘리면 안 된다. 이 등록이
+		// 실패하면 파이프라인 생성이 "등록된 PAT 가 없다" 로 죽는데, 그 시점에는
+		// 설치 로그를 다시 보지 않아 원인을 찾기 어렵다.
+		if strings.TrimSpace(input.SourceControl.PersonalAccessToken) != "" {
+			uc.emit(ctx, deploymentID, "warn", "completed", "C",
+				fmt.Sprintf("GitHub 자격증명 등록에 실패했습니다 — 파이프라인 생성 전에 다시 등록해야 합니다: %v", err))
+		}
 	}
 }
 
@@ -391,11 +401,15 @@ func (uc *InstallStack) runOpenBaoHealthGate(ctx context.Context, stack *domain.
 	return nil
 }
 
-func (uc *InstallStack) registerStackTokenSources(ctx context.Context, stack *domain.Stack) error {
+func (uc *InstallStack) registerStackTokenSources(
+	ctx context.Context,
+	stack *domain.Stack,
+	creds SourceControlCredentials,
+) error {
 	if uc.tokenRegistry == nil || stack == nil {
 		return nil
 	}
-	for _, input := range BuildStackTokenSourceInputs(stack, uc.tokenRegistryEnv) {
+	for _, input := range BuildStackTokenSourceInputs(stack, uc.tokenRegistryEnv, creds) {
 		if err := uc.tokenRegistry.Upsert(ctx, input); err != nil {
 			return err
 		}

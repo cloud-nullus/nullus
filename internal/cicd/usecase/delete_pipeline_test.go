@@ -1,0 +1,197 @@
+package usecase
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
+	"github.com/cloud-nullus/draft/internal/cicd/port"
+)
+
+type fakePipelineRepo struct {
+	pipeline  *domain.Pipeline
+	getErr    error
+	deleteErr error
+	deleted   []string
+}
+
+func (f *fakePipelineRepo) Create(context.Context, *domain.Pipeline) error { return nil }
+
+func (f *fakePipelineRepo) GetByID(_ context.Context, _ string) (*domain.Pipeline, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.pipeline, nil
+}
+
+func (f *fakePipelineRepo) List(context.Context, string) ([]*domain.Pipeline, error) { return nil, nil }
+
+func (f *fakePipelineRepo) ListByStackID(context.Context, string) ([]*domain.Pipeline, error) {
+	return nil, nil
+}
+
+func (f *fakePipelineRepo) Update(context.Context, *domain.Pipeline) error { return nil }
+
+func (f *fakePipelineRepo) Delete(_ context.Context, id string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleted = append(f.deleted, id)
+	return nil
+}
+
+type fakeArgoAppDeleter struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeArgoAppDeleter) Delete(_ context.Context, _ []byte, namespace, name string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.calls = append(f.calls, namespace+"/"+name)
+	return nil
+}
+
+type fakeImageDeleter struct {
+	deleted []string
+	err     error
+}
+
+func (f *fakeImageDeleter) DeleteImageRepository(_ context.Context, target *port.ImageTarget) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.deleted = append(f.deleted, target.Repository)
+	return nil
+}
+
+func deletablePipeline() *domain.Pipeline {
+	return &domain.Pipeline{
+		ID: "pip_1", Name: "myapp", ClusterID: "c1",
+		StackID: "stk_1", Namespace: "apps",
+	}
+}
+
+// deleteFixture 는 유스케이스와 대역들을 함께 만든다.
+func deleteFixture(t *testing.T) (
+	*DeletePipeline, *fakePipelineRepo, *fakeSCM, *fakeArgoAppDeleter, *fakeImageDeleter,
+) {
+	t.Helper()
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	scm := newFakeSCM()
+	images := &fakeImageDeleter{}
+	argo := &fakeArgoAppDeleter{}
+
+	bundle := newBundle(scm, newFakePipelineConfig(), harborResolver())
+	bundle.Images = images
+
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, argo, &fakeKubeconfigProvider{})
+	return uc, repo, scm, argo, images
+}
+
+// 아무것도 고르지 않으면 레코드만 지운다 — 종전 동작이다.
+func TestDeletePipeline_RecordOnlyByDefault(t *testing.T) {
+	uc, repo, scm, argo, images := deleteFixture(t)
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{PipelineID: "pip_1"})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"pip_1"}, repo.deleted)
+	assert.Empty(t, scm.deleted, "고르지 않은 저장소는 건드리지 않는다")
+	assert.Empty(t, argo.calls)
+	assert.Empty(t, images.deleted)
+	assert.False(t, out.RepositoryDeleted)
+}
+
+func TestDeletePipeline_DeletesClusterResourcesWhenRequested(t *testing.T) {
+	uc, repo, _, argo, _ := deleteFixture(t)
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"apps/myapp"}, argo.calls)
+	assert.True(t, out.ClusterResourcesDeleted)
+	assert.Equal(t, []string{"pip_1"}, repo.deleted)
+}
+
+// 저장소 경로는 그룹 경로와 앱 이름으로 조합한다 — git_repo_url 은 스킴과
+// .git 접미사가 붙어 API 경로로 바로 쓸 수 없다.
+func TestDeletePipeline_DeletesRepositoryWithGroupPath(t *testing.T) {
+	uc, _, scm, _, _ := deleteFixture(t)
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteRepository: true,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"acme/myapp"}, scm.deleted)
+	assert.True(t, out.RepositoryDeleted)
+}
+
+func TestDeletePipeline_DeletesImagesWhenRequested(t *testing.T) {
+	uc, _, _, _, images := deleteFixture(t)
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteImages: true,
+	})
+	require.NoError(t, err)
+
+	require.Len(t, images.deleted, 1)
+	assert.True(t, out.ImagesDeleted)
+}
+
+// 지원하지 않는 레지스트리에서 조용히 넘어가면 사용자는 이미지가 지워진 줄 안다.
+func TestDeletePipeline_ReportsUnsupportedImageDeletion(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.Images = nil // Harbor·Nexus 처럼 삭제 수단이 없는 구성
+
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle},
+		&fakeArgoAppDeleter{}, &fakeKubeconfigProvider{})
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteImages: true,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, port.ErrImageDeletionUnsupported)
+	assert.Empty(t, repo.deleted, "지우지 못했으면 레코드를 남겨 다시 시도할 수 있어야 한다")
+}
+
+// 요청한 삭제가 실패하면 레코드를 남긴다. 레코드가 사라지면 목록에서 보이지
+// 않는데 리소스는 남아, 사용자가 다시 시도할 방법조차 없어진다.
+func TestDeletePipeline_KeepsRecordWhenRepositoryDeleteFails(t *testing.T) {
+	uc, repo, scm, _, _ := deleteFixture(t)
+	scm.deleteErr = errors.New("403 forbidden")
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteRepository: true,
+	})
+	require.Error(t, err)
+	assert.Empty(t, repo.deleted)
+}
+
+func TestDeletePipeline_KeepsRecordWhenClusterCleanupFails(t *testing.T) {
+	uc, repo, _, argo, _ := deleteFixture(t)
+	argo.err = errors.New("connection refused")
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.Error(t, err)
+	assert.Empty(t, repo.deleted)
+}
+
+func TestDeletePipeline_RequiresPipelineID(t *testing.T) {
+	uc, _, _, _, _ := deleteFixture(t)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pipeline id")
+}

@@ -29,6 +29,12 @@ type ProvisionAppProjectInput struct {
 	// RegistryCredentials 는 외부 레지스트리 자격증명이다.
 	// SCM 프로젝트 레지스트리를 쓰는 구성에서는 필요 없다.
 	RegistryCredentials map[string]string
+	// Platform 은 파이프라인 파일 형식과 토큰 확보 경로를 정한다.
+	// 비면 GitLab 으로 본다.
+	Platform port.SCMPlatform
+	// SharedAccessToken 은 리포 범위 토큰을 발급할 수 없는 플랫폼에서
+	// Argo CD 인증에 재사용할 토큰이다 (GitHub 의 조직 PAT).
+	SharedAccessToken string
 	// AccessDomain / GatewayName / GatewayNamespace 가 있으면
 	// 외부 접근용 HTTPRoute 도 스캐폴딩에 포함한다.
 	AccessDomain     string
@@ -82,6 +88,8 @@ type ProvisionAppProjectOutput struct {
 	MissingVariables []string
 	// Warnings 는 치명적이지 않지만 알려야 하는 문제다.
 	Warnings []string
+	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
+	ScaffoldSkipped bool
 }
 
 // ProvisionAppProject 는 앱 저장소를 만들고 CI/CD 가 돌 수 있는 상태로 만든다.
@@ -147,6 +155,7 @@ func (uc *ProvisionAppProject) Execute(
 		Namespace:        input.Namespace,
 		Port:             input.Port,
 		Replicas:         input.Replicas,
+		Platform:         input.Platform,
 		ImageTarget:      target,
 		AccessDomain:     input.AccessDomain,
 		GatewayName:      input.GatewayName,
@@ -156,15 +165,33 @@ func (uc *ProvisionAppProject) Execute(
 		return nil, fmt.Errorf("render scaffold for %q: %w", app, err)
 	}
 
-	if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
-		Branch:  project.DefaultBranch,
-		Message: "chore(nullus): scaffold pipeline and deployment manifests",
-		Files:   files,
-	}); err != nil {
-		return nil, fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
+	// 이미 있던 저장소에는 스캐폴딩을 쓰지 않는다.
+	//
+	// CommitFiles 는 upsert 라 그대로 두면 CI 가 갱신해 둔 이미지 태그가 초기값
+	// (:bootstrap)으로 되돌아간다 — 그 태그는 레지스트리에 없으므로 돌던 배포가
+	// ImagePullBackOff 로 떨어졌다가 CI 가 다시 돌아야 복구된다. 사용자가 고친
+	// Dockerfile·워크플로·매니페스트도 같이 사라진다.
+	scaffoldSkipped := !project.Created
+	if !scaffoldSkipped {
+		if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
+			Branch:  project.DefaultBranch,
+			Message: "chore(nullus): scaffold pipeline and deployment manifests",
+			Files:   files,
+		}); err != nil {
+			return nil, fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
+		}
 	}
 
-	out := &ProvisionAppProjectOutput{Project: project, ImageTarget: target}
+	out := &ProvisionAppProjectOutput{
+		Project:         project,
+		ImageTarget:     target,
+		ScaffoldSkipped: scaffoldSkipped,
+	}
+	if scaffoldSkipped {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"%s 저장소가 이미 있어 스캐폴딩을 건너뛰었습니다 — 기존 파일을 덮어쓰지 않습니다",
+			project.FullPath))
+	}
 	uc.configurePipeline(ctx, project, target, input, out)
 
 	sort.Strings(out.MissingVariables)
@@ -177,6 +204,42 @@ func (uc *ProvisionAppProject) Execute(
 // 만들어졌고, 되돌리면 재실행 시 무엇이 남았는지 알 수 없다.
 // 대신 사람이 채워야 할 목록으로 알린다.
 func (uc *ProvisionAppProject) configurePipeline(
+	ctx context.Context,
+	project *port.SCMProject,
+	target *port.ImageTarget,
+	input ProvisionAppProjectInput,
+	out *ProvisionAppProjectOutput,
+) {
+	if input.Platform == port.SCMPlatformGitHub {
+		uc.configureGitHubPipeline(ctx, project, target, input, out)
+		return
+	}
+	uc.configureGitLabPipeline(ctx, project, target, input, out)
+}
+
+// configureGitHubPipeline 은 GitHub 리포의 파이프라인 설정을 맞춘다.
+//
+// 발급할 토큰이 없다. 워크플로는 contents:write 권한의 내장 GITHUB_TOKEN 으로
+// 매니페스트를 되쓰므로 되쓰기 토큰 변수가 필요 없고, GitHub 에는 리포 범위
+// 토큰 API 도 없어 Argo CD 인증에는 조직 PAT 를 그대로 쓴다.
+func (uc *ProvisionAppProject) configureGitHubPipeline(
+	ctx context.Context,
+	project *port.SCMProject,
+	target *port.ImageTarget,
+	input ProvisionAppProjectInput,
+	out *ProvisionAppProjectOutput,
+) {
+	out.ArgoReadToken = strings.TrimSpace(input.SharedAccessToken)
+	if out.ArgoReadToken == "" {
+		out.Warnings = append(out.Warnings,
+			"GitHub PAT 가 전달되지 않아 Argo CD 저장소 자격증명을 만들지 못했습니다 — "+
+				"private 저장소 동기화가 실패할 수 있습니다")
+	}
+	uc.setRegistryVariables(ctx, project, target, input, out)
+}
+
+// configureGitLabPipeline 은 프로젝트 범위 토큰을 발급해 변수로 건다.
+func (uc *ProvisionAppProject) configureGitLabPipeline(
 	ctx context.Context,
 	project *port.SCMProject,
 	target *port.ImageTarget,
@@ -223,23 +286,52 @@ func (uc *ProvisionAppProject) configurePipeline(
 		out.ArgoReadToken = readToken
 	}
 
-	// 레지스트리 자격증명은 사용자가 준 것만 등록할 수 있다.
+	uc.setRegistryVariables(ctx, project, target, input, out)
+}
+
+// setRegistryVariables 는 레지스트리 로그인 자격증명을 파이프라인에 건다.
+//
+// 사용자가 준 것만 등록할 수 있다. 내장 값만 쓰는 구성(GHCR)에서는
+// target.RequiredVariables 가 비어 있어 아무 일도 하지 않는다.
+func (uc *ProvisionAppProject) setRegistryVariables(
+	ctx context.Context,
+	project *port.SCMProject,
+	target *port.ImageTarget,
+	input ProvisionAppProjectInput,
+	out *ProvisionAppProjectOutput,
+) {
+	if len(target.RequiredVariables) == 0 {
+		return
+	}
+	if uc.pipeline == nil {
+		out.Warnings = append(out.Warnings, "파이프라인 설정 어댑터가 없어 레지스트리 변수를 등록하지 못했습니다")
+		out.MissingVariables = append(out.MissingVariables, target.RequiredVariables...)
+		return
+	}
+
 	for _, key := range target.RequiredVariables {
 		value, ok := input.RegistryCredentials[key]
 		if !ok || strings.TrimSpace(value) == "" {
 			out.MissingVariables = append(out.MissingVariables, key)
 			continue
 		}
-		// 마스킹은 최선 노력이다. 요건을 못 채우는 값(예: Harbor 기본 계정명
-		// "admin")을 masked 로 밀면 GitLab 이 등록을 통째로 거부해 변수가 아예
-		// 없는 상태가 된다 — 가려지지 않더라도 등록되는 편이 낫다.
-		masked := canMaskVariableValue(value)
-		if !masked {
-			out.Warnings = append(out.Warnings, fmt.Sprintf(
-				"변수 %s 는 GitLab 마스킹 요건(한 줄, %d자 이상, Base64 문자+@:.~)을 "+
-					"만족하지 않아 마스킹 없이 등록합니다 — job 로그에 노출될 수 있습니다",
-				key, maskableMinLength))
+
+		// 마스킹 요건은 GitLab 에만 있다. GitHub Actions 는 등록된 시크릿을
+		// 항상 로그에서 가리므로 값 형태를 따지지 않는다.
+		masked := true
+		if input.Platform != port.SCMPlatformGitHub {
+			// 요건을 못 채우는 값(예: Harbor 기본 계정명 "admin")을 masked 로
+			// 밀면 GitLab 이 등록을 통째로 거부해 변수가 아예 없는 상태가 된다
+			// — 가려지지 않더라도 등록되는 편이 낫다.
+			masked = canMaskVariableValue(value)
+			if !masked {
+				out.Warnings = append(out.Warnings, fmt.Sprintf(
+					"변수 %s 는 GitLab 마스킹 요건(한 줄, %d자 이상, Base64 문자+@:.~)을 "+
+						"만족하지 않아 마스킹 없이 등록합니다 — job 로그에 노출될 수 있습니다",
+					key, maskableMinLength))
+			}
 		}
+
 		if err := uc.pipeline.SetProjectVariable(ctx, project.ID, port.ProjectVariable{
 			Key: key, Value: value, Masked: masked,
 		}); err != nil {

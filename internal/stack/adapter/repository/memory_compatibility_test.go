@@ -105,15 +105,20 @@ func TestMemoryCompatibilityRepository_ToolV2Fields(t *testing.T) {
 		assert.True(t, argocd.SupportsArch("arm64"))
 	})
 
-	t.Run("untested matrix carries beta tier and blocks Harbor on arm64", func(t *testing.T) {
+	t.Run("untested matrix carries beta tier and imposes no arch limit", func(t *testing.T) {
 		m, err := repo.GetByID(ctx, "github-argocd-v1")
 		require.NoError(t, err)
 
-		harbor, ok := m.Tools["container_registry"]
+		// 레지스트리가 GHCR 로 바뀌면서 이 조합에는 amd64 전용 도구가 없다.
+		// Harbor 의 amd64 제약을 남겨두면 arm64 클러스터에서 호환성 검사가
+		// 설치할 수도 없는 도구를 이유로 잘못 막는다.
+		ghcr, ok := m.Tools["container_registry"]
 		require.True(t, ok)
-		assert.Equal(t, "beta", harbor.Tier, "Harbor inherits beta tier from untested matrix")
-		assert.Equal(t, []string{"amd64"}, harbor.ArchSupport)
-		assert.False(t, harbor.SupportsArch("arm64"))
+		assert.Equal(t, "GHCR", ghcr.Name)
+		assert.Equal(t, "external", ghcr.HelmVersion, "GHCR 은 클러스터에 설치되지 않는다")
+		assert.Equal(t, "beta", ghcr.Tier, "untested 행렬의 도구는 beta 티어를 물려받는다")
+		assert.Equal(t, []string{"amd64", "arm64"}, ghcr.ArchSupport)
+		assert.True(t, ghcr.SupportsArch("arm64"))
 
 		github, ok := m.Tools["source_repository"]
 		require.True(t, ok)
@@ -159,7 +164,9 @@ func TestMemoryCompatibilityRepository_NarwhalBaselineVersions(t *testing.T) {
 	githubPins := append([]pin{
 		{"source_repository", "GitHub", "external", "external"},
 		{"ci_platform", "GitHub Actions", "external", "external"},
-		{"container_registry", "Harbor", "1.15.0", "2.11.0"},
+		// GitHub 호스티드 러너는 클러스터 내부 Harbor 에 닿을 수 없어
+		// 이 조합의 레지스트리는 GHCR 이다.
+		{"container_registry", "GHCR", "external", "external"},
 	}, shared...)
 
 	cases := []struct {

@@ -44,16 +44,19 @@ func TestInstallStack_RegisterStackTokenSources_OpenBao(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, uc.registerStackTokenSources(context.Background(), stack))
+	require.NoError(t, uc.registerStackTokenSources(context.Background(), stack, SourceControlCredentials{}))
 	// bootstrap 자격증명은 provisioning_secrets 로 이관되어 여기서는 도구
 	// 토큰 경로만 등록한다.
-	assert.Len(t, registry.inputs, 4)
-	assert.Equal(t, "kv/nullus/dev/org-1/artifacts/github/token", registry.inputs[0].Path)
+	assert.Len(t, registry.inputs, 2)
 
 	paths := make([]string, 0, len(registry.inputs))
 	for _, in := range registry.inputs {
 		paths = append(paths, in.Path)
 	}
+	// GitHub·GitHub Actions 는 외부 SaaS 라 회전 컨트롤러가 재발급할 수 없다.
+	// 이 경로로 등록하면 소유자 정보가 없는 행이 남아 연동 조회를 오염시킨다.
+	assert.NotContains(t, paths, "kv/nullus/dev/org-1/artifacts/github/token")
+	assert.NotContains(t, paths, "kv/nullus/dev/org-1/pipeline/github-actions/token")
 	assert.NotContains(t, paths, "kv/nullus/dev/org-1/storage/postgresql/access")
 	assert.NotContains(t, paths, "kv/nullus/dev/org-1/artifacts/minio/access")
 	assert.NotContains(t, paths, "kv/nullus/dev/org-1/pipeline/argocd/access")
@@ -69,6 +72,6 @@ func TestInstallStack_RegisterStackTokenSources_SkipWhenNotOpenBao(t *testing.T)
 	registry := &mockTokenRegistry{}
 	uc := &InstallStack{tokenRegistry: registry, tokenRegistryEnv: "dev"}
 	stack := &domain.Stack{OrgID: "org-1", Config: domain.StackConfig{}}
-	require.NoError(t, uc.registerStackTokenSources(context.Background(), stack))
+	require.NoError(t, uc.registerStackTokenSources(context.Background(), stack, SourceControlCredentials{}))
 	assert.Len(t, registry.inputs, 0)
 }

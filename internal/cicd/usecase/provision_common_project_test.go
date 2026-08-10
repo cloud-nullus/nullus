@@ -20,6 +20,10 @@ type fakeSCM struct {
 	projectErr    error
 	commitErr     error
 	nextProjectID string
+	// projectExists 는 EnsureProject 가 "이미 있던 저장소" 를 돌려주게 한다.
+	projectExists bool
+	deleted       []string
+	deleteErr     error
 }
 
 func newFakeSCM() *fakeSCM {
@@ -50,6 +54,7 @@ func (f *fakeSCM) EnsureProject(_ context.Context, spec port.ProjectSpec) (*port
 		RegistryURL:   "registry.test/" + full,
 		DefaultBranch: "main",
 		HTTPCloneURL:  "http://gl.test/" + full + ".git",
+		Created:       !f.projectExists,
 	}, nil
 }
 
@@ -58,6 +63,14 @@ func (f *fakeSCM) CommitFiles(_ context.Context, projectID string, spec port.Com
 		return f.commitErr
 	}
 	f.commits[projectID] = append(f.commits[projectID], spec)
+	return nil
+}
+
+func (f *fakeSCM) DeleteProject(_ context.Context, projectID string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleted = append(f.deleted, projectID)
 	return nil
 }
 
@@ -164,4 +177,20 @@ func TestProvisionCommonProject_IsRepeatable(t *testing.T) {
 
 	assert.Equal(t, first.Project.FullPath, second.Project.FullPath)
 	assert.Equal(t, first.Project.RegistryURL, second.Project.RegistryURL)
+}
+
+// 이미 있던 공용 프로젝트의 README 는 덮어쓰지 않는다.
+//
+// 조직이 직접 고쳐 쓰는 문서라 프로비저닝을 다시 돌릴 때마다 되돌려 놓으면
+// 그 수정이 매번 사라진다.
+func TestProvisionCommonProject_SkipsDocsForExistingProject(t *testing.T) {
+	scm := newFakeSCM()
+	scm.projectExists = true
+	uc := NewProvisionCommonProject(scm)
+
+	out, err := uc.Execute(context.Background(), ProvisionCommonProjectInput{GroupPath: "acme"})
+	require.NoError(t, err)
+
+	assert.True(t, out.DocsSkipped)
+	assert.Empty(t, scm.commits, "이미 있던 프로젝트에는 커밋하지 않는다")
 }

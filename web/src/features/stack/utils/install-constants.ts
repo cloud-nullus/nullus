@@ -21,6 +21,9 @@ export const ARTIFACTS_OPTIONS: Record<string, ToolOption[]> = {
   containerRegistry: [
     { id: 'gitlab-registry', label: 'GitLab Container Registry', description: 'GitLab 내장 컨테이너 레지스트리' },
     { id: 'harbor', label: 'Harbor', description: '엔터프라이즈 컨테이너 레지스트리' },
+    // GHCR 은 클러스터 밖이다. GitHub 호스티드 러너에서 빌드하는 구성에서는
+    // 러너가 클러스터 내부 레지스트리에 닿을 수 없어 이 선택이 사실상 필수다.
+    { id: 'ghcr', label: 'GHCR', description: 'GitHub Container Registry (외부 서비스)' },
     // Nexus 는 이미지와 패키지를 함께 담을 수 있어 양쪽 목록에 모두 있다.
     { id: 'nexus', label: 'Nexus Repository', description: '이미지와 패키지를 함께 보관' },
     { id: 'docker-hub', label: 'Docker Hub', description: 'Docker 공식 레지스트리' },
@@ -169,6 +172,7 @@ export const TOOL_ID_TO_MATRIX_NAME: Record<string, string> = {
   'gitlab-registry': 'GitLab Registry',
   github: 'GitHub',
   'github-actions': 'GitHub Actions',
+  ghcr: 'GHCR',
   harbor: 'Harbor',
   'opentelemetry-collector': 'OpenTelemetry Collector',
 }
@@ -177,7 +181,9 @@ export const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string
   gitlab: { repoUrl: 'https://charts.gitlab.io', chartName: 'gitlab/gitlab' },
   nexus: { repoUrl: 'https://sonatype.github.io/helm3-charts', chartName: 'nexus-repository-manager/nexus-repository-manager' },
   jfrog: { repoUrl: 'https://charts.jfrog.io', chartName: 'jfrog/artifactory-oss' },
-  github: { repoUrl: 'https://actions-runner-controller.github.io/actions-runner-controller', chartName: 'actions-runner-controller/actions-runner-controller' },
+  // GitHub·GitHub Actions·GHCR 은 외부 SaaS 라 클러스터에 설치할 차트가 없다.
+  // (예전에는 actions-runner-controller 차트가 걸려 있었으나, 백엔드는 이들을
+  //  external 로 표시해 설치를 건너뛴다 — 차트를 남겨두면 설치 계획이 실제와 어긋난다.)
   gitea: { repoUrl: 'https://dl.gitea.io/charts', chartName: 'gitea-charts/gitea' },
   'gitlab-registry': { repoUrl: 'https://charts.gitlab.io', chartName: 'gitlab/container-registry' },
   harbor: { repoUrl: 'https://helm.goharbor.io', chartName: 'harbor/harbor' },
@@ -186,7 +192,6 @@ export const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string
   s3: { repoUrl: 'https://aws.github.io/eks-charts', chartName: 'aws/ack-s3-controller' },
   gcs: { repoUrl: 'https://example.storage.google/charts', chartName: 'gcs/storage-gateway' },
   'gitlab-ci': { repoUrl: 'https://charts.gitlab.io', chartName: 'gitlab/gitlab-runner' },
-  'github-actions': { repoUrl: 'https://actions-runner-controller.github.io/actions-runner-controller', chartName: 'actions-runner-controller/actions-runner-controller' },
   jenkins: { repoUrl: 'https://charts.jenkins.io', chartName: 'jenkins/jenkins' },
   argocd: { repoUrl: 'https://argoproj.github.io/argo-helm', chartName: 'argo/argo-cd' },
   flux: { repoUrl: 'https://fluxcd-community.github.io/helm-charts', chartName: 'fluxcd/flux2' },

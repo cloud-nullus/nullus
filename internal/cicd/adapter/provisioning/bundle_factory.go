@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
@@ -38,6 +39,11 @@ type BundleFactory struct {
 	stacks port.StackReader
 	tokens port.SCMTokenIssuer
 	opts   Options
+
+	// GitHub 경로는 선택적으로 배선된다. 없으면 GitHub 스택 요청이 명확한
+	// 안내와 함께 실패한다 — 조용히 GitLab 으로 흘리면 엉뚱한 곳에 리포가 생긴다.
+	githubTokens      port.SCMTokenIssuer
+	githubConnections port.SCMConnectionReader
 }
 
 // NewBundleFactory 는 팩토리를 만든다.
@@ -46,6 +52,16 @@ func NewBundleFactory(stacks port.StackReader, tokens port.SCMTokenIssuer, opts 
 		opts.GroupPath = "nullus"
 	}
 	return &BundleFactory{stacks: stacks, tokens: tokens, opts: opts}
+}
+
+// WithGitHub 는 GitHub 스택을 프로비저닝할 수 있게 한다.
+func (f *BundleFactory) WithGitHub(
+	tokens port.SCMTokenIssuer,
+	connections port.SCMConnectionReader,
+) *BundleFactory {
+	f.githubTokens = tokens
+	f.githubConnections = connections
+	return f
 }
 
 // For 는 스택에 맞는 도구 묶음을 조립한다.
@@ -58,21 +74,30 @@ func (f *BundleFactory) For(ctx context.Context, stackID string) (*port.SCMBundl
 		return nil, fmt.Errorf("stack %s not found", stackID)
 	}
 	if !strings.EqualFold(strings.TrimSpace(summary.State), "completed") {
-		// 설치 중인 스택은 GitLab 이 아직 응답하지 않을 수 있다.
+		// 설치 중인 스택은 SCM 이 아직 응답하지 않을 수 있다.
 		return nil, fmt.Errorf("stack %s 가 아직 준비되지 않았습니다 (state=%q)", stackID, summary.State)
 	}
 
-	// 저장소를 만들려면 우리가 관리하는 GitLab 이어야 한다.
-	// GitHub 조합은 외부 SaaS 라 이 경로로 프로비저닝할 수 없다.
-	if !isSelfHostedGitLab(summary.SourceRepository) {
+	switch platformFor(summary.SourceRepository) {
+	case port.SCMPlatformGitLab:
+		return f.gitLabBundle(ctx, summary)
+	case port.SCMPlatformGitHub:
+		return f.gitHubBundle(ctx, summary)
+	default:
 		return nil, fmt.Errorf(
-			"소스 저장소가 %q 라 Nullus 가 프로젝트를 만들 수 없습니다 (GitLab 스택에서만 지원)",
+			"소스 저장소 %q 는 아직 지원하지 않습니다 (GitLab 또는 GitHub 스택에서만 프로젝트를 만들 수 있습니다)",
 			summary.SourceRepository)
 	}
+}
 
+// gitLabBundle 은 스택 안에 설치된 GitLab 을 향하는 묶음을 만든다.
+func (f *BundleFactory) gitLabBundle(
+	ctx context.Context,
+	summary *port.StackSummary,
+) (*port.SCMBundle, error) {
 	namespace := strings.TrimSpace(summary.Namespace)
 	if namespace == "" {
-		return nil, fmt.Errorf("stack %s 의 네임스페이스를 알 수 없습니다", stackID)
+		return nil, fmt.Errorf("stack %s 의 네임스페이스를 알 수 없습니다", summary.ID)
 	}
 
 	baseURL := strings.TrimSpace(f.opts.GitLabBaseURLOverride)
@@ -94,15 +119,89 @@ func (f *BundleFactory) For(ctx context.Context, stackID string) (*port.SCMBundl
 		ExternalRepositoryPrefix: f.opts.ExternalRegistryPrefix,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("resolve image registry for stack %s: %w", stackID, err)
+		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
 	}
 
 	return &port.SCMBundle{
 		Provisioner:   client,
 		Pipeline:      client,
 		Registry:      resolver,
+		Platform:      port.SCMPlatformGitLab,
 		GroupPath:     f.opts.GroupPath,
 		ArgoNamespace: namespace,
+		ClusterID:     summary.ClusterID,
+		AccessDomain:  summary.AccessDomain,
+		GatewayName:   gatewayNameFor(summary.AccessDomain),
+	}, nil
+}
+
+// gitHubBundle 은 외부 GitHub 을 향하는 묶음을 만든다.
+//
+// GitLab 과 달리 주소도 소유자도 우리가 정할 수 없다. 조직에 등록된 연동
+// 설정과 PAT 가 모두 있어야 하며, 하나라도 없으면 무엇을 등록해야 하는지
+// 알려주고 멈춘다 — 여기서 흘리면 리포 생성이 401/404 로 죽는다.
+func (f *BundleFactory) gitHubBundle(
+	ctx context.Context,
+	summary *port.StackSummary,
+) (*port.SCMBundle, error) {
+	if f.githubTokens == nil || f.githubConnections == nil {
+		return nil, fmt.Errorf("GitHub 연동이 배선되지 않아 stack %s 를 프로비저닝할 수 없습니다", summary.ID)
+	}
+
+	conn, err := f.githubConnections.GetConnection(ctx, summary.OrgID, port.SCMPlatformGitHub)
+	if err != nil {
+		return nil, fmt.Errorf("read github connection for org %s: %w", summary.OrgID, err)
+	}
+	if conn == nil || strings.TrimSpace(conn.Owner) == "" {
+		return nil, fmt.Errorf(
+			"조직 %s 에 GitHub 연동 설정이 없습니다 — organization 이름과 PAT 를 먼저 등록하세요",
+			summary.OrgID)
+	}
+
+	token, err := f.githubTokens.EnsureToken(ctx, port.SCMTokenSpec{
+		StackID:   summary.ID,
+		ClusterID: summary.ClusterID,
+		Namespace: strings.TrimSpace(summary.Namespace),
+		OrgID:     summary.OrgID,
+		Env:       f.opts.Env,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	client := github.NewClient(conn.APIBaseURL, token)
+	// 저장된 PAT 는 사용자가 폐기하거나 만료될 수 있다. GitLab 과 달리 재발급
+	// 경로가 없으므로, 여기서 끊고 다시 등록하라고 알리는 것이 최선이다.
+	if err := client.Ping(ctx); err != nil {
+		return nil, fmt.Errorf(
+			"GitHub 인증에 실패했습니다 (stack %s) — 등록된 PAT 가 만료·폐기되었는지 확인하세요: %w",
+			summary.ID, err)
+	}
+
+	resolver, err := registry.ResolverFor(registry.Config{
+		ToolName:                 summary.ContainerRegistry,
+		GitHubOwner:              conn.Owner,
+		HarborHost:               harborHostFor(summary.AccessDomain),
+		NexusDockerHost:          registryHostFor(summary.AccessDomain),
+		ExternalRepositoryPrefix: f.opts.ExternalRegistryPrefix,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
+	}
+
+	return &port.SCMBundle{
+		Provisioner: client,
+		Pipeline:    client,
+		Registry:    resolver,
+		// GHCR 패키지는 같은 PAT 로 지운다(delete:packages 스코프 필요).
+		Images:   client,
+		Platform: port.SCMPlatformGitHub,
+		// 리포는 GitHub organization 아래에 만들어진다. 스택의 nullus 그룹
+		// 경로를 쓰면 존재하지 않는 네임스페이스를 가리킨다.
+		GroupPath:       conn.Owner,
+		RepoAccessToken: token,
+		// Argo CD 는 여전히 클러스터 안에 있다.
+		ArgoNamespace: strings.TrimSpace(summary.Namespace),
 		ClusterID:     summary.ClusterID,
 		AccessDomain:  summary.AccessDomain,
 		GatewayName:   gatewayNameFor(summary.AccessDomain),
@@ -152,13 +251,18 @@ func (f *BundleFactory) authenticatedClient(
 	return client, nil
 }
 
-// isSelfHostedGitLab 은 우리가 관리하는 GitLab 인지 본다.
-func isSelfHostedGitLab(name string) bool {
+// platformFor 는 스택이 고른 소스 저장소 도구를 플랫폼으로 매핑한다.
+//
+// 알 수 없는 값은 빈 문자열이다 — 기본값으로 흘리지 않는다. 어느 쪽으로든
+// 잘못 추측하면 엉뚱한 곳에 리포를 만들거나 닿지 않는 주소로 호출한다.
+func platformFor(name string) port.SCMPlatform {
 	switch normalize(name) {
 	case "gitlab", "gitlab-ce", "gitlab-ee":
-		return true
+		return port.SCMPlatformGitLab
+	case "github", "github-enterprise", "github-enterprise-server", "github-com":
+		return port.SCMPlatformGitHub
 	}
-	return false
+	return ""
 }
 
 // gitLabBaseURL 은 클러스터 내부 GitLab 주소다.

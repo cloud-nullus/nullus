@@ -107,6 +107,28 @@ export function stackListRefetchInterval(
     : false;
 }
 
+/**
+ * deploy/retry/continue 의 공통 요청 본문.
+ *
+ * 보낼 것이 없으면 undefined 를 돌려준다 — 서버는 빈 본문을 예전 클라이언트로
+ * 취급해 그대로 받는다.
+ *
+ * 세 엔드포인트가 같은 본문을 쓴다. 첫 설치가 자격증명 등록 직전에 실패하면
+ * OpenBao 에 아무것도 없으므로, 재시도·이어하기에서도 토큰을 다시 보낼 수
+ * 있어야 복구가 된다.
+ */
+export function toDeployBody(input: DeployStackInput): Record<string, unknown> | undefined {
+  const body: Record<string, unknown> = {};
+  if (input.acknowledgeWarnings) {
+    body.acknowledge_warnings = true;
+  }
+  const token = input.sourceControlToken?.trim();
+  if (token) {
+    body.source_control = { personal_access_token: token };
+  }
+  return Object.keys(body).length > 0 ? body : undefined;
+}
+
 const stackApiCalls = {
   getTemplates: () =>
     api
@@ -273,47 +295,34 @@ const stackApiCalls = {
       .then((r) => (r.data?.version ?? "").trim()),
 
   deployStack: (input: DeployStackInput | string) => {
-    const { stackId, acknowledgeWarnings } =
-      typeof input === "string"
-        ? { stackId: input, acknowledgeWarnings: false }
-        : input;
-    const body = acknowledgeWarnings
-      ? { acknowledge_warnings: true }
-      : undefined;
+    const normalized: DeployStackInput =
+      typeof input === "string" ? { stackId: input } : input;
     return api
       .post<{
         stack_id: string;
         status: string;
-      }>(`/stacks/${stackId}/deploy`, body)
+      }>(`/stacks/${normalized.stackId}/deploy`, toDeployBody(normalized))
       .then((r) => r.data);
   },
 
   // retryStack — F8 follow-up Phase 3. Invokes POST /stacks/:id/retry to
   // rewind a failed/rolled_back stack to pending and re-run the install
   // pipeline. Same acknowledge_warnings contract as deployStack.
-  retryStack: (input: DeployStackInput) => {
-    const body = input.acknowledgeWarnings
-      ? { acknowledge_warnings: true }
-      : undefined;
-    return api
+  retryStack: (input: DeployStackInput) =>
+    api
       .post<{
         stack_id: string;
         status: string;
-      }>(`/stacks/${input.stackId}/retry`, body)
-      .then((r) => r.data);
-  },
+      }>(`/stacks/${input.stackId}/retry`, toDeployBody(input))
+      .then((r) => r.data),
 
-  continueStack: (input: DeployStackInput) => {
-    const body = input.acknowledgeWarnings
-      ? { acknowledge_warnings: true }
-      : undefined;
-    return api
+  continueStack: (input: DeployStackInput) =>
+    api
       .post<{
         stack_id: string;
         status: string;
-      }>(`/stacks/${input.stackId}/continue`, body)
-      .then((r) => r.data);
-  },
+      }>(`/stacks/${input.stackId}/continue`, toDeployBody(input))
+      .then((r) => r.data),
 
   getWorkloads: (stackId: string) =>
     api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),

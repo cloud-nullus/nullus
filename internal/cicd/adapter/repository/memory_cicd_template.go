@@ -187,16 +187,18 @@ func cicdGoldenPaths() []*domain.CICDGoldenPath {
 			},
 		},
 		{
-			ID:                   "github-argocd-v1",
-			Name:                 "GitHub + Argo CD",
-			Description:          "GitHub와 GitHub Actions를 외부 서비스로 사용하고, 클러스터 내에는 Harbor + Argo CD + 모니터링만 설치합니다.",
-			EstimatedInstallTime: 60,
+			ID:   "github-argocd-v1",
+			Name: "GitHub + Argo CD",
+			// 이미지 레지스트리도 GitHub 쪽(GHCR)이다. GitHub 호스티드 러너는
+			// 클러스터 내부 Harbor 에 닿을 수 없어 push 가 불가능하다.
+			Description:          "GitHub·GitHub Actions·GHCR 을 외부 서비스로 사용하고, 클러스터 내에는 Argo CD + 모니터링만 설치합니다.",
+			EstimatedInstallTime: 45,
 			RecommendedUseCase:   "GitHub 사용 조직",
-			MinResources:         "6 vCPU / 12Gi RAM / 80Gi Storage",
+			MinResources:         "4 vCPU / 8Gi RAM / 50Gi Storage",
 			Tools: []domain.CICDTool{
 				{Category: "source_repository", Name: "GitHub", HelmVersion: "external", AppVersion: "external"},
 				{Category: "ci_platform", Name: "GitHub Actions", HelmVersion: "external", AppVersion: "external"},
-				{Category: "container_registry", Name: "Harbor", HelmVersion: "1.14.0", AppVersion: "2.11.0"},
+				{Category: "container_registry", Name: "GHCR", HelmVersion: "external", AppVersion: "external"},
 				{Category: "storage_backend", Name: "MinIO", HelmVersion: "5.3.0", AppVersion: "2024.11.7"},
 				{Category: "cd_tool", Name: "Argo CD", HelmVersion: "7.7.2", AppVersion: "2.13.2"},
 				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: "67.0.0", AppVersion: "3.1.0"},

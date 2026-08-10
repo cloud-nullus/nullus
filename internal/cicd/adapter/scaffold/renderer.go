@@ -22,12 +22,27 @@ const (
 	// CI 가 첫 실행에서 실제 커밋 SHA 로 치환한다.
 	InitialImageTag = "bootstrap"
 
-	// DeployTokenVar 는 CI 가 매니페스트를 되쓰기 위해 쓰는 토큰 변수다.
+	// DeployTokenVar 는 GitLab CI 가 매니페스트를 되쓰기 위해 쓰는 토큰 변수다.
 	// CI_JOB_TOKEN 은 저장소 push 권한이 없어 별도 토큰이 필요하다.
+	//
+	// GitHub 에는 대응물이 없다 — 내장 GITHUB_TOKEN 이 contents:write 로 push 한다.
 	DeployTokenVar = "NULLUS_DEPLOY_TOKEN" // #nosec G101 -- CI 변수 이름
+
+	// GitLabPipelinePath / GitHubWorkflowPath 는 각 플랫폼이 파이프라인 정의를
+	// 읽는 위치다. 경로가 틀리면 파일은 커밋되지만 CI 가 영영 돌지 않는다.
+	GitLabPipelinePath = ".gitlab-ci.yml"
+	GitHubWorkflowPath = ".github/workflows/nullus-ci.yml"
+
+	// githubActorVar / githubTokenVar 는 GitHub Actions 가 제공하는 값이다.
+	// 이 이름이면 사용자 시크릿이 아니라 내장 표현식으로 바꿔 써야 한다.
+	githubActorVar = "GITHUB_ACTOR"
+	githubTokenVar = "GITHUB_TOKEN" // #nosec G101 -- CI 변수 이름
 
 	defaultPort     = 8080
 	defaultReplicas = 1
+
+	// nginxDefaultPort 는 자리표시자 이미지가 기본으로 듣는 포트다.
+	nginxDefaultPort = 80
 )
 
 // Input 은 스캐폴딩 렌더 요청이다.
@@ -36,6 +51,9 @@ type Input struct {
 	Namespace string
 	Port      int32
 	Replicas  int32
+	// Platform 은 파이프라인 정의를 어느 형식으로 쓸지 정한다.
+	// 비면 GitLab 으로 본다.
+	Platform port.SCMPlatform
 	// ImageTarget 은 resolver 가 정한 이미지 저장 위치다.
 	ImageTarget *port.ImageTarget
 	// AccessDomain / GatewayName / GatewayNamespace 가 모두 있으면
@@ -72,10 +90,12 @@ func Render(in Input) ([]port.CommitFile, error) {
 		replicas = defaultReplicas
 	}
 
+	pipelinePath, pipelineContent := renderPipelineFor(in.Platform, app, in.ImageTarget)
+
 	files := []port.CommitFile{
-		{Path: ".gitlab-ci.yml", Content: renderPipeline(app, in.ImageTarget)},
+		{Path: pipelinePath, Content: pipelineContent},
 		{Path: "Dockerfile", Content: renderDockerfile(appPort)},
-		{Path: "README.md", Content: renderReadme(app, namespace, in.ImageTarget)},
+		{Path: "README.md", Content: renderReadme(in.Platform, app, namespace, in.ImageTarget)},
 		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas)},
 		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort)},
 	}
@@ -88,6 +108,102 @@ func Render(in Input) ([]port.CommitFile, error) {
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, nil
+}
+
+// renderPipelineFor 는 플랫폼에 맞는 파이프라인 정의 파일을 만든다.
+func renderPipelineFor(platform port.SCMPlatform, app string, target *port.ImageTarget) (path, content string) {
+	if platform == port.SCMPlatformGitHub {
+		return GitHubWorkflowPath, renderGitHubWorkflow(app, target)
+	}
+	return GitLabPipelinePath, renderPipeline(app, target)
+}
+
+// renderGitHubWorkflow 는 build → deploy 2단계 GitHub Actions 워크플로를 만든다.
+//
+// GitLab 판과 세 가지가 다르다.
+//
+// 하나, dind 가 필요 없다. GitHub 호스티드 러너에는 Docker 데몬이 이미 떠 있다.
+//
+// 둘, 되쓰기 토큰이 필요 없다. contents:write 권한의 내장 GITHUB_TOKEN 을
+// actions/checkout 이 remote 자격증명으로 심어두므로 git push 가 그대로 된다.
+//
+// 셋, [skip ci] 가 필요 없다. GITHUB_TOKEN 으로 만든 push 는 워크플로를 다시
+// 트리거하지 않는다 — GitHub 이 무한 루프를 막기 위해 그렇게 정의했다.
+func renderGitHubWorkflow(app string, target *port.ImageTarget) string {
+	var b strings.Builder
+
+	b.WriteString("# Nullus 가 생성한 파이프라인입니다.\n")
+	b.WriteString("# build: 이미지를 만들어 레지스트리에 올립니다.\n")
+	b.WriteString("# deploy: deploy/ 의 이미지 태그를 갱신해 커밋합니다. 배포는 Argo CD 가 합니다.\n\n")
+
+	fmt.Fprintf(&b, "name: nullus-ci-%s\n\n", app)
+
+	b.WriteString("on:\n  push:\n    branches:\n      - main\n      - master\n\n")
+
+	// 최소 권한만 준다. contents 는 매니페스트 되쓰기, packages 는 GHCR push 용이다.
+	b.WriteString("permissions:\n  contents: write\n  packages: write\n\n")
+
+	// 같은 브랜치에 연속 push 가 들어오면 뒤 실행이 앞 실행의 커밋을 덮어쓸 수
+	// 있다. 취소하지 않고 직렬화한다 — 빌드는 끝까지 가야 이미지가 남는다.
+	b.WriteString("concurrency:\n")
+	b.WriteString("  group: nullus-ci-${{ github.ref }}\n")
+	b.WriteString("  cancel-in-progress: false\n\n")
+
+	b.WriteString("env:\n")
+	fmt.Fprintf(&b, "  IMAGE_REPOSITORY: %q\n", target.Repository)
+	fmt.Fprintf(&b, "  REGISTRY_HOST: %q\n", target.Host)
+	b.WriteString("  IMAGE_TAG: ${{ github.sha }}\n\n")
+
+	b.WriteString("jobs:\n")
+
+	b.WriteString("  build:\n")
+	b.WriteString("    runs-on: ubuntu-latest\n")
+	b.WriteString("    steps:\n")
+	b.WriteString("      - uses: actions/checkout@v4\n")
+	b.WriteString("      - name: Log in to the container registry\n")
+	b.WriteString("        env:\n")
+	fmt.Fprintf(&b, "          REGISTRY_USERNAME: %s\n", githubExpressionFor(target.UsernameVar))
+	fmt.Fprintf(&b, "          REGISTRY_PASSWORD: %s\n", githubExpressionFor(target.PasswordVar))
+	b.WriteString("        run: |\n")
+	b.WriteString("          echo \"$REGISTRY_PASSWORD\" | docker login \"$REGISTRY_HOST\" -u \"$REGISTRY_USERNAME\" --password-stdin\n")
+	b.WriteString("      - name: Build and push image\n")
+	b.WriteString("        run: |\n")
+	b.WriteString("          docker build -t \"$IMAGE_REPOSITORY:$IMAGE_TAG\" .\n")
+	b.WriteString("          docker push \"$IMAGE_REPOSITORY:$IMAGE_TAG\"\n\n")
+
+	b.WriteString("  deploy:\n")
+	b.WriteString("    needs: build\n")
+	b.WriteString("    runs-on: ubuntu-latest\n")
+	b.WriteString("    steps:\n")
+	b.WriteString("      - uses: actions/checkout@v4\n")
+	b.WriteString("      - name: Update manifest image tag\n")
+	b.WriteString("        run: |\n")
+	// 매니페스트의 태그만 바꾼다. 저장소 경로는 고정이라 안전하게 매칭된다.
+	b.WriteString("          sed -i \"s#image: $IMAGE_REPOSITORY:.*#image: $IMAGE_REPOSITORY:$IMAGE_TAG#\" deploy/deployment.yaml\n")
+	b.WriteString("          git config user.email \"ci@nullus.local\"\n")
+	b.WriteString("          git config user.name \"Nullus CI\"\n")
+	b.WriteString("          git add deploy/deployment.yaml\n")
+	// 변경이 없으면 커밋이 실패하므로 무변경을 정상 종료로 처리한다.
+	b.WriteString("          git diff --cached --quiet && echo \"변경 없음\" && exit 0\n")
+	b.WriteString("          git commit -m \"chore(deploy): $IMAGE_TAG\"\n")
+	b.WriteString("          git push\n")
+
+	return b.String()
+}
+
+// githubExpressionFor 는 변수 이름을 워크플로에서 읽을 표현식으로 바꾼다.
+//
+// 내장 값은 secrets 에 없다. GITHUB_ACTOR 를 ${{ secrets.GITHUB_ACTOR }} 로
+// 쓰면 빈 문자열이 들어가 docker login 이 사용자명 없이 실행된다.
+func githubExpressionFor(varName string) string {
+	switch strings.ToUpper(strings.TrimSpace(varName)) {
+	case githubActorVar:
+		return "${{ github.actor }}"
+	case githubTokenVar:
+		return "${{ secrets.GITHUB_TOKEN }}"
+	default:
+		return "${{ secrets." + strings.ToUpper(strings.TrimSpace(varName)) + " }}"
+	}
 }
 
 // renderPipeline 은 build → deploy 2단계 파이프라인을 만든다.
@@ -172,13 +288,33 @@ func writeScriptLines(b *strings.Builder, lines []string) {
 	}
 }
 
+// renderDockerfile 은 자리표시자 Dockerfile 을 만든다.
+//
+// nginx 기본 설정은 80 에서 듣는데 Service·Deployment·HTTPRoute 는 사용자가 고른
+// 포트를 가리킨다. EXPOSE 는 문서일 뿐 바인딩을 바꾸지 않으므로, 설정을 함께
+// 고치지 않으면 첫 배포가 "파드는 Running 인데 아무도 응답하지 않는" 상태로 끝난다
+// — 자리표시자에는 readinessProbe 도 없어 Argo CD 까지 Healthy 로 보고한다.
 func renderDockerfile(appPort int32) string {
-	return fmt.Sprintf(`# Nullus 가 생성한 기본 Dockerfile 입니다. 애플리케이션에 맞게 수정하세요.
+	header := `# Nullus 가 생성한 기본 Dockerfile 입니다. 애플리케이션에 맞게 수정하세요.
 # 조직 공용 베이스 이미지를 쓰려면 common 프로젝트의 이미지를 FROM 에 지정하면 됩니다.
 FROM nginx:alpine
+`
+	// 80 이면 기본 설정 그대로다. 불필요한 치환을 넣으면 사용자가 이미지를 바꿀 때
+	// 지워야 할 것만 늘어난다.
+	if appPort == nginxDefaultPort {
+		return fmt.Sprintf("%s\nEXPOSE %d\n", header, appPort)
+	}
+
+	// 기본 설정을 통째로 바꿔 쓴다. sed 치환은 listen 지시자의 공백 폭과
+	// IPv6 줄이 이미지 버전마다 달라 조용히 어긋날 수 있고, 사용자가 읽고
+	// 고치기도 어렵다.
+	return fmt.Sprintf(`%s
+# nginx 기본 설정은 80 을 듣는다. 배포 매니페스트가 가리키는 포트로 맞춘다 —
+# EXPOSE 는 문서일 뿐 바인딩을 바꾸지 않는다.
+RUN printf 'server {\n    listen %d;\n    location / {\n        root  /usr/share/nginx/html;\n        index index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE %d
-`, appPort)
+`, header, appPort, appPort)
 }
 
 func renderDeployment(app, namespace, repository string, appPort, replicas int32) string {
@@ -242,18 +378,25 @@ spec:
 `, app, namespace, appPort)
 }
 
-func renderReadme(app, namespace string, target *port.ImageTarget) string {
+func renderReadme(platform port.SCMPlatform, app, namespace string, target *port.ImageTarget) string {
 	var b strings.Builder
+	isGitHub := platform == port.SCMPlatformGitHub
 
 	b.WriteString("# " + app + "\n\n")
 	b.WriteString("Nullus 가 생성한 애플리케이션 프로젝트입니다.\n")
 	b.WriteString("소스와 배포 매니페스트가 이 저장소에 함께 있습니다.\n\n")
+
+	pipelinePath := GitLabPipelinePath
+	if isGitHub {
+		pipelinePath = GitHubWorkflowPath
+	}
 
 	b.WriteString("## 흐름\n\n")
 	b.WriteString("1. 기본 브랜치에 push\n")
 	b.WriteString("2. CI `build` — 이미지를 만들어 `" + target.Repository + "` 에 올림\n")
 	b.WriteString("3. CI `deploy` — `deploy/deployment.yaml` 의 태그를 갱신해 커밋\n")
 	b.WriteString("4. Argo CD 가 그 커밋을 감지해 `" + namespace + "` 네임스페이스에 배포\n\n")
+	b.WriteString("파이프라인 정의는 `" + pipelinePath + "` 에 있습니다.\n\n")
 
 	b.WriteString("## 이미지 레지스트리\n\n")
 	fmt.Fprintf(&b, "- 종류: `%s`\n", target.Kind)
@@ -261,17 +404,30 @@ func renderReadme(app, namespace string, target *port.ImageTarget) string {
 
 	if len(target.RequiredVariables) > 0 {
 		b.WriteString("### 필요한 CI/CD 변수\n\n")
-		b.WriteString("아래 변수를 프로젝트의 **Settings → CI/CD → Variables 에 등록**해야\n")
-		b.WriteString("빌드가 레지스트리에 로그인할 수 있습니다.\n\n")
+		if isGitHub {
+			b.WriteString("아래 값을 저장소의 **Settings → Secrets and variables → Actions** 에\n")
+			b.WriteString("등록해야 빌드가 레지스트리에 로그인할 수 있습니다.\n\n")
+		} else {
+			b.WriteString("아래 변수를 프로젝트의 **Settings → CI/CD → Variables 에 등록**해야\n")
+			b.WriteString("빌드가 레지스트리에 로그인할 수 있습니다.\n\n")
+		}
 		for _, v := range target.RequiredVariables {
 			b.WriteString("- `" + v + "`\n")
 		}
 		b.WriteString("\n")
 	}
 
-	b.WriteString("### 매니페스트 되쓰기 토큰\n\n")
-	b.WriteString("`deploy` 단계가 저장소에 커밋하려면 쓰기 권한 토큰이 필요합니다.\n")
-	b.WriteString("`" + DeployTokenVar + "` 변수에 `write_repository` 스코프 토큰을 등록하세요.\n\n")
+	b.WriteString("### 매니페스트 되쓰기 권한\n\n")
+	if isGitHub {
+		// 여기에 PAT 를 등록하라고 적으면 사용자가 불필요한 장기 토큰을
+		// 워크플로에 노출한다. 내장 토큰으로 충분하다는 점을 분명히 한다.
+		b.WriteString("추가 토큰이 필요 없습니다. 워크플로의 `permissions: contents: write` 로\n")
+		b.WriteString("내장 `GITHUB_TOKEN` 이 커밋을 push 합니다.\n")
+		b.WriteString("이 push 는 워크플로를 다시 트리거하지 않으므로 무한 루프가 생기지 않습니다.\n\n")
+	} else {
+		b.WriteString("`deploy` 단계가 저장소에 커밋하려면 쓰기 권한 토큰이 필요합니다.\n")
+		b.WriteString("`" + DeployTokenVar + "` 변수에 `write_repository` 스코프 토큰을 등록하세요.\n\n")
+	}
 
 	b.WriteString("---\n\n")
 	b.WriteString("이 파일은 Nullus 가 생성했습니다. 프로비저닝이 다시 실행되면 덮어써집니다.\n")
