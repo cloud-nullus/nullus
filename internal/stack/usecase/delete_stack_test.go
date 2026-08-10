@@ -105,6 +105,72 @@ func TestDeleteStack_UninstallsKnownReleasesThenDeletesStack(t *testing.T) {
 	assert.Equal(t, []string{"stk-1"}, streamer.clearedHistoryID)
 }
 
+// Harbor/Nexus 를 지우지 않으면 스택을 삭제해도 레지스트리 파드와 PVC 가 남아
+// 다음 스택 설치가 같은 네임스페이스에서 리소스를 물고 늘어진다.
+func TestDeleteStack_UninstallsRegistryReleases(t *testing.T) {
+	repo := newFakeStackRepo(&domain.Stack{
+		ID:        "stk-1",
+		ClusterID: "cluster-1",
+		Namespace: "devsecops",
+		State:     domain.StateCompleted,
+	})
+	provider := &fakeDeleteKubeconfigProvider{config: []byte("kubeconfig")}
+	installer := &fakeHelmInstaller{}
+	streamer := &captureStreamer{}
+
+	uc := NewDeleteStack(repo, provider, func([]byte) port.HelmInstaller {
+		return installer
+	}, streamer)
+
+	require.NoError(t, uc.Execute(context.Background(), "stk-1"))
+
+	assert.Contains(t, installer.uninstallCalls, domain.HarborReleaseName+"@devsecops")
+	assert.Contains(t, installer.uninstallCalls, domain.NexusReleaseName+"@devsecops")
+}
+
+// Argo CD 의 application-controller 는 기동하면서 default AppProject 를 스스로
+// 만든다. helm uninstall 로는 안 지워지므로, 이걸 "다른 스택이 쓰는 중" 으로 보면
+// CRD 정리가 영원히 건너뛰어진다 — 그러면 다음 스택 설치가 CRD 소유권 충돌로 죽는다.
+func TestArgoCDResourcesInUse(t *testing.T) {
+	tests := []struct {
+		name         string
+		applications string
+		appProjects  string
+		want         bool
+	}{
+		{
+			name:         "nothing left",
+			applications: "",
+			appProjects:  "",
+			want:         false,
+		},
+		{
+			name:         "only the auto-created default AppProject",
+			applications: "",
+			appProjects:  "appproject.argoproj.io/default\n",
+			want:         false,
+		},
+		{
+			name:         "an Application still exists",
+			applications: "application.argoproj.io/my-app\n",
+			appProjects:  "appproject.argoproj.io/default\n",
+			want:         true,
+		},
+		{
+			name:         "a user-defined AppProject still exists",
+			applications: "",
+			appProjects:  "appproject.argoproj.io/default\nappproject.argoproj.io/team-a\n",
+			want:         true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, argoCDResourcesInUse(tc.applications, tc.appProjects))
+		})
+	}
+}
+
 func TestUninstallNamespacesForRelease_GatewayIncludesFallbackNamespaces(t *testing.T) {
 	namespaces := uninstallNamespacesForRelease("devsecops", "eg")
 	assert.Equal(t, []string{"devsecops", "default", "nullus", "envoy-gateway-system"}, namespaces)

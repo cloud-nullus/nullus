@@ -31,6 +31,10 @@ var stackHelmReleaseNames = []string{
 	"postgresql",
 	domain.MinIOServiceName,
 	"minio",
+	// 레지스트리를 남기면 파드와 PVC 가 그대로 떠 있어 다음 스택이 같은
+	// 네임스페이스를 쓸 때 리소스를 물고 늘어진다.
+	domain.HarborReleaseName,
+	domain.NexusReleaseName,
 	"gitlab",
 	"argo-cd",
 	"gitlab-runner",
@@ -384,20 +388,23 @@ func (uc *DeleteStack) bestEffortDeleteArgoCDCRDs(ctx context.Context, kubeconfi
 		return
 	}
 
-	for _, args := range [][]string{
-		{"get", "applications.argoproj.io", "-A", "-o", "name"},
-		{"get", "appprojects.argoproj.io", "-A", "-o", "name"},
-	} {
-		out, err := runKubectlWithKubeconfig(ctx, kubeconfig, args...)
-		if err != nil {
-			// CRD 자체가 없으면 조회가 실패한다 — 지울 것도 없으므로 그냥 끝낸다.
-			slog.Warn("argocd crd cleanup skipped due to check failure", "args", strings.Join(args, " "), "error", err)
-			return
-		}
-		if strings.TrimSpace(out) != "" {
-			uc.emit(ctx, stackID, "deleting_crd", "info", "skipping argocd CRD delete because argocd resources still exist")
-			return
-		}
+	applicationsOut, err := runKubectlWithKubeconfig(ctx, kubeconfig,
+		"get", "applications.argoproj.io", "-A", "-o", "name")
+	if err != nil {
+		// CRD 자체가 없으면 조회가 실패한다 — 지울 것도 없으므로 그냥 끝낸다.
+		slog.Warn("argocd crd cleanup skipped due to check failure", "resource", "applications", "error", err)
+		return
+	}
+	appProjectsOut, err := runKubectlWithKubeconfig(ctx, kubeconfig,
+		"get", "appprojects.argoproj.io", "-A", "-o", "name")
+	if err != nil {
+		slog.Warn("argocd crd cleanup skipped due to check failure", "resource", "appprojects", "error", err)
+		return
+	}
+
+	if argoCDResourcesInUse(applicationsOut, appProjectsOut) {
+		uc.emit(ctx, stackID, "deleting_crd", "info", "skipping argocd CRD delete because argocd resources still exist")
+		return
 	}
 
 	for _, crd := range argoCDCRDNames {
@@ -407,6 +414,34 @@ func (uc *DeleteStack) bestEffortDeleteArgoCDCRDs(ctx context.Context, kubeconfi
 			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("argocd crd %s delete warning: %v", crd, err))
 		}
 	}
+}
+
+// autoCreatedArgoCDAppProject 는 Argo CD 가 기동하면서 스스로 만드는 기본
+// 프로젝트다. 차트가 만든 게 아니라 application-controller 가 런타임에 만들기
+// 때문에 helm uninstall 로는 사라지지 않는다.
+const autoCreatedArgoCDAppProject = "appproject.argoproj.io/default"
+
+// argoCDResourcesInUse 는 `kubectl get ... -o name` 출력 두 개를 보고 Argo CD CRD 를
+// 남겨야 하는지 판단한다.
+//
+// 지우면 안 되는 경우는 남의 배포 정의가 아직 있을 때뿐이다. 반면 default
+// AppProject 는 Argo CD 가 자기 부팅용으로 만든 것이라 "쓰는 중" 의 근거가 못 된다.
+// 이걸 근거로 삼으면 조건이 항상 참이 돼 CRD 정리가 영영 안 돌고, 다음 스택 설치가
+// `invalid ownership metadata` 로 실패한다.
+func argoCDResourcesInUse(applicationsOut, appProjectsOut string) bool {
+	if strings.TrimSpace(applicationsOut) != "" {
+		return true
+	}
+
+	for _, line := range strings.Split(appProjectsOut, "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" || name == autoCreatedArgoCDAppProject {
+			continue
+		}
+		return true
+	}
+
+	return false
 }
 
 func (uc *DeleteStack) bestEffortDeleteGatewayCRDs(ctx context.Context, kubeconfig []byte, stackID string) {
