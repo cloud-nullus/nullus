@@ -684,6 +684,16 @@
     "filters": {
       "allTypes": "All Types",
       "allStatus": "All Status"
+    },
+    "actions": {
+      "viewDetail": "View detail"
+    },
+    "detail": {
+      "title": "Deployment Detail",
+      "close": "Close",
+      "field": "Field",
+      "value": "Value",
+      "triggeredBy": "Triggered By"
     }
   },
   "observability": {

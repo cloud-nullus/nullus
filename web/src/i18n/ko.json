@@ -684,6 +684,16 @@
     "filters": {
       "allTypes": "전체 타입",
       "allStatus": "전체 상태"
+    },
+    "actions": {
+      "viewDetail": "상세 보기"
+    },
+    "detail": {
+      "title": "배포 상세",
+      "close": "닫기",
+      "field": "항목",
+      "value": "값",
+      "triggeredBy": "배포자"
     }
   },
   "observability": {

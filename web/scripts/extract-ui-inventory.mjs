@@ -230,22 +230,30 @@ function toMarkdown(inv) {
   return lines.join('\n')
 }
 
-/** 이전 스냅샷 대비 사라진 항목만 보고한다(추가는 허용). */
-function check(prev, next) {
-  const prevMap = new Map(prev.entries.map((e) => [e.file, e]))
-  const losses = []
+/**
+ * 이전 스냅샷 대비 사라진 항목만 보고한다(추가는 허용).
+ *
+ * 판정 기준은 "이 사용자에게 보이던 문자열이 소스 어딘가에 아직 있는가" 다.
+ * 그래서 파일 경계와 **필드 종류를 모두 넘나들며** 찾는다:
+ *   - 파일 경계: 컴포넌트 추출로 다른 파일로 옮겨가도 정보는 남아 있다
+ *   - 필드 경계: 하드코딩 라벨이 t() 의 인라인 폴백으로 옮겨가는 것은
+ *     리팩터링이지 유실이 아니다 (labels → fallbacks 이동)
+ * 단, i18n 키와 표 컬럼 필드명은 종류가 다른 식별자이므로 자기 종류 안에서만 찾는다.
+ */
+const TEXT_FIELDS = ['fallbacks', 'labels', 'jsxText']
+const ID_FIELDS = ['i18nKeys', 'columns', 'testIds']
 
-  for (const [file, before] of prevMap) {
-    const after = next.entries.find((e) => e.file === file)
-    for (const field of ['i18nKeys', 'fallbacks', 'labels', 'columns', 'jsxText', 'testIds']) {
-      const beforeSet = new Set(before[field])
-      // 파일이 사라졌다면 다른 파일로 옮겨갔을 수 있다 → 전체에서 찾는다.
-      const anywhere = new Set(next.entries.flatMap((e) => e[field]))
-      const localAfter = after ? new Set(after[field]) : new Set()
-      for (const value of beforeSet) {
-        if (localAfter.has(value)) continue
-        if (anywhere.has(value)) continue // 다른 파일로 이동 — 정보는 남아있다
-        losses.push({ file, field, value })
+function check(prev, next) {
+  const union = (fields) => new Set(next.entries.flatMap((e) => fields.flatMap((f) => e[f])))
+  const textAnywhere = union(TEXT_FIELDS)
+  const idAnywhere = Object.fromEntries(ID_FIELDS.map((f) => [f, union([f])]))
+
+  const losses = []
+  for (const before of prev.entries) {
+    for (const field of [...TEXT_FIELDS, ...ID_FIELDS]) {
+      const stillThere = TEXT_FIELDS.includes(field) ? textAnywhere : idAnywhere[field]
+      for (const value of before[field]) {
+        if (!stillThere.has(value)) losses.push({ file: before.file, field, value })
       }
     }
   }

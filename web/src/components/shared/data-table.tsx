@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -24,8 +24,6 @@ interface DataTableProps<T> {
   emptyMessage?: string
   pageSize?: number
   toolbar?: ReactNode
-  expandedRowId?: string | null
-  renderExpanded?: (row: T) => ReactNode
 }
 
 export function DataTable<T>({
@@ -37,8 +35,6 @@ export function DataTable<T>({
   emptyMessage,
   pageSize = 20,
   toolbar,
-  expandedRowId,
-  renderExpanded,
 }: DataTableProps<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('dataTable.empty', 'No data available.')
@@ -121,8 +117,8 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <Fragment key={row.id}>
-              <tr
+            <tr
+              key={row.id}
                 className={cn(
                   'transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.02)]',
                   onRowClick ? 'cursor-pointer' : 'cursor-default'
@@ -138,14 +134,6 @@ export function DataTable<T>({
                   </td>
                 ))}
               </tr>
-              {expandedRowId === row.id && renderExpanded && (
-                <tr>
-                  <td colSpan={columns.length} className="border-t border-[var(--color-border-default)] p-0">
-                    {renderExpanded(row.original)}
-                  </td>
-                </tr>
-              )}
-            </Fragment>
           ))}
         </tbody>
       </table>
