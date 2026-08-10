@@ -27,6 +27,73 @@ export default defineConfig([
       'react-hooks/purity': 'off',
       'react-hooks/incompatible-library': 'off',
       'no-case-declarations': 'off',
+
+      // ag-grid-enterprise 는 상용 라이선스다. Nullus 는 오픈소스 플랫폼이므로
+      // 실수로 import 되면 배포할 수 없는 산출물이 된다.
+      // Community(MIT) 로 안 되는 기능은 도입 전에 반드시 논의한다.
+      // 그리드/차트/아이콘 라이브러리 중복 도입도 함께 막는다 — DESIGN.md §Components.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'ag-grid-enterprise',
+              message:
+                'ag-grid-enterprise 는 상용 라이선스다. ag-grid-community(MIT) 를 쓴다. 필요한 기능이 Enterprise 전용이면 도입 전에 논의한다.',
+            },
+            {
+              name: '@mui/x-data-grid',
+              message: '표는 DataTable 하나로 통일한다. 그리드 라이브러리를 2개 두지 않는다.',
+            },
+            {
+              name: '@mui/icons-material',
+              message: '아이콘은 lucide-react 하나만 쓴다. 세트가 2개면 같은 뜻의 아이콘이 화면마다 달라진다.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['ag-grid-enterprise/*'],
+              message: 'ag-grid-enterprise 는 상용 라이선스다.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // 디자인 토큰 강제 — 색은 web/DESIGN.md 가 단일 출처이고 코드는 --color-* 를 참조한다.
+    // 개편 전 TSX 에 hex 767곳 / rgba 750곳이 박혀 있었고, 그 값들이 전부 다크 기준이라
+    // 라이트 테마에서 대비가 1.6:1 까지 무너졌다. 이 규칙이 그 재발을 막는다.
+    //
+    // 아직 잔여 하드코딩이 남아 있어 'warn' 으로 시작한다. Phase 6 청산이 끝나면
+    // 'error' 로 올린다 (기획안 커밋 21).
+    files: ['src/**/*.tsx'],
+    ignores: ['src/**/*.test.tsx', 'src/theme/**'],
+    rules: {
+      // 차트 라이브러리 단일화는 Phase 5 다. 아직 chart.js 사용처가 1곳 남아 있어
+      // 경고로 시작하고, 이관이 끝나면 위 no-restricted-imports 로 올려 error 로 만든다.
+      'no-restricted-imports': [
+        'warn',
+        {
+          paths: [
+            { name: 'chart.js', message: '차트는 recharts 로 통일한다 (기획안 Phase 5).' },
+            { name: 'react-chartjs-2', message: '차트는 recharts 로 통일한다 (기획안 Phase 5).' },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector: 'Literal[value=/#[0-9a-fA-F]{3,8}\\b/]',
+          message:
+            '색 리터럴(hex)을 TSX 에 쓰지 않는다. web/DESIGN.md 에 토큰을 정의하고 var(--color-*) 를 참조한다.',
+        },
+        {
+          selector: 'Literal[value=/rgba?\\(/]',
+          message:
+            '색 리터럴(rgb/rgba)을 TSX 에 쓰지 않는다. 토큰이 없으면 web/DESIGN.md 에 추가한다. 투명도가 필요하면 color-mix(in srgb, var(--color-*) N%, transparent) 를 쓴다.',
+        },
+      ],
     },
   },
   {
