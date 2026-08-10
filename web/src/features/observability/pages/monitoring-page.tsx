@@ -12,6 +12,8 @@ import type { ViewType } from "../components/monitoring-tab-layout"
 import { ClusterDefault } from "../components/monitoring-cluster-view"
 import { CicdDefault, CICD_DEFAULT_TABS } from "../components/monitoring-cicd-view"
 import { StackConnectPanel } from "../components/monitoring-connect-panel"
+import { PlatformToolHealth } from '../components/platform-tool-health'
+import { useDashboard } from '../api/observability-api'
 
 function StackDefault({ stackId }: { stackId: string }) {
   return <StackMonitoringOverview stackId={stackId} />
@@ -28,6 +30,9 @@ export function MonitoringPage() {
 
   const { clusters, stacks, filteredStacks, selectedCluster, selectedStack, hasContext } =
     useClusterStackFilterState(selectedClusterId, selectedStackId)
+
+  // 플랫폼 전체 도구 상태는 클러스터/스택 선택과 무관하게 항상 보여준다.
+  const { data: platformDashboard, isLoading: platformLoading } = useDashboard(30_000)
 
   const didAutoSelectRef = useRef(false)
 
@@ -103,6 +108,11 @@ export function MonitoringPage() {
           </p>
         </div>
       </div>
+
+      <PlatformToolHealth
+        tools={platformDashboard?.tools}
+        isLoading={platformLoading}
+      />
 
       <ClusterStackFilter
         selectedClusterId={selectedClusterId}

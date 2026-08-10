@@ -661,6 +661,10 @@
   "observability": {
     "monitoring": "모니터링 대시보드",
     "monitoringDesc": "모니터링을 시작하려면 클러스터 또는 스택을 선택하세요",
+    "platformToolHealth": "플랫폼 도구 상태",
+    "platformToolHealthLoading": "설치된 도구를 확인하는 중...",
+    "platformToolHealthEmpty": "설치된 도구가 아직 없습니다. 스택 설치가 완료되면 여기에 표시됩니다.",
+    "platformToolHealthSummary": "{{total}}개 중 {{healthy}}개 정상",
     "alertRules": "알림 규칙",
     "alertRulesDesc": "알림 규칙 목록 및 관리",
     "alertHistory": "알림 이력",

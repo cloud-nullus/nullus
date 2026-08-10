@@ -31,6 +31,7 @@ import (
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
 	obsprom "github.com/cloud-nullus/draft/internal/observability/adapter/prometheus"
 	obsrepo "github.com/cloud-nullus/draft/internal/observability/adapter/repository"
+	obstoolhealth "github.com/cloud-nullus/draft/internal/observability/adapter/toolhealth"
 	obsport "github.com/cloud-nullus/draft/internal/observability/port"
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
@@ -54,6 +55,18 @@ func main() {
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
+	}
+
+	// 인증이 실제로 동작하지 않는 조합이면 여기서 끊는다. 그대로 기동하면
+	// "전부 401" 이나 "사실은 무인증" 을 운영 중에 발견하게 된다.
+	if err := cfg.ValidateAuth(); err != nil {
+		slog.Error("invalid auth configuration", "error", err)
+		os.Exit(1)
+	}
+	if cfg.TrustsClientSuppliedIdentity() {
+		slog.Warn("AUTH IS NOT ENFORCED: this mode trusts client-supplied X-User-* headers, "+
+			"so any caller can claim any role. Use auth.mode=oidc for a real deployment.",
+			"auth_mode", cfg.Auth.Mode, "server_mode", cfg.Server.Mode)
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
@@ -236,7 +249,9 @@ func main() {
 	}
 	pgAlertRuleRepo := obsrepo.NewPostgresAlertRuleRepository(pool)
 	pgAlertRepo := obsrepo.NewPostgresAlertRepository(pool)
-	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo)
+	// 도구 건강도는 설치된 스택의 실제 파드에서 뽑는다. Prometheus 유무와 무관하다.
+	toolHealthReader := obstoolhealth.New(pgStackRepo, kubeconfigProvider)
+	getDashboardUC := obsuc.NewGetDashboard(dashboardRepo, obsuc.WithToolHealth(toolHealthReader))
 	createAlertRuleUC := obsuc.NewCreateAlertRule(pgAlertRuleRepo)
 	getAlertRuleUC := obsuc.NewGetAlertRule(pgAlertRuleRepo)
 	listAlertRulesUC := obsuc.NewListAlertRules(pgAlertRuleRepo)
@@ -267,21 +282,28 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           7200,
 	}))
-	e.Use(middleware.RateLimiter(middleware.RateLimitConfig{
-		Authenticated:   300,
-		Unauthenticated: 30,
-	}))
+	rateLimits := middleware.RateLimitConfigForMode(cfg.Server.Mode)
+	// 1단: 모든 경로를 덮는 IP 기준 폭주 상한. 전역 미들웨어는 인증보다 먼저 돌아
+	// 호출자를 알 수 없으므로, 여기서는 신원을 따지지 않고 총량만 막는다.
+	e.Use(middleware.IPCeilingRateLimiter(rateLimits))
+
+	// 2단: 인증을 통과한 그룹에 붙어 사용자 단위로 센다. 인스턴스를 하나만 만들어
+	// 공유해야 한 사용자가 여러 그룹을 오가도 사용량이 하나로 합산된다.
+	userRateLimit := middleware.RateLimiter(rateLimits)
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
 
 	var admin, stacks, cicd, observability *echo.Group
+	// wsAuth 는 /ws/* 전용 체인이다. 브라우저 WebSocket 은 Authorization 헤더를 못
+	// 붙이므로 서브프로토콜로 온 토큰을 헤더로 옮긴 뒤 평소 인증을 태운다.
+	var wsAuth []echo.MiddlewareFunc
 	if cfg.Server.Mode == "development" {
 		slog.Info("development mode: auth middleware disabled")
-		admin = v1.Group("/admin")
-		stacks = v1.Group("/stacks")
-		cicd = v1.Group("/cicd")
-		observability = v1.Group("/observability")
+		admin = v1.Group("/admin", userRateLimit)
+		stacks = v1.Group("/stacks", userRateLimit)
+		cicd = v1.Group("/cicd", userRateLimit)
+		observability = v1.Group("/observability", userRateLimit)
 	} else {
 		sessionMW := authmw.AuthMiddleware()
 		oidcProvider, err := authadapter.NewOIDCProvider(cfg.Auth.OIDC.Provider)
@@ -294,10 +316,22 @@ func main() {
 			Audience:  cfg.Auth.OIDC.Audience,
 		}, oidcProvider)
 		authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW)
-		admin = v1.Group("/admin", authMW, authmw.RequireRole("admin"))
-		stacks = v1.Group("/stacks", authMW, authmw.RequireRole("admin", "devops"))
-		cicd = v1.Group("/cicd", authMW, authmw.RequireRole("admin", "devops", "developer"))
-		observability = v1.Group("/observability", authMW)
+		// userRateLimit 은 authMW 바로 뒤에 둔다. 권한 검사(RequireRole)보다 앞이어야
+		// 403 으로 튕기는 요청도 사용량에 잡힌다.
+		admin = v1.Group("/admin", authMW, userRateLimit, authmw.RequireRole("admin"))
+		stacks = v1.Group("/stacks", authMW, userRateLimit, authmw.RequireRole("admin", "devops"))
+		cicd = v1.Group("/cicd", authMW, userRateLimit, authmw.RequireRole("admin", "devops", "developer"))
+		observability = v1.Group("/observability", authMW, userRateLimit)
+
+		// OIDC 모드에서만 WebSocket 을 보호한다. session 모드의 인증은 클라이언트가
+		// 보낸 X-User-* 헤더를 그대로 믿는 방식인데, 브라우저 WebSocket 은 그 헤더를
+		// 붙일 수 없어 무조건 401 이 된다 — 검증도 아닌 것 때문에 기능만 죽는 셈이다.
+		if cfg.Auth.Mode == "oidc" {
+			wsAuth = []echo.MiddlewareFunc{middleware.WebSocketBearerSubprotocol(), oidcMW}
+		} else {
+			slog.Warn("websocket auth disabled: session mode cannot carry credentials over a browser WebSocket",
+				"auth_mode", cfg.Auth.Mode)
+		}
 	}
 
 	knownIssuesRepo := adminrepo.NewPostgresKnownIssuesRepository(pool)
@@ -314,7 +348,7 @@ func main() {
 	auditHandler.RegisterRoutes(admin)
 	notificationHandler.RegisterRoutes(admin)
 	tokenSourceHandler.RegisterRoutes(admin)
-	deployHandler.RegisterRoutes(v1, e)
+	deployHandler.RegisterRoutes(stacks, e, wsAuth...)
 	stackHandler.RegisterRoutes(stacks)
 	templateHandler.RegisterRoutes(stacks)
 	exportHandler.RegisterRoutes(v1)

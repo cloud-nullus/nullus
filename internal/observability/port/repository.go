@@ -11,6 +11,12 @@ type DashboardRepository interface {
 	GetDashboard(ctx context.Context) (*domain.Dashboard, error)
 }
 
+// ToolHealthRepository reports the live health of the OSS tools that the
+// organization's stacks have installed.
+type ToolHealthRepository interface {
+	ListToolHealth(ctx context.Context, orgID string) ([]domain.ToolHealth, error)
+}
+
 // AlertRuleRepository defines the interface for alert rule persistence.
 type AlertRuleRepository interface {
 	Create(ctx context.Context, rule *domain.AlertRule) error

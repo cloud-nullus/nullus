@@ -666,6 +666,10 @@
   "observability": {
     "monitoring": "Monitoring Dashboard",
     "monitoringDesc": "Select a Cluster or Stack to start monitoring",
+    "platformToolHealth": "Platform Tool Health",
+    "platformToolHealthLoading": "Checking installed tools...",
+    "platformToolHealthEmpty": "No installed tools yet. Tools appear here once a stack finishes installing.",
+    "platformToolHealthSummary": "{{healthy}} / {{total}} healthy",
     "alertRules": "Alert Rules",
     "alertRulesDesc": "Alert rule list and management",
     "alertHistory": "Alert History",

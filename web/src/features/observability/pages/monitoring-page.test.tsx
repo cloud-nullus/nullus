@@ -140,6 +140,24 @@ describe('MonitoringPage', () => {
     expect(mockStackMonitoringOverview).toHaveBeenCalledWith('stack-1')
   })
 
+  // 이 카드는 클러스터/스택을 고르기 전에도 보여야 한다 — 플랫폼 전체 현황이라
+  // 선택 컨텍스트와 무관하다.
+  it('shows platform tool health before any cluster or stack is selected', () => {
+    mockUseClusterStackFilterState.mockReturnValue({
+      clusters: [],
+      stacks: [],
+      filteredStacks: [],
+      selectedCluster: undefined,
+      selectedStack: undefined,
+      hasContext: false,
+    })
+
+    renderWithProviders(<MonitoringPage />)
+
+    expect(screen.queryByText('Platform Tool Health')).not.toBeNull()
+    expect(screen.getByRole('listitem', { name: 'Grafana' }).textContent).toContain('running')
+  })
+
   it('shows empty state when no cluster or stack is selected', () => {
     mockUseClusterStackFilterState.mockReturnValue({
       clusters: [],

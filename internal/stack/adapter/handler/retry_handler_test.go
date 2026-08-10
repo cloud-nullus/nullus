@@ -49,7 +49,7 @@ func newRetryEcho(
 		WithOptions(stackhandler.WithValidateCompatibility(validate))
 
 	v1 := e.Group("/api/v1")
-	h.RegisterRoutes(v1, e)
+	h.RegisterRoutes(v1.Group("/stacks"), e)
 	return e, stackRepo
 }
 
