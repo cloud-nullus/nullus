@@ -1,8 +1,18 @@
-import { type SelectHTMLAttributes, forwardRef, useId } from 'react'
-import { ChevronDown } from 'lucide-react'
-import { cn } from '../../lib/utils'
+// MUI NativeSelect 어댑터.
+//
+// MUI 의 `Select` 가 아니라 `NativeSelect` 를 쓴다. Select 는 진짜 <select> 대신
+// listbox 를 렌더하므로 소비자가 넘기는 <option> children 이 전부 깨지고,
+// 테스트의 getByRole('combobox') / fireEvent.change 도 못 쓴다.
+// NativeSelect 는 실제 <select> 를 유지해 기존 계약을 그대로 지킨다.
 
-interface NativeSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+import { forwardRef, useId, type SelectHTMLAttributes } from 'react'
+import FormControl from '@mui/material/FormControl'
+import FormHelperText from '@mui/material/FormHelperText'
+import InputLabel from '@mui/material/InputLabel'
+import MuiNativeSelect from '@mui/material/NativeSelect'
+
+// `color` / `size` 는 MUI 유니온과 충돌하므로 뺀다.
+interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'color' | 'size'> {
   label?: string
   error?: string
 }
@@ -10,38 +20,33 @@ interface NativeSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
   ({ label, error, className, children, ...props }, ref) => {
     const id = useId()
+
     return (
-      <div className="flex flex-col gap-1">
+      <FormControl fullWidth error={Boolean(error)} variant="outlined">
         {label && (
-          <label
-            htmlFor={id}
-            className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]"
-          >
+          <InputLabel htmlFor={id} shrink sx={{ color: 'var(--color-text-secondary)' }}>
             {label}
-          </label>
+          </InputLabel>
         )}
-        <div className="relative">
-          <select
-            ref={ref}
-            id={id}
-            className={cn(
-              'box-border w-full cursor-pointer appearance-none rounded-lg border bg-[var(--color-surface-base)] px-3 py-[9px] pr-8 text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out focus:border-[#6366f1]',
-              error ? 'border-[rgba(239,68,68,0.5)]' : 'border-[var(--color-border-default)]',
-              className
-            )}
-            {...props}
-          >
-            {children}
-          </select>
-          <ChevronDown
-            size={14}
-            className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-          />
-        </div>
-        {error && <span className="text-xs text-[#f87171]">{error}</span>}
-      </div>
+        <MuiNativeSelect
+          inputRef={ref}
+          id={id}
+          className={className}
+          inputProps={props}
+          sx={{
+            backgroundColor: 'var(--color-surface-card)',
+            color: 'var(--color-text-primary)',
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--color-border-default)' },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--color-border-hover)' },
+            '& .MuiNativeSelect-icon': { color: 'var(--color-text-secondary)' },
+          }}
+        >
+          {children}
+        </MuiNativeSelect>
+        {error && <FormHelperText sx={{ color: 'var(--color-error)' }}>{error}</FormHelperText>}
+      </FormControl>
     )
-  }
+  },
 )
 
 NativeSelect.displayName = 'NativeSelect'

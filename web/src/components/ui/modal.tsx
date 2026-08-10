@@ -1,6 +1,24 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+// MUI Dialog 어댑터.
+//
+// 공개 API(open / onClose / title / children / wide / footer)를 유지한다.
+// 이 컴포넌트를 쓰는 11곳은 고치지 않는다.
+//
+// 손으로 만든 포커스 트랩 ~70줄을 지웠다. MUI Modal 이 같은 일을 한다:
+//   - 열릴 때 내부 첫 요소로 포커스 이동, Tab/Shift+Tab 순환
+//   - 닫힐 때 이전 포커스 복원
+//   - Esc 로 닫기, 배경 스크롤 락
+//
+// 배경 클릭 동작도 계약이 같다. MUI Dialog 는 mouseDown 시점의 타겟을 기록해
+// "내용에서 드래그를 시작해 배경에서 놓은 경우"에는 닫지 않는다 — 이전 구현이
+// pointerDown/pointerUp 으로 직접 구현했던 가드와 동일한 의미다.
+
+import type { ReactNode } from 'react'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
+import IconButton from '@mui/material/IconButton'
 import { X } from 'lucide-react'
-import { cn } from '../../lib/utils'
 
 interface ModalProps {
   open: boolean
@@ -12,128 +30,65 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, wide = false, footer }: ModalProps) {
-  const overlayRef = useRef<HTMLDivElement>(null)
-  const cardRef = useRef<HTMLDivElement>(null)
-  const pointerDownOnOverlayRef = useRef(false)
-
-  useEffect(() => {
-    if (!open) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, onClose])
-
-  // F8-UIUX-A11y — focus trap: capture the previously focused element on
-  // open, focus the first focusable inside the modal, cycle Tab/Shift+Tab
-  // between first/last focusable, and restore focus to the previous element
-  // on close. Keeps keyboard users from escaping the modal accidentally.
-  useEffect(() => {
-    if (!open) return
-    const root = cardRef.current
-    if (!root) return
-    const prev = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null
-
-    const getFocusable = () =>
-      Array.from(
-        root.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex !== -1)
-
-    // Defer to after mount so conditional children render first.
-    const raf = requestAnimationFrame(() => {
-      const first = getFocusable()[0]
-      first?.focus()
-    })
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return
-      const items = getFocusable()
-      if (items.length === 0) return
-      const first = items[0]
-      const last = items[items.length - 1]
-      const active = document.activeElement as HTMLElement | null
-      if (e.shiftKey && active === first) {
-        last.focus()
-        e.preventDefault()
-      } else if (!e.shiftKey && active === last) {
-        first.focus()
-        e.preventDefault()
-      }
-    }
-    root.addEventListener('keydown', onKey)
-    return () => {
-      cancelAnimationFrame(raf)
-      root.removeEventListener('keydown', onKey)
-      prev?.focus?.()
-    }
-  }, [open])
-
+  // 닫히면 즉시 언마운트한다. 이전 구현이 `if (!open) return null` 이라 퇴장
+  // 애니메이션이 아예 없었고, 소비자 테스트들이 그 동기적 제거에 의존한다
+  // (예: Cancel 클릭 직후 queryByText(...).not.toBeInTheDocument()).
+  // MUI Dialog 에 맡기면 전환 시간만큼 DOM 에 남아 그 계약이 깨진다.
+  // 트랩·Esc·스크롤 락은 그대로 얻으면서 타이밍 계약만 이전과 같게 유지한다.
   if (!open) return null
 
   return (
-    <div
-      ref={overlayRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      tabIndex={-1}
-      onPointerDown={(e) => {
-        pointerDownOnOverlayRef.current = e.target === overlayRef.current
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth={false}
+      slotProps={{
+        // role="dialog" 는 Paper 에 붙는다. 이전 구현의 aria-label={title} 계약을 유지한다.
+        paper: {
+          'aria-label': title,
+          sx: {
+            width: '100%',
+            maxWidth: wide ? 800 : 480,
+            maxHeight: '90vh',
+            backgroundColor: 'var(--color-surface-raised)',
+            border: '1px solid var(--color-border-default)',
+            borderRadius: 'var(--card-radius)',
+          },
+        },
+        // 배경 클릭 테스트가 잡을 지점. MUI 는 이 컨테이너에서 mouseDown/click 을 듣는다.
+        // container 슬롯 타입에 data-* 가 없어 캐스팅한다 — 런타임에는 그대로 전달된다.
+        container: { 'data-testid': 'modal-overlay' } as React.HTMLAttributes<HTMLDivElement>,
       }}
-      onPointerUp={(e) => {
-        const releasedOnOverlay = e.target === overlayRef.current
-        if (pointerDownOnOverlayRef.current && releasedOnOverlay) {
-          onClose()
-        }
-        pointerDownOnOverlayRef.current = false
-      }}
-      onPointerCancel={() => {
-        pointerDownOnOverlayRef.current = false
-      }}
-      onKeyDown={(e) => {
-        if ((e.key === 'Enter' || e.key === ' ') && e.target === overlayRef.current) {
-          onClose()
-        }
-      }}
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--color-surface-overlay)] p-4"
     >
-      <div
-        ref={cardRef}
-        className={cn(
-          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)]',
-          wide ? 'max-w-[800px]' : 'max-w-[480px]'
-        )}
-      >
-        {title && (
-          <div className="shrink-0 border-b border-[var(--color-border-default)] px-5 py-[18px]">
-            <div className="flex items-center justify-between">
-              <h2 className="m-0 break-keep text-base font-bold text-[var(--color-text-primary)]">{title}</h2>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close modal"
-                className="flex cursor-pointer rounded-md p-1 text-[var(--color-text-secondary)]"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-        )}
+      {title && (
+        <DialogTitle
+          component="h2"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            borderBottom: '1px solid var(--color-border-default)',
+            color: 'var(--color-text-primary)',
+            fontSize: '1rem',
+            fontWeight: 700,
+            wordBreak: 'keep-all',
+          }}
+        >
+          {title}
+          <IconButton onClick={onClose} aria-label="Close modal" sx={{ color: 'var(--color-text-secondary)' }}>
+            <X size={18} />
+          </IconButton>
+        </DialogTitle>
+      )}
 
-        <div className="flex-1 overflow-y-auto p-5">
-          {children}
-        </div>
+      <DialogContent sx={{ color: 'var(--color-text-primary)' }}>{children}</DialogContent>
 
-        {footer && (
-          <div className="flex shrink-0 justify-end gap-2.5 border-t border-[var(--color-border-default)] px-5 py-4">
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>
+      {footer && (
+        <DialogActions sx={{ borderTop: '1px solid var(--color-border-default)', gap: 1.25, px: 2.5, py: 2 }}>
+          {footer}
+        </DialogActions>
+      )}
+    </Dialog>
   )
 }

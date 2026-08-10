@@ -1,67 +1,88 @@
-import { type ButtonHTMLAttributes, forwardRef } from 'react'
-import { cn } from '../../lib/utils'
+// MUI Button 어댑터.
+//
+// 공개 API(variant / size / loading + 표준 button 속성)를 그대로 유지하고 내부만
+// MUI 로 바꾼다. 그래서 이 컴포넌트를 쓰는 124곳은 한 줄도 고치지 않는다 —
+// 기획안 §6.2 의 어댑터 전략이다.
+//
+// 색은 토큰만 쓴다. 이전 구현은 hex 를 직접 박아서(#a5b4fc, #f87171 …) 다크 기준
+// 값이 라이트 테마에서 1.91:1 까지 무너져 있었다. 이제 --color-* 를 참조하므로
+// 테마 전환에 따라 값이 함께 바뀐다.
+
+import { forwardRef, type ButtonHTMLAttributes } from 'react'
+import MuiButton from '@mui/material/Button'
+import { brandCtaSx } from '../../theme/mui-theme'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost'
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+// `color` 를 뺀다: HTML 의 color 속성(string)이 MUI 의 color 유니온과 충돌해
+// 오버로드 해석이 깨진다. 색은 variant 로 정하므로 실사용에 영향이 없다.
+interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'color'> {
   variant?: ButtonVariant
   size?: ButtonSize
   loading?: boolean
 }
 
-const variantStyles: Record<ButtonVariant, string> = {
-  primary:
-    'border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] font-bold text-[#1a1d29]',
-  secondary:
-    'border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.15)] font-semibold text-[#a5b4fc]',
-  outline:
-    'border border-[var(--color-border-default)] bg-transparent font-semibold text-[var(--color-text-primary)]',
-  danger:
-    'border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.15)] font-semibold text-[#f87171]',
-  ghost: 'border-none bg-transparent font-medium text-[var(--color-text-secondary)]',
-}
+const MUI_SIZE = { sm: 'small', md: 'medium', lg: 'large' } as const
 
-const sizeStyles: Record<ButtonSize, string> = {
-  sm: 'rounded-lg px-3.5 py-1.5 text-xs',
-  md: 'rounded-[10px] px-5 py-2.5 text-sm',
-  lg: 'rounded-[10px] px-7 py-3 text-[15px]',
-}
+/** DESIGN.md §Components. primary 는 브랜드 골드를 유지한다 — 기획안 D1 결정 대기. */
+const VARIANT_SX = {
+  primary: brandCtaSx,
+  secondary: {
+    backgroundColor: 'color-mix(in srgb, var(--color-primary) 14%, transparent)',
+    borderColor: 'color-mix(in srgb, var(--color-primary) 40%, transparent)',
+    color: 'var(--color-primary)',
+    '&:hover': {
+      backgroundColor: 'color-mix(in srgb, var(--color-primary) 22%, transparent)',
+      borderColor: 'var(--color-primary)',
+    },
+  },
+  outline: {
+    borderColor: 'var(--color-border-default)',
+    color: 'var(--color-text-primary)',
+    '&:hover': { borderColor: 'var(--color-border-hover)' },
+  },
+  danger: {
+    backgroundColor: 'color-mix(in srgb, var(--color-error) 14%, transparent)',
+    borderColor: 'color-mix(in srgb, var(--color-error) 40%, transparent)',
+    color: 'var(--color-error)',
+    '&:hover': {
+      backgroundColor: 'color-mix(in srgb, var(--color-error) 22%, transparent)',
+      borderColor: 'var(--color-error)',
+    },
+  },
+  ghost: {
+    color: 'var(--color-text-secondary)',
+    '&:hover': { color: 'var(--color-text-primary)' },
+  },
+} as const
+
+/** MUI 의 시각 변형. secondary/outline/danger 는 테두리를 쓰므로 outlined 다. */
+const MUI_VARIANT = {
+  primary: 'contained',
+  secondary: 'outlined',
+  outline: 'outlined',
+  danger: 'outlined',
+  ghost: 'text',
+} as const
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  (
-    {
-      variant = 'outline',
-      size = 'md',
-      loading = false,
-      disabled,
-      children,
-      className,
-      style: _style,
-      ...props
-    },
-    ref
-  ) => {
-    const isDisabled = disabled || loading
-
-    return (
-      <button
-        ref={ref}
-        disabled={isDisabled}
-        className={cn(
-          'inline-flex items-center justify-center gap-2 whitespace-nowrap transition-all duration-150 ease-in-out',
-          isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
-          variantStyles[variant],
-          sizeStyles[size],
-          className
-        )}
-        {...props}
-      >
-        {loading && <span className="inline-block size-[14px] animate-spin rounded-full border-2 border-current border-t-transparent [animation-duration:0.6s]" />}
-        {children}
-      </button>
-    )
-  }
+  ({ variant = 'outline', size = 'md', loading = false, disabled, children, className, style: _style, ...props }, ref) => (
+    <MuiButton
+      ref={ref}
+      className={className}
+      variant={MUI_VARIANT[variant]}
+      size={MUI_SIZE[size]}
+      loading={loading}
+      disabled={disabled}
+      // 이전 구현과 같은 로딩 UX: 스피너를 보이면서 라벨을 유지한다.
+      loadingPosition="start"
+      sx={VARIANT_SX[variant]}
+      {...props}
+    >
+      {children}
+    </MuiButton>
+  ),
 )
 
 Button.displayName = 'Button'
