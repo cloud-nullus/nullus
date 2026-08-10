@@ -1,9 +1,66 @@
 # Nullus Platform PostgreSQL 데이터베이스 스키마 설계
 
 **작성일**: 2026-03-14
-**버전**: 1.0
+**최종 갱신**: 2026-08-11 (현행 스키마 대조)
+**버전**: 1.1
 **기반 문서**: nullus_PRD_1.3.md, Nullus_시스템_아키텍처.md, Nullus_기능목록.md, Nullus_기능분해도.csv, CLAUDE.md
 **대상 독자**: 백엔드 엔지니어, DBA, 아키텍트
+
+> **이 문서의 6장 이하는 2026-03-14 설계안이며 현재 스키마와 상당히 다르다.**
+> 마이그레이션은 `000061` 까지 적용됐고, 설계안의 13개 테이블은 만들어지지 않았으며
+> 9개 테이블이 설계안 없이 추가됐다. 실제 상태는 아래 0장을 기준으로 본다.
+
+---
+
+## 0. 현행 스키마 인벤토리 (2026-08-11)
+
+`db/migrations/` 를 `000061` 까지 적용한 데이터베이스에서 추출했다.
+
+| 테이블 | Context | 컬럼 수 | 설계 문서 반영 |
+|--------|---------|---------|----------------|
+| `alert_rules` | Observability | 9 | **미반영** |
+| `alerts` | Observability | 6 | **미반영** |
+| `audit_logs` | 공통 | 8 | ○ |
+| `clusters` | Cluster | 12 | ○ |
+| `compatibility_matrices` | Stack | 9 | ○ |
+| `golden_path_templates` | Stack | 9 | ○ |
+| `known_issues` | Observability | 8 | **미반영** |
+| `notification_configs` | Observability | 7 | **미반영** |
+| `notification_history` | Observability | 8 | **미반영** |
+| `org_members` | Organization | 5 | ○ |
+| `org_resource_profiles` | Organization | 8 | **미반영** |
+| `organizations` | Organization | 9 | ○ |
+| `pipeline_deployments` | CI/CD | 7 | ○ |
+| `pipeline_templates` | CI/CD | 10 | ○ |
+| `pipelines` | CI/CD | 15 | **미반영** |
+| `stack_config_versions` | Stack | 7 | ○ |
+| `stack_helm_step_configs` | Stack | 12 | ○ |
+| `stack_resource_defaults` | Stack | 10 | **미반영** |
+| `stacks` | Stack | 15 | **미반영** |
+| `token_rotation_events` | Secrets | 8 | ○ |
+| `token_sources` | Secrets | 15 | ○ |
+| `users` | Organization | 8 | ○ |
+
+> 실제 테이블 **22개**(`schema_migrations` 제외).
+
+### 0.1 설계안에만 있고 만들어지지 않은 테이블
+
+`alert_configs`, `alert_history`, `deployment_logs`, `deployment_steps`, `deployments`,
+`invite_links`, `menu_permissions`, `org_cluster_access`, `pipeline_configs`,
+`pipeline_template_versions`, `rbac_policies`, `sessions`, `stack_configs` (13개)
+
+일부는 이름이 바뀌어 구현됐다 — `deployments` → `pipeline_deployments`,
+`stack_configs` → `stacks`(+`stack_config_versions`), `alert_configs`/`alert_history`
+→ `alert_rules`/`alerts`/`notification_*`. `sessions`·`rbac_policies`·`menu_permissions`
+는 인증이 OIDC 로 가면서 DB 테이블 없이 처리된다. 6장 이하를 읽을 때 이 대응을 감안해야 한다.
+
+### 0.2 마이그레이션 이력에서 참고할 것
+
+- `000060_github_stack_uses_ghcr` — `github-argocd-v1` 템플릿의 컨테이너 레지스트리를
+  Harbor → GHCR 로 교체하고 호환성 행렬의 arch 제약을 함께 조정한다.
+- `000061_prune_external_scm_token_sources` — `token_type='reissue'` 인 외부 SaaS
+  (github/github-actions/ghcr) 토큰 소스를 소프트 삭제한다. 사용자 PAT(`token_type='pat'`)
+  는 대상이 아니다.
 
 ---
 

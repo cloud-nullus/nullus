@@ -167,6 +167,36 @@ NFR 목표는 유지하되, 현재 구현이 제공하는 운영 근거를 함�
 | API 문서 | `api/openapi.yaml` 정적 산출물 | 현재 swag 자동 생성 연결 미확인 |
 | 테스트 | `testify`, Vitest, Testing Library, Playwright | FE/BE 혼합 |
 
+#### 4.1 모듈 구성 (2026-08-11)
+
+모듈마다 Clean Architecture 4계층(`domain` / `usecase` / `port` / `adapter`)을 유지한다.
+모듈 간 호출은 포트 인터페이스를 통해서만 한다.
+
+| 모듈 | 바운디드 컨텍스트 | 구현/테스트 파일 | 특이 계층 |
+|------|------------------|------------------|-----------|
+| `internal/stack` | Stack, Template, Compatibility | 90 / 70 | — |
+| `internal/cicd` | Pipeline, Deployment | 50 / 33 | — |
+| `internal/admin` | Organization, User, Cluster, TokenSource | 42 / 22 | `rotation`, `scheduler` |
+| `internal/observability` | Dashboard, Alert | 23 / 12 | — |
+| `internal/shared` | 공용 | 21 / 8 | `audit`, `config`, `middleware`, `notification`, `secrets` |
+| `internal/auth` | Session, Token | 13 / 11 | `adapter/keycloak`, `adapter/authentik` |
+
+#### 4.2 외부 연동 매트릭스 (2026-08-11)
+
+| 영역 | 지원 | 비고 |
+|------|------|------|
+| 소스 저장소 | GitLab CE(스택 내 설치), GitHub(외부 SaaS) | GitHub 은 Organization 을 API 로 만들 수 없어 존재 확인만 한다 |
+| CI | GitLab CI, GitHub Actions | GitHub 은 호스티드 러너를 쓰므로 클러스터에 설치할 러너가 없다 |
+| 컨테이너 레지스트리 | Harbor, Nexus, GitLab Container Registry, GHCR | GHCR 은 자격증명 등록이 없다 — 워크플로의 내장 토큰으로 push |
+| CD | Argo CD | Application 은 스택 네임스페이스에 생성 |
+| 시크릿 | OpenBao + External Secrets Operator | **스택마다 배포**된다. API 는 Kubernetes API server proxy 로 접근 |
+| 인증 | Keycloak, Authentik (OIDC) | 차트 기본값은 `oidc` |
+| 모니터링 | Prometheus, Grafana | |
+
+`internal/cicd/port/SCMPlatform` 이 GitLab/GitHub 분기의 경계다. 저장소 생성·파이프라인
+정의 형식·토큰 획득 경로가 플랫폼마다 달라서, 어댑터를 고른 뒤에도 스캐폴딩 렌더러까지
+이 값이 따라간다.
+
 ---
 
 ### 5. 컴포넌트 상세

@@ -1,9 +1,13 @@
 # Nullus Platform REST API 설계
 
 **작성일**: 2026-03-14
-**버전**: 1.0
+**최종 갱신**: 2026-08-11 (코드 기준 현행화)
+**버전**: 1.1
 **기반 문서**: nullus_PRD_1.3.md, Nullus_기능목록.md, Nullus_시스템_아키텍처.md
 **대상 독자**: Backend 엔지니어, Frontend 엔지니어, API 소비자
+
+> 6.0 의 엔드포인트 인벤토리는 코드에서 추출한 것이라 구현과 일치한다. 6.1 이하의
+> 상세 스펙은 초안 시점(2026-03-14)에 작성된 것으로 일부는 아직 구현과 다를 수 있다.
 
 ---
 
@@ -237,6 +241,19 @@ GET /api/v1/cicd/deployments?sort=-deployed_at
 
 ## 3. 인증 체계
 
+> **현행(2026-08-11)**: 차트 기본값은 `oidc` 다(`deploy/helm/nullus/values.yaml` 의
+> `config.auth.mode`, `web.auth.mode`). 아래 3.1 의 세션 방식은 클라이언트가 보낸
+> `X-User-ID`·`X-User-Role` 헤더를 그대로 믿는 알파 시절 방식이라 **아무나
+> `X-User-Role: admin` 을 붙이면 관리자가 된다**. 로컬 개발 외에는 쓰지 않는다.
+>
+> `server.mode=development` 에서는 인증 미들웨어가 아예 붙지 않는다. 즉 로컬은
+> 무인증이며, 이는 설계이지 인증 우회가 아니다.
+>
+> 브라우저 WebSocket 은 `Authorization` 헤더를 붙일 수 없어 서브프로토콜로 토큰을
+> 받아 헤더로 옮긴 뒤 평소 인증을 태운다(`middleware.WebSocketBearerSubprotocol`).
+> 이 경로는 `auth.mode=oidc` 일 때만 보호된다 — session 모드에서는 자격증명을 실을
+> 방법이 없어 켜면 기능만 죽는다.
+
 ### 3.1 Alpha/Beta: 세션 기반 인증
 
 Alpha/Beta 단계에서는 빠른 구현을 위해 세션 기반 인증을 사용합니다.
@@ -408,13 +425,27 @@ Link: </api/v2/clusters>; rel="successor-version"
 
 Rate Limiting은 **토큰 버킷(Token Bucket)** 알고리즘을 사용합니다.
 
-| 대상 | 제한 | 윈도우 | 식별자 |
-|------|------|--------|--------|
-| 인증된 사용자 | 300 요청 | 1분 | 세션 ID 또는 사용자 ID |
-| 미인증 요청 | 30 요청 | 1분 | IP 주소 |
-| 로그인 시도 | 10 요청 | 1분 | IP 주소 |
-| WebSocket 연결 | 5 연결 | 동시 | 사용자 ID |
-| 설치/배포 요청 | 10 요청 | 1시간 | Organization ID |
+구현은 **2단 구성**이다(`internal/shared/middleware/rate_limiter.go`). 전역 지점에서는
+호출자가 누구인지 알 수 없으므로 IP 상한만 걸고, 사용자 단위 한도는 인증 미들웨어
+뒤에 붙인다. 사용자 리미터는 `RequireRole` **앞**에 두어 403 으로 튕기는 요청도
+사용량에 잡힌다.
+
+| 계층 | 대상 | 제한 | 윈도우 | 식별자 | 적용 위치 |
+|------|------|------|--------|--------|-----------|
+| 1단 | 모든 요청 | 600 요청 | 1분 | IP 주소 | `e.Use` (전역, 인증 앞) |
+| 2단 | 인증된 사용자 | 300 요청 | 1분 | 사용자 ID | 인증 그룹 (admin/stacks/cicd/observability) |
+| 2단 | 미인증 요청 | 30 요청 | 1분 | IP 주소 | 위와 같음 |
+| — | 로그인 시도 | 10 요청 | 1분 | IP 주소 | 로그인 라우트 |
+| — | 설치/배포 요청 | 10 요청 | 1시간 | Organization ID | 배포 라우트 |
+
+1단 상한(600)이 사용자 한도(300)보다 넉넉한 이유는 NAT·인그레스 뒤에 여러 사용자가
+있어도 정상 트래픽이 막히지 않아야 하기 때문이다.
+
+`server.mode=development` 에서는 인증 미들웨어를 켜지 않아 모든 요청이 미인증으로
+분류된다. 여기에 익명 한도(30/분)를 그대로 씌우면 5초마다 폴링하는 화면 하나만
+열어도 429 가 나므로, 이 모드에서는 미인증 한도를 인증 한도와 같게 둔다.
+
+> WebSocket 동시 연결 수 제한은 설계 초안에 있었으나 구현되지 않았다.
 
 ### 5.2 응답 헤더
 
@@ -446,6 +477,155 @@ Retry-After: 32
 ---
 
 ## 6. 모듈별 엔드포인트
+
+### 6.0 엔드포인트 인벤토리 (코드 기준)
+
+아래 목록은 `cmd/api/main.go` 의 라우트 그룹과 각 핸들러의 `RegisterRoutes` 에서
+기계적으로 추출한 것으로, **실제로 서비스되는 전체 경로**다. 6.1 이하의 상세 스펙은
+요청/응답 본문까지 다루지만 일부 엔드포인트만 덮고 있으므로, 존재 여부와 접근 권한은
+이 표를 기준으로 본다.
+
+접근 권한은 그룹에 걸린 `RequireRole` 이다. `server.mode=development` 에서는 인증
+미들웨어가 아예 붙지 않으므로(‑ `main.go` 참고) 이 열은 운영 모드 기준이다.
+
+**Admin — 조직·클러스터·사용자·토큰·감사** (43개)
+
+| Method | Path | 접근 권한 |
+|--------|------|-----------|
+| `GET` | `/api/v1/admin/audit-logs` | admin |
+| `GET` | `/api/v1/admin/clusters` | admin |
+| `POST` | `/api/v1/admin/clusters` | admin |
+| `DELETE` | `/api/v1/admin/clusters/:id` | admin |
+| `GET` | `/api/v1/admin/clusters/:id` | admin |
+| `PATCH` | `/api/v1/admin/clusters/:id` | admin |
+| `GET` | `/api/v1/admin/clusters/:id/monitoring-summary` | admin |
+| `GET` | `/api/v1/admin/clusters/:id/namespaces` | admin |
+| `GET` | `/api/v1/admin/clusters/:id/pods` | admin |
+| `POST` | `/api/v1/admin/clusters/:id/refresh-discovery` | admin |
+| `GET` | `/api/v1/admin/clusters/:id/storage-classes` | admin |
+| `POST` | `/api/v1/admin/clusters/:id/verify` | admin |
+| `POST` | `/api/v1/admin/clusters/self-register` | admin |
+| `POST` | `/api/v1/admin/clusters/verify` | admin |
+| `GET` | `/api/v1/admin/known-issues` | admin |
+| `GET` | `/api/v1/admin/notifications/configs` | admin |
+| `POST` | `/api/v1/admin/notifications/configs` | admin |
+| `DELETE` | `/api/v1/admin/notifications/configs/:id` | admin |
+| `GET` | `/api/v1/admin/notifications/history` | admin |
+| `GET` | `/api/v1/admin/organization` | admin |
+| `PATCH` | `/api/v1/admin/organization` | admin |
+| `GET` | `/api/v1/admin/organization/resource-profiles` | admin |
+| `POST` | `/api/v1/admin/organization/resource-profiles` | admin |
+| `DELETE` | `/api/v1/admin/organization/resource-profiles/:id` | admin |
+| `PATCH` | `/api/v1/admin/organization/resource-profiles/:id` | admin |
+| `GET` | `/api/v1/admin/organizations/:orgId/invites` | admin |
+| `POST` | `/api/v1/admin/organizations/:orgId/invites` | admin |
+| `DELETE` | `/api/v1/admin/organizations/:orgId/invites/:token` | admin |
+| `GET` | `/api/v1/admin/organizations/:orgId/members` | admin |
+| `POST` | `/api/v1/admin/organizations/:orgId/members` | admin |
+| `DELETE` | `/api/v1/admin/organizations/:orgId/members/:memberId` | admin |
+| `PATCH` | `/api/v1/admin/organizations/:orgId/members/:memberId` | admin |
+| `POST` | `/api/v1/admin/organizations/:orgId/members/:memberId/deactivate` | admin |
+| `POST` | `/api/v1/admin/orgs` | admin |
+| `GET` | `/api/v1/admin/token-sources` | admin |
+| `POST` | `/api/v1/admin/token-sources/:id/approve` | admin |
+| `GET` | `/api/v1/admin/token-sources/:id/events` | admin |
+| `POST` | `/api/v1/admin/token-sources/:id/pause` | admin |
+| `POST` | `/api/v1/admin/token-sources/:id/re-auth` | admin |
+| `POST` | `/api/v1/admin/token-sources/:id/resume` | admin |
+| `POST` | `/api/v1/admin/token-sources/:id/reveal` | admin |
+| `POST` | `/api/v1/admin/token-sources/:id/rotate` | admin |
+| `GET` | `/api/v1/admin/users/search` | admin |
+
+**Stack — 설치·배포·템플릿·호환성·모니터링** (36개)
+
+| Method | Path | 접근 권한 |
+|--------|------|-----------|
+| `GET` | `/api/v1/stacks` | admin·devops |
+| `POST` | `/api/v1/stacks` | admin·devops |
+| `POST` | `/api/v1/stacks/:id/continue` | admin·devops |
+| `POST` | `/api/v1/stacks/:id/deploy` | admin·devops |
+| `GET` | `/api/v1/stacks/:id/deploy/logs` | admin·devops |
+| `GET` | `/api/v1/stacks/:id/export` | 그룹 없음 |
+| `GET` | `/api/v1/stacks/:id/history/diff` | admin·devops |
+| `POST` | `/api/v1/stacks/:id/retry` | admin·devops |
+| `GET` | `/api/v1/stacks/:id/status` | admin·devops |
+| `DELETE` | `/api/v1/stacks/:stackId` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId` | admin·devops |
+| `POST` | `/api/v1/stacks/:stackId/config` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/connection-info` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/diff` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/history` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/integrations` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/monitoring` | admin·devops |
+| `POST` | `/api/v1/stacks/:stackId/rollback` | admin·devops |
+| `PATCH` | `/api/v1/stacks/:stackId/tools` | admin·devops |
+| `POST` | `/api/v1/stacks/:stackId/validate` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/workloads` | admin·devops |
+| `GET` | `/api/v1/stacks/compatibility` | admin·devops |
+| `POST` | `/api/v1/stacks/draft` | admin·devops |
+| `POST` | `/api/v1/stacks/estimate` | admin·devops |
+| `POST` | `/api/v1/stacks/import` | 그룹 없음 |
+| `POST` | `/api/v1/stacks/import/preview` | 그룹 없음 |
+| `GET` | `/api/v1/stacks/resource-defaults` | admin·devops |
+| `POST` | `/api/v1/stacks/resource-defaults` | admin·devops |
+| `POST` | `/api/v1/stacks/storage/test` | admin·devops |
+| `GET` | `/api/v1/stacks/templates` | admin·devops |
+| `POST` | `/api/v1/stacks/templates` | admin·devops |
+| `DELETE` | `/api/v1/stacks/templates/:id` | admin·devops |
+| `GET` | `/api/v1/stacks/templates/:id` | admin·devops |
+| `PUT` | `/api/v1/stacks/templates/:id` | admin·devops |
+| `GET` | `/api/v1/stacks/ws/deployments/:id/logs` | admin·devops |
+| `GET` | `/api/v1/stacks/ws/deployments/:id/pods` | admin·devops |
+
+**CI/CD — 파이프라인·골든패스·배포** (19개)
+
+| Method | Path | 접근 권한 |
+|--------|------|-----------|
+| `GET` | `/api/v1/cicd/app-templates` | admin·devops·developer |
+| `POST` | `/api/v1/cicd/deploy-app` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/deployments` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/deployments/:id` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/golden-paths` | admin·devops·developer |
+| `POST` | `/api/v1/cicd/golden-paths` | admin·devops·developer |
+| `DELETE` | `/api/v1/cicd/golden-paths/:id` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/golden-paths/:id` | admin·devops·developer |
+| `PUT` | `/api/v1/cicd/golden-paths/:id` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/pipelines` | admin·devops·developer |
+| `POST` | `/api/v1/cicd/pipelines` | admin·devops·developer |
+| `DELETE` | `/api/v1/cicd/pipelines/:id` | admin·devops·developer |
+| `POST` | `/api/v1/cicd/pipelines/:id/deploy` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/pipelines/:id/resources` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/templates` | admin·devops·developer |
+| `POST` | `/api/v1/cicd/templates` | admin·devops·developer |
+| `DELETE` | `/api/v1/cicd/templates/:id` | admin·devops·developer |
+| `GET` | `/api/v1/cicd/templates/:id` | admin·devops·developer |
+| `PUT` | `/api/v1/cicd/templates/:id` | admin·devops·developer |
+
+**Observability — 대시보드·알림** (8개)
+
+| Method | Path | 접근 권한 |
+|--------|------|-----------|
+| `GET` | `/api/v1/observability/alert-history` | 인증만 |
+| `GET` | `/api/v1/observability/alert-rules` | 인증만 |
+| `POST` | `/api/v1/observability/alert-rules` | 인증만 |
+| `DELETE` | `/api/v1/observability/alert-rules/:id` | 인증만 |
+| `GET` | `/api/v1/observability/alert-rules/:id` | 인증만 |
+| `PATCH` | `/api/v1/observability/alert-rules/:id` | 인증만 |
+| `GET` | `/api/v1/observability/dashboard` | 인증만 |
+| `GET` | `/api/v1/observability/deployed-apps` | 인증만 |
+
+**공통 — 헬스체크·WebSocket** (2개)
+
+| Method | Path | 접근 권한 |
+|--------|------|-----------|
+| `GET` | `/debug/pprof/*` | WS 서브프로토콜 인증 |
+| `GET` | `/health` | WS 서브프로토콜 인증 |
+
+> 합계 **108개**.
+
+**등록되지 않은 핸들러**: `PipelineHandler.RegisterStackRoutes`(`GET /api/v1/stacks/:stackId/pipelines`)
+는 정의되어 있으나 `main.go` 에서 호출되지 않아 서비스되지 않는다. 스택별 파이프라인
+조회는 `GET /api/v1/cicd/pipelines?stack_id=` 로 대체돼 있고 프론트도 그쪽을 쓴다.
 
 ---
 
