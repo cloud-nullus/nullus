@@ -79,4 +79,9 @@ type SCMProvisioner interface {
 	EnsureProject(ctx context.Context, spec ProjectSpec) (*SCMProject, error)
 	// CommitFiles 는 파일이 이미 있으면 갱신한다(upsert).
 	CommitFiles(ctx context.Context, projectID string, spec CommitSpec) error
+	// DeleteProject 는 저장소를 지운다. 이미 없으면 성공으로 본다.
+	//
+	// 되돌릴 수 없다. 사용자가 명시적으로 요청했을 때만 호출해야 하며,
+	// 파이프라인 삭제의 기본 동작이어서는 안 된다 — 소스 코드는 사용자 자산이다.
+	DeleteProject(ctx context.Context, projectID string) error
 }

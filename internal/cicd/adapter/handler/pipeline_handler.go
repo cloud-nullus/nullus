@@ -39,6 +39,16 @@ type PipelineHandler struct {
 	kubeconfig     port.KubeconfigProvider
 	stepTracker    *kube.StepTracker
 	pool           *pgxpool.Pool
+
+	// deletePipeline 은 부수 리소스까지 지우는 경로다. 선택적으로 배선되며,
+	// 없으면 삭제는 종전대로 레코드만 지운다.
+	deletePipeline *usecase.DeletePipeline
+}
+
+// WithDeletePipeline 은 부수 리소스 삭제 경로를 배선한다.
+func (h *PipelineHandler) WithDeletePipeline(uc *usecase.DeletePipeline) *PipelineHandler {
+	h.deletePipeline = uc
+	return h
 }
 
 // NewPipelineHandler constructs a PipelineHandler.
@@ -253,21 +263,65 @@ func (h *PipelineHandler) DeployPipeline(c echo.Context) error {
 	return c.JSON(http.StatusAccepted, map[string]any{"deploymentId": depID})
 }
 
+// DeletePipeline handles DELETE /api/v1/cicd/pipelines/:id.
+//
+// 부수 리소스 삭제는 쿼리 파라미터로 각각 켠다. 기본값은 전부 끔이다 — 종전
+// 동작(레코드만 삭제)을 유지하고, 되돌릴 수 없는 일은 명시적으로 요청받는다.
+//
+//	?cluster_resources=true  Argo CD Application 과 배포된 워크로드
+//	?repository=true         소스 저장소
+//	?images=true             레지스트리의 이미지 저장소
 func (h *PipelineHandler) DeletePipeline(c echo.Context) error {
 	id := c.Param("id")
 	if id == "" {
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
 	}
 
-	if err := h.pipelineRepo.Delete(c.Request().Context(), id); err != nil {
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "not found") || strings.Contains(msg, "no rows") {
-			return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
-		}
-		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_DELETE_FAILED", err.Error())
+	input := usecase.DeletePipelineInput{
+		PipelineID:             id,
+		DeleteClusterResources: queryFlag(c, "cluster_resources"),
+		DeleteRepository:       queryFlag(c, "repository"),
+		DeleteImages:           queryFlag(c, "images"),
 	}
 
-	return c.NoContent(http.StatusNoContent)
+	// 아무것도 고르지 않았으면 종전 경로 그대로 레코드만 지운다. 유스케이스가
+	// 배선되지 않은 환경에서도 기본 삭제는 계속 동작해야 한다.
+	if h.deletePipeline == nil ||
+		(!input.DeleteClusterResources && !input.DeleteRepository && !input.DeleteImages) {
+		if err := h.pipelineRepo.Delete(c.Request().Context(), id); err != nil {
+			return deletePipelineError(c, err)
+		}
+		return c.NoContent(http.StatusNoContent)
+	}
+
+	out, err := h.deletePipeline.Execute(c.Request().Context(), input)
+	if err != nil {
+		return deletePipelineError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"cluster_resources_deleted": out.ClusterResourcesDeleted,
+		"repository_deleted":        out.RepositoryDeleted,
+		"images_deleted":            out.ImagesDeleted,
+		"warnings":                  out.Warnings,
+	})
+}
+
+// queryFlag 는 "true" 로 명시된 경우에만 켠다.
+func queryFlag(c echo.Context, name string) bool {
+	return strings.EqualFold(strings.TrimSpace(c.QueryParam(name)), "true")
+}
+
+func deletePipelineError(c echo.Context, err error) error {
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "not found") || strings.Contains(msg, "no rows") {
+		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	}
+	if errors.Is(err, port.ErrImageDeletionUnsupported) {
+		// 지우지 못했음을 분명히 알린다. 성공으로 넘기면 사용자는 이미지가
+		// 사라진 줄 알고 레지스트리에 남은 것을 영영 모른다.
+		return errorResponse(c, http.StatusBadRequest, "IMAGE_DELETION_UNSUPPORTED", err.Error())
+	}
+	return errorResponse(c, http.StatusInternalServerError, "PIPELINE_DELETE_FAILED", err.Error())
 }
 
 // GetDeployment handles GET /api/v1/deployments/:id.

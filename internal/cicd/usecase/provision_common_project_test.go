@@ -22,6 +22,8 @@ type fakeSCM struct {
 	nextProjectID string
 	// projectExists 는 EnsureProject 가 "이미 있던 저장소" 를 돌려주게 한다.
 	projectExists bool
+	deleted       []string
+	deleteErr     error
 }
 
 func newFakeSCM() *fakeSCM {
@@ -64,6 +66,13 @@ func (f *fakeSCM) CommitFiles(_ context.Context, projectID string, spec port.Com
 	return nil
 }
 
+func (f *fakeSCM) DeleteProject(_ context.Context, projectID string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleted = append(f.deleted, projectID)
+	return nil
+}
 
 func TestProvisionCommonProject_CreatesGroupThenProject(t *testing.T) {
 	scm := newFakeSCM()

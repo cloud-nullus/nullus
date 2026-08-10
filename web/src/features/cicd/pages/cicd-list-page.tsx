@@ -48,6 +48,10 @@ import {
   usePipelines,
   useTemplateById,
 } from "../api/cicd-api";
+import {
+  DeletePipelineDialog,
+  type DeletePipelineSelection,
+} from "../components/delete-pipeline-dialog";
 import type { Pipeline } from "../api/cicd-api";
 import { useScopedClusters as useClusters } from "../../admin/api/admin-api";
 import { useStacks } from "../../stack/api/stack-api";
@@ -1746,6 +1750,8 @@ export function CicdListPage() {
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(
     null,
   );
+  const [pipelinePendingDelete, setPipelinePendingDelete] =
+    useState<Pipeline | null>(null);
   const [deletingPipelineId, setDeletingPipelineId] = useState<string | null>(
     null,
   );
@@ -1888,15 +1894,23 @@ export function CicdListPage() {
     },
   ];
 
-  const handleDeletePipeline = async (pipeline: Pipeline) => {
-    const confirmed = window.confirm(
-      `Delete pipeline "${pipeline.name}"?\nThis also removes deployment history.`,
-    );
-    if (!confirmed) return;
+  // 삭제는 확인 대화상자를 거친다. 저장소·이미지 삭제는 되돌릴 수 없고
+  // 클러스터 리소스를 지우면 돌던 앱이 멈추므로, 무엇을 지울지 사용자가 고른다.
+  const handleDeletePipeline = (pipeline: Pipeline) => {
+    setPipelinePendingDelete(pipeline);
+  };
+
+  const confirmDeletePipeline = async (selection: DeletePipelineSelection) => {
+    const pipeline = pipelinePendingDelete;
+    if (!pipeline) return;
 
     try {
       setDeletingPipelineId(pipeline.id);
-      await deletePipelineMutation.mutateAsync(pipeline.id);
+      await deletePipelineMutation.mutateAsync({
+        id: pipeline.id,
+        ...selection,
+      });
+      setPipelinePendingDelete(null);
       if (selectedPipelineId === pipeline.id) {
         setExpandedPipelineId(null);
       }
@@ -2106,6 +2120,34 @@ export function CicdListPage() {
           isExecuting={deployingPipelineId === executeModalPipeline.id}
         />
       )}
+
+      <DeletePipelineDialog
+        open={pipelinePendingDelete !== null}
+        pipelineName={pipelinePendingDelete?.name ?? ""}
+        repositoryPath={repositoryPathOf(pipelinePendingDelete)}
+        imageRepository={
+          pipelinePendingDelete?.envVars?.IMAGE_REGISTRY_URL || undefined
+        }
+        busy={deletingPipelineId === pipelinePendingDelete?.id}
+        onCancel={() => setPipelinePendingDelete(null)}
+        onConfirm={(selection) => void confirmDeletePipeline(selection)}
+      />
     </div>
   );
+}
+
+/**
+ * git_repo_url 에서 owner/repo 를 뽑는다.
+ *
+ * 대화상자가 확인용으로 보여 주고 사용자가 그대로 입력해야 하는 값이므로,
+ * 스킴과 .git 접미사를 걷어 백엔드가 쓰는 형태와 맞춘다.
+ */
+function repositoryPathOf(pipeline: Pipeline | null): string | undefined {
+  const url = pipeline?.gitRepoUrl?.trim();
+  if (!url) return undefined;
+  const withoutScheme = url.replace(/^[a-z]+:\/\//i, "").replace(/\.git$/i, "");
+  const segments = withoutScheme.split("/").filter(Boolean);
+  // host/owner/repo 이하로 잘리면 확인 문자열을 만들 수 없다.
+  if (segments.length < 3) return undefined;
+  return segments.slice(-2).join("/");
 }

@@ -193,7 +193,9 @@ func (f *BundleFactory) gitHubBundle(
 		Provisioner: client,
 		Pipeline:    client,
 		Registry:    resolver,
-		Platform:    port.SCMPlatformGitHub,
+		// GHCR 패키지는 같은 PAT 로 지운다(delete:packages 스코프 필요).
+		Images:   client,
+		Platform: port.SCMPlatformGitHub,
 		// 리포는 GitHub organization 아래에 만들어진다. 스택의 nullus 그룹
 		// 경로를 쓰면 존재하지 않는 네임스페이스를 가리킨다.
 		GroupPath:       conn.Owner,

@@ -628,6 +628,19 @@
       "failed": "Failed",
       "pending": "Pending",
       "cancelled": "Cancelled"
+    },
+    "deleteDialog": {
+      "title": "Delete pipeline",
+      "confirm": "Delete",
+      "intro": "Deletes pipeline \"{{name}}\" and its deployment history.",
+      "alsoDelete": "Also delete",
+      "clusterResources": "Cluster resources",
+      "clusterResourcesHint": "Deletes the Argo CD Application and deployed workloads. If unchecked, the app keeps running.",
+      "images": "Container images",
+      "repository": "Source repository",
+      "irreversible": "This cannot be undone",
+      "typeToConfirm": "Type the repository name to confirm: {{path}}",
+      "typeToConfirmLabel": "Confirm repository name"
     }
   },
   "cicdListPage": {

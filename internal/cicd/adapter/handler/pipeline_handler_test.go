@@ -16,6 +16,7 @@ import (
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
+	"github.com/cloud-nullus/draft/internal/cicd/port"
 	"github.com/cloud-nullus/draft/internal/cicd/usecase"
 )
 
@@ -484,3 +485,97 @@ func TestPipelineHandler_Create_TemplateNotFound(t *testing.T) {
 	assert.Equal(t, 0, pipelineRepo.created)
 }
 
+// 부수 리소스 삭제 경로가 배선되지 않은 환경에서도 기본 삭제는 동작해야 한다.
+// 플래그를 켰는데 조용히 레코드만 지우면 사용자는 리소스가 정리된 줄 안다 —
+// 그래서 배선 여부와 무관하게 플래그 없는 요청은 종전 그대로 204 다.
+func TestPipelineHandler_Delete_NoFlagsKeepsLegacyBehavior(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{ID: "pip-1", Name: "orders", OrgID: "org-1"})
+	e := newPipelineEcho(t, pipelineRepo, newMockPipelineTemplateRepository(), &mockDeploymentRepository{})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/pipelines/pip-1?cluster_resources=false", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Len(t, pipelineRepo.deleted, 1)
+}
+
+// repository 플래그는 "true" 로 명시된 경우에만 켜져야 한다.
+//
+// 존재 여부만 보는 구현이면 ?repository=false 가 저장소를 지워 버린다. 여기서는
+// 배선된 유스케이스가 실제로 호출됐는지(=저장소 삭제 시도가 있었는지)로 판별한다.
+func TestPipelineHandler_Delete_RepositoryFlagOnlyTrueEnables(t *testing.T) {
+	for _, tc := range []struct {
+		query       string
+		wantDeleted bool
+	}{
+		{"repository=true", true},
+		{"repository=TRUE", true},
+		{"repository=false", false},
+		{"repository=1", false},
+		{"", false},
+	} {
+		pipelineRepo := newMockPipelineRepository(&domain.Pipeline{
+			ID: "pip-1", Name: "orders", OrgID: "org-1", StackID: "stk-1",
+		})
+		scm := &recordingSCM{}
+		e := newPipelineEchoWithDelete(t, pipelineRepo, scm)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/pipelines/pip-1?"+tc.query, nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, tc.wantDeleted, len(scm.deleted) > 0, "query=%q", tc.query)
+		require.Len(t, pipelineRepo.deleted, 1, "query=%q 에서 레코드는 항상 지워져야 한다", tc.query)
+	}
+}
+
+// recordingSCM 은 저장소 삭제 호출만 기록하는 SCMProvisioner 대역이다.
+type recordingSCM struct{ deleted []string }
+
+func (r *recordingSCM) EnsureGroup(context.Context, port.GroupSpec) (*port.SCMGroup, error) {
+	return &port.SCMGroup{}, nil
+}
+
+func (r *recordingSCM) EnsureProject(context.Context, port.ProjectSpec) (*port.SCMProject, error) {
+	return &port.SCMProject{}, nil
+}
+
+func (r *recordingSCM) CommitFiles(context.Context, string, port.CommitSpec) error { return nil }
+
+func (r *recordingSCM) DeleteProject(_ context.Context, projectID string) error {
+	r.deleted = append(r.deleted, projectID)
+	return nil
+}
+
+type stubBundleFactory struct{ bundle *port.SCMBundle }
+
+func (s *stubBundleFactory) For(context.Context, string) (*port.SCMBundle, error) {
+	return s.bundle, nil
+}
+
+type noopArgoAppDeleter struct{}
+
+func (noopArgoAppDeleter) Delete(context.Context, []byte, string, string) error { return nil }
+
+// newPipelineEchoWithDelete 는 부수 리소스 삭제 경로까지 배선한 핸들러를 만든다.
+func newPipelineEchoWithDelete(t *testing.T, pipelineRepo *mockPipelineRepository, scm *recordingSCM) *echo.Echo {
+	t.Helper()
+
+	e := echo.New()
+	createPipelineUC := usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository())
+	listPipelinesUC := usecase.NewListPipelines(pipelineRepo)
+	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, &mockDeploymentRepository{}, &noopKubeconfigProvider{}, &noopManifestApplier{})
+
+	factory := &stubBundleFactory{bundle: &port.SCMBundle{Provisioner: scm, GroupPath: "acme"}}
+	deleteUC := usecase.NewDeletePipeline(pipelineRepo, factory, noopArgoAppDeleter{}, &noopKubeconfigProvider{})
+
+	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC,
+		pipelineRepo, &mockDeploymentRepository{}, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil).
+		WithDeletePipeline(deleteUC)
+
+	v1 := e.Group("/api/v1")
+	h.RegisterRoutes(v1)
+	return e
+}

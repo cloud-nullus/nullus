@@ -233,6 +233,42 @@ func commitBody(branch string, spec port.CommitSpec, existing map[string]struct{
 // --- HTTP 하부 ---
 
 // get 은 200 이면 true, 404 면 false 를 돌려준다. 그 외는 오류다.
+// DeleteProject 는 프로젝트를 지운다.
+//
+// 이미 없으면 성공으로 본다 — 삭제의 목표는 "없는 상태" 이고, 404 를 오류로
+// 올리면 앞선 시도가 절반쯤 성공한 뒤 재시도할 때 영영 끝나지 않는다.
+//
+// GitLab 은 기본적으로 지연 삭제(휴지통)로 동작할 수 있다. 그룹 설정에 따라
+// 즉시 지워지지 않고 보존 기간이 지나야 사라지므로, 호출이 성공해도 프로젝트가
+// 잠시 조회될 수 있다.
+func (c *Client) DeleteProject(ctx context.Context, projectID string) error {
+	id := strings.TrimSpace(projectID)
+	if id == "" {
+		return fmt.Errorf("project id is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.baseURL+"/api/v4/projects/"+url.PathEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	c.applyAuth(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("delete project %s: %w", id, statusError(resp))
+	}
+	return nil
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {

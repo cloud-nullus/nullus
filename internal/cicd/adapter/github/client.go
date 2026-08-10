@@ -184,6 +184,95 @@ func (c *Client) isOrganization(ctx context.Context, owner string) bool {
 	return err == nil && found
 }
 
+// DeleteProject 는 리포지토리를 지운다.
+//
+// 이미 없으면 성공으로 본다 — 삭제의 목표는 "없는 상태" 이고, 404 를 오류로
+// 올리면 앞선 시도가 절반쯤 성공한 뒤 재시도할 때 영영 끝나지 않는다.
+//
+// PAT 에 delete_repo 스코프가 없으면 403 이 온다. 이 경우 GitHub 은 권한 부족을
+// 알려주므로 오류를 그대로 올려 사용자가 스코프를 고칠 수 있게 한다.
+func (c *Client) DeleteProject(ctx context.Context, projectID string) error {
+	repo := strings.Trim(strings.TrimSpace(projectID), "/")
+	if repo == "" {
+		return fmt.Errorf("repository (owner/name) is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+repoPath(repo, ""), nil)
+	if err != nil {
+		return err
+	}
+	c.applyHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("delete repository %s: %w", repo, statusError(resp))
+	}
+	return nil
+}
+
+// DeleteImageRepository 는 GHCR 패키지를 지운다.
+//
+// 리포지토리와 패키지는 GitHub 에서 별개 리소스다 — 리포를 지워도 패키지는
+// 남는다. 경로도 다르다: 개인 계정은 /user/packages, 조직은 /orgs/{org}/packages.
+//
+// PAT 에 delete:packages 스코프가 필요하다.
+func (c *Client) DeleteImageRepository(ctx context.Context, target *port.ImageTarget) error {
+	if target == nil || target.Kind != port.RegistryKindGHCR {
+		return port.ErrImageDeletionUnsupported
+	}
+	owner, packageName, err := splitGHCRRepository(target.Repository)
+	if err != nil {
+		return err
+	}
+
+	endpoint := "/user/packages/container/" + url.PathEscape(packageName)
+	if c.isOrganization(ctx, owner) {
+		endpoint = "/orgs/" + url.PathEscape(owner) + "/packages/container/" + url.PathEscape(packageName)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+endpoint, nil)
+	if err != nil {
+		return err
+	}
+	c.applyHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("delete package %s/%s: %w", owner, packageName, statusError(resp))
+	}
+	return nil
+}
+
+// splitGHCRRepository 는 "ghcr.io/owner/package" 를 owner 와 package 로 가른다.
+//
+// package 이름에 슬래시가 들어갈 수 있어(예: owner/group/app) 앞의 두 조각만
+// 떼고 나머지는 그대로 둔다 — 마지막 조각만 쓰면 다른 패키지를 지울 수 있다.
+func splitGHCRRepository(repository string) (owner, packageName string, err error) {
+	trimmed := strings.Trim(strings.TrimSpace(repository), "/")
+	trimmed = strings.TrimPrefix(trimmed, GHCRHost+"/")
+	parts := strings.SplitN(trimmed, "/", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return "", "", fmt.Errorf("ghcr 이미지 경로에서 owner/package 를 읽지 못했습니다: %q", repository)
+	}
+	return parts[0], parts[1], nil
+}
+
 // CommitFiles 는 여러 파일을 한 커밋으로 올린다(upsert).
 //
 // Contents API 를 파일마다 부르면 커밋이 파일 수만큼 생기고, Argo CD 가 그

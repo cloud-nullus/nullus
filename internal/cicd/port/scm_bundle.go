@@ -10,6 +10,10 @@ type SCMBundle struct {
 	Provisioner SCMProvisioner
 	Pipeline    PipelineConfigurator
 	Registry    ImageRegistryResolver
+	// Images 는 이미지 저장소를 지울 수단이다. 지원하지 않는 레지스트리에서는
+	// nil 이며, 호출부는 이를 ErrImageDeletionUnsupported 와 같게 다뤄야 한다
+	// — 조용히 건너뛰면 사용자는 이미지가 지워진 줄 안다.
+	Images ImageRepositoryDeleter
 
 	// Platform 은 이 묶음이 향하는 SCM 플랫폼이다.
 	// 파이프라인 파일 형식이 여기서 갈리므로 렌더러까지 전달돼야 한다.

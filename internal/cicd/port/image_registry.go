@@ -1,6 +1,25 @@
 package port
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrImageDeletionUnsupported 는 이 레지스트리에서 이미지 저장소를 지울 수단이
+// 없음을 알린다.
+//
+// 조용히 건너뛰지 않는 이유는, 사용자가 "이미지도 삭제" 를 골랐는데 아무 일도
+// 일어나지 않으면 지워진 줄 알고 넘어가기 때문이다. Harbor·Nexus 는 삭제에
+// 관리자 자격증명이 따로 필요해 파이프라인 삭제 경로에서는 아직 다루지 않는다.
+var ErrImageDeletionUnsupported = errors.New("이 레지스트리는 이미지 저장소 삭제를 지원하지 않습니다")
+
+// ImageRepositoryDeleter 는 레지스트리에서 이미지 저장소를 통째로 지운다.
+//
+// 태그 하나가 아니라 저장소 전체가 대상이다. 파이프라인을 지우는 맥락에서는
+// 그 앱의 이미지가 전부 필요 없어지기 때문이다.
+type ImageRepositoryDeleter interface {
+	DeleteImageRepository(ctx context.Context, target *ImageTarget) error
+}
 
 // RegistryKind 는 이미지 레지스트리 백엔드의 종류다.
 //

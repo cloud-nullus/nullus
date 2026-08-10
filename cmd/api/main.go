@@ -241,7 +241,10 @@ func main() {
 	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
-	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool)
+	deletePipelineUC := cicduc.NewDeletePipeline(
+		pgPipelineRepo, cicdBundleFactory, cicdkube.NewArgoApplicationDeleter(), kubeconfigProvider)
+	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool).
+		WithDeletePipeline(deletePipelineUC)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository

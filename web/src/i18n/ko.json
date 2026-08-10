@@ -623,6 +623,19 @@
       "failed": "실패",
       "pending": "대기 중",
       "cancelled": "취소됨"
+    },
+    "deleteDialog": {
+      "title": "파이프라인 삭제",
+      "confirm": "삭제",
+      "intro": "파이프라인 \"{{name}}\" 과 배포 이력을 지웁니다.",
+      "alsoDelete": "함께 지울 항목",
+      "clusterResources": "클러스터 리소스",
+      "clusterResourcesHint": "Argo CD Application 과 배포된 워크로드를 지웁니다. 고르지 않으면 앱은 계속 실행됩니다.",
+      "images": "컨테이너 이미지",
+      "repository": "소스 저장소",
+      "irreversible": "되돌릴 수 없습니다",
+      "typeToConfirm": "확인을 위해 저장소 이름을 입력하세요: {{path}}",
+      "typeToConfirmLabel": "저장소 이름 확인"
     }
   },
   "cicdListPage": {
