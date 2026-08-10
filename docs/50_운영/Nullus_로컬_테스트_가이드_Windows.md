@@ -44,7 +44,7 @@ docker compose version
 WSL2 Ubuntu 터미널을 열고 다음을 실행합니다:
 
 ```bash
-# Go 1.24+
+# Go 1.26+
 wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
 sudo tar -C /usr/local -xzf go1.24.1.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> ~/.bashrc
