@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "e2e": "playwright test",
     "e2e:visual": "playwright test e2e/visual",
-    "e2e:visual:update": "playwright test e2e/visual --update-snapshots",
+    "e2e:visual:update": "playwright test e2e/visual --update-snapshots=all",
     "inventory": "node scripts/extract-ui-inventory.mjs",
     "inventory:check": "node scripts/extract-ui-inventory.mjs --check",
     "e2e:stack-critical": "playwright test --grep @stack-critical",

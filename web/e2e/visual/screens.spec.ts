@@ -7,8 +7,16 @@
 // API(8090)가 없으면 데이터 영역은 빈 상태/에러 상태로 렌더되는데, 그 상태의 룩도
 // 개편 대상이므로 그대로 스냅샷에 담는다.
 //
-// 베이스라인 생성/갱신:  npx playwright test e2e/visual --update-snapshots
-// 회귀 검사:            npx playwright test e2e/visual
+// 회귀 검사:   npm run e2e:visual
+// 베이스라인:  npm run e2e:visual:update      (= --update-snapshots=all)
+//
+// ⚠️ `--update-snapshots` 만 쓰면 안 된다. 기본 모드가 `changed` 라서 아래
+// maxDiffPixelRatio 허용치 안에 든 변경은 "통과"로 판정돼 스냅샷이 갱신되지 않는다.
+// 토큰 색을 바꿨는데 스냅샷이 그대로인 상황이 실제로 나왔다 — 반드시 `=all` 을 쓴다.
+//
+// 이 허용치 때문에 미묘한 색 회귀는 여기서 못 잡는다. 색 대비는
+// src/__tests__/contrast-audit.test.ts 가 정확히 검사하고, 이 스펙은
+// 레이아웃 붕괴·섹션 누락·텍스트 잘림을 담당한다. 역할이 나뉘어 있다.
 //
 // 기획안: docs/40_UI_UX/Nullus_UIUX_전면개편_기획안.md §8 (안전망 3)
 
