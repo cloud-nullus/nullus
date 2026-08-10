@@ -256,29 +256,10 @@ func collectStackMonitoring(ctx context.Context, stack *domain.Stack, kubeconfig
 }
 
 func extractStackConfig(stack *domain.Stack) domain.StackConfig {
-	if stack == nil || stack.Config == nil {
+	if stack == nil {
 		return domain.StackConfig{}
 	}
-
-	switch cfg := stack.Config.(type) {
-	case domain.StackConfig:
-		return cfg
-	case *domain.StackConfig:
-		if cfg != nil {
-			return *cfg
-		}
-		return domain.StackConfig{}
-	default:
-		b, err := json.Marshal(cfg)
-		if err != nil {
-			return domain.StackConfig{}
-		}
-		var decoded domain.StackConfig
-		if err := json.Unmarshal(b, &decoded); err != nil {
-			return domain.StackConfig{}
-		}
-		return decoded
-	}
+	return domain.DecodeStackConfig(stack.Config)
 }
 
 func toPodMonitoringStatuses(pods []corev1.Pod, usageByPod map[string]podUsage, pvcStatsByName map[string]pvcStorageStats) ([]podMonitoringStatus, []namedCount, monitoringSummary) {
@@ -879,71 +860,25 @@ type selectedToolType struct {
 	ResourceNamePrefixes []string
 }
 
+// selectedToolTypes 는 도메인이 정한 설치 OSS 목록을 이 핸들러의 필터 형태로 옮긴다.
+// 무엇이 설치되는지 판단하는 규칙은 domain.InstalledToolWorkloads 한 곳에만 둔다 —
+// 플랫폼 대시보드도 같은 함수를 쓰므로 여기서 갈라지면 두 화면이 어긋난다.
 func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
-	fallbackNameByKey := map[string]string{
-		"source_repository":  "gitlab",
-		"cd_tool":            "argocd",
-		"collection":         "prometheus",
-		"visualization":      "grafana",
-		"logging_collection": "loki",
-		"logging_search":     "opensearch",
-		"trace_layer":        "tempo",
-		"storage_backend":    "minio",
-		"authentication":     "openbao",
+	workloads := domain.InstalledToolWorkloads(cfg)
+
+	out := make([]selectedToolType, 0, len(workloads))
+	for _, w := range workloads {
+		out = append(out, selectedToolType{
+			Key:                  w.Key,
+			Name:                 w.Name,
+			Version:              w.Version,
+			Enabled:              true,
+			PodNamePrefixes:      w.NamePrefixes,
+			ResourceNamePrefixes: w.NamePrefixes,
+		})
 	}
 
-	tool := func(key string, sel domain.ToolSelection, prefixes ...string) selectedToolType {
-		name := strings.TrimSpace(sel.Name)
-		if name == "" {
-			name = fallbackNameByKey[key]
-			if name == "" {
-				name = key
-			}
-		}
-		version := strings.TrimSpace(sel.Version)
-		if version == "" {
-			version = "-"
-		}
-		return selectedToolType{
-			Key:                  key,
-			Name:                 name,
-			Version:              version,
-			Enabled:              sel.Enabled,
-			PodNamePrefixes:      prefixes,
-			ResourceNamePrefixes: prefixes,
-		}
-	}
-
-	out := []selectedToolType{
-		tool("authentication", domain.ToolSelection{
-			Name: strings.TrimSpace(func() string {
-				if cfg.Authentication == nil {
-					return ""
-				}
-				return cfg.Authentication.Provider
-			}()),
-			Version: "latest",
-			Enabled: cfg.Authentication != nil && strings.TrimSpace(strings.ToLower(cfg.Authentication.Provider)) == "openbao",
-		}, "openbao"),
-		tool("source_repository", cfg.Artifacts.SourceRepository, "gitlab"),
-		tool("cd_tool", cfg.Pipeline.CDTool, "argo-cd-argocd"),
-		tool("collection", cfg.Monitoring.Collection, "prometheus", "kube-prometheus-stack", "alertmanager-kube-prometheus-stack"),
-		tool("visualization", cfg.Monitoring.Visualization, "grafana"),
-		tool("logging_collection", cfg.Logging.Collection, "loki"),
-		tool("logging_search", cfg.Logging.Search, "opensearch", "elasticsearch"),
-		tool("trace_layer", cfg.Logging.TraceLayer, "tempo", "jaeger"),
-		tool("storage_backend", cfg.Artifacts.StorageBackend, domain.MinIOServiceName, "minio"),
-	}
-
-	filtered := make([]selectedToolType, 0, len(out))
-	for _, t := range out {
-		if !t.Enabled {
-			continue
-		}
-		filtered = append(filtered, t)
-	}
-
-	return filtered
+	return out
 }
 
 func matchesAnyPrefix(name string, prefixes []string) bool {

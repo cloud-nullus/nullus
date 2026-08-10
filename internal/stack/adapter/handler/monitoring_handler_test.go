@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -121,6 +122,159 @@ func TestFilterInstalledResourcesToSelectedTools_KeepsOnlySelectedPrefixes(t *te
 		assert.Equal(t, "gitlab-webservice-default", filtered[0].Name)
 		assert.Equal(t, "grafana", filtered[1].Name)
 	}
+}
+
+func TestSelectedToolTypes_IncludesHarborContainerRegistry(t *testing.T) {
+	items := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			ContainerRegistry: domain.ToolSelection{Name: "Harbor", Version: "2.11.0", Enabled: true},
+		},
+	})
+
+	var harbor *selectedToolType
+	for i := range items {
+		if items[i].Key == "container_registry" {
+			harbor = &items[i]
+		}
+	}
+
+	if assert.NotNil(t, harbor, "container_registry must be monitored") {
+		assert.Equal(t, "Harbor", harbor.Name)
+		assert.Contains(t, harbor.PodNamePrefixes, "harbor")
+	}
+}
+
+func TestSelectedToolTypes_IncludesNexusPackageRegistry(t *testing.T) {
+	items := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			PackageRegistry: domain.ToolSelection{Name: "Nexus", Version: "3.70.0", Enabled: true},
+		},
+	})
+
+	var nexus *selectedToolType
+	for i := range items {
+		if items[i].Key == "package_registry" {
+			nexus = &items[i]
+		}
+	}
+
+	if assert.NotNil(t, nexus, "package_registry must be monitored") {
+		assert.Equal(t, "Nexus", nexus.Name)
+		assert.Contains(t, nexus.PodNamePrefixes, "nexus")
+	}
+}
+
+// Nexus 는 컨테이너 레지스트리와 패키지 저장소를 겸할 수 있다. 같은 파드를
+// 가리키는 항목이 둘로 갈라지면 OSS 목록과 파드 커버리지가 이중 계상된다.
+func TestSelectedToolTypes_DedupesNexusSelectedForBothRegistries(t *testing.T) {
+	items := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			ContainerRegistry: domain.ToolSelection{Name: "Nexus", Version: "3.70.0", Enabled: true},
+			PackageRegistry:   domain.ToolSelection{Name: "Nexus", Version: "3.70.0", Enabled: true},
+		},
+	})
+
+	nexusCount := 0
+	for _, item := range items {
+		if strings.EqualFold(item.Name, "Nexus") {
+			nexusCount++
+		}
+	}
+	assert.Equal(t, 1, nexusCount, "Nexus must appear once even when it serves both registry roles")
+}
+
+// GitLab 내장 레지스트리는 gitlab-registry-* 파드로 뜬다. source_repository 의
+// "gitlab" 접두사가 이미 이를 포함하므로 별도 항목을 만들면 중복이 된다.
+func TestSelectedToolTypes_SkipsGitLabBuiltinRegistry(t *testing.T) {
+	items := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			SourceRepository:  domain.ToolSelection{Name: "GitLab CE", Enabled: true},
+			ContainerRegistry: domain.ToolSelection{Name: "GitLab Registry", Enabled: true},
+		},
+	})
+
+	for _, item := range items {
+		assert.NotEqual(t, "container_registry", item.Key,
+			"GitLab builtin registry is already covered by the gitlab prefix")
+	}
+}
+
+// 클러스터 밖 레지스트리는 파드가 없다. 항목을 만들면 영구히 0 파드 warning 이 된다.
+func TestSelectedToolTypes_SkipsExternalRegistry(t *testing.T) {
+	items := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			ContainerRegistry: domain.ToolSelection{Name: "Harbor", Version: "external", Enabled: true},
+		},
+	})
+
+	for _, item := range items {
+		assert.NotEqual(t, "container_registry", item.Key, "external registry must not be monitored")
+	}
+}
+
+func TestFilterMonitoringToSelectedTools_IncludesHarborPods(t *testing.T) {
+	types := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			ContainerRegistry: domain.ToolSelection{Name: "Harbor", Enabled: true},
+		},
+	})
+
+	pods := []podMonitoringStatus{
+		{Name: "harbor-core-56d9c6d84-abcde", Phase: "Running", Ready: true, CPURequestMillicores: 100, MemoryRequestMiB: 256},
+		{Name: "harbor-registry-7f8b9c-xyz", Phase: "Running", Ready: true, CPURequestMillicores: 100, MemoryRequestMiB: 256},
+		{Name: "opensearch-cluster-master-0", Phase: "Running", Ready: true},
+	}
+
+	filtered, _, summary := filterMonitoringToSelectedTools(types, pods)
+
+	assert.Len(t, filtered, 2)
+	assert.Equal(t, 2, summary.TotalPods)
+	assert.Equal(t, int64(200), summary.CPURequestMillicores)
+}
+
+func TestToOSSStatuses_ReportsHarborAndNexusHealth(t *testing.T) {
+	types := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			ContainerRegistry: domain.ToolSelection{Name: "Harbor", Enabled: true},
+			PackageRegistry:   domain.ToolSelection{Name: "Nexus", Enabled: true},
+		},
+	})
+
+	pods := []podMonitoringStatus{
+		{Name: "harbor-core-56d9c6d84-abcde", Phase: "Running", Ready: true, Status: "running"},
+		{Name: "nexus-nexus-repository-manager-0", Phase: "Running", Ready: false, Status: "warning"},
+	}
+
+	statusByName := map[string]ossMonitoringStatus{}
+	for _, s := range toOSSStatuses(types, pods) {
+		statusByName[s.Name] = s
+	}
+
+	if assert.Contains(t, statusByName, "Harbor") {
+		assert.Equal(t, "running", statusByName["Harbor"].Status)
+		assert.Equal(t, 1, statusByName["Harbor"].ReadyPods)
+	}
+	if assert.Contains(t, statusByName, "Nexus") {
+		assert.Equal(t, "warning", statusByName["Nexus"].Status)
+		assert.Equal(t, 1, statusByName["Nexus"].PodCount)
+	}
+}
+
+func TestFilterInstalledResourcesToSelectedTools_KeepsHarborResources(t *testing.T) {
+	types := selectedToolTypes(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{
+			ContainerRegistry: domain.ToolSelection{Name: "Harbor", Enabled: true},
+		},
+	})
+
+	resources := []installedResourceStatus{
+		{Name: "harbor-core", Kind: "Deployment"},
+		{Name: "harbor-database", Kind: "StatefulSet"},
+		{Name: "grafana", Kind: "Deployment"},
+	}
+
+	filtered := filterInstalledResourcesToSelectedTools(types, resources)
+	assert.Len(t, filtered, 2)
 }
 
 func TestToOSSStatuses_ExcludesSucceededMigrationPodsFromHealth(t *testing.T) {

@@ -306,19 +306,33 @@ function parseCategorySelections(
   return tools;
 }
 
+// 하나의 제품이 여러 역할을 겸할 수 있다 — Nexus 는 컨테이너 레지스트리이면서
+// 패키지 저장소다. 역할 수만큼 세면 "Nexus + GitLab CE + Nexus + MinIO" 처럼 보이고
+// 인스턴스도 이중 계상되므로, 같은 이름은 한 번만 남긴다.
+function dedupeByName<T extends { name: string }>(tools: T[]): T[] {
+  const seen = new Set<string>();
+  return tools.filter((tool) => {
+    const key = tool.name.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function toPipelineNode(
   category: string,
   tools: ToolSelectionView[],
   color: string,
 ): PipelineNode | null {
-  if (tools.length === 0) {
+  const distinct = dedupeByName(tools);
+  if (distinct.length === 0) {
     return null;
   }
   return {
     category,
-    oss: tools.map((tool) => tool.name).join(" + "),
-    version: tools.map((tool) => tool.version).join(" / "),
-    instances: tools.reduce((sum, tool) => sum + tool.instances, 0),
+    oss: distinct.map((tool) => tool.name).join(" + "),
+    version: distinct.map((tool) => tool.version).join(" / "),
+    instances: distinct.reduce((sum, tool) => sum + tool.instances, 0),
     color,
     health: "healthy",
     sync: "synced",
@@ -376,7 +390,9 @@ export function buildPipelineNodesFromMonitoring(
     keys: string[],
     color: string,
   ): PipelineNode | null => {
-    const matches = enabledTools.filter((tool) => keys.includes(tool.key));
+    const matches = dedupeByName(
+      enabledTools.filter((tool) => keys.includes(tool.key)),
+    );
     if (matches.length === 0) {
       return null;
     }
@@ -392,7 +408,16 @@ export function buildPipelineNodesFromMonitoring(
   };
 
   return [
-    toNode("Artifacts", ["source_repository", "storage_backend"], "#6366f1"),
+    toNode(
+      "Artifacts",
+      [
+        "source_repository",
+        "container_registry",
+        "package_registry",
+        "storage_backend",
+      ],
+      "#6366f1",
+    ),
     toNode("CD", ["cd_tool"], "#8b5cf6"),
     toNode("Monitoring", ["collection", "visualization"], "#10b981"),
     toNode("Logging", ["logging_collection", "logging_search"], "#f59e0b"),
