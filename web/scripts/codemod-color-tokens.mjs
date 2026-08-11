@@ -99,7 +99,9 @@ function walk(dir, out = []) {
     if (statSync(full).isDirectory()) {
       if (entry === 'theme') continue // 토큰을 정의하는 곳
       walk(full, out)
-    } else if (/\.tsx$/.test(entry) && !/\.test\.tsx$/.test(entry)) {
+      // .ts 도 본다. 상태 배지 팔레트가 utils/*.ts 에 있어서 .tsx 만 훑던 첫 실행이
+      // 화면 전반의 상태색을 통째로 놓쳤다.
+    } else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry) && !/\.generated\./.test(entry)) {
       out.push(full)
     }
   }

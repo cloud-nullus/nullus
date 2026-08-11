@@ -19,13 +19,13 @@ export interface StatusStyle {
   label: string
 }
 
-const BLUE: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa' }
-const GREEN: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' }
-const HEALTHY_GREEN: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(16,185,129,0.18)', color: '#10b981' }
-const RED: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(239,68,68,0.15)', color: '#ef4444' }
-const AMBER: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' }
-const GREY: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(100,116,139,0.15)', color: '#64748b' }
-const INDIGO: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }
+const BLUE: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'color-mix(in srgb, var(--color-info) 15%, transparent)', color: 'var(--color-info)' }
+const GREEN: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'color-mix(in srgb, var(--color-success) 15%, transparent)', color: 'var(--color-success)' }
+const HEALTHY_GREEN: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'color-mix(in srgb, var(--color-success) 18%, transparent)', color: 'var(--color-success)' }
+const RED: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'color-mix(in srgb, var(--color-error) 15%, transparent)', color: 'var(--color-error)' }
+const AMBER: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'color-mix(in srgb, var(--color-warning) 15%, transparent)', color: 'var(--color-warning)' }
+const GREY: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'color-mix(in srgb, var(--color-text-muted) 15%, transparent)', color: 'var(--color-text-muted)' }
+const INDIGO: Pick<StatusStyle, 'bg' | 'color'> = { bg: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', color: 'var(--color-primary)' }
 
 export const STATUS_STYLES: Record<string, StatusStyle> = {
   pending:      { ...AMBER,         label: 'Pending' },

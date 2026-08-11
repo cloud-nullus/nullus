@@ -10,7 +10,8 @@ import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { DataTable } from '../../../components/shared/data-table'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
-import { getPipelineStatusLabel, getPipelineStatusStyle } from '../utils/pipeline-status'
+import { getPipelineStatusLabel } from '../utils/pipeline-status'
+import { StatusBadge, toneForStatus } from '../../../components/shared/status-badge'
 export function CicdHistoryPage() {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
@@ -73,14 +74,12 @@ export function CicdHistoryPage() {
     {
       accessorKey: 'status',
       header: t('cicdHistoryPage.table.status', 'Status'),
-      cell: ({ row }) => {
-        const st = getPipelineStatusStyle(row.original.status)
-        return (
-          <span className="rounded-md px-[9px] py-[3px] text-xs font-semibold" style={{ backgroundColor: st.bg, color: st.color }}>
-            {getPipelineStatusLabel(t, row.original.status)}
-          </span>
-        )
-      },
+      cell: ({ row }) => (
+        <StatusBadge
+          tone={toneForStatus(row.original.status)}
+          label={getPipelineStatusLabel(t, row.original.status)}
+        />
+      ),
     },
     {
       accessorKey: 'triggeredBy',

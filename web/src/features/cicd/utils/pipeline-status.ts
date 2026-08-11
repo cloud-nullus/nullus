@@ -9,12 +9,12 @@ export type PipelineStatusKey =
   | 'cancelled'
 
 export const PIPELINE_STATUS_STYLES: Record<PipelineStatusKey, { bg: string; color: string }> = {
-  active: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
-  running: { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa' },
-  success: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
-  failed: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444' },
-  pending: { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' },
-  cancelled: { bg: 'rgba(100,116,139,0.15)', color: '#64748b' },
+  active: { bg: 'color-mix(in srgb, var(--color-success) 15%, transparent)', color: 'var(--color-success)' },
+  running: { bg: 'color-mix(in srgb, var(--color-info) 15%, transparent)', color: 'var(--color-info)' },
+  success: { bg: 'color-mix(in srgb, var(--color-success) 15%, transparent)', color: 'var(--color-success)' },
+  failed: { bg: 'color-mix(in srgb, var(--color-error) 15%, transparent)', color: 'var(--color-error)' },
+  pending: { bg: 'color-mix(in srgb, var(--color-warning) 15%, transparent)', color: 'var(--color-warning)' },
+  cancelled: { bg: 'color-mix(in srgb, var(--color-text-muted) 15%, transparent)', color: 'var(--color-text-muted)' },
 }
 
 export function getPipelineStatusStyle(status: string) {

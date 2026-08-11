@@ -372,12 +372,12 @@ export function buildPipelineNodesFromSnapshot(
   ]);
 
   return [
-    toPipelineNode("Artifacts", artifacts, "#6366f1"),
-    toPipelineNode("CI", ci, "#0ea5e9"),
-    toPipelineNode("CD", cd, "#8b5cf6"),
-    toPipelineNode("Monitoring", monitoring, "#10b981"),
-    toPipelineNode("Logging", logging, "#f59e0b"),
-    toPipelineNode("Trace", trace, "#ef4444"),
+    toPipelineNode("Artifacts", artifacts, "var(--color-primary)"),
+    toPipelineNode("CI", ci, "var(--color-info)"),
+    toPipelineNode("CD", cd, "var(--color-accent-alt)"),
+    toPipelineNode("Monitoring", monitoring, "var(--color-success)"),
+    toPipelineNode("Logging", logging, "var(--color-warning)"),
+    toPipelineNode("Trace", trace, "var(--color-error)"),
   ].filter((node): node is PipelineNode => !!node);
 }
 
@@ -416,12 +416,12 @@ export function buildPipelineNodesFromMonitoring(
         "package_registry",
         "storage_backend",
       ],
-      "#6366f1",
+      "var(--color-primary)",
     ),
-    toNode("CD", ["cd_tool"], "#8b5cf6"),
-    toNode("Monitoring", ["collection", "visualization"], "#10b981"),
-    toNode("Logging", ["logging_collection", "logging_search"], "#f59e0b"),
-    toNode("Trace", ["trace_layer"], "#ef4444"),
+    toNode("CD", ["cd_tool"], "var(--color-accent-alt)"),
+    toNode("Monitoring", ["collection", "visualization"], "var(--color-success)"),
+    toNode("Logging", ["logging_collection", "logging_search"], "var(--color-warning)"),
+    toNode("Trace", ["trace_layer"], "var(--color-error)"),
   ].filter((node): node is PipelineNode => !!node);
 }
 

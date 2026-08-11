@@ -75,8 +75,10 @@ export default defineConfig([
     //
     // 아직 잔여 하드코딩이 남아 있어 'warn' 으로 시작한다. Phase 6 청산이 끝나면
     // 'error' 로 올린다 (기획안 커밋 21).
-    files: ['src/**/*.tsx'],
-    ignores: ['src/**/*.test.tsx', 'src/theme/**'],
+    // .ts 도 포함한다. 상태 배지 팔레트가 utils/*.ts 에 있었고, .tsx 만 보던 규칙이
+    // 화면 전반의 상태색을 통째로 놓쳤다.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/theme/**'],
     rules: {
       // 차트 라이브러리 단일화는 Phase 5 다. 아직 chart.js 사용처가 1곳 남아 있어
       // 경고로 시작하고, 이관이 끝나면 위 no-restricted-imports 로 올려 error 로 만든다.
