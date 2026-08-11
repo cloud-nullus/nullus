@@ -22,6 +22,7 @@ import (
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
+	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
 	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	cicdgitlab "github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
@@ -240,7 +241,22 @@ func main() {
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, cicdStackReader).
 		WithRepositoryProvisioner(provisionRepoUC)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
-	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
+	// 이미지 준비기와 클러스터 타깃 제공자를 배선한다.
+	//
+	// 이 둘이 없으면 DeployPipeline 이 매니페스트만 적용한다. 그런데 BuildStepPlan 은
+	// DockerfilePath 가 있으면 Git Clone / Docker Build / Image Load 3단계를 계획에
+	// 넣으므로, 배선이 빠진 상태에서는 계획에만 있고 절대 실행되지 않는 단계가 생겼다 —
+	// 배포가 success 인데 6단계 중 3개가 pending 으로 남아 있었다.
+	//
+	// Builder 는 host 의 git·docker 를, kind 로드 경로는 kind CLI 를 쓴다. 세 실행 파일이
+	// 없는 환경에서는 빌드 단계가 실패하는데, 그건 조용히 건너뛰는 것보다 낫다 —
+	// 실패는 로그와 단계 상태에 남지만, 건너뛰면 사용자는 이미지가 빌드된 줄 안다.
+	deployPipelineUC := cicduc.NewDeployPipeline(
+		pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier,
+		cicduc.WithImagePreparer(cicddocker.NewBuilder(manifestApplier.Tracker)),
+		cicduc.WithClusterTargetProvider(
+			cicdrepo.NewPostgresClusterTargetProvider(pool, encryptionKey)),
+	)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
 	deletePipelineUC := cicduc.NewDeletePipeline(
