@@ -33,6 +33,7 @@ import { NativeSelect } from "../../../components/ui/native-select";
 import { YamlEditor } from "../../../components/shared/yaml-editor";
 import { DataTable } from "../../../components/shared/data-table";
 import { Tabs } from "../../../components/ui/tabs";
+import { IconButton } from "../../../components/ui/icon-button";
 import { formatDate, formatDateTime, resolveLocale } from "../../../lib/locale";
 import {
   getPipelineStatusLabel,
@@ -274,13 +275,12 @@ function ExecuteModal({
               </div>
             </div>
           </div>
-          <button
-            type="button"
+          <IconButton
             onClick={onClose}
-            className="cursor-pointer rounded-lg p-1.5 text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] hover:text-[var(--color-text-primary)]"
+            aria-label="Close"
           >
             <X size={16} />
-          </button>
+          </IconButton>
         </div>
 
         {/* Tabs */}

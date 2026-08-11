@@ -25,6 +25,7 @@ import { Modal } from '../../../components/ui/modal'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
 import { Checkbox } from '../../../components/ui/checkbox'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
   active: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
@@ -444,7 +445,7 @@ export function OrganizationPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[700px] border-collapse">
                       <thead>
-                        <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
+                        <tr className={tableHeadRowClass}>
                           {[
                             t('organizationPage.table.name', 'Name'),
                             t('organizationPage.table.email', 'Email'),
@@ -452,7 +453,7 @@ export function OrganizationPage() {
                             t('organizationPage.table.status', 'Status'),
                             t('organizationPage.table.actions', 'Actions'),
                           ].map((header) => (
-                            <th key={header} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                            <th key={header} className={cn(thClass)}>
                               {header}
                             </th>
                           ))}

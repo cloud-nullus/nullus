@@ -24,6 +24,7 @@ import { useClusterNamespaces, useClusterStorageClasses } from '../../admin/api/
 import { findPlatformCluster } from '../../admin/utils/cluster-selection'
 import { Button } from '../../../components/ui/button'
 import { Tabs } from '../../../components/ui/tabs'
+import { IconButton } from '../../../components/ui/icon-button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
@@ -3080,24 +3081,25 @@ export function StackInstallPage() {
                           </optgroup>
                         )}
                       </NativeSelect>
-                      <button
-                        type="button"
+                      <IconButton
+                        outlined
                         title="Save current values to selected profile"
+                        aria-label="Save current values to selected profile"
                         onClick={handleSaveProfileButtonClick}
                         disabled={createOrgProfile.isPending || updateOrgProfile.isPending}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] hover:text-[var(--color-primary)]"
                       >
                         <Save size={12} />
-                      </button>
+                      </IconButton>
                       {selectedOrgProfileId && (
-                        <button
-                          type="button"
+                        <IconButton
+                          outlined
+                          tone="danger"
                           title="Delete this organization profile"
+                          aria-label="Delete this organization profile"
                           onClick={handleDeleteOrgProfile}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] text-[var(--color-error)] hover:bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)]"
                         >
                           <Trash2 size={12} />
-                        </button>
+                        </IconButton>
                       )}
                     </div>
                   </div>

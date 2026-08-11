@@ -4,6 +4,7 @@ import { useKnownIssues } from '../api/admin-api'
 import type { KnownIssueSeverity, KnownIssueStatus } from '../../../types'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
 
 const SEVERITY_BADGE: Record<KnownIssueSeverity, string> = {
   high: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
@@ -42,11 +43,11 @@ export function KnownIssuesPage() {
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
+            <tr className={tableHeadRowClass}>
               {tableHeaders.map((header) => (
                 <th
                   key={header}
-                  className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]"
+                  className={cn(thClass)}
                 >
                   {header}
                 </th>

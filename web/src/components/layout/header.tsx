@@ -5,6 +5,7 @@ import { useThemeStore } from '../../stores/theme-store'
 import { useAuthStore } from '../../stores/auth-store'
 import type { Role } from '../../types'
 import { LanguageSwitcher } from '../shared/language-switcher'
+import { IconButton } from '../ui/icon-button'
 
 const roleIcons: Record<Role, ReactNode> = {
   admin: <ShieldCheck size={14} />,
@@ -38,14 +39,12 @@ export function Header() {
       <LanguageSwitcher currentLanguage={i18n.language} onLanguageChange={handleLanguageChange} />
 
       {/* Theme toggle */}
-      <button
-        type="button"
+      <IconButton
         onClick={toggleTheme}
         aria-label={theme === 'dark' ? t('header.theme.switchToLight') : t('header.theme.switchToDark')}
-        className="flex cursor-pointer items-center rounded-[var(--radius-sm)] border-none bg-none p-1 text-[var(--color-text-secondary)] transition-colors duration-150 ease-in-out hover:text-[var(--color-text-primary)]"
       >
         {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-      </button>
+      </IconButton>
     </header>
   )
 }

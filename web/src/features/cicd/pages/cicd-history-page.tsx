@@ -13,6 +13,8 @@ import { getPipelineStatusLabel } from '../utils/pipeline-status'
 import { StatusBadge, toneForStatus } from '../../../components/shared/status-badge'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
+import { thClass } from '../../../components/shared/table-chrome'
+import { cn } from '../../../lib/utils'
 export function CicdHistoryPage() {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
@@ -181,10 +183,10 @@ export function CicdHistoryPage() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="w-[180px] px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                <th className={cn(thClass, "w-[180px]")}>
                   {t('cicdHistoryPage.detail.field', 'Field')}
                 </th>
-                <th className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                <th className={cn(thClass)}>
                   {t('cicdHistoryPage.detail.value', 'Value')}
                 </th>
               </tr>

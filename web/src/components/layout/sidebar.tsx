@@ -29,6 +29,7 @@ import { useSidebarStore } from '../../stores/sidebar-store'
 import { isOidcMode, getProviderConfig } from '../../lib/oidc-providers'
 import type { Role } from '../../types'
 import { cn } from '../../lib/utils'
+import { IconButton } from '../ui/icon-button'
 
 interface NavItem {
   key: string
@@ -146,14 +147,9 @@ export function Sidebar() {
             </span>
           </button>
         )}
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          aria-label="Toggle sidebar"
-          className="flex cursor-pointer items-center rounded-md border-none bg-none p-1.5 text-[var(--color-text-secondary)]"
-        >
+        <IconButton onClick={toggleSidebar} aria-label="Toggle sidebar">
           <Menu size={16} />
-        </button>
+        </IconButton>
       </div>
 
       {/* Nav groups */}

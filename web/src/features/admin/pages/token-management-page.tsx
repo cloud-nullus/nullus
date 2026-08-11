@@ -15,6 +15,7 @@ import {
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
 
 const STEP_UP_ENFORCED = false
 
@@ -101,9 +102,9 @@ export function TokenManagementPage() {
         <section className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
+              <tr className={tableHeadRowClass}>
                 {['Provider', 'Module', 'Path', 'Status', 'Expires'].map((h) => (
-                  <th key={h} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">{h}</th>
+                  <th key={h} className={cn(thClass)}>{h}</th>
                 ))}
               </tr>
             </thead>

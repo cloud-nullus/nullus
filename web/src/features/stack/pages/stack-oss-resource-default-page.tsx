@@ -7,6 +7,8 @@ import { useResourceDefaults, useUpsertResourceDefault } from '../api/stack-api'
 import type { StackResourceDefault } from '../../../types'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { cn } from '../../../lib/utils'
 
 type EditableRow = Omit<StackResourceDefault, 'updated_at'> & { updated_at?: string }
 
@@ -238,7 +240,7 @@ export function StackOssResourceDefaultPage() {
 
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
+            <tr className={tableHeadRowClass}>
               {[
                 'Category',
                 'Tool Key',
@@ -251,7 +253,7 @@ export function StackOssResourceDefaultPage() {
               ].map((header) => (
                 <th
                   key={header}
-                  className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]"
+                  className={cn(thClass)}
                 >
                   {header}
                 </th>

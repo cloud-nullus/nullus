@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
 
 
 const STATUS_BADGE: Record<string, { className: string; key: string; defaultLabel: string }> = {
@@ -87,7 +88,7 @@ export function StackVersionPage() {
         </div>
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
+            <tr className={tableHeadRowClass}>
               {[
                 t('stackVersionPage.table.gitlab', 'GitLab'),
                 t('stackVersionPage.table.argocd', 'Argo CD'),
@@ -97,7 +98,7 @@ export function StackVersionPage() {
                 t('stackVersionPage.table.k8s', 'K8s'),
                 t('stackVersionPage.table.status', 'Status'),
               ].map((header) => (
-                <th key={header} className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                <th key={header} className={cn(thClass)}>
                   {header}
                 </th>
               ))}

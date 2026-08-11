@@ -19,6 +19,7 @@ import { cn } from '../../../lib/utils'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
 
 type ActiveRoleTab = 'all' | MemberRole
 
@@ -658,11 +659,11 @@ export function UserManagementPage() {
             <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.role', 'Role')}</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.expiresAt', 'Expires At')}</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.status', 'Status')}</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.actions', 'Actions')}</th>
+                  <tr className={cn(tableHeadRowClass, "border-b border-[var(--color-border-default)]")}>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.role', 'Role')}</th>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.expiresAt', 'Expires At')}</th>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.status', 'Status')}</th>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.actions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>

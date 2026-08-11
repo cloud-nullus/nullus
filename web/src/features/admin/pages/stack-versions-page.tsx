@@ -17,6 +17,7 @@ import {
   isMatrixCompatibleWithCluster,
   matrixArchMismatches,
 } from '../../stack/utils/compatibility-arch'
+import { thClass } from '../../../components/shared/table-chrome'
 
 const STATUS_BADGE_CLASS: Record<CompatibilityMatrix['status'], string> = {
   verified: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
@@ -297,12 +298,12 @@ export function StackVersionsAdminPage() {
           <table className="min-w-full text-left text-xs">
             <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.name', 'Name')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.helm', 'Helm')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.app', 'App')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.arch', 'Arch')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.minK8s', 'Min K8s')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.tier', 'Tier')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.name', 'Name')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.helm', 'Helm')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.app', 'App')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.arch', 'Arch')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.minK8s', 'Min K8s')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.tier', 'Tier')}</th>
               </tr>
             </thead>
             <tbody>
@@ -338,9 +339,9 @@ export function StackVersionsAdminPage() {
           <table className="min-w-full text-left text-xs">
             <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.cluster', 'Cluster')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.nodeArch', 'Node Architectures')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.crossEval', 'Compatibility')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.cluster', 'Cluster')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.nodeArch', 'Node Architectures')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.crossEval', 'Compatibility')}</th>
                 <th className="px-3 py-2 text-right">{t('stackVersionsAdmin.col.actions', 'Actions')}</th>
               </tr>
             </thead>
