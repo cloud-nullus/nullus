@@ -47,6 +47,7 @@ import {
   LoggingToolsPanel,
   ResourcesPanel,
 } from "./stack-info-panels";
+import { TextInput } from "../../../components/ui/text-input"
 
 function ToolLogo({ name, logo }: Pick<LaunchTool, "name" | "logo">) {
   const [hasError, setHasError] = useState(false);
@@ -689,12 +690,12 @@ export function StackInfoTab({
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
               {t("stackList.export.fileName", "File name")}
             </span>
-            <input
+            <TextInput
               value={exportFileName}
               onChange={(event) => setExportFileName(event.target.value)}
               placeholder={buildStackExportFilename(stack.name, exportFormat)}
               aria-label={t("stackList.export.fileName", "File name")}
-              className="box-border w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out focus:border-[var(--color-primary)]"
+              className="w-full ease-in-out focus:border-[var(--color-primary)]"
               data-testid="export-file-name"
             />
           </label>

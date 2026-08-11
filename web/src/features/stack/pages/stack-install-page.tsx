@@ -92,6 +92,7 @@ import type { ManifestToolEntry } from '../utils/install-manifest-builders'
 import { ToolSelector, MultiToolSelector } from '../components/install-tool-selector'
 import { PageHeader } from '../../../components/layout/page-header'
 import { Checkbox } from '../../../components/ui/checkbox'
+import { TextInput } from '../../../components/ui/text-input'
 
 function toDeployErrorMessage(error: unknown): string {
   // Compat-gate errors get a specialized, issue-aware formatter so the user
@@ -2467,13 +2468,12 @@ export function StackInstallPage() {
                   <option value="__new__">새 네임스페이스 생성...</option>
                 </NativeSelect>
                 {createNewNs && (
-                  <input
+                  <TextInput
                     ref={newNamespaceInputRef}
                     type="text"
                     placeholder="my-namespace"
                     value={draft.namespace}
                     onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                    className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                   />
                 )}
                 <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
@@ -3105,14 +3105,14 @@ export function StackInstallPage() {
                   {saveProfileDialogOpen && (
                     <div className="mb-4 flex items-center gap-2 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_6%,_transparent)] px-3 py-2">
                       <span className="text-[11px] text-[var(--color-text-secondary)] shrink-0">Profile name</span>
-                      <input
+                      <TextInput
                         type="text"
                         value={saveProfileName}
                         onChange={(e) => setSaveProfileName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleSaveProfileConfirm(); if (e.key === 'Escape') setSaveProfileDialogOpen(false) }}
                         placeholder="e.g. Production-M"
                         autoFocus
-                        className="flex-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)]"
+                        className="flex-1 rounded focus:outline-none focus:border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)]"
                       />
                       <button
                         type="button"

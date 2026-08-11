@@ -12,6 +12,7 @@ import {
   isValidEmbedUrl,
   isKnownNonEmbeddableHost,
 } from "../utils/monitoring-utils"
+import { TextInput } from "../../../components/ui/text-input"
 
 export type ViewType = 'cluster' | 'stack' | 'cicd'
 export type TimeRange = '1h' | '6h' | '24h' | '7d'
@@ -154,11 +155,11 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                       </button>
                     </div>
                     <GripVertical size={14} className="shrink-0 text-[var(--color-text-secondary)]" />
-                    <input
+                    <TextInput
                       value={d.label}
                       onChange={(e) => patchDraft(d.id, { label: e.target.value })}
                       placeholder={t('monitoringPage.customTabs.tabNamePlaceholder', 'Tab name')}
-                      className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]"
+                      className="min-w-0 flex-1 focus:border-[var(--color-primary)]"
                     />
                     <button type="button" onClick={() => removeDraft(d.id)}
                       className="shrink-0 rounded p-1 text-[var(--color-text-secondary)] hover:bg-red-400/10 hover:text-red-400">
@@ -167,11 +168,11 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                   </div>
                   {/* Row 2: URL input full width */}
                   <div className="mt-1.5 pl-[46px]">
-                    <input
+                    <TextInput
                       value={d.url}
                       onChange={(e) => patchDraft(d.id, { url: e.target.value })}
                       placeholder={t('monitoringPage.customTabs.embedUrlPlaceholder', 'Embed URL')}
-                      className="w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[var(--color-primary)]"
+                      className="w-full placeholder:text-[var(--color-text-secondary)] focus:border-[var(--color-primary)]"
                     />
                   </div>
                 </div>

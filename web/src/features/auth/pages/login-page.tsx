@@ -35,6 +35,7 @@ const TEST_ACCOUNTS: Record<string, { password: string; user: User }> = {
 
 
 import { useAuth } from 'react-oidc-context'
+import { TextInput } from '../../../components/ui/text-input'
 
 function OidcLoginContent() {
   const auth = useAuth()
@@ -115,12 +116,11 @@ function MockLoginContent() {
           <label htmlFor="email" className="text-xs font-medium text-[var(--color-text-secondary)]">
             Email
           </label>
-          <input
+          <TextInput
             id="email"
             type="email"
             {...register('email')}
             placeholder="you@nullus.dev"
-            className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
           />
           {errors.email && <span className="text-xs text-[var(--color-error)]">{errors.email.message}</span>}
         </div>
@@ -129,12 +129,11 @@ function MockLoginContent() {
           <label htmlFor="password" className="text-xs font-medium text-[var(--color-text-secondary)]">
             Password
           </label>
-          <input
+          <TextInput
             id="password"
             type="password"
             {...register('password')}
             placeholder="••••••••"
-            className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
           />
           {errors.password && <span className="text-xs text-[var(--color-error)]">{errors.password.message}</span>}
         </div>

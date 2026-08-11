@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal } from '../ui/modal'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
+import { TextInput } from '../ui/text-input'
 
 interface ConfirmDialogProps {
    open: boolean
@@ -89,16 +90,17 @@ export function ConfirmDialog({
                {' '}
                {t('confirmDialog.typeToConfirm.suffix', 'exactly.')}
              </p>
-             <input
+             <TextInput
                type="text"
                value={typed}
                onChange={(e) => setTyped(e.target.value)}
                placeholder={confirmText}
                className={cn(
-                 'box-border w-full rounded-lg border bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none',
-                 typed === confirmText
-                   ? 'border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)]'
-                   : 'border-[var(--color-border-default)]'
+                 'w-full font-mono',
+                 // 확인 문구가 맞으면 테두리로 알린다. 값이 틀린 게 아니라 맞은
+                 // 상태를 강조하는 자리라 invalid 가 아니라 색만 바꾼다.
+                 typed === confirmText &&
+                   'border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)]',
                )}
              />
            </div>

@@ -41,6 +41,7 @@ import {
 } from "../utils/template-config";
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from "../../../components/ui/search-input"
+import { TextInput } from "../../../components/ui/text-input"
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   source_repository: { bg: "color-mix(in srgb, var(--color-info) 12%, transparent)", color: "var(--color-info)" },
@@ -1016,7 +1017,7 @@ export function StackTemplatePage() {
                                     </option>
                                   ))}
                                 </select>
-                                <input
+                                <TextInput
                                   type="text"
                                   value={helmVersion}
                                   onChange={(event) =>
@@ -1031,9 +1032,8 @@ export function StackTemplatePage() {
                                     "stackTemplatePage.form.helmVersionPlaceholder",
                                     "Helm version",
                                   )}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
-                                <input
+                                <TextInput
                                   type="text"
                                   value={appVersion}
                                   onChange={(event) =>
@@ -1048,7 +1048,6 @@ export function StackTemplatePage() {
                                     "stackTemplatePage.form.appVersionPlaceholder",
                                     "App version",
                                   )}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
                                 <Button
                                   variant="outline"
@@ -1092,7 +1091,7 @@ export function StackTemplatePage() {
 
             {addSectionOpen ? (
               <div className="mt-2 flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] p-3">
-                <input
+                <TextInput
                   type="text"
                   value={newSectionLabel}
                   onChange={(e) => setNewSectionLabel(e.target.value)}
@@ -1100,9 +1099,8 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.sectionNamePlaceholder",
                     "Section name (e.g. Security)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
-                <input
+                <TextInput
                   type="text"
                   value={newCategoryLabel}
                   onChange={(e) => setNewCategoryLabel(e.target.value)}
@@ -1110,9 +1108,8 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.firstCategoryPlaceholder",
                     "First category (e.g. Scanner)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
-                <input
+                <TextInput
                   type="text"
                   value={newCategoryOptions}
                   onChange={(e) => setNewCategoryOptions(e.target.value)}
@@ -1120,7 +1117,6 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.toolOptionsPlaceholder",
                     "Tool options (comma separated, e.g. Trivy, SonarQube)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <div className="flex gap-2">
                   <Button

@@ -14,6 +14,7 @@ import { VersionDiff } from '../components/version-diff'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
+import { TextInput } from '../../../components/ui/text-input'
 
 
 export function StackHistoryPage() {
@@ -430,12 +431,12 @@ export function StackHistoryPage() {
                  <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-sm text-[var(--color-error)]">
                    {t('stackHistoryPage.rollback.cleanWarning', 'This action permanently deletes Persistent Volumes.')}
                  </div>
-                 <input
+                 <TextInput
                    type="text"
                    placeholder={t('stackHistoryPage.rollback.confirmDeletePlaceholder', 'Type "DELETE" to confirm')}
                    value={deleteConfirmText}
                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                   className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"
+                   className="mt-2 w-full"
                  />
                </div>
              )}

@@ -5,6 +5,7 @@ import { cn } from "../../../lib/utils"
 import type { ToolHealthStatus } from "../api/observability-api"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import { TOOL_STATUS } from "./monitoring-chart-widgets"
+import { TextInput } from '../../../components/ui/text-input'
 
 // ─── Stack Component Connection UI ───────────────────────────────────────────
 interface StackComponent {
@@ -134,13 +135,13 @@ export function StackConnectPanel({
               {/* URL input (when expanded) */}
               {isOpen && !isDone && (
                 <div className="mt-2 flex min-w-0 gap-1.5">
-                  <input
+                  <TextInput
                     type="url"
                     value={urls[comp.name] ?? ''}
                     onChange={(e) => setUrl(comp.name, e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && confirmUrl(comp.name)}
                     placeholder={`https://${comp.name.toLowerCase()}.example.com/`}
-                    className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-2.5 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-primary)]"
+                    className="min-w-0 flex-1 focus:border-[var(--color-primary)]"
                   />
                   <button
                     type="button"

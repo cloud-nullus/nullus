@@ -6,12 +6,13 @@
 // 스케일 밖 값(7px, 9px, 30px)이 들어간 것도 전부 여기서 나왔다 —
 // DESIGN.md §Layout 은 spacing 스케일 안에서만 고르라고 못박고 있다.
 //
-// 높이는 다른 컨트롤과 같은 --control-height 를 쓴다. 툴바에서 셀렉트·버튼과
-// 나란히 서는 자리라 높이가 1px 만 어긋나도 줄이 흐트러져 보인다.
+// 표면 스타일은 TextInput 과 같은 값을 쓴다(textInputClass). 아이콘을 겹쳐 놓느라
+// 컴포넌트를 감싸지 못할 뿐, 검색 상자가 다른 입력과 다르게 생길 이유는 없다.
 
 import { forwardRef, type InputHTMLAttributes } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { textInputClass } from './text-input'
 
 interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'size'> {
   /** 감싸는 자리의 클래스 (폭 지정 등). input 자체가 아니라 바깥 div 에 붙는다. */
@@ -28,12 +29,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
       <input
         ref={ref}
         type="search"
-        className={cn(
-          'h-[var(--control-height)] w-full rounded-[var(--radius-sm)] border border-[var(--color-border-default)]',
-          'bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] pl-7 pr-2 text-[13px]',
-          'text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]',
-          className,
-        )}
+        className={textInputClass(cn('w-full pl-7', className))}
         {...props}
       />
     </div>
