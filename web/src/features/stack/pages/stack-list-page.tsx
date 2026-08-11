@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
+import { Tabs } from "../../../components/ui/tabs";
 import { ListDetailPanel } from "../../../components/shared/list-detail-panel";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
@@ -362,23 +363,15 @@ function StackDetailPanel({
 				</span>
 			</div>
 
-			<div className="flex border-b border-[var(--color-border-default)]">
-				{innerTabs.map((tab) => (
-					<button
-						key={tab.key}
-						type="button"
-						onClick={() => setInnerTab(tab.key)}
-						className={cn(
-							"flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-[13px] font-medium transition-all duration-150",
-							innerTab === tab.key
-								? "border-b-[var(--color-primary)] bg-[color-mix(in_srgb,_var(--color-text-primary)_60%,_transparent)] text-[var(--color-text-primary)]"
-								: "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] hover:text-[var(--color-text-primary)]",
-						)}
-					>
-						{tab.icon} {t(`stackList.tabs.${tab.key}`, tab.label)}
-					</button>
-				))}
-			</div>
+			<Tabs
+				value={innerTab}
+				onChange={setInnerTab}
+				items={innerTabs.map((tab) => ({
+					id: tab.key,
+					icon: tab.icon,
+					label: t(`stackList.tabs.${tab.key}`, tab.label),
+				}))}
+			/>
 
 			<div className="flex-1 overflow-auto p-5">
 				{innerTab === "info" && (

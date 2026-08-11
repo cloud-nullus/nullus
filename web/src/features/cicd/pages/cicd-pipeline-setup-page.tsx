@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
+import { Tabs } from '../../../components/ui/tabs'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
@@ -417,28 +418,15 @@ export function CicdPipelineSetupPage() {
 
       <div className="flex items-start gap-5">
         <div className="min-w-0 flex-1">
-          <div className="mb-5 flex gap-0 border-b border-[var(--color-border-default)]">
-            {TABS.map((tab) => {
+          <Tabs
+            className="mb-5"
+            value={activeTab}
+            onChange={setActiveTab}
+            items={TABS.map((tab) => {
               const Icon = tab.icon
-              const active = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    '-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 border-b-transparent bg-none px-[16px] py-2.5 text-sm transition-all duration-150',
-                    active
-                      ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]'
-                      : 'font-normal text-[var(--color-text-secondary)]'
-                  )}
-                >
-                  <Icon size={14} />
-                  {tab.label}
-                </button>
-              )
+              return { id: tab.id, icon: <Icon size={14} />, label: tab.label }
             })}
-          </div>
+          />
 
           <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
             {activeTab === 'cluster' && (

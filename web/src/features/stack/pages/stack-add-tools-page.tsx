@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '../../../components/ui/button'
+import { Tabs } from '../../../components/ui/tabs'
 import { cn } from '../../../lib/utils'
 import type { Stack } from '../../../types'
 import { useAddTools, useStacks } from '../api/stack-api'
@@ -369,26 +370,15 @@ export function StackAddToolsPage() {
         }
       />
 
-      <div className="mb-5 flex gap-0 border-b border-[var(--color-border-default)]">
-        {STEP_TABS.map((tab) => {
-          const isActive = step === tab.id
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setStep(tab.id)}
-              className={cn(
-                '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-[18px] py-2.5 text-sm transition-all duration-150',
-                isActive
-                  ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]'
-                  : 'font-normal text-[var(--color-text-secondary)]'
-              )}
-            >
-              {t(`stackAddTools.steps.${tab.id}`, tab.label)}
-            </button>
-          )
-        })}
-      </div>
+      <Tabs
+        className="mb-5"
+        value={step}
+        onChange={setStep}
+        items={STEP_TABS.map((tab) => ({
+          id: tab.id,
+          label: t(`stackAddTools.steps.${tab.id}`, tab.label),
+        }))}
+      />
 
       <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
         {isLoading && <div className="text-sm text-[var(--color-text-secondary)]">{t('stackAddTools.loading', 'Loading stack information...')}</div>}

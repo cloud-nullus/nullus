@@ -3,7 +3,7 @@ import type React from 'react'
 import { Server, GitBranch, BarChart3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../../stores/auth-store'
-import { cn } from '../../../lib/utils'
+import { Tabs } from '../../../components/ui/tabs'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
 import { StackMonitoringOverview } from '../components/stack-monitoring-overview'
 import { DashboardTabLayout } from "../components/monitoring-tab-layout"
@@ -135,23 +135,16 @@ export function MonitoringPage() {
         hasContext && (
           <>
             {/* View tabs */}
-            <div className="mb-0 flex items-end border-b border-[var(--color-border-default)]">
-              {views.map((v) => (
-                <button key={v.id} type="button"
-                  onClick={() => !v.disabled && setActiveView(v.id)}
-                  disabled={v.disabled}
-                  className={cn(
-                    'flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors',
-                    activeView === v.id
-                      ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
-                      : v.disabled
-                        ? 'cursor-not-allowed border-b-transparent text-[var(--color-text-secondary)] opacity-35'
-                        : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                  )}>
-                  {v.icon}{v.label}
-                </button>
-              ))}
-            </div>
+            <Tabs
+              value={activeView ?? ''}
+              onChange={(id) => setActiveView(id as ViewType)}
+              items={views.map((v) => ({
+                id: v.id as string,
+                icon: v.icon,
+                label: v.label,
+                disabled: v.disabled,
+              }))}
+            />
 
             {/* View content */}
             <div className="pt-5">

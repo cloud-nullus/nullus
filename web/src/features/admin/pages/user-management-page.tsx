@@ -9,6 +9,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useMembers, useInviteMember, useUpdateUserRole, useUpdateMember, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
 import type { MemberRole, MemberStatus, InviteLink } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
+import { Tabs } from '../../../components/ui/tabs'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
@@ -465,26 +466,16 @@ export function UserManagementPage() {
       />
 
       {/* Main tabs */}
-      <div className="mb-6 flex items-center justify-between border-b border-[var(--color-border-default)]">
-        <div className="flex">
-          {(['users', 'roles'] as const).map((tab) => {
-            const active = activeMainTab === tab
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveMainTab(tab)}
-                className={cn(
-                  '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-5 py-2.5 text-sm font-medium transition-all duration-150',
-                  active ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]' : 'text-[var(--color-text-secondary)]'
-                )}
-              >
-                {tab === 'roles' ? 'Role Permissions' : 'Users'}
-              </button>
-            )
-          })}
-        </div>
-        <div className="flex items-center gap-3 pb-2">
+      <Tabs
+        className="mb-6"
+        value={activeMainTab}
+        onChange={setActiveMainTab}
+        items={[
+          { id: 'users' as const, label: 'Users' },
+          { id: 'roles' as const, label: 'Role Permissions' },
+        ]}
+        trailing={
+          <div className="flex items-center gap-3">
            {activeMainTab === 'roles' && (
              <>
                <Button
@@ -526,8 +517,9 @@ export function UserManagementPage() {
               </Button>
             </div>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Role Permissions tab */}
       {activeMainTab === 'roles' && (
@@ -626,28 +618,23 @@ export function UserManagementPage() {
       {activeMainTab === 'users' && (
         <div>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex gap-0 border-b border-[var(--color-border-default)]">
-              {(['all', 'admin', 'devops', 'developer'] as ActiveRoleTab[]).map((tab) => {
+            <Tabs
+              value={activeRoleTab}
+              onChange={setActiveRoleTab}
+              items={(['all', 'admin', 'devops', 'developer'] as ActiveRoleTab[]).map((tab) => {
                 const count = tab === 'all' ? users.length : users.filter((u) => u.role === tab).length
                 const active = activeRoleTab === tab
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveRoleTab(tab)}
-                    className={cn(
-                      '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-3.5 py-2 text-sm transition-all duration-150',
-                      active ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]' : 'font-normal text-[var(--color-text-secondary)]'
-                    )}
-                  >
-                    <span className="capitalize">{tab === 'all' ? 'All' : tab}</span>
-                    <span className={cn('ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold', active ? 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] text-[var(--color-text-muted)]')}>
+                return {
+                  id: tab,
+                  label: <span className="capitalize">{tab === 'all' ? 'All' : tab}</span>,
+                  badge: (
+                    <span className={cn('rounded-full px-1.5 py-0.5 text-[11px] font-bold', active ? 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] text-[var(--color-text-muted)]')}>
                       {count}
                     </span>
-                  </button>
-                )
+                  ),
+                }
               })}
-            </div>
+            />
             <div className="relative">
               <Search
                 size={13}

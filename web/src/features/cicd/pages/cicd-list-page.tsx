@@ -59,6 +59,7 @@ import { Button } from "../../../components/ui/button";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { YamlEditor } from "../../../components/shared/yaml-editor";
 import { DataTable } from "../../../components/shared/data-table";
+import { Tabs } from "../../../components/ui/tabs";
 import { formatDate, formatDateTime, resolveLocale } from "../../../lib/locale";
 import {
   getPipelineStatusLabel,
@@ -309,27 +310,15 @@ function ExecuteModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-[var(--color-border-default)]">
-          {EXECUTE_SETUP_TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 px-5 py-2.5 text-[13px] transition-all duration-150",
-                  active
-                    ? "border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]"
-                    : "border-b-transparent font-normal text-[var(--color-text-secondary)]",
-                )}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+        <Tabs
+          value={activeTab}
+          onChange={setActiveTab}
+          items={EXECUTE_SETUP_TABS.map((tab) => ({
+            id: tab.id,
+            icon: tab.icon,
+            label: tab.label,
+          }))}
+        />
 
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-5">
@@ -1708,26 +1697,15 @@ function PipelineDetailPanel({
         </div>
       </div>
 
-      <div className="flex border-b border-[var(--color-border-default)]">
-        {INNER_TABS.map((tab) => {
-          const active = innerTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setInnerTab(tab.key)}
-              className={`flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-[13px] font-medium transition-all duration-150 ${
-                active
-                  ? "border-b-[var(--color-primary)] bg-[color-mix(in_srgb,_var(--color-text-primary)_60%,_transparent)] text-[var(--color-text-primary)]"
-                  : "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] hover:text-[var(--color-text-primary)]"
-              }`}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs
+        value={innerTab}
+        onChange={setInnerTab}
+        items={INNER_TABS.map((tab) => ({
+          id: tab.key,
+          icon: tab.icon,
+          label: tab.label,
+        }))}
+      />
 
       <div className="p-5">
         {innerTab === "info" && <PipelineInfoTab pipeline={pipeline} />}

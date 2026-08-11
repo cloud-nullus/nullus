@@ -23,6 +23,7 @@ import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces, useClusterStorageClasses } from '../../admin/api/admin-api'
 import { findPlatformCluster } from '../../admin/utils/cluster-selection'
 import { Button } from '../../../components/ui/button'
+import { Tabs } from '../../../components/ui/tabs'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
@@ -2668,26 +2669,12 @@ export function StackInstallPage() {
         {/* Left: tabs + content */}
         <div className="min-w-0 flex-1">
           {/* Tabs */}
-          <div className="mb-5 flex gap-0 border-b border-[var(--color-border-default)]">
-            {TABS.map((tab) => {
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => switchTab(tab.id)}
-                  className={cn(
-                    '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-[18px] py-2.5 text-sm transition-all duration-150',
-                    isActive
-                      ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]'
-                      : 'font-normal text-[var(--color-text-secondary)]'
-                  )}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
+          <Tabs
+            className="mb-5"
+            value={activeTab}
+            onChange={switchTab}
+            items={TABS.map((tab) => ({ id: tab.id, label: tab.label }))}
+          />
           {tabGuardError && (
             <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
               {tabGuardError}

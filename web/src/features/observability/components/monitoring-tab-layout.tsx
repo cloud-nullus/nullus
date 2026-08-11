@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useId } from "react"
 import { useTranslation } from "react-i18next"
 import { Settings2, Plus, Save, ChevronUp, ChevronDown, GripVertical, Trash2, Check, Lock, Server } from "lucide-react"
-import { cn } from "../../../lib/utils"
+import { Tabs } from "../../../components/ui/tabs"
+import { Button } from "../../../components/ui/button"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import {
   SKIP_KEY,
@@ -95,24 +96,27 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
   return (
     <div className="w-full">
       {/* Tab bar */}
-      <div className="flex items-end overflow-x-auto border-b border-[var(--color-border-default)]">
-        {allTabs.map((t) => (
-          <button key={t.id} type="button" onClick={() => { setActiveId(t.id); setEmbedError(false) }}
-            className={cn('flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
-              activeId === t.id
-                ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
-                : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]')}>
-            {t.label}
-          </button>
-        ))}
-        {isAdmin && (
-          <button type="button" onClick={isManaging ? cancelManage : openManage}
-            className={cn('ml-auto flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors',
-              isManaging ? 'border-b-amber-400 text-amber-400' : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]')}>
-            <Settings2 size={13} />{isManaging ? t('common.cancel', 'Cancel') : t('monitoringPage.customTabs.manageTabs', 'Manage Tabs')}
-          </button>
-        )}
-      </div>
+      <Tabs
+        value={activeId}
+        onChange={(id) => { setActiveId(id); setEmbedError(false) }}
+        items={allTabs.map((t) => ({ id: t.id, label: t.label }))}
+        trailing={
+          isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={isManaging ? cancelManage : openManage}
+              // 관리 모드는 "지금 편집 중" 상태 표시라 경고 색을 쓴다.
+              // 개편 전에는 토큰이 아닌 amber-400 이 직접 박혀 있어 테마를 안 따랐다.
+              className={isManaging ? 'text-[var(--color-warning)]' : undefined}
+            >
+              <Settings2 size={13} />
+              {isManaging ? t('common.cancel', 'Cancel') : t('monitoringPage.customTabs.manageTabs', 'Manage Tabs')}
+            </Button>
+          )
+        }
+      />
 
       {/* Admin manage panel */}
       {isManaging && (
