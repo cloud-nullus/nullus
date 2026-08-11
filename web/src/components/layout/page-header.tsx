@@ -10,8 +10,8 @@
 // 그래서 헤더는 아래를 1px 선으로 닫고, 그 아래 본문이 바로 붙는다.
 
 import { type ChangeEvent, type ReactNode, useState } from 'react'
-import { Search } from 'lucide-react'
 import { Breadcrumb, type BreadcrumbItem } from '../shared/breadcrumb'
+import { SearchInput } from '../ui/search-input'
 
 /** 아이콘 컨테이너 색. DESIGN.md §Shapes — 해당 기능 색의 15% 알파. */
 export type PageHeaderTone = 'primary' | 'info' | 'success' | 'warning' | 'error' | 'accent'
@@ -93,16 +93,12 @@ export function PageHeader({
         {(onSearch || actions || children) && (
           <div className="flex min-w-0 shrink-0 items-center gap-2">
             {onSearch && (
-              <div className="flex h-[var(--control-height)] min-w-[200px] items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-2">
-                <Search size={14} className="shrink-0 text-[var(--color-text-secondary)]" />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={handleSearchChange}
-                  placeholder={searchPlaceholder}
-                  className="w-full border-none bg-transparent text-[13px] text-[var(--color-text-primary)] outline-none"
-                />
-              </div>
+              <SearchInput
+                wrapperClassName="min-w-[200px]"
+                value={query}
+                onChange={handleSearchChange}
+                placeholder={searchPlaceholder}
+              />
             )}
             {actions}
             {children}

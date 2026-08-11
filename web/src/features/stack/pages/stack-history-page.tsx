@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle, Terminal } from 'lucide-react'
+import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, AlertTriangle, Terminal } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
@@ -13,6 +13,7 @@ import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 
 export function StackHistoryPage() {
@@ -294,18 +295,12 @@ export function StackHistoryPage() {
                     <option key={clusterName} value={clusterName}>{clusterName}</option>
                   ))}
                 </NativeSelect>
-                <div className="relative ml-auto">
-                  <Search
-                    size={13}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-                  />
-                  <input
-                    placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-                  />
-                </div>
+                <SearchInput
+                  wrapperClassName="ml-auto w-[220px]"
+                  placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </>
         }
       />

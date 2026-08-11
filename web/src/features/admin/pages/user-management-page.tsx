@@ -4,7 +4,7 @@ import type { TFunction } from 'i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Link2, Mail, Pencil, Plus, Search, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
+import { GitBranch, Link2, Mail, Pencil, Plus, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useMembers, useInviteMember, useUpdateUserRole, useUpdateMember, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
 import type { MemberRole, MemberStatus, InviteLink } from '../api/admin-api'
@@ -18,6 +18,7 @@ import { DataTable } from '../../../components/shared/data-table'
 import { cn } from '../../../lib/utils'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 type ActiveRoleTab = 'all' | MemberRole
 
@@ -635,18 +636,12 @@ export function UserManagementPage() {
                 }
               })}
             />
-            <div className="relative">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('userManagementPage.searchPlaceholder', 'Search name/email...')}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
+            <SearchInput
+              wrapperClassName="w-[220px]"
+              placeholder={t('userManagementPage.searchPlaceholder', 'Search name/email...')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
           </div>
 
           {isLoading ? (

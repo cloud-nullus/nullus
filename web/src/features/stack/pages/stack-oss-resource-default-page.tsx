@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Database, Plus, Save, Search } from 'lucide-react'
+import { Database, Plus, Save } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { useResourceDefaults, useUpsertResourceDefault } from '../api/stack-api'
 import type { StackResourceDefault } from '../../../types'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 type EditableRow = Omit<StackResourceDefault, 'updated_at'> & { updated_at?: string }
 
@@ -228,18 +229,11 @@ export function StackOssResourceDefaultPage() {
           <div className="text-sm font-bold text-[var(--color-text-primary)]">
             OSS Default Resource Request/Limit Defaults
           </div>
-          <div className="relative">
-            <Search
-              size={13}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-            />
-            <input
-              placeholder="Search by category / tool / name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-[240px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-            />
-          </div>
+          <SearchInput
+            placeholder="Search by category / tool / name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
         <table className="w-full border-collapse">

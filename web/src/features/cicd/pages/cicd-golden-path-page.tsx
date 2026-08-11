@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, ExternalLink, Search } from 'lucide-react'
+import { BookOpen, ExternalLink } from 'lucide-react'
 import { useGoldenPaths } from '../api/cicd-api'
 import type { CICDGoldenPath, CICDTool } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { useStackConfigStore } from '../../stack/stores/stack-config-store'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 // Golden Path 도구 이름 → Stack 설정 tool ID 매핑
 const TOOL_NAME_TO_ID: Record<string, string> = {
@@ -155,18 +156,12 @@ export function CicdGoldenPathPage() {
 
       {/* Search */}
       <div className="mb-5 max-w-[360px]">
-        <div className="relative">
-          <Search
-            size={13}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-          />
-          <input
-            placeholder={t('goldenPathPage.searchPlaceholder', 'Search Golden Paths...')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-          />
-        </div>
+        <SearchInput
+          wrapperClassName="w-full"
+          placeholder={t('goldenPathPage.searchPlaceholder', 'Search Golden Paths...')}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {/* Golden Path cards */}

@@ -13,6 +13,7 @@ import {
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
+import { SearchInput } from '../ui/search-input'
 import { cn } from '../../lib/utils'
 
 interface DataTableProps<T> {
@@ -94,11 +95,11 @@ export function DataTable<T>({
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border-default)] px-[var(--table-cell-px)] py-2">
         {toolbar ?? (
-          <input
+          <SearchInput
+            wrapperClassName="w-full max-w-[280px]"
             value={globalFilter}
             onChange={(event) => setGlobalFilter(event.target.value)}
             placeholder="Search..."
-            className="h-[var(--control-height)] w-full max-w-[280px] rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 text-[13px] text-[var(--color-text-primary)]"
           />
         )}
       </div>

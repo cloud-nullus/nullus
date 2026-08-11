@@ -1,34 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Activity,
-  BarChart2,
-  Boxes,
-  Box,
-  CheckCircle2,
-  CircleDashed,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  FileCode2,
-  GitBranch,
-  Globe,
-  History,
-  Info,
-  List,
-  Package,
-  Plus,
-  RefreshCw,
-  Rocket,
-  Server,
-  XCircle,
-  Search,
-  Terminal,
-  Trash2,
-  Loader2,
-  X,
-} from "lucide-react";
+import { Activity, BarChart2, Boxes, Box, CheckCircle2, CircleDashed, ExternalLink, Eye, EyeOff, FileCode2, GitBranch, Globe, History, Info, List, Package, Plus, RefreshCw, Rocket, Server, XCircle, Terminal, Trash2, Loader2, X } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   Bar,
@@ -67,6 +40,7 @@ import {
 } from "../utils/pipeline-status";
 import { cn } from "../../../lib/utils";
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from "../../../components/ui/search-input"
 
 // ── Execute Modal ─────────────────────────────────────────────────────────────
 
@@ -2013,21 +1987,15 @@ export function CicdListPage() {
                     </option>
                   ))}
                 </NativeSelect>
-                <div className="relative ml-auto">
-                  <Search
-                    size={13}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-                  />
-                  <input
-                    placeholder={t(
-                      "cicdListPage.searchPlaceholder",
-                      "Search pipelines...",
-                    )}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-                  />
-                </div>
+                <SearchInput
+                  wrapperClassName="ml-auto w-[220px]"
+                  placeholder={t(
+                  "cicdListPage.searchPlaceholder",
+                  "Search pipelines...",
+                  )}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </>
             }
           />

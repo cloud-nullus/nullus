@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { BookOpen, Pencil, Plus, Search, Trash2, User } from "lucide-react";
+import { BookOpen, Pencil, Plus, Trash2, User } from "lucide-react";
 import {
   useCicdTemplates,
   useCreateCicdTemplate,
@@ -16,6 +16,7 @@ import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { useAuthStore } from "../../../stores/auth-store";
 import { resolveLocale } from "../../../lib/locale";
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from "../../../components/ui/search-input"
 
 const CAPABILITY_OPTIONS = ["CI", "CD", "Test", "Security"] as const;
 const PRIORITY_TEMPLATE_IDS = [
@@ -386,21 +387,15 @@ export function CicdTemplatePage() {
 
       {/* Search */}
       <div className="mb-5 max-w-[360px]">
-        <div className="relative">
-          <Search
-            size={13}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-          />
-          <input
-            placeholder={t(
-              "cicdTemplatePage.searchPlaceholder",
-              "Search templates...",
-            )}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-          />
-        </div>
+        <SearchInput
+          wrapperClassName="w-[220px]"
+          placeholder={t(
+          "cicdTemplatePage.searchPlaceholder",
+          "Search templates...",
+          )}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {/* Template cards grouped by CI/CD workload type. */}

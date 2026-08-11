@@ -1,4 +1,4 @@
-import { Layers, Search, ShieldCheck } from 'lucide-react'
+import { Layers, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
@@ -8,6 +8,7 @@ import { cn } from '../../../lib/utils'
 import { useState } from 'react'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 
 const STATUS_BADGE: Record<string, { className: string; key: string; defaultLabel: string }> = {
@@ -77,15 +78,12 @@ export function StackVersionPage() {
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3">
           <span className="text-sm font-bold text-[var(--color-text-primary)]">{t('stackVersionPage.verifiedCombinations', 'Verified Combinations')}</span>
-          <div className="relative">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('stackVersionPage.searchPlaceholder', 'Search stacks or tools...')}
-              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-            />
-          </div>
+          <SearchInput
+            wrapperClassName="w-[220px]"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('stackVersionPage.searchPlaceholder', 'Search stacks or tools...')}
+          />
         </div>
         <table className="w-full border-collapse">
           <thead>

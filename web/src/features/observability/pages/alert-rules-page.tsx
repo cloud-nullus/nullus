@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
-import { Bell, Pencil, Plus, Search } from 'lucide-react'
+import { Bell, Pencil, Plus } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertRule, useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
 import type { AlertRule, AlertChannel, CreateAlertRuleRequest } from '../api/observability-api'
@@ -16,6 +16,7 @@ import { DataTable } from '../../../components/shared/data-table'
 import { cn } from '../../../lib/utils'
 import { useClusterStackFilterState } from '../components/cluster-stack-filter'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
   slack: { className: 'bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] text-[var(--color-primary)]' },
@@ -311,18 +312,12 @@ export function AlertRulesPage() {
               )}
             </div>
 
-            <div className="relative ml-auto">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
+            <SearchInput
+              wrapperClassName="ml-auto w-[220px]"
+              placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         )}
       />

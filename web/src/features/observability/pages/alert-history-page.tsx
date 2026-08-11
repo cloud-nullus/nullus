@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { BellRing, ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { BellRing, ChevronDown, ChevronUp } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertHistory } from '../api/observability-api'
 import type { AlertHistoryEntry, AlertSeverity } from '../api/observability-api'
@@ -13,6 +13,7 @@ import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 const SEVERITY_BADGE: Record<AlertSeverity, { className: string }> = {
   critical: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
@@ -219,18 +220,12 @@ export function AlertHistoryPage() {
                     )
                   })}
                 </div>
-                <div className="relative ml-auto">
-                  <Search
-                    size={13}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-                  />
-                  <input
-                    placeholder={t('alertHistoryPage.searchPlaceholder', 'Search rule name...')}
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-                  />
-                </div>
+                <SearchInput
+                  wrapperClassName="ml-auto w-[220px]"
+                  placeholder={t('alertHistoryPage.searchPlaceholder', 'Search rule name...')}
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
               </>
         }
       />

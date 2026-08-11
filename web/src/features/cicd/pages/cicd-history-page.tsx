@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, History, Search } from 'lucide-react'
+import { ChevronRight, History } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
@@ -12,6 +12,7 @@ import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { getPipelineStatusLabel } from '../utils/pipeline-status'
 import { StatusBadge, toneForStatus } from '../../../components/shared/status-badge'
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 export function CicdHistoryPage() {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
@@ -145,18 +146,12 @@ export function CicdHistoryPage() {
               <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.failed', 'Failed')}</option>
               <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.cancelled', 'Cancelled')}</option>
             </NativeSelect>
-            <div className="relative ml-auto">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('cicdHistoryPage.searchPlaceholder', 'Search pipeline / deployer...')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
+            <SearchInput
+              wrapperClassName="ml-auto w-[220px]"
+              placeholder={t('cicdHistoryPage.searchPlaceholder', 'Search pipeline / deployer...')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </>
         }
       />

@@ -1,17 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import {
-	ArrowUpCircle,
-	BarChart2,
-	ClipboardList,
-	GitBranch,
-	History,
-	Info,
-	Layers,
-	List,
-	Plus,
-	Search,
-	Terminal,
-} from "lucide-react";
+import { ArrowUpCircle, BarChart2, ClipboardList, GitBranch, History, Info, Layers, List, Plus, Terminal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -58,6 +46,7 @@ export {
 } from "../utils/stack-list-utils";
 import { StackInfoTab } from "../components/stack-info-tab"
 import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
@@ -671,18 +660,12 @@ export function StackListPage() {
 							</option>
 						))}
 					</NativeSelect>
-					<div className="relative ml-auto">
-						<Search
-							size={13}
-							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-						/>
-						<input
-							placeholder={t("stackList.searchPlaceholder", "Search stacks...")}
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-							className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-						/>
-					</div>
+					<SearchInput
+					  wrapperClassName="ml-auto w-[220px]"
+					  placeholder={t("stackList.searchPlaceholder", "Search stacks...")}
+					  value={search}
+					  onChange={(e) => setSearch(e.target.value)}
+					/>
 				</>
 			}
 			getRowKey={(row) => row.id}
