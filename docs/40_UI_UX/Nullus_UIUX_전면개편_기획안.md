@@ -435,7 +435,7 @@ main
 | ⬜ | 21 하드코딩 색 청산 | ESLint 경고 1335건이 대상 목록 |
 | ➖ | 23 tanstack-table 제거 | D6=A 라 해당 없음 (계속 사용) |
 
-측정값: vitest **640/640**, tsc 통과, vite build 통과,
+측정값: vitest **642/642**, tsc 통과, vite build 통과,
 시각 회귀 **58/58**, eslint **0 errors / 72 warnings**(전부 잔여 hex — 커밋 21 대상),
 design.md lint **0 errors**, 대비 감사 **45/45**.
 
@@ -454,6 +454,7 @@ design.md lint **0 errors**, 대비 감사 **45/45**.
 | 밀도 상향 | 표 행 40→32, 헤더 36→28, 카드 여백 16→12, 페이지 여백 32→24, 헤더 56→44, 사이드바 접힘 64→48. 1080p 목록 기준 한 화면 6줄 증가 |
 | 라운드 축소 | `rounded` 6/10/12 → 4/6/8 |
 | 아래로 펼치던 상세 → 좌우 분할 | `alert-history`, `stack-history`. `ListDetailPanel` 에 `detailWidth` 를 더해 "넓은 표 + 고정폭 사이드 레일" 배치를 같은 컴포넌트로 처리한다. `DataTable` 에 `flush` 를 더해 액자 겹침을 없앴다 |
+| 자체 분할 → `ListDetailPanel` | `stack-list` 가 쓰던 `grid xl:grid-cols-[minmax(300px,38%)_...]` 자체 구현을 흡수했다. 같은 비율을 px 로 옮겨(`max(300, (vw-288)×0.38)`) 폭은 그대로 두고, 두 개로 갈라져 있던 액자를 선 하나로 합쳤다. 1280px 미만 폴백은 유지 |
 | 잔재 정리 | 다크 body 의 남보라 그라데이션(`#0a0a0a→#1a1a2e→#16213e`)과 홈 히어로 그라데이션 제거. `typography.h1` 이 2rem 인데 쓰는 화면이 0곳이라 실제 값(1.375rem)으로 정정 |
 | 고친 버그 | `ListDetailPanel` 이 `listWidth` 를 240/280 만 클래스로 매핑하고 나머지를 조용히 280 으로 접고 있었다(Tailwind 임의값은 런타임 값으로 안 만들어진다) → 인라인 스타일로. MUI Button 에 `gap` 이 없어 아이콘이 JSX 줄바꿈 여부에 따라 글자에 붙었다 떨어졌다 했다 |
 

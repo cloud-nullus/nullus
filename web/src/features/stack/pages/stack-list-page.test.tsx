@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../../__tests__/test-utils";
 import { fireEvent, screen } from "@testing-library/react";
 import { StackListPage } from "./stack-list-page";
@@ -20,64 +20,6 @@ vi.mock("react-router-dom", async () => {
     ...actual,
     useNavigate: () => mockNavigate,
   };
-
-  it("hides monitoring tab when stack is completed but cluster is disconnected", () => {
-    mockUseStacks.mockReturnValue({
-      data: {
-        items: [
-          {
-            ...stackRows[0],
-            status: "completed",
-          },
-        ],
-        total: 1,
-      },
-      isLoading: false,
-    });
-    mockUseClusters.mockReturnValue({
-      data: [
-        {
-          id: "cluster-1",
-          name: "prod-cluster",
-          connection_status: "unreachable",
-        },
-      ],
-      isLoading: false,
-    });
-
-    renderWithProviders(<StackListPage />);
-
-    expect(screen.queryByRole("button", { name: "Monitoring" })).toBeNull();
-  });
-
-  it("supports cluster filter and cluster column visibility", () => {
-    mockUseStacks.mockReturnValue({
-      data: {
-        items: [
-          ...stackRows,
-          {
-            ...stackRows[0],
-            id: "stack-2",
-            name: "Another Stack",
-            clusterId: "cluster-2",
-            clusterName: "dev-cluster",
-          },
-        ],
-        total: 2,
-      },
-      isLoading: false,
-    });
-
-    renderWithProviders(<StackListPage />);
-
-    expect(screen.getAllByText("Cluster").length).toBeGreaterThan(0);
-    fireEvent.change(screen.getByDisplayValue("All Clusters"), {
-      target: { value: "prod-cluster" },
-    });
-
-    expect(screen.getAllByText("DevSecOps Core").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Another Stack")).toBeNull();
-  });
 });
 
 vi.mock("../api/stack-api", () => ({
@@ -117,63 +59,6 @@ vi.mock("chart.js", () => {
     Filler: {},
   };
 
-  it("hides monitoring tab when stack is completed but cluster is disconnected", () => {
-    mockUseStacks.mockReturnValue({
-      data: {
-        items: [
-          {
-            ...stackRows[0],
-            status: "completed",
-          },
-        ],
-        total: 1,
-      },
-      isLoading: false,
-    });
-    mockUseClusters.mockReturnValue({
-      data: [
-        {
-          id: "cluster-1",
-          name: "prod-cluster",
-          connection_status: "unreachable",
-        },
-      ],
-      isLoading: false,
-    });
-
-    renderWithProviders(<StackListPage />);
-
-    expect(screen.queryByRole("button", { name: "Monitoring" })).toBeNull();
-  });
-
-  it("supports cluster filter and cluster column visibility", () => {
-    mockUseStacks.mockReturnValue({
-      data: {
-        items: [
-          ...stackRows,
-          {
-            ...stackRows[0],
-            id: "stack-2",
-            name: "Another Stack",
-            clusterId: "cluster-2",
-            clusterName: "dev-cluster",
-          },
-        ],
-        total: 2,
-      },
-      isLoading: false,
-    });
-
-    renderWithProviders(<StackListPage />);
-
-    expect(screen.getAllByText("Cluster").length).toBeGreaterThan(0);
-    fireEvent.change(screen.getByDisplayValue("All Clusters"), {
-      target: { value: "prod-cluster" },
-    });
-
-    expect(screen.getAllByText("DevSecOps Core").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Another Stack")).toBeNull();
-  });
 });
 
 vi.mock("../../../stores/auth-store", () => ({
@@ -421,5 +306,65 @@ describe("StackListPage", () => {
 
     expect(screen.getAllByText("DevSecOps Core").length).toBeGreaterThan(0);
     expect(screen.queryByText("Another Stack")).toBeNull();
+  });
+
+  // 데스크톱 폭에서는 ListDetailPanel 의 오른쪽 칸에 상세가 들어간다.
+  // jsdom 기본 폭(1024)은 폴백 경로라 위 테스트들은 전부 그쪽만 밟는다.
+  describe("데스크톱 폭(≥1280)의 좌우 분할", () => {
+    const setViewportWidth = (width: number) => {
+      Object.defineProperty(window, "innerWidth", {
+        value: width,
+        writable: true,
+        configurable: true,
+      });
+    };
+
+    afterEach(() => setViewportWidth(1024));
+
+    it("목록이 비면 오른쪽 칸이 안내 문구를 보여준다", () => {
+      setViewportWidth(1440);
+      mockUseStacks.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+      renderWithProviders(<StackListPage />);
+
+      expect(screen.getByTestId("list-detail-detail").textContent).toContain(
+        "Select a stack from the list to view details here.",
+      );
+    });
+
+    it("행을 고르면 상세가 오른쪽 칸에서 바뀌고 목록은 왼쪽에 그대로 남는다", () => {
+      setViewportWidth(1440);
+      mockUseStacks.mockReturnValue({
+        data: {
+          items: [
+            ...stackRows,
+            {
+              ...stackRows[0],
+              id: "stack-2",
+              name: "Another Stack",
+              templateName: "Jenkins + Flux",
+              clusterId: "cluster-2",
+              clusterName: "dev-cluster",
+            },
+          ],
+          total: 2,
+        },
+        isLoading: false,
+      });
+      renderWithProviders(<StackListPage />);
+
+      const list = screen.getByTestId("list-detail-list");
+      const detail = screen.getByTestId("list-detail-detail");
+
+      // 첫 행이 기본 선택이다.
+      expect(detail.textContent).toContain("GitLab + Argo CD");
+
+      fireEvent.click(screen.getByTitle("Another Stack"));
+
+      // 상세만 바뀐다.
+      expect(screen.getByTestId("list-detail-detail").textContent).toContain("Jenkins + Flux");
+      // 목록은 두 행 모두 왼쪽에 그대로 — 상세가 목록을 아래로 밀어내지 않는다.
+      expect(list.textContent).toContain("DevSecOps Core");
+      expect(list.textContent).toContain("Another Stack");
+    });
   });
 });

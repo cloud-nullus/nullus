@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
+import { ListDetailPanel } from "../../../components/shared/list-detail-panel";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
 import { NativeSelect } from "../../../components/ui/native-select";
@@ -306,6 +307,7 @@ function StackDetailPanel({
 	onDelete,
 	onBackToList,
 	className,
+	flush = false,
 }: {
 	stack: Stack;
 	clusterConnectionStatus?: string;
@@ -314,6 +316,8 @@ function StackDetailPanel({
 	onDelete: () => void;
 	onBackToList: () => void;
 	className?: string;
+	/** ListDetailPanel 안에 들어갈 때 자기 테두리·모서리를 버린다. */
+	flush?: boolean;
 }) {
 	const { t } = useTranslation();
 	const [innerTab, setInnerTab] = useState<InnerTab>("info");
@@ -331,7 +335,15 @@ function StackDetailPanel({
 	}, [canShowMonitoring, innerTab]);
 
 	return (
-		<div className={cn("flex h-full flex-col overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[var(--color-surface-card)]", className)}>
+		<div
+			className={cn(
+				"flex h-full flex-col overflow-hidden bg-[var(--color-surface-card)]",
+				flush
+					? ""
+					: "rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)]",
+				className,
+			)}
+		>
 			<div className="flex items-center gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
 				<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
 					<Layers size={16} />
@@ -425,6 +437,9 @@ export function StackListPage() {
   const previewImportStack = usePreviewImportStackConfig();
 	const tablePageSize = Math.max(6, Math.min(14, Math.floor((viewportHeight - 340) / 52)));
 	const isDesktopLayout = viewportWidth >= 1280;
+	// 개편 전 CSS 그리드 `minmax(300px, 38%)` 를 그대로 px 로 옮긴다.
+	// 288 = 사이드바 240 + 페이지 좌우 여백 2×24.
+	const listPaneWidth = Math.max(300, Math.round((viewportWidth - 288) * 0.38));
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -626,6 +641,63 @@ export function StackListPage() {
 		},
 	];
 
+	// 데스크톱은 ListDetailPanel 안쪽, 그 아래 폭에서는 단독으로 선다.
+	// 마크업은 그대로 두고 렌더 위치만 바뀌므로 순수 추출이다.
+	const stackTable = (
+		<DataTable
+			flush={isDesktopLayout}
+			key={`stack-list-${tablePageSize}`}
+			columns={columns}
+			data={filtered}
+			pageSize={tablePageSize}
+			toolbar={
+				<>
+					<NativeSelect
+						value={statusFilter}
+						onChange={(e) => setStatusFilter(e.target.value)}
+						className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+					>
+						<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allStatus", "All Status")}</option>
+						<option value="healthy" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.healthy", "Running")}</option>
+						<option value="completed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.completed", "Completed")}</option>
+						<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.running", "Running")}</option>
+						<option value="terminating" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.terminating", "Terminating")}</option>
+						<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.pending", "Pending")}</option>
+						<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.failed", "Failed")}</option>
+						<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.cancelled", "Cancelled")}</option>
+					</NativeSelect>
+					<NativeSelect
+						value={clusterFilter}
+						onChange={(e) => setClusterFilter(e.target.value)}
+						className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+					>
+						<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allClusters", "All Clusters")}</option>
+						{clusterOptions.map((clusterName) => (
+							<option key={clusterName} value={clusterName} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
+								{clusterName}
+							</option>
+						))}
+					</NativeSelect>
+					<div className="relative ml-auto">
+						<Search
+							size={13}
+							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+						/>
+						<input
+							placeholder={t("stackList.searchPlaceholder", "Search stacks...")}
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+						/>
+					</div>
+				</>
+			}
+			getRowKey={(row) => row.id}
+			onRowClick={(row) => setExpandedStackId(row.id)}
+			emptyMessage={isLoading ? t("stackList.loading", "Loading stacks...") : t("stackList.empty", "No stacks found.")}
+		/>
+	);
+
 	return (
 		<div>
 			<PageHeader
@@ -657,98 +729,51 @@ export function StackListPage() {
 			  }
 			/>
 
-			<div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
-				<div className="min-w-0">
-					<DataTable
-						key={`stack-list-${tablePageSize}`}
-						columns={columns}
-						data={filtered}
-						pageSize={tablePageSize}
-						toolbar={
-							<>
-								<NativeSelect
-									value={statusFilter}
-									onChange={(e) => setStatusFilter(e.target.value)}
-									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-								>
-									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allStatus", "All Status")}</option>
-									<option value="healthy" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.healthy", "Running")}</option>
-									<option value="completed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.completed", "Completed")}</option>
-									<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.running", "Running")}</option>
-									<option value="terminating" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.terminating", "Terminating")}</option>
-									<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.pending", "Pending")}</option>
-									<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.failed", "Failed")}</option>
-									<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.cancelled", "Cancelled")}</option>
-								</NativeSelect>
-								<NativeSelect
-									value={clusterFilter}
-									onChange={(e) => setClusterFilter(e.target.value)}
-									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
-								>
-									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allClusters", "All Clusters")}</option>
-									{clusterOptions.map((clusterName) => (
-										<option key={clusterName} value={clusterName} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
-											{clusterName}
-										</option>
-									))}
-								</NativeSelect>
-								<div className="relative ml-auto">
-									<Search
-										size={13}
-										className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-									/>
-									<input
-										placeholder={t("stackList.searchPlaceholder", "Search stacks...")}
-										value={search}
-										onChange={(e) => setSearch(e.target.value)}
-										className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-									/>
-								</div>
-							</>
-						}
-						getRowKey={(row) => row.id}
-						onRowClick={(row) => setExpandedStackId(row.id)}
-						emptyMessage={isLoading ? t("stackList.loading", "Loading stacks...") : t("stackList.empty", "No stacks found.")}
-					/>
-					<div className="mt-2 hidden text-[12px] text-[var(--color-text-secondary)] xl:block">
-						{t("stackList.listHint", "Selecting a stack from the list updates the detail panel immediately.")}
-					</div>
-				</div>
-
-				{isDesktopLayout && (
-					<div>
-						{expandedStack ? (
-							<div className="h-full pr-1">
-								<StackDetailPanel
-									key={expandedStack.id}
-									stack={expandedStack}
-									clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
-									isDeleting={deleteStack.isPending}
-									onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
-									onDelete={() => setDeleteStackId(expandedStack.id)}
-									onBackToList={() => setExpandedStackId(null)}
-								/>
+			{isDesktopLayout ? (
+				<ListDetailPanel
+					listWidth={listPaneWidth}
+					emptyDetailMessage={t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
+					listContent={
+						<>
+							{stackTable}
+							<div className="px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">
+								{t("stackList.listHint", "Selecting a stack from the list updates the detail panel immediately.")}
 							</div>
-						) : (
-							<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
-								{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
-							</div>
-						)}
-					</div>
-				)}
-			</div>
-
-			{!isDesktopLayout && expandedStack && (
-				<StackDetailPanel
-					key={`${expandedStack.id}-mobile`}
-					stack={expandedStack}
-					clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
-					isDeleting={deleteStack.isPending}
-					onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
-					onDelete={() => setDeleteStackId(expandedStack.id)}
-					onBackToList={() => setExpandedStackId(null)}
-					className="mt-4"
+						</>
+					}
+					detailContent={
+						expandedStack ? (
+							<StackDetailPanel
+								flush
+								key={expandedStack.id}
+								stack={expandedStack}
+								clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
+								isDeleting={deleteStack.isPending}
+								onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
+								onDelete={() => setDeleteStackId(expandedStack.id)}
+								onBackToList={() => setExpandedStackId(null)}
+							/>
+						) : null
+					}
 				/>
+			) : (
+				/* 1280px 미만에서는 좌우로 나눌 폭이 없다. 목록 아래에 상세를 붙이는
+				   기존 폴백을 그대로 둔다 (DESIGN.md §Layout — 데스크톱 우선). */
+				<>
+					{stackTable}
+					{expandedStack && (
+						<StackDetailPanel
+							key={`${expandedStack.id}-mobile`}
+							stack={expandedStack}
+							clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
+							isDeleting={deleteStack.isPending}
+							onAddTools={() => navigate(`/stack/${expandedStack.id}/add-tools`)}
+							onDelete={() => setDeleteStackId(expandedStack.id)}
+							onBackToList={() => setExpandedStackId(null)}
+							className="mt-4"
+						/>
+					)}
+				</>
 			)}
 
 			<ConfirmDialog

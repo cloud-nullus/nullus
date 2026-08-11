@@ -85,8 +85,10 @@ export function DataTable<T>({
     <div
       className={cn(
         'bg-[var(--color-surface-card)]',
+        // flush 는 테두리만 버린다. h-full 을 주면 안 된다 — 스크롤 영역을 꽉 채워
+        // 표 뒤에 오는 형제(목록 힌트 등)를 화면 밖으로 밀어낸다.
         flush
-          ? 'h-full'
+          ? ''
           : 'overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)]',
       )}
     >
