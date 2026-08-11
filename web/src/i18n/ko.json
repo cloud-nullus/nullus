@@ -1523,5 +1523,12 @@
     },
     "allocated": "할당된 {{label}}",
     "clusterInfo": "Cluster 정보"
+  },
+  "monitoring": {
+    "scale": {
+      "request": "요청",
+      "limit": "상한",
+      "current": "현재"
+    }
   }
 }

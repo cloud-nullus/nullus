@@ -14,6 +14,9 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
+// chart.js 는 <canvas> 라 CSS 변수를 해석하지 못한다 — 색을 실제 값으로 풀어 넘긴다.
+import { resolveColor } from "../../../theme/resolve-token";
+import { useTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import { useStackMonitoring } from "../../stack/api/stack-api";
 import { toolLogoURL } from "../../stack/utils/tool-logo";
@@ -182,6 +185,7 @@ function isResourceLinkedToPods(
 }
 
 export function StackMonitoringOverview({ stackId }: { stackId: string }) {
+  const { t } = useTranslation();
   const [range, setRange] = useState<MonitoringRange>("realtime");
   const [scope, setScope] = useState<string>("all");
   const [samples, setSamples] = useState<MonitoringSample[]>([]);
@@ -385,12 +389,12 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
 
   const podStatusData = useMemo(() => {
     const palette = [
-      "var(--color-success)",
-      "var(--color-warning)",
-      "var(--color-error)",
-      "var(--color-info)",
-      "var(--color-accent-alt)",
-      "var(--color-text-secondary)",
+      resolveColor("var(--color-success)"),
+      resolveColor("var(--color-warning)"),
+      resolveColor("var(--color-error)"),
+      resolveColor("var(--color-info)"),
+      resolveColor("var(--color-accent-alt)"),
+      resolveColor("var(--color-text-secondary)"),
     ];
     const counts = Object.entries(currentMetrics.statusCounts).map(
       ([name, count]) => ({ name, count }),
@@ -440,7 +444,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current CPU",
           value: "-",
           icon: <Cpu size={18} />,
-          color: "var(--color-info)",
+          color: resolveColor("var(--color-info)"),
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "Core" },
@@ -449,7 +453,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current Memory",
           value: "-",
           icon: <MemoryStick size={18} />,
-          color: "var(--color-accent-alt)",
+          color: resolveColor("var(--color-accent-alt)"),
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "GiB" },
@@ -458,7 +462,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current Storage",
           value: "-",
           icon: <HardDrive size={18} />,
-          color: "var(--color-success)",
+          color: resolveColor("var(--color-success)"),
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
           bar: 0,
         },
@@ -466,7 +470,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Ready Pods",
           value: "-",
           icon: <Box size={18} />,
-          color: "var(--color-warning)",
+          color: resolveColor("var(--color-warning)"),
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
           bar: 0,
         },
@@ -525,7 +529,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         label: "Current CPU",
         value: cpuUsageC !== null ? `${cpuUsageC.toFixed(2)} Core` : "N/A",
         icon: <Cpu size={18} />,
-        color: "var(--color-info)",
+        color: resolveColor("var(--color-info)"),
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
         bar: cpuCurrentBar,
         metricScale: {
@@ -540,7 +544,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         value:
           memoryUsageGiB !== null ? `${memoryUsageGiB.toFixed(2)} GiB` : "N/A",
         icon: <MemoryStick size={18} />,
-        color: "var(--color-accent-alt)",
+        color: resolveColor("var(--color-accent-alt)"),
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
         bar: memoryCurrentBar,
         metricScale: {
@@ -561,7 +565,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                 ? `${storageRequestGiB.toFixed(2)} GiB`
                 : "0.00 GiB",
         icon: <HardDrive size={18} />,
-        color: "var(--color-success)",
+        color: resolveColor("var(--color-success)"),
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
         bar: storageCurrentBar,
         metricScale: {
@@ -576,7 +580,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         label: "Ready Pods",
         value: `${currentMetrics.readyPods} / ${currentMetrics.totalPods}`,
         icon: <Box size={18} />,
-        color: "var(--color-warning)",
+        color: resolveColor("var(--color-warning)"),
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
         bar: readyRatio,
       },
@@ -589,28 +593,28 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 } },
+        legend: { labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 } },
         tooltip: {
-          backgroundColor: "var(--color-surface-base)",
-          borderColor: "var(--color-border-default)",
+          backgroundColor: resolveColor("var(--color-surface-base)"),
+          borderColor: resolveColor("var(--color-border-default)"),
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "var(--color-border-default)",
+          bodyColor: resolveColor("var(--color-border-default)"),
         },
       },
       scales: {
         x: {
           ticks: {
-            color: "var(--color-text-secondary)",
+            color: resolveColor("var(--color-text-secondary)"),
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 8,
           },
-          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
+          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
         },
         y: {
           ticks: {
-            color: "var(--color-text-secondary)",
+            color: resolveColor("var(--color-text-secondary)"),
             callback: (value) => {
               const n = Number(value);
               if (!Number.isFinite(n)) return "0";
@@ -618,8 +622,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               return `${Math.round(n)}`;
             },
           },
-          title: { display: true, text: "Core", color: "var(--color-text-secondary)" },
-          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
+          title: { display: true, text: "Core", color: resolveColor("var(--color-text-secondary)") },
+          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
           beginAtZero: true,
         },
       },
@@ -637,28 +641,28 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 } },
+        legend: { labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 } },
         tooltip: {
-          backgroundColor: "var(--color-surface-base)",
-          borderColor: "var(--color-border-default)",
+          backgroundColor: resolveColor("var(--color-surface-base)"),
+          borderColor: resolveColor("var(--color-border-default)"),
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "var(--color-border-default)",
+          bodyColor: resolveColor("var(--color-border-default)"),
         },
       },
       scales: {
         x: {
           ticks: {
-            color: "var(--color-text-secondary)",
+            color: resolveColor("var(--color-text-secondary)"),
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 8,
           },
-          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
+          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
         },
         y: {
           ticks: {
-            color: "var(--color-text-secondary)",
+            color: resolveColor("var(--color-text-secondary)"),
             callback: (value) => {
               const n = Number(value);
               if (!Number.isFinite(n)) return "0";
@@ -666,8 +670,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               return `${Math.round(n)}`;
             },
           },
-          title: { display: true, text: "GiB", color: "var(--color-text-secondary)" },
-          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
+          title: { display: true, text: "GiB", color: resolveColor("var(--color-text-secondary)") },
+          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
           beginAtZero: true,
         },
       },
@@ -686,15 +690,15 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "CPU Request",
           data: usageData.map((item) => item.cpuRequest / 1000),
-          borderColor: "var(--color-info)",
-          backgroundColor: "color-mix(in srgb, var(--color-info) 18%, transparent)",
+          borderColor: resolveColor("var(--color-info)"),
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-info) 18%, transparent)"),
           fill: true,
         },
         {
           label: "CPU Limit",
           data: usageData.map((item) => item.cpuLimit / 1000),
-          borderColor: "var(--color-warning)",
-          backgroundColor: "color-mix(in srgb, var(--color-warning) 8%, transparent)",
+          borderColor: resolveColor("var(--color-warning)"),
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-warning) 8%, transparent)"),
           fill: false,
         },
         {
@@ -702,8 +706,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           data: usageData.map((item) =>
             item.cpuUsage === null ? null : item.cpuUsage / 1000,
           ),
-          borderColor: "var(--color-success)",
-          backgroundColor: "color-mix(in srgb, var(--color-success) 8%, transparent)",
+          borderColor: resolveColor("var(--color-success)"),
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-success) 8%, transparent)"),
           fill: false,
         },
       ],
@@ -718,15 +722,15 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Memory Request",
           data: usageData.map((item) => item.memoryRequest / 1024),
-          borderColor: "var(--color-info)",
-          backgroundColor: "color-mix(in srgb, var(--color-info) 18%, transparent)",
+          borderColor: resolveColor("var(--color-info)"),
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-info) 18%, transparent)"),
           fill: true,
         },
         {
           label: "Memory Limit",
           data: usageData.map((item) => item.memoryLimit / 1024),
-          borderColor: "var(--color-warning)",
-          backgroundColor: "color-mix(in srgb, var(--color-warning) 8%, transparent)",
+          borderColor: resolveColor("var(--color-warning)"),
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-warning) 8%, transparent)"),
           fill: false,
         },
         {
@@ -734,8 +738,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           data: usageData.map((item) =>
             item.memoryUsage === null ? null : item.memoryUsage / 1024,
           ),
-          borderColor: "var(--color-success)",
-          backgroundColor: "color-mix(in srgb, var(--color-success) 8%, transparent)",
+          borderColor: resolveColor("var(--color-success)"),
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-success) 8%, transparent)"),
           fill: false,
         },
       ],
@@ -750,13 +754,13 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Total Pods",
           data: ossBars.map((item) => item.pods),
-          backgroundColor: "color-mix(in srgb, var(--color-primary) 72%, transparent)",
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-primary) 72%, transparent)"),
           borderRadius: 6,
         },
         {
           label: "Ready Pods",
           data: ossBars.map((item) => item.ready),
-          backgroundColor: "color-mix(in srgb, var(--color-success) 72%, transparent)",
+          backgroundColor: resolveColor("color-mix(in srgb, var(--color-success) 72%, transparent)"),
           borderRadius: 6,
         },
       ],
@@ -769,13 +773,13 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 } },
+        legend: { labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 } },
         tooltip: {
-          backgroundColor: "var(--color-surface-base)",
-          borderColor: "var(--color-border-default)",
+          backgroundColor: resolveColor("var(--color-surface-base)"),
+          borderColor: resolveColor("var(--color-border-default)"),
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "var(--color-border-default)",
+          bodyColor: resolveColor("var(--color-border-default)"),
           callbacks: {
             title: (items) => {
               const idx = items[0]?.dataIndex ?? 0;
@@ -787,12 +791,12 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       scales: {
         x: {
           ticks: { display: false },
-          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
+          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
         },
         y: {
           beginAtZero: true,
-          ticks: { color: "var(--color-text-secondary)", precision: 0 },
-          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
+          ticks: { color: resolveColor("var(--color-text-secondary)"), precision: 0 },
+          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
         },
       },
     }),
@@ -827,7 +831,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           data: podStatusData.map((item) => item.value),
           backgroundColor: podStatusData.map((item) => item.color),
-          borderColor: "color-mix(in srgb, var(--color-text-primary) 80%, transparent)",
+          borderColor: resolveColor("color-mix(in srgb, var(--color-text-primary) 80%, transparent)"),
           borderWidth: 2,
         },
       ],
@@ -843,14 +847,14 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       plugins: {
         legend: {
           position: "bottom",
-          labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 },
+          labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 },
         },
         tooltip: {
-          backgroundColor: "var(--color-surface-base)",
-          borderColor: "var(--color-border-default)",
+          backgroundColor: resolveColor("var(--color-surface-base)"),
+          borderColor: resolveColor("var(--color-border-default)"),
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "var(--color-border-default)",
+          bodyColor: resolveColor("var(--color-border-default)"),
         },
       },
     }),
@@ -964,18 +968,6 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                             ),
                           );
 
-                    const reqLabelShift =
-                      reqPos < 8
-                        ? "translate-x-0"
-                        : reqPos > 92
-                          ? "-translate-x-full"
-                          : "-translate-x-1/2";
-                    const limLabelShift =
-                      limPos < 8
-                        ? "translate-x-0"
-                        : limPos > 92
-                          ? "-translate-x-full"
-                          : "-translate-x-1/2";
 
                     return (
                       <>
@@ -1001,37 +993,32 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                             />
                           )}
                         </div>
-                        <div className="relative mt-1 h-8 text-[10px] font-semibold text-[var(--color-text-secondary)]">
-                          <span className="absolute left-0 top-0 whitespace-nowrap">
-                            0
-                          </span>
-                          <span
-                            className={`absolute top-0 whitespace-nowrap ${reqLabelShift}`}
-                            style={{ left: `${reqPos}%` }}
-                          >
-                            {card.metricScale.request.toFixed(2)}
-                          </span>
-                          <span
-                            className={`absolute top-4 whitespace-nowrap ${reqLabelShift}`}
-                            style={{ left: `${reqPos}%` }}
-                          >
-                            (Req)
+                        {/*
+                          값 비율 위치에 라벨을 절대 배치하던 구조를 걷어냈다.
+                          request 와 limit 이 가까우면(예: Req 3.23 / Lim 1.50) 라벨이
+                          반드시 겹쳐 글자가 잘렸다. 충돌 처리를 덧붙이는 대신
+                          겹칠 수 없는 범례 한 줄로 바꿨다 — 읽기도 더 쉽다.
+                        */}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-[var(--color-text-secondary)]">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="inline-block h-2 w-px bg-[var(--color-info)]" aria-hidden="true" />
+                            {t('monitoring.scale.request', 'Req')} {card.metricScale.request.toFixed(2)}
                           </span>
                           {showLimit && (
-                            <>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="inline-block h-2 w-px bg-[var(--color-warning)]" aria-hidden="true" />
+                              {t('monitoring.scale.limit', 'Lim')} {card.metricScale.limit.toFixed(2)}
+                            </span>
+                          )}
+                          {curPos !== null && (
+                            <span className="inline-flex items-center gap-1">
                               <span
-                                className={`absolute top-0 whitespace-nowrap ${limLabelShift}`}
-                                style={{ left: `${limPos}%` }}
-                              >
-                                {card.metricScale.limit.toFixed(2)}
-                              </span>
-                              <span
-                                className={`absolute top-4 whitespace-nowrap ${limLabelShift}`}
-                                style={{ left: `${limPos}%` }}
-                              >
-                                (Lim)
-                              </span>
-                            </>
+                                className="inline-block h-2 w-2 rounded-full"
+                                style={{ backgroundColor: card.color }}
+                                aria-hidden="true"
+                              />
+                              {t('monitoring.scale.current', 'Now')} {(card.metricScale.current ?? 0).toFixed(2)}
+                            </span>
                           )}
                         </div>
                       </>

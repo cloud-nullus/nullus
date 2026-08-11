@@ -1523,5 +1523,12 @@
     },
     "allocated": "Allocated {{label}}",
     "clusterInfo": "Cluster Info"
+  },
+  "monitoring": {
+    "scale": {
+      "request": "Req",
+      "limit": "Lim",
+      "current": "Now"
+    }
   }
 }
