@@ -36,10 +36,18 @@ export default defineConfig([
         'error',
         {
           paths: [
+            // 표는 components/shared/data-table.tsx (TanStack Table) 하나로 통일한다.
+            // AG Grid 이관은 시도했다가 되돌렸다 — 실제 레이아웃 측정에 의존해 jsdom 에서
+            // 행을 렌더하지 않아 목록 화면 7곳의 회귀 테스트 16건이 깨졌다(기획안 D6/A안).
+            // 다시 검토하려면 그 대가부터 다시 본다.
+            {
+              name: 'ag-grid-community',
+              message:
+                '표는 DataTable(TanStack) 하나로 통일한다. AG Grid 는 jsdom 에서 행을 렌더하지 않아 목록 화면의 회귀 검증을 잃는다 — 기획안 D6 참조.',
+            },
             {
               name: 'ag-grid-enterprise',
-              message:
-                'ag-grid-enterprise 는 상용 라이선스다. ag-grid-community(MIT) 를 쓴다. 필요한 기능이 Enterprise 전용이면 도입 전에 논의한다.',
+              message: 'ag-grid-enterprise 는 상용 라이선스다. Nullus 는 오픈소스 플랫폼이다.',
             },
             {
               name: '@mui/x-data-grid',
@@ -52,8 +60,8 @@ export default defineConfig([
           ],
           patterns: [
             {
-              group: ['ag-grid-enterprise/*'],
-              message: 'ag-grid-enterprise 는 상용 라이선스다.',
+              group: ['ag-grid-*'],
+              message: '표는 DataTable(TanStack) 하나로 통일한다 — 기획안 D6 참조.',
             },
           ],
         },

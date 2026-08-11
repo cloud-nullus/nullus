@@ -38,9 +38,6 @@ export default defineConfig({
           if (id.includes('@mui/') || id.includes('@emotion/')) {
             return 'vendor-mui'
           }
-          if (id.includes('ag-grid-')) {
-            return 'vendor-grid'
-          }
           if (id.includes('react-i18next') || id.includes('i18next')) {
             return 'vendor-i18n'
           }

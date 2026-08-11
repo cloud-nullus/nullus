@@ -4,8 +4,7 @@
 **대상 독자**: 프론트엔드 엔지니어, 디자이너, 팀 리뷰어
 **배경**: 2026-08 팀 논의 "5) UI 정리 및 디자인 가이드" (박준희, 이기하)
 **참고**: [google-labs-code/design.md](https://github.com/google-labs-code/design.md) 스펙,
-[getdesign.md](https://getdesign.md/coinbase/design-md), [MUI Material UI v9](https://mui.com/material-ui/),
-AG Grid Community v36
+[getdesign.md](https://getdesign.md/coinbase/design-md), [MUI Material UI v9](https://mui.com/material-ui/)
 **관련 문서**: `Nullus_디자인시스템.md`(현행 토큰), `Nullus_UI_UX_구현계획.md`(초기 계획),
 `Nullus_프론트엔드_상세설계.md`
 
@@ -17,9 +16,9 @@ AG Grid Community v36
 |------|------|
 | **문제** | 라이트 테마에서 화면이 "와이어프레임/스켈레톤"처럼 보이고 가독성이 낮다. 컴포넌트 룩이 화면마다 다르다. |
 | **진짜 원인** | 디자인 토큰이 단일 출처가 아니고, 색상 1,517곳이 TSX에 하드코딩돼 있으며(hex 767 + rgba 750) 그 값들이 **전부 다크 기준**으로 작성돼 라이트에서 무너진다. 라이트 테마의 카드 배경과 페이지 배경이 **동일 색(대비 1.00:1)** 이고, 보더는 거의 검정(14.03:1)이라 "흰 종이에 검은 선" = 와이어프레임처럼 보인다. |
-| **해결 축 1** | `DESIGN.md`(google design.md 스펙)를 **디자인 단일 출처**로 두고 → MUI 테마 → Tailwind `@theme inline` → AG Grid 테마까지 **한 갈래로 파생**시킨다. CI에서 `design.md lint`로 대비를 게이트한다. |
+| **해결 축 1** | `DESIGN.md`(google design.md 스펙)를 **디자인 단일 출처**로 두고 → MUI 테마 → Tailwind `@theme inline` 로 **한 갈래로 파생**시킨다. CI에서 `design.md lint`로 대비를 게이트한다. |
 | **해결 축 2** | 손으로 만든 프리미티브(Button/Input/Select/Modal/Card)를 **MUI v9로 교체**한다. 단, 공개 API를 유지하는 **어댑터 방식**이라 28개 화면 코드는 Phase 2에서 거의 손대지 않는다. |
-| **해결 축 3** | 표를 **AG Grid Community(MIT)** 로 통일한다. 현재 DataTable 7개 화면 + 손으로 만든 `<table>` 17곳이 각자 다른 룩이다. |
+| **해결 축 3** | 표를 **`DataTable`(TanStack) 하나로** 통일한다. 이미 7화면이 이 컴포넌트를 쓰고, 손으로 만든 `<table>` 17곳을 여기로 흡수한다. AG Grid 이관은 시도 후 되돌렸다(D6/A안). |
 | **정보 유실 0 보장** | 기존 vitest 577개(그중 `getByText` 329 / `getByRole` 184 / `getByLabelText` 103 = 이미 "보이는 텍스트" 계약)를 **수정 금지 회귀 계약**으로 고정 + Phase 0에서 화면 정보 인벤토리 스냅샷 + Playwright 시각 회귀 베이스라인(28화면 × 2테마). |
 | **범위** | 28개 화면, 18,823 LOC. 7 Phase. **단일 브랜치에서 커밋 24개로 진행하고 최종 1 PR** (§6.1). |
 
@@ -120,7 +119,7 @@ AG Grid Community v36
    테스트 수정이 허용되는 유일한 경우는 그 테스트가 구현 디테일(클래스명, testid)을 검증할 때이며,
    해당 커밋 메시지 본문에 사유를 적는다.
 4. **어댑터로 바꾼다.** 프리미티브 내부만 MUI로 교체하고 공개 prop은 유지한다 → 화면 파일은 안 건드린다.
-5. **한 종류에 라이브러리 하나.** 표=AG Grid, 차트=하나, 아이콘=lucide 하나. 중복 도입 금지.
+5. **한 종류에 라이브러리 하나.** 표=`DataTable`(TanStack), 차트=하나, 아이콘=lucide 하나. 중복 도입 금지.
 6. **밀도를 지킨다.** 이건 데이터 밀집 운영 도구다. MUI 기본값은 여백이 넉넉해서 그대로 쓰면 한 화면에
    들어가던 정보가 줄어든다 → 이는 정보 유실과 같다. 테마에서 density를 조여서 시작한다.
 
@@ -134,14 +133,14 @@ AG Grid Community v36
                           │
         ┌─────────────────┼──────────────────┬────────────────────┐
         ▼                 ▼                  ▼                    ▼
-  src/theme/           index.css        src/theme/           CI 게이트
-  mui-theme.ts       @theme inline      ag-grid-theme.ts   design.md lint
-  (createTheme        (MUI CSS var →    (themeQuartz        (대비/깨진 토큰
-   cssVariables)       Tailwind 토큰)    .withParams)        참조 검출)
-        │                 │                  │
-        ▼                 ▼                  ▼
-   MUI 컴포넌트      Tailwind 유틸리티     AG Grid 표
-        └─────────────────┴──────────────────┘
+  src/theme/           index.css                        CI 게이트
+  mui-theme.ts       @theme inline                    design.md lint
+  (createTheme        (생성된 --color-*                (대비 · 깨진 토큰
+   cssVariables)       → Tailwind 토큰)                 참조 검출)
+        │                 │
+        ▼                 ▼
+   MUI 컴포넌트      Tailwind 유틸리티
+        └─────────────────┘
                           ▼
                    28개 화면 (일관된 룩)
 ```
@@ -183,7 +182,7 @@ Components → Do's and Don'ts), `{colors.primary}` 형태의 토큰 참조와 `
 |-----------|------|---------|------|
 | `@mui/material` | v9 | MIT | 프리미티브·폼·모달·메뉴·탭 등 컴포넌트 층 |
 | `@emotion/react`, `@emotion/styled` | v11 | MIT | MUI 스타일 엔진 (필수 peer) |
-| `ag-grid-react`, `ag-grid-community` | v36 | **MIT** | 모든 표 |
+| ~~`ag-grid-react`, `ag-grid-community`~~ | — | — | **도입 취소** — D6/A안. 표는 `DataTable`(TanStack) 유지 |
 | `@google/design.md` (devDep) | — | — | DESIGN.md lint/diff CI |
 
 **라이선스 주의**: Nullus는 오픈소스 플랫폼이다. `ag-grid-enterprise`(상용)를 **실수로 import하면 안 된다.**
@@ -273,7 +272,7 @@ Phase 3에서 ESLint `no-restricted-imports` 로 `ag-grid-enterprise` 를 금지
 
 ---
 
-### Phase 3 — 표를 AG Grid Community로 통일 ⚠️ **보류 (팀 결정 필요)**
+### Phase 3 — 표를 `DataTable`(TanStack) 하나로 통일 ✅ **D6 결정: A안**
 
 > **2026-08-11 실측 결과 — 이 Phase 는 착수했다가 되돌렸다.**
 >
@@ -290,11 +289,17 @@ Phase 3에서 ESLint `no-restricted-imports` 로 `ag-grid-enterprise` 를 금지
 > 알림 규칙·이력)의 회귀 그물을 영구적으로 약화시켜야 한다. 그건 이 개편의 최상위
 > 제약("정보 유실 0")과 맞바꾸는 거래라 혼자 결정하지 않았다.
 >
-> **결정 필요 (D6)**
+> **결정 완료 (D6) — A안 채택**
+>
+> `ag-grid-community` / `ag-grid-react` 의존성과 `src/theme/ag-grid-theme.ts`,
+> `vendor-grid` 청크를 제거했다. ESLint 가 `ag-grid-*` 전체를 error 로 막는다.
+> 표는 `components/shared/data-table.tsx` 하나이며, 남은 통일 작업은 손으로 만든
+> `<table>` 17곳을 이 컴포넌트로 흡수하는 것이다(커밋 12).
+> 되돌리려면 아래 B/C 의 대가를 다시 검토한다.
 >
 > | 안 | 내용 | 대가 |
 > |----|------|------|
-> | **A (권장)** | 현행 TanStack `DataTable` 유지. 이미 7화면이 같은 컴포넌트를 쓰므로 통일감 문제가 없다. AG Grid 는 정말 그리드가 필요한 신규 화면에만 쓴다 | 추가 비용 0. AG Grid 도입 효과는 포기 |
+> | **A ✅ 채택** | 현행 TanStack `DataTable` 유지. 이미 7화면이 같은 컴포넌트를 쓰므로 통일감 문제가 없다. AG Grid 는 정말 그리드가 필요한 신규 화면에만 쓴다 | 추가 비용 0. AG Grid 도입 효과는 포기 |
 > | B | AG Grid 로 이관하고 16개 테스트를 `waitFor` 기반으로 재작성 | 목록 7화면의 동기 회귀 검증을 잃는다 |
 > | C | AG Grid 이관 + Playwright E2E 로 목록 화면 검증을 보강해 잃은 그물을 대체 | E2E 작성·유지 비용, 실행 시간 증가 |
 >
@@ -302,11 +307,7 @@ Phase 3에서 ESLint `no-restricted-imports` 로 `ag-grid-enterprise` 를 금지
 > 이 이미 정렬·필터·페이지네이션을 갖춘 그리드다. 새 라이브러리가 주는 것은 가상 스크롤·
 > 열 고정 등인데 현재 데이터 규모에서 필요하지 않다.
 >
-> 준비는 끝나 있다 — `ag-grid-community`/`ag-grid-react` 설치, `src/theme/ag-grid-theme.ts`
-> (DESIGN.md 토큰에서 파생된 라이트/다크 테마), `vendor-grid` 청크 분리까지 되어 있어
-> B/C 를 고르면 바로 이어서 작업할 수 있다.
->
-> 아래 원래 계획은 D6 에서 B 또는 C 를 고를 경우의 실행안으로 남겨 둔다.
+> 아래 원래 계획은 훗날 B/C 를 재검토할 때의 실행안으로 남겨 둔다.
 
 | 대상 | 작업 |
 |------|------|
@@ -421,18 +422,18 @@ main
 | ✅ | 5 CI 게이트 | design.md lint + 인벤토리 대조 + 테마 신선도 |
 | ✅ | 6 토큰 파이프라인 | DESIGN.md → MUI · Tailwind · AG Grid. 깨진 토큰 3개 복구 |
 | ✅ | 7 프리미티브 6종 MUI 이관 | 화면 파일 0줄 수정 (커밋 8 포함) |
-| ⚠️ | 11 DataTable → AG Grid | **되돌렸다 — D6 결정 필요** (§Phase 3 참조) |
+| ✅ | 11 D6 결정 = A안 | AG Grid 의존성·테마·청크 제거, ESLint 로 재도입 차단 |
 | ✅ | 13 행 확장 → 메인·서브 테이블 | 순서를 11 앞으로 옮겼다 |
 | ✅ | 22 ESLint 규칙 | hex 1335건 warn, 상용 라이선스 error |
 | ✅ | 24 문서 갱신 | 디자인시스템 문서를 DESIGN.md 참조로 |
 | ⬜ | 9·10 생 태그 흡수 | button 95 / input·select 49 |
-| ⬜ | 12 수제 table 17곳 | D6 결과에 따라 대상이 달라진다 |
+| ⬜ | 12 수제 table 17곳 → DataTable 흡수 | D6=A 로 대상 확정 |
 | ⬜ | 14 StatusBadge 통합 | 현재 사용 1곳, 화면별 자체 배지 흡수 |
 | ⬜ | 15·16 앱 셸 · 밀도 | |
 | ⬜ | 17~19 거대 화면 순수 추출 | stack-install 3,662줄 등 |
 | ⬜ | 20 차트 단일화 | ESLint 경고로 표시해 뒀다 |
 | ⬜ | 21 하드코딩 색 청산 | ESLint 경고 1335건이 대상 목록 |
-| ⬜ | 23 tanstack-table 제거 | D6 에서 A 를 고르면 해당 없음 |
+| ➖ | 23 tanstack-table 제거 | D6=A 라 해당 없음 (계속 사용) |
 
 측정값(모든 커밋에서 초록): vitest **634/634**, tsc 통과, vite build 통과,
 시각 회귀 **58/58**, 인벤토리 **정보 유실 0**, eslint **0 errors**,
