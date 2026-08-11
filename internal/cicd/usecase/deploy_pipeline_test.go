@@ -93,7 +93,10 @@ func (m *mockKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]b
 
 type mockManifestApplier struct {
 	appliedManifests [][]string
-	err              error
+	// 단계 오프셋을 기록한다. 이 값이 BuildStepPlan 이 붙인 빌드 단계 수와
+	// 어긋나면 매니페스트 적용 결과가 빌드 단계 이름 위에 찍힌다.
+	appliedOffsets []int
+	err            error
 }
 
 func (m *mockManifestApplier) Apply(_ context.Context, _ []byte, manifests []string) error {
@@ -101,9 +104,60 @@ func (m *mockManifestApplier) Apply(_ context.Context, _ []byte, manifests []str
 	return m.err
 }
 
-func (m *mockManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, manifests []string, _ string, _ ...int) error {
+func (m *mockManifestApplier) ApplyWithTracking(_ context.Context, _ []byte, manifests []string, _ string, stepOffset ...int) error {
 	m.appliedManifests = append(m.appliedManifests, manifests)
+	offset := 0
+	if len(stepOffset) > 0 {
+		offset = stepOffset[0]
+	}
+	m.appliedOffsets = append(m.appliedOffsets, offset)
 	return m.err
+}
+
+// 회귀: 계획이 앞에 붙인 빌드 단계 수와 적용 오프셋이 반드시 같아야 한다.
+//
+// 어긋났던 적이 있다. BuildStepPlan 은 DockerfilePath 만 보고 3개를 붙이는데
+// applyToCluster 는 imagePreparer·clusterTargetProvider 까지 확인한 뒤에야
+// 오프셋을 3으로 올렸다. 그래서 이미지 준비기가 없는 경로에서 "Git Clone" 단계에
+// "namespace/... configured" 가 기록되고, 진짜 매니페스트 단계 3개는 영원히
+// pending 으로 남았다.
+func TestDeployPipeline_StepOffsetMatchesPlan(t *testing.T) {
+	cases := []struct {
+		name     string
+		pipeline *domain.Pipeline
+	}{
+		{"Dockerfile 없음", &domain.Pipeline{ID: "pip-1", Name: "orders", ClusterID: "c1", AppType: domain.AppTypeBackend}},
+		// 이미지 준비기를 주지 않은 채 DockerfilePath 를 세팅한다 — 버그가 났던 그 조합이다.
+		{"Dockerfile 있음 / 이미지 준비기 없음", &domain.Pipeline{ID: "pip-1", Name: "orders", ClusterID: "c1", AppType: domain.AppTypeBackend, DockerfilePath: "Dockerfile"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			applier := &mockManifestApplier{}
+			uc := NewDeployPipeline(
+				newMockDeployPipelineRepo(tc.pipeline),
+				&mockDeployDeploymentRepo{},
+				&mockKubeconfigProvider{},
+				applier,
+			)
+
+			_, err := uc.Execute(context.Background(), DeployPipelineInput{
+				PipelineID: tc.pipeline.ID,
+				Version:    "v1.0.0",
+				DeployedBy: "devops@acme.io",
+			})
+			require.NoError(t, err)
+
+			require.Len(t, applier.appliedOffsets, 1)
+			plan := BuildStepPlan(tc.pipeline)
+			offset := applier.appliedOffsets[0]
+
+			// 오프셋 위치부터가 매니페스트 단계여야 한다.
+			assert.Equal(t, buildStepCount(tc.pipeline), offset)
+			require.Greater(t, len(plan), offset)
+			assert.Equal(t, "Create Namespace", plan[offset])
+		})
+	}
 }
 
 func TestDeployPipeline_Success(t *testing.T) {
@@ -187,15 +241,15 @@ func TestDeployPipeline_AppliesSavedReviewManifests(t *testing.T) {
 
 func TestBuildStepPlan_IncludesIngress(t *testing.T) {
 	assert.Equal(t,
-		[]string{"Namespace 생성", "Deployment 생성", "Service 생성", "Ingress 생성"},
+		[]string{"Create Namespace", "Create Deployment", "Create Service", "Create Ingress"},
 		BuildStepPlan(&domain.Pipeline{}),
 	)
 	assert.Equal(t,
-		[]string{"Git Clone", "Docker Build", "Image Load", "Namespace 생성", "Deployment 생성", "Service 생성", "Ingress 생성"},
+		[]string{"Git Clone", "Docker Build", "Image Load", "Create Namespace", "Create Deployment", "Create Service", "Create Ingress"},
 		BuildStepPlan(&domain.Pipeline{DockerfilePath: "Dockerfile"}),
 	)
 	assert.Equal(t,
-		[]string{"Namespace 생성", "Deployment 생성"},
+		[]string{"Create Namespace", "Create Deployment"},
 		BuildStepPlan(&domain.Pipeline{}, []string{"deployment"}),
 	)
 }
