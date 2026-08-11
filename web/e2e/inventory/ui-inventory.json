@@ -682,10 +682,14 @@
     {
       "file": "src/features/admin/pages/token-management-page.tsx",
       "i18nKeys": [
-        "sidebar.admin"
+        "sidebar.admin",
+        "tokenManagement.description",
+        "tokenManagement.testModeNotice"
       ],
       "fallbacks": [
-        "Admin"
+        "Admin",
+        "Check token status, rotate manually, and manage approvals, pauses, and lookups.",
+        "Test mode: step-up re-authentication is disabled and handled automatically."
       ],
       "labels": [
         "OpenBao Token Management"
@@ -703,9 +707,7 @@
         "Resume",
         "Reveal",
         "Reveal Result",
-        "Rotate",
-        "테스트 모드: 재로그인(step-up) 강제는 비활성화되어 있으며 내부적으로 자동 처리됩니다.",
-        "토큰 상태 확인, 수동 회전, 승인/일시중지 및 조회를 관리합니다."
+        "Rotate"
       ],
       "testIds": []
     },
@@ -911,30 +913,45 @@
     },
     {
       "file": "src/features/cicd/pages/cicd-golden-path-page.tsx",
-      "i18nKeys": [],
-      "fallbacks": [],
+      "i18nKeys": [
+        "common.close",
+        "common.loading",
+        "goldenPathPage.actions.use",
+        "goldenPathPage.actions.viewDetail",
+        "goldenPathPage.description",
+        "goldenPathPage.detail.description",
+        "goldenPathPage.empty.search",
+        "goldenPathPage.searchPlaceholder",
+        "stackTemplatePage.card.estimatedTime",
+        "stackTemplatePage.card.includedTools",
+        "stackTemplatePage.card.minResources",
+        "stackTemplatePage.card.minutes",
+        "stackTemplatePage.card.recommendedUse"
+      ],
+      "fallbacks": [
+        "Close",
+        "Description",
+        "Estimated Time",
+        "Included Tools",
+        "Loading...",
+        "Minimum Resources",
+        "No matching results.",
+        "Recommended Use",
+        "Search Golden Paths...",
+        "Start quickly with a validated CI/CD tool combination.",
+        "Use this Golden Path",
+        "View Detail",
+        "{{minutes}} min"
+      ],
       "labels": [
         "CI/CD Golden Path",
-        "CI/CD List",
-        "Golden Path 검색..."
+        "CI/CD List"
       ],
       "columns": [],
       "jsxText": [
         "App:",
         "CI/CD Golden Path",
-        "Helm:",
-        "검색 결과가 없습니다.",
-        "검증된 CI/CD 도구 조합으로 빠르게 시작하세요.",
-        "권장 사용",
-        "닫기",
-        "로딩 중...",
-        "분",
-        "상세 보기",
-        "설명",
-        "설치 시간",
-        "이 Golden Path 사용",
-        "최소 리소스",
-        "포함된 도구"
+        "Helm:"
       ],
       "testIds": []
     },
@@ -946,8 +963,14 @@
         "cicd.status.pending",
         "cicd.status.running",
         "cicd.status.success",
+        "cicdHistoryPage.actions.viewDetail",
         "cicdHistoryPage.clearFilter",
         "cicdHistoryPage.description",
+        "cicdHistoryPage.detail.close",
+        "cicdHistoryPage.detail.field",
+        "cicdHistoryPage.detail.title",
+        "cicdHistoryPage.detail.triggeredBy",
+        "cicdHistoryPage.detail.value",
         "cicdHistoryPage.empty",
         "cicdHistoryPage.filteredByPipeline",
         "cicdHistoryPage.filters.allStatus",
@@ -968,9 +991,12 @@
         "CI/CD List",
         "Cancelled",
         "Clear filter",
+        "Close",
         "Completed At",
         "Deployer",
+        "Deployment Detail",
         "Failed",
+        "Field",
         "Filtered by pipeline:",
         "No deployment history.",
         "Pending",
@@ -980,16 +1006,13 @@
         "Started At",
         "Status",
         "Success",
-        "Version"
+        "Triggered By",
+        "Value",
+        "Version",
+        "View detail"
       ],
       "labels": [
-        "Completed At",
-        "Pipeline",
-        "Started At",
-        "Status",
-        "Triggered By",
-        "Version",
-        "expand"
+        "select"
       ],
       "columns": [
         "completedAt",
@@ -999,9 +1022,7 @@
         "triggeredBy",
         "version"
       ],
-      "jsxText": [
-        "Deployment Detail"
-      ],
+      "jsxText": [],
       "testIds": []
     },
     {
@@ -2064,8 +2085,24 @@
     },
     {
       "file": "src/features/stack/components/stack-info-panels.tsx",
-      "i18nKeys": [],
-      "fallbacks": [],
+      "i18nKeys": [
+        "stackInfo.allocated",
+        "stackInfo.clusterInfo",
+        "stackInfo.panels.artifacts",
+        "stackInfo.panels.logging",
+        "stackInfo.panels.monitoring",
+        "stackInfo.panels.pipeline",
+        "stackInfo.panels.resources"
+      ],
+      "fallbacks": [
+        "Allocated {{label}}",
+        "Artifact repositories configured for this stack",
+        "CI/CD pipeline tools configured for this stack",
+        "Cluster Info",
+        "Logging tools configured for this stack",
+        "Monitoring tools configured for this stack",
+        "Resource allocation for this stack"
+      ],
       "labels": [
         "AWS ECR",
         "Argo CD",
@@ -2103,7 +2140,6 @@
       "columns": [],
       "jsxText": [
         "6",
-        "Cluster 정보",
         "Cluster:",
         "Instances:",
         "Namespace:",
@@ -2111,8 +2147,7 @@
         "Region:",
         "ap-northeast-2",
         "devops",
-        "prod-k8s",
-        "할당된"
+        "prod-k8s"
       ],
       "testIds": []
     },
@@ -2939,13 +2974,21 @@
         "stackOssDefault.contract.end",
         "stackOssDefault.contract.middle",
         "stackOssDefault.contract.prefix",
-        "stackOssDefault.description"
+        "stackOssDefault.description",
+        "stackOssDefault.empty.none",
+        "stackOssDefault.empty.search",
+        "stackOssDefault.errors.requiredFields",
+        "stackOssDefault.errors.saveFailed"
       ],
       "fallbacks": [
         ".",
         "Contract:",
+        "Failed to save the OSS default resource.",
+        "No OSS default resources match the search.",
+        "No OSS default resources registered.",
         "View, edit, and register default OSS request/limit resources for DevSecOps Stack.",
-        "is an idempotent upsert by"
+        "is an idempotent upsert by",
+        "tool_key and display_name are required."
       ],
       "labels": [
         "OSS Default Resource",
@@ -2961,9 +3004,7 @@
         "POST /api/v1/stacks/resource-defaults",
         "Register",
         "Save",
-        "tool_key",
-        "검색 조건에 맞는 OSS Default Resource가 없습니다.",
-        "등록된 OSS Default Resource가 없습니다."
+        "tool_key"
       ],
       "testIds": []
     },
@@ -2989,6 +3030,7 @@
         "stackTemplatePage.card.estimatedTime",
         "stackTemplatePage.card.includedTools",
         "stackTemplatePage.card.minResources",
+        "stackTemplatePage.card.minutes",
         "stackTemplatePage.card.recommendedUse",
         "stackTemplatePage.confirm.deleteConfirmLabel",
         "stackTemplatePage.confirm.deleteDescription",
@@ -3071,6 +3113,7 @@
         "Tools",
         "Update Tool",
         "Use Base Template",
+        "{{minutes}} min",
         "{{minutes}} min ({{nanoseconds}} ns)",
         "권장 사용",
         "상세 보기",
@@ -3082,8 +3125,7 @@
       "columns": [],
       "jsxText": [
         "Matrix App:",
-        "Matrix Helm:",
-        "분"
+        "Matrix Helm:"
       ],
       "testIds": []
     },

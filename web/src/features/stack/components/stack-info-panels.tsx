@@ -1,4 +1,5 @@
 import React from "react"
+import { useTranslation } from 'react-i18next'
 import { Archive, ArrowUpCircle, BarChart2, Boxes, FileText, GitBranch, Monitor, Server, Check } from "lucide-react"
 import { NativeSelect } from "../../../components/ui/native-select"
 import { cn } from "../../../lib/utils"
@@ -123,11 +124,12 @@ export function PanelHeader({ title, desc }: { title: string; desc: string }) {
 }
 
 export function ArtifactsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
 			<PanelHeader
 				title="Artifact Configuration"
-				desc="현재 스택에 구성된 아티팩트 저장소"
+				desc={t('stackInfo.panels.artifacts', 'Artifact repositories configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="Package Registry" icon={<Archive size={14} />}>
@@ -190,11 +192,12 @@ export function ArtifactsPanel() {
 }
 
 export function PipelineToolsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
 			<PanelHeader
 				title="Pipeline Tools"
-				desc="현재 스택의 CI/CD 파이프라인 도구 구성"
+				desc={t('stackInfo.panels.pipeline', 'CI/CD pipeline tools configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="CI/CD Platform" icon={<GitBranch size={14} />}>
@@ -239,11 +242,12 @@ export function PipelineToolsPanel() {
 }
 
 export function MonitoringToolsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
 			<PanelHeader
 				title="Monitoring Tools"
-				desc="현재 스택의 모니터링 도구 구성"
+				desc={t('stackInfo.panels.monitoring', 'Monitoring tools configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="Metrics Collection" icon={<BarChart2 size={14} />}>
@@ -285,9 +289,10 @@ export function MonitoringToolsPanel() {
 }
 
 export function LoggingToolsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
-			<PanelHeader title="Logging Tools" desc="현재 스택의 로깅 도구 구성" />
+			<PanelHeader title="Logging Tools" desc={t('stackInfo.panels.logging', 'Logging tools configured for this stack')} />
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="Log Collection" icon={<FileText size={14} />}>
 					<div className="flex flex-col gap-2">
@@ -311,9 +316,10 @@ export function LoggingToolsPanel() {
 }
 
 export function ResourcesPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
-			<PanelHeader title="Resources" desc="현재 스택의 리소스 할당 현황" />
+			<PanelHeader title="Resources" desc={t('stackInfo.panels.resources', 'Resource allocation for this stack')} />
 			<div className="mb-6 grid grid-cols-3 gap-4">
 				{[
 					{ label: "CPU", value: "8", unit: "cores", color: "#6366f1" },
@@ -337,14 +343,14 @@ export function ResourcesPanel() {
 							</span>
 						</div>
 						<div className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-							할당된 {item.label}
+							{t('stackInfo.allocated', 'Allocated {{label}}', { label: item.label })}
 						</div>
 					</div>
 				))}
 			</div>
 			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
 				<h4 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<Server size={14} /> Cluster 정보
+					<Server size={14} /> {t('stackInfo.clusterInfo', 'Cluster Info')}
 				</h4>
 				<div className="flex flex-wrap gap-6 text-[13px] text-[var(--color-text-secondary)]">
 					<span>

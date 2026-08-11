@@ -3,6 +3,8 @@
 // UI 개편 중 문자열이 조용히 사라지는 것을 막는 안전망 4번이다.
 // 기획안: docs/40_UI_UX/Nullus_UIUX_전면개편_기획안.md §8
 
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import en from './en.json'
 import ko from './ko.json'
@@ -40,6 +42,35 @@ describe('i18n 키 정합', () => {
     const isBlank = (value: unknown) => typeof value === 'string' && value.trim() === ''
     const deadKeys = Object.keys(EN).filter((key) => isBlank(EN[key]) && isBlank(KO[key]))
     expect(deadKeys, `en/ko 모두 빈 값인 죽은 키:\n${deadKeys.join('\n')}`).toEqual([])
+  })
+
+  // en↔ko 비교만으로는 놓치는 부류가 있다: 두 파일 어디에도 없고 코드의 인라인
+  // 폴백으로만 존재하는 키다. 그러면 폴백이 곧 화면에 나오는데, 폴백이 한글이면
+  // 영어 사용자에게 한글이 노출된다. 실제로 stackTemplatePage.card.* 4개가 그랬다.
+  it('코드에서 쓰는 t() 키가 모두 en.json 에 있다', () => {
+    const files: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry)
+        if (statSync(full).isDirectory()) walk(full)
+        else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) files.push(full)
+      }
+    }
+    walk(join(__dirname, '..'))
+
+    const missing = new Set<string>()
+    for (const file of files) {
+      const source = readFileSync(file, 'utf8')
+      // t('key', ...) 형태만 본다. 동적 키(t(variable))는 정적으로 검증할 수 없다.
+      for (const match of source.matchAll(/\bt\(\s*['"]([\w.]+)['"]/g)) {
+        if (!(match[1] in EN)) missing.add(match[1])
+      }
+    }
+
+    expect(
+      [...missing].sort(),
+      `en.json 에 없는 키:\n${[...missing].sort().join('\n')}`,
+    ).toEqual([])
   })
 
   it('en/ko 가 같은 보간 변수를 쓴다', () => {

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { BookOpen, ExternalLink, Search } from 'lucide-react'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useGoldenPaths } from '../api/cicd-api'
@@ -106,6 +107,7 @@ const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
 }
 
 export function CicdGoldenPathPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: goldenPaths, isLoading } = useGoldenPaths()
   const loadFromTemplate = useStackConfigStore((s) => s.loadFromTemplate)
@@ -156,7 +158,7 @@ export function CicdGoldenPathPage() {
               CI/CD Golden Path
             </h1>
             <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              검증된 CI/CD 도구 조합으로 빠르게 시작하세요.
+              {t('goldenPathPage.description', 'Start quickly with a validated CI/CD tool combination.')}
             </p>
           </div>
         </div>
@@ -170,7 +172,7 @@ export function CicdGoldenPathPage() {
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
           />
           <input
-            placeholder="Golden Path 검색..."
+            placeholder={t('goldenPathPage.searchPlaceholder', 'Search Golden Paths...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
@@ -181,11 +183,11 @@ export function CicdGoldenPathPage() {
       {/* Golden Path cards */}
       {isLoading ? (
         <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
-          로딩 중...
+          {t('common.loading', 'Loading...')}
         </div>
       ) : filtered.length === 0 ? (
         <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
-          검색 결과가 없습니다.
+          {t('goldenPathPage.empty.search', 'No matching results.')}
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
@@ -208,15 +210,15 @@ export function CicdGoldenPathPage() {
               <div className="grid grid-cols-2 gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] p-3">
                 <div>
                   <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
-                    설치 시간
+                    {t('stackTemplatePage.card.estimatedTime', 'Estimated Time')}
                   </span>
                   <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
-                    {goldenPath.estimated_install_time}분
+                    {t('stackTemplatePage.card.minutes', '{{minutes}} min', { minutes: goldenPath.estimated_install_time })}
                   </p>
                 </div>
                 <div>
                   <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
-                    권장 사용
+                    {t('stackTemplatePage.card.recommendedUse', 'Recommended Use')}
                   </span>
                   <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
                     {goldenPath.recommended_use_case}
@@ -224,7 +226,7 @@ export function CicdGoldenPathPage() {
                 </div>
                 <div className="col-span-2">
                   <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
-                    최소 리소스
+                    {t('stackTemplatePage.card.minResources', 'Minimum Resources')}
                   </span>
                   <p className="m-0 mt-1 text-[12px] text-[var(--color-text-primary)]">
                     {goldenPath.min_resources}
@@ -235,7 +237,7 @@ export function CicdGoldenPathPage() {
               {/* Tools preview */}
               <div>
                 <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
-                  포함된 도구
+                  {t('stackTemplatePage.card.includedTools', 'Included Tools')}
                 </span>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {goldenPath.tools.slice(0, 4).map((tool) => {
@@ -268,7 +270,7 @@ export function CicdGoldenPathPage() {
                   onClick={() => openDetail(goldenPath)}
                 >
                   <ExternalLink size={13} />
-                  상세 보기
+                  {t('goldenPathPage.actions.viewDetail', 'View Detail')}
                 </Button>
               </div>
             </div>
@@ -278,7 +280,7 @@ export function CicdGoldenPathPage() {
 
       {filtered.length === 0 && !isLoading && (
         <div className="py-[60px] text-center text-sm text-[var(--color-text-secondary)]">
-          검색 결과가 없습니다.
+          {t('goldenPathPage.empty.search', 'No matching results.')}
         </div>
       )}
       {/* Detail Modal */}
@@ -290,7 +292,7 @@ export function CicdGoldenPathPage() {
         footer={
           <>
             <Button variant="outline" size="sm" onClick={closeDetail} type="button">
-              닫기
+              {t('common.close', 'Close')}
             </Button>
             <Button
               variant="primary"
@@ -305,7 +307,7 @@ export function CicdGoldenPathPage() {
                 }
               }}
             >
-              이 Golden Path 사용
+              {t('goldenPathPage.actions.use', 'Use this Golden Path')}
             </Button>
           </>
         }
@@ -314,7 +316,7 @@ export function CicdGoldenPathPage() {
           <div className="flex flex-col gap-4">
             <div>
               <h4 className="mb-1 text-sm font-semibold text-[var(--color-text-primary)]">
-                설명
+                {t('goldenPathPage.detail.description', 'Description')}
               </h4>
               <p className="m-0 text-sm text-[var(--color-text-secondary)]">
                 {selectedPath.description}
@@ -324,15 +326,15 @@ export function CicdGoldenPathPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <span className="text-xs font-semibold text-[var(--color-text-muted)]">
-                  설치 시간
+                  {t('stackTemplatePage.card.estimatedTime', 'Estimated Time')}
                 </span>
                 <p className="m-0 mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
-                  {selectedPath.estimated_install_time}분
+                  {t('stackTemplatePage.card.minutes', '{{minutes}} min', { minutes: selectedPath.estimated_install_time })}
                 </p>
               </div>
               <div>
                 <span className="text-xs font-semibold text-[var(--color-text-muted)]">
-                  권장 사용
+                  {t('stackTemplatePage.card.recommendedUse', 'Recommended Use')}
                 </span>
                 <p className="m-0 mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
                   {selectedPath.recommended_use_case}
@@ -340,7 +342,7 @@ export function CicdGoldenPathPage() {
               </div>
               <div className="col-span-2">
                 <span className="text-xs font-semibold text-[var(--color-text-muted)]">
-                  최소 리소스
+                  {t('stackTemplatePage.card.minResources', 'Minimum Resources')}
                 </span>
                 <p className="m-0 mt-1 text-sm text-[var(--color-text-primary)]">
                   {selectedPath.min_resources}
@@ -350,7 +352,7 @@ export function CicdGoldenPathPage() {
 
             <div>
               <h4 className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">
-                포함된 도구
+                {t('stackTemplatePage.card.includedTools', 'Included Tools')}
               </h4>
               <div className="space-y-2">
                 {selectedPath.tools.map((tool) => {

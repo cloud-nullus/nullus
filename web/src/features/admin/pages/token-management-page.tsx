@@ -91,13 +91,13 @@ export function TokenManagementPage() {
         </div>
         <div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OpenBao Token Management</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">토큰 상태 확인, 수동 회전, 승인/일시중지 및 조회를 관리합니다.</p>
+          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('tokenManagement.description', 'Check token status, rotate manually, and manage approvals, pauses, and lookups.')}</p>
         </div>
       </div>
 
       {!STEP_UP_ENFORCED && (
         <div className="mb-4 rounded-md border border-[var(--color-border-default)] bg-[rgba(245,158,11,0.1)] px-3 py-2 text-sm text-[var(--color-text-primary)]">
-          테스트 모드: 재로그인(step-up) 강제는 비활성화되어 있으며 내부적으로 자동 처리됩니다.
+          {t('tokenManagement.testModeNotice', 'Test mode: step-up re-authentication is disabled and handled automatically.')}
         </div>
       )}
 

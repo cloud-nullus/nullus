@@ -186,7 +186,7 @@ export function StackOssResourceDefaultPage() {
           })
         },
         onError: (e) => {
-          const message = e instanceof Error ? e.message : 'OSS Default Resource 저장 중 오류가 발생했습니다.'
+          const message = e instanceof Error ? e.message : t('stackOssDefault.errors.saveFailed', 'Failed to save the OSS default resource.')
           setError(message)
         },
       }
@@ -195,7 +195,7 @@ export function StackOssResourceDefaultPage() {
 
   const handleCreate = () => {
     if (!newRow.tool_key.trim() || !newRow.display_name.trim()) {
-      setError('tool_key와 display_name은 필수입니다.')
+      setError(t('stackOssDefault.errors.requiredFields', 'tool_key and display_name are required.'))
       return
     }
 
@@ -285,7 +285,7 @@ export function StackOssResourceDefaultPage() {
             {!isLoading && !hasData && (
               <tr>
                 <td colSpan={8} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
-                  등록된 OSS Default Resource가 없습니다.
+                  {t('stackOssDefault.empty.none', 'No OSS default resources registered.')}
                 </td>
               </tr>
             )}
@@ -293,7 +293,7 @@ export function StackOssResourceDefaultPage() {
             {!isLoading && hasData && filteredRows.length === 0 && (
               <tr>
                 <td colSpan={8} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
-                  검색 조건에 맞는 OSS Default Resource가 없습니다.
+                  {t('stackOssDefault.empty.search', 'No OSS default resources match the search.')}
                 </td>
               </tr>
             )}

@@ -600,7 +600,7 @@ export function StackTemplatePage() {
                   {t("stackTemplatePage.card.estimatedTime", "설치 시간")}
                 </span>
                 <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
-                  {estimateInstallMinutesForTemplate(template)}분
+                  {t('stackTemplatePage.card.minutes', '{{minutes}} min', { minutes: estimateInstallMinutesForTemplate(template) })}
                 </p>
               </div>
               {template.recommendedUseCase && (
@@ -784,7 +784,7 @@ export function StackTemplatePage() {
                   )}
                 </span>
                 <p className="m-0 mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
-                  {estimateInstallMinutesForTemplate(selectedTemplate)}분
+                  {t('stackTemplatePage.card.minutes', '{{minutes}} min', { minutes: estimateInstallMinutesForTemplate(selectedTemplate) })}
                 </p>
               </div>
               {selectedDetail.compatibility && (

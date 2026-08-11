@@ -243,9 +243,31 @@ function toMarkdown(inv) {
 const TEXT_FIELDS = ['fallbacks', 'labels', 'jsxText']
 const ID_FIELDS = ['i18nKeys', 'columns', 'testIds']
 
+/**
+ * i18n 리소스 파일의 모든 문자열 값.
+ *
+ * 하드코딩된 한글을 `t()` 로 빼면 그 문자열은 TSX 에서 사라지고 ko.json 으로
+ * 옮겨간다 — 화면에는 그대로 나오므로 유실이 아니다. 추출기가 TSX 만 훑으면
+ * 그걸 유실로 오판하니, 리소스 파일도 "아직 있는 곳"에 포함한다.
+ */
+function i18nStrings() {
+  const values = new Set()
+  const collect = (node) => {
+    for (const value of Object.values(node)) {
+      if (value !== null && typeof value === 'object') collect(value)
+      else if (typeof value === 'string') values.add(value)
+    }
+  }
+  for (const locale of ['en', 'ko']) {
+    const path = join(SRC, 'i18n', `${locale}.json`)
+    if (existsSync(path)) collect(JSON.parse(readFileSync(path, 'utf8')))
+  }
+  return values
+}
+
 function check(prev, next) {
   const union = (fields) => new Set(next.entries.flatMap((e) => fields.flatMap((f) => e[f])))
-  const textAnywhere = union(TEXT_FIELDS)
+  const textAnywhere = new Set([...union(TEXT_FIELDS), ...i18nStrings()])
   const idAnywhere = Object.fromEntries(ID_FIELDS.map((f) => [f, union([f])]))
 
   const losses = []

@@ -34,7 +34,8 @@
     "loading": "로딩 중...",
     "goHome": "홈으로 돌아가기",
     "notFound": "페이지를 찾을 수 없습니다",
-    "notFoundDesc": "요청하신 페이지가 존재하지 않거나 이동되었습니다."
+    "notFoundDesc": "요청하신 페이지가 존재하지 않거나 이동되었습니다.",
+    "close": "닫기"
   },
   "header": {
     "roles": {
@@ -123,7 +124,8 @@
       "visualization": "시각화",
       "metrics": "메트릭",
       "logs": "로그",
-      "traces": "트레이스"
+      "traces": "트레이스",
+      "traceExporter": "Exporter / Agent"
     },
     "resourceTotal": {
       "description": "선택한 OSS {{count}}개의 적용값(request/limit) 총합"
@@ -158,6 +160,10 @@
       "apiBaseUrl": "API 주소 (선택)",
       "token": "Personal Access Token",
       "tokenScopes": "필요한 스코프: repo, workflow, read:packages. 토큰은 스택 구성에 저장되지 않고 설치 시 스택의 OpenBao로 바로 들어갑니다."
+    },
+    "authentication": {
+      "sharedNotice": "OpenBao를 선택하면 현재 스택에 포함된 모든 OSS가 공통 인증 공급자(OpenBao)를 공유합니다. 미선택 시 기존 방식으로 배포됩니다.",
+      "title": "인증"
     }
   },
   "stackTemplatePage": {
@@ -182,10 +188,16 @@
       "add": "추가",
       "addTool": "도구 추가",
       "addSection": "섹션 추가",
-      "duplicateTemplate": "복제"
+      "duplicateTemplate": "복제",
+      "updateTool": "도구 수정"
     },
     "card": {
-      "estimatedMinutes": "약 {{minutes}}분"
+      "estimatedMinutes": "약 {{minutes}}분",
+      "estimatedTime": "설치 시간",
+      "recommendedUse": "권장 사용",
+      "minResources": "최소 리소스",
+      "includedTools": "포함된 도구",
+      "minutes": "{{minutes}}분"
     },
     "modal": {
       "templateDetail": "템플릿 상세",
@@ -198,7 +210,8 @@
       "compatibilityFallback": "호환성 상세는 Stack Version에서 관리됩니다.",
       "editTitle": "템플릿 수정",
       "createTitle": "템플릿 생성",
-      "na": "없음"
+      "na": "없음",
+      "matrixVersionNote": "이 버전들은 템플릿 안내에 쓰인 검증된 매트릭스 스냅샷을 반영합니다."
     },
     "form": {
       "templateId": "템플릿 ID",
@@ -215,7 +228,8 @@
       "estimatedInstallTimeAuto": "예상 설치 시간 (자동 계산)",
       "estimatedInstallTimeValue": "약 {{minutes}}분 ({{nanoseconds}} ns)",
       "recommendedUseCase": "권장 사용 사례",
-      "minimumResources": "최소 리소스"
+      "minimumResources": "최소 리소스",
+      "toolsHint": "먼저 템플릿 골격을 만들고, 이후 섹션별로 도구를 추가하거나 다듬습니다."
     },
     "errors": {
       "updateFailed": "템플릿 수정에 실패했습니다.",
@@ -653,7 +667,9 @@
       "appType": "앱 타입",
       "cluster": "클러스터",
       "status": "상태",
-      "lastDeployed": "최근 배포"
+      "lastDeployed": "최근 배포",
+      "noStack": "—",
+      "stack": "스택"
     },
     "emptyPipelines": "파이프라인이 없습니다.",
     "emptyDeployments": "배포 이력이 없습니다.",
@@ -664,7 +680,9 @@
     },
     "status": {
       "active": "활성"
-    }
+    },
+    "emptyDetail": "목록에서 파이프라인을 선택하면 여기에 상세가 표시됩니다.",
+    "listHint": "목록에서 파이프라인을 선택하면 상세 패널이 즉시 갱신됩니다."
   },
   "cicdHistoryPage": {
     "title": "CI/CD 이력",
@@ -727,7 +745,9 @@
     "title": "스택 목록",
     "description": "배포된 DevSecOps 스택 목록",
     "actions": {
-      "newStack": "새 스택"
+      "newStack": "새 스택",
+      "backToList": "Stack List로 돌아가기",
+      "import": "가져오기"
     },
     "retry": {
       "button": "재시도",
@@ -780,7 +800,9 @@
       "running": "실행 중",
       "success": "성공",
       "cancelled": "취소됨",
-      "healthy": "실행 중"
+      "healthy": "실행 중",
+      "deleted": "삭제됨",
+      "terminating": "삭제 중"
     },
     "confirm": {
       "deleteTitle": "스택 삭제",
@@ -798,7 +820,37 @@
       "copyFailed": "복사 실패",
       "copyAll": "전체 복사"
     },
-    "hiddenInstallCardsNotice": "상세 설치 카드는 숨김 처리되었습니다. 도구 상세 상태는 Monitoring / History 탭에서 확인할 수 있습니다."
+    "hiddenInstallCardsNotice": "상세 설치 카드는 숨김 처리되었습니다. 도구 상세 상태는 Monitoring / History 탭에서 확인할 수 있습니다.",
+    "delete": {
+      "failed": "스택 삭제를 시작하지 못했습니다.",
+      "started": "스택 삭제를 시작했습니다. Kubernetes 리소스와 DB 데이터를 제거하고 있습니다."
+    },
+    "export": {
+      "confirm": "다운로드",
+      "failure": "스택 구성을 내보내지 못했습니다.",
+      "fileName": "파일 이름",
+      "format": "형식",
+      "hint": "선택한 형식의 확장자가 자동으로 붙습니다.",
+      "open": "내보내기",
+      "stack": "스택",
+      "success": "내보내기 다운로드를 시작했습니다.",
+      "title": "스택 내보내기"
+    },
+    "import": {
+      "changes": "가져오기 변경 사항",
+      "confirm": "복원",
+      "currentState": "현재 상태",
+      "description": "스택 내보내기 파일을 올려 검토한 뒤 적용합니다.",
+      "diffHint": "이 검토에는 필드 단위 차이가 포함됩니다.",
+      "failure": "스택을 가져오지 못했습니다.",
+      "file": "내보내기 파일",
+      "fileRequired": "내보내기 파일을 선택해 주세요.",
+      "name": "스택",
+      "preview": "가져오기 검토",
+      "selectedFile": "선택됨:",
+      "success": "스택을 복원했습니다.",
+      "title": "스택 가져오기"
+    }
   },
   "deploy": {
     "title": "배포 로그",
@@ -930,7 +982,9 @@
       "inactive": "비활성",
       "verifying": "연결을 검증하는 중...",
       "verifySuccess": "연결 검증에 성공했습니다.",
-      "verifyFailed": "연결 검증에 실패했습니다. endpoint/kubeconfig를 확인하세요."
+      "verifyFailed": "연결 검증에 실패했습니다. endpoint/kubeconfig를 확인하세요.",
+      "verifyBeforeSubmit": "저장 전 마지막 단계에서 연결을 확인해 주세요.",
+      "verifyDraftRequired": "연결 확인 전에 Kubeconfig 가 필요합니다."
     },
     "status": {
       "connected": "연결됨",
@@ -1176,7 +1230,9 @@
       "dockerfileRepository": "Dockerfile Repository",
       "deployYamlRepository": "Deploy YAML Repository",
       "branch": "Branch",
-      "directory": "Directory"
+      "directory": "Directory",
+      "newNamespace": "새 네임스페이스",
+      "newNamespacePlaceholder": "my-namespace"
     },
     "manifestLoad": {
       "pathRequired": "Config Repository URL과 YAML 경로를 입력하세요.",
@@ -1191,7 +1247,8 @@
       "create": "생성",
       "execute": "실행"
     },
-    "yamlPreview": "YAML 매니페스트 미리보기"
+    "yamlPreview": "YAML 매니페스트 미리보기",
+    "manifestDescription": "파이프라인을 만들기 전에 생성된 매니페스트를 검토하세요."
   },
   "stackHistoryPage": {
     "title": "스택 이력",
@@ -1237,6 +1294,14 @@
       "suffix": "는",
       "middle": "는",
       "end": " 기준 업서트(idempotent)입니다"
+    },
+    "errors": {
+      "saveFailed": "OSS Default Resource 저장 중 오류가 발생했습니다.",
+      "requiredFields": "tool_key와 display_name은 필수입니다."
+    },
+    "empty": {
+      "none": "등록된 OSS Default Resource가 없습니다.",
+      "search": "검색 조건에 맞는 OSS Default Resource가 없습니다."
     }
   },
   "monitoringPage": {
@@ -1414,5 +1479,49 @@
       "global": "전역",
       "stackList": "스택 목록"
     }
+  },
+  "cicdPipelineLogsPage": {
+    "emptyDeployments": "배포 이력이 없습니다."
+  },
+  "confirmDialog": {
+    "typeToConfirm": {
+      "prefix": "확인을 위해 다음을 정확히 입력하세요:",
+      "suffix": ""
+    }
+  },
+  "dataTable": {
+    "empty": "표시할 데이터가 없습니다."
+  },
+  "versionDiff": {
+    "empty": "변경된 구성이 없습니다."
+  },
+  "goldenPathPage": {
+    "description": "검증된 CI/CD 도구 조합으로 빠르게 시작하세요.",
+    "searchPlaceholder": "Golden Path 검색...",
+    "empty": {
+      "search": "검색 결과가 없습니다."
+    },
+    "actions": {
+      "viewDetail": "상세 보기",
+      "use": "이 Golden Path 사용"
+    },
+    "detail": {
+      "description": "설명"
+    }
+  },
+  "tokenManagement": {
+    "description": "토큰 상태 확인, 수동 회전, 승인/일시중지 및 조회를 관리합니다.",
+    "testModeNotice": "테스트 모드: 재로그인(step-up) 강제는 비활성화되어 있으며 내부적으로 자동 처리됩니다."
+  },
+  "stackInfo": {
+    "panels": {
+      "artifacts": "현재 스택에 구성된 아티팩트 저장소",
+      "pipeline": "현재 스택의 CI/CD 파이프라인 도구 구성",
+      "monitoring": "현재 스택의 모니터링 도구 구성",
+      "logging": "현재 스택의 로깅 도구 구성",
+      "resources": "현재 스택의 리소스 할당 현황"
+    },
+    "allocated": "할당된 {{label}}",
+    "clusterInfo": "Cluster 정보"
   }
 }
