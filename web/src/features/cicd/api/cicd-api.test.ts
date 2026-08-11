@@ -21,6 +21,7 @@ vi.mock('../../../lib/api', () => ({
 }))
 
 import {
+  cicdApiCalls,
   useAppTemplates,
   useCicdTemplates,
   useCreateCicdTemplate,
@@ -174,5 +175,56 @@ describe('cicd-api hooks and exports', () => {
         logs: ['line-1', 'line-2'],
       }),
     ])
+  })
+})
+
+describe('getDeployments 응답 표기 대응', () => {
+  // 회귀 배경: API 는 camelCase 로 응답하는데 매퍼가 snake_case 만 읽어서
+  // CI/CD 이력 화면의 파이프라인·배포자·시작·완료 컬럼이 항상 비어 보였다.
+  // 실데이터로 앱을 돌려 보고 발견했다.
+  const rows = [
+    {
+      shape: 'camelCase (실제 API 응답)',
+      row: {
+        id: 'dep_1',
+        pipelineId: 'pip_1',
+        pipelineName: 'sample-backend',
+        version: 'v1.0.0',
+        status: 'success',
+        triggeredBy: 'kim.dev',
+        startedAt: '2026-08-11T10:07:45+09:00',
+        completedAt: '2026-08-11T10:07:46+09:00',
+      },
+    },
+    {
+      shape: 'snake_case (구 표기)',
+      row: {
+        id: 'dep_1',
+        pipeline_id: 'pip_1',
+        version: 'v1.0.0',
+        status: 'success',
+        deployed_by: 'kim.dev',
+        started_at: '2026-08-11T10:07:45+09:00',
+        completed_at: '2026-08-11T10:07:46+09:00',
+      },
+    },
+  ]
+
+  it.each(rows)('$shape 를 빠짐없이 매핑한다', async ({ row }) => {
+    vi.mocked(mockApi.get).mockImplementation((url: string) => {
+      if (url === '/cicd/deployments') return Promise.resolve({ data: { items: [row], total: 1 } })
+      if (url === '/cicd/pipelines')
+        return Promise.resolve({ data: { items: [{ id: 'pip_1', name: 'sample-backend' }] } })
+      return Promise.resolve({ data: { items: [] } })
+    })
+
+    const result = await cicdApiCalls.getDeployments()
+    const item = result.items[0]
+
+    expect(item.pipelineId).toBe('pip_1')
+    expect(item.pipelineName).toBe('sample-backend')
+    expect(item.triggeredBy).toBe('kim.dev')
+    expect(item.startedAt).toBe('2026-08-11T10:07:45+09:00')
+    expect(item.completedAt).toBe('2026-08-11T10:07:46+09:00')
   })
 })

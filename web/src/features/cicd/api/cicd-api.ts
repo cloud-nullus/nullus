@@ -85,7 +85,9 @@ const queryKeys = {
 
 // --- API functions ---
 
-const cicdApiCalls = {
+// 테스트에서 매퍼를 직접 검증할 수 있도록 내보낸다. 훅을 거치면 react-query 목까지
+// 끼워야 해서 응답 표기 대응 같은 순수 변환 로직을 확인하기 어렵다.
+export const cicdApiCalls = {
   resolvePipelineMode: (stages: string[] | undefined): Pipeline["mode"] => {
     const normalized = (stages ?? []).map((stage) =>
       String(stage).toLowerCase(),
@@ -193,11 +195,15 @@ const cicdApiCalls = {
       .then((r) => r.data);
     const latestDeployByPipeline = new Map<string, string>();
 
+    // getDeployments 와 같은 표기 문제. 여기서도 snake_case 만 읽어서
+    // CI/CD 목록의 "마지막 배포" 가 항상 비어 있었다.
     for (const d of deploymentsRes.items ?? []) {
-      const pid = d.pipeline_id;
+      const pid = d.pipelineId ?? d.pipeline_id;
+      const startedAt = d.startedAt ?? d.started_at;
+      if (!pid || !startedAt) continue;
       const existing = latestDeployByPipeline.get(pid);
-      if (!existing || d.started_at > existing) {
-        latestDeployByPipeline.set(pid, d.started_at);
+      if (!existing || startedAt > existing) {
+        latestDeployByPipeline.set(pid, startedAt);
       }
     }
 
@@ -365,16 +371,24 @@ const cicdApiCalls = {
       pipelineNameMap.set(p.id, p.name);
     }
 
-    const mappedItems: Deployment[] = (raw.items ?? []).map((d: any) => ({
-      id: d.id,
-      pipelineId: d.pipeline_id ?? "",
-      pipelineName: pipelineNameMap.get(d.pipeline_id) ?? "",
-      version: d.version ?? "",
-      status: (d.status ?? "pending") as Deployment["status"],
-      triggeredBy: d.deployed_by ?? "",
-      startedAt: d.started_at ?? "",
-      completedAt: d.completed_at ?? null,
-    }));
+    // GET /cicd/deployments 는 camelCase 로 응답한다(pipelineId, startedAt …).
+    // 이 매퍼는 snake_case 만 읽고 있어서 CI/CD 이력 화면의 6개 컬럼 중 4개가
+    // 항상 비어 보였다 — 파이프라인·배포자·시작·완료 시각. 실데이터로 앱을
+    // 돌려 보고 발견했다. 두 표기를 모두 받아 응답 표기가 갈려도 견디게 한다.
+    const mappedItems: Deployment[] = (raw.items ?? []).map((d: any) => {
+      const pipelineId = d.pipelineId ?? d.pipeline_id ?? "";
+      return {
+        id: d.id,
+        pipelineId,
+        // 목록 응답이 pipelineName 을 이미 주면 그걸 쓰고, 없으면 파이프라인 목록으로 채운다.
+        pipelineName: d.pipelineName ?? pipelineNameMap.get(pipelineId) ?? "",
+        version: d.version ?? "",
+        status: (d.status ?? "pending") as Deployment["status"],
+        triggeredBy: d.triggeredBy ?? d.deployed_by ?? "",
+        startedAt: d.startedAt ?? d.started_at ?? "",
+        completedAt: d.completedAt ?? d.completed_at ?? null,
+      };
+    });
 
     const items = mappedItems
       .filter(
