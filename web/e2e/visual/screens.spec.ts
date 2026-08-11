@@ -122,6 +122,11 @@ async function stabilize(page: Page): Promise<void> {
 for (const theme of ['dark', 'light'] as Theme[]) {
   test.describe(`시각 회귀 — ${theme} 테마`, () => {
     test.beforeEach(async ({ page }) => {
+      // 시계를 고정한다. 화면 일부가 현재 시각으로 기본값을 만든다 —
+      // stack-install 의 스택 이름이 `nullus-...-YYYYMMDD-HHmm` 이라 분이 바뀌면
+      // 문자열 길이가 달라지고 그 줄이 접히면서 페이지 전체가 몇 px 밀린다.
+      // 실제로 자정 넘어 재실행했을 때 이 화면 하나가 통째로 diff 로 떴다.
+      await page.clock.setFixedTime(new Date('2026-01-02T03:04:05Z'))
       await setTheme(page, theme)
       await stubApi(page)
     })

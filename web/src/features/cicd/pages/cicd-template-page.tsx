@@ -17,6 +17,7 @@ import { useAuthStore } from "../../../stores/auth-store";
 import { resolveLocale } from "../../../lib/locale";
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from "../../../components/ui/search-input"
+import { Checkbox } from "../../../components/ui/checkbox"
 
 const CAPABILITY_OPTIONS = ["CI", "CD", "Test", "Security"] as const;
 const PRIORITY_TEMPLATE_IDS = [
@@ -640,11 +641,9 @@ export function CicdTemplatePage() {
                         : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-secondary)]"
                     }`}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
                       onChange={() => toggleStage(stage)}
-                      className="accent-[var(--color-primary)]"
                     />
                     {stage}
                   </label>

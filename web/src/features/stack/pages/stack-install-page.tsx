@@ -91,6 +91,7 @@ import {
 import type { ManifestToolEntry } from '../utils/install-manifest-builders'
 import { ToolSelector, MultiToolSelector } from '../components/install-tool-selector'
 import { PageHeader } from '../../../components/layout/page-header'
+import { Checkbox } from '../../../components/ui/checkbox'
 
 function toDeployErrorMessage(error: unknown): string {
   // Compat-gate errors get a specialized, issue-aware formatter so the user
@@ -2381,8 +2382,7 @@ export function StackInstallPage() {
 
           <div className="mt-3">
             <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={draft.accessDomainTls.enabled}
                 onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
               />
@@ -2574,8 +2574,7 @@ export function StackInstallPage() {
         )}
         {compatibilityGate.state === 'warn' && (
           <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={compatWarnAcknowledged}
               onChange={(e) => {
                 setCompatWarnAcknowledged(e.target.checked)
@@ -2639,8 +2638,7 @@ export function StackInstallPage() {
           )}
           {serverVerdict.overall.state === 'warn' && (
             <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={serverWarnAcknowledged}
                 onChange={(e) => {
                   setServerWarnAcknowledged(e.target.checked)

@@ -8,6 +8,7 @@ import { Modal } from '../../../components/ui/modal'
 import { useRetryStack } from '../api/stack-api'
 import { canRetry, type StackStatus } from '../utils/retry-policy'
 import { extractDeployCompatError } from '../utils/deploy-error'
+import { Checkbox } from '../../../components/ui/checkbox'
 
 // RetryStackButton — F8-Phase3 follow-up UI. Renders only when the stack's
 // current state allows retry (failed / rolled_back). Handles the backend's
@@ -146,8 +147,7 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
             </ul>
           )}
           <label className="inline-flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={ack}
               onChange={(e) => setAck(e.target.checked)}
               data-testid="retry-warn-ack"

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Modal } from "../../../components/ui/modal";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
+import { Checkbox } from "../../../components/ui/checkbox"
 
 export interface DeletePipelineSelection {
   deleteClusterResources: boolean;
@@ -105,9 +106,8 @@ export function DeletePipelineDialog({
           </p>
 
           <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-1"
+            <Checkbox
+              align="start"
               checked={deleteClusterResources}
               onChange={(e) => setDeleteClusterResources(e.target.checked)}
             />
@@ -126,9 +126,8 @@ export function DeletePipelineDialog({
 
           {imageRepository ? (
             <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-1"
+              <Checkbox
+                align="start"
                 checked={deleteImages}
                 onChange={(e) => setDeleteImages(e.target.checked)}
               />
@@ -145,9 +144,8 @@ export function DeletePipelineDialog({
 
           {repositoryPath ? (
             <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-1"
+              <Checkbox
+                align="start"
                 checked={deleteRepository}
                 onChange={(e) => setDeleteRepository(e.target.checked)}
               />

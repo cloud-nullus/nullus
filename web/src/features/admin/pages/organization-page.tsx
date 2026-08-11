@@ -24,6 +24,7 @@ import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { Modal } from '../../../components/ui/modal'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
+import { Checkbox } from '../../../components/ui/checkbox'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
   active: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
@@ -388,11 +389,9 @@ export function OrganizationPage() {
                               : 'border-[var(--color-border-default)] bg-transparent'
                           )}
                         >
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={checked}
                             onChange={() => handleScopeToggle(cluster.name)}
-                            className="h-[15px] w-[15px] accent-[var(--color-primary)]"
                           />
                           <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">

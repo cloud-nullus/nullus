@@ -21,6 +21,7 @@ import type { AppType } from "../api/cicd-api";
 import { StepSection, labelStyleClass } from "../components/deploy-ui";
 import { generateManifestYamls } from "../utils/yaml-generator";
 import { PageHeader } from '../../../components/layout/page-header'
+import { Checkbox } from "../../../components/ui/checkbox"
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 type Capability = "CI" | "CD" | "Test" | "Security";
@@ -689,12 +690,10 @@ export function DeveloperDeployPage() {
                         : "text-[var(--color-text-primary)]",
                     )}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={isSelected(capability)}
                       disabled={disabled}
                       onChange={() => toggleCapability(capability)}
-                      className="h-4 w-4 accent-[var(--color-primary)]"
                     />
                     {capability}
                   </label>
@@ -711,11 +710,9 @@ export function DeveloperDeployPage() {
                   key={phase}
                   className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selectedPhase === phase}
                     onChange={() => setSelectedPhase(phase)}
-                    className="h-4 w-4 accent-[var(--color-primary)]"
                   />
                   {phase}
                 </label>

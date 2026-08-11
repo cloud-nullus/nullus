@@ -15,6 +15,7 @@ import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
+import { Checkbox } from '../../../components/ui/checkbox'
 
 const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string }> = {
   connected: {
@@ -723,7 +724,7 @@ export function ClusterPage() {
                         : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] text-[var(--color-text-secondary)]'
                     )}
                   >
-                    <input type="checkbox" value={option.value} {...register('types')} className="h-4 w-4" />
+                    <Checkbox value={option.value} {...register('types')} />
                     <span className="whitespace-pre-line">{t(option.key, option.fallback)}</span>
                   </label>
                 )

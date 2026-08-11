@@ -8,6 +8,7 @@ import { Input } from '../../../components/ui/input'
 import { NativeSelect } from '../../../components/ui/native-select'
 import type { CompatibilityMatrix } from '../../../types'
 import { useCreateMatrix, useUpdateMatrix, type MatrixInput } from '../../stack/api/stack-api'
+import { Checkbox } from '../../../components/ui/checkbox'
 
 // F8-Phase5 admin matrix editor. Kept deliberately compact — the backend
 // validates payload shape, so this component focuses on ergonomic input for
@@ -469,8 +470,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
                   <div className="flex items-center gap-2 pt-1 text-[11px]">
                     {['amd64', 'arm64'].map((a) => (
                       <label key={a} className="inline-flex items-center gap-1">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={row.archSupport.includes(a)}
                           onChange={() => toggleArch(idx, a)}
                         />
