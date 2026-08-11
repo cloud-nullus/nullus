@@ -214,7 +214,7 @@ const DEPLOY_PRESET_DESCRIPTION_I18N: Record<string, { ko: string; en: string }>
 }
 
 const appTypeOptionClassName =
-  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
+  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
 
 const getPipelineYaml = (input: {
   pipelineName: string
@@ -366,7 +366,7 @@ export function CicdPipelineSetupPage() {
 
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
             <Settings2 size={18} />
           </div>
           <div>
@@ -483,8 +483,8 @@ export function CicdPipelineSetupPage() {
                           className={cn(
                             'cursor-pointer rounded-lg border p-3 text-left transition-all duration-150',
                             selected
-                              ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
-                              : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
+                              ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                              : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
                           )}
                         >
                           <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
@@ -503,13 +503,13 @@ export function CicdPipelineSetupPage() {
 
             {activeTab === 'deploy' && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-2">
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2">
                   <button
                     type="button"
                     className={cn(
                       'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold',
                       deployMode === 'template'
-                        ? 'bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]'
+                        ? 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]'
                         : 'text-[var(--color-text-secondary)]'
                     )}
                     onClick={() => setDeployMode('template')}
@@ -521,7 +521,7 @@ export function CicdPipelineSetupPage() {
                     className={cn(
                       'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold',
                       deployMode === 'custom'
-                        ? 'bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]'
+                        ? 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]'
                         : 'text-[var(--color-text-secondary)]'
                     )}
                     onClick={() => setDeployMode('custom')}
@@ -543,8 +543,8 @@ export function CicdPipelineSetupPage() {
                             className={cn(
                               'cursor-pointer rounded-lg border p-3 text-left transition-all duration-150',
                               selected
-                                ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
-                                : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
+                                ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                                : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
                             )}
                           >
                             <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
@@ -595,7 +595,7 @@ export function CicdPipelineSetupPage() {
               : t('cicdPipelineSetupPage.summary.customYaml', 'Custom YAML')],
             [t('cicdPipelineSetupPage.summary.deployYaml', 'Deploy YAML'), deployMode === 'template' ? selectedDeployYaml.label : 'custom.yaml'],
           ].map(([label, value]) => (
-            <div key={label} className="flex items-baseline justify-between gap-2 border-b border-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-1.5">
+            <div key={label} className="flex items-baseline justify-between gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-1.5">
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-semibold text-[var(--color-text-primary)]">
                 {value}

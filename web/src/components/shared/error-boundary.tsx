@@ -44,14 +44,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <p className="mb-3.5 mt-0 text-sm text-[var(--color-text-secondary)]">
               A rendering error interrupted this page.
             </p>
-            <div className="mb-4 break-words rounded-lg border border-[color-mix(in srgb, var(--color-error) 25%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2.5 font-mono text-[13px] text-[var(--color-error)]">
+            <div className="mb-4 break-words rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2.5 font-mono text-[13px] text-[var(--color-error)]">
               {this.state.error?.message ?? 'Unknown error'}
             </div>
             <div className="flex gap-2.5">
               <button
                 type="button"
                 onClick={this.resetErrorBoundary}
-                className="cursor-pointer rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-brand-gold-end))] px-4 py-2.5 text-sm font-bold text-[var(--color-surface-base)]"
+                className="cursor-pointer rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-brand-gold-end))] px-4 py-2.5 text-sm font-bold text-[var(--color-on-brand-gold)]"
               >
                 Try Again
               </button>

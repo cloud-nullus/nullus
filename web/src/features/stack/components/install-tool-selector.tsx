@@ -40,8 +40,8 @@ export function ToolSelector({ label, options, value, onChange }: ToolSelectorPr
               className={cn(
                 'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
                 selected
-                  ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
-                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
               )}
             >
               <div
@@ -102,8 +102,8 @@ export function MultiToolSelector({ label, options, values, onChange }: MultiToo
           className={cn(
             'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
             values.length === 0
-              ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
-              : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
+              ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+              : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
           )}
         >
           <div
@@ -137,8 +137,8 @@ export function MultiToolSelector({ label, options, values, onChange }: MultiToo
               className={cn(
                 'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
                 selected
-                  ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
-                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
               )}
             >
               <div

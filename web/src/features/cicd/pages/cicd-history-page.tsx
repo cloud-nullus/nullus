@@ -106,7 +106,7 @@ export function CicdHistoryPage() {
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
         <div
-          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]"
+          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]"
         >
           <History size={18} />
         </div>
@@ -121,7 +121,7 @@ export function CicdHistoryPage() {
       </div>
 
       {pipelineFilter && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-info) 8%, transparent)] px-3 py-2 text-sm">
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-3 py-2 text-sm">
           <span className="text-[var(--color-text-secondary)]">{t('cicdHistoryPage.filteredByPipeline', 'Filtered by pipeline:')}</span>
           <span className="font-semibold text-[var(--color-text-primary)]">
             {deployments.find((d) => d.pipelineId === pipelineFilter)?.pipelineName ?? pipelineFilter}
@@ -149,7 +149,7 @@ export function CicdHistoryPage() {
         emptyMessage={t('cicdHistoryPage.empty', 'No deployment history.')}
         toolbar={
           <>
-            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
+            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicdHistoryPage.filters.allStatus', 'All Status')}</option>
               <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.success', 'Success')}</option>
               <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.running', 'Running')}</option>
@@ -166,7 +166,7 @@ export function CicdHistoryPage() {
                 placeholder={t('cicdHistoryPage.searchPlaceholder', 'Search pipeline / deployer...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
           </>

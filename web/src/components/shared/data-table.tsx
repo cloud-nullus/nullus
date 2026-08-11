@@ -83,7 +83,7 @@ export function DataTable<T>({
             value={globalFilter}
             onChange={(event) => setGlobalFilter(event.target.value)}
             placeholder="Search..."
-            className="w-full max-w-[280px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+            className="w-full max-w-[280px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
           />
         )}
       </div>
@@ -91,7 +91,7 @@ export function DataTable<T>({
       <table className="w-full border-collapse">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id} className="bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+            <tr key={headerGroup.id} className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
               {headerGroup.headers.map((header) => {
                 const canSort = header.column.getCanSort()
                 const sortedState = header.column.getIsSorted()
@@ -120,7 +120,7 @@ export function DataTable<T>({
             <tr
               key={row.id}
                 className={cn(
-                  'transition-all duration-150 ease-in-out hover:bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]',
+                  'transition-all duration-150 ease-in-out hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]',
                   onRowClick ? 'cursor-pointer' : 'cursor-default'
                 )}
                 onClick={() => onRowClick?.(row.original)}
@@ -163,7 +163,7 @@ export function DataTable<T>({
               className={cn(
                 'h-8 w-8 cursor-pointer rounded-md border text-[13px] transition-all duration-150 ease-in-out',
                 number === pageIndex
-                  ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] font-semibold text-[var(--color-primary)]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] font-semibold text-[var(--color-primary)]'
                   : 'border-transparent bg-transparent font-normal text-[var(--color-text-secondary)]'
               )}
             >

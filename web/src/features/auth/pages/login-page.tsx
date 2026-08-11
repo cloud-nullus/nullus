@@ -63,7 +63,7 @@ function OidcLoginContent() {
           : `${providerLabel}(으)로 이동 중입니다…`}
       </p>
       {auth.error && (
-        <div className="mb-4 rounded-lg border border-[color-mix(in srgb, var(--color-error) 30%, transparent)] bg-[color-mix(in srgb, var(--color-error) 10%, transparent)] px-3 py-2.5 text-[13px] text-[var(--color-error)]">
+        <div className="mb-4 rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)] px-3 py-2.5 text-[13px] text-[var(--color-error)]">
           {auth.error.message}
         </div>
       )}
@@ -73,7 +73,7 @@ function OidcLoginContent() {
           triedRef.current = true
           void auth.signinRedirect()
         }}
-        className="w-full rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] p-3 text-sm font-bold text-[var(--color-surface-base)]"
+        className="w-full rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] p-3 text-sm font-bold text-[var(--color-on-brand-gold)]"
       >
         Sign in with {providerLabel}
       </button>
@@ -120,7 +120,7 @@ function MockLoginContent() {
             type="email"
             {...register('email')}
             placeholder="you@nullus.dev"
-            className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
+            className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
           />
           {errors.email && <span className="text-xs text-[var(--color-error)]">{errors.email.message}</span>}
         </div>
@@ -134,13 +134,13 @@ function MockLoginContent() {
             type="password"
             {...register('password')}
             placeholder="••••••••"
-            className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
+            className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none"
           />
           {errors.password && <span className="text-xs text-[var(--color-error)]">{errors.password.message}</span>}
         </div>
 
         {error && (
-          <div className="rounded-lg border border-[color-mix(in srgb, var(--color-error) 30%, transparent)] bg-[color-mix(in srgb, var(--color-error) 10%, transparent)] px-3 py-2.5 text-[13px] text-[var(--color-error)]">
+          <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)] px-3 py-2.5 text-[13px] text-[var(--color-error)]">
             {error}
           </div>
         )}
@@ -148,13 +148,13 @@ function MockLoginContent() {
         <button
           type="submit"
           disabled={!isValid || isSubmitting}
-          className="mt-1 rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] p-3 text-sm font-bold text-[var(--color-surface-base)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-1 rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] p-3 text-sm font-bold text-[var(--color-on-brand-gold)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           Sign in
         </button>
       </form>
 
-      <div className="mt-6 rounded-lg border border-[color-mix(in srgb, var(--color-primary) 20%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 6%, transparent)] p-[14px] text-xs leading-[1.6] text-[var(--color-text-secondary)]">
+      <div className="mt-6 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_6%,_transparent)] p-[14px] text-xs leading-[1.6] text-[var(--color-text-secondary)]">
         <div className="mb-1.5 font-semibold text-[var(--color-primary)]">Test Accounts</div>
         <div>admin@nullus.dev / admin123</div>
         <div>devops@nullus.dev / devops123</div>
@@ -169,7 +169,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-base)] p-6">
       <div className="w-full max-w-[400px] rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-10">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-[14px] flex h-12 w-12 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[22px] font-extrabold text-[var(--color-surface-base)]">
+          <div className="mx-auto mb-[14px] flex h-12 w-12 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[22px] font-extrabold text-[var(--color-on-brand-gold)]">
             N
           </div>
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">

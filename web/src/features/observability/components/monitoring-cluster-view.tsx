@@ -196,18 +196,18 @@ export function ClusterDefault({
           {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
-                range === r ? 'border-[color-mix(in srgb, var(--color-warning) 60%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 20%, transparent)] text-[var(--color-warning)]'
-                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]')}>
+                range === r ? 'border-[color-mix(in_srgb,_var(--color-warning)_60%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]')}>
               {r}
             </button>
           ))}
         </div>
       </div>
       <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        <KpiCard label="Running Pods" value={`${podRunning}/${podCount}`} icon={<Server size={18} />} color="var(--color-info)" iconCls="bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]" bar={runningPodsPercent} />
-        <KpiCard label="Pods" value={String(podCount)} icon={<Box size={18} />} color="var(--color-success)" iconCls="bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]" bar={runningPodsPercent} />
-        <KpiCard label="CPU" value={`${Math.round(cpuUsage)}%`} icon={<Cpu size={18} />} color="var(--color-warning)" iconCls="bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]" bar={cpuUsage} />
-        <KpiCard label="Memory" value={`${Math.round(memoryUsage)}%`} icon={<MemoryStick size={18} />} color="var(--color-accent-alt)" iconCls="bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]" bar={memoryUsage} />
+        <KpiCard label="Running Pods" value={`${podRunning}/${podCount}`} icon={<Server size={18} />} color="var(--color-info)" iconCls="bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]" bar={runningPodsPercent} />
+        <KpiCard label="Pods" value={String(podCount)} icon={<Box size={18} />} color="var(--color-success)" iconCls="bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]" bar={runningPodsPercent} />
+        <KpiCard label="CPU" value={`${Math.round(cpuUsage)}%`} icon={<Cpu size={18} />} color="var(--color-warning)" iconCls="bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]" bar={cpuUsage} />
+        <KpiCard label="Memory" value={`${Math.round(memoryUsage)}%`} icon={<MemoryStick size={18} />} color="var(--color-accent-alt)" iconCls="bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]" bar={memoryUsage} />
       </div>
       <div className="grid grid-cols-2 gap-3.5">
         <ChartPanel title="CPU Usage">

@@ -15,37 +15,37 @@ const statusConfig: Record<ClusterStatus, {
   defaultLabel: string
 }> = {
   connected: {
-    bgClass: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)]',
+    bgClass: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)]',
     textClass: 'text-[var(--color-success)]',
     icon: <CheckCircle size={12} />,
     defaultLabel: 'Connected',
   },
   pending: {
-    bgClass: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)]',
+    bgClass: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)]',
     textClass: 'text-[var(--color-warning)]',
     icon: <Clock size={12} />,
     defaultLabel: 'Pending',
   },
   error: {
-    bgClass: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)]',
+    bgClass: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)]',
     textClass: 'text-[var(--color-error)]',
     icon: <AlertCircle size={12} />,
     defaultLabel: 'Error',
   },
   unreachable: {
-    bgClass: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)]',
+    bgClass: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)]',
     textClass: 'text-[var(--color-warning)]',
     icon: <AlertCircle size={12} />,
     defaultLabel: 'Unreachable',
   },
   auth_failed: {
-    bgClass: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)]',
+    bgClass: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)]',
     textClass: 'text-[var(--color-error)]',
     icon: <AlertCircle size={12} />,
     defaultLabel: 'Auth Failed',
   },
   inactive: {
-    bgClass: 'bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)]',
+    bgClass: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)]',
     textClass: 'text-[var(--color-text-muted)]',
     icon: <MinusCircle size={12} />,
     defaultLabel: 'Inactive',

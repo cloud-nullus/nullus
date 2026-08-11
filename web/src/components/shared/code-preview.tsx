@@ -46,7 +46,7 @@ export function CodePreview({ code, language = 'yaml', title, maxHeight = '400px
 
   return (
     <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)] font-mono">
-      <div className="flex items-center justify-between border-b border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-[14px] py-2">
+      <div className="flex items-center justify-between border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-[14px] py-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] uppercase">
             {language}
@@ -80,7 +80,7 @@ export function CodePreview({ code, language = 'yaml', title, maxHeight = '400px
           <tbody>
             {highlightedLines.map((lineItem) => (
               <tr key={lineItem.id}>
-                <td className="select-none border-r border-r-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] px-3 text-right align-top text-[13px] leading-[22px] text-[var(--color-border-default)]">
+                <td className="select-none border-r border-r-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-3 text-right align-top text-[13px] leading-[22px] text-[var(--color-border-default)]">
                   {lineItem.lineNumber}
                 </td>
                 <td

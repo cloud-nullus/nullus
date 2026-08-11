@@ -314,14 +314,14 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
     >
       <div className="flex flex-col gap-3 text-sm">
         {error && (
-          <div className="rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-[var(--color-error)]">
+          <div className="rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-[var(--color-error)]">
             {error}
           </div>
         )}
 
         {hasDuplicateCats && (
           <div
-            className="rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-[var(--color-error)]"
+            className="rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-[var(--color-error)]"
             data-testid="matrix-dup-warn"
           >
             {t(
@@ -333,7 +333,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
 
         {confirmDrop && droppedRows.length > 0 && (
           <div
-            className="rounded border border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] px-3 py-2 text-[var(--color-warning)]"
+            className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-[var(--color-warning)]"
             data-testid="matrix-drop-warn"
           >
             <div className="mb-1 font-semibold">

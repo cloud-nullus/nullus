@@ -43,7 +43,10 @@ const HEX_TO_TOKEN = {
   '#2d3748': 'border-default', '#1f2937': 'border-default',
   // 어두운 표면 (코드/로그 뷰어 배경). 라이트 테마에서 검정 배경이 남던 자리다.
   '#0d1117': 'surface-base', '#0b1220': 'surface-base', '#111827': 'surface-base',
-  '#1a1d29': 'surface-base', '#0f1419': 'surface-card', '#0a0a0a': 'surface-base',
+  '#0f1419': 'surface-card', '#0a0a0a': 'surface-base',
+  // 골드 CTA 위의 텍스트색. surface-base 로 두면 라이트 테마에서 거의 흰색이 되어
+  // 골드 위 흰 글자(1.9:1)가 된다 — 표면이 아니라 "골드 위 전경색" 이다.
+  '#1a1d29': 'on-brand-gold',
   // 브랜드
   '#ffd700': 'brand-gold',
 }
@@ -76,6 +79,19 @@ const RGB_TO_TOKEN = {
 const token = (name) => `var(--color-${name})`
 const mix = (name, alpha) =>
   `color-mix(in srgb, var(--color-${name}) ${Number((alpha * 100).toFixed(2))}%, transparent)`
+
+/**
+ * Tailwind 임의값(`bg-[...]`) 안에는 공백을 쓸 수 없다 — 밑줄로 써야 클래스가 산다.
+ * 이걸 빼먹어서 color-mix 를 넣은 클래스 676개가 조용히 죽었다. 테스트·빌드·시각
+ * 회귀 모두 통과했는데(배지 배경이 사라진 채 스냅샷이 갱신됐다) 클래스만 무효였다.
+ */
+function normalizeTailwindArbitraryValues(source) {
+  return source.replace(
+    /\b([a-z][a-z0-9-]*)-\[([^\]]*(?:color-mix|var\(--)[^\]]*)\]/g,
+    (whole, utility, inner) =>
+      inner.includes(' ') ? `${utility}-[${inner.replace(/ /g, '_')}]` : whole,
+  )
+}
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -139,6 +155,7 @@ for (const file of walk(SRC)) {
     return token(name)
   })
 
+  after = normalizeTailwindArbitraryValues(after)
   after = restore(after)
 
   if (after !== before) {

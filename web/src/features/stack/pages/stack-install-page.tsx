@@ -2277,7 +2277,7 @@ export function StackInstallPage() {
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
           <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]"
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]"
           >
             <Download size={18} />
           </div>
@@ -2329,13 +2329,13 @@ export function StackInstallPage() {
         </div>
       </div>
       {hasManifestValidationError && (
-        <div className="mb-3 rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
+        <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
           Strict 버전/YAML 검증 실패 {manifestValidationErrorCount}건으로 Deploy가 잠겼습니다. YAML View에서 오류를 해소해 주세요.
         </div>
       )}
       {serverVerdict?.overall.state === 'fail' && (
         <div
-          className="mb-3 rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-error)]"
+          className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]"
           data-testid="server-fail-hint"
         >
           {t(
@@ -2439,7 +2439,7 @@ export function StackInstallPage() {
                   setSelectedClusterId(e.target.value)
                   setCluster(e.target.value)
                 }}
-                className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
               >
                 <option value="">{t('stackInstall.form.selectClusterPlaceholder', 'Select a cluster')}</option>
                 {(clusters ?? []).map((c) => (
@@ -2466,7 +2466,7 @@ export function StackInstallPage() {
                       setNamespace(e.target.value)
                     }
                   }}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                 >
                   <option value="">기본 (nullus)</option>
                   {(namespaces ?? []).map((ns) => (
@@ -2481,7 +2481,7 @@ export function StackInstallPage() {
                     placeholder="my-namespace"
                     value={draft.namespace}
                     onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                    className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                    className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                   />
                 )}
                 <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
@@ -2492,7 +2492,7 @@ export function StackInstallPage() {
 
         <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
           <div className="mb-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in srgb, var(--color-primary) 18%, transparent)] text-[var(--color-primary)]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_18%,_transparent)] text-[var(--color-primary)]">
               <ShoppingCart size={16} />
             </div>
             <div>
@@ -2504,7 +2504,7 @@ export function StackInstallPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="rounded-lg border border-[color-mix(in srgb, var(--color-primary) 25%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] p-3">
+            <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] p-3">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Request Total</div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
@@ -2522,7 +2522,7 @@ export function StackInstallPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-[color-mix(in srgb, var(--color-success) 25%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)] p-3">
+            <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-success)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] p-3">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Limit Total</div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
@@ -2552,10 +2552,10 @@ export function StackInstallPage() {
         className={cn(
           'mb-3 rounded border px-3 py-3 text-xs',
           compatibilityGate.state === 'pass'
-            ? 'border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)] text-[var(--color-success)]'
+            ? 'border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] text-[var(--color-success)]'
             : compatibilityGate.state === 'warn'
-              ? 'border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] text-[var(--color-warning)]'
-              : 'border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] text-[var(--color-error)]'
+              ? 'border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] text-[var(--color-warning)]'
+              : 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]'
         )}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -2605,7 +2605,7 @@ export function StackInstallPage() {
           pressing Deploy again. */}
       {serverVerdict && serverVerdict.overall.state === 'pass' ? (
         <div
-          className="mb-3 rounded border border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-success)]"
+          className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-success)]"
           data-testid="server-verdict-panel"
           data-state="pass"
         >
@@ -2616,8 +2616,8 @@ export function StackInstallPage() {
           className={cn(
             'mb-3 rounded border px-3 py-3 text-xs',
             serverVerdict.overall.state === 'warn'
-              ? 'border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] text-[var(--color-warning)]'
-              : 'border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] text-[var(--color-error)]',
+              ? 'border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] text-[var(--color-warning)]'
+              : 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]',
           )}
           data-testid="server-verdict-panel"
         >
@@ -2698,7 +2698,7 @@ export function StackInstallPage() {
             })}
           </div>
           {tabGuardError && (
-            <div className="mb-3 rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
+            <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
               {tabGuardError}
             </div>
           )}
@@ -2856,8 +2856,8 @@ export function StackInstallPage() {
                         className={cn(
                           'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
                           resolvedActiveManifestTool === GATEWAY_MANIFEST_ID
-                            ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)] text-[var(--color-primary)]'
-                            : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] text-[var(--color-text-primary)]'
+                            ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]'
+                            : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-primary)]'
                         )}
                       >
                         <span className="font-semibold">Gateway</span>
@@ -2869,7 +2869,7 @@ export function StackInstallPage() {
                   <div>
                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">OSS</div>
                     {manifestTools.length === 0 ? (
-                      <div className="rounded border border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
+                      <div className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
                         설치 대상 OSS가 없습니다. Gateway YAML은 자동 생성되며, OSS 설치파일은 툴 선택 후 생성됩니다.
                       </div>
                     ) : (
@@ -2884,8 +2884,8 @@ export function StackInstallPage() {
                               className={cn(
                                 'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
                                 isActive
-                                  ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)] text-[var(--color-primary)]'
-                                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] text-[var(--color-text-primary)]'
+                                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]'
+                                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-primary)]'
                               )}
                             >
                               <span className="font-semibold">{tool.toolLabel}</span>
@@ -2903,14 +2903,14 @@ export function StackInstallPage() {
                 {resolvedActiveManifestTool && (
                   <>
                         {activeManifestInfo && (
-                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] p-3 text-xs">
+                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] p-3 text-xs">
                             <div className="mb-1 flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-[var(--color-primary)]">{activeManifestInfo.toolLabel}</span>
                               <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 uppercase text-[10px] text-[var(--color-text-secondary)]">
                                 {activeManifestInfo.installType}
                               </span>
                               {manifestErrorsByTool[activeManifestInfo.toolId] && (
-                                <span className="rounded border border-[color-mix(in srgb, var(--color-error) 40%, transparent)] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-error)]">
+                                <span className="rounded border border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-error)]">
                                   STRICT 검증 실패
                                 </span>
                               )}
@@ -2968,7 +2968,7 @@ export function StackInstallPage() {
                           />
                         </div>
                         {manifestErrorsByTool[resolvedActiveManifestTool] && (
-                          <div className="mt-3 rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
+                          <div className="mt-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
                             {manifestErrorsByTool[resolvedActiveManifestTool]}
                           </div>
                         )}
@@ -2994,7 +2994,7 @@ export function StackInstallPage() {
 
             {activeTab === 'dry-run' && (
               <div className="space-y-4">
-                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] p-3">
+                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] p-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Dry Run — 배포 전 최종 검토</h3>
@@ -3008,15 +3008,15 @@ export function StackInstallPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <div className="rounded border border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)] px-3 py-2 text-xs">
+                    <div className="rounded border border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] px-3 py-2 text-xs">
                       <div className="text-[var(--color-text-secondary)]">PASS</div>
                       <div className="font-semibold text-[var(--color-success)]">{dryRunSummary.passed}</div>
                     </div>
-                    <div className="rounded border border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] px-3 py-2 text-xs">
+                    <div className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs">
                       <div className="text-[var(--color-text-secondary)]">WARN</div>
                       <div className="font-semibold text-[var(--color-warning)]">{dryRunSummary.warned}</div>
                     </div>
-                    <div className="rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-xs">
+                    <div className="rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs">
                       <div className="text-[var(--color-text-secondary)]">FAIL</div>
                       <div className="font-semibold text-[var(--color-error)]">{dryRunSummary.failed}</div>
                     </div>
@@ -3024,8 +3024,8 @@ export function StackInstallPage() {
                       className={cn(
                         'rounded border px-3 py-2 text-xs',
                         dryRunSummary.readyToDeploy
-                          ? 'border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)]'
-                          : 'border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)]'
+                          ? 'border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)]'
+                          : 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)]'
                       )}
                     >
                       <div className="text-[var(--color-text-secondary)]">READY</div>
@@ -3046,9 +3046,9 @@ export function StackInstallPage() {
                       key={check.id}
                       className={cn(
                         'rounded-lg border px-3 py-2',
-                        check.status === 'pass' && 'border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)]',
-                        check.status === 'warn' && 'border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)]',
-                        check.status === 'fail' && 'border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)]'
+                        check.status === 'pass' && 'border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)]',
+                        check.status === 'warn' && 'border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)]',
+                        check.status === 'fail' && 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)]'
                       )}
                     >
                       <div className="mb-1 flex items-center justify-between gap-2">
@@ -3056,9 +3056,9 @@ export function StackInstallPage() {
                         <span
                           className={cn(
                             'rounded px-2 py-0.5 text-[10px] font-bold uppercase',
-                            check.status === 'pass' && 'bg-[color-mix(in srgb, var(--color-success) 20%, transparent)] text-[var(--color-success)]',
-                            check.status === 'warn' && 'bg-[color-mix(in srgb, var(--color-warning) 20%, transparent)] text-[var(--color-warning)]',
-                            check.status === 'fail' && 'bg-[color-mix(in srgb, var(--color-error) 20%, transparent)] text-[var(--color-error)]'
+                            check.status === 'pass' && 'bg-[color-mix(in_srgb,_var(--color-success)_20%,_transparent)] text-[var(--color-success)]',
+                            check.status === 'warn' && 'bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]',
+                            check.status === 'fail' && 'bg-[color-mix(in_srgb,_var(--color-error)_20%,_transparent)] text-[var(--color-error)]'
                           )}
                         >
                           {check.status}
@@ -3087,7 +3087,7 @@ export function StackInstallPage() {
                       <NativeSelect
                         value={selectedOrgProfileId ? `org:${selectedOrgProfileId}` : planningProfile}
                         onChange={(e) => handleSizingSelectChange(e.target.value)}
-                        className="min-w-[160px] rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-1 text-xs"
+                        className="min-w-[160px] rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs"
                       >
                         {PLANNING_PROFILES.map((profile) => (
                           <option key={profile} value={profile}>
@@ -3109,7 +3109,7 @@ export function StackInstallPage() {
                         title="Save current values to selected profile"
                         onClick={handleSaveProfileButtonClick}
                         disabled={createOrgProfile.isPending || updateOrgProfile.isPending}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] hover:text-[var(--color-primary)]"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] hover:text-[var(--color-primary)]"
                       >
                         <Save size={12} />
                       </button>
@@ -3118,7 +3118,7 @@ export function StackInstallPage() {
                           type="button"
                           title="Delete this organization profile"
                           onClick={handleDeleteOrgProfile}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-[color-mix(in srgb, var(--color-error) 30%, transparent)] text-[var(--color-error)] hover:bg-[color-mix(in srgb, var(--color-error) 10%, transparent)]"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] text-[var(--color-error)] hover:bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)]"
                         >
                           <Trash2 size={12} />
                         </button>
@@ -3127,7 +3127,7 @@ export function StackInstallPage() {
                   </div>
 
                   {saveProfileDialogOpen && (
-                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-[color-mix(in srgb, var(--color-primary) 30%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 6%, transparent)] px-3 py-2">
+                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_6%,_transparent)] px-3 py-2">
                       <span className="text-[11px] text-[var(--color-text-secondary)] shrink-0">Profile name</span>
                       <input
                         type="text"
@@ -3136,13 +3136,13 @@ export function StackInstallPage() {
                         onKeyDown={(e) => { if (e.key === 'Enter') handleSaveProfileConfirm(); if (e.key === 'Escape') setSaveProfileDialogOpen(false) }}
                         placeholder="e.g. Production-M"
                         autoFocus
-                        className="flex-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-1 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[color-mix(in srgb, var(--color-primary) 50%, transparent)]"
+                        className="flex-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)]"
                       />
                       <button
                         type="button"
                         onClick={handleSaveProfileConfirm}
                         disabled={!saveProfileName.trim() || createOrgProfile.isPending}
-                        className="rounded border border-[color-mix(in srgb, var(--color-primary) 40%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-primary)] disabled:opacity-50"
+                        className="rounded border border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-primary)] disabled:opacity-50"
                       >
                         Save
                       </button>
@@ -3156,7 +3156,7 @@ export function StackInstallPage() {
                     </div>
                   )}
 
-                  <div className="mb-4 grid grid-cols-3 gap-3 rounded-lg border border-[color-mix(in srgb, var(--color-primary) 20%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 6%, transparent)] p-3">
+                  <div className="mb-4 grid grid-cols-3 gap-3 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_6%,_transparent)] p-3">
                     <div>
                       <div className="text-[11px] text-[var(--color-text-secondary)]">적용값 총 CPU (Req | Limit)</div>
                       <div className="font-semibold text-[var(--color-primary)]">{planningAppliedTotal.cpuRequest.toFixed(2)} | {planningAppliedTotal.cpuLimit.toFixed(2)}</div>
@@ -3183,7 +3183,7 @@ export function StackInstallPage() {
                                 type="button"
                                 aria-label={`${row.toolLabel} 리소스 산정식 보기`}
                                 onClick={() => setActiveFormulaPopoverKey((prev) => (prev === row.rowKey ? null : row.rowKey))}
-                                className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] hover:text-[var(--color-text-primary)]"
+                                className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] hover:text-[var(--color-text-primary)]"
                               >
                                 <Info size={13} />
                               </button>
@@ -3192,7 +3192,7 @@ export function StackInstallPage() {
                         </div>
 
                         {activeFormulaPopoverKey === row.rowKey && (
-                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                             <div className="mb-2 flex items-center justify-between">
                               <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">산정식</div>
                               <button
@@ -3210,13 +3210,13 @@ export function StackInstallPage() {
                         )}
 
                         {!row.recommended || !row.applied ? (
-                          <div className="rounded border border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
+                          <div className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
                             해당 OSS의 default 리소스가 정의되지 않았습니다.
                           </div>
                         ) : (
                           <>
                             {row.multipliers && (row.multipliers.clamped.cpu || row.multipliers.clamped.memory || row.multipliers.clamped.storage) && (
-                              <div className="mb-3 rounded border border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
+                              <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
                                 계산 배수가 제한에 도달했습니다:
                                 {row.multipliers.clamped.cpu ? ' CPU' : ''}
                                 {row.multipliers.clamped.memory ? ' Memory' : ''}
@@ -3227,23 +3227,23 @@ export function StackInstallPage() {
                             )}
 
                             <div className="mb-3 grid grid-cols-2 gap-3">
-                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2">
+                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2">
                                 <span className="text-[11px] text-[var(--color-text-secondary)]">Memory 단위</span>
                                 <NativeSelect
                                   value={row.units.memory}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'memory', e.target.value as ResourceUnit)}
-                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-1 text-xs"
+                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
                                 </NativeSelect>
                               </div>
-                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2">
+                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2">
                                 <span className="text-[11px] text-[var(--color-text-secondary)]">Storage 단위</span>
                                 <NativeSelect
                                   value={row.units.storage}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'storage', e.target.value as ResourceUnit)}
-                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-1 text-xs"
+                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
@@ -3267,7 +3267,7 @@ export function StackInstallPage() {
                               ))}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 border-t border-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] pt-3">
+                            <div className="grid grid-cols-2 gap-3 border-t border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] pt-3">
                               <div className="p-1">
                                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">추천값 (읽기 전용)</div>
                                 <div className="grid grid-cols-3 gap-2 text-sm">
@@ -3353,8 +3353,8 @@ export function StackInstallPage() {
                         className={cn(
                           'w-full rounded-lg border px-3 py-2 text-left transition-all',
                           selected
-                            ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
-                            : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
+                            ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                            : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
                         )}
                       >
                         <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
@@ -3372,11 +3372,11 @@ export function StackInstallPage() {
                   StorageClass 선택. 기본 SC 가 없는 클러스터에서 미선택 상태로 진행하면
                   PVC 가 Pending 에 머물러 설치가 멈추므로, 실패를 설치 전으로 앞당긴다.
                 */}
-                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                   <div className="flex items-center justify-between">
                     <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">StorageClass</h3>
                     {storageClassSelectionRequired && !draft.storage.storageClass && (
-                      <span className="rounded bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-error)]">
+                      <span className="rounded bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-error)]">
                         선택 필요
                       </span>
                     )}
@@ -3387,7 +3387,7 @@ export function StackInstallPage() {
                   <select
                     value={draft.storage.storageClass}
                     onChange={(e) => updateStorage({ storageClass: e.target.value })}
-                    className="w-full rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 20%, transparent)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                    className="w-full rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
                   >
                     <option value="">
                       {storageClassSelectionRequired
@@ -3434,7 +3434,7 @@ export function StackInstallPage() {
                     return (
                       <div
                         key={targetKey}
-                        className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3"
+                        className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
                       >
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h4>
@@ -3462,7 +3462,7 @@ export function StackInstallPage() {
                         </div>
 
                         {effectiveMode === null ? (
-                          <div className="rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+                          <div className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
                             Storage Plan에서 연결 방식을 먼저 선택해 주세요.
                           </div>
                         ) : effectiveMode === 'existing' && (
@@ -3552,7 +3552,7 @@ export function StackInstallPage() {
                           <NativeSelect
                             value={item.target.providerOrEngine}
                             onChange={(e) => updateStorageTarget(targetKey, { providerOrEngine: e.target.value })}
-                            className="rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-[7px] text-xs"
+                            className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[7px] text-xs"
                           >
                             {providerOptions.map((provider) => (
                               <option key={provider.id} value={provider.id}>
@@ -3583,7 +3583,7 @@ export function StackInstallPage() {
                                     size: e.target.value as StorageTargetConfig['size'],
                                   })
                                 }
-                                className="rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-[7px] text-xs"
+                                className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[7px] text-xs"
                               >
                                 {STORAGE_SIZE_OPTIONS.map((size) => (
                                   <option key={size} value={size}>
@@ -3646,7 +3646,7 @@ export function StackInstallPage() {
           ].map(([label, val]) => (
             <div
               key={label}
-              className="flex items-baseline justify-between gap-2 border-b border-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-1.5"
+              className="flex items-baseline justify-between gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-1.5"
             >
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-semibold text-[var(--color-text-primary)]">

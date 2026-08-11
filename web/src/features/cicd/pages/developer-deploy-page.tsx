@@ -582,7 +582,7 @@ export function DeveloperDeployPage() {
       />
 
       <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
           <Rocket size={18} />
         </div>
         <div>
@@ -616,8 +616,8 @@ export function DeveloperDeployPage() {
                   step === activeStep
                     ? "bg-[var(--color-primary)] text-white"
                     : step < activeStep
-                      ? "bg-[color-mix(in srgb, var(--color-success) 30%, transparent)] text-[var(--color-success)]"
-                      : "bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] text-[var(--color-text-secondary)]",
+                      ? "bg-[color-mix(in_srgb,_var(--color-success)_30%,_transparent)] text-[var(--color-success)]"
+                      : "bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] text-[var(--color-text-secondary)]",
                 )}
               >
                 {step}
@@ -742,7 +742,7 @@ export function DeveloperDeployPage() {
         <StepSection
           title={
             <>
-              <span className="rounded-md bg-[color-mix(in srgb, var(--color-primary) 14%, transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-primary)]">
+              <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_14%,_transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-primary)]">
                 CI
               </span>
               <span>
@@ -968,7 +968,7 @@ export function DeveloperDeployPage() {
             <StepSection
               title={
                 <>
-                  <span className="rounded-md bg-[color-mix(in srgb, var(--color-success) 14%, transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-success)]">
+                  <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-success)_14%,_transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-success)]">
                     CD
                   </span>
                   <span>

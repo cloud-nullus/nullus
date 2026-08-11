@@ -70,10 +70,10 @@ export function YamlEditor({ value, onChange, readOnly = false, height = '400px'
     <div
       className={cn(
         'flex flex-col overflow-hidden rounded-[var(--card-radius)] border bg-[var(--color-surface-base)] font-mono',
-        error ? 'border-[color-mix(in srgb, var(--color-error) 50%, transparent)]' : 'border-[var(--color-border-default)]'
+        error ? 'border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)]' : 'border-[var(--color-border-default)]'
       )}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-[14px] py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-[14px] py-2">
         <span className="text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] uppercase">
           yaml
         </span>
@@ -105,7 +105,7 @@ export function YamlEditor({ value, onChange, readOnly = false, height = '400px'
       <div className={cn('flex flex-1 overflow-hidden', heightClass)}>
         <div
           ref={lineNumbersRef}
-          className="w-12 shrink-0 overflow-y-hidden border-r border-r-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] pt-2.5 select-none"
+          className="w-12 shrink-0 overflow-y-hidden border-r border-r-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] pt-2.5 select-none"
         >
           {Array.from({ length: lineCount }, (_, i) => i + 1).map((lineNo) => (
             <div
@@ -137,7 +137,7 @@ export function YamlEditor({ value, onChange, readOnly = false, height = '400px'
       </div>
 
       {error && (
-        <div className="shrink-0 border-t border-t-[color-mix(in srgb, var(--color-error) 30%, transparent)] bg-[color-mix(in srgb, var(--color-error) 10%, transparent)] px-[14px] py-1.5 text-xs text-[var(--color-error)]">
+        <div className="shrink-0 border-t border-t-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)] px-[14px] py-1.5 text-xs text-[var(--color-error)]">
           {error}
         </div>
       )}

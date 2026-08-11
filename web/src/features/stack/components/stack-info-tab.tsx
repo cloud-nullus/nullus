@@ -267,7 +267,7 @@ export function StackInfoTab({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4">
+      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
         <div className="mb-3 flex flex-col gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -360,7 +360,7 @@ export function StackInfoTab({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 text-[12px] text-[var(--color-text-secondary)] lg:grid-cols-4">
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Stack Name
             </div>
@@ -371,7 +371,7 @@ export function StackInfoTab({
               {stack.name}
             </div>
           </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Runtime
             </div>
@@ -379,7 +379,7 @@ export function StackInfoTab({
               Kubernetes / Helm
             </div>
           </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Observability
             </div>
@@ -387,7 +387,7 @@ export function StackInfoTab({
               {observabilitySummary}
             </div>
           </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Update Mode
             </div>
@@ -415,8 +415,8 @@ export function StackInfoTab({
                 className={cn(
                   "inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] transition-colors",
                   tool.url
-                    ? "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-primary)] hover:border-[color-mix(in srgb, var(--color-primary) 45%, transparent)] hover:bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]"
-                    : "cursor-not-allowed border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] text-[var(--color-text-muted)]",
+                    ? "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-primary)] hover:border-[color-mix(in_srgb,_var(--color-primary)_45%,_transparent)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]"
+                    : "cursor-not-allowed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-muted)]",
                 )}
                 title={
                   tool.url
@@ -424,7 +424,7 @@ export function StackInfoTab({
                     : `${tool.name}: 경로 미설정`
                 }
               >
-                <span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
+                <span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
                   <ToolLogo name={tool.name} logo={tool.logo} />
                 </span>
                 <span className="font-medium">{tool.name}</span>
@@ -495,7 +495,7 @@ export function StackInfoTab({
         }
       >
         <div className="space-y-4 text-[13px]">
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2 text-[var(--color-text-secondary)]">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-[var(--color-text-secondary)]">
             <span className="font-semibold text-[var(--color-text-primary)]">
               Access Domain:
             </span>{" "}
@@ -510,7 +510,7 @@ export function StackInfoTab({
               {launchTools.map((tool) => (
                 <div
                   key={`conn-${tool.name}`}
-                  className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3"
+                  className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="font-semibold text-[var(--color-text-primary)]">
@@ -546,7 +546,7 @@ export function StackInfoTab({
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+            <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
               <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
                 Database
               </div>
@@ -591,7 +591,7 @@ export function StackInfoTab({
               </div>
             </div>
 
-            <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+            <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
               <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
                 Object Storage
               </div>
@@ -667,7 +667,7 @@ export function StackInfoTab({
         }
       >
         <div className="space-y-4 text-[13px]">
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2 text-[var(--color-text-secondary)]">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-[var(--color-text-secondary)]">
             <span className="font-semibold text-[var(--color-text-primary)]">
               {t("stackList.export.stack", "Stack")}
             </span>{" "}
@@ -708,7 +708,7 @@ export function StackInfoTab({
         </div>
       </Modal>
 
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4">
+      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
         <div className="mb-3 flex items-center gap-2">
           <GitBranch size={14} className="text-[var(--color-primary)]" />
           <div className="text-[14px] font-bold text-[var(--color-text-primary)]">
@@ -720,10 +720,10 @@ export function StackInfoTab({
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
               degradedState
-                ? "bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]"
+                ? "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]"
                 : progressingState
-                  ? "bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]"
-                  : "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]",
+                  ? "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]"
+                  : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
             )}
           >
             ● Health{" "}
@@ -737,8 +737,8 @@ export function StackInfoTab({
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
               degradedState
-                ? "bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]"
-                : "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]",
+                ? "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]"
+                : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
             )}
           >
             ◉ Sync {degradedState ? "OutOfSync" : "Synced"}
@@ -749,14 +749,14 @@ export function StackInfoTab({
             {runtimeNodes.map((node, idx) => (
               <div
                 key={node.category}
-                className="relative rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-3 shadow-[inset_0_0_0_1px_color-mix(in srgb, var(--color-text-primary) 2%, transparent)]"
+                className="relative rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-3 shadow-[inset_0_0_0_1px_color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]"
               >
                 {idx < runtimeNodes.length - 1 && (
                   <div
-                    className="pointer-events-none absolute right-[-16px] top-3 h-[2px] w-8 bg-gradient-to-r from-[color-mix(in srgb, var(--color-text-secondary) 25%, transparent)] to-[color-mix(in srgb, var(--color-text-secondary) 62%, transparent)]"
+                    className="pointer-events-none absolute right-[-16px] top-3 h-[2px] w-8 bg-gradient-to-r from-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] to-[color-mix(in_srgb,_var(--color-text-secondary)_62%,_transparent)]"
                     aria-hidden="true"
                   >
-                    <div className="absolute right-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[color-mix(in srgb, var(--color-text-secondary) 72%, transparent)]" />
+                    <div className="absolute right-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[color-mix(in_srgb,_var(--color-text-secondary)_72%,_transparent)]" />
                   </div>
                 )}
                 <div className="mb-2 flex items-center gap-2">
@@ -773,10 +773,10 @@ export function StackInfoTab({
                     className={cn(
                       "rounded-full px-2 py-0.5 text-[10px] font-semibold",
                       node.health === "degraded"
-                        ? "bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]"
+                        ? "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]"
                         : node.health === "progressing"
-                          ? "bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]"
-                          : "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]",
+                          ? "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]"
+                          : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
                     )}
                   >
                     {node.health}
@@ -787,8 +787,8 @@ export function StackInfoTab({
                     className={cn(
                       "rounded-full px-2 py-0.5 text-[10px] font-semibold",
                       node.sync === "synced"
-                        ? "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]"
-                        : "bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]",
+                        ? "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
+                        : "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
                     )}
                   >
                     {node.sync}
@@ -818,7 +818,7 @@ export function StackInfoTab({
         </div>
       </div>
 
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
+      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
         {t(
           "stackList.hiddenInstallCardsNotice",
           "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs.",

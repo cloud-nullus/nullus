@@ -137,7 +137,7 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
             )}
           </p>
           {warnPrompt.issueLines.length > 0 && (
-            <ul className="rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2 text-[11px]">
+            <ul className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-[11px]">
               {warnPrompt.issueLines.map((line, idx) => (
                 <li key={idx} className="list-disc pl-4">
                   {line}

@@ -529,7 +529,7 @@ export function StackTemplatePage() {
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]">
             <BookOpen size={18} />
           </div>
           <div>
@@ -571,7 +571,7 @@ export function StackTemplatePage() {
             )}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
           />
         </div>
       </div>
@@ -594,7 +594,7 @@ export function StackTemplatePage() {
             </div>
 
             {/* Info grid */}
-            <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+            <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
               <div>
                 <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
                   {t("stackTemplatePage.card.estimatedTime", "설치 시간")}
@@ -634,13 +634,13 @@ export function StackTemplatePage() {
                 {template.tools.slice(0, 4).map((tool) => (
                   <span
                     key={tool}
-                    className="rounded-md bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
+                    className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
                   >
                     {tool}
                   </span>
                 ))}
                 {template.tools.length > 4 && (
-                  <span className="rounded-md bg-[color-mix(in srgb, var(--color-text-muted) 12%, transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
+                  <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-text-muted)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
                     +{template.tools.length - 4}
                   </span>
                 )}
@@ -859,7 +859,7 @@ export function StackTemplatePage() {
                   {selectedTemplate.tools.map((tool) => (
                     <div
                       key={tool}
-                      className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-2.5 py-2"
+                      className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-2.5 py-2"
                     >
                       <Wrench size={13} color="var(--color-warning)" />
                       <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
@@ -947,7 +947,7 @@ export function StackTemplatePage() {
                     key={section.id}
                     className="border-b border-[var(--color-border-default)] last:border-b-0"
                   >
-                    <div className="flex items-center bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)]">
+                    <div className="flex items-center bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)]">
                       <button
                         type="button"
                         onClick={() => toggleToolSection(section.id)}
@@ -974,7 +974,7 @@ export function StackTemplatePage() {
                           e.stopPropagation();
                           removeSection(section.id);
                         }}
-                        className="mr-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-transparent text-[var(--color-text-muted)] transition-colors hover:border-[color-mix(in srgb, var(--color-error) 50%, transparent)] hover:text-[var(--color-error)]"
+                        className="mr-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-transparent text-[var(--color-text-muted)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)] hover:text-[var(--color-error)]"
                         title={t(
                           "stackTemplatePage.actions.removeSection",
                           "Remove {{section}} section",
@@ -987,7 +987,7 @@ export function StackTemplatePage() {
 
                     {isOpen && (
                       <div className="flex flex-col gap-2 px-3 py-3">
-                        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 1%, transparent)] p-2">
+                        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_1%,_transparent)] p-2">
                           {sectionCategories.map((category) => {
                             const draftKey = addToolDraftKey(
                               section.id,
@@ -1015,7 +1015,7 @@ export function StackTemplatePage() {
                                 key={draftKey}
                                 className="grid gap-2 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto_auto]"
                               >
-                                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-secondary)]">
+                                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-secondary)]">
                                   {category.label}
                                 </div>
                                 <select
@@ -1031,7 +1031,7 @@ export function StackTemplatePage() {
                                       app_version: nextDefaults.app_version,
                                     });
                                   }}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                                 >
                                   {category.options.map((option) => (
                                     <option key={option} value={option}>
@@ -1054,7 +1054,7 @@ export function StackTemplatePage() {
                                     "stackTemplatePage.form.helmVersionPlaceholder",
                                     "Helm version",
                                   )}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
                                 <input
                                   type="text"
@@ -1071,7 +1071,7 @@ export function StackTemplatePage() {
                                     "stackTemplatePage.form.appVersionPlaceholder",
                                     "App version",
                                   )}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
                                 <Button
                                   variant="outline"
@@ -1098,7 +1098,7 @@ export function StackTemplatePage() {
                                       category.category,
                                     )
                                   }
-                                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--color-border-default)] text-[var(--color-text-secondary)] transition-colors hover:border-[color-mix(in srgb, var(--color-error) 50%, transparent)] hover:text-[var(--color-error)]"
+                                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--color-border-default)] text-[var(--color-text-secondary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)] hover:text-[var(--color-error)]"
                                 >
                                   <X size={15} />
                                 </button>
@@ -1123,7 +1123,7 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.sectionNamePlaceholder",
                     "Section name (e.g. Security)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <input
                   type="text"
@@ -1133,7 +1133,7 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.firstCategoryPlaceholder",
                     "First category (e.g. Scanner)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <input
                   type="text"
@@ -1143,7 +1143,7 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.toolOptionsPlaceholder",
                     "Tool options (comma separated, e.g. Trivy, SonarQube)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <div className="flex gap-2">
                   <Button
@@ -1175,7 +1175,7 @@ export function StackTemplatePage() {
               </button>
             )}
           </div>
-          <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2.5">
+          <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2.5">
             <div className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
               {t(
                 "stackTemplatePage.form.estimatedInstallTimeAuto",

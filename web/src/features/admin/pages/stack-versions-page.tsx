@@ -19,15 +19,15 @@ import {
 } from '../../stack/utils/compatibility-arch'
 
 const STATUS_BADGE_CLASS: Record<CompatibilityMatrix['status'], string> = {
-  verified: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
-  untested: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
-  unsupported: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+  verified: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  untested: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  unsupported: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
 }
 
 const TIER_BADGE_CLASS: Record<CompatibilityTier, string> = {
-  stable: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
-  beta: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
-  deprecated: 'bg-[color-mix(in srgb, var(--color-text-secondary) 15%, transparent)] text-[var(--color-text-secondary)]',
+  stable: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  beta: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  deprecated: 'bg-[color-mix(in_srgb,_var(--color-text-secondary)_15%,_transparent)] text-[var(--color-text-secondary)]',
 }
 
 export function StackVersionsAdminPage() {
@@ -168,8 +168,8 @@ export function StackVersionsAdminPage() {
                 type="button"
                 onClick={() => setSelectedId(m.id)}
                 className={cn(
-                  'flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)]',
-                  active && 'bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)]',
+                  'flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)]',
+                  active && 'bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]',
                 )}
                 aria-pressed={active}
               >
@@ -207,7 +207,7 @@ export function StackVersionsAdminPage() {
         {archs.map((arch) => (
           <span
             key={arch}
-            className="rounded-full bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] px-2 py-0.5 text-[10px] text-[var(--color-primary)]"
+            className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-0.5 text-[10px] text-[var(--color-primary)]"
           >
             {t(`stackVersionsAdmin.archBadge.${arch}`, arch)}
           </span>
@@ -295,7 +295,7 @@ export function StackVersionsAdminPage() {
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
-            <thead className="bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]">
+            <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.name', 'Name')}</th>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.helm', 'Helm')}</th>
@@ -336,7 +336,7 @@ export function StackVersionsAdminPage() {
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
-            <thead className="bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]">
+            <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.cluster', 'Cluster')}</th>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.nodeArch', 'Node Architectures')}</th>

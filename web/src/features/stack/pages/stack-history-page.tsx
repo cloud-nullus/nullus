@@ -147,7 +147,7 @@ export function StackHistoryPage() {
           <span className="inline-flex items-center gap-1.5 font-mono text-[13px] font-semibold text-[var(--color-primary)]">
             v{entry.version}
             {isCurrent && (
-              <span className="rounded bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] px-1.5 py-[1px] font-inherit text-[10px] text-[var(--color-success)]">
+              <span className="rounded bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] px-1.5 py-[1px] font-inherit text-[10px] text-[var(--color-success)]">
                 {t('stackHistoryPage.current', 'CURRENT')}
               </span>
             )}
@@ -220,7 +220,7 @@ export function StackHistoryPage() {
       <div className="mb-7 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
           <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]"
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]"
           >
             <History size={18} />
           </div>
@@ -247,7 +247,7 @@ export function StackHistoryPage() {
           value={stackId}
           onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
           disabled={!stackId && visibleStacks.length === 0}
-          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
         >
           {currentRouteMissingFromOptions && routeStackId && (
             <option value={routeStackId}>{routeStackId}</option>
@@ -269,7 +269,7 @@ export function StackHistoryPage() {
             <NativeSelect
               value={clusterFilter}
               onChange={(event) => setClusterFilter(event.target.value)}
-              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
             >
               <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
               {clusterOptions.map((clusterName) => (
@@ -285,7 +285,7 @@ export function StackHistoryPage() {
                 placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
           </>
@@ -293,7 +293,7 @@ export function StackHistoryPage() {
       />
 
       {expandedEntry && (
-        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 20%, transparent)] px-5 py-4">
+        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)] px-5 py-4">
           <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
             {t('stackHistoryPage.snapshot', 'Configuration Snapshot')} (v{expandedEntry.version})
           </p>
@@ -301,7 +301,7 @@ export function StackHistoryPage() {
             {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
               <div
                 key={k}
-                className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-[14px] py-2 font-mono text-xs"
+                className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-[14px] py-2 font-mono text-xs"
               >
                 <span className="text-[var(--color-text-secondary)]">{k}: </span>
                 <span className="text-[var(--color-primary)]">{String(v)}</span>
@@ -324,7 +324,7 @@ export function StackHistoryPage() {
               <NativeSelect
                 value={versionA}
                 onChange={(event) => setVersionA(Number(event.target.value))}
-                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
               >
                 {versionOptions.map((version) => (
                   <option key={`a-${version}`} value={version}>{`v${version}`}</option>
@@ -336,7 +336,7 @@ export function StackHistoryPage() {
               <NativeSelect
                 value={versionB}
                 onChange={(event) => setVersionB(Number(event.target.value))}
-                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
               >
                 {versionOptions.map((version) => (
                   <option key={`b-${version}`} value={version}>{`v${version}`}</option>
@@ -394,7 +394,7 @@ export function StackHistoryPage() {
        >
          <div className="flex flex-col gap-4">
            <div className="flex items-start gap-3">
-             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]">
+             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
                <AlertTriangle size={20} />
              </div>
              <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
@@ -431,7 +431,7 @@ export function StackHistoryPage() {
              </div>
              {!preservePVC && (
                <div className="mt-3">
-                 <div className="rounded-lg border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-3 py-2 text-sm text-[var(--color-error)]">
+                 <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-sm text-[var(--color-error)]">
                    {t('stackHistoryPage.rollback.cleanWarning', 'This action permanently deletes Persistent Volumes.')}
                  </div>
                  <input
@@ -439,7 +439,7 @@ export function StackHistoryPage() {
                    placeholder={t('stackHistoryPage.rollback.confirmDeletePlaceholder', 'Type "DELETE" to confirm')}
                    value={deleteConfirmText}
                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                   className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"
+                   className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"
                  />
                </div>
              )}

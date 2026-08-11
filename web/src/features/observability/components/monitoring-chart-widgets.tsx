@@ -12,9 +12,9 @@ export const CHART_STYLE = {
 }
 
 export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string; label: string }> = {
-  running: { icon: <CheckCircle size={13} />, cls: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]', label: 'Running' },
-  warning: { icon: <AlertCircle size={13} />, cls: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]', label: 'Warning' },
-  error: { icon: <XCircle size={13} />, cls: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]', label: 'Error' },
+  running: { icon: <CheckCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', label: 'Running' },
+  warning: { icon: <AlertCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', label: 'Warning' },
+  error: { icon: <XCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]', label: 'Error' },
 }
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────
@@ -36,7 +36,7 @@ export function KpiCard({ label, value, icon, color, iconCls, bar }: { label: st
         <span className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</span>
       </div>
       <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">{value}</div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)]">
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)]">
         <svg className="h-full w-full" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
           <rect width={Math.max(0, Math.min(100, bar))} height="6" rx="3" fill={color} />
         </svg>

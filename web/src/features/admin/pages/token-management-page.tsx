@@ -19,13 +19,13 @@ import { cn } from '../../../lib/utils'
 const STEP_UP_ENFORCED = false
 
 const STATUS_BADGE: Record<string, string> = {
-  healthy: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
-  renew_due: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
-  renewing: 'bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]',
-  rotated: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
-  failed_retryable: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
-  failed_manual: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
-  expired: 'bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-secondary)]',
+  healthy: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  renew_due: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  renewing: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]',
+  rotated: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  failed_retryable: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+  failed_manual: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+  expired: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-secondary)]',
 }
 
 export function TokenManagementPage() {
@@ -86,7 +86,7 @@ export function TokenManagementPage() {
       <Breadcrumb items={[{ label: t('sidebar.admin', 'Admin') }, { label: 'OpenBao Token Management' }]} />
 
       <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[#c084fc]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[#c084fc]">
           <KeyRound size={18} />
         </div>
         <div>
@@ -96,7 +96,7 @@ export function TokenManagementPage() {
       </div>
 
       {!STEP_UP_ENFORCED && (
-        <div className="mb-4 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-warning) 10%, transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]">
+        <div className="mb-4 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-warning)_10%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]">
           {t('tokenManagement.testModeNotice', 'Test mode: step-up re-authentication is disabled and handled automatically.')}
         </div>
       )}
@@ -105,7 +105,7 @@ export function TokenManagementPage() {
         <section className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+              <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
                 {['Provider', 'Module', 'Path', 'Status', 'Expires'].map((h) => (
                   <th key={h} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">{h}</th>
                 ))}
@@ -119,7 +119,7 @@ export function TokenManagementPage() {
                 <tr><td colSpan={5} className="border-t border-[var(--color-border-default)] px-3.5 py-8 text-center text-sm text-[var(--color-text-secondary)]">No token sources.</td></tr>
               )}
               {!isLoading && items.map((item) => (
-                <tr key={item.id} className={cn('cursor-pointer', selected?.id === item.id && 'bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]')} onClick={() => setSelectedId(item.id)}>
+                <tr key={item.id} className={cn('cursor-pointer', selected?.id === item.id && 'bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]')} onClick={() => setSelectedId(item.id)}>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm">{item.provider}</td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm">{item.module}</td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-xs text-[var(--color-text-secondary)]">{item.path}</td>
@@ -153,7 +153,7 @@ export function TokenManagementPage() {
           </div>
 
           {revealResult && (
-            <div className="mt-4 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 35%, transparent)] p-3">
+            <div className="mt-4 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_35%,_transparent)] p-3">
               <div className="mb-1 text-xs font-semibold uppercase text-[var(--color-text-secondary)]">Reveal Result</div>
               <pre className="overflow-auto text-xs text-[var(--color-text-primary)]">{JSON.stringify(revealResult, null, 2)}</pre>
             </div>

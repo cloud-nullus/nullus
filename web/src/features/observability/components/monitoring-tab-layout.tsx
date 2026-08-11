@@ -154,7 +154,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                       value={d.label}
                       onChange={(e) => patchDraft(d.id, { label: e.target.value })}
                       placeholder={t('monitoringPage.customTabs.tabNamePlaceholder', 'Tab name')}
-                      className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]"
+                      className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]"
                     />
                     <button type="button" onClick={() => removeDraft(d.id)}
                       className="shrink-0 rounded p-1 text-[var(--color-text-secondary)] hover:bg-red-400/10 hover:text-red-400">
@@ -167,7 +167,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                       value={d.url}
                       onChange={(e) => patchDraft(d.id, { url: e.target.value })}
                       placeholder={t('monitoringPage.customTabs.embedUrlPlaceholder', 'Embed URL')}
-                      className="w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[var(--color-primary)]"
+                      className="w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[var(--color-primary)]"
                     />
                   </div>
                 </div>
@@ -196,7 +196,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
 
       {activeId !== 'default' && activeCustom && (
         <div className="flex flex-col">
-          <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-1 py-2 sm:px-2">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-1 py-2 sm:px-2">
             {activeEmbedUrl
               ? <span className="truncate font-mono text-[11px] text-[var(--color-text-secondary)]">{activeEmbedUrl}</span>
               : <span className="italic text-[11px] text-[var(--color-text-secondary)]">No URL configured{isAdmin ? ' — set URL in Manage Tabs' : ''}</span>}

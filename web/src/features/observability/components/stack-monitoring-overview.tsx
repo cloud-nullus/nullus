@@ -56,7 +56,7 @@ type ScopeMetrics = {
 function UsageBar({ value, color }: { value: number; color: string }) {
   const normalized = Math.max(0, Math.min(100, value));
   return (
-    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)]">
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)]">
       <svg
         className="h-full w-full"
         viewBox="0 0 100 6"
@@ -441,7 +441,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           value: "-",
           icon: <Cpu size={18} />,
           color: "var(--color-info)",
-          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]",
+          iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "Core" },
         },
@@ -450,7 +450,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           value: "-",
           icon: <MemoryStick size={18} />,
           color: "var(--color-accent-alt)",
-          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]",
+          iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "GiB" },
         },
@@ -459,7 +459,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           value: "-",
           icon: <HardDrive size={18} />,
           color: "var(--color-success)",
-          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]",
+          iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
           bar: 0,
         },
         {
@@ -467,7 +467,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           value: "-",
           icon: <Box size={18} />,
           color: "var(--color-warning)",
-          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]",
+          iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
           bar: 0,
         },
       ];
@@ -526,7 +526,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         value: cpuUsageC !== null ? `${cpuUsageC.toFixed(2)} Core` : "N/A",
         icon: <Cpu size={18} />,
         color: "var(--color-info)",
-        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]",
+        iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
         bar: cpuCurrentBar,
         metricScale: {
           current: cpuUsageC,
@@ -541,7 +541,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           memoryUsageGiB !== null ? `${memoryUsageGiB.toFixed(2)} GiB` : "N/A",
         icon: <MemoryStick size={18} />,
         color: "var(--color-accent-alt)",
-        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]",
+        iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
         bar: memoryCurrentBar,
         metricScale: {
           current: memoryUsageGiB,
@@ -562,7 +562,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                 : "0.00 GiB",
         icon: <HardDrive size={18} />,
         color: "var(--color-success)",
-        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]",
+        iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
         bar: storageCurrentBar,
         metricScale: {
           current: storageUsageGiB,
@@ -577,7 +577,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         value: `${currentMetrics.readyPods} / ${currentMetrics.totalPods}`,
         icon: <Box size={18} />,
         color: "var(--color-warning)",
-        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]",
+        iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
         bar: readyRatio,
       },
     ];
@@ -869,7 +869,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               Resource Trend
             </h2>
             {isLoading && (
-              <span className="rounded-full bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
+              <span className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
                 Loading...
               </span>
             )}
@@ -886,8 +886,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     className={cn(
                       "cursor-pointer rounded-[7px] border px-2.5 py-[5px] text-xs font-semibold",
                       active
-                        ? "border-[color-mix(in srgb, var(--color-success) 65%, transparent)] bg-[color-mix(in srgb, var(--color-success) 20%, transparent)] text-[var(--color-success)]"
-                        : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]",
+                        ? "border-[color-mix(in_srgb,_var(--color-success)_65%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_20%,_transparent)] text-[var(--color-success)]"
+                        : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]",
                     )}
                   >
                     {item.label}
@@ -907,8 +907,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     className={cn(
                       "cursor-pointer rounded-[7px] border px-2.5 py-[5px] text-xs font-bold",
                       active
-                        ? "border-[color-mix(in srgb, var(--color-warning) 60%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 20%, transparent)] text-[var(--color-warning)]"
-                        : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]",
+                        ? "border-[color-mix(in_srgb,_var(--color-warning)_60%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]"
+                        : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]",
                     )}
                   >
                     {item === "realtime" ? "Live 5s" : item}
@@ -980,7 +980,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     return (
                       <>
                         <div className="relative h-4">
-                          <div className="absolute left-0 right-0 top-1 h-2 rounded-full bg-[color-mix(in srgb, var(--color-text-secondary) 22%, transparent)]" />
+                          <div className="absolute left-0 right-0 top-1 h-2 rounded-full bg-[color-mix(in_srgb,_var(--color-text-secondary)_22%,_transparent)]" />
                           {curPos !== null && (
                             <div
                               className="absolute left-0 top-1 h-2 rounded-full"
@@ -1106,7 +1106,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                           }}
                         />
                         <span
-                          className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[color-mix(in srgb, var(--color-text-secondary) 25%, transparent)] text-[9px] font-bold text-[var(--color-text-primary)]"
+                          className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] text-[9px] font-bold text-[var(--color-text-primary)]"
                           aria-hidden="true"
                         >
                           {item.fullName.slice(0, 1).toUpperCase()}
@@ -1138,7 +1138,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         <h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
           Tool Health
         </h2>
-        <div className="mb-4 overflow-x-auto rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+        <div className="mb-4 overflow-x-auto rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
           <table className="min-w-full text-left text-[12px] text-[var(--color-text-secondary)]">
             <thead>
               <tr className="border-b border-[var(--color-border-default)] text-[11px] uppercase tracking-[0.05em]">
@@ -1152,7 +1152,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               {visibleResources.map((item) => (
                 <tr
                   key={`${item.kind}-${item.name}`}
-                  className="border-b border-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)]"
+                  className="border-b border-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)]"
                 >
                   <td className="px-3 py-2">{item.kind}</td>
                   <td className="px-3 py-2 font-medium text-[var(--color-text-primary)]">
@@ -1176,7 +1176,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           ).map((tool) => (
             <div
               key={`pods-${tool.key}`}
-              className="rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3"
+              className="rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
             >
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-sm font-semibold text-[var(--color-text-primary)]">
@@ -1202,7 +1202,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     {tool.pods.map((pod) => (
                       <tr
                         key={pod.name}
-                        className="border-b border-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)]"
+                        className="border-b border-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)]"
                       >
                         <td className="py-1 pr-3 font-medium text-[var(--color-text-primary)]">
                           {pod.name}

@@ -26,24 +26,24 @@ import { Modal } from '../../../components/ui/modal'
 import { cn } from '../../../lib/utils'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
-  active: { className: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]' },
-  pending: { className: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]' },
-  inactive: { className: 'bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-muted)]' },
+  active: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
+  pending: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]' },
+  inactive: { className: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]' },
 }
 
 const ROLE_BADGE: Record<MemberRole, { className: string }> = {
-  admin: { className: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]' },
-  devops: { className: 'bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]' },
-  developer: { className: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]' },
+  admin: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
+  devops: { className: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]' },
+  developer: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
 }
 
 const CLUSTER_STATUS_BADGE: Record<ClusterStatus, { className: string }> = {
-  connected: { className: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]' },
-  pending: { className: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]' },
-  error: { className: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]' },
-  inactive: { className: 'bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-muted)]' },
-  unreachable: { className: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]' },
-  auth_failed: { className: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]' },
+  connected: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
+  pending: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]' },
+  error: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
+  inactive: { className: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]' },
+  unreachable: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]' },
+  auth_failed: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
 }
 
 const domainRegex = /^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
@@ -72,7 +72,7 @@ const inviteSchema = z.object({
 type OrgFormData = z.infer<typeof orgSchema>
 type InviteFormData = z.infer<typeof inviteSchema>
 
-const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
+const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
 
 function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
@@ -282,7 +282,7 @@ export function OrganizationPage() {
 
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]">
             <Settings size={18} />
           </div>
           <div>
@@ -322,7 +322,7 @@ export function OrganizationPage() {
                     className={cn(
                       'w-full cursor-pointer border-0 border-b border-l-[3px] border-b-[var(--color-border-default)] px-4 py-3.5 text-left transition-all duration-150',
                       selected
-                        ? 'border-l-[var(--color-primary)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
+                        ? 'border-l-[var(--color-primary)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
                         : 'border-l-transparent bg-transparent'
                     )}
                   >
@@ -330,7 +330,7 @@ export function OrganizationPage() {
                       <span className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                         {org.name}
                       </span>
-                      <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', org.status === 'active' ? 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]' : 'bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-muted)]')}>
+                      <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', org.status === 'active' ? 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' : 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]')}>
                         {getOrganizationStatusLabel(t, org.status)}
                       </span>
                     </div>
@@ -388,7 +388,7 @@ export function OrganizationPage() {
                           className={cn(
                             'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-all duration-150 sm:items-center',
                             checked
-                              ? 'border-[color-mix(in srgb, var(--color-primary) 30%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)]'
+                              ? 'border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]'
                               : 'border-[var(--color-border-default)] bg-transparent'
                           )}
                         >
@@ -449,7 +449,7 @@ export function OrganizationPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[700px] border-collapse">
                       <thead>
-                        <tr className="bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+                        <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
                           {[
                             t('organizationPage.table.name', 'Name'),
                             t('organizationPage.table.email', 'Email'),

@@ -18,8 +18,8 @@ import { cn } from '../../../lib/utils'
 import { useClusterStackFilterState } from '../components/cluster-stack-filter'
 
 const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
-  slack: { className: 'bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] text-[var(--color-primary)]' },
-  email: { className: 'bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] text-[var(--color-success)]' },
+  slack: { className: 'bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] text-[var(--color-primary)]' },
+  email: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]' },
 }
 
 interface AlertRuleForm {
@@ -175,7 +175,7 @@ export function AlertRulesPage() {
               }}
               className={cn(
                 'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
-                rule.enabled ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in srgb, var(--color-text-primary) 12%, transparent)]',
+                rule.enabled ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_12%,_transparent)]',
               )}
             >
               <div
@@ -253,7 +253,7 @@ export function AlertRulesPage() {
 
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
             <Bell size={18} />
           </div>
           <div>
@@ -328,7 +328,7 @@ export function AlertRulesPage() {
                 placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
           </div>
@@ -370,7 +370,7 @@ export function AlertRulesPage() {
       >
         <div className="flex flex-col gap-3.5">
           {editingRuleId && isFetchingEditingRule ? (
-            <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+            <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
               {t('alertRulesPage.modal.loadingFromDb', 'Loading latest alert rule from DB...')}
             </div>
           ) : null}
@@ -426,7 +426,7 @@ export function AlertRulesPage() {
                 onClick={() => setValue('enabled', !watch('enabled'), { shouldValidate: true })}
                 className={cn(
                   'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
-                  watch('enabled') ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in srgb, var(--color-text-primary) 12%, transparent)]',
+                  watch('enabled') ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_12%,_transparent)]',
                 )}
               >
                 <div

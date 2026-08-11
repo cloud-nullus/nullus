@@ -284,7 +284,7 @@ function ExecuteModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
               <Rocket size={16} />
             </div>
             <div>
@@ -302,7 +302,7 @@ function ExecuteModal({
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer rounded-lg p-1.5 text-[var(--color-text-secondary)] hover:bg-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] hover:text-[var(--color-text-primary)]"
+            className="cursor-pointer rounded-lg p-1.5 text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] hover:text-[var(--color-text-primary)]"
           >
             <X size={16} />
           </button>
@@ -339,7 +339,7 @@ function ExecuteModal({
                 label="Deploy Cluster"
                 value={clusterId}
                 onChange={(e) => setClusterId(e.target.value)}
-                className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+                className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
               >
                 {clusterOptions.map((c) => (
                   <option
@@ -370,8 +370,8 @@ function ExecuteModal({
                       className={cn(
                         "cursor-pointer rounded-lg border p-3 text-left transition-all duration-150",
                         selected
-                          ? "border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]"
-                          : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]",
+                          ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]"
+                          : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]",
                       )}
                     >
                       <div
@@ -401,7 +401,7 @@ function ExecuteModal({
 
           {activeTab === "deploy" && (
             <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-2">
+              <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2">
                 {(["template", "custom"] as ExecuteDeployMode[]).map((mode) => (
                   <button
                     key={mode}
@@ -410,7 +410,7 @@ function ExecuteModal({
                     className={cn(
                       "cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold",
                       deployMode === mode
-                        ? "bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]"
+                        ? "bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]"
                         : "text-[var(--color-text-secondary)]",
                     )}
                   >
@@ -434,8 +434,8 @@ function ExecuteModal({
                           className={cn(
                             "cursor-pointer rounded-lg border p-3 text-left transition-all duration-150",
                             selected
-                              ? "border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]"
-                              : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]",
+                              ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]"
+                              : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]",
                           )}
                         >
                           <div
@@ -522,7 +522,7 @@ function DetailCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4">
+    <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
       <div className="mb-3 text-[12px] font-semibold uppercase tracking-[0.02em] text-[var(--color-text-secondary)]">
         {title}
       </div>
@@ -602,47 +602,47 @@ function stageMeta(state: StageState): {
     return {
       icon: <CheckCircle2 size={15} />,
       label: "Completed",
-      cls: "border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)] text-[var(--color-success)]",
+      cls: "border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] text-[var(--color-success)]",
     };
   }
   if (state === "failed") {
     return {
       icon: <XCircle size={15} />,
       label: "Failed",
-      cls: "border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] text-[var(--color-error)]",
+      cls: "border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]",
     };
   }
   if (state === "in_progress") {
     return {
       icon: <Loader2 size={15} className="animate-spin" />,
       label: "In progress",
-      cls: "border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)] text-[var(--color-warning)]",
+      cls: "border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] text-[var(--color-warning)]",
     };
   }
   return {
     icon: <CircleDashed size={15} />,
     label: "Queued",
-    cls: "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] text-[var(--color-text-muted)]",
+    cls: "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-muted)]",
   };
 }
 
 function statusClass(status: string): string {
   const normalized = status.toLowerCase();
   if (normalized === "running" || normalized === "completed")
-    return "bg-[color-mix(in srgb, var(--color-success) 18%, transparent)] text-[var(--color-success)]";
+    return "bg-[color-mix(in_srgb,_var(--color-success)_18%,_transparent)] text-[var(--color-success)]";
   if (
     normalized.includes("crash") ||
     normalized === "failed" ||
     normalized === "degraded"
   )
-    return "bg-[color-mix(in srgb, var(--color-error) 20%, transparent)] text-[var(--color-error)]";
+    return "bg-[color-mix(in_srgb,_var(--color-error)_20%,_transparent)] text-[var(--color-error)]";
   if (
     normalized === "updating" ||
     normalized === "progressing" ||
     normalized === "scheduled"
   )
-    return "bg-[color-mix(in srgb, var(--color-warning) 20%, transparent)] text-[var(--color-warning)]";
-  return "bg-[color-mix(in srgb, var(--color-text-secondary) 18%, transparent)] text-[var(--color-text-secondary)]";
+    return "bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]";
+  return "bg-[color-mix(in_srgb,_var(--color-text-secondary)_18%,_transparent)] text-[var(--color-text-secondary)]";
 }
 
 function logLineClass(line: string): string {
@@ -688,7 +688,7 @@ function ResourceNode({
   emptyLabel?: string;
 }) {
   return (
-    <div className="min-h-[84px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-2.5">
+    <div className="min-h-[84px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2.5">
       <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
         {title}
       </div>
@@ -697,7 +697,7 @@ function ResourceNode({
           {resources.map((resource) => (
             <div
               key={`${resource.kind}-${resource.name}`}
-              className="min-w-0 overflow-hidden rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-2 py-1.5"
+              className="min-w-0 overflow-hidden rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-2 py-1.5"
             >
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <span
@@ -721,7 +721,7 @@ function ResourceNode({
                   {resource.serviceUrls.slice(0, 2).map((url) => (
                     <code
                       key={url}
-                      className="max-w-full break-all rounded bg-[color-mix(in srgb, var(--color-text-primary) 7%, transparent)] px-1.5 py-[1px] text-[10px] text-[var(--color-text-secondary)]"
+                      className="max-w-full break-all rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_7%,_transparent)] px-1.5 py-[1px] text-[10px] text-[var(--color-text-secondary)]"
                     >
                       {url}
                     </code>
@@ -814,7 +814,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               href={url.startsWith("http") ? url : `http://${url}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[color-mix(in srgb, var(--color-primary) 40%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)]"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)]"
             >
               <ExternalLink size={12} />
               {url}
@@ -834,7 +834,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
           <ConfigRow
             label="Execution Mode"
             value={
-              <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] px-2 py-[2px] text-[11px] font-semibold text-[#c7d2fe]">
+              <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-2 py-[2px] text-[11px] font-semibold text-[#c7d2fe]">
                 {modeLabel}
               </span>
             }
@@ -876,7 +876,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
             value={
               pipeline.gitRepoUrl ? (
                 <code
-                  className="max-w-[260px] truncate rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-2 py-[2px] text-[12px]"
+                  className="max-w-[260px] truncate rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-2 py-[2px] text-[12px]"
                   title={pipeline.gitRepoUrl}
                 >
                   {pipeline.gitRepoUrl}
@@ -890,7 +890,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
             <ConfigRow
               label="Stack"
               value={
-                <code className="rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-2 py-[2px] text-[12px]">
+                <code className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-2 py-[2px] text-[12px]">
                   {pipeline.stackId}
                 </code>
               }
@@ -907,7 +907,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               label="Dockerfile"
               value={
                 <code
-                  className="max-w-[260px] truncate rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-2 py-[2px] text-[12px]"
+                  className="max-w-[260px] truncate rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-2 py-[2px] text-[12px]"
                   title={pipeline.dockerfilePath}
                 >
                   {pipeline.dockerfilePath}
@@ -917,7 +917,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
             <ConfigRow
               label="Build Context"
               value={
-                <code className="rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-2 py-[2px] text-[12px]">
+                <code className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-2 py-[2px] text-[12px]">
                   {pipeline.dockerContext || "."}
                 </code>
               }
@@ -926,7 +926,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               <ConfigRow
                 label="Image Registry"
                 value={
-                  <code className="max-w-[260px] truncate rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-2 py-[2px] text-[12px]">
+                  <code className="max-w-[260px] truncate rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-2 py-[2px] text-[12px]">
                     {(pipeline.envVars ?? {})["IMAGE_REGISTRY_URL"]}
                   </code>
                 }
@@ -946,14 +946,14 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
           <ConfigRow
             label="Namespace"
             value={
-              <code className="rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-2 py-[2px] text-[12px]">
+              <code className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-2 py-[2px] text-[12px]">
                 {pipeline.namespace}
               </code>
             }
           />
         </div>
 
-        <div className="mt-4 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 45%, transparent)] p-3">
+        <div className="mt-4 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_45%,_transparent)] p-3">
           <div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
             Deployed Resources
           </div>
@@ -984,7 +984,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Ingress"
                     resources={ingressResources}
-                    accentClass="bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] text-[var(--color-success)]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]"
                   />
                   <div className="hidden items-center justify-center text-[var(--color-text-muted)] md:flex">
                     →
@@ -992,7 +992,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Service"
                     resources={serviceResources}
-                    accentClass="bg-[color-mix(in srgb, var(--color-info) 12%, transparent)] text-[var(--color-info)]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-info)_12%,_transparent)] text-[var(--color-info)]"
                   />
                   <div className="hidden items-center justify-center text-[var(--color-text-muted)] md:flex">
                     →
@@ -1000,7 +1000,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Deployment / StatefulSet"
                     resources={workloadResources}
-                    accentClass="bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] text-[#c7d2fe]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] text-[#c7d2fe]"
                   />
                   <div className="hidden items-center justify-center text-[var(--color-text-muted)] md:flex">
                     →
@@ -1008,7 +1008,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Pod"
                     resources={podResources}
-                    accentClass="bg-[color-mix(in srgb, var(--color-warning) 14%, transparent)] text-[#fde68a]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[#fde68a]"
                     emptyLabel={
                       workloadResources.length > 0
                         ? "(managed by workload)"
@@ -1020,7 +1020,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Job / CronJob"
                     resources={jobResources}
-                    accentClass="bg-[color-mix(in srgb, var(--color-info) 16%, transparent)] text-[#7dd3fc]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-info)_16%,_transparent)] text-[#7dd3fc]"
                   />
                 )}
               </div>
@@ -1037,7 +1037,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               return (
                 <div
                   key={key}
-                  className="grid grid-cols-[1fr_1fr_88px] items-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2 text-[12px]"
+                  className="grid grid-cols-[1fr_1fr_88px] items-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-[12px]"
                 >
                   <span className="font-mono text-[var(--color-text-primary)]">
                     {key}
@@ -1048,7 +1048,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <button
                     type="button"
                     onClick={() => toggleReveal(key)}
-                    className="inline-flex items-center justify-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
+                    className="inline-flex items-center justify-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
                   >
                     {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
                     {isRevealed ? "Hide" : "Show"}
@@ -1070,7 +1070,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               return (
                 <div
                   key={key}
-                  className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-2.5"
+                  className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2.5"
                 >
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-text-secondary)]">
@@ -1079,7 +1079,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                     <button
                       type="button"
                       onClick={() => toggleReveal(key)}
-                      className="inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
+                      className="inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
                     >
                       {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
                       {isRevealed ? "Hide" : "Show"}
@@ -1235,7 +1235,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
         ].map((item) => (
           <div
             key={item.label}
-            className="rounded-xl border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4"
+            className="rounded-xl border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4"
           >
             <div
               className="text-[26px] font-extrabold leading-none"
@@ -1254,7 +1254,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
       </div>
 
       {/* live k8s resources */}
-      <div className="rounded-xl border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4">
+      <div className="rounded-xl border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-[13px] font-bold text-[var(--color-text-primary)]">
             Live Resources
@@ -1475,8 +1475,8 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
             key={d.id}
             className={`flex flex-wrap items-center gap-2.5 rounded-lg border px-3.5 py-3 ${
               isSelected
-                ? "border-[color-mix(in srgb, var(--color-primary) 45%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)]"
-                : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]"
+                ? "border-[color-mix(in_srgb,_var(--color-primary)_45%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)]"
+                : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]"
             }`}
           >
             <span
@@ -1506,13 +1506,13 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
       })}
 
       {selectedDeployment && (
-        <div className="rounded-lg border border-[color-mix(in srgb, var(--color-primary) 35%, transparent)] bg-[color-mix(in srgb, var(--color-text-primary) 50%, transparent)] p-3">
+        <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-primary)_50%,_transparent)] p-3">
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
-            <span className="rounded bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] px-1.5 py-[2px] font-mono text-[#c7d2fe]">
+            <span className="rounded bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] px-1.5 py-[2px] font-mono text-[#c7d2fe]">
               {selectedDeployment.version}
             </span>
             <span>Deployment ID:</span>
-            <code className="rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-1.5 py-[2px]">
+            <code className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-1.5 py-[2px]">
               {selectedDeployment.id}
             </code>
             <span>Triggered by:</span>
@@ -1522,7 +1522,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
           </div>
 
           {stages.length > 0 && (
-            <div className="mt-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-2">
+            <div className="mt-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2">
               <div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
                 Pipeline Stages
               </div>
@@ -1535,7 +1535,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
                     className="relative"
                   >
                     {i < stages.length - 1 && (
-                      <div className="absolute left-[17px] top-8 h-[calc(100%-8px)] w-px bg-[color-mix(in srgb, var(--color-text-secondary) 30%, transparent)]" />
+                      <div className="absolute left-[17px] top-8 h-[calc(100%-8px)] w-px bg-[color-mix(in_srgb,_var(--color-text-secondary)_30%,_transparent)]" />
                     )}
                     <div
                       className={`mb-2 grid grid-cols-[26px_1fr_auto] items-center gap-2 rounded-md border px-2.5 py-2 ${meta.cls}`}
@@ -1551,7 +1551,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
                           {meta.label}
                         </div>
                       </div>
-                      <span className="rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-1.5 py-[1px] text-[10px] font-mono">
+                      <span className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-1.5 py-[1px] text-[10px] font-mono">
                         step {i + 1}
                       </span>
                     </div>
@@ -1562,7 +1562,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
           )}
 
           <div className="mt-3 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
-            <div className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-2 text-[11px] text-[color-mix(in srgb, var(--color-text-primary) 65%, transparent)]">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2 text-[11px] text-[color-mix(in_srgb,_var(--color-text-primary)_65%,_transparent)]">
               <span>Detailed Logs</span>
               <span>·</span>
               <span>{stepDetails.length} steps</span>
@@ -1583,14 +1583,14 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               {stepDetails.map((step, stepIndex) => (
                 <div
                   key={`${selectedDeployment.id}-${step.name}-${stepIndex}`}
-                  className="rounded border border-[color-mix(in srgb, var(--color-text-secondary) 25%, transparent)] bg-[rgba(2,6,23,0.65)]"
+                  className="rounded border border-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] bg-[rgba(2,6,23,0.65)]"
                 >
-                  <div className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in srgb, var(--color-text-secondary) 25%, transparent)] px-2.5 py-2 text-[11px] text-[var(--color-text-secondary)]">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] px-2.5 py-2 text-[11px] text-[var(--color-text-secondary)]">
                     <span className="font-semibold text-[var(--color-text-secondary)]">
                       {step.name}
                     </span>
                     {step.kind && (
-                      <span className="rounded bg-[color-mix(in srgb, var(--color-text-secondary) 20%, transparent)] px-1.5 py-[1px]">
+                      <span className="rounded bg-[color-mix(in_srgb,_var(--color-text-secondary)_20%,_transparent)] px-1.5 py-[1px]">
                         {step.kind}
                       </span>
                     )}
@@ -1654,10 +1654,10 @@ function PipelineDetailPanel({
   const statusStyle = getPipelineStatusStyle(pipeline.status);
 
   return (
-    <div className="mt-2.5 overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in srgb, var(--color-primary) 30%, transparent)] bg-[var(--color-surface-card)]">
+    <div className="mt-2.5 overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[var(--color-surface-card)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
             <GitBranch size={16} />
           </div>
           <h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
@@ -1680,7 +1680,7 @@ function PipelineDetailPanel({
             variant="secondary"
             size="sm"
             type="button"
-            className="border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[#fecaca] hover:bg-[color-mix(in srgb, var(--color-error) 25%, transparent)]"
+            className="border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[#fecaca] hover:bg-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)]"
             onClick={onDelete}
             disabled={isDeleting}
           >
@@ -1718,8 +1718,8 @@ function PipelineDetailPanel({
               onClick={() => setInnerTab(tab.key)}
               className={`flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-[13px] font-medium transition-all duration-150 ${
                 active
-                  ? "border-b-[var(--color-primary)] bg-[color-mix(in srgb, var(--color-text-primary) 60%, transparent)] text-[var(--color-text-primary)]"
-                  : "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] hover:text-[var(--color-text-primary)]"
+                  ? "border-b-[var(--color-primary)] bg-[color-mix(in_srgb,_var(--color-text-primary)_60%,_transparent)] text-[var(--color-text-primary)]"
+                  : "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] hover:text-[var(--color-text-primary)]"
               }`}
             >
               {tab.icon}
@@ -1825,7 +1825,7 @@ export function CicdListPage() {
       accessorKey: "mode",
       header: "Mode",
       cell: ({ row }) => (
-        <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] px-[8px] py-[2px] text-[11px] font-semibold text-[#c7d2fe]">
+        <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-[8px] py-[2px] text-[11px] font-semibold text-[#c7d2fe]">
           {modeLabel(row.original.mode)}
         </span>
       ),
@@ -1941,7 +1941,7 @@ export function CicdListPage() {
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
             <List size={18} />
           </div>
           <div>
@@ -1991,7 +1991,7 @@ export function CicdListPage() {
                 <NativeSelect
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+                  className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
                 >
                   <option
                     value=""
@@ -2056,7 +2056,7 @@ export function CicdListPage() {
                     )}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                    className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                   />
                 </div>
               </>
@@ -2088,7 +2088,7 @@ export function CicdListPage() {
                 />
               </div>
             ) : (
-              <div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
+              <div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
                 {t(
                   "cicdListPage.emptyDetail",
                   "Select a pipeline from the list to view details here.",

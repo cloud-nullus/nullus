@@ -30,7 +30,7 @@ export function Header() {
   return (
     <header className="flex h-[var(--header-height)] shrink-0 items-center justify-end gap-4 border-b border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-6">
       {/* Role badge */}
-      <div className="flex items-center gap-1.5 rounded-full bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] px-2.5 py-1 text-xs font-semibold text-[var(--color-primary)]">
+      <div className="flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-1 text-xs font-semibold text-[var(--color-primary)]">
         {roleIcons[role]}
         {t(roleLabels[role])}
       </div>

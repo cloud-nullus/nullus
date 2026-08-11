@@ -153,10 +153,10 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
   const runningDeployments = deployments.filter((d) => ['running', 'pending', 'validating', 'installing', 'configuring', 'health_check', 'rolling_back'].includes(d.status)).length
 
   const appKpis = [
-    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: 'var(--color-primary)', iconCls: 'bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]', bar: 100 },
+    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: 'var(--color-primary)', iconCls: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]', bar: 100 },
     { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CheckCircle size={18} />, color: 'var(--color-success)', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
     { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch size={18} />, color: 'var(--color-warning)', iconCls: 'bg-amber-500/15 text-amber-400', bar: 100 },
-    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: 'var(--color-success)', iconCls: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
+    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: 'var(--color-success)', iconCls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
   ]
 
   return (
@@ -168,8 +168,8 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
                 range === r
-                  ? 'border-[color-mix(in srgb, var(--color-warning) 60%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 20%, transparent)] text-[var(--color-warning)]'
-                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]')}>
+                  ? 'border-[color-mix(in_srgb,_var(--color-warning)_60%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]')}>
               {r}
             </button>
           ))}
@@ -222,7 +222,7 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
                 const isLast = i === rows.length - 1
                 return (
                   <tr key={app.name}
-                    className={cn('transition-colors hover:bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
+                    className={cn('transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className={cn('h-2 w-2 shrink-0 rounded-full', sc.dot)} />

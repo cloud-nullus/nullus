@@ -95,12 +95,12 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 				</div>
 			</div>
 			{isLoading && (
-				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
+				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
 					Loading history...
 				</div>
 			)}
 			{!isLoading && entries.length === 0 && (
-				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
+				<div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">
 					No history found for this stack yet.
 				</div>
 			)}
@@ -113,7 +113,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 						className="overflow-hidden rounded-lg border"
 						style={{ borderColor: isCurrent ? "#bbf7d0" : "var(--color-border-default)" }}
 					>
-						<div className="flex flex-wrap items-center justify-between gap-3 bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-5 py-3">
+						<div className="flex flex-wrap items-center justify-between gap-3 bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-5 py-3">
 							<div className="flex flex-wrap items-center gap-2.5">
 								<span
 									className="rounded-full px-2.5 py-0.5 text-[12px] font-bold text-white"
@@ -215,7 +215,7 @@ function StackVersionUpgradeTab() {
 				<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">
 					Available Version Upgrades
 				</h3>
-				<span className="rounded-full bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--color-primary)]">
+				<span className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--color-primary)]">
 					3 updates available
 				</span>
 			</div>
@@ -224,7 +224,7 @@ function StackVersionUpgradeTab() {
 					<div
 						key={item.name}
 						className={cn(
-							"flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4",
+							"flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4",
 							item.upToDate && "opacity-60",
 						)}
 					>
@@ -254,7 +254,7 @@ function StackVersionUpgradeTab() {
 						</div>
 						<div className="flex items-center gap-2.5">
 							{item.upToDate ? (
-								<span className="rounded-full bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
+								<span className="rounded-full bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
 									✓ Up to date
 								</span>
 							) : (
@@ -267,7 +267,7 @@ function StackVersionUpgradeTab() {
 									</span>
 									<button
 										type="button"
-										className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)]"
+										className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)]"
 									>
 										<ClipboardList size={12} /> Changelog
 									</button>
@@ -331,9 +331,9 @@ function StackDetailPanel({
 	}, [canShowMonitoring, innerTab]);
 
 	return (
-		<div className={cn("flex h-full flex-col overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in srgb, var(--color-primary) 30%, transparent)] bg-[var(--color-surface-card)]", className)}>
+		<div className={cn("flex h-full flex-col overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[var(--color-surface-card)]", className)}>
 			<div className="flex items-center gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
-				<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+				<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
 					<Layers size={16} />
 				</div>
 				<h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
@@ -359,8 +359,8 @@ function StackDetailPanel({
 						className={cn(
 							"flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-[13px] font-medium transition-all duration-150",
 							innerTab === tab.key
-								? "border-b-[var(--color-primary)] bg-[color-mix(in srgb, var(--color-text-primary) 60%, transparent)] text-[var(--color-text-primary)]"
-								: "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] hover:text-[var(--color-text-primary)]",
+								? "border-b-[var(--color-primary)] bg-[color-mix(in_srgb,_var(--color-text-primary)_60%,_transparent)] text-[var(--color-text-primary)]"
+								: "border-b-transparent text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] hover:text-[var(--color-text-primary)]",
 						)}
 					>
 						{tab.icon} {t(`stackList.tabs.${tab.key}`, tab.label)}
@@ -632,7 +632,7 @@ export function StackListPage() {
 
 			<div className="mb-6 flex items-start justify-between">
 				<div className="flex items-center gap-2.5">
-					<div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+					<div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
 						<List size={18} />
 					</div>
 					<div>
@@ -677,7 +677,7 @@ export function StackListPage() {
 								<NativeSelect
 									value={statusFilter}
 									onChange={(e) => setStatusFilter(e.target.value)}
-									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 								>
 									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allStatus", "All Status")}</option>
 									<option value="healthy" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.healthy", "Running")}</option>
@@ -691,7 +691,7 @@ export function StackListPage() {
 								<NativeSelect
 									value={clusterFilter}
 									onChange={(e) => setClusterFilter(e.target.value)}
-									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+									className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 								>
 									<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allClusters", "All Clusters")}</option>
 									{clusterOptions.map((clusterName) => (
@@ -709,7 +709,7 @@ export function StackListPage() {
 										placeholder={t("stackList.searchPlaceholder", "Search stacks...")}
 										value={search}
 										onChange={(e) => setSearch(e.target.value)}
-										className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+										className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
 									/>
 								</div>
 							</>
@@ -738,7 +738,7 @@ export function StackListPage() {
 								/>
 							</div>
 						) : (
-							<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
+							<div className="rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-8 text-center text-[13px] text-[var(--color-text-secondary)]">
 								{t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
 							</div>
 						)}
@@ -817,7 +817,7 @@ export function StackListPage() {
 										setImportFileError("");
 									}}
 									aria-label={t("stackList.import.file", "Export file")}
-									className="box-border w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out file:mr-3 file:rounded-md file:border-0 file:bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-[var(--color-primary)] focus:border-[var(--color-primary)]"
+									className="box-border w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out file:mr-3 file:rounded-md file:border-0 file:bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-[var(--color-primary)] focus:border-[var(--color-primary)]"
 								/>
 							</label>
 							{importFile && (
@@ -834,7 +834,7 @@ export function StackListPage() {
 							<div className="text-[12px] text-[var(--color-text-secondary)]">
 								{t("stackList.import.name", "Stack")}: <span className="text-[var(--color-text-primary)]">{importPreview.name}</span>
 							</div>
-							<div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+							<div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
 								<div className="space-y-1 text-[12px] text-[var(--color-text-secondary)]">
 									{importPreviewLines.map((line) => (
 										<div key={line}>{line}</div>
@@ -847,7 +847,7 @@ export function StackListPage() {
 								</div>
 							)}
 							{importPreview.changes && (
-								<div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+								<div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
 									<div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
 										{t("stackList.import.changes", "Import changes")}
 									</div>

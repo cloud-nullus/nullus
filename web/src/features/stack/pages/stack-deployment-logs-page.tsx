@@ -268,7 +268,7 @@ export function StackDeploymentLogsPage() {
 
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] text-[var(--color-success)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]">
             <Terminal size={18} />
           </div>
           <div>
@@ -294,10 +294,10 @@ export function StackDeploymentLogsPage() {
             className={cn(
               'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold',
               meta.result === 'success'
-                ? 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]'
+                ? 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]'
                 : meta.result === 'failed'
-                  ? 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]'
-                  : 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]'
+                  ? 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]'
+                  : 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]'
             )}
           >
             {meta.result === 'success' ? (
@@ -321,7 +321,7 @@ export function StackDeploymentLogsPage() {
                   <div
                     className={cn(
                       'h-px w-6',
-                      stage.status === 'pending' ? 'bg-[color-mix(in srgb, var(--color-text-primary) 10%, transparent)]' : 'bg-[color-mix(in srgb, var(--color-success) 40%, transparent)]'
+                      stage.status === 'pending' ? 'bg-[color-mix(in_srgb,_var(--color-text-primary)_10%,_transparent)]' : 'bg-[color-mix(in_srgb,_var(--color-success)_40%,_transparent)]'
                     )}
                   />
                 )}
@@ -331,7 +331,7 @@ export function StackDeploymentLogsPage() {
                   ) : stage.status === 'failed' ? (
                     <XCircle size={14} className="text-[var(--color-error)]" />
                   ) : (
-                    <Circle size={14} className="text-[color-mix(in srgb, var(--color-text-primary) 15%, transparent)]" />
+                    <Circle size={14} className="text-[color-mix(in_srgb,_var(--color-text-primary)_15%,_transparent)]" />
                   )}
                   <span
                     className={cn(
@@ -340,7 +340,7 @@ export function StackDeploymentLogsPage() {
                         ? 'text-[var(--color-success)]'
                         : stage.status === 'failed'
                           ? 'text-[var(--color-error)]'
-                          : 'text-[color-mix(in srgb, var(--color-text-primary) 25%, transparent)]'
+                          : 'text-[color-mix(in_srgb,_var(--color-text-primary)_25%,_transparent)]'
                     )}
                   >
                     {stage.label}
@@ -353,13 +353,13 @@ export function StackDeploymentLogsPage() {
       )}
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
-        <div className="flex items-center gap-2 border-b border-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] px-4 py-2.5">
+        <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-4 py-2.5">
           <div className="flex gap-1.5">
             <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />
             <span className="h-3 w-3 rounded-full bg-[var(--color-warning)]" />
             <span className="h-3 w-3 rounded-full bg-[var(--color-success)]" />
           </div>
-          <span className="ml-2 text-[11px] text-[color-mix(in srgb, var(--color-text-primary) 30%, transparent)]">
+          <span className="ml-2 text-[11px] text-[color-mix(in_srgb,_var(--color-text-primary)_30%,_transparent)]">
             deployment/{deploymentId}
           </span>
           {isStreaming && (
@@ -369,7 +369,7 @@ export function StackDeploymentLogsPage() {
             </span>
           )}
           {!isStreaming && allLogs.length > 0 && (
-            <span className="ml-auto text-[11px] text-[color-mix(in srgb, var(--color-text-primary) 30%, transparent)]">
+            <span className="ml-auto text-[11px] text-[color-mix(in_srgb,_var(--color-text-primary)_30%,_transparent)]">
               {allLogs.length} lines
             </span>
           )}
@@ -385,7 +385,7 @@ export function StackDeploymentLogsPage() {
           )}
           {visibleLogs.map((line) => (
             <div key={`${line.time}-${line.text}`} className="flex gap-3">
-              <span className="shrink-0 select-none text-[color-mix(in srgb, var(--color-text-primary) 20%, transparent)]">{line.time}</span>
+              <span className="shrink-0 select-none text-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)]">{line.time}</span>
               <span className={LOG_LEVEL_STYLE[line.level]}>
                 {LOG_LEVEL_PREFIX[line.level]}{line.text}
               </span>
@@ -393,7 +393,7 @@ export function StackDeploymentLogsPage() {
           ))}
           {isStreaming && (
             <div className="flex gap-3">
-              <span className="shrink-0 select-none text-[color-mix(in srgb, var(--color-text-primary) 20%, transparent)]">
+              <span className="shrink-0 select-none text-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)]">
                 {allLogs[visibleCount]?.time ?? ''}
               </span>
               <span className="inline-block h-[1em] w-2 animate-pulse bg-[var(--color-primary)]" />
@@ -420,7 +420,7 @@ function RetryHistoryPanel({ stackId }: { stackId: string }) {
   const remaining = items.length - 3
   return (
     <section
-      className="mt-4 rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3"
+      className="mt-4 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
       data-testid="retry-history-panel"
     >
       <h3 className="mb-2 text-sm font-medium text-[var(--color-text-primary)]">
@@ -493,7 +493,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
 
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] text-[var(--color-success)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]">
             <Terminal size={18} />
           </div>
           <div>
@@ -543,7 +543,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
                 <div
                   className={cn(
                     'h-px w-6',
-                    stage.status === 'pending' ? 'bg-[color-mix(in srgb, var(--color-text-primary) 10%, transparent)]' : 'bg-[color-mix(in srgb, var(--color-success) 40%, transparent)]',
+                    stage.status === 'pending' ? 'bg-[color-mix(in_srgb,_var(--color-text-primary)_10%,_transparent)]' : 'bg-[color-mix(in_srgb,_var(--color-success)_40%,_transparent)]',
                   )}
                 />
               )}
@@ -553,7 +553,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
                 ) : stage.status === 'failed' ? (
                   <XCircle size={14} className="text-[var(--color-error)]" />
                 ) : (
-                  <Circle size={14} className="text-[color-mix(in srgb, var(--color-text-primary) 15%, transparent)]" />
+                  <Circle size={14} className="text-[color-mix(in_srgb,_var(--color-text-primary)_15%,_transparent)]" />
                 )}
                 <span
                   className={cn(
@@ -562,7 +562,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
                       ? 'text-[var(--color-success)]'
                       : stage.status === 'failed'
                         ? 'text-[var(--color-error)]'
-                        : 'text-[color-mix(in srgb, var(--color-text-primary) 25%, transparent)]',
+                        : 'text-[color-mix(in_srgb,_var(--color-text-primary)_25%,_transparent)]',
                   )}
                 >
                   {stage.label}
@@ -574,13 +574,13 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
       </div>
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
-        <div className="flex items-center gap-2 border-b border-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] px-4 py-2.5">
+        <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-4 py-2.5">
           <div className="flex gap-1.5">
             <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />
             <span className="h-3 w-3 rounded-full bg-[var(--color-warning)]" />
             <span className="h-3 w-3 rounded-full bg-[var(--color-success)]" />
           </div>
-          <span className="ml-2 text-[11px] text-[color-mix(in srgb, var(--color-text-primary) 30%, transparent)]">deployment/{stack.id}</span>
+          <span className="ml-2 text-[11px] text-[color-mix(in_srgb,_var(--color-text-primary)_30%,_transparent)]">deployment/{stack.id}</span>
         </div>
         <div className="p-6 text-[13px] text-[var(--color-text-secondary)]">
           Live log streaming is not yet connected. See the Stack List view for deployment events and metrics.

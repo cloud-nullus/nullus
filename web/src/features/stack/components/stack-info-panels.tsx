@@ -14,7 +14,7 @@ export function ConfigCard({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+		<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
 			<div className="flex items-center gap-2 border-b border-[var(--color-border-default)] px-4 py-3">
 				<span className="text-[var(--color-text-secondary)]">{icon}</span>
 				<h4 className="m-0 text-[13px] font-semibold text-[var(--color-text-primary)]">
@@ -46,7 +46,7 @@ export function ToolOption({
 			className={cn(
 				"flex flex-col gap-2 rounded-md border p-2.5",
 				checked
-					? "border-[color-mix(in srgb, var(--color-primary) 35%, transparent)]"
+					? "border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)]"
 					: "border-[var(--color-border-default)] opacity-60",
 			)}
 		>
@@ -74,7 +74,7 @@ export function ToolOption({
 				<div className="ml-6 flex flex-wrap items-center gap-3">
 					<NativeSelect
 						defaultValue={version}
-						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 					>
 						{(versions ?? [version]).map((v) => (
 							<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
@@ -328,7 +328,7 @@ export function ResourcesPanel() {
 				].map((item) => (
 					<div
 						key={item.label}
-						className="flex flex-col items-center rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-5"
+						className="flex flex-col items-center rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-5"
 					>
 						<h4 className="m-0 mb-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
 							{item.label}
@@ -348,7 +348,7 @@ export function ResourcesPanel() {
 					</div>
 				))}
 			</div>
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4">
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
 				<h4 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
 					<Server size={14} /> {t('stackInfo.clusterInfo', 'Cluster Info')}
 				</h4>

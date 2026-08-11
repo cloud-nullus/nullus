@@ -51,12 +51,12 @@ export function StackConnectPanel({
   const readyItems = DETECTABLE_COMPONENTS.filter((c) => confirmed[c.name] && urls[c.name]?.trim())
 
   return (
-    <div className="mb-6 rounded-[var(--card-radius)] border border-[color-mix(in srgb, var(--color-primary) 35%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 4%, transparent)] p-5">
+    <div className="mb-6 rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_4%,_transparent)] p-5">
       {/* Header */}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]">
               <Settings2 size={14} />
             </div>
             <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">
@@ -90,7 +90,7 @@ export function StackConnectPanel({
             <div
               key={comp.name}
               className={cn(
-                'rounded-[10px] border bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3.5 transition-colors',
+                'rounded-[10px] border bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3.5 transition-colors',
                 isDone
                   ? 'border-emerald-500/40 bg-emerald-500/5'
                   : isOpen
@@ -122,8 +122,8 @@ export function StackConnectPanel({
                     className={cn(
                       'shrink-0 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors',
                       isOpen
-                        ? 'border-[color-mix(in srgb, var(--color-error) 40%, transparent)] text-[var(--color-error)] hover:bg-red-400/10'
-                        : 'border-[color-mix(in srgb, var(--color-primary) 40%, transparent)] text-[var(--color-primary)] hover:bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]',
+                        ? 'border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] text-[var(--color-error)] hover:bg-red-400/10'
+                        : 'border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]',
                     )}
                   >
                     {isOpen ? 'Cancel' : '+ Add URL'}
@@ -140,7 +140,7 @@ export function StackConnectPanel({
                     onChange={(e) => setUrl(comp.name, e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && confirmUrl(comp.name)}
                     placeholder={`https://${comp.name.toLowerCase()}.example.com/`}
-                    className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] px-2.5 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-primary)]"
+                    className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-2.5 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-primary)]"
                   />
                   <button
                     type="button"
@@ -172,7 +172,7 @@ export function StackConnectPanel({
       </div>
 
       {/* Footer actions */}
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[color-mix(in srgb, var(--color-primary) 20%, transparent)] pt-4">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] pt-4">
         <p className="text-[11px] text-[var(--color-text-secondary)]">
           {readyItems.length > 0
             ? `${readyItems.length} component${readyItems.length > 1 ? 's' : ''} ready to connect`
@@ -182,7 +182,7 @@ export function StackConnectPanel({
           <button
             type="button"
             onClick={onSkip}
-            className="rounded-lg border border-[var(--color-border-default)] px-4 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)]"
+            className="rounded-lg border border-[var(--color-border-default)] px-4 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)]"
           >
             Skip
           </button>

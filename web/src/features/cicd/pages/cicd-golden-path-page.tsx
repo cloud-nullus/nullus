@@ -149,7 +149,7 @@ export function CicdGoldenPathPage() {
       <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
           <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]"
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
           >
             <BookOpen size={18} />
           </div>
@@ -175,7 +175,7 @@ export function CicdGoldenPathPage() {
             placeholder={t('goldenPathPage.searchPlaceholder', 'Search Golden Paths...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            className="w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
           />
         </div>
       </div>
@@ -207,7 +207,7 @@ export function CicdGoldenPathPage() {
               </div>
 
               {/* Info grid */}
-              <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+              <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                 <div>
                   <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
                     {t('stackTemplatePage.card.estimatedTime', 'Estimated Time')}
@@ -253,7 +253,7 @@ export function CicdGoldenPathPage() {
                     )
                   })}
                   {goldenPath.tools.length > 4 && (
-                    <span className="rounded-md bg-[color-mix(in srgb, var(--color-text-muted) 12%, transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
+                    <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-text-muted)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
                       +{goldenPath.tools.length - 4}
                     </span>
                   )}

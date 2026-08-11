@@ -69,7 +69,7 @@ export function ConfirmDialog({
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
             <AlertTriangle size={20} />
           </div>
           <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
@@ -83,7 +83,7 @@ export function ConfirmDialog({
            <div>
              <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
                {t('confirmDialog.typeToConfirm.prefix', 'To confirm, type')}{' '}
-               <code className="rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-error)]">
+               <code className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-error)]">
                  {confirmText}
                </code>
                {' '}
@@ -95,9 +95,9 @@ export function ConfirmDialog({
                onChange={(e) => setTyped(e.target.value)}
                placeholder={confirmText}
                className={cn(
-                 'box-border w-full rounded-lg border bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none',
+                 'box-border w-full rounded-lg border bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none',
                  typed === confirmText
-                   ? 'border-[color-mix(in srgb, var(--color-error) 50%, transparent)]'
+                   ? 'border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)]'
                    : 'border-[var(--color-border-default)]'
                )}
              />

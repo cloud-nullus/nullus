@@ -11,9 +11,9 @@ import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
 
 const STATUS_BADGE: Record<string, { className: string; key: string; defaultLabel: string }> = {
-  verified: { className: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]', key: 'stackVersionPage.status.verified', defaultLabel: 'Verified' },
-  untested: { className: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]', key: 'stackVersionPage.status.partial', defaultLabel: 'Partial' },
-  unsupported: { className: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]', key: 'stackVersionPage.status.notSupported', defaultLabel: 'Not Supported' },
+  verified: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', key: 'stackVersionPage.status.verified', defaultLabel: 'Verified' },
+  untested: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', key: 'stackVersionPage.status.partial', defaultLabel: 'Partial' },
+  unsupported: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]', key: 'stackVersionPage.status.notSupported', defaultLabel: 'Not Supported' },
 }
 
 const toolVersion = (matrix: CompatibilityMatrix, keyword: string): string => {
@@ -60,7 +60,7 @@ export function StackVersionPage() {
 
       <div className="mb-7 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]">
             <Layers size={18} />
           </div>
           <div>
@@ -74,7 +74,7 @@ export function StackVersionPage() {
         </Button>
       </div>
 
-      <div className="mb-5 rounded-lg border border-[color-mix(in srgb, var(--color-info) 35%, transparent)] bg-[color-mix(in srgb, var(--color-info) 8%, transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+      <div className="mb-5 rounded-lg border border-[color-mix(in_srgb,_var(--color-info)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
         {t('stackVersionPage.notice', 'Only validated version combinations are shown. Unverified combinations will display warnings.')}
       </div>
 
@@ -87,13 +87,13 @@ export function StackVersionPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('stackVersionPage.searchPlaceholder', 'Search stacks or tools...')}
-              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
             />
           </div>
         </div>
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+            <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
               {[
                 t('stackVersionPage.table.gitlab', 'GitLab'),
                 t('stackVersionPage.table.argocd', 'Argo CD'),
@@ -124,7 +124,7 @@ export function StackVersionPage() {
                   <td className={rowClassName}>
                     <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', badge.className)}>{t(badge.key, badge.defaultLabel)}</span>
                     {recommended && (
-                      <span className="ml-1.5 rounded-md bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] px-[7px] py-[3px] text-[11px] font-semibold text-[var(--color-accent-alt)]">{t('stackVersionPage.recommended', 'Recommended')}</span>
+                      <span className="ml-1.5 rounded-md bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] px-[7px] py-[3px] text-[11px] font-semibold text-[var(--color-accent-alt)]">{t('stackVersionPage.recommended', 'Recommended')}</span>
                     )}
                   </td>
                 </tr>
@@ -144,7 +144,7 @@ export function StackVersionPage() {
       >
         {validating && (
           <div className="py-8 text-center text-[var(--color-text-secondary)]">
-            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-[color-mix(in srgb, var(--color-text-primary) 10%, transparent)] border-t-[var(--color-primary)]" />
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-[color-mix(in_srgb,_var(--color-text-primary)_10%,_transparent)] border-t-[var(--color-primary)]" />
             {t('stackVersionPage.validation.running', 'Validating...')}
           </div>
         )}
@@ -154,8 +154,8 @@ export function StackVersionPage() {
               className={cn(
                 'flex items-center gap-2.5 rounded-lg border px-4 py-3',
                 validationResult.compatible
-                  ? 'border-[color-mix(in srgb, var(--color-success) 30%, transparent)] bg-[color-mix(in srgb, var(--color-success) 10%, transparent)]'
-                  : 'border-[color-mix(in srgb, var(--color-error) 30%, transparent)] bg-[color-mix(in srgb, var(--color-error) 10%, transparent)]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-success)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_10%,_transparent)]'
+                  : 'border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)]'
               )}
             >
               <ShieldCheck size={20} color={validationResult.compatible ? 'var(--color-success)' : 'var(--color-error)'} />

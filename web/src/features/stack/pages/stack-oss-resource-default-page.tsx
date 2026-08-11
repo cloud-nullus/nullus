@@ -62,11 +62,11 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
 }
 
 const CATEGORY_BADGE_CLASSNAME: Record<ToolCategory, string> = {
-  nullus: 'bg-[color-mix(in srgb, var(--color-info) 14%, transparent)] text-[#7dd3fc]',
-  Artifacts: 'bg-[color-mix(in srgb, var(--color-primary) 14%, transparent)] text-[var(--color-primary)]',
-  Storage: 'bg-[color-mix(in srgb, var(--color-warning) 14%, transparent)] text-[#fdba74]',
-  'CI/CD': 'bg-[color-mix(in srgb, var(--color-success) 14%, transparent)] text-[var(--color-success)]',
-  Observability: 'bg-[color-mix(in srgb, var(--color-warning) 14%, transparent)] text-[var(--color-warning)]',
+  nullus: 'bg-[color-mix(in_srgb,_var(--color-info)_14%,_transparent)] text-[#7dd3fc]',
+  Artifacts: 'bg-[color-mix(in_srgb,_var(--color-primary)_14%,_transparent)] text-[var(--color-primary)]',
+  Storage: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[#fdba74]',
+  'CI/CD': 'bg-[color-mix(in_srgb,_var(--color-success)_14%,_transparent)] text-[var(--color-success)]',
+  Observability: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]',
 }
 
 const CATEGORY_ORDER: Record<ToolCategory, number> = {
@@ -209,7 +209,7 @@ export function StackOssResourceDefaultPage() {
 
       <div className="mb-7 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]">
             <Database size={18} />
           </div>
           <div>
@@ -221,12 +221,12 @@ export function StackOssResourceDefaultPage() {
         </div>
       </div>
 
-      <div className="mb-5 rounded-lg border border-[color-mix(in srgb, var(--color-info) 35%, transparent)] bg-[color-mix(in srgb, var(--color-info) 8%, transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+      <div className="mb-5 rounded-lg border border-[color-mix(in_srgb,_var(--color-info)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
         {t('stackOssDefault.contract.prefix', 'Contract:')} <code>POST /api/v1/stacks/resource-defaults</code> {t('stackOssDefault.contract.middle', 'is an idempotent upsert by')} <code>tool_key</code>{t('stackOssDefault.contract.end', '.')}.
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-4 py-3 text-sm text-[var(--color-error)]">
+        <div className="mb-4 rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-error)]">
           {error}
         </div>
       )}
@@ -245,14 +245,14 @@ export function StackOssResourceDefaultPage() {
               placeholder="Search by category / tool / name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-[240px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+              className="w-[240px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
             />
           </div>
         </div>
 
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+            <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
               {[
                 'Category',
                 'Tool Key',

@@ -6,15 +6,15 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 const SEVERITY_BADGE: Record<KnownIssueSeverity, string> = {
-  high: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
-  medium: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
-  low: 'bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]',
+  high: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+  medium: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  low: 'bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]',
 }
 
 const STATUS_BADGE: Record<KnownIssueStatus, string> = {
-  open: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
-  acknowledged: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
-  planned: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
+  open: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+  acknowledged: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  planned: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
 }
 
 export function KnownIssuesPage() {
@@ -34,7 +34,7 @@ export function KnownIssuesPage() {
       <Breadcrumb items={[{ label: t('knownIssuesPage.breadcrumb.current', 'Known Issues') }]} />
 
       <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]">
           <AlertTriangle size={18} />
         </div>
         <div>
@@ -50,7 +50,7 @@ export function KnownIssuesPage() {
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
+            <tr className="bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
               {tableHeaders.map((header) => (
                 <th
                   key={header}

@@ -9,17 +9,17 @@ const STATUS_STYLE: Record<ToolHealthStatus, { dot: string; text: string; chip: 
   running: {
     dot: "bg-[var(--color-success)]",
     text: "text-[var(--color-success)]",
-    chip: "border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)]",
+    chip: "border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)]",
   },
   warning: {
     dot: "bg-[var(--color-warning)]",
     text: "text-[var(--color-warning)]",
-    chip: "border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)]",
+    chip: "border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)]",
   },
   error: {
     dot: "bg-[var(--color-error)]",
     text: "text-[var(--color-error)]",
-    chip: "border-[color-mix(in srgb, var(--color-error) 40%, transparent)] bg-[color-mix(in srgb, var(--color-error) 10%, transparent)]",
+    chip: "border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)]",
   },
 };
 
@@ -59,7 +59,7 @@ export function PlatformToolHealth({
             {t("observability.platformToolHealth", "Platform Tool Health")}
           </h2>
           {isLoading && (
-            <span className="rounded-full bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
+            <span className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
               {t("common.loading", "Loading...")}
             </span>
           )}

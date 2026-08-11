@@ -167,7 +167,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
   const removes = lines.filter((l) => l.type === 'remove').length
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 45%, transparent)]">
+    <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_45%,_transparent)]">
       <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-2.5">
         <p className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">
           v{versionA} → v{versionB}
@@ -194,7 +194,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
                   key={`collapse-${region.startIndex}`}
                   type="button"
                   onClick={() => toggleRegion(region.startIndex)}
-                  className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[color-mix(in srgb, var(--color-text-primary) 5%, transparent)] transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)] transition-colors cursor-pointer"
                 >
                   <ChevronRight size={12} />
                   <span>... {region.count} unchanged lines ...</span>
@@ -214,7 +214,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
                 <button
                   type="button"
                   onClick={() => toggleRegion(expandedRegion.startIndex)}
-                  className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[color-mix(in srgb, var(--color-text-primary) 5%, transparent)] transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)] transition-colors cursor-pointer"
                 >
                   <ChevronDown size={12} />
                   <span>... {expandedRegion.count} unchanged lines (click to collapse) ...</span>
@@ -232,7 +232,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
 function DiffRow({ line }: { line: DiffLine }) {
   if (line.type === 'header') {
     return (
-      <div className="bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] px-4 py-1.5 font-mono text-xs text-[var(--color-text-muted)]">
+      <div className="bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-4 py-1.5 font-mono text-xs text-[var(--color-text-muted)]">
         {line.content}
       </div>
     )
@@ -242,9 +242,9 @@ function DiffRow({ line }: { line: DiffLine }) {
     <div
       className={cn(
         'flex items-stretch font-mono text-xs leading-6',
-        line.type === 'add' && 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)]',
-        line.type === 'remove' && 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)]',
-        line.type === 'change' && 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)]',
+        line.type === 'add' && 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)]',
+        line.type === 'remove' && 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)]',
+        line.type === 'change' && 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)]',
         line.type === 'unchanged' && 'text-[var(--color-text-muted)]',
       )}
     >

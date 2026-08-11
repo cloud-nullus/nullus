@@ -363,7 +363,7 @@ export function CicdTemplatePage() {
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
             <BookOpen size={18} />
           </div>
           <div>
@@ -405,7 +405,7 @@ export function CicdTemplatePage() {
             )}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
           />
         </div>
       </div>
@@ -455,7 +455,7 @@ export function CicdTemplatePage() {
                             </p>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
+                          <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                             <div>
                               <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
                                 {t(
@@ -494,7 +494,7 @@ export function CicdTemplatePage() {
                               {capabilities.map((capability) => (
                                 <span
                                   key={capability}
-                                  className="rounded-md bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
+                                  className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
                                 >
                                   {capability}
                                 </span>
@@ -648,8 +648,8 @@ export function CicdTemplatePage() {
                     key={stage}
                     className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 ${
                       checked
-                        ? "border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)] text-[var(--color-primary)]"
-                        : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] text-[var(--color-text-secondary)]"
+                        ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]"
+                        : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-secondary)]"
                     }`}
                   >
                     <input

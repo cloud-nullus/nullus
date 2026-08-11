@@ -21,37 +21,37 @@ const features = [
     title: 'Automated DevSecOps Stack Installation',
     description: 'Deploy GitLab, ArgoCD, and Prometheus stacks directly to Kubernetes from the UI.',
     icon: Box,
-    iconClassName: 'bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]',
   },
   {
     title: 'Golden Path Templates',
     description: 'Provides validated combinations (GitHub + ArgoCD, GitLab All-in-One) as templates.',
     icon: BookOpen,
-    iconClassName: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
   },
   {
     title: 'CI/CD Pipeline Management',
     description: 'Create pipelines and manage deployment history with Web/API/Batch templates.',
     icon: Code2,
-    iconClassName: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
   },
   {
     title: 'Version Compatibility Assurance',
     description: 'Expose only validated tool version combinations to reduce unpredictable compatibility issues.',
     icon: ShieldCheck,
-    iconClassName: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
   },
   {
     title: 'Unified Monitoring',
     description: 'Check cluster, pipeline, and application status from a single dashboard.',
     icon: ChartNoAxesColumn,
-    iconClassName: 'bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]',
   },
   {
     title: 'Role-based Access Control',
     description: 'Control feature access by role: Admin, DevOps, and Developer.',
     icon: Users,
-    iconClassName: 'bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]',
   },
 ]
 
@@ -113,7 +113,7 @@ export function HomePage() {
   const enabledButtonClassName =
     'inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] px-6 py-3 text-sm font-bold text-[var(--color-surface-base)]'
   const disabledButtonClassName =
-    'inline-flex cursor-not-allowed items-center gap-2 rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-secondary) 12%, transparent)] px-6 py-3 text-sm font-semibold text-[var(--color-text-muted)] opacity-60'
+    'inline-flex cursor-not-allowed items-center gap-2 rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_12%,_transparent)] px-6 py-3 text-sm font-semibold text-[var(--color-text-muted)] opacity-60'
 
   const canRegisterCluster = isAdmin
   const canStartStack = isAdmin || isDevops
@@ -122,7 +122,7 @@ export function HomePage() {
   return (
     <div>
       <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-home-hero-bg)] p-8 text-center">
-        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[var(--color-surface-base)] shadow-[0_8px_32px_color-mix(in srgb, var(--color-brand-gold) 30%, transparent)]">
+        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[var(--color-on-brand-gold)] shadow-[0_8px_32px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]">
           <Box size={36} />
         </div>
         <h1 className="m-0 mb-2.5 text-4xl font-extrabold text-[var(--color-text-primary)]">Nullus Platform</h1>
@@ -190,9 +190,9 @@ export function HomePage() {
               key={item.phase}
               type="button"
               onClick={() => setSelectedRoadmapPhase(item.phase)}
-              className={`min-w-[220px] flex-1 cursor-pointer rounded-[12px] border p-[18px] text-left transition-all duration-150 ${isSelected ? 'border-[color-mix(in srgb, var(--color-brand-gold) 55%, transparent)] bg-[color-mix(in srgb, var(--color-brand-gold) 10%, transparent)] shadow-[0_0_0_1px_color-mix(in srgb, var(--color-brand-gold) 35%, transparent),0_8px_26px_color-mix(in srgb, var(--color-brand-gold) 20%, transparent)]' : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] hover:border-[color-mix(in srgb, var(--color-brand-gold) 35%, transparent)] hover:bg-[color-mix(in srgb, var(--color-brand-gold) 4%, transparent)]'}`}
+              className={`min-w-[220px] flex-1 cursor-pointer rounded-[12px] border p-[18px] text-left transition-all duration-150 ${isSelected ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_55%,_transparent)] bg-[color-mix(in_srgb,_var(--color-brand-gold)_10%,_transparent)] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_35%,_transparent),0_8px_26px_color-mix(in_srgb,_var(--color-brand-gold)_20%,_transparent)]' : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] hover:border-[color-mix(in_srgb,_var(--color-brand-gold)_35%,_transparent)] hover:bg-[color-mix(in_srgb,_var(--color-brand-gold)_4%,_transparent)]'}`}
             >
-              <div className={`mb-2 inline-flex rounded-[999px] px-2.5 py-1 text-[11px] font-bold ${isSelected ? 'bg-[color-mix(in srgb, var(--color-brand-gold) 14%, transparent)] text-[var(--color-brand-gold)]' : 'bg-[color-mix(in srgb, var(--color-text-secondary) 12%, transparent)] text-[var(--color-text-secondary)]'}`}>
+              <div className={`mb-2 inline-flex rounded-[999px] px-2.5 py-1 text-[11px] font-bold ${isSelected ? 'bg-[color-mix(in_srgb,_var(--color-brand-gold)_14%,_transparent)] text-[var(--color-brand-gold)]' : 'bg-[color-mix(in_srgb,_var(--color-text-secondary)_12%,_transparent)] text-[var(--color-text-secondary)]'}`}>
                 {item.period}
               </div>
               <div className={`mb-1.5 text-sm font-bold ${isSelected ? 'text-[var(--color-brand-gold)]' : 'text-[var(--color-text-secondary)]'}`}>{item.phase}</div>
@@ -210,7 +210,7 @@ export function HomePage() {
           return (
             <div
               key={stage.name}
-              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[color-mix(in srgb, var(--color-brand-gold) 80%, transparent)] bg-[linear-gradient(135deg,color-mix(in srgb, var(--color-brand-gold) 22%, transparent),color-mix(in srgb, var(--color-warning) 20%, transparent))] text-[#ffe38a] shadow-[0_0_0_1px_color-mix(in srgb, var(--color-brand-gold) 40%, transparent),0_0_18px_color-mix(in srgb, var(--color-brand-gold) 30%, transparent)]' : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-secondary) 8%, transparent)] text-[var(--color-text-secondary)] opacity-75'}`}
+              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_80%,_transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,_var(--color-brand-gold)_22%,_transparent),color-mix(in_srgb,_var(--color-warning)_20%,_transparent))] text-[#ffe38a] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent),0_0_18px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]' : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_8%,_transparent)] text-[var(--color-text-secondary)] opacity-75'}`}
             >
               <Icon size={14} />
               {stage.name}

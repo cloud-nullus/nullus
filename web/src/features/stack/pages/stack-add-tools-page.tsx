@@ -209,8 +209,8 @@ function ToolSelector({
                 installed && 'cursor-not-allowed opacity-55',
                 !installed && 'cursor-pointer',
                 selected
-                  ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
-                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
               )}
             >
               <div
@@ -231,7 +231,7 @@ function ToolSelector({
                   <div className="text-xs text-[var(--color-text-secondary)]">{opt.description}</div>
                 </div>
                 {installed && (
-                  <span className="shrink-0 rounded bg-[color-mix(in srgb, var(--color-text-secondary) 20%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-secondary)]">
+                  <span className="shrink-0 rounded bg-[color-mix(in_srgb,_var(--color-text-secondary)_20%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-secondary)]">
                     {installedLabel}
                   </span>
                 )}
@@ -358,7 +358,7 @@ export function StackAddToolsPage() {
 
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
             <Wrench size={18} />
           </div>
           <div>
@@ -398,7 +398,7 @@ export function StackAddToolsPage() {
         {isLoading && <div className="text-sm text-[var(--color-text-secondary)]">{t('stackAddTools.loading', 'Loading stack information...')}</div>}
 
         {!isLoading && !stack && (
-          <div className="rounded-lg border border-[color-mix(in srgb, var(--color-error) 40%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] p-4 text-sm text-[var(--color-error)]">
+          <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] p-4 text-sm text-[var(--color-error)]">
             {t('stackAddTools.notFound', 'Target stack not found.')}
           </div>
         )}
@@ -420,9 +420,9 @@ export function StackAddToolsPage() {
                     onClick={() => handleToggleCategory(category)}
                     className={cn(
                       'flex h-full cursor-pointer flex-col items-start gap-2 rounded-lg border p-4 text-left transition-all duration-150',
-                      selected && 'border-[color-mix(in srgb, var(--color-primary) 45%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)]',
-                      !selected && !installed && 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]',
-                      installed && 'cursor-not-allowed border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)]'
+                      selected && 'border-[color-mix(in_srgb,_var(--color-primary)_45%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]',
+                      !selected && !installed && 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]',
+                      installed && 'cursor-not-allowed border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)]'
                     )}
                   >
                     <div className="flex w-full items-center justify-between gap-3">
@@ -431,12 +431,12 @@ export function StackAddToolsPage() {
                       </span>
                       <span className="flex items-center gap-1.5">
                         {installed && (
-                          <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in srgb, var(--color-success) 18%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
+                          <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,_var(--color-success)_18%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
                             <Check size={11} /> {t('stackAddTools.badge.installed', 'Installed')}
                           </span>
                         )}
                         {!installed && selected && (
-                          <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
+                          <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
                             <Plus size={11} /> {t('stackAddTools.badge.selected', 'Selected')}
                           </span>
                         )}
@@ -455,7 +455,7 @@ export function StackAddToolsPage() {
         {!isLoading && stack && step === 1 && (
           <div>
             {selectedCategories.length === 0 ? (
-              <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4 text-sm text-[var(--color-text-secondary)]">
+              <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4 text-sm text-[var(--color-text-secondary)]">
                 {t('stackAddTools.step1.selectCategoryFirst', 'Please select categories first in Step 1.')}
               </div>
             ) : (
@@ -495,13 +495,13 @@ export function StackAddToolsPage() {
           <div>
             <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">{t('stackAddTools.step2.title', 'Review & Deploy')}</h3>
             {reviewItems.length === 0 ? (
-              <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4 text-sm text-[var(--color-text-secondary)]">
+              <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4 text-sm text-[var(--color-text-secondary)]">
                 {t('stackAddTools.step2.noItems', 'No new tools to add. Please review your category/tool selection.')}
               </div>
             ) : (
               <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)]">
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-left text-[11px] uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-left text-[11px] uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
                     <tr>
                       <th className="px-4 py-2.5">{t('stackAddTools.table.category', 'Category')}</th>
                       <th className="px-4 py-2.5">{t('stackAddTools.table.slot', 'Slot')}</th>

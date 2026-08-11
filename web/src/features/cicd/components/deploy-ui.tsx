@@ -28,10 +28,10 @@ export function PhaseStep({
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300",
           isDone
-            ? "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]"
+            ? "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
             : isActive
-              ? "bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]"
-              : "bg-[color-mix(in srgb, var(--color-text-primary) 5%, transparent)] text-[var(--color-text-secondary)]",
+              ? "bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]"
+              : "bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)] text-[var(--color-text-secondary)]",
         )}
       >
         {isDone ? (
@@ -59,7 +59,7 @@ export function PhaseStep({
           className={cn(
             "mx-1 h-px flex-1 transition-colors duration-300",
             isDone
-              ? "bg-[color-mix(in srgb, var(--color-success) 40%, transparent)]"
+              ? "bg-[color-mix(in_srgb,_var(--color-success)_40%,_transparent)]"
               : "bg-[var(--color-border-default)]",
           )}
         />
@@ -149,7 +149,7 @@ export function CopyableCommand({ command }: { command: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
         }}
-        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[color-mix(in srgb, var(--color-text-primary) 40%, transparent)] transition-colors hover:text-white"
+        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[color-mix(in_srgb,_var(--color-text-primary)_40%,_transparent)] transition-colors hover:text-white"
       >
         {copied ? (
           <Check size={14} className="text-[#3fb950]" />
