@@ -52,11 +52,11 @@ const ROLE_PERMISSIONS: RolePermission[] = [
   {
     role: 'admin',
     color: {
-      bg: 'rgba(239,68,68,0.07)',
-      text: '#f87171',
-      border: 'rgba(239,68,68,0.22)',
-      accessEdit: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-      accessView: 'bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
+      bg: 'color-mix(in srgb, var(--color-error) 7%, transparent)',
+      text: 'var(--color-error)',
+      border: 'color-mix(in srgb, var(--color-error) 22%, transparent)',
+      accessEdit: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+      accessView: 'bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] text-[var(--color-error)]',
     },
     icon: Shield,
     menus: [
@@ -83,11 +83,11 @@ const ROLE_PERMISSIONS: RolePermission[] = [
   {
     role: 'devops',
     color: {
-      bg: 'rgba(99,102,241,0.07)',
-      text: '#a5b4fc',
-      border: 'rgba(99,102,241,0.22)',
-      accessEdit: 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]',
-      accessView: 'bg-[rgba(99,102,241,0.08)] text-[#c7d2fe]',
+      bg: 'color-mix(in srgb, var(--color-primary) 7%, transparent)',
+      text: 'var(--color-primary)',
+      border: 'color-mix(in srgb, var(--color-primary) 22%, transparent)',
+      accessEdit: 'bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]',
+      accessView: 'bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)] text-[#c7d2fe]',
     },
     icon: Server,
     menus: [
@@ -109,11 +109,11 @@ const ROLE_PERMISSIONS: RolePermission[] = [
   {
     role: 'developer',
     color: {
-      bg: 'rgba(34,197,94,0.07)',
-      text: '#34d399',
-      border: 'rgba(34,197,94,0.22)',
-      accessEdit: 'bg-[rgba(34,197,94,0.2)] text-[#34d399]',
-      accessView: 'bg-[rgba(34,197,94,0.08)] text-[#6ee7b7]',
+      bg: 'color-mix(in srgb, var(--color-success) 7%, transparent)',
+      text: 'var(--color-success)',
+      border: 'color-mix(in srgb, var(--color-success) 22%, transparent)',
+      accessEdit: 'bg-[color-mix(in srgb, var(--color-success) 20%, transparent)] text-[var(--color-success)]',
+      accessView: 'bg-[color-mix(in srgb, var(--color-success) 8%, transparent)] text-[var(--color-success)]',
     },
     icon: GitBranch,
     menus: [
@@ -130,9 +130,9 @@ const ROLE_PERMISSIONS: RolePermission[] = [
 ]
 
 const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> = {
-  active: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Active' },
-  pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Pending' },
-  inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]', label: 'Inactive' },
+  active: { className: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]', label: 'Active' },
+  pending: { className: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]', label: 'Pending' },
+  inactive: { className: 'bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-muted)]', label: 'Inactive' },
 }
 
 function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
@@ -142,12 +142,12 @@ function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
 }
 
 const ROLE_BADGE: Record<MemberRole, { className: string }> = {
-  admin: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
-  devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
-  developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
+  admin: { className: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]' },
+  devops: { className: 'bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]' },
+  developer: { className: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]' },
 }
 
-const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
+const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
 
 const inviteUserSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -460,7 +460,7 @@ export function UserManagementPage() {
 
       {/* Page header */}
       <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]">
           <Users size={18} />
         </div>
         <div>
@@ -481,7 +481,7 @@ export function UserManagementPage() {
                 onClick={() => setActiveMainTab(tab)}
                 className={cn(
                   '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-5 py-2.5 text-sm font-medium transition-all duration-150',
-                  active ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
+                  active ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]' : 'text-[var(--color-text-secondary)]'
                 )}
               >
                 {tab === 'roles' ? 'Role Permissions' : 'Users'}
@@ -502,7 +502,7 @@ export function UserManagementPage() {
                  Save Changes
                </Button>
                {permissionSaved && (
-                 <span className="text-xs font-medium text-[#22c55e]">Changes saved</span>
+                 <span className="text-xs font-medium text-[var(--color-success)]">Changes saved</span>
                )}
              </>
            )}
@@ -558,7 +558,7 @@ export function UserManagementPage() {
                   </span>
                 </div>
 
-                <div className="h-px bg-[rgba(255,255,255,0.06)]" />
+                <div className="h-px bg-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)]" />
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
@@ -586,7 +586,7 @@ export function UserManagementPage() {
                               )}
                             >
                               {menu.name}
-                              <span className={cn('rounded px-[3px] py-px text-[9px] font-bold', effectiveAccess === 'Edit' ? 'bg-[rgba(255,255,255,0.2)]' : 'bg-[rgba(255,255,255,0.12)]')}>
+                              <span className={cn('rounded px-[3px] py-px text-[9px] font-bold', effectiveAccess === 'Edit' ? 'bg-[color-mix(in srgb, var(--color-text-primary) 20%, transparent)]' : 'bg-[color-mix(in srgb, var(--color-text-primary) 12%, transparent)]')}>
                                 {effectiveAccess}
                               </span>
                             </button>
@@ -597,7 +597,7 @@ export function UserManagementPage() {
                   ))}
                 </div>
 
-                <div className="h-px bg-[rgba(255,255,255,0.06)]" />
+                <div className="h-px bg-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)]" />
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
@@ -642,11 +642,11 @@ export function UserManagementPage() {
                     onClick={() => setActiveRoleTab(tab)}
                     className={cn(
                       '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-3.5 py-2 text-sm transition-all duration-150',
-                      active ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]' : 'font-normal text-[var(--color-text-secondary)]'
+                      active ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]' : 'font-normal text-[var(--color-text-secondary)]'
                     )}
                   >
                     <span className="capitalize">{tab === 'all' ? 'All' : tab}</span>
-                    <span className={cn('ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold', active ? 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]' : 'bg-[rgba(255,255,255,0.06)] text-[var(--color-text-muted)]')}>
+                    <span className={cn('ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold', active ? 'bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]' : 'bg-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] text-[var(--color-text-muted)]')}>
                       {count}
                     </span>
                   </button>
@@ -662,7 +662,7 @@ export function UserManagementPage() {
                 placeholder={t('userManagementPage.searchPlaceholder', 'Search name/email...')}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
           </div>
@@ -681,7 +681,7 @@ export function UserManagementPage() {
             <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
+                  <tr className="border-b border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
                     <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.role', 'Role')}</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.expiresAt', 'Expires At')}</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.status', 'Status')}</th>
@@ -710,9 +710,9 @@ export function UserManagementPage() {
                           </td>
                           <td className="px-4 py-2.5">
                             {expired ? (
-                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(100,116,139,0.15)] text-[#64748b]">{t('userManagementPage.pendingInvites.expired', 'Expired')}</span>
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.expired', 'Expired')}</span>
                             ) : (
-                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(34,197,94,0.15)] text-[#22c55e]">{t('userManagementPage.pendingInvites.active', 'Active')}</span>
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]">{t('userManagementPage.pendingInvites.active', 'Active')}</span>
                             )}
                           </td>
                           <td className="px-4 py-2.5">
@@ -786,9 +786,9 @@ export function UserManagementPage() {
               <Loader2 size={14} className="absolute right-3 top-[34px] animate-spin text-[var(--color-text-secondary)]" />
             )}
           </div>
-          {errors.email && <span className="text-xs text-[#ef4444]">{errors.email.message}</span>}
+          {errors.email && <span className="text-xs text-[var(--color-error)]">{errors.email.message}</span>}
           {existingUser && (
-            <div className="rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-[13px] text-[#86efac]">
+            <div className="rounded-lg border border-[color-mix(in srgb, var(--color-success) 30%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)] px-3 py-2 text-[13px] text-[var(--color-success)]">
               ✓ {t('userManagementPage.form.existingUser', 'Existing user')}: {existingUser.name} ({existingUser.email})
             </div>
           )}
@@ -802,7 +802,7 @@ export function UserManagementPage() {
                 placeholder="User name"
                 {...register('name')}
               />
-              {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
+              {errors.name && <span className="text-xs text-[var(--color-error)]">{errors.name.message}</span>}
             </>
           )}
           <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...register('role')} className={selectClassName}>
@@ -810,7 +810,7 @@ export function UserManagementPage() {
               <option value="devops">DevOps</option>
               <option value="admin">Admin</option>
             </NativeSelect>
-          {errors.role && <span className="text-xs text-[#ef4444]">{errors.role.message}</span>}
+          {errors.role && <span className="text-xs text-[var(--color-error)]">{errors.role.message}</span>}
         </div>
       </Modal>
 
@@ -913,15 +913,15 @@ export function UserManagementPage() {
       >
         <div className="flex flex-col gap-3.5">
           <Input label={t('userManagementPage.form.name', 'Name')} placeholder="User name" {...registerEdit('name')} />
-          {editErrors.name && <span className="text-xs text-[#ef4444]">{editErrors.name.message}</span>}
+          {editErrors.name && <span className="text-xs text-[var(--color-error)]">{editErrors.name.message}</span>}
           <Input label={t('userManagementPage.form.email', 'Email')} type="email" placeholder="user@example.com" {...registerEdit('email')} />
-          {editErrors.email && <span className="text-xs text-[#ef4444]">{editErrors.email.message}</span>}
+          {editErrors.email && <span className="text-xs text-[var(--color-error)]">{editErrors.email.message}</span>}
           <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...registerEdit('role')} className={selectClassName}>
             <option value="developer">Developer</option>
             <option value="devops">DevOps</option>
             <option value="admin">Admin</option>
           </NativeSelect>
-          {editErrors.role && <span className="text-xs text-[#ef4444]">{editErrors.role.message}</span>}
+          {editErrors.role && <span className="text-xs text-[var(--color-error)]">{editErrors.role.message}</span>}
         </div>
       </Modal>
 

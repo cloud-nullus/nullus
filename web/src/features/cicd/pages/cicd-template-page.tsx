@@ -363,7 +363,7 @@ export function CicdTemplatePage() {
       {/* Page header */}
       <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
             <BookOpen size={18} />
           </div>
           <div>
@@ -405,7 +405,7 @@ export function CicdTemplatePage() {
             )}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
           />
         </div>
       </div>
@@ -455,7 +455,7 @@ export function CicdTemplatePage() {
                             </p>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] p-3">
+                          <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
                             <div>
                               <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
                                 {t(
@@ -494,7 +494,7 @@ export function CicdTemplatePage() {
                               {capabilities.map((capability) => (
                                 <span
                                   key={capability}
-                                  className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-1 text-[11px] font-semibold text-[#a5b4fc]"
+                                  className="rounded-md bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
                                 >
                                   {capability}
                                 </span>
@@ -547,7 +547,7 @@ export function CicdTemplatePage() {
                                 variant="primary"
                                 size="sm"
                                 type="button"
-                                className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
+                                className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,var(--color-warning))] text-[var(--color-surface-base)]"
                                 onClick={() =>
                                   navigate(
                                     `/cicd/developer-deploy?template=${encodeURIComponent(template.id)}&appType=${encodeURIComponent(template.appType)}`,
@@ -648,15 +648,15 @@ export function CicdTemplatePage() {
                     key={stage}
                     className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 ${
                       checked
-                        ? "border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]"
-                        : "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-secondary)]"
+                        ? "border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)] text-[var(--color-primary)]"
+                        : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] text-[var(--color-text-secondary)]"
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggleStage(stage)}
-                      className="accent-[#6366f1]"
+                      className="accent-[var(--color-primary)]"
                     />
                     {stage}
                   </label>
@@ -665,7 +665,7 @@ export function CicdTemplatePage() {
             </div>
           </div>
           {formError && (
-            <div className="text-xs text-[#f87171]">{formError}</div>
+            <div className="text-xs text-[var(--color-error)]">{formError}</div>
           )}
         </div>
       </Modal>

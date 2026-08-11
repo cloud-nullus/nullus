@@ -5,23 +5,23 @@ import { cn } from "../../../lib/utils"
 
 // ─── Shared chart style helpers ───────────────────────────────────────────────
 export const CHART_STYLE = {
-  bg: '#0b1220',
-  grid: 'rgba(148,163,184,0.15)',
-  tick: { fill: '#94a3b8', fontSize: 11 },
-  tooltip: { background: '#111827', border: '1px solid #374151', color: '#e5e7eb' },
+  bg: 'var(--color-surface-base)',
+  grid: 'color-mix(in srgb, var(--color-text-secondary) 15%, transparent)',
+  tick: { fill: 'var(--color-text-secondary)', fontSize: 11 },
+  tooltip: { background: 'var(--color-surface-base)', border: '1px solid var(--color-border-default)', color: 'var(--color-border-default)' },
 }
 
 export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string; label: string }> = {
-  running: { icon: <CheckCircle size={13} />, cls: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Running' },
-  warning: { icon: <AlertCircle size={13} />, cls: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Warning' },
-  error: { icon: <XCircle size={13} />, cls: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', label: 'Error' },
+  running: { icon: <CheckCircle size={13} />, cls: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]', label: 'Running' },
+  warning: { icon: <AlertCircle size={13} />, cls: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]', label: 'Warning' },
+  error: { icon: <XCircle size={13} />, cls: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]', label: 'Error' },
 }
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────
 export function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-[10px] border border-[var(--color-border-default)] p-3" style={{ background: CHART_STYLE.bg }}>
-      <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">{title}</div>
+      <div className="mb-2 text-[13px] font-bold text-[var(--color-text-primary)]">{title}</div>
       {children}
     </div>
   )
@@ -36,7 +36,7 @@ export function KpiCard({ label, value, icon, color, iconCls, bar }: { label: st
         <span className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</span>
       </div>
       <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">{value}</div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[rgba(255,255,255,0.08)]">
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)]">
         <svg className="h-full w-full" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
           <rect width={Math.max(0, Math.min(100, bar))} height="6" rx="3" fill={color} />
         </svg>

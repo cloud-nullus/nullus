@@ -31,7 +31,7 @@ export function RoleSwitcher({ currentRole, onRoleChange, compact = false }: Rol
               'inline-flex cursor-pointer items-center justify-center rounded-lg border text-xs transition-all duration-150 ease-in-out',
               compact ? 'h-8 min-w-8 px-0' : 'h-[34px] gap-1.5 px-3',
               isActive
-                ? 'border-[var(--color-brand-gold)] bg-[rgba(255,215,0,0.15)] font-bold text-[var(--color-brand-gold)]'
+                ? 'border-[var(--color-brand-gold)] bg-[color-mix(in srgb, var(--color-brand-gold) 15%, transparent)] font-bold text-[var(--color-brand-gold)]'
                 : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] font-semibold text-[var(--color-text-secondary)]'
             )}
           >

@@ -18,8 +18,8 @@ import { cn } from '../../../lib/utils'
 import { useClusterStackFilterState } from '../components/cluster-stack-filter'
 
 const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
-  slack: { className: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' },
-  email: { className: 'bg-[rgba(16,185,129,0.12)] text-[#34d399]' },
+  slack: { className: 'bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] text-[var(--color-primary)]' },
+  email: { className: 'bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] text-[var(--color-success)]' },
 }
 
 interface AlertRuleForm {
@@ -175,7 +175,7 @@ export function AlertRulesPage() {
               }}
               className={cn(
                 'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
-                rule.enabled ? 'bg-[#6366f1]' : 'bg-[rgba(255,255,255,0.12)]',
+                rule.enabled ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in srgb, var(--color-text-primary) 12%, transparent)]',
               )}
             >
               <div
@@ -185,7 +185,7 @@ export function AlertRulesPage() {
                 )}
               />
             </button>
-            <span className={cn('text-xs', rule.enabled ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
+            <span className={cn('text-xs', rule.enabled ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-secondary)]')}>
               {rule.enabled ? t('alertRulesPage.switch.on', 'On') : t('alertRulesPage.switch.off', 'Off')}
             </span>
           </div>
@@ -253,7 +253,7 @@ export function AlertRulesPage() {
 
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(239,68,68,0.15)] text-[#f87171]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]">
             <Bell size={18} />
           </div>
           <div>
@@ -328,7 +328,7 @@ export function AlertRulesPage() {
                 placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
           </div>
@@ -370,7 +370,7 @@ export function AlertRulesPage() {
       >
         <div className="flex flex-col gap-3.5">
           {editingRuleId && isFetchingEditingRule ? (
-            <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+            <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
               {t('alertRulesPage.modal.loadingFromDb', 'Loading latest alert rule from DB...')}
             </div>
           ) : null}
@@ -380,7 +380,7 @@ export function AlertRulesPage() {
               placeholder={t('alertRulesPage.form.namePlaceholder', 'ex) High CPU Alert')}
               {...register('name')}
             />
-            {errors.name && <span className="mt-1 block text-xs text-[#ef4444]">{errors.name.message}</span>}
+            {errors.name && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.name.message}</span>}
           </div>
 
           <div>
@@ -389,7 +389,7 @@ export function AlertRulesPage() {
               placeholder={t('alertRulesPage.form.metricNamePlaceholder', 'ex) cpu_usage')}
               {...register('metricName')}
             />
-            {errors.metricName && <span className="mt-1 block text-xs text-[#ef4444]">{errors.metricName.message}</span>}
+            {errors.metricName && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.metricName.message}</span>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -400,7 +400,7 @@ export function AlertRulesPage() {
                 placeholder={t('alertRulesPage.form.warningThresholdPlaceholder', 'ex) 70')}
                 {...register('warningThreshold', { valueAsNumber: true })}
               />
-              {errors.warningThreshold && <span className="mt-1 block text-xs text-[#ef4444]">{errors.warningThreshold.message}</span>}
+              {errors.warningThreshold && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.warningThreshold.message}</span>}
             </div>
             <div>
               <Input
@@ -409,7 +409,7 @@ export function AlertRulesPage() {
                 placeholder={t('alertRulesPage.form.criticalThresholdPlaceholder', 'ex) 85')}
                 {...register('criticalThreshold', { valueAsNumber: true })}
               />
-              {errors.criticalThreshold && <span className="mt-1 block text-xs text-[#ef4444]">{errors.criticalThreshold.message}</span>}
+              {errors.criticalThreshold && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.criticalThreshold.message}</span>}
             </div>
           </div>
 
@@ -426,7 +426,7 @@ export function AlertRulesPage() {
                 onClick={() => setValue('enabled', !watch('enabled'), { shouldValidate: true })}
                 className={cn(
                   'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
-                  watch('enabled') ? 'bg-[#6366f1]' : 'bg-[rgba(255,255,255,0.12)]',
+                  watch('enabled') ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in srgb, var(--color-text-primary) 12%, transparent)]',
                 )}
               >
                 <div
@@ -436,7 +436,7 @@ export function AlertRulesPage() {
                   )}
                 />
               </button>
-              <span className={cn('text-sm', watch('enabled') ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
+              <span className={cn('text-sm', watch('enabled') ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-secondary)]')}>
                 {watch('enabled') ? t('alertRulesPage.switch.on', 'On') : t('alertRulesPage.switch.off', 'Off')}
               </span>
             </div>

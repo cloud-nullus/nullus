@@ -19,33 +19,33 @@ import { cn } from '../../../lib/utils'
 const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string }> = {
   connected: {
     icon: <CheckCircle size={14} />,
-    badgeClassName: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-    panelClassName: 'border-[#22c55e40] bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
+    badgeClassName: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
+    panelClassName: 'border-[#22c55e40] bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
   },
   pending: {
     icon: <Clock size={14} />,
-    badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-    panelClassName: 'border-[#f59e0b40] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
+    badgeClassName: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+    panelClassName: 'border-[#f59e0b40] bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
   },
   error: {
     icon: <AlertCircle size={14} />,
-    badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
-    panelClassName: 'border-[#ef444440] bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+    badgeClassName: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+    panelClassName: 'border-[#ef444440] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
   },
   inactive: {
     icon: <MinusCircle size={14} />,
-    badgeClassName: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]',
-    panelClassName: 'border-[#64748b40] bg-[rgba(100,116,139,0.15)] text-[#64748b]',
+    badgeClassName: 'bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-muted)]',
+    panelClassName: 'border-[#64748b40] bg-[color-mix(in srgb, var(--color-text-muted) 15%, transparent)] text-[var(--color-text-muted)]',
   },
   unreachable: {
     icon: <AlertCircle size={14} />,
-    badgeClassName: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-    panelClassName: 'border-[#f59e0b40] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
+    badgeClassName: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+    panelClassName: 'border-[#f59e0b40] bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
   },
   auth_failed: {
     icon: <AlertCircle size={14} />,
-    badgeClassName: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
-    panelClassName: 'border-[#ef444440] bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+    badgeClassName: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+    panelClassName: 'border-[#ef444440] bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
   },
 }
 
@@ -61,17 +61,17 @@ function getStatusLabel(t: TFunction, status: ClusterStatus) {
 function getConnectionHint(t: TFunction, status: ClusterStatus): { text: string; className: string } {
   switch (status) {
     case 'connected':
-      return { text: t('clusterPage.connection.connectedDetail', 'Cluster API is reachable and authentication is valid.'), className: 'text-[#22c55e]' }
+      return { text: t('clusterPage.connection.connectedDetail', 'Cluster API is reachable and authentication is valid.'), className: 'text-[var(--color-success)]' }
     case 'auth_failed':
-      return { text: t('clusterPage.connection.authFailed', 'Authentication failed. Recheck credentials/kubeconfig.'), className: 'text-[#ef4444]' }
+      return { text: t('clusterPage.connection.authFailed', 'Authentication failed. Recheck credentials/kubeconfig.'), className: 'text-[var(--color-error)]' }
     case 'error':
-      return { text: t('clusterPage.connection.error', 'Connection error. Check endpoint and network path.'), className: 'text-[#ef4444]' }
+      return { text: t('clusterPage.connection.error', 'Connection error. Check endpoint and network path.'), className: 'text-[var(--color-error)]' }
     case 'unreachable':
-      return { text: t('clusterPage.connection.unreachable', 'Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.'), className: 'text-[#f59e0b]' }
+      return { text: t('clusterPage.connection.unreachable', 'Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.'), className: 'text-[var(--color-warning)]' }
     case 'pending':
-      return { text: t('clusterPage.connection.pending', 'Pending verification'), className: 'text-[#f59e0b]' }
+      return { text: t('clusterPage.connection.pending', 'Pending verification'), className: 'text-[var(--color-warning)]' }
     case 'inactive':
-      return { text: t('clusterPage.connection.inactive', 'Inactive'), className: 'text-[#64748b]' }
+      return { text: t('clusterPage.connection.inactive', 'Inactive'), className: 'text-[var(--color-text-muted)]' }
   }
 }
 
@@ -86,7 +86,7 @@ function normalizeClusterStatus(rawStatus: string | undefined | null, fallback: 
   return fallback
 }
 
-const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
+const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 const clusterSchema = z
   .object({
@@ -506,7 +506,7 @@ export function ClusterPage() {
 
       <div className="mb-6 flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]">
             <Network size={18} />
           </div>
           <div>
@@ -550,12 +550,12 @@ export function ClusterPage() {
                     className={cn(
                       'w-full cursor-pointer border-0 border-b border-l-[3px] border-b-[var(--color-border-default)] px-4 py-3.5 text-left transition-all duration-150',
                       isSelected
-                        ? 'border-l-[#6366f1] bg-[rgba(99,102,241,0.1)]'
+                        ? 'border-l-[var(--color-primary)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
                         : 'border-l-transparent bg-transparent'
                     )}
                   >
                     <div className="mb-1 flex items-center justify-between">
-                      <span className={cn('text-sm font-semibold', isSelected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                      <span className={cn('text-sm font-semibold', isSelected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                         {cluster.name}
                       </span>
                       <span className={cn('flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold', st.badgeClassName)}>
@@ -630,9 +630,9 @@ export function ClusterPage() {
                     const statusMessageClass = isVerifyingConnection
                       ? 'text-[var(--color-text-secondary)]'
                       : verifyConnectionResult === 'success'
-                        ? 'text-[#22c55e]'
+                        ? 'text-[var(--color-success)]'
                         : verifyConnectionResult === 'error'
-                          ? 'text-[#ef4444]'
+                          ? 'text-[var(--color-error)]'
                           : connectionHint.className
 
                     return (
@@ -664,7 +664,7 @@ export function ClusterPage() {
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedCluster.organizationIds.map((oid) => (
-                      <span key={oid} className="rounded-md bg-[rgba(139,92,246,0.12)] px-2.5 py-1 text-xs font-medium text-[#c4b5fd]">
+                      <span key={oid} className="rounded-md bg-[color-mix(in srgb, var(--color-accent-alt) 12%, transparent)] px-2.5 py-1 text-xs font-medium text-[var(--color-accent-alt)]">
                         {oid}
                       </span>
                     ))}
@@ -713,7 +713,7 @@ export function ClusterPage() {
             placeholder={t('clusterPage.form.clusterNamePlaceholder', 'e.g. prod-cluster')}
             {...register('name')}
           />
-          {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
+          {errors.name && <span className="text-xs text-[var(--color-error)]">{errors.name.message}</span>}
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-[var(--color-text-secondary)]">
               {t('clusterPage.form.clusterType', 'Cluster Type')}
@@ -727,8 +727,8 @@ export function ClusterPage() {
                     className={cn(
                       'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors',
                       checked
-                        ? 'border-[rgba(99,102,241,0.45)] bg-[rgba(99,102,241,0.12)] text-[var(--color-text-primary)]'
-                        : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] text-[var(--color-text-secondary)]'
+                        ? 'border-[color-mix(in srgb, var(--color-primary) 45%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] text-[var(--color-text-primary)]'
+                        : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] text-[var(--color-text-secondary)]'
                     )}
                   >
                     <input type="checkbox" value={option.value} {...register('types')} className="h-4 w-4" />
@@ -738,7 +738,7 @@ export function ClusterPage() {
               })}
             </div>
           </div>
-          {errors.types && <span className="text-xs text-[#ef4444]">{errors.types.message}</span>}
+          {errors.types && <span className="text-xs text-[var(--color-error)]">{errors.types.message}</span>}
           <NativeSelect label={t('clusterPage.form.cloudProvider', 'Cloud Provider')} {...register('cloudProvider')} className={selectClassName}>
             {CLOUD_PROVIDER_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -751,7 +751,7 @@ export function ClusterPage() {
             placeholder={t('clusterPage.form.endpointPlaceholder', 'e.g. https://prod.k8s.nullus.io')}
             {...register('endpoint')}
           />
-           {errors.endpoint && <span className="text-xs text-[#ef4444]">{errors.endpoint.message}</span>}
+           {errors.endpoint && <span className="text-xs text-[var(--color-error)]">{errors.endpoint.message}</span>}
            <div className="flex flex-col gap-1">
              <label htmlFor="kubeconfig-file" className="text-xs font-medium text-[var(--color-text-secondary)]">
                {t('clusterPage.form.uploadKubeconfig', 'Upload kubeconfig File')}
@@ -768,7 +768,7 @@ export function ClusterPage() {
                <button
                  type="button"
                  onClick={() => fileInputRef.current?.click()}
-                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.08)]"
+                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)]"
                >
                  <Upload size={14} />
                  {t('clusterPage.form.chooseFile', 'Choose File')}
@@ -779,7 +779,7 @@ export function ClusterPage() {
                  </span>
                )}
              </div>
-             {fileUploadError && <span className="text-xs text-[#ef4444]">{fileUploadError}</span>}
+             {fileUploadError && <span className="text-xs text-[var(--color-error)]">{fileUploadError}</span>}
            </div>
            <div className="flex flex-col gap-1">
              <label htmlFor="cluster-kubeconfig" className="text-xs font-medium text-[var(--color-text-secondary)]">
@@ -795,12 +795,12 @@ export function ClusterPage() {
                {...register('kubeconfig')}
                placeholder={t('clusterPage.form.kubeconfigPlaceholder', 'Paste kubeconfig content...')}
                rows={8}
-               className="resize-y rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-xs text-[var(--color-text-primary)] outline-none [font-family:'Fira_Code',monospace]"
+               className="resize-y rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-2.5 text-xs text-[var(--color-text-primary)] outline-none [font-family:'Fira_Code',monospace]"
              />
            </div>
-           {errors.kubeconfig && <span className="text-xs text-[#ef4444]">{errors.kubeconfig.message}</span>}
+           {errors.kubeconfig && <span className="text-xs text-[var(--color-error)]">{errors.kubeconfig.message}</span>}
 
-          <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+          <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-xs font-semibold text-[var(--color-text-primary)]">
                 {t('clusterPage.connection.title', 'Connection Status')}
@@ -820,10 +820,10 @@ export function ClusterPage() {
                 className={cn(
                   'inline-flex items-center rounded-md border px-2 py-1 font-semibold',
                   draftVerifyStatus === 'connected'
-                    ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.12)] text-[#22c55e]'
+                    ? 'border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] text-[var(--color-success)]'
                     : draftVerifyStatus === 'error'
-                      ? 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.12)] text-[#ef4444]'
-                      : 'border-[var(--color-border-default)] bg-[rgba(148,163,184,0.1)] text-[var(--color-text-secondary)]'
+                      ? 'border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 12%, transparent)] text-[var(--color-error)]'
+                      : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-secondary) 10%, transparent)] text-[var(--color-text-secondary)]'
                 )}
               >
                 {draftVerifyStatus === 'connected'
@@ -835,9 +835,9 @@ export function ClusterPage() {
               <span
                 className={cn(
                   draftVerifyStatus === 'connected'
-                    ? 'text-[#22c55e]'
+                    ? 'text-[var(--color-success)]'
                     : draftVerifyStatus === 'error'
-                      ? 'text-[#ef4444]'
+                      ? 'text-[var(--color-error)]'
                       : 'text-[var(--color-text-secondary)]'
                 )}
               >
@@ -861,7 +861,7 @@ export function ClusterPage() {
         loading={deleteCluster.isPending}
         customContent={
           deleteClusterError ? (
-            <p className="m-0 rounded-md border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.12)] px-3 py-2 text-xs text-[#fca5a5]">
+            <p className="m-0 rounded-md border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 12%, transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
               {deleteClusterError}
             </p>
           ) : undefined

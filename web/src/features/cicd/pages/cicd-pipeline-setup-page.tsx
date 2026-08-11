@@ -214,7 +214,7 @@ const DEPLOY_PRESET_DESCRIPTION_I18N: Record<string, { ko: string; en: string }>
 }
 
 const appTypeOptionClassName =
-  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
+  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
 
 const getPipelineYaml = (input: {
   pipelineName: string
@@ -366,7 +366,7 @@ export function CicdPipelineSetupPage() {
 
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
             <Settings2 size={18} />
           </div>
           <div>
@@ -437,7 +437,7 @@ export function CicdPipelineSetupPage() {
                   className={cn(
                     '-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 border-b-transparent bg-none px-[16px] py-2.5 text-sm transition-all duration-150',
                     active
-                      ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]'
+                      ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]'
                       : 'font-normal text-[var(--color-text-secondary)]'
                   )}
                 >
@@ -483,11 +483,11 @@ export function CicdPipelineSetupPage() {
                           className={cn(
                             'cursor-pointer rounded-lg border p-3 text-left transition-all duration-150',
                             selected
-                              ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                              : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                              ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
+                              : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
                           )}
                         >
-                          <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                          <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                             {preset.label}
                           </div>
                           <div className="mt-1 text-xs text-[var(--color-text-secondary)]">{preset.path}</div>
@@ -503,13 +503,13 @@ export function CicdPipelineSetupPage() {
 
             {activeTab === 'deploy' && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-2">
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-2">
                   <button
                     type="button"
                     className={cn(
                       'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold',
                       deployMode === 'template'
-                        ? 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]'
+                        ? 'bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]'
                         : 'text-[var(--color-text-secondary)]'
                     )}
                     onClick={() => setDeployMode('template')}
@@ -521,7 +521,7 @@ export function CicdPipelineSetupPage() {
                     className={cn(
                       'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold',
                       deployMode === 'custom'
-                        ? 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]'
+                        ? 'bg-[color-mix(in srgb, var(--color-primary) 20%, transparent)] text-[var(--color-primary)]'
                         : 'text-[var(--color-text-secondary)]'
                     )}
                     onClick={() => setDeployMode('custom')}
@@ -543,11 +543,11 @@ export function CicdPipelineSetupPage() {
                             className={cn(
                               'cursor-pointer rounded-lg border p-3 text-left transition-all duration-150',
                               selected
-                                ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                                : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                                ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
+                                : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
                             )}
                           >
-                            <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                            <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                               {preset.label}
                             </div>
                             <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
@@ -576,7 +576,7 @@ export function CicdPipelineSetupPage() {
               </div>
             )}
 
-            {formError && <div className="mt-3 text-xs text-[#f87171]">{formError}</div>}
+            {formError && <div className="mt-3 text-xs text-[var(--color-error)]">{formError}</div>}
           </div>
         </div>
 
@@ -595,7 +595,7 @@ export function CicdPipelineSetupPage() {
               : t('cicdPipelineSetupPage.summary.customYaml', 'Custom YAML')],
             [t('cicdPipelineSetupPage.summary.deployYaml', 'Deploy YAML'), deployMode === 'template' ? selectedDeployYaml.label : 'custom.yaml'],
           ].map(([label, value]) => (
-            <div key={label} className="flex items-baseline justify-between gap-2 border-b border-[rgba(255,255,255,0.04)] py-1.5">
+            <div key={label} className="flex items-baseline justify-between gap-2 border-b border-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-1.5">
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-semibold text-[var(--color-text-primary)]">
                 {value}

@@ -140,7 +140,7 @@ export function Sidebar() {
             className="flex cursor-pointer items-center gap-2 border-none bg-transparent p-0"
             aria-label="Go to home"
           >
-            <Box size={20} className="text-[#ffd700]" />
+            <Box size={20} className="text-[var(--color-brand-gold)]" />
             <span className="text-base font-bold text-[var(--color-text-primary)]">
               Nullus
             </span>

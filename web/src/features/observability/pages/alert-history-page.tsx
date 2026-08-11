@@ -14,9 +14,9 @@ import { ClusterStackFilter, useClusterStackFilterState } from '../components/cl
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 
 const SEVERITY_BADGE: Record<AlertSeverity, { className: string }> = {
-  critical: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
-  warning: { className: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]' },
-  info: { className: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]' },
+  critical: { className: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]' },
+  warning: { className: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]' },
+  info: { className: 'bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]' },
 }
 
 function getSeverityLabel(t: TFunction, severity: AlertSeverity) {
@@ -111,9 +111,9 @@ export function AlertHistoryPage() {
       header: t('alertHistoryPage.table.resolvedAt', 'Resolved At'),
       cell: ({ row }) =>
         row.original.resolvedAt ? (
-          <span className="whitespace-nowrap text-[13px] text-[#22c55e]">{formatDateTime(row.original.resolvedAt, locale)}</span>
+          <span className="whitespace-nowrap text-[13px] text-[var(--color-success)]">{formatDateTime(row.original.resolvedAt, locale)}</span>
         ) : (
-          <span className="whitespace-nowrap text-[13px] text-[#f87171]">{t('alertHistoryPage.unresolved', 'Unresolved')}</span>
+          <span className="whitespace-nowrap text-[13px] text-[var(--color-error)]">{t('alertHistoryPage.unresolved', 'Unresolved')}</span>
         ),
     },
   ]
@@ -133,7 +133,7 @@ export function AlertHistoryPage() {
 
       {/* Page header */}
       <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(245,158,11,0.15)] text-[#fbbf24]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]">
           <BellRing size={18} />
         </div>
         <div>
@@ -165,7 +165,7 @@ export function AlertHistoryPage() {
         emptyMessage={t('alertHistoryPage.empty', 'No alert history found.')}
         toolbar={
           <>
-            <NativeSelect value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
+            <NativeSelect value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
               <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('alertHistoryPage.filters.allSeverity', 'All Severity')}</option>
               <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.critical', 'Critical')}</option>
               <option value="warning" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.warning', 'Warning')}</option>
@@ -187,8 +187,8 @@ export function AlertHistoryPage() {
                     className={cn(
                       'cursor-pointer rounded-[7px] border px-2.5 py-1.5 text-xs font-semibold',
                       active
-                        ? 'border-[rgba(59,130,246,0.5)] bg-[rgba(59,130,246,0.15)] text-[#93c5fd]'
-                        : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]'
+                        ? 'border-[color-mix(in srgb, var(--color-info) 50%, transparent)] bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]'
+                        : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]'
                     )}
                   >
                     {item.label}
@@ -205,7 +205,7 @@ export function AlertHistoryPage() {
                 placeholder={t('alertHistoryPage.searchPlaceholder', 'Search rule name...')}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </div>
           </>
@@ -213,7 +213,7 @@ export function AlertHistoryPage() {
       />
 
       {expandedAlert && (
-        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-5 py-4">
+        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 20%, transparent)] px-5 py-4">
           <p className="mb-3 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
             {t('alertHistoryPage.detail.title', 'Alert Detail')}
           </p>

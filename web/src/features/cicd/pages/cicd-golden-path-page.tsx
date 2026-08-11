@@ -96,14 +96,14 @@ function goldenPathToStackOverrides(tools: CICDTool[]) {
 }
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
-  source_repository: { bg: 'rgba(59,130,246,0.12)', color: '#60a5fa' },
-  ci_platform: { bg: 'rgba(139,92,246,0.12)', color: '#a78bfa' },
-  container_registry: { bg: 'rgba(34,197,94,0.12)', color: '#86efac' },
-  storage_backend: { bg: 'rgba(249,115,22,0.12)', color: '#fb923c' },
-  cd_tool: { bg: 'rgba(236,72,153,0.12)', color: '#f472b6' },
-  monitoring_collection: { bg: 'rgba(168,85,247,0.12)', color: '#d8b4fe' },
-  monitoring_visualization: { bg: 'rgba(14,165,233,0.12)', color: '#38bdf8' },
-  log_aggregation: { bg: 'rgba(234,179,8,0.12)', color: '#fde047' },
+  source_repository: { bg: 'color-mix(in srgb, var(--color-info) 12%, transparent)', color: 'var(--color-info)' },
+  ci_platform: { bg: 'color-mix(in srgb, var(--color-accent-alt) 12%, transparent)', color: 'var(--color-accent-alt)' },
+  container_registry: { bg: 'color-mix(in srgb, var(--color-success) 12%, transparent)', color: 'var(--color-success)' },
+  storage_backend: { bg: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', color: '#fb923c' },
+  cd_tool: { bg: 'color-mix(in srgb, var(--color-accent-alt) 12%, transparent)', color: '#f472b6' },
+  monitoring_collection: { bg: 'color-mix(in srgb, var(--color-accent-alt) 12%, transparent)', color: 'var(--color-accent-alt)' },
+  monitoring_visualization: { bg: 'color-mix(in srgb, var(--color-info) 12%, transparent)', color: 'var(--color-info)' },
+  log_aggregation: { bg: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', color: 'var(--color-warning)' },
 }
 
 export function CicdGoldenPathPage() {
@@ -135,7 +135,7 @@ export function CicdGoldenPathPage() {
   }
 
   const getToolColor = (category: string) => {
-    return TOOL_CATEGORY_COLORS[category] ?? { bg: 'rgba(107,114,128,0.12)', color: '#9ca3af' }
+    return TOOL_CATEGORY_COLORS[category] ?? { bg: 'color-mix(in srgb, var(--color-text-muted) 12%, transparent)', color: 'var(--color-text-muted)' }
   }
 
   return (
@@ -149,7 +149,7 @@ export function CicdGoldenPathPage() {
       <div className="mb-7 flex items-start justify-between gap-4">
         <div className="mb-2 flex items-center gap-2.5">
           <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(34,197,94,0.15)] text-[#86efac]"
+            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]"
           >
             <BookOpen size={18} />
           </div>
@@ -175,7 +175,7 @@ export function CicdGoldenPathPage() {
             placeholder={t('goldenPathPage.searchPlaceholder', 'Search Golden Paths...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            className="w-full rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
           />
         </div>
       </div>
@@ -207,7 +207,7 @@ export function CicdGoldenPathPage() {
               </div>
 
               {/* Info grid */}
-              <div className="grid grid-cols-2 gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] p-3">
+              <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3">
                 <div>
                   <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
                     {t('stackTemplatePage.card.estimatedTime', 'Estimated Time')}
@@ -253,7 +253,7 @@ export function CicdGoldenPathPage() {
                     )
                   })}
                   {goldenPath.tools.length > 4 && (
-                    <span className="rounded-md bg-[rgba(107,114,128,0.12)] px-2 py-1 text-[11px] font-semibold text-[#9ca3af]">
+                    <span className="rounded-md bg-[color-mix(in srgb, var(--color-text-muted) 12%, transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
                       +{goldenPath.tools.length - 4}
                     </span>
                   )}
@@ -298,7 +298,7 @@ export function CicdGoldenPathPage() {
               variant="primary"
               size="sm"
               type="button"
-              className="bg-[linear-gradient(135deg,#34d399,#10b981)] text-white"
+              className="bg-[linear-gradient(135deg,var(--color-success),var(--color-success))] text-white"
               onClick={() => {
                 if (selectedPath) {
                   const overrides = goldenPathToStackOverrides(selectedPath.tools)

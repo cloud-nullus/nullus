@@ -84,7 +84,7 @@ export function CicdPipelineLogsPage() {
 
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
             <Terminal size={18} />
           </div>
           <div>
@@ -124,7 +124,7 @@ export function CicdPipelineLogsPage() {
           </p>
           <div className="flex max-h-[520px] flex-col gap-2 overflow-y-auto pr-1">
             {deployments.length === 0 && (
-              <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+              <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
                 {t(
                   "cicdPipelineLogsPage.emptyDeployments",
                   "No deployment history.",
@@ -142,12 +142,12 @@ export function CicdPipelineLogsPage() {
                   className={cn(
                     "cursor-pointer rounded-md border px-3 py-2 text-left transition-colors",
                     selected
-                      ? "border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.12)]"
-                      : "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] hover:bg-[rgba(255,255,255,0.05)]",
+                      ? "border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)]"
+                      : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] hover:bg-[color-mix(in srgb, var(--color-text-primary) 5%, transparent)]",
                   )}
                 >
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="font-mono text-[12px] font-semibold text-[#a5b4fc]">
+                    <span className="font-mono text-[12px] font-semibold text-[var(--color-primary)]">
                       {deployment.version}
                     </span>
                     <span
@@ -166,30 +166,30 @@ export function CicdPipelineLogsPage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
-          <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
+        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+          <div className="flex items-center gap-2 border-b border-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-2.5">
             <div className="flex gap-1.5">
-              <span className="h-3 w-3 rounded-full bg-[#ef4444]" />
-              <span className="h-3 w-3 rounded-full bg-[#fbbf24]" />
-              <span className="h-3 w-3 rounded-full bg-[#34d399]" />
+              <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />
+              <span className="h-3 w-3 rounded-full bg-[var(--color-warning)]" />
+              <span className="h-3 w-3 rounded-full bg-[var(--color-success)]" />
             </div>
-            <span className="ml-2 text-[11px] text-[rgba(255,255,255,0.4)]">
+            <span className="ml-2 text-[11px] text-[color-mix(in srgb, var(--color-text-primary) 40%, transparent)]">
               deployment/{selectedDeploymentId ?? "-"}
             </span>
             {deploymentStatus?.status === "running" && (
-              <span className="ml-auto flex items-center gap-1 text-[11px] text-[#fbbf24]">
+              <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-warning)]">
                 <Loader2 size={11} className="animate-spin" />
                 Streaming...
               </span>
             )}
             {deploymentStatus?.status === "success" && (
-              <span className="ml-auto flex items-center gap-1 text-[11px] text-[#34d399]">
+              <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-success)]">
                 <CheckCircle2 size={11} />
                 Completed
               </span>
             )}
             {deploymentStatus?.status === "failed" && (
-              <span className="ml-auto flex items-center gap-1 text-[11px] text-[#f87171]">
+              <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-error)]">
                 <XCircle size={11} />
                 Failed
               </span>
@@ -227,12 +227,12 @@ export function CicdPipelineLogsPage() {
                   ) : step.status === "running" ? (
                     <Loader2
                       size={11}
-                      className="animate-spin text-[#fbbf24]"
+                      className="animate-spin text-[var(--color-warning)]"
                     />
                   ) : (
                     <CircleDashed
                       size={11}
-                      className="text-[rgba(255,255,255,0.3)]"
+                      className="text-[color-mix(in srgb, var(--color-text-primary) 30%, transparent)]"
                     />
                   )}
                   <span
@@ -243,19 +243,19 @@ export function CicdPipelineLogsPage() {
                         : step.status === "failed"
                           ? "text-[#f85149]"
                           : step.status === "running"
-                            ? "text-[#fbbf24]"
-                            : "text-[rgba(255,255,255,0.4)]",
+                            ? "text-[var(--color-warning)]"
+                            : "text-[color-mix(in srgb, var(--color-text-primary) 40%, transparent)]",
                     )}
                   >
                     {step.name}
                   </span>
                   {step.status && (
-                    <span className="text-[rgba(255,255,255,0.25)]">
+                    <span className="text-[color-mix(in srgb, var(--color-text-primary) 25%, transparent)]">
                       [{step.status}]
                     </span>
                   )}
                   {step.applied_at && (
-                    <span className="ml-auto text-[rgba(255,255,255,0.2)]">
+                    <span className="ml-auto text-[color-mix(in srgb, var(--color-text-primary) 20%, transparent)]">
                       <Clock size={10} className="mr-0.5 inline" />
                       {step.applied_at}
                     </span>

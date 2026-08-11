@@ -45,8 +45,8 @@ export function CodePreview({ code, language = 'yaml', title, maxHeight = '400px
   }
 
   return (
-    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117] font-mono">
-      <div className="flex items-center justify-between border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-2">
+    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)] font-mono">
+      <div className="flex items-center justify-between border-b border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-[14px] py-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] uppercase">
             {language}
@@ -63,7 +63,7 @@ export function CodePreview({ code, language = 'yaml', title, maxHeight = '400px
           onClick={handleCopy}
           className={cn(
             'flex cursor-pointer items-center gap-[5px] rounded-md border border-[var(--color-border-default)] bg-none px-2.5 py-1 text-xs transition-all duration-150 ease-in-out',
-            copied ? 'text-[#22c55e]' : 'text-[var(--color-text-secondary)]'
+            copied ? 'text-[var(--color-success)]' : 'text-[var(--color-text-secondary)]'
           )}
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -80,11 +80,11 @@ export function CodePreview({ code, language = 'yaml', title, maxHeight = '400px
           <tbody>
             {highlightedLines.map((lineItem) => (
               <tr key={lineItem.id}>
-                <td className="select-none border-r border-r-[rgba(255,255,255,0.06)] px-3 text-right align-top text-[13px] leading-[22px] text-[#4a5568]">
+                <td className="select-none border-r border-r-[color-mix(in srgb, var(--color-text-primary) 6%, transparent)] px-3 text-right align-top text-[13px] leading-[22px] text-[var(--color-border-default)]">
                   {lineItem.lineNumber}
                 </td>
                 <td
-                  className="px-4 align-top whitespace-pre text-[13px] leading-[22px] text-[#e2e8f0]"
+                  className="px-4 align-top whitespace-pre text-[13px] leading-[22px] text-[var(--color-text-primary)]"
                 >
                   {lineItem.line || ' '}
                 </td>

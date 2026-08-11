@@ -6,15 +6,15 @@ import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 
 const SEVERITY_BADGE: Record<KnownIssueSeverity, string> = {
-  high: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-  medium: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-  low: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
+  high: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+  medium: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+  low: 'bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]',
 }
 
 const STATUS_BADGE: Record<KnownIssueStatus, string> = {
-  open: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-  acknowledged: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-  planned: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]',
+  open: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+  acknowledged: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+  planned: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
 }
 
 export function KnownIssuesPage() {
@@ -34,7 +34,7 @@ export function KnownIssuesPage() {
       <Breadcrumb items={[{ label: t('knownIssuesPage.breadcrumb.current', 'Known Issues') }]} />
 
       <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(245,158,11,0.15)] text-[#f59e0b]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]">
           <AlertTriangle size={18} />
         </div>
         <div>
@@ -50,7 +50,7 @@ export function KnownIssuesPage() {
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[rgba(255,255,255,0.02)]">
+            <tr className="bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
               {tableHeaders.map((header) => (
                 <th
                   key={header}

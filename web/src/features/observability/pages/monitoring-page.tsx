@@ -98,7 +98,7 @@ export function MonitoringPage() {
 
       {/* Page header */}
       <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]">
           <BarChart3 size={18} />
         </div>
         <div>

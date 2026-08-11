@@ -138,7 +138,7 @@ function RequiredDot() {
     <span
       aria-hidden="true"
       data-testid="required-dot"
-      className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[#ef4444] align-middle"
+      className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-error)] align-middle"
     />
   );
 }
@@ -582,7 +582,7 @@ export function DeveloperDeployPage() {
       />
 
       <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
+        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]">
           <Rocket size={18} />
         </div>
         <div>
@@ -614,10 +614,10 @@ export function DeveloperDeployPage() {
                 className={cn(
                   "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
                   step === activeStep
-                    ? "bg-[#6366f1] text-white"
+                    ? "bg-[var(--color-primary)] text-white"
                     : step < activeStep
-                      ? "bg-[rgba(34,197,94,0.3)] text-[#22c55e]"
-                      : "bg-[rgba(255,255,255,0.08)] text-[var(--color-text-secondary)]",
+                      ? "bg-[color-mix(in srgb, var(--color-success) 30%, transparent)] text-[var(--color-success)]"
+                      : "bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] text-[var(--color-text-secondary)]",
                 )}
               >
                 {step}
@@ -667,7 +667,7 @@ export function DeveloperDeployPage() {
             onChange={(event) => setField("appName", event.target.value)}
           />
           {errors.appName && (
-            <span className="text-xs text-[#ef4444]">
+            <span className="text-xs text-[var(--color-error)]">
               {errors.appName.message}
             </span>
           )}
@@ -700,7 +700,7 @@ export function DeveloperDeployPage() {
                       checked={isSelected(capability)}
                       disabled={disabled}
                       onChange={() => toggleCapability(capability)}
-                      className="h-4 w-4 accent-[#6366f1]"
+                      className="h-4 w-4 accent-[var(--color-primary)]"
                     />
                     {capability}
                   </label>
@@ -721,7 +721,7 @@ export function DeveloperDeployPage() {
                     type="checkbox"
                     checked={selectedPhase === phase}
                     onChange={() => setSelectedPhase(phase)}
-                    className="h-4 w-4 accent-[#6366f1]"
+                    className="h-4 w-4 accent-[var(--color-primary)]"
                   />
                   {phase}
                 </label>
@@ -742,7 +742,7 @@ export function DeveloperDeployPage() {
         <StepSection
           title={
             <>
-              <span className="rounded-md bg-[rgba(99,102,241,0.14)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#a5b4fc]">
+              <span className="rounded-md bg-[color-mix(in srgb, var(--color-primary) 14%, transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-primary)]">
                 CI
               </span>
               <span>
@@ -968,7 +968,7 @@ export function DeveloperDeployPage() {
             <StepSection
               title={
                 <>
-                  <span className="rounded-md bg-[rgba(34,197,94,0.14)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#86efac]">
+                  <span className="rounded-md bg-[color-mix(in srgb, var(--color-success) 14%, transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-success)]">
                     CD
                   </span>
                   <span>
@@ -1043,7 +1043,7 @@ export function DeveloperDeployPage() {
                         </div>
                       )}
                       {manifestLoadError && (
-                        <p className="mb-0 mt-2 text-xs text-[#f87171]">
+                        <p className="mb-0 mt-2 text-xs text-[var(--color-error)]">
                           {manifestLoadError}
                         </p>
                       )}
@@ -1083,7 +1083,7 @@ export function DeveloperDeployPage() {
                           ))}
                         </NativeSelect>
                         {errors.clusterId && (
-                          <span className="text-xs text-[#ef4444]">
+                          <span className="text-xs text-[var(--color-error)]">
                             {errors.clusterId.message}
                           </span>
                         )}
@@ -1140,7 +1140,7 @@ export function DeveloperDeployPage() {
                           />
                         )}
                         {errors.namespace && (
-                          <span className="text-xs text-[#ef4444]">
+                          <span className="text-xs text-[var(--color-error)]">
                             {errors.namespace.message}
                           </span>
                         )}
@@ -1197,7 +1197,7 @@ export function DeveloperDeployPage() {
                           }
                         />
                         {errors.replicas && (
-                          <span className="text-xs text-[#ef4444]">
+                          <span className="text-xs text-[var(--color-error)]">
                             {errors.replicas.message}
                           </span>
                         )}
@@ -1293,13 +1293,13 @@ export function DeveloperDeployPage() {
                             <button
                               type="button"
                               onClick={() => remove(index)}
-                              className="shrink-0 cursor-pointer border-none bg-none p-1 text-[#f87171]"
+                              className="shrink-0 cursor-pointer border-none bg-none p-1 text-[var(--color-error)]"
                             >
                               <Trash2 size={14} />
                             </button>
                           </div>
                           {errors.envVars?.[index]?.key?.message && (
-                            <span className="text-xs text-[#ef4444]">
+                            <span className="text-xs text-[var(--color-error)]">
                               {errors.envVars[index]?.key?.message}
                             </span>
                           )}
@@ -1397,7 +1397,7 @@ export function DeveloperDeployPage() {
                         </Button>
                       </div>
                       {submitError && (
-                        <p className="mt-3 text-right text-xs text-[#f87171]">
+                        <p className="mt-3 text-right text-xs text-[var(--color-error)]">
                           {submitError}
                         </p>
                       )}

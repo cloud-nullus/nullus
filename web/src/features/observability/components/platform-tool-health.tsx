@@ -7,19 +7,19 @@ import type { ToolHealth, ToolHealthStatus } from "../../../types";
 // 색만으로 상태를 구분하면 색각 이상 사용자가 읽을 수 없다. 점 + 글자를 함께 쓴다.
 const STATUS_STYLE: Record<ToolHealthStatus, { dot: string; text: string; chip: string }> = {
   running: {
-    dot: "bg-[#22c55e]",
-    text: "text-[#4ade80]",
-    chip: "border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)]",
+    dot: "bg-[var(--color-success)]",
+    text: "text-[var(--color-success)]",
+    chip: "border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)]",
   },
   warning: {
-    dot: "bg-[#f59e0b]",
-    text: "text-[#fbbf24]",
-    chip: "border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)]",
+    dot: "bg-[var(--color-warning)]",
+    text: "text-[var(--color-warning)]",
+    chip: "border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)]",
   },
   error: {
-    dot: "bg-[#ef4444]",
-    text: "text-[#f87171]",
-    chip: "border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)]",
+    dot: "bg-[var(--color-error)]",
+    text: "text-[var(--color-error)]",
+    chip: "border-[color-mix(in srgb, var(--color-error) 40%, transparent)] bg-[color-mix(in srgb, var(--color-error) 10%, transparent)]",
   },
 };
 
@@ -59,7 +59,7 @@ export function PlatformToolHealth({
             {t("observability.platformToolHealth", "Platform Tool Health")}
           </h2>
           {isLoading && (
-            <span className="rounded-full bg-[rgba(99,102,241,0.15)] px-2 py-0.5 text-[11px] font-semibold text-[#a5b4fc]">
+            <span className="rounded-full bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
               {t("common.loading", "Loading...")}
             </span>
           )}

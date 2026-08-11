@@ -40,22 +40,22 @@ export function ToolSelector({ label, options, value, onChange }: ToolSelectorPr
               className={cn(
                 'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
                 selected
-                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                  ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
               )}
             >
               <div
                 className={cn(
                   'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
                   selected
-                    ? 'border-[#6366f1] bg-[#6366f1]'
+                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]'
                     : 'border-[var(--color-border-hover)] bg-transparent'
                 )}
               >
                 {selected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
               </div>
               <div>
-                <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                   {displayLabel}
                 </div>
                 <div className="text-xs text-[var(--color-text-secondary)]">{displayDescription}</div>
@@ -102,22 +102,22 @@ export function MultiToolSelector({ label, options, values, onChange }: MultiToo
           className={cn(
             'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
             values.length === 0
-              ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-              : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+              ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
+              : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
           )}
         >
           <div
             className={cn(
               'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2',
               values.length === 0
-                ? 'border-[#6366f1] bg-[#6366f1]'
+                ? 'border-[var(--color-primary)] bg-[var(--color-primary)]'
                 : 'border-[var(--color-border-hover)] bg-transparent'
             )}
           >
             {values.length === 0 && <Check size={11} className="text-white" />}
           </div>
           <div>
-            <div className={cn('text-sm font-semibold', values.length === 0 ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+            <div className={cn('text-sm font-semibold', values.length === 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
               {t('stackInstall.common.unselected', 'Not selected')}
             </div>
             <div className="text-xs text-[var(--color-text-secondary)]">
@@ -137,22 +137,22 @@ export function MultiToolSelector({ label, options, values, onChange }: MultiToo
               className={cn(
                 'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-[14px] py-3 text-left transition-all duration-150',
                 selected
-                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                  ? 'border-[color-mix(in srgb, var(--color-primary) 50%, transparent)] bg-[color-mix(in srgb, var(--color-primary) 10%, transparent)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]'
               )}
             >
               <div
                 className={cn(
                   'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2',
                   selected
-                    ? 'border-[#6366f1] bg-[#6366f1]'
+                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]'
                     : 'border-[var(--color-border-hover)] bg-transparent'
                 )}
               >
                 {selected && <Check size={11} className="text-white" />}
               </div>
               <div>
-                <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                   {displayLabel}
                 </div>
                 <div className="text-xs text-[var(--color-text-secondary)]">{displayDescription}</div>

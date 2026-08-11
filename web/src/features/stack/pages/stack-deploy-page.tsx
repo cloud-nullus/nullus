@@ -16,17 +16,17 @@ import { cn } from '../../../lib/utils'
 const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
 
 const LOG_LEVEL_STYLE: Record<LogLevel, string> = {
-  info: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
-  warn: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',
-  error: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-  success: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
+  info: 'bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]',
+  warn: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+  error: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+  success: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
 }
 
 const LOG_ROW_STYLE: Record<LogLevel, string> = {
   info: 'border-transparent bg-transparent',
-  success: 'border-[rgba(34,197,94,0.25)] bg-[rgba(34,197,94,0.06)]',
-  warn: 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)]',
-  error: 'border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)]',
+  success: 'border-[color-mix(in srgb, var(--color-success) 25%, transparent)] bg-[color-mix(in srgb, var(--color-success) 6%, transparent)]',
+  warn: 'border-[color-mix(in srgb, var(--color-warning) 35%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 8%, transparent)]',
+  error: 'border-[color-mix(in srgb, var(--color-error) 40%, transparent)] bg-[color-mix(in srgb, var(--color-error) 10%, transparent)]',
 }
 
 type TimelineStatus = 'pending' | 'running' | 'success' | 'warn' | 'error'
@@ -98,11 +98,11 @@ function TimelineStep({ stage, isLast }: { stage: DeployStage & { status: Timeli
       <div
         className={cn(
           'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300',
-          isError && 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-          isWarn && 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',
-          isDone && 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-          isRunning && 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]',
-          stage.status === 'pending' && 'bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]'
+          isError && 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
+          isWarn && 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+          isDone && 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
+          isRunning && 'bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]',
+          stage.status === 'pending' && 'bg-[color-mix(in srgb, var(--color-text-primary) 5%, transparent)] text-[var(--color-text-secondary)]'
         )}
       >
         {isError ? (
@@ -120,10 +120,10 @@ function TimelineStep({ stage, isLast }: { stage: DeployStage & { status: Timeli
       <span
         className={cn(
           'text-[13px] font-semibold',
-          isError && 'text-[#f87171]',
-          isWarn && 'text-[#fbbf24]',
-          isDone && 'text-[#22c55e]',
-          isRunning && 'text-[#a5b4fc]',
+          isError && 'text-[var(--color-error)]',
+          isWarn && 'text-[var(--color-warning)]',
+          isDone && 'text-[var(--color-success)]',
+          isRunning && 'text-[var(--color-primary)]',
           stage.status === 'pending' && 'text-[var(--color-text-secondary)]'
         )}
       >
@@ -133,7 +133,7 @@ function TimelineStep({ stage, isLast }: { stage: DeployStage & { status: Timeli
         <div
           className={cn(
             'mx-1 h-px flex-1 transition-colors duration-300',
-            isError ? 'bg-[rgba(239,68,68,0.45)]' : isDone ? 'bg-[rgba(34,197,94,0.4)]' : 'bg-[var(--color-border-default)]'
+            isError ? 'bg-[color-mix(in srgb, var(--color-error) 45%, transparent)]' : isDone ? 'bg-[color-mix(in srgb, var(--color-success) 40%, transparent)]' : 'bg-[var(--color-border-default)]'
           )}
         />
       )}
@@ -144,7 +144,7 @@ function TimelineStep({ stage, isLast }: { stage: DeployStage & { status: Timeli
 function LogLineRow({ log, locale }: { log: LogEntry; locale: string }) {
   return (
     <div className={cn('flex items-start gap-2.5 rounded border px-2 py-1', LOG_ROW_STYLE[log.level])}>
-      <span className="shrink-0 whitespace-nowrap text-[#475569]">
+      <span className="shrink-0 whitespace-nowrap text-[var(--color-text-muted)]">
         {formatTime(log.timestamp, locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
       </span>
       <span
@@ -153,11 +153,11 @@ function LogLineRow({ log, locale }: { log: LogEntry; locale: string }) {
         {log.level.toUpperCase()}
       </span>
       {log.step && (
-        <span className="shrink-0 whitespace-nowrap rounded bg-[rgba(148,163,184,0.12)] px-1.5 text-[10px] font-semibold leading-5 text-[#94a3b8]">
+        <span className="shrink-0 whitespace-nowrap rounded bg-[color-mix(in srgb, var(--color-text-secondary) 12%, transparent)] px-1.5 text-[10px] font-semibold leading-5 text-[var(--color-text-secondary)]">
           {log.step.replace(/_/g, ' ')}
         </span>
       )}
-      <span className={cn('break-words', log.level === 'error' ? 'font-semibold text-[#fecaca]' : log.level === 'warn' ? 'font-semibold text-[#fde68a]' : 'text-[#e2e8f0]')}>
+      <span className={cn('break-words', log.level === 'error' ? 'font-semibold text-[#fecaca]' : log.level === 'warn' ? 'font-semibold text-[#fde68a]' : 'text-[var(--color-text-primary)]')}>
         {log.message}
       </span>
     </div>
@@ -167,15 +167,15 @@ function LogLineRow({ log, locale }: { log: LogEntry; locale: string }) {
 function podStatusClass(status: string): string {
   switch (status) {
     case 'Running':
-      return 'text-[#34d399]'
+      return 'text-[var(--color-success)]'
     case 'Pending':
     case 'ContainerCreating':
     case 'Waiting':
-      return 'text-[#fbbf24]'
+      return 'text-[var(--color-warning)]'
     case 'Error':
-      return 'text-[#f87171]'
+      return 'text-[var(--color-error)]'
     default:
-      return 'text-[#e2e8f0]'
+      return 'text-[var(--color-text-primary)]'
   }
 }
 
@@ -192,23 +192,23 @@ function PodWatchPanel({
 }) {
   const hasRows = rows.length > 0
   return (
-    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
-      <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
+    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+      <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-2.5">
         <Terminal size={14} color="var(--color-text-secondary)" />
         <span className="font-mono text-xs font-semibold text-[var(--color-text-secondary)]">
           $ kubectl get pods -n {namespace} -w
         </span>
-        <span className={cn('ml-auto text-[11px]', isConnected ? 'text-[#34d399]' : 'text-[#fbbf24]')}>
+        <span className={cn('ml-auto text-[11px]', isConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]')}>
           {isConnected ? (hasRows ? `${rows.length} pods` : 'Watching') : 'Connecting...'}
         </span>
       </div>
       <div className="h-[1200px] overflow-y-auto p-3 font-mono text-xs leading-[1.7]">
         {error && (
-          <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-2 py-1.5 text-[#fca5a5]">
+          <div className="mb-3 rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-2 py-1.5 text-[var(--color-error)]">
             {error}
           </div>
         )}
-        <div className="grid grid-cols-[minmax(220px,1fr)_70px_120px_80px_60px] gap-3 border-b border-[rgba(255,255,255,0.08)] pb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+        <div className="grid grid-cols-[minmax(220px,1fr)_70px_120px_80px_60px] gap-3 border-b border-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)] pb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
           <span>Name</span>
           <span>Ready</span>
           <span>Status</span>
@@ -224,7 +224,7 @@ function PodWatchPanel({
             </div>
           )}
           {rows.map((row) => (
-            <div key={row.name} className="grid grid-cols-[minmax(220px,1fr)_70px_120px_80px_60px] gap-3 rounded px-1 py-0.5 text-[#cbd5e1] hover:bg-[rgba(255,255,255,0.04)]">
+            <div key={row.name} className="grid grid-cols-[minmax(220px,1fr)_70px_120px_80px_60px] gap-3 rounded px-1 py-0.5 text-[var(--color-text-secondary)] hover:bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)]">
               <span className="truncate">{row.name}</span>
               <span>{row.ready}</span>
               <span className={cn('font-semibold', podStatusClass(row.status))}>{row.status}</span>
@@ -257,13 +257,13 @@ function StatusSummary({
       className={cn(
         'mt-5 flex items-center gap-3 rounded-[var(--card-radius)] border p-5',
         isSuccess
-          ? 'border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)]'
-          : 'border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.08)]'
+          ? 'border-[color-mix(in srgb, var(--color-success) 30%, transparent)] bg-[color-mix(in srgb, var(--color-success) 8%, transparent)]'
+          : 'border-[color-mix(in srgb, var(--color-error) 30%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)]'
       )}
     >
-      {isSuccess ? <CheckCircle size={24} color="#22c55e" /> : <XCircle size={24} color="#f87171" />}
+      {isSuccess ? <CheckCircle size={24} color="var(--color-success)" /> : <XCircle size={24} color="var(--color-error)" />}
       <div className="min-w-0 flex-1">
-        <div className={cn('mb-0.5 text-[15px] font-bold', isSuccess ? 'text-[#22c55e]' : 'text-[#f87171]')}>
+        <div className={cn('mb-0.5 text-[15px] font-bold', isSuccess ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]')}>
           {isSuccess ? 'Deployment Completed' : 'Deployment Failed'}
         </div>
         <div className="text-[13px] text-[var(--color-text-secondary)]">
@@ -272,7 +272,7 @@ function StatusSummary({
             : 'An error occurred during deployment. Check ERROR/failed lines in the Logs console below. If logs are empty, check recent failures in Stack List > selected stack > History.'}
         </div>
         {!isSuccess && latestFailureMessage && (
-          <div className="mt-2 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-2.5 py-2 text-[12px] text-[#fca5a5]">
+          <div className="mt-2 rounded border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] px-2.5 py-2 text-[12px] text-[var(--color-error)]">
             Latest failure reason: {latestFailureMessage}
           </div>
         )}
@@ -282,7 +282,7 @@ function StatusSummary({
           type="button"
           onClick={onContinue}
           disabled={isContinuing}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.12)] px-3 py-2 text-xs font-bold text-[#86efac] hover:bg-[rgba(34,197,94,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded border border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] px-3 py-2 text-xs font-bold text-[var(--color-success)] hover:bg-[color-mix(in srgb, var(--color-success) 18%, transparent)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isContinuing ? <Loader size={14} className="animate-spin" /> : <PlayCircle size={14} />}
           Continue
@@ -396,7 +396,7 @@ export function StackDeployPage() {
       {/* Page header */}
       <div className="mb-6 flex items-center gap-2.5">
         <div
-          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
+          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]"
         >
           <Terminal size={18} />
         </div>
@@ -407,7 +407,7 @@ export function StackDeployPage() {
           <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
             Deployment ID: {id}
             {' · '}
-            <span className={cn(isConnected ? 'text-[#22c55e]' : 'text-[#f59e0b]')}>
+            <span className={cn(isConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]')}>
               {isConnected ? 'Connected' : 'Connecting...'}
             </span>
           </p>
@@ -428,7 +428,7 @@ export function StackDeployPage() {
             <span className="text-xs text-[var(--color-text-secondary)]">Overall Progress</span>
             <span className="text-xs font-bold text-[var(--color-text-primary)]">{progress}%</span>
           </div>
-          <div className="flex h-2 w-full overflow-hidden rounded bg-[rgba(255,255,255,0.08)]">
+          <div className="flex h-2 w-full overflow-hidden rounded bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)]">
             {PROGRESS_SEGMENTS.map((segment) => (
               <div
                 key={segment}
@@ -436,8 +436,8 @@ export function StackDeployPage() {
                   'h-full w-[1%] transition-colors duration-300',
                   segment <= progress
                     ? status === 'failed'
-                      ? 'bg-[#ef4444]'
-                      : 'bg-[linear-gradient(90deg,#6366f1,#8b5cf6)]'
+                      ? 'bg-[var(--color-error)]'
+                      : 'bg-[linear-gradient(90deg,var(--color-primary),var(--color-accent-alt))]'
                     : 'bg-transparent'
                 )}
               />
@@ -447,8 +447,8 @@ export function StackDeployPage() {
       </div>
 
       {status === 'failed' && latestFailureLog && (
-        <div className="mb-4 rounded-[var(--card-radius)] border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] p-4">
-          <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[#f87171]">
+        <div className="mb-4 rounded-[var(--card-radius)] border border-[color-mix(in srgb, var(--color-error) 35%, transparent)] bg-[color-mix(in srgb, var(--color-error) 8%, transparent)] p-4">
+          <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[var(--color-error)]">
             <XCircle size={16} />
             Deployment error
           </div>
@@ -459,10 +459,10 @@ export function StackDeployPage() {
       )}
 
       {highlightedLogs.length > 0 && (
-        <div className="mb-4 overflow-hidden rounded-[var(--card-radius)] border border-[rgba(245,158,11,0.25)] bg-[rgba(245,158,11,0.04)]">
-          <div className="flex items-center gap-2 border-b border-[rgba(245,158,11,0.18)] px-4 py-2.5">
-            <AlertTriangle size={14} className="text-[#fbbf24]" />
-            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[#fbbf24]">
+        <div className="mb-4 overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in srgb, var(--color-warning) 25%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 4%, transparent)]">
+          <div className="flex items-center gap-2 border-b border-[color-mix(in srgb, var(--color-warning) 18%, transparent)] px-4 py-2.5">
+            <AlertTriangle size={14} className="text-[var(--color-warning)]" />
+            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-warning)]">
               Attention ({highlightedLogs.length})
             </span>
           </div>
@@ -476,8 +476,8 @@ export function StackDeployPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Log console */}
-        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d1117]">
-          <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
+        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] px-4 py-2.5">
             <Terminal size={14} color="var(--color-text-secondary)" />
             <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
               Raw Logs ({logs.length})
@@ -487,7 +487,7 @@ export function StackDeployPage() {
                 type="button"
                 onClick={handleContinue}
                 disabled={continueStack.isPending}
-                className="ml-auto inline-flex items-center gap-1.5 rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.12)] px-2.5 py-1 text-[11px] font-bold text-[#86efac] hover:bg-[rgba(34,197,94,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="ml-auto inline-flex items-center gap-1.5 rounded border border-[color-mix(in srgb, var(--color-success) 35%, transparent)] bg-[color-mix(in srgb, var(--color-success) 12%, transparent)] px-2.5 py-1 text-[11px] font-bold text-[var(--color-success)] hover:bg-[color-mix(in srgb, var(--color-success) 18%, transparent)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {continueStack.isPending ? <Loader size={13} className="animate-spin" /> : <PlayCircle size={13} />}
                 Continue

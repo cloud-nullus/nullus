@@ -14,7 +14,7 @@ export function ConfigCard({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
+		<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
 			<div className="flex items-center gap-2 border-b border-[var(--color-border-default)] px-4 py-3">
 				<span className="text-[var(--color-text-secondary)]">{icon}</span>
 				<h4 className="m-0 text-[13px] font-semibold text-[var(--color-text-primary)]">
@@ -46,7 +46,7 @@ export function ToolOption({
 			className={cn(
 				"flex flex-col gap-2 rounded-md border p-2.5",
 				checked
-					? "border-[rgba(99,102,241,0.35)]"
+					? "border-[color-mix(in srgb, var(--color-primary) 35%, transparent)]"
 					: "border-[var(--color-border-default)] opacity-60",
 			)}
 		>
@@ -55,7 +55,7 @@ export function ToolOption({
 					className={cn(
 						"mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
 						checked
-							? "border-[#6366f1] bg-[#6366f1]"
+							? "border-[var(--color-primary)] bg-[var(--color-primary)]"
 							: "border-[var(--color-border-default)]",
 					)}
 				>
@@ -74,14 +74,14 @@ export function ToolOption({
 				<div className="ml-6 flex flex-wrap items-center gap-3">
 					<NativeSelect
 						defaultValue={version}
-						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 					>
 						{(versions ?? [version]).map((v) => (
 							<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
 						))}
 					</NativeSelect>
 					<div className="flex items-center gap-1.5">
-						<span className="text-[11px] text-[#6366f1]">Instances:</span>
+						<span className="text-[11px] text-[var(--color-primary)]">Instances:</span>
 						<div className="flex items-center">
 							<button
 								type="button"
@@ -322,13 +322,13 @@ export function ResourcesPanel() {
 			<PanelHeader title="Resources" desc={t('stackInfo.panels.resources', 'Resource allocation for this stack')} />
 			<div className="mb-6 grid grid-cols-3 gap-4">
 				{[
-					{ label: "CPU", value: "8", unit: "cores", color: "#6366f1" },
-					{ label: "Memory", value: "32", unit: "Gi", color: "#10b981" },
-					{ label: "Storage", value: "500", unit: "Gi", color: "#f59e0b" },
+					{ label: "CPU", value: "8", unit: "cores", color: "var(--color-primary)" },
+					{ label: "Memory", value: "32", unit: "Gi", color: "var(--color-success)" },
+					{ label: "Storage", value: "500", unit: "Gi", color: "var(--color-warning)" },
 				].map((item) => (
 					<div
 						key={item.label}
-						className="flex flex-col items-center rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-5"
+						className="flex flex-col items-center rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-5"
 					>
 						<h4 className="m-0 mb-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
 							{item.label}
@@ -348,7 +348,7 @@ export function ResourcesPanel() {
 					</div>
 				))}
 			</div>
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-4">
 				<h4 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
 					<Server size={14} /> {t('stackInfo.clusterInfo', 'Cluster Info')}
 				</h4>

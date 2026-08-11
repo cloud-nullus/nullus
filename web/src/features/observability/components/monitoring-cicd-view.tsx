@@ -153,10 +153,10 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
   const runningDeployments = deployments.filter((d) => ['running', 'pending', 'validating', 'installing', 'configuring', 'health_check', 'rolling_back'].includes(d.status)).length
 
   const appKpis = [
-    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 100 },
-    { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CheckCircle size={18} />, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
-    { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch size={18} />, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400', bar: 100 },
-    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
+    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: 'var(--color-primary)', iconCls: 'bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] text-[var(--color-primary)]', bar: 100 },
+    { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CheckCircle size={18} />, color: 'var(--color-success)', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
+    { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch size={18} />, color: 'var(--color-warning)', iconCls: 'bg-amber-500/15 text-amber-400', bar: 100 },
+    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: 'var(--color-success)', iconCls: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
   ]
 
   return (
@@ -168,8 +168,8 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
                 range === r
-                  ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
+                  ? 'border-[color-mix(in srgb, var(--color-warning) 60%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 20%, transparent)] text-[var(--color-warning)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]')}>
               {r}
             </button>
           ))}
@@ -187,12 +187,12 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={timeline}>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
+              <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }} />
-              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Legend wrapperStyle={{ color: 'var(--color-border-default)', fontSize: 11 }} />
+              <Bar dataKey="success" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="failed" fill="var(--color-error)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -202,7 +202,7 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
       <div className="mb-5 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-3">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
-            <Package size={15} className="text-[#a5b4fc]" />
+            <Package size={15} className="text-[var(--color-primary)]" />
             Deployed Applications
           </h2>
           <span className="text-xs text-[var(--color-text-secondary)]">{rows.length} apps</span>
@@ -222,7 +222,7 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
                 const isLast = i === rows.length - 1
                 return (
                   <tr key={app.name}
-                    className={cn('transition-colors hover:bg-[rgba(255,255,255,0.02)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
+                    className={cn('transition-colors hover:bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className={cn('h-2 w-2 shrink-0 rounded-full', sc.dot)} />
@@ -268,7 +268,7 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
       <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="border-b border-[var(--color-border-default)] px-4 py-3">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
-            <GitBranch size={15} className="text-[#a5b4fc]" />
+            <GitBranch size={15} className="text-[var(--color-primary)]" />
             Recent Deployments
           </h2>
         </div>

@@ -56,7 +56,7 @@ type ScopeMetrics = {
 function UsageBar({ value, color }: { value: number; color: string }) {
   const normalized = Math.max(0, Math.min(100, value));
   return (
-    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[rgba(255,255,255,0.08)]">
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in srgb, var(--color-text-primary) 8%, transparent)]">
       <svg
         className="h-full w-full"
         viewBox="0 0 100 6"
@@ -385,12 +385,12 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
 
   const podStatusData = useMemo(() => {
     const palette = [
-      "#22c55e",
-      "#f59e0b",
-      "#ef4444",
-      "#60a5fa",
-      "#a78bfa",
-      "#94a3b8",
+      "var(--color-success)",
+      "var(--color-warning)",
+      "var(--color-error)",
+      "var(--color-info)",
+      "var(--color-accent-alt)",
+      "var(--color-text-secondary)",
     ];
     const counts = Object.entries(currentMetrics.statusCounts).map(
       ([name, count]) => ({ name, count }),
@@ -440,8 +440,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current CPU",
           value: "-",
           icon: <Cpu size={18} />,
-          color: "#60a5fa",
-          iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]",
+          color: "var(--color-info)",
+          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "Core" },
         },
@@ -449,8 +449,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current Memory",
           value: "-",
           icon: <MemoryStick size={18} />,
-          color: "#a78bfa",
-          iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]",
+          color: "var(--color-accent-alt)",
+          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "GiB" },
         },
@@ -458,16 +458,16 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current Storage",
           value: "-",
           icon: <HardDrive size={18} />,
-          color: "#34d399",
-          iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
+          color: "var(--color-success)",
+          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]",
           bar: 0,
         },
         {
           label: "Ready Pods",
           value: "-",
           icon: <Box size={18} />,
-          color: "#fbbf24",
-          iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]",
+          color: "var(--color-warning)",
+          iconWrapClassName: "bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]",
           bar: 0,
         },
       ];
@@ -525,8 +525,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         label: "Current CPU",
         value: cpuUsageC !== null ? `${cpuUsageC.toFixed(2)} Core` : "N/A",
         icon: <Cpu size={18} />,
-        color: "#60a5fa",
-        iconWrapClassName: "bg-[rgba(59,130,246,0.15)] text-[#60a5fa]",
+        color: "var(--color-info)",
+        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-info) 15%, transparent)] text-[var(--color-info)]",
         bar: cpuCurrentBar,
         metricScale: {
           current: cpuUsageC,
@@ -540,8 +540,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         value:
           memoryUsageGiB !== null ? `${memoryUsageGiB.toFixed(2)} GiB` : "N/A",
         icon: <MemoryStick size={18} />,
-        color: "#a78bfa",
-        iconWrapClassName: "bg-[rgba(139,92,246,0.15)] text-[#a78bfa]",
+        color: "var(--color-accent-alt)",
+        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-accent-alt) 15%, transparent)] text-[var(--color-accent-alt)]",
         bar: memoryCurrentBar,
         metricScale: {
           current: memoryUsageGiB,
@@ -561,8 +561,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                 ? `${storageRequestGiB.toFixed(2)} GiB`
                 : "0.00 GiB",
         icon: <HardDrive size={18} />,
-        color: "#34d399",
-        iconWrapClassName: "bg-[rgba(16,185,129,0.15)] text-[#34d399]",
+        color: "var(--color-success)",
+        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]",
         bar: storageCurrentBar,
         metricScale: {
           current: storageUsageGiB,
@@ -576,8 +576,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         label: "Ready Pods",
         value: `${currentMetrics.readyPods} / ${currentMetrics.totalPods}`,
         icon: <Box size={18} />,
-        color: "#fbbf24",
-        iconWrapClassName: "bg-[rgba(245,158,11,0.15)] text-[#fbbf24]",
+        color: "var(--color-warning)",
+        iconWrapClassName: "bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]",
         bar: readyRatio,
       },
     ];
@@ -589,28 +589,28 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 } },
+        legend: { labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 } },
         tooltip: {
-          backgroundColor: "#111827",
-          borderColor: "#374151",
+          backgroundColor: "var(--color-surface-base)",
+          borderColor: "var(--color-border-default)",
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "#e5e7eb",
+          bodyColor: "var(--color-border-default)",
         },
       },
       scales: {
         x: {
           ticks: {
-            color: "#cbd5e1",
+            color: "var(--color-text-secondary)",
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 8,
           },
-          grid: { color: "rgba(148,163,184,0.12)" },
+          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
         },
         y: {
           ticks: {
-            color: "#cbd5e1",
+            color: "var(--color-text-secondary)",
             callback: (value) => {
               const n = Number(value);
               if (!Number.isFinite(n)) return "0";
@@ -618,8 +618,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               return `${Math.round(n)}`;
             },
           },
-          title: { display: true, text: "Core", color: "#cbd5e1" },
-          grid: { color: "rgba(148,163,184,0.12)" },
+          title: { display: true, text: "Core", color: "var(--color-text-secondary)" },
+          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
           beginAtZero: true,
         },
       },
@@ -637,28 +637,28 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 } },
+        legend: { labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 } },
         tooltip: {
-          backgroundColor: "#111827",
-          borderColor: "#374151",
+          backgroundColor: "var(--color-surface-base)",
+          borderColor: "var(--color-border-default)",
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "#e5e7eb",
+          bodyColor: "var(--color-border-default)",
         },
       },
       scales: {
         x: {
           ticks: {
-            color: "#cbd5e1",
+            color: "var(--color-text-secondary)",
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 8,
           },
-          grid: { color: "rgba(148,163,184,0.12)" },
+          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
         },
         y: {
           ticks: {
-            color: "#cbd5e1",
+            color: "var(--color-text-secondary)",
             callback: (value) => {
               const n = Number(value);
               if (!Number.isFinite(n)) return "0";
@@ -666,8 +666,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               return `${Math.round(n)}`;
             },
           },
-          title: { display: true, text: "GiB", color: "#cbd5e1" },
-          grid: { color: "rgba(148,163,184,0.12)" },
+          title: { display: true, text: "GiB", color: "var(--color-text-secondary)" },
+          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
           beginAtZero: true,
         },
       },
@@ -686,15 +686,15 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "CPU Request",
           data: usageData.map((item) => item.cpuRequest / 1000),
-          borderColor: "#60a5fa",
-          backgroundColor: "rgba(96,165,250,0.18)",
+          borderColor: "var(--color-info)",
+          backgroundColor: "color-mix(in srgb, var(--color-info) 18%, transparent)",
           fill: true,
         },
         {
           label: "CPU Limit",
           data: usageData.map((item) => item.cpuLimit / 1000),
-          borderColor: "#f59e0b",
-          backgroundColor: "rgba(245,158,11,0.08)",
+          borderColor: "var(--color-warning)",
+          backgroundColor: "color-mix(in srgb, var(--color-warning) 8%, transparent)",
           fill: false,
         },
         {
@@ -702,8 +702,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           data: usageData.map((item) =>
             item.cpuUsage === null ? null : item.cpuUsage / 1000,
           ),
-          borderColor: "#22c55e",
-          backgroundColor: "rgba(34,197,94,0.08)",
+          borderColor: "var(--color-success)",
+          backgroundColor: "color-mix(in srgb, var(--color-success) 8%, transparent)",
           fill: false,
         },
       ],
@@ -718,15 +718,15 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Memory Request",
           data: usageData.map((item) => item.memoryRequest / 1024),
-          borderColor: "#3b82f6",
-          backgroundColor: "rgba(59,130,246,0.18)",
+          borderColor: "var(--color-info)",
+          backgroundColor: "color-mix(in srgb, var(--color-info) 18%, transparent)",
           fill: true,
         },
         {
           label: "Memory Limit",
           data: usageData.map((item) => item.memoryLimit / 1024),
-          borderColor: "#f59e0b",
-          backgroundColor: "rgba(245,158,11,0.08)",
+          borderColor: "var(--color-warning)",
+          backgroundColor: "color-mix(in srgb, var(--color-warning) 8%, transparent)",
           fill: false,
         },
         {
@@ -734,8 +734,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           data: usageData.map((item) =>
             item.memoryUsage === null ? null : item.memoryUsage / 1024,
           ),
-          borderColor: "#22c55e",
-          backgroundColor: "rgba(34,197,94,0.08)",
+          borderColor: "var(--color-success)",
+          backgroundColor: "color-mix(in srgb, var(--color-success) 8%, transparent)",
           fill: false,
         },
       ],
@@ -750,13 +750,13 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Total Pods",
           data: ossBars.map((item) => item.pods),
-          backgroundColor: "rgba(99,102,241,0.72)",
+          backgroundColor: "color-mix(in srgb, var(--color-primary) 72%, transparent)",
           borderRadius: 6,
         },
         {
           label: "Ready Pods",
           data: ossBars.map((item) => item.ready),
-          backgroundColor: "rgba(34,197,94,0.72)",
+          backgroundColor: "color-mix(in srgb, var(--color-success) 72%, transparent)",
           borderRadius: 6,
         },
       ],
@@ -769,13 +769,13 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 } },
+        legend: { labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 } },
         tooltip: {
-          backgroundColor: "#111827",
-          borderColor: "#374151",
+          backgroundColor: "var(--color-surface-base)",
+          borderColor: "var(--color-border-default)",
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "#e5e7eb",
+          bodyColor: "var(--color-border-default)",
           callbacks: {
             title: (items) => {
               const idx = items[0]?.dataIndex ?? 0;
@@ -787,12 +787,12 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       scales: {
         x: {
           ticks: { display: false },
-          grid: { color: "rgba(148,163,184,0.12)" },
+          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
         },
         y: {
           beginAtZero: true,
-          ticks: { color: "#cbd5e1", precision: 0 },
-          grid: { color: "rgba(148,163,184,0.12)" },
+          ticks: { color: "var(--color-text-secondary)", precision: 0 },
+          grid: { color: "color-mix(in srgb, var(--color-text-secondary) 12%, transparent)" },
         },
       },
     }),
@@ -827,7 +827,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           data: podStatusData.map((item) => item.value),
           backgroundColor: podStatusData.map((item) => item.color),
-          borderColor: "rgba(15,23,42,0.8)",
+          borderColor: "color-mix(in srgb, var(--color-text-primary) 80%, transparent)",
           borderWidth: 2,
         },
       ],
@@ -843,14 +843,14 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       plugins: {
         legend: {
           position: "bottom",
-          labels: { color: "#e5e7eb", boxWidth: 10, boxHeight: 10 },
+          labels: { color: "var(--color-border-default)", boxWidth: 10, boxHeight: 10 },
         },
         tooltip: {
-          backgroundColor: "#111827",
-          borderColor: "#374151",
+          backgroundColor: "var(--color-surface-base)",
+          borderColor: "var(--color-border-default)",
           borderWidth: 1,
           titleColor: "#f9fafb",
-          bodyColor: "#e5e7eb",
+          bodyColor: "var(--color-border-default)",
         },
       },
     }),
@@ -869,7 +869,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               Resource Trend
             </h2>
             {isLoading && (
-              <span className="rounded-full bg-[rgba(99,102,241,0.15)] px-2 py-0.5 text-[11px] font-semibold text-[#a5b4fc]">
+              <span className="rounded-full bg-[color-mix(in srgb, var(--color-primary) 15%, transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
                 Loading...
               </span>
             )}
@@ -886,8 +886,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     className={cn(
                       "cursor-pointer rounded-[7px] border px-2.5 py-[5px] text-xs font-semibold",
                       active
-                        ? "border-[rgba(16,185,129,0.65)] bg-[rgba(16,185,129,0.2)] text-[#6ee7b7]"
-                        : "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]",
+                        ? "border-[color-mix(in srgb, var(--color-success) 65%, transparent)] bg-[color-mix(in srgb, var(--color-success) 20%, transparent)] text-[var(--color-success)]"
+                        : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]",
                     )}
                   >
                     {item.label}
@@ -907,8 +907,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     className={cn(
                       "cursor-pointer rounded-[7px] border px-2.5 py-[5px] text-xs font-bold",
                       active
-                        ? "border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]"
-                        : "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]",
+                        ? "border-[color-mix(in srgb, var(--color-warning) 60%, transparent)] bg-[color-mix(in srgb, var(--color-warning) 20%, transparent)] text-[var(--color-warning)]"
+                        : "border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]",
                     )}
                   >
                     {item === "realtime" ? "Live 5s" : item}
@@ -980,7 +980,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     return (
                       <>
                         <div className="relative h-4">
-                          <div className="absolute left-0 right-0 top-1 h-2 rounded-full bg-[rgba(148,163,184,0.22)]" />
+                          <div className="absolute left-0 right-0 top-1 h-2 rounded-full bg-[color-mix(in srgb, var(--color-text-secondary) 22%, transparent)]" />
                           {curPos !== null && (
                             <div
                               className="absolute left-0 top-1 h-2 rounded-full"
@@ -991,12 +991,12 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                             />
                           )}
                           <div
-                            className="absolute top-0.5 h-[10px] w-px bg-[#60a5fa]"
+                            className="absolute top-0.5 h-[10px] w-px bg-[var(--color-info)]"
                             style={{ left: `${reqPos}%` }}
                           />
                           {showLimit && (
                             <div
-                              className="absolute top-0.5 h-[10px] w-px bg-[#f59e0b]"
+                              className="absolute top-0.5 h-[10px] w-px bg-[var(--color-warning)]"
                               style={{ left: `${limPos}%` }}
                             />
                           )}
@@ -1045,8 +1045,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           ))}
         </div>
         <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
-          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[var(--color-text-primary)]">
               CPU (Request / Limit / Current)
             </div>
             <div className="h-[250px]">
@@ -1054,8 +1054,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[var(--color-text-primary)]">
               Memory (Request / Limit / Current)
             </div>
             <div className="h-[250px]">
@@ -1063,8 +1063,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[var(--color-text-primary)]">
               OSS Pod Coverage
             </div>
             <div className="relative h-[272px]">
@@ -1106,7 +1106,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                           }}
                         />
                         <span
-                          className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[rgba(148,163,184,0.25)] text-[9px] font-bold text-[#e2e8f0]"
+                          className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[color-mix(in srgb, var(--color-text-secondary) 25%, transparent)] text-[9px] font-bold text-[var(--color-text-primary)]"
                           aria-hidden="true"
                         >
                           {item.fullName.slice(0, 1).toUpperCase()}
@@ -1119,8 +1119,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[#0b1220] p-2.5">
-            <div className="mb-2 text-[13px] font-bold text-[#f8fafc]">
+          <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-2.5">
+            <div className="mb-2 text-[13px] font-bold text-[var(--color-text-primary)]">
               Pod Status
             </div>
             <div className="h-[250px]">
@@ -1138,7 +1138,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         <h2 className="m-0 mb-4 text-[15px] font-bold text-[var(--color-text-primary)]">
           Tool Health
         </h2>
-        <div className="mb-4 overflow-x-auto rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
+        <div className="mb-4 overflow-x-auto rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)]">
           <table className="min-w-full text-left text-[12px] text-[var(--color-text-secondary)]">
             <thead>
               <tr className="border-b border-[var(--color-border-default)] text-[11px] uppercase tracking-[0.05em]">
@@ -1152,7 +1152,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               {visibleResources.map((item) => (
                 <tr
                   key={`${item.kind}-${item.name}`}
-                  className="border-b border-[rgba(255,255,255,0.04)]"
+                  className="border-b border-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)]"
                 >
                   <td className="px-3 py-2">{item.kind}</td>
                   <td className="px-3 py-2 font-medium text-[var(--color-text-primary)]">
@@ -1176,7 +1176,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           ).map((tool) => (
             <div
               key={`pods-${tool.key}`}
-              className="rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3"
+              className="rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in srgb, var(--color-text-primary) 2%, transparent)] p-3"
             >
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-sm font-semibold text-[var(--color-text-primary)]">
@@ -1202,7 +1202,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     {tool.pods.map((pod) => (
                       <tr
                         key={pod.name}
-                        className="border-b border-[rgba(255,255,255,0.04)]"
+                        className="border-b border-[color-mix(in srgb, var(--color-text-primary) 4%, transparent)]"
                       >
                         <td className="py-1 pr-3 font-medium text-[var(--color-text-primary)]">
                           {pod.name}

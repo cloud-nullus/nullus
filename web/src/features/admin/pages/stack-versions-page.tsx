@@ -19,15 +19,15 @@ import {
 } from '../../stack/utils/compatibility-arch'
 
 const STATUS_BADGE_CLASS: Record<CompatibilityMatrix['status'], string> = {
-  verified: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-  untested: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-  unsupported: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+  verified: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
+  untested: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+  unsupported: 'bg-[color-mix(in srgb, var(--color-error) 15%, transparent)] text-[var(--color-error)]',
 }
 
 const TIER_BADGE_CLASS: Record<CompatibilityTier, string> = {
-  stable: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-  beta: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-  deprecated: 'bg-[rgba(148,163,184,0.15)] text-[#94a3b8]',
+  stable: 'bg-[color-mix(in srgb, var(--color-success) 15%, transparent)] text-[var(--color-success)]',
+  beta: 'bg-[color-mix(in srgb, var(--color-warning) 15%, transparent)] text-[var(--color-warning)]',
+  deprecated: 'bg-[color-mix(in srgb, var(--color-text-secondary) 15%, transparent)] text-[var(--color-text-secondary)]',
 }
 
 export function StackVersionsAdminPage() {
@@ -96,9 +96,9 @@ export function StackVersionsAdminPage() {
             className="hidden items-center gap-3 text-[11px] text-[var(--color-text-secondary)] md:flex"
             aria-label={t('stackVersionsAdmin.legend.aria', 'Matrix status legend')}
           >
-            <LegendDot color="#22c55e" label={t('stackVersionsAdmin.legend.verified', 'verified')} />
-            <LegendDot color="#f59e0b" label={t('stackVersionsAdmin.legend.untested', 'untested')} />
-            <LegendDot color="#ef4444" label={t('stackVersionsAdmin.legend.unsupported', 'unsupported')} />
+            <LegendDot color="var(--color-success)" label={t('stackVersionsAdmin.legend.verified', 'verified')} />
+            <LegendDot color="var(--color-warning)" label={t('stackVersionsAdmin.legend.untested', 'untested')} />
+            <LegendDot color="var(--color-error)" label={t('stackVersionsAdmin.legend.unsupported', 'unsupported')} />
           </div>
         </div>
       </div>
@@ -133,7 +133,7 @@ export function StackVersionsAdminPage() {
         </div>
       )}
       {matricesError && (
-        <div className="p-4 text-xs text-[#ef4444]">
+        <div className="p-4 text-xs text-[var(--color-error)]">
           {t('stackVersionsAdmin.loadError', 'Failed to load compatibility matrices.')}
         </div>
       )}
@@ -168,8 +168,8 @@ export function StackVersionsAdminPage() {
                 type="button"
                 onClick={() => setSelectedId(m.id)}
                 className={cn(
-                  'flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]',
-                  active && 'bg-[rgba(99,102,241,0.08)]',
+                  'flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)]',
+                  active && 'bg-[color-mix(in srgb, var(--color-primary) 8%, transparent)]',
                 )}
                 aria-pressed={active}
               >
@@ -207,7 +207,7 @@ export function StackVersionsAdminPage() {
         {archs.map((arch) => (
           <span
             key={arch}
-            className="rounded-full bg-[rgba(99,102,241,0.12)] px-2 py-0.5 text-[10px] text-[#818cf8]"
+            className="rounded-full bg-[color-mix(in srgb, var(--color-primary) 12%, transparent)] px-2 py-0.5 text-[10px] text-[var(--color-primary)]"
           >
             {t(`stackVersionsAdmin.archBadge.${arch}`, arch)}
           </span>
@@ -221,7 +221,7 @@ export function StackVersionsAdminPage() {
     const verdict = isMatrixCompatibleWithCluster(selectedMatrix, archs)
     if (verdict === 'compatible') {
       return (
-        <span className="inline-flex items-center gap-1 text-[#22c55e]">
+        <span className="inline-flex items-center gap-1 text-[var(--color-success)]">
           <CheckCircle2 size={14} />
           {t('stackVersionsAdmin.crossEval.compatible', 'Compatible')}
         </span>
@@ -234,7 +234,7 @@ export function StackVersionsAdminPage() {
         .join('\n')
       return (
         <span
-          className="inline-flex items-center gap-1 text-[#ef4444]"
+          className="inline-flex items-center gap-1 text-[var(--color-error)]"
           title={title || t('stackVersionsAdmin.crossEval.incompatible', 'Incompatible')}
         >
           <XCircle size={14} />
@@ -243,7 +243,7 @@ export function StackVersionsAdminPage() {
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 text-[#f59e0b]">
+      <span className="inline-flex items-center gap-1 text-[var(--color-warning)]">
         <AlertTriangle size={14} />
         {t('stackVersionsAdmin.crossEval.unknown', 'Unknown')}
       </span>
@@ -276,7 +276,7 @@ export function StackVersionsAdminPage() {
             onClick={() => setDeleteTarget(selectedMatrix)}
             aria-label={t('stackVersionsAdmin.actions.delete', 'Delete matrix')}
           >
-            <Trash2 size={12} className="mr-1 text-[#ef4444]" />
+            <Trash2 size={12} className="mr-1 text-[var(--color-error)]" />
             {t('stackVersionsAdmin.actions.delete', 'Delete')}
           </Button>
         </div>
@@ -295,7 +295,7 @@ export function StackVersionsAdminPage() {
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
-            <thead className="bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]">
+            <thead className="bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]">
               <tr>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.name', 'Name')}</th>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.helm', 'Helm')}</th>
@@ -336,7 +336,7 @@ export function StackVersionsAdminPage() {
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
-            <thead className="bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]">
+            <thead className="bg-[color-mix(in srgb, var(--color-text-primary) 3%, transparent)] text-[var(--color-text-secondary)]">
               <tr>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.cluster', 'Cluster')}</th>
                 <th className="px-3 py-2">{t('stackVersionsAdmin.col.nodeArch', 'Node Architectures')}</th>
