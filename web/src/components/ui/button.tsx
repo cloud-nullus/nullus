@@ -10,7 +10,6 @@
 
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import MuiButton from '@mui/material/Button'
-import { brandCtaSx } from '../../theme/mui-theme'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost'
 export type ButtonSize = 'sm' | 'md' | 'lg'
@@ -25,9 +24,20 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'col
 
 const MUI_SIZE = { sm: 'small', md: 'medium', lg: 'large' } as const
 
-/** DESIGN.md §Components. primary 는 브랜드 골드를 유지한다 — 기획안 D1 결정 대기. */
+/**
+ * DESIGN.md §Components.
+ *
+ * primary 는 브랜드 블루 단색이다. 개편 전에는 골드 그라데이션이었는데, 화면마다
+ * CTA 가 골드와 인디고로 갈려 통일감을 깨는 큰 축이었다. 골드는 로고 마크 전용으로
+ * 내렸다 — Coinbase 구조를 따르면 브랜드 색은 한 곳에만 쓰고 액션은 primary 하나다.
+ * 골드 면이 정말 필요하면 brandCtaSx 를 직접 쓴다.
+ */
 const VARIANT_SX = {
-  primary: brandCtaSx,
+  primary: {
+    backgroundColor: 'var(--color-primary)',
+    color: 'var(--color-on-primary)',
+    '&:hover': { backgroundColor: 'var(--color-primary)', filter: 'brightness(1.08)' },
+  },
   secondary: {
     backgroundColor: 'color-mix(in srgb, var(--color-primary) 14%, transparent)',
     borderColor: 'color-mix(in srgb, var(--color-primary) 40%, transparent)',

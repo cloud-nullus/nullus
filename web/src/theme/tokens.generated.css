@@ -7,44 +7,44 @@
 :root {
   color-scheme: dark;
 
-  --color-surface-base: #0a0a0a;
-  --color-surface-card: #0f1419;
-  --color-surface-sunken: #0f1419;
-  --color-surface-raised: #161d26;
-  --color-surface-overlay: rgba(0, 0, 0, 0.7);
+  --color-surface-base: #0a0b0d;
+  --color-surface-card: #16181c;
+  --color-surface-sunken: #1e2126;
+  --color-surface-raised: #1e2126;
+  --color-surface-overlay: rgba(0, 0, 0, 0.72);
 
-  --color-border-default: #2d3748;
-  --color-border-hover: #4a5568;
+  --color-border-default: #2a2e35;
+  --color-border-hover: #3a3f47;
   /* 개편 전 코드가 참조하는데 정의가 없던 이름. 별칭으로 살려 둔다. */
-  --color-border: #2d3748;
+  --color-border: #2a2e35;
 
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #8496a9;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a8acb3;
+  --color-text-muted: #8b9098;
   /* 위와 같은 이유의 별칭 (--color-text-tertiary → muted). */
-  --color-text-tertiary: #8496a9;
+  --color-text-tertiary: #8b9098;
 
-  --color-primary: #8f9bff;
-  --color-on-primary: #0a0a0a;
-  --color-success: #3ddc97;
-  --color-warning: #f5b544;
-  --color-error: #ff8080;
-  --color-info: #6aa8fb;
-  --color-accent-alt: #c4b5fd;
+  --color-primary: #4d8cff;
+  --color-on-primary: #0a0b0d;
+  --color-success: #2ecc84;
+  --color-warning: #f4b000;
+  --color-error: #ff6b74;
+  --color-info: #4d8cff;
+  --color-accent-alt: #b39bff;
 
   --shadow-raised: none;
   --shadow-overlay: none;
 
-  --color-sidebar-border: #2d3748;
-  --color-sidebar-group-text: #94a3b8;
-  --color-sidebar-item-text: #f1f5f9;
-  --color-sidebar-item-active-text: #8f9bff;
-  --color-sidebar-item-active-bg: color-mix(in srgb, #8f9bff 10%, transparent);
-  --color-sidebar-item-active-border: #8f9bff;
+  --color-sidebar-border: #2a2e35;
+  --color-sidebar-group-text: #a8acb3;
+  --color-sidebar-item-text: #ffffff;
+  --color-sidebar-item-active-text: #4d8cff;
+  --color-sidebar-item-active-bg: color-mix(in srgb, #4d8cff 10%, transparent);
+  --color-sidebar-item-active-border: #4d8cff;
 
-  --color-brand-gold: #ffd700;
-  --color-brand-gold-end: #f59e0b;
-  --color-on-brand-gold: #1a1d29;
+  --color-brand-gold: #f4b000;
+  --color-brand-gold-end: #d99b00;
+  --color-on-brand-gold: #0a0b0d;
 
   --color-home-hero-bg: linear-gradient(160deg, rgba(15, 23, 42, 0.85), rgba(17, 24, 39, 0.95));
 
@@ -84,40 +84,40 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --color-surface-base: #f4f6f8;
+  --color-surface-base: #f7f7f7;
   --color-surface-card: #ffffff;
-  --color-surface-sunken: #eef2f6;
+  --color-surface-sunken: #eef0f3;
   --color-surface-raised: #ffffff;
-  --color-surface-overlay: rgba(15, 23, 42, 0.45);
+  --color-surface-overlay: rgba(10, 11, 13, 0.40);
 
-  --color-border-default: #cbd5e1;
-  --color-border-hover: #b9c3cf;
+  --color-border-default: #dee1e6;
+  --color-border-hover: #c8ccd2;
   /* 개편 전 코드가 참조하는데 정의가 없던 이름. 별칭으로 살려 둔다. */
-  --color-border: #cbd5e1;
+  --color-border: #dee1e6;
 
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #5f6f85;
+  --color-text-primary: #0a0b0d;
+  --color-text-secondary: #5b616e;
+  --color-text-muted: #686d75;
   /* 위와 같은 이유의 별칭 (--color-text-tertiary → muted). */
-  --color-text-tertiary: #5f6f85;
+  --color-text-tertiary: #686d75;
 
-  --color-primary: #4338ca;
+  --color-primary: #0052ff;
   --color-on-primary: #ffffff;
-  --color-success: #047857;
-  --color-warning: #a15c07;
-  --color-error: #c81e1e;
-  --color-info: #1d4ed8;
-  --color-accent-alt: #6d28d9;
+  --color-success: #047a48;
+  --color-warning: #a35a00;
+  --color-error: #cf202f;
+  --color-info: #0052ff;
+  --color-accent-alt: #6b3fd4;
 
   --shadow-raised: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-overlay: 0 8px 24px rgba(15, 23, 42, 0.12);
 
-  --color-sidebar-border: #cbd5e1;
-  --color-sidebar-group-text: #475569;
-  --color-sidebar-item-text: #0f172a;
-  --color-sidebar-item-active-text: #4338ca;
-  --color-sidebar-item-active-bg: color-mix(in srgb, #4338ca 10%, transparent);
-  --color-sidebar-item-active-border: #4338ca;
+  --color-sidebar-border: #dee1e6;
+  --color-sidebar-group-text: #5b616e;
+  --color-sidebar-item-text: #0a0b0d;
+  --color-sidebar-item-active-text: #0052ff;
+  --color-sidebar-item-active-bg: color-mix(in srgb, #0052ff 10%, transparent);
+  --color-sidebar-item-active-border: #0052ff;
 
   --color-home-hero-bg: linear-gradient(160deg, #ffffff, #eef2ff);
 }

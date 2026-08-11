@@ -111,7 +111,7 @@ export function HomePage() {
   const isDeveloper = role === 'developer'
 
   const enabledButtonClassName =
-    'inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] px-6 py-3 text-sm font-bold text-[var(--color-surface-base)]'
+    'inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[var(--color-primary)] px-6 py-3 text-sm font-bold text-[var(--color-surface-base)]'
   const disabledButtonClassName =
     'inline-flex cursor-not-allowed items-center gap-2 rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_12%,_transparent)] px-6 py-3 text-sm font-semibold text-[var(--color-text-muted)] opacity-60'
 

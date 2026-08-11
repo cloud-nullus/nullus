@@ -46,47 +46,48 @@ const schemeFrom = (p: Record<string, string>): SchemeTokens => ({
 })
 
 export const lightTokens: SchemeTokens = schemeFrom({
-  "bg": "#f4f6f8",
+  "bg": "#f7f7f7",
   "surface": "#ffffff",
-  "surface-sunken": "#eef2f6",
-  "divider": "#cbd5e1",
-  "divider-strong": "#b9c3cf",
-  "text": "#0f172a",
-  "text-secondary": "#475569",
-  "text-muted": "#5f6f85",
-  "primary": "#4338ca",
+  "surface-sunken": "#eef0f3",
+  "divider": "#dee1e6",
+  "divider-strong": "#c8ccd2",
+  "text": "#0a0b0d",
+  "text-secondary": "#5b616e",
+  "text-muted": "#686d75",
+  "primary": "#0052ff",
   "on-primary": "#ffffff",
-  "success": "#047857",
-  "warning": "#a15c07",
-  "error": "#c81e1e",
-  "info": "#1d4ed8",
-  "accent-alt": "#6d28d9",
-  "scrim": "rgba(15, 23, 42, 0.45)"
+  "success": "#047a48",
+  "warning": "#a35a00",
+  "error": "#cf202f",
+  "info": "#0052ff",
+  "accent-alt": "#6b3fd4",
+  "scrim": "rgba(10, 11, 13, 0.40)"
 })
 
 export const darkTokens: SchemeTokens = schemeFrom({
-  "bg": "#0a0a0a",
-  "surface": "#0f1419",
-  "surface-raised": "#161d26",
-  "divider": "#2d3748",
-  "divider-strong": "#4a5568",
-  "text": "#f1f5f9",
-  "text-secondary": "#94a3b8",
-  "text-muted": "#8496a9",
-  "primary": "#8f9bff",
-  "on-primary": "#0a0a0a",
-  "success": "#3ddc97",
-  "warning": "#f5b544",
-  "error": "#ff8080",
-  "info": "#6aa8fb",
-  "accent-alt": "#c4b5fd",
-  "scrim": "rgba(0, 0, 0, 0.7)"
+  "bg": "#0a0b0d",
+  "surface": "#16181c",
+  "surface-sunken": "#1e2126",
+  "surface-raised": "#1e2126",
+  "divider": "#2a2e35",
+  "divider-strong": "#3a3f47",
+  "text": "#ffffff",
+  "text-secondary": "#a8acb3",
+  "text-muted": "#8b9098",
+  "primary": "#4d8cff",
+  "on-primary": "#0a0b0d",
+  "success": "#2ecc84",
+  "warning": "#f4b000",
+  "error": "#ff6b74",
+  "info": "#4d8cff",
+  "accent-alt": "#b39bff",
+  "scrim": "rgba(0, 0, 0, 0.72)"
 })
 
 export const brandTokens = {
-  "gold": "#ffd700",
-  "goldEnd": "#f59e0b",
-  "onGold": "#1a1d29"
+  "gold": "#f4b000",
+  "goldEnd": "#d99b00",
+  "onGold": "#0a0b0d"
 } as const
 
 export const elevation = {

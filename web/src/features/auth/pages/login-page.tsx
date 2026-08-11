@@ -73,7 +73,7 @@ function OidcLoginContent() {
           triedRef.current = true
           void auth.signinRedirect()
         }}
-        className="w-full rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] p-3 text-sm font-bold text-[var(--color-on-brand-gold)]"
+        className="w-full rounded-[10px] border-none bg-[var(--color-primary)] p-3 text-sm font-bold text-[var(--color-on-primary)]"
       >
         Sign in with {providerLabel}
       </button>
@@ -148,7 +148,7 @@ function MockLoginContent() {
         <button
           type="submit"
           disabled={!isValid || isSubmitting}
-          className="mt-1 rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] p-3 text-sm font-bold text-[var(--color-on-brand-gold)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-1 rounded-[10px] border-none bg-[var(--color-primary)] p-3 text-sm font-bold text-[var(--color-on-primary)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           Sign in
         </button>

@@ -18,7 +18,7 @@ export function NotFoundPage() {
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="cursor-pointer rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] px-6 py-2.5 text-sm font-bold text-[var(--color-on-brand-gold)]"
+          className="cursor-pointer rounded-[10px] border-none bg-[var(--color-primary)] px-6 py-2.5 text-sm font-bold text-[var(--color-on-primary)]"
         >
           Go to Home
         </button>

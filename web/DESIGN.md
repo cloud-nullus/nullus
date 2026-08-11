@@ -3,7 +3,9 @@ version: alpha
 name: Nullus Platform
 description: >-
   Kubernetes 기반 DevSecOps 자동화 콘솔. 다크 우선, 데이터 밀집 운영 도구.
-  중립 표면 + 액센트 1개에 집중하고, 상태는 색과 아이콘·텍스트를 함께 쓴다.
+  색 구조는 Coinbase 디자인 분석(getdesign.md)의 institutional 방향을 따른다 —
+  채도를 뺀 중립 면 위에 브랜드 블루 하나만 전압으로 쓰고, 깊이는 장식 그림자가
+  아니라 면 겹침으로 만든다. 상태는 색과 아이콘·텍스트를 함께 쓴다.
 colors:
   # ─────────────────────────────────────────────────────────────
   # 대표 역할(canonical) — 다크가 기본 테마이므로 다크 값을 가리킨다.
@@ -15,55 +17,60 @@ colors:
   neutral: "{colors.dark-surface}"
 
   # ─────────────────────────────────────────────────────────────
-  # Light scheme — 카드는 순백, 페이지는 한 톤 낮게. 깊이는 그림자로 만든다.
+  # Light — 순백 카드 위에 소프트 그레이 캔버스. Coinbase 의 밴드 구조를 옮겼다.
+  # 회색조는 채도를 거의 0 으로 둔다. 파랑기 도는 회색은 브랜드 블루와 경쟁한다.
   # ─────────────────────────────────────────────────────────────
-  light-bg: "#f4f6f8"
+  light-bg: "#f7f7f7"
   light-surface: "#ffffff"
-  light-surface-sunken: "#eef2f6"
-  light-divider: "#cbd5e1"
-  light-divider-strong: "#b9c3cf"
-  light-text: "#0f172a"
-  light-text-secondary: "#475569"
-  light-text-muted: "#5f6f85"
-  light-primary: "#4338ca"
+  light-surface-sunken: "#eef0f3"
+  light-divider: "#dee1e6"
+  light-divider-strong: "#c8ccd2"
+  light-text: "#0a0b0d"
+  light-text-secondary: "#5b616e"
+  light-text-muted: "#686d75"
+  light-primary: "#0052ff"
   light-on-primary: "#ffffff"
-  light-success: "#047857"
-  light-warning: "#a15c07"
-  light-error: "#c81e1e"
-  light-info: "#1d4ed8"
-  light-accent-alt: "#6d28d9"
+  light-success: "#047a48"
+  light-warning: "#a35a00"
+  light-error: "#cf202f"
+  light-info: "#0052ff"
+  light-accent-alt: "#6b3fd4"
 
   # ─────────────────────────────────────────────────────────────
-  # Dark scheme — 깊이는 표면 밝기 차로 만든다. 그림자를 쓰지 않는다.
+  # Dark — Coinbase 의 다크 에디토리얼 2단(#0a0b0d / #16181c)을 그대로 쓴다.
+  # 브랜드 블루는 어두운 면에서 대비가 부족하므로 한 단 밝은 톤을 쓴다.
   # ─────────────────────────────────────────────────────────────
-  dark-bg: "#0a0a0a"
-  dark-surface: "#0f1419"
-  dark-surface-raised: "#161d26"
-  dark-divider: "#2d3748"
-  dark-divider-strong: "#4a5568"
-  dark-text: "#f1f5f9"
-  dark-text-secondary: "#94a3b8"
-  dark-text-muted: "#8496a9"
-  dark-primary: "#8f9bff"
-  dark-on-primary: "#0a0a0a"
-  dark-success: "#3ddc97"
-  dark-warning: "#f5b544"
-  dark-error: "#ff8080"
-  dark-info: "#6aa8fb"
-  dark-accent-alt: "#c4b5fd"
+  dark-bg: "#0a0b0d"
+  dark-surface: "#16181c"
+  dark-surface-sunken: "#1e2126"
+  dark-surface-raised: "#1e2126"
+  dark-divider: "#2a2e35"
+  dark-divider-strong: "#3a3f47"
+  dark-text: "#ffffff"
+  dark-text-secondary: "#a8acb3"
+  dark-text-muted: "#8b9098"
+  dark-primary: "#4d8cff"
+  dark-on-primary: "#0a0b0d"
+  dark-success: "#2ecc84"
+  dark-warning: "#f4b000"
+  dark-error: "#ff6b74"
+  dark-info: "#4d8cff"
+  dark-accent-alt: "#b39bff"
 
   # ─────────────────────────────────────────────────────────────
-  # Scrim — 모달·드롭다운 뒤에 깔리는 차폐막. 표면이 아니므로 별도 토큰이다.
+  # Scrim — 모달·드롭다운 뒤 차폐막. 표면이 아니므로 별도 토큰이다.
   # ─────────────────────────────────────────────────────────────
-  light-scrim: "rgba(15, 23, 42, 0.45)"
-  dark-scrim: "rgba(0, 0, 0, 0.7)"
+  light-scrim: "rgba(10, 11, 13, 0.40)"
+  dark-scrim: "rgba(0, 0, 0, 0.72)"
 
   # ─────────────────────────────────────────────────────────────
-  # Brand — 면(배경)으로만 쓴다. 텍스트·보더·아이콘 색으로 쓰지 않는다.
+  # Brand — 로고 전용. CTA 색이 아니다.
+  # 개편 전에는 골드 그라데이션이 주요 액션 색이었는데, 화면마다 CTA 가 골드와
+  # 인디고로 갈려 통일감을 깨는 큰 축이었다. 주요 액션은 primary 하나다.
   # ─────────────────────────────────────────────────────────────
-  brand-gold: "#ffd700"
-  brand-gold-end: "#f59e0b"
-  on-brand-gold: "#1a1d29"
+  brand-gold: "#f4b000"
+  brand-gold-end: "#d99b00"
+  on-brand-gold: "#0a0b0d"
 
 typography:
   h1:
@@ -309,7 +316,7 @@ components:
     rounded: "{rounded.full}"
     padding: 4px
   table-header-dark:
-    backgroundColor: "{colors.dark-surface}"
+    backgroundColor: "{colors.dark-surface-sunken}"
     textColor: "{colors.dark-text-secondary}"
     typography: "{typography.overline}"
     height: 36px
@@ -404,12 +411,15 @@ AG Grid 테마를 만든다. 값을 바꿀 곳은 이 파일 하나다.
 
 ### 브랜드 골드
 
-`brand-gold` `#ffd700` 은 **로고와 면(배경)으로만** 쓴다.
-흰 배경에서 골드는 1.40:1 이라 텍스트·보더·아이콘 색으로 쓸 수 없다.
-골드 배경 위 텍스트는 `on-brand-gold` `#1a1d29` (11.96:1).
+`brand-gold` `#f4b000` 은 **로고 마크에만** 쓴다. CTA 색이 아니다.
 
-주요 액션(CTA)의 색은 골드가 아니라 `*-primary` 다. 화면마다 CTA 가 골드와 인디고로
-갈리는 것이 통일감을 깨는 큰 축이었다.
+개편 전에는 골드 그라데이션이 주요 액션 색이었다. 그런데 화면마다 CTA 가 골드와
+인디고로 갈려 있었고, 골드는 흰 배경에서 텍스트·보더로 쓸 수 없어서(1.40:1)
+결국 "면으로만 쓰는 강한 색"이 액션 자리를 차지하고 있었다.
+
+Coinbase 구조를 따라 **브랜드 색은 한 곳(로고)에만, 액션은 primary 하나로** 정리했다.
+브랜드 블루가 유일한 전압이고, 그래서 화면에서 파란 것이 곧 "누를 수 있는 것" 이다.
+골드 면이 정말 필요하면 `brandCtaSx` 를 직접 쓴다 — 기본 경로가 아니다.
 
 ## Typography
 
@@ -528,9 +538,10 @@ MUI 기본값은 여백이 넉넉하다. 그대로 쓰면 한 화면에 들어�
 ### Don't
 
 - ❌ TSX 에 hex 를 박지 않는다. (ESLint 로 금지한다)
-- ❌ 골드를 텍스트·보더·아이콘 색으로 쓰지 않는다. 흰 배경에서 1.40:1 이다.
-- ❌ 라이트 테마에 400대 톤(`#34d399`, `#fbbf24`, `#818cf8`)을 텍스트로 쓰지 않는다.
-  각각 1.84 / 1.60 / 2.85:1 이다.
+- ❌ 골드를 CTA·텍스트·보더·아이콘 색으로 쓰지 않는다. 로고 마크 전용이다.
+- ❌ 라이트 테마에 밝은 톤을 텍스트로 쓰지 않는다. Coinbase 의 `semantic-up`(#05b169)
+  조차 흰 배경에서 2.80:1 이라 우리 값은 어둡게(#047a48) 조정했다 — 마케팅 사이트의
+  큰 글자용 값을 데이터 밀집 화면의 작은 텍스트에 그대로 쓸 수 없다.
 - ❌ 라이트 보더에 `gray-800` 이상 어두운 값을 쓰지 않는다. 와이어프레임처럼 보인다.
 - ❌ 다크 테마에 그림자를 쓰지 않는다. 보이지 않는데 렌더 비용만 든다.
 - ❌ 그리드·차트·아이콘 라이브러리를 추가하지 않는다. AG Grid 도 포함이다(D6).

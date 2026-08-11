@@ -51,7 +51,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <button
                 type="button"
                 onClick={this.resetErrorBoundary}
-                className="cursor-pointer rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-brand-gold-end))] px-4 py-2.5 text-sm font-bold text-[var(--color-on-brand-gold)]"
+                className="cursor-pointer rounded-[10px] border-none bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-brand-gold-end))] px-4 py-2.5 text-sm font-bold text-[var(--color-on-primary)]"
               >
                 Try Again
               </button>
