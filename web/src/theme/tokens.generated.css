@@ -46,18 +46,24 @@
   --color-brand-gold-end: #d99b00;
   --color-on-brand-gold: #0a0b0d;
 
-  --color-home-hero-bg: linear-gradient(160deg, rgba(15, 23, 42, 0.85), rgba(17, 24, 39, 0.95));
+  /* 장식 그라데이션을 쓰지 않는다(§Do's and Don'ts). 히어로도 면 하나다. */
+  --color-home-hero-bg: #1e2126;
 
-  /* 레이아웃 — DESIGN.md §Layout */
+  /* 레이아웃 — DESIGN.md §Layout (front matter 의 layout 블록이 단일 출처다) */
   --sidebar-width: 240px;
-  --sidebar-collapsed: 64px;
-  --header-height: 56px;
-  --page-padding: 32px;
-  --card-radius: 12px;
-  --card-padding: 16px;
-  --grid-gap: 12px;
-  --icon-size: 38px;
-  --icon-radius: 10px;
+  --sidebar-collapsed: 48px;
+  --header-height: 44px;
+  --page-padding: 24px;
+  --page-padding-y: 20px;
+  --card-padding: 12px;
+  --grid-gap: 8px;
+  --icon-size: 28px;
+  --table-cell-px: 12px;
+  --table-row-height: 32px;
+  --table-header-height: 28px;
+  --control-height: 30px;
+  --card-radius: 8px;
+  --icon-radius: 4px;
 
   /* 간격 스케일 — DESIGN.md §Layout. 스케일 밖의 값을 쓰지 않는다. */
   --space-xs: 4px;
@@ -68,9 +74,9 @@
   --space-2xl: 32px;
   --space-3xl: 48px;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
   --radius-full: 9999px;
 
   --transition-default: 200ms ease;
@@ -119,5 +125,5 @@
   --color-sidebar-item-active-bg: color-mix(in srgb, #0052ff 10%, transparent);
   --color-sidebar-item-active-border: #0052ff;
 
-  --color-home-hero-bg: linear-gradient(160deg, #ffffff, #eef2ff);
+  --color-home-hero-bg: #eef0f3;
 }

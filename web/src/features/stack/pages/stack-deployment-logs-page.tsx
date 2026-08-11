@@ -10,6 +10,7 @@ import type { Stack } from '../api/stack-api'
 import { RetryStackButton } from '../components/retry-stack-button'
 import type { StackStatus as RetryStackStatus } from '../utils/retry-policy'
 import { getStatusStyle } from '../utils/status-style'
+import { PageHeader } from '../../../components/layout/page-header'
 
 type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'dim'
 
@@ -259,34 +260,30 @@ export function StackDeploymentLogsPage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          { label: 'Stack List', path: '/stack/list' },
-          { label: 'Deployment Logs' },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            { label: 'Stack List', path: '/stack/list' },
+            { label: 'Deployment Logs' },
+          ]
+        }
+        icon={<Terminal size={16} />}
+        tone="success"
+        title="Deployment Logs"
+        subtitle={
+          meta && (
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+              {meta.version} · {meta.reason} · {meta.who} · {meta.when}
+            </p>
+          )
+        }
+        actions={
+          <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
+            <ArrowLeft size={14} />
+            Back to Stack List
+          </Button>
+        }
       />
-
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]">
-            <Terminal size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Deployment Logs
-            </h1>
-            {meta && (
-              <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-                {meta.version} · {meta.reason} · {meta.who} · {meta.when}
-              </p>
-            )}
-          </div>
-        </div>
-        <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
-          <ArrowLeft size={14} />
-          Back to Stack List
-        </Button>
-      </div>
 
       {meta && (
         <div className="mb-4 flex flex-wrap items-center gap-3">

@@ -9,7 +9,6 @@ import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
 import YAML from 'yaml'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type {
   InstallTab,
@@ -90,6 +89,7 @@ import {
 } from '../utils/install-manifest-builders'
 import type { ManifestToolEntry } from '../utils/install-manifest-builders'
 import { ToolSelector, MultiToolSelector } from '../components/install-tool-selector'
+import { PageHeader } from '../../../components/layout/page-header'
 
 function toDeployErrorMessage(error: unknown): string {
   // Compat-gate errors get a specialized, issue-aware formatter so the user
@@ -2267,67 +2267,58 @@ export function StackInstallPage() {
 
   return (
     <div>
-      <Breadcrumb items={[
-        { label: t('stackInstall.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
-        { label: t('stackInstall.breadcrumb.newStack', 'New Stack'), path: '/stack/templates' },
-        { label: t('stackInstall.breadcrumb.current', 'Stack Install') },
-      ]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]"
-          >
-            <Download size={18} />
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t('stackInstall.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
+            { label: t('stackInstall.breadcrumb.newStack', 'New Stack'), path: '/stack/templates' },
+            { label: t('stackInstall.breadcrumb.current', 'Stack Install') },
+          ]
+        }
+        icon={<Download size={16} />}
+        tone="primary"
+        title={t('stackInstall.page.title', 'Stack Install')}
+        subtitle={t('stackInstall.page.description', 'Configure your DevSecOps stack with a 5-step workflow.')}
+        actions={
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="md"
+              loading={saveDraft.isPending}
+              onClick={handleSaveDraft}
+              disabled={!isValid || isSubmitting}
+              type="button"
+            >
+              <Save size={14} />
+              {t('stackInstall.actions.saveDraft', 'Save Draft')}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              loading={createStack.isPending || deployStack.isPending}
+              onClick={handleDeploy}
+              disabled={
+                isSubmitting ||
+                createStack.isPending ||
+                deployStack.isPending ||
+                !draft.stackName ||
+                draft.stackName.length < 2 ||
+                isDuplicateStackNameInCluster ||
+                !draft.clusterId ||
+                (createNewNs && !draft.namespace.trim()) ||
+                hasManifestValidationError ||
+                compatibilityGate.state === 'fail' ||
+                (compatibilityGate.state === 'warn' && !compatWarnAcknowledged) ||
+                isDeployServerGateLocked(serverVerdict, serverWarnAcknowledged)
+              }
+              type="button"
+            >
+              <Rocket size={14} />
+              {t('stackInstall.actions.deploy', 'Deploy')}
+            </Button>
           </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('stackInstall.page.title', 'Stack Install')}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackInstall.page.description', 'Configure your DevSecOps stack with a 5-step workflow.')}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="md"
-            loading={saveDraft.isPending}
-            onClick={handleSaveDraft}
-            disabled={!isValid || isSubmitting}
-            type="button"
-          >
-            <Save size={14} />
-            {t('stackInstall.actions.saveDraft', 'Save Draft')}
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            loading={createStack.isPending || deployStack.isPending}
-            onClick={handleDeploy}
-            disabled={
-              isSubmitting ||
-              createStack.isPending ||
-              deployStack.isPending ||
-              !draft.stackName ||
-              draft.stackName.length < 2 ||
-              isDuplicateStackNameInCluster ||
-              !draft.clusterId ||
-              (createNewNs && !draft.namespace.trim()) ||
-              hasManifestValidationError ||
-              compatibilityGate.state === 'fail' ||
-              (compatibilityGate.state === 'warn' && !compatWarnAcknowledged) ||
-              isDeployServerGateLocked(serverVerdict, serverWarnAcknowledged)
-            }
-            type="button"
-          >
-            <Rocket size={14} />
-            {t('stackInstall.actions.deploy', 'Deploy')}
-          </Button>
-        </div>
-      </div>
+        }
+      />
       {hasManifestValidationError && (
         <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
           Strict 버전/YAML 검증 실패 {manifestValidationErrorCount}건으로 Deploy가 잠겼습니다. YAML View에서 오류를 해소해 주세요.

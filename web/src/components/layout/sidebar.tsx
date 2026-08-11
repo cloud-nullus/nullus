@@ -50,7 +50,7 @@ const navGroups: NavGroup[] = [
   {
     key: 'devsecops',
     label: 'sidebar.devsecopsStack',
-    icon: <Boxes size={18} />,
+    icon: <Boxes size={16} />,
     roles: ['admin', 'devops'],
     items: [
       { key: 'stackTemplate', label: 'sidebar.stackTemplate', path: '/stack/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
@@ -64,7 +64,7 @@ const navGroups: NavGroup[] = [
   {
     key: 'cicd',
     label: 'sidebar.cicd',
-    icon: <GitBranch size={18} />,
+    icon: <GitBranch size={16} />,
     roles: ['admin', 'devops', 'developer'],
     items: [
       { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
@@ -76,7 +76,7 @@ const navGroups: NavGroup[] = [
   {
     key: 'observability',
     label: 'sidebar.observability',
-    icon: <BarChart3 size={18} />,
+    icon: <BarChart3 size={16} />,
     roles: ['admin', 'devops', 'developer'],
     items: [
       { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <BarChart3 size={16} />, roles: ['admin', 'devops', 'developer'] },
@@ -87,7 +87,7 @@ const navGroups: NavGroup[] = [
   {
     key: 'admin',
     label: 'sidebar.admin',
-    icon: <Settings size={18} />,
+    icon: <Settings size={16} />,
     roles: ['admin'],
     items: [
       { key: 'organization', label: 'sidebar.organization', path: '/admin/organization', icon: <Settings size={16} />, roles: ['admin'] },
@@ -130,7 +130,7 @@ export function Sidebar() {
       <div
         className={cn(
           'flex h-[var(--header-height)] shrink-0 items-center border-b border-[var(--color-sidebar-border)]',
-          collapsed ? 'justify-center px-0' : 'justify-between px-4'
+          collapsed ? 'justify-center px-0' : 'justify-between px-3'
         )}
       >
         {!collapsed && (
@@ -140,7 +140,7 @@ export function Sidebar() {
             className="flex cursor-pointer items-center gap-2 border-none bg-transparent p-0"
             aria-label="Go to home"
           >
-            <Box size={20} className="text-[var(--color-brand-gold)]" />
+            <Box size={18} className="text-[var(--color-brand-gold)]" />
             <span className="text-base font-bold text-[var(--color-text-primary)]">
               Nullus
             </span>
@@ -152,12 +152,12 @@ export function Sidebar() {
           aria-label="Toggle sidebar"
           className="flex cursor-pointer items-center rounded-md border-none bg-none p-1.5 text-[var(--color-text-secondary)]"
         >
-          <Menu size={18} />
+          <Menu size={16} />
         </button>
       </div>
 
       {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav className="flex-1 overflow-y-auto py-1">
         {visibleGroups.map((group) => (
           <div key={group.key}>
             <button
@@ -165,7 +165,7 @@ export function Sidebar() {
               onClick={() => toggleGroup(group.key)}
               className={cn(
                 'flex w-full cursor-pointer items-center border-none bg-none text-[11px] font-semibold tracking-[0.08em] text-[var(--color-sidebar-group-text)] uppercase',
-                collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-4 py-2.5'
+                collapsed ? 'justify-center px-0 py-2' : 'justify-between px-3 py-1.5'
               )}
               aria-label={t(group.label)}
             >
@@ -190,11 +190,11 @@ export function Sidebar() {
                       to={item.path}
                       className={({ isActive }) =>
                         cn(
-                          'flex items-center gap-2.5 border-r-2 text-sm no-underline transition-all duration-150 ease-in-out',
-                          collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2 pl-8',
+                          'flex h-8 items-center gap-2 border-l-2 text-[13px] no-underline transition-colors duration-150 ease-in-out',
+                          collapsed ? 'justify-center px-0' : 'justify-start pl-6 pr-3',
                           isActive
-                            ? 'border-r-[var(--color-sidebar-item-active-border)] bg-[var(--color-sidebar-item-active-bg)] text-[var(--color-sidebar-item-active-text)]'
-                            : 'border-r-transparent bg-transparent text-[var(--color-sidebar-item-text)]'
+                            ? 'border-l-[var(--color-sidebar-item-active-border)] bg-[var(--color-sidebar-item-active-bg)] font-medium text-[var(--color-sidebar-item-active-text)]'
+                            : 'border-l-transparent bg-transparent text-[var(--color-sidebar-item-text)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)]'
                         )
                       }
                     >
@@ -208,7 +208,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-[var(--color-sidebar-border)] py-2">
+      <div className="border-t border-[var(--color-sidebar-border)] py-1">
         <button
           type="button"
           onClick={async () => {
@@ -243,11 +243,11 @@ export function Sidebar() {
           }}
           className={cn(
             'flex w-full cursor-pointer items-center gap-2.5 border-none bg-none text-sm text-[var(--color-text-secondary)] transition-all duration-150 ease-in-out',
-            collapsed ? 'justify-center px-0 py-2.5' : 'justify-start px-4 py-2.5'
+            collapsed ? 'justify-center px-0 py-2' : 'justify-start px-3 py-2'
           )}
           aria-label={t('sidebar.logout')}
         >
-          <LogOut size={18} />
+          <LogOut size={16} />
           {!collapsed && t('sidebar.logout')}
         </button>
       </div>

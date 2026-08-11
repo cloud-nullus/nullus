@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Plus, Pencil, Trash2, FolderOpen } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Plus, Pencil, Trash2, FolderOpen, Shield } from 'lucide-react'
 import { Skeleton } from '../../../components/ui/skeleton'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
+import { PageHeader } from '../../../components/layout/page-header'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Button } from '../../../components/ui/button'
@@ -395,30 +395,26 @@ export function StackVersionsAdminPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
-      <Breadcrumb
-        items={[
+    <div className="flex h-full flex-col">
+      <PageHeader
+        breadcrumb={[
           { label: t('stackVersionsAdmin.breadcrumb.devsecops', 'DevSecOps Stack') },
           { label: t('stackVersionsAdmin.breadcrumb.stackVersions', 'Stack Version Management') },
         ]}
+        icon={<Shield size={16} />}
+        tone="info"
+        title={t('stackVersionsAdmin.title', 'Stack Version Management')}
+        subtitle={t(
+          'stackVersionsAdmin.subtitle',
+          'Review Narwhal baseline compatibility matrices and verify cluster architecture fit.',
+        )}
+        actions={
+          <Button size="sm" onClick={() => setModal({ mode: 'create' })}>
+            <Plus size={14} className="mr-1" />
+            {t('stackVersionsAdmin.actions.new', 'New matrix')}
+          </Button>
+        }
       />
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">
-            {t('stackVersionsAdmin.title', 'Stack Version Management')}
-          </h1>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            {t(
-              'stackVersionsAdmin.subtitle',
-              'Review Narwhal baseline compatibility matrices and verify cluster architecture fit.',
-            )}
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setModal({ mode: 'create' })}>
-          <Plus size={14} className="mr-1" />
-          {t('stackVersionsAdmin.actions.new', 'New matrix')}
-        </Button>
-      </div>
       <div className="flex-1 min-h-0">
         <ListDetailPanel
           listContent={listContent}

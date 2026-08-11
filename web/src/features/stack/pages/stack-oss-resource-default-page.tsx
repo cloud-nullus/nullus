@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Database, Plus, Save, Search } from 'lucide-react'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { useResourceDefaults, useUpsertResourceDefault } from '../api/stack-api'
 import type { StackResourceDefault } from '../../../types'
+import { PageHeader } from '../../../components/layout/page-header'
 
 type EditableRow = Omit<StackResourceDefault, 'updated_at'> & { updated_at?: string }
 
@@ -205,21 +205,13 @@ export function StackOssResourceDefaultPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'OSS Default Resource' }]} />
-
-      <div className="mb-7 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]">
-            <Database size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OSS Default Resource</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackOssDefault.description', 'View, edit, and register default OSS request/limit resources for DevSecOps Stack.')}
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: 'OSS Default Resource' }]}
+        icon={<Database size={16} />}
+        tone="info"
+        title="OSS Default Resource"
+        subtitle={t('stackOssDefault.description', 'View, edit, and register default OSS request/limit resources for DevSecOps Stack.')}
+      />
 
       <div className="mb-5 rounded-lg border border-[color-mix(in_srgb,_var(--color-info)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
         {t('stackOssDefault.contract.prefix', 'Contract:')} <code>POST /api/v1/stacks/resource-defaults</code> {t('stackOssDefault.contract.middle', 'is an idempotent upsert by')} <code>tool_key</code>{t('stackOssDefault.contract.end', '.')}.

@@ -109,17 +109,17 @@ export const spacing = {
 } as const
 
 export const rounded = {
-  "sm": "6px",
-  "md": "10px",
-  "lg": "12px",
+  "sm": "4px",
+  "md": "6px",
+  "lg": "8px",
   "full": "9999px"
 } as const
 
 export const typography = {
   "h1": {
     "fontFamily": "Inter",
-    "fontSize": "2rem",
-    "fontWeight": 800,
+    "fontSize": "1.375rem",
+    "fontWeight": 700,
     "lineHeight": 1.25,
     "letterSpacing": "-0.01em"
   },
@@ -166,4 +166,19 @@ export const typography = {
     "fontWeight": 400,
     "lineHeight": 1.5
   }
+} as const
+
+export const layout = {
+  "sidebar-width": "240px",
+  "sidebar-collapsed": "48px",
+  "header-height": "44px",
+  "page-padding": "24px",
+  "page-padding-y": "20px",
+  "card-padding": "12px",
+  "grid-gap": "8px",
+  "icon-size": "28px",
+  "table-cell-px": "12px",
+  "table-row-height": "32px",
+  "table-header-height": "28px",
+  "control-height": "30px"
 } as const

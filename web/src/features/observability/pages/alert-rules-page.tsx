@@ -13,9 +13,9 @@ import { Modal } from '../../../components/ui/modal'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 import { useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { PageHeader } from '../../../components/layout/page-header'
 
 const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
   slack: { className: 'bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] text-[var(--color-primary)]' },
@@ -249,27 +249,19 @@ export function AlertRulesPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Alert Rules' }]} />
-
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
-            <Bell size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('observability.alertRules', 'Alert Rules')}
-            </h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {t('observability.alertRulesDesc', 'Alert rule list and management')}
-            </p>
-          </div>
-        </div>
-        <Button variant="primary" size="md" onClick={openCreateModal} type="button">
-          <Plus size={15} />
-          {t('observability.newRule', 'New Rule')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: 'Alert Rules' }]}
+        icon={<Bell size={16} />}
+        tone="error"
+        title={t('observability.alertRules', 'Alert Rules')}
+        subtitle={t('observability.alertRulesDesc', 'Alert rule list and management')}
+        actions={
+          <Button variant="primary" size="md" onClick={openCreateModal} type="button">
+            <Plus size={15} />
+            {t('observability.newRule', 'New Rule')}
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}

@@ -18,7 +18,7 @@ export function AppLayout() {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-y-auto px-[var(--page-padding)] py-8">
+        <main className="flex-1 overflow-y-auto px-[var(--page-padding)] py-[var(--page-padding-y)]">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

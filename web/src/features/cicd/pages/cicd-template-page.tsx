@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { BookOpen, Pencil, Plus, Search, Trash2, User } from "lucide-react";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import {
   useCicdTemplates,
   useCreateCicdTemplate,
@@ -16,6 +15,7 @@ import { Modal } from "../../../components/ui/modal";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { useAuthStore } from "../../../stores/auth-store";
 import { resolveLocale } from "../../../lib/locale";
+import { PageHeader } from '../../../components/layout/page-header'
 
 const CAPABILITY_OPTIONS = ["CI", "CD", "Test", "Security"] as const;
 const PRIORITY_TEMPLATE_IDS = [
@@ -350,46 +350,39 @@ export function CicdTemplatePage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          {
-            label: t("cicdTemplatePage.breadcrumb.list", "CI/CD List"),
-            path: "/cicd/list",
-          },
-          { label: t("cicdTemplatePage.breadcrumb.current", "CI/CD Template") },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            {
+              label: t("cicdTemplatePage.breadcrumb.list", "CI/CD List"),
+              path: "/cicd/list",
+            },
+            { label: t("cicdTemplatePage.breadcrumb.current", "CI/CD Template") },
+          ]
+        }
+        icon={<BookOpen size={16} />}
+        tone="primary"
+        title={t("cicdTemplatePage.title", "CI/CD Template")}
+        subtitle={
+          t(
+            "cicdTemplatePage.description",
+            "Choose a pipeline template to get started quickly.",
+          )
+        }
+        actions={
+          isAdmin && (
+            <Button
+              variant="primary"
+              size="md"
+              type="button"
+              onClick={openCreateModal}
+            >
+              <Plus size={15} />
+              {t("cicdTemplatePage.actions.createTemplate", "Create Template")}
+            </Button>
+          )
+        }
       />
-
-      {/* Page header */}
-      <div className="mb-7 flex items-start justify-between gap-4">
-        <div className="mb-2 flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-            <BookOpen size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t("cicdTemplatePage.title", "CI/CD Template")}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t(
-                "cicdTemplatePage.description",
-                "Choose a pipeline template to get started quickly.",
-              )}
-            </p>
-          </div>
-        </div>
-        {isAdmin && (
-          <Button
-            variant="primary"
-            size="md"
-            type="button"
-            onClick={openCreateModal}
-          >
-            <Plus size={15} />
-            {t("cicdTemplatePage.actions.createTemplate", "Create Template")}
-          </Button>
-        )}
-      </div>
 
       {/* Search */}
       <div className="mb-5 max-w-[360px]">

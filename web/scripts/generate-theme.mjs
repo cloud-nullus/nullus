@@ -75,6 +75,28 @@ const brand = {
   onGold: design.colors['on-brand-gold'],
 }
 
+// 레이아웃 값은 DESIGN.md 의 `layout` 블록이 단일 출처다. 예전에는 이 파일에
+// 하드코딩돼 있었는데, 그러면 "값을 바꿀 곳은 DESIGN.md 하나" 라는 계약이
+// 절반만 참이 된다. 기본값은 블록이 통째로 빠졌을 때의 안전망일 뿐이다.
+const LAYOUT_DEFAULTS = {
+  'sidebar-width': '240px',
+  'sidebar-collapsed': '48px',
+  'header-height': '44px',
+  'page-padding': '24px',
+  'page-padding-y': '20px',
+  'card-padding': '12px',
+  'grid-gap': '8px',
+  'icon-size': '28px',
+  'table-cell-px': '12px',
+  'table-row-height': '32px',
+  'table-header-height': '28px',
+  'control-height': '30px',
+}
+const layout = { ...LAYOUT_DEFAULTS, ...(design.layout ?? {}) }
+const layoutVars = Object.entries(layout)
+  .map(([key, value]) => `  --${key}: ${value};`)
+  .join('\n')
+
 for (const [name, palette] of [
   ['light', light],
   ['dark', dark],
@@ -162,6 +184,8 @@ export const spacing = ${JSON.stringify(design.spacing ?? {}, null, 2)} as const
 export const rounded = ${JSON.stringify(design.rounded ?? {}, null, 2)} as const
 
 export const typography = ${JSON.stringify(design.typography ?? {}, null, 2)} as const
+
+export const layout = ${JSON.stringify(layout, null, 2)} as const
 `
 
 // ── CSS 토큰 ──────────────────────────────────────────────────────────────
@@ -219,18 +243,13 @@ ${sidebar(scheme(design.colors, 'dark'))}
   --color-brand-gold-end: ${brand.goldEnd};
   --color-on-brand-gold: ${brand.onGold};
 
-  --color-home-hero-bg: linear-gradient(160deg, rgba(15, 23, 42, 0.85), rgba(17, 24, 39, 0.95));
+  /* 장식 그라데이션을 쓰지 않는다(§Do's and Don'ts). 히어로도 면 하나다. */
+  --color-home-hero-bg: ${dark['surface-sunken'] ?? dark.surface};
 
-  /* 레이아웃 — DESIGN.md §Layout */
-  --sidebar-width: 240px;
-  --sidebar-collapsed: 64px;
-  --header-height: 56px;
-  --page-padding: ${design.spacing?.['2xl'] ?? '32px'};
-  --card-radius: ${design.rounded?.lg ?? '12px'};
-  --card-padding: ${design.spacing?.lg ?? '16px'};
-  --grid-gap: ${design.spacing?.md ?? '12px'};
-  --icon-size: 38px;
-  --icon-radius: ${design.rounded?.md ?? '10px'};
+  /* 레이아웃 — DESIGN.md §Layout (front matter 의 layout 블록이 단일 출처다) */
+${layoutVars}
+  --card-radius: ${design.rounded?.lg ?? '8px'};
+  --icon-radius: ${design.rounded?.sm ?? '4px'};
 
   /* 간격 스케일 — DESIGN.md §Layout. 스케일 밖의 값을 쓰지 않는다. */
 ${Object.entries(design.spacing ?? {})
@@ -257,7 +276,7 @@ ${cssVars(scheme(design.colors, 'light'), { raised: el.raised ?? 'none', overlay
 
 ${sidebar(scheme(design.colors, 'light'))}
 
-  --color-home-hero-bg: linear-gradient(160deg, ${light.surface}, #eef2ff);
+  --color-home-hero-bg: ${light['surface-sunken'] ?? light.surface};
 }
 `
 

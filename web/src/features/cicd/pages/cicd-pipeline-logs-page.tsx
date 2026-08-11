@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { cn } from "../../../lib/utils";
 import {
   useDeploymentStatus,
@@ -21,6 +20,7 @@ import {
   getPipelineStatusLabel,
   getPipelineStatusStyle,
 } from "../utils/pipeline-status";
+import { PageHeader } from '../../../components/layout/page-header'
 
 export function CicdPipelineLogsPage() {
   const { t, i18n } = useTranslation();
@@ -75,29 +75,23 @@ export function CicdPipelineLogsPage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          { label: "CI/CD List", path: "/cicd/list" },
-          { label: `${breadcrumbName} Logs` },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            { label: "CI/CD List", path: "/cicd/list" },
+            { label: `${breadcrumbName} Logs` },
+          ]
+        }
+        icon={<Terminal size={16} />}
+        tone="primary"
+        title="Pipeline Logs"
+        subtitle={
+          <>
+            {pipeline?.name ?? pipelineId} · {pipeline?.clusterName ?? "-"} ·{" "}
+            {pipeline?.namespace ?? "-"}
+          </>
+        }
       />
-
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-            <Terminal size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Pipeline Logs
-            </h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {pipeline?.name ?? pipelineId} · {pipeline?.clusterName ?? "-"} ·{" "}
-              {pipeline?.namespace ?? "-"}
-            </p>
-          </div>
-        </div>
-      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <span

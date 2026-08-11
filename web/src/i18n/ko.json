@@ -901,7 +901,8 @@
       "firedAt": "발생 시간",
       "resolvedAt": "해결 시간",
       "message": "메시지"
-    }
+    },
+    "selectAlert": "알림을 선택하면 상세 정보가 표시됩니다."
   },
   "alertRulesPage": {
     "table": {
@@ -1285,7 +1286,8 @@
     },
     "filters": {
       "allClusters": "전체 클러스터"
-    }
+    },
+    "selectEntry": "변경 이력을 선택하면 구성 스냅샷이 표시됩니다."
   },
   "stackOssDefault": {
     "description": "DevSecOps Stack OSS별 리소스 request/limit 기본값을 조회/수정/등록합니다.",

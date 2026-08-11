@@ -12,9 +12,9 @@ import {
   useTokenSources,
   type TokenSource,
 } from '../api/admin-api'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
+import { PageHeader } from '../../../components/layout/page-header'
 
 const STEP_UP_ENFORCED = false
 
@@ -83,17 +83,13 @@ export function TokenManagementPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.admin', 'Admin') }, { label: 'OpenBao Token Management' }]} />
-
-      <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[#c084fc]">
-          <KeyRound size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OpenBao Token Management</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('tokenManagement.description', 'Check token status, rotate manually, and manage approvals, pauses, and lookups.')}</p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.admin', 'Admin') }, { label: 'OpenBao Token Management' }]}
+        icon={<KeyRound size={16} />}
+        tone="accent"
+        title="OpenBao Token Management"
+        subtitle={t('tokenManagement.description', 'Check token status, rotate manually, and manage approvals, pauses, and lookups.')}
+      />
 
       {!STEP_UP_ENFORCED && (
         <div className="mb-4 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-warning)_10%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]">

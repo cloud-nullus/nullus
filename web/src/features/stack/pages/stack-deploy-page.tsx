@@ -9,9 +9,9 @@ import { usePodWatch } from '../hooks/use-pod-watch'
 import type { PodWatchRow } from '../hooks/use-pod-watch'
 import { useContinueStack } from '../api/stack-api'
 import { api } from '../../../lib/api'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { formatTime, resolveLocale } from '../../../lib/locale'
 import { cn } from '../../../lib/utils'
+import { PageHeader } from '../../../components/layout/page-header'
 
 const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
 
@@ -391,28 +391,21 @@ export function StackDeployPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Log' }]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-center gap-2.5">
-        <div
-          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]"
-        >
-          <Terminal size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            Deployment Log
-          </h1>
-          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
+      <PageHeader
+        breadcrumb={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Log' }]}
+        icon={<Terminal size={16} />}
+        tone="primary"
+        title="Deployment Log"
+        subtitle={
+          <>
             Deployment ID: {id}
             {' · '}
             <span className={cn(isConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]')}>
               {isConnected ? 'Connected' : 'Connecting...'}
             </span>
-          </p>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Phase steps */}
       <div className="mb-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]">

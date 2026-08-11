@@ -901,7 +901,8 @@
       "firedAt": "Fired At",
       "resolvedAt": "Resolved At",
       "message": "Message"
-    }
+    },
+    "selectAlert": "Select an alert to view its detail."
   },
   "alertRulesPage": {
     "table": {
@@ -1285,7 +1286,8 @@
     },
     "filters": {
       "allClusters": "All Clusters"
-    }
+    },
+    "selectEntry": "Select a change to view its configuration snapshot."
   },
   "stackOssDefault": {
     "description": "View, edit, and register default OSS request/limit resources for DevSecOps Stack.",

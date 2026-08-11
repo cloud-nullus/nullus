@@ -14,9 +14,9 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
 
 type ActiveRoleTab = 'all' | MemberRole
 
@@ -456,18 +456,13 @@ export function UserManagementPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.userManagement', 'User Management') }]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]">
-          <Users size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('sidebar.userManagement', 'User Management')}</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('userManagementPage.description', 'User list and role management')}</p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.userManagement', 'User Management') }]}
+        icon={<Users size={16} />}
+        tone="accent"
+        title={t('sidebar.userManagement', 'User Management')}
+        subtitle={t('userManagementPage.description', 'User list and role management')}
+      />
 
       {/* Main tabs */}
       <div className="mb-6 flex items-center justify-between border-b border-[var(--color-border-default)]">

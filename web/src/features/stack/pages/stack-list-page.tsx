@@ -16,7 +16,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
 import { Button } from "../../../components/ui/button";
@@ -56,6 +55,7 @@ export {
 	toConnectionInfoView,
 } from "../utils/stack-list-utils";
 import { StackInfoTab } from "../components/stack-info-tab"
+import { PageHeader } from '../../../components/layout/page-header'
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
@@ -628,42 +628,34 @@ export function StackListPage() {
 
 	return (
 		<div>
-			<Breadcrumb items={[{ label: t("sidebar.stackList", "Stack List") }]} />
-
-			<div className="mb-6 flex items-start justify-between">
-				<div className="flex items-center gap-2.5">
-					<div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-						<List size={18} />
-					</div>
-					<div>
-						<h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-							{t("stackList.title", "Stack List")}
-						</h1>
-						<p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-							{t("stackList.description", "Deployed DevSecOps stack list")}
-						</p>
-					</div>
-				</div>
-				<div className="flex items-center gap-2">
-					<Button
-						variant="outline"
-						size="md"
-						onClick={openImportModal}
-					>
-						{t("stackList.actions.import", "Import")}
-					</Button>
-					<Button
-						variant="primary"
-						size="md"
-						onClick={() =>
-							navigate("/stack/templates", { state: { from: "stack-list" } })
-						}
-					>
-						<Plus size={15} />
-						{t("stackList.actions.newStack", "New Stack")}
-					</Button>
-				</div>
-			</div>
+			<PageHeader
+			  breadcrumb={[{ label: t("sidebar.stackList", "Stack List") }]}
+			  icon={<List size={16} />}
+			  tone="primary"
+			  title={t("stackList.title", "Stack List")}
+			  subtitle={t("stackList.description", "Deployed DevSecOps stack list")}
+			  actions={
+			    <div className="flex items-center gap-2">
+			    	<Button
+			    		variant="outline"
+			    		size="md"
+			    		onClick={openImportModal}
+			    	>
+			    		{t("stackList.actions.import", "Import")}
+			    	</Button>
+			    	<Button
+			    		variant="primary"
+			    		size="md"
+			    		onClick={() =>
+			    			navigate("/stack/templates", { state: { from: "stack-list" } })
+			    		}
+			    	>
+			    		<Plus size={15} />
+			    		{t("stackList.actions.newStack", "New Stack")}
+			    	</Button>
+			    </div>
+			  }
+			/>
 
 			<div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
 				<div className="min-w-0">

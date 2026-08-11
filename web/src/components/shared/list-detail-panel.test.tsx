@@ -28,16 +28,31 @@ describe('ListDetailPanel', () => {
     expect(screen.getAllByText('Choose a stack').length).toBeGreaterThan(0)
   })
 
-  it('applies narrow list width class when listWidth is 240', () => {
+  // 개편 전 구현은 240/280 만 Tailwind 클래스로 매핑하고 그 밖의 값을 조용히
+  // 280 으로 접었다. 임의 폭이 실제로 먹는지까지 고정한다.
+  it.each([240, 280, 320])('applies the requested list width (%ipx)', (width) => {
     render(
       <ListDetailPanel
-        listWidth={240}
+        listWidth={width}
         listContent={<div>Stack C</div>}
         detailContent={<div>Detail C</div>}
       />
     )
 
-    const listContentNode = screen.getByText('Stack C')
-    expect(listContentNode.parentElement?.className).toContain('w-[240px]')
+    expect(screen.getByTestId('list-detail-list').style.width).toBe(`${width}px`)
+  })
+
+  it('renders the list and detail headers above their panes', () => {
+    render(
+      <ListDetailPanel
+        listContent={<div>Stack D</div>}
+        detailContent={<div>Detail D</div>}
+        listHeader={<div>List toolbar</div>}
+        detailHeader={<div>Detail toolbar</div>}
+      />
+    )
+
+    expect(screen.getByText('List toolbar')).toBeTruthy()
+    expect(screen.getByText('Detail toolbar')).toBeTruthy()
   })
 })

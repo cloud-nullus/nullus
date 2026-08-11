@@ -57,18 +57,16 @@
   --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
 }
 
+/* 두 테마 모두 면 하나다. 다크에 남아 있던 남보라 그라데이션
+   (#0a0a0a → #1a1a2e → #16213e)은 걷어냈다 — 개편 전 팔레트의 잔재라
+   현재 --color-surface-base(#0a0b0d)와 시작색부터 어긋나 있었고,
+   중립 면 위에 브랜드 블루 하나만 전압으로 쓴다는 §Colors 결정과도 충돌한다. */
 body {
   margin: 0;
-  /* 다크는 장식 그라데이션을 유지한다. 시작색이 --color-surface-base 와 같다. */
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
-  background-attachment: fixed;
+  background: var(--color-surface-base);
   color: var(--color-text-primary);
   font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
-}
-
-[data-theme="light"] body {
-  background: var(--color-surface-base);
 }
 
 /* Code font */

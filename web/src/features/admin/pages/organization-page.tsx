@@ -16,7 +16,6 @@ import {
   useUpdateOrganization,
 } from '../api/admin-api'
 import type { ClusterStatus, CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
@@ -24,6 +23,7 @@ import { Input } from '../../../components/ui/input'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { Modal } from '../../../components/ui/modal'
 import { cn } from '../../../lib/utils'
+import { PageHeader } from '../../../components/layout/page-header'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
   active: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
@@ -278,31 +278,27 @@ export function OrganizationPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.organization', 'Organization') }]} />
-
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]">
-            <Settings size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('sidebar.organization', 'Organization')}</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('organizationPage.description', 'Manage organization settings, access scope, and members in one place.')}</p>
-          </div>
-        </div>
-        <Button
-          variant="primary"
-          size="md"
-          type="button"
-          onClick={() => {
-            resetNewOrg()
-            setNewOrgModal(true)
-          }}
-        >
-          <Plus size={15} />
-          {t('organizationPage.actions.newOrganization', 'New Organization')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.organization', 'Organization') }]}
+        icon={<Settings size={16} />}
+        tone="accent"
+        title={t('sidebar.organization', 'Organization')}
+        subtitle={t('organizationPage.description', 'Manage organization settings, access scope, and members in one place.')}
+        actions={
+          <Button
+            variant="primary"
+            size="md"
+            type="button"
+            onClick={() => {
+              resetNewOrg()
+              setNewOrgModal(true)
+            }}
+          >
+            <Plus size={15} />
+            {t('organizationPage.actions.newOrganization', 'New Organization')}
+          </Button>
+        }
+      />
 
       <div className="h-[860px]">
         <ListDetailPanel

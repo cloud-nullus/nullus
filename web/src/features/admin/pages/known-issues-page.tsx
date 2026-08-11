@@ -2,8 +2,8 @@ import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useKnownIssues } from '../api/admin-api'
 import type { KnownIssueSeverity, KnownIssueStatus } from '../../../types'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
+import { PageHeader } from '../../../components/layout/page-header'
 
 const SEVERITY_BADGE: Record<KnownIssueSeverity, string> = {
   high: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
@@ -31,21 +31,13 @@ export function KnownIssuesPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('knownIssuesPage.breadcrumb.current', 'Known Issues') }]} />
-
-      <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]">
-          <AlertTriangle size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            {t('knownIssuesPage.title', 'Known Issues')}
-          </h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            {t('knownIssuesPage.description', 'Check current version limitations and available workarounds.')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('knownIssuesPage.breadcrumb.current', 'Known Issues') }]}
+        icon={<AlertTriangle size={16} />}
+        tone="warning"
+        title={t('knownIssuesPage.title', 'Known Issues')}
+        subtitle={t('knownIssuesPage.description', 'Check current version limitations and available workarounds.')}
+      />
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <table className="w-full border-collapse">

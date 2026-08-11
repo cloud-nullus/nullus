@@ -426,18 +426,36 @@ main
 | ✅ | 13 행 확장 → 메인·서브 테이블 | 순서를 11 앞으로 옮겼다 |
 | ✅ | 22 ESLint 규칙 | hex 1335건 warn, 상용 라이선스 error |
 | ✅ | 24 문서 갱신 | 디자인시스템 문서를 DESIGN.md 참조로 |
+| ✅ | 15·16 앱 셸 · 밀도 | `PageHeader` 채택 0 → 24화면, 레이아웃 토큰을 DESIGN.md 로 |
 | ⬜ | 9·10 생 태그 흡수 | button 95 / input·select 49 |
 | ⬜ | 12 수제 table 17곳 → DataTable 흡수 | D6=A 로 대상 확정 |
 | ⬜ | 14 StatusBadge 통합 | 현재 사용 1곳, 화면별 자체 배지 흡수 |
-| ⬜ | 15·16 앱 셸 · 밀도 | |
 | ⬜ | 17~19 거대 화면 순수 추출 | stack-install 3,662줄 등 |
 | ⬜ | 20 차트 단일화 | ESLint 경고로 표시해 뒀다 |
 | ⬜ | 21 하드코딩 색 청산 | ESLint 경고 1335건이 대상 목록 |
 | ➖ | 23 tanstack-table 제거 | D6=A 라 해당 없음 (계속 사용) |
 
-측정값(모든 커밋에서 초록): vitest **634/634**, tsc 통과, vite build 통과,
-시각 회귀 **58/58**, 인벤토리 **정보 유실 0**, eslint **0 errors**,
+측정값: vitest **640/640**, tsc 통과, vite build 통과,
+시각 회귀 **58/58**, eslint **0 errors / 72 warnings**(전부 잔여 hex — 커밋 21 대상),
 design.md lint **0 errors**, 대비 감사 **45/45**.
+
+> ⚠️ **인벤토리 `--check` 가 3건 빨강이다.** `stack-monitoring-overview.tsx` 의
+> jsxText `(Req)` · `(Lim)` · `0` 이 커밋 21bb2d1(KPI 라벨 겹침 교정)에서 사라졌는데
+> 스냅샷 승인을 안 받았다. 같은 정보는 `CPU Req/Limit` · `Mem Req/Limit` 라벨이
+> 그대로 들고 있으므로 의도된 제거로 보이지만, §8.1 절차상 **승인 후 스냅샷 갱신**이
+> 필요하다. 커밋 15·16 은 이 3건 외에 새 유실을 만들지 않았다(대조 완료).
+
+**커밋 15·16 에서 실제로 한 일**
+
+| 무엇 | 상세 |
+|------|------|
+| `PageHeader` 규격 신설 + 채택 | 파일은 있는데 **쓰는 화면이 0곳**이었다. 28화면이 각자 `mb-6/mb-7` + 아이콘 + `text-[22px] font-extrabold` 를 손으로 다시 만들고 있었고, `items-start`/`items-center`·`justify-between` 유무가 제각각이라 상단 룩이 미묘하게 어긋났다 — "흐트러진 느낌"의 절반이 여기였다. 24화면을 흡수했다(로그인·404·홈은 셸 밖 화면이라 제외) |
+| 레이아웃 토큰을 DESIGN.md 로 | `--sidebar-width` 등이 `generate-theme.mjs` 에 하드코딩돼 "단일 출처" 계약에 구멍이 있었다. front matter 의 `layout` 블록으로 끌어올렸다 |
+| 밀도 상향 | 표 행 40→32, 헤더 36→28, 카드 여백 16→12, 페이지 여백 32→24, 헤더 56→44, 사이드바 접힘 64→48. 1080p 목록 기준 한 화면 6줄 증가 |
+| 라운드 축소 | `rounded` 6/10/12 → 4/6/8 |
+| 아래로 펼치던 상세 → 좌우 분할 | `alert-history`, `stack-history`. `ListDetailPanel` 에 `detailWidth` 를 더해 "넓은 표 + 고정폭 사이드 레일" 배치를 같은 컴포넌트로 처리한다. `DataTable` 에 `flush` 를 더해 액자 겹침을 없앴다 |
+| 잔재 정리 | 다크 body 의 남보라 그라데이션(`#0a0a0a→#1a1a2e→#16213e`)과 홈 히어로 그라데이션 제거. `typography.h1` 이 2rem 인데 쓰는 화면이 0곳이라 실제 값(1.375rem)으로 정정 |
+| 고친 버그 | `ListDetailPanel` 이 `listWidth` 를 240/280 만 클래스로 매핑하고 나머지를 조용히 280 으로 접고 있었다(Tailwind 임의값은 런타임 값으로 안 만들어진다) → 인라인 스타일로. MUI Button 에 `gap` 이 없어 아이콘이 JSX 줄바꿈 여부에 따라 글자에 붙었다 떨어졌다 했다 |
 
 ---
 

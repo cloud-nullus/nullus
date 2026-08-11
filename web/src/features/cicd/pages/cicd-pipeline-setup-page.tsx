@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Input } from '../../../components/ui/input'
@@ -13,6 +12,7 @@ import type { CicdTemplate } from '../api/cicd-api'
 import type { AppType } from '../../../types'
 import { cn } from '../../../lib/utils'
 import { resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
 
 type SetupTab = 'cluster' | 'build' | 'deploy' | 'yaml'
 type DeployMode = 'template' | 'custom'
@@ -356,45 +356,37 @@ export function CicdPipelineSetupPage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          { label: t('cicdPipelineSetupPage.breadcrumb.list', 'CI/CD List'), path: '/cicd/list' },
-          { label: t('cicdPipelineSetupPage.breadcrumb.template', 'CI/CD Template'), path: '/cicd/templates' },
-          { label: t('cicdPipelineSetupPage.breadcrumb.current', 'Pipeline Setup') },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t('cicdPipelineSetupPage.breadcrumb.list', 'CI/CD List'), path: '/cicd/list' },
+            { label: t('cicdPipelineSetupPage.breadcrumb.template', 'CI/CD Template'), path: '/cicd/templates' },
+            { label: t('cicdPipelineSetupPage.breadcrumb.current', 'Pipeline Setup') },
+          ]
+        }
+        icon={<Settings2 size={16} />}
+        tone="primary"
+        title={t('cicdPipelineSetupPage.title', 'CI/CD Pipeline Setup')}
+        subtitle={t('cicdPipelineSetupPage.description', "Configure your CI/CD pipeline and create it after completing each step.")}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="md" type="button" onClick={() => navigate('/cicd/templates')}>
+              <GitBranch size={14} />
+              {t('cicdPipelineSetupPage.actions.changeTemplate', 'Change Template')}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              type="button"
+              onClick={handleCreatePipeline}
+              loading={createPipeline.isPending}
+            >
+              <Rocket size={14} />
+              {t('cicdPipelineSetupPage.actions.createPipeline', 'Create Pipeline')}
+            </Button>
+          </div>
+        }
       />
-
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-            <Settings2 size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('cicdPipelineSetupPage.title', 'CI/CD Pipeline Setup')}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t('cicdPipelineSetupPage.description', "Configure your CI/CD pipeline and create it after completing each step.")}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="md" type="button" onClick={() => navigate('/cicd/templates')}>
-            <GitBranch size={14} />
-            {t('cicdPipelineSetupPage.actions.changeTemplate', 'Change Template')}
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            type="button"
-            onClick={handleCreatePipeline}
-            loading={createPipeline.isPending}
-          >
-            <Rocket size={14} />
-            {t('cicdPipelineSetupPage.actions.createPipeline', 'Create Pipeline')}
-          </Button>
-        </div>
-      </div>
 
       <div className="mb-5 grid grid-cols-2 gap-4">
         <Input

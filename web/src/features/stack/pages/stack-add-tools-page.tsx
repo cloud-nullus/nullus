@@ -3,11 +3,11 @@ import { Check, Plus, Wrench } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
 import type { Stack } from '../../../types'
 import { useAddTools, useStacks } from '../api/stack-api'
+import { PageHeader } from '../../../components/layout/page-header'
 
 interface ToolOption {
   id: string
@@ -350,28 +350,24 @@ export function StackAddToolsPage() {
 
   return (
     <div>
-      <Breadcrumb items={[
-        { label: t('stackAddTools.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
-        { label: stack?.name ?? 'Stack', path: '/stack/list' },
-        { label: t('stackAddTools.breadcrumb.current', 'Add Tools') },
-      ]} />
-
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-            <Wrench size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('stackAddTools.title', 'Add Tools')}</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackAddTools.description', 'Safely add required tools to an existing stack.')}
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
-          {t('stackAddTools.actions.backToList', 'Back to List')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t('stackAddTools.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
+            { label: stack?.name ?? 'Stack', path: '/stack/list' },
+            { label: t('stackAddTools.breadcrumb.current', 'Add Tools') },
+          ]
+        }
+        icon={<Wrench size={16} />}
+        tone="primary"
+        title={t('stackAddTools.title', 'Add Tools')}
+        subtitle={t('stackAddTools.description', 'Safely add required tools to an existing stack.')}
+        actions={
+          <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
+            {t('stackAddTools.actions.backToList', 'Back to List')}
+          </Button>
+        }
+      />
 
       <div className="mb-5 flex gap-0 border-b border-[var(--color-border-default)]">
         {STEP_TABS.map((tab) => {

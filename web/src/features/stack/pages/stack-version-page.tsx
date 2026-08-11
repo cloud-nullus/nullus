@@ -1,6 +1,5 @@
 import { Layers, Search, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
@@ -8,6 +7,7 @@ import type { CompatibilityMatrix, CompatibilityValidationResult } from '../api/
 import { cn } from '../../../lib/utils'
 import { useState } from 'react'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
 
 
 const STATUS_BADGE: Record<string, { className: string; key: string; defaultLabel: string }> = {
@@ -56,23 +56,19 @@ export function StackVersionPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.stackVersion', 'Stack Version') }]} />
-
-      <div className="mb-7 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]">
-            <Layers size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('stackVersionPage.title', 'Stack Version')}</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('stackVersionPage.description', 'Manage compatibility based on validated version combinations.')}</p>
-          </div>
-        </div>
-        <Button variant="primary" size="md" onClick={handleValidate}>
-          <ShieldCheck size={15} />
-          {t('stackVersionPage.actions.validateCurrentStack', 'Validate Current Stack')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.stackVersion', 'Stack Version') }]}
+        icon={<Layers size={16} />}
+        tone="success"
+        title={t('stackVersionPage.title', 'Stack Version')}
+        subtitle={t('stackVersionPage.description', 'Manage compatibility based on validated version combinations.')}
+        actions={
+          <Button variant="primary" size="md" onClick={handleValidate}>
+            <ShieldCheck size={15} />
+            {t('stackVersionPage.actions.validateCurrentStack', 'Validate Current Stack')}
+          </Button>
+        }
+      />
 
       <div className="mb-5 rounded-lg border border-[color-mix(in_srgb,_var(--color-info)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
         {t('stackVersionPage.notice', 'Only validated version combinations are shown. Unverified combinations will display warnings.')}

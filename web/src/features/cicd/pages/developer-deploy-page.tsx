@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from "lucide-react";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { CodePreview } from "../../../components/shared/code-preview";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -21,6 +20,7 @@ import {
 import type { AppType } from "../api/cicd-api";
 import { StepSection, labelStyleClass } from "../components/deploy-ui";
 import { generateManifestYamls } from "../utils/yaml-generator";
+import { PageHeader } from '../../../components/layout/page-header'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 type Capability = "CI" | "CD" | "Test" | "Security";
@@ -574,29 +574,23 @@ export function DeveloperDeployPage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          { label: t("sidebar.cicdList", "CI/CD List"), path: "/cicd/list" },
-          { label: t("developerDeployPage.title", "Pipeline Setup") },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t("sidebar.cicdList", "CI/CD List"), path: "/cicd/list" },
+            { label: t("developerDeployPage.title", "Pipeline Setup") },
+          ]
+        }
+        icon={<Rocket size={16} />}
+        tone="primary"
+        title={t("developerDeployPage.title", "Pipeline Setup")}
+        subtitle={
+          t(
+            "developerDeployPage.description",
+            "Configure your application pipeline before deployment.",
+          )
+        }
       />
-
-      <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-          <Rocket size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            {t("developerDeployPage.title", "Pipeline Setup")}
-          </h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            {t(
-              "developerDeployPage.description",
-              "Configure your application pipeline before deployment.",
-            )}
-          </p>
-        </div>
-      </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-1">
         {([1, 2, 3, 4, 5, 6] as Step[]).map((step, index) => (

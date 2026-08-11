@@ -75,8 +75,8 @@ colors:
 typography:
   h1:
     fontFamily: Inter
-    fontSize: 2rem
-    fontWeight: 800
+    fontSize: 1.375rem
+    fontWeight: 700
     lineHeight: 1.25
     letterSpacing: -0.01em
   h2:
@@ -136,10 +136,27 @@ elevation:
   overlay-dark: none
 
 rounded:
-  sm: 6px
-  md: 10px
-  lg: 12px
+  sm: 4px
+  md: 6px
+  lg: 8px
   full: 9999px
+
+# 레이아웃·밀도. design.md 스펙에 레이아웃 카테고리가 없어서 elevation 과 같은
+# 이유로 확장 키에 둔다. 개편 전에는 이 값들이 generate-theme.mjs 에 하드코딩돼
+# 있어서 "단일 출처" 계약에 구멍이 있었다 — 여기로 끌어올린다.
+layout:
+  sidebar-width: 240px
+  sidebar-collapsed: 48px
+  header-height: 44px
+  page-padding: 24px
+  page-padding-y: 20px
+  card-padding: 12px
+  grid-gap: 8px
+  icon-size: 28px
+  table-cell-px: 12px
+  table-row-height: 32px
+  table-header-height: 28px
+  control-height: 30px
 
 components:
   button-primary:
@@ -147,33 +164,33 @@ components:
     textColor: "{colors.light-on-primary}"
     typography: "{typography.label-sm}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   button-secondary:
     backgroundColor: "{colors.light-surface}"
     textColor: "{colors.light-primary}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   button-outline:
     backgroundColor: "{colors.light-surface}"
     textColor: "{colors.light-text}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   button-danger:
     backgroundColor: "{colors.light-error}"
     textColor: "{colors.light-on-primary}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   card:
     backgroundColor: "{colors.light-surface}"
     textColor: "{colors.light-text}"
     rounded: "{rounded.lg}"
-    padding: 16px
+    padding: 12px
   input:
     backgroundColor: "{colors.light-surface}"
     textColor: "{colors.light-text}"
     rounded: "{rounded.sm}"
-    padding: 8px
-    height: 36px
+    padding: 6px
+    height: 30px
   badge-success:
     backgroundColor: "{colors.light-surface}"
     textColor: "{colors.light-success}"
@@ -194,12 +211,12 @@ components:
     backgroundColor: "{colors.light-surface-sunken}"
     textColor: "{colors.light-text-secondary}"
     typography: "{typography.overline}"
-    height: 36px
+    height: 28px
   table-row:
     backgroundColor: "{colors.light-surface}"
     textColor: "{colors.light-text}"
     typography: "{typography.body-sm}"
-    height: 40px
+    height: 32px
 
   # ── 다크 변형 ──────────────────────────────────────────────
   # 스펙이 변형을 별도 엔트리로 표현하도록 규정하므로, 두 스킴의 컴포넌트 값을
@@ -209,28 +226,28 @@ components:
     textColor: "{colors.dark-on-primary}"
     typography: "{typography.label-sm}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   button-secondary-dark:
     backgroundColor: "{colors.dark-surface}"
     textColor: "{colors.dark-primary}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   button-outline-dark:
     backgroundColor: "{colors.dark-surface}"
     textColor: "{colors.dark-text}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   button-danger-dark:
     backgroundColor: "{colors.dark-error}"
     textColor: "{colors.dark-on-primary}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   button-brand:
     backgroundColor: "{colors.brand-gold}"
     textColor: "{colors.on-brand-gold}"
     typography: "{typography.label-sm}"
     rounded: "{rounded.md}"
-    padding: 10px
+    padding: 8px
   page-dark:
     backgroundColor: "{colors.dark-bg}"
     textColor: "{colors.dark-text}"
@@ -241,23 +258,23 @@ components:
     backgroundColor: "{colors.dark-surface}"
     textColor: "{colors.dark-text}"
     rounded: "{rounded.lg}"
-    padding: 16px
+    padding: 12px
   overlay-dark:
     backgroundColor: "{colors.dark-surface-raised}"
     textColor: "{colors.dark-text}"
     rounded: "{rounded.lg}"
-    padding: 16px
+    padding: 12px
   overlay:
     backgroundColor: "{colors.light-surface}"
     textColor: "{colors.light-text}"
     rounded: "{rounded.lg}"
-    padding: 16px
+    padding: 12px
   input-dark:
     backgroundColor: "{colors.dark-surface}"
     textColor: "{colors.dark-text}"
     rounded: "{rounded.sm}"
-    padding: 8px
-    height: 36px
+    padding: 6px
+    height: 30px
   divider:
     backgroundColor: "{colors.light-divider}"
     height: 1px
@@ -319,12 +336,12 @@ components:
     backgroundColor: "{colors.dark-surface-sunken}"
     textColor: "{colors.dark-text-secondary}"
     typography: "{typography.overline}"
-    height: 36px
+    height: 28px
   table-row-dark:
     backgroundColor: "{colors.dark-surface}"
     textColor: "{colors.dark-text}"
     typography: "{typography.body-sm}"
-    height: 40px
+    height: 32px
   scrim:
     backgroundColor: "{colors.light-scrim}"
   scrim-dark:
@@ -425,7 +442,7 @@ Coinbase 구조를 따라 **브랜드 색은 한 곳(로고)에만, 액션은 pr
 
 | 토큰 | 크기 | 굵기 | 용도 |
 |------|------|------|------|
-| `h1` | 2rem / 32px | 800 | 페이지 제목 (화면당 1개) |
+| `h1` | 1.375rem / 22px | 700 | 페이지 제목 (화면당 1개, `PageHeader` 가 렌더한다) |
 | `h2` | 1.125rem / 18px | 700 | 섹션 제목 |
 | `h3` | 0.875rem / 14px | 700 | 카드 제목, 필드 그룹 |
 | `body-md` | 0.875rem / 14px | 400 | 기본 본문 |
@@ -433,6 +450,11 @@ Coinbase 구조를 따라 **브랜드 색은 한 곳(로고)에만, 액션은 pr
 | `label-sm` | 0.75rem / 12px | 600 | 버튼, 배지, 폼 라벨 |
 | `overline` | 0.6875rem / 11px | 600 | 표 헤더, 섹션 오버라인 (대문자 + 자간) |
 | `code` | 0.8125rem / 13px | 400 | YAML, 스크립트, 식별자 |
+
+`h1` 은 원래 2rem/800 이었는데 그 값을 쓰는 화면이 하나도 없었다 — 28화면 전부
+손으로 22px 를 박고 있었다. 문서가 거짓이면 단일 출처가 아니므로, 실제로 쓰는
+값(22px)으로 토큰을 맞추고 무게만 800 → 700 으로 낮췄다. 운영 화면의 제목은
+외칠 필요가 없다.
 
 폰트는 UI 에 **Inter**, 한글에 **Pretendard**, 코드에 **Fira Code**.
 `body-md` 14px 가 기준선이다. 데이터 밀집 화면에서 16px 는 한 화면에 담기는 행 수를
@@ -443,19 +465,41 @@ Coinbase 구조를 따라 **브랜드 색은 한 곳(로고)에만, 액션은 pr
 
 ## Layout
 
+레이아웃 값은 front matter 의 `layout` 블록이 단일 출처다. 개편 중간까지는
+`--sidebar-width` 같은 값이 `scripts/generate-theme.mjs` 안에 하드코딩돼 있어서
+"값을 바꿀 곳은 이 파일 하나" 라는 계약에 구멍이 있었다.
+
 | 토큰 | 값 | 용도 |
 |------|------|------|
 | `--sidebar-width` | 240px | 사이드바 펼침 |
-| `--sidebar-collapsed` | 64px | 사이드바 접힘 |
-| `--header-height` | 56px | 상단 헤더 |
-| `--page-padding` | 32px | 페이지 좌우 여백 |
-| `--card-radius` | `{rounded.lg}` | 카드 모서리 |
-| `--card-padding` | `{spacing.lg}` | 카드 내부 여백 |
-| `--grid-gap` | `{spacing.md}` | 카드 그리드 간격 |
+| `--sidebar-collapsed` | 48px | 사이드바 접힘 (아이콘 레일) |
+| `--header-height` | 44px | 상단 헤더 · 사이드바 로고 줄 |
+| `--page-padding` | 24px | 페이지 좌우 여백 |
+| `--page-padding-y` | 20px | 페이지 상하 여백 |
+| `--card-radius` | `{rounded.lg}` = 8px | 카드 모서리 |
+| `--card-padding` | 12px | 카드 내부 여백 |
+| `--grid-gap` | 8px | 카드 그리드 간격 |
+| `--icon-size` | 28px | 제목 옆 기능 아이콘 컨테이너 |
+| `--table-row-height` | 32px | 표 본문 행 |
+| `--table-header-height` | 28px | 표 헤더 행 |
+| `--table-cell-px` | 12px | 표 셀 좌우 여백 |
+| `--control-height` | 30px | 입력·셀렉트·버튼 높이 |
 
 간격은 `spacing` 스케일(4 / 8 / 12 / 16 / 24 / 32 / 48)만 쓴다. 스케일 밖의 값
 (`13px`, `18px`, `7px`)을 쓰지 않는다 — 개편 전 `--card-padding: 18px`,
 `--grid-gap: 14px` 처럼 스케일 밖 값이 섞여 있으면 화면마다 리듬이 어긋난다.
+
+### 화면 골격은 VS Code 를 따른다
+
+운영 콘솔은 하루 종일 띄워 두는 도구다. 참조 대상은 마케팅 사이트가 아니라 IDE 다.
+
+- **카드로 나누지 말고 선으로 나눈다.** 섹션마다 테두리·그림자·라운드를 두르면
+  같은 화면 안에 액자가 여러 개 생겨 시선이 흩어진다. 구획은 1px 선 하나로 나눈다.
+- **화면 최상단은 `PageHeader` 하나로 통일한다.** 브레드크럼 → 아이콘 + 제목 +
+  설명 → 액션 순서를 28화면이 공유하고, 아래를 선으로 닫는다.
+- **목록 + 상세는 좌우 분할이다.** 목록 아래로 상세를 펼치면 클릭할 때마다 목록이
+  밀려 내려가 방금 고른 행을 잃는다. `ListDetailPanel` 로 왼쪽은 고정, 오른쪽만 바꾼다.
+- **모서리는 거의 직각에 가깝게.** 8px 이상은 쓰지 않는다.
 
 반응형은 데스크톱 우선이다. 1024px 미만에서 사이드바가 접히고, 768px 미만은
 지원하되 최적화 대상이 아니다 (운영 콘솔 특성).
@@ -480,16 +524,21 @@ Coinbase 구조를 따라 **브랜드 색은 한 곳(로고)에만, 액션은 pr
 
 | 토큰 | 값 | 용도 |
 |------|------|------|
-| `rounded.sm` | 6px | 입력, 배지, 작은 버튼 |
-| `rounded.md` | 10px | 버튼, 셀렉트 |
-| `rounded.lg` | 12px | 카드, 패널, 모달 |
+| `rounded.sm` | 4px | 입력, 배지, 작은 버튼 |
+| `rounded.md` | 6px | 버튼, 셀렉트 |
+| `rounded.lg` | 8px | 카드, 패널, 모달 |
 | `rounded.full` | 9999px | 상태 Chip, 아바타, 토글 |
 
 모서리는 4단이 끝이다. 같은 카드 안에서 서로 다른 반경을 섞지 않는다.
 
+**반경은 개편 중 한 번 더 줄였다** (6/10/12 → 4/6/8). 12px 라운드는 카드 하나만
+볼 때는 부드럽지만, 목록·표·패널이 한 화면에 여섯 개씩 쌓이는 운영 화면에서는
+둥근 모서리마다 여백이 생겨 화면이 헐거워 보인다. IDE 계열 도구가 거의 직각을
+쓰는 이유다.
+
 아이콘은 **lucide-react 하나만** 쓴다. `@mui/icons-material` 을 도입하지 않는다 —
 아이콘 세트가 둘이면 같은 뜻의 아이콘이 화면마다 달라진다.
-아이콘 컨테이너는 38x38, 반경 10px, 배경은 해당 기능 색의 15% 알파.
+아이콘 컨테이너는 `--icon-size`(28x28), 반경 `rounded.sm`, 배경은 해당 기능 색의 15% 알파.
 
 ## Components
 
@@ -506,9 +555,13 @@ AG Grid 이관은 시도했다가 되돌렸다 — 실제 레이아웃 측정에
 MUI 기본값은 여백이 넉넉하다. 그대로 쓰면 한 화면에 들어가던 행이 줄어드는데,
 **그건 정보 손실이다.** 그래서 다음을 기본값으로 조인다:
 
-- 모든 입력·셀렉트·버튼은 `size="small"`
-- 표 행 높이 40px, 헤더 36px
-- 카드 내부 여백 16px (`spacing.lg`)
+- 모든 입력·셀렉트·버튼은 `size="small"`, 높이 `--control-height`(30px)
+- 표 행 높이 `--table-row-height`(32px), 헤더 `--table-header-height`(28px)
+- 카드 내부 여백 `--card-padding`(12px)
+
+수치는 개편 중 한 번 더 조였다(행 40→32, 헤더 36→28, 카드 여백 16→12).
+1080p 목록 화면 기준으로 한 화면에 보이는 행이 약 6줄 늘어난다 —
+스크롤 없이 판단이 끝나는 행 수가 이 도구의 실질 성능이다.
 
 ### 상태 표시
 
@@ -533,6 +586,8 @@ MUI 기본값은 여백이 넉넉하다. 그대로 쓰면 한 화면에 들어�
 - ✅ 간격은 `spacing` 스케일 안에서만 고른다.
 - ✅ 표는 `DataTable`(TanStack), 정적·레이아웃 표만 MUI `Table`.
 - ✅ 밀도를 높이려면 여백을 줄인다.
+- ✅ 화면 상단은 `PageHeader`, 목록+상세는 `ListDetailPanel` 을 쓴다.
+- ✅ 구획은 1px 선으로 나눈다.
 - ✅ 새 화면을 만들 때 이 파일을 먼저 읽는다.
 
 ### Don't
@@ -547,3 +602,7 @@ MUI 기본값은 여백이 넉넉하다. 그대로 쓰면 한 화면에 들어�
 - ❌ 그리드·차트·아이콘 라이브러리를 추가하지 않는다. AG Grid 도 포함이다(D6).
 - ❌ **정보를 줄여서 여백을 만들지 않는다.** 밀도와 정보량은 별개다.
 - ❌ 텍스트 4단째를 만들지 않는다. AA 를 넘길 수 없다.
+- ❌ 화면마다 제목 줄을 손으로 만들지 않는다. 28화면이 각자 만든 결과가
+  "흐트러진 느낌"의 절반이었다 — `PageHeader` 를 쓴다.
+- ❌ 목록 아래로 상세를 펼치지 않는다. 목록이 밀려 내려가 방금 고른 행을 잃는다.
+- ❌ 섹션을 카드로 감싸 액자를 겹치지 않는다. 선으로 나눈다.

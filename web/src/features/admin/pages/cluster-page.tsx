@@ -13,8 +13,8 @@ import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
+import { PageHeader } from '../../../components/layout/page-header'
 
 const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string }> = {
   connected: {
@@ -502,27 +502,19 @@ export function ClusterPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.clusterManagement', 'Cluster Management') }]} />
-
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]">
-            <Network size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('sidebar.clusterManagement', 'Cluster Management')}
-            </h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {t('clusterPage.description', 'Register and manage Kubernetes clusters.')}
-            </p>
-          </div>
-        </div>
-        <Button variant="primary" size="md" onClick={openCreateModal} type="button">
-          <Plus size={15} />
-          {t('clusterPage.actions.registerCluster', 'Register Cluster')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.clusterManagement', 'Cluster Management') }]}
+        icon={<Network size={16} />}
+        tone="info"
+        title={t('sidebar.clusterManagement', 'Cluster Management')}
+        subtitle={t('clusterPage.description', 'Register and manage Kubernetes clusters.')}
+        actions={
+          <Button variant="primary" size="md" onClick={openCreateModal} type="button">
+            <Plus size={15} />
+            {t('clusterPage.actions.registerCluster', 'Register Cluster')}
+          </Button>
+        }
+      />
 
       <div className="h-[640px]">
         <ListDetailPanel

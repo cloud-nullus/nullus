@@ -73,7 +73,14 @@ export const nullusTheme: Theme = createTheme({
     MuiButton: {
       defaultProps: { size: 'small', disableElevation: true },
       styleOverrides: {
-        root: { borderRadius: rounded.md, paddingInline: '14px' },
+        root: {
+          borderRadius: rounded.md,
+          paddingInline: 'var(--space-md)',
+          minHeight: 'var(--control-height)',
+          // 아이콘을 startIcon 이 아니라 children 으로 넘기는 호출부가 대부분이라
+          // JSX 줄바꿈이 공백을 만드느냐에 따라 아이콘이 글자에 붙었다 떨어졌다 했다.
+          gap: 'var(--space-xs)',
+        },
       },
     },
     MuiTextField: { defaultProps: { size: 'small' } },

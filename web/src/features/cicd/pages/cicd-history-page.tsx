@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, History, Search } from 'lucide-react'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
@@ -12,6 +11,7 @@ import { DataTable } from '../../../components/shared/data-table'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { getPipelineStatusLabel } from '../utils/pipeline-status'
 import { StatusBadge, toneForStatus } from '../../../components/shared/status-badge'
+import { PageHeader } from '../../../components/layout/page-header'
 export function CicdHistoryPage() {
   const { t, i18n } = useTranslation()
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
@@ -100,24 +100,13 @@ export function CicdHistoryPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' }, { label: t('cicdHistoryPage.title', 'CI/CD History') }]} />
-
-      {/* Page header */}
-      <div className="mb-7 flex items-center gap-2.5">
-        <div
-          className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]"
-        >
-          <History size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            {t('cicdHistoryPage.title', 'CI/CD History')}
-          </h1>
-          <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-            {t('cicdHistoryPage.description', 'CI/CD Deployment History')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' }, { label: t('cicdHistoryPage.title', 'CI/CD History') }]}
+        icon={<History size={16} />}
+        tone="warning"
+        title={t('cicdHistoryPage.title', 'CI/CD History')}
+        subtitle={t('cicdHistoryPage.description', 'CI/CD Deployment History')}
+      />
 
       {pipelineFilter && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-3 py-2 text-sm">

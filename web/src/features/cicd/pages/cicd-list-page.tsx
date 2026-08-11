@@ -59,13 +59,13 @@ import { Button } from "../../../components/ui/button";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { YamlEditor } from "../../../components/shared/yaml-editor";
 import { DataTable } from "../../../components/shared/data-table";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { formatDate, formatDateTime, resolveLocale } from "../../../lib/locale";
 import {
   getPipelineStatusLabel,
   getPipelineStatusStyle,
 } from "../utils/pipeline-status";
 import { cn } from "../../../lib/utils";
+import { PageHeader } from '../../../components/layout/page-header'
 
 // ── Execute Modal ─────────────────────────────────────────────────────────────
 
@@ -1936,44 +1936,35 @@ export function CicdListPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t("sidebar.cicdList", "CI/CD List") }]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-            <List size={18} />
+      <PageHeader
+        breadcrumb={[{ label: t("sidebar.cicdList", "CI/CD List") }]}
+        icon={<List size={16} />}
+        tone="primary"
+        title={t("cicdListPage.title", "CI/CD List")}
+        subtitle={t("cicdListPage.description", "CI/CD Pipeline List")}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={() => navigate("/cicd/developer-deploy")}
+              type="button"
+            >
+              <Plus size={15} />
+              {t("cicd.addPhase", "Add Phase")}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => navigate("/cicd/templates")}
+              type="button"
+            >
+              <Plus size={15} />
+              {t("cicd.newPipeline", "New Pipeline")}
+            </Button>
           </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t("cicdListPage.title", "CI/CD List")}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t("cicdListPage.description", "CI/CD Pipeline List")}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="md"
-            onClick={() => navigate("/cicd/developer-deploy")}
-            type="button"
-          >
-            <Plus size={15} />
-            {t("cicd.addPhase", "Add Phase")}
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => navigate("/cicd/templates")}
-            type="button"
-          >
-            <Plus size={15} />
-            {t("cicd.newPipeline", "New Pipeline")}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
         <div className="min-w-0">

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { Server, GitBranch, BarChart3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useAuthStore } from '../../../stores/auth-store'
 import { cn } from '../../../lib/utils'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
@@ -14,6 +13,7 @@ import { CicdDefault, CICD_DEFAULT_TABS } from "../components/monitoring-cicd-vi
 import { StackConnectPanel } from "../components/monitoring-connect-panel"
 import { PlatformToolHealth } from '../components/platform-tool-health'
 import { useDashboard } from '../api/observability-api'
+import { PageHeader } from '../../../components/layout/page-header'
 
 function StackDefault({ stackId }: { stackId: string }) {
   return <StackMonitoringOverview stackId={stackId} />
@@ -94,20 +94,13 @@ export function MonitoringPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('observability.monitoring', 'Monitoring Dashboard') }]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]">
-          <BarChart3 size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('observability.monitoring', 'Monitoring Dashboard')}</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            {t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('observability.monitoring', 'Monitoring Dashboard') }]}
+        icon={<BarChart3 size={16} />}
+        tone="info"
+        title={t('observability.monitoring', 'Monitoring Dashboard')}
+        subtitle={t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
+      />
 
       <PlatformToolHealth
         tools={platformDashboard?.tools}

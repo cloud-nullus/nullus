@@ -2,16 +2,17 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle, Terminal } from 'lucide-react'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
+import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
 
 
 export function StackHistoryPage() {
@@ -214,30 +215,19 @@ export function StackHistoryPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.stackHistory', 'Stack History') }]} />
-
-      {/* Page header */}
-      <div className="mb-7 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]"
-          >
-            <History size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('stackHistoryPage.title', 'Stack History')}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackHistoryPage.description', 'Stack change history and version management')}
-            </p>
-          </div>
-        </div>
-        <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
-          <GitCompare size={15} />
-          {t('stackHistoryPage.actions.compareVersions', 'Compare Versions')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.stackHistory', 'Stack History') }]}
+        icon={<History size={16} />}
+        tone="primary"
+        title={t('stackHistoryPage.title', 'Stack History')}
+        subtitle={t('stackHistoryPage.description', 'Stack change history and version management')}
+        actions={
+          <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
+            <GitCompare size={15} />
+            {t('stackHistoryPage.actions.compareVersions', 'Compare Versions')}
+          </Button>
+        }
+      />
 
       <div className="mb-4 max-w-[360px]">
         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
@@ -260,56 +250,67 @@ export function StackHistoryPage() {
         </NativeSelect>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={entries}
-        getRowKey={(row) => row.id}
-        toolbar={
-          <>
-            <NativeSelect
-              value={clusterFilter}
-              onChange={(event) => setClusterFilter(event.target.value)}
-              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
-            >
-              <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
-              {clusterOptions.map((clusterName) => (
-                <option key={clusterName} value={clusterName}>{clusterName}</option>
-              ))}
-            </NativeSelect>
-            <div className="relative ml-auto">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
+      {/* 스냅샷은 표 아래가 아니라 오른쪽에 붙는다. 아래로 펼치면 행을 고를
+          때마다 표가 밀려 내려가 방금 고른 행을 잃는다 (DESIGN.md §Layout). */}
+      <ListDetailPanel
+        detailWidth={340}
+        emptyDetailMessage={t('stackHistoryPage.selectEntry', 'Select a change to view its configuration snapshot.')}
+        detailContent={
+          expandedEntry && (
+            <div className="p-3">
+              <p className="mb-2.5 mt-0 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                {t('stackHistoryPage.snapshot', 'Configuration Snapshot')} (v{expandedEntry.version})
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
+                  <div
+                    key={k}
+                    className="rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] px-2.5 py-1.5 font-mono text-xs"
+                  >
+                    <span className="text-[var(--color-text-secondary)]">{k}: </span>
+                    <span className="text-[var(--color-primary)]">{String(v)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </>
+          )
+        }
+        listContent={
+          <DataTable
+            flush
+            columns={columns}
+            data={entries}
+            getRowKey={(row) => row.id}
+            onRowClick={(row) => setExpandedId(row.id)}
+            toolbar={
+              <>
+                <NativeSelect
+                  value={clusterFilter}
+                  onChange={(event) => setClusterFilter(event.target.value)}
+                  className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                >
+                  <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
+                  {clusterOptions.map((clusterName) => (
+                    <option key={clusterName} value={clusterName}>{clusterName}</option>
+                  ))}
+                </NativeSelect>
+                <div className="relative ml-auto">
+                  <Search
+                    size={13}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
+                  />
+                  <input
+                    placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                  />
+                </div>
+              </>
         }
       />
-
-      {expandedEntry && (
-        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)] px-5 py-4">
-          <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            {t('stackHistoryPage.snapshot', 'Configuration Snapshot')} (v{expandedEntry.version})
-          </p>
-          <div className="flex flex-wrap gap-2.5">
-            {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
-              <div
-                key={k}
-                className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-[14px] py-2 font-mono text-xs"
-              >
-                <span className="text-[var(--color-text-secondary)]">{k}: </span>
-                <span className="text-[var(--color-primary)]">{String(v)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        }
+      />
 
       <Modal
         open={compareOpen}
