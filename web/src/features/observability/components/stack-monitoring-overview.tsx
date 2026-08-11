@@ -1,37 +1,82 @@
 import { Box, Cpu, HardDrive, MemoryStick } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Chart as ChartJS,
-  Filler,
-  Legend as ChartLegend,
-  LineElement,
-  LinearScale,
-  PointElement,
-  Tooltip as ChartTooltip,
-  type ChartOptions,
-} from "chart.js";
-import { Bar, Doughnut, Line } from "react-chartjs-2";
-// chart.js 는 <canvas> 라 CSS 변수를 해석하지 못한다 — 색을 실제 값으로 풀어 넘긴다.
-import { resolveColor } from "../../../theme/resolve-token";
+  Area,
+  Bar,
+  BarChart,
+  Cell,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import { useStackMonitoring } from "../../stack/api/stack-api";
 import { toolLogoURL } from "../../stack/utils/tool-logo";
+import { CHART_LEGEND_PROPS, CHART_STYLE } from "./monitoring-chart-widgets";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  ChartTooltip,
-  ChartLegend,
-  Filler,
-);
+// recharts 는 SVG 라 CSS 변수를 그대로 쓴다. 이 파일이 chart.js(<canvas>)를 쓰던
+// 동안에는 var() 를 못 읽어 차트가 검게 렌더됐고, 그걸 메우려고 theme/resolve-token
+// 의 resolveColor() 로 색 58곳을 감싸고 있었다. 캔버스가 없어졌으니 그 다리도 없다.
+
+/** 축 눈금: 1 미만은 소수 둘째 자리까지, 그 밖은 반올림. chart.js 콜백과 같은 규칙이다. */
+function formatAxisValue(value: number | string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  if (n !== 0 && Math.abs(n) < 1) return n.toFixed(2);
+  return `${Math.round(n)}`;
+}
+
+/**
+ * OSS 막대 아래 로고 줄.
+ *
+ * 차트 안이 아니라 형제로 둔다. recharts 는 카테고리를 플롯 영역에 균등 배치하므로,
+ * 플롯 영역과 같은 좌우 여백(YAxis 폭 40px, margin.right 8px)을 준 flex 행이면
+ * 각 칸의 중앙이 곧 막대 그룹의 중앙이다 — 측정이 필요 없다.
+ *
+ * 개편 전에는 chart.js 인스턴스 ref 로 `xScale.getPixelForValue(idx)` 를 읽어
+ * 절대 배치했다. rAF + resize 리스너 + 위치 state 가 딸렸고, 리렌더 타이밍에
+ * 따라 아이콘이 막대와 어긋났다. 그 셋을 전부 지웠다.
+ */
+const OSS_PLOT_INSET = "pl-10 pr-2";
+
+function OssLogoRow({ items }: { items: { key: string; fullName: string; iconUrl: string }[] }) {
+  return (
+    <div className={cn("pointer-events-none flex h-5 items-start", OSS_PLOT_INSET)}>
+      {items.map((item) => (
+        <div key={`oss-icon-${item.key}`} className="flex min-w-0 flex-1 justify-center">
+          <div className="relative h-4 w-4">
+            <img
+              src={item.iconUrl}
+              alt={`${item.fullName} icon`}
+              className="h-4 w-4 rounded-[3px]"
+              loading="lazy"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+                const fallback = event.currentTarget
+                  .nextElementSibling as HTMLElement | null;
+                if (fallback) fallback.style.display = "flex";
+              }}
+            />
+            <span
+              className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] text-[9px] font-bold text-[var(--color-text-primary)]"
+              aria-hidden="true"
+            >
+              {item.fullName.slice(0, 1).toUpperCase()}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 type MonitoringRange = "realtime" | "1h" | "6h" | "24h" | "7d";
 
@@ -189,8 +234,6 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
   const [range, setRange] = useState<MonitoringRange>("realtime");
   const [scope, setScope] = useState<string>("all");
   const [samples, setSamples] = useState<MonitoringSample[]>([]);
-  const [ossIconPositions, setOssIconPositions] = useState<number[]>([]);
-  const ossBarChartRef = useRef<ChartJS<"bar"> | null>(null);
   const { data: monitoring, isLoading } = useStackMonitoring(stackId, 5000);
 
   const scopeOptions = useMemo(
@@ -389,12 +432,12 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
 
   const podStatusData = useMemo(() => {
     const palette = [
-      resolveColor("var(--color-success)"),
-      resolveColor("var(--color-warning)"),
-      resolveColor("var(--color-error)"),
-      resolveColor("var(--color-info)"),
-      resolveColor("var(--color-accent-alt)"),
-      resolveColor("var(--color-text-secondary)"),
+      "var(--color-success)",
+      "var(--color-warning)",
+      "var(--color-error)",
+      "var(--color-info)",
+      "var(--color-accent-alt)",
+      "var(--color-text-secondary)",
     ];
     const counts = Object.entries(currentMetrics.statusCounts).map(
       ([name, count]) => ({ name, count }),
@@ -444,7 +487,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current CPU",
           value: "-",
           icon: <Cpu size={18} />,
-          color: resolveColor("var(--color-info)"),
+          color: "var(--color-info)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "Core" },
@@ -453,7 +496,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current Memory",
           value: "-",
           icon: <MemoryStick size={18} />,
-          color: resolveColor("var(--color-accent-alt)"),
+          color: "var(--color-accent-alt)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
           bar: 0,
           metricScale: { current: null, request: 0, limit: 0, unit: "GiB" },
@@ -462,7 +505,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Current Storage",
           value: "-",
           icon: <HardDrive size={18} />,
-          color: resolveColor("var(--color-success)"),
+          color: "var(--color-success)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
           bar: 0,
         },
@@ -470,7 +513,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
           label: "Ready Pods",
           value: "-",
           icon: <Box size={18} />,
-          color: resolveColor("var(--color-warning)"),
+          color: "var(--color-warning)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
           bar: 0,
         },
@@ -529,7 +572,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         label: "Current CPU",
         value: cpuUsageC !== null ? `${cpuUsageC.toFixed(2)} Core` : "N/A",
         icon: <Cpu size={18} />,
-        color: resolveColor("var(--color-info)"),
+        color: "var(--color-info)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
         bar: cpuCurrentBar,
         metricScale: {
@@ -544,7 +587,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         value:
           memoryUsageGiB !== null ? `${memoryUsageGiB.toFixed(2)} GiB` : "N/A",
         icon: <MemoryStick size={18} />,
-        color: resolveColor("var(--color-accent-alt)"),
+        color: "var(--color-accent-alt)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
         bar: memoryCurrentBar,
         metricScale: {
@@ -565,7 +608,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                 ? `${storageRequestGiB.toFixed(2)} GiB`
                 : "0.00 GiB",
         icon: <HardDrive size={18} />,
-        color: resolveColor("var(--color-success)"),
+        color: "var(--color-success)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
         bar: storageCurrentBar,
         metricScale: {
@@ -580,285 +623,35 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         label: "Ready Pods",
         value: `${currentMetrics.readyPods} / ${currentMetrics.totalPods}`,
         icon: <Box size={18} />,
-        color: resolveColor("var(--color-warning)"),
+        color: "var(--color-warning)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
         bar: readyRatio,
       },
     ];
   }, [monitoring, currentMetrics, cpuMaxInWindow, memoryMaxInWindow]);
 
-  const cpuChartOptions: ChartOptions<"line"> = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 } },
-        tooltip: {
-          backgroundColor: resolveColor("var(--color-surface-base)"),
-          borderColor: resolveColor("var(--color-border-default)"),
-          borderWidth: 1,
-          titleColor: "#f9fafb",
-          bodyColor: resolveColor("var(--color-border-default)"),
-        },
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: resolveColor("var(--color-text-secondary)"),
-            maxRotation: 0,
-            autoSkip: true,
-            maxTicksLimit: 8,
-          },
-          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
-        },
-        y: {
-          ticks: {
-            color: resolveColor("var(--color-text-secondary)"),
-            callback: (value) => {
-              const n = Number(value);
-              if (!Number.isFinite(n)) return "0";
-              if (n !== 0 && Math.abs(n) < 1) return n.toFixed(2);
-              return `${Math.round(n)}`;
-            },
-          },
-          title: { display: true, text: "Core", color: resolveColor("var(--color-text-secondary)") },
-          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
-          beginAtZero: true,
-        },
-      },
-      elements: {
-        line: { tension: 0.35 },
-        point: { radius: 0, hoverRadius: 3 },
-      },
-    }),
-    [],
-  );
-
-  const memoryChartOptions: ChartOptions<"line"> = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 } },
-        tooltip: {
-          backgroundColor: resolveColor("var(--color-surface-base)"),
-          borderColor: resolveColor("var(--color-border-default)"),
-          borderWidth: 1,
-          titleColor: "#f9fafb",
-          bodyColor: resolveColor("var(--color-border-default)"),
-        },
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: resolveColor("var(--color-text-secondary)"),
-            maxRotation: 0,
-            autoSkip: true,
-            maxTicksLimit: 8,
-          },
-          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
-        },
-        y: {
-          ticks: {
-            color: resolveColor("var(--color-text-secondary)"),
-            callback: (value) => {
-              const n = Number(value);
-              if (!Number.isFinite(n)) return "0";
-              if (n !== 0 && Math.abs(n) < 1) return n.toFixed(2);
-              return `${Math.round(n)}`;
-            },
-          },
-          title: { display: true, text: "GiB", color: resolveColor("var(--color-text-secondary)") },
-          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
-          beginAtZero: true,
-        },
-      },
-      elements: {
-        line: { tension: 0.35 },
-        point: { radius: 0, hoverRadius: 3 },
-      },
-    }),
-    [],
-  );
-
-  const cpuChartData = useMemo(
-    () => ({
-      labels: usageData.map((item) => item.time),
-      datasets: [
-        {
-          label: "CPU Request",
-          data: usageData.map((item) => item.cpuRequest / 1000),
-          borderColor: resolveColor("var(--color-info)"),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-info) 18%, transparent)"),
-          fill: true,
-        },
-        {
-          label: "CPU Limit",
-          data: usageData.map((item) => item.cpuLimit / 1000),
-          borderColor: resolveColor("var(--color-warning)"),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-warning) 8%, transparent)"),
-          fill: false,
-        },
-        {
-          label: "CPU Current",
-          data: usageData.map((item) =>
-            item.cpuUsage === null ? null : item.cpuUsage / 1000,
-          ),
-          borderColor: resolveColor("var(--color-success)"),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-success) 8%, transparent)"),
-          fill: false,
-        },
-      ],
-    }),
+  // recharts 는 행 배열을 먹는다. chart.js 의 datasets 구조를 옮기면서 단위 변환
+  // (밀리코어→코어, MiB→GiB)은 그대로 둔다.
+  const cpuSeries = useMemo(
+    () =>
+      usageData.map((item) => ({
+        time: item.time,
+        request: item.cpuRequest / 1000,
+        limit: item.cpuLimit / 1000,
+        current: item.cpuUsage === null ? null : item.cpuUsage / 1000,
+      })),
     [usageData],
   );
 
-  const memoryChartData = useMemo(
-    () => ({
-      labels: usageData.map((item) => item.time),
-      datasets: [
-        {
-          label: "Memory Request",
-          data: usageData.map((item) => item.memoryRequest / 1024),
-          borderColor: resolveColor("var(--color-info)"),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-info) 18%, transparent)"),
-          fill: true,
-        },
-        {
-          label: "Memory Limit",
-          data: usageData.map((item) => item.memoryLimit / 1024),
-          borderColor: resolveColor("var(--color-warning)"),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-warning) 8%, transparent)"),
-          fill: false,
-        },
-        {
-          label: "Memory Current",
-          data: usageData.map((item) =>
-            item.memoryUsage === null ? null : item.memoryUsage / 1024,
-          ),
-          borderColor: resolveColor("var(--color-success)"),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-success) 8%, transparent)"),
-          fill: false,
-        },
-      ],
-    }),
+  const memorySeries = useMemo(
+    () =>
+      usageData.map((item) => ({
+        time: item.time,
+        request: item.memoryRequest / 1024,
+        limit: item.memoryLimit / 1024,
+        current: item.memoryUsage === null ? null : item.memoryUsage / 1024,
+      })),
     [usageData],
-  );
-
-  const ossBarData = useMemo(
-    () => ({
-      labels: ossBars.map(() => ""),
-      datasets: [
-        {
-          label: "Total Pods",
-          data: ossBars.map((item) => item.pods),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-primary) 72%, transparent)"),
-          borderRadius: 6,
-        },
-        {
-          label: "Ready Pods",
-          data: ossBars.map((item) => item.ready),
-          backgroundColor: resolveColor("color-mix(in srgb, var(--color-success) 72%, transparent)"),
-          borderRadius: 6,
-        },
-      ],
-    }),
-    [ossBars],
-  );
-
-  const ossBarOptions: ChartOptions<"bar"> = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 } },
-        tooltip: {
-          backgroundColor: resolveColor("var(--color-surface-base)"),
-          borderColor: resolveColor("var(--color-border-default)"),
-          borderWidth: 1,
-          titleColor: "#f9fafb",
-          bodyColor: resolveColor("var(--color-border-default)"),
-          callbacks: {
-            title: (items) => {
-              const idx = items[0]?.dataIndex ?? 0;
-              return ossBars[idx]?.fullName ?? "OSS";
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          ticks: { display: false },
-          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
-        },
-        y: {
-          beginAtZero: true,
-          ticks: { color: resolveColor("var(--color-text-secondary)"), precision: 0 },
-          grid: { color: resolveColor("color-mix(in srgb, var(--color-text-secondary) 12%, transparent)") },
-        },
-      },
-    }),
-    [ossBars],
-  );
-
-  useEffect(() => {
-    const updateIconPositions = () => {
-      const chart = ossBarChartRef.current;
-      const xScale = chart?.scales?.x;
-      if (!xScale || ossBars.length === 0) {
-        setOssIconPositions([]);
-        return;
-      }
-      setOssIconPositions(
-        ossBars.map((_, idx) => xScale.getPixelForValue(idx)),
-      );
-    };
-
-    const rafId = window.requestAnimationFrame(updateIconPositions);
-    window.addEventListener("resize", updateIconPositions);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", updateIconPositions);
-    };
-  }, [ossBars, usageData]);
-
-  const podStatusChartData = useMemo(
-    () => ({
-      labels: podStatusData.map((item) => item.name),
-      datasets: [
-        {
-          data: podStatusData.map((item) => item.value),
-          backgroundColor: podStatusData.map((item) => item.color),
-          borderColor: resolveColor("color-mix(in srgb, var(--color-text-primary) 80%, transparent)"),
-          borderWidth: 2,
-        },
-      ],
-    }),
-    [podStatusData],
-  );
-
-  const podStatusOptions: ChartOptions<"doughnut"> = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: "62%",
-      plugins: {
-        legend: {
-          position: "bottom",
-          labels: { color: resolveColor("var(--color-border-default)"), boxWidth: 10, boxHeight: 10 },
-        },
-        tooltip: {
-          backgroundColor: resolveColor("var(--color-surface-base)"),
-          borderColor: resolveColor("var(--color-border-default)"),
-          borderWidth: 1,
-          titleColor: "#f9fafb",
-          bodyColor: resolveColor("var(--color-border-default)"),
-        },
-      },
-    }),
-    [],
   );
 
   const cardClassName =
@@ -1037,7 +830,30 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               CPU (Request / Limit / Current)
             </div>
             <div className="h-[250px]">
-              <Line data={cpuChartData} options={cpuChartOptions} />
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={cpuSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="cpu-request-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-info)" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="var(--color-info)" stopOpacity={0.04} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+                  <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} minTickGap={24} />
+                  <YAxis
+                    stroke="var(--color-text-secondary)"
+                    tick={CHART_STYLE.tick}
+                    tickFormatter={formatAxisValue}
+                    width={46}
+                    label={{ value: "Core", angle: -90, position: "insideLeft", fill: "var(--color-text-secondary)", fontSize: 11 }}
+                  />
+                  <Tooltip contentStyle={CHART_STYLE.tooltip} />
+                  <Legend {...CHART_LEGEND_PROPS} />
+                  <Area type="monotone" dataKey="request" name="CPU Request" stroke="var(--color-info)" strokeWidth={2} fill="url(#cpu-request-fill)" dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="limit" name="CPU Limit" stroke="var(--color-warning)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="current" name="CPU Current" stroke="var(--color-success)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} connectNulls={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
@@ -1046,7 +862,30 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               Memory (Request / Limit / Current)
             </div>
             <div className="h-[250px]">
-              <Line data={memoryChartData} options={memoryChartOptions} />
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={memorySeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="memory-request-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-info)" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="var(--color-info)" stopOpacity={0.04} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+                  <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} minTickGap={24} />
+                  <YAxis
+                    stroke="var(--color-text-secondary)"
+                    tick={CHART_STYLE.tick}
+                    tickFormatter={formatAxisValue}
+                    width={46}
+                    label={{ value: "GiB", angle: -90, position: "insideLeft", fill: "var(--color-text-secondary)", fontSize: 11 }}
+                  />
+                  <Tooltip contentStyle={CHART_STYLE.tooltip} />
+                  <Legend {...CHART_LEGEND_PROPS} />
+                  <Area type="monotone" dataKey="request" name="Memory Request" stroke="var(--color-info)" strokeWidth={2} fill="url(#memory-request-fill)" dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="limit" name="Memory Limit" stroke="var(--color-warning)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="current" name="Memory Current" stroke="var(--color-success)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} connectNulls={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
@@ -1054,56 +893,28 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
             <div className="mb-2 text-[13px] font-bold text-[var(--color-text-primary)]">
               OSS Pod Coverage
             </div>
-            <div className="relative h-[272px]">
-              <div className="h-[250px]">
-                <Bar
-                  ref={ossBarChartRef}
-                  data={ossBarData}
-                  options={ossBarOptions}
-                />
-              </div>
-              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[20px]">
-                {ossBars.map((item, idx) => {
-                  const fallbackLeft =
-                    ((idx + 0.5) / Math.max(ossBars.length, 1)) * 100;
-                  const left = ossIconPositions[idx] ?? fallbackLeft;
-                  const leftStyle =
-                    typeof left === "number"
-                      ? ossIconPositions[idx] !== undefined
-                        ? `${left}px`
-                        : `${left}%`
-                      : "0px";
-                  return (
-                    <div
-                      key={`oss-icon-${item.key}`}
-                      className="absolute bottom-0 -translate-x-1/2"
-                      style={{ left: leftStyle }}
-                    >
-                      <div className="relative h-4 w-4">
-                        <img
-                          src={item.iconUrl}
-                          alt={`${item.fullName} icon`}
-                          className="h-4 w-4 rounded-[3px]"
-                          loading="lazy"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                            const fallback = e.currentTarget
-                              .nextElementSibling as HTMLElement | null;
-                            if (fallback) fallback.style.display = "flex";
-                          }}
-                        />
-                        <span
-                          className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] text-[9px] font-bold text-[var(--color-text-primary)]"
-                          aria-hidden="true"
-                        >
-                          {item.fullName.slice(0, 1).toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={ossBars} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+                  {/* 눈금 글자는 숨긴다 — 도구 이름은 아래 로고 줄과 툴팁이 들고 있다. */}
+                  <XAxis
+                    dataKey="fullName"
+                    stroke="var(--color-text-secondary)"
+                    interval={0}
+                    tickLine={false}
+                    tick={false}
+                    height={4}
+                  />
+                  <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} allowDecimals={false} width={40} />
+                  <Tooltip contentStyle={CHART_STYLE.tooltip} cursor={{ fill: "color-mix(in srgb, var(--color-text-secondary) 8%, transparent)" }} />
+                  <Legend {...CHART_LEGEND_PROPS} />
+                  <Bar dataKey="pods" name="Total Pods" fill="color-mix(in srgb, var(--color-primary) 72%, transparent)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="ready" name="Ready Pods" fill="color-mix(in srgb, var(--color-success) 72%, transparent)" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
+            <OssLogoRow items={ossBars} />
           </div>
 
           <div className="rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-2.5">
@@ -1111,7 +922,27 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               Pod Status
             </div>
             <div className="h-[250px]">
-              <Doughnut data={podStatusChartData} options={podStatusOptions} />
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={podStatusData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="45%"
+                    innerRadius="52%"
+                    outerRadius="84%"
+                    stroke="color-mix(in srgb, var(--color-text-primary) 80%, transparent)"
+                    strokeWidth={2}
+                  >
+                    {podStatusData.map((item) => (
+                      <Cell key={item.name} fill={item.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={CHART_STYLE.tooltip} />
+                  <Legend verticalAlign="bottom" {...CHART_LEGEND_PROPS} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>

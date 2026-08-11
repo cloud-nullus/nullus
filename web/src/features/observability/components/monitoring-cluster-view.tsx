@@ -8,7 +8,7 @@ import type { StackMonitoringSnapshot } from "../../stack/api/stack-api"
 import { useClusterMonitoringSummary } from "../../admin/api/admin-api"
 import { useDeployments, usePipelines } from "../../cicd/api/cicd-api"
 import { cn } from "../../../lib/utils"
-import { CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
+import { CHART_LEGEND_PROPS, CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
 import type { TimeRange } from "./monitoring-tab-layout"
 import { formatRangeLabel, selectSeries } from "../utils/monitoring-utils"
 
@@ -250,7 +250,7 @@ export function ClusterDefault({
                 {pods.map((e) => <Cell key={e.name} fill={e.color} />)}
               </Pie>
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: 'var(--color-border-default)' }} />
+              <Legend {...CHART_LEGEND_PROPS} />
             </PieChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -261,7 +261,7 @@ export function ClusterDefault({
               <XAxis dataKey="day" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: 'var(--color-border-default)' }} />
+              <Legend {...CHART_LEGEND_PROPS} />
               <Bar dataKey="success" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
               <Bar dataKey="failed" fill="var(--color-error)" radius={[4, 4, 0, 0]} />
             </BarChart>

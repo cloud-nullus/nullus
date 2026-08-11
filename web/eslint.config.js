@@ -57,11 +57,29 @@ export default defineConfig([
               name: '@mui/icons-material',
               message: '아이콘은 lucide-react 하나만 쓴다. 세트가 2개면 같은 뜻의 아이콘이 화면마다 달라진다.',
             },
+            // 차트는 recharts(SVG) 하나다. chart.js 는 <canvas> 에 그리므로
+            // CSS 변수를 해석하지 못한다 — 토큰을 var() 로 넘기면 색을 못 읽어
+            // 차트가 통째로 검게 렌더된다. 실제로 그 회귀가 났고, getComputedStyle
+            // 로 var() 를 푸는 다리(theme/resolve-token.ts)를 두고 색 58곳을
+            // 감싸야 했다. 캔버스를 버리면서 그 다리도 지웠다.
+            {
+              name: 'chart.js',
+              message:
+                '차트는 recharts 하나로 통일한다. chart.js 는 <canvas> 라 --color-* 토큰을 해석하지 못한다 — 기획안 Phase 5 참조.',
+            },
+            {
+              name: 'react-chartjs-2',
+              message: '차트는 recharts 하나로 통일한다 — 기획안 Phase 5 참조.',
+            },
           ],
           patterns: [
             {
               group: ['ag-grid-*'],
               message: '표는 DataTable(TanStack) 하나로 통일한다 — 기획안 D6 참조.',
+            },
+            {
+              group: ['chart.js/*'],
+              message: '차트는 recharts 하나로 통일한다 — 기획안 Phase 5 참조.',
             },
           ],
         },
@@ -80,17 +98,13 @@ export default defineConfig([
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/**/*.test.{ts,tsx}', 'src/theme/**'],
     rules: {
-      // 차트 라이브러리 단일화는 Phase 5 다. 아직 chart.js 사용처가 1곳 남아 있어
-      // 경고로 시작하고, 이관이 끝나면 위 no-restricted-imports 로 올려 error 로 만든다.
-      'no-restricted-imports': [
-        'warn',
-        {
-          paths: [
-            { name: 'chart.js', message: '차트는 recharts 로 통일한다 (기획안 Phase 5).' },
-            { name: 'react-chartjs-2', message: '차트는 recharts 로 통일한다 (기획안 Phase 5).' },
-          ],
-        },
-      ],
+      // 여기에 no-restricted-imports 를 다시 선언하지 않는다.
+      //
+      // 이 블록의 files 가 src/** 를 다시 잡으므로, 같은 키를 여기서 정의하면
+      // flat config 규칙상 위 블록의 설정을 통째로 덮어쓴다. 실제로 Phase 5 이관
+      // 전까지 chart.js 경고만 남기려고 여기에 재선언해 뒀는데, 그 바람에
+      // ag-grid · @mui/x-data-grid · @mui/icons-material 금지가 src/** 전체에서
+      // 조용히 꺼져 있었다. chart.js 금지는 이제 위 블록에 error 로 있다.
       'no-restricted-syntax': [
         'warn',
         {

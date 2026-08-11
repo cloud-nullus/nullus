@@ -35,32 +35,6 @@ vi.mock("../api/stack-api", () => ({
   useRetryStack: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-vi.mock("react-chartjs-2", () => ({
-  Bar: () => <div data-testid="chart-bar" />,
-  Doughnut: () => <div data-testid="chart-doughnut" />,
-  Line: () => <div data-testid="chart-line" />,
-}));
-
-vi.mock("chart.js", () => {
-  class DummyChart {
-    static register = vi.fn();
-  }
-
-  return {
-    Chart: DummyChart,
-    CategoryScale: {},
-    LinearScale: {},
-    PointElement: {},
-    LineElement: {},
-    BarElement: {},
-    ArcElement: {},
-    Tooltip: {},
-    Legend: {},
-    Filler: {},
-  };
-
-});
-
 vi.mock("../../../stores/auth-store", () => ({
   useAuthStore: () => ({ role: "devops", isAuthenticated: true }),
 }));

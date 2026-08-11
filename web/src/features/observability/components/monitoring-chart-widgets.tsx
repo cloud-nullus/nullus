@@ -11,6 +11,19 @@ export const CHART_STYLE = {
   tooltip: { background: 'var(--color-surface-base)', border: '1px solid var(--color-border-default)', color: 'var(--color-border-default)' },
 }
 
+/**
+ * 모든 recharts 범례에 그대로 펼쳐 넣는다.
+ *
+ * recharts 는 범례 항목을 이름 알파벳순으로 정렬한다. 그래서 "CPU (Request /
+ * Limit / Current)" 라고 써 붙인 차트의 범례가 Current · Limit · Request 로 나오고,
+ * 배포 막대는 success/failed 를 선언해도 failed 가 먼저 온다 — 제목이 약속한
+ * 순서와 범례가 어긋난다. itemSorter 를 무력화해 선언 순서를 지킨다.
+ */
+export const CHART_LEGEND_PROPS = {
+  itemSorter: () => 0,
+  wrapperStyle: { color: 'var(--color-border-default)', fontSize: 11 },
+} as const
+
 export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string; label: string }> = {
   running: { icon: <CheckCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', label: 'Running' },
   warning: { icon: <AlertCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', label: 'Warning' },

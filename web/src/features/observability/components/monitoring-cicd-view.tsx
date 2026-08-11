@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Activity, AlertCircle, CheckCircle, Clock, GitBranch, Layers, Package, XCircle } from "lucide-react"
 import { useDeployments, usePipelines } from "../../cicd/api/cicd-api"
 import { cn } from "../../../lib/utils"
-import { CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
+import { CHART_LEGEND_PROPS, CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
 import type { TimeRange } from "./monitoring-tab-layout"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import { formatDuration, timeAgo } from "../utils/monitoring-utils"
@@ -190,7 +190,7 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
               <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: 'var(--color-border-default)', fontSize: 11 }} />
+              <Legend {...CHART_LEGEND_PROPS} />
               <Bar dataKey="success" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
               <Bar dataKey="failed" fill="var(--color-error)" radius={[4, 4, 0, 0]} />
             </BarChart>

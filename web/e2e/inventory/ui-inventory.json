@@ -160,6 +160,18 @@
       "testIds": []
     },
     {
+      "file": "src/components/shared/list-detail-panel.tsx",
+      "i18nKeys": [],
+      "fallbacks": [],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": [
+        "list-detail-detail",
+        "list-detail-list"
+      ]
+    },
+    {
       "file": "src/components/shared/protected-route.tsx",
       "i18nKeys": [],
       "fallbacks": [],
@@ -701,7 +713,6 @@
         "Loading token sources...",
         "No events.",
         "No token sources.",
-        "OpenBao Token Management",
         "Pause",
         "Recent Events",
         "Resume",
@@ -950,7 +961,6 @@
       "columns": [],
       "jsxText": [
         "App:",
-        "CI/CD Golden Path",
         "Helm:"
       ],
       "testIds": []
@@ -1190,7 +1200,8 @@
         "No deployment history."
       ],
       "labels": [
-        "CI/CD List"
+        "CI/CD List",
+        "Pipeline Logs"
       ],
       "columns": [],
       "jsxText": [
@@ -1199,7 +1210,6 @@
         "Failed",
         "Namespace:",
         "No output is available for this deployment.",
-        "Pipeline Logs",
         "Recent Deployments",
         "Select a deployment to view logs.",
         "Streaming...",
@@ -1789,8 +1799,16 @@
     },
     {
       "file": "src/features/observability/components/stack-monitoring-overview.tsx",
-      "i18nKeys": [],
-      "fallbacks": [],
+      "i18nKeys": [
+        "monitoring.scale.current",
+        "monitoring.scale.limit",
+        "monitoring.scale.request"
+      ],
+      "fallbacks": [
+        "Lim",
+        "Now",
+        "Req"
+      ],
       "labels": [
         "All",
         "CPU Current",
@@ -1803,13 +1821,12 @@
         "Memory Limit",
         "Memory Request",
         "Ready Pods",
-        "Total Pods"
+        "Total Pods",
+        "cpu-request-fill",
+        "memory-request-fill"
       ],
       "columns": [],
       "jsxText": [
-        "(Lim)",
-        "(Req)",
-        "0",
         "CPU (Request / Limit / Current)",
         "CPU Req/Limit",
         "Kind",
@@ -1852,6 +1869,7 @@
         "alertHistoryPage.filters.last30d",
         "alertHistoryPage.filters.last7d",
         "alertHistoryPage.searchPlaceholder",
+        "alertHistoryPage.selectAlert",
         "alertHistoryPage.table.firedAt",
         "alertHistoryPage.table.message",
         "alertHistoryPage.table.resolvedAt",
@@ -1882,6 +1900,7 @@
         "Rule",
         "Rule Name",
         "Search rule name...",
+        "Select an alert to view its detail.",
         "Severity",
         "Unresolved",
         "Warning"
@@ -2449,7 +2468,6 @@
         "Attention (",
         "Continue",
         "Deployment ID:",
-        "Deployment Log",
         "Deployment error",
         "Latest failure reason:",
         "Name",
@@ -2524,6 +2542,7 @@
         "stackHistoryPage.rollback.description",
         "stackHistoryPage.rollback.safeMode",
         "stackHistoryPage.searchPlaceholder",
+        "stackHistoryPage.selectEntry",
         "stackHistoryPage.snapshot",
         "stackHistoryPage.stackSelect",
         "stackHistoryPage.table.actions",
@@ -2553,6 +2572,7 @@
         "Rollback this stack to the selected version. Current configuration will change and this action cannot be undone.",
         "Safe Mode — Preserve data",
         "Search by changed by / reason...",
+        "Select a change to view its configuration snapshot.",
         "Stack",
         "Stack History",
         "Stack Name",
@@ -2999,7 +3019,6 @@
       "columns": [],
       "jsxText": [
         "Loading OSS default resources...",
-        "OSS Default Resource",
         "OSS Default Resource Request/Limit Defaults",
         "POST /api/v1/stacks/resource-defaults",
         "Register",

@@ -431,19 +431,19 @@ main
 | ⬜ | 12 수제 table 17곳 → DataTable 흡수 | D6=A 로 대상 확정 |
 | ⬜ | 14 StatusBadge 통합 | 현재 사용 1곳, 화면별 자체 배지 흡수 |
 | ⬜ | 17~19 거대 화면 순수 추출 | stack-install 3,662줄 등 |
-| ⬜ | 20 차트 단일화 | ESLint 경고로 표시해 뒀다 |
+| ✅ | 20 차트 단일화 | chart.js·react-chartjs-2 제거, resolveColor 다리 폐기 |
 | ⬜ | 21 하드코딩 색 청산 | ESLint 경고 1335건이 대상 목록 |
 | ➖ | 23 tanstack-table 제거 | D6=A 라 해당 없음 (계속 사용) |
 
 측정값: vitest **642/642**, tsc 통과, vite build 통과,
-시각 회귀 **58/58**, eslint **0 errors / 72 warnings**(전부 잔여 hex — 커밋 21 대상),
+시각 회귀 **58/58**, 인벤토리 **정보 유실 0**,
+eslint **0 errors / 66 warnings**(전부 잔여 hex — 커밋 21 대상),
 design.md lint **0 errors**, 대비 감사 **45/45**.
 
-> ⚠️ **인벤토리 `--check` 가 3건 빨강이다.** `stack-monitoring-overview.tsx` 의
-> jsxText `(Req)` · `(Lim)` · `0` 이 커밋 21bb2d1(KPI 라벨 겹침 교정)에서 사라졌는데
-> 스냅샷 승인을 안 받았다. 같은 정보는 `CPU Req/Limit` · `Mem Req/Limit` 라벨이
-> 그대로 들고 있으므로 의도된 제거로 보이지만, §8.1 절차상 **승인 후 스냅샷 갱신**이
-> 필요하다. 커밋 15·16 은 이 3건 외에 새 유실을 만들지 않았다(대조 완료).
+> 인벤토리 3건(`(Req)` · `(Lim)` · `0`)은 §8.1 절차대로 **승인 후 스냅샷을 갱신**했다.
+> 커밋 21bb2d1 이 KPI 눈금의 겹치는 절대배치 라벨을 범례 한 줄로 바꾸면서 사라진
+> 문자열이다 — `(Req)` → `Req 3.23`, `(Lim)` → `Lim 1.50` 으로 값까지 붙어 오히려
+> 늘었고, `0` 은 그 눈금의 원점 표시였다. 정보가 아니라 표기가 바뀐 건이다.
 
 **커밋 15·16 에서 실제로 한 일**
 
@@ -457,6 +457,18 @@ design.md lint **0 errors**, 대비 감사 **45/45**.
 | 자체 분할 → `ListDetailPanel` | `stack-list` 가 쓰던 `grid xl:grid-cols-[minmax(300px,38%)_...]` 자체 구현을 흡수했다. 같은 비율을 px 로 옮겨(`max(300, (vw-288)×0.38)`) 폭은 그대로 두고, 두 개로 갈라져 있던 액자를 선 하나로 합쳤다. 1280px 미만 폴백은 유지 |
 | 잔재 정리 | 다크 body 의 남보라 그라데이션(`#0a0a0a→#1a1a2e→#16213e`)과 홈 히어로 그라데이션 제거. `typography.h1` 이 2rem 인데 쓰는 화면이 0곳이라 실제 값(1.375rem)으로 정정 |
 | 고친 버그 | `ListDetailPanel` 이 `listWidth` 를 240/280 만 클래스로 매핑하고 나머지를 조용히 280 으로 접고 있었다(Tailwind 임의값은 런타임 값으로 안 만들어진다) → 인라인 스타일로. MUI Button 에 `gap` 이 없어 아이콘이 JSX 줄바꿈 여부에 따라 글자에 붙었다 떨어졌다 했다 |
+
+**커밋 20(Phase 5) 에서 한 일**
+
+| 무엇 | 상세 |
+|------|------|
+| chart.js → recharts | `stack-monitoring-overview.tsx` 의 차트 4종(CPU·Memory Line, OSS Bar, Pod Status Doughnut)을 `ComposedChart`·`BarChart`·`PieChart` 로 옮겼다. 계열·축·툴팁 라벨은 동일 |
+| `resolveColor` 다리 폐기 | 캔버스가 `var()` 를 못 읽어 두고 있던 `theme/resolve-token.ts` 를 삭제했다. recharts 는 SVG 라 토큰이 그대로 동작한다 — "코드는 토큰을 참조한다" 계약에 캔버스 예외가 사라졌다 |
+| OSS 로고 정렬 방식 교체 | chart.js 인스턴스 ref 로 `xScale.getPixelForValue(idx)` 를 읽어 아이콘을 절대 배치하던 구조(ref + rAF + resize 리스너 + 위치 state)를 걷어냈다. 플롯 영역과 같은 여백을 준 flex 행이면 각 칸 중앙이 곧 막대 그룹 중앙이다 — 실측으로 오차 1.5px 이내 |
+| 범례 순서 교정 | recharts 는 범례를 이름 알파벳순으로 정렬해서 "CPU (Request / Limit / Current)" 차트의 범례가 Current·Limit·Request 로 나왔다. 공용 `CHART_LEGEND_PROPS` 로 선언 순서를 지키게 하고 recharts 화면 전체에 적용 |
+| 재도입 차단 | ESLint `no-restricted-imports` 에 chart.js·react-chartjs-2 를 error 로 추가 |
+| 번들 | `stack-monitoring-overview` 청크 **215.24 → 26.18 kB**(gzip 71.76 → 6.15). `vendor-charts` 는 recharts 표면이 늘어 397.85 → 407.17(gzip 114.83 → 116.68). 순감 **약 180 kB**(gzip 약 64 kB) |
+| 고친 버그 | ESLint 설정에서 두 번째 config 블록이 `src/**` 에 `no-restricted-imports` 를 재선언하고 있었다. flat config 는 나중 블록이 이기므로 **ag-grid·@mui/x-data-grid·@mui/icons-material 금지가 src 전체에서 조용히 꺼져 있었다.** chart.js 경고를 임시로 넣으려던 블록이 원인이다 — 제거하고 실제로 차단되는지 프로브로 확인했다 |
 
 ---
 
