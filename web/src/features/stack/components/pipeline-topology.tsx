@@ -107,6 +107,8 @@ function RuntimeLine({ tool }: { tool: PipelineTool }) {
 
   const { icon: Icon, className } = RUNTIME_STYLE[tool.status];
   const ready = tool.readyInstances ?? 0;
+  // 설정값이 아니라 실제 파드 수를 분모로 쓴다.
+  const total = tool.runtimeInstances ?? ready;
 
   return (
     <div
@@ -119,7 +121,7 @@ function RuntimeLine({ tool }: { tool: PipelineTool }) {
       <span>{tool.status}</span>
       <span className="text-[var(--color-text-muted)]">
         {/* 기대치가 아니라 실제 준비된 파드 수다. 3/4 면 하나가 안 떴다는 뜻. */}
-        · {tool.shared ? "shared" : `${ready}/${tool.instances}`}
+        · {tool.shared ? "shared" : `${ready}/${total} pods`}
       </span>
     </div>
   );

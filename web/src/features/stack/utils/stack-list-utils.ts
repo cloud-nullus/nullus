@@ -12,7 +12,9 @@ export type PipelineTool = ToolSelectionView & {
    * — applyToolRuntimeStatus. 모니터링을 아직 못 받았으면 undefined 다.
    */
   status?: ToolRuntimeStatus;
-  /** 준비된 파드 수. instances 가 기대치, 이쪽이 실제다. */
+  /** 실제로 떠 있는 파드 수. */
+  runtimeInstances?: number;
+  /** 그중 준비된 파드 수. */
   readyInstances?: number;
 };
 
@@ -468,6 +470,10 @@ export function applyToolRuntimeStatus(
       return {
         ...tool,
         status: runtime.status,
+        // 분모는 설정값(instances)이 아니라 실제 파드 수다. 둘은 단위가 다르다 —
+        // GitLab 은 설정상 1 인데 Helm 차트가 파드 15개를 띄운다. 섞으면 "15/1"
+        // 같은 값이 나온다.
+        runtimeInstances: runtime.pod_count,
         readyInstances: runtime.ready_pods,
       };
     }),

@@ -81,16 +81,15 @@ export function PageHeader({
   }
 
   return (
-    // main 의 안쪽 여백(px/py)을 음수 마진으로 되돌렸다가 그대로 되돌려 준다.
-    // 그러지 않으면 top-0 이 여백 안쪽에 붙어, 헤더 위·옆 여백 틈으로 본문이
-    // 스쳐 지나간다. 배경은 본문 면과 같은 색이어야 글자가 겹쳐 보이지 않는다.
+    // 좌우는 main 의 여백만큼 넓혔다가 그대로 되돌려 준다 — 그러지 않으면 헤더
+    // 양옆 여백 틈으로 본문이 스쳐 지나간다. 위쪽 여백은 main 이 아니라 여기서
+    // 갖는다(AppLayout 주석 참고). 배경은 본문 면과 같은 색이어야 글자가 겹쳐
+    // 보이지 않는다.
     <div
       className={[
         'sticky top-0 z-[var(--z-page-header)]',
         '-mx-[var(--page-padding)] px-[var(--page-padding)]',
-        // 위쪽은 main 의 여백(20px)만큼 끌어올린 뒤 12px 만 되돌린다.
-        // 상단 바가 바로 위에 붙어 있어 20px 를 그대로 두면 제목이 떠 보인다.
-        '-mt-[var(--page-padding-y)] pt-[var(--space-md)]',
+        'pt-[var(--space-md)]',
         'mb-4 border-b border-[var(--color-border-default)] pb-3',
         'bg-[var(--color-surface-base)]',
       ].join(' ')}

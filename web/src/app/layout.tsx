@@ -26,7 +26,11 @@ export function AppLayout() {
           않는다 — 이게 없으면 아래 main 의 overflow-y-auto 가 안 걸린다. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-y-auto px-[var(--page-padding)] py-[var(--page-padding-y)]">
+        {/* 위쪽 여백은 main 이 갖지 않는다. sticky 의 top:0 은 스크롤 컨테이너의
+            content box 기준이라, padding-top 이 있으면 헤더가 그만큼 아래에 붙고
+            그 틈으로 본문이 스쳐 지나간다(실측 20px). 위 여백은 PageHeader 가
+            자기 padding 으로 갖는다. */}
+        <main className="flex-1 overflow-y-auto px-[var(--page-padding)] pb-[var(--page-padding-y)]">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

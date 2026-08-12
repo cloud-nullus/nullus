@@ -697,7 +697,11 @@ export function StackListPage() {
 	);
 
 	return (
-		<div>
+		// 좌우 분할 화면은 페이지가 늘어나는 대신 각 칸이 자기 안에서 스크롤한다.
+		// ListDetailPanel 은 h-full 이라 부모가 높이를 줘야 하는데, 여기가 그냥
+		// <div> 였던 동안에는 높이가 auto 로 풀려 패널이 내용만큼 자랐다 — 그래서
+		// 목록은 가만히 있고 상세만 페이지째 스크롤되는 것처럼 보였다.
+		<div className="flex h-full flex-col">
 			<PageHeader
 			  breadcrumb={[{ label: t("sidebar.stackList", "Stack List") }]}
 			  icon={<List size={16} />}
@@ -728,6 +732,7 @@ export function StackListPage() {
 			/>
 
 			{isDesktopLayout ? (
+				<div className="min-h-0 flex-1">
 				<ListDetailPanel
 					listWidth={listPaneWidth}
 					emptyDetailMessage={t("stackList.emptyDetail", "Select a stack from the list to view details here.")}
@@ -754,6 +759,7 @@ export function StackListPage() {
 						) : null
 					}
 				/>
+				</div>
 			) : (
 				/* 1280px 미만에서는 좌우로 나눌 폭이 없다. 목록 아래에 상세를 붙이는
 				   기존 폴백을 그대로 둔다 (DESIGN.md §Layout — 데스크톱 우선). */

@@ -55,7 +55,7 @@ describe("PipelineTopologyRail", () => {
           {
             category: "Container Registry",
             tools: [
-              { name: "Nexus", version: "3.64.0", instances: 1, status: "running", readyInstances: 1 },
+              { name: "Nexus", version: "3.64.0", instances: 1, status: "running", runtimeInstances: 1, readyInstances: 1 },
             ],
             instances: 1,
           },
@@ -68,6 +68,7 @@ describe("PipelineTopologyRail", () => {
                 instances: 1,
                 shared: true,
                 status: "running",
+                runtimeInstances: 1,
                 readyInstances: 1,
               },
             ],
@@ -78,7 +79,7 @@ describe("PipelineTopologyRail", () => {
     );
 
     expect(within(stage("Package Registry")).getByText("· shared")).toBeTruthy();
-    expect(within(stage("Container Registry")).getByText("· 1/1")).toBeTruthy();
+    expect(within(stage("Container Registry")).getByText("· 1/1 pods")).toBeTruthy();
   });
 
   // 동작 여부는 모니터링에서 겹쳐 넣는다. 색만으로 구분하지 않으므로 글자도 함께.
@@ -94,6 +95,7 @@ describe("PipelineTopologyRail", () => {
                 version: "18.5.1",
                 instances: 4,
                 status: "warning",
+                runtimeInstances: 4,
                 readyInstances: 3,
               },
             ],
@@ -104,7 +106,7 @@ describe("PipelineTopologyRail", () => {
     );
 
     expect(screen.getByText("warning")).toBeTruthy();
-    expect(screen.getByText("· 3/4")).toBeTruthy();
+    expect(screen.getByText("· 3/4 pods")).toBeTruthy();
   });
 
   // 모니터링을 아직 못 받았으면 설치할 때 고른 대수만 안다.
