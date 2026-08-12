@@ -6,6 +6,7 @@ import { CicdDefault } from './monitoring-cicd-view'
 const mockUsePipelines = vi.hoisted(() => vi.fn())
 const mockUseDeployments = vi.hoisted(() => vi.fn())
 const mockUseStackWorkloads = vi.hoisted(() => vi.fn())
+const mockUseStackWorkloadLogs = vi.hoisted(() => vi.fn())
 
 vi.mock('../../cicd/api/cicd-api', () => ({
   usePipelines: () => mockUsePipelines(),
@@ -14,6 +15,7 @@ vi.mock('../../cicd/api/cicd-api', () => ({
 
 vi.mock('../../stack/api/stack-api', () => ({
   useStackWorkloads: (...args: unknown[]) => mockUseStackWorkloads(...args),
+  useStackWorkloadLogs: (...args: unknown[]) => mockUseStackWorkloadLogs(...args),
 }))
 
 const pipelines = {
@@ -34,13 +36,71 @@ describe('CicdDefault — 배포 앱 파드 수', () => {
     mockUsePipelines.mockReturnValue({ data: pipelines })
     mockUseDeployments.mockReturnValue({ data: { items: [] } })
     mockUseStackWorkloads.mockReturnValue({ data: undefined })
+    mockUseStackWorkloadLogs.mockReturnValue({ data: undefined, isLoading: false })
+  })
+
+  describe('애플리케이션 로그', () => {
+    // 지표만으로는 앱이 왜 그 상태인지 알 수 없다. 같은 화면에서 읽혀야 한다.
+    it('고른 스택의 로그를 시간순으로 보여준다', () => {
+      mockUseStackWorkloadLogs.mockReturnValue({
+        isLoading: false,
+        data: {
+          pods: ['demo-app-a', 'demo-app-b'],
+          truncated: false,
+          lines: [
+            { pod: 'demo-app-aaaaaa', app: 'demo-app', timestamp: '2026-08-12T10:20:30.000Z', message: 'started' },
+            { pod: 'demo-app-bbbbbb', app: 'demo-app', timestamp: '2026-08-12T10:20:31.000Z', message: 'GET / 200' },
+          ],
+        },
+      })
+
+      renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+
+      expect(screen.getByText('started')).toBeTruthy()
+      expect(screen.getByText('GET / 200')).toBeTruthy()
+      // 줄마다 출처를 알 수 있어야 한다 — 섞어 놓았으므로.
+      expect(screen.getByText('aaaaaa')).toBeTruthy()
+      expect(screen.getByText('bbbbbb')).toBeTruthy()
+    })
+
+    it('스택 id 와 꼬리 줄 수로 조회한다', () => {
+      renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+
+      expect(mockUseStackWorkloadLogs.mock.calls[0][0]).toBe('stk_1')
+      expect(mockUseStackWorkloadLogs.mock.calls[0][1]).toBe(200)
+    })
+
+    // 로그가 없는 것과 아직 못 읽은 것은 다르다.
+    it('읽는 중과 로그 없음을 구분한다', () => {
+      mockUseStackWorkloadLogs.mockReturnValue({ data: undefined, isLoading: true })
+      const { unmount } = renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+      expect(screen.getByText('로그를 읽는 중입니다.')).toBeTruthy()
+      unmount()
+
+      mockUseStackWorkloadLogs.mockReturnValue({ data: { lines: [], pods: [], truncated: false }, isLoading: false })
+      renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+      expect(screen.getByText('아직 출력한 로그가 없습니다.')).toBeTruthy()
+    })
+
+    it('스택 미선택이면 이유를 알려 준다', () => {
+      renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="" />)
+
+      expect(screen.getByText('위에서 스택을 고르면 배포된 앱의 로그를 보여줍니다.')).toBeTruthy()
+    })
   })
 
   // 파드 수는 스택 단위 엔드포인트에서 온다. 스택 id 로 조회해야 한다.
   it('고른 스택으로 워크로드를 조회한다', () => {
     renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
 
-    expect(mockUseStackWorkloads).toHaveBeenCalledWith('stk_1')
+    expect(mockUseStackWorkloads.mock.calls[0][0]).toBe('stk_1')
+  })
+
+  // 실시간 그래프를 그리므로 목록용 30초 주기로는 선이 못 움직인다.
+  it('실시간 주기로 조회한다', () => {
+    renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+
+    expect(mockUseStackWorkloads.mock.calls[0][1]).toBe(5_000)
   })
 
   // 개편 전에는 pods: [null, null] 리터럴이라 무엇을 고르든 항상 비었다.
@@ -139,6 +199,43 @@ describe('CicdDefault — 배포 앱 파드 수', () => {
     const cells = [...row.querySelectorAll('td')].map((td) => td.textContent)
     expect(cells).not.toContain('0m')
     expect(cells).not.toContain('0Mi')
+  })
+
+  // 실시간 그래프는 "선이 없다" 가 세 가지 뜻이다. 사용자가 할 일이 다르므로
+  // 구분해서 말해야 한다 — 스택을 고르거나, 기다리거나, metrics-server 를 깔거나.
+  it('스택을 안 고르면 그래프가 이유를 알려 준다', () => {
+    renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="" />)
+
+    expect(screen.getByText('App CPU (Live)')).toBeTruthy()
+    expect(screen.getByText('App Memory (Live)')).toBeTruthy()
+    expect(
+      screen.getAllByText(/스택을 고르면 배포된 앱의 자원 사용을 실시간으로/).length,
+    ).toBe(2)
+  })
+
+  it('사용량을 못 읽으면 metrics-server 를 짚어 준다', () => {
+    mockUseStackWorkloads.mockReturnValue({
+      dataUpdatedAt: 1000,
+      data: {
+        pipelines: [
+          {
+            id: 'pl-1',
+            name: 'demo-app',
+            namespace: 'apps',
+            status: 'success',
+            lastDeployment: null,
+            k8sObjects: [
+              { kind: 'Pod', name: 'demo-app-a', namespace: 'apps', status: 'Running', cpuMillicores: null, memoryMib: null },
+            ],
+          },
+        ],
+        summary: { totalPipelines: 1, totalDeployments: 0, runningPods: 1, pendingPods: 0, failedPods: 0 },
+      },
+    })
+
+    renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+
+    expect(screen.getAllByText(/metrics-server 가 있는지 확인/).length).toBe(2)
   })
 
   // 클러스터를 못 읽었을 때(백엔드가 빈 목록을 준다) 0/0 이 아니라 '—' 다.

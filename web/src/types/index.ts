@@ -624,6 +624,22 @@ export interface StackWorkloads {
   summary: StackWorkloadSummary;
 }
 
+/** 배포된 앱 컨테이너가 stdout 으로 뱉은 한 줄. 파드들을 시간순으로 섞어 준다. */
+export interface StackWorkloadLogLine {
+  pod: string;
+  app: string;
+  timestamp: string;
+  message: string;
+}
+
+export interface StackWorkloadLogs {
+  lines: StackWorkloadLogLine[];
+  /** 실제로 읽은 파드. 화면이 "어디서 온 로그인지" 를 말할 수 있어야 한다. */
+  pods: string[];
+  /** 파드가 상한보다 많아 일부만 읽었다. */
+  truncated: boolean;
+}
+
 export type StackTemplate = Template;
 export type CicdTemplate = CICDTemplate;
 export type KpiMetrics = DashboardMetrics;

@@ -95,6 +95,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.PATCH("/:stackId/tools", h.AddTools)
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.GET("/:stackId/workloads", h.GetWorkloads)
+	g.GET("/:stackId/workloads/logs", h.GetWorkloadLogs)
 	g.GET("/:stackId/integrations", h.GetIntegrations)
 	g.GET("/:stackId/connection-info", h.GetConnectionInfo)
 	g.POST("/draft", h.SaveDraft)
