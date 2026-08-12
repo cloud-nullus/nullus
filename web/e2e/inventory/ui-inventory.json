@@ -436,6 +436,7 @@
         "OCI",
         "On-Premise",
         "Tencent Cloud",
+        "cloudProvider",
         "cluster-kubeconfig",
         "kubeconfig-file"
       ],
@@ -575,7 +576,9 @@
         "e.g. acme.com"
       ],
       "labels": [
-        "member@example.com"
+        "member@example.com",
+        "role",
+        "status"
       ],
       "columns": [],
       "jsxText": [
@@ -831,15 +834,16 @@
         "Monitoring",
         "Organization",
         "Pending",
+        "Role Permissions",
         "Stack History",
         "Stack Install",
         "Stack List",
         "Stack Template",
         "User Management",
         "User name",
+        "Users",
         "actions",
-        "invite-link-expiry",
-        "invite-link-role",
+        "role",
         "user@example.com"
       ],
       "columns": [
@@ -1093,6 +1097,7 @@
         "Avg Duration",
         "Build",
         "Build Context",
+        "Close",
         "Cluster",
         "Code Checkout",
         "Completed",
@@ -1497,6 +1502,7 @@
         "Reload Deploy YAML files",
         "deploy-app-name",
         "deploy-cluster",
+        "deploy-cluster-label",
         "deploy-code-repository",
         "deploy-cpu-limit",
         "deploy-cpu-request",
@@ -1506,9 +1512,11 @@
         "deploy-memory-limit",
         "deploy-memory-request",
         "deploy-namespace",
+        "deploy-namespace-label",
         "deploy-replicas",
         "deploy-service-url",
         "deploy-stack",
+        "deploy-stack-label",
         "envVars",
         "https://artifactory.example.com/root/spring-sample/deploy",
         "https://github.com/org/repo.git",
@@ -2012,6 +2020,7 @@
         "Alert Rules",
         "Critical threshold must be greater than or equal to warning threshold",
         "actions",
+        "channel",
         "thresholds"
       ],
       "columns": [

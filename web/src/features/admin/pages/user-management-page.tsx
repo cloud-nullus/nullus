@@ -151,8 +151,6 @@ const ROLE_BADGE: Record<MemberRole, { className: string }> = {
   developer: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
 }
 
-const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
-
 const inviteUserSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().min(1, 'Email is required').email('Invalid email format'),
@@ -835,32 +833,24 @@ export function UserManagementPage() {
         }
       >
         <div className="flex flex-col gap-3.5">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="invite-link-role" className="text-xs font-medium text-[var(--color-text-secondary)]">{t('userManagementPage.form.role', 'Role')}</label>
-            <select
-              id="invite-link-role"
-              value={inviteLinkRole}
-              onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
-              className={selectClassName}
-            >
-              <option value="developer">Developer</option>
-              <option value="devops">DevOps</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="invite-link-expiry" className="text-xs font-medium text-[var(--color-text-secondary)]">{t('userManagementPage.form.expiryPeriod', 'Expiry Period')}</label>
-            <select
-              id="invite-link-expiry"
-              value={inviteLinkExpiry}
-              onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
-              className={selectClassName}
-            >
-              {EXPIRY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label={t('userManagementPage.form.role', 'Role')}
+            value={inviteLinkRole}
+            onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
+          >
+            <option value="developer">Developer</option>
+            <option value="devops">DevOps</option>
+            <option value="admin">Admin</option>
+          </Select>
+          <Select
+            label={t('userManagementPage.form.expiryPeriod', 'Expiry Period')}
+            value={inviteLinkExpiry}
+            onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
+          >
+            {EXPIRY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </Select>
         </div>
       </Modal>
 
