@@ -137,9 +137,9 @@ export function ResourceSlider({
 export function CopyableCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="mt-3 flex items-center gap-2 rounded-md bg-[var(--color-surface-base)] px-3 py-2">
-      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-[#c9d1d9]">
-        <span className="mr-1.5 text-[#484f58]">$</span>
+    <div className="mt-3 flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-terminal-bg)] px-3 py-2">
+      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-[var(--color-terminal-text)]">
+        <span className="mr-1.5 text-[var(--color-terminal-muted)]">$</span>
         {command}
       </code>
       <button
@@ -152,7 +152,7 @@ export function CopyableCommand({ command }: { command: string }) {
         className="shrink-0 cursor-pointer border-none bg-none p-1 text-[color-mix(in_srgb,_var(--color-text-primary)_40%,_transparent)] transition-colors hover:text-white"
       >
         {copied ? (
-          <Check size={14} className="text-[#3fb950]" />
+          <Check size={14} className="text-[var(--color-terminal-success)]" />
         ) : (
           <Copy size={14} />
         )}

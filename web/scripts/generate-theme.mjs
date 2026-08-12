@@ -217,7 +217,16 @@ const cssVars = (t, el) => `  --color-surface-base: ${t.bg};
   --color-accent-alt: ${t['accent-alt']};
 
   --shadow-raised: ${el.raised};
-  --shadow-overlay: ${el.overlay};`
+  --shadow-overlay: ${el.overlay};
+
+  /* 터미널(로그 출력) — DESIGN.md §Colors */
+  --color-terminal-bg: ${t['terminal-bg']};
+  --color-terminal-text: ${t['terminal-text']};
+  --color-terminal-muted: ${t['terminal-muted']};
+  --color-terminal-info: ${t['terminal-info']};
+  --color-terminal-success: ${t['terminal-success']};
+  --color-terminal-warning: ${t['terminal-warning']};
+  --color-terminal-error: ${t['terminal-error']};`
 
 const sidebar = (t) => `  --color-sidebar-border: ${t.divider};
   --color-sidebar-group-text: ${t['text-secondary']};

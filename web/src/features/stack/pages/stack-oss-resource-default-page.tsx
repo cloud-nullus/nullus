@@ -66,9 +66,9 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
 }
 
 const CATEGORY_BADGE_CLASSNAME: Record<ToolCategory, string> = {
-  nullus: 'bg-[color-mix(in_srgb,_var(--color-info)_14%,_transparent)] text-[#7dd3fc]',
+  nullus: 'bg-[color-mix(in_srgb,_var(--color-info)_14%,_transparent)] text-[var(--color-info)]',
   Artifacts: 'bg-[color-mix(in_srgb,_var(--color-primary)_14%,_transparent)] text-[var(--color-primary)]',
-  Storage: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[#fdba74]',
+  Storage: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]',
   'CI/CD': 'bg-[color-mix(in_srgb,_var(--color-success)_14%,_transparent)] text-[var(--color-success)]',
   Observability: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]',
 }

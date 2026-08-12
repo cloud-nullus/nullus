@@ -611,7 +611,7 @@ function statusClass(status: string): string {
 
 function logLineClass(line: string): string {
   const normalized = line.toLowerCase();
-  if (normalized.startsWith("$")) return "text-[#58a6ff]";
+  if (normalized.startsWith("$")) return "text-[var(--color-terminal-info)]";
   if (
     normalized.includes("error") ||
     normalized.includes("failed") ||
@@ -798,7 +798,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
           <ConfigRow
             label="Execution Mode"
             value={
-              <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-2 py-[2px] text-[11px] font-semibold text-[#c7d2fe]">
+              <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-2 py-[2px] text-[11px] font-semibold text-[var(--color-primary)]">
                 {modeLabel}
               </span>
             }
@@ -964,7 +964,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Deployment / StatefulSet"
                     resources={workloadResources}
-                    accentClass="bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] text-[#c7d2fe]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] text-[var(--color-primary)]"
                   />
                   <div className="hidden items-center justify-center text-[var(--color-text-muted)] md:flex">
                     →
@@ -972,7 +972,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Pod"
                     resources={podResources}
-                    accentClass="bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[#fde68a]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]"
                     emptyLabel={
                       workloadResources.length > 0
                         ? "(managed by workload)"
@@ -984,7 +984,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                   <ResourceNode
                     title="Job / CronJob"
                     resources={jobResources}
-                    accentClass="bg-[color-mix(in_srgb,_var(--color-info)_16%,_transparent)] text-[#7dd3fc]"
+                    accentClass="bg-[color-mix(in_srgb,_var(--color-info)_16%,_transparent)] text-[var(--color-info)]"
                   />
                 )}
               </div>
@@ -1332,7 +1332,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
               <Tooltip
                 contentStyle={{
                   background: "var(--color-surface-base)",
-                  border: "1px solid #1e293b",
+                  border: "1px solid var(--color-border-default)",
                   borderRadius: 8,
                   color: "var(--color-text-primary)",
                   fontSize: 12,
@@ -1452,7 +1452,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
             <button
               type="button"
               onClick={() => setSelectedDeploymentId(d.id)}
-              className="rounded px-1 py-0.5 text-[13px] font-semibold text-[var(--color-primary)] underline decoration-dotted underline-offset-2 hover:text-[#c7d2fe]"
+              className="rounded px-1 py-0.5 text-[13px] font-semibold text-[var(--color-primary)] underline decoration-dotted underline-offset-2 hover:text-[var(--color-primary)]"
             >
               {d.version}
             </button>
@@ -1472,7 +1472,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
       {selectedDeployment && (
         <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-primary)_50%,_transparent)] p-3">
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
-            <span className="rounded bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] px-1.5 py-[2px] font-mono text-[#c7d2fe]">
+            <span className="rounded bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] px-1.5 py-[2px] font-mono text-[var(--color-primary)]">
               {selectedDeployment.version}
             </span>
             <span>Deployment ID:</span>
@@ -1547,7 +1547,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               {stepDetails.map((step, stepIndex) => (
                 <div
                   key={`${selectedDeployment.id}-${step.name}-${stepIndex}`}
-                  className="rounded border border-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] bg-[rgba(2,6,23,0.65)]"
+                  className="rounded border border-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-surface-base)_65%,_transparent)]"
                 >
                   <div className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] px-2.5 py-2 text-[11px] text-[var(--color-text-secondary)]">
                     <span className="font-semibold text-[var(--color-text-secondary)]">
@@ -1643,7 +1643,7 @@ function PipelineDetailPanel({
             variant="secondary"
             size="sm"
             type="button"
-            className="border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[#fecaca] hover:bg-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)]"
+            className="border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)] hover:bg-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)]"
             onClick={onDelete}
             disabled={isDeleting}
           >
@@ -1777,7 +1777,7 @@ export function CicdListPage() {
       accessorKey: "mode",
       header: "Mode",
       cell: ({ row }) => (
-        <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-[8px] py-[2px] text-[11px] font-semibold text-[#c7d2fe]">
+        <span className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-[8px] py-[2px] text-[11px] font-semibold text-[var(--color-primary)]">
           {modeLabel(row.original.mode)}
         </span>
       ),

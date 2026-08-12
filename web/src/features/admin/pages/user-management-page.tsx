@@ -91,7 +91,7 @@ const ROLE_PERMISSIONS: RolePermission[] = [
       text: 'var(--color-primary)',
       border: 'color-mix(in srgb, var(--color-primary) 22%, transparent)',
       accessEdit: 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]',
-      accessView: 'bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] text-[#c7d2fe]',
+      accessView: 'bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] text-[var(--color-primary)]',
     },
     icon: Server,
     menus: [

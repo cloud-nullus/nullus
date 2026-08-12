@@ -35,6 +35,15 @@
   --shadow-raised: none;
   --shadow-overlay: none;
 
+  /* 터미널(로그 출력) — DESIGN.md §Colors */
+  --color-terminal-bg: #0d0f17;
+  --color-terminal-text: #c9d1d9;
+  --color-terminal-muted: #8b949e;
+  --color-terminal-info: #58a6ff;
+  --color-terminal-success: #3fb950;
+  --color-terminal-warning: #d29922;
+  --color-terminal-error: #f85149;
+
   --color-sidebar-border: #2a2e35;
   --color-sidebar-group-text: #a8acb3;
   --color-sidebar-item-text: #ffffff;
@@ -117,6 +126,15 @@
 
   --shadow-raised: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-overlay: 0 8px 24px rgba(15, 23, 42, 0.12);
+
+  /* 터미널(로그 출력) — DESIGN.md §Colors */
+  --color-terminal-bg: #16181c;
+  --color-terminal-text: #d8dbe0;
+  --color-terminal-muted: #9aa2ad;
+  --color-terminal-info: #7db3ff;
+  --color-terminal-success: #4fd18b;
+  --color-terminal-warning: #f2c14e;
+  --color-terminal-error: #ff8a80;
 
   --color-sidebar-border: #dee1e6;
   --color-sidebar-group-text: #5b616e;

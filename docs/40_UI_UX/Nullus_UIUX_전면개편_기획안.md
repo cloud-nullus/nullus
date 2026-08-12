@@ -427,12 +427,12 @@ main
 | ✅ | 22 ESLint 규칙 | hex 1335건 warn, 상용 라이선스 error |
 | ✅ | 24 문서 갱신 | 디자인시스템 문서를 DESIGN.md 참조로 |
 | ✅ | 15·16 앱 셸 · 밀도 | `PageHeader` 채택 0 → 24화면, 레이아웃 토큰을 DESIGN.md 로 |
-| ⬜ | 9·10 생 태그 흡수 | button 95 / input·select 49 |
-| ⬜ | 12 수제 table 17곳 → DataTable 흡수 | D6=A 로 대상 확정 |
-| ⬜ | 14 StatusBadge 통합 | 현재 사용 1곳, 화면별 자체 배지 흡수 |
+| ✅ | 9·10 생 태그 흡수 | Tabs·SearchInput·Checkbox·TextInput·IconButton 신설 |
+| ✅ | 12 수제 table 표면 통일 | table-chrome 으로 DataTable 과 같은 면·여백 |
+| 🔸 | 14 배지 통합 | 모양은 Badge 로 통일. 상태 배지 → StatusBadge(아이콘)는 남음 |
 | ⬜ | 17~19 거대 화면 순수 추출 | stack-install 3,662줄 등 |
 | ✅ | 20 차트 단일화 | chart.js·react-chartjs-2 제거, resolveColor 다리 폐기 |
-| ⬜ | 21 하드코딩 색 청산 | ESLint 경고 1335건이 대상 목록 |
+| ✅ | 21 하드코딩 색 청산 | 잔여 57건 → 0건, ESLint 규칙을 error 로 승격 |
 | ➖ | 23 tanstack-table 제거 | D6=A 라 해당 없음 (계속 사용) |
 
 측정값: vitest **642/642**, tsc 통과, vite build 통과,

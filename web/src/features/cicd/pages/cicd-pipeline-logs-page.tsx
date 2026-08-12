@@ -160,7 +160,7 @@ export function CicdPipelineLogsPage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
           <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-2.5">
             <div className="flex gap-1.5">
               <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />
@@ -195,18 +195,18 @@ export function CicdPipelineLogsPage() {
             className="h-[520px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]"
           >
             {selectedDeploymentId && lines.length === 0 && isDeploying && (
-              <p className="text-[#8b949e]">Waiting for deployment output...</p>
+              <p className="text-[var(--color-terminal-muted)]">Waiting for deployment output...</p>
             )}
             {selectedDeploymentId &&
               lines.length === 0 &&
               deploymentState &&
               !isDeploying && (
-                <p className="text-[#8b949e]">
+                <p className="text-[var(--color-terminal-muted)]">
                   No output is available for this deployment.
                 </p>
               )}
             {!selectedDeploymentId && (
-              <p className="text-[#8b949e]">
+              <p className="text-[var(--color-terminal-muted)]">
                 Select a deployment to view logs.
               </p>
             )}
@@ -215,9 +215,9 @@ export function CicdPipelineLogsPage() {
               <div key={`${step.name}-${stepIdx}`} className="mb-3">
                 <div className="mb-1 flex items-center gap-2 text-[11px]">
                   {step.status === "success" ? (
-                    <CheckCircle2 size={11} className="text-[#3fb950]" />
+                    <CheckCircle2 size={11} className="text-[var(--color-terminal-success)]" />
                   ) : step.status === "failed" ? (
-                    <XCircle size={11} className="text-[#f85149]" />
+                    <XCircle size={11} className="text-[var(--color-terminal-error)]" />
                   ) : step.status === "running" ? (
                     <Loader2
                       size={11}
@@ -233,9 +233,9 @@ export function CicdPipelineLogsPage() {
                     className={cn(
                       "font-semibold",
                       step.status === "success"
-                        ? "text-[#3fb950]"
+                        ? "text-[var(--color-terminal-success)]"
                         : step.status === "failed"
-                          ? "text-[#f85149]"
+                          ? "text-[var(--color-terminal-error)]"
                           : step.status === "running"
                             ? "text-[var(--color-warning)]"
                             : "text-[color-mix(in_srgb,_var(--color-text-primary)_40%,_transparent)]",
@@ -261,14 +261,14 @@ export function CicdPipelineLogsPage() {
                     className={cn(
                       "pl-4",
                       line.startsWith("$")
-                        ? "text-[#58a6ff]"
+                        ? "text-[var(--color-terminal-info)]"
                         : line.includes("created")
-                          ? "text-[#3fb950]"
+                          ? "text-[var(--color-terminal-success)]"
                           : line.includes("configured")
-                            ? "text-[#d29922]"
+                            ? "text-[var(--color-terminal-warning)]"
                             : line.includes("error") || line.includes("failed")
-                              ? "text-[#f85149]"
-                              : "text-[#c9d1d9]",
+                              ? "text-[var(--color-terminal-error)]"
+                              : "text-[var(--color-terminal-text)]",
                     )}
                   >
                     {line}
@@ -279,8 +279,8 @@ export function CicdPipelineLogsPage() {
                     className={cn(
                       "pl-4 text-[12px]",
                       step.status === "failed"
-                        ? "text-[#f85149]"
-                        : "text-[#c9d1d9]",
+                        ? "text-[var(--color-terminal-error)]"
+                        : "text-[var(--color-terminal-text)]",
                     )}
                   >
                     {step.message}

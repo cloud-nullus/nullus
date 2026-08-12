@@ -349,7 +349,7 @@ export function StackDeploymentLogsPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
         <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-4 py-2.5">
           <div className="flex gap-1.5">
             <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />
@@ -570,7 +570,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
         <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-4 py-2.5">
           <div className="flex gap-1.5">
             <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />

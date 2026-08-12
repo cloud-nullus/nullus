@@ -91,12 +91,14 @@ export default defineConfig([
     // 개편 전 TSX 에 hex 767곳 / rgba 750곳이 박혀 있었고, 그 값들이 전부 다크 기준이라
     // 라이트 테마에서 대비가 1.6:1 까지 무너졌다. 이 규칙이 그 재발을 막는다.
     //
-    // 아직 잔여 하드코딩이 남아 있어 'warn' 으로 시작한다. Phase 6 청산이 끝나면
-    // 'error' 로 올린다 (기획안 커밋 21).
+    // 잔여 청산이 끝나 'error' 로 올렸다(기획안 커밋 21). 이제 새 hex 하나가
+    // CI 를 세운다 — 규칙이 경고로 남아 있는 동안은 개수가 다시 늘 뿐이다.
     // .ts 도 포함한다. 상태 배지 팔레트가 utils/*.ts 에 있었고, .tsx 만 보던 규칙이
     // 화면 전반의 상태색을 통째로 놓쳤다.
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/**/*.test.{ts,tsx}', 'src/theme/**'],
+    // 외부 도구(GitLab · Kubernetes …)의 브랜드 색은 우리 팔레트가 아니라
+    // 그 프로젝트가 정한 고정값이다. 한 파일에 모아 두고 거기만 면제한다.
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/theme/**', 'src/lib/tool-brand-colors.ts'],
     rules: {
       // 여기에 no-restricted-imports 를 다시 선언하지 않는다.
       //
@@ -106,7 +108,7 @@ export default defineConfig([
       // ag-grid · @mui/x-data-grid · @mui/icons-material 금지가 src/** 전체에서
       // 조용히 꺼져 있었다. chart.js 금지는 이제 위 블록에 error 로 있다.
       'no-restricted-syntax': [
-        'warn',
+        'error',
         {
           selector: 'Literal[value=/#[0-9a-fA-F]{3,8}\\b/]',
           message:

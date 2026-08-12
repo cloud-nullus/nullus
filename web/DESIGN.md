@@ -58,6 +58,27 @@ colors:
   dark-accent-alt: "#b39bff"
 
   # ─────────────────────────────────────────────────────────────
+  # Terminal — 배포 로그·파이프라인 로그 출력 전용.
+  # 로그 뷰는 어두운 면을 유지하지만(터미널 관행), 그렇다고 hex 를 TSX 에 박아
+  # 두면 라이트 테마에서 대비가 무너진다 — 실제로 #8b949e 본문색이 흰 배경에서
+  # 3.0:1 이었다. 면은 두 테마 모두 어둡게 두고 글자색만 스킴별로 조정한다.
+  # ─────────────────────────────────────────────────────────────
+  light-terminal-bg: "#16181c"
+  light-terminal-text: "#d8dbe0"
+  light-terminal-muted: "#9aa2ad"
+  light-terminal-info: "#7db3ff"
+  light-terminal-success: "#4fd18b"
+  light-terminal-warning: "#f2c14e"
+  light-terminal-error: "#ff8a80"
+  dark-terminal-bg: "#0d0f17"
+  dark-terminal-text: "#c9d1d9"
+  dark-terminal-muted: "#8b949e"
+  dark-terminal-info: "#58a6ff"
+  dark-terminal-success: "#3fb950"
+  dark-terminal-warning: "#d29922"
+  dark-terminal-error: "#f85149"
+
+  # ─────────────────────────────────────────────────────────────
   # Scrim — 모달·드롭다운 뒤 차폐막. 표면이 아니므로 별도 토큰이다.
   # ─────────────────────────────────────────────────────────────
   light-scrim: "rgba(10, 11, 13, 0.40)"

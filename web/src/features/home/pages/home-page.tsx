@@ -210,7 +210,7 @@ export function HomePage() {
           return (
             <div
               key={stage.name}
-              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_80%,_transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,_var(--color-brand-gold)_22%,_transparent),color-mix(in_srgb,_var(--color-warning)_20%,_transparent))] text-[#ffe38a] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent),0_0_18px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]' : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_8%,_transparent)] text-[var(--color-text-secondary)] opacity-75'}`}
+              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_80%,_transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,_var(--color-brand-gold)_22%,_transparent),color-mix(in_srgb,_var(--color-warning)_20%,_transparent))] text-[color-mix(in_srgb,_var(--color-brand-gold)_70%,_white)] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent),0_0_18px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]' : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_8%,_transparent)] text-[var(--color-text-secondary)] opacity-75'}`}
             >
               <Icon size={14} />
               {stage.name}
@@ -229,7 +229,7 @@ export function HomePage() {
                 key={item.label}
                 type="button"
                 onClick={() => navigate(item.path)}
-                className="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-3.5 py-3 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:border-[#ffd70066]"
+                className="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-3.5 py-3 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent)]"
               >
                 <Icon size={16} className={item.iconClassName} />
                 <span>{item.label}</span>

@@ -536,7 +536,7 @@ export function CicdTemplatePage() {
                                 variant="primary"
                                 size="sm"
                                 type="button"
-                                className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,var(--color-warning))] text-[var(--color-surface-base)]"
+                                className="w-auto max-w-full bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[var(--color-surface-base)]"
                                 onClick={() =>
                                   navigate(
                                     `/cicd/developer-deploy?template=${encodeURIComponent(template.id)}&appType=${encodeURIComponent(template.appType)}`,

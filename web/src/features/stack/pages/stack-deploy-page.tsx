@@ -157,7 +157,7 @@ function LogLineRow({ log, locale }: { log: LogEntry; locale: string }) {
           {log.step.replace(/_/g, ' ')}
         </span>
       )}
-      <span className={cn('break-words', log.level === 'error' ? 'font-semibold text-[#fecaca]' : log.level === 'warn' ? 'font-semibold text-[#fde68a]' : 'text-[var(--color-text-primary)]')}>
+      <span className={cn('break-words', log.level === 'error' ? 'font-semibold text-[var(--color-terminal-error)]' : log.level === 'warn' ? 'font-semibold text-[var(--color-terminal-warning)]' : 'text-[var(--color-terminal-text)]')}>
         {log.message}
       </span>
     </div>
@@ -175,7 +175,7 @@ function podStatusClass(status: string): string {
     case 'Error':
       return 'text-[var(--color-error)]'
     default:
-      return 'text-[var(--color-text-primary)]'
+      return 'text-[var(--color-terminal-text)]'
   }
 }
 
@@ -192,10 +192,10 @@ function PodWatchPanel({
 }) {
   const hasRows = rows.length > 0
   return (
-    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
       <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-2.5">
         <Terminal size={14} color="var(--color-text-secondary)" />
-        <span className="font-mono text-xs font-semibold text-[var(--color-text-secondary)]">
+        <span className="font-mono text-xs font-semibold text-[var(--color-terminal-muted)]">
           $ kubectl get pods -n {namespace} -w
         </span>
         <span className={cn('ml-auto text-[11px]', isConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]')}>
@@ -445,7 +445,7 @@ export function StackDeployPage() {
             <XCircle size={16} />
             Deployment error
           </div>
-          <div className="font-mono text-xs leading-[1.7] text-[#fecaca]">
+          <div className="font-mono text-xs leading-[1.7] text-[var(--color-terminal-error)]">
             {latestFailureLog.message}
           </div>
         </div>
@@ -469,7 +469,7 @@ export function StackDeployPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Log console */}
-        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
           <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-2.5">
             <Terminal size={14} color="var(--color-text-secondary)" />
             <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">

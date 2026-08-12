@@ -48,6 +48,7 @@ import { StackInfoTab } from "../components/stack-info-tab"
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 import { Badge } from "../../../components/ui/badge"
+import { TOOL_BRAND_GRADIENT } from "../../../lib/tool-brand-colors";
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
@@ -66,7 +67,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 		<div className="flex h-full flex-col">
 			<div className="mb-4 flex items-center justify-between gap-3">
 				<div className="flex items-center gap-3">
-					<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,var(--color-success),#059669)]" />
+					<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,var(--color-success),var(--color-success))]" />
 					<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">{stack.name} History</h3>
 				</div>
 				<div className="flex items-center gap-2">
@@ -103,7 +104,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 					<div
 						key={entry.id}
 						className="overflow-hidden rounded-lg border"
-						style={{ borderColor: isCurrent ? "#bbf7d0" : "var(--color-border-default)" }}
+						style={{ borderColor: isCurrent ? "var(--color-success)" : "var(--color-border-default)" }}
 					>
 						<div className="flex flex-wrap items-center justify-between gap-3 bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-5 py-3">
 							<div className="flex flex-wrap items-center gap-2.5">
@@ -111,7 +112,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 									className="rounded-full px-2.5 py-0.5 text-[12px] font-bold text-white"
 									style={{
 										background: isCurrent
-											? "#059669"
+											? "var(--color-success)"
 											: "var(--color-primary)",
 									}}
 								>
@@ -154,7 +155,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 const UPGRADE_ITEMS = [
 	{
 		name: "GitLab",
-		iconBg: "linear-gradient(135deg,#fc6d26,#e24329)",
+		iconBg: TOOL_BRAND_GRADIENT.gitlab,
 		current: "v16.7",
 		latest: "v16.9",
 		tag: "Minor Update",
@@ -164,7 +165,7 @@ const UPGRADE_ITEMS = [
 	},
 	{
 		name: "Prometheus",
-		iconBg: "linear-gradient(135deg,#e6522c,#cc3918)",
+		iconBg: TOOL_BRAND_GRADIENT.nexus,
 		current: "v2.48.1",
 		latest: "v2.50.1",
 		tag: "Patch Update",
@@ -174,7 +175,7 @@ const UPGRADE_ITEMS = [
 	},
 	{
 		name: "Grafana",
-		iconBg: "linear-gradient(135deg,#f46800,#d45a00)",
+		iconBg: TOOL_BRAND_GRADIENT.argocd,
 		current: "v10.3",
 		latest: "v10.4",
 		tag: "Minor Update",
@@ -184,7 +185,7 @@ const UPGRADE_ITEMS = [
 	},
 	{
 		name: "Argo CD",
-		iconBg: "linear-gradient(135deg,#326ce5,#1e4db8)",
+		iconBg: TOOL_BRAND_GRADIENT.kubernetes,
 		current: "v2.9.3",
 		latest: null,
 		tag: null,

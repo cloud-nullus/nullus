@@ -61,6 +61,13 @@ export const lightTokens: SchemeTokens = schemeFrom({
   "error": "#cf202f",
   "info": "#0052ff",
   "accent-alt": "#6b3fd4",
+  "terminal-bg": "#16181c",
+  "terminal-text": "#d8dbe0",
+  "terminal-muted": "#9aa2ad",
+  "terminal-info": "#7db3ff",
+  "terminal-success": "#4fd18b",
+  "terminal-warning": "#f2c14e",
+  "terminal-error": "#ff8a80",
   "scrim": "rgba(10, 11, 13, 0.40)"
 })
 
@@ -81,6 +88,13 @@ export const darkTokens: SchemeTokens = schemeFrom({
   "error": "#ff6b74",
   "info": "#4d8cff",
   "accent-alt": "#b39bff",
+  "terminal-bg": "#0d0f17",
+  "terminal-text": "#c9d1d9",
+  "terminal-muted": "#8b949e",
+  "terminal-info": "#58a6ff",
+  "terminal-success": "#3fb950",
+  "terminal-warning": "#d29922",
+  "terminal-error": "#f85149",
   "scrim": "rgba(0, 0, 0, 0.72)"
 })
 

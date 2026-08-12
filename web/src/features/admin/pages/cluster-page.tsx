@@ -22,32 +22,32 @@ const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassNa
   connected: {
     icon: <CheckCircle size={14} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
-    panelClassName: 'border-[#22c55e40] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+    panelClassName: 'border-[color-mix(in_srgb,_var(--color-success)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
   },
   pending: {
     icon: <Clock size={14} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-    panelClassName: 'border-[#f59e0b40] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+    panelClassName: 'border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
   },
   error: {
     icon: <AlertCircle size={14} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-    panelClassName: 'border-[#ef444440] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+    panelClassName: 'border-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
   },
   inactive: {
     icon: <MinusCircle size={14} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]',
-    panelClassName: 'border-[#64748b40] bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]',
+    panelClassName: 'border-[color-mix(in_srgb,_var(--color-text-muted)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]',
   },
   unreachable: {
     icon: <AlertCircle size={14} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-    panelClassName: 'border-[#f59e0b40] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+    panelClassName: 'border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
   },
   auth_failed: {
     icon: <AlertCircle size={14} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-    panelClassName: 'border-[#ef444440] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+    panelClassName: 'border-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
   },
 }
 
