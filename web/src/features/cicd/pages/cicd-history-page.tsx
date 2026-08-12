@@ -8,6 +8,7 @@ import type { Deployment, PipelineStatus } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Select } from '../../../components/ui/select'
 import { DataTable } from '../../../components/shared/data-table'
+import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { getPipelineStatusLabel } from '../utils/pipeline-status'
 import { StatusBadge, toneForStatus } from '../../../components/shared/status-badge'
@@ -132,89 +133,97 @@ export function CicdHistoryPage() {
         </div>
       )}
 
-      <DataTable
-        columns={columns}
-        data={filtered}
-        getRowKey={(row) => row.id}
-        onRowClick={(row) => setSelectedDeploymentId(row.id)}
-        emptyMessage={t('cicdHistoryPage.empty', 'No deployment history.')}
-        toolbar={
-          <>
-            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} >
-              <option value="">{t('cicdHistoryPage.filters.allStatus', 'All Status')}</option>
-              <option value="success">{t('cicd.status.success', 'Success')}</option>
-              <option value="running">{t('cicd.status.running', 'Running')}</option>
-              <option value="pending">{t('cicd.status.pending', 'Pending')}</option>
-              <option value="failed">{t('cicd.status.failed', 'Failed')}</option>
-              <option value="cancelled">{t('cicd.status.cancelled', 'Cancelled')}</option>
-            </Select>
-            <SearchInput
-              wrapperClassName="ml-auto w-[220px]"
-              placeholder={t('cicdHistoryPage.searchPlaceholder', 'Search pipeline / deployer...')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </>
-        }
-      />
-
       {/*
-        서브 테이블 — 메인 테이블에서 선택한 배포의 상세.
+        상세는 표 오른쪽에 붙는다. 아래로 펼치면 행을 고를 때마다 표가 밀려 내려가
+        방금 고른 행을 잃고, 표가 짧을 때는 화면 절반이 빈 채 남는다.
+        스택 이력·스택 목록·CI/CD 목록이 모두 같은 좌우 배치를 쓴다 (DESIGN.md §Layout).
 
         이전에는 행 안에서 펼치는 방식이었는데, 그 패널이 보여주던 6개 필드가
-        메인 테이블 컬럼과 완전히 같아서 새 정보가 0 이었다. 또 행 확장은 28개 화면
-        중 이 한 곳뿐인 일회성 패턴이었고, AG Grid 의 Master/Detail 은 Enterprise 전용이다.
-        메인/서브 분리는 Community 순정 구성이면서 앱의 다른 3화면이 쓰는
-        분할 상세 패턴과도 맞는다. (기획안 D5)
+        메인 테이블 컬럼과 완전히 같아서 새 정보가 0 이었다. 행 확장은 28개 화면
+        중 이 한 곳뿐인 일회성 패턴이기도 했다. (기획안 D5)
 
         실제 하위 엔티티(배포 단계 steps)는 GET /cicd/deployments/{id} 에 이미 있다.
         그걸 여기에 붙이는 것은 기능 추가라 별 티켓으로 분리했다(기획안 Phase 3-b).
       */}
-      {selectedDetail && (
-        <section className="mt-4 overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-          <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-[14px] py-3">
-            <h2 className="m-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-              {t('cicdHistoryPage.detail.title', 'Deployment Detail')}
-            </h2>
-            <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedDeploymentId(null)}>
-              {t('cicdHistoryPage.detail.close', 'Close')}
-            </Button>
-          </div>
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th className={cn(thClass, "w-[180px]")}>
-                  {t('cicdHistoryPage.detail.field', 'Field')}
-                </th>
-                <th className={cn(thClass)}>
-                  {t('cicdHistoryPage.detail.value', 'Value')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { label: t('cicdHistoryPage.table.pipeline', 'Pipeline'), value: selectedDetail.pipelineName },
-                { label: t('cicdHistoryPage.table.version', 'Version'), value: selectedDetail.version },
-                // 상세는 개편 전 라벨('Triggered By')을 그대로 쓴다. 메인 컬럼은 'Deployer' 라
-                // 둘이 어긋나 있지만, 문자열을 없애는 건 정보 유실이라 통일은 별도 제안으로 남긴다.
-                { label: t('cicdHistoryPage.detail.triggeredBy', 'Triggered By'), value: selectedDetail.triggeredBy || '-' },
-                { label: t('cicdHistoryPage.table.status', 'Status'), value: getPipelineStatusLabel(t, selectedDetail.status) },
-                { label: t('cicdHistoryPage.table.startedAt', 'Started At'), value: formatDateTime(selectedDetail.startedAt, locale) },
-                { label: t('cicdHistoryPage.table.completedAt', 'Completed At'), value: formatDateTime(selectedDetail.completedAt, locale) },
-              ].map(({ label, value }) => (
-                <tr key={label}>
-                  <td className="border-t border-[var(--color-border-default)] px-[14px] py-2.5 text-[13px] text-[var(--color-text-muted)]">
-                    {label}
-                  </td>
-                  <td className="border-t border-[var(--color-border-default)] px-[14px] py-2.5 text-[13px] text-[var(--color-text-primary)]">
-                    {value}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      <ListDetailPanel
+        detailWidth={380}
+        emptyDetailMessage={t('cicdHistoryPage.detail.empty', 'Select a deployment to view its detail.')}
+        detailContent={
+          selectedDetail && (
+            <section>
+              <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-[14px] py-3">
+                <h2 className="m-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  {t('cicdHistoryPage.detail.title', 'Deployment Detail')}
+                </h2>
+                <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedDeploymentId(null)}>
+                  {t('cicdHistoryPage.detail.close', 'Close')}
+                </Button>
+              </div>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className={cn(thClass, "w-[120px]")}>
+                      {t('cicdHistoryPage.detail.field', 'Field')}
+                    </th>
+                    <th className={cn(thClass)}>
+                      {t('cicdHistoryPage.detail.value', 'Value')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: t('cicdHistoryPage.table.pipeline', 'Pipeline'), value: selectedDetail.pipelineName },
+                    { label: t('cicdHistoryPage.table.version', 'Version'), value: selectedDetail.version },
+                    // 상세는 개편 전 라벨('Triggered By')을 그대로 쓴다. 메인 컬럼은 'Deployer' 라
+                    // 둘이 어긋나 있지만, 문자열을 없애는 건 정보 유실이라 통일은 별도 제안으로 남긴다.
+                    { label: t('cicdHistoryPage.detail.triggeredBy', 'Triggered By'), value: selectedDetail.triggeredBy || '-' },
+                    { label: t('cicdHistoryPage.table.status', 'Status'), value: getPipelineStatusLabel(t, selectedDetail.status) },
+                    { label: t('cicdHistoryPage.table.startedAt', 'Started At'), value: formatDateTime(selectedDetail.startedAt, locale) },
+                    { label: t('cicdHistoryPage.table.completedAt', 'Completed At'), value: formatDateTime(selectedDetail.completedAt, locale) },
+                  ].map(({ label, value }) => (
+                    <tr key={label}>
+                      <td className="border-t border-[var(--color-border-default)] px-[14px] py-2.5 text-[13px] text-[var(--color-text-muted)]">
+                        {label}
+                      </td>
+                      <td className="border-t border-[var(--color-border-default)] px-[14px] py-2.5 text-[13px] break-all text-[var(--color-text-primary)]">
+                        {value}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )
+        }
+        listContent={
+          <DataTable
+            flush
+            columns={columns}
+            data={filtered}
+            getRowKey={(row) => row.id}
+            onRowClick={(row) => setSelectedDeploymentId(row.id)}
+            emptyMessage={t('cicdHistoryPage.empty', 'No deployment history.')}
+            toolbar={
+              <>
+                <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} >
+                  <option value="">{t('cicdHistoryPage.filters.allStatus', 'All Status')}</option>
+                  <option value="success">{t('cicd.status.success', 'Success')}</option>
+                  <option value="running">{t('cicd.status.running', 'Running')}</option>
+                  <option value="pending">{t('cicd.status.pending', 'Pending')}</option>
+                  <option value="failed">{t('cicd.status.failed', 'Failed')}</option>
+                  <option value="cancelled">{t('cicd.status.cancelled', 'Cancelled')}</option>
+                </Select>
+                <SearchInput
+                  wrapperClassName="ml-auto w-[220px]"
+                  placeholder={t('cicdHistoryPage.searchPlaceholder', 'Search pipeline / deployer...')}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </>
+            }
+          />
+        }
+      />
     </div>
   )
 }

@@ -712,7 +712,8 @@
       "close": "Close",
       "field": "Field",
       "value": "Value",
-      "triggeredBy": "Triggered By"
+      "triggeredBy": "Triggered By",
+      "empty": "Select a deployment to view its detail."
     }
   },
   "observability": {

@@ -98,6 +98,31 @@ describe('CicdHistoryPage', () => {
     expect(within(section).getByText('kim.dev')).not.toBeNull()
   })
 
+  // 상세는 표 오른쪽에 붙는다. 아래로 펼치면 행을 고를 때마다 표가 밀려 내려가
+  // 방금 고른 행을 잃고, 표 아래로 화면 절반이 빈 채 남는다.
+  // 스택 이력·스택 목록·CI/CD 목록이 모두 이 좌우 배치를 쓴다.
+  it('상세를 표 오른쪽에 둔다', async () => {
+    renderWithProviders(<CicdHistoryPage />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'View detail' })[0])
+    const detail = await screen.findByText('Deployment Detail')
+
+    const table = screen.getAllByRole('table')[0]
+    // 표와 상세의 최소 공통 조상이 flex 행이면 좌우로 놓인 것이다.
+    // 아래로 쌓으면 그 조상은 페이지 바깥 div 라 flex 가 아니다.
+    let common: HTMLElement | null = detail.parentElement
+    while (common && !common.contains(table)) common = common.parentElement
+    expect(common).not.toBeNull()
+    expect(common!.className).toContain('flex')
+  })
+
+  // 고른 행이 없을 때도 오른쪽 칸은 자리를 지키고 무엇을 하라고 알려 준다.
+  it('선택 전에는 고르라고 알려 준다', () => {
+    renderWithProviders(<CicdHistoryPage />)
+
+    expect(screen.getByText(/Select a deployment|배포를 선택/)).toBeTruthy()
+  })
+
   it('closing the detail sub table hides it', async () => {
     renderWithProviders(<CicdHistoryPage />)
 

@@ -712,7 +712,8 @@
       "close": "닫기",
       "field": "항목",
       "value": "값",
-      "triggeredBy": "배포자"
+      "triggeredBy": "배포자",
+      "empty": "배포를 선택하면 상세가 표시됩니다."
     }
   },
   "observability": {
