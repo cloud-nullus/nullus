@@ -284,7 +284,9 @@ export const normalizeStackItem = (raw: RawStackItem): Stack => {
     templateId: raw.template_id ?? raw.templateId ?? '',
     templateName: raw.template_name ?? raw.templateName ?? raw.template_id ?? '',
     clusterId: raw.cluster_id ?? raw.clusterId ?? '',
-    clusterName: raw.cluster_name ?? raw.clusterName ?? raw.cluster_id ?? '',
+    // 이름을 모르면 빈 값이다. id 로 대신하면 화면이
+    // c75747e4-b6eb-44d0-a95c-88779781dbcd 를 클러스터 "이름" 으로 보여준다.
+    clusterName: raw.cluster_name ?? raw.clusterName ?? '',
     namespace: raw.namespace ?? 'nullus',
     status: status as Stack['status'],
     createdAt: raw.created_at ?? raw.createdAt ?? '',

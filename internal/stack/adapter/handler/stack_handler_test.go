@@ -174,6 +174,43 @@ func TestStackHandler_ListStacks_200(t *testing.T) {
 	assert.EqualValues(t, 1, resp["total"])
 }
 
+// 목록은 클러스터 이름을 함께 줘야 한다.
+//
+// 안 주면 화면이 대신 클러스터 id 를 이름 자리에 넣는다 — 스택 이력 화면의
+// "클러스터" 열에 c75747e4-b6eb-44d0-a95c-88779781dbcd 가 떴다. 이름이 아닌 것을
+// 이름 자리에 넣으면 사용자는 그게 이름인 줄 안다.
+//
+// 이름을 못 찾는 경우(클러스터가 지워졌거나 DB 가 없는 개발 환경)에는 빈 값을
+// 준다. 그때는 화면이 "-" 로 그려 "모른다" 를 그대로 보인다.
+func TestStackHandler_ListStacks_IncludesClusterName(t *testing.T) {
+	e := newStackEcho()
+
+	body := `{"name":"stack-cluster-name","cluster_id":"cls-1","golden_path_id":"github-argocd-v1"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Org-ID", "org-cluster-name")
+	createRec := httptest.NewRecorder()
+	e.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/stacks", nil)
+	listReq.Header.Set("X-Org-ID", "org-cluster-name")
+	listRec := httptest.NewRecorder()
+	e.ServeHTTP(listRec, listReq)
+	require.Equal(t, http.StatusOK, listRec.Code)
+
+	var resp struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+
+	name, ok := resp.Items[0]["cluster_name"]
+	require.True(t, ok, "목록 항목에 cluster_name 키가 있어야 한다")
+	// 이 테스트는 DB 없이 돈다. 이름을 못 찾으면 빈 문자열이지 id 가 아니다.
+	assert.NotEqual(t, "cls-1", name, "이름을 모를 때 id 로 대신하면 안 된다")
+}
+
 func TestStackHandler_GetIntegrations_200(t *testing.T) {
 	e := newStackEcho()
 

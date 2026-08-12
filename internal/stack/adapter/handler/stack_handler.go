@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -381,7 +382,76 @@ func (h *StackHandler) ListStacks(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"items": out.Stacks, "total": len(out.Stacks)})
+	return c.JSON(http.StatusOK, map[string]any{
+		"items": h.withClusterNames(c.Request().Context(), out.Stacks),
+		"total": len(out.Stacks),
+	})
+}
+
+// withClusterNames 는 목록 항목에 클러스터 이름을 붙인다.
+//
+// 스택은 cluster_id 만 들고 있다. 이름을 안 주면 화면이 대신 id 를 이름 자리에
+// 넣어 c75747e4-… 같은 값이 "클러스터" 열에 뜬다 — 이름이 아닌 것을 이름 자리에
+// 두면 사용자는 그게 이름인 줄 안다.
+//
+// 이름을 못 찾으면 빈 문자열을 준다. 화면은 그때 "-" 로 그려 "모른다" 를 그대로
+// 보인다. 조회 실패가 목록 실패는 아니므로 에러로 올리지 않는다.
+func (h *StackHandler) withClusterNames(ctx context.Context, stacks []*domain.Stack) []map[string]any {
+	names := h.clusterNamesFor(ctx, stacks)
+
+	items := make([]map[string]any, 0, len(stacks))
+	for _, stack := range stacks {
+		item := map[string]any{}
+		// 스택은 커스텀 마셜러 없이 JSON 태그로 직렬화된다. 필드를 손으로 옮기면
+		// 새 필드가 추가될 때마다 여기서 빠지므로, 한 번 왕복시켜 그대로 쓴다.
+		raw, err := json.Marshal(stack)
+		if err != nil {
+			continue
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			continue
+		}
+		item["cluster_name"] = names[stack.ClusterID]
+		items = append(items, item)
+	}
+	return items
+}
+
+func (h *StackHandler) clusterNamesFor(ctx context.Context, stacks []*domain.Stack) map[string]string {
+	names := map[string]string{}
+	if h.pool == nil || len(stacks) == 0 {
+		return names
+	}
+
+	ids := make([]string, 0, len(stacks))
+	seen := map[string]bool{}
+	for _, stack := range stacks {
+		id := strings.TrimSpace(stack.ClusterID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return names
+	}
+
+	rows, err := h.pool.Query(ctx, "SELECT id::text, name FROM clusters WHERE id::text = ANY($1)", ids)
+	if err != nil {
+		slog.Warn("failed to resolve cluster names for stack list", "error", err)
+		return names
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			continue
+		}
+		names[id] = name
+	}
+	return names
 }
 
 // GetStack handles GET /api/v1/stacks/:id.
