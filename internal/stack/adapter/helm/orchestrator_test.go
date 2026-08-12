@@ -399,8 +399,13 @@ func TestOrchestrator_SetNamespace_OverridesDefaultNamespace(t *testing.T) {
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_cert_manager", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_metrics_server", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_openbao", "A"))
 
-	assert.Equal(t, []string{"cert-manager", "production"}, installer.namespaces)
+	// 스택 컴포넌트는 SetNamespace 를 따르고(openbao → production), 클러스터에 하나뿐인
+	// 애드온은 자기 네임스페이스를 지킨다. metrics-server 가 스택 네임스페이스를 따르던
+	// 동안, 스택을 지우면 cluster-scoped APIService 가 죽은 Service 를 가리켜 클러스터의
+	// 모든 네임스페이스 삭제가 교착됐다 — cluster_singleton_namespace_test.go 참고.
+	assert.Equal(t, []string{"cert-manager", "kube-system", "production"}, installer.namespaces)
 }
 
 func TestOrchestrator_ExecuteStep_ReusesExistingCertManagerInstallation(t *testing.T) {
