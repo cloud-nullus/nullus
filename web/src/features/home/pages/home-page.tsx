@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../../../stores/auth-store'
 import { roleLandingPath } from '../../auth/role-landing'
+import { NullusMark } from '../../../components/brand/nullus-mark'
 
 const features = [
   {
@@ -122,9 +123,9 @@ export function HomePage() {
   return (
     <div>
       <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-home-hero-bg)] p-8 text-center">
-        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[var(--color-on-brand-gold)] shadow-[0_8px_32px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]">
-          <Box size={36} />
-        </div>
+        {/* 마크가 스스로 3색을 갖고 있어 금색 타일 위에 얹으면 색이 싸운다.
+            바탕 없이 그대로 둔다 — 바로 아래 제목이 이름을 말해 준다. */}
+        <NullusMark size={80} decorative className="mx-auto mb-5 block" />
         <h1 className="m-0 mb-2.5 text-4xl font-extrabold text-[var(--color-text-primary)]">Nullus Platform</h1>
         <p className="m-0 mb-2 text-base text-[var(--color-text-secondary)]">DevSecOps Infrastructure Automation Platform</p>
         <p className="mx-auto mb-8 max-w-[900px] text-sm leading-7 text-[var(--color-text-muted)]">

@@ -98,7 +98,18 @@ export default defineConfig([
     files: ['src/**/*.{ts,tsx}'],
     // 외부 도구(GitLab · Kubernetes …)의 브랜드 색은 우리 팔레트가 아니라
     // 그 프로젝트가 정한 고정값이다. 한 파일에 모아 두고 거기만 면제한다.
-    ignores: ['src/**/*.test.{ts,tsx}', 'src/theme/**', 'src/lib/tool-brand-colors.ts'],
+    //
+    // 로고 마크도 같은 이유로 면제한다. 마크의 3색은 테마를 따라가면 안 되는
+    // 정체성 값이고(라이트에서 파랑, 다크에서 회색인 로고는 로고가 아니다),
+    // 그 사이를 잇는 48단 그라데이션은 docs/40_UI_UX/logo/emit.mjs 가 굽는
+    // 생성물이다 — 토큰 48개로 옮길 대상이 아니다. 마스크의 #fff/#000 도
+    // 색이 아니라 "남긴다/끊는다" 를 뜻하는 명도값이다.
+    ignores: [
+      'src/**/*.test.{ts,tsx}',
+      'src/theme/**',
+      'src/lib/tool-brand-colors.ts',
+      'src/components/brand/**',
+    ],
     rules: {
       // 여기에 no-restricted-imports 를 다시 선언하지 않는다.
       //
