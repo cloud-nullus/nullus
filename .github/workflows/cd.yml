@@ -374,6 +374,8 @@ jobs:
             --wait --timeout 900s
 
           # kubectl 의 컨텍스트 플래그는 --context 다 (--kube-context 는 helm 전용).
+          # 동일 이미지 태그(main) 재배포 시 파드 템플릿 변경이 없어 미교체되는 현상 방지
+          kubectl --context=platform -n nullus rollout restart deployment/nullus-api deployment/nullus-web
           kubectl --context=platform -n nullus rollout status deployment/nullus-api --timeout=300s
           kubectl --context=platform -n nullus rollout status deployment/nullus-web --timeout=300s
           EOF
