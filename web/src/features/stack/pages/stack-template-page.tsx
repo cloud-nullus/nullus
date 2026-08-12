@@ -60,6 +60,18 @@ const getToolCategoryColor = (category: string) =>
     color: "var(--color-primary)",
   };
 
+/**
+ * 표시용 도구 목록에서 중복을 걷어낸다.
+ *
+ * 서버가 주는 tools 는 "역할별 선택"의 나열이라 한 제품이 두 역할을 겸하면 두 번
+ * 들어온다 — Nexus 는 컨테이너 레지스트리이면서 패키지 저장소다. 그대로 그리면
+ * 칩이 두 개 뜨고("Nexus … Nexus"), key={tool} 이 충돌해 React 가 경고를 낸다.
+ * 같은 판단이 utils/stack-list-utils.ts 의 도구 수 집계에도 이미 들어가 있다.
+ */
+function uniqueTools(tools: string[] | undefined): string[] {
+  return Array.from(new Set(Array.isArray(tools) ? tools : []))
+}
+
 export function StackTemplatePage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -609,7 +621,7 @@ export function StackTemplatePage() {
                 {t("stackTemplatePage.card.includedTools", "포함된 도구")}
               </span>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {template.tools.slice(0, 4).map((tool) => (
+                {uniqueTools(template.tools).slice(0, 4).map((tool) => (
                   <span
                     key={tool}
                     className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
@@ -617,9 +629,9 @@ export function StackTemplatePage() {
                     {tool}
                   </span>
                 ))}
-                {template.tools.length > 4 && (
+                {uniqueTools(template.tools).length > 4 && (
                   <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-text-muted)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
-                    +{template.tools.length - 4}
+                    +{uniqueTools(template.tools).length - 4}
                   </span>
                 )}
               </div>
@@ -834,7 +846,7 @@ export function StackTemplatePage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-                  {selectedTemplate.tools.map((tool) => (
+                  {uniqueTools(selectedTemplate.tools).map((tool) => (
                     <div
                       key={tool}
                       className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-2.5 py-2"
