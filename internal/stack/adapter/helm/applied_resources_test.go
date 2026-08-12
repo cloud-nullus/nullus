@@ -70,7 +70,7 @@ func TestResourceValues_UsesPlannedValuesOverAdminDefault(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t, "960m", requests["cpu"], "4 core × 0.24")
-	assert.Equal(t, "1.92Gi", requests["memory"], "8Gi × 0.24")
+	assert.Equal(t, "1966Mi", requests["memory"], "8Gi × 0.24")
 }
 
 // 계획값이 없으면 관리자 기본값을 그대로 쓴다 — 기존 동작이다.
@@ -178,4 +178,15 @@ func TestResourceValues_IgnoresZeroPlan(t *testing.T) {
 	controller := values["controller"].(map[string]any)
 	requests := controller["resources"].(map[string]any)["requests"].(map[string]any)
 	assert.Equal(t, "240m", requests["cpu"], "관리자 기본값으로 되돌아간다")
+}
+
+// 소수 Gi 를 그대로 쓰면 쿠버네티스가 밀리바이트로 정규화한다 — 0.24Gi 가 파드
+// 스펙에 257698037760m 으로 남아 kubectl describe 로 읽을 수 없다. 값은 맞지만
+// 사람이 못 읽는 표기는 운영 도구에서 결함이다. 정수 Mi 로 내린다.
+func TestMemoryQuantity_UsesWholeMiForFractionalGi(t *testing.T) {
+	assert.Equal(t, "2Gi", memoryGiQuantity(2), "정수 Gi 는 그대로")
+	assert.Equal(t, "246Mi", memoryGiQuantity(0.24), "0.24 × 1024 = 245.76 → 246Mi")
+	assert.Equal(t, "512Mi", memoryGiQuantity(0.5))
+	assert.Equal(t, "1536Mi", memoryGiQuantity(1.5))
+	assert.Equal(t, "", memoryGiQuantity(0), "0 이하는 값을 넣지 않는다")
 }

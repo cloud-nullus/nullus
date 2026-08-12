@@ -259,9 +259,9 @@ func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t, "200m", requests["cpu"])
-	assert.Equal(t, "0.4Gi", requests["memory"])
+	assert.Equal(t, "410Mi", requests["memory"])
 	assert.Equal(t, "400m", limits["cpu"])
-	assert.Equal(t, "0.8Gi", limits["memory"])
+	assert.Equal(t, "819Mi", limits["memory"])
 
 	runnerValues := installer.valuesByRelease["gitlab-runner"]
 	require.NotNil(t, runnerValues)
@@ -331,7 +331,7 @@ func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsWebserviceAndSidekiqF
 	sidekiqLim, ok := sidekiqResources["limits"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "800m", sidekiqReq["cpu"])
-	assert.Equal(t, "1.5Gi", sidekiqReq["memory"])
+	assert.Equal(t, "1536Mi", sidekiqReq["memory"])
 	assert.Equal(t, "1600m", sidekiqLim["cpu"])
 	assert.Equal(t, "3Gi", sidekiqLim["memory"])
 
@@ -503,7 +503,7 @@ func TestOrchestrator_ResourceDefaultsApplyToCertManagerWebhookAndCainjector(t *
 	requests, ok := webhookResources["requests"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "500m", requests["cpu"])
-	assert.Equal(t, "0.5Gi", requests["memory"])
+	assert.Equal(t, "512Mi", requests["memory"])
 }
 
 func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {

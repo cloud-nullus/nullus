@@ -425,5 +425,13 @@ func memoryGiQuantity(gi float64) string {
 	if math.Mod(gi, 1.0) == 0 {
 		return fmt.Sprintf("%dGi", int64(gi))
 	}
-	return fmt.Sprintf("%gGi", gi)
+	// 소수 Gi 를 그대로 넘기면 쿠버네티스가 밀리바이트로 정규화한다 —
+	// 0.24Gi 가 파드 스펙에 "257698037760m" 으로 남아 kubectl describe 로
+	// 읽을 수 없다. 값은 같지만 운영 도구에서 못 읽는 표기는 결함이다.
+	// Mi 아래 정밀도는 메모리 요청/상한에서 의미가 없으므로 정수 Mi 로 내린다.
+	mi := int64(math.Round(gi * 1024))
+	if mi <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dMi", mi)
 }
