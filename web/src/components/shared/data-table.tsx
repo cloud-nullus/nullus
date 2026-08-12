@@ -104,7 +104,11 @@ export function DataTable<T>({
         )}
       </div>
 
-      <table className="w-full border-collapse">
+      {/* 좁은 칸(ListDetailPanel 의 목록 쪽 등)에 들어가면 컬럼이 잘린다.
+          정보를 줄이는 대신 표만 가로로 스크롤시킨다 — DESIGN.md §Do's:
+          "정보를 줄여서 여백을 만들지 않는다". */}
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} className="bg-[var(--color-surface-sunken)]">
@@ -153,6 +157,7 @@ export function DataTable<T>({
           ))}
         </tbody>
       </table>
+      </div>
 
       {table.getRowModel().rows.length === 0 && (
         <div className="py-10 text-center text-[13px] text-[var(--color-text-secondary)]">
