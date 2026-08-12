@@ -41,6 +41,17 @@
       "testIds": []
     },
     {
+      "file": "src/components/brand/nullus-mark.tsx",
+      "i18nKeys": [],
+      "fallbacks": [],
+      "labels": [
+        "Nullus"
+      ],
+      "columns": [],
+      "jsxText": [],
+      "testIds": []
+    },
+    {
       "file": "src/components/layout/header.tsx",
       "i18nKeys": [
         "header.theme.switchToDark",
@@ -891,7 +902,6 @@
       "columns": [],
       "jsxText": [
         "Email",
-        "N",
         "Nullus Platform",
         "Password",
         "Sign in",
@@ -991,6 +1001,7 @@
         "cicdHistoryPage.clearFilter",
         "cicdHistoryPage.description",
         "cicdHistoryPage.detail.close",
+        "cicdHistoryPage.detail.empty",
         "cicdHistoryPage.detail.field",
         "cicdHistoryPage.detail.title",
         "cicdHistoryPage.detail.triggeredBy",
@@ -1027,6 +1038,7 @@
         "Pipeline",
         "Running",
         "Search pipeline / deployer...",
+        "Select a deployment to view its detail.",
         "Started At",
         "Status",
         "Success",
@@ -1069,6 +1081,7 @@
         "cicdListPage.searchPlaceholder",
         "cicdListPage.table.appType",
         "cicdListPage.table.cluster",
+        "cicdListPage.table.deletedStack",
         "cicdListPage.table.lastDeployed",
         "cicdListPage.table.name",
         "cicdListPage.table.noStack",
@@ -1100,7 +1113,8 @@
         "Stack",
         "Status",
         "Success",
-        "—"
+        "—",
+        "삭제됨"
       ],
       "labels": [
         "App Type",
@@ -1617,6 +1631,22 @@
       "testIds": []
     },
     {
+      "file": "src/features/observability/components/app-runtime-panels.tsx",
+      "i18nKeys": [],
+      "fallbacks": [],
+      "labels": [
+        "App CPU (Live)",
+        "App Memory (Live)"
+      ],
+      "columns": [],
+      "jsxText": [
+        "Application Logs",
+        "Follow",
+        "pods"
+      ],
+      "testIds": []
+    },
+    {
       "file": "src/features/observability/components/cluster-stack-filter.tsx",
       "i18nKeys": [
         "clusterStackFilter.clear",
@@ -1655,8 +1685,6 @@
       "i18nKeys": [],
       "fallbacks": [],
       "labels": [
-        "App CPU (Live)",
-        "App Memory (Live)",
         "Degraded",
         "Deployment Timeline",
         "Down",
@@ -1670,14 +1698,10 @@
       ],
       "columns": [],
       "jsxText": [
-        "Application Logs",
         "Deployed Applications",
-        "Follow",
         "Recent Deployments",
         "apps",
-        "pods",
-        "위에서 스택을 고르면 배포된 애플리케이션의 실제 파드 수를 함께 보여줍니다.",
-        "위에서 스택을 고르면 배포된 앱의 로그를 보여줍니다."
+        "위에서 스택을 고르면 배포된 애플리케이션의 실제 파드 수를 함께 보여줍니다."
       ],
       "testIds": []
     },
@@ -2584,7 +2608,6 @@
         "stackHistoryPage.table.changedBy",
         "stackHistoryPage.table.cluster",
         "stackHistoryPage.table.reason",
-        "stackHistoryPage.table.stackName",
         "stackHistoryPage.table.version",
         "stackHistoryPage.title"
       ],
@@ -2609,7 +2632,6 @@
         "Select a change to view its configuration snapshot.",
         "Stack",
         "Stack History",
-        "Stack Name",
         "Stack change history and version management",
         "This action permanently deletes Persistent Volumes.",
         "Type \"DELETE\" to confirm",
@@ -2619,10 +2641,8 @@
       ],
       "labels": [
         "actions",
-        "cluster",
         "expand",
-        "pvcMode",
-        "stackName"
+        "pvcMode"
       ],
       "columns": [
         "changedAt",

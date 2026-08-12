@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../../stores/auth-store'
 import { roleLandingPath } from '../role-landing'
 import { isOidcMode, getProviderConfig } from '../../../lib/oidc-providers'
+import { NullusMark } from '../../../components/brand/nullus-mark'
 import type { User } from '../../../types'
 
 const loginSchema = z.object({
@@ -168,9 +169,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-base)] p-6">
       <div className="w-full max-w-[400px] rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-10">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-[14px] flex h-12 w-12 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[22px] font-extrabold text-[var(--color-on-brand-gold)]">
-            N
-          </div>
+          <NullusMark size={52} decorative className="mx-auto mb-[14px] block" />
           <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
             Nullus Platform
           </h1>

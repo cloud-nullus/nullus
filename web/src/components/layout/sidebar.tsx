@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Box, LogOut, Menu, ChevronDown, ChevronRight } from 'lucide-react'
+import { LogOut, Menu, ChevronDown, ChevronRight } from 'lucide-react'
+import { NullusMark } from '../brand/nullus-mark'
 import { useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
 import { isOidcMode, getProviderConfig } from '../../lib/oidc-providers'
@@ -53,7 +54,8 @@ export function Sidebar() {
             className="flex cursor-pointer items-center gap-2 border-none bg-transparent p-0"
             aria-label="Go to home"
           >
-            <Box size={18} className="text-[var(--color-brand-gold)]" />
+            {/* 마크 바로 옆에 이름이 있으므로 읽는 도구에는 한 번만 들리게 한다. */}
+            <NullusMark size={20} decorative />
             <span className="text-base font-bold text-[var(--color-text-primary)]">
               Nullus
             </span>
