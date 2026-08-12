@@ -67,6 +67,7 @@ describe("PipelineTopologyRail", () => {
                 version: "3.64.0",
                 instances: 1,
                 shared: true,
+                sharedWith: "nexus",
                 status: "running",
                 runtimeInstances: 1,
                 readyInstances: 1,
@@ -78,7 +79,7 @@ describe("PipelineTopologyRail", () => {
       />,
     );
 
-    expect(within(stage("Package Registry")).getByText("· shared")).toBeTruthy();
+    expect(within(stage("Package Registry")).getByText("· via nexus")).toBeTruthy();
     expect(within(stage("Container Registry")).getByText("· 1/1 pods")).toBeTruthy();
   });
 

@@ -121,7 +121,9 @@ function RuntimeLine({ tool }: { tool: PipelineTool }) {
       <span>{tool.status}</span>
       <span className="text-[var(--color-text-muted)]">
         {/* 기대치가 아니라 실제 준비된 파드 수다. 3/4 면 하나가 안 떴다는 뜻. */}
-        · {tool.shared ? "shared" : `${ready}/${total} pods`}
+        {/* 겸업 도구는 파드를 새로 띄우지 않는다. 어느 배포가 이 역할을 맡고
+            있는지를 적어야 "0" 으로 오해하지 않는다. */}
+        · {tool.shared ? `via ${tool.sharedWith ?? "shared deployment"}` : `${ready}/${total} pods`}
       </span>
     </div>
   );

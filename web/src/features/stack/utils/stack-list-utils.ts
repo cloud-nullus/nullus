@@ -7,6 +7,8 @@ export type PipelineTool = ToolSelectionView & {
    * 센다 — 안 그러면 파드 수가 부풀려진다.
    */
   shared?: boolean;
+  /** 이 도구를 실제로 돌리는 배포의 이름. gitlab-ci 의 sharedWith 는 gitlab 이다. */
+  sharedWith?: string;
   /**
    * 실제로 떠 있는지. 설정(스냅샷)에는 없는 값이라 모니터링에서 겹쳐 넣는다
    * — applyToolRuntimeStatus. 모니터링을 아직 못 받았으면 undefined 다.
@@ -358,22 +360,47 @@ function toPipelineNode(
   };
 }
 
+// 구분자를 '-' 로 통일하되 지우지는 않는다. 아래 접두사 규칙이 구분자에 기대기
+// 때문이다 — 파일 아래쪽 normalizeToolName 은 구분자를 통째로 지우는 별개 함수로,
+// 인증정보 조회("Argo CD" == "argocd")에 쓴다. 여기서 그걸 쓰면 argocd 가 argo 의
+// 하위 제품으로 잘못 묶인다.
+function toProductName(name: string): string {
+  return name.trim().toLowerCase().replace(/[_\s]+/g, "-");
+}
+
 /**
- * 스테이지를 가로질러 같은 제품을 표시한다.
+ * 두 이름이 같은 배포인가.
+ *
+ * 스냅샷은 역할별 이름을 쓴다: gitlab / gitlab-ci / gitlab-registry /
+ * gitlab-package-registry. 넷 다 GitLab 설치 하나가 맡은 역할이고, 모니터링은
+ * 그걸 "gitlab" 하나로 보고한다(파드 15개가 그 아래 다 들어 있다).
+ *
+ * 별칭 목록을 손으로 들고 있지 않는다 — 도구가 늘 때마다 갱신해야 하고 빠뜨리면
+ * 조용히 틀린다. 대신 "구분자를 사이에 둔 접두사면 같은 제품" 규칙을 쓴다.
+ * grafana 와 tempo 처럼 로고만 공유하는 별개 배포는 이 규칙에 걸리지 않는다
+ * (tool-logo.ts 의 로고 매핑을 이 판정에 재사용하면 안 되는 이유다).
+ */
+function isSameProduct(candidate: string, base: string): boolean {
+  return candidate === base || candidate.startsWith(`${base}-`);
+}
+
+/**
+ * 스테이지를 가로질러 같은 배포를 표시한다.
  *
  * Nexus 는 컨테이너 레지스트리이면서 패키지 저장소다. 역할별로 칸을 나눈 뒤에는
  * 두 칸에 다 나와야 배치가 보이지만, 파드는 하나다. 두 번째부터는 shared 로
  * 표시하고 그 스테이지의 인스턴스 합계에서 뺀다.
  */
 function markSharedAcrossStages(nodes: PipelineNode[]): PipelineNode[] {
-  const seen = new Set<string>();
+  const seen: string[] = [];
   return nodes.map((node) => {
     const tools = node.tools.map((tool) => {
-      const key = tool.name.trim().toLowerCase();
-      if (seen.has(key)) {
-        return { ...tool, shared: true };
+      const key = toProductName(tool.name);
+      const base = seen.find((name) => isSameProduct(key, name));
+      if (base) {
+        return { ...tool, shared: true, sharedWith: base };
       }
-      seen.add(key);
+      seen.push(key);
       return tool;
     });
     return {
@@ -457,13 +484,20 @@ export function applyToolRuntimeStatus(
   if (!statuses || statuses.length === 0) {
     return nodes;
   }
-  const byName = new Map(
-    statuses.map((tool) => [tool.name.trim().toLowerCase(), tool]),
-  );
+  // 이름이 정확히 같은 것을 먼저 찾고, 없으면 상위 배포를 찾는다. 스냅샷의
+  // gitlab-ci 는 모니터링에 없다 — 그 역할을 gitlab 설치 하나가 맡고 있어서
+  // 모니터링은 "gitlab" 하나로만 보고한다.
+  const runtimeOf = (name: string): MonitoringToolView | undefined => {
+    const key = toProductName(name);
+    return (
+      statuses.find((tool) => toProductName(tool.name) === key) ??
+      statuses.find((tool) => isSameProduct(key, toProductName(tool.name)))
+    );
+  };
   return nodes.map((node) => ({
     ...node,
     tools: node.tools.map((tool) => {
-      const runtime = byName.get(tool.name.trim().toLowerCase());
+      const runtime = runtimeOf(tool.name);
       if (!runtime) {
         return tool;
       }

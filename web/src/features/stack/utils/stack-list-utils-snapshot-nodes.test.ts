@@ -59,6 +59,52 @@ describe("buildPipelineNodesFromSnapshot", () => {
     expect(pkg?.instances).toBe(0);
   });
 
+  // GitLab 한 설치가 소스·CI·컨테이너 레지스트리·패키지 저장소를 다 맡는다.
+  // 스냅샷은 역할별 이름(gitlab-ci …)을 쓰지만 파드는 gitlab 하나에 들어 있다.
+  it("treats role-suffixed names as the same deployment", () => {
+    const nodes = buildPipelineNodesFromSnapshot({
+      config: {
+        artifacts: {
+          source_repository: { name: "gitlab", version: "9.5.1", enabled: true },
+          container_registry: { name: "gitlab-registry", version: "9.5.1", enabled: true },
+          package_registry: { name: "gitlab-package-registry", version: "9.5.1", enabled: true },
+        },
+        pipeline: {
+          ci_platform: { name: "gitlab-ci", version: "9.5.1", enabled: true },
+        },
+      },
+    });
+
+    const shared = nodes
+      .flatMap((node) => node.tools)
+      .filter((tool) => tool.shared)
+      .map((tool) => [tool.name, tool.sharedWith]);
+
+    expect(shared).toEqual([
+      ["gitlab-ci", "gitlab"],
+      ["gitlab-registry", "gitlab"],
+      ["gitlab-package-registry", "gitlab"],
+    ]);
+    // 파드는 gitlab 한 곳에서만 센다.
+    expect(nodes.map((node) => node.instances)).toEqual([1, 0, 0, 0]);
+  });
+
+  // 로고를 공유할 뿐 별개 배포인 것을 묶으면 안 된다 (tempo 는 grafana 아이콘을 쓴다).
+  it("does not merge unrelated tools that merely share a logo", () => {
+    const nodes = buildPipelineNodesFromSnapshot({
+      config: {
+        monitoring: {
+          visualization: { name: "grafana", version: "8.5.0", enabled: true },
+        },
+        logging: {
+          trace_layer: { name: "tempo", version: "2.6.0", enabled: true },
+        },
+      },
+    });
+
+    expect(nodes.flatMap((node) => node.tools).every((tool) => !tool.shared)).toBe(true);
+  });
+
   it("omits a stage whose role has no tool", () => {
     const nodes = buildPipelineNodesFromSnapshot({
       config: {
