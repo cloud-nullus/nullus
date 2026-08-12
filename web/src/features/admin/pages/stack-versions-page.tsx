@@ -91,7 +91,7 @@ export function StackVersionsAdminPage() {
               {t('stackVersionsAdmin.listTitle', 'Compatibility Matrices')}
             </div>
             <div className="text-xs text-[var(--color-text-secondary)]">
-              {t('stackVersionsAdmin.listSubtitle', 'Golden Path 3 canonical matrices (Narwhal baseline)')}
+              {t('stackVersionsAdmin.listSubtitle', 'Golden Path 3 canonical matrices')}
             </div>
           </div>
           <div
@@ -406,7 +406,7 @@ export function StackVersionsAdminPage() {
         title={t('stackVersionsAdmin.title', 'Stack Version Management')}
         subtitle={t(
           'stackVersionsAdmin.subtitle',
-          'Review Narwhal baseline compatibility matrices and verify cluster architecture fit.',
+          'Review the compatibility matrices used for installation and verify cluster architecture fit.',
         )}
         actions={
           <Button size="sm" onClick={() => setModal({ mode: 'create' })}>

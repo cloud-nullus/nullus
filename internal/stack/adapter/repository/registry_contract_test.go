@@ -21,6 +21,9 @@ func TestChartVersionsMatchCompatibilityMatrix(t *testing.T) {
 	matrices, err := NewMemoryCompatibilityRepository().GetAll(context.Background())
 	require.NoError(t, err)
 
+	// 클러스터 안에 세우는 도구는 모두 대상이다. Harbor/Nexus 두 개만 걸어 두는
+	// 동안 나머지는 조용히 갈라져 있었다 — 매트릭스는 Argo CD 6.8.0 을 말하는데
+	// 설치는 7.7.16 을, Prometheus 는 67.0.0 인데 설치는 69.3.0 을 썼다.
 	cases := []struct {
 		matrixID string
 		category string
@@ -28,6 +31,15 @@ func TestChartVersionsMatchCompatibilityMatrix(t *testing.T) {
 	}{
 		{matrixID: "gitlab-harbor-v1", category: "container_registry", step: "installing_harbor"},
 		{matrixID: "gitlab-nexus-v1", category: "container_registry", step: "installing_nexus"},
+		{matrixID: "gitlab-allinone-v1", category: "source_repository", step: "installing_gitlab"},
+		{matrixID: "gitlab-allinone-v1", category: "ci_platform", step: "installing_gitlab"},
+		{matrixID: "gitlab-allinone-v1", category: "container_registry", step: "installing_gitlab"},
+		{matrixID: "gitlab-allinone-v1", category: "storage_backend", step: "installing_minio"},
+		{matrixID: "gitlab-allinone-v1", category: "cd_tool", step: "installing_argocd"},
+		{matrixID: "gitlab-allinone-v1", category: "monitoring_collection", step: "installing_prometheus"},
+		{matrixID: "gitlab-allinone-v1", category: "monitoring_visualization", step: "installing_grafana"},
+		{matrixID: "gitlab-harbor-v1", category: "cd_tool", step: "installing_argocd"},
+		{matrixID: "gitlab-nexus-v1", category: "cd_tool", step: "installing_argocd"},
 	}
 
 	for _, tc := range cases {
@@ -93,6 +105,6 @@ func normalizeForTest(name string) string {
 
 // domain 상수가 매트릭스 상수의 출처여야 한다.
 func TestDomainOwnsRegistryChartVersions(t *testing.T) {
-	assert.Equal(t, domain.HarborChartVersion, narwhalHarborHelmVersion)
-	assert.Equal(t, domain.NexusChartVersion, narwhalNexusHelmVersion)
+	assert.Equal(t, domain.HarborChartVersion, baselineHarborHelmVersion)
+	assert.Equal(t, domain.NexusChartVersion, baselineNexusHelmVersion)
 }

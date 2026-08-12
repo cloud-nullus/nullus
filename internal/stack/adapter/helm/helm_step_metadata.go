@@ -111,7 +111,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			ReleaseName: domain.MinIOServiceName,
 			ChartName:   "minio",
 			RepoURL:     "https://charts.min.io/",
-			Version:     "5.4.0",
+			Version:     domain.MinIOChartVersion,
 			Values:      DefaultValues("installing_minio"),
 			Wait:        false,
 		}, true
@@ -119,7 +119,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "gitlab",
 			RepoURL:   "https://charts.gitlab.io/",
-			Version:   "8.7.2",
+			Version:   domain.GitLabChartVersion,
 			Values:    DefaultValues("installing_gitlab"),
 			Wait:      false,
 		}, true
@@ -173,7 +173,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "argo-cd",
 			RepoURL:   "https://argoproj.github.io/argo-helm",
-			Version:   "7.7.16",
+			Version:   domain.ArgoCDChartVersion,
 			Values:    DefaultValues("installing_argocd"),
 			Wait:      false,
 		}, true
@@ -189,7 +189,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "kube-prometheus-stack",
 			RepoURL:   "https://prometheus-community.github.io/helm-charts",
-			Version:   "69.3.0",
+			Version:   domain.PrometheusChartVersion,
 			Values:    DefaultValues("installing_prometheus"),
 			Wait:      false,
 		}, true
@@ -197,7 +197,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "grafana",
 			RepoURL:   "https://grafana.github.io/helm-charts",
-			Version:   "8.9.0",
+			Version:   domain.GrafanaChartVersion,
 			Values:    DefaultValues("installing_grafana"),
 			Wait:      false,
 		}, true

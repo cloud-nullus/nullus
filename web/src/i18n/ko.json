@@ -1357,9 +1357,9 @@
   },
   "stackVersionsAdmin": {
     "title": "스택 버전 관리",
-    "subtitle": "Narwhal 기반 호환성 매트릭스를 확인하고 클러스터 아키텍처 적합성을 교차 검증합니다.",
+    "subtitle": "설치에 쓰이는 호환성 매트릭스를 확인하고 클러스터 아키텍처 적합성을 교차 검증합니다.",
     "listTitle": "호환성 매트릭스",
-    "listSubtitle": "Golden Path 3종 (Narwhal 베이스라인)",
+    "listSubtitle": "Golden Path 3종",
     "loadError": "호환성 매트릭스를 불러오지 못했습니다.",
     "selectMatrix": "매트릭스를 선택하면 상세 정보가 표시됩니다.",
     "k8sRangeLabel": "Kubernetes 지원 범위",

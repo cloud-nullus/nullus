@@ -104,8 +104,8 @@ func TestValidateCompatibility_GitHubArgoCD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // Verified matrix + pure amd64 cluster => pass. GitLab tools are amd64-only
-// (Narwhal baseline) and the matrix status is verified, so the gate should
-// stay at pass with no TOOL_ARCH_UNSUPPORTED issue.
+// and the matrix status is verified, so the gate should stay at pass with no
+// TOOL_ARCH_UNSUPPORTED issue.
 func TestValidateCompatibility_Arch_SingleAMD64Cluster_Passes(t *testing.T) {
 	repo := repository.NewMemoryCompatibilityRepository()
 	uc := NewValidateCompatibility(repo)

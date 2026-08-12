@@ -133,36 +133,50 @@ var archAMD64Only = []string{domain.ArchAMD64}
 // archMulti is the arch profile for tools that support both amd64 and arm64.
 var archMulti = []string{domain.ArchAMD64, domain.ArchARM64}
 
-// Narwhal baseline version pins. These mirror the DB state after migration
-// 000042_seed_narwhal_compat_refresh and are sourced from
-// docs/20_아키텍처/Narwhal_호환성_Seed_Sources.md. When bumping a version here,
-// update both the refresh migration and the Narwhal sources doc in the same
-// commit so the three layers (DB / in-memory / docs) never drift.
+// 매트릭스가 선언하는 버전. 전부 domain 이 소유한다 — 설치가 쓰는 값과 같아야
+// 하기 때문이다.
+//
+// 처음에는 외부 프로젝트 Narwhal(dasomel/narwhal)의 VERSIONS.md 를 기준선으로
+// 삼았다. 그런데 Nullus 의 설치 경로가 독자적으로 올라가면서 두 값이 갈라졌고,
+// 화면은 Argo CD 6.8.0 을 "검증된 조합" 이라 안내하는데 클러스터에는 7.7.16 이
+// 서 있었다. Harbor/Nexus 만 domain 을 참조해 그 둘만 어긋나지 않았다.
+//
+// 이제 기준선은 우리가 실제로 설치하는 차트다. 버전을 올릴 때는 domain 상수
+// 하나만 고치면 설치·매트릭스가 함께 따라온다.
+// (고정: TestChartVersionsMatchCompatibilityMatrix)
 const (
-	narwhalGitLabHelmVersion = "9.5.1"
-	narwhalGitLabAppVersion  = "18.5.1"
-	// Harbor/Nexus 는 설치 경로도 같은 값을 써야 하므로 domain 이 소유한다.
-	narwhalHarborHelmVersion  = domain.HarborChartVersion
-	narwhalHarborAppVersion   = domain.HarborAppVersion
-	narwhalNexusHelmVersion   = domain.NexusChartVersion
-	narwhalNexusAppVersion    = domain.NexusAppVersion
-	narwhalMinIOHelmVersion   = "5.2.0"
-	narwhalMinIOAppVersion    = "RELEASE.2024-08-03T04-33-23Z"
-	narwhalArgoCDHelmVersion  = "6.8.0"
-	narwhalArgoCDAppVersion   = "v2.8.3"
-	narwhalPrometheusHelmVer  = "67.0.0"
-	narwhalPrometheusAppVer   = "v2.54.1"
-	narwhalGrafanaHelmVersion = "8.5.0"
-	narwhalGrafanaAppVersion  = "11.1.0"
-	narwhalBaseMinK8sPlatform = "1.27" // GitLab, GitHub, Harbor
-	narwhalBaseMinK8sWorkload = "1.26" // MinIO, Argo CD, Prometheus, Grafana
+	// GitLab 차트 하나가 소스 저장소·CI·레지스트리를 겸한다.
+	baselineGitLabHelmVersion = domain.GitLabChartVersion
+	baselineGitLabAppVersion  = domain.GitLabAppVersion
+
+	baselineHarborHelmVersion = domain.HarborChartVersion
+	baselineHarborAppVersion  = domain.HarborAppVersion
+	baselineNexusHelmVersion  = domain.NexusChartVersion
+	baselineNexusAppVersion   = domain.NexusAppVersion
+
+	baselineMinIOHelmVersion = domain.MinIOChartVersion
+	baselineMinIOAppVersion  = domain.MinIOAppVersion
+
+	baselineArgoCDHelmVersion = domain.ArgoCDChartVersion
+	baselineArgoCDAppVersion  = domain.ArgoCDAppVersion
+
+	baselinePrometheusHelmVer = domain.PrometheusChartVersion
+	baselinePrometheusAppVer  = domain.PrometheusAppVersion
+
+	baselineGrafanaHelmVersion = domain.GrafanaChartVersion
+	baselineGrafanaAppVersion  = domain.GrafanaAppVersion
+
+	// 최저 K8s 라인은 차트에서 끌어올 수 없는 편집 값이다.
+	baselineMinK8sPlatform = "1.27" // GitLab, GitHub, Harbor
+	baselineMinK8sWorkload = "1.26" // MinIO, Argo CD, Prometheus, Grafana
 )
 
 // defaultCompatibilityMatrices returns the three canonical compatibility matrices.
 // Per-tool MinK8sVersion / ArchSupport / Tier values mirror what migrations
-// 000041_compat_tool_fields and 000042_seed_narwhal_compat_refresh apply to the
-// persisted rows. If this function drifts from the DB state, the Pre-Deploy Gate
-// will produce different verdicts in tests vs. real deployments.
+// 000041_compat_tool_fields / 000042_seed_narwhal_compat_refresh /
+// 000062_compat_baseline_matches_install apply to the persisted rows. If this
+// function drifts from the DB state, the Pre-Deploy Gate will produce different
+// verdicts in tests vs. real deployments.
 func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 	return []*domain.CompatibilityMatrix{
 		{
@@ -170,18 +184,18 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Name:   "GitLab All-in-One",
 			Status: "verified",
 			Kubernetes: domain.KubernetesCompat{
-				Min:         narwhalBaseMinK8sPlatform,
+				Min:         baselineMinK8sPlatform,
 				Max:         "1.35",
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository":        {Name: "GitLab CE", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"ci_platform":              {Name: "GitLab CI", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"container_registry":       {Name: "GitLab Registry", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_visualization": {Name: "Grafana", HelmVersion: narwhalGrafanaHelmVersion, AppVersion: narwhalGrafanaAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "GitLab Registry", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 			},
 		},
 		{
@@ -189,18 +203,18 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Name:   "GitLab + Argo CD",
 			Status: "verified",
 			Kubernetes: domain.KubernetesCompat{
-				Min:         narwhalBaseMinK8sPlatform,
+				Min:         baselineMinK8sPlatform,
 				Max:         "1.35",
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository":        {Name: "GitLab CE", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"ci_platform":              {Name: "GitLab CI", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"container_registry":       {Name: "GitLab Registry", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_visualization": {Name: "Grafana", HelmVersion: narwhalGrafanaHelmVersion, AppVersion: narwhalGrafanaAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "GitLab Registry", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 			},
 		},
 		{
@@ -208,18 +222,18 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Name:   "GitLab + Harbor",
 			Status: "verified",
 			Kubernetes: domain.KubernetesCompat{
-				Min:         narwhalBaseMinK8sPlatform,
+				Min:         baselineMinK8sPlatform,
 				Max:         "1.35",
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository":        {Name: "GitLab CE", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"ci_platform":              {Name: "GitLab CI", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"container_registry":       {Name: "Harbor", HelmVersion: narwhalHarborHelmVersion, AppVersion: narwhalHarborAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierBeta},
-				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_visualization": {Name: "Grafana", HelmVersion: narwhalGrafanaHelmVersion, AppVersion: narwhalGrafanaAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierBeta},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 			},
 		},
 		{
@@ -227,19 +241,19 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Name:   "GitLab + Nexus",
 			Status: "verified",
 			Kubernetes: domain.KubernetesCompat{
-				Min:         narwhalBaseMinK8sPlatform,
+				Min:         baselineMinK8sPlatform,
 				Max:         "1.35",
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository":        {Name: "GitLab CE", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"ci_platform":              {Name: "GitLab CI", HelmVersion: narwhalGitLabHelmVersion, AppVersion: narwhalGitLabAppVersion, MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"container_registry":       {Name: "Nexus", HelmVersion: narwhalNexusHelmVersion, AppVersion: narwhalNexusAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"package_registry":         {Name: "Nexus", HelmVersion: narwhalNexusHelmVersion, AppVersion: narwhalNexusAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"monitoring_visualization": {Name: "Grafana", HelmVersion: narwhalGrafanaHelmVersion, AppVersion: narwhalGrafanaAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "Nexus", HelmVersion: baselineNexusHelmVersion, AppVersion: baselineNexusAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"package_registry":         {Name: "Nexus", HelmVersion: baselineNexusHelmVersion, AppVersion: baselineNexusAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 			},
 		},
 		{
@@ -247,20 +261,20 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Name:   "GitHub + Argo CD",
 			Status: "untested",
 			Kubernetes: domain.KubernetesCompat{
-				Min:         narwhalBaseMinK8sPlatform,
+				Min:         baselineMinK8sPlatform,
 				Max:         "1.35",
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository": {Name: "GitHub", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"ci_platform":       {Name: "GitHub Actions", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"source_repository": {Name: "GitHub", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"ci_platform":       {Name: "GitHub Actions", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 				// GHCR 은 클러스터 밖이라 아키텍처 제약이 없다 — Harbor 의 amd64 전용
 				// 제약을 물려받으면 arm64 클러스터에서 호환성 검사가 잘못 막는다.
-				"container_registry":       {Name: "GHCR", HelmVersion: "external", AppVersion: "external", MinK8sVersion: narwhalBaseMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"storage_backend":          {Name: "MinIO", HelmVersion: narwhalMinIOHelmVersion, AppVersion: narwhalMinIOAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"cd_tool":                  {Name: "Argo CD", HelmVersion: narwhalArgoCDHelmVersion, AppVersion: narwhalArgoCDAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"monitoring_collection":    {Name: "Prometheus", HelmVersion: narwhalPrometheusHelmVer, AppVersion: narwhalPrometheusAppVer, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"monitoring_visualization": {Name: "Grafana", HelmVersion: narwhalGrafanaHelmVersion, AppVersion: narwhalGrafanaAppVersion, MinK8sVersion: narwhalBaseMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"container_registry":       {Name: "GHCR", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
 		},
 	}
