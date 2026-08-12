@@ -152,6 +152,10 @@ func main() {
 	// 대상 클러스터의 kubeconfig 로 Kubernetes Auth 기반 Store 를 만든다.
 	secretRouter.WithResolver(adminrepo.NewStackSecretResolver(pool, kubeconfigProvider))
 
+	// 설치 단계의 리소스 값(관리자 기본값 + 설치 마법사 계획값)을 읽는 곳이다.
+	// 오케스트레이터보다 먼저 만들어야 아래 WithResourceDefaultRepository 로 넘길 수 있다.
+	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
+
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
@@ -160,7 +164,16 @@ func main() {
 		stackuc.WithSecretRouter(secretRouter),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			orch := stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo))
+			orch := stackhelm.NewOrchestrator(
+				installer,
+				kubeconfig,
+				"",
+				stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo),
+				// 이게 빠지면 loadResourceDefault 가 repo nil 을 보고 바로 빠져나가
+				// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
+				// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
+				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
+			)
 			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
 			if ssoFactory != nil {
 				orch.SetSSOProvisionerFactory(ssoFactory)
@@ -183,7 +196,6 @@ func main() {
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
-	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
 	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
 	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
 

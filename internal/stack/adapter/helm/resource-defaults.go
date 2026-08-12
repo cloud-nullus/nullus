@@ -22,6 +22,12 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		return map[string]any{}
 	}
 
+	// 설치 마법사에서 고른 값이 있으면 그것을 기준 벡터로 쓴다. 없으면 관리자
+	// 기본값 그대로다. 이 배선이 없던 동안 계획 화면의 숫자는 stacks.config 에만
+	// 저장되고 Helm 에는 한 번도 실리지 않았다 — ArgoCD·kube-prometheus-stack 은
+	// 차트 기본값에도 resources 가 없어서 파드가 requests/limits 없이 떴다.
+	item = withPlannedResources(item, plannedResourceFor(step, cfg, resourceKey))
+
 	resources := toK8sResourceValues(item)
 	if len(resources) == 0 {
 		return map[string]any{}
