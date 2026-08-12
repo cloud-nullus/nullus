@@ -3364,7 +3364,7 @@ export function StackInstallPage() {
                   <select
                     value={draft.storage.storageClass}
                     onChange={(e) => updateStorage({ storageClass: e.target.value })}
-                    className="w-full rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                    className="w-full rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
                   >
                     <option value="">
                       {storageClassSelectionRequired

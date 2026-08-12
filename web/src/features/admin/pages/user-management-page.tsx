@@ -576,7 +576,9 @@ export function UserManagementPage() {
                               )}
                             >
                               {menu.name}
-                              <span className={cn('rounded px-[3px] py-px text-[9px] font-bold', effectiveAccess === 'Edit' ? 'bg-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_12%,_transparent)]')}>
+                              {/* 칩은 자기 글자색(메뉴 강조색)으로 틴트한다. 글자색을 면으로
+                                  쓰면 라이트 테마에서 회색 덩어리가 된다. */}
+                              <span className={cn('rounded px-[3px] py-px text-[9px] font-bold', effectiveAccess === 'Edit' ? 'bg-[color-mix(in_srgb,_currentColor_22%,_transparent)]' : 'bg-[color-mix(in_srgb,_currentColor_12%,_transparent)]')}>
                                 {effectiveAccess}
                               </span>
                             </button>

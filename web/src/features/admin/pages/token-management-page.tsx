@@ -151,7 +151,7 @@ export function TokenManagementPage() {
           </div>
 
           {revealResult && (
-            <div className="mt-4 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_35%,_transparent)] p-3">
+            <div className="mt-4 rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] p-3">
               <div className="mb-1 text-xs font-semibold uppercase text-[var(--color-text-secondary)]">Reveal Result</div>
               <pre className="overflow-auto text-xs text-[var(--color-text-primary)]">{JSON.stringify(revealResult, null, 2)}</pre>
             </div>

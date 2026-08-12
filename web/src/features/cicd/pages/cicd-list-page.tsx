@@ -916,7 +916,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
           />
         </div>
 
-        <div className="mt-4 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_45%,_transparent)] p-3">
+        <div className="mt-4 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] p-3">
           <div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
             Deployed Resources
           </div>
@@ -1469,7 +1469,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
       })}
 
       {selectedDeployment && (
-        <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-primary)_50%,_transparent)] p-3">
+        <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)] bg-[var(--color-surface-sunken)] p-3">
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
             <span className="rounded bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] px-1.5 py-[2px] font-mono text-[var(--color-primary)]">
               {selectedDeployment.version}

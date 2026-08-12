@@ -167,7 +167,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
   const removes = lines.filter((l) => l.type === 'remove').length
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_45%,_transparent)]">
+    <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)]">
       <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-2.5">
         <p className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">
           v{versionA} → v{versionB}
