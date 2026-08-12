@@ -1,8 +1,7 @@
 import React from "react"
+import { StatusIcon, STATUS_TOKEN, type StatusTone } from '../../../components/ui/status-icon'
 import { IconTile } from '../../../components/ui/icon-tile'
 import type { ToolHealthStatus } from "../api/observability-api"
-import { CircleAlert, CircleCheck, CircleX } from 'lucide-react'
-import { iconProps } from '../../../components/ui/icon'
 
 // ─── Shared chart style helpers ───────────────────────────────────────────────
 export const CHART_STYLE = {
@@ -25,10 +24,18 @@ export const CHART_LEGEND_PROPS = {
   wrapperStyle: { color: 'var(--color-border-default)', fontSize: 11 },
 } as const
 
-export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string; label: string }> = {
-  running: { icon: <CircleCheck {...iconProps('xs')} />, cls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', label: 'Running' },
-  warning: { icon: <CircleAlert {...iconProps('xs')} />, cls: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', label: 'Warning' },
-  error: { icon: <CircleX {...iconProps('xs')} />, cls: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]', label: 'Error' },
+// 도구 상태도 레지스트리에서 받는다. 여기 warning 에 CircleAlert 가 박혀 있어서
+// 같은 "경고" 가 다른 화면에서는 삼각형인데 이 카드만 원이었다.
+export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; style: React.CSSProperties; label: string }> = {
+  running: { icon: <StatusIcon tone="success" size="xs" inheritColor />, style: toneSurface('success'), label: 'Running' },
+  warning: { icon: <StatusIcon tone="warning" size="xs" inheritColor />, style: toneSurface('warning'), label: 'Warning' },
+  error: { icon: <StatusIcon tone="error" size="xs" inheritColor />, style: toneSurface('error'), label: 'Error' },
+}
+
+/** tone 의 면 색 — 배경 15% 알파 + 글자는 원본. 토큰 이름을 조립하므로 style 이다. */
+function toneSurface(tone: StatusTone): React.CSSProperties {
+  const token = `var(${STATUS_TOKEN[tone]})`
+  return { backgroundColor: `color-mix(in srgb, ${token} 15%, transparent)`, color: token }
 }
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────

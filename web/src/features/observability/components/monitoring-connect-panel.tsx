@@ -105,7 +105,7 @@ export function StackConnectPanel({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-bold text-[var(--color-text-primary)]">{comp.name}</span>
-                    <span className={cn('inline-flex items-center gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold', cfg.cls)}>
+                    <span className="inline-flex items-center gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold" style={cfg.style}>
                       {cfg.icon}{cfg.label}
                     </span>
                   </div>

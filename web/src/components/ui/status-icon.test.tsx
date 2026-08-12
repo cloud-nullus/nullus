@@ -150,6 +150,80 @@ describe('아이콘 이름 규율', () => {
   })
 })
 
+// 별칭 금지만으로는 부족했다. cluster-page 는 정식 이름(CircleAlert·Clock)을 쓰면서도
+// 자기 상태 표를 따로 들고 있어서 "대기" 가 그 화면만 시계였다 — 앱을 실제로
+// 띄워 보고서야 드러났다. 상태 글리프를 화면이 직접 import 하는 것 자체를 막는다.
+describe('상태 글리프 독점', () => {
+  const SRC = join(__dirname, '../..')
+  // Info 는 뜻이 넓어(도움말·안내 툴팁) 상태 전용이 아니다 — 뺀다.
+  const STATUS_ONLY = ['CircleCheck', 'CircleX', 'CircleDashed', 'CircleMinus', 'LoaderCircle', 'TriangleAlert']
+
+  const walk = (dir: string, out: string[] = []): string[] => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) walk(full, out)
+      else if (/\.tsx$/.test(entry) && !/\.test\.tsx$/.test(entry)) out.push(full)
+    }
+    return out
+  }
+
+  // 래칫이다. 지금 직접 import 하는 16곳은 코드모드로 값이 이미 레지스트리와
+  // 같아졌으므로 화면상 어긋남은 없다 — 위험은 앞으로의 드리프트다. 목록을
+  // 못 늘리게 막아 두고, 옮길 때마다 줄인다.
+  //
+  // 이 중 일부는 상태가 아니어서 영영 남는다: nav-model 의 TriangleAlert 는
+  // "Known Issues" 메뉴 아이콘이고, confirm-dialog 의 것은 파괴적 동작 경고다.
+  const GRANDFATHERED = new Set([
+    'src/components/layout/nav-model.tsx',
+    'src/components/shared/confirm-dialog.tsx',
+    'src/components/shared/step-wizard.tsx',
+    'src/features/admin/pages/known-issues-page.tsx',
+    'src/features/admin/pages/stack-versions-page.tsx',
+    'src/features/admin/pages/user-management-page.tsx',
+    'src/features/cicd/components/delete-pipeline-dialog.tsx',
+    'src/features/cicd/components/deploy-ui.tsx',
+    'src/features/cicd/pages/cicd-list-page.tsx',
+    'src/features/cicd/pages/cicd-pipeline-logs-page.tsx',
+    'src/features/observability/components/monitoring-cicd-view.tsx',
+    'src/features/stack/components/pipeline-topology.tsx',
+    'src/features/stack/components/retry-stack-button.tsx',
+    'src/features/stack/components/stack-workloads-tab.tsx',
+    'src/features/stack/pages/stack-deploy-page.tsx',
+    'src/features/stack/pages/stack-history-page.tsx',
+  ])
+
+  it('lets no new file pick a status glyph on its own', () => {
+    const offenders: string[] = []
+    for (const file of walk(SRC)) {
+      const rel = file.replace(SRC, 'src')
+      if (file.endsWith('status-icon.tsx') || GRANDFATHERED.has(rel)) continue
+      const source = readFileSync(file, 'utf8')
+      const importLine = source.match(/import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/)
+      if (!importLine) continue
+      for (const raw of importLine[1].split(',')) {
+        const name = raw.trim().split(/\s+as\s+/)[0]
+        if (STATUS_ONLY.includes(name)) {
+          offenders.push(`${rel}: ${name} — <StatusIcon tone={...}/> 로 받는다`)
+        }
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([])
+  })
+
+  // 래칫이 느슨해지는 것도 막는다 — 옮기고 나서 목록을 안 지우면 여기서 걸린다.
+  it('keeps the grandfathered list honest', () => {
+    const stale = [...GRANDFATHERED].filter((rel) => {
+      const source = readFileSync(join(SRC, rel.replace(/^src\//, '')), 'utf8')
+      const importLine = source.match(/import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/)
+      if (!importLine) return true
+      return !importLine[1]
+        .split(',')
+        .some((raw) => STATUS_ONLY.includes(raw.trim().split(/\s+as\s+/)[0]))
+    })
+    expect(stale, `이미 옮긴 파일이 목록에 남아 있다:\n${stale.join('\n')}`).toEqual([])
+  })
+})
+
 describe('statusIcon', () => {
   it('returns the table row so screens never pick a glyph', () => {
     expect(statusIcon('success')).toBe(STATUS_ICON.success)
