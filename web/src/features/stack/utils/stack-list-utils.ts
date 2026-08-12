@@ -7,6 +7,13 @@ export type PipelineTool = ToolSelectionView & {
    * 센다 — 안 그러면 파드 수가 부풀려진다.
    */
   shared?: boolean;
+  /**
+   * 실제로 떠 있는지. 설정(스냅샷)에는 없는 값이라 모니터링에서 겹쳐 넣는다
+   * — applyToolRuntimeStatus. 모니터링을 아직 못 받았으면 undefined 다.
+   */
+  status?: ToolRuntimeStatus;
+  /** 준비된 파드 수. instances 가 기대치, 이쪽이 실제다. */
+  readyInstances?: number;
 };
 
 export type PipelineNode = {
@@ -29,12 +36,16 @@ export type ToolSelectionView = {
   instances: number;
 };
 
+export type ToolRuntimeStatus = "running" | "warning" | "error";
+
 export type MonitoringToolView = {
   key: string;
   name: string;
   version: string;
   enabled: boolean;
   pod_count: number;
+  status?: ToolRuntimeStatus;
+  ready_pods?: number;
 };
 
 export type LaunchTool = {
@@ -332,7 +343,7 @@ function dedupeByName<T extends { name: string }>(tools: T[]): T[] {
 
 function toPipelineNode(
   category: string,
-  tools: ToolSelectionView[],
+  tools: PipelineTool[],
 ): PipelineNode | null {
   const distinct = dedupeByName(tools);
   if (distinct.length === 0) {
@@ -429,6 +440,40 @@ export function buildPipelineNodesFromSnapshot(
   );
 }
 
+/**
+ * 설정에서 만든 스테이지에 "실제로 떠 있는지" 를 겹쳐 넣는다.
+ *
+ * 스냅샷(설치할 때 고른 것)에는 런타임이 없고, 모니터링에는 역할 배치가 없다.
+ * 둘을 도구 이름으로 맞춘다 — 파이프라인 그림 안에서 동작 여부까지 보이게 하려면
+ * 이 합류가 필요하다. 개편 전에는 이 정보가 모니터링 대시보드의 별도 카드에만
+ * 있어서, 스택 상세를 보던 사람이 화면을 옮겨야 했다.
+ */
+export function applyToolRuntimeStatus(
+  nodes: PipelineNode[],
+  statuses: MonitoringToolView[] | undefined,
+): PipelineNode[] {
+  if (!statuses || statuses.length === 0) {
+    return nodes;
+  }
+  const byName = new Map(
+    statuses.map((tool) => [tool.name.trim().toLowerCase(), tool]),
+  );
+  return nodes.map((node) => ({
+    ...node,
+    tools: node.tools.map((tool) => {
+      const runtime = byName.get(tool.name.trim().toLowerCase());
+      if (!runtime) {
+        return tool;
+      }
+      return {
+        ...tool,
+        status: runtime.status,
+        readyInstances: runtime.ready_pods,
+      };
+    }),
+  }));
+}
+
 export function buildPipelineNodesFromMonitoring(
   tools: MonitoringToolView[] | undefined,
 ): PipelineNode[] {
@@ -442,6 +487,8 @@ export function buildPipelineNodesFromMonitoring(
           name: tool.name,
           version: tool.version,
           instances: tool.pod_count,
+          status: tool.status,
+          readyInstances: tool.ready_pods,
         })),
     );
 

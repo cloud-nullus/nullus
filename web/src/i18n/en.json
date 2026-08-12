@@ -717,10 +717,6 @@
   "observability": {
     "monitoring": "Monitoring Dashboard",
     "monitoringDesc": "Select a Cluster or Stack to start monitoring",
-    "platformToolHealth": "Platform Tool Health",
-    "platformToolHealthLoading": "Checking installed tools...",
-    "platformToolHealthEmpty": "No installed tools yet. Tools appear here once a stack finishes installing.",
-    "platformToolHealthSummary": "{{healthy}} / {{total}} healthy",
     "alertRules": "Alert Rules",
     "alertRulesDesc": "Alert rule list and management",
     "alertHistory": "Alert History",
@@ -785,7 +781,8 @@
       "info": "Info",
       "monitoring": "Monitoring",
       "history": "History",
-      "version-upgrade": "Version Upgrade"
+      "version-upgrade": "Version Upgrade",
+      "workloads": "Workloads"
     },
     "status": {
       "pending": "Pending",
@@ -820,7 +817,6 @@
       "copyFailed": "Copy failed",
       "copyAll": "Copy all"
     },
-    "hiddenInstallCardsNotice": "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs.",
     "delete": {
       "failed": "Failed to start stack deletion.",
       "started": "Stack deletion started. Kubernetes resources and DB data are being removed."
@@ -850,6 +846,12 @@
       "selectedFile": "Selected:",
       "success": "Stack restored.",
       "title": "Import Stack"
+    },
+    "workloads": {
+      "title": "Workloads",
+      "summary": "{{ready}} / {{total}} pods ready",
+      "loading": "Reading pods from the cluster...",
+      "empty": "No pods found for this stack in the cluster."
     }
   },
   "deploy": {

@@ -46,26 +46,72 @@ describe("PipelineTopologyRail", () => {
     expect(row.textContent).toBe("GitLab CE18.5.1");
   });
 
-  it("shows the pod count per stage", () => {
+  // Nexus 는 레지스트리 두 칸에 다 나오지만 파드는 하나다. 뒤쪽 칸에 "0" 이라고
+  // 쓰면 안 떠 있는 것처럼 읽힌다.
+  it("marks a tool that belongs to an earlier stage instead of counting it again", () => {
+    render(
+      <PipelineTopologyRail
+        nodes={[
+          {
+            category: "Container Registry",
+            tools: [
+              { name: "Nexus", version: "3.64.0", instances: 1, status: "running", readyInstances: 1 },
+            ],
+            instances: 1,
+          },
+          {
+            category: "Package Registry",
+            tools: [
+              {
+                name: "Nexus",
+                version: "3.64.0",
+                instances: 1,
+                shared: true,
+                status: "running",
+                readyInstances: 1,
+              },
+            ],
+            instances: 0,
+          },
+        ]}
+      />,
+    );
+
+    expect(within(stage("Package Registry")).getByText("· shared")).toBeTruthy();
+    expect(within(stage("Container Registry")).getByText("· 1/1")).toBeTruthy();
+  });
+
+  // 동작 여부는 모니터링에서 겹쳐 넣는다. 색만으로 구분하지 않으므로 글자도 함께.
+  it("shows runtime status and ready pods when monitoring data is present", () => {
+    render(
+      <PipelineTopologyRail
+        nodes={[
+          {
+            category: "Source",
+            tools: [
+              {
+                name: "GitLab CE",
+                version: "18.5.1",
+                instances: 4,
+                status: "warning",
+                readyInstances: 3,
+              },
+            ],
+            instances: 4,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("warning")).toBeTruthy();
+    expect(screen.getByText("· 3/4")).toBeTruthy();
+  });
+
+  // 모니터링을 아직 못 받았으면 설치할 때 고른 대수만 안다.
+  it("falls back to the configured instance count without monitoring", () => {
     render(<PipelineTopologyRail nodes={nodes} />);
 
     expect(within(stage("Source")).getByText("2 instances")).toBeTruthy();
-    expect(
-      within(stage("Container Registry")).getByText("1 instance"),
-    ).toBeTruthy();
-  });
-
-  // Nexus 는 레지스트리 두 칸에 다 나오지만 파드는 하나다. 뒤쪽 칸에 "0" 이라고
-  // 쓰면 안 떠 있는 것처럼 읽힌다.
-  it("labels a stage whose tools all belong to an earlier stage", () => {
-    render(<PipelineTopologyRail nodes={nodes} />);
-
-    expect(
-      within(stage("Package Registry")).getByText("shared instance"),
-    ).toBeTruthy();
-    expect(
-      within(stage("Package Registry")).queryByText("0 instances"),
-    ).toBeNull();
   });
 
   it("renders a brand logo per tool", () => {

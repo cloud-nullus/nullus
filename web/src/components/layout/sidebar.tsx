@@ -1,104 +1,13 @@
-import { type ReactNode, useState } from 'react'
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import {
-  Box,
-  Boxes,
-  BookOpen,
-  List,
-  History,
-  Shield,
-  GitBranch,
-  BarChart3,
-  Bell,
-  BellOff,
-  Settings,
-  Users,
-  Network,
-  LogOut,
-  Menu,
-  ChevronDown,
-  ChevronRight,
-  AlertTriangle,
-  Database,
-  KeyRound,
-  Route,
-} from 'lucide-react'
+import { Box, LogOut, Menu, ChevronDown, ChevronRight } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
 import { isOidcMode, getProviderConfig } from '../../lib/oidc-providers'
-import type { Role } from '../../types'
 import { cn } from '../../lib/utils'
 import { IconButton } from '../ui/icon-button'
-
-interface NavItem {
-  key: string
-  label: string
-  path: string
-  icon: ReactNode
-  roles: Role[]
-}
-
-interface NavGroup {
-  key: string
-  label: string
-  icon: ReactNode
-  items: NavItem[]
-  roles: Role[]
-}
-
-const navGroups: NavGroup[] = [
-  {
-    key: 'devsecops',
-    label: 'sidebar.devsecopsStack',
-    icon: <Boxes size={16} />,
-    roles: ['admin', 'devops'],
-    items: [
-      { key: 'stackTemplate', label: 'sidebar.stackTemplate', path: '/stack/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackList', label: 'sidebar.stackList', path: '/stack/list', icon: <List size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackHistory', label: 'sidebar.stackHistory', path: '/stack/history', icon: <History size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Shield size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackVersionsAdmin', label: 'sidebar.stackVersionsAdmin', path: '/admin/stack-versions', icon: <Shield size={16} />, roles: ['admin'] },
-      { key: 'stackOssResourceDefault', label: 'sidebar.stackOssResourceDefault', path: '/stack/oss-resource-default', icon: <Database size={16} />, roles: ['admin', 'devops'] },
-    ],
-  },
-  {
-    key: 'cicd',
-    label: 'sidebar.cicd',
-    icon: <GitBranch size={16} />,
-    roles: ['admin', 'devops', 'developer'],
-    items: [
-      { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
-      { key: 'cicdGoldenPath', label: 'sidebar.cicdGoldenPath', path: '/cicd/golden-paths', icon: <Route size={16} />, roles: ['admin', 'devops'] },
-      { key: 'cicdList', label: 'sidebar.cicdList', path: '/cicd/list', icon: <List size={16} />, roles: ['admin', 'devops', 'developer'] },
-      { key: 'cicdHistory', label: 'sidebar.cicdHistory', path: '/cicd/history', icon: <History size={16} />, roles: ['admin', 'devops', 'developer'] },
-    ],
-  },
-  {
-    key: 'observability',
-    label: 'sidebar.observability',
-    icon: <BarChart3 size={16} />,
-    roles: ['admin', 'devops', 'developer'],
-    items: [
-      { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <BarChart3 size={16} />, roles: ['admin', 'devops', 'developer'] },
-      { key: 'alertRules', label: 'sidebar.alertRules', path: '/observability/alerts', icon: <Bell size={16} />, roles: ['admin', 'devops'] },
-      { key: 'alertHistory', label: 'sidebar.alertHistory', path: '/observability/alert-history', icon: <BellOff size={16} />, roles: ['admin', 'devops', 'developer'] },
-    ],
-  },
-  {
-    key: 'admin',
-    label: 'sidebar.admin',
-    icon: <Settings size={16} />,
-    roles: ['admin'],
-    items: [
-      { key: 'organization', label: 'sidebar.organization', path: '/admin/organization', icon: <Settings size={16} />, roles: ['admin'] },
-      { key: 'userManagement', label: 'sidebar.userManagement', path: '/admin/users', icon: <Users size={16} />, roles: ['admin'] },
-      { key: 'clusterManagement', label: 'sidebar.clusterManagement', path: '/admin/clusters', icon: <Network size={16} />, roles: ['admin'] },
-      { key: 'knownIssues', label: 'sidebar.knownIssues', path: '/admin/known-issues', icon: <AlertTriangle size={16} />, roles: ['admin'] },
-      { key: 'tokenManagement', label: 'sidebar.tokenManagement', path: '/admin/token-management', icon: <KeyRound size={16} />, roles: ['admin'] },
-    ],
-  },
-]
+import { navGroups } from './nav-model'
 
 export function Sidebar() {
   const navigate = useNavigate()

@@ -142,7 +142,10 @@ describe('MonitoringPage', () => {
 
   // 이 카드는 클러스터/스택을 고르기 전에도 보여야 한다 — 플랫폼 전체 현황이라
   // 선택 컨텍스트와 무관하다.
-  it('shows platform tool health before any cluster or stack is selected', () => {
+  // 도구 동작 여부는 스택 상세의 파이프라인 토폴로지로 옮겼다. 배치와 동작을
+  // 같은 그림에서 읽는 편이 낫고, 이 카드는 클러스터/스택을 고르기도 전에 떠
+  // 있어 "선택해서 시작하라" 는 이 화면의 흐름과 어긋났다.
+  it('no longer shows the platform tool health card', () => {
     mockUseClusterStackFilterState.mockReturnValue({
       clusters: [],
       stacks: [],
@@ -154,8 +157,7 @@ describe('MonitoringPage', () => {
 
     renderWithProviders(<MonitoringPage />)
 
-    expect(screen.queryByText('Platform Tool Health')).not.toBeNull()
-    expect(screen.getByRole('listitem', { name: 'Grafana' }).textContent).toContain('running')
+    expect(screen.queryByText('Platform Tool Health')).toBeNull()
   })
 
   it('shows empty state when no cluster or stack is selected', () => {

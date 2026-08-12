@@ -53,14 +53,10 @@
       "testIds": []
     },
     {
-      "file": "src/components/layout/sidebar.tsx",
-      "i18nKeys": [
-        "sidebar.logout"
-      ],
+      "file": "src/components/layout/nav-model.tsx",
+      "i18nKeys": [],
       "fallbacks": [],
       "labels": [
-        "Go to home",
-        "Toggle sidebar",
         "sidebar.admin",
         "sidebar.alertHistory",
         "sidebar.alertRules",
@@ -83,6 +79,20 @@
         "sidebar.stackVersionsAdmin",
         "sidebar.tokenManagement",
         "sidebar.userManagement"
+      ],
+      "columns": [],
+      "jsxText": [],
+      "testIds": []
+    },
+    {
+      "file": "src/components/layout/sidebar.tsx",
+      "i18nKeys": [
+        "sidebar.logout"
+      ],
+      "fallbacks": [],
+      "labels": [
+        "Go to home",
+        "Toggle sidebar"
       ],
       "columns": [],
       "jsxText": [
@@ -1786,26 +1796,6 @@
       "testIds": []
     },
     {
-      "file": "src/features/observability/components/platform-tool-health.tsx",
-      "i18nKeys": [
-        "common.loading",
-        "observability.platformToolHealth",
-        "observability.platformToolHealthEmpty",
-        "observability.platformToolHealthLoading",
-        "observability.platformToolHealthSummary"
-      ],
-      "fallbacks": [
-        "Checking installed tools...",
-        "Loading...",
-        "No installed tools yet. Tools appear here once a stack finishes installing.",
-        "Platform Tool Health"
-      ],
-      "labels": [],
-      "columns": [],
-      "jsxText": [],
-      "testIds": []
-    },
-    {
       "file": "src/features/observability/components/stack-monitoring-overview.tsx",
       "i18nKeys": [
         "monitoring.scale.current",
@@ -2201,8 +2191,7 @@
         "stackList.export.open",
         "stackList.export.stack",
         "stackList.export.success",
-        "stackList.export.title",
-        "stackList.hiddenInstallCardsNotice"
+        "stackList.export.title"
       ],
       "fallbacks": [
         "After single-entry gateway port forwarding, access each OSS domain based on hosts mappings.",
@@ -2216,7 +2205,6 @@
         "Copy failed",
         "Copy gateway port-forward command",
         "Deployed configuration summary and key actions",
-        "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs.",
         "Download",
         "Export",
         "Export Stack",
@@ -2262,6 +2250,39 @@
       "testIds": [
         "export-file-name"
       ]
+    },
+    {
+      "file": "src/features/stack/components/stack-workloads-tab.tsx",
+      "i18nKeys": [
+        "stackList.workloads.empty",
+        "stackList.workloads.loading",
+        "stackList.workloads.summary",
+        "stackList.workloads.title"
+      ],
+      "fallbacks": [
+        "No pods found for this stack in the cluster.",
+        "Reading pods from the cluster...",
+        "Workloads"
+      ],
+      "labels": [],
+      "columns": [
+        "cpu_usage_millicores",
+        "memory_usage_mib",
+        "name",
+        "node_name",
+        "restart_count",
+        "status"
+      ],
+      "jsxText": [
+        "CPU",
+        "Memory",
+        "Node",
+        "Pod",
+        "Restarts",
+        "Status",
+        "ns/"
+      ],
+      "testIds": []
     },
     {
       "file": "src/features/stack/components/version-diff.tsx",
@@ -2963,7 +2984,8 @@
         "Info",
         "Monitoring",
         "Prometheus",
-        "Version Upgrade"
+        "Version Upgrade",
+        "Workloads"
       ],
       "columns": [
         "createdAt",

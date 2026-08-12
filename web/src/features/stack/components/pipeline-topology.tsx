@@ -17,10 +17,24 @@
 // 노드 8개가 늘 같은 값을 반복했다 — 1비트를 8번 그린 셈이다. 헤더에 한 번만 둔다.
 
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronRight } from "lucide-react";
 import { cn } from "../../../lib/utils";
-import type { PipelineNode, PipelineTool } from "../utils/stack-list-utils";
+import type {
+  PipelineNode,
+  PipelineTool,
+  ToolRuntimeStatus,
+} from "../utils/stack-list-utils";
 import { toolLogoURL } from "../utils/tool-logo";
+
+// 색만으로 상태를 구분하지 않는다 — 색 + 아이콘 + 글자를 함께 쓴다 (DESIGN.md §상태 표시).
+const RUNTIME_STYLE: Record<
+  ToolRuntimeStatus,
+  { icon: typeof CheckCircle2; className: string }
+> = {
+  running: { icon: CheckCircle2, className: "text-[var(--color-success)]" },
+  warning: { icon: AlertTriangle, className: "text-[var(--color-warning)]" },
+  error: { icon: AlertCircle, className: "text-[var(--color-error)]" },
+};
 
 function ToolMark({ name }: { name: string }) {
   const [failed, setFailed] = useState(false);
@@ -51,7 +65,7 @@ function ToolRow({ tool }: { tool: PipelineTool }) {
   return (
     <div
       className={cn(
-        "flex items-start gap-1.5 py-[3px]",
+        "flex items-start gap-1.5",
         // 앞 스테이지에 이미 나온 도구는 한 톤 낮춘다 — 새 배포가 아니라
         // 같은 파드가 역할을 하나 더 맡고 있다는 뜻이다.
         tool.shared && "opacity-60",
@@ -73,9 +87,45 @@ function ToolRow({ tool }: { tool: PipelineTool }) {
   );
 }
 
-function StageCard({ node }: { node: PipelineNode }) {
-  const sharedOnly = node.tools.every((tool) => tool.shared);
+/**
+ * 도구가 실제로 떠 있는지.
+ *
+ * 개편 전에는 이 정보가 모니터링 대시보드의 "플랫폼 도구 상태" 카드에만 있었다.
+ * 파이프라인 그림을 보다가 "그래서 지금 도는 거야?" 를 알려면 화면을 옮겨야 했고,
+ * 그 카드는 클러스터/스택을 고르기도 전에 떠 있어 대시보드에서도 겉돌았다.
+ * 배치와 동작 여부는 같은 그림에서 읽는 게 맞다.
+ */
+function RuntimeLine({ tool }: { tool: PipelineTool }) {
+  if (!tool.status) {
+    // 모니터링을 아직 못 받았다. 설치할 때 고른 대수만 알 수 있다.
+    return (
+      <div className="pl-[22px] text-[11px] leading-[15px] text-[var(--color-text-muted)]">
+        {tool.instances} {tool.instances === 1 ? "instance" : "instances"}
+      </div>
+    );
+  }
 
+  const { icon: Icon, className } = RUNTIME_STYLE[tool.status];
+  const ready = tool.readyInstances ?? 0;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1 pl-[22px] text-[11px] leading-[15px]",
+        className,
+      )}
+    >
+      <Icon size={11} className="shrink-0" />
+      <span>{tool.status}</span>
+      <span className="text-[var(--color-text-muted)]">
+        {/* 기대치가 아니라 실제 준비된 파드 수다. 3/4 면 하나가 안 떴다는 뜻. */}
+        · {tool.shared ? "shared" : `${ready}/${tool.instances}`}
+      </span>
+    </div>
+  );
+}
+
+function StageCard({ node }: { node: PipelineNode }) {
   return (
     <div className="flex w-[186px] shrink-0 flex-col rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
       <div className="truncate border-b border-[var(--color-border-default)] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
@@ -83,15 +133,11 @@ function StageCard({ node }: { node: PipelineNode }) {
       </div>
       <div className="flex-1 px-2.5 py-1.5">
         {node.tools.map((tool) => (
-          <ToolRow key={`${node.category}-${tool.name}`} tool={tool} />
+          <div key={`${node.category}-${tool.name}`} className="py-[3px]">
+            <ToolRow tool={tool} />
+            <RuntimeLine tool={tool} />
+          </div>
         ))}
-      </div>
-      <div className="border-t border-[var(--color-border-default)] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)]">
-        {sharedOnly
-          ? // 파드가 앞 스테이지에 이미 계상됐다. 0 이라고 쓰면 안 떠 있는
-            // 것처럼 읽히므로 어디에 있는지를 쓴다.
-            "shared instance"
-          : `${node.instances} ${node.instances === 1 ? "instance" : "instances"}`}
       </div>
     </div>
   );

@@ -717,10 +717,6 @@
   "observability": {
     "monitoring": "모니터링 대시보드",
     "monitoringDesc": "모니터링을 시작하려면 클러스터 또는 스택을 선택하세요",
-    "platformToolHealth": "플랫폼 도구 상태",
-    "platformToolHealthLoading": "설치된 도구를 확인하는 중...",
-    "platformToolHealthEmpty": "설치된 도구가 아직 없습니다. 스택 설치가 완료되면 여기에 표시됩니다.",
-    "platformToolHealthSummary": "{{total}}개 중 {{healthy}}개 정상",
     "alertRules": "알림 규칙",
     "alertRulesDesc": "알림 규칙 목록 및 관리",
     "alertHistory": "알림 이력",
@@ -785,7 +781,8 @@
       "info": "정보",
       "monitoring": "모니터링",
       "history": "이력",
-      "version-upgrade": "버전 업그레이드"
+      "version-upgrade": "버전 업그레이드",
+      "workloads": "워크로드"
     },
     "status": {
       "pending": "대기 중",
@@ -820,7 +817,6 @@
       "copyFailed": "복사 실패",
       "copyAll": "전체 복사"
     },
-    "hiddenInstallCardsNotice": "상세 설치 카드는 숨김 처리되었습니다. 도구 상세 상태는 Monitoring / History 탭에서 확인할 수 있습니다.",
     "delete": {
       "failed": "스택 삭제를 시작하지 못했습니다.",
       "started": "스택 삭제를 시작했습니다. Kubernetes 리소스와 DB 데이터를 제거하고 있습니다."
@@ -850,6 +846,12 @@
       "selectedFile": "선택됨:",
       "success": "스택을 복원했습니다.",
       "title": "스택 가져오기"
+    },
+    "workloads": {
+      "title": "워크로드",
+      "summary": "{{total}}개 중 {{ready}}개 준비됨",
+      "loading": "클러스터에서 파드를 읽는 중...",
+      "empty": "이 스택의 파드를 클러스터에서 찾지 못했습니다."
     }
   },
   "deploy": {

@@ -8,10 +8,17 @@
 //
 // 구획은 카드가 아니라 선으로 나눈다(DESIGN.md §Layout — 화면 골격은 VS Code 를 따른다).
 // 그래서 헤더는 아래를 1px 선으로 닫고, 그 아래 본문이 바로 붙는다.
+//
+// 스크롤해도 제자리에 남는다. 참조 대상이 IDE 인 도구에서 "지금 어느 화면인가" 가
+// 스크롤 몇 줄에 사라지면 안 된다 — 사이드바·상단바를 뷰포트에 못박은 것과 같은
+// 이유다. 스크롤 컨테이너는 AppLayout 의 <main> 이고, 헤더는 그 안에서 sticky 다.
 
 import { type ChangeEvent, type ReactNode, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Breadcrumb, type BreadcrumbItem } from '../shared/breadcrumb'
 import { SearchInput } from '../ui/search-input'
+import { resolveNavGroupLabel } from './nav-model'
 
 /** 아이콘 컨테이너 색. DESIGN.md §Shapes — 해당 기능 색의 15% 알파. */
 export type PageHeaderTone = 'primary' | 'info' | 'success' | 'warning' | 'error' | 'accent'
@@ -52,6 +59,20 @@ export function PageHeader({
 }: PageHeaderProps) {
   const [query, setQuery] = useState('')
   const toneVar = TONE_VAR[tone]
+  const { t } = useTranslation()
+  const { pathname } = useLocation()
+
+  // 브레드크럼 맨 앞은 사이드바의 상위 메뉴다. 화면이 직접 적지 않는다 —
+  // 개편 전에는 25화면이 각자 적어서 "Stack List" 처럼 상위가 통째로 빠지거나
+  // ('데브섹옵스 스택 >' 이 없다) 'Admin' 만 영어로 남는 식으로 갈렸다.
+  const groupKey = resolveNavGroupLabel(pathname)
+  const groupLabel = groupKey ? t(groupKey) : null
+  const pageTrail =
+    breadcrumb && breadcrumb.length > 0 ? breadcrumb : [{ label: title }]
+  const trail =
+    groupLabel && pageTrail[0]?.label !== groupLabel
+      ? [{ label: groupLabel }, ...pageTrail]
+      : pageTrail
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextQuery = event.target.value
@@ -60,8 +81,21 @@ export function PageHeader({
   }
 
   return (
-    <div className="mb-4 border-b border-[var(--color-border-default)] pb-3">
-      {breadcrumb && breadcrumb.length > 0 && <Breadcrumb items={breadcrumb} />}
+    // main 의 안쪽 여백(px/py)을 음수 마진으로 되돌렸다가 그대로 되돌려 준다.
+    // 그러지 않으면 top-0 이 여백 안쪽에 붙어, 헤더 위·옆 여백 틈으로 본문이
+    // 스쳐 지나간다. 배경은 본문 면과 같은 색이어야 글자가 겹쳐 보이지 않는다.
+    <div
+      className={[
+        'sticky top-0 z-[var(--z-page-header)]',
+        '-mx-[var(--page-padding)] px-[var(--page-padding)]',
+        // 위쪽은 main 의 여백(20px)만큼 끌어올린 뒤 12px 만 되돌린다.
+        // 상단 바가 바로 위에 붙어 있어 20px 를 그대로 두면 제목이 떠 보인다.
+        '-mt-[var(--page-padding-y)] pt-[var(--space-md)]',
+        'mb-4 border-b border-[var(--color-border-default)] pb-3',
+        'bg-[var(--color-surface-base)]',
+      ].join(' ')}
+    >
+      <Breadcrumb items={trail} />
 
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 items-center gap-2.5">

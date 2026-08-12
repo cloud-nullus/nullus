@@ -20,6 +20,7 @@ import { toolLogoURL } from "../utils/tool-logo";
 import {
   buildPipelineNodesFromSnapshot,
   buildPipelineNodesFromMonitoring,
+  applyToolRuntimeStatus,
   buildInstalledToolsFromSnapshot,
   extractAccessDomain,
   toolLaunchURL,
@@ -117,7 +118,7 @@ export function StackInfoTab({
   const monitoringNodes = buildPipelineNodesFromMonitoring(
     monitoringData?.oss_statuses,
   );
-  const pipelineNodes: PipelineNode[] =
+  const configuredNodes: PipelineNode[] =
     derivedNodes.length > 0
       ? derivedNodes
       : monitoringNodes.length > 0
@@ -131,6 +132,13 @@ export function StackInfoTab({
               instances: 1,
             },
           ];
+  // 스냅샷은 "무엇을 어느 자리에 깔았는가" 만 안다. 실제로 떠 있는지는 모니터링에
+  // 있으므로 도구 이름으로 맞춰 겹친다 — 토폴로지 한 장에서 배치와 동작 여부를
+  // 같이 읽게 하려는 것이다.
+  const pipelineNodes = applyToolRuntimeStatus(
+    configuredNodes,
+    monitoringData?.oss_statuses,
+  );
 
   const degradedState = [
     "failed",
@@ -741,12 +749,6 @@ export function StackInfoTab({
         <PipelineTopologyRail nodes={pipelineNodes} />
       </div>
 
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
-        {t(
-          "stackList.hiddenInstallCardsNotice",
-          "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs.",
-        )}
-      </div>
       <div className="hidden" aria-hidden="true">
         <ArtifactsPanel />
         <PipelineToolsPanel />

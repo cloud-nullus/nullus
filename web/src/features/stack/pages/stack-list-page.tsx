@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpCircle, BarChart2, ClipboardList, GitBranch, History, Info, Layers, List, Plus, Terminal } from "lucide-react";
+import { ArrowUpCircle, BarChart2, Boxes, ClipboardList, GitBranch, History, Info, Layers, List, Plus, Terminal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -48,12 +48,13 @@ export {
 	toConnectionInfoView,
 } from "../utils/stack-list-utils";
 import { StackInfoTab } from "../components/stack-info-tab"
+import { StackWorkloadsTab } from "../components/stack-workloads-tab"
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 import { Badge } from "../../../components/ui/badge"
 import { TOOL_BRAND_GRADIENT } from "../../../lib/tool-brand-colors";
 
-type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
+type InnerTab = "info" | "workloads" | "monitoring" | "history" | "version-upgrade";
 
 
 function StackMonitoringTab({ stackId }: { stackId: string }) {
@@ -286,6 +287,9 @@ function StackVersionUpgradeTab() {
 
 const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
 	{ key: "info", label: "Info", icon: <Info size={13} /> },
+	// 클러스터에 실제로 뜬 파드. 예전에는 Info 탭이 "Monitoring / History 탭에서
+	// 확인하세요" 라고 안내했지만 두 탭 어디에도 파드 목록은 없었다.
+	{ key: "workloads", label: "Workloads", icon: <Boxes size={13} /> },
 	{ key: "history", label: "History", icon: <History size={13} /> },
 	{
 		key: "version-upgrade",
@@ -318,8 +322,13 @@ function StackDetailPanel({
 	const [innerTab, setInnerTab] = useState<InnerTab>("info");
 	const normalizedStatus = normalizeStackStatus(stack.status, clusterConnectionStatus);
 	const canShowMonitoring = isHealthyStatus(stack.status, clusterConnectionStatus);
+	// Info → Workloads(파드) → Monitoring(집계) 순. 구체적인 것에서 요약으로 간다.
 	const innerTabs = canShowMonitoring
-		? [BASE_INNER_TABS[0], { key: "monitoring" as const, label: "Monitoring", icon: <BarChart2 size={13} /> }, ...BASE_INNER_TABS.slice(1)]
+		? [
+				...BASE_INNER_TABS.slice(0, 2),
+				{ key: "monitoring" as const, label: "Monitoring", icon: <BarChart2 size={13} /> },
+				...BASE_INNER_TABS.slice(2),
+			]
 		: BASE_INNER_TABS;
 	const statusStyle = STATUS_STYLES[normalizedStatus] ?? STATUS_STYLES.pending;
 
@@ -377,6 +386,7 @@ function StackDetailPanel({
 						onBackToList={onBackToList}
 					/>
 				)}
+				{innerTab === "workloads" && <StackWorkloadsTab stackId={stack.id} />}
 				{innerTab === "monitoring" && canShowMonitoring && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}

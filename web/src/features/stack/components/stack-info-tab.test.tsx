@@ -44,6 +44,7 @@ vi.mock('../utils/export-utils', async () => {
 vi.mock('../utils/stack-list-utils', () => ({
   buildPipelineNodesFromSnapshot: () => [],
   buildPipelineNodesFromMonitoring: () => [],
+  applyToolRuntimeStatus: (nodes: unknown) => nodes,
   buildInstalledToolsFromSnapshot: () => [],
   extractAccessDomain: () => '',
   toolLaunchURL: () => '',

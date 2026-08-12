@@ -91,6 +91,7 @@
   --transition-default: 200ms ease;
   --transition-fast: 150ms ease;
 
+  --z-page-header: 30;
   --z-sidebar: 40;
   --z-modal: 50;
   --z-toast: 60;
