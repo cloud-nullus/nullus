@@ -8,6 +8,9 @@ import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
 import { Tabs } from "../../../components/ui/tabs";
 import { ListDetailPanel } from "../../../components/shared/list-detail-panel";
+// stack-list-utils 에도 formatDate 가 있지만 로케일이 ko-KR 로 박혀 있다.
+// 표의 생성 시각은 화면 언어를 따라야 하므로 lib/locale 쪽을 쓴다.
+import { formatDate as localeDate, formatTime as localeTime } from "../../../lib/locale";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
 import { Select } from "../../../components/ui/select";
@@ -383,7 +386,7 @@ function StackDetailPanel({
 }
 
 export function StackListPage() {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const navigate = useNavigate();
 	// F8-UIUX-KeyboardHints — jump straight to the install wizard.
 	useKeyboardShortcut("n", () => navigate("/stack/install"));
@@ -420,9 +423,11 @@ export function StackListPage() {
   const previewImportStack = usePreviewImportStackConfig();
 	const tablePageSize = Math.max(6, Math.min(14, Math.floor((viewportHeight - 340) / 52)));
 	const isDesktopLayout = viewportWidth >= 1280;
-	// 개편 전 CSS 그리드 `minmax(300px, 38%)` 를 그대로 px 로 옮긴다.
 	// 288 = 사이드바 240 + 페이지 좌우 여백 2×24.
-	const listPaneWidth = Math.max(300, Math.round((viewportWidth - 288) * 0.38));
+	// 38% → 30%. 상세 쪽 파이프라인 토폴로지가 스테이지를 역할별로 나누면서
+	// 가로로 길어졌다 — 목록은 네 컬럼(이름·클러스터·상태·생성)만 있으면 되고,
+	// 남는 폭은 토폴로지가 잘리지 않는 데 쓰는 편이 낫다.
+	const listPaneWidth = Math.max(300, Math.round((viewportWidth - 288) * 0.3));
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -579,22 +584,24 @@ export function StackListPage() {
 		{
 			accessorKey: "name",
 			header: t("stackList.table.stackName", "Stack Name"),
+			// 클러스터를 별도 컬럼이 아니라 이름 아래에 둔다. 이 표는 상세 패널
+			// 왼쪽의 좁은 칸에 들어가는데, 컬럼 넷을 가로로 세우면 폭이 모자라
+			// 가로 스크롤이 생긴다 — 생성 시각이 화면 밖으로 밀려 안 보였다.
 			cell: ({ row }) => (
 				<div className="flex items-center gap-2">
 					{selectedStackId === row.original.id && (
 						<div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" />
 					)}
-					<span className="truncate font-semibold" title={row.original.name}>{row.original.name}</span>
+					<div className="min-w-0">
+						<div className="truncate font-semibold" title={row.original.name}>{row.original.name}</div>
+						<div
+							className="truncate text-[11px] text-[var(--color-text-secondary)]"
+							title={row.original.clusterName}
+						>
+							{row.original.clusterName}
+						</div>
+					</div>
 				</div>
-			),
-		},
-				{
-			accessorKey: "clusterName",
-			header: t("stackList.table.cluster", "Cluster"),
-			cell: ({ row }) => (
-				<span className="text-[var(--color-text-secondary)]">
-					{row.original.clusterName}
-				</span>
 			),
 		},
 		{
@@ -616,10 +623,16 @@ export function StackListPage() {
 		{
 			accessorKey: "createdAt",
 			header: () => <span className="whitespace-nowrap">{t("stackList.table.createdAt", "Created At")}</span>,
+			// 같은 날 여러 번 설치하는 스택이라 날짜만으로는 순서가 안 보인다.
+			// 날짜와 시각을 두 줄로 나눈다 — 한 줄로 붙이면("08/11/2026, 09:55 AM")
+			// 좁은 칸에서 이 컬럼 하나가 160px 를 가져간다.
 			cell: ({ row }) => (
-				<span className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">
-					{formatDate(row.original.createdAt)}
-				</span>
+				<div className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">
+					<div>{localeDate(row.original.createdAt, i18n.language)}</div>
+					<div className="text-[11px] text-[var(--color-text-muted)]">
+						{localeTime(row.original.createdAt, i18n.language)}
+					</div>
+				</div>
 			),
 		},
 	];

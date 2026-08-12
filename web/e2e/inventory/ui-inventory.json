@@ -2241,11 +2241,9 @@
         "Endpoint:",
         "Engine:",
         "Installed Stack Summary",
-        "Instances",
         "JSON",
         "Kubernetes / Helm",
         "Mode:",
-        "OSS",
         "OSS Login",
         "Object Storage",
         "Observability",
@@ -2257,7 +2255,6 @@
         "Stack Name",
         "Update Mode",
         "User:",
-        "Version",
         "YAML",
         "◉ Sync",
         "● Health"
@@ -2910,7 +2907,6 @@
         "stackList.status.pending",
         "stackList.status.running",
         "stackList.status.terminating",
-        "stackList.table.cluster",
         "stackList.table.createdAt",
         "stackList.table.stackName",
         "stackList.table.status",
@@ -2922,7 +2918,6 @@
         "All Status",
         "Cancel",
         "Cancelled",
-        "Cluster",
         "Completed",
         "Created At",
         "Current state",
@@ -2971,7 +2966,6 @@
         "Version Upgrade"
       ],
       "columns": [
-        "clusterName",
         "createdAt",
         "name",
         "status"

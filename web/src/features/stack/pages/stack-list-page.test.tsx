@@ -192,9 +192,14 @@ describe("StackListPage", () => {
       "G",
     );
     expect(screen.getByText("Pipeline Topology")).not.toBeNull();
-    expect(screen.getByText("Artifacts")).not.toBeNull();
+    // Artifacts 한 칸이 아니라 역할별 스테이지로 선다.
+    expect(screen.getByText("Source")).not.toBeNull();
+    expect(screen.getAllByText("Storage").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("CD").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Monitoring").length).toBeGreaterThan(1);
-    expect(screen.getByText("15")).not.toBeNull();
+    // 파드 수도 스테이지별로 나뉜다 — 예전에는 14 + 1 을 합쳐 "15" 였다.
+    expect(screen.getByText("14 instances")).not.toBeNull();
+    expect(screen.getAllByText("1 instance").length).toBe(3);
 
     fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
     expect(screen.getByAltText("gitlab icon")).toHaveAttribute(
@@ -277,7 +282,8 @@ describe("StackListPage", () => {
 
     renderWithProviders(<StackListPage />);
 
-    expect(screen.getAllByText("Cluster").length).toBeGreaterThan(0);
+    // 클러스터는 별도 컬럼이 아니라 스택 이름 아래에 붙는다.
+    expect(screen.getAllByText("prod-cluster").length).toBeGreaterThan(0);
     selectOption(getSelectByValue("All Clusters"), "prod-cluster");
 
     expect(screen.getAllByText("DevSecOps Core").length).toBeGreaterThan(0);

@@ -1,14 +1,27 @@
 import type { TFunction } from "i18next";
 
+export type PipelineTool = ToolSelectionView & {
+  /**
+   * 앞선 스테이지에 이미 나온 도구. Nexus 처럼 한 제품이 여러 역할을 겸하면
+   * 각 역할 칸에 다 보여야 하지만(그게 역할 배치 정보다), 인스턴스는 한 번만
+   * 센다 — 안 그러면 파드 수가 부풀려진다.
+   */
+  shared?: boolean;
+};
+
 export type PipelineNode = {
   category: string;
-  oss: string;
-  version: string;
+  /**
+   * 스테이지에 속한 도구들. 이름과 버전을 따로 join 한 문자열 두 개로 들고
+   * 있으면("a + b", "1.0 / 2.0") 읽는 쪽이 자리를 세서 짝을 맞춰야 한다.
+   */
+  tools: PipelineTool[];
+  /** 이 스테이지의 파드 수. shared 도구는 빼고 센다. */
   instances: number;
-  color: string;
-  health: "healthy" | "progressing" | "degraded";
-  sync: "synced" | "out-of-sync";
 };
+// health/sync 는 여기 없다. 두 값 모두 stack.status 하나에서 파생되므로 노드마다
+// 들고 있으면 같은 값이 스테이지 수만큼 복제된다. 스택 단위 상태는 화면 헤더가
+// 스택에서 직접 읽는다.
 
 export type ToolSelectionView = {
   name: string;
@@ -306,9 +319,7 @@ function parseCategorySelections(
   return tools;
 }
 
-// 하나의 제품이 여러 역할을 겸할 수 있다 — Nexus 는 컨테이너 레지스트리이면서
-// 패키지 저장소다. 역할 수만큼 세면 "Nexus + GitLab CE + Nexus + MinIO" 처럼 보이고
-// 인스턴스도 이중 계상되므로, 같은 이름은 한 번만 남긴다.
+// 한 스테이지 안에서 같은 제품이 두 번 나오면 한 번만 남긴다.
 function dedupeByName<T extends { name: string }>(tools: T[]): T[] {
   const seen = new Set<string>();
   return tools.filter((tool) => {
@@ -322,7 +333,6 @@ function dedupeByName<T extends { name: string }>(tools: T[]): T[] {
 function toPipelineNode(
   category: string,
   tools: ToolSelectionView[],
-  color: string,
 ): PipelineNode | null {
   const distinct = dedupeByName(tools);
   if (distinct.length === 0) {
@@ -330,28 +340,60 @@ function toPipelineNode(
   }
   return {
     category,
-    oss: distinct.map((tool) => tool.name).join(" + "),
-    version: distinct.map((tool) => tool.version).join(" / "),
+    tools: distinct,
     instances: distinct.reduce((sum, tool) => sum + tool.instances, 0),
-    color,
-    health: "healthy",
-    sync: "synced",
   };
+}
+
+/**
+ * 스테이지를 가로질러 같은 제품을 표시한다.
+ *
+ * Nexus 는 컨테이너 레지스트리이면서 패키지 저장소다. 역할별로 칸을 나눈 뒤에는
+ * 두 칸에 다 나와야 배치가 보이지만, 파드는 하나다. 두 번째부터는 shared 로
+ * 표시하고 그 스테이지의 인스턴스 합계에서 뺀다.
+ */
+function markSharedAcrossStages(nodes: PipelineNode[]): PipelineNode[] {
+  const seen = new Set<string>();
+  return nodes.map((node) => {
+    const tools = node.tools.map((tool) => {
+      const key = tool.name.trim().toLowerCase();
+      if (seen.has(key)) {
+        return { ...tool, shared: true };
+      }
+      seen.add(key);
+      return tool;
+    });
+    return {
+      ...node,
+      tools,
+      instances: tools.reduce(
+        (sum, tool) => (tool.shared ? sum : sum + tool.instances),
+        0,
+      ),
+    };
+  });
 }
 
 export function buildPipelineNodesFromSnapshot(
   snapshot: unknown,
 ): PipelineNode[] {
   const config = resolveSnapshotConfig(snapshot);
-  const artifacts = parseCategorySelections(
-    pickGroup(config, ["artifacts", "Artifacts"]),
-    [
-      ["package_registry", "packageRegistry"],
-      ["source_repository", "sourceRepository"],
-      ["container_registry", "containerRegistry"],
-      ["storage_backend", "storageBackend"],
-    ],
-  );
+  // Artifacts 를 한 칸에 몰지 않는다. 소스 저장소·컨테이너 레지스트리·패키지
+  // 저장소·스토리지는 파이프라인에서 서는 자리가 각각 다르다. 한 칸에 합치면
+  // "gitlab + gitlab-registry + minio" 처럼 역할이 사라진 이름 나열이 된다.
+  const artifactsGroup = pickGroup(config, ["artifacts", "Artifacts"]);
+  const source = parseCategorySelections(artifactsGroup, [
+    ["source_repository", "sourceRepository"],
+  ]);
+  const containerRegistry = parseCategorySelections(artifactsGroup, [
+    ["container_registry", "containerRegistry"],
+  ]);
+  const packageRegistry = parseCategorySelections(artifactsGroup, [
+    ["package_registry", "packageRegistry"],
+  ]);
+  const storage = parseCategorySelections(artifactsGroup, [
+    ["storage_backend", "storageBackend"],
+  ]);
   const pipeline = pickGroup(config, ["pipeline", "Pipeline"]);
   const ci = parseCategorySelections(pipeline, [["ci_platform", "ciPlatform"]]);
   const cd = parseCategorySelections(pipeline, [["cd_tool", "cdTool"]]);
@@ -371,58 +413,53 @@ export function buildPipelineNodesFromSnapshot(
     ["trace_layer", "traceLayer", "TraceLayer"],
   ]);
 
-  return [
-    toPipelineNode("Artifacts", artifacts, "var(--color-primary)"),
-    toPipelineNode("CI", ci, "var(--color-info)"),
-    toPipelineNode("CD", cd, "var(--color-accent-alt)"),
-    toPipelineNode("Monitoring", monitoring, "var(--color-success)"),
-    toPipelineNode("Logging", logging, "var(--color-warning)"),
-    toPipelineNode("Trace", trace, "var(--color-error)"),
-  ].filter((node): node is PipelineNode => !!node);
+  // 순서는 코드가 흐르는 순서다: 소스 → 빌드 → 저장 → 배포 → 관측.
+  return markSharedAcrossStages(
+    [
+      toPipelineNode("Source", source),
+      toPipelineNode("CI", ci),
+      toPipelineNode("Container Registry", containerRegistry),
+      toPipelineNode("Package Registry", packageRegistry),
+      toPipelineNode("Storage", storage),
+      toPipelineNode("CD", cd),
+      toPipelineNode("Monitoring", monitoring),
+      toPipelineNode("Logging", logging),
+      toPipelineNode("Trace", trace),
+    ].filter((node): node is PipelineNode => !!node),
+  );
 }
 
 export function buildPipelineNodesFromMonitoring(
   tools: MonitoringToolView[] | undefined,
 ): PipelineNode[] {
   const enabledTools = (tools ?? []).filter((tool) => tool.enabled);
-  const toNode = (
-    category: string,
-    keys: string[],
-    color: string,
-  ): PipelineNode | null => {
-    const matches = dedupeByName(
-      enabledTools.filter((tool) => keys.includes(tool.key)),
-    );
-    if (matches.length === 0) {
-      return null;
-    }
-    return {
+  const toNode = (category: string, keys: string[]): PipelineNode | null =>
+    toPipelineNode(
       category,
-      oss: matches.map((tool) => tool.name).join(" + "),
-      version: matches.map((tool) => tool.version).join(" / "),
-      instances: matches.reduce((sum, tool) => sum + tool.pod_count, 0),
-      color,
-      health: "healthy",
-      sync: "synced",
-    };
-  };
+      enabledTools
+        .filter((tool) => keys.includes(tool.key))
+        .map((tool) => ({
+          name: tool.name,
+          version: tool.version,
+          instances: tool.pod_count,
+        })),
+    );
 
-  return [
-    toNode(
-      "Artifacts",
-      [
-        "source_repository",
-        "container_registry",
-        "package_registry",
-        "storage_backend",
-      ],
-      "var(--color-primary)",
-    ),
-    toNode("CD", ["cd_tool"], "var(--color-accent-alt)"),
-    toNode("Monitoring", ["collection", "visualization"], "var(--color-success)"),
-    toNode("Logging", ["logging_collection", "logging_search"], "var(--color-warning)"),
-    toNode("Trace", ["trace_layer"], "var(--color-error)"),
-  ].filter((node): node is PipelineNode => !!node);
+  // 스테이지 구성은 스냅샷 경로와 같다 — 두 경로가 다르면 데이터 출처에 따라
+  // 같은 스택이 다른 모양으로 보인다.
+  return markSharedAcrossStages(
+    [
+      toNode("Source", ["source_repository"]),
+      toNode("CI", ["ci_platform"]),
+      toNode("Container Registry", ["container_registry"]),
+      toNode("Package Registry", ["package_registry"]),
+      toNode("Storage", ["storage_backend"]),
+      toNode("CD", ["cd_tool"]),
+      toNode("Monitoring", ["collection", "visualization"]),
+      toNode("Logging", ["logging_collection", "logging_search"]),
+      toNode("Trace", ["trace_layer"]),
+    ].filter((node): node is PipelineNode => !!node),
+  );
 }
 
 export function buildInstalledToolsFromSnapshot(

@@ -48,6 +48,8 @@ import {
   ResourcesPanel,
 } from "./stack-info-panels";
 import { TextInput } from "../../../components/ui/text-input"
+import { Badge } from "../../../components/ui/badge";
+import { PipelineTopologyRail } from "./pipeline-topology";
 
 function ToolLogo({ name, logo }: Pick<LaunchTool, "name" | "logo">) {
   const [hasError, setHasError] = useState(false);
@@ -123,12 +125,10 @@ export function StackInfoTab({
         : [
             {
               category: "Stack",
-              oss: stack.templateName,
-              version: "-",
+              tools: [
+                { name: stack.templateName, version: "-", instances: 1 },
+              ],
               instances: 1,
-              color: "var(--color-primary)",
-              health: "progressing",
-              sync: "out-of-sync",
             },
           ];
 
@@ -146,15 +146,6 @@ export function StackInfoTab({
     "configuring",
     "health_check",
   ].includes(stack.status);
-  const runtimeNodes = pipelineNodes.map((node) => ({
-    ...node,
-    health: degradedState
-      ? "degraded"
-      : progressingState
-        ? "progressing"
-        : "healthy",
-    sync: degradedState ? "out-of-sync" : "synced",
-  }));
   const snapshotTools = buildInstalledToolsFromSnapshot(latestSnapshot);
   const installedTools =
     snapshotTools.length > 0
@@ -710,113 +701,44 @@ export function StackInfoTab({
       </Modal>
 
       <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <GitBranch size={14} className="text-[var(--color-primary)]" />
           <div className="text-[14px] font-bold text-[var(--color-text-primary)]">
             Pipeline Topology
           </div>
-        </div>
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
-              degradedState
-                ? "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]"
+          {/* 스택 전체의 상태다. 노드마다 달면 stack.status 하나에서 나온 같은
+              값이 스테이지 수만큼 반복된다 — 여기 한 번만 둔다. */}
+          <div className="ml-auto flex items-center gap-1.5">
+            <Badge
+              pill
+              className={
+                degradedState
+                  ? "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]"
+                  : progressingState
+                    ? "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]"
+                    : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
+              }
+            >
+              ● Health{" "}
+              {degradedState
+                ? "Degraded"
                 : progressingState
-                  ? "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]"
-                  : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
-            )}
-          >
-            ● Health{" "}
-            {degradedState
-              ? "Degraded"
-              : progressingState
-                ? "Progressing"
-                : "Healthy"}
-          </span>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
-              degradedState
-                ? "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]"
-                : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
-            )}
-          >
-            ◉ Sync {degradedState ? "OutOfSync" : "Synced"}
-          </span>
-        </div>
-        <div className="relative overflow-x-auto pb-1">
-          <div className="relative z-10 grid min-w-max grid-flow-col auto-cols-auto gap-3">
-            {runtimeNodes.map((node, idx) => (
-              <div
-                key={node.category}
-                className="relative rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-3 shadow-[inset_0_0_0_1px_color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]"
-              >
-                {idx < runtimeNodes.length - 1 && (
-                  <div
-                    className="pointer-events-none absolute right-[-16px] top-3 h-[2px] w-8 bg-gradient-to-r from-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] to-[color-mix(in_srgb,_var(--color-text-secondary)_62%,_transparent)]"
-                    aria-hidden="true"
-                  >
-                    <div className="absolute right-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[color-mix(in_srgb,_var(--color-text-secondary)_72%,_transparent)]" />
-                  </div>
-                )}
-                <div className="mb-2 flex items-center gap-2">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-6 w-6 rounded-full ring-2 ring-white/10"
-                      style={{ backgroundColor: node.color }}
-                    />
-                    <div className="text-[12px] font-semibold text-[var(--color-text-primary)]">
-                      {node.category}
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                      node.health === "degraded"
-                        ? "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]"
-                        : node.health === "progressing"
-                          ? "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]"
-                          : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
-                    )}
-                  >
-                    {node.health}
-                  </span>
-                </div>
-                <div className="mb-2 flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                      node.sync === "synced"
-                        ? "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
-                        : "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
-                    )}
-                  >
-                    {node.sync}
-                  </span>
-                </div>
-                <div className="text-[11px] text-[var(--color-text-secondary)]">
-                  OSS
-                </div>
-                <div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">
-                  {node.oss}
-                </div>
-                <div className="text-[11px] text-[var(--color-text-secondary)]">
-                  Version
-                </div>
-                <div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">
-                  {node.version}
-                </div>
-                <div className="text-[11px] text-[var(--color-text-secondary)]">
-                  Instances
-                </div>
-                <div className="text-[12px] font-medium text-[var(--color-text-primary)]">
-                  {node.instances}
-                </div>
-              </div>
-            ))}
+                  ? "Progressing"
+                  : "Healthy"}
+            </Badge>
+            <Badge
+              pill
+              className={
+                degradedState
+                  ? "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]"
+                  : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
+              }
+            >
+              ◉ Sync {degradedState ? "OutOfSync" : "Synced"}
+            </Badge>
           </div>
         </div>
+        <PipelineTopologyRail nodes={pipelineNodes} />
       </div>
 
       <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
