@@ -123,6 +123,84 @@ func TestBuildWorkloadObjects_EmptyClusterYieldsNoObjects(t *testing.T) {
 	assert.Equal(t, 0, counts.Running+counts.Pending+counts.Failed)
 }
 
+// 배포한 앱이 자원을 얼마나 쓰는지도 보여야 한다.
+//
+// 스택 도구 파드는 이미 CPU/메모리를 보여주는데(monitoring_handler.go) CI/CD 로
+// 배포한 앱만 상태 문자열뿐이었다. "Running" 만으로는 파드가 메모리 한계에
+// 붙어 있는지, 놀고 있는지 알 수 없다.
+func TestBuildWorkloadObjects_CarriesPodUsage(t *testing.T) {
+	live := clusterWorkloads{
+		Pods: []livePod{
+			{Name: "demo-app-a", Phase: "Running", Ready: true,
+				CPUMillicores: ptrInt64(37), MemoryMiB: ptrInt64(128)},
+		},
+	}
+
+	objects, _ := buildWorkloadObjects(live)
+
+	require.Len(t, objects, 1)
+	require.NotNil(t, objects[0].CPUMillicores)
+	assert.Equal(t, int64(37), *objects[0].CPUMillicores)
+	require.NotNil(t, objects[0].MemoryMiB)
+	assert.Equal(t, int64(128), *objects[0].MemoryMiB)
+}
+
+// metrics-server 가 없는 클러스터에서는 0 이 아니라 null 이다.
+//
+// 0 은 "안 쓰고 있다" 로 읽힌다. 못 읽은 것과 0 을 같은 값으로 두면 운영자가
+// 놀고 있는 파드로 오해한다 — 이 파일이 replicas 2, 포트 8080 을 지어내던 것과
+// 같은 종류의 거짓말이다.
+func TestBuildWorkloadObjects_LeavesUsageNilWhenMetricsUnavailable(t *testing.T) {
+	live := clusterWorkloads{
+		Pods: []livePod{{Name: "demo-app-a", Phase: "Running", Ready: true}},
+	}
+
+	objects, _ := buildWorkloadObjects(live)
+
+	require.Len(t, objects, 1)
+	assert.Nil(t, objects[0].CPUMillicores, "못 읽었으면 0 이 아니라 없음이다")
+	assert.Nil(t, objects[0].MemoryMiB)
+}
+
+// 사용량을 못 읽어도 워크로드 목록은 나와야 한다. metrics-server 는 선택 설치다.
+func TestApplyPodUsage_KeepsPodsWhenMetricsMissing(t *testing.T) {
+	live := clusterWorkloads{
+		Pods: []livePod{
+			{Name: "demo-app-a", Namespace: "apps", Phase: "Running", Ready: true},
+			{Name: "demo-app-b", Namespace: "apps", Phase: "Running", Ready: true},
+		},
+	}
+
+	applyPodUsage(&live, map[string]podResourceUsage{
+		"apps/demo-app-a": {CPUMillicores: 12, MemoryMiB: 64},
+	})
+
+	require.Len(t, live.Pods, 2)
+	require.NotNil(t, live.Pods[0].CPUMillicores)
+	assert.Equal(t, int64(12), *live.Pods[0].CPUMillicores)
+	assert.Nil(t, live.Pods[1].CPUMillicores, "그 파드만 못 읽은 것이지 목록이 비는 게 아니다")
+}
+
+// 같은 이름의 파드가 다른 네임스페이스에 있을 수 있다. 이름만으로 맞추면 섞인다.
+func TestApplyPodUsage_MatchesOnNamespaceAndName(t *testing.T) {
+	live := clusterWorkloads{
+		Pods: []livePod{
+			{Name: "demo-app-a", Namespace: "apps", Phase: "Running", Ready: true},
+			{Name: "demo-app-a", Namespace: "staging", Phase: "Running", Ready: true},
+		},
+	}
+
+	applyPodUsage(&live, map[string]podResourceUsage{
+		"staging/demo-app-a": {CPUMillicores: 99, MemoryMiB: 512},
+	})
+
+	assert.Nil(t, live.Pods[0].CPUMillicores, "apps 네임스페이스 파드에 staging 값이 붙으면 안 된다")
+	require.NotNil(t, live.Pods[1].CPUMillicores)
+	assert.Equal(t, int64(99), *live.Pods[1].CPUMillicores)
+}
+
+func ptrInt64(v int64) *int64 { return &v }
+
 // 파이프라인이 여럿이면 파드가 자기 앱에만 붙어야 한다.
 func TestGroupWorkloadsByApp_SplitsPodsByLongestPrefix(t *testing.T) {
 	live := clusterWorkloads{

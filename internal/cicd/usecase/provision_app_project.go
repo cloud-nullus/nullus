@@ -43,6 +43,9 @@ type ProvisionAppProjectInput struct {
 	// StackID 는 배포 매니페스트에 스택 라벨로 실린다. 클러스터에서 워크로드가
 	// 어느 스택 소속인지 판별하는 유일한 키다.
 	StackID string
+	// TemplateID 는 배포 매니페스트에 템플릿 라벨로 실린다.
+	// 템플릿별 자원 사용 비교나 템플릿 단위 조회에 쓴다.
+	TemplateID string
 }
 
 // argoReadTokenName 은 Argo CD 가 저장소를 읽을 때 쓰는 토큰 이름이다.
@@ -164,6 +167,7 @@ func (uc *ProvisionAppProject) Execute(
 		GatewayName:      input.GatewayName,
 		GatewayNamespace: input.GatewayNamespace,
 		StackID:          input.StackID,
+		TemplateID:       input.TemplateID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render scaffold for %q: %w", app, err)

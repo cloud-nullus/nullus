@@ -10,7 +10,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	metricsclient "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 // CI/CD 로 배포된 애플리케이션의 실제 클러스터 상태.
@@ -25,12 +27,29 @@ import (
 // 있다. 그래서 네임스페이스를 훑지 않고 이 라벨로 클러스터 전체에서 찾는다.
 const stackIDLabelKey = "nullus.io/stack-id"
 
+// templateIDLabelKey 는 어느 CI/CD 템플릿에서 나온 앱인지 알려 준다.
+// 스캐폴딩이 붙인다 (cicd/adapter/scaffold/renderer.go).
+const templateIDLabelKey = "nullus.io/cicd-template-id"
+
 type livePod struct {
 	Name      string
 	Namespace string
 	Phase     string
 	Ready     bool
 	Node      string
+	// TemplateID 는 라벨에서 읽은 값이다. 라벨이 없으면 빈 문자열 —
+	// 스캐폴딩 이전에 배포된 앱이 그렇다.
+	TemplateID string
+	// CPUMillicores / MemoryMiB 는 metrics-server 에서 읽은 실사용량이다.
+	// 못 읽었으면 nil 이다 — 0 으로 두면 "안 쓰고 있다" 로 읽힌다.
+	CPUMillicores *int64
+	MemoryMiB     *int64
+}
+
+// podResourceUsage 는 metrics API 가 준 파드 하나의 실사용량이다.
+type podResourceUsage struct {
+	CPUMillicores int64
+	MemoryMiB     int64
 }
 
 type liveDeployment struct {
@@ -127,11 +146,12 @@ func collectClusterWorkloads(ctx context.Context, kubeconfig []byte, stackID str
 	}
 	for _, p := range pods.Items {
 		out.Pods = append(out.Pods, livePod{
-			Name:      p.Name,
-			Namespace: p.Namespace,
-			Phase:     podPhaseLabel(p),
-			Ready:     podIsReady(p),
-			Node:      p.Spec.NodeName,
+			Name:       p.Name,
+			Namespace:  p.Namespace,
+			Phase:      podPhaseLabel(p),
+			Ready:      podIsReady(p),
+			Node:       p.Spec.NodeName,
+			TemplateID: p.Labels[templateIDLabelKey],
 		})
 	}
 
@@ -151,7 +171,65 @@ func collectClusterWorkloads(ctx context.Context, kubeconfig []byte, stackID str
 		})
 	}
 
+	applyPodUsage(&out, collectPodUsage(ctx, restCfg, opts))
+
 	return out, nil
+}
+
+// collectPodUsage 는 metrics-server 에서 파드별 실사용량을 읽는다.
+//
+// 실패를 에러로 올리지 않는다. metrics-server 는 선택 설치라 없는 클러스터가
+// 정상이고, 그때도 워크로드 목록 자체는 나와야 한다 — 사용량 칸만 빈다.
+//
+// 키는 "네임스페이스/이름" 이다. 이름만으로 맞추면 여러 네임스페이스에 같은
+// 이름의 파드가 있을 때 섞인다 (앱 이름이 곧 파드 접두사이므로 흔한 상황이다).
+func collectPodUsage(ctx context.Context, restCfg *rest.Config, opts metav1.ListOptions) map[string]podResourceUsage {
+	metricsClient, err := metricsclient.NewForConfig(restCfg)
+	if err != nil {
+		slog.Warn("failed to create metrics client", "error", err)
+		return nil
+	}
+
+	const allNamespaces = ""
+	list, err := metricsClient.MetricsV1beta1().PodMetricses(allNamespaces).List(ctx, opts)
+	if err != nil {
+		// metrics-server 미설치가 가장 흔한 원인이라 Debug 로 남긴다.
+		slog.Debug("pod metrics unavailable", "error", err)
+		return nil
+	}
+
+	usage := make(map[string]podResourceUsage, len(list.Items))
+	for _, item := range list.Items {
+		var cpu, memory int64
+		// 파드의 사용량은 컨테이너 사용량의 합이다. 사이드카가 있으면
+		// 컨테이너 하나만 보면 실제보다 적게 나온다.
+		for _, container := range item.Containers {
+			cpu += container.Usage.Cpu().MilliValue()
+			memory += container.Usage.Memory().Value()
+		}
+		usage[item.Namespace+"/"+item.Name] = podResourceUsage{
+			CPUMillicores: cpu,
+			MemoryMiB:     memory / (1024 * 1024),
+		}
+	}
+	return usage
+}
+
+// applyPodUsage 는 읽어 온 사용량을 파드에 붙인다.
+// 못 읽은 파드는 nil 로 남는다 — 0 과 구분해야 한다.
+func applyPodUsage(live *clusterWorkloads, usage map[string]podResourceUsage) {
+	if len(usage) == 0 {
+		return
+	}
+	for i := range live.Pods {
+		found, ok := usage[live.Pods[i].Namespace+"/"+live.Pods[i].Name]
+		if !ok {
+			continue
+		}
+		cpu, memory := found.CPUMillicores, found.MemoryMiB
+		live.Pods[i].CPUMillicores = &cpu
+		live.Pods[i].MemoryMiB = &memory
+	}
 }
 
 // podPhaseLabel 은 화면에 쓸 상태 문자열이다. 컨테이너가 대기 중이면 그 이유를
@@ -196,11 +274,14 @@ func buildWorkloadObjects(live clusterWorkloads) ([]workloadK8sObj, podCounts) {
 
 	for _, p := range live.Pods {
 		objects = append(objects, workloadK8sObj{
-			Kind:      "Pod",
-			Name:      p.Name,
-			Namespace: p.Namespace,
-			Status:    p.Phase,
-			Node:      p.Node,
+			Kind:          "Pod",
+			Name:          p.Name,
+			Namespace:     p.Namespace,
+			Status:        p.Phase,
+			Node:          p.Node,
+			TemplateID:    p.TemplateID,
+			CPUMillicores: p.CPUMillicores,
+			MemoryMiB:     p.MemoryMiB,
 		})
 		switch {
 		case p.Ready && p.Phase == "Running":

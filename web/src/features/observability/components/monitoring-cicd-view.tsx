@@ -19,6 +19,9 @@ interface DeployedAppRow {
   pipeline: string
   status: AppStatus
   pods: [number | null, number | null]
+  /** 앱 파드들의 실사용량 합. metrics-server 가 없으면 null 이다. */
+  cpuMillicores: number | null
+  memoryMib: number | null
   cluster: string
   namespace: string
   duration: string
@@ -66,6 +69,23 @@ export function CicdDefault({
     return map
   }, [workloads?.pipelines])
 
+  // 앱이 실제로 쓰는 자원은 그 앱 파드들의 합이다.
+  //
+  // 한 파드라도 값을 읽었으면 합을 보여준다. 하나도 못 읽었으면 null 이다 —
+  // 0 으로 두면 metrics-server 가 없는 클러스터에서 "안 쓰는 앱" 으로 보인다.
+  const usageByPipeline = useMemo(() => {
+    const map = new Map<string, { cpu: number | null; memory: number | null }>()
+    for (const pipeline of workloads?.pipelines ?? []) {
+      const pods = pipeline.k8sObjects.filter((object) => object.kind === 'Pod')
+      const sum = (pick: (pod: (typeof pods)[number]) => number | null | undefined) => {
+        const values = pods.map(pick).filter((v): v is number => typeof v === 'number')
+        return values.length > 0 ? values.reduce((a, b) => a + b, 0) : null
+      }
+      map.set(pipeline.id, { cpu: sum((pod) => pod.cpuMillicores), memory: sum((pod) => pod.memoryMib) })
+    }
+    return map
+  }, [workloads?.pipelines])
+
   const pipelines = useMemo(
     () => (pipelinesData?.items ?? []).filter((pipeline) => !selectedClusterId || pipeline.clusterId === selectedClusterId),
     [pipelinesData?.items, selectedClusterId],
@@ -98,12 +118,14 @@ export function CicdDefault({
       pipeline: pipeline.appType,
       status,
       pods: podsByPipeline.get(pipeline.id) ?? [null, null],
+      cpuMillicores: usageByPipeline.get(pipeline.id)?.cpu ?? null,
+      memoryMib: usageByPipeline.get(pipeline.id)?.memory ?? null,
       cluster: pipeline.clusterName || '—',
       namespace: pipeline.namespace || 'default',
       duration: formatDuration(latest?.startedAt ?? null, latest?.completedAt ?? null),
       lastDeploy: timeAgo(latest?.startedAt ?? null),
     }
-  }), [pipelines, latestByPipeline, podsByPipeline])
+  }), [pipelines, latestByPipeline, podsByPipeline, usageByPipeline])
 
   const latestDeployments = useMemo(
     () => [...deployments].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()).slice(0, 8),
@@ -239,7 +261,7 @@ export function CicdDefault({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-[var(--color-border-default)] text-[11px] text-[var(--color-text-secondary)]">
-                {['Application', 'Version', 'Pipeline', 'Status', 'Pods', 'Cluster', 'Namespace', 'Duration', 'Last Deploy'].map((h) => (
+                {['Application', 'Version', 'Pipeline', 'Status', 'Pods', 'CPU', 'Memory', 'Cluster', 'Namespace', 'Duration', 'Last Deploy'].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold tracking-[0.03em]">{h}</th>
                 ))}
               </tr>
@@ -279,6 +301,12 @@ export function CicdDefault({
                             ? '—'
                             : 'select stack'}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">
+                      {typeof app.cpuMillicores === 'number' ? `${app.cpuMillicores}m` : '—'}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">
+                      {typeof app.memoryMib === 'number' ? `${app.memoryMib}Mi` : '—'}
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.cluster}</td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.namespace}</td>

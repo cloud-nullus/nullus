@@ -585,6 +585,14 @@ export interface K8sObject {
   port?: number;
   host?: string;
   node?: string;
+  /** 이 워크로드를 만든 CI/CD 템플릿. 스캐폴딩 이전 배포에는 없다. */
+  templateId?: string;
+  /**
+   * 파드 실사용량. metrics-server 가 없으면 null 이다 —
+   * 0 과 구분해야 한다. 0 은 "안 쓰고 있다" 로 읽힌다.
+   */
+  cpuMillicores?: number | null;
+  memoryMib?: number | null;
 }
 
 export interface WorkloadDeployment {

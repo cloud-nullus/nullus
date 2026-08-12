@@ -403,6 +403,65 @@ func TestRender_LabelsWorkloadsWithStackID(t *testing.T) {
 		"metadata 와 pod template 양쪽에 있어야 한다")
 }
 
+// 어느 CI/CD 템플릿으로 만든 앱인지도 클러스터에서 알아볼 수 있어야 한다.
+//
+// 스택 라벨만으로는 "이 스택의 앱들" 까지만 묶인다. 템플릿별로 자원 사용을
+// 비교하거나(백엔드 템플릿이 프론트보다 메모리를 두 배 쓴다) 템플릿을 고친 뒤
+// 그 템플릿으로 만든 앱들만 골라 보려면 별도 라벨이 필요하다.
+//
+// 라벨 값은 템플릿 id 다. 이름("Nullus Sample App — Backend")은 공백과 em dash 가
+// 들어가 쿠버네티스 라벨 값으로 유효하지 않고, 바뀌면 과거 파드와 안 맞는다.
+func TestRender_LabelsWorkloadsWithTemplateID(t *testing.T) {
+	files, err := Render(Input{
+		AppName:    "demo-app",
+		Namespace:  "apps",
+		Port:       8080,
+		Replicas:   2,
+		StackID:    "stk_abc123",
+		TemplateID: "nullus-sample-backend-v1",
+		ImageTarget: &port.ImageTarget{
+			Repository: "registry.example.com/demo-app",
+		},
+	})
+	require.NoError(t, err)
+
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.Path] = f.Content
+	}
+
+	for _, path := range []string{"deploy/deployment.yaml", "deploy/service.yaml"} {
+		content, ok := byPath[path]
+		require.True(t, ok, "%s 가 있어야 한다", path)
+		assert.Contains(t, content, "nullus.io/cicd-template-id: nullus-sample-backend-v1",
+			"%s 에 템플릿 라벨이 있어야 템플릿 단위로 묶을 수 있다", path)
+	}
+
+	deployment := byPath["deploy/deployment.yaml"]
+	assert.GreaterOrEqual(t, strings.Count(deployment, "nullus.io/cicd-template-id: nullus-sample-backend-v1"), 2,
+		"metadata 와 pod template 양쪽에 있어야 파드를 라벨로 찾을 수 있다")
+}
+
+// 템플릿 없이 만든 파이프라인도 있다. 그때는 라벨을 붙이지 않는다 —
+// 스택 라벨과 같은 이유로, 빈 값은 "템플릿 없음" 과 구분되지 않는다.
+func TestRender_OmitsTemplateLabelWhenNoTemplate(t *testing.T) {
+	files, err := Render(Input{
+		AppName:   "demo-app",
+		Namespace: "apps",
+		Port:      8080,
+		Replicas:  1,
+		StackID:   "stk_abc123",
+		ImageTarget: &port.ImageTarget{
+			Repository: "registry.example.com/demo-app",
+		},
+	})
+	require.NoError(t, err)
+
+	for _, f := range files {
+		assert.NotContains(t, f.Content, "nullus.io/cicd-template-id", "%s", f.Path)
+	}
+}
+
 // 스택에 속하지 않는 파이프라인도 있다. 그때는 라벨을 붙이지 않는다 —
 // 빈 값 라벨은 쿠버네티스에서 유효하지만 "스택 없음" 과 구분되지 않는다.
 func TestRender_OmitsStackLabelWhenNoStack(t *testing.T) {

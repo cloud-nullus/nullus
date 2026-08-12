@@ -38,6 +38,12 @@ const (
 	githubActorVar = "GITHUB_ACTOR"
 	githubTokenVar = "GITHUB_TOKEN" // #nosec G101 -- CI 변수 이름
 
+	// stackLabelKey / templateLabelKey 는 배포된 워크로드의 소속을 클러스터에서
+	// 알아보게 하는 라벨이다. 조회하는 쪽(stack/adapter/handler/workloads.go)과
+	// 문자열이 같아야 한다.
+	stackLabelKey    = "nullus.io/stack-id"
+	templateLabelKey = "nullus.io/cicd-template-id"
+
 	defaultPort     = 8080
 	defaultReplicas = 1
 
@@ -66,6 +72,9 @@ type Input struct {
 	// 네임스페이스로는 판별할 수 없다 — 파이프라인이 default 에 깔 수도 있고
 	// 여러 스택이 한 네임스페이스를 공유할 수도 있다. 비면 라벨을 붙이지 않는다.
 	StackID string
+	// TemplateID 는 어느 CI/CD 템플릿에서 나온 앱인지 알아보게 한다.
+	// 템플릿별 자원 사용 비교나 템플릿 단위 조회에 쓴다. 비면 라벨을 붙이지 않는다.
+	TemplateID string
 }
 
 // Render 는 앱 프로젝트에 커밋할 파일들을 만든다.
@@ -100,8 +109,8 @@ func Render(in Input) ([]port.CommitFile, error) {
 		{Path: pipelinePath, Content: pipelineContent},
 		{Path: "Dockerfile", Content: renderDockerfile(appPort)},
 		{Path: "README.md", Content: renderReadme(in.Platform, app, namespace, in.ImageTarget)},
-		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas, in.StackID)},
-		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort, in.StackID)},
+		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas, in.StackID, in.TemplateID)},
+		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort, in.StackID, in.TemplateID)},
 	}
 
 	// 게이트웨이 정보가 있으면 외부 접근 경로를 함께 만든다.
@@ -321,17 +330,29 @@ EXPOSE %d
 `, header, appPort, appPort)
 }
 
-// stackLabelLine 은 들여쓰기에 맞춘 스택 라벨 한 줄이다. 스택이 없으면 빈 문자열이라
-// 매니페스트에 아무것도 남지 않는다 — 빈 값 라벨("")은 "스택 없음" 과 구분되지 않는다.
-func stackLabelLine(stackID, indent string) string {
-	stackID = strings.TrimSpace(stackID)
-	if stackID == "" {
-		return ""
+// ownerLabelLines 는 들여쓰기에 맞춘 소유 라벨들이다.
+//
+// 값이 빈 라벨은 아예 쓰지 않는다 — 빈 값 라벨("")은 쿠버네티스에서 유효하지만
+// "소속 없음" 과 구분되지 않아, 라벨 셀렉터가 의도치 않게 걸린다.
+//
+// 라벨 값에 쓰는 것은 항상 id 다. 이름은 바뀌면 이미 떠 있는 파드와 어긋나고,
+// 템플릿 이름처럼 공백·em dash 가 든 값은 라벨 값으로 유효하지도 않다.
+func ownerLabelLines(stackID, templateID, indent string) string {
+	var b strings.Builder
+	for _, label := range []struct{ key, value string }{
+		{stackLabelKey, stackID},
+		{templateLabelKey, templateID},
+	} {
+		value := strings.TrimSpace(label.value)
+		if value == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "\n%s%s: %s", indent, label.key, value)
 	}
-	return fmt.Sprintf("\n%snullus.io/stack-id: %s", indent, stackID)
+	return b.String()
 }
 
-func renderDeployment(app, namespace, repository string, appPort, replicas int32, stackID string) string {
+func renderDeployment(app, namespace, repository string, appPort, replicas int32, stackID, templateID string) string {
 	return fmt.Sprintf(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -371,10 +392,10 @@ spec:
               cpu: 500m
               memory: 512Mi
 `, app, namespace, repository, appPort, replicas, InitialImageTag, kube.ImagePullSecretName,
-		stackLabelLine(stackID, "    "), stackLabelLine(stackID, "        "))
+		ownerLabelLines(stackID, templateID, "    "), ownerLabelLines(stackID, templateID, "        "))
 }
 
-func renderService(app, namespace string, appPort int32, stackID string) string {
+func renderService(app, namespace string, appPort int32, stackID, templateID string) string {
 	return fmt.Sprintf(`apiVersion: v1
 kind: Service
 metadata:
@@ -390,7 +411,7 @@ spec:
     - name: http
       port: %[3]d
       targetPort: http
-`, app, namespace, appPort, stackLabelLine(stackID, "    "))
+`, app, namespace, appPort, ownerLabelLines(stackID, templateID, "    "))
 }
 
 func renderReadme(platform port.SCMPlatform, app, namespace string, target *port.ImageTarget) string {

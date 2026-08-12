@@ -2,10 +2,10 @@ package handler
 
 import (
 	"context"
-	"log/slog"
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -509,6 +509,12 @@ type workloadK8sObj struct {
 	Port      int32  `json:"port,omitempty"`
 	Host      string `json:"host,omitempty"`
 	Node      string `json:"node,omitempty"`
+	// TemplateID 는 이 워크로드를 만든 CI/CD 템플릿이다. 라벨이 없으면 빈 값.
+	TemplateID string `json:"templateId,omitempty"`
+	// CPUMillicores / MemoryMiB 는 실사용량이다. 포인터인 이유는 "못 읽음"과
+	// "0" 을 구분하기 위해서다 — metrics-server 가 없으면 null 로 나간다.
+	CPUMillicores *int64 `json:"cpuMillicores"`
+	MemoryMiB     *int64 `json:"memoryMib"`
 }
 
 type workloadSummary struct {

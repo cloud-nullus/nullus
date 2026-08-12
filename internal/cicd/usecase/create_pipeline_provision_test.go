@@ -76,6 +76,23 @@ func TestCreatePipeline_RecordsProvisionedRepository(t *testing.T) {
 	assert.Equal(t, "registry.test/acme/myapp", out.Pipeline.EnvVars[envRegistryURL])
 }
 
+// 템플릿 id 는 스캐폴딩까지 내려가야 한다. 배포 매니페스트에 라벨로 실려야
+// 클러스터에서 "이 템플릿으로 만든 앱들" 을 골라낼 수 있다.
+func TestCreatePipeline_PassesTemplateIDToProvisioner(t *testing.T) {
+	p := &fakeRepoProvisioner{out: provisionedResult()}
+	templates := newMockCreateTemplateRepo(&domain.PipelineTemplate{ID: "web-backend-v1", Name: "User Custom Pipeline"})
+	uc := NewCreatePipeline(&mockCreatePipelineRepo{}, templates).WithRepositoryProvisioner(p)
+
+	in := provisionInput()
+	in.TemplateID = "web-backend-v1"
+
+	_, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+
+	require.Len(t, p.calls, 1)
+	assert.Equal(t, "web-backend-v1", p.calls[0].TemplateID)
+}
+
 func TestCreatePipeline_SkipsProvisioningWhenNotRequested(t *testing.T) {
 	p := &fakeRepoProvisioner{out: provisionedResult()}
 	uc, _ := newCreateWithProvisioner(p)

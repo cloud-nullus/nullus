@@ -14,6 +14,8 @@ import (
 type ProvisionPipelineRepositoryInput struct {
 	AppName string
 	StackID string
+	// TemplateID 는 배포 매니페스트에 템플릿 라벨로 실린다. 비면 라벨을 붙이지 않는다.
+	TemplateID string
 	// Namespace 는 배포 대상 쿠버네티스 네임스페이스다.
 	Namespace string
 	Port      int32
@@ -101,6 +103,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			GatewayName:         bundle.GatewayName,
 			GatewayNamespace:    bundle.ArgoNamespace,
 			StackID:             stackID,
+			TemplateID:          input.TemplateID,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("provision app project: %w", err)

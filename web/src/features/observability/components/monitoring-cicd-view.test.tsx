@@ -83,6 +83,64 @@ describe('CicdDefault — 배포 앱 파드 수', () => {
     expect(within(row).getByText('select stack')).toBeTruthy()
   })
 
+  // "Running" 만으로는 파드가 메모리 한계에 붙어 있는지 놀고 있는지 알 수 없다.
+  // 스택 도구 파드는 이미 사용량을 보여주는데 CI/CD 로 배포한 앱만 없었다.
+  it('앱의 파드 사용량 합계를 보여준다', () => {
+    mockUseStackWorkloads.mockReturnValue({
+      data: {
+        pipelines: [
+          {
+            id: 'pl-1',
+            name: 'demo-app',
+            namespace: 'apps',
+            status: 'success',
+            lastDeployment: null,
+            k8sObjects: [
+              { kind: 'Pod', name: 'demo-app-a', namespace: 'apps', status: 'Running', cpuMillicores: 37, memoryMib: 128 },
+              { kind: 'Pod', name: 'demo-app-b', namespace: 'apps', status: 'Running', cpuMillicores: 13, memoryMib: 96 },
+            ],
+          },
+        ],
+        summary: { totalPipelines: 1, totalDeployments: 0, runningPods: 2, pendingPods: 0, failedPods: 0 },
+      },
+    })
+
+    renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+
+    const row = screen.getByText('demo-app').closest('tr')!
+    expect(within(row).getByText('50m')).toBeTruthy()
+    expect(within(row).getByText('224Mi')).toBeTruthy()
+  })
+
+  // metrics-server 가 없으면 백엔드가 null 을 준다. 0 으로 그리면 "안 쓰는
+  // 파드" 로 읽힌다 — 못 읽은 것과 0 은 다르다.
+  it('사용량을 못 읽으면 0 이 아니라 대시다', () => {
+    mockUseStackWorkloads.mockReturnValue({
+      data: {
+        pipelines: [
+          {
+            id: 'pl-1',
+            name: 'demo-app',
+            namespace: 'apps',
+            status: 'success',
+            lastDeployment: null,
+            k8sObjects: [
+              { kind: 'Pod', name: 'demo-app-a', namespace: 'apps', status: 'Running', cpuMillicores: null, memoryMib: null },
+            ],
+          },
+        ],
+        summary: { totalPipelines: 1, totalDeployments: 0, runningPods: 1, pendingPods: 0, failedPods: 0 },
+      },
+    })
+
+    renderWithProviders(<CicdDefault selectedClusterId="c1" selectedStackId="stk_1" />)
+
+    const row = screen.getByText('demo-app').closest('tr')!
+    const cells = [...row.querySelectorAll('td')].map((td) => td.textContent)
+    expect(cells).not.toContain('0m')
+    expect(cells).not.toContain('0Mi')
+  })
+
   // 클러스터를 못 읽었을 때(백엔드가 빈 목록을 준다) 0/0 이 아니라 '—' 다.
   it('워크로드가 비면 대시로 둔다', () => {
     mockUseStackWorkloads.mockReturnValue({
