@@ -39,19 +39,28 @@ export function ListDetailPanel({
   // 어느 쪽이 고정폭인가만 뒤집는다. 두 배치가 같은 컴포넌트를 쓰는 게 핵심이다.
   const detailIsRail = detailWidth !== undefined
 
+  // 폭은 CSS 변수로 넘긴다.
+  //
+  // 인라인 style 로 박으면 미디어 쿼리로 되돌릴 수 없어 좁은 화면에서도 그 폭이
+  // 그대로 남는다. Tailwind 임의값(w-[280px])은 빌드 시점에 클래스를 굽기 때문에
+  // 런타임 값으로 만들 수 없지만, w-[var(--…)] 는 클래스가 고정이라 구워진다.
+  const paneWidth = { '--list-detail-pane': `${detailIsRail ? detailWidth : listWidth}px` } as React.CSSProperties
+
   return (
-    <div className="flex h-full min-h-[240px] overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-      {/* 폭은 인라인 스타일로 준다. Tailwind 임의값(w-[280px])은 빌드 시점에
-          클래스를 굽기 때문에 런타임 값으로는 만들어지지 않는다 — 개편 전 구현은
-          240/280 만 클래스로 매핑하고 나머지 값을 조용히 280 으로 접고 있었다. */}
+    // 좁은 창에서는 위아래로 쌓는다. 좌우 고정으로 두면 상세 레일이 폭을 그대로
+    // 먹어 목록이 짓눌린다 — 960px 창에서 목록 290px / 상세 380px 로 뒤집히고
+    // 7개 컬럼짜리 표가 290px 안에서 가로 스크롤됐다.
+    <div
+      className="flex h-full min-h-[240px] flex-col overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] xl:flex-row"
+      style={paneWidth}
+    >
       <div
         data-testid="list-detail-list"
         className={
           detailIsRail
-            ? 'flex min-w-0 flex-1 flex-col border-r border-[var(--color-border-default)]'
-            : 'flex shrink-0 flex-col border-r border-[var(--color-border-default)]'
+            ? 'flex min-w-0 flex-1 flex-col border-b border-[var(--color-border-default)] xl:border-b-0 xl:border-r'
+            : 'flex w-full shrink-0 flex-col border-b border-[var(--color-border-default)] xl:w-[var(--list-detail-pane)] xl:border-b-0 xl:border-r'
         }
-        style={detailIsRail ? undefined : { width: listWidth }}
       >
         {listHeader && (
           <div className="shrink-0 border-b border-[var(--color-border-default)]">{listHeader}</div>
@@ -61,8 +70,11 @@ export function ListDetailPanel({
 
       <div
         data-testid="list-detail-detail"
-        className={detailIsRail ? 'flex shrink-0 flex-col' : 'flex min-w-0 flex-1 flex-col'}
-        style={detailIsRail ? { width: detailWidth } : undefined}
+        className={
+          detailIsRail
+            ? 'flex w-full shrink-0 flex-col xl:w-[var(--list-detail-pane)]'
+            : 'flex min-w-0 flex-1 flex-col'
+        }
       >
         {detailHeader && (
           <div className="shrink-0 border-b border-[var(--color-border-default)]">{detailHeader}</div>
