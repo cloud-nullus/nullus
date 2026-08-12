@@ -100,6 +100,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			AccessDomain:        bundle.AccessDomain,
 			GatewayName:         bundle.GatewayName,
 			GatewayNamespace:    bundle.ArgoNamespace,
+			StackID:             stackID,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("provision app project: %w", err)

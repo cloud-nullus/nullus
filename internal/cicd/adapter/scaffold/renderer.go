@@ -62,6 +62,10 @@ type Input struct {
 	AccessDomain     string
 	GatewayName      string
 	GatewayNamespace string
+	// StackID 는 배포된 워크로드가 어느 스택 소속인지 클러스터에서 알아보게 한다.
+	// 네임스페이스로는 판별할 수 없다 — 파이프라인이 default 에 깔 수도 있고
+	// 여러 스택이 한 네임스페이스를 공유할 수도 있다. 비면 라벨을 붙이지 않는다.
+	StackID string
 }
 
 // Render 는 앱 프로젝트에 커밋할 파일들을 만든다.
@@ -96,8 +100,8 @@ func Render(in Input) ([]port.CommitFile, error) {
 		{Path: pipelinePath, Content: pipelineContent},
 		{Path: "Dockerfile", Content: renderDockerfile(appPort)},
 		{Path: "README.md", Content: renderReadme(in.Platform, app, namespace, in.ImageTarget)},
-		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas)},
-		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort)},
+		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas, in.StackID)},
+		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort, in.StackID)},
 	}
 
 	// 게이트웨이 정보가 있으면 외부 접근 경로를 함께 만든다.
@@ -317,7 +321,17 @@ EXPOSE %d
 `, header, appPort, appPort)
 }
 
-func renderDeployment(app, namespace, repository string, appPort, replicas int32) string {
+// stackLabelLine 은 들여쓰기에 맞춘 스택 라벨 한 줄이다. 스택이 없으면 빈 문자열이라
+// 매니페스트에 아무것도 남지 않는다 — 빈 값 라벨("")은 "스택 없음" 과 구분되지 않는다.
+func stackLabelLine(stackID, indent string) string {
+	stackID = strings.TrimSpace(stackID)
+	if stackID == "" {
+		return ""
+	}
+	return fmt.Sprintf("\n%snullus.io/stack-id: %s", indent, stackID)
+}
+
+func renderDeployment(app, namespace, repository string, appPort, replicas int32, stackID string) string {
 	return fmt.Sprintf(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -325,7 +339,7 @@ metadata:
   namespace: %[2]s
   labels:
     app.kubernetes.io/name: %[1]s
-    app.kubernetes.io/managed-by: nullus-cicd
+    app.kubernetes.io/managed-by: nullus-cicd%[8]s
 spec:
   replicas: %[5]d
   selector:
@@ -335,7 +349,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: %[1]s
-        app.kubernetes.io/managed-by: nullus-cicd
+        app.kubernetes.io/managed-by: nullus-cicd%[9]s
     spec:
       # private 레지스트리는 익명 pull 을 거부한다. Nullus 가 이 이름으로
       # 자격증명 Secret 을 네임스페이스에 만들어 둔다.
@@ -356,10 +370,11 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-`, app, namespace, repository, appPort, replicas, InitialImageTag, kube.ImagePullSecretName)
+`, app, namespace, repository, appPort, replicas, InitialImageTag, kube.ImagePullSecretName,
+		stackLabelLine(stackID, "    "), stackLabelLine(stackID, "        "))
 }
 
-func renderService(app, namespace string, appPort int32) string {
+func renderService(app, namespace string, appPort int32, stackID string) string {
 	return fmt.Sprintf(`apiVersion: v1
 kind: Service
 metadata:
@@ -367,7 +382,7 @@ metadata:
   namespace: %[2]s
   labels:
     app.kubernetes.io/name: %[1]s
-    app.kubernetes.io/managed-by: nullus-cicd
+    app.kubernetes.io/managed-by: nullus-cicd%[4]s
 spec:
   selector:
     app.kubernetes.io/name: %[1]s
@@ -375,7 +390,7 @@ spec:
     - name: http
       port: %[3]d
       targetPort: http
-`, app, namespace, appPort)
+`, app, namespace, appPort, stackLabelLine(stackID, "    "))
 }
 
 func renderReadme(platform port.SCMPlatform, app, namespace string, target *port.ImageTarget) string {

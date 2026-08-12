@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -33,6 +34,16 @@ type StackHandler struct {
 	connectionInfo *usecase.GetConnectionInfo
 	audit          *audit.AuditLogger
 	pool           *pgxpool.Pool
+	// kubeconfigProvider 가 있어야 /workloads 가 클러스터의 실제 상태를 읽는다.
+	// 없으면 빈 목록을 준다 — 지어내지 않는다.
+	kubeconfigProvider port.KubeconfigProvider
+	// 테스트에서 대체할 수 있도록 조회를 함수로 분리한다.
+	collectWorkloadsFn func(ctx context.Context, kubeconfig []byte, stackID string) (clusterWorkloads, error)
+}
+
+// WithWorkloadKubeconfigProvider 는 /workloads 가 쓸 kubeconfig 공급자를 넣는다.
+func WithWorkloadKubeconfigProvider(p port.KubeconfigProvider) StackHandlerOption {
+	return func(h *StackHandler) { h.kubeconfigProvider = p }
 }
 
 // StackHandlerOption configures optional StackHandler dependencies.
@@ -555,6 +566,21 @@ func (h *StackHandler) GetWorkloads(c echo.Context) error {
 	summary := workloadSummary{TotalPipelines: len(pipelines)}
 	result := make([]workloadPipeline, 0, len(pipelines))
 
+	// 클러스터의 실제 워크로드를 한 번만 읽고 파이프라인별로 나눈다. 파이프라인마다
+	// 조회하면 같은 API 를 N 번 두드린다.
+	live := clusterWorkloads{}
+	if h.kubeconfigProvider != nil {
+		var clusterID string
+		if err := h.pool.QueryRow(ctx, `SELECT cluster_id FROM stacks WHERE id = $1`, stackID).Scan(&clusterID); err == nil {
+			if kubeconfig, kerr := h.kubeconfigProvider.GetKubeconfig(ctx, clusterID); kerr == nil {
+				live, _ = h.workloadsFor(ctx, kubeconfig, stackID)
+			} else {
+				slog.Warn("workloads: kubeconfig unavailable", "stack_id", stackID, "error", kerr)
+			}
+		}
+	}
+	objectsByApp := groupWorkloadsByApp(live)
+
 	for _, p := range pipelines {
 		wp := workloadPipeline{
 			ID:        p.ID,
@@ -580,68 +606,14 @@ func (h *StackHandler) GetWorkloads(c echo.Context) error {
 			summary.TotalDeployments++
 		}
 
-		// Build K8s objects from the pipeline info
-		replicas := int32(2)
-		port := int32(8080)
-
-		// Determine pod status based on deployment
-		podStatus := "Running"
-		if depStatus == "pending" || depStatus == "running" {
-			podStatus = "Pending"
-		} else if depStatus == "failed" {
-			podStatus = "CrashLoopBackOff"
-		}
-
-		objects := []workloadK8sObj{
-			{
-				Kind:      "Deployment",
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Replicas:  replicas,
-				Status:    "running",
-			},
-		}
-
-		// Add individual Pod entries per replica
-		for i := int32(0); i < replicas; i++ {
-			suffix := fmt.Sprintf("%s-%05x", p.Name, uint32(depStartedAt.UnixNano())%(0xfffff-uint32(i)*7)+uint32(i)*7)
-			nodeName := fmt.Sprintf("%s-node-%d", clusterName, i%3+1)
-			objects = append(objects, workloadK8sObj{
-				Kind:      "Pod",
-				Name:      suffix,
-				Namespace: p.Namespace,
-				Status:    podStatus,
-				Node:      nodeName,
-			})
-		}
-
-		objects = append(objects,
-			workloadK8sObj{
-				Kind:      "Service",
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Port:      port,
-				Status:    "active",
-			},
-			workloadK8sObj{
-				Kind:      "Ingress",
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Host:      p.Name + "." + p.Namespace + ".nullus.local",
-				Status:    "active",
-			},
-		)
-
+		// K8s 객체는 클러스터에서 읽는다. 개편 전에는 DB 행을 보고 지어냈다 —
+		// replicas 는 항상 2, 포트는 8080, 파드 이름은 배포 시각 해시, 노드는
+		// "<cluster>-node-1" 이었다. 배포된 적 없는 파이프라인도 파드 2개를 보여줬다.
+		objects, counts := buildWorkloadObjects(objectsByApp[p.Name])
 		wp.K8sObjects = objects
-
-		// Accumulate pod counts based on deployment status
-		if depStatus == "success" || depStatus == "" {
-			summary.RunningPods += int(replicas)
-		} else if depStatus == "pending" || depStatus == "running" {
-			summary.PendingPods += int(replicas)
-		} else {
-			summary.FailedPods += int(replicas)
-		}
+		summary.RunningPods += counts.Running
+		summary.PendingPods += counts.Pending
+		summary.FailedPods += counts.Failed
 
 		result = append(result, wp)
 	}

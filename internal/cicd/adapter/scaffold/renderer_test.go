@@ -366,3 +366,58 @@ func TestRender_DockerfileKeepsDefaultForPort80(t *testing.T) {
 	assert.Contains(t, dockerfile, "EXPOSE 80")
 	assert.NotContains(t, dockerfile, "sed -i")
 }
+
+// 배포된 파드가 어느 스택 소속인지 클러스터만 보고도 알 수 있어야 한다.
+//
+// 네임스페이스로는 안 된다 — 파이프라인이 default 에 깔 수도 있고, 여러 스택이
+// 한 네임스페이스를 공유할 수도 있다. 스택 도구 파드가 이미 nullus.io/stack-name
+// 을 달고 있으므로(stack/adapter/helm/manifest-builders.go) 같은 접두사를 쓴다.
+func TestRender_LabelsWorkloadsWithStackID(t *testing.T) {
+	files, err := Render(Input{
+		AppName:   "demo-app",
+		Namespace: "apps",
+		Port:      8080,
+		Replicas:  2,
+		StackID:   "stk_abc123",
+		ImageTarget: &port.ImageTarget{
+			Repository: "registry.example.com/demo-app",
+		},
+	})
+	require.NoError(t, err)
+
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.Path] = f.Content
+	}
+
+	for _, path := range []string{"deploy/deployment.yaml", "deploy/service.yaml"} {
+		content, ok := byPath[path]
+		require.True(t, ok, "%s 가 있어야 한다", path)
+		assert.Contains(t, content, "nullus.io/stack-id: stk_abc123",
+			"%s 에 스택 라벨이 있어야 워크로드 조회가 스택 단위로 걸린다", path)
+	}
+
+	// 파드 템플릿에도 붙어야 한다. Deployment 에만 붙으면 파드를 라벨로 못 찾는다.
+	deployment := byPath["deploy/deployment.yaml"]
+	assert.GreaterOrEqual(t, strings.Count(deployment, "nullus.io/stack-id: stk_abc123"), 2,
+		"metadata 와 pod template 양쪽에 있어야 한다")
+}
+
+// 스택에 속하지 않는 파이프라인도 있다. 그때는 라벨을 붙이지 않는다 —
+// 빈 값 라벨은 쿠버네티스에서 유효하지만 "스택 없음" 과 구분되지 않는다.
+func TestRender_OmitsStackLabelWhenNoStack(t *testing.T) {
+	files, err := Render(Input{
+		AppName:   "demo-app",
+		Namespace: "apps",
+		Port:      8080,
+		Replicas:  1,
+		ImageTarget: &port.ImageTarget{
+			Repository: "registry.example.com/demo-app",
+		},
+	})
+	require.NoError(t, err)
+
+	for _, f := range files {
+		assert.NotContains(t, f.Content, "nullus.io/stack-id", "%s", f.Path)
+	}
+}
