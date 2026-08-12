@@ -8,6 +8,13 @@ const mockUseDashboard = vi.hoisted(() => vi.fn())
 const mockUseAuthStore = vi.hoisted(() => vi.fn())
 const mockUseClusterStackFilterState = vi.hoisted(() => vi.fn())
 const mockStackMonitoringOverview = vi.hoisted(() => vi.fn())
+const mockUsePipelines = vi.hoisted(() => vi.fn())
+const mockUseDeployments = vi.hoisted(() => vi.fn())
+
+vi.mock('../../cicd/api/cicd-api', () => ({
+  usePipelines: () => mockUsePipelines(),
+  useDeployments: () => mockUseDeployments(),
+}))
 
 vi.mock('../api/observability-api', async () => {
   const actual = await vi.importActual('../api/observability-api')
@@ -85,7 +92,12 @@ describe('MonitoringPage', () => {
       refetch: vi.fn(),
     })
 
-    // CI/CD 탭은 target 타입 클러스터에서만 열리므로 types 를 준다.
+    // CI/CD 탭은 그 클러스터에 파이프라인이 있어야 열린다.
+    mockUsePipelines.mockReturnValue({
+      data: { items: [{ id: 'pl-1', name: 'demo-app', appType: 'web-backend', clusterId: 'cluster-1', clusterName: 'Prod Cluster', namespace: 'apps' }] },
+    })
+    mockUseDeployments.mockReturnValue({ data: { items: [] } })
+
     mockUseClusterStackFilterState.mockReturnValue({
       clusters: [{ id: 'cluster-1', name: 'Prod Cluster', status: 'connected', types: ['target'] }],
       stacks: [{ id: 'stack-1', name: 'Main Stack', clusterId: 'cluster-1', status: 'running' }],
@@ -173,6 +185,60 @@ describe('MonitoringPage', () => {
     renderWithProviders(<MonitoringPage />)
 
     expect(screen.queryByText('Select a Cluster or Stack above to begin')).not.toBeNull()
+  })
+
+  // 첫 화면은 데이터가 있는 클러스터에서 시작해야 한다.
+  //
+  // clusters[0] 을 그냥 골랐더니 스택도 파이프라인도 없는 클러스터가 잡혔고,
+  // 화면의 모든 지표가 0 으로 떴다. 필터는 정상 동작했지만 사용자에게는
+  // "지표가 안 나온다" 로 보였다.
+  it('auto-selects the first cluster that actually has a stack', () => {
+    mockUseClusterStackFilterState.mockReturnValue({
+      clusters: [
+        { id: 'empty-cluster', name: 'Empty', status: 'connected', types: ['target'] },
+        { id: 'cluster-1', name: 'Prod Cluster', status: 'connected', types: ['pipeline'] },
+      ],
+      stacks: [{ id: 'stack-1', name: 'Main Stack', clusterId: 'cluster-1', status: 'running' }],
+      filteredStacks: [{ id: 'stack-1', name: 'Main Stack', status: 'running' }],
+      selectedCluster: { id: 'cluster-1', name: 'Prod Cluster', status: 'connected', types: ['pipeline'] },
+      selectedStack: { id: 'stack-1', name: 'Main Stack', status: 'running' },
+      hasContext: true,
+    })
+
+    renderWithProviders(<MonitoringPage />)
+
+    expect(mockStackMonitoringOverview).toHaveBeenCalledWith('stack-1')
+  })
+
+  // CI/CD 탭은 클러스터가 선언한 타입이 아니라 실제 파이프라인 유무로 열린다.
+  //
+  // 타입으로 걸었을 때 실제로 이런 상태였다: 파이프라인 2개가 모두 사는
+  // kind-nullus-platform 은 types=['pipeline'] 이라 탭이 잠겼고, 탭이 열리는
+  // kind-nullus-develop(types=['target'])에는 파이프라인이 하나도 없었다.
+  // 정상 구성인데 지표가 어디서도 안 보였다.
+  it('enables the CI/CD tab for a pipeline-type cluster that has pipelines', () => {
+    mockUseClusterStackFilterState.mockReturnValue({
+      clusters: [{ id: 'cluster-1', name: 'Platform Cluster', status: 'connected', types: ['pipeline'] }],
+      stacks: [{ id: 'stack-1', name: 'Main Stack', clusterId: 'cluster-1', status: 'running' }],
+      filteredStacks: [{ id: 'stack-1', name: 'Main Stack', status: 'running' }],
+      selectedCluster: { id: 'cluster-1', name: 'Platform Cluster', status: 'connected', types: ['pipeline'] },
+      selectedStack: { id: 'stack-1', name: 'Main Stack', status: 'running' },
+      hasContext: true,
+    })
+
+    renderWithProviders(<MonitoringPage />)
+    fireEvent.click(screen.getByText('Mock Select Cluster'))
+
+    expect(screen.getByRole('button', { name: 'CI/CD' })).not.toHaveProperty('disabled', true)
+  })
+
+  it('locks the CI/CD tab when the cluster has no pipelines', () => {
+    mockUsePipelines.mockReturnValue({ data: { items: [{ id: 'pl-1', name: 'demo-app', clusterId: 'other-cluster' }] } })
+
+    renderWithProviders(<MonitoringPage />)
+    fireEvent.click(screen.getByText('Mock Select Cluster'))
+
+    expect(screen.getByRole('button', { name: 'CI/CD' })).toHaveProperty('disabled', true)
   })
 
   it('shows embed-blocked message for non-embeddable host', () => {

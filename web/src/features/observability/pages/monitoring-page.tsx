@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../../stores/auth-store'
 import { Tabs } from '../../../components/ui/tabs'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { usePipelines } from '../../cicd/api/cicd-api'
 import { StackMonitoringOverview } from '../components/stack-monitoring-overview'
 import { DashboardTabLayout } from "../components/monitoring-tab-layout"
 import type { ViewType } from "../components/monitoring-tab-layout"
@@ -28,6 +29,7 @@ export function MonitoringPage() {
 
   const { clusters, stacks, filteredStacks, selectedCluster, selectedStack, hasContext } =
     useClusterStackFilterState(selectedClusterId, selectedStackId)
+  const { data: pipelinesData } = usePipelines()
 
   const didAutoSelectRef = useRef(false)
 
@@ -35,7 +37,11 @@ export function MonitoringPage() {
     if (didAutoSelectRef.current) return
     if (clusters.length === 0) return
 
-    const firstCluster = clusters[0]
+    // 데이터가 있는 클러스터에서 시작한다. clusters[0] 을 그냥 골랐더니 스택도
+    // 파이프라인도 없는 클러스터가 잡혀 모든 지표가 0 으로 떴다 — 필터는 제대로
+    // 동작했지만 화면은 고장난 것처럼 보였다.
+    const firstCluster = clusters.find((cluster) => stacks.some((stack) => stack.clusterId === cluster.id))
+      ?? clusters[0]
     if (!firstCluster) return
 
     setSelectedClusterId(firstCluster.id)
@@ -66,14 +72,18 @@ export function MonitoringPage() {
     if (id && !activeView) setActiveView('stack')
   }
 
+  // CI/CD 탭은 클러스터가 선언한 타입이 아니라 그 클러스터에 파이프라인이 실제로
+  // 있는지로 연다.
+  //
+  // 타입(types 에 'target' 포함)으로 걸었더니 정상 구성에서 지표가 어디서도 안 보였다.
+  // 파이프라인 2개가 모두 사는 kind-nullus-platform 은 types=['pipeline'] 이라 탭이
+  // 잠겼고, 탭이 열리는 kind-nullus-develop(types=['target'])에는 파이프라인이
+  // 하나도 없었다. 등록 타입은 운영자가 손으로 적는 값이라 현실과 어긋날 수 있지만,
+  // 파이프라인의 cluster_id 는 이 화면이 그리려는 그 데이터 자체다.
   const supportsCicd = useMemo(() => {
-    if (!selectedCluster) return false
-    const types = Array.isArray(selectedCluster.types) && selectedCluster.types.length > 0
-      ? selectedCluster.types
-      : (selectedCluster.type ? [selectedCluster.type] : [])
-    const normalizedTypes = Array.from(new Set(types))
-    return normalizedTypes.includes('target')
-  }, [selectedCluster])
+    if (!selectedClusterId) return false
+    return (pipelinesData?.items ?? []).some((pipeline) => pipeline.clusterId === selectedClusterId)
+  }, [pipelinesData?.items, selectedClusterId])
 
   useEffect(() => {
     if (activeView === 'cicd' && !supportsCicd) {
