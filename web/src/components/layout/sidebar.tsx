@@ -122,7 +122,10 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'relative z-[var(--z-sidebar)] flex min-h-screen shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-default)] bg-[var(--color-surface-card)] transition-all duration-200 ease-in-out',
+        // h-full: 껍데기(AppLayout)가 뷰포트 높이를 못박으므로 거기에 맞춘다.
+        // min-h-screen 이던 시절엔 문서가 길어지면 사이드바도 같이 늘어나
+        // 화면 밖으로 밀렸다.
+        'relative z-[var(--z-sidebar)] flex h-full shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-default)] bg-[var(--color-surface-card)] transition-all duration-200 ease-in-out',
         'border-r-[var(--color-sidebar-border)]',
         collapsed ? 'w-[var(--sidebar-collapsed)]' : 'w-[var(--sidebar-width)]'
       )}
@@ -152,8 +155,9 @@ export function Sidebar() {
         </IconButton>
       </div>
 
-      {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto py-1">
+      {/* Nav groups — 로고 줄과 로그아웃 줄은 고정, 남는 높이만 이 목록이 갖는다.
+          min-h-0 이 없으면 flex 자식이 내용보다 작아지지 않아 overflow 가 안 걸린다. */}
+      <nav className="min-h-0 flex-1 overflow-y-auto py-1">
         {visibleGroups.map((group) => (
           <div key={group.key}>
             <button
@@ -204,7 +208,9 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-[var(--color-sidebar-border)] py-1">
+      {/* 로그아웃 줄은 항상 사이드바 맨 아래에 붙어 있다 — 목록이 길어도
+          shrink-0 이라 눌리지 않는다. */}
+      <div className="shrink-0 border-t border-[var(--color-sidebar-border)] py-1">
         <button
           type="button"
           onClick={async () => {
