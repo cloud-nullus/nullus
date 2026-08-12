@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -33,6 +35,16 @@ type StackHandler struct {
 	connectionInfo *usecase.GetConnectionInfo
 	audit          *audit.AuditLogger
 	pool           *pgxpool.Pool
+	// kubeconfigProvider 가 있어야 /workloads 가 클러스터의 실제 상태를 읽는다.
+	// 없으면 빈 목록을 준다 — 지어내지 않는다.
+	kubeconfigProvider port.KubeconfigProvider
+	// 테스트에서 대체할 수 있도록 조회를 함수로 분리한다.
+	collectWorkloadsFn func(ctx context.Context, kubeconfig []byte, stackID string) (clusterWorkloads, error)
+}
+
+// WithWorkloadKubeconfigProvider 는 /workloads 가 쓸 kubeconfig 공급자를 넣는다.
+func WithWorkloadKubeconfigProvider(p port.KubeconfigProvider) StackHandlerOption {
+	return func(h *StackHandler) { h.kubeconfigProvider = p }
 }
 
 // StackHandlerOption configures optional StackHandler dependencies.
@@ -84,6 +96,7 @@ func (h *StackHandler) RegisterRoutes(g *echo.Group) {
 	g.PATCH("/:stackId/tools", h.AddTools)
 	g.POST("/:stackId/config", h.SaveConfig)
 	g.GET("/:stackId/workloads", h.GetWorkloads)
+	g.GET("/:stackId/workloads/logs", h.GetWorkloadLogs)
 	g.GET("/:stackId/integrations", h.GetIntegrations)
 	g.GET("/:stackId/connection-info", h.GetConnectionInfo)
 	g.POST("/draft", h.SaveDraft)
@@ -369,7 +382,76 @@ func (h *StackHandler) ListStacks(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"items": out.Stacks, "total": len(out.Stacks)})
+	return c.JSON(http.StatusOK, map[string]any{
+		"items": h.withClusterNames(c.Request().Context(), out.Stacks),
+		"total": len(out.Stacks),
+	})
+}
+
+// withClusterNames 는 목록 항목에 클러스터 이름을 붙인다.
+//
+// 스택은 cluster_id 만 들고 있다. 이름을 안 주면 화면이 대신 id 를 이름 자리에
+// 넣어 c75747e4-… 같은 값이 "클러스터" 열에 뜬다 — 이름이 아닌 것을 이름 자리에
+// 두면 사용자는 그게 이름인 줄 안다.
+//
+// 이름을 못 찾으면 빈 문자열을 준다. 화면은 그때 "-" 로 그려 "모른다" 를 그대로
+// 보인다. 조회 실패가 목록 실패는 아니므로 에러로 올리지 않는다.
+func (h *StackHandler) withClusterNames(ctx context.Context, stacks []*domain.Stack) []map[string]any {
+	names := h.clusterNamesFor(ctx, stacks)
+
+	items := make([]map[string]any, 0, len(stacks))
+	for _, stack := range stacks {
+		item := map[string]any{}
+		// 스택은 커스텀 마셜러 없이 JSON 태그로 직렬화된다. 필드를 손으로 옮기면
+		// 새 필드가 추가될 때마다 여기서 빠지므로, 한 번 왕복시켜 그대로 쓴다.
+		raw, err := json.Marshal(stack)
+		if err != nil {
+			continue
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			continue
+		}
+		item["cluster_name"] = names[stack.ClusterID]
+		items = append(items, item)
+	}
+	return items
+}
+
+func (h *StackHandler) clusterNamesFor(ctx context.Context, stacks []*domain.Stack) map[string]string {
+	names := map[string]string{}
+	if h.pool == nil || len(stacks) == 0 {
+		return names
+	}
+
+	ids := make([]string, 0, len(stacks))
+	seen := map[string]bool{}
+	for _, stack := range stacks {
+		id := strings.TrimSpace(stack.ClusterID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return names
+	}
+
+	rows, err := h.pool.Query(ctx, "SELECT id::text, name FROM clusters WHERE id::text = ANY($1)", ids)
+	if err != nil {
+		slog.Warn("failed to resolve cluster names for stack list", "error", err)
+		return names
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			continue
+		}
+		names[id] = name
+	}
+	return names
 }
 
 // GetStack handles GET /api/v1/stacks/:id.
@@ -498,6 +580,12 @@ type workloadK8sObj struct {
 	Port      int32  `json:"port,omitempty"`
 	Host      string `json:"host,omitempty"`
 	Node      string `json:"node,omitempty"`
+	// TemplateID 는 이 워크로드를 만든 CI/CD 템플릿이다. 라벨이 없으면 빈 값.
+	TemplateID string `json:"templateId,omitempty"`
+	// CPUMillicores / MemoryMiB 는 실사용량이다. 포인터인 이유는 "못 읽음"과
+	// "0" 을 구분하기 위해서다 — metrics-server 가 없으면 null 로 나간다.
+	CPUMillicores *int64 `json:"cpuMillicores"`
+	MemoryMiB     *int64 `json:"memoryMib"`
 }
 
 type workloadSummary struct {
@@ -555,6 +643,21 @@ func (h *StackHandler) GetWorkloads(c echo.Context) error {
 	summary := workloadSummary{TotalPipelines: len(pipelines)}
 	result := make([]workloadPipeline, 0, len(pipelines))
 
+	// 클러스터의 실제 워크로드를 한 번만 읽고 파이프라인별로 나눈다. 파이프라인마다
+	// 조회하면 같은 API 를 N 번 두드린다.
+	live := clusterWorkloads{}
+	if h.kubeconfigProvider != nil {
+		var clusterID string
+		if err := h.pool.QueryRow(ctx, `SELECT cluster_id FROM stacks WHERE id = $1`, stackID).Scan(&clusterID); err == nil {
+			if kubeconfig, kerr := h.kubeconfigProvider.GetKubeconfig(ctx, clusterID); kerr == nil {
+				live, _ = h.workloadsFor(ctx, kubeconfig, stackID)
+			} else {
+				slog.Warn("workloads: kubeconfig unavailable", "stack_id", stackID, "error", kerr)
+			}
+		}
+	}
+	objectsByApp := groupWorkloadsByApp(live)
+
 	for _, p := range pipelines {
 		wp := workloadPipeline{
 			ID:        p.ID,
@@ -580,68 +683,14 @@ func (h *StackHandler) GetWorkloads(c echo.Context) error {
 			summary.TotalDeployments++
 		}
 
-		// Build K8s objects from the pipeline info
-		replicas := int32(2)
-		port := int32(8080)
-
-		// Determine pod status based on deployment
-		podStatus := "Running"
-		if depStatus == "pending" || depStatus == "running" {
-			podStatus = "Pending"
-		} else if depStatus == "failed" {
-			podStatus = "CrashLoopBackOff"
-		}
-
-		objects := []workloadK8sObj{
-			{
-				Kind:      "Deployment",
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Replicas:  replicas,
-				Status:    "running",
-			},
-		}
-
-		// Add individual Pod entries per replica
-		for i := int32(0); i < replicas; i++ {
-			suffix := fmt.Sprintf("%s-%05x", p.Name, uint32(depStartedAt.UnixNano())%(0xfffff-uint32(i)*7)+uint32(i)*7)
-			nodeName := fmt.Sprintf("%s-node-%d", clusterName, i%3+1)
-			objects = append(objects, workloadK8sObj{
-				Kind:      "Pod",
-				Name:      suffix,
-				Namespace: p.Namespace,
-				Status:    podStatus,
-				Node:      nodeName,
-			})
-		}
-
-		objects = append(objects,
-			workloadK8sObj{
-				Kind:      "Service",
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Port:      port,
-				Status:    "active",
-			},
-			workloadK8sObj{
-				Kind:      "Ingress",
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Host:      p.Name + "." + p.Namespace + ".nullus.local",
-				Status:    "active",
-			},
-		)
-
+		// K8s 객체는 클러스터에서 읽는다. 개편 전에는 DB 행을 보고 지어냈다 —
+		// replicas 는 항상 2, 포트는 8080, 파드 이름은 배포 시각 해시, 노드는
+		// "<cluster>-node-1" 이었다. 배포된 적 없는 파이프라인도 파드 2개를 보여줬다.
+		objects, counts := buildWorkloadObjects(objectsByApp[p.Name])
 		wp.K8sObjects = objects
-
-		// Accumulate pod counts based on deployment status
-		if depStatus == "success" || depStatus == "" {
-			summary.RunningPods += int(replicas)
-		} else if depStatus == "pending" || depStatus == "running" {
-			summary.PendingPods += int(replicas)
-		} else {
-			summary.FailedPods += int(replicas)
-		}
+		summary.RunningPods += counts.Running
+		summary.PendingPods += counts.Pending
+		summary.FailedPods += counts.Failed
 
 		result = append(result, wp)
 	}

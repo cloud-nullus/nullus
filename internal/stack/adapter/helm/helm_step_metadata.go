@@ -74,6 +74,13 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			ChartName: "metrics-server",
 			RepoURL:   "https://kubernetes-sigs.github.io/metrics-server/",
 			Version:   "3.12.2",
+			// 스택 네임스페이스에 깔면 안 된다. 이 차트가 만드는 APIService
+			// v1beta1.metrics.k8s.io 는 cluster-scoped 라, 스택을 지우면 Service 만
+			// 사라지고 APIService 는 죽은 대상을 계속 가리킨다. 그러면 API discovery 가
+			// 실패해 **클러스터의 모든 네임스페이스 삭제가 교착된다** — 실제로 무관한
+			// 스택 셋이 이틀 넘게 Terminating 에 갇혔다.
+			// cert-manager 가 같은 이유로 자기 네임스페이스를 못박고 있다.
+			Namespace: "kube-system",
 			Values:    DefaultValues("installing_metrics_server"),
 			Wait:      false,
 		}, true
@@ -104,7 +111,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			ReleaseName: domain.MinIOServiceName,
 			ChartName:   "minio",
 			RepoURL:     "https://charts.min.io/",
-			Version:     "5.4.0",
+			Version:     domain.MinIOChartVersion,
 			Values:      DefaultValues("installing_minio"),
 			Wait:        false,
 		}, true
@@ -112,7 +119,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "gitlab",
 			RepoURL:   "https://charts.gitlab.io/",
-			Version:   "8.7.2",
+			Version:   domain.GitLabChartVersion,
 			Values:    DefaultValues("installing_gitlab"),
 			Wait:      false,
 		}, true
@@ -166,7 +173,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "argo-cd",
 			RepoURL:   "https://argoproj.github.io/argo-helm",
-			Version:   "7.7.16",
+			Version:   domain.ArgoCDChartVersion,
 			Values:    DefaultValues("installing_argocd"),
 			Wait:      false,
 		}, true
@@ -182,7 +189,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "kube-prometheus-stack",
 			RepoURL:   "https://prometheus-community.github.io/helm-charts",
-			Version:   "69.3.0",
+			Version:   domain.PrometheusChartVersion,
 			Values:    DefaultValues("installing_prometheus"),
 			Wait:      false,
 		}, true
@@ -190,7 +197,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "grafana",
 			RepoURL:   "https://grafana.github.io/helm-charts",
-			Version:   "8.9.0",
+			Version:   domain.GrafanaChartVersion,
 			Values:    DefaultValues("installing_grafana"),
 			Wait:      false,
 		}, true

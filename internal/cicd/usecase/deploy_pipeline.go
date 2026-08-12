@@ -84,13 +84,28 @@ func includesOptionalManifest(manifestTypes []string, target string) bool {
 	return false
 }
 
+// buildStepCount 는 BuildStepPlan 이 매니페스트 단계 앞에 붙이는 빌드 단계 수다.
+//
+// applyToCluster 가 진행 상황을 **인덱스로** 기록하므로, 이 값과 어긋나면 매니페스트
+// 적용 결과가 빌드 단계 이름 위에 찍힌다. 실제로 그런 일이 있었다 — 계획은
+// DockerfilePath 만 보고 3개를 붙이는데 applyToCluster 는 imagePreparer 와
+// clusterTargetProvider 까지 확인한 뒤에야 오프셋을 3으로 올려서, 이미지 준비기가
+// 없는 경로에서 "Git Clone" 단계에 "namespace/... configured" 가 기록됐다.
+// 두 곳이 같은 함수를 쓰게 해서 다시 갈라지지 않게 한다.
+func buildStepCount(pipeline *domain.Pipeline) int {
+	if pipeline != nil && pipeline.DockerfilePath != "" {
+		return 3
+	}
+	return 0
+}
+
 func BuildStepPlan(pipeline *domain.Pipeline, manifestTypes ...[]string) []string {
 	var selected []string
 	if len(manifestTypes) > 0 {
 		selected = manifestTypes[0]
 	}
-	steps := []string{"Namespace 생성", "Deployment 생성"}
-	if pipeline != nil && pipeline.DockerfilePath != "" {
+	steps := []string{"Create Namespace", "Create Deployment"}
+	if buildStepCount(pipeline) > 0 {
 		hasRegistry := pipeline.EnvVars[envRegistryURL] != ""
 		imageStep := "Image Load"
 		if hasRegistry {
@@ -99,10 +114,10 @@ func BuildStepPlan(pipeline *domain.Pipeline, manifestTypes ...[]string) []strin
 		steps = append([]string{"Git Clone", "Docker Build", imageStep}, steps...)
 	}
 	if includesOptionalManifest(selected, "service") {
-		steps = append(steps, "Service 생성")
+		steps = append(steps, "Create Service")
 	}
 	if includesOptionalManifest(selected, "ingress") {
-		steps = append(steps, "Ingress 생성")
+		steps = append(steps, "Create Ingress")
 	}
 	return steps
 }
@@ -205,7 +220,9 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 	}
 
 	var imageRef string
-	stepOffset := 0
+	// BuildStepPlan 과 같은 근거로 계산한다. 이미지 준비기 유무와 무관하게
+	// 계획에 빌드 단계가 있으면 매니페스트 단계는 그만큼 뒤에서 시작한다.
+	stepOffset := buildStepCount(pipeline)
 
 	if pipeline.DockerfilePath != "" && uc.imagePreparer != nil && uc.clusterTargetProvider != nil {
 		target, err := uc.clusterTargetProvider.GetTarget(ctx, pipeline.ClusterID)
@@ -231,7 +248,6 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 			return fmt.Errorf("prepare image: %w", err)
 		}
 		imageRef = builtRef
-		stepOffset = 3
 	}
 
 	kubeconfig, err := uc.kubeconfigProvider.GetKubeconfig(ctx, pipeline.ClusterID)

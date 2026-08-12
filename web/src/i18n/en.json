@@ -34,7 +34,8 @@
     "loading": "Loading...",
     "goHome": "Go to Home",
     "notFound": "Page not found",
-    "notFoundDesc": "The page you are looking for does not exist or has been moved."
+    "notFoundDesc": "The page you are looking for does not exist or has been moved.",
+    "close": "Close"
   },
   "header": {
     "roles": {
@@ -123,7 +124,8 @@
       "visualization": "Visualization",
       "metrics": "Metrics",
       "logs": "Logs",
-      "traces": "Traces"
+      "traces": "Traces",
+      "traceExporter": "Exporter / Agent"
     },
     "resourceTotal": {
       "description": "Combined request/limit totals for {{count}} selected OSS"
@@ -158,6 +160,10 @@
       "apiBaseUrl": "API base URL (optional)",
       "token": "Personal access token",
       "tokenScopes": "Required scopes: repo, workflow, read:packages. The token is never stored in the stack config — it goes straight into the stack’s OpenBao during install."
+    },
+    "authentication": {
+      "sharedNotice": "Choosing OpenBao makes every OSS in this stack share a single authentication provider (OpenBao). If left unselected, deployment proceeds the existing way.",
+      "title": "Authentication"
     }
   },
   "stackTemplatePage": {
@@ -182,10 +188,16 @@
       "removeSection": "Remove {{section}} section",
       "add": "Add",
       "addTool": "Add Tool",
-      "addSection": "Add Section"
+      "addSection": "Add Section",
+      "updateTool": "Update Tool"
     },
     "card": {
-      "estimatedMinutes": "{{minutes}} min"
+      "estimatedMinutes": "{{minutes}} min",
+      "estimatedTime": "Estimated Time",
+      "recommendedUse": "Recommended Use",
+      "minResources": "Minimum Resources",
+      "includedTools": "Included Tools",
+      "minutes": "{{minutes}} min"
     },
     "modal": {
       "templateDetail": "Template Detail",
@@ -198,7 +210,8 @@
       "compatibilityFallback": "Compatibility details are managed in Stack Version.",
       "editTitle": "Edit Template",
       "createTitle": "Create Template",
-      "na": "N/A"
+      "na": "N/A",
+      "matrixVersionNote": "These versions reflect the validated matrix snapshot used for template guidance."
     },
     "form": {
       "templateId": "Template ID",
@@ -215,7 +228,8 @@
       "estimatedInstallTimeAuto": "Estimated Install Time (Auto)",
       "estimatedInstallTimeValue": "{{minutes}} min ({{nanoseconds}} ns)",
       "recommendedUseCase": "Recommended Use Case",
-      "minimumResources": "Minimum Resources"
+      "minimumResources": "Minimum Resources",
+      "toolsHint": "Create the template scaffold first, then add or refine tools by section."
     },
     "errors": {
       "updateFailed": "Failed to update template.",
@@ -653,7 +667,10 @@
       "appType": "App Type",
       "cluster": "Cluster",
       "status": "Status",
-      "lastDeployed": "Last Deployed"
+      "lastDeployed": "Last Deployed",
+      "noStack": "—",
+      "stack": "Stack",
+      "deletedStack": "Deleted"
     },
     "emptyPipelines": "No pipelines found.",
     "emptyDeployments": "No deployment history.",
@@ -664,7 +681,9 @@
     },
     "status": {
       "active": "Active"
-    }
+    },
+    "emptyDetail": "Select a pipeline from the list to view details here.",
+    "listHint": "Selecting a pipeline from the list updates the detail panel immediately."
   },
   "cicdHistoryPage": {
     "title": "CI/CD History",
@@ -684,15 +703,22 @@
     "filters": {
       "allTypes": "All Types",
       "allStatus": "All Status"
+    },
+    "actions": {
+      "viewDetail": "View detail"
+    },
+    "detail": {
+      "title": "Deployment Detail",
+      "close": "Close",
+      "field": "Field",
+      "value": "Value",
+      "triggeredBy": "Triggered By",
+      "empty": "Select a deployment to view its detail."
     }
   },
   "observability": {
     "monitoring": "Monitoring Dashboard",
     "monitoringDesc": "Select a Cluster or Stack to start monitoring",
-    "platformToolHealth": "Platform Tool Health",
-    "platformToolHealthLoading": "Checking installed tools...",
-    "platformToolHealthEmpty": "No installed tools yet. Tools appear here once a stack finishes installing.",
-    "platformToolHealthSummary": "{{healthy}} / {{total}} healthy",
     "alertRules": "Alert Rules",
     "alertRulesDesc": "Alert rule list and management",
     "alertHistory": "Alert History",
@@ -733,7 +759,9 @@
       }
     },
     "actions": {
-      "newStack": "New Stack"
+      "newStack": "New Stack",
+      "backToList": "Back to Stack List",
+      "import": "Import"
     },
     "table": {
       "stackName": "Stack Name",
@@ -755,7 +783,8 @@
       "info": "Info",
       "monitoring": "Monitoring",
       "history": "History",
-      "version-upgrade": "Version Upgrade"
+      "version-upgrade": "Version Upgrade",
+      "workloads": "Workloads"
     },
     "status": {
       "pending": "Pending",
@@ -770,7 +799,9 @@
       "running": "Running",
       "success": "Success",
       "cancelled": "Cancelled",
-      "healthy": "Running"
+      "healthy": "Running",
+      "deleted": "Deleted",
+      "terminating": "Terminating"
     },
     "confirm": {
       "deleteTitle": "Delete Stack",
@@ -788,7 +819,42 @@
       "copyFailed": "Copy failed",
       "copyAll": "Copy all"
     },
-    "hiddenInstallCardsNotice": "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs."
+    "delete": {
+      "failed": "Failed to start stack deletion.",
+      "started": "Stack deletion started. Kubernetes resources and DB data are being removed."
+    },
+    "export": {
+      "confirm": "Download",
+      "failure": "Failed to export stack config.",
+      "fileName": "File name",
+      "format": "Format",
+      "hint": "The selected format extension is added automatically.",
+      "open": "Export",
+      "stack": "Stack",
+      "success": "Export download started.",
+      "title": "Export Stack"
+    },
+    "import": {
+      "changes": "Import changes",
+      "confirm": "Restore",
+      "currentState": "Current state",
+      "description": "Upload a stack export file to review and apply it.",
+      "diffHint": "Field-level differences are included in this review.",
+      "failure": "Failed to import stack.",
+      "file": "Export file",
+      "fileRequired": "Select an export file.",
+      "name": "Stack",
+      "preview": "Review Import",
+      "selectedFile": "Selected:",
+      "success": "Stack restored.",
+      "title": "Import Stack"
+    },
+    "workloads": {
+      "title": "Workloads",
+      "summary": "{{ready}} / {{total}} pods ready",
+      "loading": "Reading pods from the cluster...",
+      "empty": "No pods found for this stack in the cluster."
+    }
   },
   "deploy": {
     "title": "Deployment Log",
@@ -839,7 +905,8 @@
       "firedAt": "Fired At",
       "resolvedAt": "Resolved At",
       "message": "Message"
-    }
+    },
+    "selectAlert": "Select an alert to view its detail."
   },
   "alertRulesPage": {
     "table": {
@@ -920,7 +987,9 @@
       "inactive": "Inactive",
       "verifying": "Verifying connection...",
       "verifySuccess": "Connection verified successfully.",
-      "verifyFailed": "Connection failed. Check endpoint/kubeconfig."
+      "verifyFailed": "Connection failed. Check endpoint/kubeconfig.",
+      "verifyBeforeSubmit": "Verify connection at the final step before saving.",
+      "verifyDraftRequired": "Kubeconfig is required before verification."
     },
     "status": {
       "connected": "Connected",
@@ -1166,7 +1235,9 @@
       "dockerfileRepository": "Dockerfile Repository",
       "deployYamlRepository": "Deploy YAML Repository",
       "branch": "Branch",
-      "directory": "Directory"
+      "directory": "Directory",
+      "newNamespace": "New Namespace",
+      "newNamespacePlaceholder": "my-namespace"
     },
     "manifestLoad": {
       "pathRequired": "Enter a Config Repository URL and YAML path.",
@@ -1181,7 +1252,8 @@
       "create": "Create",
       "execute": "Execute"
     },
-    "yamlPreview": "YAML Manifest Preview"
+    "yamlPreview": "YAML Manifest Preview",
+    "manifestDescription": "Review generated manifests before creating the pipeline."
   },
   "stackHistoryPage": {
     "title": "Stack History",
@@ -1218,7 +1290,8 @@
     },
     "filters": {
       "allClusters": "All Clusters"
-    }
+    },
+    "selectEntry": "Select a change to view its configuration snapshot."
   },
   "stackOssDefault": {
     "description": "View, edit, and register default OSS request/limit resources for DevSecOps Stack.",
@@ -1227,6 +1300,14 @@
       "suffix": "is an idempotent upsert by",
       "middle": "is an idempotent upsert by",
       "end": ""
+    },
+    "errors": {
+      "saveFailed": "Failed to save the OSS default resource.",
+      "requiredFields": "tool_key and display_name are required."
+    },
+    "empty": {
+      "none": "No OSS default resources registered.",
+      "search": "No OSS default resources match the search."
     }
   },
   "monitoringPage": {
@@ -1278,9 +1359,9 @@
   },
   "stackVersionsAdmin": {
     "title": "Stack Version Management",
-    "subtitle": "Review Narwhal-based compatibility matrices and verify cluster architecture fit.",
+    "subtitle": "Review the compatibility matrices used for installation and verify cluster architecture fit.",
     "listTitle": "Compatibility Matrices",
-    "listSubtitle": "Golden Path 3 canonical matrices (Narwhal baseline)",
+    "listSubtitle": "Golden Path 3 canonical matrices",
     "loadError": "Failed to load compatibility matrices.",
     "selectMatrix": "Select a matrix to view details.",
     "k8sRangeLabel": "Kubernetes version range",
@@ -1403,6 +1484,57 @@
     "scope": {
       "global": "Global",
       "stackList": "Stack list"
+    }
+  },
+  "cicdPipelineLogsPage": {
+    "emptyDeployments": "No deployment history."
+  },
+  "confirmDialog": {
+    "typeToConfirm": {
+      "prefix": "To confirm, type",
+      "suffix": "exactly."
+    }
+  },
+  "dataTable": {
+    "empty": "No data available."
+  },
+  "versionDiff": {
+    "empty": "No configuration changes found."
+  },
+  "goldenPathPage": {
+    "description": "Start quickly with a validated CI/CD tool combination.",
+    "searchPlaceholder": "Search Golden Paths...",
+    "empty": {
+      "search": "No matching results."
+    },
+    "actions": {
+      "viewDetail": "View Detail",
+      "use": "Use this Golden Path"
+    },
+    "detail": {
+      "description": "Description"
+    }
+  },
+  "tokenManagement": {
+    "description": "Check token status, rotate manually, and manage approvals, pauses, and lookups.",
+    "testModeNotice": "Test mode: step-up re-authentication is disabled and handled automatically."
+  },
+  "stackInfo": {
+    "panels": {
+      "artifacts": "Artifact repositories configured for this stack",
+      "pipeline": "CI/CD pipeline tools configured for this stack",
+      "monitoring": "Monitoring tools configured for this stack",
+      "logging": "Logging tools configured for this stack",
+      "resources": "Resource allocation for this stack"
+    },
+    "allocated": "Allocated {{label}}",
+    "clusterInfo": "Cluster Info"
+  },
+  "monitoring": {
+    "scale": {
+      "request": "Req",
+      "limit": "Lim",
+      "current": "Now"
     }
   }
 }

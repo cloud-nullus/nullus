@@ -1,19 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  BookOpen,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-  Wrench,
-  X,
-} from "lucide-react";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
+import { BookOpen, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Trash2, Wrench, X } from "lucide-react";
 import {
   useCreateTemplate,
   useDeleteTemplate,
@@ -51,23 +39,38 @@ import {
   estimateInstallMinutesFromTools,
   estimateInstallMinutesForTemplate,
 } from "../utils/template-config";
+import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from "../../../components/ui/search-input"
+import { TextInput } from "../../../components/ui/text-input"
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
-  source_repository: { bg: "rgba(59,130,246,0.12)", color: "#60a5fa" },
-  ci_platform: { bg: "rgba(139,92,246,0.12)", color: "#a78bfa" },
-  container_registry: { bg: "rgba(34,197,94,0.12)", color: "#86efac" },
-  storage_backend: { bg: "rgba(249,115,22,0.12)", color: "#fb923c" },
-  cd_tool: { bg: "rgba(236,72,153,0.12)", color: "#f472b6" },
-  monitoring_collection: { bg: "rgba(168,85,247,0.12)", color: "#d8b4fe" },
-  monitoring_visualization: { bg: "rgba(14,165,233,0.12)", color: "#38bdf8" },
-  log_aggregation: { bg: "rgba(234,179,8,0.12)", color: "#fde047" },
+  source_repository: { bg: "color-mix(in srgb, var(--color-info) 12%, transparent)", color: "var(--color-info)" },
+  ci_platform: { bg: "color-mix(in srgb, var(--color-accent-alt) 12%, transparent)", color: "var(--color-accent-alt)" },
+  container_registry: { bg: "color-mix(in srgb, var(--color-success) 12%, transparent)", color: "var(--color-success)" },
+  storage_backend: { bg: "color-mix(in srgb, var(--color-warning) 12%, transparent)", color: "var(--color-warning)" },
+  cd_tool: { bg: "color-mix(in srgb, var(--color-accent-alt) 12%, transparent)", color: "var(--color-accent-alt)" },
+  monitoring_collection: { bg: "color-mix(in srgb, var(--color-accent-alt) 12%, transparent)", color: "var(--color-accent-alt)" },
+  monitoring_visualization: { bg: "color-mix(in srgb, var(--color-info) 12%, transparent)", color: "var(--color-info)" },
+  log_aggregation: { bg: "color-mix(in srgb, var(--color-warning) 12%, transparent)", color: "var(--color-warning)" },
 };
 
 const getToolCategoryColor = (category: string) =>
   TOOL_CATEGORY_COLORS[category] ?? {
-    bg: "rgba(99,102,241,0.12)",
-    color: "#a5b4fc",
+    bg: "color-mix(in srgb, var(--color-primary) 12%, transparent)",
+    color: "var(--color-primary)",
   };
+
+/**
+ * 표시용 도구 목록에서 중복을 걷어낸다.
+ *
+ * 서버가 주는 tools 는 "역할별 선택"의 나열이라 한 제품이 두 역할을 겸하면 두 번
+ * 들어온다 — Nexus 는 컨테이너 레지스트리이면서 패키지 저장소다. 그대로 그리면
+ * 칩이 두 개 뜨고("Nexus … Nexus"), key={tool} 이 충돌해 React 가 경고를 낸다.
+ * 같은 판단이 utils/stack-list-utils.ts 의 도구 수 집계에도 이미 들어가 있다.
+ */
+function uniqueTools(tools: string[] | undefined): string[] {
+  return Array.from(new Set(Array.isArray(tools) ? tools : []))
+}
 
 export function StackTemplatePage() {
   const { t, i18n } = useTranslation();
@@ -514,66 +517,53 @@ export function StackTemplatePage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          {
-            label: t("stackTemplatePage.breadcrumb.stackList", "Stack List"),
-            path: "/stack/list",
-          },
-          {
-            label: t("stackTemplatePage.breadcrumb.current", "Stack Template"),
-          },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            {
+              label: t("stackTemplatePage.breadcrumb.stackList", "Stack List"),
+              path: "/stack/list",
+            },
+            {
+              label: t("stackTemplatePage.breadcrumb.current", "Stack Template"),
+            },
+          ]
+        }
+        icon={<BookOpen size={16} />}
+        tone="success"
+        title={t("stackTemplatePage.title", "Stack Template")}
+        subtitle={
+          t(
+            "stackTemplatePage.description",
+            "Select a validated DevSecOps stack template to get started quickly.",
+          )
+        }
+        actions={
+          isAdmin && (
+            <Button
+              variant="primary"
+              size="md"
+              type="button"
+              onClick={openCreateModal}
+            >
+              <Plus size={15} />
+              {t("stackTemplatePage.actions.createTemplate", "Create Template")}
+            </Button>
+          )
+        }
       />
-
-      {/* Page header */}
-      <div className="mb-7 flex items-start justify-between gap-4">
-        <div className="mb-2 flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.15)] text-[#34d399]">
-            <BookOpen size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t("stackTemplatePage.title", "Stack Template")}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t(
-                "stackTemplatePage.description",
-                "Select a validated DevSecOps stack template to get started quickly.",
-              )}
-            </p>
-          </div>
-        </div>
-        {isAdmin && (
-          <Button
-            variant="primary"
-            size="md"
-            type="button"
-            onClick={openCreateModal}
-          >
-            <Plus size={15} />
-            {t("stackTemplatePage.actions.createTemplate", "Create Template")}
-          </Button>
-        )}
-      </div>
 
       {/* Search */}
       <div className="mb-5 max-w-[360px]">
-        <div className="relative">
-          <Search
-            size={13}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-          />
-          <input
-            placeholder={t(
-              "stackTemplatePage.searchPlaceholder",
-              "Search templates...",
-            )}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-          />
-        </div>
+        <SearchInput
+          wrapperClassName="w-[220px]"
+          placeholder={t(
+          "stackTemplatePage.searchPlaceholder",
+          "Search templates...",
+          )}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {/* Template cards */}
@@ -594,13 +584,13 @@ export function StackTemplatePage() {
             </div>
 
             {/* Info grid */}
-            <div className="grid grid-cols-2 gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] p-3">
+            <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
               <div>
                 <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
                   {t("stackTemplatePage.card.estimatedTime", "설치 시간")}
                 </span>
                 <p className="m-0 mt-1 text-[13px] font-semibold text-[var(--color-text-primary)]">
-                  {estimateInstallMinutesForTemplate(template)}분
+                  {t('stackTemplatePage.card.minutes', '{{minutes}} min', { minutes: estimateInstallMinutesForTemplate(template) })}
                 </p>
               </div>
               {template.recommendedUseCase && (
@@ -631,17 +621,17 @@ export function StackTemplatePage() {
                 {t("stackTemplatePage.card.includedTools", "포함된 도구")}
               </span>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {template.tools.slice(0, 4).map((tool) => (
+                {uniqueTools(template.tools).slice(0, 4).map((tool) => (
                   <span
                     key={tool}
-                    className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-1 text-[11px] font-semibold text-[#a5b4fc]"
+                    className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
                   >
                     {tool}
                   </span>
                 ))}
-                {template.tools.length > 4 && (
-                  <span className="rounded-md bg-[rgba(107,114,128,0.12)] px-2 py-1 text-[11px] font-semibold text-[#9ca3af]">
-                    +{template.tools.length - 4}
+                {uniqueTools(template.tools).length > 4 && (
+                  <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-text-muted)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
+                    +{uniqueTools(template.tools).length - 4}
                   </span>
                 )}
               </div>
@@ -748,7 +738,7 @@ export function StackTemplatePage() {
                   variant="primary"
                   size="sm"
                   type="button"
-                  className="bg-[linear-gradient(135deg,#34d399,#10b981)] text-white"
+                  className="bg-[linear-gradient(135deg,var(--color-success),var(--color-success))] text-white"
                   onClick={() => {
                     setSelectedTemplateId(null);
                     handleUseTemplate(selectedTemplate);
@@ -784,7 +774,7 @@ export function StackTemplatePage() {
                   )}
                 </span>
                 <p className="m-0 mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
-                  {estimateInstallMinutesForTemplate(selectedTemplate)}분
+                  {t('stackTemplatePage.card.minutes', '{{minutes}} min', { minutes: estimateInstallMinutesForTemplate(selectedTemplate) })}
                 </p>
               </div>
               {selectedDetail.compatibility && (
@@ -856,12 +846,12 @@ export function StackTemplatePage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-                  {selectedTemplate.tools.map((tool) => (
+                  {uniqueTools(selectedTemplate.tools).map((tool) => (
                     <div
                       key={tool}
-                      className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2"
+                      className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-2.5 py-2"
                     >
-                      <Wrench size={13} color="#fbbf24" />
+                      <Wrench size={13} color="var(--color-warning)" />
                       <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
                         {tool}
                       </span>
@@ -947,7 +937,7 @@ export function StackTemplatePage() {
                     key={section.id}
                     className="border-b border-[var(--color-border-default)] last:border-b-0"
                   >
-                    <div className="flex items-center bg-[rgba(255,255,255,0.03)]">
+                    <div className="flex items-center bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)]">
                       <button
                         type="button"
                         onClick={() => toggleToolSection(section.id)}
@@ -974,7 +964,7 @@ export function StackTemplatePage() {
                           e.stopPropagation();
                           removeSection(section.id);
                         }}
-                        className="mr-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-transparent text-[var(--color-text-muted)] transition-colors hover:border-[rgba(248,113,113,0.5)] hover:text-[#f87171]"
+                        className="mr-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-transparent text-[var(--color-text-muted)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)] hover:text-[var(--color-error)]"
                         title={t(
                           "stackTemplatePage.actions.removeSection",
                           "Remove {{section}} section",
@@ -987,7 +977,7 @@ export function StackTemplatePage() {
 
                     {isOpen && (
                       <div className="flex flex-col gap-2 px-3 py-3">
-                        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.01)] p-2">
+                        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_1%,_transparent)] p-2">
                           {sectionCategories.map((category) => {
                             const draftKey = addToolDraftKey(
                               section.id,
@@ -1015,7 +1005,7 @@ export function StackTemplatePage() {
                                 key={draftKey}
                                 className="grid gap-2 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto_auto]"
                               >
-                                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-[9px] text-sm text-[var(--color-text-secondary)]">
+                                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-secondary)]">
                                   {category.label}
                                 </div>
                                 <select
@@ -1031,7 +1021,7 @@ export function StackTemplatePage() {
                                       app_version: nextDefaults.app_version,
                                     });
                                   }}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
+                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                                 >
                                   {category.options.map((option) => (
                                     <option key={option} value={option}>
@@ -1039,7 +1029,7 @@ export function StackTemplatePage() {
                                     </option>
                                   ))}
                                 </select>
-                                <input
+                                <TextInput
                                   type="text"
                                   value={helmVersion}
                                   onChange={(event) =>
@@ -1054,9 +1044,8 @@ export function StackTemplatePage() {
                                     "stackTemplatePage.form.helmVersionPlaceholder",
                                     "Helm version",
                                   )}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
-                                <input
+                                <TextInput
                                   type="text"
                                   value={appVersion}
                                   onChange={(event) =>
@@ -1071,7 +1060,6 @@ export function StackTemplatePage() {
                                     "stackTemplatePage.form.appVersionPlaceholder",
                                     "App version",
                                   )}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                                 />
                                 <Button
                                   variant="outline"
@@ -1098,7 +1086,7 @@ export function StackTemplatePage() {
                                       category.category,
                                     )
                                   }
-                                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--color-border-default)] text-[var(--color-text-secondary)] transition-colors hover:border-[rgba(248,113,113,0.5)] hover:text-[#f87171]"
+                                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--color-border-default)] text-[var(--color-text-secondary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)] hover:text-[var(--color-error)]"
                                 >
                                   <X size={15} />
                                 </button>
@@ -1115,7 +1103,7 @@ export function StackTemplatePage() {
 
             {addSectionOpen ? (
               <div className="mt-2 flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] p-3">
-                <input
+                <TextInput
                   type="text"
                   value={newSectionLabel}
                   onChange={(e) => setNewSectionLabel(e.target.value)}
@@ -1123,9 +1111,8 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.sectionNamePlaceholder",
                     "Section name (e.g. Security)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
-                <input
+                <TextInput
                   type="text"
                   value={newCategoryLabel}
                   onChange={(e) => setNewCategoryLabel(e.target.value)}
@@ -1133,9 +1120,8 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.firstCategoryPlaceholder",
                     "First category (e.g. Scanner)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
-                <input
+                <TextInput
                   type="text"
                   value={newCategoryOptions}
                   onChange={(e) => setNewCategoryOptions(e.target.value)}
@@ -1143,7 +1129,6 @@ export function StackTemplatePage() {
                     "stackTemplatePage.form.toolOptionsPlaceholder",
                     "Tool options (comma separated, e.g. Trivy, SonarQube)",
                   )}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                 />
                 <div className="flex gap-2">
                   <Button
@@ -1175,7 +1160,7 @@ export function StackTemplatePage() {
               </button>
             )}
           </div>
-          <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2.5">
+          <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2.5">
             <div className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
               {t(
                 "stackTemplatePage.form.estimatedInstallTimeAuto",
@@ -1216,7 +1201,7 @@ export function StackTemplatePage() {
             />
           </div>
           {formError && (
-            <div className="text-xs text-[#f87171]">{formError}</div>
+            <div className="text-xs text-[var(--color-error)]">{formError}</div>
           )}
         </div>
       </Modal>

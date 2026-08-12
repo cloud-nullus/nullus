@@ -12,6 +12,12 @@ web/dist/
 web/coverage/
 web/test-results/
 web/playwright-report/
+# playwright 를 web/ 밖에서 실행하면 저장소 루트에도 생긴다
+test-results/
+playwright-report/
+# 로컬 Claude Code 권한 설정 (개인 환경)
+.claude/settings.json
+.claude/settings.local.json
 
 # IDE
 .idea/

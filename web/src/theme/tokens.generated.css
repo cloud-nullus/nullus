@@ -1,0 +1,148 @@
+/*
+ * DESIGN.md 에서 자동 생성됨 — 직접 고치지 않는다.
+ * 값을 바꾸려면 web/DESIGN.md 를 고치고 `npm run theme:generate` 를 실행한다.
+ */
+
+/* 다크가 기본 스킴이다. */
+:root {
+  color-scheme: dark;
+
+  --color-surface-base: #0a0b0d;
+  --color-surface-card: #16181c;
+  --color-surface-sunken: #1e2126;
+  --color-surface-raised: #1e2126;
+  --color-surface-overlay: rgba(0, 0, 0, 0.72);
+
+  --color-border-default: #2a2e35;
+  --color-border-hover: #3a3f47;
+  /* 개편 전 코드가 참조하는데 정의가 없던 이름. 별칭으로 살려 둔다. */
+  --color-border: #2a2e35;
+
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a8acb3;
+  --color-text-muted: #8b9098;
+  /* 위와 같은 이유의 별칭 (--color-text-tertiary → muted). */
+  --color-text-tertiary: #8b9098;
+
+  --color-primary: #4d8cff;
+  --color-on-primary: #0a0b0d;
+  --color-success: #2ecc84;
+  --color-warning: #f4b000;
+  --color-error: #ff6b74;
+  --color-info: #4d8cff;
+  --color-accent-alt: #b39bff;
+
+  --shadow-raised: none;
+  --shadow-overlay: none;
+
+  /* 터미널(로그 출력) — DESIGN.md §Colors */
+  --color-terminal-bg: #0d0f17;
+  --color-terminal-text: #c9d1d9;
+  --color-terminal-muted: #8b949e;
+  --color-terminal-info: #58a6ff;
+  --color-terminal-success: #3fb950;
+  --color-terminal-warning: #d29922;
+  --color-terminal-error: #f85149;
+
+  --color-sidebar-border: #2a2e35;
+  --color-sidebar-group-text: #a8acb3;
+  --color-sidebar-item-text: #ffffff;
+  --color-sidebar-item-active-text: #4d8cff;
+  --color-sidebar-item-active-bg: color-mix(in srgb, #4d8cff 10%, transparent);
+  --color-sidebar-item-active-border: #4d8cff;
+
+  --color-brand-gold: #f4b000;
+  --color-brand-gold-end: #d99b00;
+  --color-on-brand-gold: #0a0b0d;
+
+  /* 장식 그라데이션을 쓰지 않는다(§Do's and Don'ts). 히어로도 면 하나다. */
+  --color-home-hero-bg: #1e2126;
+
+  /* 레이아웃 — DESIGN.md §Layout (front matter 의 layout 블록이 단일 출처다) */
+  --sidebar-width: 240px;
+  --sidebar-collapsed: 48px;
+  --header-height: 44px;
+  --page-padding: 24px;
+  --page-padding-y: 20px;
+  --card-padding: 12px;
+  --grid-gap: 8px;
+  --icon-size: 28px;
+  --table-cell-px: 12px;
+  --table-row-height: 32px;
+  --table-header-height: 28px;
+  --control-height: 30px;
+  --card-radius: 8px;
+  --icon-radius: 4px;
+
+  /* 간격 스케일 — DESIGN.md §Layout. 스케일 밖의 값을 쓰지 않는다. */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  --transition-default: 200ms ease;
+  --transition-fast: 150ms ease;
+
+  --z-page-header: 30;
+  --z-sidebar: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-surface-base: #f7f7f7;
+  --color-surface-card: #ffffff;
+  --color-surface-sunken: #eef0f3;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: rgba(10, 11, 13, 0.40);
+
+  --color-border-default: #dee1e6;
+  --color-border-hover: #c8ccd2;
+  /* 개편 전 코드가 참조하는데 정의가 없던 이름. 별칭으로 살려 둔다. */
+  --color-border: #dee1e6;
+
+  --color-text-primary: #0a0b0d;
+  --color-text-secondary: #5b616e;
+  --color-text-muted: #686d75;
+  /* 위와 같은 이유의 별칭 (--color-text-tertiary → muted). */
+  --color-text-tertiary: #686d75;
+
+  --color-primary: #0052ff;
+  --color-on-primary: #ffffff;
+  --color-success: #047a48;
+  --color-warning: #a35a00;
+  --color-error: #cf202f;
+  --color-info: #0052ff;
+  --color-accent-alt: #6b3fd4;
+
+  --shadow-raised: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-overlay: 0 8px 24px rgba(15, 23, 42, 0.12);
+
+  /* 터미널(로그 출력) — DESIGN.md §Colors */
+  --color-terminal-bg: #16181c;
+  --color-terminal-text: #d8dbe0;
+  --color-terminal-muted: #9aa2ad;
+  --color-terminal-info: #7db3ff;
+  --color-terminal-success: #4fd18b;
+  --color-terminal-warning: #f2c14e;
+  --color-terminal-error: #ff8a80;
+
+  --color-sidebar-border: #dee1e6;
+  --color-sidebar-group-text: #5b616e;
+  --color-sidebar-item-text: #0a0b0d;
+  --color-sidebar-item-active-text: #0052ff;
+  --color-sidebar-item-active-bg: color-mix(in srgb, #0052ff 10%, transparent);
+  --color-sidebar-item-active-border: #0052ff;
+
+  --color-home-hero-bg: #eef0f3;
+}

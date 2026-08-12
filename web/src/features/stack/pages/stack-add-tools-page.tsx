@@ -3,11 +3,12 @@ import { Check, Plus, Wrench } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
+import { Tabs } from '../../../components/ui/tabs'
 import { cn } from '../../../lib/utils'
 import type { Stack } from '../../../types'
 import { useAddTools, useStacks } from '../api/stack-api'
+import { PageHeader } from '../../../components/layout/page-header'
 
 interface ToolOption {
   id: string
@@ -209,15 +210,15 @@ function ToolSelector({
                 installed && 'cursor-not-allowed opacity-55',
                 !installed && 'cursor-pointer',
                 selected
-                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
               )}
             >
               <div
                 className={cn(
                   'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
                   selected
-                    ? 'border-[#6366f1] bg-[#6366f1]'
+                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]'
                     : 'border-[var(--color-border-hover)] bg-transparent'
                 )}
               >
@@ -225,13 +226,13 @@ function ToolSelector({
               </div>
               <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                  <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                     {opt.label}
                   </div>
                   <div className="text-xs text-[var(--color-text-secondary)]">{opt.description}</div>
                 </div>
                 {installed && (
-                  <span className="shrink-0 rounded bg-[rgba(148,163,184,0.2)] px-2 py-0.5 text-[11px] font-semibold text-[#cbd5e1]">
+                  <span className="shrink-0 rounded bg-[color-mix(in_srgb,_var(--color-text-secondary)_20%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-secondary)]">
                     {installedLabel}
                   </span>
                 )}
@@ -350,55 +351,40 @@ export function StackAddToolsPage() {
 
   return (
     <div>
-      <Breadcrumb items={[
-        { label: t('stackAddTools.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
-        { label: stack?.name ?? 'Stack', path: '/stack/list' },
-        { label: t('stackAddTools.breadcrumb.current', 'Add Tools') },
-      ]} />
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t('stackAddTools.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
+            { label: stack?.name ?? 'Stack', path: '/stack/list' },
+            { label: t('stackAddTools.breadcrumb.current', 'Add Tools') },
+          ]
+        }
+        icon={<Wrench size={16} />}
+        tone="primary"
+        title={t('stackAddTools.title', 'Add Tools')}
+        subtitle={t('stackAddTools.description', 'Safely add required tools to an existing stack.')}
+        actions={
+          <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
+            {t('stackAddTools.actions.backToList', 'Back to List')}
+          </Button>
+        }
+      />
 
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
-            <Wrench size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('stackAddTools.title', 'Add Tools')}</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackAddTools.description', 'Safely add required tools to an existing stack.')}
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
-          {t('stackAddTools.actions.backToList', 'Back to List')}
-        </Button>
-      </div>
-
-      <div className="mb-5 flex gap-0 border-b border-[var(--color-border-default)]">
-        {STEP_TABS.map((tab) => {
-          const isActive = step === tab.id
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setStep(tab.id)}
-              className={cn(
-                '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-[18px] py-2.5 text-sm transition-all duration-150',
-                isActive
-                  ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]'
-                  : 'font-normal text-[var(--color-text-secondary)]'
-              )}
-            >
-              {t(`stackAddTools.steps.${tab.id}`, tab.label)}
-            </button>
-          )
-        })}
-      </div>
+      <Tabs
+        className="mb-5"
+        value={step}
+        onChange={setStep}
+        items={STEP_TABS.map((tab) => ({
+          id: tab.id,
+          label: t(`stackAddTools.steps.${tab.id}`, tab.label),
+        }))}
+      />
 
       <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
         {isLoading && <div className="text-sm text-[var(--color-text-secondary)]">{t('stackAddTools.loading', 'Loading stack information...')}</div>}
 
         {!isLoading && !stack && (
-          <div className="rounded-lg border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.08)] p-4 text-sm text-[#fca5a5]">
+          <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] p-4 text-sm text-[var(--color-error)]">
             {t('stackAddTools.notFound', 'Target stack not found.')}
           </div>
         )}
@@ -420,9 +406,9 @@ export function StackAddToolsPage() {
                     onClick={() => handleToggleCategory(category)}
                     className={cn(
                       'flex h-full cursor-pointer flex-col items-start gap-2 rounded-lg border p-4 text-left transition-all duration-150',
-                      selected && 'border-[rgba(99,102,241,0.45)] bg-[rgba(99,102,241,0.08)]',
-                      !selected && !installed && 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]',
-                      installed && 'cursor-not-allowed border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)]'
+                      selected && 'border-[color-mix(in_srgb,_var(--color-primary)_45%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]',
+                      !selected && !installed && 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]',
+                      installed && 'cursor-not-allowed border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)]'
                     )}
                   >
                     <div className="flex w-full items-center justify-between gap-3">
@@ -431,12 +417,12 @@ export function StackAddToolsPage() {
                       </span>
                       <span className="flex items-center gap-1.5">
                         {installed && (
-                          <span className="inline-flex items-center gap-1 rounded bg-[rgba(34,197,94,0.18)] px-2 py-0.5 text-[11px] font-semibold text-[#86efac]">
+                          <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,_var(--color-success)_18%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
                             <Check size={11} /> {t('stackAddTools.badge.installed', 'Installed')}
                           </span>
                         )}
                         {!installed && selected && (
-                          <span className="inline-flex items-center gap-1 rounded bg-[rgba(99,102,241,0.2)] px-2 py-0.5 text-[11px] font-semibold text-[#a5b4fc]">
+                          <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
                             <Plus size={11} /> {t('stackAddTools.badge.selected', 'Selected')}
                           </span>
                         )}
@@ -455,7 +441,7 @@ export function StackAddToolsPage() {
         {!isLoading && stack && step === 1 && (
           <div>
             {selectedCategories.length === 0 ? (
-              <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4 text-sm text-[var(--color-text-secondary)]">
+              <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4 text-sm text-[var(--color-text-secondary)]">
                 {t('stackAddTools.step1.selectCategoryFirst', 'Please select categories first in Step 1.')}
               </div>
             ) : (
@@ -495,13 +481,13 @@ export function StackAddToolsPage() {
           <div>
             <h3 className="mb-3 mt-0 text-sm font-bold text-[var(--color-text-primary)]">{t('stackAddTools.step2.title', 'Review & Deploy')}</h3>
             {reviewItems.length === 0 ? (
-              <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4 text-sm text-[var(--color-text-secondary)]">
+              <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4 text-sm text-[var(--color-text-secondary)]">
                 {t('stackAddTools.step2.noItems', 'No new tools to add. Please review your category/tool selection.')}
               </div>
             ) : (
               <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)]">
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-[rgba(255,255,255,0.03)] text-left text-[11px] uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                  <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-left text-[11px] uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
                     <tr>
                       <th className="px-4 py-2.5">{t('stackAddTools.table.category', 'Category')}</th>
                       <th className="px-4 py-2.5">{t('stackAddTools.table.slot', 'Slot')}</th>

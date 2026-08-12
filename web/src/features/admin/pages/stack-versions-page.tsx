@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Plus, Pencil, Trash2, FolderOpen } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Plus, Pencil, Trash2, FolderOpen, Shield } from 'lucide-react'
 import { Skeleton } from '../../../components/ui/skeleton'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
+import { PageHeader } from '../../../components/layout/page-header'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { useCompatibilityMatrix, useDeleteMatrix } from '../../stack/api/stack-api'
 import { useClusters, useRefreshDiscovery } from '../api/admin-api'
 import { MatrixEditModal } from '../components/matrix-edit-modal'
@@ -17,17 +17,19 @@ import {
   isMatrixCompatibleWithCluster,
   matrixArchMismatches,
 } from '../../stack/utils/compatibility-arch'
+import { thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 const STATUS_BADGE_CLASS: Record<CompatibilityMatrix['status'], string> = {
-  verified: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-  untested: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-  unsupported: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]',
+  verified: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  untested: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  unsupported: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
 }
 
 const TIER_BADGE_CLASS: Record<CompatibilityTier, string> = {
-  stable: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-  beta: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-  deprecated: 'bg-[rgba(148,163,184,0.15)] text-[#94a3b8]',
+  stable: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  beta: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  deprecated: 'bg-[color-mix(in_srgb,_var(--color-text-secondary)_15%,_transparent)] text-[var(--color-text-secondary)]',
 }
 
 export function StackVersionsAdminPage() {
@@ -89,16 +91,16 @@ export function StackVersionsAdminPage() {
               {t('stackVersionsAdmin.listTitle', 'Compatibility Matrices')}
             </div>
             <div className="text-xs text-[var(--color-text-secondary)]">
-              {t('stackVersionsAdmin.listSubtitle', 'Golden Path 3 canonical matrices (Narwhal baseline)')}
+              {t('stackVersionsAdmin.listSubtitle', 'Golden Path 3 canonical matrices')}
             </div>
           </div>
           <div
             className="hidden items-center gap-3 text-[11px] text-[var(--color-text-secondary)] md:flex"
             aria-label={t('stackVersionsAdmin.legend.aria', 'Matrix status legend')}
           >
-            <LegendDot color="#22c55e" label={t('stackVersionsAdmin.legend.verified', 'verified')} />
-            <LegendDot color="#f59e0b" label={t('stackVersionsAdmin.legend.untested', 'untested')} />
-            <LegendDot color="#ef4444" label={t('stackVersionsAdmin.legend.unsupported', 'unsupported')} />
+            <LegendDot color="var(--color-success)" label={t('stackVersionsAdmin.legend.verified', 'verified')} />
+            <LegendDot color="var(--color-warning)" label={t('stackVersionsAdmin.legend.untested', 'untested')} />
+            <LegendDot color="var(--color-error)" label={t('stackVersionsAdmin.legend.unsupported', 'unsupported')} />
           </div>
         </div>
       </div>
@@ -111,7 +113,7 @@ export function StackVersionsAdminPage() {
             className="flex-1"
             aria-label={t('stackVersionsAdmin.filter.searchAria', 'Matrix search')}
           />
-          <NativeSelect
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             aria-label={t('stackVersionsAdmin.filter.statusAria', 'Filter by status')}
@@ -120,7 +122,7 @@ export function StackVersionsAdminPage() {
             <option value="verified">verified</option>
             <option value="untested">untested</option>
             <option value="unsupported">unsupported</option>
-          </NativeSelect>
+          </Select>
         </div>
       )}
       {matricesLoading && (
@@ -133,7 +135,7 @@ export function StackVersionsAdminPage() {
         </div>
       )}
       {matricesError && (
-        <div className="p-4 text-xs text-[#ef4444]">
+        <div className="p-4 text-xs text-[var(--color-error)]">
           {t('stackVersionsAdmin.loadError', 'Failed to load compatibility matrices.')}
         </div>
       )}
@@ -168,19 +170,18 @@ export function StackVersionsAdminPage() {
                 type="button"
                 onClick={() => setSelectedId(m.id)}
                 className={cn(
-                  'flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]',
-                  active && 'bg-[rgba(99,102,241,0.08)]',
+                  'flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)]',
+                  active && 'bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]',
                 )}
                 aria-pressed={active}
               >
                 <div className="flex w-full items-center justify-between gap-2">
                   <span className="truncate text-sm text-[var(--color-text-primary)]">{m.name}</span>
-                  <span
+                  <Badge pill
                     className={cn('rounded-full px-2 py-0.5 text-[10px] uppercase', STATUS_BADGE_CLASS[m.status])}
-                    aria-label={`status ${m.status}`}
-                  >
+                    aria-label={`status ${m.status}`}>
                     {t(`stackVersionsAdmin.status.${m.status}`, m.status)}
-                  </span>
+                  </Badge>
                 </div>
                 <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">{m.id}</span>
                 <span className="text-[11px] text-[var(--color-text-secondary)]">
@@ -207,7 +208,7 @@ export function StackVersionsAdminPage() {
         {archs.map((arch) => (
           <span
             key={arch}
-            className="rounded-full bg-[rgba(99,102,241,0.12)] px-2 py-0.5 text-[10px] text-[#818cf8]"
+            className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-0.5 text-[10px] text-[var(--color-primary)]"
           >
             {t(`stackVersionsAdmin.archBadge.${arch}`, arch)}
           </span>
@@ -221,7 +222,7 @@ export function StackVersionsAdminPage() {
     const verdict = isMatrixCompatibleWithCluster(selectedMatrix, archs)
     if (verdict === 'compatible') {
       return (
-        <span className="inline-flex items-center gap-1 text-[#22c55e]">
+        <span className="inline-flex items-center gap-1 text-[var(--color-success)]">
           <CheckCircle2 size={14} />
           {t('stackVersionsAdmin.crossEval.compatible', 'Compatible')}
         </span>
@@ -234,7 +235,7 @@ export function StackVersionsAdminPage() {
         .join('\n')
       return (
         <span
-          className="inline-flex items-center gap-1 text-[#ef4444]"
+          className="inline-flex items-center gap-1 text-[var(--color-error)]"
           title={title || t('stackVersionsAdmin.crossEval.incompatible', 'Incompatible')}
         >
           <XCircle size={14} />
@@ -243,7 +244,7 @@ export function StackVersionsAdminPage() {
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 text-[#f59e0b]">
+      <span className="inline-flex items-center gap-1 text-[var(--color-warning)]">
         <AlertTriangle size={14} />
         {t('stackVersionsAdmin.crossEval.unknown', 'Unknown')}
       </span>
@@ -258,9 +259,9 @@ export function StackVersionsAdminPage() {
           <p className="font-mono text-xs text-[var(--color-text-secondary)]">{selectedMatrix.id}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={cn('rounded-full px-2 py-0.5 text-[11px] uppercase', STATUS_BADGE_CLASS[selectedMatrix.status])}>
+          <Badge pill className={cn('rounded-full px-2 py-0.5 text-[11px] uppercase', STATUS_BADGE_CLASS[selectedMatrix.status])}>
             {t(`stackVersionsAdmin.status.${selectedMatrix.status}`, selectedMatrix.status)}
-          </span>
+          </Badge>
           <Button
             size="sm"
             variant="outline"
@@ -276,7 +277,7 @@ export function StackVersionsAdminPage() {
             onClick={() => setDeleteTarget(selectedMatrix)}
             aria-label={t('stackVersionsAdmin.actions.delete', 'Delete matrix')}
           >
-            <Trash2 size={12} className="mr-1 text-[#ef4444]" />
+            <Trash2 size={12} className="mr-1 text-[var(--color-error)]" />
             {t('stackVersionsAdmin.actions.delete', 'Delete')}
           </Button>
         </div>
@@ -295,14 +296,14 @@ export function StackVersionsAdminPage() {
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
-            <thead className="bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]">
+            <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.name', 'Name')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.helm', 'Helm')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.app', 'App')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.arch', 'Arch')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.minK8s', 'Min K8s')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.tier', 'Tier')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.name', 'Name')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.helm', 'Helm')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.app', 'App')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.arch', 'Arch')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.minK8s', 'Min K8s')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.tier', 'Tier')}</th>
               </tr>
             </thead>
             <tbody>
@@ -314,14 +315,13 @@ export function StackVersionsAdminPage() {
                   <td className="px-3 py-2">{renderArchBadges(tool.archSupport)}</td>
                   <td className="px-3 py-2 font-mono text-[11px]">{tool.minK8sVersion || '—'}</td>
                   <td className="px-3 py-2">
-                    <span
+                    <Badge pill
                       className={cn(
                         'rounded-full px-2 py-0.5 text-[10px] uppercase',
                         TIER_BADGE_CLASS[tool.tier] ?? TIER_BADGE_CLASS.stable,
-                      )}
-                    >
+                      )}>
                       {t(`stackVersionsAdmin.tier.${tool.tier}`, tool.tier)}
-                    </span>
+                    </Badge>
                   </td>
                 </tr>
               ))}
@@ -336,11 +336,11 @@ export function StackVersionsAdminPage() {
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
-            <thead className="bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]">
+            <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.cluster', 'Cluster')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.nodeArch', 'Node Architectures')}</th>
-                <th className="px-3 py-2">{t('stackVersionsAdmin.col.crossEval', 'Compatibility')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.cluster', 'Cluster')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.nodeArch', 'Node Architectures')}</th>
+                <th className={thClass}>{t('stackVersionsAdmin.col.crossEval', 'Compatibility')}</th>
                 <th className="px-3 py-2 text-right">{t('stackVersionsAdmin.col.actions', 'Actions')}</th>
               </tr>
             </thead>
@@ -395,30 +395,26 @@ export function StackVersionsAdminPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
-      <Breadcrumb
-        items={[
+    <div className="flex h-full flex-col">
+      <PageHeader
+        breadcrumb={[
           { label: t('stackVersionsAdmin.breadcrumb.devsecops', 'DevSecOps Stack') },
           { label: t('stackVersionsAdmin.breadcrumb.stackVersions', 'Stack Version Management') },
         ]}
+        icon={<Shield size={16} />}
+        tone="info"
+        title={t('stackVersionsAdmin.title', 'Stack Version Management')}
+        subtitle={t(
+          'stackVersionsAdmin.subtitle',
+          'Review the compatibility matrices used for installation and verify cluster architecture fit.',
+        )}
+        actions={
+          <Button size="sm" onClick={() => setModal({ mode: 'create' })}>
+            <Plus size={14} className="mr-1" />
+            {t('stackVersionsAdmin.actions.new', 'New matrix')}
+          </Button>
+        }
       />
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">
-            {t('stackVersionsAdmin.title', 'Stack Version Management')}
-          </h1>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            {t(
-              'stackVersionsAdmin.subtitle',
-              'Review Narwhal baseline compatibility matrices and verify cluster architecture fit.',
-            )}
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setModal({ mode: 'create' })}>
-          <Plus size={14} className="mr-1" />
-          {t('stackVersionsAdmin.actions.new', 'New matrix')}
-        </Button>
-      </div>
       <div className="flex-1 min-h-0">
         <ListDetailPanel
           listContent={listContent}

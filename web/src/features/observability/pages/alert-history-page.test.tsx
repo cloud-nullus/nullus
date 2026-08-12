@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { fireEvent, screen } from '@testing-library/react'
-import { renderWithProviders } from '../../../__tests__/test-utils'
+import { renderWithProviders, selectOption } from '../../../__tests__/test-utils'
 import { AlertHistoryPage } from './alert-history-page'
 
 const mockUseAlertHistory = vi.hoisted(() => vi.fn())
@@ -80,7 +80,7 @@ describe('AlertHistoryPage', () => {
   it('passes selected severity filter to API hook', () => {
     renderWithProviders(<AlertHistoryPage />)
 
-    fireEvent.change(screen.getByDisplayValue('All Severity'), { target: { value: 'warning' } })
+    selectOption(screen.getByRole('combobox'), 'Warning')
 
     expect(mockUseAlertHistory).toHaveBeenLastCalledWith({ severity: 'warning' })
   })

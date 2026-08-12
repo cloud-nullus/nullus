@@ -39,8 +39,35 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+
+      # DESIGN.md 와 생성물(src/theme/tokens.generated.*)이 어긋났는지 먼저 본다.
+      # 생성물을 손으로 고치거나 DESIGN.md 만 고치고 재생성을 잊으면 여기서 걸린다.
+      - name: 테마 생성물 신선도 검사
+        run: npm run theme:check
+
       - run: npx vite build
       - run: npx vitest run --coverage
+
+      # 디자인 단일 출처 게이트 — DESIGN.md 의 깨진 토큰 참조와 WCAG 대비 미달을 막는다.
+      # 종료 코드에 의존하지 않고 summary.errors 를 직접 읽는다.
+      # 값의 실제 대비는 src/__tests__/contrast-audit.test.ts 가 index.css 기준으로 검사한다.
+      - name: DESIGN.md lint
+        run: |
+          npx --yes @google/design.md@latest lint DESIGN.md > design-lint.json || true
+          cat design-lint.json
+          node -e "
+            const { summary } = require('./design-lint.json');
+            console.log('errors=' + summary.errors + ' warnings=' + summary.warnings);
+            if (summary.errors > 0) {
+              console.error('DESIGN.md lint 에러 ' + summary.errors + '건 — 병합 불가');
+              process.exit(1);
+            }
+          "
+
+      # 화면 정보 인벤토리 게이트 — 개편으로 필드·컬럼·라벨·문자열이 사라지지 않았는지 본다.
+      # 다른 파일로 옮겨간 항목은 유실로 보지 않으므로 컴포넌트 추출을 막지 않는다.
+      - name: 화면 정보 인벤토리 대조
+        run: npm run inventory:check
 
   e2e:
     runs-on: ubuntu-latest

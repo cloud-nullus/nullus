@@ -1,6 +1,7 @@
 import React from "react"
+import { useTranslation } from 'react-i18next'
 import { Archive, ArrowUpCircle, BarChart2, Boxes, FileText, GitBranch, Monitor, Server, Check } from "lucide-react"
-import { NativeSelect } from "../../../components/ui/native-select"
+import { Select } from "../../../components/ui/select"
 import { cn } from "../../../lib/utils"
 
 export function ConfigCard({
@@ -13,7 +14,7 @@ export function ConfigCard({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
+		<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]">
 			<div className="flex items-center gap-2 border-b border-[var(--color-border-default)] px-4 py-3">
 				<span className="text-[var(--color-text-secondary)]">{icon}</span>
 				<h4 className="m-0 text-[13px] font-semibold text-[var(--color-text-primary)]">
@@ -45,7 +46,7 @@ export function ToolOption({
 			className={cn(
 				"flex flex-col gap-2 rounded-md border p-2.5",
 				checked
-					? "border-[rgba(99,102,241,0.35)]"
+					? "border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)]"
 					: "border-[var(--color-border-default)] opacity-60",
 			)}
 		>
@@ -54,7 +55,7 @@ export function ToolOption({
 					className={cn(
 						"mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
 						checked
-							? "border-[#6366f1] bg-[#6366f1]"
+							? "border-[var(--color-primary)] bg-[var(--color-primary)]"
 							: "border-[var(--color-border-default)]",
 					)}
 				>
@@ -71,16 +72,15 @@ export function ToolOption({
 			</div>
 			{checked && version && (
 				<div className="ml-6 flex flex-wrap items-center gap-3">
-					<NativeSelect
+					<Select
 						defaultValue={version}
-						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 					>
 						{(versions ?? [version]).map((v) => (
-							<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
+							<option key={v}>{v}</option>
 						))}
-					</NativeSelect>
+					</Select>
 					<div className="flex items-center gap-1.5">
-						<span className="text-[11px] text-[#6366f1]">Instances:</span>
+						<span className="text-[11px] text-[var(--color-primary)]">Instances:</span>
 						<div className="flex items-center">
 							<button
 								type="button"
@@ -123,11 +123,12 @@ export function PanelHeader({ title, desc }: { title: string; desc: string }) {
 }
 
 export function ArtifactsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
 			<PanelHeader
 				title="Artifact Configuration"
-				desc="현재 스택에 구성된 아티팩트 저장소"
+				desc={t('stackInfo.panels.artifacts', 'Artifact repositories configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="Package Registry" icon={<Archive size={14} />}>
@@ -190,11 +191,12 @@ export function ArtifactsPanel() {
 }
 
 export function PipelineToolsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
 			<PanelHeader
 				title="Pipeline Tools"
-				desc="현재 스택의 CI/CD 파이프라인 도구 구성"
+				desc={t('stackInfo.panels.pipeline', 'CI/CD pipeline tools configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="CI/CD Platform" icon={<GitBranch size={14} />}>
@@ -239,11 +241,12 @@ export function PipelineToolsPanel() {
 }
 
 export function MonitoringToolsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
 			<PanelHeader
 				title="Monitoring Tools"
-				desc="현재 스택의 모니터링 도구 구성"
+				desc={t('stackInfo.panels.monitoring', 'Monitoring tools configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="Metrics Collection" icon={<BarChart2 size={14} />}>
@@ -285,9 +288,10 @@ export function MonitoringToolsPanel() {
 }
 
 export function LoggingToolsPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
-			<PanelHeader title="Logging Tools" desc="현재 스택의 로깅 도구 구성" />
+			<PanelHeader title="Logging Tools" desc={t('stackInfo.panels.logging', 'Logging tools configured for this stack')} />
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
 				<ConfigCard title="Log Collection" icon={<FileText size={14} />}>
 					<div className="flex flex-col gap-2">
@@ -311,18 +315,19 @@ export function LoggingToolsPanel() {
 }
 
 export function ResourcesPanel() {
+	const { t } = useTranslation()
 	return (
 		<div>
-			<PanelHeader title="Resources" desc="현재 스택의 리소스 할당 현황" />
+			<PanelHeader title="Resources" desc={t('stackInfo.panels.resources', 'Resource allocation for this stack')} />
 			<div className="mb-6 grid grid-cols-3 gap-4">
 				{[
-					{ label: "CPU", value: "8", unit: "cores", color: "#6366f1" },
-					{ label: "Memory", value: "32", unit: "Gi", color: "#10b981" },
-					{ label: "Storage", value: "500", unit: "Gi", color: "#f59e0b" },
+					{ label: "CPU", value: "8", unit: "cores", color: "var(--color-primary)" },
+					{ label: "Memory", value: "32", unit: "Gi", color: "var(--color-success)" },
+					{ label: "Storage", value: "500", unit: "Gi", color: "var(--color-warning)" },
 				].map((item) => (
 					<div
 						key={item.label}
-						className="flex flex-col items-center rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-5"
+						className="flex flex-col items-center rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-5"
 					>
 						<h4 className="m-0 mb-2 text-[13px] font-semibold text-[var(--color-text-primary)]">
 							{item.label}
@@ -337,14 +342,14 @@ export function ResourcesPanel() {
 							</span>
 						</div>
 						<div className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-							할당된 {item.label}
+							{t('stackInfo.allocated', 'Allocated {{label}}', { label: item.label })}
 						</div>
 					</div>
 				))}
 			</div>
-			<div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
+			<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
 				<h4 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<Server size={14} /> Cluster 정보
+					<Server size={14} /> {t('stackInfo.clusterInfo', 'Cluster Info')}
 				</h4>
 				<div className="flex flex-wrap gap-6 text-[13px] text-[var(--color-text-secondary)]">
 					<span>

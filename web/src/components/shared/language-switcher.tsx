@@ -38,7 +38,7 @@ export function LanguageSwitcher({
               className={cn(
                 'min-w-[38px] cursor-pointer border-none px-2.5 py-[5px] text-xs font-bold',
                 isActive
-                  ? 'bg-[rgba(255,215,0,0.16)] text-[var(--color-brand-gold)]'
+                  ? 'bg-[color-mix(in_srgb,_var(--color-brand-gold)_16%,_transparent)] text-[var(--color-brand-gold)]'
                   : 'bg-transparent text-[var(--color-text-secondary)]'
               )}
             >
@@ -63,7 +63,7 @@ export function LanguageSwitcher({
       </button>
 
       {open && (
-        <div className="absolute top-10 right-0 z-10 min-w-[164px] overflow-hidden rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
+        <div className="absolute top-10 right-0 z-10 min-w-[164px] overflow-hidden rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] shadow-[0_12px_28px_color-mix(in_srgb,_var(--color-text-primary)_35%,_transparent)]">
           {LANGUAGE_OPTIONS.map((option) => {
             const isActive = currentOption.code === option.code
             return (
@@ -77,7 +77,7 @@ export function LanguageSwitcher({
                 className={cn(
                   'flex w-full cursor-pointer items-center gap-2 border-none px-3 py-[9px] text-left text-[13px]',
                   isActive
-                    ? 'bg-[rgba(255,215,0,0.14)] text-[var(--color-brand-gold)]'
+                    ? 'bg-[color-mix(in_srgb,_var(--color-brand-gold)_14%,_transparent)] text-[var(--color-brand-gold)]'
                     : 'bg-transparent text-[var(--color-text-primary)]'
                 )}
               >

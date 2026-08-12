@@ -2,18 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { Server, GitBranch, BarChart3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useAuthStore } from '../../../stores/auth-store'
-import { cn } from '../../../lib/utils'
+import { Tabs } from '../../../components/ui/tabs'
 import { ClusterStackFilter, useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { usePipelines } from '../../cicd/api/cicd-api'
 import { StackMonitoringOverview } from '../components/stack-monitoring-overview'
 import { DashboardTabLayout } from "../components/monitoring-tab-layout"
 import type { ViewType } from "../components/monitoring-tab-layout"
 import { ClusterDefault } from "../components/monitoring-cluster-view"
 import { CicdDefault, CICD_DEFAULT_TABS } from "../components/monitoring-cicd-view"
 import { StackConnectPanel } from "../components/monitoring-connect-panel"
-import { PlatformToolHealth } from '../components/platform-tool-health'
-import { useDashboard } from '../api/observability-api'
+import { PageHeader } from '../../../components/layout/page-header'
 
 function StackDefault({ stackId }: { stackId: string }) {
   return <StackMonitoringOverview stackId={stackId} />
@@ -30,9 +29,7 @@ export function MonitoringPage() {
 
   const { clusters, stacks, filteredStacks, selectedCluster, selectedStack, hasContext } =
     useClusterStackFilterState(selectedClusterId, selectedStackId)
-
-  // 플랫폼 전체 도구 상태는 클러스터/스택 선택과 무관하게 항상 보여준다.
-  const { data: platformDashboard, isLoading: platformLoading } = useDashboard(30_000)
+  const { data: pipelinesData } = usePipelines()
 
   const didAutoSelectRef = useRef(false)
 
@@ -40,7 +37,11 @@ export function MonitoringPage() {
     if (didAutoSelectRef.current) return
     if (clusters.length === 0) return
 
-    const firstCluster = clusters[0]
+    // 데이터가 있는 클러스터에서 시작한다. clusters[0] 을 그냥 골랐더니 스택도
+    // 파이프라인도 없는 클러스터가 잡혀 모든 지표가 0 으로 떴다 — 필터는 제대로
+    // 동작했지만 화면은 고장난 것처럼 보였다.
+    const firstCluster = clusters.find((cluster) => stacks.some((stack) => stack.clusterId === cluster.id))
+      ?? clusters[0]
     if (!firstCluster) return
 
     setSelectedClusterId(firstCluster.id)
@@ -71,14 +72,18 @@ export function MonitoringPage() {
     if (id && !activeView) setActiveView('stack')
   }
 
+  // CI/CD 탭은 클러스터가 선언한 타입이 아니라 그 클러스터에 파이프라인이 실제로
+  // 있는지로 연다.
+  //
+  // 타입(types 에 'target' 포함)으로 걸었더니 정상 구성에서 지표가 어디서도 안 보였다.
+  // 파이프라인 2개가 모두 사는 kind-nullus-platform 은 types=['pipeline'] 이라 탭이
+  // 잠겼고, 탭이 열리는 kind-nullus-develop(types=['target'])에는 파이프라인이
+  // 하나도 없었다. 등록 타입은 운영자가 손으로 적는 값이라 현실과 어긋날 수 있지만,
+  // 파이프라인의 cluster_id 는 이 화면이 그리려는 그 데이터 자체다.
   const supportsCicd = useMemo(() => {
-    if (!selectedCluster) return false
-    const types = Array.isArray(selectedCluster.types) && selectedCluster.types.length > 0
-      ? selectedCluster.types
-      : (selectedCluster.type ? [selectedCluster.type] : [])
-    const normalizedTypes = Array.from(new Set(types))
-    return normalizedTypes.includes('target')
-  }, [selectedCluster])
+    if (!selectedClusterId) return false
+    return (pipelinesData?.items ?? []).some((pipeline) => pipeline.clusterId === selectedClusterId)
+  }, [pipelinesData?.items, selectedClusterId])
 
   useEffect(() => {
     if (activeView === 'cicd' && !supportsCicd) {
@@ -94,24 +99,12 @@ export function MonitoringPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('observability.monitoring', 'Monitoring Dashboard') }]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">
-          <BarChart3 size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('observability.monitoring', 'Monitoring Dashboard')}</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            {t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
-          </p>
-        </div>
-      </div>
-
-      <PlatformToolHealth
-        tools={platformDashboard?.tools}
-        isLoading={platformLoading}
+      <PageHeader
+        breadcrumb={[{ label: t('observability.monitoring', 'Monitoring Dashboard') }]}
+        icon={<BarChart3 size={16} />}
+        tone="info"
+        title={t('observability.monitoring', 'Monitoring Dashboard')}
+        subtitle={t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
       />
 
       <ClusterStackFilter
@@ -142,23 +135,16 @@ export function MonitoringPage() {
         hasContext && (
           <>
             {/* View tabs */}
-            <div className="mb-0 flex items-end border-b border-[var(--color-border-default)]">
-              {views.map((v) => (
-                <button key={v.id} type="button"
-                  onClick={() => !v.disabled && setActiveView(v.id)}
-                  disabled={v.disabled}
-                  className={cn(
-                    'flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors',
-                    activeView === v.id
-                      ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
-                      : v.disabled
-                        ? 'cursor-not-allowed border-b-transparent text-[var(--color-text-secondary)] opacity-35'
-                        : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                  )}>
-                  {v.icon}{v.label}
-                </button>
-              ))}
-            </div>
+            <Tabs
+              value={activeView ?? ''}
+              onChange={(id) => setActiveView(id as ViewType)}
+              items={views.map((v) => ({
+                id: v.id as string,
+                icon: v.icon,
+                label: v.label,
+                disabled: v.disabled,
+              }))}
+            />
 
             {/* View content */}
             <div className="pt-5">
@@ -193,7 +179,7 @@ export function MonitoringPage() {
                 <DashboardTabLayout
                   viewId="cicd"
                   isAdmin={isAdmin}
-                  defaultContent={<CicdDefault selectedClusterId={selectedClusterId} />}
+                  defaultContent={<CicdDefault selectedClusterId={selectedClusterId} selectedStackId={selectedStackId} />}
                   seedTabs={CICD_DEFAULT_TABS}
                 />
               )}

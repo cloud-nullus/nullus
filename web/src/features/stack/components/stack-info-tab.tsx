@@ -4,7 +4,7 @@ import { ClipboardList, ExternalLink, GitBranch, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
-import { NativeSelect } from "../../../components/ui/native-select";
+import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
 import {
@@ -20,6 +20,7 @@ import { toolLogoURL } from "../utils/tool-logo";
 import {
   buildPipelineNodesFromSnapshot,
   buildPipelineNodesFromMonitoring,
+  applyToolRuntimeStatus,
   buildInstalledToolsFromSnapshot,
   extractAccessDomain,
   toolLaunchURL,
@@ -47,6 +48,9 @@ import {
   LoggingToolsPanel,
   ResourcesPanel,
 } from "./stack-info-panels";
+import { TextInput } from "../../../components/ui/text-input"
+import { Badge } from "../../../components/ui/badge";
+import { PipelineTopologyRail } from "./pipeline-topology";
 
 function ToolLogo({ name, logo }: Pick<LaunchTool, "name" | "logo">) {
   const [hasError, setHasError] = useState(false);
@@ -114,7 +118,7 @@ export function StackInfoTab({
   const monitoringNodes = buildPipelineNodesFromMonitoring(
     monitoringData?.oss_statuses,
   );
-  const pipelineNodes: PipelineNode[] =
+  const configuredNodes: PipelineNode[] =
     derivedNodes.length > 0
       ? derivedNodes
       : monitoringNodes.length > 0
@@ -122,14 +126,19 @@ export function StackInfoTab({
         : [
             {
               category: "Stack",
-              oss: stack.templateName,
-              version: "-",
+              tools: [
+                { name: stack.templateName, version: "-", instances: 1 },
+              ],
               instances: 1,
-              color: "#6366f1",
-              health: "progressing",
-              sync: "out-of-sync",
             },
           ];
+  // 스냅샷은 "무엇을 어느 자리에 깔았는가" 만 안다. 실제로 떠 있는지는 모니터링에
+  // 있으므로 도구 이름으로 맞춰 겹친다 — 토폴로지 한 장에서 배치와 동작 여부를
+  // 같이 읽게 하려는 것이다.
+  const pipelineNodes = applyToolRuntimeStatus(
+    configuredNodes,
+    monitoringData?.oss_statuses,
+  );
 
   const degradedState = [
     "failed",
@@ -145,15 +154,6 @@ export function StackInfoTab({
     "configuring",
     "health_check",
   ].includes(stack.status);
-  const runtimeNodes = pipelineNodes.map((node) => ({
-    ...node,
-    health: degradedState
-      ? "degraded"
-      : progressingState
-        ? "progressing"
-        : "healthy",
-    sync: degradedState ? "out-of-sync" : "synced",
-  }));
   const snapshotTools = buildInstalledToolsFromSnapshot(latestSnapshot);
   const installedTools =
     snapshotTools.length > 0
@@ -267,7 +267,7 @@ export function StackInfoTab({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
+      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
         <div className="mb-3 flex flex-col gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -360,7 +360,7 @@ export function StackInfoTab({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 text-[12px] text-[var(--color-text-secondary)] lg:grid-cols-4">
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Stack Name
             </div>
@@ -371,7 +371,7 @@ export function StackInfoTab({
               {stack.name}
             </div>
           </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Runtime
             </div>
@@ -379,7 +379,7 @@ export function StackInfoTab({
               Kubernetes / Helm
             </div>
           </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Observability
             </div>
@@ -387,7 +387,7 @@ export function StackInfoTab({
               {observabilitySummary}
             </div>
           </div>
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2">
             <div className="text-[11px] uppercase tracking-[0.04em]">
               Update Mode
             </div>
@@ -415,8 +415,8 @@ export function StackInfoTab({
                 className={cn(
                   "inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] transition-colors",
                   tool.url
-                    ? "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-primary)] hover:border-[rgba(99,102,241,0.45)] hover:bg-[rgba(99,102,241,0.1)]"
-                    : "cursor-not-allowed border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-muted)]",
+                    ? "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-primary)] hover:border-[color-mix(in_srgb,_var(--color-primary)_45%,_transparent)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]"
+                    : "cursor-not-allowed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-muted)]",
                 )}
                 title={
                   tool.url
@@ -424,7 +424,7 @@ export function StackInfoTab({
                     : `${tool.name}: 경로 미설정`
                 }
               >
-                <span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[rgba(255,255,255,0.08)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
+                <span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
                   <ToolLogo name={tool.name} logo={tool.logo} />
                 </span>
                 <span className="font-medium">{tool.name}</span>
@@ -495,7 +495,7 @@ export function StackInfoTab({
         }
       >
         <div className="space-y-4 text-[13px]">
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[var(--color-text-secondary)]">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-[var(--color-text-secondary)]">
             <span className="font-semibold text-[var(--color-text-primary)]">
               Access Domain:
             </span>{" "}
@@ -510,7 +510,7 @@ export function StackInfoTab({
               {launchTools.map((tool) => (
                 <div
                   key={`conn-${tool.name}`}
-                  className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3"
+                  className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="font-semibold text-[var(--color-text-primary)]">
@@ -526,7 +526,7 @@ export function StackInfoTab({
                       className={cn(
                         "text-[12px] underline",
                         tool.url
-                          ? "text-[#93c5fd]"
+                          ? "text-[var(--color-info)]"
                           : "pointer-events-none text-[var(--color-text-muted)]",
                       )}
                     >
@@ -546,7 +546,7 @@ export function StackInfoTab({
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+            <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
               <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
                 Database
               </div>
@@ -591,7 +591,7 @@ export function StackInfoTab({
               </div>
             </div>
 
-            <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+            <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
               <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
                 Object Storage
               </div>
@@ -667,14 +667,14 @@ export function StackInfoTab({
         }
       >
         <div className="space-y-4 text-[13px]">
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[var(--color-text-secondary)]">
+          <div className="rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-[var(--color-text-secondary)]">
             <span className="font-semibold text-[var(--color-text-primary)]">
               {t("stackList.export.stack", "Stack")}
             </span>{" "}
             {stack.name}
           </div>
 
-          <NativeSelect
+          <Select
             label={t("stackList.export.format", "Format")}
             value={exportFormat}
             onChange={(event) =>
@@ -683,18 +683,18 @@ export function StackInfoTab({
           >
             <option value="json">JSON</option>
             <option value="yaml">YAML</option>
-          </NativeSelect>
+          </Select>
 
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
               {t("stackList.export.fileName", "File name")}
             </span>
-            <input
+            <TextInput
               value={exportFileName}
               onChange={(event) => setExportFileName(event.target.value)}
               placeholder={buildStackExportFilename(stack.name, exportFormat)}
               aria-label={t("stackList.export.fileName", "File name")}
-              className="box-border w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 ease-in-out focus:border-[#6366f1]"
+              className="w-full ease-in-out focus:border-[var(--color-primary)]"
               data-testid="export-file-name"
             />
           </label>
@@ -708,122 +708,47 @@ export function StackInfoTab({
         </div>
       </Modal>
 
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <GitBranch size={14} className="text-[#818cf8]" />
+      <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <GitBranch size={14} className="text-[var(--color-primary)]" />
           <div className="text-[14px] font-bold text-[var(--color-text-primary)]">
             Pipeline Topology
           </div>
-        </div>
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
-              degradedState
-                ? "bg-[rgba(239,68,68,0.15)] text-[#fca5a5]"
+          {/* 스택 전체의 상태다. 노드마다 달면 stack.status 하나에서 나온 같은
+              값이 스테이지 수만큼 반복된다 — 여기 한 번만 둔다. */}
+          <div className="ml-auto flex items-center gap-1.5">
+            <Badge
+              pill
+              className={
+                degradedState
+                  ? "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]"
+                  : progressingState
+                    ? "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]"
+                    : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
+              }
+            >
+              ● Health{" "}
+              {degradedState
+                ? "Degraded"
                 : progressingState
-                  ? "bg-[rgba(59,130,246,0.15)] text-[#93c5fd]"
-                  : "bg-[rgba(34,197,94,0.15)] text-[#86efac]",
-            )}
-          >
-            ● Health{" "}
-            {degradedState
-              ? "Degraded"
-              : progressingState
-                ? "Progressing"
-                : "Healthy"}
-          </span>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
-              degradedState
-                ? "bg-[rgba(245,158,11,0.15)] text-[#fcd34d]"
-                : "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]",
-            )}
-          >
-            ◉ Sync {degradedState ? "OutOfSync" : "Synced"}
-          </span>
-        </div>
-        <div className="relative overflow-x-auto pb-1">
-          <div className="relative z-10 grid min-w-max grid-flow-col auto-cols-auto gap-3">
-            {runtimeNodes.map((node, idx) => (
-              <div
-                key={node.category}
-                className="relative rounded-md border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]"
-              >
-                {idx < runtimeNodes.length - 1 && (
-                  <div
-                    className="pointer-events-none absolute right-[-16px] top-3 h-[2px] w-8 bg-gradient-to-r from-[rgba(148,163,184,0.25)] to-[rgba(148,163,184,0.62)]"
-                    aria-hidden="true"
-                  >
-                    <div className="absolute right-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[rgba(148,163,184,0.72)]" />
-                  </div>
-                )}
-                <div className="mb-2 flex items-center gap-2">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-6 w-6 rounded-full ring-2 ring-white/10"
-                      style={{ backgroundColor: node.color }}
-                    />
-                    <div className="text-[12px] font-semibold text-[var(--color-text-primary)]">
-                      {node.category}
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                      node.health === "degraded"
-                        ? "bg-[rgba(239,68,68,0.15)] text-[#fca5a5]"
-                        : node.health === "progressing"
-                          ? "bg-[rgba(59,130,246,0.15)] text-[#93c5fd]"
-                          : "bg-[rgba(34,197,94,0.15)] text-[#86efac]",
-                    )}
-                  >
-                    {node.health}
-                  </span>
-                </div>
-                <div className="mb-2 flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                      node.sync === "synced"
-                        ? "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7]"
-                        : "bg-[rgba(245,158,11,0.15)] text-[#fcd34d]",
-                    )}
-                  >
-                    {node.sync}
-                  </span>
-                </div>
-                <div className="text-[11px] text-[var(--color-text-secondary)]">
-                  OSS
-                </div>
-                <div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">
-                  {node.oss}
-                </div>
-                <div className="text-[11px] text-[var(--color-text-secondary)]">
-                  Version
-                </div>
-                <div className="mb-1 text-[12px] font-medium text-[var(--color-text-primary)]">
-                  {node.version}
-                </div>
-                <div className="text-[11px] text-[var(--color-text-secondary)]">
-                  Instances
-                </div>
-                <div className="text-[12px] font-medium text-[var(--color-text-primary)]">
-                  {node.instances}
-                </div>
-              </div>
-            ))}
+                  ? "Progressing"
+                  : "Healthy"}
+            </Badge>
+            <Badge
+              pill
+              className={
+                degradedState
+                  ? "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]"
+                  : "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
+              }
+            >
+              ◉ Sync {degradedState ? "OutOfSync" : "Synced"}
+            </Badge>
           </div>
         </div>
+        <PipelineTopologyRail nodes={pipelineNodes} />
       </div>
 
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
-        {t(
-          "stackList.hiddenInstallCardsNotice",
-          "Detailed install cards are hidden. Check detailed tool status in the Monitoring / History tabs.",
-        )}
-      </div>
       <div className="hidden" aria-hidden="true">
         <ArtifactsPanel />
         <PipelineToolsPanel />

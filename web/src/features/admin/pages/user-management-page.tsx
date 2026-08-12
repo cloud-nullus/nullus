@@ -1,22 +1,26 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Link2, Mail, Pencil, Plus, Search, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
+import { GitBranch, Link2, Mail, Pencil, Plus, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useMembers, useInviteMember, useUpdateUserRole, useUpdateMember, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
 import type { MemberRole, MemberStatus, InviteLink } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Tabs } from '../../../components/ui/tabs'
+import { Select } from '../../../components/ui/select'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 type ActiveRoleTab = 'all' | MemberRole
 
@@ -52,11 +56,11 @@ const ROLE_PERMISSIONS: RolePermission[] = [
   {
     role: 'admin',
     color: {
-      bg: 'rgba(239,68,68,0.07)',
-      text: '#f87171',
-      border: 'rgba(239,68,68,0.22)',
-      accessEdit: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-      accessView: 'bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
+      bg: 'color-mix(in srgb, var(--color-error) 7%, transparent)',
+      text: 'var(--color-error)',
+      border: 'color-mix(in srgb, var(--color-error) 22%, transparent)',
+      accessEdit: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+      accessView: 'bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]',
     },
     icon: Shield,
     menus: [
@@ -83,11 +87,11 @@ const ROLE_PERMISSIONS: RolePermission[] = [
   {
     role: 'devops',
     color: {
-      bg: 'rgba(99,102,241,0.07)',
-      text: '#a5b4fc',
-      border: 'rgba(99,102,241,0.22)',
-      accessEdit: 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]',
-      accessView: 'bg-[rgba(99,102,241,0.08)] text-[#c7d2fe]',
+      bg: 'color-mix(in srgb, var(--color-primary) 7%, transparent)',
+      text: 'var(--color-primary)',
+      border: 'color-mix(in srgb, var(--color-primary) 22%, transparent)',
+      accessEdit: 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]',
+      accessView: 'bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] text-[var(--color-primary)]',
     },
     icon: Server,
     menus: [
@@ -109,11 +113,11 @@ const ROLE_PERMISSIONS: RolePermission[] = [
   {
     role: 'developer',
     color: {
-      bg: 'rgba(34,197,94,0.07)',
-      text: '#34d399',
-      border: 'rgba(34,197,94,0.22)',
-      accessEdit: 'bg-[rgba(34,197,94,0.2)] text-[#34d399]',
-      accessView: 'bg-[rgba(34,197,94,0.08)] text-[#6ee7b7]',
+      bg: 'color-mix(in srgb, var(--color-success) 7%, transparent)',
+      text: 'var(--color-success)',
+      border: 'color-mix(in srgb, var(--color-success) 22%, transparent)',
+      accessEdit: 'bg-[color-mix(in_srgb,_var(--color-success)_20%,_transparent)] text-[var(--color-success)]',
+      accessView: 'bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] text-[var(--color-success)]',
     },
     icon: GitBranch,
     menus: [
@@ -130,9 +134,9 @@ const ROLE_PERMISSIONS: RolePermission[] = [
 ]
 
 const STATUS_BADGE: Record<MemberStatus, { className: string; label: string }> = {
-  active: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', label: 'Active' },
-  pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', label: 'Pending' },
-  inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]', label: 'Inactive' },
+  active: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', label: 'Active' },
+  pending: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', label: 'Pending' },
+  inactive: { className: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]', label: 'Inactive' },
 }
 
 function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
@@ -142,12 +146,10 @@ function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
 }
 
 const ROLE_BADGE: Record<MemberRole, { className: string }> = {
-  admin: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
-  devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
-  developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
+  admin: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
+  devops: { className: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]' },
+  developer: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
 }
-
-const selectClassName = 'cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
 
 const inviteUserSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -254,6 +256,7 @@ export function UserManagementPage() {
   }
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setValue,
@@ -266,6 +269,7 @@ export function UserManagementPage() {
   })
   const {
     register: registerEdit,
+    control: controlEdit,
     handleSubmit: handleEditSubmit,
     reset: resetEdit,
     formState: { errors: editErrors, isValid: isEditValid, isSubmitting: isEditSubmitting },
@@ -412,15 +416,15 @@ export function UserManagementPage() {
         const selectedRole = roleOverrides[row.original.id] ?? row.original.role
         const role = ROLE_BADGE[selectedRole]
         return (
-          <NativeSelect
+          <Select
             value={selectedRole}
             onChange={(event) => handleRoleChange(row.original.id, event.target.value as MemberRole)}
-            className={cn('cursor-pointer rounded-[5px] border-0 px-2.5 py-1 text-xs font-semibold', role.className)}
+            className={cn('text-xs font-semibold [&_fieldset]:border-0', role.className)}
           >
             <option value="admin">Admin</option>
             <option value="devops">DevOps</option>
             <option value="developer">Developer</option>
-          </NativeSelect>
+          </Select>
         )
       },
     },
@@ -456,40 +460,25 @@ export function UserManagementPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.userManagement', 'User Management') }]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">
-          <Users size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('sidebar.userManagement', 'User Management')}</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('userManagementPage.description', 'User list and role management')}</p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.userManagement', 'User Management') }]}
+        icon={<Users size={16} />}
+        tone="accent"
+        title={t('sidebar.userManagement', 'User Management')}
+        subtitle={t('userManagementPage.description', 'User list and role management')}
+      />
 
       {/* Main tabs */}
-      <div className="mb-6 flex items-center justify-between border-b border-[var(--color-border-default)]">
-        <div className="flex">
-          {(['users', 'roles'] as const).map((tab) => {
-            const active = activeMainTab === tab
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveMainTab(tab)}
-                className={cn(
-                  '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-5 py-2.5 text-sm font-medium transition-all duration-150',
-                  active ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]'
-                )}
-              >
-                {tab === 'roles' ? 'Role Permissions' : 'Users'}
-              </button>
-            )
-          })}
-        </div>
-        <div className="flex items-center gap-3 pb-2">
+      <Tabs
+        className="mb-6"
+        value={activeMainTab}
+        onChange={setActiveMainTab}
+        items={[
+          { id: 'users' as const, label: 'Users' },
+          { id: 'roles' as const, label: 'Role Permissions' },
+        ]}
+        trailing={
+          <div className="flex items-center gap-3">
            {activeMainTab === 'roles' && (
              <>
                <Button
@@ -502,7 +491,7 @@ export function UserManagementPage() {
                  Save Changes
                </Button>
                {permissionSaved && (
-                 <span className="text-xs font-medium text-[#22c55e]">Changes saved</span>
+                 <span className="text-xs font-medium text-[var(--color-success)]">Changes saved</span>
                )}
              </>
            )}
@@ -531,8 +520,9 @@ export function UserManagementPage() {
               </Button>
             </div>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Role Permissions tab */}
       {activeMainTab === 'roles' && (
@@ -558,7 +548,7 @@ export function UserManagementPage() {
                   </span>
                 </div>
 
-                <div className="h-px bg-[rgba(255,255,255,0.06)]" />
+                <div className="h-px bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)]" />
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
@@ -586,7 +576,9 @@ export function UserManagementPage() {
                               )}
                             >
                               {menu.name}
-                              <span className={cn('rounded px-[3px] py-px text-[9px] font-bold', effectiveAccess === 'Edit' ? 'bg-[rgba(255,255,255,0.2)]' : 'bg-[rgba(255,255,255,0.12)]')}>
+                              {/* 칩은 자기 글자색(메뉴 강조색)으로 틴트한다. 글자색을 면으로
+                                  쓰면 라이트 테마에서 회색 덩어리가 된다. */}
+                              <span className={cn('rounded px-[3px] py-px text-[9px] font-bold', effectiveAccess === 'Edit' ? 'bg-[color-mix(in_srgb,_currentColor_22%,_transparent)]' : 'bg-[color-mix(in_srgb,_currentColor_12%,_transparent)]')}>
                                 {effectiveAccess}
                               </span>
                             </button>
@@ -597,7 +589,7 @@ export function UserManagementPage() {
                   ))}
                 </div>
 
-                <div className="h-px bg-[rgba(255,255,255,0.06)]" />
+                <div className="h-px bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)]" />
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
@@ -631,40 +623,29 @@ export function UserManagementPage() {
       {activeMainTab === 'users' && (
         <div>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex gap-0 border-b border-[var(--color-border-default)]">
-              {(['all', 'admin', 'devops', 'developer'] as ActiveRoleTab[]).map((tab) => {
+            <Tabs
+              value={activeRoleTab}
+              onChange={setActiveRoleTab}
+              items={(['all', 'admin', 'devops', 'developer'] as ActiveRoleTab[]).map((tab) => {
                 const count = tab === 'all' ? users.length : users.filter((u) => u.role === tab).length
                 const active = activeRoleTab === tab
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveRoleTab(tab)}
-                    className={cn(
-                      '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-3.5 py-2 text-sm transition-all duration-150',
-                      active ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]' : 'font-normal text-[var(--color-text-secondary)]'
-                    )}
-                  >
-                    <span className="capitalize">{tab === 'all' ? 'All' : tab}</span>
-                    <span className={cn('ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold', active ? 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]' : 'bg-[rgba(255,255,255,0.06)] text-[var(--color-text-muted)]')}>
+                return {
+                  id: tab,
+                  label: <span className="capitalize">{tab === 'all' ? 'All' : tab}</span>,
+                  badge: (
+                    <span className={cn('rounded-full px-1.5 py-0.5 text-[11px] font-bold', active ? 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] text-[var(--color-text-muted)]')}>
                       {count}
                     </span>
-                  </button>
-                )
+                  ),
+                }
               })}
-            </div>
-            <div className="relative">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('userManagementPage.searchPlaceholder', 'Search name/email...')}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
+            />
+            <SearchInput
+              wrapperClassName="w-[220px]"
+              placeholder={t('userManagementPage.searchPlaceholder', 'Search name/email...')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
           </div>
 
           {isLoading ? (
@@ -681,11 +662,11 @@ export function UserManagementPage() {
             <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]">
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.role', 'Role')}</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.expiresAt', 'Expires At')}</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.status', 'Status')}</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.table.actions', 'Actions')}</th>
+                  <tr className={cn(tableHeadRowClass, "border-b border-[var(--color-border-default)]")}>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.role', 'Role')}</th>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.expiresAt', 'Expires At')}</th>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.status', 'Status')}</th>
+                    <th className={cn(thClass, "text-xs tracking-wider text-[var(--color-text-muted)]")}>{t('userManagementPage.pendingInvites.table.actions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -701,18 +682,18 @@ export function UserManagementPage() {
                       return (
                         <tr key={invite.token} className="border-b border-[var(--color-border-default)] last:border-b-0">
                           <td className="px-4 py-2.5">
-                            <span className={cn('rounded-md px-2.5 py-1 text-xs font-semibold capitalize', ROLE_BADGE[invite.role].className)}>
+                            <Badge className={cn('rounded-md px-2.5 py-1 text-xs font-semibold capitalize', ROLE_BADGE[invite.role].className)}>
                               {invite.role}
-                            </span>
+                            </Badge>
                           </td>
                           <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                             {formatDateTime(invite.expiresAt, locale)}
                           </td>
                           <td className="px-4 py-2.5">
                             {expired ? (
-                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(100,116,139,0.15)] text-[#64748b]">{t('userManagementPage.pendingInvites.expired', 'Expired')}</span>
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]">{t('userManagementPage.pendingInvites.expired', 'Expired')}</span>
                             ) : (
-                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[rgba(34,197,94,0.15)] text-[#22c55e]">{t('userManagementPage.pendingInvites.active', 'Active')}</span>
+                              <span className="rounded-md px-2.5 py-1 text-xs font-semibold bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]">{t('userManagementPage.pendingInvites.active', 'Active')}</span>
                             )}
                           </td>
                           <td className="px-4 py-2.5">
@@ -786,9 +767,9 @@ export function UserManagementPage() {
               <Loader2 size={14} className="absolute right-3 top-[34px] animate-spin text-[var(--color-text-secondary)]" />
             )}
           </div>
-          {errors.email && <span className="text-xs text-[#ef4444]">{errors.email.message}</span>}
+          {errors.email && <span className="text-xs text-[var(--color-error)]">{errors.email.message}</span>}
           {existingUser && (
-            <div className="rounded-lg border border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-[13px] text-[#86efac]">
+            <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-success)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] px-3 py-2 text-[13px] text-[var(--color-success)]">
               ✓ {t('userManagementPage.form.existingUser', 'Existing user')}: {existingUser.name} ({existingUser.email})
             </div>
           )}
@@ -802,15 +783,22 @@ export function UserManagementPage() {
                 placeholder="User name"
                 {...register('name')}
               />
-              {errors.name && <span className="text-xs text-[#ef4444]">{errors.name.message}</span>}
+              {errors.name && <span className="text-xs text-[var(--color-error)]">{errors.name.message}</span>}
             </>
           )}
-          <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...register('role')} className={selectClassName}>
-              <option value="developer">Developer</option>
-              <option value="devops">DevOps</option>
-              <option value="admin">Admin</option>
-            </NativeSelect>
-          {errors.role && <span className="text-xs text-[#ef4444]">{errors.role.message}</span>}
+          {/* register() 로는 못 쓴다 — Select 의 값은 React 상태라 reset()/setValue() 가 안 닿는다. */}
+          <Controller
+            name="role"
+            control={control}
+            render={({ field }) => (
+              <Select label={t('userManagementPage.form.role', 'Role')} {...field}>
+                <option value="developer">Developer</option>
+                <option value="devops">DevOps</option>
+                <option value="admin">Admin</option>
+              </Select>
+            )}
+          />
+          {errors.role && <span className="text-xs text-[var(--color-error)]">{errors.role.message}</span>}
         </div>
       </Modal>
 
@@ -847,32 +835,24 @@ export function UserManagementPage() {
         }
       >
         <div className="flex flex-col gap-3.5">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="invite-link-role" className="text-xs font-medium text-[var(--color-text-secondary)]">{t('userManagementPage.form.role', 'Role')}</label>
-            <select
-              id="invite-link-role"
-              value={inviteLinkRole}
-              onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
-              className={selectClassName}
-            >
-              <option value="developer">Developer</option>
-              <option value="devops">DevOps</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="invite-link-expiry" className="text-xs font-medium text-[var(--color-text-secondary)]">{t('userManagementPage.form.expiryPeriod', 'Expiry Period')}</label>
-            <select
-              id="invite-link-expiry"
-              value={inviteLinkExpiry}
-              onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
-              className={selectClassName}
-            >
-              {EXPIRY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label={t('userManagementPage.form.role', 'Role')}
+            value={inviteLinkRole}
+            onChange={(e) => setInviteLinkRole(e.target.value as MemberRole)}
+          >
+            <option value="developer">Developer</option>
+            <option value="devops">DevOps</option>
+            <option value="admin">Admin</option>
+          </Select>
+          <Select
+            label={t('userManagementPage.form.expiryPeriod', 'Expiry Period')}
+            value={inviteLinkExpiry}
+            onChange={(e) => setInviteLinkExpiry(Number(e.target.value))}
+          >
+            {EXPIRY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </Select>
         </div>
       </Modal>
 
@@ -913,15 +893,21 @@ export function UserManagementPage() {
       >
         <div className="flex flex-col gap-3.5">
           <Input label={t('userManagementPage.form.name', 'Name')} placeholder="User name" {...registerEdit('name')} />
-          {editErrors.name && <span className="text-xs text-[#ef4444]">{editErrors.name.message}</span>}
+          {editErrors.name && <span className="text-xs text-[var(--color-error)]">{editErrors.name.message}</span>}
           <Input label={t('userManagementPage.form.email', 'Email')} type="email" placeholder="user@example.com" {...registerEdit('email')} />
-          {editErrors.email && <span className="text-xs text-[#ef4444]">{editErrors.email.message}</span>}
-          <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...registerEdit('role')} className={selectClassName}>
-            <option value="developer">Developer</option>
-            <option value="devops">DevOps</option>
-            <option value="admin">Admin</option>
-          </NativeSelect>
-          {editErrors.role && <span className="text-xs text-[#ef4444]">{editErrors.role.message}</span>}
+          {editErrors.email && <span className="text-xs text-[var(--color-error)]">{editErrors.email.message}</span>}
+          <Controller
+            name="role"
+            control={controlEdit}
+            render={({ field }) => (
+              <Select label={t('userManagementPage.form.role', 'Role')} {...field}>
+                <option value="developer">Developer</option>
+                <option value="devops">DevOps</option>
+                <option value="admin">Admin</option>
+              </Select>
+            )}
+          />
+          {editErrors.role && <span className="text-xs text-[var(--color-error)]">{editErrors.role.message}</span>}
         </div>
       </Modal>
 

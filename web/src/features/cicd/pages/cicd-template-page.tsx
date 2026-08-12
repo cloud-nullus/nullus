@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { BookOpen, Pencil, Plus, Search, Trash2, User } from "lucide-react";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
+import { BookOpen, Pencil, Plus, Trash2, User } from "lucide-react";
 import {
   useCicdTemplates,
   useCreateCicdTemplate,
@@ -16,6 +15,9 @@ import { Modal } from "../../../components/ui/modal";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { useAuthStore } from "../../../stores/auth-store";
 import { resolveLocale } from "../../../lib/locale";
+import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from "../../../components/ui/search-input"
+import { Checkbox } from "../../../components/ui/checkbox"
 
 const CAPABILITY_OPTIONS = ["CI", "CD", "Test", "Security"] as const;
 const PRIORITY_TEMPLATE_IDS = [
@@ -350,64 +352,51 @@ export function CicdTemplatePage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          {
-            label: t("cicdTemplatePage.breadcrumb.list", "CI/CD List"),
-            path: "/cicd/list",
-          },
-          { label: t("cicdTemplatePage.breadcrumb.current", "CI/CD Template") },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            {
+              label: t("cicdTemplatePage.breadcrumb.list", "CI/CD List"),
+              path: "/cicd/list",
+            },
+            { label: t("cicdTemplatePage.breadcrumb.current", "CI/CD Template") },
+          ]
+        }
+        icon={<BookOpen size={16} />}
+        tone="primary"
+        title={t("cicdTemplatePage.title", "CI/CD Template")}
+        subtitle={
+          t(
+            "cicdTemplatePage.description",
+            "Choose a pipeline template to get started quickly.",
+          )
+        }
+        actions={
+          isAdmin && (
+            <Button
+              variant="primary"
+              size="md"
+              type="button"
+              onClick={openCreateModal}
+            >
+              <Plus size={15} />
+              {t("cicdTemplatePage.actions.createTemplate", "Create Template")}
+            </Button>
+          )
+        }
       />
-
-      {/* Page header */}
-      <div className="mb-7 flex items-start justify-between gap-4">
-        <div className="mb-2 flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
-            <BookOpen size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t("cicdTemplatePage.title", "CI/CD Template")}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t(
-                "cicdTemplatePage.description",
-                "Choose a pipeline template to get started quickly.",
-              )}
-            </p>
-          </div>
-        </div>
-        {isAdmin && (
-          <Button
-            variant="primary"
-            size="md"
-            type="button"
-            onClick={openCreateModal}
-          >
-            <Plus size={15} />
-            {t("cicdTemplatePage.actions.createTemplate", "Create Template")}
-          </Button>
-        )}
-      </div>
 
       {/* Search */}
       <div className="mb-5 max-w-[360px]">
-        <div className="relative">
-          <Search
-            size={13}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-          />
-          <input
-            placeholder={t(
-              "cicdTemplatePage.searchPlaceholder",
-              "Search templates...",
-            )}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-          />
-        </div>
+        <SearchInput
+          wrapperClassName="w-[220px]"
+          placeholder={t(
+          "cicdTemplatePage.searchPlaceholder",
+          "Search templates...",
+          )}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {/* Template cards grouped by CI/CD workload type. */}
@@ -455,7 +444,7 @@ export function CicdTemplatePage() {
                             </p>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] p-3">
+                          <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                             <div>
                               <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
                                 {t(
@@ -494,7 +483,7 @@ export function CicdTemplatePage() {
                               {capabilities.map((capability) => (
                                 <span
                                   key={capability}
-                                  className="rounded-md bg-[rgba(99,102,241,0.12)] px-2 py-1 text-[11px] font-semibold text-[#a5b4fc]"
+                                  className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
                                 >
                                   {capability}
                                 </span>
@@ -547,7 +536,7 @@ export function CicdTemplatePage() {
                                 variant="primary"
                                 size="sm"
                                 type="button"
-                                className="w-auto max-w-full bg-[linear-gradient(135deg,#facc15,#eab308)] text-[#111827]"
+                                className="w-auto max-w-full bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[var(--color-surface-base)]"
                                 onClick={() =>
                                   navigate(
                                     `/cicd/developer-deploy?template=${encodeURIComponent(template.id)}&appType=${encodeURIComponent(template.appType)}`,
@@ -648,15 +637,13 @@ export function CicdTemplatePage() {
                     key={stage}
                     className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 ${
                       checked
-                        ? "border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]"
-                        : "border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-secondary)]"
+                        ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]"
+                        : "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-secondary)]"
                     }`}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
                       onChange={() => toggleStage(stage)}
-                      className="accent-[#6366f1]"
                     />
                     {stage}
                   </label>
@@ -665,7 +652,7 @@ export function CicdTemplatePage() {
             </div>
           </div>
           {formError && (
-            <div className="text-xs text-[#f87171]">{formError}</div>
+            <div className="text-xs text-[var(--color-error)]">{formError}</div>
           )}
         </div>
       </Modal>

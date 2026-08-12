@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, Search, AlertTriangle, Terminal } from 'lucide-react'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
+import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, AlertTriangle, Terminal } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
+import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import type { StackHistoryEntry, StackVersionDiff } from '../api/stack-api'
 import { VersionDiff } from '../components/version-diff'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
+import { TextInput } from '../../../components/ui/text-input'
 
 
 export function StackHistoryPage() {
@@ -30,6 +33,7 @@ export function StackHistoryPage() {
    const fallbackStackId = visibleStacks[0]?.id ?? ''
    const stackId = routeStackId ?? fallbackStackId
    const currentRouteMissingFromOptions = !!routeStackId && !visibleStacks.some((stack) => stack.id === routeStackId)
+   const selectedStack = stacks.find((stack) => stack.id === stackId) ?? null
    const [compareOpen, setCompareOpen] = useState(false)
    const [versionA, setVersionA] = useState(0)
    const [versionB, setVersionB] = useState(0)
@@ -59,7 +63,10 @@ export function StackHistoryPage() {
   }, [stackId])
 
   const { data: historyData } = useStackHistory(stackId)
-  const allEntries = Array.isArray(historyData) ? historyData : []
+  // 이력은 최신이 위다. API 는 오름차순으로 주므로 여기서 뒤집는다.
+  const allEntries = (Array.isArray(historyData) ? [...historyData] : []).sort(
+    (a, b) => b.version - a.version,
+  )
   const entries = search.trim()
     ? allEntries.filter(
         (e) =>
@@ -67,6 +74,11 @@ export function StackHistoryPage() {
           e.reason.toLowerCase().includes(search.toLowerCase())
       )
     : allEntries
+
+  // 현재 버전은 가장 높은 번호다. 목록의 첫 행으로 보면 안 된다 — 정렬이나
+  // 검색 결과에 따라 첫 행이 달라지고, API 가 오름차순이던 시절에는 v1 에
+  // "현재" 가 붙고 정작 현재인 v2 가 롤백 대상으로 나왔다.
+  const currentVersion = allEntries.length > 0 ? allEntries[0].version : null
   const rollbackMutation = useRollbackStack()
 
   const versionOptions = entries.map((entry) => entry.version).sort((a, b) => b - a)
@@ -119,35 +131,20 @@ export function StackHistoryPage() {
         )
       },
     },
-    {
-      id: 'stackName',
-      header: t('stackHistoryPage.table.stackName', 'Stack Name'),
-      enableSorting: false,
-      cell: ({ row }) => {
-        const name = stacks.find((s) => s.id === row.original.stackId)?.name ?? row.original.stackId
-        return <span className="font-semibold text-[var(--color-text-primary)]">{name}</span>
-      },
-    },
-    {
-      id: 'cluster',
-      header: t('stackHistoryPage.table.cluster', 'Cluster'),
-      enableSorting: false,
-      cell: ({ row }) => {
-        const cluster = stacks.find((s) => s.id === row.original.stackId)?.clusterName ?? '-'
-        return <span className="text-[13px] text-[var(--color-text-secondary)]">{cluster}</span>
-      },
-    },
+    // 스택 이름과 클러스터는 열로 두지 않는다. 이 화면은 위에서 고른 스택 하나의
+    // 이력만 보여주므로 행마다 같은 값이 반복되고, 그 두 열이 252px 를 먹어
+    // "작업" 열이 칸 밖으로 밀려났다. 값은 선택기 옆 맥락 줄에 한 번만 적는다.
     {
       accessorKey: 'version',
       header: t('stackHistoryPage.table.version', 'Version'),
       cell: ({ row }) => {
         const entry = row.original
-        const isCurrent = entry.id === entries[0]?.id
+        const isCurrent = entry.version === currentVersion
         return (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[13px] font-semibold text-[#a5b4fc]">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[13px] font-semibold text-[var(--color-primary)]">
             v{entry.version}
             {isCurrent && (
-              <span className="rounded bg-[rgba(34,197,94,0.15)] px-1.5 py-[1px] font-inherit text-[10px] text-[#22c55e]">
+              <span className="rounded bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] px-1.5 py-[1px] font-inherit text-[10px] text-[var(--color-success)]">
                 {t('stackHistoryPage.current', 'CURRENT')}
               </span>
             )}
@@ -175,7 +172,8 @@ export function StackHistoryPage() {
         enableSorting: false,
         cell: ({ row }) => {
           const entry = row.original
-          const index = entries.findIndex((item) => item.id === entry.id)
+          // 지금 돌고 있는 버전으로는 되돌릴 것이 없다.
+          const isCurrent = entry.version === currentVersion
           return (
             <div className="flex gap-1.5">
               <Button
@@ -190,7 +188,7 @@ export function StackHistoryPage() {
                 <Terminal size={13} />
                 {t('stackHistoryPage.actions.log', 'Log')}
               </Button>
-              {index !== 0 && (
+              {!isCurrent && (
                 <Button
                 variant="danger"
                 size="sm"
@@ -214,102 +212,113 @@ export function StackHistoryPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.stackHistory', 'Stack History') }]} />
-
-      {/* Page header */}
-      <div className="mb-7 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
-          >
-            <History size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('stackHistoryPage.title', 'Stack History')}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackHistoryPage.description', 'Stack change history and version management')}
-            </p>
-          </div>
-        </div>
-        <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
-          <GitCompare size={15} />
-          {t('stackHistoryPage.actions.compareVersions', 'Compare Versions')}
-        </Button>
-      </div>
-
-      <div className="mb-4 max-w-[360px]">
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
-          {t('stackHistoryPage.stackSelect', 'Stack')}
-        </label>
-        <NativeSelect
-          value={stackId}
-          onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
-          disabled={!stackId && visibleStacks.length === 0}
-          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
-        >
-          {currentRouteMissingFromOptions && routeStackId && (
-            <option value={routeStackId}>{routeStackId}</option>
-          )}
-          {visibleStacks.map((stack) => (
-            <option key={stack.id} value={stack.id}>
-              {stack.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-
-      <DataTable
-        columns={columns}
-        data={entries}
-        getRowKey={(row) => row.id}
-        toolbar={
-          <>
-            <NativeSelect
-              value={clusterFilter}
-              onChange={(event) => setClusterFilter(event.target.value)}
-              className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
-            >
-              <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
-              {clusterOptions.map((clusterName) => (
-                <option key={clusterName} value={clusterName}>{clusterName}</option>
-              ))}
-            </NativeSelect>
-            <div className="relative ml-auto">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
-          </>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.stackHistory', 'Stack History') }]}
+        icon={<History size={16} />}
+        tone="primary"
+        title={t('stackHistoryPage.title', 'Stack History')}
+        subtitle={t('stackHistoryPage.description', 'Stack change history and version management')}
+        actions={
+          <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
+            <GitCompare size={15} />
+            {t('stackHistoryPage.actions.compareVersions', 'Compare Versions')}
+          </Button>
         }
       />
 
-      {expandedEntry && (
-        <div className="mt-2.5 rounded-lg border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-5 py-4">
-          <p className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
-            {t('stackHistoryPage.snapshot', 'Configuration Snapshot')} (v{expandedEntry.version})
-          </p>
-          <div className="flex flex-wrap gap-2.5">
-            {Object.entries(expandedEntry.snapshot ?? {}).map(([k, v]) => (
-              <div
-                key={k}
-                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-[14px] py-2 font-mono text-xs"
-              >
-                <span className="text-[var(--color-text-secondary)]">{k}: </span>
-                <span className="text-[#a5b4fc]">{String(v)}</span>
-              </div>
+      <div className="mb-4 flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="w-full max-w-[360px]">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
+            {t('stackHistoryPage.stackSelect', 'Stack')}
+          </label>
+          <Select
+            value={stackId}
+            onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
+            disabled={!stackId && visibleStacks.length === 0}
+            className="w-full"
+          >
+            {currentRouteMissingFromOptions && routeStackId && (
+              <option value={routeStackId}>{routeStackId}</option>
+            )}
+            {visibleStacks.map((stack) => (
+              <option key={stack.id} value={stack.id}>
+                {stack.name}
+              </option>
             ))}
-          </div>
+          </Select>
         </div>
-      )}
+
+        {/* 행마다 반복하던 클러스터를 여기 한 번만 적는다. 스택 이름은 위
+            선택기가 이미 보여주므로 다시 쓰지 않는다. */}
+        {selectedStack && (
+          <div className="pb-2 text-[13px] text-[var(--color-text-secondary)]">
+            {t('stackHistoryPage.table.cluster', 'Cluster')}{' '}
+            <span className="font-semibold text-[var(--color-text-primary)]">
+              {selectedStack.clusterName || '-'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 스냅샷은 표 아래가 아니라 오른쪽에 붙는다. 아래로 펼치면 행을 고를
+          때마다 표가 밀려 내려가 방금 고른 행을 잃는다 (DESIGN.md §Layout). */}
+      <ListDetailPanel
+        // 스냅샷은 pipeline.cd_tool.name 같은 경로와 값을 함께 보여준다.
+        // 340px 로는 거의 모든 줄이 접혀 읽기 어려웠다.
+        detailWidth={420}
+        emptyDetailMessage={t('stackHistoryPage.selectEntry', 'Select a change to view its configuration snapshot.')}
+        detailContent={
+          expandedEntry && (
+            <div className="p-3">
+              <p className="mb-2.5 mt-0 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                {t('stackHistoryPage.snapshot', 'Configuration Snapshot')} (v{expandedEntry.version})
+              </p>
+              {/* 스냅샷은 중첩 객체다. 최상위 키만 찍으면 값이 전부
+                  [object Object] 로 나온다 — 아래 비교(diff)가 쓰는 것과 같은
+                  평탄화를 써서 잎 값까지 보여준다. */}
+              <div className="flex flex-col gap-1.5">
+                {Object.entries(flattenObject(expandedEntry.snapshot ?? {})).map(([path, value]) => (
+                  <div
+                    key={path}
+                    className="rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] px-2.5 py-1.5 font-mono text-xs"
+                  >
+                    <div className="break-all text-[var(--color-text-secondary)]">{path}</div>
+                    <div className="break-all text-[var(--color-primary)]">{formatSnapshotValue(value)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        }
+        listContent={
+          <DataTable
+            flush
+            columns={columns}
+            data={entries}
+            getRowKey={(row) => row.id}
+            onRowClick={(row) => setExpandedId(row.id)}
+            toolbar={
+              <>
+                <Select
+                  value={clusterFilter}
+                  onChange={(event) => setClusterFilter(event.target.value)}
+                >
+                  <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
+                  {clusterOptions.map((clusterName) => (
+                    <option key={clusterName} value={clusterName}>{clusterName}</option>
+                  ))}
+                </Select>
+                <SearchInput
+                  wrapperClassName="ml-auto w-[220px]"
+                  placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </>
+        }
+      />
+        }
+      />
 
       <Modal
         open={compareOpen}
@@ -321,27 +330,25 @@ export function StackHistoryPage() {
           <div className="grid gap-2 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
               {t('stackHistoryPage.compare.versionA', 'Version A')}
-              <NativeSelect
+              <Select
                 value={versionA}
                 onChange={(event) => setVersionA(Number(event.target.value))}
-                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
               >
                 {versionOptions.map((version) => (
                   <option key={`a-${version}`} value={version}>{`v${version}`}</option>
                 ))}
-              </NativeSelect>
+              </Select>
             </label>
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
               {t('stackHistoryPage.compare.versionB', 'Version B')}
-              <NativeSelect
+              <Select
                 value={versionB}
                 onChange={(event) => setVersionB(Number(event.target.value))}
-                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
               >
                 {versionOptions.map((version) => (
                   <option key={`b-${version}`} value={version}>{`v${version}`}</option>
                 ))}
-              </NativeSelect>
+              </Select>
             </label>
           </div>
 
@@ -394,7 +401,7 @@ export function StackHistoryPage() {
        >
          <div className="flex flex-col gap-4">
            <div className="flex items-start gap-3">
-             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[rgba(239,68,68,0.15)] text-[#f87171]">
+             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
                <AlertTriangle size={20} />
              </div>
              <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
@@ -431,15 +438,15 @@ export function StackHistoryPage() {
              </div>
              {!preservePVC && (
                <div className="mt-3">
-                 <div className="rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-sm text-[#ef4444]">
+                 <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-sm text-[var(--color-error)]">
                    {t('stackHistoryPage.rollback.cleanWarning', 'This action permanently deletes Persistent Volumes.')}
                  </div>
-                 <input
+                 <TextInput
                    type="text"
                    placeholder={t('stackHistoryPage.rollback.confirmDeletePlaceholder', 'Type "DELETE" to confirm')}
                    value={deleteConfirmText}
                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                   className="mt-2 w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] outline-none"
+                   className="mt-2 w-full"
                  />
                </div>
              )}
@@ -481,6 +488,19 @@ function buildSnapshotDiff(
   })
 
   return { added, removed, changed }
+}
+
+/**
+ * 잎 값을 화면에 쓸 문자열로 바꾼다.
+ *
+ * 빈 값을 빈 문자열로 두면 줄이 통째로 사라진 것처럼 보인다 — "설정은 있는데
+ * 값이 비었다" 와 "그 설정이 없다" 는 다르므로 눈에 보이게 적는다.
+ */
+function formatSnapshotValue(value: unknown): string {
+  if (value === null || value === undefined) return '—'
+  if (Array.isArray(value)) return value.length > 0 ? value.map(String).join(', ') : '[]'
+  if (value === '') return '""'
+  return String(value)
 }
 
 function flattenObject(source: Record<string, unknown>, prefix = ''): Record<string, unknown> {

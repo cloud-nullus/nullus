@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Database, Plus, Save, Search } from 'lucide-react'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
+import { Database, Plus, Save } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { useResourceDefaults, useUpsertResourceDefault } from '../api/stack-api'
 import type { StackResourceDefault } from '../../../types'
+import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { cn } from '../../../lib/utils'
+import { Badge } from '../../../components/ui/badge'
 
 type EditableRow = Omit<StackResourceDefault, 'updated_at'> & { updated_at?: string }
 
@@ -62,11 +66,11 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
 }
 
 const CATEGORY_BADGE_CLASSNAME: Record<ToolCategory, string> = {
-  nullus: 'bg-[rgba(14,165,233,0.14)] text-[#7dd3fc]',
-  Artifacts: 'bg-[rgba(99,102,241,0.14)] text-[#a5b4fc]',
-  Storage: 'bg-[rgba(249,115,22,0.14)] text-[#fdba74]',
-  'CI/CD': 'bg-[rgba(16,185,129,0.14)] text-[#6ee7b7]',
-  Observability: 'bg-[rgba(245,158,11,0.14)] text-[#fbbf24]',
+  nullus: 'bg-[color-mix(in_srgb,_var(--color-info)_14%,_transparent)] text-[var(--color-info)]',
+  Artifacts: 'bg-[color-mix(in_srgb,_var(--color-primary)_14%,_transparent)] text-[var(--color-primary)]',
+  Storage: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]',
+  'CI/CD': 'bg-[color-mix(in_srgb,_var(--color-success)_14%,_transparent)] text-[var(--color-success)]',
+  Observability: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]',
 }
 
 const CATEGORY_ORDER: Record<ToolCategory, number> = {
@@ -186,7 +190,7 @@ export function StackOssResourceDefaultPage() {
           })
         },
         onError: (e) => {
-          const message = e instanceof Error ? e.message : 'OSS Default Resource 저장 중 오류가 발생했습니다.'
+          const message = e instanceof Error ? e.message : t('stackOssDefault.errors.saveFailed', 'Failed to save the OSS default resource.')
           setError(message)
         },
       }
@@ -195,7 +199,7 @@ export function StackOssResourceDefaultPage() {
 
   const handleCreate = () => {
     if (!newRow.tool_key.trim() || !newRow.display_name.trim()) {
-      setError('tool_key와 display_name은 필수입니다.')
+      setError(t('stackOssDefault.errors.requiredFields', 'tool_key and display_name are required.'))
       return
     }
 
@@ -205,28 +209,20 @@ export function StackOssResourceDefaultPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'OSS Default Resource' }]} />
+      <PageHeader
+        breadcrumb={[{ label: 'OSS Default Resource' }]}
+        icon={<Database size={16} />}
+        tone="info"
+        title="OSS Default Resource"
+        subtitle={t('stackOssDefault.description', 'View, edit, and register default OSS request/limit resources for DevSecOps Stack.')}
+      />
 
-      <div className="mb-7 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(59,130,246,0.15)] text-[#60a5fa]">
-            <Database size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OSS Default Resource</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackOssDefault.description', 'View, edit, and register default OSS request/limit resources for DevSecOps Stack.')}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-5 rounded-lg border border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.08)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+      <div className="mb-5 rounded-lg border border-[color-mix(in_srgb,_var(--color-info)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
         {t('stackOssDefault.contract.prefix', 'Contract:')} <code>POST /api/v1/stacks/resource-defaults</code> {t('stackOssDefault.contract.middle', 'is an idempotent upsert by')} <code>tool_key</code>{t('stackOssDefault.contract.end', '.')}.
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-4 py-3 text-sm text-[#fca5a5]">
+        <div className="mb-4 rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-error)]">
           {error}
         </div>
       )}
@@ -236,23 +232,16 @@ export function StackOssResourceDefaultPage() {
           <div className="text-sm font-bold text-[var(--color-text-primary)]">
             OSS Default Resource Request/Limit Defaults
           </div>
-          <div className="relative">
-            <Search
-              size={13}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-            />
-            <input
-              placeholder="Search by category / tool / name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-[240px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-            />
-          </div>
+          <SearchInput
+            placeholder="Search by category / tool / name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[rgba(255,255,255,0.02)]">
+            <tr className={tableHeadRowClass}>
               {[
                 'Category',
                 'Tool Key',
@@ -265,7 +254,7 @@ export function StackOssResourceDefaultPage() {
               ].map((header) => (
                 <th
                   key={header}
-                  className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]"
+                  className={cn(thClass)}
                 >
                   {header}
                 </th>
@@ -285,7 +274,7 @@ export function StackOssResourceDefaultPage() {
             {!isLoading && !hasData && (
               <tr>
                 <td colSpan={8} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
-                  등록된 OSS Default Resource가 없습니다.
+                  {t('stackOssDefault.empty.none', 'No OSS default resources registered.')}
                 </td>
               </tr>
             )}
@@ -293,7 +282,7 @@ export function StackOssResourceDefaultPage() {
             {!isLoading && hasData && filteredRows.length === 0 && (
               <tr>
                 <td colSpan={8} className="border-t border-[var(--color-border-default)] px-[14px] py-6 text-center text-sm text-[var(--color-text-secondary)]">
-                  검색 조건에 맞는 OSS Default Resource가 없습니다.
+                  {t('stackOssDefault.empty.search', 'No OSS default resources match the search.')}
                 </td>
               </tr>
             )}
@@ -303,9 +292,9 @@ export function StackOssResourceDefaultPage() {
               return (
               <tr key={row.tool_key}>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                  <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[category]}`}>
+                  <Badge className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[category]}`}>
                     {category}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                   <Input value={row.tool_key} onChange={(e) => updateRow(row.tool_key, { tool_key: e.target.value })} className="w-[150px]" />
@@ -335,9 +324,9 @@ export function StackOssResourceDefaultPage() {
 
             <tr>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[getToolCategory(newRow.tool_key, newRow.display_name)]}`}>
+                <Badge className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[getToolCategory(newRow.tool_key, newRow.display_name)]}`}>
                   {getToolCategory(newRow.tool_key, newRow.display_name)}
-                </span>
+                </Badge>
               </td>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                 <Input value={newRow.tool_key} onChange={(e) => setNewRow((prev) => ({ ...prev, tool_key: e.target.value }))} placeholder="tool key" className="w-[150px]" />

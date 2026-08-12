@@ -29,6 +29,7 @@ import type {
   ClusterStatus,
   StackResourceDefault,
   StackWorkloads,
+  StackWorkloadLogs,
 } from "../../../types";
 import {
   parseContentDispositionFilename,
@@ -76,6 +77,8 @@ const queryKeys = {
   compatibilityMatrix: () => ["stacks", "compatibility"] as const,
   clusters: () => ["clusters"] as const,
   workloads: (stackId: string) => ["stacks", "workloads", stackId] as const,
+  workloadLogs: (stackId: string, tailLines: number) =>
+    ["stacks", "workloads", "logs", stackId, tailLines] as const,
   integrations: (stackId: string) =>
     ["stacks", "integrations", stackId] as const,
   connectionInfo: (stackId: string) =>
@@ -326,6 +329,13 @@ const stackApiCalls = {
 
   getWorkloads: (stackId: string) =>
     api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
+
+  getWorkloadLogs: (stackId: string, tailLines: number) =>
+    api
+      .get<StackWorkloadLogs>(`/stacks/${stackId}/workloads/logs`, {
+        params: { tailLines },
+      })
+      .then((r) => r.data),
 
   testStorageConnection: (input: StorageTestRequest) =>
     api
@@ -672,12 +682,34 @@ export function useDeleteMatrix() {
   });
 }
 
-export function useStackWorkloads(stackId: string) {
+/**
+ * 목록 용도의 기본 주기. 실시간 그래프를 그리는 화면은 더 짧게 준다
+ * (스택 모니터링과 같은 5초).
+ */
+const WORKLOADS_POLL_MS = 30_000;
+
+export function useStackWorkloads(stackId: string, pollMs: number = WORKLOADS_POLL_MS) {
   return useQuery({
     queryKey: queryKeys.workloads(stackId),
     queryFn: () => stackApiCalls.getWorkloads(stackId),
     enabled: !!stackId,
-    refetchInterval: 30_000,
+    refetchInterval: pollMs,
+  });
+}
+
+/**
+ * 배포된 앱의 로그. 파드마다 요청이 하나씩 나가므로 지표(5초)보다 느리게 읽는다.
+ */
+export function useStackWorkloadLogs(
+  stackId: string,
+  tailLines: number,
+  pollMs: number,
+) {
+  return useQuery({
+    queryKey: queryKeys.workloadLogs(stackId, tailLines),
+    queryFn: () => stackApiCalls.getWorkloadLogs(stackId, tailLines),
+    enabled: !!stackId,
+    refetchInterval: pollMs,
   });
 }
 

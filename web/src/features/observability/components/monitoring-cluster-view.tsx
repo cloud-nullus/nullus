@@ -8,7 +8,7 @@ import type { StackMonitoringSnapshot } from "../../stack/api/stack-api"
 import { useClusterMonitoringSummary } from "../../admin/api/admin-api"
 import { useDeployments, usePipelines } from "../../cicd/api/cicd-api"
 import { cn } from "../../../lib/utils"
-import { CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
+import { CHART_LEGEND_PROPS, CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
 import type { TimeRange } from "./monitoring-tab-layout"
 import { formatRangeLabel, selectSeries } from "../utils/monitoring-utils"
 
@@ -148,8 +148,8 @@ export function ClusterDefault({
   const memoryUsage = aggregated.memoryUsage
 
   const pods = [
-    { name: 'Running', value: podRunning, color: '#22c55e' },
-    { name: 'Other', value: Math.max(0, podCount - podRunning), color: '#f59e0b' },
+    { name: 'Running', value: podRunning, color: 'var(--color-success)' },
+    { name: 'Other', value: Math.max(0, podCount - podRunning), color: 'var(--color-warning)' },
   ]
 
   const runningPodsPercent = podCount > 0 ? Math.round((podRunning / podCount) * 100) : 0
@@ -196,41 +196,41 @@ export function ClusterDefault({
           {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((r) => (
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
-                range === r ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
+                range === r ? 'border-[color-mix(in_srgb,_var(--color-warning)_60%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]')}>
               {r}
             </button>
           ))}
         </div>
       </div>
       <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        <KpiCard label="Running Pods" value={`${podRunning}/${podCount}`} icon={<Server size={18} />} color="#60a5fa" iconCls="bg-[rgba(59,130,246,0.15)] text-[#60a5fa]" bar={runningPodsPercent} />
-        <KpiCard label="Pods" value={String(podCount)} icon={<Box size={18} />} color="#22c55e" iconCls="bg-[rgba(34,197,94,0.15)] text-[#22c55e]" bar={runningPodsPercent} />
-        <KpiCard label="CPU" value={`${Math.round(cpuUsage)}%`} icon={<Cpu size={18} />} color="#f59e0b" iconCls="bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" bar={cpuUsage} />
-        <KpiCard label="Memory" value={`${Math.round(memoryUsage)}%`} icon={<MemoryStick size={18} />} color="#a78bfa" iconCls="bg-[rgba(139,92,246,0.15)] text-[#a78bfa]" bar={memoryUsage} />
+        <KpiCard label="Running Pods" value={`${podRunning}/${podCount}`} icon={<Server size={18} />} color="var(--color-info)" iconCls="bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]" bar={runningPodsPercent} />
+        <KpiCard label="Pods" value={String(podCount)} icon={<Box size={18} />} color="var(--color-success)" iconCls="bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]" bar={runningPodsPercent} />
+        <KpiCard label="CPU" value={`${Math.round(cpuUsage)}%`} icon={<Cpu size={18} />} color="var(--color-warning)" iconCls="bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]" bar={cpuUsage} />
+        <KpiCard label="Memory" value={`${Math.round(memoryUsage)}%`} icon={<MemoryStick size={18} />} color="var(--color-accent-alt)" iconCls="bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]" bar={memoryUsage} />
       </div>
       <div className="grid grid-cols-2 gap-3.5">
         <ChartPanel title="CPU Usage">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={series}>
-              <defs><linearGradient id="ccpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={.5} /><stop offset="95%" stopColor="#f59e0b" stopOpacity={.05} /></linearGradient></defs>
+              <defs><linearGradient id="ccpu" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-warning)" stopOpacity={.5} /><stop offset="95%" stopColor="var(--color-warning)" stopOpacity={.05} /></linearGradient></defs>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
+              <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Area type="monotone" dataKey="cpu" name="CPU %" stroke="#f59e0b" strokeWidth={2} fill="url(#ccpu)" />
+              <Area type="monotone" dataKey="cpu" name="CPU %" stroke="var(--color-warning)" strokeWidth={2} fill="url(#ccpu)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
         <ChartPanel title="Memory Usage">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={series}>
-              <defs><linearGradient id="cmem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={.5} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={.05} /></linearGradient></defs>
+              <defs><linearGradient id="cmem" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-info)" stopOpacity={.5} /><stop offset="95%" stopColor="var(--color-info)" stopOpacity={.05} /></linearGradient></defs>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
+              <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Area type="monotone" dataKey="memory" name="Memory %" stroke="#3b82f6" strokeWidth={2} fill="url(#cmem)" />
+              <Area type="monotone" dataKey="memory" name="Memory %" stroke="var(--color-info)" strokeWidth={2} fill="url(#cmem)" />
             </AreaChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -250,7 +250,7 @@ export function ClusterDefault({
                 {pods.map((e) => <Cell key={e.name} fill={e.color} />)}
               </Pie>
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: '#e5e7eb' }} />
+              <Legend {...CHART_LEGEND_PROPS} />
             </PieChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -258,12 +258,12 @@ export function ClusterDefault({
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={weekBars}>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="day" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <XAxis dataKey="day" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
+              <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: '#e5e7eb' }} />
-              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Legend {...CHART_LEGEND_PROPS} />
+              <Bar dataKey="success" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="failed" fill="var(--color-error)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartPanel>

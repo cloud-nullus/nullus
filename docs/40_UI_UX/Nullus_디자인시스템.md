@@ -5,12 +5,31 @@
 **기반**: proto4 와이어프레임 분석 + UI/UX Pro Max 디자인 시스템 생성
 **스타일**: Dark Mode (OLED) + Data-Dense Dashboard
 
-> **구현 위치** — 이 문서의 색상 팔레트는 `web/src/index.css` 의 CSS 커스텀 프로퍼티로
-> 구현돼 있다(토큰 46개). 표본 대조 결과 문서의 색상값이 실제 CSS 에 그대로 쓰이고
-> 있어 문서와 구현이 어긋나 있지 않다.
+> ## ⚠️ 이 문서는 더 이상 단일 출처가 아니다 (2026-08-11)
 >
-> 값을 바꿀 때는 `index.css` 가 단일 출처이고 이 문서는 그 의도를 설명한다. 컴포넌트에
-> 색상을 직접 박지 말고 토큰(`--color-*`, `--card-*`, `--color-sidebar-*`)을 쓴다.
+> **디자인 단일 출처는 [`web/DESIGN.md`](../../web/DESIGN.md) 다.**
+> 색·타입·간격·모양·깊이의 값을 바꿀 곳은 그 파일 하나이고, `npm run theme:generate` 가
+> 거기서 코드를 파생시킨다:
+>
+> ```
+> web/DESIGN.md
+>   ├─→ web/src/theme/tokens.generated.ts    MUI 테마 · AG Grid 테마
+>   └─→ web/src/theme/tokens.generated.css   --color-* CSS 토큰
+> ```
+>
+> CI 가 세 가지를 강제한다: 생성물 신선도(`npm run theme:check`),
+> DESIGN.md 유효성(`@google/design.md lint`), 토큰 대비 AA
+> (`src/__tests__/contrast-audit.test.ts`, 45건).
+>
+> **이 문서를 왜 남겨 두는가** — 개편 전 팔레트의 기록과 proto4 출처 대조표(§2.3 기능별
+> 색상 매핑, §6 아이콘 매핑)는 여전히 쓸모가 있다. 다만 **아래 색상값은 현재 구현과
+> 다르다.** 아래 표를 근거로 코드를 쓰지 않는다.
+>
+> 실제로 이 문서가 구현과 갈라진 것이 개편의 발단이었다. §2.4 는 라이트 보더를
+> `#e2e8f0` 으로 적어놨지만 구현은 `#1f2937`(거의 검정)이었고, 그 결과 라이트 테마가
+> 와이어프레임처럼 보였다. 단일 출처가 필요한 이유가 이 문서 자체에 남아 있다.
+>
+> 개편 경과와 결정 사항: [`Nullus_UIUX_전면개편_기획안.md`](./Nullus_UIUX_전면개편_기획안.md)
 
 ---
 

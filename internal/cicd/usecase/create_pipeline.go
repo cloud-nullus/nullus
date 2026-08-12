@@ -225,6 +225,7 @@ func (uc *CreatePipeline) provisionRepository(
 	out, err := uc.provisioner.Execute(ctx, ProvisionPipelineRepositoryInput{
 		AppName:             input.Name,
 		StackID:             input.StackID,
+		TemplateID:          input.TemplateID,
 		Namespace:           input.Namespace,
 		Port:                input.Port,
 		Replicas:            input.Replicas,

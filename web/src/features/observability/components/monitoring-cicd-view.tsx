@@ -2,8 +2,10 @@ import { useState, useMemo } from "react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { Activity, AlertCircle, CheckCircle, Clock, GitBranch, Layers, Package, XCircle } from "lucide-react"
 import { useDeployments, usePipelines } from "../../cicd/api/cicd-api"
+import { useStackWorkloads } from "../../stack/api/stack-api"
 import { cn } from "../../../lib/utils"
-import { CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
+import { CHART_LEGEND_PROPS, CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
+import { AppLogPanel, AppUsageCharts, USAGE_POLL_MS } from "./app-runtime-panels"
 import type { TimeRange } from "./monitoring-tab-layout"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import { formatDuration, timeAgo } from "../utils/monitoring-utils"
@@ -18,6 +20,9 @@ interface DeployedAppRow {
   pipeline: string
   status: AppStatus
   pods: [number | null, number | null]
+  /** 앱 파드들의 실사용량 합. metrics-server 가 없으면 null 이다. */
+  cpuMillicores: number | null
+  memoryMib: number | null
   cluster: string
   namespace: string
   duration: string
@@ -40,10 +45,47 @@ export const CICD_DEFAULT_TABS: EmbedTab[] = [
   },
 ]
 
-export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }) {
+export function CicdDefault({
+  selectedClusterId,
+  selectedStackId,
+}: {
+  selectedClusterId: string
+  selectedStackId: string
+}) {
   const [range, setRange] = useState<TimeRange>('24h')
   const { data: pipelinesData } = usePipelines()
   const { data: deploymentsData } = useDeployments()
+  // 배포된 앱의 파드는 클러스터에서 읽는다. 스택 단위 엔드포인트라 스택을 골라야
+  // 나온다 — 그래서 아래에서 스택 미선택 상태를 먼저 처리한다.
+  const { data: workloads } = useStackWorkloads(selectedStackId, USAGE_POLL_MS)
+
+  // 파이프라인 id 로 실제 파드 수를 찾는다.
+  const podsByPipeline = useMemo(() => {
+    const map = new Map<string, [number, number]>()
+    for (const pipeline of workloads?.pipelines ?? []) {
+      const pods = pipeline.k8sObjects.filter((object) => object.kind === 'Pod')
+      const ready = pods.filter((pod) => pod.status === 'Running').length
+      map.set(pipeline.id, [ready, pods.length])
+    }
+    return map
+  }, [workloads?.pipelines])
+
+  // 앱이 실제로 쓰는 자원은 그 앱 파드들의 합이다.
+  //
+  // 한 파드라도 값을 읽었으면 합을 보여준다. 하나도 못 읽었으면 null 이다 —
+  // 0 으로 두면 metrics-server 가 없는 클러스터에서 "안 쓰는 앱" 으로 보인다.
+  const usageByPipeline = useMemo(() => {
+    const map = new Map<string, { cpu: number | null; memory: number | null }>()
+    for (const pipeline of workloads?.pipelines ?? []) {
+      const pods = pipeline.k8sObjects.filter((object) => object.kind === 'Pod')
+      const sum = (pick: (pod: (typeof pods)[number]) => number | null | undefined) => {
+        const values = pods.map(pick).filter((v): v is number => typeof v === 'number')
+        return values.length > 0 ? values.reduce((a, b) => a + b, 0) : null
+      }
+      map.set(pipeline.id, { cpu: sum((pod) => pod.cpuMillicores), memory: sum((pod) => pod.memoryMib) })
+    }
+    return map
+  }, [workloads?.pipelines])
 
   const pipelines = useMemo(
     () => (pipelinesData?.items ?? []).filter((pipeline) => !selectedClusterId || pipeline.clusterId === selectedClusterId),
@@ -76,13 +118,15 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
       version: latest?.version || '—',
       pipeline: pipeline.appType,
       status,
-      pods: [null, null],
+      pods: podsByPipeline.get(pipeline.id) ?? [null, null],
+      cpuMillicores: usageByPipeline.get(pipeline.id)?.cpu ?? null,
+      memoryMib: usageByPipeline.get(pipeline.id)?.memory ?? null,
       cluster: pipeline.clusterName || '—',
       namespace: pipeline.namespace || 'default',
       duration: formatDuration(latest?.startedAt ?? null, latest?.completedAt ?? null),
       lastDeploy: timeAgo(latest?.startedAt ?? null),
     }
-  }), [pipelines, latestByPipeline])
+  }), [pipelines, latestByPipeline, podsByPipeline, usageByPipeline])
 
   const latestDeployments = useMemo(
     () => [...deployments].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()).slice(0, 8),
@@ -153,10 +197,10 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
   const runningDeployments = deployments.filter((d) => ['running', 'pending', 'validating', 'installing', 'configuring', 'health_check', 'rolling_back'].includes(d.status)).length
 
   const appKpis = [
-    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: '#6366f1', iconCls: 'bg-[rgba(99,102,241,0.15)] text-[#6366f1]', bar: 100 },
-    { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CheckCircle size={18} />, color: '#22c55e', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
-    { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch size={18} />, color: '#f59e0b', iconCls: 'bg-amber-500/15 text-amber-400', bar: 100 },
-    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: '#10b981', iconCls: 'bg-[rgba(16,185,129,0.15)] text-[#10b981]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
+    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: 'var(--color-primary)', iconCls: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]', bar: 100 },
+    { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CheckCircle size={18} />, color: 'var(--color-success)', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
+    { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch size={18} />, color: 'var(--color-warning)', iconCls: 'bg-amber-500/15 text-amber-400', bar: 100 },
+    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: 'var(--color-success)', iconCls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
   ]
 
   return (
@@ -168,8 +212,8 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
             <button key={r} type="button" onClick={() => setRange(r)}
               className={cn('rounded-[7px] border px-2.5 py-[5px] text-xs font-bold',
                 range === r
-                  ? 'border-[rgba(245,158,11,0.6)] bg-[rgba(245,158,11,0.2)] text-[#fcd34d]'
-                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] text-[var(--color-text-secondary)]')}>
+                  ? 'border-[color-mix(in_srgb,_var(--color-warning)_60%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]'
+                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]')}>
               {r}
             </button>
           ))}
@@ -181,18 +225,30 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
         {appKpis.map((c) => <KpiCard key={c.label} {...c} />)}
       </div>
 
+      {/* 왼쪽은 배포된 앱의 실시간 자원 사용(앱마다 선 하나), 오른쪽은 그 앱들의
+          로그다. 지표만으로는 앱이 왜 그 상태인지 알 수 없어 결국 kubectl 로
+          넘어가게 된다 — 같은 화면에서 함께 읽히도록 나란히 둔다. */}
+      {/* 행 높이를 못박는다. 안 그러면 로그 줄 수가 행 높이를 밀고, 왼쪽 중첩
+          그리드가 그 높이를 둘로 나눠 차트 패널이 빈 공간째로 늘어난다. */}
+      <div className="mb-5 grid grid-cols-1 gap-3.5 xl:h-[544px] xl:grid-cols-2">
+        <div className="grid min-h-0 grid-cols-1 gap-3.5 xl:grid-rows-2">
+          <AppUsageCharts stackId={selectedStackId} />
+        </div>
+        <AppLogPanel stackId={selectedStackId} />
+      </div>
+
       {/* Charts */}
       <div className="mb-5 grid grid-cols-1 gap-3.5">
         <ChartPanel title="Deployment Timeline">
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={timeline}>
               <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
-              <XAxis dataKey="time" stroke="#94a3b8" tick={CHART_STYLE.tick} />
-              <YAxis stroke="#94a3b8" tick={CHART_STYLE.tick} />
+              <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
+              <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} />
               <Tooltip contentStyle={CHART_STYLE.tooltip} />
-              <Legend wrapperStyle={{ color: '#e5e7eb', fontSize: 11 }} />
-              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Legend {...CHART_LEGEND_PROPS} />
+              <Bar dataKey="success" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="failed" fill="var(--color-error)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -202,16 +258,23 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
       <div className="mb-5 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-3">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
-            <Package size={15} className="text-[#a5b4fc]" />
+            <Package size={15} className="text-[var(--color-primary)]" />
             Deployed Applications
           </h2>
           <span className="text-xs text-[var(--color-text-secondary)]">{rows.length} apps</span>
         </div>
+        {!selectedStackId && (
+          // 파드 수는 스택 단위 엔드포인트에서 온다. 안 고르면 그 열만 비므로,
+          // 표가 고장난 것처럼 보이지 않게 이유를 적는다.
+          <div className="mb-3 rounded-[var(--radius-sm)] border border-[var(--color-border-default)] px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">
+            위에서 스택을 고르면 배포된 애플리케이션의 실제 파드 수를 함께 보여줍니다.
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-[var(--color-border-default)] text-[11px] text-[var(--color-text-secondary)]">
-                {['Application', 'Version', 'Pipeline', 'Status', 'Pods', 'Cluster', 'Namespace', 'Duration', 'Last Deploy'].map((h) => (
+                {['Application', 'Version', 'Pipeline', 'Status', 'Pods', 'CPU', 'Memory', 'Cluster', 'Namespace', 'Duration', 'Last Deploy'].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold tracking-[0.03em]">{h}</th>
                 ))}
               </tr>
@@ -222,7 +285,7 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
                 const isLast = i === rows.length - 1
                 return (
                   <tr key={app.name}
-                    className={cn('transition-colors hover:bg-[rgba(255,255,255,0.02)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
+                    className={cn('transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]', !isLast && 'border-b border-[var(--color-border-default)]')}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className={cn('h-2 w-2 shrink-0 rounded-full', sc.dot)} />
@@ -245,8 +308,18 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
                           ? 'text-amber-400'
                           : 'text-[var(--color-text-primary)]',
                       )}>
-                        {typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number' ? `${app.pods[0]}/${app.pods[1]}` : '—'}
+                        {typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number'
+                          ? `${app.pods[0]}/${app.pods[1]}`
+                          : selectedStackId
+                            ? '—'
+                            : 'select stack'}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">
+                      {typeof app.cpuMillicores === 'number' ? `${app.cpuMillicores}m` : '—'}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">
+                      {typeof app.memoryMib === 'number' ? `${app.memoryMib}Mi` : '—'}
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.cluster}</td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.namespace}</td>
@@ -268,7 +341,7 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
       <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="border-b border-[var(--color-border-default)] px-4 py-3">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
-            <GitBranch size={15} className="text-[#a5b4fc]" />
+            <GitBranch size={15} className="text-[var(--color-primary)]" />
             Recent Deployments
           </h2>
         </div>

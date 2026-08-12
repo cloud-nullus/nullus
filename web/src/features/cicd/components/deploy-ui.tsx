@@ -28,10 +28,10 @@ export function PhaseStep({
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300",
           isDone
-            ? "bg-[rgba(34,197,94,0.15)] text-[#22c55e]"
+            ? "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]"
             : isActive
-              ? "bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
-              : "bg-[rgba(255,255,255,0.05)] text-[var(--color-text-secondary)]",
+              ? "bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]"
+              : "bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)] text-[var(--color-text-secondary)]",
         )}
       >
         {isDone ? (
@@ -46,9 +46,9 @@ export function PhaseStep({
         className={cn(
           "text-[13px] font-semibold",
           isDone
-            ? "text-[#22c55e]"
+            ? "text-[var(--color-success)]"
             : isActive
-              ? "text-[#a5b4fc]"
+              ? "text-[var(--color-primary)]"
               : "text-[var(--color-text-secondary)]",
         )}
       >
@@ -59,7 +59,7 @@ export function PhaseStep({
           className={cn(
             "mx-1 h-px flex-1 transition-colors duration-300",
             isDone
-              ? "bg-[rgba(34,197,94,0.4)]"
+              ? "bg-[color-mix(in_srgb,_var(--color-success)_40%,_transparent)]"
               : "bg-[var(--color-border-default)]",
           )}
         />
@@ -118,7 +118,7 @@ export function ResourceSlider({
         max={options.length - 1}
         value={isCustom ? 0 : idx}
         onChange={(e) => onChange(options[Number(e.target.value)])}
-        className="w-full accent-[#6366f1]"
+        className="w-full accent-[var(--color-primary)]"
       />
       <div className="mt-1 flex justify-between">
         {options.map((o) => (
@@ -137,9 +137,9 @@ export function ResourceSlider({
 export function CopyableCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="mt-3 flex items-center gap-2 rounded-md bg-[#0d1117] px-3 py-2">
-      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-[#c9d1d9]">
-        <span className="mr-1.5 text-[#484f58]">$</span>
+    <div className="mt-3 flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-terminal-bg)] px-3 py-2">
+      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-[var(--color-terminal-text)]">
+        <span className="mr-1.5 text-[var(--color-terminal-muted)]">$</span>
         {command}
       </code>
       <button
@@ -149,10 +149,10 @@ export function CopyableCommand({ command }: { command: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
         }}
-        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[rgba(255,255,255,0.4)] transition-colors hover:text-white"
+        className="shrink-0 cursor-pointer border-none bg-none p-1 text-[color-mix(in_srgb,_var(--color-text-primary)_40%,_transparent)] transition-colors hover:text-white"
       >
         {copied ? (
-          <Check size={14} className="text-[#3fb950]" />
+          <Check size={14} className="text-[var(--color-terminal-success)]" />
         ) : (
           <Copy size={14} />
         )}

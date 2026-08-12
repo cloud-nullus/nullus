@@ -1,112 +1,92 @@
+/*
+ * 전역 스타일.
+ *
+ * 디자인 토큰은 여기에 쓰지 않는다 — web/DESIGN.md 가 단일 출처이고
+ * ./theme/tokens.generated.css 가 그 파생물이다. (npm run theme:generate)
+ */
+
+/* MUI × Tailwind v4 통합의 핵심: 레이어 순서를 먼저 못박는다.
+   MUI 는 'mui' 식별자를 보고 자기 스타일을 그 레이어에 넣으므로,
+   Tailwind 유틸리티(utilities)가 항상 MUI 컴포넌트 스타일을 이긴다.
+   순서를 선언하지 않으면 MUI 의 emotion 런타임 주입이 유틸리티를 덮어쓴다. */
+@layer theme, base, mui, components, utilities;
+
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
-@import "tailwindcss";
+@import 'tailwindcss';
+@import './theme/tokens.generated.css';
 
-:root {
-  /* Brand colors */
-  --color-brand-gold: #ffd700;
-  --color-brand-gold-end: #f59e0b;
+/* 생성된 CSS 변수를 Tailwind 토큰으로 노출한다.
+   `@theme inline` 이라 Tailwind 가 값을 복사하지 않고 var() 를 그대로 참조하므로,
+   테마 전환([data-theme]) 시 유틸리티 클래스도 함께 따라간다.
 
-  /* Dark theme surfaces */
-  --color-surface-base: #0a0a0a;
-  --color-surface-card: #0f1419;
-  --color-surface-overlay: rgba(0, 0, 0, 0.7);
+   덕분에 `text-[var(--color-text-secondary)]` 를 `text-secondary` 로 줄일 수 있다.
+   기존 임의값 클래스 1,582곳은 그대로 동작하므로 점진적으로 정리한다. */
+@theme inline {
+  --color-surface-base: var(--color-surface-base);
+  --color-surface-card: var(--color-surface-card);
+  --color-surface-sunken: var(--color-surface-sunken);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-surface-overlay: var(--color-surface-overlay);
 
-  /* Borders */
-  --color-border-default: #2d3748;
-  --color-border-hover: #4a5568;
+  --color-border-default: var(--color-border-default);
+  --color-border-hover: var(--color-border-hover);
 
-  /* Text */
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
 
-  /* Sidebar */
-  --color-sidebar-border: #2d3748;
-  --color-sidebar-group-text: #c4b5fd;
-  --color-sidebar-item-text: #e2e8f0;
-  --color-sidebar-item-active-text: #a5b4fc;
-  --color-sidebar-item-active-bg: rgba(99, 102, 241, 0.1);
-  --color-sidebar-item-active-border: #6366f1;
+  --color-primary: var(--color-primary);
+  --color-on-primary: var(--color-on-primary);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
+  --color-info: var(--color-info);
+  --color-accent-alt: var(--color-accent-alt);
+  --color-brand-gold: var(--color-brand-gold);
 
-  /* Home */
-  --color-home-hero-bg: linear-gradient(160deg, rgba(15, 23, 42, 0.85), rgba(17, 24, 39, 0.95));
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
 
-  /* Layout tokens */
-  --sidebar-width: 240px;
-  --sidebar-collapsed: 64px;
-  --header-height: 56px;
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
 
-  /* Component tokens */
-  --card-radius: 12px;
-  --card-padding: 18px;
-  --page-padding: 48px;
-  --grid-gap: 14px;
-  --icon-size: 38px;
-  --icon-radius: 10px;
-
-  /* Transitions */
-  --transition-default: 200ms ease;
-  --transition-fast: 150ms ease;
-
-  /* z-index */
-  --z-sidebar: 40;
-  --z-modal: 50;
-  --z-toast: 60;
+  --font-sans: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
 }
 
-/* Dark theme default */
-:root {
-  color-scheme: dark;
-}
-
+/* 두 테마 모두 면 하나다. 다크에 남아 있던 남보라 그라데이션
+   (#0a0a0a → #1a1a2e → #16213e)은 걷어냈다 — 개편 전 팔레트의 잔재라
+   현재 --color-surface-base(#0a0b0d)와 시작색부터 어긋나 있었고,
+   중립 면 위에 브랜드 블루 하나만 전압으로 쓴다는 §Colors 결정과도 충돌한다. */
 body {
   margin: 0;
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
-  background-attachment: fixed;
+  background: var(--color-surface-base);
   color: var(--color-text-primary);
   font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
 }
 
-/* Light theme override */
-[data-theme="light"] {
-  color-scheme: light;
-  --color-surface-base: #ffffff;
-  --color-surface-card: #f8fafc;
-  --color-border-default: #1f2937;
-  --color-border-hover: #111827;
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748b;
-  --color-sidebar-border: #111827;
-  --color-sidebar-group-text: #111827;
-  --color-sidebar-item-text: #1f2937;
-  --color-sidebar-item-active-text: #111827;
-  --color-sidebar-item-active-bg: rgba(17, 24, 39, 0.08);
-  --color-sidebar-item-active-border: #111827;
-  --color-home-hero-bg: linear-gradient(160deg, #ffffff, #eef2ff);
-}
-
-[data-theme="light"] body {
-  background: #f8fafc;
-}
-
 /* Code font */
-code, pre, .font-mono {
+code,
+pre,
+.font-mono {
   font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
 }
 
 /* Accessibility: focus ring */
 *:focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
@@ -118,18 +98,8 @@ code, pre, .font-mono {
   flex-direction: column;
 }
 
-/* Native select: force dark background on option dropdown (cross-browser) */
-select {
-  color-scheme: dark;
-}
+/* Native select: 드롭다운 옵션 배경을 테마에 맞춘다 (브라우저 기본값이 테마를 안 따른다) */
 select option {
-  background-color: #111827;
-  color: #f1f5f9;
-}
-[data-theme="light"] select {
-  color-scheme: light;
-}
-[data-theme="light"] select option {
-  background-color: #ffffff;
-  color: #0f172a;
+  background-color: var(--color-surface-card);
+  color: var(--color-text-primary);
 }

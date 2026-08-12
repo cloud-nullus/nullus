@@ -1,6 +1,5 @@
-import { Layers, Search, ShieldCheck } from 'lucide-react'
+import { Layers, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
@@ -8,12 +7,15 @@ import type { CompatibilityMatrix, CompatibilityValidationResult } from '../api/
 import { cn } from '../../../lib/utils'
 import { useState } from 'react'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
 
 
 const STATUS_BADGE: Record<string, { className: string; key: string; defaultLabel: string }> = {
-  verified: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]', key: 'stackVersionPage.status.verified', defaultLabel: 'Verified' },
-  untested: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]', key: 'stackVersionPage.status.partial', defaultLabel: 'Partial' },
-  unsupported: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]', key: 'stackVersionPage.status.notSupported', defaultLabel: 'Not Supported' },
+  verified: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', key: 'stackVersionPage.status.verified', defaultLabel: 'Verified' },
+  untested: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', key: 'stackVersionPage.status.partial', defaultLabel: 'Partial' },
+  unsupported: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]', key: 'stackVersionPage.status.notSupported', defaultLabel: 'Not Supported' },
 }
 
 const toolVersion = (matrix: CompatibilityMatrix, keyword: string): string => {
@@ -56,44 +58,37 @@ export function StackVersionPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.stackVersion', 'Stack Version') }]} />
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.stackVersion', 'Stack Version') }]}
+        icon={<Layers size={16} />}
+        tone="success"
+        title={t('stackVersionPage.title', 'Stack Version')}
+        subtitle={t('stackVersionPage.description', 'Manage compatibility based on validated version combinations.')}
+        actions={
+          <Button variant="primary" size="md" onClick={handleValidate}>
+            <ShieldCheck size={15} />
+            {t('stackVersionPage.actions.validateCurrentStack', 'Validate Current Stack')}
+          </Button>
+        }
+      />
 
-      <div className="mb-7 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(34,197,94,0.15)] text-[#4ade80]">
-            <Layers size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('stackVersionPage.title', 'Stack Version')}</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('stackVersionPage.description', 'Manage compatibility based on validated version combinations.')}</p>
-          </div>
-        </div>
-        <Button variant="primary" size="md" onClick={handleValidate}>
-          <ShieldCheck size={15} />
-          {t('stackVersionPage.actions.validateCurrentStack', 'Validate Current Stack')}
-        </Button>
-      </div>
-
-      <div className="mb-5 rounded-lg border border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.08)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+      <div className="mb-5 rounded-lg border border-[color-mix(in_srgb,_var(--color-info)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-info)_8%,_transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
         {t('stackVersionPage.notice', 'Only validated version combinations are shown. Unverified combinations will display warnings.')}
       </div>
 
       <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3">
           <span className="text-sm font-bold text-[var(--color-text-primary)]">{t('stackVersionPage.verifiedCombinations', 'Verified Combinations')}</span>
-          <div className="relative">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('stackVersionPage.searchPlaceholder', 'Search stacks or tools...')}
-              className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-            />
-          </div>
+          <SearchInput
+            wrapperClassName="w-[220px]"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('stackVersionPage.searchPlaceholder', 'Search stacks or tools...')}
+          />
         </div>
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-[rgba(255,255,255,0.02)]">
+            <tr className={tableHeadRowClass}>
               {[
                 t('stackVersionPage.table.gitlab', 'GitLab'),
                 t('stackVersionPage.table.argocd', 'Argo CD'),
@@ -103,7 +98,7 @@ export function StackVersionPage() {
                 t('stackVersionPage.table.k8s', 'K8s'),
                 t('stackVersionPage.table.status', 'Status'),
               ].map((header) => (
-                <th key={header} className="px-[14px] py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                <th key={header} className={cn(thClass)}>
                   {header}
                 </th>
               ))}
@@ -124,7 +119,7 @@ export function StackVersionPage() {
                   <td className={rowClassName}>
                     <span className={cn('rounded-md px-[9px] py-[3px] text-xs font-semibold', badge.className)}>{t(badge.key, badge.defaultLabel)}</span>
                     {recommended && (
-                      <span className="ml-1.5 rounded-md bg-[rgba(139,92,246,0.15)] px-[7px] py-[3px] text-[11px] font-semibold text-[#c4b5fd]">{t('stackVersionPage.recommended', 'Recommended')}</span>
+                      <span className="ml-1.5 rounded-md bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] px-[7px] py-[3px] text-[11px] font-semibold text-[var(--color-accent-alt)]">{t('stackVersionPage.recommended', 'Recommended')}</span>
                     )}
                   </td>
                 </tr>
@@ -144,7 +139,7 @@ export function StackVersionPage() {
       >
         {validating && (
           <div className="py-8 text-center text-[var(--color-text-secondary)]">
-            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-[rgba(255,255,255,0.1)] border-t-[#a5b4fc]" />
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-[color-mix(in_srgb,_var(--color-text-primary)_10%,_transparent)] border-t-[var(--color-primary)]" />
             {t('stackVersionPage.validation.running', 'Validating...')}
           </div>
         )}
@@ -154,12 +149,12 @@ export function StackVersionPage() {
               className={cn(
                 'flex items-center gap-2.5 rounded-lg border px-4 py-3',
                 validationResult.compatible
-                  ? 'border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.1)]'
-                  : 'border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.1)]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-success)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_10%,_transparent)]'
+                  : 'border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)]'
               )}
             >
-              <ShieldCheck size={20} color={validationResult.compatible ? '#22c55e' : '#ef4444'} />
-              <span className={cn('text-sm font-bold', validationResult.compatible ? 'text-[#22c55e]' : 'text-[#ef4444]')}>
+              <ShieldCheck size={20} color={validationResult.compatible ? 'var(--color-success)' : 'var(--color-error)'} />
+              <span className={cn('text-sm font-bold', validationResult.compatible ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]')}>
                 {validationResult.compatible
                   ? t('stackVersionPage.validation.pass', 'Compatibility validation passed')
                   : t('stackVersionPage.validation.fail', 'Compatibility issues found')}

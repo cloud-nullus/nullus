@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal } from '../ui/modal'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
+import { TextInput } from '../ui/text-input'
 
 interface ConfirmDialogProps {
    open: boolean
@@ -60,7 +61,7 @@ export function ConfirmDialog({
             onClick={handleConfirm}
             disabled={!canConfirm || loading}
             loading={loading}
-            className={cn(canConfirm && 'bg-[linear-gradient(135deg,#ef4444,#dc2626)] text-white')}
+            className={cn(canConfirm && 'bg-[linear-gradient(135deg,var(--color-error),var(--color-error))] text-white')}
           >
             {confirmLabel}
           </Button>
@@ -69,7 +70,7 @@ export function ConfirmDialog({
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[rgba(239,68,68,0.15)] text-[#f87171]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
             <AlertTriangle size={20} />
           </div>
           <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
@@ -83,22 +84,23 @@ export function ConfirmDialog({
            <div>
              <p className="mb-2 mt-0 text-[13px] text-[var(--color-text-secondary)]">
                {t('confirmDialog.typeToConfirm.prefix', 'To confirm, type')}{' '}
-               <code className="rounded bg-[rgba(255,255,255,0.08)] px-1.5 py-0.5 font-mono text-xs text-[#f87171]">
+               <code className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-error)]">
                  {confirmText}
                </code>
                {' '}
                {t('confirmDialog.typeToConfirm.suffix', 'exactly.')}
              </p>
-             <input
+             <TextInput
                type="text"
                value={typed}
                onChange={(e) => setTyped(e.target.value)}
                placeholder={confirmText}
                className={cn(
-                 'box-border w-full rounded-lg border bg-[rgba(255,255,255,0.04)] px-3 py-[9px] font-mono text-sm text-[var(--color-text-primary)] outline-none',
-                 typed === confirmText
-                   ? 'border-[rgba(239,68,68,0.5)]'
-                   : 'border-[var(--color-border-default)]'
+                 'w-full font-mono',
+                 // 확인 문구가 맞으면 테두리로 알린다. 값이 틀린 게 아니라 맞은
+                 // 상태를 강조하는 자리라 invalid 가 아니라 색만 바꾼다.
+                 typed === confirmText &&
+                   'border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)]',
                )}
              />
            </div>

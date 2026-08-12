@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { screen, fireEvent, within } from '@testing-library/react'
-import { renderWithProviders } from './test-utils'
+import { renderWithProviders, selectOptionByValue } from './test-utils'
 import { LoginPage } from '../features/auth/pages/login-page'
 import { HomePage } from '../features/home/pages/home-page'
 import { StackTemplatePage } from '../features/stack/pages/stack-template-page'
@@ -140,8 +140,8 @@ describe('UAT-1: DevOps Engineer scenario', () => {
   it('step 6: YAML View tab shows configuration after required selections', () => {
     useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
     renderWithProviders(<StackInstallPage />)
-    fireEvent.change(screen.getByLabelText('Target Cluster'), { target: { value: 'cluster-1' } })
-    fireEvent.change(screen.getByLabelText('Namespace'), { target: { value: '__new__' } })
+    selectOptionByValue(screen.getByLabelText('Target Cluster'), 'cluster-1')
+    selectOptionByValue(screen.getByLabelText('Namespace'), '__new__')
     fireEvent.change(screen.getByPlaceholderText('my-namespace'), { target: { value: 'uat' } })
     fireEvent.click(screen.getByText('YAML View'))
     expect(screen.getByTestId('yaml-editor')).toBeInTheDocument()

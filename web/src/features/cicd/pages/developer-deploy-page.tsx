@@ -5,11 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from "lucide-react";
-import { Breadcrumb } from "../../../components/shared/breadcrumb";
 import { CodePreview } from "../../../components/shared/code-preview";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
-import { NativeSelect } from "../../../components/ui/native-select";
+import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/utils";
 import { useClusterNamespaces, useClusters } from "../../admin/api/admin-api";
 import { useStackIntegrations, useStacks } from "../../stack/api/stack-api";
@@ -21,6 +20,8 @@ import {
 import type { AppType } from "../api/cicd-api";
 import { StepSection, labelStyleClass } from "../components/deploy-ui";
 import { generateManifestYamls } from "../utils/yaml-generator";
+import { PageHeader } from '../../../components/layout/page-header'
+import { Checkbox } from "../../../components/ui/checkbox"
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 type Capability = "CI" | "CD" | "Test" | "Security";
@@ -138,7 +139,7 @@ function RequiredDot() {
     <span
       aria-hidden="true"
       data-testid="required-dot"
-      className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[#ef4444] align-middle"
+      className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-error)] align-middle"
     />
   );
 }
@@ -574,29 +575,23 @@ export function DeveloperDeployPage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          { label: t("sidebar.cicdList", "CI/CD List"), path: "/cicd/list" },
-          { label: t("developerDeployPage.title", "Pipeline Setup") },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t("sidebar.cicdList", "CI/CD List"), path: "/cicd/list" },
+            { label: t("developerDeployPage.title", "Pipeline Setup") },
+          ]
+        }
+        icon={<Rocket size={16} />}
+        tone="primary"
+        title={t("developerDeployPage.title", "Pipeline Setup")}
+        subtitle={
+          t(
+            "developerDeployPage.description",
+            "Configure your application pipeline before deployment.",
+          )
+        }
       />
-
-      <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
-          <Rocket size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-            {t("developerDeployPage.title", "Pipeline Setup")}
-          </h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-            {t(
-              "developerDeployPage.description",
-              "Configure your application pipeline before deployment.",
-            )}
-          </p>
-        </div>
-      </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-1">
         {([1, 2, 3, 4, 5, 6] as Step[]).map((step, index) => (
@@ -614,10 +609,10 @@ export function DeveloperDeployPage() {
                 className={cn(
                   "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
                   step === activeStep
-                    ? "bg-[#6366f1] text-white"
+                    ? "bg-[var(--color-primary)] text-white"
                     : step < activeStep
-                      ? "bg-[rgba(34,197,94,0.3)] text-[#22c55e]"
-                      : "bg-[rgba(255,255,255,0.08)] text-[var(--color-text-secondary)]",
+                      ? "bg-[color-mix(in_srgb,_var(--color-success)_30%,_transparent)] text-[var(--color-success)]"
+                      : "bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] text-[var(--color-text-secondary)]",
                 )}
               >
                 {step}
@@ -667,7 +662,7 @@ export function DeveloperDeployPage() {
             onChange={(event) => setField("appName", event.target.value)}
           />
           {errors.appName && (
-            <span className="text-xs text-[#ef4444]">
+            <span className="text-xs text-[var(--color-error)]">
               {errors.appName.message}
             </span>
           )}
@@ -695,12 +690,10 @@ export function DeveloperDeployPage() {
                         : "text-[var(--color-text-primary)]",
                     )}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={isSelected(capability)}
                       disabled={disabled}
                       onChange={() => toggleCapability(capability)}
-                      className="h-4 w-4 accent-[#6366f1]"
                     />
                     {capability}
                   </label>
@@ -717,11 +710,9 @@ export function DeveloperDeployPage() {
                   key={phase}
                   className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selectedPhase === phase}
                     onChange={() => setSelectedPhase(phase)}
-                    className="h-4 w-4 accent-[#6366f1]"
                   />
                   {phase}
                 </label>
@@ -742,7 +733,7 @@ export function DeveloperDeployPage() {
         <StepSection
           title={
             <>
-              <span className="rounded-md bg-[rgba(99,102,241,0.14)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#a5b4fc]">
+              <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_14%,_transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-primary)]">
                 CI
               </span>
               <span>
@@ -756,12 +747,13 @@ export function DeveloperDeployPage() {
         >
           <div className="flex flex-col gap-6">
             <div>
-              <label htmlFor="deploy-stack" className={labelStyleClass}>
+              <label id="deploy-stack-label" htmlFor="deploy-stack" className={labelStyleClass}>
                 {t("developerDeployPage.form.stackRequired", "Stack 선택")}
                 <RequiredDot />
               </label>
-              <NativeSelect
+              <Select
                 id="deploy-stack"
+                aria-labelledby="deploy-stack-label"
                 value={selectedStackId}
                 onChange={(event) => {
                   setSelectedStackId(event.target.value);
@@ -785,7 +777,7 @@ export function DeveloperDeployPage() {
                     {stack.name}
                   </option>
                 ))}
-              </NativeSelect>
+              </Select>
             </div>
             {isSelected("CI") && (
               <>
@@ -968,7 +960,7 @@ export function DeveloperDeployPage() {
             <StepSection
               title={
                 <>
-                  <span className="rounded-md bg-[rgba(34,197,94,0.14)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#86efac]">
+                  <span className="rounded-md bg-[color-mix(in_srgb,_var(--color-success)_14%,_transparent)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-success)]">
                     CD
                   </span>
                   <span>
@@ -1043,7 +1035,7 @@ export function DeveloperDeployPage() {
                         </div>
                       )}
                       {manifestLoadError && (
-                        <p className="mb-0 mt-2 text-xs text-[#f87171]">
+                        <p className="mb-0 mt-2 text-xs text-[var(--color-error)]">
                           {manifestLoadError}
                         </p>
                       )}
@@ -1060,14 +1052,16 @@ export function DeveloperDeployPage() {
                     <div className="flex flex-col gap-3">
                       <div>
                         <label
+                          id="deploy-cluster-label"
                           htmlFor="deploy-cluster"
                           className={labelStyleClass}
                         >
                           {t("developerDeployPage.form.cluster", "Cluster")}
                           <RequiredDot />
                         </label>
-                        <NativeSelect
+                        <Select
                           id="deploy-cluster"
+                          aria-labelledby="deploy-cluster-label"
                           value={form.clusterId}
                           onChange={(event) => {
                             setField("clusterId", event.target.value);
@@ -1081,23 +1075,25 @@ export function DeveloperDeployPage() {
                               {cluster.name}
                             </option>
                           ))}
-                        </NativeSelect>
+                        </Select>
                         {errors.clusterId && (
-                          <span className="text-xs text-[#ef4444]">
+                          <span className="text-xs text-[var(--color-error)]">
                             {errors.clusterId.message}
                           </span>
                         )}
                       </div>
                       <div>
                         <label
+                          id="deploy-namespace-label"
                           htmlFor="deploy-namespace"
                           className={labelStyleClass}
                         >
                           {t("developerDeployPage.form.namespace", "Namespace")}
                           <RequiredDot />
                         </label>
-                        <NativeSelect
+                        <Select
                           id="deploy-namespace"
+                          aria-labelledby="deploy-namespace-label"
                           value={
                             createNewNamespace
                               ? "__new__"
@@ -1125,7 +1121,7 @@ export function DeveloperDeployPage() {
                               "New Namespace",
                             )}
                           </option>
-                        </NativeSelect>
+                        </Select>
                         {createNewNamespace && (
                           <Input
                             className="mt-2"
@@ -1140,7 +1136,7 @@ export function DeveloperDeployPage() {
                           />
                         )}
                         {errors.namespace && (
-                          <span className="text-xs text-[#ef4444]">
+                          <span className="text-xs text-[var(--color-error)]">
                             {errors.namespace.message}
                           </span>
                         )}
@@ -1197,7 +1193,7 @@ export function DeveloperDeployPage() {
                           }
                         />
                         {errors.replicas && (
-                          <span className="text-xs text-[#ef4444]">
+                          <span className="text-xs text-[var(--color-error)]">
                             {errors.replicas.message}
                           </span>
                         )}
@@ -1293,13 +1289,13 @@ export function DeveloperDeployPage() {
                             <button
                               type="button"
                               onClick={() => remove(index)}
-                              className="shrink-0 cursor-pointer border-none bg-none p-1 text-[#f87171]"
+                              className="shrink-0 cursor-pointer border-none bg-none p-1 text-[var(--color-error)]"
                             >
                               <Trash2 size={14} />
                             </button>
                           </div>
                           {errors.envVars?.[index]?.key?.message && (
-                            <span className="text-xs text-[#ef4444]">
+                            <span className="text-xs text-[var(--color-error)]">
                               {errors.envVars[index]?.key?.message}
                             </span>
                           )}
@@ -1397,7 +1393,7 @@ export function DeveloperDeployPage() {
                         </Button>
                       </div>
                       {submitError && (
-                        <p className="mt-3 text-right text-xs text-[#f87171]">
+                        <p className="mt-3 text-right text-xs text-[var(--color-error)]">
                           {submitError}
                         </p>
                       )}

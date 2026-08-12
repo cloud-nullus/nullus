@@ -22,6 +22,12 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		return map[string]any{}
 	}
 
+	// 설치 마법사에서 고른 값이 있으면 그것을 기준 벡터로 쓴다. 없으면 관리자
+	// 기본값 그대로다. 이 배선이 없던 동안 계획 화면의 숫자는 stacks.config 에만
+	// 저장되고 Helm 에는 한 번도 실리지 않았다 — ArgoCD·kube-prometheus-stack 은
+	// 차트 기본값에도 resources 가 없어서 파드가 requests/limits 없이 떴다.
+	item = withPlannedResources(item, plannedResourceFor(step, cfg, resourceKey))
+
 	resources := toK8sResourceValues(item)
 	if len(resources) == 0 {
 		return map[string]any{}
@@ -89,6 +95,50 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		}
 		if v.MemoryLimitGi > 3 {
 			v.MemoryLimitGi = 3
+		}
+		return toK8sResourceValues(v)
+	}
+	// GitLab 번들 Prometheus 는 뜨는 데 필요한 최소가 있다.
+	//
+	// 비율만 곱했더니 Local/Startup 규모에서 메모리 한도가 328Mi 가 되어
+	// OOMKilled(exit 137) 로 34번 재시작하며 CrashLoopBackOff 에 갇혔다.
+	// Prometheus 의 메모리는 스택 크기가 아니라 긁는 대상 수와 WAL 재생에
+	// 좌우되므로, 스택을 줄인다고 같이 줄일 수 있는 값이 아니다.
+	//
+	// 하한은 실측으로 잡았다. 같은 클러스터에서 클러스터 전체를 긁는
+	// kube-prometheus-stack 의 Prometheus 가 431Mi 를 쓴다. 번들 쪽은 GitLab
+	// 컴포넌트만 긁으므로 그보다 적지만 328Mi 로는 확실히 죽었다.
+	//
+	// 상한도 둔다 — 큰 스택에서 8% 를 그대로 주면 긁을 대상이 늘지도 않는데
+	// 수 GiB 를 잡는다.
+	promScaled := func() map[string]any {
+		v := scaleResourceDefault(item, 0.08)
+		if v == nil {
+			return map[string]any{}
+		}
+		if v.CPURequest < 0.1 {
+			v.CPURequest = 0.1
+		}
+		if v.CPURequest > 0.5 {
+			v.CPURequest = 0.5
+		}
+		if v.CPULimit < 0.5 {
+			v.CPULimit = 0.5
+		}
+		if v.CPULimit > 1 {
+			v.CPULimit = 1
+		}
+		if v.MemoryRequestGi < 0.5 {
+			v.MemoryRequestGi = 0.5
+		}
+		if v.MemoryRequestGi > 1 {
+			v.MemoryRequestGi = 1
+		}
+		if v.MemoryLimitGi < 1 {
+			v.MemoryLimitGi = 1
+		}
+		if v.MemoryLimitGi > 2 {
+			v.MemoryLimitGi = 2
 		}
 		return toK8sResourceValues(v)
 	}
@@ -187,7 +237,7 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 				"master": map[string]any{"resources": redisMasterScaled()},
 			},
 			"prometheus": map[string]any{
-				"server": map[string]any{"resources": scaled(0.08)},
+				"server": map[string]any{"resources": promScaled()},
 			},
 		}
 	case "installing_argocd":
@@ -419,5 +469,13 @@ func memoryGiQuantity(gi float64) string {
 	if math.Mod(gi, 1.0) == 0 {
 		return fmt.Sprintf("%dGi", int64(gi))
 	}
-	return fmt.Sprintf("%gGi", gi)
+	// 소수 Gi 를 그대로 넘기면 쿠버네티스가 밀리바이트로 정규화한다 —
+	// 0.24Gi 가 파드 스펙에 "257698037760m" 으로 남아 kubectl describe 로
+	// 읽을 수 없다. 값은 같지만 운영 도구에서 못 읽는 표기는 결함이다.
+	// Mi 아래 정밀도는 메모리 요청/상한에서 의미가 없으므로 정수 Mi 로 내린다.
+	mi := int64(math.Round(gi * 1024))
+	if mi <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dMi", mi)
 }

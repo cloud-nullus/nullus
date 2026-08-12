@@ -93,11 +93,33 @@ const (
 // 화면은 호환성 매트릭스가 선언한 버전을 보여주고 설치는 이 값을 쓴다. 둘이
 // 갈라지면 "안내된 버전"과 "설치된 버전"이 달라지므로 같은 값을 봐야 한다.
 // (고정: TestChartVersionsMatchCompatibilityMatrix)
+// AppVersion 은 그 차트가 실제로 세우는 제품 버전이다. 차트의 appVersion 필드를
+// 그대로 옮기지 않은 곳이 하나 있다 — 아래 Prometheus 주석 참고.
 const (
 	HarborChartVersion = "1.15.0"
 	HarborAppVersion   = "2.11.0"
 	NexusChartVersion  = "64.2.0"
 	NexusAppVersion    = "3.64.0"
+
+	// GitLab 차트 하나가 소스 저장소·CI·컨테이너 레지스트리를 함께 세운다.
+	// 세 항목이 같은 버전을 봐야 한다.
+	GitLabChartVersion = "8.7.2"
+	GitLabAppVersion   = "v17.7.0"
+
+	MinIOChartVersion = "5.4.0"
+	MinIOAppVersion   = "RELEASE.2024-12-18T13-15-44Z"
+
+	ArgoCDChartVersion = "7.7.16"
+	ArgoCDAppVersion   = "v2.13.3"
+
+	// kube-prometheus-stack 의 appVersion 은 prometheus-operator 버전(v0.80.0)이라
+	// 그대로 쓰면 화면에 오퍼레이터 버전이 Prometheus 버전인 양 뜬다. 사용자가
+	// 알아야 하는 것은 실제로 서는 Prometheus 서버 버전이므로 그것을 적는다.
+	PrometheusChartVersion = "69.3.0"
+	PrometheusAppVersion   = "v3.1.0"
+
+	GrafanaChartVersion = "8.9.0"
+	GrafanaAppVersion   = "11.5.1"
 )
 
 // OSS 도구의 초기 자격증명이 담기는 Secret.

@@ -21,13 +21,25 @@ describe('STATUS_STYLES palette', () => {
     }
   })
 
-  it('gives failed a red palette', () => {
-    expect(STATUS_STYLES.failed.bg).toContain('239,68,68')
+  // 원래 이 두 테스트는 원시 RGB 값('239,68,68')을 단정했다. 팔레트가 디자인
+  // 토큰으로 옮겨가면서 값 표기가 바뀌었으므로, 파일 주석이 밝힌 실제 계약
+  // ("각 종료 상태가 서로 구별된다")을 토큰 기준으로 검증한다.
+  it('gives failed the error token', () => {
+    expect(STATUS_STYLES.failed.color).toContain('--color-error')
+    expect(STATUS_STYLES.failed.bg).toContain('--color-error')
   })
 
-  it('gives rolled_back an amber palette distinct from cancelled grey', () => {
-    expect(STATUS_STYLES.rolled_back.bg).toContain('245,158,11')
-    expect(STATUS_STYLES.cancelled.bg).toContain('100,116,139')
+  it('keeps rolled_back, failed, cancelled visually distinct', () => {
+    expect(STATUS_STYLES.rolled_back.color).toContain('--color-warning')
+    expect(STATUS_STYLES.cancelled.color).toContain('--color-text-muted')
+
+    // 세 종료 상태가 서로 다른 토큰을 써야 한다 — 같으면 구별이 사라진다.
+    const tones = [
+      STATUS_STYLES.failed.color,
+      STATUS_STYLES.rolled_back.color,
+      STATUS_STYLES.cancelled.color,
+    ]
+    expect(new Set(tones).size).toBe(3)
   })
 
   it('getStatusStyle falls back to pending for unknown keys', () => {

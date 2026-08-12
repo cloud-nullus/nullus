@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useId } from "react"
 import { useTranslation } from "react-i18next"
 import { Settings2, Plus, Save, ChevronUp, ChevronDown, GripVertical, Trash2, Check, Lock, Server } from "lucide-react"
-import { cn } from "../../../lib/utils"
+import { Tabs } from "../../../components/ui/tabs"
+import { Button } from "../../../components/ui/button"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import {
   SKIP_KEY,
@@ -11,6 +12,7 @@ import {
   isValidEmbedUrl,
   isKnownNonEmbeddableHost,
 } from "../utils/monitoring-utils"
+import { TextInput } from "../../../components/ui/text-input"
 
 export type ViewType = 'cluster' | 'stack' | 'cicd'
 export type TimeRange = '1h' | '6h' | '24h' | '7d'
@@ -95,24 +97,27 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
   return (
     <div className="w-full">
       {/* Tab bar */}
-      <div className="flex items-end overflow-x-auto border-b border-[var(--color-border-default)]">
-        {allTabs.map((t) => (
-          <button key={t.id} type="button" onClick={() => { setActiveId(t.id); setEmbedError(false) }}
-            className={cn('flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
-              activeId === t.id
-                ? 'border-b-[var(--color-primary)] text-[var(--color-text-primary)]'
-                : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]')}>
-            {t.label}
-          </button>
-        ))}
-        {isAdmin && (
-          <button type="button" onClick={isManaging ? cancelManage : openManage}
-            className={cn('ml-auto flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors',
-              isManaging ? 'border-b-amber-400 text-amber-400' : 'border-b-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]')}>
-            <Settings2 size={13} />{isManaging ? t('common.cancel', 'Cancel') : t('monitoringPage.customTabs.manageTabs', 'Manage Tabs')}
-          </button>
-        )}
-      </div>
+      <Tabs
+        value={activeId}
+        onChange={(id) => { setActiveId(id); setEmbedError(false) }}
+        items={allTabs.map((t) => ({ id: t.id, label: t.label }))}
+        trailing={
+          isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={isManaging ? cancelManage : openManage}
+              // 관리 모드는 "지금 편집 중" 상태 표시라 경고 색을 쓴다.
+              // 개편 전에는 토큰이 아닌 amber-400 이 직접 박혀 있어 테마를 안 따랐다.
+              className={isManaging ? 'text-[var(--color-warning)]' : undefined}
+            >
+              <Settings2 size={13} />
+              {isManaging ? t('common.cancel', 'Cancel') : t('monitoringPage.customTabs.manageTabs', 'Manage Tabs')}
+            </Button>
+          )
+        }
+      />
 
       {/* Admin manage panel */}
       {isManaging && (
@@ -150,11 +155,11 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                       </button>
                     </div>
                     <GripVertical size={14} className="shrink-0 text-[var(--color-text-secondary)]" />
-                    <input
+                    <TextInput
                       value={d.label}
                       onChange={(e) => patchDraft(d.id, { label: e.target.value })}
                       placeholder={t('monitoringPage.customTabs.tabNamePlaceholder', 'Tab name')}
-                      className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] outline-none focus:border-[#6366f1]"
+                      className="min-w-0 flex-1 focus:border-[var(--color-primary)]"
                     />
                     <button type="button" onClick={() => removeDraft(d.id)}
                       className="shrink-0 rounded p-1 text-[var(--color-text-secondary)] hover:bg-red-400/10 hover:text-red-400">
@@ -163,11 +168,11 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                   </div>
                   {/* Row 2: URL input full width */}
                   <div className="mt-1.5 pl-[46px]">
-                    <input
+                    <TextInput
                       value={d.url}
                       onChange={(e) => patchDraft(d.id, { url: e.target.value })}
                       placeholder={t('monitoringPage.customTabs.embedUrlPlaceholder', 'Embed URL')}
-                      className="w-full rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[#6366f1]"
+                      className="w-full placeholder:text-[var(--color-text-secondary)] focus:border-[var(--color-primary)]"
                     />
                   </div>
                 </div>
@@ -196,7 +201,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
 
       {activeId !== 'default' && activeCustom && (
         <div className="flex flex-col">
-          <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-1 py-2 sm:px-2">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-1 py-2 sm:px-2">
             {activeEmbedUrl
               ? <span className="truncate font-mono text-[11px] text-[var(--color-text-secondary)]">{activeEmbedUrl}</span>
               : <span className="italic text-[11px] text-[var(--color-text-secondary)]">No URL configured{isAdmin ? ' — set URL in Manage Tabs' : ''}</span>}

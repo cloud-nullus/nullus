@@ -9,7 +9,6 @@ import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
 import YAML from 'yaml'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type {
   InstallTab,
@@ -24,7 +23,9 @@ import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
 import { useClusterNamespaces, useClusterStorageClasses } from '../../admin/api/admin-api'
 import { findPlatformCluster } from '../../admin/utils/cluster-selection'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Tabs } from '../../../components/ui/tabs'
+import { IconButton } from '../../../components/ui/icon-button'
+import { Select } from '../../../components/ui/select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { cn } from '../../../lib/utils'
@@ -90,6 +91,9 @@ import {
 } from '../utils/install-manifest-builders'
 import type { ManifestToolEntry } from '../utils/install-manifest-builders'
 import { ToolSelector, MultiToolSelector } from '../components/install-tool-selector'
+import { PageHeader } from '../../../components/layout/page-header'
+import { Checkbox } from '../../../components/ui/checkbox'
+import { TextInput } from '../../../components/ui/text-input'
 
 function toDeployErrorMessage(error: unknown): string {
   // Compat-gate errors get a specialized, issue-aware formatter so the user
@@ -390,8 +394,9 @@ export function StackInstallPage() {
   const initializedTemplateRef = useRef<string | null>(null)
   const initializedDefaultStackNameRef = useRef(false)
   const stackNameInputRef = useRef<HTMLInputElement | null>(null)
-  const clusterSelectRef = useRef<HTMLSelectElement | null>(null)
-  const namespaceSelectRef = useRef<HTMLSelectElement | null>(null)
+  // Select 의 ref 는 보이는 combobox(div)에 걸린다 — 더 이상 <select> 가 아니다.
+  const clusterSelectRef = useRef<HTMLDivElement | null>(null)
+  const namespaceSelectRef = useRef<HTMLDivElement | null>(null)
   const newNamespaceInputRef = useRef<HTMLInputElement | null>(null)
   const {
     control,
@@ -2267,75 +2272,66 @@ export function StackInstallPage() {
 
   return (
     <div>
-      <Breadcrumb items={[
-        { label: t('stackInstall.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
-        { label: t('stackInstall.breadcrumb.newStack', 'New Stack'), path: '/stack/templates' },
-        { label: t('stackInstall.breadcrumb.current', 'Stack Install') },
-      ]} />
-
-      {/* Page header */}
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]"
-          >
-            <Download size={18} />
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t('stackInstall.breadcrumb.stackList', 'Stack List'), path: '/stack/list' },
+            { label: t('stackInstall.breadcrumb.newStack', 'New Stack'), path: '/stack/templates' },
+            { label: t('stackInstall.breadcrumb.current', 'Stack Install') },
+          ]
+        }
+        icon={<Download size={16} />}
+        tone="primary"
+        title={t('stackInstall.page.title', 'Stack Install')}
+        subtitle={t('stackInstall.page.description', 'Configure your DevSecOps stack with a 5-step workflow.')}
+        actions={
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="md"
+              loading={saveDraft.isPending}
+              onClick={handleSaveDraft}
+              disabled={!isValid || isSubmitting}
+              type="button"
+            >
+              <Save size={14} />
+              {t('stackInstall.actions.saveDraft', 'Save Draft')}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              loading={createStack.isPending || deployStack.isPending}
+              onClick={handleDeploy}
+              disabled={
+                isSubmitting ||
+                createStack.isPending ||
+                deployStack.isPending ||
+                !draft.stackName ||
+                draft.stackName.length < 2 ||
+                isDuplicateStackNameInCluster ||
+                !draft.clusterId ||
+                (createNewNs && !draft.namespace.trim()) ||
+                hasManifestValidationError ||
+                compatibilityGate.state === 'fail' ||
+                (compatibilityGate.state === 'warn' && !compatWarnAcknowledged) ||
+                isDeployServerGateLocked(serverVerdict, serverWarnAcknowledged)
+              }
+              type="button"
+            >
+              <Rocket size={14} />
+              {t('stackInstall.actions.deploy', 'Deploy')}
+            </Button>
           </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('stackInstall.page.title', 'Stack Install')}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t('stackInstall.page.description', 'Configure your DevSecOps stack with a 5-step workflow.')}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="md"
-            loading={saveDraft.isPending}
-            onClick={handleSaveDraft}
-            disabled={!isValid || isSubmitting}
-            type="button"
-          >
-            <Save size={14} />
-            {t('stackInstall.actions.saveDraft', 'Save Draft')}
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            loading={createStack.isPending || deployStack.isPending}
-            onClick={handleDeploy}
-            disabled={
-              isSubmitting ||
-              createStack.isPending ||
-              deployStack.isPending ||
-              !draft.stackName ||
-              draft.stackName.length < 2 ||
-              isDuplicateStackNameInCluster ||
-              !draft.clusterId ||
-              (createNewNs && !draft.namespace.trim()) ||
-              hasManifestValidationError ||
-              compatibilityGate.state === 'fail' ||
-              (compatibilityGate.state === 'warn' && !compatWarnAcknowledged) ||
-              isDeployServerGateLocked(serverVerdict, serverWarnAcknowledged)
-            }
-            type="button"
-          >
-            <Rocket size={14} />
-            {t('stackInstall.actions.deploy', 'Deploy')}
-          </Button>
-        </div>
-      </div>
+        }
+      />
       {hasManifestValidationError && (
-        <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
+        <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
           Strict 버전/YAML 검증 실패 {manifestValidationErrorCount}건으로 Deploy가 잠겼습니다. YAML View에서 오류를 해소해 주세요.
         </div>
       )}
       {serverVerdict?.overall.state === 'fail' && (
         <div
-          className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]"
+          className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]"
           data-testid="server-fail-hint"
         >
           {t(
@@ -2366,9 +2362,9 @@ export function StackInstallPage() {
                       onBlur={field.onBlur}
                     />
                     {isDuplicateStackNameInCluster ? (
-                      <span className="text-xs text-[#ef4444]">{duplicateStackNameMessage}</span>
+                      <span className="text-xs text-[var(--color-error)]">{duplicateStackNameMessage}</span>
                     ) : (
-                      errors.stackName && <span className="text-xs text-[#ef4444]">{errors.stackName.message}</span>
+                      errors.stackName && <span className="text-xs text-[var(--color-error)]">{errors.stackName.message}</span>
                     )}
                   </>
                 )}
@@ -2389,8 +2385,7 @@ export function StackInstallPage() {
 
           <div className="mt-3">
             <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={draft.accessDomainTls.enabled}
                 onChange={(e) => updateAccessDomainTls({ enabled: e.target.checked })}
               />
@@ -2431,7 +2426,7 @@ export function StackInstallPage() {
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <NativeSelect
+              <Select
                 ref={clusterSelectRef}
                 label={t('stackInstall.form.targetCluster', 'Target Cluster')}
                 value={draft.clusterId ?? ''}
@@ -2439,7 +2434,6 @@ export function StackInstallPage() {
                   setSelectedClusterId(e.target.value)
                   setCluster(e.target.value)
                 }}
-                className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
               >
                 <option value="">{t('stackInstall.form.selectClusterPlaceholder', 'Select a cluster')}</option>
                 {(clusters ?? []).map((c) => (
@@ -2447,13 +2441,13 @@ export function StackInstallPage() {
                     {c.name} ({formatConnectionStatusLabel(c.status)})
                   </option>
                 ))}
-              </NativeSelect>
-              {!draft.clusterId && <span className="text-xs text-[#f59e0b]">{t('stackInstall.form.clusterRequired', 'Required for deployment')}</span>}
+              </Select>
+              {!draft.clusterId && <span className="text-xs text-[var(--color-warning)]">{t('stackInstall.form.clusterRequired', 'Required for deployment')}</span>}
             </div>
 
             {draft.clusterId && (
               <div className="flex flex-col gap-1">
-                <NativeSelect
+                <Select
                   ref={namespaceSelectRef}
                   label={t('stackInstall.form.namespace', 'Namespace')}
                   value={createNewNs ? '__new__' : draft.namespace}
@@ -2466,22 +2460,20 @@ export function StackInstallPage() {
                       setNamespace(e.target.value)
                     }
                   }}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                 >
                   <option value="">기본 (nullus)</option>
                   {(namespaces ?? []).map((ns) => (
                     <option key={ns.name} value={ns.name}>{ns.name}</option>
                   ))}
                   <option value="__new__">새 네임스페이스 생성...</option>
-                </NativeSelect>
+                </Select>
                 {createNewNs && (
-                  <input
+                  <TextInput
                     ref={newNamespaceInputRef}
                     type="text"
                     placeholder="my-namespace"
                     value={draft.namespace}
                     onChange={(e) => setNamespace(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                    className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                   />
                 )}
                 <span className="text-[11px] text-[var(--color-text-secondary)]">배포 대상 네임스페이스</span>
@@ -2492,7 +2484,7 @@ export function StackInstallPage() {
 
         <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
           <div className="mb-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(99,102,241,0.18)] text-[#a5b4fc]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_18%,_transparent)] text-[var(--color-primary)]">
               <ShoppingCart size={16} />
             </div>
             <div>
@@ -2504,45 +2496,45 @@ export function StackInstallPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="rounded-lg border border-[rgba(99,102,241,0.25)] bg-[rgba(99,102,241,0.08)] p-3">
+            <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] p-3">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Request Total</div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div>
-                  <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.cpuRequest.toFixed(2)}</div>
+                  <div className="font-semibold text-[var(--color-primary)]">{planningAppliedTotal.cpuRequest.toFixed(2)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div>
-                  <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.memoryRequestGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[var(--color-primary)]">{planningAppliedTotal.memoryRequestGi.toFixed(2)}Gi</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div>
-                  <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.storageRequestGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[var(--color-primary)]">{planningAppliedTotal.storageRequestGi.toFixed(2)}Gi</div>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-[rgba(34,197,94,0.25)] bg-[rgba(34,197,94,0.08)] p-3">
+            <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-success)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] p-3">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">Limit Total</div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div>
-                  <div className="font-semibold text-[#86efac]">{planningAppliedTotal.cpuLimit.toFixed(2)}</div>
+                  <div className="font-semibold text-[var(--color-success)]">{planningAppliedTotal.cpuLimit.toFixed(2)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div>
-                  <div className="font-semibold text-[#86efac]">{planningAppliedTotal.memoryLimitGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[var(--color-success)]">{planningAppliedTotal.memoryLimitGi.toFixed(2)}Gi</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div>
-                  <div className="font-semibold text-[#86efac]">{planningAppliedTotal.storageLimitGi.toFixed(2)}Gi</div>
+                  <div className="font-semibold text-[var(--color-success)]">{planningAppliedTotal.storageLimitGi.toFixed(2)}Gi</div>
                 </div>
               </div>
             </div>
           </div>
 
           {missingDefaultTools.length > 0 && (
-            <div className="mt-3 text-xs text-[#fbbf24]">
+            <div className="mt-3 text-xs text-[var(--color-warning)]">
               기본값 미정의 OSS: {missingDefaultTools.join(', ')}
             </div>
           )}
@@ -2552,10 +2544,10 @@ export function StackInstallPage() {
         className={cn(
           'mb-3 rounded border px-3 py-3 text-xs',
           compatibilityGate.state === 'pass'
-            ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] text-[#86efac]'
+            ? 'border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] text-[var(--color-success)]'
             : compatibilityGate.state === 'warn'
-              ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
-              : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]'
+              ? 'border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] text-[var(--color-warning)]'
+              : 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]'
         )}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -2582,8 +2574,7 @@ export function StackInstallPage() {
         )}
         {compatibilityGate.state === 'warn' && (
           <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={compatWarnAcknowledged}
               onChange={(e) => {
                 setCompatWarnAcknowledged(e.target.checked)
@@ -2605,7 +2596,7 @@ export function StackInstallPage() {
           pressing Deploy again. */}
       {serverVerdict && serverVerdict.overall.state === 'pass' ? (
         <div
-          className="mb-3 rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-xs text-[#86efac]"
+          className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-success)]"
           data-testid="server-verdict-panel"
           data-state="pass"
         >
@@ -2616,8 +2607,8 @@ export function StackInstallPage() {
           className={cn(
             'mb-3 rounded border px-3 py-3 text-xs',
             serverVerdict.overall.state === 'warn'
-              ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[#fcd34d]'
-              : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[#fca5a5]',
+              ? 'border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] text-[var(--color-warning)]'
+              : 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]',
           )}
           data-testid="server-verdict-panel"
         >
@@ -2647,8 +2638,7 @@ export function StackInstallPage() {
           )}
           {serverVerdict.overall.state === 'warn' && (
             <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={serverWarnAcknowledged}
                 onChange={(e) => {
                   setServerWarnAcknowledged(e.target.checked)
@@ -2677,28 +2667,14 @@ export function StackInstallPage() {
         {/* Left: tabs + content */}
         <div className="min-w-0 flex-1">
           {/* Tabs */}
-          <div className="mb-5 flex gap-0 border-b border-[var(--color-border-default)]">
-            {TABS.map((tab) => {
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => switchTab(tab.id)}
-                  className={cn(
-                    '-mb-px cursor-pointer border-b-2 border-b-transparent bg-none px-[18px] py-2.5 text-sm transition-all duration-150',
-                    isActive
-                      ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]'
-                      : 'font-normal text-[var(--color-text-secondary)]'
-                  )}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
+          <Tabs
+            className="mb-5"
+            value={activeTab}
+            onChange={switchTab}
+            items={TABS.map((tab) => ({ id: tab.id, label: tab.label }))}
+          />
           {tabGuardError && (
-            <div className="mb-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
+            <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
               {tabGuardError}
             </div>
           )}
@@ -2856,8 +2832,8 @@ export function StackInstallPage() {
                         className={cn(
                           'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
                           resolvedActiveManifestTool === GATEWAY_MANIFEST_ID
-                            ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
-                            : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-primary)]'
+                            ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]'
+                            : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-primary)]'
                         )}
                       >
                         <span className="font-semibold">Gateway</span>
@@ -2869,7 +2845,7 @@ export function StackInstallPage() {
                   <div>
                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">OSS</div>
                     {manifestTools.length === 0 ? (
-                      <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
+                      <div className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
                         설치 대상 OSS가 없습니다. Gateway YAML은 자동 생성되며, OSS 설치파일은 툴 선택 후 생성됩니다.
                       </div>
                     ) : (
@@ -2884,8 +2860,8 @@ export function StackInstallPage() {
                               className={cn(
                                 'inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs',
                                 isActive
-                                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)] text-[#a5b4fc]'
-                                  : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-primary)]'
+                                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]'
+                                  : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-primary)]'
                               )}
                             >
                               <span className="font-semibold">{tool.toolLabel}</span>
@@ -2903,14 +2879,14 @@ export function StackInstallPage() {
                 {resolvedActiveManifestTool && (
                   <>
                         {activeManifestInfo && (
-                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(99,102,241,0.08)] p-3 text-xs">
+                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] p-3 text-xs">
                             <div className="mb-1 flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-[#a5b4fc]">{activeManifestInfo.toolLabel}</span>
+                              <span className="font-semibold text-[var(--color-primary)]">{activeManifestInfo.toolLabel}</span>
                               <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 uppercase text-[10px] text-[var(--color-text-secondary)]">
                                 {activeManifestInfo.installType}
                               </span>
                               {manifestErrorsByTool[activeManifestInfo.toolId] && (
-                                <span className="rounded border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.15)] px-1.5 py-0.5 text-[10px] font-semibold text-[#fca5a5]">
+                                <span className="rounded border border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-error)]">
                                   STRICT 검증 실패
                                 </span>
                               )}
@@ -2928,7 +2904,7 @@ export function StackInstallPage() {
                               </div>
                             )}
                             {activeManifestInfo.hasVersionConflict && activeManifestInfo.toolId !== GATEWAY_MANIFEST_ID && (
-                              <div className="mt-1 text-[#fcd34d]">
+                              <div className="mt-1 text-[var(--color-warning)]">
                                 주의: 포함된 OSS들의 선택 버전이 달라 단일 값으로 통합되었습니다({activeManifestInfo.toolVersion}).
                               </div>
                             )}
@@ -2968,7 +2944,7 @@ export function StackInstallPage() {
                           />
                         </div>
                         {manifestErrorsByTool[resolvedActiveManifestTool] && (
-                          <div className="mt-3 rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[#fca5a5]">
+                          <div className="mt-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
                             {manifestErrorsByTool[resolvedActiveManifestTool]}
                           </div>
                         )}
@@ -2994,7 +2970,7 @@ export function StackInstallPage() {
 
             {activeTab === 'dry-run' && (
               <div className="space-y-4">
-                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] p-3">
+                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] p-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Dry Run — 배포 전 최종 검토</h3>
@@ -3008,28 +2984,28 @@ export function StackInstallPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <div className="rounded border border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] px-3 py-2 text-xs">
+                    <div className="rounded border border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] px-3 py-2 text-xs">
                       <div className="text-[var(--color-text-secondary)]">PASS</div>
-                      <div className="font-semibold text-[#86efac]">{dryRunSummary.passed}</div>
+                      <div className="font-semibold text-[var(--color-success)]">{dryRunSummary.passed}</div>
                     </div>
-                    <div className="rounded border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-3 py-2 text-xs">
+                    <div className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs">
                       <div className="text-[var(--color-text-secondary)]">WARN</div>
-                      <div className="font-semibold text-[#fcd34d]">{dryRunSummary.warned}</div>
+                      <div className="font-semibold text-[var(--color-warning)]">{dryRunSummary.warned}</div>
                     </div>
-                    <div className="rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-xs">
+                    <div className="rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs">
                       <div className="text-[var(--color-text-secondary)]">FAIL</div>
-                      <div className="font-semibold text-[#fca5a5]">{dryRunSummary.failed}</div>
+                      <div className="font-semibold text-[var(--color-error)]">{dryRunSummary.failed}</div>
                     </div>
                     <div
                       className={cn(
                         'rounded border px-3 py-2 text-xs',
                         dryRunSummary.readyToDeploy
-                          ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)]'
-                          : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)]'
+                          ? 'border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)]'
+                          : 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)]'
                       )}
                     >
                       <div className="text-[var(--color-text-secondary)]">READY</div>
-                      <div className={cn('font-semibold', dryRunSummary.readyToDeploy ? 'text-[#86efac]' : 'text-[#fca5a5]')}>
+                      <div className={cn('font-semibold', dryRunSummary.readyToDeploy ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]')}>
                         {dryRunSummary.readyToDeploy ? 'YES' : 'NO'}
                       </div>
                     </div>
@@ -3046,9 +3022,9 @@ export function StackInstallPage() {
                       key={check.id}
                       className={cn(
                         'rounded-lg border px-3 py-2',
-                        check.status === 'pass' && 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)]',
-                        check.status === 'warn' && 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)]',
-                        check.status === 'fail' && 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)]'
+                        check.status === 'pass' && 'border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)]',
+                        check.status === 'warn' && 'border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)]',
+                        check.status === 'fail' && 'border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)]'
                       )}
                     >
                       <div className="mb-1 flex items-center justify-between gap-2">
@@ -3056,9 +3032,9 @@ export function StackInstallPage() {
                         <span
                           className={cn(
                             'rounded px-2 py-0.5 text-[10px] font-bold uppercase',
-                            check.status === 'pass' && 'bg-[rgba(34,197,94,0.2)] text-[#86efac]',
-                            check.status === 'warn' && 'bg-[rgba(245,158,11,0.2)] text-[#fcd34d]',
-                            check.status === 'fail' && 'bg-[rgba(239,68,68,0.2)] text-[#fca5a5]'
+                            check.status === 'pass' && 'bg-[color-mix(in_srgb,_var(--color-success)_20%,_transparent)] text-[var(--color-success)]',
+                            check.status === 'warn' && 'bg-[color-mix(in_srgb,_var(--color-warning)_20%,_transparent)] text-[var(--color-warning)]',
+                            check.status === 'fail' && 'bg-[color-mix(in_srgb,_var(--color-error)_20%,_transparent)] text-[var(--color-error)]'
                           )}
                         >
                           {check.status}
@@ -3084,10 +3060,10 @@ export function StackInstallPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-[var(--color-text-secondary)]">Sizing Profile</span>
-                      <NativeSelect
+                      <Select
                         value={selectedOrgProfileId ? `org:${selectedOrgProfileId}` : planningProfile}
                         onChange={(e) => handleSizingSelectChange(e.target.value)}
-                        className="min-w-[160px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
+                        className="min-w-[160px]"
                       >
                         {PLANNING_PROFILES.map((profile) => (
                           <option key={profile} value={profile}>
@@ -3103,46 +3079,47 @@ export function StackInstallPage() {
                             ))}
                           </optgroup>
                         )}
-                      </NativeSelect>
-                      <button
-                        type="button"
+                      </Select>
+                      <IconButton
+                        outlined
                         title="Save current values to selected profile"
+                        aria-label="Save current values to selected profile"
                         onClick={handleSaveProfileButtonClick}
                         disabled={createOrgProfile.isPending || updateOrgProfile.isPending}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[rgba(99,102,241,0.5)] hover:text-[#a5b4fc]"
                       >
                         <Save size={12} />
-                      </button>
+                      </IconButton>
                       {selectedOrgProfileId && (
-                        <button
-                          type="button"
+                        <IconButton
+                          outlined
+                          tone="danger"
                           title="Delete this organization profile"
+                          aria-label="Delete this organization profile"
                           onClick={handleDeleteOrgProfile}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-[rgba(239,68,68,0.3)] text-[#f87171] hover:bg-[rgba(239,68,68,0.1)]"
                         >
                           <Trash2 size={12} />
-                        </button>
+                        </IconButton>
                       )}
                     </div>
                   </div>
 
                   {saveProfileDialogOpen && (
-                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.06)] px-3 py-2">
+                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_6%,_transparent)] px-3 py-2">
                       <span className="text-[11px] text-[var(--color-text-secondary)] shrink-0">Profile name</span>
-                      <input
+                      <TextInput
                         type="text"
                         value={saveProfileName}
                         onChange={(e) => setSaveProfileName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleSaveProfileConfirm(); if (e.key === 'Escape') setSaveProfileDialogOpen(false) }}
                         placeholder="e.g. Production-M"
                         autoFocus
-                        className="flex-1 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[rgba(99,102,241,0.5)]"
+                        className="flex-1 rounded focus:outline-none focus:border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)]"
                       />
                       <button
                         type="button"
                         onClick={handleSaveProfileConfirm}
                         disabled={!saveProfileName.trim() || createOrgProfile.isPending}
-                        className="rounded border border-[rgba(99,102,241,0.4)] bg-[rgba(99,102,241,0.15)] px-2.5 py-1 text-[11px] font-semibold text-[#a5b4fc] disabled:opacity-50"
+                        className="rounded border border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-primary)] disabled:opacity-50"
                       >
                         Save
                       </button>
@@ -3156,18 +3133,18 @@ export function StackInstallPage() {
                     </div>
                   )}
 
-                  <div className="mb-4 grid grid-cols-3 gap-3 rounded-lg border border-[rgba(99,102,241,0.2)] bg-[rgba(99,102,241,0.06)] p-3">
+                  <div className="mb-4 grid grid-cols-3 gap-3 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_6%,_transparent)] p-3">
                     <div>
                       <div className="text-[11px] text-[var(--color-text-secondary)]">적용값 총 CPU (Req | Limit)</div>
-                      <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.cpuRequest.toFixed(2)} | {planningAppliedTotal.cpuLimit.toFixed(2)}</div>
+                      <div className="font-semibold text-[var(--color-primary)]">{planningAppliedTotal.cpuRequest.toFixed(2)} | {planningAppliedTotal.cpuLimit.toFixed(2)}</div>
                     </div>
                     <div>
                       <div className="text-[11px] text-[var(--color-text-secondary)]">적용값 총 Memory (Gi)</div>
-                      <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.memoryRequestGi.toFixed(2)} | {planningAppliedTotal.memoryLimitGi.toFixed(2)}</div>
+                      <div className="font-semibold text-[var(--color-primary)]">{planningAppliedTotal.memoryRequestGi.toFixed(2)} | {planningAppliedTotal.memoryLimitGi.toFixed(2)}</div>
                     </div>
                     <div>
                       <div className="text-[11px] text-[var(--color-text-secondary)]">적용값 총 Storage (Gi)</div>
-                      <div className="font-semibold text-[#a5b4fc]">{planningAppliedTotal.storageRequestGi.toFixed(2)} | {planningAppliedTotal.storageLimitGi.toFixed(2)}</div>
+                      <div className="font-semibold text-[var(--color-primary)]">{planningAppliedTotal.storageRequestGi.toFixed(2)} | {planningAppliedTotal.storageLimitGi.toFixed(2)}</div>
                     </div>
                   </div>
 
@@ -3183,7 +3160,7 @@ export function StackInstallPage() {
                                 type="button"
                                 aria-label={`${row.toolLabel} 리소스 산정식 보기`}
                                 onClick={() => setActiveFormulaPopoverKey((prev) => (prev === row.rowKey ? null : row.rowKey))}
-                                className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--color-text-primary)]"
+                                className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] hover:text-[var(--color-text-primary)]"
                               >
                                 <Info size={13} />
                               </button>
@@ -3192,7 +3169,7 @@ export function StackInstallPage() {
                         </div>
 
                         {activeFormulaPopoverKey === row.rowKey && (
-                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+                          <div className="mb-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                             <div className="mb-2 flex items-center justify-between">
                               <div className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">산정식</div>
                               <button
@@ -3210,13 +3187,13 @@ export function StackInstallPage() {
                         )}
 
                         {!row.recommended || !row.applied ? (
-                          <div className="rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
+                          <div className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
                             해당 OSS의 default 리소스가 정의되지 않았습니다.
                           </div>
                         ) : (
                           <>
                             {row.multipliers && (row.multipliers.clamped.cpu || row.multipliers.clamped.memory || row.multipliers.clamped.storage) && (
-                              <div className="mb-3 rounded border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-3 py-2 text-xs text-[#fcd34d]">
+                              <div className="mb-3 rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
                                 계산 배수가 제한에 도달했습니다:
                                 {row.multipliers.clamped.cpu ? ' CPU' : ''}
                                 {row.multipliers.clamped.memory ? ' Memory' : ''}
@@ -3227,27 +3204,27 @@ export function StackInstallPage() {
                             )}
 
                             <div className="mb-3 grid grid-cols-2 gap-3">
-                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
+                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2">
                                 <span className="text-[11px] text-[var(--color-text-secondary)]">Memory 단위</span>
-                                <NativeSelect
+                                <Select
                                   value={row.units.memory}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'memory', e.target.value as ResourceUnit)}
-                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
+                                  className="max-w-[90px]"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
-                                </NativeSelect>
+                                </Select>
                               </div>
-                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
+                              <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2">
                                 <span className="text-[11px] text-[var(--color-text-secondary)]">Storage 단위</span>
-                                <NativeSelect
+                                <Select
                                   value={row.units.storage}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'storage', e.target.value as ResourceUnit)}
-                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-xs"
+                                  className="max-w-[90px]"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
-                                </NativeSelect>
+                                </Select>
                               </div>
                             </div>
 
@@ -3267,13 +3244,13 @@ export function StackInstallPage() {
                               ))}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 border-t border-[rgba(255,255,255,0.06)] pt-3">
+                            <div className="grid grid-cols-2 gap-3 border-t border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] pt-3">
                               <div className="p-1">
                                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">추천값 (읽기 전용)</div>
                                 <div className="grid grid-cols-3 gap-2 text-sm">
-                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div><div className="font-semibold text-[#a5b4fc]">{row.recommended.cpuRequest.toFixed(1)} | {row.recommended.cpuLimit.toFixed(1)}</div></div>
-                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.memoryRequestGi, row.units.memory).toFixed(1)} | {convertGiToUnit(row.recommended.memoryLimitGi, row.units.memory).toFixed(1)} {row.units.memory}</div></div>
-                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div><div className="font-semibold text-[#a5b4fc]">{convertGiToUnit(row.recommended.storageRequestGi, row.units.storage).toFixed(1)} | {convertGiToUnit(row.recommended.storageLimitGi, row.units.storage).toFixed(1)} {row.units.storage}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">CPU</div><div className="font-semibold text-[var(--color-primary)]">{row.recommended.cpuRequest.toFixed(1)} | {row.recommended.cpuLimit.toFixed(1)}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Memory</div><div className="font-semibold text-[var(--color-primary)]">{convertGiToUnit(row.recommended.memoryRequestGi, row.units.memory).toFixed(1)} | {convertGiToUnit(row.recommended.memoryLimitGi, row.units.memory).toFixed(1)} {row.units.memory}</div></div>
+                                  <div><div className="text-[11px] text-[var(--color-text-secondary)]">Storage</div><div className="font-semibold text-[var(--color-primary)]">{convertGiToUnit(row.recommended.storageRequestGi, row.units.storage).toFixed(1)} | {convertGiToUnit(row.recommended.storageLimitGi, row.units.storage).toFixed(1)} {row.units.storage}</div></div>
                                 </div>
                               </div>
 
@@ -3353,11 +3330,11 @@ export function StackInstallPage() {
                         className={cn(
                           'w-full rounded-lg border px-3 py-2 text-left transition-all',
                           selected
-                            ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                            : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                            ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                            : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
                         )}
                       >
-                        <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                        <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                           {t(option.labelKey, option.labelDefault)}
                         </div>
                         <div className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
@@ -3372,11 +3349,11 @@ export function StackInstallPage() {
                   StorageClass 선택. 기본 SC 가 없는 클러스터에서 미선택 상태로 진행하면
                   PVC 가 Pending 에 머물러 설치가 멈추므로, 실패를 설치 전으로 앞당긴다.
                 */}
-                <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3">
+                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                   <div className="flex items-center justify-between">
                     <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">StorageClass</h3>
                     {storageClassSelectionRequired && !draft.storage.storageClass && (
-                      <span className="rounded bg-[rgba(239,68,68,0.15)] px-2 py-0.5 text-[11px] font-semibold text-[#fca5a5]">
+                      <span className="rounded bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-error)]">
                         선택 필요
                       </span>
                     )}
@@ -3387,7 +3364,7 @@ export function StackInstallPage() {
                   <select
                     value={draft.storage.storageClass}
                     onChange={(e) => updateStorage({ storageClass: e.target.value })}
-                    className="w-full rounded-md border border-[var(--color-border-default)] bg-[rgba(0,0,0,0.2)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                    className="w-full rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
                   >
                     <option value="">
                       {storageClassSelectionRequired
@@ -3402,13 +3379,13 @@ export function StackInstallPage() {
                     ))}
                   </select>
                   {storageClassSelectionRequired && (
-                    <p className="mb-0 mt-2 text-xs text-[#fca5a5]">
+                    <p className="mb-0 mt-2 text-xs text-[var(--color-error)]">
                       이 클러스터에는 기본 StorageClass가 없습니다. 선택하지 않으면 PVC가 Pending 상태로 남아
                       설치가 진행되지 않습니다.
                     </p>
                   )}
                   {selectedStorageClassRetains && (
-                    <p className="mb-0 mt-2 text-xs text-[#fcd34d]">
+                    <p className="mb-0 mt-2 text-xs text-[var(--color-warning)]">
                       이 StorageClass는 reclaimPolicy가 Retain입니다. 스택을 삭제해도 볼륨이 남으므로 완전 파기가
                       필요하면 PV를 직접 확인해야 합니다.
                     </p>
@@ -3434,7 +3411,7 @@ export function StackInstallPage() {
                     return (
                       <div
                         key={targetKey}
-                        className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3"
+                        className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
                       >
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h4>
@@ -3462,7 +3439,7 @@ export function StackInstallPage() {
                         </div>
 
                         {effectiveMode === null ? (
-                          <div className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+                          <div className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
                             Storage Plan에서 연결 방식을 먼저 선택해 주세요.
                           </div>
                         ) : effectiveMode === 'existing' && (
@@ -3477,7 +3454,7 @@ export function StackInstallPage() {
                                 updateStorageTarget(targetKey, { existingRef: e.target.value })
                               }}
                             />
-                            {existingRefError && <span className="mt-1 block text-xs text-[#ef4444]">{existingRefError}</span>}
+                            {existingRefError && <span className="mt-1 block text-xs text-[var(--color-error)]">{existingRefError}</span>}
                           </div>
                           <div>
                             <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">엔드포인트</label>
@@ -3489,7 +3466,7 @@ export function StackInstallPage() {
                                 updateStorageTarget(targetKey, { endpoint: e.target.value })
                               }}
                             />
-                            {endpointError && <span className="mt-1 block text-xs text-[#ef4444]">{endpointError}</span>}
+                            {endpointError && <span className="mt-1 block text-xs text-[var(--color-error)]">{endpointError}</span>}
                           </div>
                           <div>
                             <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 이름' : 'Bucket 이름'}</label>
@@ -3501,7 +3478,7 @@ export function StackInstallPage() {
                                 updateStorageTarget(targetKey, { resourceName: e.target.value })
                               }}
                             />
-                            {resourceNameError && <span className="mt-1 block text-xs text-[#ef4444]">{resourceNameError}</span>}
+                            {resourceNameError && <span className="mt-1 block text-xs text-[var(--color-error)]">{resourceNameError}</span>}
                           </div>
                             <div>
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">접근 Secret Ref</label>
@@ -3517,7 +3494,7 @@ export function StackInstallPage() {
                                   updateStorageTarget(targetKey, { accessSecretRef: e.target.value })
                                 }}
                               />
-                              {accessSecretRefError && <span className="mt-1 block text-xs text-[#ef4444]">{accessSecretRefError}</span>}
+                              {accessSecretRefError && <span className="mt-1 block text-xs text-[var(--color-error)]">{accessSecretRefError}</span>}
                             </div>
                             <div>
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 사용자 ID' : 'Access Key ID'}</label>
@@ -3529,7 +3506,7 @@ export function StackInstallPage() {
                                   updateStorageTarget(targetKey, { authId: e.target.value })
                                 }}
                               />
-                              {authIdError && <span className="mt-1 block text-xs text-[#ef4444]">{authIdError}</span>}
+                              {authIdError && <span className="mt-1 block text-xs text-[var(--color-error)]">{authIdError}</span>}
                             </div>
                             <div>
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 비밀번호 Key' : 'Secret Key Key'}</label>
@@ -3541,7 +3518,7 @@ export function StackInstallPage() {
                                   updateStorageTarget(targetKey, { authPasswordKey: e.target.value })
                                 }}
                               />
-                              {authPasswordKeyError && <span className="mt-1 block text-xs text-[#ef4444]">{authPasswordKeyError}</span>}
+                              {authPasswordKeyError && <span className="mt-1 block text-xs text-[var(--color-error)]">{authPasswordKeyError}</span>}
                             </div>
                           </div>
                         )}
@@ -3549,17 +3526,16 @@ export function StackInstallPage() {
                         {effectiveMode !== null && (
                         <div className="mb-3">
                           <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 엔진' : 'Storage Provider'}</label>
-                          <NativeSelect
+                          <Select
                             value={item.target.providerOrEngine}
                             onChange={(e) => updateStorageTarget(targetKey, { providerOrEngine: e.target.value })}
-                            className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[7px] text-xs"
                           >
                             {providerOptions.map((provider) => (
                               <option key={provider.id} value={provider.id}>
                                 {provider.label}
                               </option>
                             ))}
-                          </NativeSelect>
+                          </Select>
                         </div>
                         )}
 
@@ -3576,21 +3552,20 @@ export function StackInstallPage() {
                           {effectiveMode === 'create' && (
                             <div>
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">사이즈</label>
-                              <NativeSelect
+                              <Select
                                 value={item.target.size}
                                 onChange={(e) =>
                                   updateStorageTarget(targetKey, {
                                     size: e.target.value as StorageTargetConfig['size'],
                                   })
                                 }
-                                className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-[7px] text-xs"
                               >
                                 {STORAGE_SIZE_OPTIONS.map((size) => (
                                   <option key={size} value={size}>
                                     {`${size} ${STORAGE_SIZE_RESOURCE_HINTS[targetKey][size]}`}
                                   </option>
                                 ))}
-                              </NativeSelect>
+                              </Select>
                             </div>
                           )}
                         </div>
@@ -3646,7 +3621,7 @@ export function StackInstallPage() {
           ].map(([label, val]) => (
             <div
               key={label}
-              className="flex items-baseline justify-between gap-2 border-b border-[rgba(255,255,255,0.04)] py-1.5"
+              className="flex items-baseline justify-between gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-1.5"
             >
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-semibold text-[var(--color-text-primary)]">

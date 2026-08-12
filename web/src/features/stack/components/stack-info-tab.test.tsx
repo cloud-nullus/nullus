@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { selectOption } from '../../../__tests__/test-utils'
 import { StackInfoTab } from './stack-info-tab'
 
 const mockUseStackHistory = vi.hoisted(() => vi.fn())
@@ -43,6 +44,7 @@ vi.mock('../utils/export-utils', async () => {
 vi.mock('../utils/stack-list-utils', () => ({
   buildPipelineNodesFromSnapshot: () => [],
   buildPipelineNodesFromMonitoring: () => [],
+  applyToolRuntimeStatus: (nodes: unknown) => nodes,
   buildInstalledToolsFromSnapshot: () => [],
   extractAccessDomain: () => '',
   toolLaunchURL: () => '',
@@ -118,9 +120,7 @@ describe('StackInfoTab export flow', () => {
     fireEvent.change(screen.getByLabelText(/stackList\.export\.fileName|File name/), {
       target: { value: 'prod-backup' },
     })
-    fireEvent.change(screen.getByLabelText(/stackList\.export\.format|Format/), {
-      target: { value: 'yaml' },
-    })
+    selectOption(screen.getByLabelText(/stackList\.export\.format|Format/), 'YAML')
     fireEvent.click(screen.getByRole('button', { name: /stackList\.export\.confirm|Download/ }))
 
     await waitFor(() => {

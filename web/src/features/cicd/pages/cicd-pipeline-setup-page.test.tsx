@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen } from '@testing-library/react'
-import { renderWithProviders } from '../../../__tests__/test-utils'
+import { optionLabels, renderWithProviders } from '../../../__tests__/test-utils'
 import { CicdPipelineSetupPage } from './cicd-pipeline-setup-page'
 
 const mockNavigate = vi.fn()
@@ -78,8 +78,8 @@ describe('CicdPipelineSetupPage', () => {
     renderWithProviders(<CicdPipelineSetupPage />)
 
     expect(screen.getAllByText('Backend API').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('prod-k8s').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('nullus-develop').length).toBeGreaterThan(0)
+    // 목록은 열어야 나온다. 파이프라인 전용 클러스터는 배포 대상에서 빠진다.
+    expect(optionLabels(screen.getByLabelText('Deploy Cluster'))).toEqual(['nullus-develop', 'prod-k8s'])
     expect(screen.queryByText('pipeline-only-k8s')).toBeNull()
   })
 
@@ -89,8 +89,8 @@ describe('CicdPipelineSetupPage', () => {
 
     renderWithProviders(<CicdPipelineSetupPage />)
 
-    expect(screen.getAllByText('Web Frontend').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('prod-k8s').length).toBeGreaterThan(0)
+    expect(optionLabels(screen.getByLabelText('Selected Template'))).toContain('Web Frontend')
+    expect(optionLabels(screen.getByLabelText('Deploy Cluster'))).toContain('prod-k8s')
   })
 
   it('navigates on change template and create pipeline actions', () => {

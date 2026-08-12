@@ -127,14 +127,17 @@ func TestMemoryCompatibilityRepository_ToolV2Fields(t *testing.T) {
 	})
 }
 
-// TestMemoryCompatibilityRepository_NarwhalBaselineVersions pins the
-// Narwhal baseline v1 version numbers asserted by migration
-// 000042_seed_narwhal_compat_refresh. If any of these values change,
-// update the three layers simultaneously: this test, the SQL migration,
-// and docs/20_아키텍처/Narwhal_호환성_Seed_Sources.md. A drift on a
-// single layer produces divergent Pre-Deploy Gate verdicts between
-// unit tests and real deployments.
-func TestMemoryCompatibilityRepository_NarwhalBaselineVersions(t *testing.T) {
+// 세 Golden Path 매트릭스가 같은 기준선을 공유하는지 본다.
+//
+// 값을 리터럴로 다시 적지 않고 domain 상수를 참조한다. 예전에는 여기에 숫자를
+// 박아 뒀는데, 그래서 "설치 경로 / 매트릭스 / 이 테스트" 셋이 각자 출처가 되어
+// 조용히 갈라졌다 — 매트릭스가 Argo CD 6.8.0 을 말하는 동안 설치는 7.7.16 을
+// 썼고 이 테스트는 6.8.0 을 지키고 있었다.
+//
+// 이 테스트가 지키는 것은 "숫자가 무엇인가" 가 아니라 "세 매트릭스가 같은 값을
+// 쓰는가" 다. 숫자 자체는 TestChartVersionsMatchCompatibilityMatrix 가 실제 차트
+// 스펙과 맞춰 지킨다.
+func TestMemoryCompatibilityRepository_BaselineVersionsAreShared(t *testing.T) {
 	repo := NewMemoryCompatibilityRepository()
 	ctx := context.Background()
 
@@ -149,16 +152,16 @@ func TestMemoryCompatibilityRepository_NarwhalBaselineVersions(t *testing.T) {
 	// installed inside the cluster. GitHub / GitHub Actions are
 	// external SaaS and covered separately below.
 	shared := []pin{
-		{"storage_backend", "MinIO", "5.2.0", "RELEASE.2024-08-03T04-33-23Z"},
-		{"cd_tool", "Argo CD", "6.8.0", "v2.8.3"},
-		{"monitoring_collection", "Prometheus", "67.0.0", "v2.54.1"},
-		{"monitoring_visualization", "Grafana", "8.5.0", "11.1.0"},
+		{"storage_backend", "MinIO", domain.MinIOChartVersion, domain.MinIOAppVersion},
+		{"cd_tool", "Argo CD", domain.ArgoCDChartVersion, domain.ArgoCDAppVersion},
+		{"monitoring_collection", "Prometheus", domain.PrometheusChartVersion, domain.PrometheusAppVersion},
+		{"monitoring_visualization", "Grafana", domain.GrafanaChartVersion, domain.GrafanaAppVersion},
 	}
 
 	gitlabPins := append([]pin{
-		{"source_repository", "GitLab CE", "9.5.1", "18.5.1"},
-		{"ci_platform", "GitLab CI", "9.5.1", "18.5.1"},
-		{"container_registry", "GitLab Registry", "9.5.1", "18.5.1"},
+		{"source_repository", "GitLab CE", domain.GitLabChartVersion, domain.GitLabAppVersion},
+		{"ci_platform", "GitLab CI", domain.GitLabChartVersion, domain.GitLabAppVersion},
+		{"container_registry", "GitLab Registry", domain.GitLabChartVersion, domain.GitLabAppVersion},
 	}, shared...)
 
 	githubPins := append([]pin{

@@ -1,25 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
-import { Bell, Pencil, Plus, Search } from 'lucide-react'
+import { Bell, Pencil, Plus } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertRule, useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
 import type { AlertRule, AlertChannel, CreateAlertRuleRequest } from '../api/observability-api'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { cn } from '../../../lib/utils'
 import { useClusterStackFilterState } from '../components/cluster-stack-filter'
+import { PageHeader } from '../../../components/layout/page-header'
+import { SearchInput } from '../../../components/ui/search-input'
 
 const CHANNEL_BADGE: Record<AlertChannel, { className: string }> = {
-  slack: { className: 'bg-[rgba(99,102,241,0.12)] text-[#a5b4fc]' },
-  email: { className: 'bg-[rgba(16,185,129,0.12)] text-[#34d399]' },
+  slack: { className: 'bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] text-[var(--color-primary)]' },
+  email: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]' },
 }
 
 interface AlertRuleForm {
@@ -71,6 +72,7 @@ export function AlertRulesPage() {
   const { data: editingRule, isFetching: isFetchingEditingRule } = useAlertRule(editingRuleId, ruleModalOpen && editingRuleId !== null)
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -175,7 +177,7 @@ export function AlertRulesPage() {
               }}
               className={cn(
                 'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
-                rule.enabled ? 'bg-[#6366f1]' : 'bg-[rgba(255,255,255,0.12)]',
+                rule.enabled ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_12%,_transparent)]',
               )}
             >
               <div
@@ -185,7 +187,7 @@ export function AlertRulesPage() {
                 )}
               />
             </button>
-            <span className={cn('text-xs', rule.enabled ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
+            <span className={cn('text-xs', rule.enabled ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-secondary)]')}>
               {rule.enabled ? t('alertRulesPage.switch.on', 'On') : t('alertRulesPage.switch.off', 'Off')}
             </span>
           </div>
@@ -249,27 +251,19 @@ export function AlertRulesPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Alert Rules' }]} />
-
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(239,68,68,0.15)] text-[#f87171]">
-            <Bell size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('observability.alertRules', 'Alert Rules')}
-            </h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-              {t('observability.alertRulesDesc', 'Alert rule list and management')}
-            </p>
-          </div>
-        </div>
-        <Button variant="primary" size="md" onClick={openCreateModal} type="button">
-          <Plus size={15} />
-          {t('observability.newRule', 'New Rule')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: 'Alert Rules' }]}
+        icon={<Bell size={16} />}
+        tone="error"
+        title={t('observability.alertRules', 'Alert Rules')}
+        subtitle={t('observability.alertRulesDesc', 'Alert rule list and management')}
+        actions={
+          <Button variant="primary" size="md" onClick={openCreateModal} type="button">
+            <Plus size={15} />
+            {t('observability.newRule', 'New Rule')}
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}
@@ -283,7 +277,7 @@ export function AlertRulesPage() {
         toolbar={(
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
-              <NativeSelect
+              <Select
                 aria-label={t('clusterStackFilter.clusterLabel', 'Cluster')}
                 value={selectedClusterId}
                 onChange={(event) => handleClusterChange(event.target.value)}
@@ -293,8 +287,8 @@ export function AlertRulesPage() {
                 {clusters.map((cluster) => (
                   <option key={cluster.id} value={cluster.id}>{cluster.name}</option>
                 ))}
-              </NativeSelect>
-              <NativeSelect
+              </Select>
+              <Select
                 aria-label={t('clusterStackFilter.stackLabel', 'Stack')}
                 value={selectedStackId}
                 onChange={(event) => handleStackChange(event.target.value)}
@@ -304,7 +298,7 @@ export function AlertRulesPage() {
                 {filteredStacks.map((stack) => (
                   <option key={stack.id} value={stack.id}>{stack.name}</option>
                 ))}
-              </NativeSelect>
+              </Select>
               {(selectedClusterId || selectedStackId) && (
                 <button
                   type="button"
@@ -319,18 +313,12 @@ export function AlertRulesPage() {
               )}
             </div>
 
-            <div className="relative ml-auto">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
-              />
-              <input
-                placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-[220px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] py-[7px] pl-[30px] pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
-              />
-            </div>
+            <SearchInput
+              wrapperClassName="ml-auto w-[220px]"
+              placeholder={t('alertRulesPage.searchPlaceholder', 'Search by rule or metric...')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         )}
       />
@@ -370,7 +358,7 @@ export function AlertRulesPage() {
       >
         <div className="flex flex-col gap-3.5">
           {editingRuleId && isFetchingEditingRule ? (
-            <div className="rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+            <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
               {t('alertRulesPage.modal.loadingFromDb', 'Loading latest alert rule from DB...')}
             </div>
           ) : null}
@@ -380,7 +368,7 @@ export function AlertRulesPage() {
               placeholder={t('alertRulesPage.form.namePlaceholder', 'ex) High CPU Alert')}
               {...register('name')}
             />
-            {errors.name && <span className="mt-1 block text-xs text-[#ef4444]">{errors.name.message}</span>}
+            {errors.name && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.name.message}</span>}
           </div>
 
           <div>
@@ -389,7 +377,7 @@ export function AlertRulesPage() {
               placeholder={t('alertRulesPage.form.metricNamePlaceholder', 'ex) cpu_usage')}
               {...register('metricName')}
             />
-            {errors.metricName && <span className="mt-1 block text-xs text-[#ef4444]">{errors.metricName.message}</span>}
+            {errors.metricName && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.metricName.message}</span>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -400,7 +388,7 @@ export function AlertRulesPage() {
                 placeholder={t('alertRulesPage.form.warningThresholdPlaceholder', 'ex) 70')}
                 {...register('warningThreshold', { valueAsNumber: true })}
               />
-              {errors.warningThreshold && <span className="mt-1 block text-xs text-[#ef4444]">{errors.warningThreshold.message}</span>}
+              {errors.warningThreshold && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.warningThreshold.message}</span>}
             </div>
             <div>
               <Input
@@ -409,14 +397,21 @@ export function AlertRulesPage() {
                 placeholder={t('alertRulesPage.form.criticalThresholdPlaceholder', 'ex) 85')}
                 {...register('criticalThreshold', { valueAsNumber: true })}
               />
-              {errors.criticalThreshold && <span className="mt-1 block text-xs text-[#ef4444]">{errors.criticalThreshold.message}</span>}
+              {errors.criticalThreshold && <span className="mt-1 block text-xs text-[var(--color-error)]">{errors.criticalThreshold.message}</span>}
             </div>
           </div>
 
-          <NativeSelect label={t('alertRulesPage.form.channel', 'Channel')} {...register('channel')}>
-            <option value="slack">Slack</option>
-            <option value="email">Email</option>
-          </NativeSelect>
+          {/* register() 로는 못 쓴다 — Select 의 값은 React 상태라 reset() 이 안 닿는다. */}
+          <Controller
+            name="channel"
+            control={control}
+            render={({ field }) => (
+              <Select label={t('alertRulesPage.form.channel', 'Channel')} {...field}>
+                <option value="slack">Slack</option>
+                <option value="email">Email</option>
+              </Select>
+            )}
+          />
 
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">{t('alertRulesPage.form.active', 'Active')}</span>
@@ -426,7 +421,7 @@ export function AlertRulesPage() {
                 onClick={() => setValue('enabled', !watch('enabled'), { shouldValidate: true })}
                 className={cn(
                   'relative h-5 w-9 cursor-pointer rounded-[10px] border-0 p-0 transition-colors duration-150',
-                  watch('enabled') ? 'bg-[#6366f1]' : 'bg-[rgba(255,255,255,0.12)]',
+                  watch('enabled') ? 'bg-[var(--color-primary)]' : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_12%,_transparent)]',
                 )}
               >
                 <div
@@ -436,7 +431,7 @@ export function AlertRulesPage() {
                   )}
                 />
               </button>
-              <span className={cn('text-sm', watch('enabled') ? 'text-[#a5b4fc]' : 'text-[var(--color-text-secondary)]')}>
+              <span className={cn('text-sm', watch('enabled') ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-secondary)]')}>
                 {watch('enabled') ? t('alertRulesPage.switch.on', 'On') : t('alertRulesPage.switch.off', 'Off')}
               </span>
             </div>

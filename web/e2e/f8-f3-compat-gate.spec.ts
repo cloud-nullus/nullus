@@ -15,22 +15,22 @@ async function loginAsAdmin(page: Page): Promise<void> {
 
 // F8-F3 UI smoke test: exercise compatibility management and the
 // server-side Pre-Deploy Gate from a real browser against the live dev stack.
-//   1. Admin "Stack Version Management" page (Task 4) renders the Narwhal
+//   1. Admin "Stack Version Management" page (Task 4) renders the
 //      Golden Path matrices and per-tool arch/tier badges.
 //   2. Server-side Pre-Deploy Gate verdict panel (F8-F3) renders the right
 //      copy for a stack that the backend is known to fail / warn on. The
 //      per-stack seed rows were inserted before running this spec.
 
 test.describe('F8-F3 compatibility gate UI', () => {
-  test('admin stack versions page shows Narwhal matrices with arch/tier badges', async ({ page }) => {
+  test('admin stack versions page shows compatibility matrices with arch/tier badges', async ({ page }) => {
     await loginAsAdmin(page)
     await page.goto('/admin/stack-versions')
 
     // Page title + list sub-heading confirm the route rendered.
     await expect(page.getByRole('heading', { name: /Stack Version Management/i })).toBeVisible()
-    await expect(page.getByText(/Narwhal baseline/i).first()).toBeVisible()
+    await expect(page.getByText(/Golden Path 3/i).first()).toBeVisible()
 
-    // List items for the three Narwhal Golden Path matrices. `.first()`
+    // List items for the three Golden Path matrices. `.first()`
     // because the detail panel repeats the id as a monospace label — the
     // list-side occurrence is the stable one.
     await expect(page.getByText('gitlab-allinone-v1').first()).toBeVisible()

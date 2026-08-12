@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -13,6 +13,7 @@ import {
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
+import { SearchInput } from '../ui/search-input'
 import { cn } from '../../lib/utils'
 
 interface DataTableProps<T> {
@@ -24,8 +25,11 @@ interface DataTableProps<T> {
   emptyMessage?: string
   pageSize?: number
   toolbar?: ReactNode
-  expandedRowId?: string | null
-  renderExpanded?: (row: T) => ReactNode
+  /**
+   * 자기 테두리·모서리를 버린다. ListDetailPanel 안에 들어갈 때 쓴다 —
+   * 액자 안에 액자를 겹치지 않는다(DESIGN.md §Layout).
+   */
+  flush?: boolean
 }
 
 export function DataTable<T>({
@@ -37,8 +41,7 @@ export function DataTable<T>({
   emptyMessage,
   pageSize = 20,
   toolbar,
-  expandedRowId,
-  renderExpanded,
+  flush = false,
 }: DataTableProps<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('dataTable.empty', 'No data available.')
@@ -80,22 +83,35 @@ export function DataTable<T>({
   const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, index) => index), [pageCount])
 
   return (
-    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--color-border-default)] px-[14px] py-3">
+    <div
+      className={cn(
+        'bg-[var(--color-surface-card)]',
+        // flush 는 테두리만 버린다. h-full 을 주면 안 된다 — 스크롤 영역을 꽉 채워
+        // 표 뒤에 오는 형제(목록 힌트 등)를 화면 밖으로 밀어낸다.
+        flush
+          ? ''
+          : 'overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)]',
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border-default)] px-[var(--table-cell-px)] py-2">
         {toolbar ?? (
-          <input
+          <SearchInput
+            wrapperClassName="w-full max-w-[280px]"
             value={globalFilter}
             onChange={(event) => setGlobalFilter(event.target.value)}
             placeholder="Search..."
-            className="w-full max-w-[280px] rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
           />
         )}
       </div>
 
-      <table className="w-full border-collapse">
+      {/* 좁은 칸(ListDetailPanel 의 목록 쪽 등)에 들어가면 컬럼이 잘린다.
+          정보를 줄이는 대신 표만 가로로 스크롤시킨다 — DESIGN.md §Do's:
+          "정보를 줄여서 여백을 만들지 않는다". */}
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id} className="bg-[rgba(255,255,255,0.02)]">
+            <tr key={headerGroup.id} className="bg-[var(--color-surface-sunken)]">
               {headerGroup.headers.map((header) => {
                 const canSort = header.column.getCanSort()
                 const sortedState = header.column.getIsSorted()
@@ -103,7 +119,7 @@ export function DataTable<T>({
                   <th
                     key={header.id}
                     className={cn(
-                      'select-none whitespace-nowrap px-[14px] py-2.5 text-left text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] uppercase',
+                      'h-[var(--table-header-height)] select-none whitespace-nowrap px-[var(--table-cell-px)] text-left text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] uppercase',
                       canSort ? 'cursor-pointer' : 'cursor-default'
                     )}
                     onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
@@ -121,10 +137,10 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <Fragment key={row.id}>
-              <tr
+            <tr
+              key={row.id}
                 className={cn(
-                  'transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.02)]',
+                  'transition-all duration-150 ease-in-out hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]',
                   onRowClick ? 'cursor-pointer' : 'cursor-default'
                 )}
                 onClick={() => onRowClick?.(row.original)}
@@ -132,32 +148,25 @@ export function DataTable<T>({
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
-                    className="border-t border-[var(--color-border-default)] px-[14px] py-3 text-sm text-[var(--color-text-primary)]"
+                    className="h-[var(--table-row-height)] border-t border-[var(--color-border-default)] px-[var(--table-cell-px)] py-1 text-[13px] text-[var(--color-text-primary)]"
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
               </tr>
-              {expandedRowId === row.id && renderExpanded && (
-                <tr>
-                  <td colSpan={columns.length} className="border-t border-[var(--color-border-default)] p-0">
-                    {renderExpanded(row.original)}
-                  </td>
-                </tr>
-              )}
-            </Fragment>
           ))}
         </tbody>
       </table>
+      </div>
 
       {table.getRowModel().rows.length === 0 && (
-        <div className="py-12 text-center text-sm text-[var(--color-text-secondary)]">
+        <div className="py-10 text-center text-[13px] text-[var(--color-text-secondary)]">
           {resolvedEmptyMessage}
         </div>
       )}
 
       {pageCount > 1 && (
-        <div className="flex items-center justify-end gap-1.5 border-t border-[var(--color-border-default)] px-4 py-3">
+        <div className="flex items-center justify-end gap-1 border-t border-[var(--color-border-default)] px-[var(--table-cell-px)] py-1.5">
           <Button
             variant="ghost"
             size="sm"
@@ -173,9 +182,9 @@ export function DataTable<T>({
               type="button"
               onClick={() => table.setPageIndex(number)}
               className={cn(
-                'h-8 w-8 cursor-pointer rounded-md border text-[13px] transition-all duration-150 ease-in-out',
+                'h-7 w-7 cursor-pointer rounded-[var(--radius-sm)] border text-[12px] transition-colors duration-150 ease-in-out',
                 number === pageIndex
-                  ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.15)] font-semibold text-[#a5b4fc]'
+                  ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] font-semibold text-[var(--color-primary)]'
                   : 'border-transparent bg-transparent font-normal text-[var(--color-text-secondary)]'
               )}
             >

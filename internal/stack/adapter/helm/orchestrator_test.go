@@ -259,9 +259,9 @@ func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t, "200m", requests["cpu"])
-	assert.Equal(t, "0.4Gi", requests["memory"])
+	assert.Equal(t, "410Mi", requests["memory"])
 	assert.Equal(t, "400m", limits["cpu"])
-	assert.Equal(t, "0.8Gi", limits["memory"])
+	assert.Equal(t, "819Mi", limits["memory"])
 
 	runnerValues := installer.valuesByRelease["gitlab-runner"]
 	require.NotNil(t, runnerValues)
@@ -331,7 +331,7 @@ func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsWebserviceAndSidekiqF
 	sidekiqLim, ok := sidekiqResources["limits"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "800m", sidekiqReq["cpu"])
-	assert.Equal(t, "1.5Gi", sidekiqReq["memory"])
+	assert.Equal(t, "1536Mi", sidekiqReq["memory"])
 	assert.Equal(t, "1600m", sidekiqLim["cpu"])
 	assert.Equal(t, "3Gi", sidekiqLim["memory"])
 
@@ -349,6 +349,54 @@ func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsWebserviceAndSidekiqF
 	assert.Equal(t, "1Gi", redisReq["memory"])
 	assert.Equal(t, "1", redisLim["cpu"])
 	assert.Equal(t, "2Gi", redisLim["memory"])
+}
+
+// GitLab 번들 Prometheus 도 뜨는 데 필요한 최소가 있다.
+//
+// webservice / sidekiq / redis 는 이미 하한을 두고 있는데 prometheus 만 비율을
+// 그대로 곱하고 있었다. Local/Startup 규모에서 그 값이 메모리 한도 328Mi 가 되어
+// OOMKilled(exit 137) 로 34번 재시작하며 CrashLoopBackOff 에 갇혔다.
+// 스택은 "실행 중" 인데 파드 하나가 영원히 안 뜨는 상태다.
+//
+// 하한은 실측으로 잡았다. 같은 클러스터에서 클러스터 전체를 긁는
+// kube-prometheus-stack 의 Prometheus 가 431Mi 를 쓴다. GitLab 번들은 GitLab
+// 컴포넌트만 긁으므로 그보다 적지만, 328Mi 로는 확실히 죽었다.
+func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsBundledPrometheus(t *testing.T) {
+	installer := &mockInstaller{}
+	// 아주 작은 규모를 준다. 비율만 곱하면 한도가 수십 Mi 로 떨어진다.
+	resourceRepo := &mockResourceDefaultRepo{items: []*domain.ResourceDefault{{
+		ToolKey:         "gitlab-ce",
+		CPURequest:      1,
+		CPULimit:        2,
+		MemoryRequestGi: 2,
+		MemoryLimitGi:   4,
+	}}}
+	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus", WithResourceDefaultRepository(resourceRepo))
+	orch.SetStackConfig(domain.StackConfig{
+		Artifacts: domain.ArtifactsConfig{SourceRepository: domain.ToolSelection{Enabled: true}},
+	})
+
+	// 설치 순서를 지켜야 GitLab 단계에 닿는다.
+	orch.ResumeFromStep("stk_gitlab_prom_clamp", "installing_gitlab")
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_prom_clamp", "installing_gitlab", "B"))
+
+	gitlabValues := installer.valuesByRelease["gitlab"]
+	require.NotNil(t, gitlabValues)
+
+	prometheus, ok := gitlabValues["prometheus"].(map[string]any)
+	require.True(t, ok)
+	server, ok := prometheus["server"].(map[string]any)
+	require.True(t, ok)
+	resources, ok := server["resources"].(map[string]any)
+	require.True(t, ok)
+	limits, ok := resources["limits"].(map[string]any)
+	require.True(t, ok)
+	requests, ok := resources["requests"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "1Gi", limits["memory"], "328Mi 로는 기동 중 OOM 된다")
+	assert.Equal(t, "512Mi", requests["memory"])
+	assert.Equal(t, "500m", limits["cpu"])
 }
 
 func TestOrchestrator_ResumeFromStep_AllowsFailedStepOnFreshExecutor(t *testing.T) {
@@ -399,8 +447,13 @@ func TestOrchestrator_SetNamespace_OverridesDefaultNamespace(t *testing.T) {
 
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_cert_manager", "A"))
 	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_metrics_server", "A"))
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_1", "installing_openbao", "A"))
 
-	assert.Equal(t, []string{"cert-manager", "production"}, installer.namespaces)
+	// 스택 컴포넌트는 SetNamespace 를 따르고(openbao → production), 클러스터에 하나뿐인
+	// 애드온은 자기 네임스페이스를 지킨다. metrics-server 가 스택 네임스페이스를 따르던
+	// 동안, 스택을 지우면 cluster-scoped APIService 가 죽은 Service 를 가리켜 클러스터의
+	// 모든 네임스페이스 삭제가 교착됐다 — cluster_singleton_namespace_test.go 참고.
+	assert.Equal(t, []string{"cert-manager", "kube-system", "production"}, installer.namespaces)
 }
 
 func TestOrchestrator_ExecuteStep_ReusesExistingCertManagerInstallation(t *testing.T) {
@@ -503,7 +556,7 @@ func TestOrchestrator_ResourceDefaultsApplyToCertManagerWebhookAndCainjector(t *
 	requests, ok := webhookResources["requests"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "500m", requests["cpu"])
-	assert.Equal(t, "0.5Gi", requests["memory"])
+	assert.Equal(t, "512Mi", requests["memory"])
 }
 
 func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {

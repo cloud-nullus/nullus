@@ -21,37 +21,37 @@ const features = [
     title: 'Automated DevSecOps Stack Installation',
     description: 'Deploy GitLab, ArgoCD, and Prometheus stacks directly to Kubernetes from the UI.',
     icon: Box,
-    iconClassName: 'bg-[rgba(99,102,241,0.15)] text-[#818cf8]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]',
   },
   {
     title: 'Golden Path Templates',
     description: 'Provides validated combinations (GitHub + ArgoCD, GitLab All-in-One) as templates.',
     icon: BookOpen,
-    iconClassName: 'bg-[rgba(16,185,129,0.15)] text-[#34d399]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
   },
   {
     title: 'CI/CD Pipeline Management',
     description: 'Create pipelines and manage deployment history with Web/API/Batch templates.',
     icon: Code2,
-    iconClassName: 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
   },
   {
     title: 'Version Compatibility Assurance',
     description: 'Expose only validated tool version combinations to reduce unpredictable compatibility issues.',
     icon: ShieldCheck,
-    iconClassName: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
   },
   {
     title: 'Unified Monitoring',
     description: 'Check cluster, pipeline, and application status from a single dashboard.',
     icon: ChartNoAxesColumn,
-    iconClassName: 'bg-[rgba(59,130,246,0.15)] text-[#60a5fa]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]',
   },
   {
     title: 'Role-based Access Control',
     description: 'Control feature access by role: Admin, DevOps, and Developer.',
     icon: Users,
-    iconClassName: 'bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]',
+    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]',
   },
 ]
 
@@ -94,12 +94,12 @@ const ROADMAP_STAGE_ACTIVATIONS: Record<string, string[]> = {
 }
 
 const quickLinks = [
-  { label: 'DevSecOps Stack Install', path: '/stack/templates', icon: Box, iconClassName: 'text-[#818cf8]' },
-  { label: 'Stack Templates', path: '/stack/templates', icon: BookOpen, iconClassName: 'text-[#34d399]' },
-  { label: 'CI/CD Templates', path: '/cicd/templates', icon: Code2, iconClassName: 'text-[#fbbf24]' },
-  { label: 'CI/CD List', path: '/cicd/list', icon: ChartNoAxesColumn, iconClassName: 'text-[#60a5fa]' },
-  { label: 'Monitoring Dashboard', path: '/observability/monitoring', icon: ChartNoAxesColumn, iconClassName: 'text-[#f87171]' },
-  { label: 'Stack Version', path: '/stack/version', icon: ShieldCheck, iconClassName: 'text-[#c4b5fd]' },
+  { label: 'DevSecOps Stack Install', path: '/stack/templates', icon: Box, iconClassName: 'text-[var(--color-primary)]' },
+  { label: 'Stack Templates', path: '/stack/templates', icon: BookOpen, iconClassName: 'text-[var(--color-success)]' },
+  { label: 'CI/CD Templates', path: '/cicd/templates', icon: Code2, iconClassName: 'text-[var(--color-warning)]' },
+  { label: 'CI/CD List', path: '/cicd/list', icon: ChartNoAxesColumn, iconClassName: 'text-[var(--color-info)]' },
+  { label: 'Monitoring Dashboard', path: '/observability/monitoring', icon: ChartNoAxesColumn, iconClassName: 'text-[var(--color-error)]' },
+  { label: 'Stack Version', path: '/stack/version', icon: ShieldCheck, iconClassName: 'text-[var(--color-accent-alt)]' },
 ]
 
 export function HomePage() {
@@ -111,9 +111,9 @@ export function HomePage() {
   const isDeveloper = role === 'developer'
 
   const enabledButtonClassName =
-    'inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[linear-gradient(135deg,#ffd700,#f59e0b)] px-6 py-3 text-sm font-bold text-[#1a1d29]'
+    'inline-flex cursor-pointer items-center gap-2 rounded-[10px] border-none bg-[var(--color-primary)] px-6 py-3 text-sm font-bold text-[var(--color-surface-base)]'
   const disabledButtonClassName =
-    'inline-flex cursor-not-allowed items-center gap-2 rounded-[10px] border border-[var(--color-border-default)] bg-[rgba(148,163,184,0.12)] px-6 py-3 text-sm font-semibold text-[var(--color-text-muted)] opacity-60'
+    'inline-flex cursor-not-allowed items-center gap-2 rounded-[10px] border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_12%,_transparent)] px-6 py-3 text-sm font-semibold text-[var(--color-text-muted)] opacity-60'
 
   const canRegisterCluster = isAdmin
   const canStartStack = isAdmin || isDevops
@@ -122,7 +122,7 @@ export function HomePage() {
   return (
     <div>
       <div className="mb-8 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-home-hero-bg)] p-8 text-center">
-        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,#ffd700,#f59e0b)] text-[#1a1d29] shadow-[0_8px_32px_rgba(255,215,0,0.3)]">
+        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,var(--color-brand-gold),var(--color-warning))] text-[var(--color-on-brand-gold)] shadow-[0_8px_32px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]">
           <Box size={36} />
         </div>
         <h1 className="m-0 mb-2.5 text-4xl font-extrabold text-[var(--color-text-primary)]">Nullus Platform</h1>
@@ -190,12 +190,12 @@ export function HomePage() {
               key={item.phase}
               type="button"
               onClick={() => setSelectedRoadmapPhase(item.phase)}
-              className={`min-w-[220px] flex-1 cursor-pointer rounded-[12px] border p-[18px] text-left transition-all duration-150 ${isSelected ? 'border-[rgba(255,215,0,0.55)] bg-[rgba(255,215,0,0.1)] shadow-[0_0_0_1px_rgba(255,215,0,0.35),0_8px_26px_rgba(255,215,0,0.2)]' : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] hover:border-[rgba(255,215,0,0.35)] hover:bg-[rgba(255,215,0,0.04)]'}`}
+              className={`min-w-[220px] flex-1 cursor-pointer rounded-[12px] border p-[18px] text-left transition-all duration-150 ${isSelected ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_55%,_transparent)] bg-[color-mix(in_srgb,_var(--color-brand-gold)_10%,_transparent)] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_35%,_transparent),0_8px_26px_color-mix(in_srgb,_var(--color-brand-gold)_20%,_transparent)]' : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] hover:border-[color-mix(in_srgb,_var(--color-brand-gold)_35%,_transparent)] hover:bg-[color-mix(in_srgb,_var(--color-brand-gold)_4%,_transparent)]'}`}
             >
-              <div className={`mb-2 inline-flex rounded-[999px] px-2.5 py-1 text-[11px] font-bold ${isSelected ? 'bg-[rgba(255,215,0,0.14)] text-[#ffd700]' : 'bg-[rgba(148,163,184,0.12)] text-[#94a3b8]'}`}>
+              <div className={`mb-2 inline-flex rounded-[999px] px-2.5 py-1 text-[11px] font-bold ${isSelected ? 'bg-[color-mix(in_srgb,_var(--color-brand-gold)_14%,_transparent)] text-[var(--color-brand-gold)]' : 'bg-[color-mix(in_srgb,_var(--color-text-secondary)_12%,_transparent)] text-[var(--color-text-secondary)]'}`}>
                 {item.period}
               </div>
-              <div className={`mb-1.5 text-sm font-bold ${isSelected ? 'text-[#ffd700]' : 'text-[#94a3b8]'}`}>{item.phase}</div>
+              <div className={`mb-1.5 text-sm font-bold ${isSelected ? 'text-[var(--color-brand-gold)]' : 'text-[var(--color-text-secondary)]'}`}>{item.phase}</div>
               <div className="text-xs leading-6 text-[var(--color-text-secondary)]">{item.description}</div>
             </button>
           )})}
@@ -210,7 +210,7 @@ export function HomePage() {
           return (
             <div
               key={stage.name}
-              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[rgba(255,215,0,0.8)] bg-[linear-gradient(135deg,rgba(255,215,0,0.22),rgba(245,158,11,0.2))] text-[#ffe38a] shadow-[0_0_0_1px_rgba(255,215,0,0.4),0_0_18px_rgba(255,215,0,0.3)]' : 'border-[var(--color-border-default)] bg-[rgba(148,163,184,0.08)] text-[var(--color-text-secondary)] opacity-75'}`}
+              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_80%,_transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,_var(--color-brand-gold)_22%,_transparent),color-mix(in_srgb,_var(--color-warning)_20%,_transparent))] text-[color-mix(in_srgb,_var(--color-brand-gold)_70%,_white)] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent),0_0_18px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]' : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_8%,_transparent)] text-[var(--color-text-secondary)] opacity-75'}`}
             >
               <Icon size={14} />
               {stage.name}
@@ -229,7 +229,7 @@ export function HomePage() {
                 key={item.label}
                 type="button"
                 onClick={() => navigate(item.path)}
-                className="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-3.5 py-3 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:border-[#ffd70066]"
+                className="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-3.5 py-3 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent)]"
               >
                 <Icon size={16} className={item.iconClassName} />
                 <span>{item.label}</span>

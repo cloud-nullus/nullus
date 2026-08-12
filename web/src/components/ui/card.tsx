@@ -1,4 +1,17 @@
-import { type ReactNode, type CSSProperties } from 'react'
+// MUI Paper 어댑터.
+//
+// 공개 API(icon / iconBg / iconColor / title / description / children / onClick /
+// selected / footer)를 유지한다.
+//
+// iconBg/iconColor 는 이전 구현에서 죽어 있었다 — 삼항의 양쪽 분기가 같은 값이라
+// 무엇을 넘겨도 항상 indigo 였고, 그래서 디자인시스템의 "기능별 색상 매핑"이
+// 코드에 반영되지 않았다. 이제 실제로 반영한다(기획안 부록 A3).
+//
+// 깊이는 DESIGN.md §Elevation & Depth 를 따른다: 라이트는 그림자(--shadow-raised),
+// 다크는 표면 밝기 차. 토큰이 테마별로 다른 값을 갖기 때문에 여기서 분기하지 않는다.
+
+import type { CSSProperties, ReactNode } from 'react'
+import Paper from '@mui/material/Paper'
 import { cn } from '../../lib/utils'
 
 interface CardProps {
@@ -14,10 +27,14 @@ interface CardProps {
   footer?: ReactNode
 }
 
+/** 기능별 색상 매핑의 기본값 — DESIGN.md §Colors 의 primary 액센트. */
+const DEFAULT_ICON_BG = 'color-mix(in srgb, var(--color-primary) 15%, transparent)'
+const DEFAULT_ICON_COLOR = 'var(--color-primary)'
+
 export function Card({
   icon,
-  iconBg = 'rgba(99,102,241,0.15)',
-  iconColor = '#818cf8',
+  iconBg,
+  iconColor,
   title,
   description,
   children,
@@ -26,27 +43,17 @@ export function Card({
   style: _style,
   footer,
 }: CardProps) {
-  const iconBgClass = iconBg === 'rgba(99,102,241,0.15)' ? 'bg-[rgba(99,102,241,0.15)]' : 'bg-[rgba(99,102,241,0.15)]'
-  const iconColorClass = iconColor === '#818cf8' ? 'text-[#818cf8]' : 'text-[#818cf8]'
-  const baseClassName = cn(
-    'flex flex-col gap-3 rounded-[var(--card-radius)] border bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-200 ease-in-out',
-    selected
-      ? 'border-[#6366f1]'
-      : 'border-[var(--color-border-default)] hover:border-[var(--color-border-hover)]',
-    onClick ? 'cursor-pointer text-left' : 'cursor-default'
-  )
-
   const content = (
     <>
       {(icon || title || description) && (
         <div className="flex items-start gap-3">
           {icon && (
             <div
-              className={cn(
-                'flex h-[var(--icon-size)] w-[var(--icon-size)] shrink-0 items-center justify-center rounded-[var(--icon-radius)]',
-                iconBgClass,
-                iconColorClass
-              )}
+              className="flex h-[var(--icon-size)] w-[var(--icon-size)] shrink-0 items-center justify-center rounded-[var(--icon-radius)]"
+              style={{
+                backgroundColor: iconBg ?? DEFAULT_ICON_BG,
+                color: iconColor ?? DEFAULT_ICON_COLOR,
+              }}
             >
               {icon}
             </div>
@@ -57,7 +64,7 @@ export function Card({
                 <div
                   className={cn(
                     'text-sm font-bold text-[var(--color-text-primary)]',
-                    description ? 'mb-1' : ''
+                    description ? 'mb-1' : '',
                   )}
                 >
                   {title}
@@ -74,20 +81,32 @@ export function Card({
       )}
       {children}
       {footer && (
-        <div className="mt-auto border-t border-[var(--color-border-default)] pt-2">
-          {footer}
-        </div>
+        <div className="mt-auto border-t border-[var(--color-border-default)] pt-2">{footer}</div>
       )}
     </>
   )
 
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className={baseClassName}>
-        {content}
-      </button>
-    )
-  }
-
-  return <div className={baseClassName}>{content}</div>
+  return (
+    <Paper
+      variant="outlined"
+      component={onClick ? 'button' : 'div'}
+      {...(onClick ? { type: 'button' as const, onClick } : {})}
+      className={cn(
+        'flex flex-col gap-3',
+        onClick ? 'cursor-pointer text-left' : 'cursor-default',
+      )}
+      sx={{
+        padding: 'var(--card-padding)',
+        borderRadius: 'var(--card-radius)',
+        borderColor: selected ? 'var(--color-primary)' : 'var(--color-border-default)',
+        backgroundColor: 'var(--color-surface-card)',
+        boxShadow: 'var(--shadow-raised)',
+        transitionProperty: 'border-color',
+        transitionDuration: 'var(--transition-default)',
+        '&:hover': { borderColor: selected ? 'var(--color-primary)' : 'var(--color-border-hover)' },
+      }}
+    >
+      {content}
+    </Paper>
+  )
 }

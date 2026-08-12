@@ -110,7 +110,12 @@ describe('StackTemplatePage', () => {
     const dialog = await screen.findByRole('dialog', { name: 'GitLab + ArgoCD' })
 
     expect(
-      within(dialog).getByText('stackTemplatePage.modal.matrixVersionNote'),
+      // 이 단정은 원래 키 문자열 자체를 찾고 있었다 — 키가 en.json 에 없어서
+      // 테스트의 t() 목이 키를 그대로 돌려줬기 때문이다. 즉 번역 누락 버그를
+      // 고정하고 있었다. 키를 채웠으니 실제 문구를 확인한다.
+      within(dialog).getByText(
+        'These versions reflect the validated matrix snapshot used for template guidance.',
+      ),
     ).toBeInTheDocument()
     expect(within(dialog).getByText('Matrix Helm: 9.5.1')).toBeInTheDocument()
     expect(within(dialog).getByText('Matrix App: 18.5.1')).toBeInTheDocument()

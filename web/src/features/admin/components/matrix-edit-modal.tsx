@@ -5,9 +5,10 @@ import { Trash2, Plus } from 'lucide-react'
 import { Modal } from '../../../components/ui/modal'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import type { CompatibilityMatrix } from '../../../types'
 import { useCreateMatrix, useUpdateMatrix, type MatrixInput } from '../../stack/api/stack-api'
+import { Checkbox } from '../../../components/ui/checkbox'
 
 // F8-Phase5 admin matrix editor. Kept deliberately compact — the backend
 // validates payload shape, so this component focuses on ergonomic input for
@@ -314,14 +315,14 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
     >
       <div className="flex flex-col gap-3 text-sm">
         {error && (
-          <div className="rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-[#fca5a5]">
+          <div className="rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-[var(--color-error)]">
             {error}
           </div>
         )}
 
         {hasDuplicateCats && (
           <div
-            className="rounded border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-3 py-2 text-[#fca5a5]"
+            className="rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-[var(--color-error)]"
             data-testid="matrix-dup-warn"
           >
             {t(
@@ -333,7 +334,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
 
         {confirmDrop && droppedRows.length > 0 && (
           <div
-            className="rounded border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] px-3 py-2 text-[#fcd34d]"
+            className="rounded border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] px-3 py-2 text-[var(--color-warning)]"
             data-testid="matrix-drop-warn"
           >
             <div className="mb-1 font-semibold">
@@ -375,7 +376,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
             onChange={(e) => setName(e.target.value)}
             error={fieldErrors.name}
           />
-          <NativeSelect
+          <Select
             label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as typeof status)}
@@ -383,7 +384,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
             <option value="verified">verified</option>
             <option value="untested">untested</option>
             <option value="unsupported">unsupported</option>
-          </NativeSelect>
+          </Select>
         </section>
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -457,7 +458,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
                   onChange={(e) => updateRow(idx, { minK8sVersion: e.target.value })}
                 />
                 <div className="flex flex-col gap-1">
-                  <NativeSelect
+                  <Select
                     label="Tier"
                     value={row.tier}
                     onChange={(e) => updateRow(idx, { tier: e.target.value as ToolRow['tier'] })}
@@ -465,12 +466,11 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
                     <option value="stable">stable</option>
                     <option value="beta">beta</option>
                     <option value="deprecated">deprecated</option>
-                  </NativeSelect>
+                  </Select>
                   <div className="flex items-center gap-2 pt-1 text-[11px]">
                     {['amd64', 'arm64'].map((a) => (
                       <label key={a} className="inline-flex items-center gap-1">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={row.archSupport.includes(a)}
                           onChange={() => toggleArch(idx, a)}
                         />
@@ -483,7 +483,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
                   type="button"
                   onClick={() => removeRow(idx)}
                   disabled={rows.length <= 1}
-                  className="self-end rounded border border-[var(--color-border-default)] p-1 text-[var(--color-text-secondary)] hover:text-[#ef4444] disabled:opacity-40"
+                  className="self-end rounded border border-[var(--color-border-default)] p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-error)] disabled:opacity-40"
                   aria-label={t('stackVersionsAdmin.modal.removeTool', 'Remove tool')}
                 >
                   <Trash2 size={14} />

@@ -22,6 +22,7 @@ import (
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
+	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
 	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	cicdgitlab "github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
@@ -151,6 +152,10 @@ func main() {
 	// 대상 클러스터의 kubeconfig 로 Kubernetes Auth 기반 Store 를 만든다.
 	secretRouter.WithResolver(adminrepo.NewStackSecretResolver(pool, kubeconfigProvider))
 
+	// 설치 단계의 리소스 값(관리자 기본값 + 설치 마법사 계획값)을 읽는 곳이다.
+	// 오케스트레이터보다 먼저 만들어야 아래 WithResourceDefaultRepository 로 넘길 수 있다.
+	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
+
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
@@ -159,7 +164,16 @@ func main() {
 		stackuc.WithSecretRouter(secretRouter),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			orch := stackhelm.NewOrchestrator(installer, kubeconfig, "", stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo))
+			orch := stackhelm.NewOrchestrator(
+				installer,
+				kubeconfig,
+				"",
+				stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo),
+				// 이게 빠지면 loadResourceDefault 가 repo nil 을 보고 바로 빠져나가
+				// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
+				// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
+				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
+			)
 			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
 			if ssoFactory != nil {
 				orch.SetSSOProvisionerFactory(ssoFactory)
@@ -182,13 +196,14 @@ func main() {
 	listTemplatesUC := stackuc.NewListTemplates(pgTemplateRepo)
 	exportConfigUC := stackuc.NewExportConfig(pgStackRepo)
 	calculateResourcesUC := stackuc.NewCalculateResources()
-	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
 	listResourceDefaultsUC := stackuc.NewListResourceDefaults(pgResourceDefaultRepo)
 	upsertResourceDefaultUC := stackuc.NewUpsertResourceDefault(pgResourceDefaultRepo)
 
 	deployHandler := stackhandler.NewDeployHandler(installStackUC, pgStackRepo, memStreamer, auditLogger).
 		WithOptions(stackhandler.WithKubeconfigProvider(kubeconfigProvider), stackhandler.WithManageHistory(manageHistoryUC))
-	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithStackManageHistory(manageHistoryUC), stackhandler.WithPool(pool))
+	stackHandler := stackhandler.NewStackHandler(createStackUC, listStacksUC, deleteStackUC, addToolsUC, pgStackRepo, auditLogger, stackhandler.WithStackManageHistory(manageHistoryUC), stackhandler.WithPool(pool),
+		// /workloads 가 클러스터의 실제 파드를 읽는 데 쓴다. 없으면 빈 목록을 준다.
+		stackhandler.WithWorkloadKubeconfigProvider(kubeconfigProvider))
 	templateHandler := stackhandler.NewTemplateHandler(getTemplateUC, listTemplatesUC, pgTemplateRepo)
 	exportHandler := stackhandler.NewExportHandler(exportConfigUC, importConfigUC)
 	resourceHandler := stackhandler.NewResourceHandler(calculateResourcesUC, listResourceDefaultsUC, upsertResourceDefaultUC)
@@ -240,7 +255,22 @@ func main() {
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, cicdStackReader).
 		WithRepositoryProvisioner(provisionRepoUC)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
-	deployPipelineUC := cicduc.NewDeployPipeline(pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier)
+	// 이미지 준비기와 클러스터 타깃 제공자를 배선한다.
+	//
+	// 이 둘이 없으면 DeployPipeline 이 매니페스트만 적용한다. 그런데 BuildStepPlan 은
+	// DockerfilePath 가 있으면 Git Clone / Docker Build / Image Load 3단계를 계획에
+	// 넣으므로, 배선이 빠진 상태에서는 계획에만 있고 절대 실행되지 않는 단계가 생겼다 —
+	// 배포가 success 인데 6단계 중 3개가 pending 으로 남아 있었다.
+	//
+	// Builder 는 host 의 git·docker 를, kind 로드 경로는 kind CLI 를 쓴다. 세 실행 파일이
+	// 없는 환경에서는 빌드 단계가 실패하는데, 그건 조용히 건너뛰는 것보다 낫다 —
+	// 실패는 로그와 단계 상태에 남지만, 건너뛰면 사용자는 이미지가 빌드된 줄 안다.
+	deployPipelineUC := cicduc.NewDeployPipeline(
+		pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier,
+		cicduc.WithImagePreparer(cicddocker.NewBuilder(manifestApplier.Tracker)),
+		cicduc.WithClusterTargetProvider(
+			cicdrepo.NewPostgresClusterTargetProvider(pool, encryptionKey)),
+	)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
 	deletePipelineUC := cicduc.NewDeletePipeline(

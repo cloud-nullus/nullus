@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Tabs } from '../../../components/ui/tabs'
+import { Select } from '../../../components/ui/select'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
 import { useCicdTemplates, useCreatePipeline } from '../api/cicd-api'
@@ -13,6 +13,7 @@ import type { CicdTemplate } from '../api/cicd-api'
 import type { AppType } from '../../../types'
 import { cn } from '../../../lib/utils'
 import { resolveLocale } from '../../../lib/locale'
+import { PageHeader } from '../../../components/layout/page-header'
 
 type SetupTab = 'cluster' | 'build' | 'deploy' | 'yaml'
 type DeployMode = 'template' | 'custom'
@@ -213,9 +214,6 @@ const DEPLOY_PRESET_DESCRIPTION_I18N: Record<string, { ko: string; en: string }>
   },
 }
 
-const appTypeOptionClassName =
-  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
-
 const getPipelineYaml = (input: {
   pipelineName: string
   appType: AppType
@@ -356,45 +354,37 @@ export function CicdPipelineSetupPage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          { label: t('cicdPipelineSetupPage.breadcrumb.list', 'CI/CD List'), path: '/cicd/list' },
-          { label: t('cicdPipelineSetupPage.breadcrumb.template', 'CI/CD Template'), path: '/cicd/templates' },
-          { label: t('cicdPipelineSetupPage.breadcrumb.current', 'Pipeline Setup') },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            { label: t('cicdPipelineSetupPage.breadcrumb.list', 'CI/CD List'), path: '/cicd/list' },
+            { label: t('cicdPipelineSetupPage.breadcrumb.template', 'CI/CD Template'), path: '/cicd/templates' },
+            { label: t('cicdPipelineSetupPage.breadcrumb.current', 'Pipeline Setup') },
+          ]
+        }
+        icon={<Settings2 size={16} />}
+        tone="primary"
+        title={t('cicdPipelineSetupPage.title', 'CI/CD Pipeline Setup')}
+        subtitle={t('cicdPipelineSetupPage.description', "Configure your CI/CD pipeline and create it after completing each step.")}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="md" type="button" onClick={() => navigate('/cicd/templates')}>
+              <GitBranch size={14} />
+              {t('cicdPipelineSetupPage.actions.changeTemplate', 'Change Template')}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              type="button"
+              onClick={handleCreatePipeline}
+              loading={createPipeline.isPending}
+            >
+              <Rocket size={14} />
+              {t('cicdPipelineSetupPage.actions.createPipeline', 'Create Pipeline')}
+            </Button>
+          </div>
+        }
       />
-
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(99,102,241,0.15)] text-[#818cf8]">
-            <Settings2 size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              {t('cicdPipelineSetupPage.title', 'CI/CD Pipeline Setup')}
-            </h1>
-            <p className="mt-0.5 m-0 text-[13px] text-[var(--color-text-secondary)]">
-              {t('cicdPipelineSetupPage.description', "Configure your CI/CD pipeline and create it after completing each step.")}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="md" type="button" onClick={() => navigate('/cicd/templates')}>
-            <GitBranch size={14} />
-            {t('cicdPipelineSetupPage.actions.changeTemplate', 'Change Template')}
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            type="button"
-            onClick={handleCreatePipeline}
-            loading={createPipeline.isPending}
-          >
-            <Rocket size={14} />
-            {t('cicdPipelineSetupPage.actions.createPipeline', 'Create Pipeline')}
-          </Button>
-        </div>
-      </div>
 
       <div className="mb-5 grid grid-cols-2 gap-4">
         <Input
@@ -403,7 +393,7 @@ export function CicdPipelineSetupPage() {
           value={pipelineName}
           onChange={(event) => setPipelineName(event.target.value)}
         />
-        <NativeSelect
+        <Select
             label={t('cicdPipelineSetupPage.form.selectedTemplate', 'Selected Template')}
             value={template?.id ?? ''}
             onChange={(event) => {
@@ -413,56 +403,43 @@ export function CicdPipelineSetupPage() {
                 navigate(`/cicd/create?template=${nextTemplate.id}`)
               }
             }}
-            className={appTypeOptionClassName}
+            className="w-full"
           >
             {templates.map((item) => (
-              <option key={item.id} value={item.id} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
+              <option key={item.id} value={item.id}>
                 {item.name}
               </option>
             ))}
-          </NativeSelect>
+          </Select>
       </div>
 
       <div className="flex items-start gap-5">
         <div className="min-w-0 flex-1">
-          <div className="mb-5 flex gap-0 border-b border-[var(--color-border-default)]">
-            {TABS.map((tab) => {
+          <Tabs
+            className="mb-5"
+            value={activeTab}
+            onChange={setActiveTab}
+            items={TABS.map((tab) => {
               const Icon = tab.icon
-              const active = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    '-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 border-b-transparent bg-none px-[16px] py-2.5 text-sm transition-all duration-150',
-                    active
-                      ? 'border-b-[#6366f1] font-semibold text-[#a5b4fc]'
-                      : 'font-normal text-[var(--color-text-secondary)]'
-                  )}
-                >
-                  <Icon size={14} />
-                  {tab.label}
-                </button>
-              )
+              return { id: tab.id, icon: <Icon size={14} />, label: tab.label }
             })}
-          </div>
+          />
 
           <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
             {activeTab === 'cluster' && (
               <div className="max-w-[420px]">
-                <NativeSelect
+                <Select
                     label={t('cicdPipelineSetupPage.form.deployCluster', 'Deploy Cluster')}
                     value={clusterId}
                     onChange={(event) => setClusterId(event.target.value)}
-                    className={appTypeOptionClassName}
+                    className="w-full"
                   >
                     {clusterOptions.map((cluster) => (
-                      <option key={cluster.id} value={cluster.id} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
+                      <option key={cluster.id} value={cluster.id}>
                         {cluster.name}
                       </option>
                     ))}
-                  </NativeSelect>
+                  </Select>
               </div>
             )}
 
@@ -483,11 +460,11 @@ export function CicdPipelineSetupPage() {
                           className={cn(
                             'cursor-pointer rounded-lg border p-3 text-left transition-all duration-150',
                             selected
-                              ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                              : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                              ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                              : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
                           )}
                         >
-                          <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                          <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                             {preset.label}
                           </div>
                           <div className="mt-1 text-xs text-[var(--color-text-secondary)]">{preset.path}</div>
@@ -503,13 +480,13 @@ export function CicdPipelineSetupPage() {
 
             {activeTab === 'deploy' && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-2">
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2">
                   <button
                     type="button"
                     className={cn(
                       'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold',
                       deployMode === 'template'
-                        ? 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]'
+                        ? 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]'
                         : 'text-[var(--color-text-secondary)]'
                     )}
                     onClick={() => setDeployMode('template')}
@@ -521,7 +498,7 @@ export function CicdPipelineSetupPage() {
                     className={cn(
                       'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold',
                       deployMode === 'custom'
-                        ? 'bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]'
+                        ? 'bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]'
                         : 'text-[var(--color-text-secondary)]'
                     )}
                     onClick={() => setDeployMode('custom')}
@@ -543,11 +520,11 @@ export function CicdPipelineSetupPage() {
                             className={cn(
                               'cursor-pointer rounded-lg border p-3 text-left transition-all duration-150',
                               selected
-                                ? 'border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.1)]'
-                                : 'border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)]'
+                                ? 'border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
+                                : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)]'
                             )}
                           >
-                            <div className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                            <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                               {preset.label}
                             </div>
                             <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
@@ -576,7 +553,7 @@ export function CicdPipelineSetupPage() {
               </div>
             )}
 
-            {formError && <div className="mt-3 text-xs text-[#f87171]">{formError}</div>}
+            {formError && <div className="mt-3 text-xs text-[var(--color-error)]">{formError}</div>}
           </div>
         </div>
 
@@ -595,7 +572,7 @@ export function CicdPipelineSetupPage() {
               : t('cicdPipelineSetupPage.summary.customYaml', 'Custom YAML')],
             [t('cicdPipelineSetupPage.summary.deployYaml', 'Deploy YAML'), deployMode === 'template' ? selectedDeployYaml.label : 'custom.yaml'],
           ].map(([label, value]) => (
-            <div key={label} className="flex items-baseline justify-between gap-2 border-b border-[rgba(255,255,255,0.04)] py-1.5">
+            <div key={label} className="flex items-baseline justify-between gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] py-1.5">
               <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{label}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-semibold text-[var(--color-text-primary)]">
                 {value}

@@ -43,7 +43,7 @@ export function StepWizard({
                   className={cn(
                     'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold',
                     isActive
-                      ? 'border-[var(--color-brand-gold)] bg-[rgba(255,215,0,0.14)]'
+                      ? 'border-[var(--color-brand-gold)] bg-[color-mix(in_srgb,_var(--color-brand-gold)_14%,_transparent)]'
                       : 'border-[var(--color-border-default)] bg-transparent',
                     isCompleted || isActive
                       ? 'text-[var(--color-brand-gold)]'

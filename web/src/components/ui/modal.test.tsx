@@ -48,7 +48,10 @@ describe('Modal', () => {
     expect(typeof Modal).toBe('function')
   })
 
-  it('closes when pointer down/up both happen on overlay', () => {
+  // 내부가 MUI Dialog 로 바뀌면서 배경 클릭 감지가 pointerDown/pointerUp 에서
+  // mouseDown/click 으로 옮겨갔다. 검증하는 동작(배경 클릭은 닫고, 내용에서
+  // 시작한 드래그는 닫지 않는다)은 그대로다 — 이벤트 방식만 옮겼다.
+  it('closes when mouse down/click both happen on the overlay', () => {
     const onClose = vi.fn()
     render(
       <Modal open onClose={onClose} title="Test Modal">
@@ -56,9 +59,9 @@ describe('Modal', () => {
       </Modal>
     )
 
-    const overlay = screen.getByRole('dialog')
-    fireEvent.pointerDown(overlay)
-    fireEvent.pointerUp(overlay)
+    const overlay = screen.getByTestId('modal-overlay')
+    fireEvent.mouseDown(overlay)
+    fireEvent.click(overlay)
 
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -71,10 +74,24 @@ describe('Modal', () => {
       </Modal>
     )
 
-    fireEvent.pointerDown(screen.getByText('Inner Button'))
-    fireEvent.pointerUp(screen.getByRole('dialog'))
+    // 드래그 시작점이 배경이 아니므로 닫히지 않아야 한다.
+    fireEvent.mouseDown(screen.getByText('Inner Button'))
+    fireEvent.click(screen.getByTestId('modal-overlay'))
 
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('closes on Escape', () => {
+    const onClose = vi.fn()
+    render(
+      <Modal open onClose={onClose} title="Esc">
+        <button type="button">Inner</button>
+      </Modal>
+    )
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalled()
   })
 
   // F8-UIUX-A11y focus trap
@@ -93,24 +110,36 @@ describe('Modal', () => {
     })
   })
 
-  it('wraps Tab from the last focusable element back to the first', async () => {
+  // 이전 구현은 keydown 을 직접 듣고 포커스를 옮겨서 합성 Tab 으로 검증할 수 있었다.
+  // MUI 의 트랩은 콘텐츠 앞뒤에 tabindex=0 sentinel 을 두고 브라우저의 실제 Tab
+  // 이동을 받아 되돌리는 방식이라, 실제 Tab 키를 구현하지 않는 jsdom 에서는
+  // 합성 keydown 으로 재현할 수 없다. 그래서 트랩이 실제로 걸려 있는지를 검증한다 —
+  // disableEnforceFocus 같은 설정 실수로 트랩이 사라지면 여기서 걸린다.
+  it('installs a focus trap that wraps Tab inside the dialog', () => {
     render(
       <Modal open onClose={vi.fn()} title="Trap">
         <button type="button" data-testid="first">First</button>
         <button type="button" data-testid="second">Second</button>
       </Modal>,
     )
-    const second = await screen.findByTestId('second')
-    second.focus()
-    // Tab from the genuine last focusable wraps to the first — in jsdom the
-    // Modal's close-X button renders first in the DOM, so wrap lands on it.
-    fireEvent.keyDown(second, { key: 'Tab' })
-    const active = document.activeElement as HTMLElement | null
-    expect(active).toBeTruthy()
-    // Wrap target must stay inside the dialog root (not escape to <body>).
-    expect(screen.getByRole('dialog').contains(active)).toBe(true)
-    // And must not still be `second` — i.e. Tab actually moved focus.
-    expect(active).not.toBe(second)
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+
+    const root = dialog.closest('.MuiModal-root')
+    expect(root).not.toBeNull()
+    // Tab 순환을 만드는 경계 요소가 콘텐츠 앞뒤에 있어야 한다.
+    expect(root?.querySelector('[data-testid="sentinelStart"]')).not.toBeNull()
+    expect(root?.querySelector('[data-testid="sentinelEnd"]')).not.toBeNull()
+  })
+
+  it('keeps the title as the dialog accessible name', () => {
+    render(
+      <Modal open onClose={vi.fn()} title="My Title">
+        <button type="button">Inner</button>
+      </Modal>,
+    )
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'My Title')
   })
 
   it('restores focus to the previously focused element when closed', async () => {

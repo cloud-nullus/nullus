@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
@@ -16,34 +16,37 @@ import {
   useUpdateOrganization,
 } from '../api/admin-api'
 import type { ClusterStatus, CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Input } from '../../../components/ui/input'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { Modal } from '../../../components/ui/modal'
 import { cn } from '../../../lib/utils'
+import { PageHeader } from '../../../components/layout/page-header'
+import { Checkbox } from '../../../components/ui/checkbox'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
-  active: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' },
-  pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]' },
-  inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]' },
+  active: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
+  pending: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]' },
+  inactive: { className: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]' },
 }
 
 const ROLE_BADGE: Record<MemberRole, { className: string }> = {
-  admin: { className: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]' },
-  devops: { className: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]' },
-  developer: { className: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]' },
+  admin: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
+  devops: { className: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]' },
+  developer: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
 }
 
 const CLUSTER_STATUS_BADGE: Record<ClusterStatus, { className: string }> = {
-  connected: { className: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' },
-  pending: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]' },
-  error: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]' },
-  inactive: { className: 'bg-[rgba(100,116,139,0.15)] text-[#64748b]' },
-  unreachable: { className: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]' },
-  auth_failed: { className: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444]' },
+  connected: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
+  pending: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]' },
+  error: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
+  inactive: { className: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]' },
+  unreachable: { className: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]' },
+  auth_failed: { className: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]' },
 }
 
 const domainRegex = /^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
@@ -72,7 +75,6 @@ const inviteSchema = z.object({
 type OrgFormData = z.infer<typeof orgSchema>
 type InviteFormData = z.infer<typeof inviteSchema>
 
-const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
 
 function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
@@ -142,6 +144,7 @@ export function OrganizationPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isValid, isSubmitting },
@@ -158,6 +161,7 @@ export function OrganizationPage() {
 
   const {
     register: registerInvite,
+    control: controlInvite,
     handleSubmit: handleInviteSubmit,
     reset: resetInvite,
     formState: { errors: inviteErrors, isValid: isInviteValid, isSubmitting: isInviteSubmitting },
@@ -278,31 +282,27 @@ export function OrganizationPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.organization', 'Organization') }]} />
-
-      <div className="mb-6 flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(139,92,246,0.15)] text-[#c4b5fd]">
-            <Settings size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">{t('sidebar.organization', 'Organization')}</h1>
-            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">{t('organizationPage.description', 'Manage organization settings, access scope, and members in one place.')}</p>
-          </div>
-        </div>
-        <Button
-          variant="primary"
-          size="md"
-          type="button"
-          onClick={() => {
-            resetNewOrg()
-            setNewOrgModal(true)
-          }}
-        >
-          <Plus size={15} />
-          {t('organizationPage.actions.newOrganization', 'New Organization')}
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.organization', 'Organization') }]}
+        icon={<Settings size={16} />}
+        tone="accent"
+        title={t('sidebar.organization', 'Organization')}
+        subtitle={t('organizationPage.description', 'Manage organization settings, access scope, and members in one place.')}
+        actions={
+          <Button
+            variant="primary"
+            size="md"
+            type="button"
+            onClick={() => {
+              resetNewOrg()
+              setNewOrgModal(true)
+            }}
+          >
+            <Plus size={15} />
+            {t('organizationPage.actions.newOrganization', 'New Organization')}
+          </Button>
+        }
+      />
 
       <div className="h-[860px]">
         <ListDetailPanel
@@ -322,15 +322,15 @@ export function OrganizationPage() {
                     className={cn(
                       'w-full cursor-pointer border-0 border-b border-l-[3px] border-b-[var(--color-border-default)] px-4 py-3.5 text-left transition-all duration-150',
                       selected
-                        ? 'border-l-[#6366f1] bg-[rgba(99,102,241,0.1)]'
+                        ? 'border-l-[var(--color-primary)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]'
                         : 'border-l-transparent bg-transparent'
                     )}
                   >
                     <div className="mb-1 flex items-center justify-between">
-                      <span className={cn('text-sm font-semibold', selected ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}>
+                      <span className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                         {org.name}
                       </span>
-                      <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', org.status === 'active' ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]' : 'bg-[rgba(100,116,139,0.15)] text-[#64748b]')}>
+                      <span className={cn('rounded-[5px] px-2 py-0.5 text-[11px] font-semibold', org.status === 'active' ? 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' : 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]')}>
                         {getOrganizationStatusLabel(t, org.status)}
                       </span>
                     </div>
@@ -362,14 +362,21 @@ export function OrganizationPage() {
                     <Input label={t('organizationPage.form.organizationName', 'Organization Name')} {...register('name')} />
                     <Input label={t('organizationPage.form.slug', 'Slug')} {...register('slug')} />
                     <Input label={t('organizationPage.form.domain', 'Domain')} {...register('domain')} />
-                    <NativeSelect label={t('organizationPage.form.status', 'Status')} {...register('status')} className={selectClassName}>
-                        <option value="active">{t('organizationPage.orgStatus.active', 'Active')}</option>
-                        <option value="inactive">{t('organizationPage.orgStatus.inactive', 'Inactive')}</option>
-                        <option value="suspended">{t('organizationPage.orgStatus.suspended', 'Suspended')}</option>
-                      </NativeSelect>
+                    {/* register() 로는 못 쓴다 — Select 의 값은 React 상태라 reset() 이 안 닿는다. */}
+                    <Controller
+                      name="status"
+                      control={control}
+                      render={({ field }) => (
+                        <Select label={t('organizationPage.form.status', 'Status')} {...field}>
+                          <option value="active">{t('organizationPage.orgStatus.active', 'Active')}</option>
+                          <option value="inactive">{t('organizationPage.orgStatus.inactive', 'Inactive')}</option>
+                          <option value="suspended">{t('organizationPage.orgStatus.suspended', 'Suspended')}</option>
+                        </Select>
+                      )}
+                    />
                   </div>
                   {(errors.name || errors.slug || errors.domain) && (
-                    <div className="mt-2 text-xs text-[#ef4444]">
+                    <div className="mt-2 text-xs text-[var(--color-error)]">
                       {errors.name?.message ?? errors.slug?.message ?? errors.domain?.message}
                     </div>
                   )}
@@ -388,20 +395,18 @@ export function OrganizationPage() {
                           className={cn(
                             'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-all duration-150 sm:items-center',
                             checked
-                              ? 'border-[rgba(99,102,241,0.3)] bg-[rgba(99,102,241,0.08)]'
+                              ? 'border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]'
                               : 'border-[var(--color-border-default)] bg-transparent'
                           )}
                         >
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={checked}
                             onChange={() => handleScopeToggle(cluster.name)}
-                            className="h-[15px] w-[15px] accent-[#6366f1]"
                           />
                           <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
                               <div
-                                className={cn('truncate text-sm font-semibold', checked ? 'text-[#a5b4fc]' : 'text-[var(--color-text-primary)]')}
+                                className={cn('truncate text-sm font-semibold', checked ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}
                                 title={cluster.name}
                               >
                                 {cluster.name}
@@ -449,7 +454,7 @@ export function OrganizationPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[700px] border-collapse">
                       <thead>
-                        <tr className="bg-[rgba(255,255,255,0.02)]">
+                        <tr className={tableHeadRowClass}>
                           {[
                             t('organizationPage.table.name', 'Name'),
                             t('organizationPage.table.email', 'Email'),
@@ -457,7 +462,7 @@ export function OrganizationPage() {
                             t('organizationPage.table.status', 'Status'),
                             t('organizationPage.table.actions', 'Actions'),
                           ].map((header) => (
-                            <th key={header} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
+                            <th key={header} className={cn(thClass)}>
                               {header}
                             </th>
                           ))}
@@ -468,7 +473,7 @@ export function OrganizationPage() {
                           <tr key={member.id}>
                             <td className={tdClassName}>
                               <div className="flex min-w-0 items-center gap-2.5">
-                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#6366f1,#8b5cf6)] text-xs font-bold text-white">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] text-xs font-bold text-white">
                                   {member.name.slice(0, 1).toUpperCase()}
                                 </span>
                                 <span className="truncate font-semibold" title={member.name}>{member.name}</span>
@@ -476,14 +481,14 @@ export function OrganizationPage() {
                             </td>
                             <td className={cn(tdClassName, 'text-[var(--color-text-secondary)]')}>{member.email}</td>
                             <td className={tdClassName}>
-                              <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[member.role].className)}>
+                              <Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[member.role].className)}>
                                 {getMemberRoleLabel(t, member.role)}
-                              </span>
+                              </Badge>
                             </td>
                             <td className={tdClassName}>
-                              <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[member.status].className)}>
+                              <Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[member.status].className)}>
                                 {getMemberStatusLabel(t, member.status)}
-                              </span>
+                              </Badge>
                             </td>
                             <td className={tdClassName}>
                               {member.role === 'admin' ? (
@@ -550,17 +555,23 @@ export function OrganizationPage() {
       >
         <div className="flex flex-col gap-3.5">
           <Input label={t('organizationPage.form.name', 'Name')} placeholder={t('organizationPage.form.namePlaceholder', 'e.g. Hong Gil-dong')} {...registerInvite('name')} />
-          {inviteErrors.name && <span className="text-xs text-[#ef4444]">{inviteErrors.name.message}</span>}
+          {inviteErrors.name && <span className="text-xs text-[var(--color-error)]">{inviteErrors.name.message}</span>}
 
           <Input label={t('organizationPage.form.email', 'Email')} type="email" placeholder="member@example.com" {...registerInvite('email')} />
-          {inviteErrors.email && <span className="text-xs text-[#ef4444]">{inviteErrors.email.message}</span>}
+          {inviteErrors.email && <span className="text-xs text-[var(--color-error)]">{inviteErrors.email.message}</span>}
 
-          <NativeSelect label={t('organizationPage.form.role', 'Role')} {...registerInvite('role')} className={selectClassName}>
-              <option value="developer">{t('organizationPage.role.developer', 'Developer')}</option>
-              <option value="devops">{t('organizationPage.role.devops', 'DevOps')}</option>
-              <option value="admin">{t('organizationPage.role.admin', 'Admin')}</option>
-            </NativeSelect>
-          {inviteErrors.role && <span className="text-xs text-[#ef4444]">{inviteErrors.role.message}</span>}
+          <Controller
+            name="role"
+            control={controlInvite}
+            render={({ field }) => (
+              <Select label={t('organizationPage.form.role', 'Role')} {...field}>
+                <option value="developer">{t('organizationPage.role.developer', 'Developer')}</option>
+                <option value="devops">{t('organizationPage.role.devops', 'DevOps')}</option>
+                <option value="admin">{t('organizationPage.role.admin', 'Admin')}</option>
+              </Select>
+            )}
+          />
+          {inviteErrors.role && <span className="text-xs text-[var(--color-error)]">{inviteErrors.role.message}</span>}
         </div>
       </Modal>
 
@@ -600,15 +611,15 @@ export function OrganizationPage() {
       >
         <div className="flex flex-col gap-3">
           <Input label={t('organizationPage.form.organizationName', 'Organization Name')} placeholder={t('organizationPage.form.organizationNamePlaceholder', 'e.g. Acme Corp')} {...registerNewOrg('name')} />
-          {newOrgErrors.name && <span className="text-xs text-[#ef4444]">{newOrgErrors.name.message}</span>}
+          {newOrgErrors.name && <span className="text-xs text-[var(--color-error)]">{newOrgErrors.name.message}</span>}
           <Input
             label={t('organizationPage.form.slug', 'Slug')}
             placeholder={t('organizationPage.form.slugPlaceholder', 'e.g. acme-corp')}
             {...registerNewOrg('slug')}
           />
-          {newOrgErrors.slug && <span className="text-xs text-[#ef4444]">{newOrgErrors.slug.message}</span>}
+          {newOrgErrors.slug && <span className="text-xs text-[var(--color-error)]">{newOrgErrors.slug.message}</span>}
           <Input label={t('organizationPage.form.domainOptional', 'Domain (optional)')} placeholder={t('organizationPage.form.domainPlaceholder', 'e.g. acme.com')} {...registerNewOrg('domain')} />
-          {newOrgErrors.domain && <span className="text-xs text-[#ef4444]">{newOrgErrors.domain.message}</span>}
+          {newOrgErrors.domain && <span className="text-xs text-[var(--color-error)]">{newOrgErrors.domain.message}</span>}
         </div>
       </Modal>
 

@@ -1,0 +1,666 @@
+---
+version: alpha
+name: Nullus Platform
+description: >-
+  Kubernetes 기반 DevSecOps 자동화 콘솔. 다크 우선, 데이터 밀집 운영 도구.
+  색 구조는 Coinbase 디자인 분석(getdesign.md)의 institutional 방향을 따른다 —
+  채도를 뺀 중립 면 위에 브랜드 블루 하나만 전압으로 쓰고, 깊이는 장식 그림자가
+  아니라 면 겹침으로 만든다. 상태는 색과 아이콘·텍스트를 함께 쓴다.
+colors:
+  # ─────────────────────────────────────────────────────────────
+  # 대표 역할(canonical) — 다크가 기본 테마이므로 다크 값을 가리킨다.
+  # design.md 스펙은 단일 스킴을 전제하므로, 스킴별 값은 아래 light-*/dark-* 에 둔다.
+  # ─────────────────────────────────────────────────────────────
+  primary: "{colors.dark-primary}"
+  secondary: "{colors.dark-text-secondary}"
+  tertiary: "{colors.dark-accent-alt}"
+  neutral: "{colors.dark-surface}"
+
+  # ─────────────────────────────────────────────────────────────
+  # Light — 순백 카드 위에 소프트 그레이 캔버스. Coinbase 의 밴드 구조를 옮겼다.
+  # 회색조는 채도를 거의 0 으로 둔다. 파랑기 도는 회색은 브랜드 블루와 경쟁한다.
+  # ─────────────────────────────────────────────────────────────
+  light-bg: "#f7f7f7"
+  light-surface: "#ffffff"
+  light-surface-sunken: "#eef0f3"
+  light-divider: "#dee1e6"
+  light-divider-strong: "#c8ccd2"
+  light-text: "#0a0b0d"
+  light-text-secondary: "#5b616e"
+  light-text-muted: "#686d75"
+  light-primary: "#0052ff"
+  light-on-primary: "#ffffff"
+  light-success: "#047a48"
+  light-warning: "#a35a00"
+  light-error: "#cf202f"
+  light-info: "#0052ff"
+  light-accent-alt: "#6b3fd4"
+
+  # ─────────────────────────────────────────────────────────────
+  # Dark — Coinbase 의 다크 에디토리얼 2단(#0a0b0d / #16181c)을 그대로 쓴다.
+  # 브랜드 블루는 어두운 면에서 대비가 부족하므로 한 단 밝은 톤을 쓴다.
+  # ─────────────────────────────────────────────────────────────
+  dark-bg: "#0a0b0d"
+  dark-surface: "#16181c"
+  dark-surface-sunken: "#1e2126"
+  dark-surface-raised: "#1e2126"
+  dark-divider: "#2a2e35"
+  dark-divider-strong: "#3a3f47"
+  dark-text: "#ffffff"
+  dark-text-secondary: "#a8acb3"
+  dark-text-muted: "#8b9098"
+  dark-primary: "#4d8cff"
+  dark-on-primary: "#0a0b0d"
+  dark-success: "#2ecc84"
+  dark-warning: "#f4b000"
+  dark-error: "#ff6b74"
+  dark-info: "#4d8cff"
+  dark-accent-alt: "#b39bff"
+
+  # ─────────────────────────────────────────────────────────────
+  # Terminal — 배포 로그·파이프라인 로그 출력 전용.
+  # 로그 뷰는 어두운 면을 유지하지만(터미널 관행), 그렇다고 hex 를 TSX 에 박아
+  # 두면 라이트 테마에서 대비가 무너진다 — 실제로 #8b949e 본문색이 흰 배경에서
+  # 3.0:1 이었다. 면은 두 테마 모두 어둡게 두고 글자색만 스킴별로 조정한다.
+  # ─────────────────────────────────────────────────────────────
+  light-terminal-bg: "#16181c"
+  light-terminal-text: "#d8dbe0"
+  light-terminal-muted: "#9aa2ad"
+  light-terminal-info: "#7db3ff"
+  light-terminal-success: "#4fd18b"
+  light-terminal-warning: "#f2c14e"
+  light-terminal-error: "#ff8a80"
+  dark-terminal-bg: "#0d0f17"
+  dark-terminal-text: "#c9d1d9"
+  dark-terminal-muted: "#8b949e"
+  dark-terminal-info: "#58a6ff"
+  dark-terminal-success: "#3fb950"
+  dark-terminal-warning: "#d29922"
+  dark-terminal-error: "#f85149"
+
+  # ─────────────────────────────────────────────────────────────
+  # Scrim — 모달·드롭다운 뒤 차폐막. 표면이 아니므로 별도 토큰이다.
+  # ─────────────────────────────────────────────────────────────
+  light-scrim: "rgba(10, 11, 13, 0.40)"
+  dark-scrim: "rgba(0, 0, 0, 0.72)"
+
+  # ─────────────────────────────────────────────────────────────
+  # Brand — 로고 전용. CTA 색이 아니다.
+  # 개편 전에는 골드 그라데이션이 주요 액션 색이었는데, 화면마다 CTA 가 골드와
+  # 인디고로 갈려 통일감을 깨는 큰 축이었다. 주요 액션은 primary 하나다.
+  # ─────────────────────────────────────────────────────────────
+  brand-gold: "#f4b000"
+  brand-gold-end: "#d99b00"
+  on-brand-gold: "#0a0b0d"
+
+typography:
+  h1:
+    fontFamily: Inter
+    fontSize: 1.375rem
+    fontWeight: 700
+    lineHeight: 1.25
+    letterSpacing: -0.01em
+  h2:
+    fontFamily: Inter
+    fontSize: 1.125rem
+    fontWeight: 700
+    lineHeight: 1.3
+  h3:
+    fontFamily: Inter
+    fontSize: 0.875rem
+    fontWeight: 700
+    lineHeight: 1.4
+  body-md:
+    fontFamily: Inter
+    fontSize: 0.875rem
+    fontWeight: 400
+    lineHeight: 1.6
+  body-sm:
+    fontFamily: Inter
+    fontSize: 0.8125rem
+    fontWeight: 400
+    lineHeight: 1.5
+  label-sm:
+    fontFamily: Inter
+    fontSize: 0.75rem
+    fontWeight: 600
+    lineHeight: 1.5
+  overline:
+    fontFamily: Inter
+    fontSize: 0.6875rem
+    fontWeight: 600
+    lineHeight: 1.4
+    letterSpacing: 0.06em
+  code:
+    fontFamily: Fira Code
+    fontSize: 0.8125rem
+    fontWeight: 400
+    lineHeight: 1.5
+
+spacing:
+  xs: 4px
+  sm: 8px
+  md: 12px
+  lg: 16px
+  xl: 24px
+  2xl: 32px
+  3xl: 48px
+
+# 깊이. design.md 스펙에는 그림자 카테고리가 없어서 확장 키로 둔다
+# (스펙은 모르는 내용을 보존하며, lint 도 통과한다).
+# 라이트는 그림자로, 다크는 표면 밝기 차로 깊이를 만든다 → §Elevation & Depth
+elevation:
+  flat: none
+  raised: 0 1px 2px rgba(15, 23, 42, 0.06)
+  overlay: 0 8px 24px rgba(15, 23, 42, 0.12)
+  raised-dark: none
+  overlay-dark: none
+
+rounded:
+  sm: 4px
+  md: 6px
+  lg: 8px
+  full: 9999px
+
+# 레이아웃·밀도. design.md 스펙에 레이아웃 카테고리가 없어서 elevation 과 같은
+# 이유로 확장 키에 둔다. 개편 전에는 이 값들이 generate-theme.mjs 에 하드코딩돼
+# 있어서 "단일 출처" 계약에 구멍이 있었다 — 여기로 끌어올린다.
+layout:
+  sidebar-width: 240px
+  sidebar-collapsed: 48px
+  header-height: 44px
+  page-padding: 24px
+  page-padding-y: 20px
+  card-padding: 12px
+  grid-gap: 8px
+  icon-size: 28px
+  table-cell-px: 12px
+  table-row-height: 32px
+  table-header-height: 28px
+  control-height: 30px
+
+components:
+  button-primary:
+    backgroundColor: "{colors.light-primary}"
+    textColor: "{colors.light-on-primary}"
+    typography: "{typography.label-sm}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  button-secondary:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-primary}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  button-outline:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-text}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  button-danger:
+    backgroundColor: "{colors.light-error}"
+    textColor: "{colors.light-on-primary}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  card:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-text}"
+    rounded: "{rounded.lg}"
+    padding: 12px
+  input:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-text}"
+    rounded: "{rounded.sm}"
+    padding: 6px
+    height: 30px
+  badge-success:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-success}"
+    typography: "{typography.label-sm}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-warning:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-warning}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-error:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-error}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  table-header:
+    backgroundColor: "{colors.light-surface-sunken}"
+    textColor: "{colors.light-text-secondary}"
+    typography: "{typography.overline}"
+    height: 28px
+  table-row:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-text}"
+    typography: "{typography.body-sm}"
+    height: 32px
+
+  # ── 다크 변형 ──────────────────────────────────────────────
+  # 스펙이 변형을 별도 엔트리로 표현하도록 규정하므로, 두 스킴의 컴포넌트 값을
+  # 각각 명시한다. 같은 hex 를 두 테마에 재사용할 수 없다는 원칙(§Colors)의 증거다.
+  button-primary-dark:
+    backgroundColor: "{colors.dark-primary}"
+    textColor: "{colors.dark-on-primary}"
+    typography: "{typography.label-sm}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  button-secondary-dark:
+    backgroundColor: "{colors.dark-surface}"
+    textColor: "{colors.dark-primary}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  button-outline-dark:
+    backgroundColor: "{colors.dark-surface}"
+    textColor: "{colors.dark-text}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  button-danger-dark:
+    backgroundColor: "{colors.dark-error}"
+    textColor: "{colors.dark-on-primary}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  button-brand:
+    backgroundColor: "{colors.brand-gold}"
+    textColor: "{colors.on-brand-gold}"
+    typography: "{typography.label-sm}"
+    rounded: "{rounded.md}"
+    padding: 8px
+  page-dark:
+    backgroundColor: "{colors.dark-bg}"
+    textColor: "{colors.dark-text}"
+  page:
+    backgroundColor: "{colors.light-bg}"
+    textColor: "{colors.light-text}"
+  card-dark:
+    backgroundColor: "{colors.dark-surface}"
+    textColor: "{colors.dark-text}"
+    rounded: "{rounded.lg}"
+    padding: 12px
+  overlay-dark:
+    backgroundColor: "{colors.dark-surface-raised}"
+    textColor: "{colors.dark-text}"
+    rounded: "{rounded.lg}"
+    padding: 12px
+  overlay:
+    backgroundColor: "{colors.light-surface}"
+    textColor: "{colors.light-text}"
+    rounded: "{rounded.lg}"
+    padding: 12px
+  input-dark:
+    backgroundColor: "{colors.dark-surface}"
+    textColor: "{colors.dark-text}"
+    rounded: "{rounded.sm}"
+    padding: 6px
+    height: 30px
+  divider:
+    backgroundColor: "{colors.light-divider}"
+    height: 1px
+  divider-hover:
+    backgroundColor: "{colors.light-divider-strong}"
+    height: 1px
+  divider-dark:
+    backgroundColor: "{colors.dark-divider}"
+    height: 1px
+  divider-hover-dark:
+    backgroundColor: "{colors.dark-divider-strong}"
+    height: 1px
+  badge-success-dark:
+    textColor: "{colors.dark-success}"
+    backgroundColor: "{colors.dark-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-warning-dark:
+    textColor: "{colors.dark-warning}"
+    backgroundColor: "{colors.dark-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-error-dark:
+    textColor: "{colors.dark-error}"
+    backgroundColor: "{colors.dark-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-info:
+    textColor: "{colors.light-info}"
+    backgroundColor: "{colors.light-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-info-dark:
+    textColor: "{colors.dark-info}"
+    backgroundColor: "{colors.dark-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-role:
+    textColor: "{colors.light-accent-alt}"
+    backgroundColor: "{colors.light-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-role-dark:
+    textColor: "{colors.dark-accent-alt}"
+    backgroundColor: "{colors.dark-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-inactive:
+    textColor: "{colors.light-text-muted}"
+    backgroundColor: "{colors.light-surface-sunken}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  badge-inactive-dark:
+    textColor: "{colors.dark-text-muted}"
+    backgroundColor: "{colors.dark-surface}"
+    rounded: "{rounded.full}"
+    padding: 4px
+  table-header-dark:
+    backgroundColor: "{colors.dark-surface-sunken}"
+    textColor: "{colors.dark-text-secondary}"
+    typography: "{typography.overline}"
+    height: 28px
+  table-row-dark:
+    backgroundColor: "{colors.dark-surface}"
+    textColor: "{colors.dark-text}"
+    typography: "{typography.body-sm}"
+    height: 32px
+  scrim:
+    backgroundColor: "{colors.light-scrim}"
+  scrim-dark:
+    backgroundColor: "{colors.dark-scrim}"
+  brand-cta-gradient:
+    backgroundColor: "{colors.brand-gold-end}"
+    textColor: "{colors.on-brand-gold}"
+    rounded: "{rounded.md}"
+    padding: 10px
+---
+
+## Overview
+
+Nullus 는 Kubernetes 위에서 DevSecOps 스택을 설치·운영하는 콘솔이다. 사용자는 하루의
+상당 시간을 이 화면에서 목록을 훑고 상태를 판단하며 보낸다. 그래서 이 디자인 시스템의
+1순위는 아름다움이 아니라 **한 화면에서 판단이 끝나는 것**이다.
+
+톤은 "신뢰감 있는 운영 도구"다. 채도를 낮춘 중립 표면 위에 액센트 하나(Indigo)만 두고,
+색은 의미가 있을 때만 쓴다. 장식적 그라데이션과 다중 액센트를 쓰지 않는다 — 색이 흔해지면
+상태 색이 상태로 읽히지 않는다.
+
+**다크가 기본이고 라이트는 1급 지원이다.** DevOps 도구 관행상 다크를 기본으로 두지만,
+라이트가 "다크 값을 그대로 쓰는 이등 테마"가 되는 것을 금지한다. 실제로 그렇게 방치된 결과
+라이트 테마에서 화면이 와이어프레임처럼 보였고 그게 이 문서가 생긴 이유다.
+
+이 문서는 [google-labs-code/design.md](https://github.com/google-labs-code/design.md) 스펙을
+따른다. **YAML front matter 의 토큰이 규범이고 본문은 그 이유와 적용법이다.**
+코드는 이 파일의 파생물이다 — `src/theme/` 가 여기서 MUI 테마, Tailwind 브릿지,
+AG Grid 테마를 만든다. 값을 바꿀 곳은 이 파일 하나다.
+
+## Colors
+
+### 표면(surface)과 깊이
+
+**두 테마가 깊이를 다른 수단으로 만든다.** 이게 이 팔레트의 핵심 결정이다.
+
+- **라이트**: 카드는 순백(`light-surface` `#ffffff`), 페이지는 한 톤 낮게
+  (`light-bg` `#f4f6f8`). 대비 1.08:1 로 은은하지만 면이 분명히 나뉜다.
+  추가 깊이는 그림자로 준다(§Elevation & Depth).
+- **다크**: 페이지가 가장 어둡고(`dark-bg` `#0a0a0a`) 카드가 한 단 밝다
+  (`dark-surface` `#0f1419`). 그림자는 쓰지 않는다 — 어두운 배경에서 그림자는 보이지 않는다.
+
+> 개편 전에는 라이트의 카드와 페이지 배경이 **같은 색(#f8fafc)** 이었다. 대비 1.00:1.
+> 카드가 배경에 녹아 사라지고 유일한 구분선인 보더만 남았는데, 그 보더가 `#1f2937`
+> (거의 검정, 14.03:1)이라 "흰 종이에 검은 선" = 와이어프레임처럼 보였다.
+
+### 경계선(divider)
+
+경계선은 **은은해야 한다.** 카드 대비 1.2~1.6:1 을 목표로 한다.
+본문 텍스트만큼 튀는 경계선은 정보가 아니라 소음이다.
+
+- `light-divider` `#cbd5e1` — 카드 대비 1.48:1
+- `dark-divider` `#2d3748` — 카드 대비 1.54:1
+
+`*-divider-strong` 은 호버·포커스처럼 **상호작용으로 강조할 때만** 쓴다.
+
+### 텍스트 3단
+
+| 토큰 | 용도 | 라이트 대비 | 다크 대비 |
+|------|------|-------------|-----------|
+| `*-text` | 제목, 값, 본문 | 17.85:1 | 16.90:1 |
+| `*-text-secondary` | 설명, 라벨, 컬럼 헤더 | 7.58:1 | 7.22:1 |
+| `*-text-muted` | 보조 메타(타임스탬프, 힌트) | 5.12:1 | 6.10:1 |
+
+3단이 끝이다. 4단째를 만들지 않는다 — 더 흐리게 하면 AA 를 넘길 수 없다.
+모든 값은 카드와 페이지 배경 **양쪽에서** 4.5:1 을 넘는다.
+
+### 상태색은 테마별로 다른 톤을 쓴다
+
+같은 hex 를 두 테마에 재사용할 수 없다. 어두운 배경에는 밝은 톤(400대), 밝은 배경에는
+어두운 톤(700~800대)이 필요하다. 이걸 지키지 않아서 개편 전 라이트 테마의 상태색이
+1.6~2.9:1 로 무너져 있었다.
+
+| 의미 | 라이트 | 다크 | 쓰는 곳 |
+|------|--------|------|---------|
+| primary | `#4338ca` | `#8f9bff` | 주요 액션, 링크, 선택 상태 |
+| success | `#047857` | `#3ddc97` | Connected, 배포 성공, Running |
+| warning | `#a15c07` | `#f5b544` | Pending, 경고, 호환성 주의 |
+| error | `#c81e1e` | `#ff8080` | 실패, 삭제, 장애 |
+| info | `#1d4ed8` | `#6aa8fb` | 정보 배지, 차트 기본 계열 |
+| accent-alt | `#6d28d9` | `#c4b5fd` | 역할·권한 등 보조 분류 |
+
+라이트 최솟값 4.79:1, 다크 최솟값 7.32:1 — 전부 AA 통과.
+
+### 브랜드 골드
+
+`brand-gold` `#f4b000` 은 **로고 마크에만** 쓴다. CTA 색이 아니다.
+
+개편 전에는 골드 그라데이션이 주요 액션 색이었다. 그런데 화면마다 CTA 가 골드와
+인디고로 갈려 있었고, 골드는 흰 배경에서 텍스트·보더로 쓸 수 없어서(1.40:1)
+결국 "면으로만 쓰는 강한 색"이 액션 자리를 차지하고 있었다.
+
+Coinbase 구조를 따라 **브랜드 색은 한 곳(로고)에만, 액션은 primary 하나로** 정리했다.
+브랜드 블루가 유일한 전압이고, 그래서 화면에서 파란 것이 곧 "누를 수 있는 것" 이다.
+골드 면이 정말 필요하면 `brandCtaSx` 를 직접 쓴다 — 기본 경로가 아니다.
+
+## Typography
+
+| 토큰 | 크기 | 굵기 | 용도 |
+|------|------|------|------|
+| `h1` | 1.375rem / 22px | 700 | 페이지 제목 (화면당 1개, `PageHeader` 가 렌더한다) |
+| `h2` | 1.125rem / 18px | 700 | 섹션 제목 |
+| `h3` | 0.875rem / 14px | 700 | 카드 제목, 필드 그룹 |
+| `body-md` | 0.875rem / 14px | 400 | 기본 본문 |
+| `body-sm` | 0.8125rem / 13px | 400 | 표 셀, 밀집 영역 |
+| `label-sm` | 0.75rem / 12px | 600 | 버튼, 배지, 폼 라벨 |
+| `overline` | 0.6875rem / 11px | 600 | 표 헤더, 섹션 오버라인 (대문자 + 자간) |
+| `code` | 0.8125rem / 13px | 400 | YAML, 스크립트, 식별자 |
+
+`h1` 은 원래 2rem/800 이었는데 그 값을 쓰는 화면이 하나도 없었다 — 28화면 전부
+손으로 22px 를 박고 있었다. 문서가 거짓이면 단일 출처가 아니므로, 실제로 쓰는
+값(22px)으로 토큰을 맞추고 무게만 800 → 700 으로 낮췄다. 운영 화면의 제목은
+외칠 필요가 없다.
+
+폰트는 UI 에 **Inter**, 한글에 **Pretendard**, 코드에 **Fira Code**.
+`body-md` 14px 가 기준선이다. 데이터 밀집 화면에서 16px 는 한 화면에 담기는 행 수를
+줄이는데, 그건 정보 손실과 같다.
+
+한글과 영문이 섞이는 화면이므로 `letterSpacing` 을 임의로 좁히지 않는다.
+`h1` 의 `-0.01em` 과 `overline` 의 `0.06em` 만 의도된 예외다.
+
+## Layout
+
+레이아웃 값은 front matter 의 `layout` 블록이 단일 출처다. 개편 중간까지는
+`--sidebar-width` 같은 값이 `scripts/generate-theme.mjs` 안에 하드코딩돼 있어서
+"값을 바꿀 곳은 이 파일 하나" 라는 계약에 구멍이 있었다.
+
+| 토큰 | 값 | 용도 |
+|------|------|------|
+| `--sidebar-width` | 240px | 사이드바 펼침 |
+| `--sidebar-collapsed` | 48px | 사이드바 접힘 (아이콘 레일) |
+| `--header-height` | 44px | 상단 헤더 · 사이드바 로고 줄 |
+| `--page-padding` | 24px | 페이지 좌우 여백 |
+| `--page-padding-y` | 20px | 페이지 상하 여백 |
+| `--card-radius` | `{rounded.lg}` = 8px | 카드 모서리 |
+| `--card-padding` | 12px | 카드 내부 여백 |
+| `--grid-gap` | 8px | 카드 그리드 간격 |
+| `--icon-size` | 28px | 제목 옆 기능 아이콘 컨테이너 |
+| `--table-row-height` | 32px | 표 본문 행 |
+| `--table-header-height` | 28px | 표 헤더 행 |
+| `--table-cell-px` | 12px | 표 셀 좌우 여백 |
+| `--control-height` | 30px | 입력·셀렉트·버튼 높이 |
+
+간격은 `spacing` 스케일(4 / 8 / 12 / 16 / 24 / 32 / 48)만 쓴다. 스케일 밖의 값
+(`13px`, `18px`, `7px`)을 쓰지 않는다 — 개편 전 `--card-padding: 18px`,
+`--grid-gap: 14px` 처럼 스케일 밖 값이 섞여 있으면 화면마다 리듬이 어긋난다.
+
+### 화면 골격은 VS Code 를 따른다
+
+운영 콘솔은 하루 종일 띄워 두는 도구다. 참조 대상은 마케팅 사이트가 아니라 IDE 다.
+
+- **카드로 나누지 말고 선으로 나눈다.** 섹션마다 테두리·그림자·라운드를 두르면
+  같은 화면 안에 액자가 여러 개 생겨 시선이 흩어진다. 구획은 1px 선 하나로 나눈다.
+- **화면 최상단은 `PageHeader` 하나로 통일한다.** 브레드크럼 → 아이콘 + 제목 +
+  설명 → 액션 순서를 28화면이 공유하고, 아래를 선으로 닫는다.
+- **목록 + 상세는 좌우 분할이다.** 목록 아래로 상세를 펼치면 클릭할 때마다 목록이
+  밀려 내려가 방금 고른 행을 잃는다. `ListDetailPanel` 로 왼쪽은 고정, 오른쪽만 바꾼다.
+- **모서리는 거의 직각에 가깝게.** 8px 이상은 쓰지 않는다.
+
+반응형은 데스크톱 우선이다. 1024px 미만에서 사이드바가 접히고, 768px 미만은
+지원하되 최적화 대상이 아니다 (운영 콘솔 특성).
+
+## Elevation & Depth
+
+**라이트는 그림자로, 다크는 밝기로 깊이를 만든다.** 같은 그림자를 두 테마에 쓰지 않는다.
+
+| 단계 | 용도 | 라이트 | 다크 |
+|------|------|--------|------|
+| `flat` | 페이지 배경 | `light-bg`, 그림자 없음 | `dark-bg`, 그림자 없음 |
+| `raised` | 카드, 패널, 사이드바 | `light-surface` + `0 1px 2px rgba(15,23,42,.06)` + `light-divider` 1px | `dark-surface` + `dark-divider` 1px, 그림자 없음 |
+| `overlay` | 모달, 드롭다운, 팝오버 | `light-surface` + `0 8px 24px rgba(15,23,42,.12)` | `dark-surface-raised` `#161d26` + 오버레이 `rgba(0,0,0,.7)` |
+
+개편 전에는 elevation 토큰이 **하나도 없었다**. 다크는 표면 밝기 차로 어찌어찌 버텼지만
+라이트는 깊이를 표현할 수단이 아예 없어서 평평한 와이어프레임이 됐다.
+
+깊이를 3단으로 제한한다. 4단째(카드 안의 카드 안의 카드)가 필요하면 그건 elevation
+문제가 아니라 정보 구조 문제다.
+
+## Shapes
+
+| 토큰 | 값 | 용도 |
+|------|------|------|
+| `rounded.sm` | 4px | 입력, 배지, 작은 버튼 |
+| `rounded.md` | 6px | 버튼, 셀렉트 |
+| `rounded.lg` | 8px | 카드, 패널, 모달 |
+| `rounded.full` | 9999px | 상태 Chip, 아바타, 토글 |
+
+모서리는 4단이 끝이다. 같은 카드 안에서 서로 다른 반경을 섞지 않는다.
+
+**반경은 개편 중 한 번 더 줄였다** (6/10/12 → 4/6/8). 12px 라운드는 카드 하나만
+볼 때는 부드럽지만, 목록·표·패널이 한 화면에 여섯 개씩 쌓이는 운영 화면에서는
+둥근 모서리마다 여백이 생겨 화면이 헐거워 보인다. IDE 계열 도구가 거의 직각을
+쓰는 이유다.
+
+아이콘은 **lucide-react 하나만** 쓴다. `@mui/icons-material` 을 도입하지 않는다 —
+아이콘 세트가 둘이면 같은 뜻의 아이콘이 화면마다 달라진다.
+아이콘 컨테이너는 `--icon-size`(28x28), 반경 `rounded.sm`, 배경은 해당 기능 색의 15% 알파.
+
+## Components
+
+컴포넌트 층은 **MUI v9** 다. 동작·접근성(포커스 트랩, 키보드 내비, ARIA)은 MUI 를 그대로
+쓰고, 표면 스타일(색·모양·밀도)만 이 문서의 토큰으로 재정의한다.
+
+표는 `components/shared/data-table.tsx` (TanStack Table) 하나만 쓴다.
+AG Grid 이관은 시도했다가 되돌렸다 — 실제 레이아웃 측정에 의존해 jsdom 에서 행을
+렌더하지 않아 목록 화면 7곳의 회귀 테스트 16건이 깨졌고, 그건 "정보 유실 0" 제약과
+맞바꾸는 거래였다. `@mui/x-data-grid` 도 도입하지 않는다 — 그리드는 하나다.
+
+### 셀렉트
+
+셀렉트는 `components/ui/select.tsx` 하나다. 네이티브 `<select>` 가 아니라
+**포털 Menu 를 쓰는 MUI Select** 다. 네이티브 팝업은 OS 가 그리므로 CSS 가
+닿지 않고, 그래서 라이트/다크 어느 쪽도 따르지 않았다.
+
+호출부는 계속 `<option>` / `<optgroup>` 을 넘긴다 — 어댑터가 `MenuItem` /
+`ListSubheader` 로 옮긴다. 대신 두 가지가 달라졌다:
+
+- **폼에서는 `Controller` 로 감싼다.** react-hook-form 의 `register()` 로 붙이면
+  `reset()` / `setValue()` 가 화면에 반영되지 않는다 — 값이 React 상태라 RHF 가
+  숨은 input 의 `.value` 에 직접 대입하는 게 닿지 않는다. 폼 상태만 바뀌고 표시는
+  옛 값에 머무는, 조용히 어긋나는 실패다.
+- **테스트는 열어서 고른다.** `fireEvent.change` / `getByDisplayValue` 가 통하지
+  않는다. `__tests__/test-utils.tsx` 의 `selectOption` / `optionLabels` 를 쓴다.
+
+잃은 것은 모바일 네이티브 피커와 `<select>` 의 타이핑 점프다.
+
+### 차트
+
+차트는 **recharts 하나**다. `chart.js` / `react-chartjs-2` 는 쓰지 않는다 (ESLint 로 막는다).
+
+이유가 이 문서와 직결된다. chart.js 는 `<canvas>` 에 그리므로 **CSS 변수를 해석하지
+못한다.** `stroke: 'var(--color-info)'` 를 넘기면 색을 못 읽어 차트가 통째로 검게
+렌더된다 — 실제로 색 토큰화 코드모드가 차트 옵션까지 바꾸면서 그 회귀가 났다.
+당시엔 `getComputedStyle` 로 `var()` 를 실제 색으로 푸는 다리를 두고 색 58곳을
+감쌌는데, 그건 "코드는 토큰을 참조한다" 는 계약에 캔버스만 예외를 파는 일이었다.
+recharts 는 SVG 라 `var(--color-*)` 가 그대로 동작한다 — 예외가 사라진다.
+
+차트 스타일은 `features/observability/components/monitoring-chart-widgets.tsx` 의
+`CHART_STYLE`(격자·눈금·툴팁)과 `CHART_LEGEND_PROPS`(범례)를 쓴다. 범례는
+`itemSorter` 를 무력화해 **선언 순서**를 지킨다 — recharts 기본값은 이름 알파벳순이라
+"CPU (Request / Limit / Current)" 라고 써 붙인 차트의 범례가 Current·Limit·Request
+로 나온다. 제목이 약속한 순서와 범례가 어긋나면 읽는 사람이 매번 다시 맞춰 봐야 한다.
+
+계열은 색만으로 구분하지 않는다. 범례 라벨을 항상 함께 둔다.
+
+### 밀도 규칙
+
+MUI 기본값은 여백이 넉넉하다. 그대로 쓰면 한 화면에 들어가던 행이 줄어드는데,
+**그건 정보 손실이다.** 그래서 다음을 기본값으로 조인다:
+
+- 모든 입력·셀렉트·버튼은 `size="small"`, 높이 `--control-height`(30px)
+- 표 행 높이 `--table-row-height`(32px), 헤더 `--table-header-height`(28px)
+- 카드 내부 여백 `--card-padding`(12px)
+
+수치는 개편 중 한 번 더 조였다(행 40→32, 헤더 36→28, 카드 여백 16→12).
+1080p 목록 화면 기준으로 한 화면에 보이는 행이 약 6줄 늘어난다 —
+스크롤 없이 판단이 끝나는 행 수가 이 도구의 실질 성능이다.
+
+### 상태 표시
+
+상태는 **색 + 아이콘 + 텍스트**를 항상 함께 쓴다. 색만으로 표시하지 않는다.
+
+| 상태 | 색 토큰 | 아이콘 |
+|------|---------|--------|
+| Connected / Success / Running | `*-success` | `CheckCircle` |
+| Pending / Warning | `*-warning` | `Clock` |
+| Error / Failed | `*-error` | `AlertCircle` |
+| Inactive / Unknown | `*-text-muted` | `MinusCircle` |
+
+상태 배지는 `StatusBadge` 하나만 쓴다. 화면마다 배지를 다시 만들지 않는다.
+
+## Do's and Don'ts
+
+### Do
+
+- ✅ 색은 항상 토큰으로 쓴다. 값이 필요하면 이 파일을 고친다.
+- ✅ 상태는 색 + 아이콘 + 텍스트를 함께 쓴다.
+- ✅ 라이트/다크 각각의 톤을 쓴다. 상태색은 테마별로 다른 hex 다.
+- ✅ 간격은 `spacing` 스케일 안에서만 고른다.
+- ✅ 표는 `DataTable`(TanStack), 정적·레이아웃 표만 MUI `Table`.
+- ✅ 밀도를 높이려면 여백을 줄인다.
+- ✅ 화면 상단은 `PageHeader`, 목록+상세는 `ListDetailPanel` 을 쓴다.
+- ✅ 구획은 1px 선으로 나눈다.
+- ✅ 새 화면을 만들 때 이 파일을 먼저 읽는다.
+
+### Don't
+
+- ❌ TSX 에 hex 를 박지 않는다. (ESLint 로 금지한다)
+- ❌ 골드를 CTA·텍스트·보더·아이콘 색으로 쓰지 않는다. 로고 마크 전용이다.
+- ❌ 라이트 테마에 밝은 톤을 텍스트로 쓰지 않는다. Coinbase 의 `semantic-up`(#05b169)
+  조차 흰 배경에서 2.80:1 이라 우리 값은 어둡게(#047a48) 조정했다 — 마케팅 사이트의
+  큰 글자용 값을 데이터 밀집 화면의 작은 텍스트에 그대로 쓸 수 없다.
+- ❌ 라이트 보더에 `gray-800` 이상 어두운 값을 쓰지 않는다. 와이어프레임처럼 보인다.
+- ❌ 다크 테마에 그림자를 쓰지 않는다. 보이지 않는데 렌더 비용만 든다.
+- ❌ 그리드·차트·아이콘 라이브러리를 추가하지 않는다. AG Grid(D6)와 chart.js 도 포함이다.
+- ❌ **정보를 줄여서 여백을 만들지 않는다.** 밀도와 정보량은 별개다.
+- ❌ 텍스트 4단째를 만들지 않는다. AA 를 넘길 수 없다.
+- ❌ 화면마다 제목 줄을 손으로 만들지 않는다. 28화면이 각자 만든 결과가
+  "흐트러진 느낌"의 절반이었다 — `PageHeader` 를 쓴다.
+- ❌ 목록 아래로 상세를 펼치지 않는다. 목록이 밀려 내려가 방금 고른 행을 잃는다.
+- ❌ 섹션을 카드로 감싸 액자를 겹치지 않는다. 선으로 나눈다.

@@ -63,7 +63,7 @@ export function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalProps) {
             {SHORTCUT_REGISTRY.map((entry) => (
               <tr key={entry.keys} className="border-t border-[var(--color-border-default)]">
                 <td className="py-2">
-                  <kbd className="rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.04)] px-2 py-0.5 font-mono text-xs">
+                  <kbd className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-0.5 font-mono text-xs">
                     {entry.keys}
                   </kbd>
                 </td>

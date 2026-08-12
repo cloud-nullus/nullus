@@ -5,6 +5,7 @@ import { cn } from "../../../lib/utils"
 import type { ToolHealthStatus } from "../api/observability-api"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import { TOOL_STATUS } from "./monitoring-chart-widgets"
+import { TextInput } from '../../../components/ui/text-input'
 
 // ─── Stack Component Connection UI ───────────────────────────────────────────
 interface StackComponent {
@@ -51,12 +52,12 @@ export function StackConnectPanel({
   const readyItems = DETECTABLE_COMPONENTS.filter((c) => confirmed[c.name] && urls[c.name]?.trim())
 
   return (
-    <div className="mb-6 rounded-[var(--card-radius)] border border-[rgba(99,102,241,0.35)] bg-[rgba(99,102,241,0.04)] p-5">
+    <div className="mb-6 rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_4%,_transparent)] p-5">
       {/* Header */}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[rgba(99,102,241,0.2)] text-[#a5b4fc]">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]">
               <Settings2 size={14} />
             </div>
             <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">
@@ -90,11 +91,11 @@ export function StackConnectPanel({
             <div
               key={comp.name}
               className={cn(
-                'rounded-[10px] border bg-[rgba(255,255,255,0.02)] p-3.5 transition-colors',
+                'rounded-[10px] border bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3.5 transition-colors',
                 isDone
                   ? 'border-emerald-500/40 bg-emerald-500/5'
                   : isOpen
-                    ? 'border-[#6366f1]/40'
+                    ? 'border-[var(--color-primary)]/40'
                     : 'border-[var(--color-border-default)]',
               )}
             >
@@ -122,8 +123,8 @@ export function StackConnectPanel({
                     className={cn(
                       'shrink-0 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors',
                       isOpen
-                        ? 'border-[rgba(239,68,68,0.4)] text-[#f87171] hover:bg-red-400/10'
-                        : 'border-[rgba(99,102,241,0.4)] text-[#a5b4fc] hover:bg-[rgba(99,102,241,0.1)]',
+                        ? 'border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] text-[var(--color-error)] hover:bg-red-400/10'
+                        : 'border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]',
                     )}
                   >
                     {isOpen ? 'Cancel' : '+ Add URL'}
@@ -134,19 +135,19 @@ export function StackConnectPanel({
               {/* URL input (when expanded) */}
               {isOpen && !isDone && (
                 <div className="mt-2 flex min-w-0 gap-1.5">
-                  <input
+                  <TextInput
                     type="url"
                     value={urls[comp.name] ?? ''}
                     onChange={(e) => setUrl(comp.name, e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && confirmUrl(comp.name)}
                     placeholder={`https://${comp.name.toLowerCase()}.example.com/`}
-                    className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.06)] px-2.5 py-[7px] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[#6366f1]"
+                    className="min-w-0 flex-1 focus:border-[var(--color-primary)]"
                   />
                   <button
                     type="button"
                     onClick={() => confirmUrl(comp.name)}
                     disabled={!urls[comp.name]?.trim()}
-                    className="shrink-0 rounded-lg bg-[#6366f1] px-3 py-[7px] text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+                    className="shrink-0 rounded-lg bg-[var(--color-primary)] px-3 py-[7px] text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
                   >
                     Confirm
                   </button>
@@ -172,7 +173,7 @@ export function StackConnectPanel({
       </div>
 
       {/* Footer actions */}
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[rgba(99,102,241,0.2)] pt-4">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] pt-4">
         <p className="text-[11px] text-[var(--color-text-secondary)]">
           {readyItems.length > 0
             ? `${readyItems.length} component${readyItems.length > 1 ? 's' : ''} ready to connect`
@@ -182,7 +183,7 @@ export function StackConnectPanel({
           <button
             type="button"
             onClick={onSkip}
-            className="rounded-lg border border-[var(--color-border-default)] px-4 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[rgba(255,255,255,0.04)]"
+            className="rounded-lg border border-[var(--color-border-default)] px-4 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)]"
           >
             Skip
           </button>
@@ -190,7 +191,7 @@ export function StackConnectPanel({
             type="button"
             disabled={readyItems.length === 0}
             onClick={() => onConnect(readyItems.map((c) => ({ label: c.name, url: urls[c.name] })))}
-            className="flex items-center gap-1.5 rounded-lg bg-[#6366f1] px-4 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-4 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
           >
             <Plus size={12} />Connect {readyItems.length > 0 ? `${readyItems.length} Component${readyItems.length > 1 ? 's' : ''}` : 'Components'}
           </button>

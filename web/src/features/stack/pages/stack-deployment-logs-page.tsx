@@ -10,6 +10,7 @@ import type { Stack } from '../api/stack-api'
 import { RetryStackButton } from '../components/retry-stack-button'
 import type { StackStatus as RetryStackStatus } from '../utils/retry-policy'
 import { getStatusStyle } from '../utils/status-style'
+import { PageHeader } from '../../../components/layout/page-header'
 
 type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'dim'
 
@@ -111,9 +112,9 @@ const DEPLOYMENT_DATA: Record<string, { meta: DeploymentMeta; logs: LogLine[] }>
 
 const LOG_LEVEL_STYLE: Record<LogLevel, string> = {
   info: 'text-[var(--color-text-primary)]',
-  success: 'text-[#34d399]',
-  warn: 'text-[#fbbf24]',
-  error: 'text-[#f87171]',
+  success: 'text-[var(--color-success)]',
+  warn: 'text-[var(--color-warning)]',
+  error: 'text-[var(--color-error)]',
   dim: 'text-[var(--color-text-muted)]',
 }
 
@@ -259,34 +260,30 @@ export function StackDeploymentLogsPage() {
 
   return (
     <div>
-      <Breadcrumb
-        items={[
-          { label: 'Stack List', path: '/stack/list' },
-          { label: 'Deployment Logs' },
-        ]}
+      <PageHeader
+        breadcrumb={
+          [
+            { label: 'Stack List', path: '/stack/list' },
+            { label: 'Deployment Logs' },
+          ]
+        }
+        icon={<Terminal size={16} />}
+        tone="success"
+        title="Deployment Logs"
+        subtitle={
+          meta && (
+            <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+              {meta.version} · {meta.reason} · {meta.who} · {meta.when}
+            </p>
+          )
+        }
+        actions={
+          <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
+            <ArrowLeft size={14} />
+            Back to Stack List
+          </Button>
+        }
       />
-
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.12)] text-[#34d399]">
-            <Terminal size={18} />
-          </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
-              Deployment Logs
-            </h1>
-            {meta && (
-              <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-                {meta.version} · {meta.reason} · {meta.who} · {meta.when}
-              </p>
-            )}
-          </div>
-        </div>
-        <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
-          <ArrowLeft size={14} />
-          Back to Stack List
-        </Button>
-      </div>
 
       {meta && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -294,10 +291,10 @@ export function StackDeploymentLogsPage() {
             className={cn(
               'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold',
               meta.result === 'success'
-                ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
+                ? 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]'
                 : meta.result === 'failed'
-                  ? 'bg-[rgba(239,68,68,0.15)] text-[#f87171]'
-                  : 'bg-[rgba(245,158,11,0.15)] text-[#fbbf24]'
+                  ? 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]'
+                  : 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]'
             )}
           >
             {meta.result === 'success' ? (
@@ -321,26 +318,26 @@ export function StackDeploymentLogsPage() {
                   <div
                     className={cn(
                       'h-px w-6',
-                      stage.status === 'pending' ? 'bg-[rgba(255,255,255,0.1)]' : 'bg-[rgba(34,197,94,0.4)]'
+                      stage.status === 'pending' ? 'bg-[color-mix(in_srgb,_var(--color-text-primary)_10%,_transparent)]' : 'bg-[color-mix(in_srgb,_var(--color-success)_40%,_transparent)]'
                     )}
                   />
                 )}
                 <div className="flex flex-col items-center gap-0.5">
                   {stage.status === 'done' ? (
-                    <CheckCircle2 size={14} className="text-[#34d399]" />
+                    <CheckCircle2 size={14} className="text-[var(--color-success)]" />
                   ) : stage.status === 'failed' ? (
-                    <XCircle size={14} className="text-[#f87171]" />
+                    <XCircle size={14} className="text-[var(--color-error)]" />
                   ) : (
-                    <Circle size={14} className="text-[rgba(255,255,255,0.15)]" />
+                    <Circle size={14} className="text-[color-mix(in_srgb,_var(--color-text-primary)_15%,_transparent)]" />
                   )}
                   <span
                     className={cn(
                       'text-[10px] font-medium whitespace-nowrap',
                       stage.status === 'done'
-                        ? 'text-[#34d399]'
+                        ? 'text-[var(--color-success)]'
                         : stage.status === 'failed'
-                          ? 'text-[#f87171]'
-                          : 'text-[rgba(255,255,255,0.25)]'
+                          ? 'text-[var(--color-error)]'
+                          : 'text-[color-mix(in_srgb,_var(--color-text-primary)_25%,_transparent)]'
                     )}
                   >
                     {stage.label}
@@ -352,24 +349,24 @@ export function StackDeploymentLogsPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
-        <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] px-4 py-2.5">
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
+        <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-4 py-2.5">
           <div className="flex gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-[#ef4444]" />
-            <span className="h-3 w-3 rounded-full bg-[#fbbf24]" />
-            <span className="h-3 w-3 rounded-full bg-[#34d399]" />
+            <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />
+            <span className="h-3 w-3 rounded-full bg-[var(--color-warning)]" />
+            <span className="h-3 w-3 rounded-full bg-[var(--color-success)]" />
           </div>
-          <span className="ml-2 text-[11px] text-[rgba(255,255,255,0.3)]">
+          <span className="ml-2 text-[11px] text-[color-mix(in_srgb,_var(--color-text-primary)_30%,_transparent)]">
             deployment/{deploymentId}
           </span>
           {isStreaming && (
-            <span className="ml-auto flex items-center gap-1 text-[11px] text-[#fbbf24]">
+            <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-warning)]">
               <Loader2 size={11} className="animate-spin" />
               Streaming...
             </span>
           )}
           {!isStreaming && allLogs.length > 0 && (
-            <span className="ml-auto text-[11px] text-[rgba(255,255,255,0.3)]">
+            <span className="ml-auto text-[11px] text-[color-mix(in_srgb,_var(--color-text-primary)_30%,_transparent)]">
               {allLogs.length} lines
             </span>
           )}
@@ -381,11 +378,11 @@ export function StackDeploymentLogsPage() {
           className="h-[1440px] overflow-y-auto p-4 font-mono text-[13px] leading-[1.7]"
         >
           {!entry && (
-            <p className="text-[#f87171]">Deployment not found: {deploymentId}</p>
+            <p className="text-[var(--color-error)]">Deployment not found: {deploymentId}</p>
           )}
           {visibleLogs.map((line) => (
             <div key={`${line.time}-${line.text}`} className="flex gap-3">
-              <span className="shrink-0 select-none text-[rgba(255,255,255,0.2)]">{line.time}</span>
+              <span className="shrink-0 select-none text-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)]">{line.time}</span>
               <span className={LOG_LEVEL_STYLE[line.level]}>
                 {LOG_LEVEL_PREFIX[line.level]}{line.text}
               </span>
@@ -393,10 +390,10 @@ export function StackDeploymentLogsPage() {
           ))}
           {isStreaming && (
             <div className="flex gap-3">
-              <span className="shrink-0 select-none text-[rgba(255,255,255,0.2)]">
+              <span className="shrink-0 select-none text-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)]">
                 {allLogs[visibleCount]?.time ?? ''}
               </span>
-              <span className="inline-block h-[1em] w-2 animate-pulse bg-[#a5b4fc]" />
+              <span className="inline-block h-[1em] w-2 animate-pulse bg-[var(--color-primary)]" />
             </div>
           )}
         </div>
@@ -420,7 +417,7 @@ function RetryHistoryPanel({ stackId }: { stackId: string }) {
   const remaining = items.length - 3
   return (
     <section
-      className="mt-4 rounded border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] p-3"
+      className="mt-4 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
       data-testid="retry-history-panel"
     >
       <h3 className="mb-2 text-sm font-medium text-[var(--color-text-primary)]">
@@ -453,7 +450,7 @@ function RetryHistoryPanel({ stackId }: { stackId: string }) {
       {remaining > 0 && (
         <button
           type="button"
-          className="mt-2 text-[11px] text-[#a5b4fc]"
+          className="mt-2 text-[11px] text-[var(--color-primary)]"
           onClick={() => setExpanded((v) => !v)}
           data-testid="retry-history-toggle"
         >
@@ -493,7 +490,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
 
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(16,185,129,0.12)] text-[#34d399]">
+          <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]">
             <Terminal size={18} />
           </div>
           <div>
@@ -543,26 +540,26 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
                 <div
                   className={cn(
                     'h-px w-6',
-                    stage.status === 'pending' ? 'bg-[rgba(255,255,255,0.1)]' : 'bg-[rgba(34,197,94,0.4)]',
+                    stage.status === 'pending' ? 'bg-[color-mix(in_srgb,_var(--color-text-primary)_10%,_transparent)]' : 'bg-[color-mix(in_srgb,_var(--color-success)_40%,_transparent)]',
                   )}
                 />
               )}
               <div className="flex flex-col items-center gap-0.5">
                 {stage.status === 'done' ? (
-                  <CheckCircle2 size={14} className="text-[#34d399]" />
+                  <CheckCircle2 size={14} className="text-[var(--color-success)]" />
                 ) : stage.status === 'failed' ? (
-                  <XCircle size={14} className="text-[#f87171]" />
+                  <XCircle size={14} className="text-[var(--color-error)]" />
                 ) : (
-                  <Circle size={14} className="text-[rgba(255,255,255,0.15)]" />
+                  <Circle size={14} className="text-[color-mix(in_srgb,_var(--color-text-primary)_15%,_transparent)]" />
                 )}
                 <span
                   className={cn(
                     'text-[10px] font-medium whitespace-nowrap',
                     stage.status === 'done'
-                      ? 'text-[#34d399]'
+                      ? 'text-[var(--color-success)]'
                       : stage.status === 'failed'
-                        ? 'text-[#f87171]'
-                        : 'text-[rgba(255,255,255,0.25)]',
+                        ? 'text-[var(--color-error)]'
+                        : 'text-[color-mix(in_srgb,_var(--color-text-primary)_25%,_transparent)]',
                   )}
                 >
                   {stage.label}
@@ -573,14 +570,14 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[#0d0f17]">
-        <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.06)] px-4 py-2.5">
+      <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
+        <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-4 py-2.5">
           <div className="flex gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-[#ef4444]" />
-            <span className="h-3 w-3 rounded-full bg-[#fbbf24]" />
-            <span className="h-3 w-3 rounded-full bg-[#34d399]" />
+            <span className="h-3 w-3 rounded-full bg-[var(--color-error)]" />
+            <span className="h-3 w-3 rounded-full bg-[var(--color-warning)]" />
+            <span className="h-3 w-3 rounded-full bg-[var(--color-success)]" />
           </div>
-          <span className="ml-2 text-[11px] text-[rgba(255,255,255,0.3)]">deployment/{stack.id}</span>
+          <span className="ml-2 text-[11px] text-[color-mix(in_srgb,_var(--color-text-primary)_30%,_transparent)]">deployment/{stack.id}</span>
         </div>
         <div className="p-6 text-[13px] text-[var(--color-text-secondary)]">
           Live log streaming is not yet connected. See the Stack List view for deployment events and metrics.

@@ -12,20 +12,22 @@ import {
   useTokenSources,
   type TokenSource,
 } from '../api/admin-api'
-import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
+import { PageHeader } from '../../../components/layout/page-header'
+import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 const STEP_UP_ENFORCED = false
 
 const STATUS_BADGE: Record<string, string> = {
-  healthy: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]',
-  renew_due: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]',
-  renewing: 'bg-[rgba(99,102,241,0.15)] text-[#a5b4fc]',
-  rotated: 'bg-[rgba(34,197,94,0.15)] text-[#34d399]',
-  failed_retryable: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-  failed_manual: 'bg-[rgba(239,68,68,0.15)] text-[#f87171]',
-  expired: 'bg-[rgba(100,116,139,0.15)] text-[#94a3b8]',
+  healthy: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  renew_due: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+  renewing: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]',
+  rotated: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+  failed_retryable: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+  failed_manual: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+  expired: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-secondary)]',
 }
 
 export function TokenManagementPage() {
@@ -83,21 +85,17 @@ export function TokenManagementPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t('sidebar.admin', 'Admin') }, { label: 'OpenBao Token Management' }]} />
-
-      <div className="mb-7 flex items-center gap-2.5">
-        <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[rgba(168,85,247,0.15)] text-[#c084fc]">
-          <KeyRound size={18} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">OpenBao Token Management</h1>
-          <p className="m-0 mt-0.5 text-[13px] text-[var(--color-text-secondary)]">토큰 상태 확인, 수동 회전, 승인/일시중지 및 조회를 관리합니다.</p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: t('sidebar.admin', 'Admin') }, { label: 'OpenBao Token Management' }]}
+        icon={<KeyRound size={16} />}
+        tone="accent"
+        title="OpenBao Token Management"
+        subtitle={t('tokenManagement.description', 'Check token status, rotate manually, and manage approvals, pauses, and lookups.')}
+      />
 
       {!STEP_UP_ENFORCED && (
-        <div className="mb-4 rounded-md border border-[var(--color-border-default)] bg-[rgba(245,158,11,0.1)] px-3 py-2 text-sm text-[var(--color-text-primary)]">
-          테스트 모드: 재로그인(step-up) 강제는 비활성화되어 있으며 내부적으로 자동 처리됩니다.
+        <div className="mb-4 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-warning)_10%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]">
+          {t('tokenManagement.testModeNotice', 'Test mode: step-up re-authentication is disabled and handled automatically.')}
         </div>
       )}
 
@@ -105,9 +103,9 @@ export function TokenManagementPage() {
         <section className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-[rgba(255,255,255,0.02)]">
+              <tr className={tableHeadRowClass}>
                 {['Provider', 'Module', 'Path', 'Status', 'Expires'].map((h) => (
-                  <th key={h} className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">{h}</th>
+                  <th key={h} className={cn(thClass)}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -119,11 +117,11 @@ export function TokenManagementPage() {
                 <tr><td colSpan={5} className="border-t border-[var(--color-border-default)] px-3.5 py-8 text-center text-sm text-[var(--color-text-secondary)]">No token sources.</td></tr>
               )}
               {!isLoading && items.map((item) => (
-                <tr key={item.id} className={cn('cursor-pointer', selected?.id === item.id && 'bg-[rgba(99,102,241,0.1)]')} onClick={() => setSelectedId(item.id)}>
+                <tr key={item.id} className={cn('cursor-pointer', selected?.id === item.id && 'bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]')} onClick={() => setSelectedId(item.id)}>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm">{item.provider}</td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm">{item.module}</td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-xs text-[var(--color-text-secondary)]">{item.path}</td>
-                  <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm"><span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[item.status] ?? STATUS_BADGE.expired)}>{item.status}</span></td>
+                  <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm"><Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[item.status] ?? STATUS_BADGE.expired)}>{item.status}</Badge></td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-xs text-[var(--color-text-secondary)]">{item.expires_at ? new Date(item.expires_at).toLocaleString() : '-'}</td>
                 </tr>
               ))}
@@ -153,7 +151,7 @@ export function TokenManagementPage() {
           </div>
 
           {revealResult && (
-            <div className="mt-4 rounded-md border border-[var(--color-border-default)] bg-[rgba(15,23,42,0.35)] p-3">
+            <div className="mt-4 rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] p-3">
               <div className="mb-1 text-xs font-semibold uppercase text-[var(--color-text-secondary)]">Reveal Result</div>
               <pre className="overflow-auto text-xs text-[var(--color-text-primary)]">{JSON.stringify(revealResult, null, 2)}</pre>
             </div>

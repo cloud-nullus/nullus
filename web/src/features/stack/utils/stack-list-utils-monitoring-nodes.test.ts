@@ -15,51 +15,67 @@ function tool(overrides: Partial<MonitoringToolView>): MonitoringToolView {
   };
 }
 
+const stageOf = (
+  nodes: ReturnType<typeof buildPipelineNodesFromMonitoring>,
+  category: string,
+) => nodes.find((node) => node.category === category);
+
 describe("buildPipelineNodesFromMonitoring", () => {
-  it("includes the container registry in the Artifacts node", () => {
+  // 스냅샷 경로와 스테이지 구성이 같아야 한다. 다르면 데이터 출처(스냅샷/모니터링)에
+  // 따라 같은 스택이 다른 모양으로 보인다.
+  it("splits roles into the same stages the snapshot path uses", () => {
     const nodes = buildPipelineNodesFromMonitoring([
       tool({ key: "source_repository", name: "GitLab CE" }),
       tool({ key: "container_registry", name: "Harbor", version: "2.11.0" }),
-    ]);
-
-    const artifacts = nodes.find((node) => node.category === "Artifacts");
-    expect(artifacts?.oss).toContain("Harbor");
-    expect(artifacts?.version).toContain("2.11.0");
-  });
-
-  it("includes the package registry in the Artifacts node", () => {
-    const nodes = buildPipelineNodesFromMonitoring([
       tool({ key: "package_registry", name: "Nexus", version: "3.70.0" }),
+      tool({ key: "storage_backend", name: "MinIO" }),
     ]);
 
-    const artifacts = nodes.find((node) => node.category === "Artifacts");
-    expect(artifacts?.oss).toContain("Nexus");
+    expect(nodes.map((node) => node.category)).toEqual([
+      "Source",
+      "Container Registry",
+      "Package Registry",
+      "Storage",
+    ]);
   });
 
-  it("sums pod counts across every artifacts tool", () => {
+  it("keeps each tool paired with its own version", () => {
     const nodes = buildPipelineNodesFromMonitoring([
-      tool({ key: "source_repository", pod_count: 4 }),
-      tool({ key: "container_registry", name: "Harbor", pod_count: 7 }),
-      tool({ key: "storage_backend", name: "MinIO", pod_count: 1 }),
+      tool({ key: "container_registry", name: "Harbor", version: "2.11.0", pod_count: 7 }),
     ]);
 
-    const artifacts = nodes.find((node) => node.category === "Artifacts");
-    expect(artifacts?.instances).toBe(12);
+    expect(stageOf(nodes, "Container Registry")?.tools).toEqual([
+      { name: "Harbor", version: "2.11.0", instances: 7 },
+    ]);
   });
 
-  // Nexus 는 컨테이너 레지스트리와 패키지 저장소를 겸할 수 있다. 같은 제품을 두 번
-  // 세면 화면에 "Nexus + GitLab CE + Nexus + MinIO" 처럼 뜨고 인스턴스도 이중 계상된다.
-  it("lists a tool serving two roles only once", () => {
+  it("sums pod counts within a stage", () => {
+    const nodes = buildPipelineNodesFromMonitoring([
+      tool({ key: "collection", name: "Prometheus", pod_count: 2 }),
+      tool({ key: "visualization", name: "Grafana", pod_count: 1 }),
+    ]);
+
+    expect(stageOf(nodes, "Monitoring")?.instances).toBe(3);
+  });
+
+  // Nexus 가 두 역할을 겸하면 두 칸에 다 나오되 파드는 한 번만 센다.
+  it("shows a dual-role tool in both stages but counts its pod once", () => {
     const nodes = buildPipelineNodesFromMonitoring([
       tool({ key: "container_registry", name: "Nexus", version: "3.64.0", pod_count: 1 }),
       tool({ key: "package_registry", name: "Nexus", version: "3.64.0", pod_count: 1 }),
-      tool({ key: "source_repository", name: "GitLab CE", version: "18.5.1", pod_count: 2 }),
     ]);
 
-    const artifacts = nodes.find((node) => node.category === "Artifacts");
-    expect(artifacts?.oss).toBe("Nexus + GitLab CE");
-    expect(artifacts?.version).toBe("3.64.0 / 18.5.1");
-    expect(artifacts?.instances).toBe(3);
+    expect(stageOf(nodes, "Container Registry")?.instances).toBe(1);
+    expect(stageOf(nodes, "Package Registry")?.tools[0]?.shared).toBe(true);
+    expect(stageOf(nodes, "Package Registry")?.instances).toBe(0);
+  });
+
+  it("includes the CI stage", () => {
+    const nodes = buildPipelineNodesFromMonitoring([
+      tool({ key: "ci_platform", name: "GitLab CI", version: "18.5.1" }),
+    ]);
+
+    expect(stageOf(nodes, "CI")?.tools[0]?.name).toBe("GitLab CI");
   });
 
   it("omits disabled tools", () => {
@@ -67,6 +83,6 @@ describe("buildPipelineNodesFromMonitoring", () => {
       tool({ key: "container_registry", name: "Harbor", enabled: false }),
     ]);
 
-    expect(nodes.find((node) => node.category === "Artifacts")).toBeUndefined();
+    expect(stageOf(nodes, "Container Registry")).toBeUndefined();
   });
 });
