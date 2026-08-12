@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { Activity, AlertCircle, CheckCircle, Clock, GitBranch, Layers, Package, XCircle } from "lucide-react"
 import { useDeployments, usePipelines } from "../../cicd/api/cicd-api"
+import { useStackWorkloads } from "../../stack/api/stack-api"
 import { cn } from "../../../lib/utils"
 import { CHART_LEGEND_PROPS, CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
 import type { TimeRange } from "./monitoring-tab-layout"
@@ -40,10 +41,30 @@ export const CICD_DEFAULT_TABS: EmbedTab[] = [
   },
 ]
 
-export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }) {
+export function CicdDefault({
+  selectedClusterId,
+  selectedStackId,
+}: {
+  selectedClusterId: string
+  selectedStackId: string
+}) {
   const [range, setRange] = useState<TimeRange>('24h')
   const { data: pipelinesData } = usePipelines()
   const { data: deploymentsData } = useDeployments()
+  // 배포된 앱의 파드는 클러스터에서 읽는다. 스택 단위 엔드포인트라 스택을 골라야
+  // 나온다 — 그래서 아래에서 스택 미선택 상태를 먼저 처리한다.
+  const { data: workloads } = useStackWorkloads(selectedStackId)
+
+  // 파이프라인 id 로 실제 파드 수를 찾는다.
+  const podsByPipeline = useMemo(() => {
+    const map = new Map<string, [number, number]>()
+    for (const pipeline of workloads?.pipelines ?? []) {
+      const pods = pipeline.k8sObjects.filter((object) => object.kind === 'Pod')
+      const ready = pods.filter((pod) => pod.status === 'Running').length
+      map.set(pipeline.id, [ready, pods.length])
+    }
+    return map
+  }, [workloads?.pipelines])
 
   const pipelines = useMemo(
     () => (pipelinesData?.items ?? []).filter((pipeline) => !selectedClusterId || pipeline.clusterId === selectedClusterId),
@@ -76,13 +97,13 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
       version: latest?.version || '—',
       pipeline: pipeline.appType,
       status,
-      pods: [null, null],
+      pods: podsByPipeline.get(pipeline.id) ?? [null, null],
       cluster: pipeline.clusterName || '—',
       namespace: pipeline.namespace || 'default',
       duration: formatDuration(latest?.startedAt ?? null, latest?.completedAt ?? null),
       lastDeploy: timeAgo(latest?.startedAt ?? null),
     }
-  }), [pipelines, latestByPipeline])
+  }), [pipelines, latestByPipeline, podsByPipeline])
 
   const latestDeployments = useMemo(
     () => [...deployments].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()).slice(0, 8),
@@ -207,6 +228,13 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
           </h2>
           <span className="text-xs text-[var(--color-text-secondary)]">{rows.length} apps</span>
         </div>
+        {!selectedStackId && (
+          // 파드 수는 스택 단위 엔드포인트에서 온다. 안 고르면 그 열만 비므로,
+          // 표가 고장난 것처럼 보이지 않게 이유를 적는다.
+          <div className="mb-3 rounded-[var(--radius-sm)] border border-[var(--color-border-default)] px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">
+            위에서 스택을 고르면 배포된 애플리케이션의 실제 파드 수를 함께 보여줍니다.
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -245,7 +273,11 @@ export function CicdDefault({ selectedClusterId }: { selectedClusterId: string }
                           ? 'text-amber-400'
                           : 'text-[var(--color-text-primary)]',
                       )}>
-                        {typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number' ? `${app.pods[0]}/${app.pods[1]}` : '—'}
+                        {typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number'
+                          ? `${app.pods[0]}/${app.pods[1]}`
+                          : selectedStackId
+                            ? '—'
+                            : 'select stack'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">{app.cluster}</td>

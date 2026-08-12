@@ -169,7 +169,7 @@ export function MonitoringPage() {
                 <DashboardTabLayout
                   viewId="cicd"
                   isAdmin={isAdmin}
-                  defaultContent={<CicdDefault selectedClusterId={selectedClusterId} />}
+                  defaultContent={<CicdDefault selectedClusterId={selectedClusterId} selectedStackId={selectedStackId} />}
                   seedTabs={CICD_DEFAULT_TABS}
                 />
               )}
