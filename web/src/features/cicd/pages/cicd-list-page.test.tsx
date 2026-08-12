@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithProviders } from "../../../__tests__/test-utils";
 import { CicdListPage } from "./cicd-list-page";
 
@@ -148,6 +148,29 @@ describe("CicdListPage", () => {
     renderWithProviders(<CicdListPage />);
 
     expect(screen.getAllByText("prod-stack").length).toBeGreaterThan(0);
+  });
+
+  // 스택이 지워져도 파이프라인 행은 남는다. 그때 stack_id 를 이름 자리에 넣으면
+  // 화면에 stk_c073c556ed8c 가 스택 "이름" 으로 뜬다 — 사용자는 그게 이름인 줄
+  // 알고, 실제로는 가리키는 스택이 없다는 사실을 놓친다.
+  it("없는 스택을 가리키면 id 를 이름처럼 보여주지 않는다", () => {
+    mockUsePipelines.mockReturnValue({
+      data: {
+        items: [{ ...pipelines[0], stackId: "stk_gone" }],
+        total: 1,
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<CicdListPage />);
+
+    // 이름은 목록 행과 상세 패널 양쪽에 있다. 표 행으로 좁힌다.
+    const row = screen
+      .getAllByText("frontend-web")
+      .map((node) => node.closest("tr"))
+      .find(Boolean)!;
+    expect(within(row).queryByText("stk_gone")).toBeNull();
+    expect(within(row).getByText(/삭제됨|Deleted/)).toBeTruthy();
   });
 
   // 모니터링 탭은 실행 이력 KPI 만 보여줬다. 그런데 GitOps 로 도는 배포는

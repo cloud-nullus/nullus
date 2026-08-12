@@ -64,6 +64,21 @@ func TestDefaultValues_GitLab(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, false, nginxIngress["enabled"])
 
+	// GitLab 차트는 자체 Prometheus 를 함께 세운다. Nullus 는 모니터링 수집을
+	// kube-prometheus-stack 으로 따로 깔므로 한 클러스터에 Prometheus 가 둘이
+	// 된다 — 같은 것을 두 번 긁고 메모리만 더 쓴다.
+	//
+	// 게다가 이 번들 Prometheus 는 자원 규모를 낮춘 구성에서 반드시 죽는다.
+	// 실제로 Local/Startup 규모(메모리 한도 328Mi)에서 OOMKilled(exit 137) 로
+	// 34번 재시작하며 CrashLoopBackOff 에 갇혀 있었다. 스택은 "실행 중" 인데
+	// 파드 하나가 영원히 안 뜨는 상태다.
+	//
+	// postgresql / minio / nginx-ingress 를 이미 같은 이유로 끄고 있다.
+	prometheus, ok := values["prometheus"].(map[string]any)
+	require.True(t, ok, "GitLab 번들 Prometheus 설정이 있어야 한다")
+	assert.Equal(t, false, prometheus["install"],
+		"Nullus 가 kube-prometheus-stack 을 따로 깐다 — 번들 Prometheus 는 끈다")
+
 	gitlab, ok := values["gitlab"].(map[string]any)
 	require.True(t, ok)
 	webservice, ok := gitlab["webservice"].(map[string]any)

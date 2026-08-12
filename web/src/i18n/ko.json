@@ -669,7 +669,8 @@
       "status": "상태",
       "lastDeployed": "최근 배포",
       "noStack": "—",
-      "stack": "스택"
+      "stack": "스택",
+      "deletedStack": "삭제됨"
     },
     "emptyPipelines": "파이프라인이 없습니다.",
     "emptyDeployments": "배포 이력이 없습니다.",

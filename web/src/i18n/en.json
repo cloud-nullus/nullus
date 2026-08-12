@@ -669,7 +669,8 @@
       "status": "Status",
       "lastDeployed": "Last Deployed",
       "noStack": "—",
-      "stack": "Stack"
+      "stack": "Stack",
+      "deletedStack": "Deleted"
     },
     "emptyPipelines": "No pipelines found.",
     "emptyDeployments": "No deployment history.",

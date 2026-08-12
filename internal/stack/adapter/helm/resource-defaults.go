@@ -192,9 +192,8 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 			"redis": map[string]any{
 				"master": map[string]any{"resources": redisMasterScaled()},
 			},
-			"prometheus": map[string]any{
-				"server": map[string]any{"resources": scaled(0.08)},
-			},
+			// 번들 Prometheus 는 install:false 라 자원을 배정하지 않는다
+			// (values.go 의 installing_gitlab 참고).
 		}
 	case "installing_argocd":
 		return map[string]any{

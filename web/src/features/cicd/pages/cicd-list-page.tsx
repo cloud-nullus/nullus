@@ -1830,10 +1830,19 @@ export function CicdListPage() {
             </span>
           );
         }
+        // 스택이 지워져도 파이프라인 행은 남는다. 그때 id 를 이름 자리에 넣으면
+        // stk_c073c556ed8c 가 스택 "이름" 으로 읽혀, 가리키는 스택이 없다는
+        // 사실을 놓친다. id 는 툴팁으로만 남긴다.
+        const name = stackNameById.get(stackId);
+        if (!name) {
+          return (
+            <span className="text-[var(--color-text-muted)]" title={stackId}>
+              {t("cicdListPage.table.deletedStack", "삭제됨")}
+            </span>
+          );
+        }
         return (
-          <span className="text-[var(--color-text-secondary)]">
-            {stackNameById.get(stackId) ?? stackId}
-          </span>
+          <span className="text-[var(--color-text-secondary)]">{name}</span>
         );
       },
     },
