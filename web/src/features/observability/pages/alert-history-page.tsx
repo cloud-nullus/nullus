@@ -6,7 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertHistory } from '../api/observability-api'
 import type { AlertHistoryEntry, AlertSeverity } from '../api/observability-api'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { DataTable } from '../../../components/shared/data-table'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { cn } from '../../../lib/utils'
@@ -189,12 +189,12 @@ export function AlertHistoryPage() {
             emptyMessage={t('alertHistoryPage.empty', 'No alert history found.')}
             toolbar={
               <>
-                <NativeSelect value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} >
+                <Select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} >
                   <option value="">{t('alertHistoryPage.filters.allSeverity', 'All Severity')}</option>
                   <option value="critical">{t('observability.severity.critical', 'Critical')}</option>
                   <option value="warning">{t('observability.severity.warning', 'Warning')}</option>
                   <option value="info">{t('observability.severity.info', 'Info')}</option>
-                </NativeSelect>
+                </Select>
                 <div className="flex gap-1.5">
                   {[
                     { id: '24h', label: t('alertHistoryPage.filters.last24h', 'Last 24h') },

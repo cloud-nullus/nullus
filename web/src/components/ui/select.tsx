@@ -1,9 +1,9 @@
 // MUI Select 어댑터.
 //
-// 1d08d8f 까지는 `NativeSelect`(진짜 <select>)였다. 닫힌 상태는 그 커밋에서
+// 0c32836 전까지는 `NativeSelect`(진짜 <select>)였다. 닫힌 상태는 1d08d8f 에서
 // 테두리형으로 맞췄지만, 펼친 목록은 OS/브라우저가 그리는 네이티브 팝업이라
 // 두 테마 중 어느 쪽도 따르지 않았다 — CSS 가 닿지 않는 영역이다.
-// 그래서 포털 Menu 를 렌더하는 `Select` 로 바꾼다.
+// 그래서 포털 Menu 를 렌더하는 MUI `Select` 로 바꿨고, 이름도 따라왔다.
 //
 //   잃은 것: 모바일 네이티브 피커, <select> 의 기본 키보드 동작(타이핑 점프 등)
 //   얻은 것: 두 테마를 따르는 펼침 목록, 아이콘·구분선 등 커스텀 여지
@@ -14,7 +14,7 @@
 // 상태이고, RHF 가 reset()/setValue() 에서 하는 일은 "ref 로 받은 숨은 input 의
 // .value 에 직접 대입"이다. 이벤트가 없으니 MUI 는 모른다 — 폼 상태만 바뀌고
 // 화면은 옛 값에 머문다(조용히 어긋나므로 더 나쁘다). 폼 자리는 `Controller` 로
-// 감싼다. 이 파일 옆의 native-select.test.tsx 가 그 계약을 고정한다.
+// 감싼다. 이 파일 옆의 select.test.tsx 가 그 계약을 고정한다.
 
 import {
   Children,
@@ -103,12 +103,12 @@ function toMenuItems(children: ReactNode): ReactNode {
 }
 
 // `color` / `size` 는 MUI 유니온과 충돌하므로 뺀다.
-interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'color' | 'size'> {
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'color' | 'size'> {
   label?: string
   error?: string
 }
 
-export const NativeSelect = forwardRef<HTMLDivElement, NativeSelectProps>(
+export const Select = forwardRef<HTMLDivElement, SelectProps>(
   (
     {
       label,
@@ -197,7 +197,7 @@ export const NativeSelect = forwardRef<HTMLDivElement, NativeSelectProps>(
   },
 )
 
-NativeSelect.displayName = 'NativeSelect'
+Select.displayName = 'Select'
 
 const CONTROL_SX = {
   backgroundColor: 'var(--color-surface-card)',

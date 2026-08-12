@@ -1,7 +1,7 @@
 import React from "react"
 import { useTranslation } from 'react-i18next'
 import { Archive, ArrowUpCircle, BarChart2, Boxes, FileText, GitBranch, Monitor, Server, Check } from "lucide-react"
-import { NativeSelect } from "../../../components/ui/native-select"
+import { Select } from "../../../components/ui/select"
 import { cn } from "../../../lib/utils"
 
 export function ConfigCard({
@@ -72,13 +72,13 @@ export function ToolOption({
 			</div>
 			{checked && version && (
 				<div className="ml-6 flex flex-wrap items-center gap-3">
-					<NativeSelect
+					<Select
 						defaultValue={version}
 					>
 						{(versions ?? [version]).map((v) => (
 							<option key={v}>{v}</option>
 						))}
-					</NativeSelect>
+					</Select>
 					<div className="flex items-center gap-1.5">
 						<span className="text-[11px] text-[var(--color-primary)]">Instances:</span>
 						<div className="flex items-center">

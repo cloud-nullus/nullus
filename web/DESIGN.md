@@ -573,9 +573,9 @@ AG Grid 이관은 시도했다가 되돌렸다 — 실제 레이아웃 측정에
 
 ### 셀렉트
 
-셀렉트는 `components/ui/native-select.tsx` 하나다. 이름과 달리 네이티브
-`<select>` 가 아니라 **포털 Menu 를 쓰는 MUI Select** 다. 네이티브 팝업은 OS 가
-그리므로 CSS 가 닿지 않고, 그래서 라이트/다크 어느 쪽도 따르지 않았다.
+셀렉트는 `components/ui/select.tsx` 하나다. 네이티브 `<select>` 가 아니라
+**포털 Menu 를 쓰는 MUI Select** 다. 네이티브 팝업은 OS 가 그리므로 CSS 가
+닿지 않고, 그래서 라이트/다크 어느 쪽도 따르지 않았다.
 
 호출부는 계속 `<option>` / `<optgroup>` 을 넘긴다 — 어댑터가 `MenuItem` /
 `ListSubheader` 로 옮긴다. 대신 두 가지가 달라졌다:

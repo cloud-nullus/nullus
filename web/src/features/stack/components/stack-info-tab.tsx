@@ -4,7 +4,7 @@ import { ClipboardList, ExternalLink, GitBranch, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
-import { NativeSelect } from "../../../components/ui/native-select";
+import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../api/stack-api";
 import {
@@ -675,7 +675,7 @@ export function StackInfoTab({
             {stack.name}
           </div>
 
-          <NativeSelect
+          <Select
             label={t("stackList.export.format", "Format")}
             value={exportFormat}
             onChange={(event) =>
@@ -684,7 +684,7 @@ export function StackInfoTab({
           >
             <option value="json">JSON</option>
             <option value="yaml">YAML</option>
-          </NativeSelect>
+          </Select>
 
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">

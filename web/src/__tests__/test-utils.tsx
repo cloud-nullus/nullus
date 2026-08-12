@@ -18,7 +18,7 @@ export function renderWithProviders(ui: ReactElement, { route = '/' } = {}) {
 
 // 셀렉트를 다루는 테스트 헬퍼.
 //
-// NativeSelect 는 더 이상 <select> 가 아니다(components/ui/native-select.tsx 참고).
+// Select 는 더 이상 <select> 가 아니다(components/ui/select.tsx 참고).
 // 값은 숨은 input 에 있고 보이는 것은 role="combobox" 인 div, 목록은 포털 Menu 다.
 // 그래서 예전 계약이 통하지 않는다:
 //

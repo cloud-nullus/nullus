@@ -10,7 +10,7 @@ import type { AlertRule, AlertChannel, CreateAlertRuleRequest } from '../api/obs
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { DataTable } from '../../../components/shared/data-table'
 import { cn } from '../../../lib/utils'
@@ -277,7 +277,7 @@ export function AlertRulesPage() {
         toolbar={(
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
-              <NativeSelect
+              <Select
                 aria-label={t('clusterStackFilter.clusterLabel', 'Cluster')}
                 value={selectedClusterId}
                 onChange={(event) => handleClusterChange(event.target.value)}
@@ -287,8 +287,8 @@ export function AlertRulesPage() {
                 {clusters.map((cluster) => (
                   <option key={cluster.id} value={cluster.id}>{cluster.name}</option>
                 ))}
-              </NativeSelect>
-              <NativeSelect
+              </Select>
+              <Select
                 aria-label={t('clusterStackFilter.stackLabel', 'Stack')}
                 value={selectedStackId}
                 onChange={(event) => handleStackChange(event.target.value)}
@@ -298,7 +298,7 @@ export function AlertRulesPage() {
                 {filteredStacks.map((stack) => (
                   <option key={stack.id} value={stack.id}>{stack.name}</option>
                 ))}
-              </NativeSelect>
+              </Select>
               {(selectedClusterId || selectedStackId) && (
                 <button
                   type="button"
@@ -401,15 +401,15 @@ export function AlertRulesPage() {
             </div>
           </div>
 
-          {/* register() 로는 못 쓴다 — NativeSelect 의 값은 React 상태라 reset() 이 안 닿는다. */}
+          {/* register() 로는 못 쓴다 — Select 의 값은 React 상태라 reset() 이 안 닿는다. */}
           <Controller
             name="channel"
             control={control}
             render={({ field }) => (
-              <NativeSelect label={t('alertRulesPage.form.channel', 'Channel')} {...field}>
+              <Select label={t('alertRulesPage.form.channel', 'Channel')} {...field}>
                 <option value="slack">Slack</option>
                 <option value="email">Email</option>
-              </NativeSelect>
+              </Select>
             )}
           />
 

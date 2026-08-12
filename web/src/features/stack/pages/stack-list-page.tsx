@@ -10,7 +10,7 @@ import { Tabs } from "../../../components/ui/tabs";
 import { ListDetailPanel } from "../../../components/shared/list-detail-panel";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
-import { NativeSelect } from "../../../components/ui/native-select";
+import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/utils";
 import { StackMonitoringOverview } from "../../observability/components/stack-monitoring-overview";
 import type { Stack } from "../api/stack-api";
@@ -635,7 +635,7 @@ export function StackListPage() {
 			pageSize={tablePageSize}
 			toolbar={
 				<>
-					<NativeSelect
+					<Select
 						value={statusFilter}
 						onChange={(e) => setStatusFilter(e.target.value)}
 					>
@@ -647,8 +647,8 @@ export function StackListPage() {
 						<option value="pending">{t("stackList.status.pending", "Pending")}</option>
 						<option value="failed">{t("stackList.status.failed", "Failed")}</option>
 						<option value="cancelled">{t("stackList.status.cancelled", "Cancelled")}</option>
-					</NativeSelect>
-					<NativeSelect
+					</Select>
+					<Select
 						value={clusterFilter}
 						onChange={(e) => setClusterFilter(e.target.value)}
 					>
@@ -658,7 +658,7 @@ export function StackListPage() {
 								{clusterName}
 							</option>
 						))}
-					</NativeSelect>
+					</Select>
 					<SearchInput
 					  wrapperClassName="ml-auto w-[220px]"
 					  placeholder={t("stackList.searchPlaceholder", "Search stacks...")}

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Tabs } from '../../../components/ui/tabs'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { Input } from '../../../components/ui/input'
 import { YamlEditor } from '../../../components/shared/yaml-editor'
 import { useCicdTemplates, useCreatePipeline } from '../api/cicd-api'
@@ -393,7 +393,7 @@ export function CicdPipelineSetupPage() {
           value={pipelineName}
           onChange={(event) => setPipelineName(event.target.value)}
         />
-        <NativeSelect
+        <Select
             label={t('cicdPipelineSetupPage.form.selectedTemplate', 'Selected Template')}
             value={template?.id ?? ''}
             onChange={(event) => {
@@ -410,7 +410,7 @@ export function CicdPipelineSetupPage() {
                 {item.name}
               </option>
             ))}
-          </NativeSelect>
+          </Select>
       </div>
 
       <div className="flex items-start gap-5">
@@ -428,7 +428,7 @@ export function CicdPipelineSetupPage() {
           <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
             {activeTab === 'cluster' && (
               <div className="max-w-[420px]">
-                <NativeSelect
+                <Select
                     label={t('cicdPipelineSetupPage.form.deployCluster', 'Deploy Cluster')}
                     value={clusterId}
                     onChange={(event) => setClusterId(event.target.value)}
@@ -439,7 +439,7 @@ export function CicdPipelineSetupPage() {
                         {cluster.name}
                       </option>
                     ))}
-                  </NativeSelect>
+                  </Select>
               </div>
             )}
 

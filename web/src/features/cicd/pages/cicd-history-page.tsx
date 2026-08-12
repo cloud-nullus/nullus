@@ -6,7 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { DataTable } from '../../../components/shared/data-table'
 import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { getPipelineStatusLabel } from '../utils/pipeline-status'
@@ -140,14 +140,14 @@ export function CicdHistoryPage() {
         emptyMessage={t('cicdHistoryPage.empty', 'No deployment history.')}
         toolbar={
           <>
-            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} >
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} >
               <option value="">{t('cicdHistoryPage.filters.allStatus', 'All Status')}</option>
               <option value="success">{t('cicd.status.success', 'Success')}</option>
               <option value="running">{t('cicd.status.running', 'Running')}</option>
               <option value="pending">{t('cicd.status.pending', 'Pending')}</option>
               <option value="failed">{t('cicd.status.failed', 'Failed')}</option>
               <option value="cancelled">{t('cicd.status.cancelled', 'Cancelled')}</option>
-            </NativeSelect>
+            </Select>
             <SearchInput
               wrapperClassName="ml-auto w-[220px]"
               placeholder={t('cicdHistoryPage.searchPlaceholder', 'Search pipeline / deployer...')}

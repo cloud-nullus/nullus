@@ -7,7 +7,7 @@ import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { useCompatibilityMatrix, useDeleteMatrix } from '../../stack/api/stack-api'
 import { useClusters, useRefreshDiscovery } from '../api/admin-api'
 import { MatrixEditModal } from '../components/matrix-edit-modal'
@@ -113,7 +113,7 @@ export function StackVersionsAdminPage() {
             className="flex-1"
             aria-label={t('stackVersionsAdmin.filter.searchAria', 'Matrix search')}
           />
-          <NativeSelect
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             aria-label={t('stackVersionsAdmin.filter.statusAria', 'Filter by status')}
@@ -122,7 +122,7 @@ export function StackVersionsAdminPage() {
             <option value="verified">verified</option>
             <option value="untested">untested</option>
             <option value="unsupported">unsupported</option>
-          </NativeSelect>
+          </Select>
         </div>
       )}
       {matricesLoading && (

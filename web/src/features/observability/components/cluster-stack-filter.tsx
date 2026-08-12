@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Cluster, Stack } from '../../../types'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { cn } from '../../../lib/utils'
 import { useStacks } from '../../stack/api/stack-api'
 import { useScopedClusters as useClusters } from '../../admin/api/admin-api'
@@ -88,7 +88,7 @@ export const ClusterStackFilter = ({
   return (
     <div className={cn('mb-5 flex flex-wrap items-end gap-4 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4', className)}>
       <div className="flex items-end gap-3">
-        <NativeSelect
+        <Select
           label={t('clusterStackFilter.clusterLabel', 'Cluster')}
           value={selectedClusterId}
           onChange={(event) => onClusterChange(event.target.value)}
@@ -98,7 +98,7 @@ export const ClusterStackFilter = ({
           {clusters.map((cluster) => (
             <option key={cluster.id} value={cluster.id}>{cluster.name}</option>
           ))}
-        </NativeSelect>
+        </Select>
         {selectedCluster && (
           <div className="mb-[9px] flex items-center gap-1.5 text-xs">
             {statusDot(selectedCluster.status)}
@@ -108,7 +108,7 @@ export const ClusterStackFilter = ({
       </div>
 
       <div className="flex items-end gap-3">
-        <NativeSelect
+        <Select
           label={t('clusterStackFilter.stackLabel', 'Stack')}
           value={selectedStackId}
           onChange={(event) => onStackChange(event.target.value)}
@@ -118,7 +118,7 @@ export const ClusterStackFilter = ({
           {filteredStacks.map((stack) => (
             <option key={stack.id} value={stack.id}>{`${stack.name} (${formatStatusLabel(stack.status)})`}</option>
           ))}
-        </NativeSelect>
+        </Select>
         {selectedStack && (
           <div className="mb-[9px] flex items-center gap-1.5 text-xs">
             {statusDot(selectedStack.status)}

@@ -91,7 +91,7 @@ export const nullusTheme: Theme = createTheme({
     },
     MuiIconButton: { defaultProps: { size: 'small' } },
 
-    // 셀렉트의 펼침 목록. NativeSelect 가 네이티브 팝업을 버리고 포털 Menu 로
+    // 셀렉트의 펼침 목록. Select 가 네이티브 팝업을 버리고 포털 Menu 로
     // 오면서 목록 행이 MUI 기본(48px)이 됐다 — 그대로 두면 30px 컨트롤 아래에
     // 두 배 높이의 목록이 열려 화면 리듬이 어긋난다.
     MuiMenuItem: {

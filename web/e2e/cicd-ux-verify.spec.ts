@@ -14,7 +14,7 @@ test.describe("CI/CD UX 개선 검증", () => {
     await page.waitForLoadState("networkidle");
 
     // 클러스터 필터 드롭다운 확인.
-    // NativeSelect 는 <select> 가 아니라 role="combobox" 인 요소를 렌더한다.
+    // Select 는 <select> 가 아니라 role="combobox" 인 요소를 렌더한다.
     const clusterSelect = page
       .getByRole("combobox")
       .filter({ hasText: /All Clusters/ });

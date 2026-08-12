@@ -2,20 +2,20 @@ import { createRef } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { Controller, useForm } from 'react-hook-form'
-import { NativeSelect } from './native-select'
+import { Select } from './select'
 
 // 펼침 목록은 포털 Menu 다. mouseDown 이 여는 신호고(클릭이 아니다),
 // 항목은 role="option" 으로 나온다.
 const open = () => fireEvent.mouseDown(screen.getByRole('combobox'))
 const pick = (name: string) => fireEvent.click(screen.getByRole('option', { name }))
 
-describe('NativeSelect', () => {
+describe('Select', () => {
   it('renders label and shows options when opened', () => {
     render(
-      <NativeSelect label="Environment" defaultValue="dev">
+      <Select label="Environment" defaultValue="dev">
         <option value="dev">Development</option>
         <option value="prod">Production</option>
-      </NativeSelect>
+      </Select>
     )
 
     // 라벨 글자는 두 군데 나온다 — 떠 있는 InputLabel 과 테두리 notch 의 <legend>.
@@ -33,10 +33,10 @@ describe('NativeSelect', () => {
     const onChange = vi.fn()
 
     render(
-      <NativeSelect label="Cluster" defaultValue="cluster-a" onChange={onChange}>
+      <Select label="Cluster" defaultValue="cluster-a" onChange={onChange}>
         <option value="cluster-a">Cluster A</option>
         <option value="cluster-b">Cluster B</option>
-      </NativeSelect>
+      </Select>
     )
 
     open()
@@ -49,9 +49,9 @@ describe('NativeSelect', () => {
 
   it('renders error message when error prop is provided', () => {
     render(
-      <NativeSelect label="Namespace" error="Namespace is required">
+      <Select label="Namespace" error="Namespace is required">
         <option value="">Select namespace</option>
-      </NativeSelect>
+      </Select>
     )
 
     expect(screen.getAllByText('Namespace is required').length).toBeGreaterThan(0)
@@ -63,10 +63,10 @@ describe('NativeSelect', () => {
     const onChange = vi.fn()
 
     render(
-      <NativeSelect defaultValue="1.2.0" onChange={onChange}>
+      <Select defaultValue="1.2.0" onChange={onChange}>
         <option>1.2.0</option>
         <option>1.3.0</option>
-      </NativeSelect>
+      </Select>
     )
 
     open()
@@ -77,12 +77,12 @@ describe('NativeSelect', () => {
 
   it('renders optgroup as a non-selectable subheader', () => {
     render(
-      <NativeSelect defaultValue="small">
+      <Select defaultValue="small">
         <option value="small">Small</option>
         <optgroup label="Organization Profiles">
           <option value="org-1">Team A</option>
         </optgroup>
-      </NativeSelect>
+      </Select>
     )
 
     open()
@@ -97,9 +97,9 @@ describe('NativeSelect', () => {
     const ref = createRef<HTMLDivElement>()
 
     render(
-      <NativeSelect ref={ref} defaultValue="a">
+      <Select ref={ref} defaultValue="a">
         <option value="a">A</option>
-      </NativeSelect>
+      </Select>
     )
 
     ref.current?.focus()
@@ -118,10 +118,10 @@ describe('NativeSelect', () => {
             name="role"
             control={control}
             render={({ field }) => (
-              <NativeSelect label="Role" {...field}>
+              <Select label="Role" {...field}>
                 <option value="developer">Developer</option>
                 <option value="admin">Admin</option>
-              </NativeSelect>
+              </Select>
             )}
           />
           <button onClick={() => reset({ role: 'admin' })}>reset</button>

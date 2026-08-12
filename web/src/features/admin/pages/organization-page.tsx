@@ -17,7 +17,7 @@ import {
 } from '../api/admin-api'
 import type { ClusterStatus, CreateOrgRequest, InviteMemberRequest, MemberRole, MemberStatus, Organization } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { Input } from '../../../components/ui/input'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
@@ -362,16 +362,16 @@ export function OrganizationPage() {
                     <Input label={t('organizationPage.form.organizationName', 'Organization Name')} {...register('name')} />
                     <Input label={t('organizationPage.form.slug', 'Slug')} {...register('slug')} />
                     <Input label={t('organizationPage.form.domain', 'Domain')} {...register('domain')} />
-                    {/* register() 로는 못 쓴다 — NativeSelect 의 값은 React 상태라 reset() 이 안 닿는다. */}
+                    {/* register() 로는 못 쓴다 — Select 의 값은 React 상태라 reset() 이 안 닿는다. */}
                     <Controller
                       name="status"
                       control={control}
                       render={({ field }) => (
-                        <NativeSelect label={t('organizationPage.form.status', 'Status')} {...field}>
+                        <Select label={t('organizationPage.form.status', 'Status')} {...field}>
                           <option value="active">{t('organizationPage.orgStatus.active', 'Active')}</option>
                           <option value="inactive">{t('organizationPage.orgStatus.inactive', 'Inactive')}</option>
                           <option value="suspended">{t('organizationPage.orgStatus.suspended', 'Suspended')}</option>
-                        </NativeSelect>
+                        </Select>
                       )}
                     />
                   </div>
@@ -564,11 +564,11 @@ export function OrganizationPage() {
             name="role"
             control={controlInvite}
             render={({ field }) => (
-              <NativeSelect label={t('organizationPage.form.role', 'Role')} {...field}>
+              <Select label={t('organizationPage.form.role', 'Role')} {...field}>
                 <option value="developer">{t('organizationPage.role.developer', 'Developer')}</option>
                 <option value="devops">{t('organizationPage.role.devops', 'DevOps')}</option>
                 <option value="admin">{t('organizationPage.role.admin', 'Admin')}</option>
-              </NativeSelect>
+              </Select>
             )}
           />
           {inviteErrors.role && <span className="text-xs text-[var(--color-error)]">{inviteErrors.role.message}</span>}

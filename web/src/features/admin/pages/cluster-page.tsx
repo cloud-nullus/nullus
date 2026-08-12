@@ -8,7 +8,7 @@ import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } f
 import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster, useVerifyClusterDraft } from '../api/admin-api'
 import type { Cluster, ClusterStatus, ClusterType, CloudProvider } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { Input } from '../../../components/ui/input'
 import { Modal } from '../../../components/ui/modal'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
@@ -732,18 +732,18 @@ export function ClusterPage() {
             </div>
           </div>
           {errors.types && <span className="text-xs text-[var(--color-error)]">{errors.types.message}</span>}
-          {/* register() 로는 못 쓴다 — NativeSelect 의 값은 React 상태라 reset() 이 안 닿는다. */}
+          {/* register() 로는 못 쓴다 — Select 의 값은 React 상태라 reset() 이 안 닿는다. */}
           <Controller
             name="cloudProvider"
             control={control}
             render={({ field }) => (
-              <NativeSelect label={t('clusterPage.form.cloudProvider', 'Cloud Provider')} {...field}>
+              <Select label={t('clusterPage.form.cloudProvider', 'Cloud Provider')} {...field}>
                 {CLOUD_PROVIDER_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
-              </NativeSelect>
+              </Select>
             )}
           />
           <Input

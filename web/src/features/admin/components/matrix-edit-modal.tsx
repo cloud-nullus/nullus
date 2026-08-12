@@ -5,7 +5,7 @@ import { Trash2, Plus } from 'lucide-react'
 import { Modal } from '../../../components/ui/modal'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import type { CompatibilityMatrix } from '../../../types'
 import { useCreateMatrix, useUpdateMatrix, type MatrixInput } from '../../stack/api/stack-api'
 import { Checkbox } from '../../../components/ui/checkbox'
@@ -376,7 +376,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
             onChange={(e) => setName(e.target.value)}
             error={fieldErrors.name}
           />
-          <NativeSelect
+          <Select
             label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as typeof status)}
@@ -384,7 +384,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
             <option value="verified">verified</option>
             <option value="untested">untested</option>
             <option value="unsupported">unsupported</option>
-          </NativeSelect>
+          </Select>
         </section>
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -458,7 +458,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
                   onChange={(e) => updateRow(idx, { minK8sVersion: e.target.value })}
                 />
                 <div className="flex flex-col gap-1">
-                  <NativeSelect
+                  <Select
                     label="Tier"
                     value={row.tier}
                     onChange={(e) => updateRow(idx, { tier: e.target.value as ToolRow['tier'] })}
@@ -466,7 +466,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
                     <option value="stable">stable</option>
                     <option value="beta">beta</option>
                     <option value="deprecated">deprecated</option>
-                  </NativeSelect>
+                  </Select>
                   <div className="flex items-center gap-2 pt-1 text-[11px]">
                     {['amd64', 'arm64'].map((a) => (
                       <label key={a} className="inline-flex items-center gap-1">

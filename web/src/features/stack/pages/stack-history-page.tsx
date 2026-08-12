@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, AlertTriangle, 
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { Modal } from '../../../components/ui/modal'
 import { DataTable } from '../../../components/shared/data-table'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
@@ -235,7 +235,7 @@ export function StackHistoryPage() {
         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">
           {t('stackHistoryPage.stackSelect', 'Stack')}
         </label>
-        <NativeSelect
+        <Select
           value={stackId}
           onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
           disabled={!stackId && visibleStacks.length === 0}
@@ -249,7 +249,7 @@ export function StackHistoryPage() {
               {stack.name}
             </option>
           ))}
-        </NativeSelect>
+        </Select>
       </div>
 
       {/* 스냅샷은 표 아래가 아니라 오른쪽에 붙는다. 아래로 펼치면 행을 고를
@@ -286,7 +286,7 @@ export function StackHistoryPage() {
             onRowClick={(row) => setExpandedId(row.id)}
             toolbar={
               <>
-                <NativeSelect
+                <Select
                   value={clusterFilter}
                   onChange={(event) => setClusterFilter(event.target.value)}
                 >
@@ -294,7 +294,7 @@ export function StackHistoryPage() {
                   {clusterOptions.map((clusterName) => (
                     <option key={clusterName} value={clusterName}>{clusterName}</option>
                   ))}
-                </NativeSelect>
+                </Select>
                 <SearchInput
                   wrapperClassName="ml-auto w-[220px]"
                   placeholder={t('stackHistoryPage.searchPlaceholder', 'Search by changed by / reason...')}
@@ -317,25 +317,25 @@ export function StackHistoryPage() {
           <div className="grid gap-2 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
               {t('stackHistoryPage.compare.versionA', 'Version A')}
-              <NativeSelect
+              <Select
                 value={versionA}
                 onChange={(event) => setVersionA(Number(event.target.value))}
               >
                 {versionOptions.map((version) => (
                   <option key={`a-${version}`} value={version}>{`v${version}`}</option>
                 ))}
-              </NativeSelect>
+              </Select>
             </label>
             <label className="flex flex-col gap-1.5 text-xs text-[var(--color-text-secondary)]">
               {t('stackHistoryPage.compare.versionB', 'Version B')}
-              <NativeSelect
+              <Select
                 value={versionB}
                 onChange={(event) => setVersionB(Number(event.target.value))}
               >
                 {versionOptions.map((version) => (
                   <option key={`b-${version}`} value={version}>{`v${version}`}</option>
                 ))}
-              </NativeSelect>
+              </Select>
             </label>
           </div>
 

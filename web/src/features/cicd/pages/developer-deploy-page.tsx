@@ -8,7 +8,7 @@ import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from "lucide-react";
 import { CodePreview } from "../../../components/shared/code-preview";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
-import { NativeSelect } from "../../../components/ui/native-select";
+import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/utils";
 import { useClusterNamespaces, useClusters } from "../../admin/api/admin-api";
 import { useStackIntegrations, useStacks } from "../../stack/api/stack-api";
@@ -751,7 +751,7 @@ export function DeveloperDeployPage() {
                 {t("developerDeployPage.form.stackRequired", "Stack 선택")}
                 <RequiredDot />
               </label>
-              <NativeSelect
+              <Select
                 id="deploy-stack"
                 aria-labelledby="deploy-stack-label"
                 value={selectedStackId}
@@ -777,7 +777,7 @@ export function DeveloperDeployPage() {
                     {stack.name}
                   </option>
                 ))}
-              </NativeSelect>
+              </Select>
             </div>
             {isSelected("CI") && (
               <>
@@ -1059,7 +1059,7 @@ export function DeveloperDeployPage() {
                           {t("developerDeployPage.form.cluster", "Cluster")}
                           <RequiredDot />
                         </label>
-                        <NativeSelect
+                        <Select
                           id="deploy-cluster"
                           aria-labelledby="deploy-cluster-label"
                           value={form.clusterId}
@@ -1075,7 +1075,7 @@ export function DeveloperDeployPage() {
                               {cluster.name}
                             </option>
                           ))}
-                        </NativeSelect>
+                        </Select>
                         {errors.clusterId && (
                           <span className="text-xs text-[var(--color-error)]">
                             {errors.clusterId.message}
@@ -1091,7 +1091,7 @@ export function DeveloperDeployPage() {
                           {t("developerDeployPage.form.namespace", "Namespace")}
                           <RequiredDot />
                         </label>
-                        <NativeSelect
+                        <Select
                           id="deploy-namespace"
                           aria-labelledby="deploy-namespace-label"
                           value={
@@ -1121,7 +1121,7 @@ export function DeveloperDeployPage() {
                               "New Namespace",
                             )}
                           </option>
-                        </NativeSelect>
+                        </Select>
                         {createNewNamespace && (
                           <Input
                             className="mt-2"

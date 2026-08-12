@@ -29,7 +29,7 @@ import type { Pipeline } from "../api/cicd-api";
 import { useScopedClusters as useClusters } from "../../admin/api/admin-api";
 import { useStacks } from "../../stack/api/stack-api";
 import { Button } from "../../../components/ui/button";
-import { NativeSelect } from "../../../components/ui/native-select";
+import { Select } from "../../../components/ui/select";
 import { YamlEditor } from "../../../components/shared/yaml-editor";
 import { DataTable } from "../../../components/shared/data-table";
 import { Tabs } from "../../../components/ui/tabs";
@@ -299,7 +299,7 @@ function ExecuteModal({
         <div className="flex-1 overflow-y-auto p-5">
           {activeTab === "cluster" && (
             <div className="max-w-sm">
-              <NativeSelect
+              <Select
                 label="Deploy Cluster"
                 value={clusterId}
                 onChange={(e) => setClusterId(e.target.value)}
@@ -313,7 +313,7 @@ function ExecuteModal({
                     {c.name}
                   </option>
                 ))}
-              </NativeSelect>
+              </Select>
             </div>
           )}
 
@@ -1930,7 +1930,7 @@ export function CicdListPage() {
             )}
             toolbar={
               <>
-                <NativeSelect
+                <Select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                 >
@@ -1964,8 +1964,8 @@ export function CicdListPage() {
                   >
                     {t("cicd.status.cancelled", "Cancelled")}
                   </option>
-                </NativeSelect>
-                <NativeSelect
+                </Select>
+                <Select
                   value={clusterFilter}
                   onChange={(e) => setClusterFilter(e.target.value)}
                   className="w-auto"
@@ -1978,7 +1978,7 @@ export function CicdListPage() {
                       {c.name}
                     </option>
                   ))}
-                </NativeSelect>
+                </Select>
                 <SearchInput
                   wrapperClassName="ml-auto w-[220px]"
                   placeholder={t(

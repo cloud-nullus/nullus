@@ -25,7 +25,7 @@ import { findPlatformCluster } from '../../admin/utils/cluster-selection'
 import { Button } from '../../../components/ui/button'
 import { Tabs } from '../../../components/ui/tabs'
 import { IconButton } from '../../../components/ui/icon-button'
-import { NativeSelect } from '../../../components/ui/native-select'
+import { Select } from '../../../components/ui/select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
 import { cn } from '../../../lib/utils'
@@ -394,7 +394,7 @@ export function StackInstallPage() {
   const initializedTemplateRef = useRef<string | null>(null)
   const initializedDefaultStackNameRef = useRef(false)
   const stackNameInputRef = useRef<HTMLInputElement | null>(null)
-  // NativeSelect 의 ref 는 보이는 combobox(div)에 걸린다 — 더 이상 <select> 가 아니다.
+  // Select 의 ref 는 보이는 combobox(div)에 걸린다 — 더 이상 <select> 가 아니다.
   const clusterSelectRef = useRef<HTMLDivElement | null>(null)
   const namespaceSelectRef = useRef<HTMLDivElement | null>(null)
   const newNamespaceInputRef = useRef<HTMLInputElement | null>(null)
@@ -2426,7 +2426,7 @@ export function StackInstallPage() {
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <NativeSelect
+              <Select
                 ref={clusterSelectRef}
                 label={t('stackInstall.form.targetCluster', 'Target Cluster')}
                 value={draft.clusterId ?? ''}
@@ -2441,13 +2441,13 @@ export function StackInstallPage() {
                     {c.name} ({formatConnectionStatusLabel(c.status)})
                   </option>
                 ))}
-              </NativeSelect>
+              </Select>
               {!draft.clusterId && <span className="text-xs text-[var(--color-warning)]">{t('stackInstall.form.clusterRequired', 'Required for deployment')}</span>}
             </div>
 
             {draft.clusterId && (
               <div className="flex flex-col gap-1">
-                <NativeSelect
+                <Select
                   ref={namespaceSelectRef}
                   label={t('stackInstall.form.namespace', 'Namespace')}
                   value={createNewNs ? '__new__' : draft.namespace}
@@ -2466,7 +2466,7 @@ export function StackInstallPage() {
                     <option key={ns.name} value={ns.name}>{ns.name}</option>
                   ))}
                   <option value="__new__">새 네임스페이스 생성...</option>
-                </NativeSelect>
+                </Select>
                 {createNewNs && (
                   <TextInput
                     ref={newNamespaceInputRef}
@@ -3060,7 +3060,7 @@ export function StackInstallPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-[var(--color-text-secondary)]">Sizing Profile</span>
-                      <NativeSelect
+                      <Select
                         value={selectedOrgProfileId ? `org:${selectedOrgProfileId}` : planningProfile}
                         onChange={(e) => handleSizingSelectChange(e.target.value)}
                         className="min-w-[160px]"
@@ -3079,7 +3079,7 @@ export function StackInstallPage() {
                             ))}
                           </optgroup>
                         )}
-                      </NativeSelect>
+                      </Select>
                       <IconButton
                         outlined
                         title="Save current values to selected profile"
@@ -3206,25 +3206,25 @@ export function StackInstallPage() {
                             <div className="mb-3 grid grid-cols-2 gap-3">
                               <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2">
                                 <span className="text-[11px] text-[var(--color-text-secondary)]">Memory 단위</span>
-                                <NativeSelect
+                                <Select
                                   value={row.units.memory}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'memory', e.target.value as ResourceUnit)}
                                   className="max-w-[90px]"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
-                                </NativeSelect>
+                                </Select>
                               </div>
                               <div className="flex items-center gap-2 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-2">
                                 <span className="text-[11px] text-[var(--color-text-secondary)]">Storage 단위</span>
-                                <NativeSelect
+                                <Select
                                   value={row.units.storage}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'storage', e.target.value as ResourceUnit)}
                                   className="max-w-[90px]"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
-                                </NativeSelect>
+                                </Select>
                               </div>
                             </div>
 
@@ -3526,7 +3526,7 @@ export function StackInstallPage() {
                         {effectiveMode !== null && (
                         <div className="mb-3">
                           <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">{targetKey === 'database' ? 'DB 엔진' : 'Storage Provider'}</label>
-                          <NativeSelect
+                          <Select
                             value={item.target.providerOrEngine}
                             onChange={(e) => updateStorageTarget(targetKey, { providerOrEngine: e.target.value })}
                           >
@@ -3535,7 +3535,7 @@ export function StackInstallPage() {
                                 {provider.label}
                               </option>
                             ))}
-                          </NativeSelect>
+                          </Select>
                         </div>
                         )}
 
@@ -3552,7 +3552,7 @@ export function StackInstallPage() {
                           {effectiveMode === 'create' && (
                             <div>
                               <label className="mb-1 block text-[11px] text-[var(--color-text-secondary)]">사이즈</label>
-                              <NativeSelect
+                              <Select
                                 value={item.target.size}
                                 onChange={(e) =>
                                   updateStorageTarget(targetKey, {
@@ -3565,7 +3565,7 @@ export function StackInstallPage() {
                                     {`${size} ${STORAGE_SIZE_RESOURCE_HINTS[targetKey][size]}`}
                                   </option>
                                 ))}
-                              </NativeSelect>
+                              </Select>
                             </div>
                           )}
                         </div>
