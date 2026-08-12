@@ -26,6 +26,13 @@ import { CHART_LEGEND_PROPS, CHART_STYLE } from "./monitoring-chart-widgets";
 // 동안에는 var() 를 못 읽어 차트가 검게 렌더됐고, 그걸 메우려고 theme/resolve-token
 // 의 resolveColor() 로 색 58곳을 감싸고 있었다. 캔버스가 없어졌으니 그 다리도 없다.
 
+// 차트 높이는 퍼센트가 아니라 픽셀로 준다. height="100%" 는 부모의 확정 높이를
+// 측정해야 하는데, 이 차트들은 상세 패널의 flex 안(ListDetailPanel → 탭 본문)에
+// 있어서 첫 측정 시점에 높이가 0 이다 — 브라우저 콘솔에 
+// "The width(-1) and height(-1) of chart should be greater than 0" 가 4번 찍혔다.
+// 감싸는 div 가 이미 h-[250px] 이라 값은 같고, 측정 의존만 없앤다.
+// 이 저장소의 다른 차트(monitoring-cicd-view 200, cicd-list 160)도 픽셀을 쓴다.
+
 /** 축 눈금: 1 미만은 소수 둘째 자리까지, 그 밖은 반올림. chart.js 콜백과 같은 규칙이다. */
 function formatAxisValue(value: number | string): string {
   const n = Number(value);
@@ -830,7 +837,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               CPU (Request / Limit / Current)
             </div>
             <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={250}>
                 <ComposedChart data={cpuSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="cpu-request-fill" x1="0" y1="0" x2="0" y2="1">
@@ -862,7 +869,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               Memory (Request / Limit / Current)
             </div>
             <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={250}>
                 <ComposedChart data={memorySeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="memory-request-fill" x1="0" y1="0" x2="0" y2="1">
@@ -894,7 +901,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               OSS Pod Coverage
             </div>
             <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={ossBars} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
                   {/* 눈금 글자는 숨긴다 — 도구 이름은 아래 로고 줄과 툴팁이 들고 있다. */}
@@ -922,7 +929,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               Pod Status
             </div>
             <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie
                     data={podStatusData}
