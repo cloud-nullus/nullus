@@ -26,6 +26,7 @@ import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
 import { Checkbox } from '../../../components/ui/checkbox'
 import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 const STATUS_BADGE: Record<MemberStatus, { className: string }> = {
   active: { className: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]' },
@@ -472,14 +473,14 @@ export function OrganizationPage() {
                             </td>
                             <td className={cn(tdClassName, 'text-[var(--color-text-secondary)]')}>{member.email}</td>
                             <td className={tdClassName}>
-                              <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[member.role].className)}>
+                              <Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', ROLE_BADGE[member.role].className)}>
                                 {getMemberRoleLabel(t, member.role)}
-                              </span>
+                              </Badge>
                             </td>
                             <td className={tdClassName}>
-                              <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[member.status].className)}>
+                              <Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[member.status].className)}>
                                 {getMemberStatusLabel(t, member.status)}
-                              </span>
+                              </Badge>
                             </td>
                             <td className={tdClassName}>
                               {member.role === 'admin' ? (

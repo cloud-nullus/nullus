@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
 import { Checkbox } from '../../../components/ui/checkbox'
+import { Badge } from '../../../components/ui/badge'
 
 const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string }> = {
   connected: {
@@ -551,10 +552,10 @@ export function ClusterPage() {
                       <span className={cn('text-sm font-semibold', isSelected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                         {cluster.name}
                       </span>
-                      <span className={cn('flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold', st.badgeClassName)}>
+                      <Badge className={cn('flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold', st.badgeClassName)}>
                         {st.icon}
                         {getStatusLabel(t, effectiveStatus)}
-                      </span>
+                      </Badge>
                     </div>
                     <div className="text-xs text-[var(--color-text-secondary)]">
                       {formatClusterTypes(t, clusterTypes)} · {formatCloudProvider(cluster.cloudProvider)}

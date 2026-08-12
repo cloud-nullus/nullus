@@ -20,6 +20,7 @@ import { formatDateTime, resolveLocale } from '../../../lib/locale'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 type ActiveRoleTab = 'all' | MemberRole
 
@@ -679,9 +680,9 @@ export function UserManagementPage() {
                       return (
                         <tr key={invite.token} className="border-b border-[var(--color-border-default)] last:border-b-0">
                           <td className="px-4 py-2.5">
-                            <span className={cn('rounded-md px-2.5 py-1 text-xs font-semibold capitalize', ROLE_BADGE[invite.role].className)}>
+                            <Badge className={cn('rounded-md px-2.5 py-1 text-xs font-semibold capitalize', ROLE_BADGE[invite.role].className)}>
                               {invite.role}
-                            </span>
+                            </Badge>
                           </td>
                           <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                             {formatDateTime(invite.expiresAt, locale)}

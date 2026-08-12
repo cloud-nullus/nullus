@@ -9,6 +9,7 @@ import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
 import { cn } from '../../../lib/utils'
+import { Badge } from '../../../components/ui/badge'
 
 type EditableRow = Omit<StackResourceDefault, 'updated_at'> & { updated_at?: string }
 
@@ -291,9 +292,9 @@ export function StackOssResourceDefaultPage() {
               return (
               <tr key={row.tool_key}>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                  <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[category]}`}>
+                  <Badge className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[category]}`}>
                     {category}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                   <Input value={row.tool_key} onChange={(e) => updateRow(row.tool_key, { tool_key: e.target.value })} className="w-[150px]" />
@@ -323,9 +324,9 @@ export function StackOssResourceDefaultPage() {
 
             <tr>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
-                <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[getToolCategory(newRow.tool_key, newRow.display_name)]}`}>
+                <Badge className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${CATEGORY_BADGE_CLASSNAME[getToolCategory(newRow.tool_key, newRow.display_name)]}`}>
                   {getToolCategory(newRow.tool_key, newRow.display_name)}
-                </span>
+                </Badge>
               </td>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                 <Input value={newRow.tool_key} onChange={(e) => setNewRow((prev) => ({ ...prev, tool_key: e.target.value }))} placeholder="tool key" className="w-[150px]" />

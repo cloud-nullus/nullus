@@ -16,6 +16,7 @@ import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
 import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 const STEP_UP_ENFORCED = false
 
@@ -120,7 +121,7 @@ export function TokenManagementPage() {
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm">{item.provider}</td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm">{item.module}</td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-xs text-[var(--color-text-secondary)]">{item.path}</td>
-                  <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm"><span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[item.status] ?? STATUS_BADGE.expired)}>{item.status}</span></td>
+                  <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm"><Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold', STATUS_BADGE[item.status] ?? STATUS_BADGE.expired)}>{item.status}</Badge></td>
                   <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-xs text-[var(--color-text-secondary)]">{item.expires_at ? new Date(item.expires_at).toLocaleString() : '-'}</td>
                 </tr>
               ))}

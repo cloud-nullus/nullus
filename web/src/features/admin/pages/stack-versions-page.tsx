@@ -18,6 +18,7 @@ import {
   matrixArchMismatches,
 } from '../../stack/utils/compatibility-arch'
 import { thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 const STATUS_BADGE_CLASS: Record<CompatibilityMatrix['status'], string> = {
   verified: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
@@ -176,12 +177,11 @@ export function StackVersionsAdminPage() {
               >
                 <div className="flex w-full items-center justify-between gap-2">
                   <span className="truncate text-sm text-[var(--color-text-primary)]">{m.name}</span>
-                  <span
+                  <Badge pill
                     className={cn('rounded-full px-2 py-0.5 text-[10px] uppercase', STATUS_BADGE_CLASS[m.status])}
-                    aria-label={`status ${m.status}`}
-                  >
+                    aria-label={`status ${m.status}`}>
                     {t(`stackVersionsAdmin.status.${m.status}`, m.status)}
-                  </span>
+                  </Badge>
                 </div>
                 <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">{m.id}</span>
                 <span className="text-[11px] text-[var(--color-text-secondary)]">
@@ -259,9 +259,9 @@ export function StackVersionsAdminPage() {
           <p className="font-mono text-xs text-[var(--color-text-secondary)]">{selectedMatrix.id}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={cn('rounded-full px-2 py-0.5 text-[11px] uppercase', STATUS_BADGE_CLASS[selectedMatrix.status])}>
+          <Badge pill className={cn('rounded-full px-2 py-0.5 text-[11px] uppercase', STATUS_BADGE_CLASS[selectedMatrix.status])}>
             {t(`stackVersionsAdmin.status.${selectedMatrix.status}`, selectedMatrix.status)}
-          </span>
+          </Badge>
           <Button
             size="sm"
             variant="outline"
@@ -315,14 +315,13 @@ export function StackVersionsAdminPage() {
                   <td className="px-3 py-2">{renderArchBadges(tool.archSupport)}</td>
                   <td className="px-3 py-2 font-mono text-[11px]">{tool.minK8sVersion || '—'}</td>
                   <td className="px-3 py-2">
-                    <span
+                    <Badge pill
                       className={cn(
                         'rounded-full px-2 py-0.5 text-[10px] uppercase',
                         TIER_BADGE_CLASS[tool.tier] ?? TIER_BADGE_CLASS.stable,
-                      )}
-                    >
+                      )}>
                       {t(`stackVersionsAdmin.tier.${tool.tier}`, tool.tier)}
-                    </span>
+                    </Badge>
                   </td>
                 </tr>
               ))}

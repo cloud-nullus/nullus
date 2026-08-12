@@ -47,6 +47,7 @@ export {
 import { StackInfoTab } from "../components/stack-info-tab"
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
+import { Badge } from "../../../components/ui/badge"
 
 type InnerTab = "info" | "monitoring" | "history" | "version-upgrade";
 
@@ -341,12 +342,11 @@ function StackDetailPanel({
 				<h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
 					{stack.name}
 				</h3>
-				<span
-					className="rounded-[10px] px-[9px] py-[3px] text-[11px] font-bold"
-					style={{ background: statusStyle.bg, color: statusStyle.color }}
-				>
+				<Badge
+					className=""
+					style={{ background: statusStyle.bg, color: statusStyle.color }}>
 					{getStackStatusLabel(t, normalizedStatus)}
-				</span>
+				</Badge>
 				<span className="text-[12px] text-[var(--color-text-secondary)]">
 					· {stack.templateName} · {stack.clusterName}
 				</span>

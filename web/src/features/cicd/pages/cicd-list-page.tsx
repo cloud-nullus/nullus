@@ -42,6 +42,7 @@ import {
 import { cn } from "../../../lib/utils";
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from "../../../components/ui/search-input"
+import { Badge } from "../../../components/ui/badge"
 
 // ── Execute Modal ─────────────────────────────────────────────────────────────
 
@@ -1626,12 +1627,11 @@ function PipelineDetailPanel({
           <h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
             {pipeline.name}
           </h3>
-          <span
-            className="rounded-[10px] px-[9px] py-[3px] text-[11px] font-bold"
-            style={{ background: statusStyle.bg, color: statusStyle.color }}
-          >
+          <Badge
+            className=""
+            style={{ background: statusStyle.bg, color: statusStyle.color }}>
             {getPipelineStatusLabel(t, pipeline.status)}
-          </span>
+          </Badge>
           <span className="text-[12px] text-[var(--color-text-secondary)]">
             · {pipeline.appType} · {pipeline.clusterName} ·{" "}
             {formatDateTime(pipeline.lastDeployedAt, locale)}

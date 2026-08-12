@@ -5,6 +5,7 @@ import type { KnownIssueSeverity, KnownIssueStatus } from '../../../types'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
 import { tableHeadRowClass, thClass } from '../../../components/shared/table-chrome'
+import { Badge } from '../../../components/ui/badge'
 
 const SEVERITY_BADGE: Record<KnownIssueSeverity, string> = {
   high: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
@@ -83,18 +84,18 @@ export function KnownIssuesPage() {
                   {item.id}
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]">
-                  <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold capitalize', SEVERITY_BADGE[item.severity])}>
+                  <Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold capitalize', SEVERITY_BADGE[item.severity])}>
                     {item.severity}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]">
                   <div className="font-semibold">{item.title}</div>
                   <div className="mt-1 text-xs text-[var(--color-text-secondary)]">{item.description}</div>
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]">
-                  <span className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold capitalize', STATUS_BADGE[item.status])}>
+                  <Badge className={cn('rounded-[5px] px-2 py-0.5 text-xs font-semibold capitalize', STATUS_BADGE[item.status])}>
                     {item.status}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-secondary)]">
                   {item.workaround}
