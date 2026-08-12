@@ -258,21 +258,6 @@ func DefaultValues(stepName string) map[string]any {
 			"nginx-ingress": map[string]any{
 				"enabled": false,
 			},
-			// GitLab 차트가 함께 세우는 Prometheus 는 끈다.
-			//
-			// 모니터링 수집은 Nullus 가 kube-prometheus-stack 으로 따로 깐다.
-			// 그대로 두면 한 클러스터에 Prometheus 가 둘이 되어 같은 것을 두 번
-			// 긁고 메모리만 더 쓴다.
-			//
-			// 그리고 이 번들 Prometheus 는 자원 규모를 낮춘 구성에서 반드시 죽는다.
-			// 실제로 Local/Startup 규모(메모리 한도 328Mi)에서 OOMKilled(exit 137)
-			// 로 34번 재시작하며 CrashLoopBackOff 에 갇혔다 — 스택은 "실행 중" 인데
-			// 파드 하나가 영원히 안 뜨는 상태가 된다.
-			//
-			// postgresql / minio / nginx-ingress 도 같은 이유로 끄고 있다.
-			"prometheus": map[string]any{
-				"install": false,
-			},
 			"gitlab": map[string]any{
 				"webservice": map[string]any{
 					"ingress": map[string]any{

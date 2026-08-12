@@ -444,7 +444,9 @@ func normalizeLegacyResourceOverrideForStep(step string, override map[string]any
 			},
 			"registry": map[string]any{"resources": resources},
 			"redis":    map[string]any{"master": map[string]any{"resources": resources}},
-			// 번들 Prometheus 는 install:false 다 (values.go 의 installing_gitlab).
+			"prometheus": map[string]any{
+				"server": map[string]any{"resources": resources},
+			},
 		}, override)
 	case "installing_argocd":
 		return mergeMaps(map[string]any{
