@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, RotateCcw } from 'lucide-react'
+import { LoaderCircle, RotateCcw } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { toast } from 'sonner'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
@@ -94,9 +95,9 @@ export function RetryStackButton({ stackId, status, onRetried }: RetryStackButto
         data-testid="retry-stack-button"
       >
         {retry.isPending ? (
-          <Loader2 size={12} className="mr-1 animate-spin" />
+          <LoaderCircle {...iconProps('xs')} className="mr-1 animate-spin" />
         ) : (
-          <RotateCcw size={12} className="mr-1" />
+          <RotateCcw {...iconProps('xs')} className="mr-1" />
         )}
         {t('stackList.retry.button', 'Retry')}
       </Button>

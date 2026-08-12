@@ -11,29 +11,15 @@
 // DESIGN.md §Components: 상태는 색 + 아이콘 + 텍스트를 항상 함께 쓴다.
 // 색만으로 표시하지 않는다 — 색맹 사용자와 흑백 인쇄를 위해서다.
 
-import type { ReactNode } from 'react'
-import { AlertCircle, CheckCircle, Clock, Loader, MinusCircle } from 'lucide-react'
 import Chip from '@mui/material/Chip'
+import { StatusIcon, STATUS_TOKEN, type StatusTone } from '../ui/status-icon'
 import type { ClusterStatus } from '../../types'
 
-/** 상태의 의미. 도메인 상태값이 아니라 "무슨 뜻인지" 다. */
-export type StatusTone = 'success' | 'warning' | 'error' | 'info' | 'neutral'
-
-const TONE_TOKEN: Record<StatusTone, string> = {
-  success: '--color-success',
-  warning: '--color-warning',
-  error: '--color-error',
-  info: '--color-info',
-  neutral: '--color-text-muted',
-}
-
-const TONE_ICON: Record<StatusTone, ReactNode> = {
-  success: <CheckCircle size={12} />,
-  warning: <Clock size={12} />,
-  error: <AlertCircle size={12} />,
-  info: <Loader size={12} />,
-  neutral: <MinusCircle size={12} />,
-}
+// 상태의 뜻·색·아이콘은 components/ui/status-icon.tsx 가 단일 출처다.
+// 여기서 다시 고르지 않는다 — 배지가 자기 아이콘을 들고 있으면 배지 밖에서
+// 같은 상태를 그릴 때 또 고르게 되고, 그게 개편 전 상태였다.
+export { toneForStatus } from '../ui/status-icon'
+export type { StatusTone }
 
 /** 기존 호출부(ClusterStatus)를 위한 매핑. */
 const CLUSTER_STATUS_TONE: Record<ClusterStatus, StatusTone> = {
@@ -69,13 +55,13 @@ interface StatusBadgeProps {
 export function StatusBadge({ status, tone, label, hideIcon = false, className }: StatusBadgeProps) {
   const resolvedTone: StatusTone = tone ?? (status ? CLUSTER_STATUS_TONE[status] : 'neutral')
   const resolvedLabel = label ?? (status ? CLUSTER_STATUS_LABEL[status] : '')
-  const cssVar = TONE_TOKEN[resolvedTone]
+  const cssVar = STATUS_TOKEN[resolvedTone]
 
   return (
     <Chip
       className={className}
       size="small"
-      icon={hideIcon ? undefined : (TONE_ICON[resolvedTone] as React.ReactElement)}
+      icon={hideIcon ? undefined : <StatusIcon tone={resolvedTone} size="xs" inheritColor />}
       label={resolvedLabel}
       sx={{
         // 색은 토큰만 참조한다. 테마 전환에 따라 두 테마 모두 AA 를 넘는 값이 들어온다.
@@ -87,40 +73,4 @@ export function StatusBadge({ status, tone, label, hideIcon = false, className }
       }}
     />
   )
-}
-
-/** 문자열 상태값을 tone 으로 옮긴다. 도메인마다 쓰는 낱말이 달라 여기 모아 둔다. */
-export function toneForStatus(status: string | null | undefined): StatusTone {
-  switch ((status ?? '').toLowerCase()) {
-    case 'connected':
-    case 'success':
-    case 'succeeded':
-    case 'active':
-    case 'healthy':
-    case 'completed':
-    case 'synced':
-      return 'success'
-    case 'pending':
-    case 'warning':
-    case 'warn':
-    case 'unreachable':
-    case 'degraded':
-    case 'rolled_back':
-    case 'terminating':
-      return 'warning'
-    case 'error':
-    case 'failed':
-    case 'auth_failed':
-    case 'unhealthy':
-      return 'error'
-    case 'running':
-    case 'installing':
-    case 'in_progress':
-    case 'progressing':
-    case 'health_check':
-    case 'configuring':
-      return 'info'
-    default:
-      return 'neutral'
-  }
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../lib/utils'
 import type { StackVersionDiff } from '../api/stack-api'
@@ -196,7 +197,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
                   onClick={() => toggleRegion(region.startIndex)}
                   className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)] transition-colors cursor-pointer"
                 >
-                  <ChevronRight size={12} />
+                  <ChevronRight {...iconProps('xs')} />
                   <span>... {region.count} unchanged lines ...</span>
                 </button>
               )
@@ -216,7 +217,7 @@ export function VersionDiff({ versionA, versionB, configA, configB, diff }: Vers
                   onClick={() => toggleRegion(expandedRegion.startIndex)}
                   className="flex w-full items-center gap-1.5 border-y border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-1.5 text-xs text-[var(--color-text-muted)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)] transition-colors cursor-pointer"
                 >
-                  <ChevronDown size={12} />
+                  <ChevronDown {...iconProps('xs')} />
                   <span>... {expandedRegion.count} unchanged lines (click to collapse) ...</span>
                 </button>
               )}

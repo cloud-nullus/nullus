@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Download, Info, Rocket, Save, ShoppingCart, Trash2 } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import Editor from '@monaco-editor/react'
 import type { Monaco } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
@@ -2280,7 +2281,7 @@ export function StackInstallPage() {
             { label: t('stackInstall.breadcrumb.current', 'Stack Install') },
           ]
         }
-        icon={<Download size={16} />}
+        icon={<Download {...iconProps('sm')} />}
         tone="primary"
         title={t('stackInstall.page.title', 'Stack Install')}
         subtitle={t('stackInstall.page.description', 'Configure your DevSecOps stack with a 5-step workflow.')}
@@ -2294,7 +2295,7 @@ export function StackInstallPage() {
               disabled={!isValid || isSubmitting}
               type="button"
             >
-              <Save size={14} />
+              <Save {...iconProps('sm')} />
               {t('stackInstall.actions.saveDraft', 'Save Draft')}
             </Button>
             <Button
@@ -2318,7 +2319,7 @@ export function StackInstallPage() {
               }
               type="button"
             >
-              <Rocket size={14} />
+              <Rocket {...iconProps('sm')} />
               {t('stackInstall.actions.deploy', 'Deploy')}
             </Button>
           </div>
@@ -2485,7 +2486,7 @@ export function StackInstallPage() {
         <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
           <div className="mb-3 flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_18%,_transparent)] text-[var(--color-primary)]">
-              <ShoppingCart size={16} />
+              <ShoppingCart {...iconProps('sm')} />
             </div>
             <div>
             <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">Resource Total</h3>
@@ -3087,7 +3088,7 @@ export function StackInstallPage() {
                         onClick={handleSaveProfileButtonClick}
                         disabled={createOrgProfile.isPending || updateOrgProfile.isPending}
                       >
-                        <Save size={12} />
+                        <Save {...iconProps('xs')} />
                       </IconButton>
                       {selectedOrgProfileId && (
                         <IconButton
@@ -3097,7 +3098,7 @@ export function StackInstallPage() {
                           aria-label="Delete this organization profile"
                           onClick={handleDeleteOrgProfile}
                         >
-                          <Trash2 size={12} />
+                          <Trash2 {...iconProps('xs')} />
                         </IconButton>
                       )}
                     </div>
@@ -3162,7 +3163,7 @@ export function StackInstallPage() {
                                 onClick={() => setActiveFormulaPopoverKey((prev) => (prev === row.rowKey ? null : row.rowKey))}
                                 className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] hover:text-[var(--color-text-primary)]"
                               >
-                                <Info size={13} />
+                                <Info {...iconProps('xs')} />
                               </button>
                             </div>
                           </div>

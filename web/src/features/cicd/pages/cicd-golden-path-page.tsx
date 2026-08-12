@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { BookOpen, ExternalLink } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useGoldenPaths } from '../api/cicd-api'
 import type { CICDGoldenPath, CICDTool } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
@@ -148,7 +149,7 @@ export function CicdGoldenPathPage() {
             { label: 'CI/CD Golden Path' },
           ]
         }
-        icon={<BookOpen size={16} />}
+        icon={<BookOpen {...iconProps('sm')} />}
         tone="success"
         title="CI/CD Golden Path"
         subtitle={t('goldenPathPage.description', 'Start quickly with a validated CI/CD tool combination.')}
@@ -253,7 +254,7 @@ export function CicdGoldenPathPage() {
                   className="w-full"
                   onClick={() => openDetail(goldenPath)}
                 >
-                  <ExternalLink size={13} />
+                  <ExternalLink {...iconProps('xs')} />
                   {t('goldenPathPage.actions.viewDetail', 'View Detail')}
                 </Button>
               </div>

@@ -1,4 +1,5 @@
-import { Box, Cpu, HardDrive, MemoryStick } from "lucide-react";
+import { Box, Cpu, HardDrive, MemoryStick } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { useEffect, useMemo, useState } from "react";
 import {
   Area,
@@ -493,7 +494,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Current CPU",
           value: "-",
-          icon: <Cpu size={18} />,
+          icon: <Cpu {...iconProps('md')} />,
           color: "var(--color-info)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
           bar: 0,
@@ -502,7 +503,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Current Memory",
           value: "-",
-          icon: <MemoryStick size={18} />,
+          icon: <MemoryStick {...iconProps('md')} />,
           color: "var(--color-accent-alt)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
           bar: 0,
@@ -511,7 +512,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Current Storage",
           value: "-",
-          icon: <HardDrive size={18} />,
+          icon: <HardDrive {...iconProps('md')} />,
           color: "var(--color-success)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
           bar: 0,
@@ -519,7 +520,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         {
           label: "Ready Pods",
           value: "-",
-          icon: <Box size={18} />,
+          icon: <Box {...iconProps('md')} />,
           color: "var(--color-warning)",
           iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
           bar: 0,
@@ -578,7 +579,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       {
         label: "Current CPU",
         value: cpuUsageC !== null ? `${cpuUsageC.toFixed(2)} Core` : "N/A",
-        icon: <Cpu size={18} />,
+        icon: <Cpu {...iconProps('md')} />,
         color: "var(--color-info)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]",
         bar: cpuCurrentBar,
@@ -593,7 +594,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         label: "Current Memory",
         value:
           memoryUsageGiB !== null ? `${memoryUsageGiB.toFixed(2)} GiB` : "N/A",
-        icon: <MemoryStick size={18} />,
+        icon: <MemoryStick {...iconProps('md')} />,
         color: "var(--color-accent-alt)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]",
         bar: memoryCurrentBar,
@@ -614,7 +615,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
               : storageRequestGiB > 0
                 ? `${storageRequestGiB.toFixed(2)} GiB`
                 : "0.00 GiB",
-        icon: <HardDrive size={18} />,
+        icon: <HardDrive {...iconProps('md')} />,
         color: "var(--color-success)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
         bar: storageCurrentBar,
@@ -629,7 +630,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       {
         label: "Ready Pods",
         value: `${currentMetrics.readyPods} / ${currentMetrics.totalPods}`,
-        icon: <Box size={18} />,
+        icon: <Box {...iconProps('md')} />,
         color: "var(--color-warning)",
         iconWrapClassName: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
         bar: readyRatio,

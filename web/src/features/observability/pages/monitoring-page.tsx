@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { Server, GitBranch, BarChart3 } from 'lucide-react'
+import { ChartColumn, GitBranch, Server } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../../stores/auth-store'
 import { Tabs } from '../../../components/ui/tabs'
@@ -92,16 +93,16 @@ export function MonitoringPage() {
   }, [activeView, supportsCicd, selectedClusterId])
 
   const views: { id: ViewType; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
-    { id: 'cluster', label: 'Cluster', icon: <Server size={15} />, disabled: !selectedClusterId },
-    { id: 'stack', label: 'Stack', icon: <BarChart3 size={15} />, disabled: !selectedStackId },
-    { id: 'cicd', label: 'CI/CD', icon: <GitBranch size={15} />, disabled: !selectedClusterId || !supportsCicd },
+    { id: 'cluster', label: 'Cluster', icon: <Server {...iconProps('sm')} />, disabled: !selectedClusterId },
+    { id: 'stack', label: 'Stack', icon: <ChartColumn {...iconProps('sm')} />, disabled: !selectedStackId },
+    { id: 'cicd', label: 'CI/CD', icon: <GitBranch {...iconProps('sm')} />, disabled: !selectedClusterId || !supportsCicd },
   ]
 
   return (
     <div>
       <PageHeader
         breadcrumb={[{ label: t('observability.monitoring', 'Monitoring Dashboard') }]}
-        icon={<BarChart3 size={16} />}
+        icon={<ChartColumn {...iconProps('sm')} />}
         tone="info"
         title={t('observability.monitoring', 'Monitoring Dashboard')}
         subtitle={t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
@@ -123,7 +124,7 @@ export function MonitoringPage() {
       {
         !hasContext && (
           <div className="flex h-44 flex-col items-center justify-center gap-2 rounded-[var(--card-radius)] border border-dashed border-[var(--color-border-default)] text-[var(--color-text-secondary)]">
-            <BarChart3 size={28} className="opacity-20" />
+            <ChartColumn {...iconProps('lg')} className="opacity-20" />
             <p className="text-sm font-medium text-[var(--color-text-primary)]">Select a Cluster or Stack above to begin</p>
             <p className="text-xs">You can select either one or both.</p>
           </div>

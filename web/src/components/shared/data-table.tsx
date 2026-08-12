@@ -10,7 +10,8 @@ import {
   type SortingState,
   type PaginationState,
 } from '@tanstack/react-table'
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
 import { SearchInput } from '../ui/search-input'
@@ -126,8 +127,8 @@ export function DataTable<T>({
                   >
                     <span className="inline-flex items-center gap-1">
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                      {sortedState === 'asc' && <ChevronUp size={12} />}
-                      {sortedState === 'desc' && <ChevronDown size={12} />}
+                      {sortedState === 'asc' && <ChevronUp {...iconProps('xs')} />}
+                      {sortedState === 'desc' && <ChevronDown {...iconProps('xs')} />}
                     </span>
                   </th>
                 )
@@ -174,7 +175,7 @@ export function DataTable<T>({
             onClick={() => table.previousPage()}
             className="px-2 py-1.5"
           >
-            <ChevronLeft size={14} />
+            <ChevronLeft {...iconProps('sm')} />
           </Button>
           {pageNumbers.map((number) => (
             <button
@@ -198,7 +199,7 @@ export function DataTable<T>({
             onClick={() => table.nextPage()}
             className="px-2 py-1.5"
           >
-            <ChevronRight size={14} />
+            <ChevronRight {...iconProps('sm')} />
           </Button>
         </div>
       )}

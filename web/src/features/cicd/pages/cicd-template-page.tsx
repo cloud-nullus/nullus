@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { BookOpen, Pencil, Plus, Trash2, User } from "lucide-react";
+import { BookOpen, Pencil, Plus, Trash2, User } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import {
   useCicdTemplates,
   useCreateCicdTemplate,
@@ -362,7 +363,7 @@ export function CicdTemplatePage() {
             { label: t("cicdTemplatePage.breadcrumb.current", "CI/CD Template") },
           ]
         }
-        icon={<BookOpen size={16} />}
+        icon={<BookOpen {...iconProps('sm')} />}
         tone="primary"
         title={t("cicdTemplatePage.title", "CI/CD Template")}
         subtitle={
@@ -379,7 +380,7 @@ export function CicdTemplatePage() {
               type="button"
               onClick={openCreateModal}
             >
-              <Plus size={15} />
+              <Plus {...iconProps('sm')} />
               {t("cicdTemplatePage.actions.createTemplate", "Create Template")}
             </Button>
           )
@@ -501,7 +502,7 @@ export function CicdTemplatePage() {
 
                           <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-default)] pt-2.5">
                             <div className="flex items-center gap-[5px] text-xs text-[var(--color-text-muted)]">
-                              {template.createdBy && <User size={12} />}
+                              {template.createdBy && <User {...iconProps('xs')} />}
                               <span>{template.createdBy ?? ""}</span>
                             </div>
                             <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
@@ -513,7 +514,7 @@ export function CicdTemplatePage() {
                                     type="button"
                                     onClick={() => openEditModal(template)}
                                   >
-                                    <Pencil size={13} />
+                                    <Pencil {...iconProps('xs')} />
                                     {t("cicdTemplatePage.actions.edit", "Edit")}
                                   </Button>
                                   <Button
@@ -524,7 +525,7 @@ export function CicdTemplatePage() {
                                       setDeleteTemplateId(template.id)
                                     }
                                   >
-                                    <Trash2 size={13} />
+                                    <Trash2 {...iconProps('xs')} />
                                     {t(
                                       "cicdTemplatePage.actions.delete",
                                       "Delete",

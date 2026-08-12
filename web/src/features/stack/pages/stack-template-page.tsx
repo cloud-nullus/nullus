@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { BookOpen, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Trash2, Wrench, X } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Trash2, Wrench, X } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import {
   useCreateTemplate,
   useDeleteTemplate,
@@ -529,7 +530,7 @@ export function StackTemplatePage() {
             },
           ]
         }
-        icon={<BookOpen size={16} />}
+        icon={<BookOpen {...iconProps('sm')} />}
         tone="success"
         title={t("stackTemplatePage.title", "Stack Template")}
         subtitle={
@@ -546,7 +547,7 @@ export function StackTemplatePage() {
               type="button"
               onClick={openCreateModal}
             >
-              <Plus size={15} />
+              <Plus {...iconProps('sm')} />
               {t("stackTemplatePage.actions.createTemplate", "Create Template")}
             </Button>
           )
@@ -648,7 +649,7 @@ export function StackTemplatePage() {
                       type="button"
                       onClick={() => openEditModal(template)}
                     >
-                      <Pencil size={13} />
+                      <Pencil {...iconProps('xs')} />
                       {t("stackTemplatePage.actions.edit", "Edit")}
                     </Button>
                     <Button
@@ -657,7 +658,7 @@ export function StackTemplatePage() {
                       type="button"
                       onClick={() => setDeleteTemplateId(template.id)}
                     >
-                      <Trash2 size={13} />
+                      <Trash2 {...iconProps('xs')} />
                       {t("stackTemplatePage.actions.delete", "Delete")}
                     </Button>
                   </>
@@ -669,7 +670,7 @@ export function StackTemplatePage() {
                   className="ml-auto"
                   onClick={() => setSelectedTemplateId(template.id)}
                 >
-                  <ExternalLink size={13} />
+                  <ExternalLink {...iconProps('xs')} />
                   {t("stackTemplatePage.actions.viewDetail", "상세 보기")}
                 </Button>
               </div>
@@ -715,7 +716,7 @@ export function StackTemplatePage() {
                         openEditModal(selectedTemplate);
                       }}
                     >
-                      <Pencil size={13} />
+                      <Pencil {...iconProps('xs')} />
                       {t("stackTemplatePage.actions.edit", "Edit")}
                     </Button>
                     <Button
@@ -851,7 +852,7 @@ export function StackTemplatePage() {
                       key={tool}
                       className="flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-2.5 py-2"
                     >
-                      <Wrench size={13} color="var(--color-warning)" />
+                      <Wrench {...iconProps('xs')} color="var(--color-warning)" />
                       <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
                         {tool}
                       </span>
@@ -948,12 +949,12 @@ export function StackTemplatePage() {
                         </span>
                         {isOpen ? (
                           <ChevronDown
-                            size={15}
+                            {...iconProps('sm')}
                             className="text-[var(--color-text-secondary)]"
                           />
                         ) : (
                           <ChevronRight
-                            size={15}
+                            {...iconProps('sm')}
                             className="text-[var(--color-text-secondary)]"
                           />
                         )}
@@ -971,7 +972,7 @@ export function StackTemplatePage() {
                           { section: section.label },
                         )}
                       >
-                        <Trash2 size={13} />
+                        <Trash2 {...iconProps('xs')} />
                       </button>
                     </div>
 
@@ -1088,7 +1089,7 @@ export function StackTemplatePage() {
                                   }
                                   className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--color-border-default)] text-[var(--color-text-secondary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)] hover:text-[var(--color-error)]"
                                 >
-                                  <X size={15} />
+                                  <X {...iconProps('sm')} />
                                 </button>
                               </div>
                             );
@@ -1155,7 +1156,7 @@ export function StackTemplatePage() {
                 onClick={() => setAddSectionOpen(true)}
                 className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-border-default)] px-3 py-2.5 text-sm text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-hover)] hover:text-[var(--color-text-primary)]"
               >
-                <Plus size={14} />
+                <Plus {...iconProps('sm')} />
                 {t("stackTemplatePage.actions.addSection", "Add Section")}
               </button>
             )}

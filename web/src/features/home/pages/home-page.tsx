@@ -1,18 +1,8 @@
 import { useNavigate } from 'react-router-dom'
+import { IconTile } from '../../../components/ui/icon-tile'
 import { useState } from 'react'
-import {
-  BookOpen,
-  Box,
-  ChartNoAxesColumn,
-  Code2,
-  Cog,
-  Coins,
-  FlaskConical,
-  Hammer,
-  Rocket,
-  ShieldCheck,
-  Users,
-} from 'lucide-react'
+import { BookOpen, Box, ChartColumn, Code2, Coins, FlaskConical, Hammer, Rocket, Settings, ShieldCheck, Users } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useAuthStore } from '../../../stores/auth-store'
 import { roleLandingPath } from '../../auth/role-landing'
 import { NullusMark } from '../../../components/brand/nullus-mark'
@@ -22,37 +12,37 @@ const features = [
     title: 'Automated DevSecOps Stack Installation',
     description: 'Deploy GitLab, ArgoCD, and Prometheus stacks directly to Kubernetes from the UI.',
     icon: Box,
-    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]',
+    token: '--color-primary',
   },
   {
     title: 'Golden Path Templates',
     description: 'Provides validated combinations (GitHub + ArgoCD, GitLab All-in-One) as templates.',
     icon: BookOpen,
-    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+    token: '--color-success',
   },
   {
     title: 'CI/CD Pipeline Management',
     description: 'Create pipelines and manage deployment history with Web/API/Batch templates.',
     icon: Code2,
-    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+    token: '--color-warning',
   },
   {
     title: 'Version Compatibility Assurance',
     description: 'Expose only validated tool version combinations to reduce unpredictable compatibility issues.',
     icon: ShieldCheck,
-    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+    token: '--color-error',
   },
   {
     title: 'Unified Monitoring',
     description: 'Check cluster, pipeline, and application status from a single dashboard.',
-    icon: ChartNoAxesColumn,
-    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]',
+    icon: ChartColumn,
+    token: '--color-info',
   },
   {
     title: 'Role-based Access Control',
     description: 'Control feature access by role: Admin, DevOps, and Developer.',
     icon: Users,
-    iconClassName: 'bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]',
+    token: '--color-accent-alt',
   },
 ]
 
@@ -78,13 +68,13 @@ const roadmap = [
 ]
 
 const stages = [
-  { name: 'Cluster Provisioning', icon: Cog, active: false },
+  { name: 'Cluster Provisioning', icon: Settings, active: false },
   { name: 'Develop', icon: Code2, active: true },
   { name: 'Build', icon: Hammer, active: true },
   { name: 'Security', icon: ShieldCheck, active: false },
   { name: 'Test', icon: FlaskConical, active: false },
   { name: 'Deploy', icon: Rocket, active: true },
-  { name: 'Monitoring', icon: ChartNoAxesColumn, active: true },
+  { name: 'Monitoring', icon: ChartColumn, active: true },
   { name: 'FinOps', icon: Coins, active: false },
 ]
 
@@ -98,8 +88,8 @@ const quickLinks = [
   { label: 'DevSecOps Stack Install', path: '/stack/templates', icon: Box, iconClassName: 'text-[var(--color-primary)]' },
   { label: 'Stack Templates', path: '/stack/templates', icon: BookOpen, iconClassName: 'text-[var(--color-success)]' },
   { label: 'CI/CD Templates', path: '/cicd/templates', icon: Code2, iconClassName: 'text-[var(--color-warning)]' },
-  { label: 'CI/CD List', path: '/cicd/list', icon: ChartNoAxesColumn, iconClassName: 'text-[var(--color-info)]' },
-  { label: 'Monitoring Dashboard', path: '/observability/monitoring', icon: ChartNoAxesColumn, iconClassName: 'text-[var(--color-error)]' },
+  { label: 'CI/CD List', path: '/cicd/list', icon: ChartColumn, iconClassName: 'text-[var(--color-info)]' },
+  { label: 'Monitoring Dashboard', path: '/observability/monitoring', icon: ChartColumn, iconClassName: 'text-[var(--color-error)]' },
   { label: 'Stack Version', path: '/stack/version', icon: ShieldCheck, iconClassName: 'text-[var(--color-accent-alt)]' },
 ]
 
@@ -139,7 +129,7 @@ export function HomePage() {
             onClick={() => navigate('/admin/clusters')}
             className={canRegisterCluster ? enabledButtonClassName : disabledButtonClassName}
           >
-            <Cog size={16} />
+            <Settings {...iconProps('sm')} />
             Register Cluster
           </button>
           <button
@@ -148,7 +138,7 @@ export function HomePage() {
             onClick={() => navigate(roleLandingPath(role))}
             className={canStartStack ? enabledButtonClassName : disabledButtonClassName}
           >
-            <Rocket size={16} />
+            <Rocket {...iconProps('sm')} />
             Start Stack
           </button>
           <button
@@ -157,7 +147,7 @@ export function HomePage() {
             onClick={() => navigate('/cicd/templates')}
             className={canUseCicdPipeline ? enabledButtonClassName : disabledButtonClassName}
           >
-            <Code2 size={16} />
+            <Code2 {...iconProps('sm')} />
             CI/CD Pipeline
           </button>
         </div>
@@ -170,9 +160,9 @@ export function HomePage() {
             const Icon = feature.icon
             return (
               <div key={feature.title} className="rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[18px]">
-                <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] ${feature.iconClassName}`}>
-                  <Icon size={16} />
-                </div>
+                <IconTile token={feature.token} className="mb-3">
+                  <Icon {...iconProps('md')} />
+                </IconTile>
                 <div className="mb-1.5 text-sm font-bold text-[var(--color-text-primary)]">{feature.title}</div>
                 <div className="text-xs leading-5 text-[var(--color-text-secondary)]">{feature.description}</div>
               </div>
@@ -213,7 +203,7 @@ export function HomePage() {
               key={stage.name}
               className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_80%,_transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,_var(--color-brand-gold)_22%,_transparent),color-mix(in_srgb,_var(--color-warning)_20%,_transparent))] text-[color-mix(in_srgb,_var(--color-brand-gold)_70%,_white)] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent),0_0_18px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]' : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_8%,_transparent)] text-[var(--color-text-secondary)] opacity-75'}`}
             >
-              <Icon size={14} />
+              <Icon {...iconProps('sm')} />
               {stage.name}
             </div>
           )
@@ -232,7 +222,7 @@ export function HomePage() {
                 onClick={() => navigate(item.path)}
                 className="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-3.5 py-3 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent)]"
               >
-                <Icon size={16} className={item.iconClassName} />
+                <Icon {...iconProps('sm')} className={item.iconClassName} />
                 <span>{item.label}</span>
               </button>
             )

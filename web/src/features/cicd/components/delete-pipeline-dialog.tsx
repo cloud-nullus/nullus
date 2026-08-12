@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { TriangleAlert } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from "react-i18next";
 
 import { Modal } from "../../../components/ui/modal";
@@ -164,7 +165,7 @@ export function DeletePipelineDialog({
         {deleteRepository && repositoryPath ? (
           <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
             <p className="flex items-center gap-2 font-medium text-destructive">
-              <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+              <TriangleAlert {...iconProps('lg')} className="h-4 w-4" aria-hidden="true" />
               {t("cicd.deleteDialog.irreversible", "되돌릴 수 없습니다")}
             </p>
             <p className="text-xs">

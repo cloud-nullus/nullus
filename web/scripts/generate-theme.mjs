@@ -97,6 +97,35 @@ const layoutVars = Object.entries(layout)
   .map(([key, value]) => `  --${key}: ${value};`)
   .join('\n')
 
+// 아이콘 크기와 그에 딸린 선 굵기. lucide 는 24 격자에 stroke 2 라, size 만
+// 줄이면 렌더 굵기가 함께 줄어 작은 아이콘이 흐려진다 — 크기와 굵기는 한 쌍이다.
+// 그래서 `{ size, strokeWidth }` 를 함께 내보낸다. 화면이 size 만 집어 가면
+// 굵기가 따라오지 않으므로, 소비하는 쪽은 iconProps() 하나만 쓰게 한다.
+const ICON_DEFAULTS = {
+  xs: '12px', sm: '16px', md: '20px', lg: '28px',
+  'stroke-xs': 2.25, 'stroke-sm': 2, 'stroke-md': 1.75, 'stroke-lg': 1.5,
+  'tile-sm': '28px', 'tile-md': '36px',
+}
+const iconRaw = { ...ICON_DEFAULTS, ...(design.icon ?? {}) }
+const ICON_STEPS = ['xs', 'sm', 'md', 'lg']
+const icon = Object.fromEntries(
+  ICON_STEPS.map((step) => {
+    const px = Number(String(iconRaw[step]).replace('px', ''))
+    const strokeWidth = Number(iconRaw[`stroke-${step}`])
+    if (!Number.isFinite(px) || !Number.isFinite(strokeWidth)) {
+      throw new Error(`DESIGN.md 의 icon 블록에 ${step} 또는 stroke-${step} 이 없다`)
+    }
+    return [step, { size: px, strokeWidth }]
+  })
+)
+const px = (v) => Number(String(v).replace('px', ''))
+// 아이콘에 바탕을 깔 때의 타일 크기. 담는 아이콘보다 한 단계 크다.
+const iconTile = { sm: px(iconRaw['tile-sm']), md: px(iconRaw['tile-md']) }
+const iconVars = [
+  ...ICON_STEPS.map((s) => `  --icon-${s}: ${icon[s].size}px;`),
+  ...Object.entries(iconTile).map(([s, v]) => `  --icon-tile-${s}: ${v}px;`),
+].join('\n')
+
 for (const [name, palette] of [
   ['light', light],
   ['dark', dark],
@@ -186,6 +215,16 @@ export const rounded = ${JSON.stringify(design.rounded ?? {}, null, 2)} as const
 export const typography = ${JSON.stringify(design.typography ?? {}, null, 2)} as const
 
 export const layout = ${JSON.stringify(layout, null, 2)} as const
+
+/**
+ * 아이콘 크기 단계. 크기와 선 굵기는 한 쌍이라 함께 내보낸다 —
+ * size 만 집어 가면 굵기가 따라오지 않아 작은 아이콘이 흐려진다.
+ * 화면에서는 components/ui/icon.ts 의 iconProps() 를 거쳐 쓴다.
+ */
+export const icon = ${JSON.stringify(icon, null, 2)} as const
+
+/** 아이콘에 바탕을 깔 때의 타일 크기 — DESIGN.md §아이콘 타일 */
+export const iconTile = ${JSON.stringify(iconTile, null, 2)} as const
 `
 
 // ── CSS 토큰 ──────────────────────────────────────────────────────────────
@@ -257,6 +296,10 @@ ${sidebar(scheme(design.colors, 'dark'))}
 
   /* 레이아웃 — DESIGN.md §Layout (front matter 의 layout 블록이 단일 출처다) */
 ${layoutVars}
+
+  /* 아이콘 크기 — 굵기는 CSS 로 못 넘긴다(lucide 가 strokeWidth 프롭으로 받는다).
+     굵기까지 필요하면 tokens.generated.ts 의 icon 을 쓴다. */
+${iconVars}
   --card-radius: ${design.rounded?.lg ?? '8px'};
   --icon-radius: ${design.rounded?.sm ?? '4px'};
 

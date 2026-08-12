@@ -1253,7 +1253,8 @@
       "execute": "Execute"
     },
     "yamlPreview": "YAML Manifest Preview",
-    "manifestDescription": "Review generated manifests before creating the pipeline."
+    "manifestDescription": "Review generated manifests before creating the pipeline.",
+    "removeItem": "Remove"
   },
   "stackHistoryPage": {
     "title": "Stack History",
@@ -1322,7 +1323,10 @@
       "tabNamePlaceholder": "Tab name",
       "embedUrlPlaceholder": "Embed URL",
       "description": "Changes apply to all users after saving. Developer role has view-only access.",
-      "saved": "Tab configuration saved."
+      "saved": "Tab configuration saved.",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "removeTab": "Remove tab"
     }
   },
   "stackVersionPage": {

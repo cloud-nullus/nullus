@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Check, Plus, Settings2 } from "lucide-react"
+import { Check, Plus, Settings2 } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { cn } from "../../../lib/utils"
 import type { ToolHealthStatus } from "../api/observability-api"
 import type { EmbedTab } from "../utils/monitoring-utils"
@@ -58,7 +59,7 @@ export function StackConnectPanel({
         <div>
           <div className="mb-1 flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] text-[var(--color-primary)]">
-              <Settings2 size={14} />
+              <Settings2 {...iconProps('sm')} />
             </div>
             <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">
               {t('observability.connectPanel.title', 'Connect Stack Components')}
@@ -93,7 +94,7 @@ export function StackConnectPanel({
               className={cn(
                 'rounded-[10px] border bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3.5 transition-colors',
                 isDone
-                  ? 'border-emerald-500/40 bg-emerald-500/5'
+                  ? 'border-[color-mix(in_srgb,_var(--color-success)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_5%,_transparent)]'
                   : isOpen
                     ? 'border-[var(--color-primary)]/40'
                     : 'border-[var(--color-border-default)]',
@@ -113,8 +114,8 @@ export function StackConnectPanel({
                   </div>
                 </div>
                 {isDone ? (
-                  <span className="flex shrink-0 items-center gap-1 rounded-[5px] bg-emerald-500/15 px-2 py-1 text-[11px] font-semibold text-emerald-400">
-                    <Check size={10} />Added
+                  <span className="flex shrink-0 items-center gap-1 rounded-[5px] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-success)]">
+                    <Check {...iconProps('xs')} />Added
                   </span>
                 ) : (
                   <button
@@ -123,7 +124,7 @@ export function StackConnectPanel({
                     className={cn(
                       'shrink-0 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors',
                       isOpen
-                        ? 'border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] text-[var(--color-error)] hover:bg-red-400/10'
+                        ? 'border-[color-mix(in_srgb,_var(--color-error)_40%,_transparent)] text-[var(--color-error)] hover:bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)]'
                         : 'border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)]',
                     )}
                   >
@@ -157,7 +158,7 @@ export function StackConnectPanel({
               {/* Confirmed URL preview */}
               {isDone && (
                 <div className="mt-1 flex items-center gap-1.5">
-                  <span className="min-w-0 truncate font-mono text-[10px] text-emerald-400/80">{urls[comp.name]}</span>
+                  <span className="min-w-0 truncate font-mono text-[10px] text-[color-mix(in_srgb,_var(--color-success)_80%,_transparent)]">{urls[comp.name]}</span>
                   <button
                     type="button"
                     onClick={() => { setConfirmed((p) => ({ ...p, [comp.name]: false })); setOpen((p) => ({ ...p, [comp.name]: true })) }}
@@ -193,7 +194,7 @@ export function StackConnectPanel({
             onClick={() => onConnect(readyItems.map((c) => ({ label: c.name, url: urls[c.name] })))}
             className="flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-4 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
           >
-            <Plus size={12} />Connect {readyItems.length > 0 ? `${readyItems.length} Component${readyItems.length > 1 ? 's' : ''}` : 'Components'}
+            <Plus {...iconProps('xs')} />Connect {readyItems.length > 0 ? `${readyItems.length} Component${readyItems.length > 1 ? 's' : ''}` : 'Components'}
           </button>
         </div>
       </div>

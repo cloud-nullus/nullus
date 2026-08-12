@@ -19,6 +19,7 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import IconButton from '@mui/material/IconButton'
 import { X } from 'lucide-react'
+import { iconProps } from './icon'
 
 interface ModalProps {
   open: boolean
@@ -77,7 +78,7 @@ export function Modal({ open, onClose, title, children, wide = false, footer }: 
         >
           {title}
           <IconButton onClick={onClose} aria-label="Close modal" sx={{ color: 'var(--color-text-secondary)' }}>
-            <X size={18} />
+            <X {...iconProps('md')} />
           </IconButton>
         </DialogTitle>
       )}

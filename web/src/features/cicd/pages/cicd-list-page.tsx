@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Activity, BarChart2, Boxes, Box, CheckCircle2, CircleDashed, ExternalLink, Eye, EyeOff, FileCode2, GitBranch, Globe, History, Info, List, Package, Plus, RefreshCw, Rocket, Server, XCircle, Terminal, Trash2, Loader2, X } from "lucide-react";
+import { Activity, Box, Boxes, ChartColumn, CircleCheck, CircleDashed, CircleX, ExternalLink, Eye, EyeOff, FileCode2, GitBranch, Globe, History, Info, List, LoaderCircle, Package, Plus, RefreshCw, Rocket, Server, Terminal, Trash2, X } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   AppLogPanel,
@@ -186,9 +187,9 @@ const EXECUTE_SETUP_TABS: {
   label: string;
   icon: React.ReactNode;
 }[] = [
-  { id: "cluster", label: "Cluster", icon: <Server size={13} /> },
-  { id: "build", label: "Build", icon: <FileCode2 size={13} /> },
-  { id: "deploy", label: "Deploy", icon: <Boxes size={13} /> },
+  { id: "cluster", label: "Cluster", icon: <Server {...iconProps('xs')} /> },
+  { id: "build", label: "Build", icon: <FileCode2 {...iconProps('xs')} /> },
+  { id: "deploy", label: "Deploy", icon: <Boxes {...iconProps('xs')} /> },
 ];
 
 function ExecuteModal({
@@ -266,7 +267,7 @@ function ExecuteModal({
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-              <Rocket size={16} />
+              <Rocket {...iconProps('sm')} />
             </div>
             <div>
               <div className="text-[15px] font-bold text-[var(--color-text-primary)]">
@@ -284,7 +285,7 @@ function ExecuteModal({
             onClick={onClose}
             aria-label="Close"
           >
-            <X size={16} />
+            <X {...iconProps('sm')} />
           </IconButton>
         </div>
 
@@ -458,7 +459,7 @@ function ExecuteModal({
             loading={isExecuting}
             disabled={isExecuting}
           >
-            <Rocket size={12} />
+            <Rocket {...iconProps('xs')} />
             Execute
           </Button>
         </div>
@@ -476,9 +477,9 @@ const INNER_TABS: Array<{
   label: string;
   icon: React.ReactNode;
 }> = [
-  { key: "info", label: "Info", icon: <Info size={13} /> },
-  { key: "monitoring", label: "Monitoring", icon: <BarChart2 size={13} /> },
-  { key: "history", label: "History", icon: <History size={13} /> },
+  { key: "info", label: "Info", icon: <Info {...iconProps('xs')} /> },
+  { key: "monitoring", label: "Monitoring", icon: <ChartColumn {...iconProps('xs')} /> },
+  { key: "history", label: "History", icon: <History {...iconProps('xs')} /> },
 ];
 
 function DetailCard({
@@ -567,27 +568,27 @@ function stageMeta(state: StageState): {
 } {
   if (state === "completed") {
     return {
-      icon: <CheckCircle2 size={15} />,
+      icon: <CircleCheck {...iconProps('sm')} />,
       label: "Completed",
       cls: "border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] text-[var(--color-success)]",
     };
   }
   if (state === "failed") {
     return {
-      icon: <XCircle size={15} />,
+      icon: <CircleX {...iconProps('sm')} />,
       label: "Failed",
       cls: "border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]",
     };
   }
   if (state === "in_progress") {
     return {
-      icon: <Loader2 size={15} className="animate-spin" />,
+      icon: <LoaderCircle {...iconProps('sm')} className="animate-spin" />,
       label: "In progress",
       cls: "border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] text-[var(--color-warning)]",
     };
   }
   return {
-    icon: <CircleDashed size={15} />,
+    icon: <CircleDashed {...iconProps('sm')} />,
     label: "Queued",
     cls: "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-muted)]",
   };
@@ -783,7 +784,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)]"
             >
-              <ExternalLink size={12} />
+              <ExternalLink {...iconProps('xs')} />
               {url}
             </a>
           ))}
@@ -1017,7 +1018,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                     onClick={() => toggleReveal(key)}
                     className="inline-flex items-center justify-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
                   >
-                    {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
+                    {isRevealed ? <EyeOff {...iconProps('xs')} /> : <Eye {...iconProps('xs')} />}
                     {isRevealed ? "Hide" : "Show"}
                   </button>
                 </div>
@@ -1048,7 +1049,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                       onClick={() => toggleReveal(key)}
                       className="inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
                     >
-                      {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
+                      {isRevealed ? <EyeOff {...iconProps('xs')} /> : <Eye {...iconProps('xs')} />}
                       {isRevealed ? "Hide" : "Show"}
                     </button>
                   </div>
@@ -1080,11 +1081,11 @@ function resourceStatusColor(status: string) {
 
 function kindIcon(kind: string) {
   const k = kind.toLowerCase();
-  if (k === "deployment" || k === "statefulset") return <Box size={13} />;
-  if (k === "service") return <Activity size={13} />;
-  if (k === "ingress") return <Globe size={13} />;
-  if (k === "pod") return <Server size={13} />;
-  return <Package size={13} />;
+  if (k === "deployment" || k === "statefulset") return <Box {...iconProps('xs')} />;
+  if (k === "service") return <Activity {...iconProps('xs')} />;
+  if (k === "ingress") return <Globe {...iconProps('xs')} />;
+  if (k === "pod") return <Server {...iconProps('xs')} />;
+  return <Package {...iconProps('xs')} />;
 }
 
 function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
@@ -1164,7 +1165,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-10">
-        <Loader2 size={18} className="animate-spin text-[var(--color-primary)]" />
+        <LoaderCircle {...iconProps('md')} className="animate-spin text-[var(--color-primary)]" />
       </div>
     );
   }
@@ -1252,9 +1253,10 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
             <button
               type="button"
               onClick={() => void refetchResources()}
+              aria-label="Refresh resources"
               className="rounded p-1 text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
             >
-              <RefreshCw size={12} />
+              <RefreshCw {...iconProps('xs')} />
             </button>
           </div>
         </div>
@@ -1639,7 +1641,7 @@ function PipelineDetailPanel({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-            <GitBranch size={16} />
+            <GitBranch {...iconProps('sm')} />
           </div>
           <h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
             {pipeline.name}
@@ -1664,7 +1666,7 @@ function PipelineDetailPanel({
             onClick={onDelete}
             disabled={isDeleting}
           >
-            <Trash2 size={12} />
+            <Trash2 {...iconProps('xs')} />
             {isDeleting ? "Deleting..." : "Delete"}
           </Button>
           <Button
@@ -1673,7 +1675,7 @@ function PipelineDetailPanel({
             type="button"
             onClick={onOpenLogs}
           >
-            <Terminal size={12} />
+            <Terminal {...iconProps('xs')} />
             Logs
           </Button>
           <Button
@@ -1682,7 +1684,7 @@ function PipelineDetailPanel({
             type="button"
             onClick={onExecuteClick}
           >
-            <Rocket size={12} />
+            <Rocket {...iconProps('xs')} />
             Execute
           </Button>
         </div>
@@ -1916,7 +1918,7 @@ export function CicdListPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t("sidebar.cicdList", "CI/CD List") }]}
-        icon={<List size={16} />}
+        icon={<List {...iconProps('sm')} />}
         tone="primary"
         title={t("cicdListPage.title", "CI/CD List")}
         subtitle={t("cicdListPage.description", "CI/CD Pipeline List")}
@@ -1928,7 +1930,7 @@ export function CicdListPage() {
               onClick={() => navigate("/cicd/developer-deploy")}
               type="button"
             >
-              <Plus size={15} />
+              <Plus {...iconProps('sm')} />
               {t("cicd.addPhase", "Add Phase")}
             </Button>
             <Button
@@ -1937,7 +1939,7 @@ export function CicdListPage() {
               onClick={() => navigate("/cicd/templates")}
               type="button"
             >
-              <Plus size={15} />
+              <Plus {...iconProps('sm')} />
               {t("cicd.newPipeline", "New Pipeline")}
             </Button>
           </div>

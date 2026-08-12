@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, History, GitCompare, RotateCcw, AlertTriangle, Terminal } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitCompare, History, RotateCcw, Terminal, TriangleAlert } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useStacks, useStackHistory, useRollbackStack, useStackVersionDiff } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
@@ -126,7 +127,7 @@ export function StackHistoryPage() {
               setExpandedId((prev) => (prev === row.original.id ? null : row.original.id))
             }}
           >
-            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            {isExpanded ? <ChevronUp {...iconProps('xs')} /> : <ChevronDown {...iconProps('xs')} />}
           </Button>
         )
       },
@@ -185,7 +186,7 @@ export function StackHistoryPage() {
                 }}
                 type="button"
               >
-                <Terminal size={13} />
+                <Terminal {...iconProps('xs')} />
                 {t('stackHistoryPage.actions.log', 'Log')}
               </Button>
               {!isCurrent && (
@@ -198,7 +199,7 @@ export function StackHistoryPage() {
                 }}
                 type="button"
               >
-                <RotateCcw size={13} />
+                <RotateCcw {...iconProps('xs')} />
                 {t('stackHistoryPage.actions.rollback', 'Rollback')}
               </Button>
             )}
@@ -214,13 +215,13 @@ export function StackHistoryPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.stackHistory', 'Stack History') }]}
-        icon={<History size={16} />}
+        icon={<History {...iconProps('sm')} />}
         tone="primary"
         title={t('stackHistoryPage.title', 'Stack History')}
         subtitle={t('stackHistoryPage.description', 'Stack change history and version management')}
         actions={
           <Button variant="primary" size="md" onClick={() => setCompareOpen(true)}>
-            <GitCompare size={15} />
+            <GitCompare {...iconProps('sm')} />
             {t('stackHistoryPage.actions.compareVersions', 'Compare Versions')}
           </Button>
         }
@@ -402,7 +403,7 @@ export function StackHistoryPage() {
          <div className="flex flex-col gap-4">
            <div className="flex items-start gap-3">
              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
-               <AlertTriangle size={20} />
+               <TriangleAlert {...iconProps('md')} />
              </div>
              <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
                {t('stackHistoryPage.rollback.description', 'Rollback this stack to the selected version. Current configuration will change and this action cannot be undone.')}

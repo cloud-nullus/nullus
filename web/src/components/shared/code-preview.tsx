@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Copy, Check } from 'lucide-react'
+import { Check, Copy } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { cn } from '../../lib/utils'
 
 type Language = 'yaml' | 'json' | 'bash' | 'typescript'
@@ -66,7 +67,7 @@ export function CodePreview({ code, language = 'yaml', title, maxHeight = '400px
             copied ? 'text-[var(--color-success)]' : 'text-[var(--color-text-secondary)]'
           )}
         >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? <Check {...iconProps('xs')} /> : <Copy {...iconProps('xs')} />}
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>

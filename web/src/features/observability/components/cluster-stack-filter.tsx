@@ -13,10 +13,10 @@ const statusDot = (status: string) => (
     className={cn(
       'inline-block h-2 w-2 shrink-0 rounded-full',
       status === 'running' || status === 'connected' || status === 'completed' || status === 'success'
-        ? 'bg-emerald-400'
+        ? 'bg-[var(--color-success)]'
         : status === 'warning' || status === 'pending'
-          ? 'bg-amber-400'
-          : 'bg-red-400'
+          ? 'bg-[var(--color-warning)]'
+          : 'bg-[var(--color-error)]'
     )}
   />
 )
@@ -131,7 +131,7 @@ export const ClusterStackFilter = ({
         <button
           type="button"
           onClick={onClear}
-          className="mb-[9px] text-xs text-[var(--color-text-secondary)] hover:text-red-400"
+          className="mb-[9px] text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-error)]"
         >
           {t('clusterStackFilter.clear', 'Clear')}
         </button>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ClipboardList, ExternalLink, GitBranch, Plus } from "lucide-react";
+import { ClipboardList, ExternalLink, GitBranch, Plus } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
@@ -293,7 +294,7 @@ export function StackInfoTab({
                 "Copy gateway port-forward command",
               )}
             >
-              <ClipboardList size={13} />
+              <ClipboardList {...iconProps('xs')} />
               {gatewayCopyState === "copied"
                 ? "Copied"
                 : gatewayCopyState === "failed"
@@ -318,7 +319,7 @@ export function StackInfoTab({
                     )
               }
             >
-              <ClipboardList size={13} />
+              <ClipboardList {...iconProps('xs')} />
               {hostsCopyState === "copied"
                 ? "Copied"
                 : hostsCopyState === "failed"
@@ -331,7 +332,7 @@ export function StackInfoTab({
               type="button"
               onClick={onAddTools}
             >
-              <Plus size={13} /> Add Tools
+              <Plus {...iconProps('xs')} /> Add Tools
             </Button>
             <RetryStackButton
               stackId={stack.id}
@@ -431,7 +432,7 @@ export function StackInfoTab({
                 <span className="text-[10px] text-[var(--color-text-secondary)]">
                   {tool.version}
                 </span>
-                <ExternalLink size={12} />
+                <ExternalLink {...iconProps('xs')} />
               </a>
             ))}
           </div>
@@ -710,7 +711,7 @@ export function StackInfoTab({
 
       <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <GitBranch size={14} className="text-[var(--color-primary)]" />
+          <GitBranch {...iconProps('sm')} className="text-[var(--color-primary)]" />
           <div className="text-[14px] font-bold text-[var(--color-text-primary)]">
             Pipeline Topology
           </div>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { cn } from '../../lib/utils'
 
 interface LanguageSwitcherProps {
@@ -59,7 +60,7 @@ export function LanguageSwitcher({
       >
         <span>{currentOption.flag}</span>
         <span>{currentOption.shortLabel}</span>
-        <ChevronDown size={14} color="var(--color-text-secondary)" />
+        <ChevronDown {...iconProps('sm')} color="var(--color-text-secondary)" />
       </button>
 
       {open && (

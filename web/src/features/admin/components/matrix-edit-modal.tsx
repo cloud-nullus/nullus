@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Trash2, Plus } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { Modal } from '../../../components/ui/modal'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -417,7 +418,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
               {t('stackVersionsAdmin.modal.tools', 'Tools')}
             </span>
             <Button size="sm" variant="outline" onClick={addRow} type="button">
-              <Plus size={12} />
+              <Plus {...iconProps('xs')} />
               {t('stackVersionsAdmin.modal.addTool', 'Add tool')}
             </Button>
           </div>
@@ -486,7 +487,7 @@ export function MatrixEditModal({ open, onClose, mode, initial, onSaved }: Matri
                   className="self-end rounded border border-[var(--color-border-default)] p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-error)] disabled:opacity-40"
                   aria-label={t('stackVersionsAdmin.modal.removeTool', 'Remove tool')}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 {...iconProps('sm')} />
                 </button>
               </div>
             ))}

@@ -4,7 +4,8 @@ import type { TFunction } from 'i18next'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } from 'lucide-react'
+import { CircleAlert, CircleCheck, CircleMinus, Clock, Network, Plus, Upload } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster, useVerifyClusterDraft } from '../api/admin-api'
 import type { Cluster, ClusterStatus, ClusterType, CloudProvider } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -20,32 +21,32 @@ import { Badge } from '../../../components/ui/badge'
 
 const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string }> = {
   connected: {
-    icon: <CheckCircle size={14} />,
+    icon: <CircleCheck {...iconProps('sm')} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
     panelClassName: 'border-[color-mix(in_srgb,_var(--color-success)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
   },
   pending: {
-    icon: <Clock size={14} />,
+    icon: <Clock {...iconProps('sm')} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
     panelClassName: 'border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
   },
   error: {
-    icon: <AlertCircle size={14} />,
+    icon: <CircleAlert {...iconProps('sm')} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
     panelClassName: 'border-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
   },
   inactive: {
-    icon: <MinusCircle size={14} />,
+    icon: <CircleMinus {...iconProps('sm')} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]',
     panelClassName: 'border-[color-mix(in_srgb,_var(--color-text-muted)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]',
   },
   unreachable: {
-    icon: <AlertCircle size={14} />,
+    icon: <CircleAlert {...iconProps('sm')} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
     panelClassName: 'border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
   },
   auth_failed: {
-    icon: <AlertCircle size={14} />,
+    icon: <CircleAlert {...iconProps('sm')} />,
     badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
     panelClassName: 'border-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
   },
@@ -505,13 +506,13 @@ export function ClusterPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.clusterManagement', 'Cluster Management') }]}
-        icon={<Network size={16} />}
+        icon={<Network {...iconProps('sm')} />}
         tone="info"
         title={t('sidebar.clusterManagement', 'Cluster Management')}
         subtitle={t('clusterPage.description', 'Register and manage Kubernetes clusters.')}
         actions={
           <Button variant="primary" size="md" onClick={openCreateModal} type="button">
-            <Plus size={15} />
+            <Plus {...iconProps('sm')} />
             {t('clusterPage.actions.registerCluster', 'Register Cluster')}
           </Button>
         }
@@ -770,7 +771,7 @@ export function ClusterPage() {
                  onClick={() => fileInputRef.current?.click()}
                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)]"
                >
-                 <Upload size={14} />
+                 <Upload {...iconProps('sm')} />
                  {t('clusterPage.form.chooseFile', 'Choose File')}
                </button>
                {fileInputRef.current?.files?.[0] && (

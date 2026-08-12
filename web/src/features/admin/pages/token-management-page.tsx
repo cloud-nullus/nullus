@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { KeyRound } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from 'react-i18next'
 import {
   useApproveTokenSource,
@@ -87,7 +88,7 @@ export function TokenManagementPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.admin', 'Admin') }, { label: 'OpenBao Token Management' }]}
-        icon={<KeyRound size={16} />}
+        icon={<KeyRound {...iconProps('sm')} />}
         tone="accent"
         title="OpenBao Token Management"
         subtitle={t('tokenManagement.description', 'Check token status, rotate manually, and manage approvals, pauses, and lookups.')}

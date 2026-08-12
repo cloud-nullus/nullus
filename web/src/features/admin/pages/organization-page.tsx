@@ -3,6 +3,7 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -284,7 +285,7 @@ export function OrganizationPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.organization', 'Organization') }]}
-        icon={<Settings size={16} />}
+        icon={<Settings {...iconProps('sm')} />}
         tone="accent"
         title={t('sidebar.organization', 'Organization')}
         subtitle={t('organizationPage.description', 'Manage organization settings, access scope, and members in one place.')}
@@ -298,7 +299,7 @@ export function OrganizationPage() {
               setNewOrgModal(true)
             }}
           >
-            <Plus size={15} />
+            <Plus {...iconProps('sm')} />
             {t('organizationPage.actions.newOrganization', 'New Organization')}
           </Button>
         }
@@ -433,7 +434,7 @@ export function OrganizationPage() {
                         onClick={() => navigate('/admin/users')}
                         type="button"
                       >
-                        <Plus size={13} />
+                        <Plus {...iconProps('xs')} />
                         {t('organizationPage.actions.addUser', 'Add User')}
                       </Button>
                       <Button
@@ -445,7 +446,7 @@ export function OrganizationPage() {
                         }}
                         type="button"
                       >
-                        <Plus size={13} />
+                        <Plus {...iconProps('xs')} />
                         {t('organizationPage.actions.inviteMember', 'Invite Member')}
                       </Button>
                     </div>
@@ -501,7 +502,7 @@ export function OrganizationPage() {
                                   onClick={() => setRemoveMemberId(member.id)}
                                   type="button"
                                 >
-                                  <Trash2 size={13} />
+                                  <Trash2 {...iconProps('xs')} />
                                   {t('organizationPage.actions.remove', 'Remove')}
                                 </Button>
                               )}
@@ -547,7 +548,7 @@ export function OrganizationPage() {
               disabled={!isInviteValid || isInviteSubmitting}
               type="button"
             >
-              <Mail size={13} />
+              <Mail {...iconProps('xs')} />
               {t('organizationPage.actions.sendInvite', 'Send Invite')}
             </Button>
           </>
@@ -603,7 +604,7 @@ export function OrganizationPage() {
               onClick={handleNewOrgSubmit(handleCreateOrg)}
               disabled={!isNewOrgValid || isNewOrgSubmitting}
             >
-              <Plus size={13} />
+              <Plus {...iconProps('xs')} />
               {t('organizationPage.actions.createOrganization', 'Create Organization')}
             </Button>
           </>

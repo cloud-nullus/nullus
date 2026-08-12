@@ -1,7 +1,8 @@
 import React from "react"
+import { IconTile } from '../../../components/ui/icon-tile'
 import type { ToolHealthStatus } from "../api/observability-api"
-import { CheckCircle, AlertCircle, XCircle } from "lucide-react"
-import { cn } from "../../../lib/utils"
+import { CircleAlert, CircleCheck, CircleX } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 
 // ─── Shared chart style helpers ───────────────────────────────────────────────
 export const CHART_STYLE = {
@@ -25,9 +26,9 @@ export const CHART_LEGEND_PROPS = {
 } as const
 
 export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string; label: string }> = {
-  running: { icon: <CheckCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', label: 'Running' },
-  warning: { icon: <AlertCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', label: 'Warning' },
-  error: { icon: <XCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]', label: 'Error' },
+  running: { icon: <CircleCheck {...iconProps('xs')} />, cls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', label: 'Running' },
+  warning: { icon: <CircleAlert {...iconProps('xs')} />, cls: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', label: 'Warning' },
+  error: { icon: <CircleX {...iconProps('xs')} />, cls: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]', label: 'Error' },
 }
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────
@@ -41,11 +42,11 @@ export function ChartPanel({ title, children }: { title: string; children: React
 }
 
 // ─── KPI card ────────────────────────────────────────────────────────────────
-export function KpiCard({ label, value, icon, color, iconCls, bar }: { label: string; value: string; icon: React.ReactNode; color: string; iconCls: string; bar: number }) {
+export function KpiCard({ label, value, icon, color, token, bar }: { label: string; value: string; icon: React.ReactNode; color: string; token: string; bar: number }) {
   return (
     <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]">
       <div className="mb-2.5 flex items-center gap-2.5">
-        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', iconCls)}>{icon}</div>
+        <IconTile token={token}>{icon}</IconTile>
         <span className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</span>
       </div>
       <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">{value}</div>

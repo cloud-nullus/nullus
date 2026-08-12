@@ -6,24 +6,8 @@
 // 정의하고, 두 화면 요소가 같은 트리를 읽는다.
 
 import { type ReactNode } from 'react'
-import {
-  Boxes,
-  BookOpen,
-  List,
-  History,
-  Shield,
-  GitBranch,
-  BarChart3,
-  Bell,
-  BellOff,
-  Settings,
-  Users,
-  Network,
-  AlertTriangle,
-  Database,
-  KeyRound,
-  Route,
-} from 'lucide-react'
+import { Bell, BellOff, BookOpen, Boxes, ChartColumn, Database, GitBranch, History, KeyRound, List, Network, Route, Settings, Shield, TriangleAlert, Users } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import type { Role } from '../../types'
 
 export interface NavItem {
@@ -46,51 +30,51 @@ export const navGroups: NavGroup[] = [
   {
     key: 'devsecops',
     label: 'sidebar.devsecopsStack',
-    icon: <Boxes size={16} />,
+    icon: <Boxes {...iconProps('sm')} />,
     roles: ['admin', 'devops'],
     items: [
-      { key: 'stackTemplate', label: 'sidebar.stackTemplate', path: '/stack/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackList', label: 'sidebar.stackList', path: '/stack/list', icon: <List size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackHistory', label: 'sidebar.stackHistory', path: '/stack/history', icon: <History size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Shield size={16} />, roles: ['admin', 'devops'] },
-      { key: 'stackVersionsAdmin', label: 'sidebar.stackVersionsAdmin', path: '/admin/stack-versions', icon: <Shield size={16} />, roles: ['admin'] },
-      { key: 'stackOssResourceDefault', label: 'sidebar.stackOssResourceDefault', path: '/stack/oss-resource-default', icon: <Database size={16} />, roles: ['admin', 'devops'] },
+      { key: 'stackTemplate', label: 'sidebar.stackTemplate', path: '/stack/templates', icon: <BookOpen {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'stackList', label: 'sidebar.stackList', path: '/stack/list', icon: <List {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'stackHistory', label: 'sidebar.stackHistory', path: '/stack/history', icon: <History {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Shield {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'stackVersionsAdmin', label: 'sidebar.stackVersionsAdmin', path: '/admin/stack-versions', icon: <Shield {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'stackOssResourceDefault', label: 'sidebar.stackOssResourceDefault', path: '/stack/oss-resource-default', icon: <Database {...iconProps('sm')} />, roles: ['admin', 'devops'] },
     ],
   },
   {
     key: 'cicd',
     label: 'sidebar.cicd',
-    icon: <GitBranch size={16} />,
+    icon: <GitBranch {...iconProps('sm')} />,
     roles: ['admin', 'devops', 'developer'],
     items: [
-      { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <BookOpen size={16} />, roles: ['admin', 'devops'] },
-      { key: 'cicdGoldenPath', label: 'sidebar.cicdGoldenPath', path: '/cicd/golden-paths', icon: <Route size={16} />, roles: ['admin', 'devops'] },
-      { key: 'cicdList', label: 'sidebar.cicdList', path: '/cicd/list', icon: <List size={16} />, roles: ['admin', 'devops', 'developer'] },
-      { key: 'cicdHistory', label: 'sidebar.cicdHistory', path: '/cicd/history', icon: <History size={16} />, roles: ['admin', 'devops', 'developer'] },
+      { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <BookOpen {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'cicdGoldenPath', label: 'sidebar.cicdGoldenPath', path: '/cicd/golden-paths', icon: <Route {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'cicdList', label: 'sidebar.cicdList', path: '/cicd/list', icon: <List {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
+      { key: 'cicdHistory', label: 'sidebar.cicdHistory', path: '/cicd/history', icon: <History {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
     ],
   },
   {
     key: 'observability',
     label: 'sidebar.observability',
-    icon: <BarChart3 size={16} />,
+    icon: <ChartColumn {...iconProps('sm')} />,
     roles: ['admin', 'devops', 'developer'],
     items: [
-      { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <BarChart3 size={16} />, roles: ['admin', 'devops', 'developer'] },
-      { key: 'alertRules', label: 'sidebar.alertRules', path: '/observability/alerts', icon: <Bell size={16} />, roles: ['admin', 'devops'] },
-      { key: 'alertHistory', label: 'sidebar.alertHistory', path: '/observability/alert-history', icon: <BellOff size={16} />, roles: ['admin', 'devops', 'developer'] },
+      { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <ChartColumn {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
+      { key: 'alertRules', label: 'sidebar.alertRules', path: '/observability/alerts', icon: <Bell {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'alertHistory', label: 'sidebar.alertHistory', path: '/observability/alert-history', icon: <BellOff {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
     ],
   },
   {
     key: 'admin',
     label: 'sidebar.admin',
-    icon: <Settings size={16} />,
+    icon: <Settings {...iconProps('sm')} />,
     roles: ['admin'],
     items: [
-      { key: 'organization', label: 'sidebar.organization', path: '/admin/organization', icon: <Settings size={16} />, roles: ['admin'] },
-      { key: 'userManagement', label: 'sidebar.userManagement', path: '/admin/users', icon: <Users size={16} />, roles: ['admin'] },
-      { key: 'clusterManagement', label: 'sidebar.clusterManagement', path: '/admin/clusters', icon: <Network size={16} />, roles: ['admin'] },
-      { key: 'knownIssues', label: 'sidebar.knownIssues', path: '/admin/known-issues', icon: <AlertTriangle size={16} />, roles: ['admin'] },
-      { key: 'tokenManagement', label: 'sidebar.tokenManagement', path: '/admin/token-management', icon: <KeyRound size={16} />, roles: ['admin'] },
+      { key: 'organization', label: 'sidebar.organization', path: '/admin/organization', icon: <Settings {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'userManagement', label: 'sidebar.userManagement', path: '/admin/users', icon: <Users {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'clusterManagement', label: 'sidebar.clusterManagement', path: '/admin/clusters', icon: <Network {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'knownIssues', label: 'sidebar.knownIssues', path: '/admin/known-issues', icon: <TriangleAlert {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'tokenManagement', label: 'sidebar.tokenManagement', path: '/admin/token-management', icon: <KeyRound {...iconProps('sm')} />, roles: ['admin'] },
     ],
   },
 ]

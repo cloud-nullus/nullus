@@ -4,7 +4,8 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { CodePreview } from "../../../components/shared/code-preview";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -582,7 +583,7 @@ export function DeveloperDeployPage() {
             { label: t("developerDeployPage.title", "Pipeline Setup") },
           ]
         }
-        icon={<Rocket size={16} />}
+        icon={<Rocket {...iconProps('sm')} />}
         tone="primary"
         title={t("developerDeployPage.title", "Pipeline Setup")}
         subtitle={
@@ -633,7 +634,7 @@ export function DeveloperDeployPage() {
             </button>
             {index < 5 && (
               <ChevronRight
-                size={14}
+                {...iconProps('sm')}
                 className="shrink-0 text-[var(--color-text-secondary)]"
               />
             )}
@@ -1005,7 +1006,7 @@ export function DeveloperDeployPage() {
                             aria-label="Reload Deploy YAML files"
                             title="Reload Deploy YAML files"
                           >
-                            <RefreshCw size={14} />
+                            <RefreshCw {...iconProps('sm')} />
                           </Button>
                         </div>
                       ) : (
@@ -1030,7 +1031,7 @@ export function DeveloperDeployPage() {
                             aria-label="Reload Deploy YAML files"
                             title="Reload Deploy YAML files"
                           >
-                            <RefreshCw size={14} />
+                            <RefreshCw {...iconProps('sm')} />
                           </Button>
                         </div>
                       )}
@@ -1289,9 +1290,10 @@ export function DeveloperDeployPage() {
                             <button
                               type="button"
                               onClick={() => remove(index)}
+                              aria-label={t('developerDeployPage.removeItem', 'Remove')}
                               className="shrink-0 cursor-pointer border-none bg-none p-1 text-[var(--color-error)]"
                             >
-                              <Trash2 size={14} />
+                              <Trash2 {...iconProps('sm')} />
                             </button>
                           </div>
                           {errors.envVars?.[index]?.key?.message && (
@@ -1308,7 +1310,7 @@ export function DeveloperDeployPage() {
                         className="mt-1 self-start"
                         type="button"
                       >
-                        <Plus size={13} />
+                        <Plus {...iconProps('xs')} />
                         {t(
                           "developerDeployPage.actions.addVariable",
                           "Add Variable",
@@ -1388,7 +1390,7 @@ export function DeveloperDeployPage() {
                             return onSubmit({ ...data, gitUrl });
                           })}
                         >
-                          <Rocket size={14} />
+                          <Rocket {...iconProps('sm')} />
                           {t("developerDeployPage.actions.execute", "Execute")}
                         </Button>
                       </div>

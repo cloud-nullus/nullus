@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
-import { CheckCircle } from 'lucide-react'
+import { CircleCheck } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { cn } from '../../lib/utils'
 
 interface StepItem {
@@ -50,7 +51,7 @@ export function StepWizard({
                       : 'text-[var(--color-text-secondary)]'
                   )}
                 >
-                  {isCompleted ? <CheckCircle size={15} /> : step.icon ?? index + 1}
+                  {isCompleted ? <CircleCheck {...iconProps('sm')} /> : step.icon ?? index + 1}
                 </span>
                 <span
                   className={cn(
