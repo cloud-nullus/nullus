@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CircleCheck, CircleX, FolderOpen, Pencil, Plus, RefreshCw, Shield, Trash2, TriangleAlert } from 'lucide-react'
+import { CircleCheck, CircleX, FolderOpen, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { PageHeader } from '../../../components/layout/page-header'
@@ -402,7 +402,7 @@ export function StackVersionsAdminPage() {
           { label: t('stackVersionsAdmin.breadcrumb.devsecops', 'DevSecOps Stack') },
           { label: t('stackVersionsAdmin.breadcrumb.stackVersions', 'Stack Version Management') },
         ]}
-        icon={<Shield {...iconProps('sm')} />}
+        icon={<ShieldCheck {...iconProps('sm')} />}
         tone="info"
         title={t('stackVersionsAdmin.title', 'Stack Version Management')}
         subtitle={t(

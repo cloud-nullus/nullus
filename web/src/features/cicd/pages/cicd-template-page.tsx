@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { BookOpen, Pencil, Plus, Trash2, User } from 'lucide-react';
+import { FileCode2, Pencil, Plus, Trash2, User } from 'lucide-react';
 import { iconProps } from '../../../components/ui/icon'
 import {
   useCicdTemplates,
@@ -363,7 +363,7 @@ export function CicdTemplatePage() {
             { label: t("cicdTemplatePage.breadcrumb.current", "CI/CD Template") },
           ]
         }
-        icon={<BookOpen {...iconProps('sm')} />}
+        icon={<FileCode2 {...iconProps('sm')} />}
         tone="primary"
         title={t("cicdTemplatePage.title", "CI/CD Template")}
         subtitle={

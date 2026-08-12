@@ -6,7 +6,7 @@
 // 정의하고, 두 화면 요소가 같은 트리를 읽는다.
 
 import { type ReactNode } from 'react'
-import { Bell, BellOff, BookOpen, Boxes, ChartColumn, Database, GitBranch, History, KeyRound, List, Network, Route, Settings, Shield, TriangleAlert, Users } from 'lucide-react'
+import { Bell, BookOpen, Boxes, Bug, Building2, ChartColumn, Database, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Settings, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
 import { iconProps } from '../ui/icon'
 import type { Role } from '../../types'
 
@@ -36,8 +36,8 @@ export const navGroups: NavGroup[] = [
       { key: 'stackTemplate', label: 'sidebar.stackTemplate', path: '/stack/templates', icon: <BookOpen {...iconProps('sm')} />, roles: ['admin', 'devops'] },
       { key: 'stackList', label: 'sidebar.stackList', path: '/stack/list', icon: <List {...iconProps('sm')} />, roles: ['admin', 'devops'] },
       { key: 'stackHistory', label: 'sidebar.stackHistory', path: '/stack/history', icon: <History {...iconProps('sm')} />, roles: ['admin', 'devops'] },
-      { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Shield {...iconProps('sm')} />, roles: ['admin', 'devops'] },
-      { key: 'stackVersionsAdmin', label: 'sidebar.stackVersionsAdmin', path: '/admin/stack-versions', icon: <Shield {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'stackVersion', label: 'sidebar.stackVersion', path: '/stack/version', icon: <Tag {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'stackVersionsAdmin', label: 'sidebar.stackVersionsAdmin', path: '/admin/stack-versions', icon: <ShieldCheck {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'stackOssResourceDefault', label: 'sidebar.stackOssResourceDefault', path: '/stack/oss-resource-default', icon: <Database {...iconProps('sm')} />, roles: ['admin', 'devops'] },
     ],
   },
@@ -47,9 +47,9 @@ export const navGroups: NavGroup[] = [
     icon: <GitBranch {...iconProps('sm')} />,
     roles: ['admin', 'devops', 'developer'],
     items: [
-      { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <BookOpen {...iconProps('sm')} />, roles: ['admin', 'devops'] },
+      { key: 'cicdTemplate', label: 'sidebar.cicdTemplate', path: '/cicd/templates', icon: <FileCode2 {...iconProps('sm')} />, roles: ['admin', 'devops'] },
       { key: 'cicdGoldenPath', label: 'sidebar.cicdGoldenPath', path: '/cicd/golden-paths', icon: <Route {...iconProps('sm')} />, roles: ['admin', 'devops'] },
-      { key: 'cicdList', label: 'sidebar.cicdList', path: '/cicd/list', icon: <List {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
+      { key: 'cicdList', label: 'sidebar.cicdList', path: '/cicd/list', icon: <Workflow {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
       { key: 'cicdHistory', label: 'sidebar.cicdHistory', path: '/cicd/history', icon: <History {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
     ],
   },
@@ -59,9 +59,9 @@ export const navGroups: NavGroup[] = [
     icon: <ChartColumn {...iconProps('sm')} />,
     roles: ['admin', 'devops', 'developer'],
     items: [
-      { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <ChartColumn {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
+      { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <LayoutDashboard {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
       { key: 'alertRules', label: 'sidebar.alertRules', path: '/observability/alerts', icon: <Bell {...iconProps('sm')} />, roles: ['admin', 'devops'] },
-      { key: 'alertHistory', label: 'sidebar.alertHistory', path: '/observability/alert-history', icon: <BellOff {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
+      { key: 'alertHistory', label: 'sidebar.alertHistory', path: '/observability/alert-history', icon: <History {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
     ],
   },
   {
@@ -70,10 +70,10 @@ export const navGroups: NavGroup[] = [
     icon: <Settings {...iconProps('sm')} />,
     roles: ['admin'],
     items: [
-      { key: 'organization', label: 'sidebar.organization', path: '/admin/organization', icon: <Settings {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'organization', label: 'sidebar.organization', path: '/admin/organization', icon: <Building2 {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'userManagement', label: 'sidebar.userManagement', path: '/admin/users', icon: <Users {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'clusterManagement', label: 'sidebar.clusterManagement', path: '/admin/clusters', icon: <Network {...iconProps('sm')} />, roles: ['admin'] },
-      { key: 'knownIssues', label: 'sidebar.knownIssues', path: '/admin/known-issues', icon: <TriangleAlert {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'knownIssues', label: 'sidebar.knownIssues', path: '/admin/known-issues', icon: <Bug {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'tokenManagement', label: 'sidebar.tokenManagement', path: '/admin/token-management', icon: <KeyRound {...iconProps('sm')} />, roles: ['admin'] },
     ],
   },

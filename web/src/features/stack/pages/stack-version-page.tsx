@@ -1,4 +1,4 @@
-import { Layers, ShieldCheck } from 'lucide-react'
+import { ShieldCheck, Tag } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
@@ -61,7 +61,7 @@ export function StackVersionPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.stackVersion', 'Stack Version') }]}
-        icon={<Layers {...iconProps('sm')} />}
+        icon={<Tag {...iconProps('sm')} />}
         tone="success"
         title={t('stackVersionPage.title', 'Stack Version')}
         subtitle={t('stackVersionPage.description', 'Manage compatibility based on validated version combinations.')}

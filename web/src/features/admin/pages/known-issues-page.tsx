@@ -1,4 +1,4 @@
-import { TriangleAlert } from 'lucide-react'
+import { Bug } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useKnownIssues } from '../api/admin-api'
@@ -36,7 +36,7 @@ export function KnownIssuesPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('knownIssuesPage.breadcrumb.current', 'Known Issues') }]}
-        icon={<TriangleAlert {...iconProps('sm')} />}
+        icon={<Bug {...iconProps('sm')} />}
         tone="warning"
         title={t('knownIssuesPage.title', 'Known Issues')}
         subtitle={t('knownIssuesPage.description', 'Check current version limitations and available workarounds.')}

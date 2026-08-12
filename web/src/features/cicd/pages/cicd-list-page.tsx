@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Activity, Box, Boxes, ChartColumn, CircleCheck, CircleDashed, CircleX, ExternalLink, Eye, EyeOff, FileCode2, GitBranch, Globe, History, Info, List, LoaderCircle, Package, Plus, RefreshCw, Rocket, Server, Terminal, Trash2, X } from 'lucide-react';
+import { Activity, Box, Boxes, ChartColumn, CircleCheck, CircleDashed, CircleX, ExternalLink, Eye, EyeOff, FileCode2, GitBranch, Globe, History, Info, LoaderCircle, Package, Plus, RefreshCw, Rocket, Server, Terminal, Trash2, Workflow, X } from 'lucide-react';
 import { iconProps } from '../../../components/ui/icon'
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -1918,7 +1918,7 @@ export function CicdListPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t("sidebar.cicdList", "CI/CD List") }]}
-        icon={<List {...iconProps('sm')} />}
+        icon={<Workflow {...iconProps('sm')} />}
         tone="primary"
         title={t("cicdListPage.title", "CI/CD List")}
         subtitle={t("cicdListPage.description", "CI/CD Pipeline List")}

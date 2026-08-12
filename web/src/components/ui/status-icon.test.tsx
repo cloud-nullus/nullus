@@ -171,13 +171,15 @@ describe('상태 글리프 독점', () => {
   // 같아졌으므로 화면상 어긋남은 없다 — 위험은 앞으로의 드리프트다. 목록을
   // 못 늘리게 막아 두고, 옮길 때마다 줄인다.
   //
-  // 이 중 일부는 상태가 아니어서 영영 남는다: nav-model 의 TriangleAlert 는
-  // "Known Issues" 메뉴 아이콘이고, confirm-dialog 의 것은 파괴적 동작 경고다.
+  // 이 중 일부는 상태가 아니어서 영영 남는다 — confirm-dialog 의 TriangleAlert 는
+  // 파괴적 동작 경고지 어떤 대상의 상태가 아니다.
+  //
+  // nav-model 은 목록에서 빠졌다. "알려진 이슈" 메뉴가 TriangleAlert 를 쓰고
+  // 있었는데, 경고 상태와 같은 모양이라 상태로 오해됐다 — Bug 로 바꾸면서
+  // 예외가 필요 없어졌다.
   const GRANDFATHERED = new Set([
-    'src/components/layout/nav-model.tsx',
     'src/components/shared/confirm-dialog.tsx',
     'src/components/shared/step-wizard.tsx',
-    'src/features/admin/pages/known-issues-page.tsx',
     'src/features/admin/pages/stack-versions-page.tsx',
     'src/features/admin/pages/user-management-page.tsx',
     'src/features/cicd/components/delete-pipeline-dialog.tsx',

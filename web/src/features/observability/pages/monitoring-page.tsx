@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ChartColumn, GitBranch, Server } from 'lucide-react'
+import { ChartColumn, GitBranch, LayoutDashboard, Server } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../../stores/auth-store'
@@ -102,7 +102,7 @@ export function MonitoringPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('observability.monitoring', 'Monitoring Dashboard') }]}
-        icon={<ChartColumn {...iconProps('sm')} />}
+        icon={<LayoutDashboard {...iconProps('sm')} />}
         tone="info"
         title={t('observability.monitoring', 'Monitoring Dashboard')}
         subtitle={t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
