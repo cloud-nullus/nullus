@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
@@ -72,6 +72,7 @@ export function AlertRulesPage() {
   const { data: editingRule, isFetching: isFetchingEditingRule } = useAlertRule(editingRuleId, ruleModalOpen && editingRuleId !== null)
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -400,10 +401,17 @@ export function AlertRulesPage() {
             </div>
           </div>
 
-          <NativeSelect label={t('alertRulesPage.form.channel', 'Channel')} {...register('channel')}>
-            <option value="slack">Slack</option>
-            <option value="email">Email</option>
-          </NativeSelect>
+          {/* register() 로는 못 쓴다 — NativeSelect 의 값은 React 상태라 reset() 이 안 닿는다. */}
+          <Controller
+            name="channel"
+            control={control}
+            render={({ field }) => (
+              <NativeSelect label={t('alertRulesPage.form.channel', 'Channel')} {...field}>
+                <option value="slack">Slack</option>
+                <option value="email">Email</option>
+              </NativeSelect>
+            )}
+          />
 
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">{t('alertRulesPage.form.active', 'Active')}</span>

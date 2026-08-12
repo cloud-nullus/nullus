@@ -303,13 +303,12 @@ function ExecuteModal({
                 label="Deploy Cluster"
                 value={clusterId}
                 onChange={(e) => setClusterId(e.target.value)}
-                className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
+                className="w-full"
               >
                 {clusterOptions.map((c) => (
                   <option
                     key={c.id}
                     value={c.id}
-                    className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]"
                   >
                     {c.name}
                   </option>
@@ -1934,41 +1933,34 @@ export function CicdListPage() {
                 <NativeSelect
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
                 >
                   <option
                     value=""
-                    className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]"
                   >
                     {t("cicdListPage.filters.allStatus", "All Status")}
                   </option>
                   <option
                     value="success"
-                    className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]"
                   >
                     {t("cicd.status.success", "Success")}
                   </option>
                   <option
                     value="running"
-                    className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]"
                   >
                     {t("cicd.status.running", "Running")}
                   </option>
                   <option
                     value="pending"
-                    className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]"
                   >
                     {t("cicd.status.pending", "Pending")}
                   </option>
                   <option
                     value="failed"
-                    className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]"
                   >
                     {t("cicd.status.failed", "Failed")}
                   </option>
                   <option
                     value="cancelled"
-                    className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]"
                   >
                     {t("cicd.status.cancelled", "Cancelled")}
                   </option>

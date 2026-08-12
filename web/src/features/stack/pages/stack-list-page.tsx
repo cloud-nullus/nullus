@@ -638,25 +638,23 @@ export function StackListPage() {
 					<NativeSelect
 						value={statusFilter}
 						onChange={(e) => setStatusFilter(e.target.value)}
-						className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 					>
-						<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allStatus", "All Status")}</option>
-						<option value="healthy" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.healthy", "Running")}</option>
-						<option value="completed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.completed", "Completed")}</option>
-						<option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.running", "Running")}</option>
-						<option value="terminating" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.terminating", "Terminating")}</option>
-						<option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.pending", "Pending")}</option>
-						<option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.failed", "Failed")}</option>
-						<option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.status.cancelled", "Cancelled")}</option>
+						<option value="">{t("stackList.filters.allStatus", "All Status")}</option>
+						<option value="healthy">{t("stackList.status.healthy", "Running")}</option>
+						<option value="completed">{t("stackList.status.completed", "Completed")}</option>
+						<option value="running">{t("stackList.status.running", "Running")}</option>
+						<option value="terminating">{t("stackList.status.terminating", "Terminating")}</option>
+						<option value="pending">{t("stackList.status.pending", "Pending")}</option>
+						<option value="failed">{t("stackList.status.failed", "Failed")}</option>
+						<option value="cancelled">{t("stackList.status.cancelled", "Cancelled")}</option>
 					</NativeSelect>
 					<NativeSelect
 						value={clusterFilter}
 						onChange={(e) => setClusterFilter(e.target.value)}
-						className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 					>
-						<option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t("stackList.filters.allClusters", "All Clusters")}</option>
+						<option value="">{t("stackList.filters.allClusters", "All Clusters")}</option>
 						{clusterOptions.map((clusterName) => (
-							<option key={clusterName} value={clusterName} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
+							<option key={clusterName} value={clusterName}>
 								{clusterName}
 							</option>
 						))}

@@ -140,13 +140,13 @@ export function CicdHistoryPage() {
         emptyMessage={t('cicdHistoryPage.empty', 'No deployment history.')}
         toolbar={
           <>
-            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
-              <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicdHistoryPage.filters.allStatus', 'All Status')}</option>
-              <option value="success" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.success', 'Success')}</option>
-              <option value="running" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.running', 'Running')}</option>
-              <option value="pending" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.pending', 'Pending')}</option>
-              <option value="failed" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.failed', 'Failed')}</option>
-              <option value="cancelled" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('cicd.status.cancelled', 'Cancelled')}</option>
+            <NativeSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} >
+              <option value="">{t('cicdHistoryPage.filters.allStatus', 'All Status')}</option>
+              <option value="success">{t('cicd.status.success', 'Success')}</option>
+              <option value="running">{t('cicd.status.running', 'Running')}</option>
+              <option value="pending">{t('cicd.status.pending', 'Pending')}</option>
+              <option value="failed">{t('cicd.status.failed', 'Failed')}</option>
+              <option value="cancelled">{t('cicd.status.cancelled', 'Cancelled')}</option>
             </NativeSelect>
             <SearchInput
               wrapperClassName="ml-auto w-[220px]"

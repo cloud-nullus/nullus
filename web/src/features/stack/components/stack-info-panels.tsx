@@ -74,10 +74,9 @@ export function ToolOption({
 				<div className="ml-6 flex flex-wrap items-center gap-3">
 					<NativeSelect
 						defaultValue={version}
-						className="cursor-pointer rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]"
 					>
 						{(versions ?? [version]).map((v) => (
-							<option key={v} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{v}</option>
+							<option key={v}>{v}</option>
 						))}
 					</NativeSelect>
 					<div className="flex items-center gap-1.5">

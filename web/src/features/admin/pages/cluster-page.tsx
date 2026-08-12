@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } from 'lucide-react'
@@ -87,8 +87,6 @@ function normalizeClusterStatus(rawStatus: string | undefined | null, fallback: 
   if (normalized === 'auth_failed' || normalized === 'auth-failed' || normalized === 'authfailed') return 'auth_failed'
   return fallback
 }
-
-const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 
 const clusterSchema = z
   .object({
@@ -263,6 +261,7 @@ export function ClusterPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setValue,
@@ -733,13 +732,20 @@ export function ClusterPage() {
             </div>
           </div>
           {errors.types && <span className="text-xs text-[var(--color-error)]">{errors.types.message}</span>}
-          <NativeSelect label={t('clusterPage.form.cloudProvider', 'Cloud Provider')} {...register('cloudProvider')} className={selectClassName}>
-            {CLOUD_PROVIDER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </NativeSelect>
+          {/* register() 로는 못 쓴다 — NativeSelect 의 값은 React 상태라 reset() 이 안 닿는다. */}
+          <Controller
+            name="cloudProvider"
+            control={control}
+            render={({ field }) => (
+              <NativeSelect label={t('clusterPage.form.cloudProvider', 'Cloud Provider')} {...field}>
+                {CLOUD_PROVIDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            )}
+          />
           <Input
             label={t('clusterPage.form.endpoint', 'Endpoint')}
             placeholder={t('clusterPage.form.endpointPlaceholder', 'e.g. https://prod.k8s.nullus.io')}

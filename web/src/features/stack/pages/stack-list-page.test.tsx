@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders } from "../../../__tests__/test-utils";
+import {
+  getSelectByValue,
+  renderWithProviders,
+  selectOption,
+} from "../../../__tests__/test-utils";
 import { fireEvent, screen } from "@testing-library/react";
 import { StackListPage } from "./stack-list-page";
 
@@ -274,9 +278,7 @@ describe("StackListPage", () => {
     renderWithProviders(<StackListPage />);
 
     expect(screen.getAllByText("Cluster").length).toBeGreaterThan(0);
-    fireEvent.change(screen.getByDisplayValue("All Clusters"), {
-      target: { value: "prod-cluster" },
-    });
+    selectOption(getSelectByValue("All Clusters"), "prod-cluster");
 
     expect(screen.getAllByText("DevSecOps Core").length).toBeGreaterThan(0);
     expect(screen.queryByText("Another Stack")).toBeNull();

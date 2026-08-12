@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { screen, fireEvent, act, within } from '@testing-library/react'
-import { renderWithProviders } from '../../../__tests__/test-utils'
+import { optionLabels, renderWithProviders, selectOptionByValue } from '../../../__tests__/test-utils'
 import { StackInstallPage, findReusablePendingStackId, hasDuplicateStackNameInCluster } from './stack-install-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import { useAuthStore } from '../../../stores/auth-store'
@@ -222,8 +222,8 @@ afterEach(() => {
 
 describe('StackInstallPage', () => {
   const fillRequiredSelectionsForConfigTabs = () => {
-    fireEvent.change(screen.getByLabelText('Target Cluster'), { target: { value: 'cluster-1' } })
-    fireEvent.change(screen.getByLabelText('Namespace'), { target: { value: '__new__' } })
+    selectOptionByValue(screen.getByLabelText('Target Cluster'), 'cluster-1')
+    selectOptionByValue(screen.getByLabelText('Namespace'), '__new__')
     fireEvent.change(screen.getByPlaceholderText('my-namespace'), { target: { value: 'qa-namespace' } })
   }
 
@@ -234,9 +234,10 @@ describe('StackInstallPage', () => {
 
   it('shows all clusters from Cluster Management in target cluster select', () => {
     renderWithProviders(<StackInstallPage />)
-    const select = screen.getByLabelText('Target Cluster')
-    expect(within(select).getByRole('option', { name: 'kind-nullus-platform (Connected)' })).toBeInTheDocument()
-    expect(within(select).getByRole('option', { name: 'kind-nullus-develop (Pending)' })).toBeInTheDocument()
+    // 목록은 포털 Menu 라 열어야 DOM 에 나온다.
+    const options = optionLabels(screen.getByLabelText('Target Cluster'))
+    expect(options).toContain('kind-nullus-platform (Connected)')
+    expect(options).toContain('kind-nullus-develop (Pending)')
   })
 
   it('prefers the platform cluster by default', () => {
@@ -290,7 +291,7 @@ describe('StackInstallPage', () => {
 
     renderWithProviders(<StackInstallPage />)
 
-    fireEvent.change(screen.getByLabelText('Target Cluster'), { target: { value: 'cluster-1' } })
+    selectOptionByValue(screen.getByLabelText('Target Cluster'), 'cluster-1')
     fireEvent.change(screen.getByLabelText('Stack Name'), { target: { value: 'duplicate-stack' } })
 
     expect(await screen.findByText('A stack with this name already exists in the selected cluster')).toBeInTheDocument()
@@ -335,7 +336,8 @@ describe('StackInstallPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
     expect(screen.getByText('OSS별 Resource Planning')).toBeTruthy()
     expect(screen.getByText('Sizing Profile')).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'Local' })).toBeTruthy()
+    const profileContainer = screen.getByText('Sizing Profile').parentElement as HTMLElement
+    expect(optionLabels(within(profileContainer).getByRole('combobox'))).toContain('Local')
   })
 
   it('saves the current applied resource planning to the selected built-in profile', () => {
@@ -360,12 +362,15 @@ describe('StackInstallPage', () => {
 
     const profileContainer = screen.getByText('Sizing Profile').parentElement
     expect(profileContainer).toBeTruthy()
-    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
-    fireEvent.change(profileSelect, { target: { value: 'local' } })
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox')
+    selectOptionByValue(profileSelect, 'local')
 
     const row = screen.getByText('Artifacts > Package Registry').closest('.rounded-lg')
     expect(row).toBeTruthy()
-    const inputs = Array.from((row as HTMLElement).querySelectorAll('input')) as HTMLInputElement[]
+    // 셀렉트가 값 전달용 숨은 input 을 함께 렌더하므로 눈에 보이는 것만 센다.
+    const inputs = Array.from(
+      (row as HTMLElement).querySelectorAll<HTMLInputElement>('input:not(.MuiSelect-nativeInput)'),
+    )
     fireEvent.change(inputs[3], { target: { value: '9.75' } })
 
     fireEvent.click(screen.getByTitle('Save current values to selected profile'))
@@ -409,12 +414,15 @@ describe('StackInstallPage', () => {
 
     const profileContainer = screen.getByText('Sizing Profile').parentElement
     expect(profileContainer).toBeTruthy()
-    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
-    fireEvent.change(profileSelect, { target: { value: 'org:profile-1' } })
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox')
+    selectOptionByValue(profileSelect, 'org:profile-1')
 
     const row = screen.getByText('Artifacts > Package Registry').closest('.rounded-lg')
     expect(row).toBeTruthy()
-    const inputs = Array.from((row as HTMLElement).querySelectorAll('input')) as HTMLInputElement[]
+    // 셀렉트가 값 전달용 숨은 input 을 함께 렌더하므로 눈에 보이는 것만 센다.
+    const inputs = Array.from(
+      (row as HTMLElement).querySelectorAll<HTMLInputElement>('input:not(.MuiSelect-nativeInput)'),
+    )
     fireEvent.change(inputs[3], { target: { value: '4.25' } })
     fireEvent.click(screen.getByTitle('Save current values to selected profile'))
 
@@ -464,8 +472,8 @@ describe('StackInstallPage', () => {
 
     const profileContainer = screen.getByText('Sizing Profile').parentElement
     expect(profileContainer).toBeTruthy()
-    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
-    fireEvent.change(profileSelect, { target: { value: 'local' } })
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox')
+    selectOptionByValue(profileSelect, 'local')
     fireEvent.click(screen.getByTitle('Save current values to selected profile'))
 
     expect(mockCreateOrgResourceProfileMutate).toHaveBeenCalledTimes(1)
@@ -798,15 +806,15 @@ describe('StackInstallPage', () => {
 
     const profileContainer = screen.getByText('Sizing Profile').parentElement
     expect(profileContainer).toBeTruthy()
-    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox') as HTMLSelectElement
+    const profileSelect = within(profileContainer as HTMLElement).getByRole('combobox')
 
-    fireEvent.change(profileSelect, { target: { value: 'local' } })
+    selectOptionByValue(profileSelect, 'local')
     const localCpuReq = parseCpuReq()
 
-    fireEvent.change(profileSelect, { target: { value: 'startup' } })
+    selectOptionByValue(profileSelect, 'startup')
     const startupCpuReq = parseCpuReq()
 
-    fireEvent.change(profileSelect, { target: { value: 'enterprise' } })
+    selectOptionByValue(profileSelect, 'enterprise')
     const enterpriseCpuReq = parseCpuReq()
 
     expect(localCpuReq).toBeGreaterThan(0)

@@ -90,6 +90,37 @@ export const nullusTheme: Theme = createTheme({
       styleOverrides: { root: { borderRadius: rounded.sm } },
     },
     MuiIconButton: { defaultProps: { size: 'small' } },
+
+    // 셀렉트의 펼침 목록. NativeSelect 가 네이티브 팝업을 버리고 포털 Menu 로
+    // 오면서 목록 행이 MUI 기본(48px)이 됐다 — 그대로 두면 30px 컨트롤 아래에
+    // 두 배 높이의 목록이 열려 화면 리듬이 어긋난다.
+    MuiMenuItem: {
+      styleOverrides: {
+        root: {
+          minHeight: 'unset',
+          paddingBlock: 'var(--space-xs)',
+          paddingInline: 'var(--space-sm)',
+          fontSize: typography['body-sm'].fontSize,
+        },
+      },
+    },
+    // <optgroup> 이 옮겨 오는 자리. 표 헤더와 같은 overline 규격을 쓴다.
+    MuiListSubheader: {
+      styleOverrides: {
+        root: {
+          // 목록이 길면 헤더가 상단에 붙는다(sticky). 배경이 비면 항목이 비쳐
+          // 겹쳐 보이므로 Menu 면과 같은 색을 준다.
+          backgroundColor: 'var(--color-surface-raised)',
+          color: 'var(--color-text-muted)',
+          lineHeight: 2,
+          paddingInline: 'var(--space-sm)',
+          textTransform: 'uppercase',
+          letterSpacing: typography.overline.letterSpacing,
+          fontSize: typography.overline.fontSize,
+          fontWeight: typography.overline.fontWeight,
+        },
+      },
+    },
     MuiChip: {
       defaultProps: { size: 'small' },
       styleOverrides: { root: { borderRadius: rounded.full, fontWeight: 600 } },

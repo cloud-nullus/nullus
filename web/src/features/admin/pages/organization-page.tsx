@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Mail, Plus, Settings, Trash2 } from 'lucide-react'
@@ -75,7 +75,6 @@ const inviteSchema = z.object({
 type OrgFormData = z.infer<typeof orgSchema>
 type InviteFormData = z.infer<typeof inviteSchema>
 
-const selectClassName = 'rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]'
 const tdClassName = 'border-t border-[var(--color-border-default)] px-3.5 py-3 text-sm text-[var(--color-text-primary)]'
 
 function getMemberStatusLabel(t: TFunction, status: MemberStatus) {
@@ -145,6 +144,7 @@ export function OrganizationPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isValid, isSubmitting },
@@ -161,6 +161,7 @@ export function OrganizationPage() {
 
   const {
     register: registerInvite,
+    control: controlInvite,
     handleSubmit: handleInviteSubmit,
     reset: resetInvite,
     formState: { errors: inviteErrors, isValid: isInviteValid, isSubmitting: isInviteSubmitting },
@@ -361,11 +362,18 @@ export function OrganizationPage() {
                     <Input label={t('organizationPage.form.organizationName', 'Organization Name')} {...register('name')} />
                     <Input label={t('organizationPage.form.slug', 'Slug')} {...register('slug')} />
                     <Input label={t('organizationPage.form.domain', 'Domain')} {...register('domain')} />
-                    <NativeSelect label={t('organizationPage.form.status', 'Status')} {...register('status')} className={selectClassName}>
-                        <option value="active">{t('organizationPage.orgStatus.active', 'Active')}</option>
-                        <option value="inactive">{t('organizationPage.orgStatus.inactive', 'Inactive')}</option>
-                        <option value="suspended">{t('organizationPage.orgStatus.suspended', 'Suspended')}</option>
-                      </NativeSelect>
+                    {/* register() 로는 못 쓴다 — NativeSelect 의 값은 React 상태라 reset() 이 안 닿는다. */}
+                    <Controller
+                      name="status"
+                      control={control}
+                      render={({ field }) => (
+                        <NativeSelect label={t('organizationPage.form.status', 'Status')} {...field}>
+                          <option value="active">{t('organizationPage.orgStatus.active', 'Active')}</option>
+                          <option value="inactive">{t('organizationPage.orgStatus.inactive', 'Inactive')}</option>
+                          <option value="suspended">{t('organizationPage.orgStatus.suspended', 'Suspended')}</option>
+                        </NativeSelect>
+                      )}
+                    />
                   </div>
                   {(errors.name || errors.slug || errors.domain) && (
                     <div className="mt-2 text-xs text-[var(--color-error)]">
@@ -552,11 +560,17 @@ export function OrganizationPage() {
           <Input label={t('organizationPage.form.email', 'Email')} type="email" placeholder="member@example.com" {...registerInvite('email')} />
           {inviteErrors.email && <span className="text-xs text-[var(--color-error)]">{inviteErrors.email.message}</span>}
 
-          <NativeSelect label={t('organizationPage.form.role', 'Role')} {...registerInvite('role')} className={selectClassName}>
-              <option value="developer">{t('organizationPage.role.developer', 'Developer')}</option>
-              <option value="devops">{t('organizationPage.role.devops', 'DevOps')}</option>
-              <option value="admin">{t('organizationPage.role.admin', 'Admin')}</option>
-            </NativeSelect>
+          <Controller
+            name="role"
+            control={controlInvite}
+            render={({ field }) => (
+              <NativeSelect label={t('organizationPage.form.role', 'Role')} {...field}>
+                <option value="developer">{t('organizationPage.role.developer', 'Developer')}</option>
+                <option value="devops">{t('organizationPage.role.devops', 'DevOps')}</option>
+                <option value="admin">{t('organizationPage.role.admin', 'Admin')}</option>
+              </NativeSelect>
+            )}
+          />
           {inviteErrors.role && <span className="text-xs text-[var(--color-error)]">{inviteErrors.role.message}</span>}
         </div>
       </Modal>

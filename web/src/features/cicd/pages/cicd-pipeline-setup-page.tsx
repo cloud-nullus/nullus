@@ -214,9 +214,6 @@ const DEPLOY_PRESET_DESCRIPTION_I18N: Record<string, { ko: string; en: string }>
   },
 }
 
-const appTypeOptionClassName =
-  'w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]'
-
 const getPipelineYaml = (input: {
   pipelineName: string
   appType: AppType
@@ -406,10 +403,10 @@ export function CicdPipelineSetupPage() {
                 navigate(`/cicd/create?template=${nextTemplate.id}`)
               }
             }}
-            className={appTypeOptionClassName}
+            className="w-full"
           >
             {templates.map((item) => (
-              <option key={item.id} value={item.id} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
+              <option key={item.id} value={item.id}>
                 {item.name}
               </option>
             ))}
@@ -435,10 +432,10 @@ export function CicdPipelineSetupPage() {
                     label={t('cicdPipelineSetupPage.form.deployCluster', 'Deploy Cluster')}
                     value={clusterId}
                     onChange={(event) => setClusterId(event.target.value)}
-                    className={appTypeOptionClassName}
+                    className="w-full"
                   >
                     {clusterOptions.map((cluster) => (
-                      <option key={cluster.id} value={cluster.id} className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
+                      <option key={cluster.id} value={cluster.id}>
                         {cluster.name}
                       </option>
                     ))}

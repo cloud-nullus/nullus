@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { GitBranch, Link2, Mail, Pencil, Plus, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
@@ -258,6 +258,7 @@ export function UserManagementPage() {
   }
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setValue,
@@ -270,6 +271,7 @@ export function UserManagementPage() {
   })
   const {
     register: registerEdit,
+    control: controlEdit,
     handleSubmit: handleEditSubmit,
     reset: resetEdit,
     formState: { errors: editErrors, isValid: isEditValid, isSubmitting: isEditSubmitting },
@@ -419,7 +421,7 @@ export function UserManagementPage() {
           <NativeSelect
             value={selectedRole}
             onChange={(event) => handleRoleChange(row.original.id, event.target.value as MemberRole)}
-            className={cn('cursor-pointer rounded-[5px] border-0 px-2.5 py-1 text-xs font-semibold', role.className)}
+            className={cn('text-xs font-semibold [&_fieldset]:border-0', role.className)}
           >
             <option value="admin">Admin</option>
             <option value="devops">DevOps</option>
@@ -784,11 +786,18 @@ export function UserManagementPage() {
               {errors.name && <span className="text-xs text-[var(--color-error)]">{errors.name.message}</span>}
             </>
           )}
-          <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...register('role')} className={selectClassName}>
-              <option value="developer">Developer</option>
-              <option value="devops">DevOps</option>
-              <option value="admin">Admin</option>
-            </NativeSelect>
+          {/* register() 로는 못 쓴다 — NativeSelect 의 값은 React 상태라 reset()/setValue() 가 안 닿는다. */}
+          <Controller
+            name="role"
+            control={control}
+            render={({ field }) => (
+              <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...field}>
+                <option value="developer">Developer</option>
+                <option value="devops">DevOps</option>
+                <option value="admin">Admin</option>
+              </NativeSelect>
+            )}
+          />
           {errors.role && <span className="text-xs text-[var(--color-error)]">{errors.role.message}</span>}
         </div>
       </Modal>
@@ -895,11 +904,17 @@ export function UserManagementPage() {
           {editErrors.name && <span className="text-xs text-[var(--color-error)]">{editErrors.name.message}</span>}
           <Input label={t('userManagementPage.form.email', 'Email')} type="email" placeholder="user@example.com" {...registerEdit('email')} />
           {editErrors.email && <span className="text-xs text-[var(--color-error)]">{editErrors.email.message}</span>}
-          <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...registerEdit('role')} className={selectClassName}>
-            <option value="developer">Developer</option>
-            <option value="devops">DevOps</option>
-            <option value="admin">Admin</option>
-          </NativeSelect>
+          <Controller
+            name="role"
+            control={controlEdit}
+            render={({ field }) => (
+              <NativeSelect label={t('userManagementPage.form.role', 'Role')} {...field}>
+                <option value="developer">Developer</option>
+                <option value="devops">DevOps</option>
+                <option value="admin">Admin</option>
+              </NativeSelect>
+            )}
+          />
           {editErrors.role && <span className="text-xs text-[var(--color-error)]">{editErrors.role.message}</span>}
         </div>
       </Modal>

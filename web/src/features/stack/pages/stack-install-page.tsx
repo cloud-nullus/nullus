@@ -394,8 +394,9 @@ export function StackInstallPage() {
   const initializedTemplateRef = useRef<string | null>(null)
   const initializedDefaultStackNameRef = useRef(false)
   const stackNameInputRef = useRef<HTMLInputElement | null>(null)
-  const clusterSelectRef = useRef<HTMLSelectElement | null>(null)
-  const namespaceSelectRef = useRef<HTMLSelectElement | null>(null)
+  // NativeSelect 의 ref 는 보이는 combobox(div)에 걸린다 — 더 이상 <select> 가 아니다.
+  const clusterSelectRef = useRef<HTMLDivElement | null>(null)
+  const namespaceSelectRef = useRef<HTMLDivElement | null>(null)
   const newNamespaceInputRef = useRef<HTMLInputElement | null>(null)
   const {
     control,
@@ -2433,7 +2434,6 @@ export function StackInstallPage() {
                   setSelectedClusterId(e.target.value)
                   setCluster(e.target.value)
                 }}
-                className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
               >
                 <option value="">{t('stackInstall.form.selectClusterPlaceholder', 'Select a cluster')}</option>
                 {(clusters ?? []).map((c) => (
@@ -2460,7 +2460,6 @@ export function StackInstallPage() {
                       setNamespace(e.target.value)
                     }
                   }}
-                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
                 >
                   <option value="">기본 (nullus)</option>
                   {(namespaces ?? []).map((ns) => (
@@ -3064,7 +3063,7 @@ export function StackInstallPage() {
                       <NativeSelect
                         value={selectedOrgProfileId ? `org:${selectedOrgProfileId}` : planningProfile}
                         onChange={(e) => handleSizingSelectChange(e.target.value)}
-                        className="min-w-[160px] rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs"
+                        className="min-w-[160px]"
                       >
                         {PLANNING_PROFILES.map((profile) => (
                           <option key={profile} value={profile}>
@@ -3210,7 +3209,7 @@ export function StackInstallPage() {
                                 <NativeSelect
                                   value={row.units.memory}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'memory', e.target.value as ResourceUnit)}
-                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs"
+                                  className="max-w-[90px]"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
@@ -3221,7 +3220,7 @@ export function StackInstallPage() {
                                 <NativeSelect
                                   value={row.units.storage}
                                   onChange={(e) => handlePlanningUnitChange(row.rowKey, 'storage', e.target.value as ResourceUnit)}
-                                  className="max-w-[90px] rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-1 text-xs"
+                                  className="max-w-[90px]"
                                 >
                                   <option value="Gi">Gi</option>
                                   <option value="Mi">Mi</option>
@@ -3530,7 +3529,6 @@ export function StackInstallPage() {
                           <NativeSelect
                             value={item.target.providerOrEngine}
                             onChange={(e) => updateStorageTarget(targetKey, { providerOrEngine: e.target.value })}
-                            className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[7px] text-xs"
                           >
                             {providerOptions.map((provider) => (
                               <option key={provider.id} value={provider.id}>
@@ -3561,7 +3559,6 @@ export function StackInstallPage() {
                                     size: e.target.value as StorageTargetConfig['size'],
                                   })
                                 }
-                                className="rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[7px] text-xs"
                               >
                                 {STORAGE_SIZE_OPTIONS.map((size) => (
                                   <option key={size} value={size}>

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderWithProviders } from '../../../__tests__/test-utils'
-import { fireEvent, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import {
+  getSelects,
+  optionLabels,
+  renderWithProviders,
+  selectOption,
+  selectedLabel,
+} from '../../../__tests__/test-utils'
 import { StackHistoryPage } from './stack-history-page'
 
 const mockNavigate = vi.fn()
@@ -123,7 +129,8 @@ describe('StackHistoryPage', () => {
 
     expect(mockUseStackHistory).toHaveBeenCalledWith('stack-new')
     expect(mockNavigate).not.toHaveBeenCalledWith('/stack/history/stack-1', { replace: true })
-    expect(screen.getByRole('option', { name: 'stack-new' })).toBeInTheDocument()
+    // 목록에 없는 라우트 id 라도 셀렉트가 그 값을 그대로 보여 준다.
+    expect(selectedLabel(getSelects()[0])).toBe('stack-new')
   })
 
   it('filters stack selector by cluster filter', () => {
@@ -148,10 +155,10 @@ describe('StackHistoryPage', () => {
 
     renderWithProviders(<StackHistoryPage />)
 
-    fireEvent.change(screen.getByDisplayValue(/All Clusters|전체 클러스터/), { target: { value: 'prod' } })
+    // [0] 스택 셀렉터, [1] 표 도구줄의 클러스터 필터
+    selectOption(getSelects()[1], 'prod')
 
-    expect(screen.getByRole('option', { name: 'Platform Stack' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Dev Stack' })).toBeNull()
+    expect(optionLabels(getSelects()[0])).toEqual(['Platform Stack'])
   })
 
 })

@@ -747,12 +747,13 @@ export function DeveloperDeployPage() {
         >
           <div className="flex flex-col gap-6">
             <div>
-              <label htmlFor="deploy-stack" className={labelStyleClass}>
+              <label id="deploy-stack-label" htmlFor="deploy-stack" className={labelStyleClass}>
                 {t("developerDeployPage.form.stackRequired", "Stack 선택")}
                 <RequiredDot />
               </label>
               <NativeSelect
                 id="deploy-stack"
+                aria-labelledby="deploy-stack-label"
                 value={selectedStackId}
                 onChange={(event) => {
                   setSelectedStackId(event.target.value);
@@ -1051,6 +1052,7 @@ export function DeveloperDeployPage() {
                     <div className="flex flex-col gap-3">
                       <div>
                         <label
+                          id="deploy-cluster-label"
                           htmlFor="deploy-cluster"
                           className={labelStyleClass}
                         >
@@ -1059,6 +1061,7 @@ export function DeveloperDeployPage() {
                         </label>
                         <NativeSelect
                           id="deploy-cluster"
+                          aria-labelledby="deploy-cluster-label"
                           value={form.clusterId}
                           onChange={(event) => {
                             setField("clusterId", event.target.value);
@@ -1081,6 +1084,7 @@ export function DeveloperDeployPage() {
                       </div>
                       <div>
                         <label
+                          id="deploy-namespace-label"
                           htmlFor="deploy-namespace"
                           className={labelStyleClass}
                         >
@@ -1089,6 +1093,7 @@ export function DeveloperDeployPage() {
                         </label>
                         <NativeSelect
                           id="deploy-namespace"
+                          aria-labelledby="deploy-namespace-label"
                           value={
                             createNewNamespace
                               ? "__new__"

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { fireEvent, render, screen, renderHook } from '@testing-library/react'
+import { optionLabels, selectOption } from '../../../__tests__/test-utils'
 import type { Cluster, Stack } from '../../../types'
 import { ClusterStackFilter, useClusterStackFilterState } from './cluster-stack-filter'
 
@@ -93,8 +94,9 @@ describe('ClusterStackFilter', () => {
 
     expect(screen.queryByLabelText('Cluster')).not.toBeNull()
     expect(screen.queryByLabelText('Stack')).not.toBeNull()
-    expect(screen.queryByRole('option', { name: 'prod-cluster' })).not.toBeNull()
-    expect(screen.queryByRole('option', { name: 'stack-a (running)' })).not.toBeNull()
+    // 목록은 포털 Menu 라 열어야 DOM 에 나온다.
+    expect(optionLabels(screen.getByLabelText('Cluster'))).toContain('prod-cluster')
+    expect(optionLabels(screen.getByLabelText('Stack'))).toContain('stack-a (running)')
   })
 
   it('calls handlers when selecting cluster/stack and clear action', () => {
@@ -104,7 +106,9 @@ describe('ClusterStackFilter', () => {
 
     render(
       <ClusterStackFilter
-        selectedClusterId="c1"
+        // 고르기 전 상태에서 시작한다. 이미 선택된 항목을 다시 누르면
+        // 값이 그대로라 onChange 가 안 난다 — native <select> 와 같다.
+        selectedClusterId=""
         selectedStackId="s1"
         onClusterChange={onClusterChange}
         onStackChange={onStackChange}
@@ -116,12 +120,12 @@ describe('ClusterStackFilter', () => {
       />
     )
 
-    fireEvent.change(screen.getByLabelText('Cluster'), { target: { value: 'c1' } })
-    fireEvent.change(screen.getByLabelText('Stack'), { target: { value: 's1' } })
+    selectOption(screen.getByLabelText('Cluster'), 'prod-cluster')
+    selectOption(screen.getByLabelText('Stack'), '— Select Stack —')
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
 
     expect(onClusterChange).toHaveBeenCalledWith('c1')
-    expect(onStackChange).toHaveBeenCalledWith('s1')
+    expect(onStackChange).toHaveBeenCalledWith('')
     expect(onClear).toHaveBeenCalled()
   })
 })

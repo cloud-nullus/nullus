@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { renderWithProviders } from "../../../__tests__/test-utils";
+import {
+  optionLabels,
+  renderWithProviders,
+  selectOptionByValue,
+  selectedLabel,
+} from "../../../__tests__/test-utils";
 import { DeveloperDeployPage } from "./developer-deploy-page";
 
 const mockNavigate = vi.fn();
@@ -75,9 +80,7 @@ function completeRequiredFields() {
   fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
     target: { value: "demo-app" },
   });
-  fireEvent.change(screen.getByLabelText("Stack 선택"), {
-    target: { value: "stack-1" },
-  });
+  selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
   fireEvent.change(screen.getByLabelText("Source Repository"), {
     target: { value: "owner/demo-app.git" },
   });
@@ -180,9 +183,13 @@ describe("DeveloperDeployPage", () => {
     renderWithProviders(<DeveloperDeployPage />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Stack 선택")).toHaveValue("stack-1");
+      expect(selectedLabel(screen.getByLabelText("Stack 선택"))).toBe(
+        "app-stack",
+      );
     });
-    expect(screen.queryByRole("option", { name: "Manual Input" })).toBeNull();
+    expect(optionLabels(screen.getByLabelText("Stack 선택"))).not.toContain(
+      "Manual Input",
+    );
     expect(screen.getByLabelText("Source Repository")).toHaveValue(
       "root/spring-sample.git",
     );
@@ -288,9 +295,7 @@ describe("DeveloperDeployPage", () => {
   it("uses the selected stacks code repository endpoint as the code URL prefix", () => {
     renderWithProviders(<DeveloperDeployPage />);
 
-    fireEvent.change(screen.getByLabelText("Stack 선택"), {
-      target: { value: "stack-1" },
-    });
+    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
     fireEvent.change(screen.getByLabelText("Source Repository"), {
       target: { value: "owner/demo-app/main/src" },
     });
@@ -338,9 +343,7 @@ describe("DeveloperDeployPage", () => {
     fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
       target: { value: "demo-app" },
     });
-    fireEvent.change(screen.getByLabelText("Stack 선택"), {
-      target: { value: "stack-1" },
-    });
+    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
     fireEvent.change(screen.getByLabelText("Source Repository"), {
       target: { value: "owner/demo-app.git" },
     });
@@ -361,9 +364,7 @@ describe("DeveloperDeployPage", () => {
     mockUseStackIntegrations.mockReturnValue({ data: { integrations: [] } });
     renderWithProviders(<DeveloperDeployPage />);
 
-    fireEvent.change(screen.getByLabelText("Stack 선택"), {
-      target: { value: "stack-1" },
-    });
+    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
 
     expect(screen.getByLabelText("Source Repository")).not.toBeNull();
   });

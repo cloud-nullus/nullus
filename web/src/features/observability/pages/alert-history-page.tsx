@@ -189,11 +189,11 @@ export function AlertHistoryPage() {
             emptyMessage={t('alertHistoryPage.empty', 'No alert history found.')}
             toolbar={
               <>
-                <NativeSelect value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)] [&>option]:bg-[var(--color-surface-base)] [&>option]:text-[var(--color-text-primary)]">
-                  <option value="" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('alertHistoryPage.filters.allSeverity', 'All Severity')}</option>
-                  <option value="critical" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.critical', 'Critical')}</option>
-                  <option value="warning" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.warning', 'Warning')}</option>
-                  <option value="info" className="bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">{t('observability.severity.info', 'Info')}</option>
+                <NativeSelect value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as AlertSeverity | '')} >
+                  <option value="">{t('alertHistoryPage.filters.allSeverity', 'All Severity')}</option>
+                  <option value="critical">{t('observability.severity.critical', 'Critical')}</option>
+                  <option value="warning">{t('observability.severity.warning', 'Warning')}</option>
+                  <option value="info">{t('observability.severity.info', 'Info')}</option>
                 </NativeSelect>
                 <div className="flex gap-1.5">
                   {[

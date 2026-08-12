@@ -239,7 +239,7 @@ export function StackHistoryPage() {
           value={stackId}
           onChange={(event) => navigate(`/stack/history/${event.target.value}`)}
           disabled={!stackId && visibleStacks.length === 0}
-          className="w-full cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
+          className="w-full"
         >
           {currentRouteMissingFromOptions && routeStackId && (
             <option value={routeStackId}>{routeStackId}</option>
@@ -289,7 +289,6 @@ export function StackHistoryPage() {
                 <NativeSelect
                   value={clusterFilter}
                   onChange={(event) => setClusterFilter(event.target.value)}
-                  className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
                 >
                   <option value="">{t('stackHistoryPage.filters.allClusters', 'All Clusters')}</option>
                   {clusterOptions.map((clusterName) => (
@@ -321,7 +320,6 @@ export function StackHistoryPage() {
               <NativeSelect
                 value={versionA}
                 onChange={(event) => setVersionA(Number(event.target.value))}
-                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
               >
                 {versionOptions.map((version) => (
                   <option key={`a-${version}`} value={version}>{`v${version}`}</option>
@@ -333,7 +331,6 @@ export function StackHistoryPage() {
               <NativeSelect
                 value={versionB}
                 onChange={(event) => setVersionB(Number(event.target.value))}
-                className="cursor-pointer rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]"
               >
                 {versionOptions.map((version) => (
                   <option key={`b-${version}`} value={version}>{`v${version}`}</option>

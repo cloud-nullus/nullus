@@ -571,6 +571,24 @@ AG Grid 이관은 시도했다가 되돌렸다 — 실제 레이아웃 측정에
 렌더하지 않아 목록 화면 7곳의 회귀 테스트 16건이 깨졌고, 그건 "정보 유실 0" 제약과
 맞바꾸는 거래였다. `@mui/x-data-grid` 도 도입하지 않는다 — 그리드는 하나다.
 
+### 셀렉트
+
+셀렉트는 `components/ui/native-select.tsx` 하나다. 이름과 달리 네이티브
+`<select>` 가 아니라 **포털 Menu 를 쓰는 MUI Select** 다. 네이티브 팝업은 OS 가
+그리므로 CSS 가 닿지 않고, 그래서 라이트/다크 어느 쪽도 따르지 않았다.
+
+호출부는 계속 `<option>` / `<optgroup>` 을 넘긴다 — 어댑터가 `MenuItem` /
+`ListSubheader` 로 옮긴다. 대신 두 가지가 달라졌다:
+
+- **폼에서는 `Controller` 로 감싼다.** react-hook-form 의 `register()` 로 붙이면
+  `reset()` / `setValue()` 가 화면에 반영되지 않는다 — 값이 React 상태라 RHF 가
+  숨은 input 의 `.value` 에 직접 대입하는 게 닿지 않는다. 폼 상태만 바뀌고 표시는
+  옛 값에 머무는, 조용히 어긋나는 실패다.
+- **테스트는 열어서 고른다.** `fireEvent.change` / `getByDisplayValue` 가 통하지
+  않는다. `__tests__/test-utils.tsx` 의 `selectOption` / `optionLabels` 를 쓴다.
+
+잃은 것은 모바일 네이티브 피커와 `<select>` 의 타이핑 점프다.
+
 ### 차트
 
 차트는 **recharts 하나**다. `chart.js` / `react-chartjs-2` 는 쓰지 않는다 (ESLint 로 막는다).
