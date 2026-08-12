@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Activity, BarChart2, Boxes, Box, CheckCircle2, CircleDashed, ExternalLink, Eye, EyeOff, FileCode2, GitBranch, Globe, History, Info, List, Package, Plus, RefreshCw, Rocket, Server, XCircle, Terminal, Trash2, Loader2, X } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
+import {
+  AppLogPanel,
+  AppUsageCharts,
+} from "../../observability/components/app-runtime-panels";
 import {
   Bar,
   BarChart,
@@ -1151,6 +1155,10 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
   ).length;
   const totalPods = podResources.length;
 
+  // 워크로드 이름은 파이프라인 이름에서 나온다(스캐폴딩이 그렇게 만든다).
+  // 이 배열로 공용 패널을 이 파이프라인의 앱만 보게 좁힌다.
+  const pipelineApps = useMemo(() => [pipeline.name], [pipeline.name]);
+
   const isLoading = isDeploymentsLoading || isResourcesLoading;
 
   if (isLoading) {
@@ -1214,6 +1222,16 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* 배포된 앱의 실시간 자원 사용과 로그. 모니터링 대시보드와 같은 패널을
+          쓰되, 이 파이프라인의 앱으로만 좁힌다 — 옆 앱의 선이 섞이면 어느 것이
+          이 앱인지 알 수 없다. */}
+      <div className="grid grid-cols-1 gap-3.5 xl:h-[544px] xl:grid-cols-2">
+        <div className="grid min-h-0 grid-cols-1 gap-3.5 xl:grid-rows-2">
+          <AppUsageCharts stackId={pipeline.stackId} apps={pipelineApps} linkedHint />
+        </div>
+        <AppLogPanel stackId={pipeline.stackId} apps={pipelineApps} linkedHint />
       </div>
 
       {/* live k8s resources */}

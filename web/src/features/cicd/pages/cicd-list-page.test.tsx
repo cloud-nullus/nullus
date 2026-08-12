@@ -5,6 +5,8 @@ import { CicdListPage } from "./cicd-list-page";
 
 const mockNavigate = vi.fn();
 const mockUsePipelines = vi.fn();
+const mockUseStackWorkloads = vi.fn();
+const mockUseStackWorkloadLogs = vi.fn();
 const mockUseDeletePipeline = vi.fn();
 const mockUseDeployPipeline = vi.fn();
 const mockUseTemplateById = vi.fn();
@@ -26,6 +28,8 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("../../stack/api/stack-api", () => ({
   useStacks: () => ({ data: { items: [{ id: "stack-1", name: "prod-stack" }], total: 1 } }),
+  useStackWorkloads: (...args: unknown[]) => mockUseStackWorkloads(...args),
+  useStackWorkloadLogs: (...args: unknown[]) => mockUseStackWorkloadLogs(...args),
 }));
 
 vi.mock("../api/cicd-api", () => ({
@@ -90,6 +94,8 @@ describe("CicdListPage", () => {
       data: undefined,
       isLoading: false,
     });
+    mockUseStackWorkloads.mockReturnValue({ data: undefined, dataUpdatedAt: 0 });
+    mockUseStackWorkloadLogs.mockReturnValue({ data: undefined, isLoading: false });
   });
 
   it("renders loading state safely", () => {
@@ -142,6 +148,66 @@ describe("CicdListPage", () => {
     renderWithProviders(<CicdListPage />);
 
     expect(screen.getAllByText("prod-stack").length).toBeGreaterThan(0);
+  });
+
+  // 모니터링 탭은 실행 이력 KPI 만 보여줬다. 그런데 GitOps 로 도는 배포는
+  // pipeline_deployments 에 남지 않아 그 KPI 가 전부 0 이고, 앱이 실제로 어떤
+  // 상태인지 알 방법이 없었다. 모니터링 대시보드와 같은 실시간 패널을 붙인다.
+  describe("모니터링 탭", () => {
+    function openMonitoring() {
+      renderWithProviders(<CicdListPage />);
+      fireEvent.click(screen.getByRole("button", { name: /Monitoring/i }));
+    }
+
+    it("실시간 자원 그래프와 로그를 보여준다", () => {
+      openMonitoring();
+
+      expect(screen.getByText("App CPU (Live)")).toBeTruthy();
+      expect(screen.getByText("App Memory (Live)")).toBeTruthy();
+      expect(screen.getByText("Application Logs")).toBeTruthy();
+    });
+
+    // 파이프라인의 스택으로 조회해야 한다. 스택을 모르면 워크로드를 못 찾는다.
+    it("파이프라인의 스택으로 조회한다", () => {
+      openMonitoring();
+
+      const workloadCalls = mockUseStackWorkloads.mock.calls;
+      const logCalls = mockUseStackWorkloadLogs.mock.calls;
+      expect(workloadCalls[workloadCalls.length - 1][0]).toBe("stack-1");
+      expect(logCalls[logCalls.length - 1][0]).toBe("stack-1");
+    });
+
+    // 한 스택에 앱이 여럿이면 옆 앱의 로그가 섞인다. 이 파이프라인 것만 남긴다.
+    it("이 파이프라인의 로그만 남긴다", () => {
+      mockUseStackWorkloadLogs.mockReturnValue({
+        isLoading: false,
+        data: {
+          pods: ["frontend-web-aaaaaa", "other-app-bbbbbb"],
+          truncated: false,
+          lines: [
+            { pod: "frontend-web-aaaaaa", app: "frontend-web", timestamp: "2026-08-12T10:20:30.000Z", message: "mine" },
+            { pod: "other-app-bbbbbb", app: "other-app", timestamp: "2026-08-12T10:20:31.000Z", message: "not mine" },
+          ],
+        },
+      });
+
+      openMonitoring();
+
+      expect(screen.getByText("mine")).toBeTruthy();
+      expect(screen.queryByText("not mine")).toBeNull();
+    });
+
+    // 스택에 연결되지 않은 파이프라인은 조회할 대상이 없다. 그 이유를 말한다.
+    it("스택이 없으면 이유를 알려 준다", () => {
+      mockUsePipelines.mockReturnValue({
+        data: { items: [{ ...pipelines[0], stackId: "" }], total: 1 },
+        isLoading: false,
+      });
+
+      openMonitoring();
+
+      expect(screen.getAllByText(/스택에 연결되어야/).length).toBeGreaterThan(0);
+    });
   });
 
   it("deploys the selected pipeline from the list detail panel and opens logs", async () => {
