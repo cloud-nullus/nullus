@@ -330,8 +330,13 @@ jobs:
           b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
 
           REF_B64="$(b64 "$GITHUB_REF_NAME")"
-          # 이미지 태그에는 v 접두사가 없다 (git v0.3.1 -> 이미지 0.3.1).
-          TAG_B64="$(b64 "${GITHUB_REF_NAME#v}")"
+          # 이미지 태그: 태그(v*)는 semver(v 접두사 제거), 브랜치는 short commit SHA (${GITHUB_SHA:0:7})
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            IMAGE_TAG="${GITHUB_REF_NAME#v}"
+          else
+            IMAGE_TAG="${GITHUB_SHA:0:7}"
+          fi
+          TAG_B64="$(b64 "$IMAGE_TAG")"
           DB_B64="$(b64 "$NULLUS_DB_PASSWORD")"
           KEY_B64="$(b64 "$NULLUS_ENCRYPTION_KEY")"
 
