@@ -1025,6 +1025,15 @@
     "confirm": {
       "deleteTitle": "Delete Cluster",
       "deleteDescription": "Deleting this cluster may affect connected pipelines and deployment data. Continue?"
+    },
+    "capacity": {
+      "title": "Available Resources",
+      "cpu": "CPU",
+      "memory": "Memory",
+      "coreUnit": "cores",
+      "nodes": "{{ready}}/{{total}} nodes ready",
+      "freeOfTotal": "{{free}} of {{total}} {{unit}} free",
+      "hint": "Free space is allocatable capacity minus what running pods already request."
     }
   },
   "organizationPage": {

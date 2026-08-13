@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Network, Plus, Upload } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
-import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster, useVerifyClusterDraft } from '../api/admin-api'
+import { useCluster, useClusterMonitoringSummary, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster, useVerifyClusterDraft } from '../api/admin-api'
 import type { Cluster, ClusterStatus, ClusterType, CloudProvider } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
 import { Select } from '../../../components/ui/select'
@@ -192,6 +192,107 @@ function getClusterNamespaces(types: ClusterType[]) {
 
 function getClusterAuthMethods(types: ClusterType[]) {
   return Array.from(new Set(types.map((type) => CLUSTER_DETAIL_META[type].authMethod))).join(' / ')
+}
+
+// 클러스터가 실제로 내줄 수 있는 자원을 보여준다.
+//
+// 스택을 올리기 전에 알아야 하는 것은 "노드가 몇 대인가" 가 아니라 "지금 얼마가
+// 남아 있는가" 다. allocatable(스케줄 가능한 총량)에서 이미 예약된 request 를 빼야
+// 그 답이 나오므로 둘을 함께 보여주고 남은 양을 직접 계산해 준다.
+//
+// limit 이 아니라 request 를 기준으로 삼는다 — 스케줄러가 자리를 잡을 때 보는 값이
+// request 이고, limit 합계는 오버커밋 때문에 가용량보다 큰 것이 정상이다.
+function ClusterCapacityCard({ clusterId, t }: { clusterId: string; t: TFunction }) {
+  const { data, isLoading } = useClusterMonitoringSummary(clusterId)
+
+  if (isLoading || !data) {
+    return null
+  }
+
+  const cpuTotal = data.cpu_allocatable_millicores / 1000
+  const cpuUsed = data.cpu_request_millicores / 1000
+  const memTotal = data.memory_allocatable_mib / 1024
+  const memUsed = data.memory_request_mib / 1024
+
+  const rows = [
+    {
+      key: 'cpu',
+      label: t('clusterPage.capacity.cpu', 'CPU'),
+      used: cpuUsed,
+      total: cpuTotal,
+      unit: t('clusterPage.capacity.coreUnit', 'cores'),
+      digits: 1,
+    },
+    {
+      key: 'memory',
+      label: t('clusterPage.capacity.memory', 'Memory'),
+      used: memUsed,
+      total: memTotal,
+      unit: 'GiB',
+      digits: 1,
+    },
+  ]
+
+  return (
+    <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h3 className="m-0 text-sm font-bold text-[var(--color-text-primary)]">
+          {t('clusterPage.capacity.title', 'Available Resources')}
+        </h3>
+        <span className="text-xs text-[var(--color-text-secondary)]">
+          {/* 값이 끼는 문구는 t(key, options) 2인자 형태로 부른다 — 인라인
+              기본값을 끼우면 옵션이 그 자리로 밀려 보간이 되지 않는다.
+              문구 자체는 en/ko.json 에 등록되어 있다. */}
+          {t('clusterPage.capacity.nodes', {
+            ready: data.ready_nodes,
+            total: data.total_nodes,
+          })}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {rows.map((row) => {
+          const free = Math.max(0, row.total - row.used)
+          const ratio = row.total > 0 ? Math.min(1, row.used / row.total) : 0
+          return (
+            <div key={row.key}>
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="font-medium text-[var(--color-text-primary)]">{row.label}</span>
+                <span className="font-mono text-[var(--color-text-secondary)]">
+                  {t('clusterPage.capacity.freeOfTotal', {
+                    free: free.toFixed(row.digits),
+                    total: row.total.toFixed(row.digits),
+                    unit: row.unit,
+                  })}
+                </span>
+              </div>
+              {/* 색만으로 알리지 않는다 — 숫자를 같이 둔다 (DESIGN.md §상태 표시). */}
+              <div
+                className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-muted)]"
+                role="progressbar"
+                aria-valuenow={Math.round(ratio * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={row.label}
+              >
+                <div
+                  className="h-full rounded-full bg-[var(--color-accent-alt)]"
+                  style={{ width: `${ratio * 100}%` }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="mb-0 mt-3 text-[11px] leading-[15px] text-[var(--color-text-muted)]">
+        {t(
+          'clusterPage.capacity.hint',
+          'Free space is allocatable capacity minus what running pods already request.',
+        )}
+      </p>
+    </div>
+  )
 }
 
 export function ClusterPage() {
@@ -664,13 +765,24 @@ export function ClusterPage() {
                     {t('clusterPage.organizationAccess', 'Organization Access')}
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
-                    {selectedCluster.organizationIds.map((oid) => (
-                      <span key={oid} className="rounded-md bg-[color-mix(in_srgb,_var(--color-accent-alt)_12%,_transparent)] px-2.5 py-1 text-xs font-medium text-[var(--color-accent-alt)]">
-                        {oid}
-                      </span>
-                    ))}
+                    {selectedCluster.organizationIds.map((oid) => {
+                      // 이름을 아는 경우에만 이름을 쓴다. 서버가 못 찾았으면
+                      // ID 라도 보여야 한다 — 빈 칸이면 어느 조직인지조차 모른다.
+                      const orgName = selectedCluster.organizationNames?.[oid]
+                      return (
+                        <span
+                          key={oid}
+                          title={oid}
+                          className="rounded-md bg-[color-mix(in_srgb,_var(--color-accent-alt)_12%,_transparent)] px-2.5 py-1 text-xs font-medium text-[var(--color-accent-alt)]"
+                        >
+                          {orgName ?? oid}
+                        </span>
+                      )
+                    })}
                   </div>
                 </div>
+
+                <ClusterCapacityCard clusterId={selectedCluster.id} t={t} />
                     </>
                   )
                 })()}

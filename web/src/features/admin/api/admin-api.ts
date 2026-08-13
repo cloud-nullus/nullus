@@ -112,6 +112,7 @@ const queryKeys = {
 type ClusterApiShape = Omit<Cluster, 'nodeArchitectures'> & {
   connection_status?: Cluster['status']
   org_id?: string
+  org_name?: string
   cloud_provider?: Cluster['cloudProvider']
   node_architectures?: string[]
   nodeArchitectures?: string[]
@@ -148,6 +149,9 @@ const normalizeCluster = (cluster: ClusterApiShape): Cluster => ({
   cloudProvider: cluster.cloudProvider ?? cluster.cloud_provider ?? 'on_premise',
   status: cluster.status ?? cluster.connection_status ?? 'pending',
   organizationIds: cluster.organizationIds ?? (cluster.org_id ? [cluster.org_id] : []),
+  // 서버가 org_name 을 주면 ID→이름 사전을 만들어 둔다. 없으면 화면이 ID 로 되돌아간다.
+  organizationNames:
+    cluster.org_id && cluster.org_name ? { [cluster.org_id]: cluster.org_name } : undefined,
   nodeArchitectures: normalizeNodeArchitectures(
     cluster.node_architectures ?? cluster.nodeArchitectures ?? cluster.NodeArchitectures,
   ),
