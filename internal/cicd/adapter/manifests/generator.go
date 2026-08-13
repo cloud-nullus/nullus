@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -24,6 +25,12 @@ type DeployAppRequest struct {
 	Resources ResourceSpec
 	EnvVars   map[string]string
 	Labels    map[string]string
+	// OTLPEndpoint 는 스택의 OpenTelemetry Collector 주소다 (host:port).
+	//
+	// 비어 있으면 그 스택에 수집기가 없다는 뜻이고, 그때는 관련 환경변수를
+	// 아예 넣지 않는다 — 닿지 않는 주소를 박으면 앱이 영원히 재시도하며
+	// 내보내기 실패 로그만 쌓는다.
+	OTLPEndpoint string
 }
 
 type ResourceSpec struct {
@@ -121,7 +128,7 @@ func Generate(req DeployAppRequest) (*GeneratedManifests, error) {
 								{ContainerPort: port, Name: "http"},
 							},
 							Resources: resources,
-							Env:       buildEnvVars(req.EnvVars, req.GitURL),
+							Env:       append(buildEnvVars(req.EnvVars, req.GitURL), otelEnvVars(req.OTLPEndpoint, req.AppName, req.EnvVars)...),
 						},
 					},
 				},
@@ -256,6 +263,44 @@ func buildEnvVars(env map[string]string, gitURL string) []corev1.EnvVar {
 		result = append(result, corev1.EnvVar{Name: key, Value: env[key]})
 	}
 	return result
+}
+
+// otelEnvVars 는 배포된 앱이 텔레메트리를 보낼 곳을 알려 준다.
+//
+// 수집기가 떠 있어도 앱이 주소를 모르면 아무것도 내보내지 않는다. OTel SDK 는
+// 이 환경변수들을 표준으로 읽으므로, 언어와 무관하게 계측만 되어 있으면 바로
+// 스택의 수집기로 흐른다.
+//
+// 사용자가 같은 키를 직접 지정했으면 건드리지 않는다 — 외부 수집기로 보내려는
+// 선택을 플랫폼이 덮어쓰면 안 되고, 같은 이름을 두 번 선언하면 어느 값이
+// 적용될지도 알 수 없다.
+func otelEnvVars(endpoint, appName string, userEnv map[string]string) []corev1.EnvVar {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return nil
+	}
+	// SDK 는 스킴이 있는 URL 을 기대한다. 클러스터 내부 평문 통신이므로 http 다.
+	if !strings.Contains(endpoint, "://") {
+		endpoint = "http://" + endpoint
+	}
+
+	candidates := []corev1.EnvVar{
+		{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: endpoint},
+		// 기본값은 http/protobuf 다. 수집기의 4317 은 gRPC 포트이므로 명시하지
+		// 않으면 프로토콜이 어긋나 전송이 실패한다.
+		{Name: "OTEL_EXPORTER_OTLP_PROTOCOL", Value: "grpc"},
+		// 없으면 모든 앱이 unknown_service 로 뭉쳐 어느 앱의 추적인지 알 수 없다.
+		{Name: "OTEL_SERVICE_NAME", Value: appName},
+	}
+
+	out := make([]corev1.EnvVar, 0, len(candidates))
+	for _, item := range candidates {
+		if _, userSet := userEnv[item.Name]; userSet {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func marshalYAML(obj any) (string, error) {

@@ -21,6 +21,13 @@ type StackSummary struct {
 	ContainerRegistry string `json:"container_registry"`
 	// AccessDomain 은 스택의 외부 접근 도메인이다. 비어 있을 수 있다.
 	AccessDomain string `json:"access_domain"`
+	// OTLPEndpoint 는 스택 OpenTelemetry Collector 의 클러스터 내 주소다
+	// (host:port). 수집기를 고르지 않은 스택에서는 비어 있다.
+	//
+	// 배포되는 앱에 넣어 줄 값이라 CI/CD 가 알아야 하는데, 릴리스명·차트명으로
+	// 주소를 조립하는 규칙은 Stack 컨텍스트의 것이다. 그래서 조립된 결과만
+	// 받아 온다 — 여기서 규칙을 흉내 내면 차트가 바뀔 때 조용히 어긋난다.
+	OTLPEndpoint string `json:"otlp_endpoint"`
 }
 
 // StackReader provides read-only access to Stack context data.
