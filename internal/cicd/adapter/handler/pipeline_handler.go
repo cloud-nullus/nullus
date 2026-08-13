@@ -43,6 +43,17 @@ type PipelineHandler struct {
 	// deletePipeline 은 부수 리소스까지 지우는 경로다. 선택적으로 배선되며,
 	// 없으면 삭제는 종전대로 레코드만 지운다.
 	deletePipeline *usecase.DeletePipeline
+
+	// applier 는 직접 배포(POST /deploy-app)가 매니페스트를 클러스터에
+	// 적용하는 데 쓴다. 없으면 배포가 실패한다 — 적용하지 않고 성공을
+	// 기록하는 것보다 낫다.
+	applier port.ManifestApplier
+}
+
+// WithManifestApplier 는 직접 배포의 적용 경로를 배선한다.
+func (h *PipelineHandler) WithManifestApplier(a port.ManifestApplier) *PipelineHandler {
+	h.applier = a
+	return h
 }
 
 // WithDeletePipeline 은 부수 리소스 삭제 경로를 배선한다.
@@ -954,22 +965,40 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 		slog.Warn("pipeline create failed (may already exist)", "id", pipelineID, "error", err)
 	}
 
-	// Deployment 기록 저장
+	// Deployment 기록 저장.
+	//
+	// 상태는 **실제 적용 결과**를 따른다. 예전에는 적용을 하지 않은 채
+	// success 로 저장해서, 화면에는 성공한 배포가 보이는데 클러스터에는
+	// 아무것도 없는 상태가 됐다.
 	now := time.Now()
-	completed := now.Add(3 * time.Second)
 	deploymentID := "dep_app_" + req.AppName + "_" + now.Format("20060102150405")
 	deployment := &domain.Deployment{
-		ID:          deploymentID,
-		PipelineID:  pipelineID,
-		Version:     "latest",
-		Status:      domain.DeploymentStatusSuccess,
-		StartedAt:   now,
-		CompletedAt: &completed,
-		DeployedBy:  orgID,
+		ID:         deploymentID,
+		PipelineID: pipelineID,
+		Version:    "latest",
+		Status:     domain.DeploymentStatusRunning,
+		StartedAt:  now,
+		DeployedBy: orgID,
 	}
 	if err := h.deploymentRepo.Create(ctx, deployment); err != nil {
 		slog.Error("deployment create failed", "id", deploymentID, "error", err)
 		return errorResponse(c, http.StatusInternalServerError, "DEPLOY_SAVE_FAILED", err.Error())
+	}
+
+	applyErr := h.applyDeployAppManifests(ctx, req.ClusterID, generated, deploymentID)
+	completed := time.Now()
+	deployment.CompletedAt = &completed
+	if applyErr != nil {
+		deployment.Status = domain.DeploymentStatusFailed
+		if err := h.deploymentRepo.Update(ctx, deployment); err != nil {
+			slog.Error("deployment update failed", "id", deploymentID, "error", err)
+		}
+		slog.Error("deploy-app apply failed", "id", deploymentID, "error", applyErr)
+		return errorResponse(c, http.StatusInternalServerError, "DEPLOY_APPLY_FAILED", applyErr.Error())
+	}
+	deployment.Status = domain.DeploymentStatusSuccess
+	if err := h.deploymentRepo.Update(ctx, deployment); err != nil {
+		slog.Error("deployment update failed", "id", deploymentID, "error", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
