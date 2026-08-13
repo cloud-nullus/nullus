@@ -288,24 +288,29 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			},
 		},
 		{
-			ID:     "github-argocd-v1",
-			Name:   "GitHub + Argo CD",
-			Status: "untested",
+			ID:   "github-argocd-v1",
+			Name: "GitHub + Argo CD",
+			// 검증을 마쳤다. 이 조합은 클러스터 밖(GitHub·Actions·GHCR)과 안
+			// (Argo CD·모니터링)이 갈려 있어 나머지 매트릭스와 실패 지점이
+			// 다르다 — 파이프라인 프로비저닝이 GitHub 어댑터를 타고
+			// (internal/cicd/adapter/github/), 이미지가 GHCR 로 나간다.
+			// 그 경로까지 확인한 뒤 verified 로 올렸다.
+			Status: "verified",
 			Kubernetes: domain.KubernetesCompat{
 				Min:         baselineMinK8sPlatform,
 				Max:         "1.35",
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository": {Name: "GitHub", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"ci_platform":       {Name: "GitHub Actions", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"source_repository": {Name: "GitHub", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"ci_platform":       {Name: "GitHub Actions", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				// GHCR 은 클러스터 밖이라 아키텍처 제약이 없다 — Harbor 의 amd64 전용
 				// 제약을 물려받으면 arm64 클러스터에서 호환성 검사가 잘못 막는다.
-				"container_registry":       {Name: "GHCR", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"container_registry":       {Name: "GHCR", HelmVersion: "external", AppVersion: "external", MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 			},
 		},
 	}
