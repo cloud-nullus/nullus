@@ -784,7 +784,8 @@
       "monitoring": "Monitoring",
       "history": "History",
       "version-upgrade": "Version Upgrade",
-      "workloads": "Workloads"
+      "workloads": "Workloads",
+      "config": "Config"
     },
     "status": {
       "pending": "Pending",
@@ -1540,5 +1541,35 @@
       "limit": "Lim",
       "current": "Now"
     }
+  },
+  "stackConfig": {
+    "applied": "Configuration applied (revision {{revision}})",
+    "apply": "Apply",
+    "applyFailed": "Failed to apply the configuration",
+    "confirmBody": "helm upgrade will run against the {{release}} release. Depending on the change, pods may restart and be briefly unavailable.",
+    "confirmTitle": "Apply this configuration?",
+    "confirmWarnings": "You changed {{count}} platform-managed value(s).",
+    "editorLabel": "Release values editor",
+    "effectiveValues": "Values that will actually be applied",
+    "loadingEditor": "Loading the editor…",
+    "loadingReleases": "Reading deployed releases…",
+    "loadingValues": "Reading values…",
+    "mode": "Edit scope",
+    "modeLive": "Full values (as deployed)",
+    "modeLiveHint": "The complete values actually deployed to this release. Deleting a key here removes that value too.",
+    "modeOverride": "My overrides only",
+    "modeOverrideHint": "Only the customizations layered on top of the deployed values. Clearing an override does not revert what is already applied — to revert, delete the key in full values mode.",
+    "noReleases": "This stack has no Helm release to edit.",
+    "preview": "Preview changes",
+    "previewClean": "Platform-managed values are untouched and the render passed.",
+    "previewFailed": "Preview failed",
+    "protectedPaths": "Platform-managed values",
+    "refresh": "Refresh release list",
+    "release": "Release",
+    "releasesFailed": "Could not read the release list. Check the cluster connection.",
+    "renderFailed": "The chart does not render with these values",
+    "reset": "Reset",
+    "unmappedRelease": "This release is not mapped to an install step. You can edit it, but the change may not survive a redeploy.",
+    "warningsTitle": "You changed platform-managed values"
   }
 }

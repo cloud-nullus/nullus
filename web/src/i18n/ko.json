@@ -784,7 +784,8 @@
       "monitoring": "모니터링",
       "history": "이력",
       "version-upgrade": "버전 업그레이드",
-      "workloads": "워크로드"
+      "workloads": "워크로드",
+      "config": "설정"
     },
     "status": {
       "pending": "대기 중",
@@ -1540,5 +1541,35 @@
       "limit": "상한",
       "current": "현재"
     }
+  },
+  "stackConfig": {
+    "applied": "설정을 적용했습니다 (revision {{revision}})",
+    "apply": "적용",
+    "applyFailed": "설정 적용에 실패했습니다",
+    "confirmBody": "{{release}} 릴리스에 helm upgrade 가 실행됩니다. 설정에 따라 파드가 다시 시작되어 잠시 중단될 수 있습니다.",
+    "confirmTitle": "설정을 적용할까요?",
+    "confirmWarnings": "플랫폼이 관리하는 값 {{count}}건을 건드렸습니다.",
+    "editorLabel": "릴리스 values 편집기",
+    "effectiveValues": "실제로 적용되는 values",
+    "loadingEditor": "편집기를 불러오는 중…",
+    "loadingReleases": "배포된 릴리스를 읽는 중…",
+    "loadingValues": "values 를 읽는 중…",
+    "mode": "편집 단위",
+    "modeLive": "전체 values (배포된 그대로)",
+    "modeLiveHint": "릴리스에 실제로 배포된 values 전체입니다. 여기서 키를 지우면 그 값도 함께 사라집니다.",
+    "modeOverride": "내 오버라이드만",
+    "modeOverrideHint": "배포된 값 위에 얹을 커스텀만 적습니다. 이미 적용된 값은 오버라이드를 비워도 되돌아가지 않습니다 — 되돌리려면 전체 values 모드에서 해당 키를 지우세요.",
+    "noReleases": "이 스택에는 편집할 Helm 릴리스가 없습니다.",
+    "preview": "변경 미리보기",
+    "previewClean": "플랫폼 관리 값은 그대로입니다. 렌더도 통과했습니다.",
+    "previewFailed": "미리보기에 실패했습니다",
+    "protectedPaths": "플랫폼이 관리하는 값",
+    "refresh": "릴리스 목록 새로고침",
+    "release": "릴리스",
+    "releasesFailed": "릴리스 목록을 읽지 못했습니다. 클러스터 연결을 확인하세요.",
+    "renderFailed": "이 값으로는 차트가 렌더되지 않습니다",
+    "reset": "되돌리기",
+    "unmappedRelease": "설치 단계를 알 수 없는 릴리스입니다. 편집은 되지만 재배포 시 유지되지 않을 수 있습니다.",
+    "warningsTitle": "플랫폼이 관리하는 값을 건드렸습니다"
   }
 }

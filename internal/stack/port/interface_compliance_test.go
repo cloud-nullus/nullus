@@ -30,4 +30,5 @@ var _ port.HelmStepMetadataRepository = (*stackrepo.MemoryHelmStepMetadataReposi
 var _ port.StepExecutor = (*helmadapter.Orchestrator)(nil)
 var _ port.KubeconfigProvider = (*stackrepo.PostgresKubeconfigProvider)(nil)
 var _ port.HelmInstaller = (*helmadapter.HelmInstaller)(nil)
+var _ port.HelmReleaseManager = (*helmadapter.HelmInstaller)(nil)
 var _ port.TokenSourceRegistry = (*stackrepo.PostgresTokenSourceRegistry)(nil)

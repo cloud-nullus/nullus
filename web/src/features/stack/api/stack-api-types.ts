@@ -199,3 +199,65 @@ export type StackConnectionInfoResponse = {
   object_storage: StorageConnectionResponse;
   tools: ToolCredentialResponse[];
 };
+
+/**
+ * 배포된 스택의 Helm 릴리스 한 건. 설정 편집 화면이 이 목록에서 대상을 고른다.
+ * step_name 이 비면 재배포 때 편집이 유지되지 않는다 — 저장할 오버라이드 키를
+ * 알 수 없기 때문이다.
+ */
+export type StackRelease = {
+  release_name: string;
+  step_name?: string;
+  chart_name?: string;
+  chart_version?: string;
+  app_version?: string;
+  namespace: string;
+  revision: number;
+  status: string;
+};
+
+/**
+ * 편집 단위.
+ * - live: 실제로 배포된 values 전체 (플랫폼이 계산해 넣은 값까지 보인다)
+ * - override: 사용자가 얹은 커스텀만
+ */
+export type ReleaseValuesMode = "live" | "override";
+
+export type ReleaseValuesResponse = {
+  release_name: string;
+  step_name?: string;
+  namespace: string;
+  revision: number;
+  mode: ReleaseValuesMode;
+  yaml: string;
+  protected_paths?: string[];
+};
+
+/** 플랫폼이 소유한 경로를 건드렸을 때의 경고. 차단이 아니라 안내다. */
+export type ProtectedValueWarning = {
+  path: string;
+  kind: "removed" | "changed";
+  message: string;
+};
+
+export type ApplyReleaseValuesResponse = {
+  release_name: string;
+  step_name?: string;
+  namespace: string;
+  mode: ReleaseValuesMode;
+  revision: number;
+  status?: string;
+  dry_run: boolean;
+  warnings?: ProtectedValueWarning[];
+  effective_yaml?: string;
+  manifest?: string;
+  /** 미리보기에서만 채워진다. 차트가 렌더되지 않는 것은 편집 결과이지 서버 오류가 아니다. */
+  render_error?: string;
+};
+
+export type ApplyReleaseValuesInput = {
+  stackId: string;
+  releaseName: string;
+  mode: ReleaseValuesMode;
+  yaml: string;
+};

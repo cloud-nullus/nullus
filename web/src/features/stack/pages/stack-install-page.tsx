@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -6,9 +6,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Download, Info, Rocket, Save, ShoppingCart, Trash2 } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
-import Editor from '@monaco-editor/react'
-import type { Monaco } from '@monaco-editor/react'
-import { configureMonacoYaml } from 'monaco-yaml'
 import YAML from 'yaml'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import type {
@@ -29,8 +26,8 @@ import { IconButton } from '../../../components/ui/icon-button'
 import { Select } from '../../../components/ui/select'
 import { Input } from '../../../components/ui/input'
 import { CodePreview } from '../../../components/shared/code-preview'
+import { MonacoYamlEditor } from '../../../components/shared/monaco-yaml-editor'
 import { cn } from '../../../lib/utils'
-import { useThemeStore } from '../../../stores/theme-store'
 import { useAuthStore } from '../../../stores/auth-store'
 import { useAppToast } from '../../../hooks/use-toast'
 import { buildInstallOverridesFromTemplate } from '../utils/template-overrides'
@@ -321,8 +318,6 @@ export function StackInstallPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
-  const theme = useThemeStore((state) => state.theme)
-  const isDarkMode = theme === 'dark'
   const {
     draft,
     setActiveTab,
@@ -391,7 +386,6 @@ export function StackInstallPage() {
   const [activeManifestTool, setActiveManifestTool] = useState<string | null>(null)
   const [dryRunExecutedAt, setDryRunExecutedAt] = useState<string | null>(null)
   const manifestSyncTimerRef = useRef<number | null>(null)
-  const monacoConfiguredRef = useRef(false)
   const initializedTemplateRef = useRef<string | null>(null)
   const initializedDefaultStackNameRef = useRef(false)
   const stackNameInputRef = useRef<HTMLInputElement | null>(null)
@@ -1372,19 +1366,6 @@ export function StackInstallPage() {
       }
     }, 350)
   }
-
-  const handleMonacoBeforeMount = useCallback((monaco: Monaco) => {
-    if (monacoConfiguredRef.current) return
-    configureMonacoYaml(monaco, {
-      validate: true,
-      completion: false,
-      hover: true,
-      format: true,
-      enableSchemaRequest: false,
-      schemas: [],
-    })
-    monacoConfiguredRef.current = true
-  }, [])
 
   useEffect(() => {
     setValue('stackName', draft.stackName)
@@ -2926,24 +2907,10 @@ export function StackInstallPage() {
                           </div>
                         )}
 
-                        <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] p-2">
-                          <Editor
-                            beforeMount={handleMonacoBeforeMount}
-                            height="520px"
-                            language="yaml"
-                            theme={isDarkMode ? 'vs-dark' : 'vs-light'}
-                            value={manifestDraftByTool[resolvedActiveManifestTool] ?? manifestOverridesByTool[resolvedActiveManifestTool] ?? defaultManifestByTool[resolvedActiveManifestTool] ?? ''}
-                            onChange={(value) => handleManifestChange(resolvedActiveManifestTool, value)}
-                            options={{
-                              minimap: { enabled: false },
-                              fontSize: 13,
-                              lineNumbers: 'on',
-                              scrollBeyondLastLine: false,
-                              wordWrap: 'on',
-                              tabSize: 2,
-                            }}
-                          />
-                        </div>
+                        <MonacoYamlEditor
+                          value={manifestDraftByTool[resolvedActiveManifestTool] ?? manifestOverridesByTool[resolvedActiveManifestTool] ?? defaultManifestByTool[resolvedActiveManifestTool] ?? ''}
+                          onChange={(value) => handleManifestChange(resolvedActiveManifestTool, value)}
+                        />
                         {manifestErrorsByTool[resolvedActiveManifestTool] && (
                           <div className="mt-3 rounded border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] px-3 py-2 text-xs text-[var(--color-error)]">
                             {manifestErrorsByTool[resolvedActiveManifestTool]}

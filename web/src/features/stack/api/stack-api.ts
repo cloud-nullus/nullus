@@ -24,6 +24,11 @@ import type {
   StackIntegrationsResponse,
   StackMonitoringSnapshot,
   StackConnectionInfoResponse,
+  StackRelease,
+  ReleaseValuesMode,
+  ReleaseValuesResponse,
+  ApplyReleaseValuesInput,
+  ApplyReleaseValuesResponse,
 } from "./stack-api-types";
 import type {
   ClusterStatus,
@@ -84,6 +89,9 @@ const queryKeys = {
   connectionInfo: (stackId: string) =>
     ["stacks", "connection-info", stackId] as const,
   resourceDefaults: () => ["stacks", "resource-defaults"] as const,
+  releases: (stackId: string) => ["stacks", "releases", stackId] as const,
+  releaseValues: (stackId: string, releaseName: string, mode: string) =>
+    ["stacks", "release-values", stackId, releaseName, mode] as const,
 };
 
 const ACTIVE_DEPLOYMENT_STATES = new Set([
@@ -759,5 +767,76 @@ export function usePreviewImportStackConfig() {
           headers: { "Content-Type": "text/plain" },
         })
         .then((r) => r.data),
+  });
+}
+
+/**
+ * 배포된 스택의 Helm 릴리스 목록. 설정 편집 화면이 대상을 고르는 데 쓴다.
+ * 클러스터를 직접 읽으므로 목록 조회보다 느리고, 자동 폴링하지 않는다.
+ */
+export function useStackReleases(stackId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.releases(stackId),
+    queryFn: () =>
+      api
+        .get<{ releases: StackRelease[] }>(`/stacks/${stackId}/releases`)
+        .then((r) => r.data.releases ?? []),
+    enabled: !!stackId && enabled,
+    staleTime: 30_000,
+  });
+}
+
+/** 선택한 모드의 편집 원본. 모드가 바뀌면 다른 원본을 받아야 하므로 키에 넣는다. */
+export function useReleaseValues(
+  stackId: string,
+  releaseName: string,
+  mode: ReleaseValuesMode,
+) {
+  return useQuery({
+    queryKey: queryKeys.releaseValues(stackId, releaseName, mode),
+    queryFn: () =>
+      api
+        .get<ReleaseValuesResponse>(
+          `/stacks/${stackId}/releases/${releaseName}/values`,
+          { params: { mode } },
+        )
+        .then((r) => r.data),
+    enabled: !!stackId && !!releaseName,
+    // 편집 중에 원본이 갈아끼워지면 사용자가 친 내용이 사라진 것처럼 보인다.
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** 적용 전 미리보기. 클러스터를 바꾸지 않고 렌더 결과와 경고만 받아 온다. */
+export function usePreviewReleaseValues() {
+  return useMutation({
+    mutationFn: ({ stackId, releaseName, mode, yaml }: ApplyReleaseValuesInput) =>
+      api
+        .post<ApplyReleaseValuesResponse>(
+          `/stacks/${stackId}/releases/${releaseName}/values/preview`,
+          { mode, yaml },
+        )
+        .then((r) => r.data),
+  });
+}
+
+/** 실제 적용 — helm upgrade 가 돌고 스택 설정에도 저장된다. */
+export function useApplyReleaseValues() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stackId, releaseName, mode, yaml }: ApplyReleaseValuesInput) =>
+      api
+        .put<ApplyReleaseValuesResponse>(
+          `/stacks/${stackId}/releases/${releaseName}/values`,
+          { mode, yaml },
+        )
+        .then((r) => r.data),
+    onSuccess: (_data, variables) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.releases(variables.stackId) });
+      void qc.invalidateQueries({
+        queryKey: ["stacks", "release-values", variables.stackId],
+      });
+      void qc.invalidateQueries({ queryKey: queryKeys.history(variables.stackId) });
+    },
   });
 }
