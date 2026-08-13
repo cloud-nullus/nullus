@@ -132,140 +132,171 @@ export function StackConfigTab({ stackId }: { stackId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
-          {t("stackConfig.release", "릴리스")}
-        </span>
-        {releases.map((release) => (
-          <button
-            key={release.release_name}
-            type="button"
-            onClick={() => setSelectedRelease(release.release_name)}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-lg border px-3 py-[7px] text-xs",
-              release.release_name === selectedRelease
-                ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]"
-                : "border-[var(--color-border-default)] text-[var(--color-text-primary)]",
-            )}
+    // 탭이 상세 패널 높이를 그대로 채운다. 릴리스 목록이 가로로 깔려 있을 때는
+    // 그것만으로 화면 절반을 먹어 에디터가 바깥 스크롤 아래로 밀려났다 —
+    // 설정을 고치려면 매번 스크롤을 내려야 했다. 목록을 왼쪽 레일로 세우면
+    // 세로를 되찾고, 남는 높이는 전부 에디터가 가져간다.
+    <div className="flex h-full min-h-0 flex-col gap-3 lg:flex-row lg:gap-4">
+      <aside className="flex min-h-0 shrink-0 flex-col gap-2 lg:w-[240px]">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+            {t("stackConfig.release", "릴리스")}
+          </span>
+          <Button
+            variant="ghost"
+            onClick={() => void releasesQuery.refetch()}
+            aria-label={t("stackConfig.refresh", "릴리스 목록 새로고침")}
           >
-            <span className="font-semibold">{release.release_name}</span>
-            <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
-              rev {release.revision}
-            </span>
-          </button>
-        ))}
-        <Button
-          variant="ghost"
-          onClick={() => void releasesQuery.refetch()}
-          aria-label={t("stackConfig.refresh", "릴리스 목록 새로고침")}
-        >
-          <RefreshCw {...iconProps("xs")} />
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
-          {t("stackConfig.mode", "편집 단위")}
-        </span>
-        {(["live", "override"] as const).map((candidate) => (
-          <button
-            key={candidate}
-            type="button"
-            onClick={() => setMode(candidate)}
-            className={cn(
-              "rounded-lg border px-3 py-[7px] text-xs font-semibold",
-              candidate === mode
-                ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]"
-                : "border-[var(--color-border-default)] text-[var(--color-text-primary)]",
-            )}
-          >
-            {candidate === "live"
-              ? t("stackConfig.modeLive", "전체 values (배포된 그대로)")
-              : t("stackConfig.modeOverride", "내 오버라이드만")}
-          </button>
-        ))}
-      </div>
-
-      <p className="m-0 text-[12px] text-[var(--color-text-secondary)]">
-        {mode === "live"
-          ? t(
-              "stackConfig.modeLiveHint",
-              "릴리스에 실제로 배포된 values 전체입니다. 여기서 키를 지우면 그 값도 함께 사라집니다.",
-            )
-          : t(
-              "stackConfig.modeOverrideHint",
-              "배포된 값 위에 얹을 커스텀만 적습니다. 이미 적용된 값은 오버라이드를 비워도 되돌아가지 않습니다 — 되돌리려면 전체 values 모드에서 해당 키를 지우세요.",
-            )}
-      </p>
-
-      {activeRelease && (
-        <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] p-3 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <FileCode2 {...iconProps("xs")} />
-            <span className="font-semibold text-[var(--color-primary)]">{activeRelease.release_name}</span>
-            <span className="text-[var(--color-text-secondary)]">
-              {activeRelease.chart_name}
-              {activeRelease.chart_version ? ` ${activeRelease.chart_version}` : ""} · {activeRelease.status}
-            </span>
-          </div>
-          {!activeRelease.step_name && (
-            <div className="mt-1 text-[var(--color-warning)]">
-              {t(
-                "stackConfig.unmappedRelease",
-                "설치 단계를 알 수 없는 릴리스입니다. 편집은 되지만 재배포 시 유지되지 않을 수 있습니다.",
-              )}
-            </div>
-          )}
-          {protectedPaths.length > 0 && (
-            <div className="mt-1 text-[var(--color-text-secondary)]">
-              {t("stackConfig.protectedPaths", "플랫폼이 관리하는 값")}: {protectedPaths.join(", ")}
-            </div>
-          )}
+            <RefreshCw {...iconProps("xs")} />
+          </Button>
         </div>
-      )}
+        {/* 좁은 화면에서는 레일이 위로 올라오므로 여러 열로 눕히고 높이를
+            묶는다 — 릴리스가 열댓 개라 한 줄씩 쌓으면 그것만으로 화면을 덮는다. */}
+        {/* min-h-0 이 없으면 flex 자식이 제 콘텐츠 높이 아래로 줄지 못한다 —
+            목록이 레일 밖으로 흘러 아래쪽 릴리스가 잘리고, 늘어난 만큼 오른쪽
+            에디터가 최소 높이까지 밀린다. */}
+        <ul className="m-0 grid min-h-0 list-none grid-cols-2 gap-1 overflow-y-auto p-0 max-lg:max-h-[132px] sm:grid-cols-3 lg:grid-cols-1 lg:pr-1">
+          {releases.map((release) => {
+            const isSelected = release.release_name === selectedRelease;
+            return (
+              <li key={release.release_name}>
+                <button
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => setSelectedRelease(release.release_name)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs",
+                    isSelected
+                      ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]"
+                      : "border-[var(--color-border-default)] text-[var(--color-text-primary)]",
+                  )}
+                >
+                  {/* 릴리스 이름은 자르지 않는다 — 잘리면 어느 OSS 인지가 사라진다.
+                      레일 너비는 가장 긴 이름(kube-prometheus-stack)에 맞춰 두었다. */}
+                  <span className="whitespace-nowrap font-semibold">{release.release_name}</span>
+                  <span className="ml-auto shrink-0 rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
+                    rev {release.revision}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
 
-      {valuesQuery.isLoading ? (
-        <p className="text-[13px] text-[var(--color-text-secondary)]">
-          {t("stackConfig.loadingValues", "values 를 읽는 중…")}
-        </p>
-      ) : (
-        <Suspense
-          fallback={
-            <p className="text-[13px] text-[var(--color-text-secondary)]">
-              {t("stackConfig.loadingEditor", "편집기를 불러오는 중…")}
-            </p>
-          }
-        >
-          <MonacoYamlEditor
-            value={draft}
-            onChange={setDraft}
-            height="440px"
-            ariaLabel={t("stackConfig.editorLabel", "릴리스 values 편집기")}
-          />
-        </Suspense>
-      )}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+            {t("stackConfig.mode", "편집 단위")}
+          </span>
+          {(["live", "override"] as const).map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              aria-pressed={candidate === mode}
+              onClick={() => setMode(candidate)}
+              className={cn(
+                "rounded-lg border px-3 py-[7px] text-xs font-semibold",
+                candidate === mode
+                  ? "border-[color-mix(in_srgb,_var(--color-primary)_50%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] text-[var(--color-primary)]"
+                  : "border-[var(--color-border-default)] text-[var(--color-text-primary)]",
+              )}
+            >
+              {candidate === "live"
+                ? t("stackConfig.modeLive", "전체 values (배포된 그대로)")
+                : t("stackConfig.modeOverride", "내 오버라이드만")}
+            </button>
+          ))}
+          <p className="m-0 basis-full text-[12px] text-[var(--color-text-secondary)]">
+            {mode === "live"
+              ? t(
+                  "stackConfig.modeLiveHint",
+                  "릴리스에 실제로 배포된 values 전체입니다. 여기서 키를 지우면 그 값도 함께 사라집니다.",
+                )
+              : t(
+                  "stackConfig.modeOverrideHint",
+                  "배포된 값 위에 얹을 커스텀만 적습니다. 이미 적용된 값은 오버라이드를 비워도 되돌아가지 않습니다 — 되돌리려면 전체 values 모드에서 해당 키를 지우세요.",
+                )}
+          </p>
+        </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" onClick={() => void runPreview()} disabled={isBusy}>
-          {t("stackConfig.preview", "변경 미리보기")}
-        </Button>
-        <Button onClick={() => setConfirmOpen(true)} disabled={isBusy}>
-          {t("stackConfig.apply", "적용")}
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setDraft(valuesQuery.data?.yaml ?? "");
-            setPreview(null);
-          }}
-          disabled={isBusy}
-        >
-          {t("stackConfig.reset", "되돌리기")}
-        </Button>
+        {activeRelease && (
+          <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)] px-3 py-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <FileCode2 {...iconProps("xs")} />
+              <span className="font-semibold text-[var(--color-primary)]">{activeRelease.release_name}</span>
+              <span className="text-[var(--color-text-secondary)]">
+                {activeRelease.chart_name}
+                {activeRelease.chart_version ? ` ${activeRelease.chart_version}` : ""} · {activeRelease.status}
+              </span>
+            </div>
+            {!activeRelease.step_name && (
+              <div className="mt-1 text-[var(--color-warning)]">
+                {t(
+                  "stackConfig.unmappedRelease",
+                  "설치 단계를 알 수 없는 릴리스입니다. 편집은 되지만 재배포 시 유지되지 않을 수 있습니다.",
+                )}
+              </div>
+            )}
+            {protectedPaths.length > 0 && (
+              <div className="mt-1 text-[var(--color-text-secondary)]">
+                {t("stackConfig.protectedPaths", "플랫폼이 관리하는 값")}: {protectedPaths.join(", ")}
+              </div>
+            )}
+          </div>
+        )}
+
+        {valuesQuery.isLoading ? (
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            {t("stackConfig.loadingValues", "values 를 읽는 중…")}
+          </p>
+        ) : (
+          <Suspense
+            fallback={
+              <p className="text-[13px] text-[var(--color-text-secondary)]">
+                {t("stackConfig.loadingEditor", "편집기를 불러오는 중…")}
+              </p>
+            }
+          >
+            {/* 남는 높이를 전부 가져가되 바닥은 둔다. 화면이 아주 낮으면
+                에디터를 짜부라뜨리는 것보다 바깥이 스크롤되는 편이 낫다. */}
+            <MonacoYamlEditor
+              value={draft}
+              onChange={setDraft}
+              height="100%"
+              className="min-h-[220px] flex-1"
+              ariaLabel={t("stackConfig.editorLabel", "릴리스 values 편집기")}
+            />
+          </Suspense>
+        )}
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={() => void runPreview()} disabled={isBusy}>
+            {t("stackConfig.preview", "변경 미리보기")}
+          </Button>
+          <Button onClick={() => setConfirmOpen(true)} disabled={isBusy}>
+            {t("stackConfig.apply", "적용")}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setDraft(valuesQuery.data?.yaml ?? "");
+              setPreview(null);
+            }}
+            disabled={isBusy}
+          >
+            {t("stackConfig.reset", "되돌리기")}
+          </Button>
+        </div>
+
+        {/* 미리보기는 열려 있을 때만 자리를 차지하고, 길어지면 자기 안에서
+            스크롤한다 — 여기서 늘어나면 에디터가 밀려 다시 바깥이 스크롤된다. */}
+        {preview && (
+          <div className="min-h-0 shrink-0 overflow-y-auto lg:max-h-[38%]">
+            <PreviewPanel preview={preview} />
+          </div>
+        )}
       </div>
-
-      {preview && <PreviewPanel preview={preview} />}
 
       <Modal
         open={confirmOpen}
