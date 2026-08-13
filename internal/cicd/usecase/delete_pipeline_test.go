@@ -195,3 +195,59 @@ func TestDeletePipeline_RequiresPipelineID(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "pipeline id")
 }
+
+type fakeWorkloadDeleter struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeWorkloadDeleter) DeleteByLabel(_ context.Context, _ []byte, namespace, selector string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.calls = append(f.calls, namespace+"/"+selector)
+	return nil
+}
+
+// Argo CD Application 이 없는 파이프라인(매니페스트 직접 적용)은 워크로드를
+// 지워 줄 주체가 없다. 그대로 두면 목록에서는 사라졌는데 클러스터에는 앱이
+// 계속 도는 상태가 남는다.
+func TestDeletePipeline_DeletesDirectlyAppliedWorkloads(t *testing.T) {
+	uc, _, _, _, _ := deleteFixture(t)
+	workloads := &fakeWorkloadDeleter{}
+	uc.WithWorkloadDeleter(workloads)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.NoError(t, err)
+
+	// 매니페스트 생성기가 모든 리소스에 붙이는 라벨이다.
+	assert.Equal(t, []string{"apps/app=myapp"}, workloads.calls)
+}
+
+// 워크로드 정리에 실패하면 레코드를 남긴다. 레코드가 사라지면 남은 리소스를
+// 찾을 방법도, 다시 시도할 방법도 없어진다.
+func TestDeletePipeline_KeepsRecordWhenWorkloadCleanupFails(t *testing.T) {
+	uc, repo, _, _, _ := deleteFixture(t)
+	uc.WithWorkloadDeleter(&fakeWorkloadDeleter{err: assert.AnError})
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.Error(t, err)
+	assert.Empty(t, repo.deleted)
+}
+
+// 배선되지 않으면 종전대로 Argo CD 경로만 정리한다.
+func TestDeletePipeline_WorkloadCleanupIsOptional(t *testing.T) {
+	uc, repo, _, argo, _ := deleteFixture(t)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"apps/myapp"}, argo.calls)
+	assert.Equal(t, []string{"pip_1"}, repo.deleted)
+}

@@ -7,6 +7,15 @@ type ManifestApplier interface {
 	ApplyWithTracking(ctx context.Context, kubeconfig []byte, manifests []string, deploymentID string, stepOffset ...int) error
 }
 
+// WorkloadDeleter 는 라벨로 찾은 워크로드를 지운다.
+//
+// Argo CD 로 배포한 앱은 Application 을 지우면 컨트롤러가 함께 걷어내지만,
+// 매니페스트를 직접 적용하는 경로는 지워 줄 주체가 없다. 그쪽 워크로드는
+// 이것으로 정리한다.
+type WorkloadDeleter interface {
+	DeleteByLabel(ctx context.Context, kubeconfig []byte, namespace, selector string) error
+}
+
 // ArgoApplicationDeleter 는 Argo CD Application 과 그것이 배포한 리소스를 지운다.
 //
 // Application 만 지우면 Deployment·Service·HTTPRoute 가 클러스터에 남아 앱이

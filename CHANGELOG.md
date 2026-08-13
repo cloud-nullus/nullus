@@ -91,6 +91,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **직접 배포가 클러스터에 적용하지 않고 성공으로 기록하던 문제** (`internal/cicd/adapter/handler/deploy_app_apply.go`): `POST /cicd/deploy-app` 은 매니페스트를 만들어 응답에 담고 Deployment 레코드를 `status=success` 로 저장하면서 **클러스터에는 아무것도 적용하지 않았다**(완료 시각까지 "지금 + 3초" 로 지어냈다). 화면에는 성공한 배포로 보이는데 실체가 없어, 배포 목록과 클러스터가 어긋나고 사용자는 존재하지 않는 앱의 로그와 파드를 찾게 된다. 이제 생성한 매니페스트를 실제로 적용하고 **상태는 적용 결과를 따른다** — 시작 시점에 `running`, 끝난 뒤 `success`/`failed`. 적용기가 배선되지 않았으면 오류를 돌려준다: 조용히 건너뛰면 예전 상태로 되돌아간다.
+
+- **파이프라인을 지워도 직접 배포한 워크로드가 남던 문제** (`internal/cicd/adapter/kube/workload_deleter.go`): 파이프라인 삭제의 `cluster_resources=true` 는 Argo CD Application 만 지웠다. 매니페스트를 직접 적용하는 경로에는 Application 이 없고 삭제기는 없는 Application 을 성공으로 보므로 **Deployment·Service·Ingress 가 그대로 남았다** — 목록에서는 사라졌는데 클러스터에는 앱이 계속 돈다. 매니페스트 생성기가 모든 리소스에 붙이는 `app` 라벨로 찾아 함께 지운다. 지울 것이 없는 경우(Argo CD 경로)는 성공으로 본다. 정리에 실패하면 파이프라인 레코드는 남긴다 — 레코드가 사라지면 남은 리소스를 찾을 방법도, 다시 시도할 방법도 없어진다.
+
 - **얼어붙은 오버라이드가 플랫폼 계산값을 이기던 문제** (`internal/stack/adapter/helm/platform-owned-values.go`): release values 의 `live` 편집은 배포된 values 를 통째로 읽어 `YAMLOverrides` 에 저장하는데, 거기에는 사용자가 적은 값뿐 아니라 **플랫폼이 계산해 넣은 값도 함께 얼어붙는다**. 오버라이드는 병합의 맨 마지막이라 그 스냅샷이 이후의 재계산을 영원히 이긴다. 실제로 두 가지가 이 경로로 깨졌다. (1) `global.psql.host` 가 스냅샷 시점의 네임스페이스에 묶여, 설정을 다른 네임스페이스로 옮기면 GitLab 이 **삭제된 스택의 PostgreSQL** 을 가리켰다 — export/import 도 이 값을 다시 쓰지 않으므로 그대로 재현된다. (2) GitLab 번들 Prometheus 의 메모리 한도 328Mi 가 얼어붙어, OOM 을 막으려 둔 자원 하한을 이기고 CrashLoopBackOff 를 재현했다(예전에 한 번 고친 증상이 되살아난 것이다). 병합이 끝난 뒤 **배선에 해당하는 값만** 다시 못박는다 — 자원·프로브 같은 실제 사용자 의도까지 되돌리면 오버라이드 기능이 무의미해진다. 값이 실제로 달랐을 때만 이유와 함께 경고를 남긴다.
 
 - **GitLab 번들 Prometheus 를 설치하지 않는다** (`internal/stack/adapter/helm/resource-defaults.go`): 스택은 이미 kube-prometheus-stack 을 세우고 라우트·대시보드·모니터링 화면이 모두 그쪽을 본다 — 번들 쪽은 아무도 읽지 않으면서 메모리만 먹고 스택의 자원 계획 아래에서 OOMKilled 로 죽었다. 자원 하한으로 증상만 가리던 코드를 걷어내고 아예 끈다.

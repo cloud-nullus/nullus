@@ -41,6 +41,15 @@ type DeletePipeline struct {
 	factory    port.SCMBundleFactory
 	argoApps   port.ArgoApplicationDeleter
 	kubeconfig port.KubeconfigProvider
+	// workloads 는 매니페스트를 직접 적용한 경로가 남긴 워크로드를 지운다.
+	// 배선되지 않으면 Argo CD 경로만 정리된다 — 종전 동작이다.
+	workloads port.WorkloadDeleter
+}
+
+// WithWorkloadDeleter 는 직접 배포 워크로드 정리 경로를 배선한다.
+func (uc *DeletePipeline) WithWorkloadDeleter(d port.WorkloadDeleter) *DeletePipeline {
+	uc.workloads = d
+	return uc
 }
 
 func NewDeletePipeline(
@@ -140,6 +149,19 @@ func (uc *DeletePipeline) deleteClusterResources(
 	}
 	if err := uc.argoApps.Delete(ctx, kubeconfig, namespace, appName); err != nil {
 		return fmt.Errorf("Argo CD Application 삭제 실패: %w", err)
+	}
+
+	// Argo CD Application 이 없어도 위 호출은 성공으로 본다 — 매니페스트를
+	// 직접 적용한 파이프라인이 그렇다. 그 경우 워크로드를 지워 줄 주체가
+	// 없으므로 라벨로 찾아 함께 지운다. 이것이 빠져 있어서 파이프라인을
+	// "클러스터 리소스까지" 지워도 앱이 계속 도는 상태가 남았다.
+	if uc.workloads == nil {
+		return nil
+	}
+	// 매니페스트 생성기가 모든 리소스에 붙이는 라벨이다.
+	selector := "app=" + appName
+	if err := uc.workloads.DeleteByLabel(ctx, kubeconfig, namespace, selector); err != nil {
+		return fmt.Errorf("배포된 워크로드 삭제 실패 (%s): %w", selector, err)
 	}
 	return nil
 }
