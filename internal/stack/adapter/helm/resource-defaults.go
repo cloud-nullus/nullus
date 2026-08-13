@@ -98,50 +98,6 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		}
 		return toK8sResourceValues(v)
 	}
-	// GitLab 번들 Prometheus 는 뜨는 데 필요한 최소가 있다.
-	//
-	// 비율만 곱했더니 Local/Startup 규모에서 메모리 한도가 328Mi 가 되어
-	// OOMKilled(exit 137) 로 34번 재시작하며 CrashLoopBackOff 에 갇혔다.
-	// Prometheus 의 메모리는 스택 크기가 아니라 긁는 대상 수와 WAL 재생에
-	// 좌우되므로, 스택을 줄인다고 같이 줄일 수 있는 값이 아니다.
-	//
-	// 하한은 실측으로 잡았다. 같은 클러스터에서 클러스터 전체를 긁는
-	// kube-prometheus-stack 의 Prometheus 가 431Mi 를 쓴다. 번들 쪽은 GitLab
-	// 컴포넌트만 긁으므로 그보다 적지만 328Mi 로는 확실히 죽었다.
-	//
-	// 상한도 둔다 — 큰 스택에서 8% 를 그대로 주면 긁을 대상이 늘지도 않는데
-	// 수 GiB 를 잡는다.
-	promScaled := func() map[string]any {
-		v := scaleResourceDefault(item, 0.08)
-		if v == nil {
-			return map[string]any{}
-		}
-		if v.CPURequest < 0.1 {
-			v.CPURequest = 0.1
-		}
-		if v.CPURequest > 0.5 {
-			v.CPURequest = 0.5
-		}
-		if v.CPULimit < 0.5 {
-			v.CPULimit = 0.5
-		}
-		if v.CPULimit > 1 {
-			v.CPULimit = 1
-		}
-		if v.MemoryRequestGi < 0.5 {
-			v.MemoryRequestGi = 0.5
-		}
-		if v.MemoryRequestGi > 1 {
-			v.MemoryRequestGi = 1
-		}
-		if v.MemoryLimitGi < 1 {
-			v.MemoryLimitGi = 1
-		}
-		if v.MemoryLimitGi > 2 {
-			v.MemoryLimitGi = 2
-		}
-		return toK8sResourceValues(v)
-	}
 	redisMasterScaled := func() map[string]any {
 		v := scaleResourceDefault(item, 0.06)
 		if v == nil {
@@ -236,9 +192,15 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 			"redis": map[string]any{
 				"master": map[string]any{"resources": redisMasterScaled()},
 			},
-			"prometheus": map[string]any{
-				"server": map[string]any{"resources": promScaled()},
-			},
+			// GitLab 번들 Prometheus 는 자원을 잡지 않는다 — 아예 설치하지 않기
+			// 때문이다(platform-owned-values.go 의 prometheus.install=false).
+			//
+			// 예전에는 여기서 비율을 곱해 자원을 줬는데, Local/Startup 규모에서
+			// 메모리 한도가 328Mi 가 되어 OOMKilled(exit 137) 로 CrashLoopBackOff
+			// 에 갇혔다. Prometheus 의 메모리는 스택 크기가 아니라 긁는 대상 수와
+			// WAL 재생에 좌우되므로 스택을 줄인다고 같이 줄일 수 있는 값이 아니다.
+			// 하한을 둬서 막았지만, 근본적으로는 스택이 이미 kube-prometheus-stack
+			// 을 세우므로 두 번째 Prometheus 자체가 필요 없다.
 		}
 	case "installing_argocd":
 		return map[string]any{
