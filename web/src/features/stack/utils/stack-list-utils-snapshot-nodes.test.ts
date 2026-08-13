@@ -105,6 +105,28 @@ describe("buildPipelineNodesFromSnapshot", () => {
     expect(nodes.flatMap((node) => node.tools).every((tool) => !tool.shared)).toBe(true);
   });
 
+  // 모니터링 경로와 같은 칸에 서야 한다. 스냅샷에만 없으면 배포 직후와
+  // 모니터링 반영 후의 스택 모양이 달라진다.
+  it("shows the OTel collector alongside the trace store", () => {
+    const nodes = buildPipelineNodesFromSnapshot({
+      config: {
+        logging: {
+          trace_layer: { name: "tempo", version: "2.7.0", enabled: true },
+          trace_exporter: {
+            name: "opentelemetry-collector",
+            version: "0.90.0",
+            enabled: true,
+          },
+        },
+      },
+    });
+
+    expect(stageOf(nodes, "Trace")?.tools.map((tool) => tool.name)).toEqual([
+      "tempo",
+      "opentelemetry-collector",
+    ]);
+  });
+
   it("omits a stage whose role has no tool", () => {
     const nodes = buildPipelineNodesFromSnapshot({
       config: {

@@ -21,7 +21,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import { useStackMonitoring } from "../../stack/api/stack-api";
 import { toolLogoURL } from "../../stack/utils/tool-logo";
-import { CHART_LEGEND_PROPS, CHART_STYLE } from "./monitoring-chart-widgets";
+import { CHART_LEGEND_PROPS, CHART_SERIES, CHART_STYLE } from "./monitoring-chart-widgets";
 
 // recharts 는 SVG 라 CSS 변수를 그대로 쓴다. 이 파일이 chart.js(<canvas>)를 쓰던
 // 동안에는 var() 를 못 읽어 차트가 검게 렌더됐고, 그걸 메우려고 theme/resolve-token
@@ -842,11 +842,11 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                 <ComposedChart data={cpuSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="cpu-request-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--color-info)" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="var(--color-info)" stopOpacity={0.04} />
+                      <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0.04} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+                  <CartesianGrid stroke={CHART_STYLE.grid} vertical={false} />
                   <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} minTickGap={24} />
                   <YAxis
                     stroke="var(--color-text-secondary)"
@@ -857,9 +857,9 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                   />
                   <Tooltip contentStyle={CHART_STYLE.tooltip} />
                   <Legend {...CHART_LEGEND_PROPS} />
-                  <Area type="monotone" dataKey="request" name="CPU Request" stroke="var(--color-info)" strokeWidth={2} fill="url(#cpu-request-fill)" dot={false} activeDot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="limit" name="CPU Limit" stroke="var(--color-warning)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="current" name="CPU Current" stroke="var(--color-success)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} connectNulls={false} />
+                  <Area type="monotone" dataKey="request" name="CPU Request" stroke={CHART_SERIES.request} strokeWidth={2} fill="url(#cpu-request-fill)" dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="limit" name="CPU Limit" stroke={CHART_SERIES.limit} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="current" name="CPU Current" stroke={CHART_SERIES.current} strokeWidth={2} dot={false} activeDot={{ r: 3 }} connectNulls={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -874,11 +874,11 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                 <ComposedChart data={memorySeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="memory-request-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--color-info)" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="var(--color-info)" stopOpacity={0.04} />
+                      <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0.04} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+                  <CartesianGrid stroke={CHART_STYLE.grid} vertical={false} />
                   <XAxis dataKey="time" stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} minTickGap={24} />
                   <YAxis
                     stroke="var(--color-text-secondary)"
@@ -889,9 +889,9 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                   />
                   <Tooltip contentStyle={CHART_STYLE.tooltip} />
                   <Legend {...CHART_LEGEND_PROPS} />
-                  <Area type="monotone" dataKey="request" name="Memory Request" stroke="var(--color-info)" strokeWidth={2} fill="url(#memory-request-fill)" dot={false} activeDot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="limit" name="Memory Limit" stroke="var(--color-warning)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="current" name="Memory Current" stroke="var(--color-success)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} connectNulls={false} />
+                  <Area type="monotone" dataKey="request" name="Memory Request" stroke={CHART_SERIES.request} strokeWidth={2} fill="url(#memory-request-fill)" dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="limit" name="Memory Limit" stroke={CHART_SERIES.limit} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="current" name="Memory Current" stroke={CHART_SERIES.current} strokeWidth={2} dot={false} activeDot={{ r: 3 }} connectNulls={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -904,7 +904,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={ossBars} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                  <CartesianGrid stroke={CHART_STYLE.grid} strokeDasharray="3 3" />
+                  <CartesianGrid stroke={CHART_STYLE.grid} vertical={false} />
                   {/* 눈금 글자는 숨긴다 — 도구 이름은 아래 로고 줄과 툴팁이 들고 있다. */}
                   <XAxis
                     dataKey="fullName"
@@ -917,8 +917,8 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                   <YAxis stroke="var(--color-text-secondary)" tick={CHART_STYLE.tick} allowDecimals={false} width={40} />
                   <Tooltip contentStyle={CHART_STYLE.tooltip} cursor={{ fill: "color-mix(in srgb, var(--color-text-secondary) 8%, transparent)" }} />
                   <Legend {...CHART_LEGEND_PROPS} />
-                  <Bar dataKey="pods" name="Total Pods" fill="color-mix(in srgb, var(--color-primary) 72%, transparent)" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="ready" name="Ready Pods" fill="color-mix(in srgb, var(--color-success) 72%, transparent)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="pods" name="Total Pods" fill={CHART_SERIES.request} radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="ready" name="Ready Pods" fill={CHART_SERIES.current} radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -940,7 +940,9 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
                     cy="45%"
                     innerRadius="52%"
                     outerRadius="84%"
-                    stroke="color-mix(in srgb, var(--color-text-primary) 80%, transparent)"
+                    // 조각 사이를 면 색으로 갈라 준다 — 잉크색 굵은 테두리는
+                    // 데이터보다 테두리가 먼저 보였다.
+                    stroke="var(--color-surface-base)"
                     strokeWidth={2}
                   >
                     {podStatusData.map((item) => (

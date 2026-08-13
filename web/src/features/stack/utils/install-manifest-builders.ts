@@ -564,6 +564,10 @@ export function buildHelmStepResourceOverride(toolId: string, resources: Resourc
       }
     case 'opentelemetry':
       return { key: 'installing_opentelemetry', values: { resources: k8sResources } }
+    // 수집기는 추적 저장소와 릴리스가 달라 설치 단계도 다르다. 여기서 같은
+    // 키를 쓰면 자원 설정이 엉뚱한 릴리스에 실린다.
+    case 'opentelemetry-collector':
+      return { key: 'installing_otel_collector', values: { resources: k8sResources } }
     default:
       return null
   }

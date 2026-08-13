@@ -6,10 +6,36 @@ import type { ToolHealthStatus } from "../api/observability-api"
 // ─── Shared chart style helpers ───────────────────────────────────────────────
 export const CHART_STYLE = {
   bg: 'var(--color-surface-base)',
-  grid: 'color-mix(in srgb, var(--color-text-secondary) 15%, transparent)',
+  // 격자는 데이터보다 뒤로 물러나야 한다. 예전 값(15%)에 점선까지 겹쳐
+  // 격자가 선보다 눈에 띄었다.
+  grid: 'color-mix(in srgb, var(--color-text-secondary) 10%, transparent)',
   tick: { fill: 'var(--color-text-secondary)', fontSize: 11 },
-  tooltip: { background: 'var(--color-surface-base)', border: '1px solid var(--color-border-default)', color: 'var(--color-border-default)' },
-}
+  tooltip: {
+    background: 'var(--color-surface-card)',
+    border: '1px solid var(--color-border-default)',
+    borderRadius: 8,
+    boxShadow: 'var(--shadow-overlay)',
+    // 글자는 글자 토큰을 입는다. border 토큰을 쓰고 있어 툴팁 본문이
+    // 배경에 묻혔다.
+    color: 'var(--color-text-primary)',
+    fontSize: 12,
+  },
+} as const
+
+/**
+ * 차트 계열색 — 정체성을 나타내는 카테고리 팔레트.
+ *
+ * 상태색(success/warning/error)을 계열로 돌려쓰지 않는다. 예전에는 Limit 을
+ * `--color-warning` 으로 그렸는데, 한도는 정상 설정값인데도 *경고* 로 읽혔다.
+ * 상태색은 상태에만 남겨 둔다.
+ *
+ * 값은 DESIGN.md 가 소유하고 색각 이상 분리도·표면 대비 검증을 통과한 것이다.
+ */
+export const CHART_SERIES = {
+  request: 'var(--color-chart-1)',
+  limit: 'var(--color-chart-2)',
+  current: 'var(--color-chart-3)',
+} as const
 
 /**
  * 모든 recharts 범례에 그대로 펼쳐 넣는다.
@@ -21,7 +47,8 @@ export const CHART_STYLE = {
  */
 export const CHART_LEGEND_PROPS = {
   itemSorter: () => 0,
-  wrapperStyle: { color: 'var(--color-border-default)', fontSize: 11 },
+  // 범례 글자도 글자 토큰을 입는다 — border 토큰이라 읽기 힘들었다.
+  wrapperStyle: { color: 'var(--color-text-secondary)', fontSize: 11 },
 } as const
 
 // 도구 상태도 레지스트리에서 받는다. 여기 warning 에 CircleAlert 가 박혀 있어서
