@@ -286,9 +286,15 @@ func main() {
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
 	deletePipelineUC := cicduc.NewDeletePipeline(
-		pgPipelineRepo, cicdBundleFactory, cicdkube.NewArgoApplicationDeleter(), kubeconfigProvider)
+		pgPipelineRepo, cicdBundleFactory, cicdkube.NewArgoApplicationDeleter(), kubeconfigProvider).
+		// 매니페스트를 직접 적용한 파이프라인은 Argo CD Application 이 없어
+		// 워크로드를 지워 줄 주체가 없다.
+		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter())
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool).
-		WithDeletePipeline(deletePipelineUC)
+		WithDeletePipeline(deletePipelineUC).
+		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
+		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
+		WithManifestApplier(manifestApplier)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository
