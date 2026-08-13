@@ -65,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **스택 상세 Config 탭을 좌우 2단으로 바꾼다** (`web/src/features/stack/components/stack-config-tab.tsx`): 릴리스 선택이 가로로 깔려 있어 OSS 가 열댓 개인 스택에서는 그것만으로 패널 위쪽 절반을 먹었고, 정작 편집기는 바깥 스크롤 아래로 밀려났다 — 설정을 한 줄 고치려면 매번 스크롤을 내려야 했다. 릴리스를 왼쪽 레일(240px)로 세우고 오른쪽을 편집기에 준다. 레일 너비는 가장 긴 이름(`kube-prometheus-stack`)에 맞췄고 이름은 자르지 않는다 — 잘리면 어느 OSS 인지가 사라진다. 좁은 화면에서는 레일이 위로 올라오므로 여러 열로 눕히고 높이를 묶는다.
+
+  **탭이 패널 높이를 그대로 채우고 남는 높이는 편집기가 전부 가져간다**(고정 440px 폐기). 세로를 되찾은 만큼 바깥 스크롤이 사라진다. 다만 편집기에 최소 높이를 둔다 — 화면이 아주 낮을 때 편집기를 짜부라뜨리는 것보다 바깥이 스크롤되는 편이 낫다. 목록과 미리보기는 자기 안에서만 스크롤한다: 어느 쪽이든 바깥으로 넘치면 편집기가 밀려 원래 문제로 돌아간다. `min-h-0` 이 빠지면 flex 자식이 제 콘텐츠 높이 아래로 줄지 못해 목록이 레일 밖으로 흐르는데, 실제로 한 번 밟고 브라우저에서 높이를 재서 찾았다.
+
 - **`github-argocd-v1` 호환성 매트릭스를 verified 로 올린다** (`internal/stack/adapter/repository/memory_compatibility.go`, `db/migrations/000066_github_stack_verified.up.sql`): 출하되는 여섯 매트릭스 중 이것만 `untested` 로 남아 있었다. 실패 지점이 나머지와 다르기 때문이다 — 소스·CI·레지스트리가 전부 클러스터 밖이고, 파이프라인 프로비저닝이 GitLab 이 아니라 GitHub 어댑터(`internal/cicd/adapter/github/`)를 탄다. 그 경로를 확인해 verified 로 올린다. 설치 전 검사에서 둘이 달라진다: `MATRIX_UNTESTED` 경고가 사라져 판정이 warn(70) → pass(100) 가 되고 배포에 명시적 ack 가 필요 없어지며, 아키텍처 불일치의 처리가 warn 유지에서 fail 로 뒤집힌다(이 조합의 도구는 전부 amd64+arm64 라 실제로 걸리는 것은 그 둘이 아닌 노드가 섞였을 때뿐이고, 그때는 막는 쪽이 맞다). Tier 도 stable 로 함께 올린다 — 000041 이 세운 "verified 매트릭스는 stable" 규칙을 유지하기 위해서고, MinIO·Argo CD·Prometheus·Grafana 는 같은 차트를 같은 버전으로 설치하면서 여기서만 beta 로 남을 이유가 없다.
 
   **게이트의 warn 분기 테스트를 전용 행렬로 옮겼다** (`deploy_handler_compat_test.go`, `retry_handler_test.go`). 그 분기를 `github-argocd-v1` 로 시험하고 있어서, 이 조합이 verified 로 올라가는 순간 게이트 로직은 그대로인데 테스트 다섯 개가 함께 죽었다. 출하되는 Golden Path 를 빌려 쓰면 그 조합의 검증 상태가 바뀔 때마다 관계없는 테스트가 깨진다 — 시드 데이터 모양에서 떼어 놓는다. (usecase 쪽은 이미 같은 이유로 전용 행렬을 쓰고 있었다.)
@@ -96,6 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
+
+- **탭 스트립에 세로 스크롤바가 상시로 뜨던 문제** (`web/src/components/ui/tabs.tsx`): 탭이 화면에 다 들어오는데도 스트립 오른쪽에 스크롤바가 붙어 있었다. 가로 스크롤 때문이 아니다 — `overflow-x: auto` 는 CSS 규칙상 반대 축이 `visible` 이면 그쪽을 `auto` 로 끌어올리는데, 탭 버튼이 활성 밑줄을 구분선 위에 겹치려고 `-mb-px` 로 상자를 **1px** 넘어가 있었다. 그 1px 이 세로 넘침으로 잡혀 스크롤바가 생겼다. 밑줄(`border-b`)을 스크롤 상자 바깥으로 빼고 상자 자체를 `-mb-px` 로 끌어내린다 — 겹침은 그대로 유지되고 넘칠 것은 없어진다. 시각 회귀 58장이 스냅샷 갱신 없이 통과해 픽셀이 같음을 확인했다.
 
 - **직접 배포가 클러스터에 적용하지 않고 성공으로 기록하던 문제** (`internal/cicd/adapter/handler/deploy_app_apply.go`): `POST /cicd/deploy-app` 은 매니페스트를 만들어 응답에 담고 Deployment 레코드를 `status=success` 로 저장하면서 **클러스터에는 아무것도 적용하지 않았다**(완료 시각까지 "지금 + 3초" 로 지어냈다). 화면에는 성공한 배포로 보이는데 실체가 없어, 배포 목록과 클러스터가 어긋나고 사용자는 존재하지 않는 앱의 로그와 파드를 찾게 된다. 이제 생성한 매니페스트를 실제로 적용하고 **상태는 적용 결과를 따른다** — 시작 시점에 `running`, 끝난 뒤 `success`/`failed`. 적용기가 배선되지 않았으면 오류를 돌려준다: 조용히 건너뛰면 예전 상태로 되돌아간다.
 

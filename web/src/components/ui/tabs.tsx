@@ -45,13 +45,14 @@ export function Tabs<T extends string | number>({
   className,
 }: TabsProps<T>) {
   return (
-    <div
-      className={cn(
-        'flex items-end overflow-x-auto border-b border-[var(--color-border-default)]',
-        className,
-      )}
-    >
-      <div className="flex min-w-0 items-end">
+    // 밑줄은 스크롤 상자 **밖**에 있다. 예전에는 이 div 하나가 밑줄과 가로
+    // 스크롤을 겸했는데, `overflow-x: auto` 는 CSS 규칙상 `overflow-y` 도
+    // `visible` 에서 `auto` 로 끌어올린다. 탭 버튼이 `-mb-px` 로 상자를 1px
+    // 넘어가 있었으므로 그 1px 때문에 **세로 스크롤바**가 상시로 떴다.
+    // 스크롤 상자를 안쪽으로 넣고 그 상자째 1px 끌어내리면, 활성 탭의 2px
+    // 밑줄이 예전처럼 구분선을 덮으면서도 넘치는 것은 없어진다.
+    <div className={cn('flex items-end border-b border-[var(--color-border-default)]', className)}>
+      <div className="-mb-px flex min-w-0 items-end overflow-x-auto overflow-y-hidden">
         {items.map((item) => {
           const active = item.id === value
           return (
@@ -62,7 +63,9 @@ export function Tabs<T extends string | number>({
               disabled={item.disabled}
               onClick={() => !item.disabled && onChange(item.id)}
               className={cn(
-                '-mb-px flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 bg-none px-3 py-2 text-[13px] transition-colors duration-150',
+                // 버튼은 스크롤 상자 바닥에 딱 붙는다. 여기서 다시 `-mb-px`
+                // 를 주면 그만큼이 그대로 세로 넘침이 되어 스크롤바가 돌아온다.
+                'flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 bg-none px-3 py-2 text-[13px] transition-colors duration-150',
                 active
                   ? 'border-b-[var(--color-primary)] font-semibold text-[var(--color-primary)]'
                   : 'border-b-transparent font-normal text-[var(--color-text-secondary)]',
