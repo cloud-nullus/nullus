@@ -49,6 +49,71 @@ func TestInstalledToolWorkloads_CoversEveryInstalledCategory(t *testing.T) {
 	assert.Contains(t, harbor.NamePrefixes, HarborReleaseName)
 }
 
+// 수집기는 추적 저장소와 별개의 워크로드다. 한 칸으로 묶으면 둘 중 하나가
+// 모니터링에서 사라진다 — 파드가 떠 있어도 없는 것처럼 보인다.
+func TestInstalledToolWorkloads_SeparatesTraceExporterFromTraceLayer(t *testing.T) {
+	items := InstalledToolWorkloads(StackConfig{
+		Logging: LoggingConfig{
+			TraceLayer:    ToolSelection{Name: "tempo", Version: "2.7.0", Enabled: true},
+			TraceExporter: ToolSelection{Name: "opentelemetry-collector", Version: "0.90.0", Enabled: true},
+		},
+	})
+
+	layer, ok := workloadByKey(items, "trace_layer")
+	require.True(t, ok)
+	assert.Contains(t, layer.NamePrefixes, "tempo")
+
+	exporter, ok := workloadByKey(items, "trace_exporter")
+	require.True(t, ok, "OTel Collector 가 모니터링 대상에서 빠지면 안 된다")
+	assert.Equal(t, "opentelemetry-collector", exporter.Name)
+	assert.Equal(t, "0.90.0", exporter.Version)
+	assert.Contains(t, exporter.NamePrefixes, OTelCollectorReleaseName)
+}
+
+// 로그 저장소로 Loki 를 고르면 파드도 loki-* 다. 접두사를 opensearch 로
+// 고정해 두면 설치는 정상인데 화면에서만 0 파드 warning 으로 남는다.
+func TestInstalledToolWorkloads_MatchesChosenLogStorePods(t *testing.T) {
+	loki := InstalledToolWorkloads(StackConfig{
+		Logging: LoggingConfig{Search: ToolSelection{Name: "loki", Enabled: true}},
+	})
+	search, ok := workloadByKey(loki, "logging_search")
+	require.True(t, ok)
+	assert.Equal(t, []string{"loki"}, search.NamePrefixes)
+
+	opensearch := InstalledToolWorkloads(StackConfig{
+		Logging: LoggingConfig{Search: ToolSelection{Name: "opensearch", Enabled: true}},
+	})
+	search, ok = workloadByKey(opensearch, "logging_search")
+	require.True(t, ok)
+	assert.Equal(t, []string{"opensearch"}, search.NamePrefixes)
+}
+
+// 수집과 검색이 같은 제품이면 릴리스도 하나다. 둘 다 세면 같은 파드를 두 번 센다.
+func TestInstalledToolWorkloads_CountsSharedLogStoreOnce(t *testing.T) {
+	items := InstalledToolWorkloads(StackConfig{
+		Logging: LoggingConfig{
+			Collection: ToolSelection{Name: "loki", Enabled: true},
+			Search:     ToolSelection{Name: "loki", Enabled: true},
+		},
+	})
+
+	_, ok := workloadByKey(items, "logging_collection")
+	assert.True(t, ok)
+	_, ok = workloadByKey(items, "logging_search")
+	assert.False(t, ok, "같은 Loki 를 두 항목으로 세면 파드가 이중 계상된다")
+}
+
+func TestInstalledToolWorkloads_OmitsDisabledTraceExporter(t *testing.T) {
+	items := InstalledToolWorkloads(StackConfig{
+		Logging: LoggingConfig{
+			TraceExporter: ToolSelection{Name: "opentelemetry-collector", Enabled: false},
+		},
+	})
+
+	_, ok := workloadByKey(items, "trace_exporter")
+	assert.False(t, ok)
+}
+
 func TestInstalledToolWorkloads_OmitsDisabledSelections(t *testing.T) {
 	items := InstalledToolWorkloads(StackConfig{
 		Artifacts: ArtifactsConfig{

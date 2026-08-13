@@ -41,6 +41,9 @@ type DeployPipeline struct {
 	applier               port.ManifestApplier
 	imagePreparer         port.ImagePreparer
 	clusterTargetProvider port.ClusterTargetProvider
+	// stackReader 는 배포 대상 스택의 요약을 읽는다. 배포되는 앱에 넣어 줄
+	// 수집기 주소가 여기서 온다 — 없으면 추적 환경변수를 넣지 않는다.
+	stackReader port.StackReader
 }
 
 func NewDeployPipeline(
@@ -70,6 +73,12 @@ func WithImagePreparer(p port.ImagePreparer) DeployOption {
 
 func WithClusterTargetProvider(p port.ClusterTargetProvider) DeployOption {
 	return func(dp *DeployPipeline) { dp.clusterTargetProvider = p }
+}
+
+// WithStackReader 는 스택 요약 조회를 배선한다. 배선되지 않으면 배포는 그대로
+// 되고 추적 환경변수만 빠진다 — 관측 배선 때문에 배포가 막히면 안 된다.
+func WithStackReader(r port.StackReader) DeployOption {
+	return func(dp *DeployPipeline) { dp.stackReader = r }
 }
 
 func includesOptionalManifest(manifestTypes []string, target string) bool {
@@ -274,14 +283,15 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 	}
 
 	generated, err := manifests.Generate(manifests.DeployAppRequest{
-		AppName:   pipeline.Name,
-		GitURL:    pipeline.GitRepoURL,
-		Namespace: namespace,
-		Template:  template,
-		ImageRef:  imageRef,
-		Replicas:  1,
-		Port:      port,
-		EnvVars:   deployEnvVars(pipeline.EnvVars),
+		AppName:      pipeline.Name,
+		GitURL:       pipeline.GitRepoURL,
+		Namespace:    namespace,
+		Template:     template,
+		ImageRef:     imageRef,
+		Replicas:     1,
+		Port:         port,
+		EnvVars:      deployEnvVars(pipeline.EnvVars),
+		OTLPEndpoint: OTLPEndpointFor(ctx, uc.stackReader, pipeline.StackID),
 		Labels: map[string]string{
 			"app.kubernetes.io/managed-by": "nullus-cicd",
 			"app.kubernetes.io/name":       pipeline.Name,

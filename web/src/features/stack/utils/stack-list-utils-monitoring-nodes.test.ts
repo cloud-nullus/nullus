@@ -85,4 +85,22 @@ describe("buildPipelineNodesFromMonitoring", () => {
 
     expect(stageOf(nodes, "Container Registry")).toBeUndefined();
   });
+
+  // 수집기는 추적 저장소와 별개 워크로드다. 카테고리 키를 여기 나열하지 않으면
+  // 파드가 떠 있어도 관측 단계에 나오지 않는다.
+  it("shows the OTel collector alongside the trace store", () => {
+    const nodes = buildPipelineNodesFromMonitoring([
+      tool({ key: "trace_layer", name: "tempo", version: "2.7.0" }),
+      tool({
+        key: "trace_exporter",
+        name: "opentelemetry-collector",
+        version: "0.90.0",
+      }),
+    ]);
+
+    expect(stageOf(nodes, "Trace")?.tools.map((t) => t.name)).toEqual([
+      "tempo",
+      "opentelemetry-collector",
+    ]);
+  });
 });

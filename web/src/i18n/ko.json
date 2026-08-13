@@ -1025,6 +1025,15 @@
     "confirm": {
       "deleteTitle": "클러스터 삭제",
       "deleteDescription": "선택한 클러스터를 삭제하면 연결된 파이프라인 및 배포 데이터에 영향이 있을 수 있습니다. 계속하시겠습니까?"
+    },
+    "capacity": {
+      "title": "가용 리소스",
+      "cpu": "CPU",
+      "memory": "메모리",
+      "coreUnit": "코어",
+      "nodes": "노드 {{ready}}/{{total}} 준비됨",
+      "freeOfTotal": "{{total}} {{unit}} 중 {{free}} 남음",
+      "hint": "스케줄 가능한 총량에서 이미 떠 있는 파드가 요청한 몫을 뺀 값입니다."
     }
   },
   "organizationPage": {

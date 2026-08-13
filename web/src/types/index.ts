@@ -131,6 +131,9 @@ export interface Cluster {
   endpoint: string;
   status: ClusterStatus;
   organizationIds: string[];
+  // organizationNames 는 organizationIds 를 사람이 읽는 이름으로 옮긴 것이다.
+  // 서버가 이름을 못 찾으면 해당 항목이 비고, 화면은 ID 로 되돌아간다.
+  organizationNames?: Record<string, string>;
   kubeconfig?: string;
   createdAt: string;
   // nodeArchitectures is the sorted, de-duplicated set of

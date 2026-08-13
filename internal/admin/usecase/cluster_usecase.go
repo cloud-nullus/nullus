@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,6 +63,41 @@ func (uc *ClusterUseCase) GetFirstOrgID(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("no organizations found")
 	}
 	return orgs[0].ID, nil
+}
+
+// OrgNames 는 조직 ID 를 사람이 읽는 이름으로 바꾼다.
+//
+// 화면이 조직을 UUID 로 보여주면 어느 조직인지 알 수 없다. 이름은 조직 저장소만
+// 알고 있으므로 클러스터 응답을 만들 때 여기서 함께 풀어 준다.
+//
+// 조회에 실패해도 오류를 올리지 않는다 — 이름은 부가 정보이고, 그것 때문에
+// 클러스터 목록 자체가 뜨지 않으면 더 나쁘다. 못 찾은 ID 는 그냥 빠지고
+// 화면이 ID 로 되돌아간다.
+func (uc *ClusterUseCase) OrgNames(ctx context.Context, orgIDs []string) (map[string]string, error) {
+	names := make(map[string]string, len(orgIDs))
+	if uc.orgRepo == nil {
+		return names, nil
+	}
+
+	for _, id := range orgIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, done := names[id]; done {
+			continue
+		}
+		org, err := uc.orgRepo.GetByID(ctx, id)
+		if err != nil {
+			slog.Warn("조직 이름을 읽지 못해 ID 로 표시합니다", "org_id", id, "error", err)
+			continue
+		}
+		if org == nil || strings.TrimSpace(org.Name) == "" {
+			continue
+		}
+		names[id] = org.Name
+	}
+	return names, nil
 }
 
 // RegisterClusterInput holds the input for registering a cluster.

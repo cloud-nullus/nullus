@@ -12,7 +12,16 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
+// valuesForStep 은 단계에 실을 Helm values 를 만든다.
+//
+// 사용자 오버라이드를 마지막에 병합하되, 그 뒤에 "플랫폼이 소유하는 값"을 다시
+// 못박는다. release values 의 live 편집이 플랫폼 계산값까지 그대로 오버라이드로
+// 얼려 담기 때문에, 그대로 두면 옛 스냅샷이 현재 배선을 이긴다.
 func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any {
+	return o.enforcePlatformOwnedValues(step, o.mergedValuesForStep(step, spec))
+}
+
+func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[string]any {
 	base := deepCopyMap(spec.Values)
 
 	o.mu.Lock()
@@ -22,6 +31,21 @@ func (o *Orchestrator) valuesForStep(step string, spec ChartSpec) map[string]any
 	// OpenBao values 는 선택된 StorageClass 에 의존하므로 여기서 조립한다.
 	if step == "installing_openbao" {
 		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))
+	}
+
+	// 수집기가 어느 백엔드로 내보낼지는 스택이 무엇을 함께 설치했는지에 달렸다.
+	// YAML 오버라이드 유무와 무관하게 필요하므로 이른 반환 앞에서 붙인다.
+	if step == stepInstallingOTelCollector {
+		base = mergeMaps(base, otelCollectorValues(cfg))
+	}
+	if step == stepInstallingOTelAgent {
+		base = mergeMaps(base, otelAgentValues(o.namespace))
+	}
+
+	// OSS 가 자기 메트릭을 내주도록 켠다. 사용자가 오버라이드로 끌 수 있어야
+	// 하므로 플랫폼 소유 값이 아니라 기본값 자리에 둔다.
+	if monitors := serviceMonitorValuesForStep(step, cfg); len(monitors) > 0 {
+		base = mergeMaps(base, monitors)
 	}
 
 	// OIDC 블록은 스택별 client ID / accessDomain 에 의존한다.
@@ -150,6 +174,13 @@ func (o *Orchestrator) resolveChartSpecForStep(step string, spec ChartSpec) Char
 
 	if step == "installing_log_search" {
 		switch strings.TrimSpace(cfg.Logging.Search.Name) {
+		case "loki":
+			// 화면은 Loki 를 고를 수 있게 열어 두는데 여기에 분기가 없어
+			// 아래 default 로 떨어졌다 — Loki 를 골라도 OpenSearch 가 깔렸다.
+			spec.ChartName = "loki"
+			spec.RepoURL = "https://grafana.github.io/helm-charts"
+			spec.Version = "2.10.3"
+			spec.Values = DefaultValues("installing_logging")
 		case "opensearch":
 			spec.ChartName = "opensearch"
 			spec.RepoURL = "https://opensearch-project.github.io/helm-charts"

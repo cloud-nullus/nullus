@@ -222,3 +222,98 @@ func TestGenerate_ManifestsYAMLCanBeUnmarshaled(t *testing.T) {
 func quantityString(q resource.Quantity) string {
 	return q.String()
 }
+
+// 배포된 앱이 추적을 보내려면 "어디로 보낼지"를 알아야 한다. 수집기가 떠 있어도
+// 이 주소가 없으면 앱은 아무것도 내보내지 않는다.
+func TestGenerate_InjectsOTelEndpointWhenCollectorPresent(t *testing.T) {
+	got, err := Generate(DeployAppRequest{
+		AppName:      "api",
+		Namespace:    "core",
+		Template:     "express-api",
+		OTLPEndpoint: "otel-collector-opentelemetry-collector.core.svc.cluster.local:4317",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	var dep appsv1.Deployment
+	if err := yaml.Unmarshal([]byte(got.Deployment), &dep); err != nil {
+		t.Fatalf("unmarshal deployment: %v", err)
+	}
+
+	seen := map[string]string{}
+	for _, item := range dep.Spec.Template.Spec.Containers[0].Env {
+		seen[item.Name] = item.Value
+	}
+
+	// SDK 규약상 gRPC 엔드포인트는 스킴이 있어야 한다.
+	if want := "http://otel-collector-opentelemetry-collector.core.svc.cluster.local:4317"; seen["OTEL_EXPORTER_OTLP_ENDPOINT"] != want {
+		t.Fatalf("OTEL_EXPORTER_OTLP_ENDPOINT = %q, want %q", seen["OTEL_EXPORTER_OTLP_ENDPOINT"], want)
+	}
+	// 서비스 이름이 없으면 모든 앱이 unknown_service 로 뭉쳐 구분되지 않는다.
+	if seen["OTEL_SERVICE_NAME"] != "api" {
+		t.Fatalf("OTEL_SERVICE_NAME = %q, want %q", seen["OTEL_SERVICE_NAME"], "api")
+	}
+	if seen["OTEL_EXPORTER_OTLP_PROTOCOL"] != "grpc" {
+		t.Fatalf("OTEL_EXPORTER_OTLP_PROTOCOL = %q, want grpc", seen["OTEL_EXPORTER_OTLP_PROTOCOL"])
+	}
+}
+
+// 수집기가 없는 스택에 주소를 박으면 앱이 닿지 않는 곳으로 계속 재시도하며
+// 오류 로그만 쌓는다. 없으면 아예 넣지 않는다.
+func TestGenerate_OmitsOTelEnvWithoutCollector(t *testing.T) {
+	got, err := Generate(DeployAppRequest{
+		AppName:   "api",
+		Namespace: "core",
+		Template:  "express-api",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	var dep appsv1.Deployment
+	if err := yaml.Unmarshal([]byte(got.Deployment), &dep); err != nil {
+		t.Fatalf("unmarshal deployment: %v", err)
+	}
+
+	for _, item := range dep.Spec.Template.Spec.Containers[0].Env {
+		if item.Name == "OTEL_EXPORTER_OTLP_ENDPOINT" {
+			t.Fatalf("수집기가 없는데 OTLP 주소가 주입되었다: %q", item.Value)
+		}
+	}
+}
+
+// 사용자가 직접 지정한 값이 우선이다 — 외부 수집기로 보내려는 선택을
+// 플랫폼이 덮어쓰면 안 된다.
+func TestGenerate_UserEnvOverridesInjectedOTelEndpoint(t *testing.T) {
+	got, err := Generate(DeployAppRequest{
+		AppName:      "api",
+		Namespace:    "core",
+		Template:     "express-api",
+		OTLPEndpoint: "otel-collector-opentelemetry-collector.core.svc.cluster.local:4317",
+		EnvVars:      map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://vendor.example.com:4317"},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	var dep appsv1.Deployment
+	if err := yaml.Unmarshal([]byte(got.Deployment), &dep); err != nil {
+		t.Fatalf("unmarshal deployment: %v", err)
+	}
+
+	count := 0
+	value := ""
+	for _, item := range dep.Spec.Template.Spec.Containers[0].Env {
+		if item.Name == "OTEL_EXPORTER_OTLP_ENDPOINT" {
+			count++
+			value = item.Value
+		}
+	}
+	if count != 1 {
+		t.Fatalf("OTEL_EXPORTER_OTLP_ENDPOINT 가 %d 번 선언되었다 — 중복이면 어느 값이 적용될지 알 수 없다", count)
+	}
+	if value != "http://vendor.example.com:4317" {
+		t.Fatalf("사용자 값이 덮어써졌다: %q", value)
+	}
+}

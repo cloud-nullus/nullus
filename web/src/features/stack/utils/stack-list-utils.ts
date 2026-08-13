@@ -451,6 +451,9 @@ export function buildPipelineNodesFromSnapshot(
   ]);
   const trace = parseCategorySelections(loggingGroup, [
     ["trace_layer", "traceLayer", "TraceLayer"],
+    // 수집기는 추적 저장소와 별개 워크로드다. 여기 없으면 파드가 떠 있어도
+    // 스택 상세의 관측 단계에 나오지 않는다.
+    ["trace_exporter", "traceExporter", "TraceExporter"],
   ]);
 
   // 순서는 코드가 흐르는 순서다: 소스 → 빌드 → 저장 → 배포 → 관측.
@@ -544,7 +547,7 @@ export function buildPipelineNodesFromMonitoring(
       toNode("CD", ["cd_tool"]),
       toNode("Monitoring", ["collection", "visualization"]),
       toNode("Logging", ["logging_collection", "logging_search"]),
-      toNode("Trace", ["trace_layer"]),
+      toNode("Trace", ["trace_layer", "trace_exporter"]),
     ].filter((node): node is PipelineNode => !!node),
   );
 }
@@ -582,6 +585,7 @@ export function buildInstalledToolsFromSnapshot(
       ["collection", "Collection"],
       ["search", "Search"],
       ["trace_layer", "traceLayer", "TraceLayer"],
+      ["trace_exporter", "traceExporter", "TraceExporter"],
     ],
   );
   const authenticationGroup = pickGroup(config, [

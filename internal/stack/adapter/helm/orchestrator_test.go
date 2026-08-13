@@ -123,6 +123,8 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		{name: "installing_logging", phase: "C"},
 		{name: "installing_log_search", phase: "C"},
 		{name: "installing_opentelemetry", phase: "C"},
+		{name: "installing_otel_collector", phase: "C"},
+		{name: "installing_otel_agent", phase: "C"},
 		{name: "installing_gateway", phase: "C"},
 	}
 
@@ -144,6 +146,8 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		"loki",
 		"opensearch",
 		"opentelemetry-collector",
+		"otel-collector",
+		"otel-agent",
 		"eg",
 	}, installer.installed)
 }
@@ -351,19 +355,19 @@ func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsWebserviceAndSidekiqF
 	assert.Equal(t, "2Gi", redisLim["memory"])
 }
 
-// GitLab 번들 Prometheus 도 뜨는 데 필요한 최소가 있다.
+// GitLab 차트가 함께 세우는 번들 Prometheus 는 설치하지 않는다.
 //
-// webservice / sidekiq / redis 는 이미 하한을 두고 있는데 prometheus 만 비율을
-// 그대로 곱하고 있었다. Local/Startup 규모에서 그 값이 메모리 한도 328Mi 가 되어
-// OOMKilled(exit 137) 로 34번 재시작하며 CrashLoopBackOff 에 갇혔다.
-// 스택은 "실행 중" 인데 파드 하나가 영원히 안 뜨는 상태다.
+// 스택은 이미 kube-prometheus-stack 을 세우고, 라우트·대시보드·모니터링 화면이
+// 모두 그쪽을 본다. 번들 쪽은 아무도 읽지 않으면서 메모리만 먹는다.
 //
-// 하한은 실측으로 잡았다. 같은 클러스터에서 클러스터 전체를 긁는
-// kube-prometheus-stack 의 Prometheus 가 431Mi 를 쓴다. GitLab 번들은 GitLab
-// 컴포넌트만 긁으므로 그보다 적지만, 328Mi 로는 확실히 죽었다.
-func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsBundledPrometheus(t *testing.T) {
+// 예전에는 설치하되 자원 하한을 둬서 막았다 — 비율만 곱했더니 Local/Startup
+// 규모에서 메모리 한도가 328Mi 가 되어 OOMKilled(exit 137) 로 34번 재시작하며
+// CrashLoopBackOff 에 갇혔기 때문이다. 스택은 "실행 중" 인데 파드 하나가 영원히
+// 안 뜨는 상태다. 하한은 그 증상만 가렸고, release values 를 live 로 편집하면
+// 옛 한도가 오버라이드로 얼어붙어 같은 증상이 그대로 재현됐다.
+func TestOrchestrator_GitLabStep_DoesNotInstallBundledPrometheus(t *testing.T) {
 	installer := &mockInstaller{}
-	// 아주 작은 규모를 준다. 비율만 곱하면 한도가 수십 Mi 로 떨어진다.
+	// 아주 작은 규모를 준다. 예전 경로였다면 한도가 수십 Mi 로 떨어졌다.
 	resourceRepo := &mockResourceDefaultRepo{items: []*domain.ResourceDefault{{
 		ToolKey:         "gitlab-ce",
 		CPURequest:      1,
@@ -377,26 +381,15 @@ func TestOrchestrator_ApplyResourceDefaultsForGitLab_ClampsBundledPrometheus(t *
 	})
 
 	// 설치 순서를 지켜야 GitLab 단계에 닿는다.
-	orch.ResumeFromStep("stk_gitlab_prom_clamp", "installing_gitlab")
-	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_prom_clamp", "installing_gitlab", "B"))
+	orch.ResumeFromStep("stk_gitlab_prom_off", "installing_gitlab")
+	require.NoError(t, orch.ExecuteStep(context.Background(), "stk_gitlab_prom_off", "installing_gitlab", "B"))
 
 	gitlabValues := installer.valuesByRelease["gitlab"]
 	require.NotNil(t, gitlabValues)
 
 	prometheus, ok := gitlabValues["prometheus"].(map[string]any)
 	require.True(t, ok)
-	server, ok := prometheus["server"].(map[string]any)
-	require.True(t, ok)
-	resources, ok := server["resources"].(map[string]any)
-	require.True(t, ok)
-	limits, ok := resources["limits"].(map[string]any)
-	require.True(t, ok)
-	requests, ok := resources["requests"].(map[string]any)
-	require.True(t, ok)
-
-	assert.Equal(t, "1Gi", limits["memory"], "328Mi 로는 기동 중 OOM 된다")
-	assert.Equal(t, "512Mi", requests["memory"])
-	assert.Equal(t, "500m", limits["cpu"])
+	assert.Equal(t, false, prometheus["install"])
 }
 
 func TestOrchestrator_ResumeFromStep_AllowsFailedStepOnFreshExecutor(t *testing.T) {
@@ -584,6 +577,8 @@ func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
 		{name: "installing_logging", phase: "C"},
 		{name: "installing_log_search", phase: "C"},
 		{name: "installing_opentelemetry", phase: "C"},
+		{name: "installing_otel_collector", phase: "C"},
+		{name: "installing_otel_agent", phase: "C"},
 		{name: "installing_gateway", phase: "C"},
 	}
 	for _, step := range steps {
@@ -618,6 +613,8 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 		{name: "installing_logging", phase: "C"},
 		{name: "installing_log_search", phase: "C"},
 		{name: "installing_opentelemetry", phase: "C"},
+		{name: "installing_otel_collector", phase: "C"},
+		{name: "installing_otel_agent", phase: "C"},
 		{name: "installing_gateway", phase: "C"},
 	}
 	for _, step := range steps {
@@ -686,6 +683,8 @@ func TestOrchestrator_VerifyDeployment_RepairsMissingGatewayRelease(t *testing.T
 		"loki",
 		"opensearch",
 		"opentelemetry-collector",
+		"otel-collector",
+		"otel-agent",
 	}
 	orch := NewOrchestrator(installer, []byte("kubeconfig"), "nullus")
 
@@ -924,6 +923,8 @@ func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
 		{name: "installing_logging", phase: "C"},
 		{name: "installing_log_search", phase: "C"},
 		{name: "installing_opentelemetry", phase: "C"},
+		{name: "installing_otel_collector", phase: "C"},
+		{name: "installing_otel_agent", phase: "C"},
 		{name: "installing_gateway", phase: "C"},
 	}
 
@@ -975,6 +976,8 @@ func TestOrchestrator_VerifyDeployment_UsesResolvedChartsForLoggingAndTrace(t *t
 		{name: "installing_logging", phase: "C"},
 		{name: "installing_log_search", phase: "C"},
 		{name: "installing_opentelemetry", phase: "C"},
+		{name: "installing_otel_collector", phase: "C"},
+		{name: "installing_otel_agent", phase: "C"},
 		{name: "installing_gateway", phase: "C"},
 	}
 

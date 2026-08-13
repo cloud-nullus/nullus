@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OpenTelemetry 수집기를 스택의 관측 계층으로** (`internal/stack/domain/config.go`, `internal/stack/adapter/helm/otel-collector.go`, `db/migrations/000063_seed_otel_stack_template.up.sql`): 설치 마법사의 **Exporter / Agent 선택이 아무 일도 하지 않고 있었다** — 프론트는 배포 요청에 `trace_exporter` 를 실어 보냈지만 도메인 설정에 받는 칸이 없어 조용히 버려졌다. `trace_layer`(추적 저장소)와 칸을 나눈다: 역할이 다르기 때문이다. `trace_layer` 는 추적을 저장·조회하는 백엔드(Tempo/Jaeger)이고, `trace_exporter` 는 그 앞에 서서 OTLP 를 받아 추적·메트릭·로그를 각각의 저장소로 나눠 보낸다 — 한 칸에 묶으면 둘 중 하나만 설치할 수 있어 "수집기를 통해 관측한다" 는 구성 자체가 불가능하다.
+
+  수집기는 **둘로 나눈다**. OpenTelemetry 의 표준 배치다. 게이트웨이(Deployment)는 OTLP 를 받아 Tempo/Prometheus/Loki 로 내보내고 — 앱이 붙는 주소가 하나로 고정되어야 한다 — 에이전트(DaemonSet)는 노드의 `/var/log/pods` 를 읽어 게이트웨이로 넘긴다(로그 파일은 노드마다 있으므로 모든 노드에 떠야 한다). 에이전트가 저장소로 직접 보내지 않는 이유는 출구를 하나로 모아야 저장소를 바꿀 때 고칠 곳이 한 군데로 남기 때문이다. 게이트웨이가 없거나 로그를 받아 줄 저장소가 없으면 에이전트를 설치하지 않는다 — 갈 곳도 없는 로그를 위해 노드마다 DaemonSet 을 띄우지 않는다. **고르지 않은 백엔드로 보내는 exporter 는 만들지 않는다**: 주소가 풀리지 않아 수집기는 뜨는데 추적만 조용히 사라지는, 원인을 찾기 어려운 상태가 된다.
+
+  Loki 는 라벨로만 스트림을 가르므로 `resource/loki` 프로세서로 `k8s.namespace.name`·`k8s.container.name` 을 라벨로 승격한다. **파드 이름은 넣지 않는다** — 재생성마다 새 스트림이 생겨 카디널리티가 터진다(본문 속성으로는 남아 검색된다). 릴리스명은 차트 이름과 다르게 둔다(`otel-collector` / `otel-agent`): 추적 계층 단계가 같은 차트를 설치할 수 있어 이름이 겹치면 Helm 이 소유권 충돌로 거부한다. 이름 규칙은 `shared` 가 소유한다 — cicd 가 배포되는 앱에 이 주소를 넣어 줘야 하는데 모듈끼리 서로의 internal 을 참조할 수 없다. 연결정보에는 OTLP 주소를 안내한다: 수집기는 자격증명이 없고, 안내의 본체는 "어디로 보내야 하는가" 다.
+
+  Golden Path 템플릿 `gitlab-argocd-otel-v1` 을 인메모리·마이그레이션 양쪽에 시드하고 호환성 매트릭스와 단계 카탈로그도 함께 넣는다.
+
+- **스택이 설치한 OSS 가 자기 메트릭을 Prometheus 에 내준다** (`internal/stack/adapter/helm/service-monitors.go`): 모니터링을 설치해도 **도구 자신이 아는 것은 어디에도 남지 않았다** — 파드의 CPU·메모리는 cadvisor 로 보이지만 Argo CD 의 동기화 실패 수, Loki 의 수집 지연, MinIO 의 버킷 사용량은 수집되지 않았다. 차트가 ServiceMonitor 를 만들도록 켜고 거기에 kube-prometheus-stack 의 `release` 라벨을 붙인다 — 그 차트는 기본값에서 자기 라벨이 붙은 모니터만 고르므로, 라벨이 없으면 **리소스는 생기는데 스크랩은 안 된다**. 키는 차트마다 다르다(grafana 만 `labels`, 나머지는 `additionalLabels`, argo-cd 는 컴포넌트 5개 각각). minio 는 템플릿 조건이 `and .enabled .includeNode` 라 `enabled` 만 켜면 values 에는 실리는데 ServiceMonitor 는 만들어지지 않는다 — 켠 줄 알고 넘어가기 딱 좋은 함정이라 실제로 한 번 밟았다. Prometheus 를 고르지 않은 스택에서는 아무것도 켜지 않는다: ServiceMonitor 는 Operator 의 CRD 라 없으면 설치가 통째로 멈춘다. GitLab 은 차트에 `serviceMonitor` 값 자체가 없어 제외했다.
+
+- **배포되는 앱에 스택 수집기 주소를 넣어 준다** (`internal/cicd/usecase/otlp_endpoint.go`, `internal/cicd/adapter/manifests/generator.go`): 수집기가 떠 있어도 앱이 주소를 모르면 아무것도 내보내지 않는다. OTel SDK 가 표준으로 읽는 `OTEL_EXPORTER_OTLP_ENDPOINT`·`OTEL_EXPORTER_OTLP_PROTOCOL`·`OTEL_SERVICE_NAME` 을 매니페스트에 넣는다. **프로토콜을 명시하는 이유**는 SDK 기본값이 `http/protobuf` 인데 수집기의 4317 은 gRPC 포트라 두면 전송이 실패하기 때문이다. 수집기가 없는 스택에는 넣지 않는다 — 닿지 않는 주소를 박으면 앱이 영원히 재시도하며 실패 로그만 쌓는다. 사용자가 같은 키를 직접 지정했으면 건드리지 않는다: 외부 수집기로 보내려는 선택을 덮어쓰면 안 되고 같은 이름을 두 번 선언하면 어느 값이 적용될지도 알 수 없다. 배포 경로가 둘이라(파이프라인 배포·직접 배포) 판단을 한 곳으로 모았다 — 각자 구현하면 한쪽만 고쳐져 "어떤 경로로 배포했느냐에 따라 추적이 갈리는" 상태가 된다(실제로 직접 배포 쪽이 빠져 있었다).
+
+- **클러스터 상세의 가용 리소스와 조직 이름** (`internal/admin/usecase/cluster_usecase.go`, `web/src/features/admin/pages/cluster-page.tsx`): 조직 접근 칸이 UUID 만 보여 주어 사람이 어느 조직인지 알 수 없었다. 서버가 이름을 함께 내려주되 조회에 실패해도 오류를 올리지 않는다 — 이름은 부가 정보이고 그것 때문에 목록이 뜨지 않으면 더 나쁘다(못 찾으면 화면이 ID 로 되돌아간다). 가용 리소스는 데이터가 이미 있었는데 화면에서만 쓰이지 않았다: 스택을 올리기 전에 알아야 하는 것은 "노드가 몇 대인가" 가 아니라 "지금 얼마가 남아 있는가" 이므로 allocatable 에서 이미 예약된 request 를 뺀 값을 보여 준다. **limit 이 아니라 request 를 기준으로 삼는다** — 스케줄러가 자리를 잡을 때 보는 값이 request 이고, limit 합계는 오버커밋 때문에 가용량보다 큰 것이 정상이다.
+
 - **배포된 스택의 OSS 설정을 values.yaml 수준에서 고쳐 다시 적용** (`internal/stack/port/release_values.go`, `internal/stack/adapter/helm/release-values.go`, `internal/stack/usecase/manage_release_values.go`, `web/src/features/stack/components/stack-config-tab.tsx`): 기능분해도의 `NULLUS_DSS_040_040`(스택 설정 수정 및 재배포)이 비어 있었다. Monaco 에디터는 설치 마법사에만 있었고, 거기 뜨는 YAML 도 프론트가 만든 매니페스트라 백엔드가 실제로 helm 에 넘긴 values 와 달랐다. 배포가 끝난 스택에는 설정을 고칠 진입점 자체가 없었고, DB 만 갱신하는 `POST /stacks/:id/config` 는 클러스터에 재적용하지 않는 데다 프론트에서 호출하는 곳조차 없었다. 이제 스택 상세의 **Config 탭**에서 릴리스를 골라 편집한다.
 
   편집 단위를 **두 가지 중에 고른다**. `live` 는 릴리스에 실제로 배포된 values 전체이고(보이는 그대로가 배포값이지만 플랫폼이 계산해 넣은 값까지 노출된다), `override` 는 사용자가 얹은 커스텀만이다(안전한 대신 지금 무엇이 적용돼 있는지는 보이지 않는다). 어느 쪽이 맞는지는 상황마다 다르므로 하나로 정하지 않았다. `override` 는 배포값 위에 **누적**된다 — 키를 지워도 이미 적용된 값은 되돌아가지 않는다(되돌리려면 `live` 에서 지운다). 대신 플랫폼이 계산해 넣은 값을 이 경로가 실수로 날려 버리는 일은 없다.
@@ -76,6 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
+
+- **얼어붙은 오버라이드가 플랫폼 계산값을 이기던 문제** (`internal/stack/adapter/helm/platform-owned-values.go`): release values 의 `live` 편집은 배포된 values 를 통째로 읽어 `YAMLOverrides` 에 저장하는데, 거기에는 사용자가 적은 값뿐 아니라 **플랫폼이 계산해 넣은 값도 함께 얼어붙는다**. 오버라이드는 병합의 맨 마지막이라 그 스냅샷이 이후의 재계산을 영원히 이긴다. 실제로 두 가지가 이 경로로 깨졌다. (1) `global.psql.host` 가 스냅샷 시점의 네임스페이스에 묶여, 설정을 다른 네임스페이스로 옮기면 GitLab 이 **삭제된 스택의 PostgreSQL** 을 가리켰다 — export/import 도 이 값을 다시 쓰지 않으므로 그대로 재현된다. (2) GitLab 번들 Prometheus 의 메모리 한도 328Mi 가 얼어붙어, OOM 을 막으려 둔 자원 하한을 이기고 CrashLoopBackOff 를 재현했다(예전에 한 번 고친 증상이 되살아난 것이다). 병합이 끝난 뒤 **배선에 해당하는 값만** 다시 못박는다 — 자원·프로브 같은 실제 사용자 의도까지 되돌리면 오버라이드 기능이 무의미해진다. 값이 실제로 달랐을 때만 이유와 함께 경고를 남긴다.
+
+- **GitLab 번들 Prometheus 를 설치하지 않는다** (`internal/stack/adapter/helm/resource-defaults.go`): 스택은 이미 kube-prometheus-stack 을 세우고 라우트·대시보드·모니터링 화면이 모두 그쪽을 본다 — 번들 쪽은 아무도 읽지 않으면서 메모리만 먹고 스택의 자원 계획 아래에서 OOMKilled 로 죽었다. 자원 하한으로 증상만 가리던 코드를 걷어내고 아예 끈다.
+
+- **로그 저장소로 Loki 를 골라도 OpenSearch 가 설치되던 문제** (`internal/stack/adapter/helm/helm-values.go`): 화면은 Loki 를 고를 수 있게 열어 두는데 `resolveChartSpecForStep` 에 `loki` 분기가 없어 default(OpenSearch)로 떨어졌다. 함께, 모니터링의 워크로드 접두사가 `opensearch` 로 고정돼 있어 Loki 를 고르면 **설치는 정상인데 화면에서만 "0 파드 warning"** 으로 남던 것도 고쳤다(고른 제품에 따라 접두사를 정한다). 수집과 검색이 같은 제품이면 릴리스도 하나이므로 한 번만 센다.
+
+- **차트가 상태색을 계열색으로 쓰던 문제** (`web/DESIGN.md`, `web/src/features/observability/components/monitoring-chart-widgets.tsx`): CPU/Memory 차트가 Limit 을 `--color-warning`(갈색), Current 를 `--color-success`(초록)로 그렸다. 한도와 현재값은 **정상 설정값과 측정값인데도** 색이 "경고"·"성공" 이라고 말해, 아무 문제 없는 차트가 문제 있는 것처럼 읽혔다. 계열 팔레트(`chart-1/2/3`)를 DESIGN.md 에 두고 상태색은 상태에만 남긴다 — 값은 색각 이상 분리도와 표면 대비를 라이트·다크 양쪽에서 검증한 것이고, 라이트의 `chart-3` 은 흰 면 대비가 3:1 미만이라 범례·직접 라벨이 반드시 함께 있어야 한다는 조건까지 문서에 적었다. 함께: 점선 전면 격자를 가로선만·10% 농도로(격자가 데이터보다 먼저 보였다), 도넛의 잉크색 굵은 테두리를 면 색 2px 로(조각보다 테두리가 도드라졌다), 툴팁·범례 글자가 테두리 토큰을 입어 배경에 묻히던 것을 글자 토큰으로.
+
+- **OpenTelemetry 아이콘이 비활성처럼 보이던 문제** (`web/public/tool-icons/opentelemetry.svg`): `fill="#FFFFFF"` 라 흰 카드 위에서 보이지 않았다. 브랜드색으로 교체했다. (같은 이유로 `github.svg` 도 흰색이지만, 검정으로 바꾸면 다크 테마에서 반대로 사라져 테마별 처리가 필요하므로 남겨 뒀다.)
+
+- **스택 상세 STORAGE 칸의 이름이 세로로 접히던 문제** (`web/src/features/stack/components/pipeline-topology.tsx`): 버전 칸이 `shrink-0` 이라 MinIO 의 `RELEASE.2024-12-18T13-15-44Z` 가 폭을 다 가져가 이름 칸이 0 이 되고, 고정 폭 카드 안에서 "minio" 가 한 글자씩 세로로 접혔다. 이름이 읽히는 폭을 먼저 보장한다.
 
 - **설치 리소스 값이 Helm 에 한 번도 실리지 않던 문제** (`cmd/api/main.go`, `internal/stack/adapter/helm/resource-defaults.go`): 마법사에서 고른 규모(Local/Startup/…)와 OSS별 리소스 조정이 클러스터에 반영되지 않고 있었다. 원인이 둘이었다 — `WithResourceDefaultRepository` 가 `main.go` 에서 배선되지 않았고, 사용자가 조정한 `AppliedResourceOverrides` 는 저장만 되고 읽는 곳이 없었다. 배선 누락이 다시 생기지 않도록 `OrchestratorOption` 이 전부 `main.go` 에서 쓰이는지 AST 로 검사하는 테스트를 뒀다. 아울러 소수 Gi 값이 파드 스펙에 `257698037760m`(밀리바이트)로 남던 문제도 고쳤다 — 0.24Gi 같은 값이 `246Mi` 로 나간다.
 - **⚠️ metrics-server 가 스택 네임스페이스에 설치돼 클러스터의 모든 네임스페이스 삭제를 교착시키던 문제** (`internal/stack/adapter/helm/helm_step_metadata.go`): 이 차트가 만드는 `APIService v1beta1.metrics.k8s.io` 는 cluster-scoped 라, 스택을 지우면 Service 만 사라지고 APIService 는 죽은 대상을 계속 가리킨다. 그러면 API discovery 가 실패해 **무관한 네임스페이스까지 전부 Terminating 에 갇힌다** — 실제로 스택 셋이 이틀 넘게 갇혀 있었다. `kube-system` 으로 못박는다. cert-manager 가 같은 이유로 이미 자기 네임스페이스를 고정하고 있었다.

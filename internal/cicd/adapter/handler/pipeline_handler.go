@@ -43,6 +43,19 @@ type PipelineHandler struct {
 	// deletePipeline 은 부수 리소스까지 지우는 경로다. 선택적으로 배선되며,
 	// 없으면 삭제는 종전대로 레코드만 지운다.
 	deletePipeline *usecase.DeletePipeline
+
+	// stackReader 는 배포되는 앱에 넣어 줄 수집기 주소를 찾는 데 쓴다.
+	// 없으면 배포는 그대로 되고 추적 환경변수만 빠진다.
+	stackReader port.StackReader
+}
+
+// WithStackReader 는 스택 요약 조회를 배선한다.
+//
+// 파이프라인 배포(DeployPipeline)와 직접 배포(DeployApp)가 같은 주소를 넣어야
+// 한다 — 한쪽만 배선하면 배포 경로에 따라 추적이 되기도 하고 안 되기도 한다.
+func (h *PipelineHandler) WithStackReader(r port.StackReader) *PipelineHandler {
+	h.stackReader = r
+	return h
 }
 
 // WithDeletePipeline 은 부수 리소스 삭제 경로를 배선한다.
@@ -923,7 +936,8 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 			CPURequest: req.Resources.CPURequest,
 			MemRequest: req.Resources.MemRequest,
 		},
-		EnvVars: req.EnvVars,
+		EnvVars:      req.EnvVars,
+		OTLPEndpoint: usecase.OTLPEndpointFor(c.Request().Context(), h.stackReader, req.StackID),
 	})
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())

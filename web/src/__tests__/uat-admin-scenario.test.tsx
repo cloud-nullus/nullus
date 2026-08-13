@@ -57,6 +57,8 @@ vi.mock('../features/admin/api/admin-api', () => ({
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useVerifyCluster: () => ({ mutate: vi.fn() }),
   useVerifyClusterDraft: () => ({ mutate: vi.fn(), isPending: false }),
+  // 가용 리소스 카드가 쓰는 훅. 데이터가 없으면 카드는 렌더되지 않는다.
+  useClusterMonitoringSummary: () => ({ data: undefined, isLoading: false }),
   useCluster: () => ({ data: undefined, isFetching: false }),
 }))
 

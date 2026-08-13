@@ -11,7 +11,7 @@ vi.mock('../api/admin-api', () => ({
   useClusters: () => ({
     data: {
       items: [
-        { id: 'c1', name: 'prod-cluster', type: 'target', types: ['target'], cloudProvider: 'aws', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-01T00:00:00Z' },
+        { id: 'c1', name: 'prod-cluster', type: 'target', types: ['target'], cloudProvider: 'aws', endpoint: 'https://prod.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], organizationNames: { 'org-1': 'Nullus Platform' }, createdAt: '2026-01-01T00:00:00Z' },
         { id: 'c2', name: 'staging-cluster', type: 'pipeline', types: ['pipeline'], cloudProvider: 'on_premise', endpoint: 'https://staging.k8s.nullus.io', status: 'connected', organizationIds: ['org-1'], createdAt: '2026-01-15T00:00:00Z' },
         { id: 'c3', name: 'dev-cluster', type: 'pipeline', types: ['target', 'pipeline'], cloudProvider: 'on_premise', endpoint: 'https://dev.k8s.nullus.io', status: 'pending', organizationIds: ['org-1'], createdAt: '2026-03-01T00:00:00Z' },
       ],
@@ -24,6 +24,23 @@ vi.mock('../api/admin-api', () => ({
   useDeleteCluster: () => ({ mutate: vi.fn(), isPending: false }),
   useVerifyCluster: () => ({ mutate: verifyMutate }),
   useVerifyClusterDraft: () => ({ mutate: vi.fn(), isPending: false }),
+  useClusterMonitoringSummary: () => ({
+    data: {
+      total_nodes: 3,
+      ready_nodes: 3,
+      total_pods: 40,
+      ready_pods: 40,
+      cpu_request_millicores: 4000,
+      cpu_limit_millicores: 8000,
+      cpu_allocatable_millicores: 12000,
+      cpu_usage_millicores: 1500,
+      memory_request_mib: 8192,
+      memory_limit_mib: 16384,
+      memory_allocatable_mib: 24576,
+      memory_usage_mib: 6144,
+    },
+    isLoading: false,
+  }),
   useCluster: (id: string) => ({
     data: id
       ? {
@@ -87,6 +104,25 @@ describe('ClusterPage', () => {
   it('detail panel shows Organization Access section', () => {
     renderWithProviders(<ClusterPage />)
     expect(screen.getByText('Organization Access')).toBeInTheDocument()
+  })
+
+  // UUID 만 보여주면 어느 조직인지 알 수 없다. 서버가 이름을 주면 이름을 쓴다.
+  it('shows the organization name instead of its id when the server resolved it', () => {
+    renderWithProviders(<ClusterPage />)
+    expect(screen.getByText('Nullus Platform')).toBeInTheDocument()
+    expect(screen.queryByText('org-1')).not.toBeInTheDocument()
+  })
+
+  // 스택을 올리기 전에 알아야 하는 것은 "지금 얼마가 남아 있는가" 다.
+  it('shows how much cluster capacity is still free', () => {
+    renderWithProviders(<ClusterPage />)
+
+    expect(screen.getByText('Available Resources')).toBeInTheDocument()
+    // allocatable 12 core - request 4 core = 8 core 남음
+    expect(screen.getByText('8.0 of 12.0 cores free')).toBeInTheDocument()
+    // allocatable 24GiB - request 8GiB = 16GiB 남음
+    expect(screen.getByText('16.0 of 24.0 GiB free')).toBeInTheDocument()
+    expect(screen.getByText('3/3 nodes ready')).toBeInTheDocument()
   })
 
   it('detail panel shows connection status', () => {

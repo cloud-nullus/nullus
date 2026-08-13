@@ -22,6 +22,8 @@ const (
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
 	stepInstallingCertManager        = "installing_cert_manager"
 	stepInstallingRunner             = "installing_runner"
+	stepInstallingOTelCollector      = "installing_otel_collector"
+	stepInstallingOTelAgent          = "installing_otel_agent"
 )
 
 var installGatewayOCIRelease = installOCIChartWithHelmCLI
@@ -351,8 +353,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_logging":       19,
 			"installing_log_search":    20,
 			"installing_opentelemetry": 21,
-			"installing_gateway":       22,
-			"integration_check":        23,
+			// 수집기는 자기가 내보낼 백엔드(Tempo/Prometheus/Loki)가 선 뒤에 온다.
+			stepInstallingOTelCollector: 22,
+			// 에이전트는 자기가 넘길 게이트웨이가 선 뒤에 온다.
+			stepInstallingOTelAgent: 23,
+			"installing_gateway":    24,
+			"integration_check":     25,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -377,6 +383,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_logging",
 			"installing_log_search",
 			"installing_opentelemetry",
+			stepInstallingOTelCollector,
+			stepInstallingOTelAgent,
 			"installing_gateway",
 			"integration_check",
 		},
@@ -390,18 +398,20 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 않는다. config.authentication.provider 로 매핑해 두면 이 값이
 			// 설치 여부를 좌우하는 것처럼 읽혀 오해를 부르므로 넣지 않는다.
 			// provisioning_sso 는 선택형이라 매핑을 유지한다.
-			"provisioning_sso":         "config.authentication.provider",
-			"installing_gitlab":        "config.artifacts.source_repository",
-			"installing_harbor":        "config.artifacts.container_registry",
-			"installing_nexus":         "config.artifacts.container_registry",
-			"provisioning_nexus":       "config.artifacts.container_registry",
-			"installing_argocd":        "config.pipeline.cd_tool",
-			stepInstallingRunner:       "config.pipeline.ci_platform",
-			"installing_prometheus":    "config.monitoring.collection",
-			"installing_grafana":       "config.monitoring.visualization",
-			"installing_logging":       "config.logging.collection",
-			"installing_log_search":    "config.logging.search",
-			"installing_opentelemetry": "config.logging.trace_layer",
+			"provisioning_sso":          "config.authentication.provider",
+			"installing_gitlab":         "config.artifacts.source_repository",
+			"installing_harbor":         "config.artifacts.container_registry",
+			"installing_nexus":          "config.artifacts.container_registry",
+			"provisioning_nexus":        "config.artifacts.container_registry",
+			"installing_argocd":         "config.pipeline.cd_tool",
+			stepInstallingRunner:        "config.pipeline.ci_platform",
+			"installing_prometheus":     "config.monitoring.collection",
+			"installing_grafana":        "config.monitoring.visualization",
+			"installing_logging":        "config.logging.collection",
+			"installing_log_search":     "config.logging.search",
+			"installing_opentelemetry":  "config.logging.trace_layer",
+			stepInstallingOTelCollector: "config.logging.trace_exporter",
+			stepInstallingOTelAgent:     "config.logging.trace_exporter",
 		},
 		stepConfigEnabled: map[string]func(domain.StackConfig) bool{
 			"installing_postgresql": func(cfg domain.StackConfig) bool {
@@ -489,6 +499,18 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_opentelemetry": func(cfg domain.StackConfig) bool {
 				return cfg.Logging.TraceLayer.Enabled
+			},
+			stepInstallingOTelCollector: func(cfg domain.StackConfig) bool {
+				return cfg.Logging.TraceExporter.Enabled
+			},
+			// 에이전트는 파드 로그를 긁어 게이트웨이로 넘긴다. 게이트웨이가 없거나
+			// 로그를 받아 줄 저장소가 없으면 긁을 이유가 없다 — 노드마다 도는
+			// DaemonSet 을 갈 곳도 없는 로그를 위해 띄우지 않는다.
+			stepInstallingOTelAgent: func(cfg domain.StackConfig) bool {
+				if !cfg.Logging.TraceExporter.Enabled {
+					return false
+				}
+				return lokiSelected(cfg.Logging.Collection) || lokiSelected(cfg.Logging.Search)
 			},
 		},
 		progress: make(map[string]int),
