@@ -15,13 +15,14 @@ import (
 // 여기 없는 단계는 계획 대상이 아니다. cert-manager·runner 처럼 사용자가 고르는
 // 자리가 아닌 것들과, Loki 처럼 계획 화면에 슬롯이 없는 것들이다.
 var plannedSlotForStep = map[string]string{
-	"installing_minio":         "artifacts.storageBackend",
-	"installing_gitlab":        "artifacts.sourceRepository",
-	"installing_argocd":        "pipeline.cdTool",
-	"installing_prometheus":    "monitoring.collection",
-	"installing_grafana":       "monitoring.visualization",
-	"installing_log_search":    "logging.search",
-	"installing_opentelemetry": "logging.traceLayer",
+	"installing_minio":          "artifacts.storageBackend",
+	"installing_gitlab":         "artifacts.sourceRepository",
+	"installing_argocd":         "pipeline.cdTool",
+	"installing_prometheus":     "monitoring.collection",
+	"installing_grafana":        "monitoring.visualization",
+	"installing_log_search":     "logging.search",
+	"installing_opentelemetry":  "logging.traceLayer",
+	stepInstallingOTelCollector: "logging.traceExporter",
 }
 
 // plannedResourceFor 는 이 단계에 적용할 계획값을 찾는다.

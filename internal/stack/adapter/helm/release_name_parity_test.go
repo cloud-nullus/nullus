@@ -48,6 +48,8 @@ func TestResolvedChartVariants_AreRegisteredForDeletion(t *testing.T) {
 			Logging: domain.LoggingConfig{Search: domain.ToolSelection{Name: "opensearch"}}}},
 		{step: "installing_log_search", config: domain.StackConfig{
 			Logging: domain.LoggingConfig{Search: domain.ToolSelection{Name: "elasticsearch"}}}},
+		{step: "installing_log_search", config: domain.StackConfig{
+			Logging: domain.LoggingConfig{Search: domain.ToolSelection{Name: "loki"}}}},
 		{step: "installing_opentelemetry", config: domain.StackConfig{
 			Logging: domain.LoggingConfig{TraceLayer: domain.ToolSelection{Name: "tempo"}}}},
 		{step: "installing_opentelemetry", config: domain.StackConfig{

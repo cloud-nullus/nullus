@@ -2,6 +2,10 @@ package domain
 
 import shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 
+// DefaultStackNamespace 는 스택 네임스페이스가 정해지지 않았을 때의 기본값이다.
+// 설치 경로와 안내 경로가 같은 값을 봐야 하므로 domain 이 소유한다.
+const DefaultStackNamespace = shareddomain.DefaultStackNamespace
+
 // 설치가 만들어내는 리소스 이름들. 여기가 단일 출처다.
 //
 // 이 값들은 두 곳에서 필요하다 — 설치 경로(Helm values 가 existingSecret 으로
@@ -120,7 +124,42 @@ const (
 
 	GrafanaChartVersion = "8.9.0"
 	GrafanaAppVersion   = "11.5.1"
+
+	// 추적 저장소. 차트 기본값으로 OTLP 수신기(4317/4318)가 켜져 있어
+	// 수집기가 별도 설정 없이 곧바로 보낼 수 있다.
+	TempoChartVersion = "1.18.1"
+	TempoAppVersion   = "2.7.0"
+
+	// OpenTelemetry Collector. 차트 0.75.0 의 appVersion 은 0.90.0 이다 —
+	// 프론트 기본값(0.104.0)이 차트와 갈라져 있었으므로 차트를 기준으로 삼는다.
+	OTelCollectorChartVersion = "0.75.0"
+	OTelCollectorAppVersion   = "0.90.0"
 )
+
+// OpenTelemetry 수집기의 이름·주소 규칙은 shared 가 소유한다.
+//
+// cicd 는 배포하는 앱에 이 주소를 넣어 줘야 하는데, 모듈끼리 서로의 internal 을
+// 참조할 수 없어 규칙을 shared 에 두고 양쪽이 같은 것을 본다. 여기서는 stack
+// 코드가 계속 domain 이름으로 쓰도록 별칭만 남긴다.
+const (
+	OTelCollectorReleaseName  = shareddomain.OTelCollectorReleaseName
+	OTelAgentReleaseName      = shareddomain.OTelAgentReleaseName
+	OTelCollectorOTLPGRPCPort = shareddomain.OTelCollectorOTLPGRPCPort
+	OTelCollectorOTLPHTTPPort = shareddomain.OTelCollectorOTLPHTTPPort
+)
+
+// OTelCollectorServiceName 은 수집기 Service 이름이다.
+func OTelCollectorServiceName() string { return shareddomain.OTelCollectorServiceName() }
+
+// OTelCollectorOTLPGRPCEndpoint 는 애플리케이션이 OTLP/gRPC 로 보낼 주소다.
+func OTelCollectorOTLPGRPCEndpoint(namespace string) string {
+	return shareddomain.OTelCollectorOTLPGRPCEndpoint(namespace)
+}
+
+// OTelCollectorOTLPHTTPEndpoint 는 애플리케이션이 OTLP/HTTP 로 보낼 주소다.
+func OTelCollectorOTLPHTTPEndpoint(namespace string) string {
+	return shareddomain.OTelCollectorOTLPHTTPEndpoint(namespace)
+}
 
 // OSS 도구의 초기 자격증명이 담기는 Secret.
 //

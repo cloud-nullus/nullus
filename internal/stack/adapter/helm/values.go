@@ -10,7 +10,8 @@ import (
 
 // defaultStackNamespace 는 스택 네임스페이스가 정해지지 않았을 때의 기본값이다.
 // 설치 시점에는 valuesForStep 이 실제 네임스페이스로 다시 덮어쓴다.
-const defaultStackNamespace = "nullus"
+// 안내 경로(연결정보)도 같은 값을 봐야 하므로 domain 의 상수를 그대로 쓴다.
+const defaultStackNamespace = domain.DefaultStackNamespace
 
 func DefaultValues(stepName string) map[string]any {
 	switch stepName {
@@ -451,6 +452,10 @@ func DefaultValues(stepName string) map[string]any {
 		return map[string]any{
 			"mode": "deployment",
 		}
+	case stepInstallingOTelCollector:
+		// 설정과 무관한 기본 골격만 낸다. 어디로 내보낼지는 스택 설정을 아는
+		// valuesForStep 이 이 위에 덮는다.
+		return otelCollectorValues(nil)
 	case "installing_tempo":
 		return map[string]any{}
 	case "installing_jaeger":

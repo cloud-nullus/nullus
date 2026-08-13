@@ -49,6 +49,10 @@ var releaseStepNames = map[string]string{
 	"opentelemetry-collector": "installing_opentelemetry",
 	"tempo":                   "installing_opentelemetry",
 	"jaeger":                  "installing_opentelemetry",
+	// 수집기는 추적 계층과 별개 단계다. 여기가 비면 values 편집을 어느 오버라이드
+	// 키로 저장할지 알 수 없어 다음 재배포에서 편집이 조용히 사라진다.
+	domain.OTelCollectorReleaseName: stepInstallingOTelCollector,
+	domain.OTelAgentReleaseName:     stepInstallingOTelAgent,
 }
 
 // StepForRelease 는 릴리스를 만든 설치 단계를 돌려준다.

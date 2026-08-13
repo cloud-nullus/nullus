@@ -36,6 +36,9 @@ var canonicalInstallOrder = []string{
 	"installing_logging",
 	"installing_log_search",
 	"installing_opentelemetry",
+	// 수집기는 내보낼 백엔드가 모두 선 뒤에 온다.
+	"installing_otel_collector",
+	"installing_otel_agent",
 	"installing_gateway",
 	"integration_check",
 }

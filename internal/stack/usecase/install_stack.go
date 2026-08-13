@@ -72,6 +72,11 @@ var installDAG = []installStep{
 	{name: "installing_logging", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
 	{name: "installing_log_search", phase: "C", duration: time.Second, deps: []string{"installing_logging"}},
 	{name: "installing_opentelemetry", phase: "C", duration: time.Second, deps: []string{"installing_logging"}},
+	// 수집기는 자기가 내보낼 백엔드가 모두 선 뒤에 온다. 추적 저장소·메트릭·로그
+	// 어느 쪽이든 아직 없으면 수집기가 뜨자마자 내보내기 실패를 쌓는다.
+	{name: "installing_otel_collector", phase: "C", duration: time.Second, deps: []string{"installing_opentelemetry", "installing_prometheus"}},
+	// 에이전트는 자기가 로그를 넘길 게이트웨이가 선 뒤에 온다.
+	{name: "installing_otel_agent", phase: "C", duration: time.Second, deps: []string{"installing_otel_collector"}},
 	{name: "installing_gateway", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
 	{name: "integration_check", phase: "C", duration: time.Second, deps: []string{"installing_gateway"}},
 }
