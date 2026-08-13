@@ -70,18 +70,21 @@ type verifyClusterDraftRequest struct {
 }
 
 type clusterResponse struct {
-	ID                string                  `json:"id"`
-	Name              string                  `json:"name"`
-	Type              domain.ClusterType      `json:"type"`
-	Types             []domain.ClusterType    `json:"types"`
-	CloudProvider     domain.CloudProvider    `json:"cloud_provider"`
-	Endpoint          string                  `json:"endpoint"`
-	ConnectionStatus  domain.ConnectionStatus `json:"connection_status"`
-	OrgID             string                  `json:"org_id"`
-	NodeArchitectures []string                `json:"node_architectures"`
-	Kubeconfig        string                  `json:"kubeconfig,omitempty"`
-	CreatedAt         any                     `json:"created_at"`
-	UpdatedAt         any                     `json:"updated_at"`
+	ID               string                  `json:"id"`
+	Name             string                  `json:"name"`
+	Type             domain.ClusterType      `json:"type"`
+	Types            []domain.ClusterType    `json:"types"`
+	CloudProvider    domain.CloudProvider    `json:"cloud_provider"`
+	Endpoint         string                  `json:"endpoint"`
+	ConnectionStatus domain.ConnectionStatus `json:"connection_status"`
+	OrgID            string                  `json:"org_id"`
+	// OrgName 은 화면이 조직을 사람이 읽는 이름으로 보여주기 위한 값이다.
+	// 찾지 못하면 비워 두고, 화면은 ID 로 되돌아간다.
+	OrgName           string   `json:"org_name,omitempty"`
+	NodeArchitectures []string `json:"node_architectures"`
+	Kubeconfig        string   `json:"kubeconfig,omitempty"`
+	CreatedAt         any      `json:"created_at"`
+	UpdatedAt         any      `json:"updated_at"`
 }
 
 type clusterNamespaceResponseItem struct {
@@ -110,6 +113,34 @@ type clusterMonitoringSummaryResponse struct {
 	MemoryLimitMiB           int64 `json:"memory_limit_mib"`
 	MemoryAllocatableMiB     int64 `json:"memory_allocatable_mib"`
 	MemoryUsageMiB           int64 `json:"memory_usage_mib"`
+}
+
+// withOrgName 은 조직 이름을 채운 응답을 돌려준다.
+//
+// 이름을 못 찾으면 그대로 둔다 — 부가 정보 때문에 목록이 비면 안 된다.
+func (r clusterResponse) withOrgName(names map[string]string) clusterResponse {
+	if name, ok := names[r.OrgID]; ok {
+		r.OrgName = name
+	}
+	return r
+}
+
+// resolveOrgNames 는 응답에 실을 조직 이름을 모아 온다.
+func (h *ClusterHandler) resolveOrgNames(c echo.Context, clusters ...*domain.Cluster) map[string]string {
+	if h.clusterUC == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(clusters))
+	for _, cluster := range clusters {
+		if cluster != nil {
+			ids = append(ids, cluster.OrgID)
+		}
+	}
+	names, err := h.clusterUC.OrgNames(c.Request().Context(), ids)
+	if err != nil {
+		return nil
+	}
+	return names
 }
 
 func toClusterResponse(cluster *domain.Cluster, kubeconfig string) clusterResponse {
@@ -223,9 +254,10 @@ func (h *ClusterHandler) ListClusters(c echo.Context) error {
 		return err
 	}
 
+	orgNames := h.resolveOrgNames(c, clusters...)
 	items := make([]clusterResponse, 0, len(clusters))
 	for _, cluster := range clusters {
-		items = append(items, toClusterResponse(cluster, ""))
+		items = append(items, toClusterResponse(cluster, "").withOrgName(orgNames))
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"items": items, "total": len(items)})
@@ -257,7 +289,7 @@ func (h *ClusterHandler) GetCluster(c echo.Context) error {
 		kubeconfig = string(decrypted)
 	}
 
-	return c.JSON(http.StatusOK, toClusterResponse(cluster, kubeconfig))
+	return c.JSON(http.StatusOK, toClusterResponse(cluster, kubeconfig).withOrgName(h.resolveOrgNames(c, cluster)))
 }
 
 func (h *ClusterHandler) UpdateCluster(c echo.Context) error {

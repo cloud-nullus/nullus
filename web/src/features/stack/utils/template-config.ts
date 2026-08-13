@@ -94,6 +94,10 @@ export const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string 
     ko: 'GitHub·GitHub Actions·GHCR 을 그대로 쓰고 클러스터에는 ArgoCD 만 두는 GitOps 스택입니다.',
     en: 'A GitOps stack that keeps GitHub, GitHub Actions, and GHCR external, installing only ArgoCD in the cluster.',
   },
+  'gitlab-argocd-otel-v1': {
+    ko: 'GitLab CI·ArgoCD 위에 OpenTelemetry Collector 를 세워 추적·메트릭·로그를 한 곳에서 받습니다.',
+    en: 'Adds an OpenTelemetry Collector on top of GitLab CI and ArgoCD to receive traces, metrics, and logs in one place.',
+  },
 }
 
 export const TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES: Record<string, { ko: string; en: string }> = {
@@ -112,6 +116,10 @@ export const TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES: Record<string, { ko: string;
   'GitHub·GitHub Actions·GHCR 을 외부 서비스로 사용하고, 클러스터 내에는 Argo CD + 모니터링만 설치합니다.': {
     ko: 'GitHub·GitHub Actions·GHCR 을 외부 서비스로 사용하고, 클러스터 내에는 Argo CD + 모니터링만 설치합니다.',
     en: 'Use GitHub, GitHub Actions, and GHCR as external services, and install only Argo CD + monitoring in the cluster.',
+  },
+  'GitLab CI 와 Argo CD 위에 OpenTelemetry Collector 를 세웁니다. 애플리케이션은 OTLP 한 곳으로만 보내고, 수집기가 추적은 Tempo, 메트릭은 Prometheus, 로그는 Loki 로 나눠 보냅니다.': {
+    ko: 'GitLab CI 와 Argo CD 위에 OpenTelemetry Collector 를 세웁니다. 애플리케이션은 OTLP 한 곳으로만 보내고, 수집기가 추적은 Tempo, 메트릭은 Prometheus, 로그는 Loki 로 나눠 보냅니다.',
+    en: 'Puts an OpenTelemetry Collector on top of GitLab CI and Argo CD. Applications send OTLP to a single endpoint, and the collector fans traces out to Tempo, metrics to Prometheus, and logs to Loki.',
   },
 }
 

@@ -48,11 +48,24 @@ type PipelineHandler struct {
 	// 적용하는 데 쓴다. 없으면 배포가 실패한다 — 적용하지 않고 성공을
 	// 기록하는 것보다 낫다.
 	applier port.ManifestApplier
+
+	// stackReader 는 배포되는 앱에 넣어 줄 수집기 주소를 찾는 데 쓴다.
+	// 없으면 배포는 그대로 되고 추적 환경변수만 빠진다.
+	stackReader port.StackReader
 }
 
 // WithManifestApplier 는 직접 배포의 적용 경로를 배선한다.
 func (h *PipelineHandler) WithManifestApplier(a port.ManifestApplier) *PipelineHandler {
 	h.applier = a
+	return h
+}
+
+// WithStackReader 는 스택 요약 조회를 배선한다.
+//
+// 파이프라인 배포(DeployPipeline)와 직접 배포(DeployApp)가 같은 주소를 넣어야
+// 한다 — 한쪽만 배선하면 배포 경로에 따라 추적이 되기도 하고 안 되기도 한다.
+func (h *PipelineHandler) WithStackReader(r port.StackReader) *PipelineHandler {
+	h.stackReader = r
 	return h
 }
 
@@ -934,7 +947,8 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 			CPURequest: req.Resources.CPURequest,
 			MemRequest: req.Resources.MemRequest,
 		},
-		EnvVars: req.EnvVars,
+		EnvVars:      req.EnvVars,
+		OTLPEndpoint: usecase.OTLPEndpointFor(c.Request().Context(), h.stackReader, req.StackID),
 	})
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())

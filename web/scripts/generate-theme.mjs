@@ -255,6 +255,11 @@ const cssVars = (t, el) => `  --color-surface-base: ${t.bg};
   --color-info: ${t.info};
   --color-accent-alt: ${t['accent-alt']};
 
+  /* 차트 계열색 — 정체성 전용. 상태색을 계열로 돌려쓰지 않는다 (DESIGN.md §차트) */
+  --color-chart-1: ${t['chart-1']};
+  --color-chart-2: ${t['chart-2']};
+  --color-chart-3: ${t['chart-3']};
+
   --shadow-raised: ${el.raised};
   --shadow-overlay: ${el.overlay};
 

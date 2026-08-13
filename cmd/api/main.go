@@ -282,6 +282,9 @@ func main() {
 		cicduc.WithImagePreparer(cicddocker.NewBuilder(manifestApplier.Tracker)),
 		cicduc.WithClusterTargetProvider(
 			cicdrepo.NewPostgresClusterTargetProvider(pool, encryptionKey)),
+		// 배포되는 앱에 스택 수집기 주소(OTLP)를 넣어 주기 위해 필요하다.
+		// 없으면 배포는 되고 추적 환경변수만 빠진다.
+		cicduc.WithStackReader(cicdStackReader),
 	)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
@@ -294,7 +297,10 @@ func main() {
 		WithDeletePipeline(deletePipelineUC).
 		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
 		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
-		WithManifestApplier(manifestApplier)
+		WithManifestApplier(manifestApplier).
+		// 직접 배포(POST /deploy-app)도 파이프라인 배포와 같은 수집기 주소를
+		// 넣어야 한다 — 한쪽만 배선하면 경로에 따라 추적이 갈린다.
+		WithStackReader(cicdStackReader)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository

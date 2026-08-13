@@ -81,7 +81,14 @@ function ToolRow({ tool }: { tool: PipelineTool }) {
       <span className="min-w-0 flex-1 break-words text-[12px] leading-[16px] text-[var(--color-text-primary)]">
         {tool.name}
       </span>
-      <span className="shrink-0 font-mono text-[11px] leading-[16px] text-[var(--color-text-secondary)]">
+      {/* shrink-0 으로 두면 MinIO 의 RELEASE.2024-12-18T13-15-44Z 처럼 긴 버전이
+          제 너비를 다 가져가 이름 칸이 0 이 된다 — 카드 폭이 고정이라 "minio" 가
+          한 글자씩 세로로 접혔다. 이름이 읽히는 폭을 먼저 보장하고, 남는 만큼만
+          버전에 준다. */}
+      <span
+        className="min-w-0 max-w-[55%] shrink break-all text-right font-mono text-[11px] leading-[16px] text-[var(--color-text-secondary)]"
+        title={tool.version}
+      >
         {tool.version}
       </span>
     </div>

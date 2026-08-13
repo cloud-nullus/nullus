@@ -95,6 +95,17 @@ type LoggingConfig struct {
 	Collection ToolSelection `json:"collection"`
 	Search     ToolSelection `json:"search"`
 	TraceLayer ToolSelection `json:"trace_layer,omitempty"`
+	// TraceExporter 는 애플리케이션이 보낸 텔레메트리를 받아 각 백엔드로
+	// 흘려보내는 수집기다 (OpenTelemetry Collector).
+	//
+	// TraceLayer 와 칸을 따로 두는 이유는 역할이 다르기 때문이다 — TraceLayer 는
+	// 추적을 저장·조회하는 백엔드(Tempo/Jaeger)이고, 이쪽은 그 앞에 서서 OTLP 를
+	// 받아 추적·메트릭·로그를 각각의 저장소로 나눠 보낸다. 한 칸에 묶으면 둘 중
+	// 하나만 설치할 수 있어 "수집기를 통해 관측한다"는 구성 자체가 불가능해진다.
+	//
+	// 프론트는 이전부터 이 값을 배포 요청에 실어 보냈으나 여기에 받는 칸이 없어
+	// 조용히 버려졌다 — 설치 마법사의 Exporter/Agent 선택이 아무 일도 하지 않았다.
+	TraceExporter ToolSelection `json:"trace_exporter,omitempty"`
 }
 
 // ResourcesConfig holds workload parameters and the calculated estimate.

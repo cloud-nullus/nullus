@@ -160,6 +160,37 @@ func TestGetConnectionInfo_ToolWithoutSecretCarriesNote(t *testing.T) {
 	t.Fatal("Prometheus 항목이 없다")
 }
 
+// 수집기는 자격증명이 없다. 안내의 본체는 "어디로 보내야 하는가" 이므로
+// 그 주소가 비면 수집기가 떠 있어도 아무도 텔레메트리를 보내지 않는다.
+func TestGetConnectionInfo_AnnouncesOTelCollectorEndpoint(t *testing.T) {
+	cfg := fullConfig()
+	cfg.Logging.TraceExporter = domain.ToolSelection{Name: "opentelemetry-collector", Enabled: true}
+
+	out, err := newConnUC(connStack(cfg)).Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+
+	for _, tool := range out.Tools {
+		if tool.Name != "opentelemetry-collector" {
+			continue
+		}
+		assert.Empty(t, tool.SecretRef)
+		// 스택 네임스페이스를 반영한 실제 주소여야 한다.
+		assert.Contains(t, tool.Note, "otel-collector-opentelemetry-collector.devsecops.svc.cluster.local:4317")
+		assert.Contains(t, tool.Note, ":4318")
+		return
+	}
+	t.Fatal("OpenTelemetry Collector 항목이 없다")
+}
+
+func TestGetConnectionInfo_SkipsOTelCollectorWhenNotSelected(t *testing.T) {
+	out, err := newConnUC(connStack(fullConfig())).Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+
+	for _, tool := range out.Tools {
+		assert.NotEqual(t, "opentelemetry-collector", tool.Name)
+	}
+}
+
 func TestGetConnectionInfo_FailsWhenStackMissing(t *testing.T) {
 	uc := NewGetConnectionInfo(&mockConnStackRepo{stack: nil})
 	_, err := uc.Execute(context.Background(), "stk_missing")

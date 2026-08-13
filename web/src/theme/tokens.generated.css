@@ -32,6 +32,11 @@
   --color-info: #4d8cff;
   --color-accent-alt: #b39bff;
 
+  /* 차트 계열색 — 정체성 전용. 상태색을 계열로 돌려쓰지 않는다 (DESIGN.md §차트) */
+  --color-chart-1: #3987e5;
+  --color-chart-2: #d95926;
+  --color-chart-3: #199e70;
+
   --shadow-raised: none;
   --shadow-overlay: none;
 
@@ -133,6 +138,11 @@
   --color-error: #cf202f;
   --color-info: #0052ff;
   --color-accent-alt: #6b3fd4;
+
+  /* 차트 계열색 — 정체성 전용. 상태색을 계열로 돌려쓰지 않는다 (DESIGN.md §차트) */
+  --color-chart-1: #2a78d6;
+  --color-chart-2: #eb6834;
+  --color-chart-3: #1baf7a;
 
   --shadow-raised: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-overlay: 0 8px 24px rgba(15, 23, 42, 0.12);

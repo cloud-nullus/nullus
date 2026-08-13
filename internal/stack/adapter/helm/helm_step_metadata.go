@@ -221,9 +221,29 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "opentelemetry-collector",
 			RepoURL:   "https://open-telemetry.github.io/opentelemetry-helm-charts",
-			Version:   "0.75.0",
+			Version:   domain.OTelCollectorChartVersion,
 			Values:    DefaultValues("installing_opentelemetry"),
 			Wait:      false,
+		}, true
+	case stepInstallingOTelAgent:
+		// 게이트웨이와 같은 차트지만 역할이 달라 릴리스를 따로 둔다.
+		return ChartSpec{
+			ReleaseName: domain.OTelAgentReleaseName,
+			ChartName:   "opentelemetry-collector",
+			RepoURL:     "https://open-telemetry.github.io/opentelemetry-helm-charts",
+			Version:     domain.OTelCollectorChartVersion,
+			Wait:        false,
+		}, true
+	case stepInstallingOTelCollector:
+		// 릴리스명을 차트 이름과 다르게 둔다. 추적 계층 단계가 같은 차트를
+		// 설치할 수 있어 이름이 겹치면 Helm 이 소유권 충돌로 거부한다.
+		return ChartSpec{
+			ReleaseName: domain.OTelCollectorReleaseName,
+			ChartName:   "opentelemetry-collector",
+			RepoURL:     "https://open-telemetry.github.io/opentelemetry-helm-charts",
+			Version:     domain.OTelCollectorChartVersion,
+			Values:      DefaultValues(stepInstallingOTelCollector),
+			Wait:        false,
 		}, true
 	case "installing_gateway":
 		return ChartSpec{

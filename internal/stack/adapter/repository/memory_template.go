@@ -152,6 +152,28 @@ func goldenPathTemplates() []*domain.Template {
 			MinResources:         "10 vCPU / 22Gi RAM / 140Gi Storage",
 		},
 		{
+			ID:          "gitlab-argocd-otel-v1",
+			Name:        "GitLab + Argo CD + OpenTelemetry",
+			Description: "GitLab CI 와 Argo CD 위에 OpenTelemetry Collector 를 세웁니다. 애플리케이션은 OTLP 한 곳으로만 보내고, 수집기가 추적은 Tempo, 메트릭은 Prometheus, 로그는 Loki 로 나눠 보냅니다.",
+			Tools: []domain.ToolConfig{
+				{Category: "source_repository", Name: "GitLab CE", HelmVersion: domain.GitLabChartVersion, AppVersion: domain.GitLabAppVersion},
+				{Category: "ci_platform", Name: "GitLab CI", HelmVersion: domain.GitLabChartVersion, AppVersion: domain.GitLabAppVersion},
+				{Category: "container_registry", Name: "GitLab Registry", HelmVersion: domain.GitLabChartVersion, AppVersion: domain.GitLabAppVersion},
+				{Category: "storage_backend", Name: "MinIO", HelmVersion: domain.MinIOChartVersion, AppVersion: domain.MinIOAppVersion},
+				{Category: "cd_tool", Name: "Argo CD", HelmVersion: domain.ArgoCDChartVersion, AppVersion: domain.ArgoCDAppVersion},
+				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: domain.PrometheusChartVersion, AppVersion: domain.PrometheusAppVersion},
+				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: domain.GrafanaChartVersion, AppVersion: domain.GrafanaAppVersion},
+				{Category: "log_search", Name: "Loki", HelmVersion: "2.10.3", AppVersion: "v2.4.2"},
+				{Category: "trace_layer", Name: "Tempo", HelmVersion: domain.TempoChartVersion, AppVersion: domain.TempoAppVersion},
+				// 수집기는 추적 저장소가 아니라 그 앞에 서는 수집 계층이다.
+				// 화면의 Observability > Agent 칸에 대응한다.
+				{Category: "agent", Name: "OpenTelemetry Collector", HelmVersion: domain.OTelCollectorChartVersion, AppVersion: domain.OTelCollectorAppVersion},
+			},
+			EstimatedInstallTime: 130 * time.Minute,
+			RecommendedUseCase:   "추적·메트릭·로그를 한 수집기로 모으려는 조직",
+			MinResources:         "12 vCPU / 24Gi RAM / 150Gi Storage",
+		},
+		{
 			ID:   "github-argocd-v1",
 			Name: "GitHub + Argo CD",
 			// 이미지 레지스트리도 GitHub 쪽(GHCR)이다. GitHub 호스티드 러너는

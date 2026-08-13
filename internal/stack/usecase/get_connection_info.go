@@ -49,7 +49,7 @@ func (uc *GetConnectionInfo) Execute(ctx context.Context, stackID string) (*doma
 		AccessDomain:  strings.TrimSpace(cfg.AccessDomain),
 		Database:      databaseConnection(cfg),
 		ObjectStorage: objectStorageConnection(cfg),
-		Tools:         toolCredentials(cfg),
+		Tools:         toolCredentials(cfg, strings.TrimSpace(stack.Namespace)),
 	}, nil
 }
 
@@ -126,7 +126,10 @@ func mergeStorageTarget(target domain.StorageTarget, provisioned domain.StorageC
 //
 // 고르지 않은 도구는 넣지 않는다. 조회할 Secret 이 없으면 이름을 지어내지 않고
 // Note 로 무엇을 해야 하는지 알린다.
-func toolCredentials(cfg domain.StackConfig) []domain.ToolCredential {
+//
+// namespace 는 클러스터 내부 주소를 조립하는 데 쓴다 — 수집기처럼 자격증명이
+// 아니라 "어디로 보내야 하는가" 가 안내의 본체인 도구가 있다.
+func toolCredentials(cfg domain.StackConfig, namespace string) []domain.ToolCredential {
 	tools := make([]domain.ToolCredential, 0, 6)
 
 	if sel := cfg.Artifacts.SourceRepository; sel.Enabled && isGitLabTool(sel.Name) {
@@ -186,6 +189,16 @@ func toolCredentials(cfg domain.StackConfig) []domain.ToolCredential {
 		tools = append(tools, domain.ToolCredential{
 			Name: "OpenBao",
 			Note: "관리자 인증 후 OpenBao UI 에서 토큰과 시크릿을 조회하세요.",
+		})
+	}
+	// 수집기는 자격증명이 없다. 대신 애플리케이션이 텔레메트리를 보낼 주소를
+	// 알려준다 — 이 주소를 모르면 수집기가 떠 있어도 아무도 보내지 않는다.
+	if sel := cfg.Logging.TraceExporter; sel.Enabled {
+		tools = append(tools, domain.ToolCredential{
+			Name: sel.Name,
+			Note: fmt.Sprintf("인증 없이 OTLP 를 받습니다. gRPC %s, HTTP %s",
+				domain.OTelCollectorOTLPGRPCEndpoint(namespace),
+				domain.OTelCollectorOTLPHTTPEndpoint(namespace)),
 		})
 	}
 

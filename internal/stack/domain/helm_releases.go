@@ -36,6 +36,12 @@ var InstalledHelmReleaseNames = []string{
 	"opentelemetry-collector",
 	"tempo",
 	"jaeger",
+	// installing_otel_collector. 추적 계층과 별개의 릴리스이므로 따로 적는다 —
+	// 빼면 스택을 지워도 수집기 파드와 ServiceMonitor 가 남는다.
+	OTelCollectorReleaseName,
+	// installing_otel_agent. DaemonSet 과 ClusterRole 을 만들므로 빠지면
+	// 스택을 지워도 노드마다 수집기가 남고 다음 설치가 소유권 충돌로 막힌다.
+	OTelAgentReleaseName,
 	"eg",
 }
 

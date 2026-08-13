@@ -296,3 +296,34 @@ func TestClusterUseCase_RefreshDiscovery_NoKubeconfig(t *testing.T) {
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, "KUBECONFIG_NOT_REGISTERED", appErr.Code)
 }
+
+// 화면은 조직을 UUID 로 보여줄 수 없다 — 사람이 어느 조직인지 알 수 없다.
+func TestClusterUseCase_OrgNames_ResolvesIDsToNames(t *testing.T) {
+	orgs := newMockOrgRepo()
+	orgs.orgs["11111111-1111-1111-1111-111111111111"] = &domain.Organization{
+		ID: "11111111-1111-1111-1111-111111111111", Name: "Nullus Platform",
+	}
+	uc := NewClusterUseCase(newMockClusterRepo(), WithOrgRepo(orgs))
+
+	names, err := uc.OrgNames(context.Background(), []string{"11111111-1111-1111-1111-111111111111"})
+	require.NoError(t, err)
+	assert.Equal(t, "Nullus Platform", names["11111111-1111-1111-1111-111111111111"])
+}
+
+// 이름을 못 찾아도 목록 조회 자체가 실패하면 안 된다 — 화면은 계속 떠야 한다.
+func TestClusterUseCase_OrgNames_SkipsUnknownIDs(t *testing.T) {
+	uc := NewClusterUseCase(newMockClusterRepo(), WithOrgRepo(newMockOrgRepo()))
+
+	names, err := uc.OrgNames(context.Background(), []string{"missing"})
+	require.NoError(t, err)
+	assert.Empty(t, names["missing"])
+}
+
+// 조직 저장소가 없거나 실패해도 클러스터 화면은 떠야 한다.
+func TestClusterUseCase_OrgNames_ToleratesMissingRepository(t *testing.T) {
+	uc := NewClusterUseCase(newMockClusterRepo())
+
+	names, err := uc.OrgNames(context.Background(), []string{"any"})
+	require.NoError(t, err)
+	assert.Empty(t, names)
+}

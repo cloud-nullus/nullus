@@ -26,6 +26,7 @@ var canonicalToolNameByKey = map[string]string{
 	"logging_collection": "loki",
 	"logging_search":     "opensearch",
 	"trace_layer":        "tempo",
+	"trace_exporter":     "opentelemetry-collector",
 	"storage_backend":    "minio",
 	"authentication":     "openbao",
 }
@@ -72,10 +73,25 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 		{workload("collection", cfg.Monitoring.Collection,
 			"prometheus", "kube-prometheus-stack", "alertmanager-kube-prometheus-stack"), cfg.Monitoring.Collection.Enabled},
 		{workload("visualization", cfg.Monitoring.Visualization, "grafana"), cfg.Monitoring.Visualization.Enabled},
-		{workload("logging_collection", cfg.Logging.Collection, "loki"), cfg.Logging.Collection.Enabled},
-		{workload("logging_search", cfg.Logging.Search, "opensearch", "elasticsearch"), cfg.Logging.Search.Enabled},
+		{workload("logging_collection", cfg.Logging.Collection, loggingCollectionPrefixes...), cfg.Logging.Collection.Enabled},
 		{workload("trace_layer", cfg.Logging.TraceLayer, "tempo", "jaeger"), cfg.Logging.TraceLayer.Enabled},
+		// 릴리스명이 곧 파드 이름 접두사다. 차트 이름(opentelemetry-collector)이
+		// 아니라 릴리스명을 써야 실제 파드와 맞는다.
+		{workload("trace_exporter", cfg.Logging.TraceExporter, OTelCollectorReleaseName), cfg.Logging.TraceExporter.Enabled},
 		{workload("storage_backend", cfg.Artifacts.StorageBackend, MinIOServiceName, "minio"), cfg.Artifacts.StorageBackend.Enabled},
+	}
+
+	// 로그 저장소도 고른 제품에 따라 파드 이름이 달라진다. 접두사를 정적으로
+	// 적어 두면 Loki 를 골랐을 때 opensearch 파드를 찾다가 "0 파드 warning" 으로
+	// 남는다 — 설치는 정상인데 화면에서만 죽은 것처럼 보인다.
+	searchPrefixes := logStoreNamePrefixes(cfg.Logging.Search)
+	if searchPrefixes != nil &&
+		// 수집 항목은 loki-* 파드를 센다. 검색까지 같은 파드를 가리키면 같은
+		// 릴리스를 두 번 계상한다 (Nexus 가 두 슬롯을 겸할 때와 같은 이유).
+		!(cfg.Logging.Collection.Enabled && slices.Equal(searchPrefixes, loggingCollectionPrefixes)) {
+		candidates = append(candidates, candidate{
+			workload("logging_search", cfg.Logging.Search, searchPrefixes...), true,
+		})
 	}
 
 	// 레지스트리는 고른 제품에 따라 파드 접두사가 달라지고, 아예 설치되지 않는
@@ -102,6 +118,32 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 		}
 	}
 	return out
+}
+
+// loggingCollectionPrefixes 는 로그 수집 슬롯이 띄우는 워크로드 이름 접두사다.
+// 이 슬롯은 Loki 전용이라(installing_logging 이 loki 차트를 고정으로 쓴다)
+// 선택 이름과 무관하게 고정이다.
+var loggingCollectionPrefixes = []string{"loki"}
+
+// logStoreNamePrefixes 는 로그 검색 저장소 선택이 띄우는 워크로드 이름 접두사를
+// 돌려준다. 고르지 않았으면 nil 이다.
+//
+// 릴리스명이 곧 파드 이름 접두사이므로 설치 경로가 고르는 차트와 같은 기준을
+// 쓴다 (helm 어댑터의 resolveChartSpecForStep).
+func logStoreNamePrefixes(sel ToolSelection) []string {
+	if !sel.Enabled || strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(sel.Name)) {
+	case "loki":
+		return []string{"loki"}
+	case "elasticsearch":
+		return []string{"elasticsearch"}
+	default:
+		// 이름이 비면 검색 저장소의 기본값은 OpenSearch 다.
+		return []string{"opensearch"}
+	}
 }
 
 // registryNamePrefixes 는 레지스트리 선택이 띄우는 워크로드 이름 접두사를 돌려준다.
