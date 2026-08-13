@@ -576,7 +576,95 @@
     "developerGreeting": "You are deploying applications as Developer.",
     "getStarted": "Get Started",
     "viewStacks": "View Stacks",
-    "viewPipelines": "View Pipelines"
+    "viewPipelines": "View Pipelines",
+    "tagline": "DevSecOps Infrastructure Automation Platform",
+    "description": "Select validated CI/CD golden path combinations and quickly build Kubernetes DevSecOps pipelines with a no-code UI.",
+    "cta": {
+      "registerCluster": "Register Cluster",
+      "startStack": "Start Stack",
+      "cicdPipeline": "CI/CD Pipeline"
+    },
+    "coreFeatures": {
+      "title": "Core Features",
+      "stackInstall": {
+        "title": "Automated DevSecOps Stack Installation",
+        "description": "Deploy GitLab, ArgoCD, and Prometheus stacks directly to Kubernetes from the UI."
+      },
+      "goldenPath": {
+        "title": "Golden Path Templates",
+        "description": "Provides validated combinations (GitHub + ArgoCD, GitLab All-in-One) as templates."
+      },
+      "cicd": {
+        "title": "CI/CD Pipeline Management",
+        "description": "Create pipelines and manage deployment history with Web/API/Batch templates."
+      },
+      "compatibility": {
+        "title": "Version Compatibility Assurance",
+        "description": "Expose only validated tool version combinations to reduce unpredictable compatibility issues."
+      },
+      "monitoring": {
+        "title": "Unified Monitoring",
+        "description": "Check cluster, pipeline, and application status from a single dashboard."
+      },
+      "rbac": {
+        "title": "Role-based Access Control",
+        "description": "Control feature access by role: Admin, DevOps, and Developer."
+      }
+    },
+    "roadmap": {
+      "title": "Roadmap",
+      "phase1": {
+        "phase": "Phase 1 - DevOps",
+        "period": "v0.1 · 2026 Q2",
+        "description": "Automated DevSecOps stack install, CI/CD pipeline management, monitoring, and version compatibility"
+      },
+      "phase2": {
+        "phase": "Phase 2 - DevSecOps",
+        "period": "v0.5 · 2026 Q3-Q4",
+        "description": "Nullus CLI, Security scanning, Automated Tests, Customization, Air-Gap (Offline Mode)"
+      },
+      "phase3": {
+        "phase": "Phase 3 - InfraOps",
+        "period": "v1.0 · 2027+",
+        "description": "Kubernetes Cluster Provisioning, IaC integration, FinOps"
+      }
+    },
+    "stages": {
+      "clusterProvisioning": "Cluster Provisioning",
+      "develop": "Develop",
+      "build": "Build",
+      "security": "Security",
+      "test": "Test",
+      "deploy": "Deploy",
+      "monitoring": "Monitoring",
+      "finops": "FinOps"
+    },
+    "quickLinks": {
+      "title": "Quick Links",
+      "stackInstall": "DevSecOps Stack Install",
+      "stackTemplates": "Stack Templates",
+      "cicdTemplates": "CI/CD Templates",
+      "cicdList": "CI/CD List",
+      "monitoring": "Monitoring Dashboard",
+      "stackVersion": "Stack Version"
+    },
+    "supportTools": {
+      "title": "Support Tools",
+      "description": "Open source that Nullus installs into your cluster and wires together for you.",
+      "category": {
+        "sourceRepository": "Source repository",
+        "cicdPlatform": "CI/CD platform",
+        "delivery": "Continuous delivery",
+        "registry": "Registry",
+        "objectStorage": "Object storage",
+        "metrics": "Metrics",
+        "visualization": "Visualization",
+        "logSearch": "Log search",
+        "tracing": "Tracing",
+        "telemetry": "Telemetry pipeline",
+        "secrets": "Secrets"
+      }
+    }
   },
   "history": {
     "title": "Stack History",

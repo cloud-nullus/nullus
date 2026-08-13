@@ -1,102 +1,59 @@
 import { useNavigate } from 'react-router-dom'
 import { IconTile } from '../../../components/ui/icon-tile'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BookOpen, Box, ChartColumn, Code2, Coins, FlaskConical, Hammer, Rocket, Settings, ShieldCheck, Users } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
 import { useAuthStore } from '../../../stores/auth-store'
 import { roleLandingPath } from '../../auth/role-landing'
 import { NullusMark } from '../../../components/brand/nullus-mark'
+import { SupportToolsMarquee } from '../components/support-tools-marquee'
 
+// 화면에 나오는 글자는 전부 i18n 키로 받는다. 로드맵·단계·기능은 id 로 식별하고
+// 이름은 번역에서 온다 — 예전에는 영어 표시 문자열이 곧 식별자여서, 번역을
+// 붙이는 순간 로드맵 선택과 단계 강조가 서로를 못 찾게 된다.
 const features = [
-  {
-    title: 'Automated DevSecOps Stack Installation',
-    description: 'Deploy GitLab, ArgoCD, and Prometheus stacks directly to Kubernetes from the UI.',
-    icon: Box,
-    token: '--color-primary',
-  },
-  {
-    title: 'Golden Path Templates',
-    description: 'Provides validated combinations (GitHub + ArgoCD, GitLab All-in-One) as templates.',
-    icon: BookOpen,
-    token: '--color-success',
-  },
-  {
-    title: 'CI/CD Pipeline Management',
-    description: 'Create pipelines and manage deployment history with Web/API/Batch templates.',
-    icon: Code2,
-    token: '--color-warning',
-  },
-  {
-    title: 'Version Compatibility Assurance',
-    description: 'Expose only validated tool version combinations to reduce unpredictable compatibility issues.',
-    icon: ShieldCheck,
-    token: '--color-error',
-  },
-  {
-    title: 'Unified Monitoring',
-    description: 'Check cluster, pipeline, and application status from a single dashboard.',
-    icon: ChartColumn,
-    token: '--color-info',
-  },
-  {
-    title: 'Role-based Access Control',
-    description: 'Control feature access by role: Admin, DevOps, and Developer.',
-    icon: Users,
-    token: '--color-accent-alt',
-  },
+  { id: 'stackInstall', icon: Box, token: '--color-primary' },
+  { id: 'goldenPath', icon: BookOpen, token: '--color-success' },
+  { id: 'cicd', icon: Code2, token: '--color-warning' },
+  { id: 'compatibility', icon: ShieldCheck, token: '--color-error' },
+  { id: 'monitoring', icon: ChartColumn, token: '--color-info' },
+  { id: 'rbac', icon: Users, token: '--color-accent-alt' },
 ]
 
-const roadmap = [
-  {
-    phase: 'Phase 1 - DevOps',
-    period: 'v0.1 · 2026 Q2',
-    description: 'Automated DevSecOps stack install, CI/CD pipeline management, monitoring, and version compatibility',
-    active: true,
-  },
-  {
-    phase: 'Phase 2 - DevSecOps',
-    period: 'v0.5 · 2026 Q3-Q4',
-    description: 'Nullus CLI, Security scanning, Automated Tests, Customization, Air-Gap (Offline Mode)',
-    active: false,
-  },
-  {
-    phase: 'Phase 3 - InfraOps',
-    period: 'v1.0 · 2027+',
-    description: 'Kubernetes Cluster Provisioning, IaC integration, FinOps',
-    active: false,
-  },
-]
+const roadmap = [{ id: 'phase1' }, { id: 'phase2' }, { id: 'phase3' }]
 
 const stages = [
-  { name: 'Cluster Provisioning', icon: Settings, active: false },
-  { name: 'Develop', icon: Code2, active: true },
-  { name: 'Build', icon: Hammer, active: true },
-  { name: 'Security', icon: ShieldCheck, active: false },
-  { name: 'Test', icon: FlaskConical, active: false },
-  { name: 'Deploy', icon: Rocket, active: true },
-  { name: 'Monitoring', icon: ChartColumn, active: true },
-  { name: 'FinOps', icon: Coins, active: false },
+  { id: 'clusterProvisioning', icon: Settings },
+  { id: 'develop', icon: Code2 },
+  { id: 'build', icon: Hammer },
+  { id: 'security', icon: ShieldCheck },
+  { id: 'test', icon: FlaskConical },
+  { id: 'deploy', icon: Rocket },
+  { id: 'monitoring', icon: ChartColumn },
+  { id: 'finops', icon: Coins },
 ]
 
 const ROADMAP_STAGE_ACTIVATIONS: Record<string, string[]> = {
-  'Phase 1 - DevOps': ['Develop', 'Build', 'Deploy', 'Monitoring'],
-  'Phase 2 - DevSecOps': ['Develop', 'Build', 'Security', 'Test', 'Deploy', 'Monitoring'],
-  'Phase 3 - InfraOps': ['Cluster Provisioning', 'Develop', 'Build', 'Security', 'Test', 'Deploy', 'Monitoring', 'FinOps'],
+  phase1: ['develop', 'build', 'deploy', 'monitoring'],
+  phase2: ['develop', 'build', 'security', 'test', 'deploy', 'monitoring'],
+  phase3: ['clusterProvisioning', 'develop', 'build', 'security', 'test', 'deploy', 'monitoring', 'finops'],
 }
 
 const quickLinks = [
-  { label: 'DevSecOps Stack Install', path: '/stack/templates', icon: Box, iconClassName: 'text-[var(--color-primary)]' },
-  { label: 'Stack Templates', path: '/stack/templates', icon: BookOpen, iconClassName: 'text-[var(--color-success)]' },
-  { label: 'CI/CD Templates', path: '/cicd/templates', icon: Code2, iconClassName: 'text-[var(--color-warning)]' },
-  { label: 'CI/CD List', path: '/cicd/list', icon: ChartColumn, iconClassName: 'text-[var(--color-info)]' },
-  { label: 'Monitoring Dashboard', path: '/observability/monitoring', icon: ChartColumn, iconClassName: 'text-[var(--color-error)]' },
-  { label: 'Stack Version', path: '/stack/version', icon: ShieldCheck, iconClassName: 'text-[var(--color-accent-alt)]' },
+  { id: 'stackInstall', path: '/stack/templates', icon: Box, iconClassName: 'text-[var(--color-primary)]' },
+  { id: 'stackTemplates', path: '/stack/templates', icon: BookOpen, iconClassName: 'text-[var(--color-success)]' },
+  { id: 'cicdTemplates', path: '/cicd/templates', icon: Code2, iconClassName: 'text-[var(--color-warning)]' },
+  { id: 'cicdList', path: '/cicd/list', icon: ChartColumn, iconClassName: 'text-[var(--color-info)]' },
+  { id: 'monitoring', path: '/observability/monitoring', icon: ChartColumn, iconClassName: 'text-[var(--color-error)]' },
+  { id: 'stackVersion', path: '/stack/version', icon: ShieldCheck, iconClassName: 'text-[var(--color-accent-alt)]' },
 ]
 
 export function HomePage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { role } = useAuthStore()
-  const [selectedRoadmapPhase, setSelectedRoadmapPhase] = useState(roadmap[0].phase)
+  const [selectedRoadmapPhase, setSelectedRoadmapPhase] = useState(roadmap[0].id)
   const isAdmin = role === 'admin'
   const isDevops = role === 'devops'
   const isDeveloper = role === 'developer'
@@ -116,10 +73,16 @@ export function HomePage() {
         {/* 마크가 스스로 3색을 갖고 있어 금색 타일 위에 얹으면 색이 싸운다.
             바탕 없이 그대로 둔다 — 바로 아래 제목이 이름을 말해 준다. */}
         <NullusMark size={80} decorative className="mx-auto mb-5 block" />
+        {/* 제품명은 번역하지 않는다. */}
         <h1 className="m-0 mb-2.5 text-4xl font-extrabold text-[var(--color-text-primary)]">Nullus Platform</h1>
-        <p className="m-0 mb-2 text-base text-[var(--color-text-secondary)]">DevSecOps Infrastructure Automation Platform</p>
+        <p className="m-0 mb-2 text-base text-[var(--color-text-secondary)]">
+          {t('home.tagline', 'DevSecOps Infrastructure Automation Platform')}
+        </p>
         <p className="mx-auto mb-8 max-w-[900px] text-sm leading-7 text-[var(--color-text-muted)]">
-          Select validated CI/CD golden path combinations and quickly build Kubernetes DevSecOps pipelines with a no-code UI.
+          {t(
+            'home.description',
+            'Select validated CI/CD golden path combinations and quickly build Kubernetes DevSecOps pipelines with a no-code UI.',
+          )}
         </p>
 
         <div className="flex flex-wrap justify-center gap-3">
@@ -130,7 +93,7 @@ export function HomePage() {
             className={canRegisterCluster ? enabledButtonClassName : disabledButtonClassName}
           >
             <Settings {...iconProps('sm')} />
-            Register Cluster
+            {t('home.cta.registerCluster', 'Register Cluster')}
           </button>
           <button
             type="button"
@@ -139,7 +102,7 @@ export function HomePage() {
             className={canStartStack ? enabledButtonClassName : disabledButtonClassName}
           >
             <Rocket {...iconProps('sm')} />
-            Start Stack
+            {t('home.cta.startStack', 'Start Stack')}
           </button>
           <button
             type="button"
@@ -148,23 +111,31 @@ export function HomePage() {
             className={canUseCicdPipeline ? enabledButtonClassName : disabledButtonClassName}
           >
             <Code2 {...iconProps('sm')} />
-            CI/CD Pipeline
+            {t('home.cta.cicdPipeline', 'CI/CD Pipeline')}
           </button>
         </div>
       </div>
 
+      <SupportToolsMarquee />
+
       <div className="mb-8">
-        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">Core Features</h2>
+        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">
+          {t('home.coreFeatures.title', 'Core Features')}
+        </h2>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3.5">
           {features.map((feature) => {
             const Icon = feature.icon
             return (
-              <div key={feature.title} className="rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[18px]">
+              <div key={feature.id} className="rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[18px]">
                 <IconTile token={feature.token} className="mb-3">
                   <Icon {...iconProps('md')} />
                 </IconTile>
-                <div className="mb-1.5 text-sm font-bold text-[var(--color-text-primary)]">{feature.title}</div>
-                <div className="text-xs leading-5 text-[var(--color-text-secondary)]">{feature.description}</div>
+                <div className="mb-1.5 text-sm font-bold text-[var(--color-text-primary)]">
+                  {t(`home.coreFeatures.${feature.id}.title`)}
+                </div>
+                <div className="text-xs leading-5 text-[var(--color-text-secondary)]">
+                  {t(`home.coreFeatures.${feature.id}.description`)}
+                </div>
               </div>
             )
           })}
@@ -172,22 +143,26 @@ export function HomePage() {
       </div>
 
       <div className="mb-8">
-        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">Roadmap</h2>
+        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">{t('home.roadmap.title', 'Roadmap')}</h2>
         <div className="flex flex-wrap gap-3.5">
           {roadmap.map((item) => {
-            const isSelected = selectedRoadmapPhase === item.phase
+            const isSelected = selectedRoadmapPhase === item.id
             return (
             <button
-              key={item.phase}
+              key={item.id}
               type="button"
-              onClick={() => setSelectedRoadmapPhase(item.phase)}
+              onClick={() => setSelectedRoadmapPhase(item.id)}
               className={`min-w-[220px] flex-1 cursor-pointer rounded-[12px] border p-[18px] text-left transition-all duration-150 ${isSelected ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_55%,_transparent)] bg-[color-mix(in_srgb,_var(--color-brand-gold)_10%,_transparent)] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_35%,_transparent),0_8px_26px_color-mix(in_srgb,_var(--color-brand-gold)_20%,_transparent)]' : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] hover:border-[color-mix(in_srgb,_var(--color-brand-gold)_35%,_transparent)] hover:bg-[color-mix(in_srgb,_var(--color-brand-gold)_4%,_transparent)]'}`}
             >
               <div className={`mb-2 inline-flex rounded-[999px] px-2.5 py-1 text-[11px] font-bold ${isSelected ? 'bg-[color-mix(in_srgb,_var(--color-brand-gold)_14%,_transparent)] text-[var(--color-brand-gold)]' : 'bg-[color-mix(in_srgb,_var(--color-text-secondary)_12%,_transparent)] text-[var(--color-text-secondary)]'}`}>
-                {item.period}
+                {t(`home.roadmap.${item.id}.period`)}
               </div>
-              <div className={`mb-1.5 text-sm font-bold ${isSelected ? 'text-[var(--color-brand-gold)]' : 'text-[var(--color-text-secondary)]'}`}>{item.phase}</div>
-              <div className="text-xs leading-6 text-[var(--color-text-secondary)]">{item.description}</div>
+              <div className={`mb-1.5 text-sm font-bold ${isSelected ? 'text-[var(--color-brand-gold)]' : 'text-[var(--color-text-secondary)]'}`}>
+                {t(`home.roadmap.${item.id}.phase`)}
+              </div>
+              <div className="text-xs leading-6 text-[var(--color-text-secondary)]">
+                {t(`home.roadmap.${item.id}.description`)}
+              </div>
             </button>
           )})}
         </div>
@@ -197,33 +172,35 @@ export function HomePage() {
         {stages.map((stage) => {
           const Icon = stage.icon
           const activeStages = ROADMAP_STAGE_ACTIVATIONS[selectedRoadmapPhase] ?? []
-          const isActiveForSelectedRoadmap = activeStages.includes(stage.name)
+          const isActiveForSelectedRoadmap = activeStages.includes(stage.id)
           return (
             <div
-              key={stage.name}
+              key={stage.id}
               className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActiveForSelectedRoadmap ? 'border-[color-mix(in_srgb,_var(--color-brand-gold)_80%,_transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,_var(--color-brand-gold)_22%,_transparent),color-mix(in_srgb,_var(--color-warning)_20%,_transparent))] text-[color-mix(in_srgb,_var(--color-brand-gold)_70%,_white)] shadow-[0_0_0_1px_color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent),0_0_18px_color-mix(in_srgb,_var(--color-brand-gold)_30%,_transparent)]' : 'border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-secondary)_8%,_transparent)] text-[var(--color-text-secondary)] opacity-75'}`}
             >
               <Icon {...iconProps('sm')} />
-              {stage.name}
+              {t(`home.stages.${stage.id}`)}
             </div>
           )
         })}
       </div>
 
       <div>
-        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">Quick Links</h2>
+        <h2 className="mb-4 mt-0 text-lg font-bold text-[var(--color-text-primary)]">
+          {t('home.quickLinks.title', 'Quick Links')}
+        </h2>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
           {quickLinks.map((item) => {
             const Icon = item.icon
             return (
               <button
-                key={item.label}
+                key={item.id}
                 type="button"
                 onClick={() => navigate(item.path)}
                 className="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-3.5 py-3 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-brand-gold)_40%,_transparent)]"
               >
                 <Icon {...iconProps('sm')} className={item.iconClassName} />
-                <span>{item.label}</span>
+                <span>{t(`home.quickLinks.${item.id}`)}</span>
               </button>
             )
           })}

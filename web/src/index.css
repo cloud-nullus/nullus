@@ -103,3 +103,54 @@ select option {
   background-color: var(--color-surface-card);
   color: var(--color-text-primary);
 }
+
+/* 지원 OSS 띠 (features/home/components/support-tools-marquee.tsx).
+   트랙에 같은 목록이 두 벌 들어 있고 절반만큼 밀리므로, 한 바퀴가 끝나는
+   순간의 화면이 시작과 같다 — 이음매가 보이지 않는다. */
+@keyframes nullus-marquee-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.nullus-marquee {
+  overflow: hidden;
+  /* 양 끝을 흐리게 잘라 카드가 화면 밖에서 흘러 들어오고 나가는 것처럼 보이게
+     한다. 선으로 자르면 띠가 컨테이너 안에 갇힌 것처럼 보인다. */
+  mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
+}
+
+.nullus-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: nullus-marquee-left 70s linear infinite;
+}
+
+/* 읽으려면 멈춰야 한다. 포인터가 없는 환경을 위해 포커스에도 반응한다. */
+.nullus-marquee:hover .nullus-marquee-track,
+.nullus-marquee:focus-within .nullus-marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 위의 전역 규칙은 duration 만 0.01ms 로 줄인다. 끝없이 도는 애니메이션에는
+     그것이 '정지'가 아니라 '초당 수만 바퀴'라 오히려 더 나쁘다. 여기서는 아예
+     끄고, 대신 손으로 밀어 볼 수 있게 가로 스크롤을 연다. */
+  .nullus-marquee {
+    overflow-x: auto;
+  }
+
+  .nullus-marquee-track {
+    animation: none !important;
+  }
+}
+
+/* 흰색 단색 마크(GitHub)는 라이트 테마의 밝은 카드 위에서 보이지 않는다.
+   반전하면 정확히 검정이 되고, 그것이 이 마크의 밝은 배경용 공식 색이다. */
+[data-theme='light'] .nullus-mono-mark {
+  filter: invert(1);
+}

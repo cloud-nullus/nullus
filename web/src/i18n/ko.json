@@ -576,7 +576,95 @@
     "developerGreeting": "개발자로서 애플리케이션을 배포하고 있습니다.",
     "getStarted": "시작하기",
     "viewStacks": "스택 보기",
-    "viewPipelines": "파이프라인 보기"
+    "viewPipelines": "파이프라인 보기",
+    "tagline": "데브섹옵스 인프라 자동화 플랫폼",
+    "description": "검증된 CI/CD 골든 패스 조합을 골라, 노코드 UI 로 쿠버네티스 데브섹옵스 파이프라인을 빠르게 구축합니다.",
+    "cta": {
+      "registerCluster": "클러스터 등록",
+      "startStack": "스택 시작하기",
+      "cicdPipeline": "CI/CD 파이프라인"
+    },
+    "coreFeatures": {
+      "title": "핵심 기능",
+      "stackInstall": {
+        "title": "데브섹옵스 스택 설치 자동화",
+        "description": "GitLab·ArgoCD·Prometheus 스택을 UI 에서 쿠버네티스로 바로 배포합니다."
+      },
+      "goldenPath": {
+        "title": "골든 패스 템플릿",
+        "description": "검증된 조합(GitHub + ArgoCD, GitLab All-in-One)을 템플릿으로 제공합니다."
+      },
+      "cicd": {
+        "title": "CI/CD 파이프라인 관리",
+        "description": "Web·API·Batch 템플릿으로 파이프라인을 만들고 배포 이력을 관리합니다."
+      },
+      "compatibility": {
+        "title": "버전 호환성 보장",
+        "description": "검증된 도구 버전 조합만 노출해 예측할 수 없는 호환성 문제를 줄입니다."
+      },
+      "monitoring": {
+        "title": "통합 모니터링",
+        "description": "클러스터·파이프라인·애플리케이션 상태를 대시보드 하나에서 확인합니다."
+      },
+      "rbac": {
+        "title": "역할 기반 접근 제어",
+        "description": "Admin·DevOps·Developer 역할에 따라 기능 접근을 제어합니다."
+      }
+    },
+    "roadmap": {
+      "title": "로드맵",
+      "phase1": {
+        "phase": "Phase 1 - DevOps",
+        "period": "v0.1 · 2026 Q2",
+        "description": "데브섹옵스 스택 설치 자동화, CI/CD 파이프라인 관리, 모니터링, 버전 호환성"
+      },
+      "phase2": {
+        "phase": "Phase 2 - DevSecOps",
+        "period": "v0.5 · 2026 Q3-Q4",
+        "description": "Nullus CLI, 보안 스캔, 테스트 자동화, 커스터마이징, 에어갭(오프라인 모드)"
+      },
+      "phase3": {
+        "phase": "Phase 3 - InfraOps",
+        "period": "v1.0 · 2027+",
+        "description": "쿠버네티스 클러스터 프로비저닝, IaC 연동, FinOps"
+      }
+    },
+    "stages": {
+      "clusterProvisioning": "클러스터 프로비저닝",
+      "develop": "개발",
+      "build": "빌드",
+      "security": "보안",
+      "test": "테스트",
+      "deploy": "배포",
+      "monitoring": "모니터링",
+      "finops": "FinOps"
+    },
+    "quickLinks": {
+      "title": "바로가기",
+      "stackInstall": "데브섹옵스 스택 설치",
+      "stackTemplates": "스택 템플릿",
+      "cicdTemplates": "CI/CD 템플릿",
+      "cicdList": "CI/CD 목록",
+      "monitoring": "모니터링 대시보드",
+      "stackVersion": "스택 버전"
+    },
+    "supportTools": {
+      "title": "지원 도구",
+      "description": "Nullus 가 클러스터에 설치하고 서로 이어 주는 오픈소스입니다.",
+      "category": {
+        "sourceRepository": "소스 저장소",
+        "cicdPlatform": "CI/CD 플랫폼",
+        "delivery": "지속적 배포",
+        "registry": "레지스트리",
+        "objectStorage": "오브젝트 스토리지",
+        "metrics": "메트릭",
+        "visualization": "시각화",
+        "logSearch": "로그 검색",
+        "tracing": "추적",
+        "telemetry": "텔레메트리 파이프라인",
+        "secrets": "시크릿"
+      }
+    }
   },
   "history": {
     "title": "스택 이력",
