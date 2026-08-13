@@ -96,7 +96,7 @@ func TestValidateCompatibility_GitHubArgoCD(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, out.Compatible)
 	assert.NotNil(t, out.Matrix)
-	assert.Equal(t, "untested", out.Matrix.Status)
+	assert.Equal(t, "verified", out.Matrix.Status)
 }
 
 // ---------------------------------------------------------------------------
@@ -196,10 +196,14 @@ func TestValidateCompatibility_Arch_UntestedMatrixMixedCluster_StaysWarn(t *test
 	}
 }
 
-// GitHub 조합은 이제 전부 클러스터 밖 서비스라 아키텍처 제약이 없다.
-// 그래도 행렬이 untested 라 경고는 남아야 한다 — 여기서 pass 가 되면
-// 검증되지 않은 조합이 아무 안내 없이 배포된다.
-func TestValidateCompatibility_GitHubGHCRWarnsFromUntestedMatrixOnly(t *testing.T) {
+// GitHub 조합은 소스·CI·레지스트리가 전부 클러스터 밖 서비스라 노드 아키텍처와
+// 무관하다. 검증을 마쳐 verified 로 올라간 뒤에는 섞인 아키텍처 클러스터에서도
+// 그대로 통과해야 한다.
+//
+// 여기서 fail 이 나면 레지스트리가 Harbor 였던 시절의 amd64 전용 제약이 어딘가에
+// 남아 있다는 뜻이다 — 그 제약은 arm64 노드가 섞인 클러스터에서 설치할 수도 없는
+// 도구를 이유로 배포를 막는다.
+func TestValidateCompatibility_GitHubGHCRPassesOnMixedArchCluster(t *testing.T) {
 	repo := repository.NewMemoryCompatibilityRepository()
 	uc := NewValidateCompatibility(repo)
 
@@ -213,8 +217,8 @@ func TestValidateCompatibility_GitHubGHCRWarnsFromUntestedMatrixOnly(t *testing.
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, "warn", out.Overall.State)
-	assert.True(t, hasCode(out.Issues, "MATRIX_UNTESTED"))
+	assert.Equal(t, "pass", out.Overall.State)
+	assert.False(t, hasCode(out.Issues, "MATRIX_UNTESTED"))
 	assert.False(t, hasCode(out.Issues, "TOOL_ARCH_UNSUPPORTED"),
 		"GHCR 은 클러스터 밖이라 노드 아키텍처와 무관하다")
 }

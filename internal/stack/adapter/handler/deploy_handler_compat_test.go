@@ -46,8 +46,10 @@ func newDeployEchoWithGate(t *testing.T, clusterArchs []string) (*echo.Echo, *st
 		ID:                "cluster-1",
 		NodeArchitectures: clusterArchs,
 	}}
+	compatRepo := stackrepo.NewMemoryCompatibilityRepository()
+	seedUntestedMatrix(t, compatRepo)
 	validate := usecase.NewValidateCompatibility(
-		stackrepo.NewMemoryCompatibilityRepository(),
+		compatRepo,
 		usecase.WithClusterReader(reader),
 		usecase.WithStackRepository(stackRepo),
 	)
@@ -58,6 +60,50 @@ func newDeployEchoWithGate(t *testing.T, clusterArchs []string) (*echo.Echo, *st
 	v1 := e.Group("/api/v1")
 	h.RegisterRoutes(v1.Group("/stacks"), e)
 	return e, stackRepo
+}
+
+// untestedComboTools 는 게이트의 "검증되지 않은 조합" 분기를 시험하기 위한
+// 조합이다. seedUntestedMatrix 가 세우는 행렬과 짝을 이룬다.
+var untestedComboTools = []domain.ToolConfig{
+	{Category: "source_repository", Name: "Gitea"},
+	{Category: "ci_platform", Name: "Jenkins"},
+	{Category: "container_registry", Name: "Harbor"},
+}
+
+// seedUntestedMatrix 는 warn 분기 전용 행렬을 하나 얹는다.
+//
+// 예전에는 이 분기를 github-argocd-v1 로 시험했는데, 그 조합이 검증을 마치고
+// verified 로 올라가면서 warn 을 낼 대상이 사라졌다 — 게이트 로직은 그대로인데
+// 테스트 다섯 개가 함께 죽었다. 출하되는 Golden Path 를 빌려 쓰면 그 조합의
+// 검증 상태가 바뀔 때마다 관계없는 테스트가 깨진다. 분기 전용 행렬을 따로 세워
+// 시드 데이터의 모양에서 떼어 놓는다.
+//
+// Harbor 를 amd64 전용으로 두는 것은 "untested + 아키텍처 불일치" 가 fail 이
+// 아니라 warn 에 머무는지까지 이 조합 하나로 보기 위해서다.
+func seedUntestedMatrix(t *testing.T, repo *stackrepo.MemoryCompatibilityRepository) {
+	t.Helper()
+	require.NoError(t, repo.Create(context.Background(), &domain.CompatibilityMatrix{
+		ID:     "untested-combo-v1",
+		Name:   "Untested combination",
+		Status: "untested",
+		Kubernetes: domain.KubernetesCompat{
+			Min: "1.26", Max: "1.35", Recommended: "1.31",
+		},
+		Tools: map[string]domain.ToolVersion{
+			"source_repository": {
+				Name: "Gitea", HelmVersion: "10.4.0", AppVersion: "1.22.0",
+				MinK8sVersion: "1.26", ArchSupport: []string{"amd64", "arm64"}, Tier: "beta",
+			},
+			"ci_platform": {
+				Name: "Jenkins", HelmVersion: "5.7.0", AppVersion: "2.479.1",
+				MinK8sVersion: "1.26", ArchSupport: []string{"amd64", "arm64"}, Tier: "beta",
+			},
+			"container_registry": {
+				Name: "Harbor", HelmVersion: "1.15.0", AppVersion: "2.11.0",
+				MinK8sVersion: "1.27", ArchSupport: []string{"amd64"}, Tier: "beta",
+			},
+		},
+	}))
 }
 
 func seedStackForGate(
@@ -142,11 +188,7 @@ func TestDeployHandler_Gate_FailsOnArchMiss(t *testing.T) {
 // Untested matrix + mixed cluster + ack omitted → 400 DEPLOY_COMPAT_WARN_UNACK.
 func TestDeployHandler_Gate_WarnWithoutAck(t *testing.T) {
 	e, repo := newDeployEchoWithGate(t, []string{"amd64", "arm64"})
-	id := seedStackForGate(t, repo, "stk-warn-unack", []domain.ToolConfig{
-		{Category: "source_repository", Name: "GitHub"},
-		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "GHCR"},
-	})
+	id := seedStackForGate(t, repo, "stk-warn-unack", untestedComboTools)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/deploy", nil)
 	rec := httptest.NewRecorder()
@@ -171,11 +213,7 @@ func TestDeployHandler_Gate_WarnWithoutAck(t *testing.T) {
 // Same combination + acknowledge_warnings=true → 202.
 func TestDeployHandler_Gate_WarnWithAck(t *testing.T) {
 	e, repo := newDeployEchoWithGate(t, []string{"amd64", "arm64"})
-	id := seedStackForGate(t, repo, "stk-warn-ack", []domain.ToolConfig{
-		{Category: "source_repository", Name: "GitHub"},
-		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "GHCR"},
-	})
+	id := seedStackForGate(t, repo, "stk-warn-ack", untestedComboTools)
 
 	body, _ := json.Marshal(map[string]any{"acknowledge_warnings": true})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/deploy", bytes.NewReader(body))
@@ -252,8 +290,10 @@ func TestDeployHandler_Gate_AuditRecordsAckAndVerdict(t *testing.T) {
 		ID:                "cluster-1",
 		NodeArchitectures: []string{"amd64", "arm64"},
 	}}
+	compatRepo := stackrepo.NewMemoryCompatibilityRepository()
+	seedUntestedMatrix(t, compatRepo)
 	validate := usecase.NewValidateCompatibility(
-		stackrepo.NewMemoryCompatibilityRepository(),
+		compatRepo,
 		usecase.WithClusterReader(reader),
 		usecase.WithStackRepository(stackRepo),
 	)
@@ -265,11 +305,7 @@ func TestDeployHandler_Gate_AuditRecordsAckAndVerdict(t *testing.T) {
 	h.RegisterRoutes(v1.Group("/stacks"), e)
 
 	// Untested matrix + mixed-arch cluster → warn. Ack=true lets it through.
-	id := seedStackForGate(t, stackRepo, "stk-audit-ack", []domain.ToolConfig{
-		{Category: "source_repository", Name: "GitHub"},
-		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "GHCR"},
-	})
+	id := seedStackForGate(t, stackRepo, "stk-audit-ack", untestedComboTools)
 
 	body, _ := json.Marshal(map[string]any{"acknowledge_warnings": true})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/deploy", bytes.NewReader(body))
@@ -312,8 +348,10 @@ func TestDeployHandler_Gate_NoAuditOnBlockedWarn(t *testing.T) {
 	reader := &stubClusterReader{summary: &port.ClusterSummary{
 		ID: "cluster-1", NodeArchitectures: []string{"amd64", "arm64"},
 	}}
+	compatRepo := stackrepo.NewMemoryCompatibilityRepository()
+	seedUntestedMatrix(t, compatRepo)
 	validate := usecase.NewValidateCompatibility(
-		stackrepo.NewMemoryCompatibilityRepository(),
+		compatRepo,
 		usecase.WithClusterReader(reader),
 		usecase.WithStackRepository(stackRepo),
 	)
@@ -324,11 +362,7 @@ func TestDeployHandler_Gate_NoAuditOnBlockedWarn(t *testing.T) {
 	v1 := e.Group("/api/v1")
 	h.RegisterRoutes(v1.Group("/stacks"), e)
 
-	id := seedStackForGate(t, stackRepo, "stk-audit-blocked", []domain.ToolConfig{
-		{Category: "source_repository", Name: "GitHub"},
-		{Category: "ci_platform", Name: "GitHub Actions"},
-		{Category: "container_registry", Name: "GHCR"},
-	})
+	id := seedStackForGate(t, stackRepo, "stk-audit-blocked", untestedComboTools)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/deploy", nil)
 	rec := httptest.NewRecorder()

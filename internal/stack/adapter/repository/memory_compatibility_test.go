@@ -105,24 +105,26 @@ func TestMemoryCompatibilityRepository_ToolV2Fields(t *testing.T) {
 		assert.True(t, argocd.SupportsArch("arm64"))
 	})
 
-	t.Run("untested matrix carries beta tier and imposes no arch limit", func(t *testing.T) {
+	t.Run("external-only matrix is verified and imposes no arch limit", func(t *testing.T) {
 		m, err := repo.GetByID(ctx, "github-argocd-v1")
 		require.NoError(t, err)
+		assert.Equal(t, "verified", m.Status)
 
 		// 레지스트리가 GHCR 로 바뀌면서 이 조합에는 amd64 전용 도구가 없다.
 		// Harbor 의 amd64 제약을 남겨두면 arm64 클러스터에서 호환성 검사가
-		// 설치할 수도 없는 도구를 이유로 잘못 막는다.
+		// 설치할 수도 없는 도구를 이유로 잘못 막는다. verified 행렬에서는
+		// 아키텍처 불일치가 fail 이므로 이 제약이 남으면 배포가 통째로 막힌다.
 		ghcr, ok := m.Tools["container_registry"]
 		require.True(t, ok)
 		assert.Equal(t, "GHCR", ghcr.Name)
 		assert.Equal(t, "external", ghcr.HelmVersion, "GHCR 은 클러스터에 설치되지 않는다")
-		assert.Equal(t, "beta", ghcr.Tier, "untested 행렬의 도구는 beta 티어를 물려받는다")
+		assert.Equal(t, "stable", ghcr.Tier, "verified 행렬의 도구는 stable 티어를 물려받는다")
 		assert.Equal(t, []string{"amd64", "arm64"}, ghcr.ArchSupport)
 		assert.True(t, ghcr.SupportsArch("arm64"))
 
 		github, ok := m.Tools["source_repository"]
 		require.True(t, ok)
-		assert.Equal(t, "beta", github.Tier)
+		assert.Equal(t, "stable", github.Tier)
 		assert.True(t, github.SupportsArch("arm64"))
 	})
 }

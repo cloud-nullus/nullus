@@ -39,8 +39,10 @@ func newRetryEcho(
 		ID:                "cluster-1",
 		NodeArchitectures: clusterArchs,
 	}}
+	compatRepo := stackrepo.NewMemoryCompatibilityRepository()
+	seedUntestedMatrix(t, compatRepo)
 	validate := usecase.NewValidateCompatibility(
-		stackrepo.NewMemoryCompatibilityRepository(),
+		compatRepo,
 		usecase.WithClusterReader(reader),
 		usecase.WithStackRepository(stackRepo),
 	)
@@ -217,11 +219,7 @@ func TestRetry_FailedWithWarn_NoAckBlocks(t *testing.T) {
 	sink := audit.NewMemorySink()
 	e, repo := newRetryEcho(t, []string{"amd64", "arm64"}, sink)
 	id := seedStackInState(t, repo, "stk-retry-warn-unack", domain.StateFailed,
-		[]domain.ToolConfig{
-			{Category: "source_repository", Name: "GitHub"},
-			{Category: "ci_platform", Name: "GitHub Actions"},
-			{Category: "container_registry", Name: "GHCR"},
-		})
+		untestedComboTools)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/retry", nil)
 	rec := httptest.NewRecorder()
@@ -239,11 +237,7 @@ func TestRetry_FailedWithWarn_AckAccepted(t *testing.T) {
 	sink := audit.NewMemorySink()
 	e, repo := newRetryEcho(t, []string{"amd64", "arm64"}, sink)
 	id := seedStackInState(t, repo, "stk-retry-warn-ack", domain.StateFailed,
-		[]domain.ToolConfig{
-			{Category: "source_repository", Name: "GitHub"},
-			{Category: "ci_platform", Name: "GitHub Actions"},
-			{Category: "container_registry", Name: "GHCR"},
-		})
+		untestedComboTools)
 
 	body, _ := json.Marshal(map[string]any{"acknowledge_warnings": true})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/"+id+"/retry", bytes.NewReader(body))
