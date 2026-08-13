@@ -166,6 +166,15 @@ const (
 	baselineGrafanaHelmVersion = domain.GrafanaChartVersion
 	baselineGrafanaAppVersion  = domain.GrafanaAppVersion
 
+	baselineLokiHelmVersion = "2.10.3"
+	baselineLokiAppVersion  = "v2.4.2"
+
+	baselineTempoHelmVersion = domain.TempoChartVersion
+	baselineTempoAppVersion  = domain.TempoAppVersion
+
+	baselineOTelCollectorHelmVersion = domain.OTelCollectorChartVersion
+	baselineOTelCollectorAppVersion  = domain.OTelCollectorAppVersion
+
 	// 최저 K8s 라인은 차트에서 끌어올 수 없는 편집 값이다.
 	baselineMinK8sPlatform = "1.27" // GitLab, GitHub, Harbor
 	baselineMinK8sWorkload = "1.26" // MinIO, Argo CD, Prometheus, Grafana
@@ -254,6 +263,28 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+			},
+		},
+		{
+			ID:     "gitlab-argocd-otel-v1",
+			Name:   "GitLab + Argo CD + OpenTelemetry",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         baselineMinK8sPlatform,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "GitLab Registry", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"log_search":               {Name: "Loki", HelmVersion: baselineLokiHelmVersion, AppVersion: baselineLokiAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"trace_layer":              {Name: "Tempo", HelmVersion: baselineTempoHelmVersion, AppVersion: baselineTempoAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"agent":                    {Name: "OpenTelemetry Collector", HelmVersion: baselineOTelCollectorHelmVersion, AppVersion: baselineOTelCollectorAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
 		},
 		{

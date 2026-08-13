@@ -40,6 +40,8 @@ func TestChartVersionsMatchCompatibilityMatrix(t *testing.T) {
 		{matrixID: "gitlab-allinone-v1", category: "monitoring_visualization", step: "installing_grafana"},
 		{matrixID: "gitlab-harbor-v1", category: "cd_tool", step: "installing_argocd"},
 		{matrixID: "gitlab-nexus-v1", category: "cd_tool", step: "installing_argocd"},
+		// 관측 계층도 같은 규칙을 받는다. 수집기는 릴리스가 따로라 단계도 따로다.
+		{matrixID: "gitlab-argocd-otel-v1", category: "agent", step: "installing_otel_collector"},
 	}
 
 	for _, tc := range cases {
