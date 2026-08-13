@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpCircle, Boxes, ChartColumn, ClipboardList, GitBranch, History, Info, Layers, List, Plus, Terminal } from 'lucide-react';
+import { ArrowUpCircle, Boxes, ChartColumn, ClipboardList, GitBranch, History, Info, Layers, List, Plus, SlidersHorizontal, Terminal } from 'lucide-react';
 import { iconProps } from '../../../components/ui/icon'
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -50,12 +50,13 @@ export {
 } from "../utils/stack-list-utils";
 import { StackInfoTab } from "../components/stack-info-tab"
 import { StackWorkloadsTab } from "../components/stack-workloads-tab"
+import { StackConfigTab } from "../components/stack-config-tab"
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 import { Badge } from "../../../components/ui/badge"
 import { TOOL_BRAND_GRADIENT } from "../../../lib/tool-brand-colors";
 
-type InnerTab = "info" | "workloads" | "monitoring" | "history" | "version-upgrade";
+type InnerTab = "info" | "workloads" | "config" | "monitoring" | "history" | "version-upgrade";
 
 
 function StackMonitoringTab({ stackId }: { stackId: string }) {
@@ -291,6 +292,9 @@ const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[]
 	// 클러스터에 실제로 뜬 파드. 예전에는 Info 탭이 "Monitoring / History 탭에서
 	// 확인하세요" 라고 안내했지만 두 탭 어디에도 파드 목록은 없었다.
 	{ key: "workloads", label: "Workloads", icon: <Boxes {...iconProps('xs')} /> },
+	// 배포된 OSS 의 values.yaml 을 직접 고치는 자리. 파드를 본 다음에 오는 것이
+	// 맞다 — 무엇이 떠 있는지 확인하고 나서 그 설정을 손대게 된다.
+	{ key: "config", label: "Config", icon: <SlidersHorizontal {...iconProps('xs')} /> },
 	{ key: "history", label: "History", icon: <History {...iconProps('xs')} /> },
 	{
 		key: "version-upgrade",
@@ -388,6 +392,7 @@ function StackDetailPanel({
 					/>
 				)}
 				{innerTab === "workloads" && <StackWorkloadsTab stackId={stack.id} />}
+				{innerTab === "config" && <StackConfigTab stackId={stack.id} />}
 				{innerTab === "monitoring" && canShowMonitoring && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
 				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}

@@ -217,6 +217,18 @@ func main() {
 	historyHandler := stackhandler.NewHistoryHandler(pgHistoryRepo, pgStackRepo, manageHistoryUC)
 	monitoringHandler := stackhandler.NewStackMonitoringHandler(pgStackRepo, kubeconfigProvider)
 
+	// 배포된 스택의 OSS 설정을 values.yaml 수준에서 고쳐 다시 적용하는 경로.
+	// 릴리스마다 대상 클러스터가 다르므로 kubeconfig 를 받아 그때그때 조립한다.
+	manageReleaseValuesUC := stackuc.NewManageReleaseValues(
+		pgStackRepo,
+		kubeconfigProvider,
+		func(kubeconfig []byte) stackport.HelmReleaseManager {
+			return stackhelm.NewHelmInstaller(kubeconfig)
+		},
+		stackuc.WithReleaseValuesHistory(manageHistoryUC),
+	)
+	releaseValuesHandler := stackhandler.NewReleaseValuesHandler(manageReleaseValuesUC, auditLogger)
+
 	// CI/CD: postgres repos
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
 	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
@@ -396,6 +408,7 @@ func main() {
 	compatHandler.RegisterRoutes(stacks)
 	historyHandler.RegisterRoutes(stacks)
 	monitoringHandler.RegisterRoutes(stacks)
+	releaseValuesHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	retryHistoryHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
