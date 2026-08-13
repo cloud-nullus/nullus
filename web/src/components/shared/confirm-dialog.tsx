@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '../ui/modal'
 import { Button } from '../ui/button'
@@ -71,7 +72,7 @@ export function ConfirmDialog({
       <div className="flex flex-col gap-4">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]">
-            <AlertTriangle size={20} />
+            <TriangleAlert {...iconProps('md')} />
           </div>
           <p className="m-0 text-sm leading-[1.6] text-[var(--color-text-secondary)]">
             {description}

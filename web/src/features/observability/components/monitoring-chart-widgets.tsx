@@ -1,7 +1,7 @@
 import React from "react"
+import { StatusIcon, STATUS_TOKEN, type StatusTone } from '../../../components/ui/status-icon'
+import { IconTile } from '../../../components/ui/icon-tile'
 import type { ToolHealthStatus } from "../api/observability-api"
-import { CheckCircle, AlertCircle, XCircle } from "lucide-react"
-import { cn } from "../../../lib/utils"
 
 // ─── Shared chart style helpers ───────────────────────────────────────────────
 export const CHART_STYLE = {
@@ -24,10 +24,18 @@ export const CHART_LEGEND_PROPS = {
   wrapperStyle: { color: 'var(--color-border-default)', fontSize: 11 },
 } as const
 
-export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; cls: string; label: string }> = {
-  running: { icon: <CheckCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', label: 'Running' },
-  warning: { icon: <AlertCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]', label: 'Warning' },
-  error: { icon: <XCircle size={13} />, cls: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]', label: 'Error' },
+// 도구 상태도 레지스트리에서 받는다. 여기 warning 에 CircleAlert 가 박혀 있어서
+// 같은 "경고" 가 다른 화면에서는 삼각형인데 이 카드만 원이었다.
+export const TOOL_STATUS: Record<ToolHealthStatus, { icon: React.ReactNode; style: React.CSSProperties; label: string }> = {
+  running: { icon: <StatusIcon tone="success" size="xs" inheritColor />, style: toneSurface('success'), label: 'Running' },
+  warning: { icon: <StatusIcon tone="warning" size="xs" inheritColor />, style: toneSurface('warning'), label: 'Warning' },
+  error: { icon: <StatusIcon tone="error" size="xs" inheritColor />, style: toneSurface('error'), label: 'Error' },
+}
+
+/** tone 의 면 색 — 배경 15% 알파 + 글자는 원본. 토큰 이름을 조립하므로 style 이다. */
+function toneSurface(tone: StatusTone): React.CSSProperties {
+  const token = `var(${STATUS_TOKEN[tone]})`
+  return { backgroundColor: `color-mix(in srgb, ${token} 15%, transparent)`, color: token }
 }
 
 // ─── Shared chart panel wrapper ───────────────────────────────────────────────
@@ -41,11 +49,11 @@ export function ChartPanel({ title, children }: { title: string; children: React
 }
 
 // ─── KPI card ────────────────────────────────────────────────────────────────
-export function KpiCard({ label, value, icon, color, iconCls, bar }: { label: string; value: string; icon: React.ReactNode; color: string; iconCls: string; bar: number }) {
+export function KpiCard({ label, value, icon, color, token, bar }: { label: string; value: string; icon: React.ReactNode; color: string; token: string; bar: number }) {
   return (
     <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]">
       <div className="mb-2.5 flex items-center gap-2.5">
-        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', iconCls)}>{icon}</div>
+        <IconTile token={token}>{icon}</IconTile>
         <span className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</span>
       </div>
       <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">{value}</div>

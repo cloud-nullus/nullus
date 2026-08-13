@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { BellRing, ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, History } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertHistory } from '../api/observability-api'
 import type { AlertHistoryEntry, AlertSeverity } from '../api/observability-api'
@@ -76,7 +77,7 @@ export function AlertHistoryPage() {
               setExpandedAlertId((prev) => (prev === row.original.id ? null : row.original.id))
             }}
           >
-            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            {isExpanded ? <ChevronUp {...iconProps('xs')} /> : <ChevronDown {...iconProps('xs')} />}
           </Button>
         )
       },
@@ -133,7 +134,7 @@ export function AlertHistoryPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('observability.alertHistory', 'Alert History') }]}
-        icon={<BellRing size={16} />}
+        icon={<History {...iconProps('sm')} />}
         tone="warning"
         title={t('observability.alertHistory', 'Alert History')}
         subtitle={t('observability.alertHistoryDesc', 'Alert occurrence history')}

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, Terminal, XCircle } from 'lucide-react'
+import { ArrowLeft, Clock, Terminal } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
+import { StatusIcon } from '../../../components/ui/status-icon'
 import { Breadcrumb } from '../../../components/shared/breadcrumb'
 import { Button } from '../../../components/ui/button'
 import { cn } from '../../../lib/utils'
@@ -267,7 +269,7 @@ export function StackDeploymentLogsPage() {
             { label: 'Deployment Logs' },
           ]
         }
-        icon={<Terminal size={16} />}
+        icon={<Terminal {...iconProps('sm')} />}
         tone="success"
         title="Deployment Logs"
         subtitle={
@@ -279,7 +281,7 @@ export function StackDeploymentLogsPage() {
         }
         actions={
           <Button variant="outline" size="md" type="button" onClick={() => navigate('/stack/list')}>
-            <ArrowLeft size={14} />
+            <ArrowLeft {...iconProps('sm')} />
             Back to Stack List
           </Button>
         }
@@ -297,17 +299,15 @@ export function StackDeploymentLogsPage() {
                   : 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]'
             )}
           >
-            {meta.result === 'success' ? (
-              <CheckCircle2 size={12} />
-            ) : meta.result === 'failed' ? (
-              <XCircle size={12} />
-            ) : (
-              <Loader2 size={12} className="animate-spin" />
-            )}
+            {/* 글리프와 회전은 레지스트리가 정한다. 여기서 고르는 것은 뜻뿐이다. */}
+            <StatusIcon
+              tone={meta.result === 'success' ? 'success' : meta.result === 'failed' ? 'error' : 'running'}
+              size="xs"
+            />
             {meta.result === 'success' ? 'Success' : meta.result === 'failed' ? 'Failed' : 'Running'}
           </span>
           <span className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
-            <Clock size={12} />
+            <Clock {...iconProps('xs')} />
             {meta.duration}
           </span>
 
@@ -323,13 +323,11 @@ export function StackDeploymentLogsPage() {
                   />
                 )}
                 <div className="flex flex-col items-center gap-0.5">
-                  {stage.status === 'done' ? (
-                    <CheckCircle2 size={14} className="text-[var(--color-success)]" />
-                  ) : stage.status === 'failed' ? (
-                    <XCircle size={14} className="text-[var(--color-error)]" />
-                  ) : (
-                    <Circle size={14} className="text-[color-mix(in_srgb,_var(--color-text-primary)_15%,_transparent)]" />
-                  )}
+                  {/* 색도 레지스트리가 정한다 — 대기를 빈 원으로 그리던 자리는
+                      상태 한 벌과 같은 CircleDashed 가 된다. */}
+                  <StatusIcon
+                    tone={stage.status === 'done' ? 'success' : stage.status === 'failed' ? 'error' : 'pending'}
+                  />
                   <span
                     className={cn(
                       'text-[10px] font-medium whitespace-nowrap',
@@ -361,7 +359,7 @@ export function StackDeploymentLogsPage() {
           </span>
           {isStreaming && (
             <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-warning)]">
-              <Loader2 size={11} className="animate-spin" />
+              <StatusIcon tone="running" size="xs" />
               Streaming...
             </span>
           )}
@@ -491,7 +489,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className="flex h-[var(--icon-size)] w-[var(--icon-size)] items-center justify-center rounded-[var(--icon-radius)] bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] text-[var(--color-success)]">
-            <Terminal size={18} />
+            <Terminal {...iconProps('md')} />
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold text-[var(--color-text-primary)]">
@@ -509,7 +507,7 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
             onRetried={onRetried}
           />
           <Button variant="outline" size="md" type="button" onClick={onBack}>
-            <ArrowLeft size={14} />
+            <ArrowLeft {...iconProps('sm')} />
             Back to Stack List
           </Button>
         </div>
@@ -521,11 +519,12 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
           style={{ backgroundColor: style.bg, color: style.color }}
           data-testid="real-stack-status-badge"
         >
-          {isFailed ? <XCircle size={12} /> : <CheckCircle2 size={12} />}
+          {/* 색은 바깥 style 이 상태색으로 이미 칠한다 — 아이콘은 모양만 물려받는다. */}
+          <StatusIcon tone={isFailed ? 'error' : 'success'} size="xs" inheritColor />
           {style.label}
         </span>
         <span className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
-          <Clock size={12} />
+          <Clock {...iconProps('xs')} />
           {stack.namespace ?? 'nullus'}
         </span>
 
@@ -545,13 +544,11 @@ function RealStackView({ stack, onBack, onRetried }: RealStackViewProps) {
                 />
               )}
               <div className="flex flex-col items-center gap-0.5">
-                {stage.status === 'done' ? (
-                  <CheckCircle2 size={14} className="text-[var(--color-success)]" />
-                ) : stage.status === 'failed' ? (
-                  <XCircle size={14} className="text-[var(--color-error)]" />
-                ) : (
-                  <Circle size={14} className="text-[color-mix(in_srgb,_var(--color-text-primary)_15%,_transparent)]" />
-                )}
+                {/* 색도 레지스트리가 정한다 — 대기를 빈 원으로 그리던 자리는
+                    상태 한 벌과 같은 CircleDashed 가 된다. */}
+                <StatusIcon
+                  tone={stage.status === 'done' ? 'success' : stage.status === 'failed' ? 'error' : 'pending'}
+                />
                 <span
                   className={cn(
                     'text-[10px] font-medium whitespace-nowrap',

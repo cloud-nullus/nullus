@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { Bell, Pencil, Plus } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAlertRule, useAlertRules, useCreateAlertRule, useUpdateAlertRule, useDeleteAlertRule } from '../api/observability-api'
 import type { AlertRule, AlertChannel, CreateAlertRuleRequest } from '../api/observability-api'
@@ -238,7 +239,7 @@ export function AlertRulesPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" type="button" onClick={() => openEditModal(row.original)}>
-            <Pencil size={12} />
+            <Pencil {...iconProps('xs')} />
             {t('alertRulesPage.actions.edit', 'Edit')}
           </Button>
           <Button variant="danger" size="sm" type="button" onClick={() => setDeleteRuleId(row.original.id)}>
@@ -253,13 +254,13 @@ export function AlertRulesPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: 'Alert Rules' }]}
-        icon={<Bell size={16} />}
+        icon={<Bell {...iconProps('sm')} />}
         tone="error"
         title={t('observability.alertRules', 'Alert Rules')}
         subtitle={t('observability.alertRulesDesc', 'Alert rule list and management')}
         actions={
           <Button variant="primary" size="md" onClick={openCreateModal} type="button">
-            <Plus size={15} />
+            <Plus {...iconProps('sm')} />
             {t('observability.newRule', 'New Rule')}
           </Button>
         }
@@ -306,7 +307,7 @@ export function AlertRulesPage() {
                     setSelectedClusterId('')
                     setSelectedStackId('')
                   }}
-                  className="text-xs text-[var(--color-text-secondary)] hover:text-red-400"
+                  className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-error)]"
                 >
                   {t('clusterStackFilter.clear', 'Clear')}
                 </button>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Database, Plus, Save } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { useResourceDefaults, useUpsertResourceDefault } from '../api/stack-api'
@@ -211,7 +212,7 @@ export function StackOssResourceDefaultPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: 'OSS Default Resource' }]}
-        icon={<Database size={16} />}
+        icon={<Database {...iconProps('sm')} />}
         tone="info"
         title="OSS Default Resource"
         subtitle={t('stackOssDefault.description', 'View, edit, and register default OSS request/limit resources for DevSecOps Stack.')}
@@ -316,7 +317,7 @@ export function StackOssResourceDefaultPage() {
                 </td>
                 <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                   <Button size="sm" variant="secondary" onClick={() => handleSave(row)} loading={upsertMutation.isPending}>
-                    <Save size={14} /> Save
+                    <Save {...iconProps('sm')} /> Save
                   </Button>
                 </td>
               </tr>
@@ -348,7 +349,7 @@ export function StackOssResourceDefaultPage() {
               </td>
               <td className="border-t border-[var(--color-border-default)] px-[14px] py-3">
                 <Button size="sm" variant="primary" onClick={handleCreate} loading={upsertMutation.isPending}>
-                  <Plus size={14} /> Register
+                  <Plus {...iconProps('sm')} /> Register
                 </Button>
               </td>
             </tr>

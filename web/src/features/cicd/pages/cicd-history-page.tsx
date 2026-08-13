@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, History } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useDeployments } from '../api/cicd-api'
 import type { Deployment, PipelineStatus } from '../api/cicd-api'
@@ -60,7 +61,7 @@ export function CicdHistoryPage() {
               setSelectedDeploymentId((prev) => (prev === row.original.id ? null : row.original.id))
             }}
           >
-            <ChevronRight size={13} />
+            <ChevronRight {...iconProps('xs')} />
           </Button>
         )
       },
@@ -106,7 +107,7 @@ export function CicdHistoryPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.cicdList', 'CI/CD List'), path: '/cicd/list' }, { label: t('cicdHistoryPage.title', 'CI/CD History') }]}
-        icon={<History size={16} />}
+        icon={<History {...iconProps('sm')} />}
         tone="warning"
         title={t('cicdHistoryPage.title', 'CI/CD History')}
         subtitle={t('cicdHistoryPage.description', 'CI/CD Deployment History')}

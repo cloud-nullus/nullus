@@ -1253,7 +1253,8 @@
       "execute": "실행"
     },
     "yamlPreview": "YAML 매니페스트 미리보기",
-    "manifestDescription": "파이프라인을 만들기 전에 생성된 매니페스트를 검토하세요."
+    "manifestDescription": "파이프라인을 만들기 전에 생성된 매니페스트를 검토하세요.",
+    "removeItem": "삭제"
   },
   "stackHistoryPage": {
     "title": "스택 이력",
@@ -1322,7 +1323,10 @@
       "tabNamePlaceholder": "탭 이름",
       "embedUrlPlaceholder": "임베드 URL",
       "description": "저장 후 모든 사용자에게 적용됩니다. Developer 역할은 조회 전용입니다.",
-      "saved": "탭 구성이 저장되었습니다."
+      "saved": "탭 구성이 저장되었습니다.",
+      "moveUp": "위로 이동",
+      "moveDown": "아래로 이동",
+      "removeTab": "탭 삭제"
     }
   },
   "stackVersionPage": {

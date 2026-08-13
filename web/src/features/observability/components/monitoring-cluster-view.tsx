@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQueries } from "@tanstack/react-query"
 import { AreaChart, Area, BarChart, Bar, Cell, Legend, Pie, PieChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
-import { Box, Cpu, MemoryStick, Server } from "lucide-react"
+import { Box, Cpu, MemoryStick, Server } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { api } from "../../../lib/api"
 import { Modal } from "../../../components/ui/modal"
 import type { StackMonitoringSnapshot } from "../../stack/api/stack-api"
@@ -188,8 +189,8 @@ export function ClusterDefault({
     <div>
       <div className="mb-4 flex items-center gap-3">
         <div className={cn('flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium',
-          'border-emerald-500/20 bg-emerald-500/5 text-emerald-400')}>
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />{clusterName || clusterId}
+          'border-[color-mix(in_srgb,_var(--color-success)_20%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_5%,_transparent)] text-[var(--color-success)]')}>
+          <span className="h-2 w-2 rounded-full bg-[var(--color-success)]" />{clusterName || clusterId}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-[var(--color-text-secondary)]">Range:</span>
@@ -204,10 +205,10 @@ export function ClusterDefault({
         </div>
       </div>
       <div className="mb-5 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        <KpiCard label="Running Pods" value={`${podRunning}/${podCount}`} icon={<Server size={18} />} color="var(--color-info)" iconCls="bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]" bar={runningPodsPercent} />
-        <KpiCard label="Pods" value={String(podCount)} icon={<Box size={18} />} color="var(--color-success)" iconCls="bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]" bar={runningPodsPercent} />
-        <KpiCard label="CPU" value={`${Math.round(cpuUsage)}%`} icon={<Cpu size={18} />} color="var(--color-warning)" iconCls="bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]" bar={cpuUsage} />
-        <KpiCard label="Memory" value={`${Math.round(memoryUsage)}%`} icon={<MemoryStick size={18} />} color="var(--color-accent-alt)" iconCls="bg-[color-mix(in_srgb,_var(--color-accent-alt)_15%,_transparent)] text-[var(--color-accent-alt)]" bar={memoryUsage} />
+        <KpiCard label="Running Pods" value={`${podRunning}/${podCount}`} icon={<Server {...iconProps('md')} />} color="var(--color-info)" token="--color-info" bar={runningPodsPercent} />
+        <KpiCard label="Pods" value={String(podCount)} icon={<Box {...iconProps('md')} />} color="var(--color-success)" token="--color-success" bar={runningPodsPercent} />
+        <KpiCard label="CPU" value={`${Math.round(cpuUsage)}%`} icon={<Cpu {...iconProps('md')} />} color="var(--color-warning)" token="--color-warning" bar={cpuUsage} />
+        <KpiCard label="Memory" value={`${Math.round(memoryUsage)}%`} icon={<MemoryStick {...iconProps('md')} />} color="var(--color-accent-alt)" token="--color-accent-alt" bar={memoryUsage} />
       </div>
       <div className="grid grid-cols-2 gap-3.5">
         <ChartPanel title="CPU Usage">

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, Loader2, Copy } from "lucide-react";
+import { Check, Copy, LoaderCircle } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
 
@@ -35,9 +36,9 @@ export function PhaseStep({
         )}
       >
         {isDone ? (
-          <Check size={14} />
+          <Check {...iconProps('sm')} />
         ) : isActive ? (
-          <Loader2 size={14} className="animate-spin" />
+          <LoaderCircle {...iconProps('sm')} className="animate-spin" />
         ) : (
           <span className="text-xs font-bold">{index + 1}</span>
         )}
@@ -152,9 +153,9 @@ export function CopyableCommand({ command }: { command: string }) {
         className="shrink-0 cursor-pointer border-none bg-none p-1 text-[color-mix(in_srgb,_var(--color-text-primary)_40%,_transparent)] transition-colors hover:text-white"
       >
         {copied ? (
-          <Check size={14} className="text-[var(--color-terminal-success)]" />
+          <Check {...iconProps('sm')} className="text-[var(--color-terminal-success)]" />
         ) : (
-          <Copy size={14} />
+          <Copy {...iconProps('sm')} />
         )}
       </button>
     </div>

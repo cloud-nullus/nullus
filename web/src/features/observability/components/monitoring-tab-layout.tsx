@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useId } from "react"
 import { useTranslation } from "react-i18next"
-import { Settings2, Plus, Save, ChevronUp, ChevronDown, GripVertical, Trash2, Check, Lock, Server } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, GripVertical, Lock, Plus, Save, Server, Settings2, Trash2 } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { Tabs } from "../../../components/ui/tabs"
 import { Button } from "../../../components/ui/button"
 import type { EmbedTab } from "../utils/monitoring-utils"
@@ -112,7 +113,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
               // 개편 전에는 토큰이 아닌 amber-400 이 직접 박혀 있어 테마를 안 따랐다.
               className={isManaging ? 'text-[var(--color-warning)]' : undefined}
             >
-              <Settings2 size={13} />
+              <Settings2 {...iconProps('xs')} />
               {isManaging ? t('common.cancel', 'Cancel') : t('monitoringPage.customTabs.manageTabs', 'Manage Tabs')}
             </Button>
           )
@@ -121,17 +122,17 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
 
       {/* Admin manage panel */}
       {isManaging && (
-        <div className="w-full border-b border-[var(--color-border-default)] bg-amber-500/5 px-1 py-4 sm:px-2">
+        <div className="w-full border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-warning)_5%,_transparent)] px-1 py-4 sm:px-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-semibold text-[var(--color-text-primary)]">{t('monitoringPage.customTabs.manageCustomTabs', 'Manage Custom Tabs')}</span>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={addDraft}
                 className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-default)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
-                <Plus size={12} />{t('monitoringPage.customTabs.addTab', 'Add Tab')}
+                <Plus {...iconProps('xs')} />{t('monitoringPage.customTabs.addTab', 'Add Tab')}
               </button>
               <button type="button" onClick={saveManage}
                 className="flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-4 py-1.5 text-xs font-medium text-white hover:opacity-90">
-                <Save size={12} />{t('monitoringPage.customTabs.saveChanges', 'Save Changes')}
+                <Save {...iconProps('xs')} />{t('monitoringPage.customTabs.saveChanges', 'Save Changes')}
               </button>
             </div>
           </div>
@@ -146,15 +147,17 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                   <div className="flex items-center gap-2">
                     <div className="flex shrink-0 flex-col">
                       <button type="button" onClick={() => moveDraft(d.id, -1)} disabled={idx === 0}
+                        aria-label={t('monitoringPage.customTabs.moveUp', 'Move up')}
                         className="rounded p-0.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] disabled:opacity-30">
-                        <ChevronUp size={11} />
+                        <ChevronUp {...iconProps('xs')} />
                       </button>
                       <button type="button" onClick={() => moveDraft(d.id, 1)} disabled={idx === drafts.length - 1}
+                        aria-label={t('monitoringPage.customTabs.moveDown', 'Move down')}
                         className="rounded p-0.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] disabled:opacity-30">
-                        <ChevronDown size={11} />
+                        <ChevronDown {...iconProps('xs')} />
                       </button>
                     </div>
-                    <GripVertical size={14} className="shrink-0 text-[var(--color-text-secondary)]" />
+                    <GripVertical {...iconProps('sm')} className="shrink-0 text-[var(--color-text-secondary)]" />
                     <TextInput
                       value={d.label}
                       onChange={(e) => patchDraft(d.id, { label: e.target.value })}
@@ -162,8 +165,9 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                       className="min-w-0 flex-1 focus:border-[var(--color-primary)]"
                     />
                     <button type="button" onClick={() => removeDraft(d.id)}
-                      className="shrink-0 rounded p-1 text-[var(--color-text-secondary)] hover:bg-red-400/10 hover:text-red-400">
-                      <Trash2 size={13} />
+                      aria-label={t('monitoringPage.customTabs.removeTab', 'Remove tab')}
+                      className="shrink-0 rounded p-1 text-[var(--color-text-secondary)] hover:bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)] hover:text-[var(--color-error)]">
+                      <Trash2 {...iconProps('xs')} />
                     </button>
                   </div>
                   {/* Row 2: URL input full width */}
@@ -186,8 +190,8 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
       )}
 
       {saved && (
-        <div className="flex items-center gap-2 border-b border-emerald-500/20 bg-emerald-500/5 px-1 py-2 text-xs text-emerald-400 sm:px-2">
-          <Check size={12} />{t('monitoringPage.customTabs.saved', 'Tab configuration saved.')}
+        <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-success)_20%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_5%,_transparent)] px-1 py-2 text-xs text-[var(--color-success)] sm:px-2">
+          <Check {...iconProps('xs')} />{t('monitoringPage.customTabs.saved', 'Tab configuration saved.')}
         </div>
       )}
 
@@ -215,7 +219,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                 Open in new tab
               </a>
             )}
-            {!isAdmin && <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]"><Lock size={10} />View only</span>}
+            {!isAdmin && <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]"><Lock {...iconProps('xs')} />View only</span>}
           </div>
           {activeEmbedUrl ? (
             !activeEmbedUrlValid ? (
@@ -246,7 +250,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
                   allowFullScreen
                 />
                 {embedError && (
-                  <div className="border-t border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
+                  <div className="border-t border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_10%,_transparent)] px-3 py-2 text-xs text-[var(--color-warning)]">
                     Embedded page could not be loaded. This URL may block iframe embedding. Use the "Open in new tab" button.
                   </div>
                 )}
@@ -254,7 +258,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
             )
           ) : (
             <div className="flex h-72 flex-col items-center justify-center gap-2 text-[var(--color-text-secondary)]">
-              <Server size={28} className="opacity-20" />
+              <Server {...iconProps('lg')} className="opacity-20" />
               <p className="text-sm font-medium text-[var(--color-text-primary)]">No embed URL configured</p>
               <p className="text-xs">{isAdmin ? 'Click "Manage Tabs" above to set the URL.' : 'An admin can configure this tab.'}</p>
             </div>

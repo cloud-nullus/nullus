@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 
 export interface BreadcrumbItem {
   label: string
@@ -24,7 +25,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
           <div key={item.path ?? item.label} className="flex items-center gap-0.5">
             {index > 0 && (
               <ChevronRight
-                size={12}
+                {...iconProps('xs')}
                 className="mx-0.5 shrink-0 text-[var(--color-text-muted)]"
               />
             )}

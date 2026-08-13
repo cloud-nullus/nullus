@@ -71,6 +71,15 @@
   --table-row-height: 32px;
   --table-header-height: 28px;
   --control-height: 30px;
+
+  /* 아이콘 크기 — 굵기는 CSS 로 못 넘긴다(lucide 가 strokeWidth 프롭으로 받는다).
+     굵기까지 필요하면 tokens.generated.ts 의 icon 을 쓴다. */
+  --icon-xs: 12px;
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 28px;
+  --icon-tile-sm: 28px;
+  --icon-tile-md: 36px;
   --card-radius: 8px;
   --icon-radius: 4px;
 

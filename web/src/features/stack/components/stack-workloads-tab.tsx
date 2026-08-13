@@ -11,7 +11,8 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ColumnDef } from "@tanstack/react-table";
-import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { DataTable } from "../../../components/shared/data-table";
 import { Badge } from "../../../components/ui/badge";
 import { cn } from "../../../lib/utils";
@@ -27,17 +28,17 @@ type WorkloadRow = PodMonitoringStatus & {
 
 const STATUS_STYLE = {
   running: {
-    icon: CheckCircle2,
+    icon: CircleCheck,
     className:
       "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
   },
   warning: {
-    icon: AlertTriangle,
+    icon: TriangleAlert,
     className:
       "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
   },
   error: {
-    icon: AlertCircle,
+    icon: CircleAlert,
     className:
       "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]",
   },
@@ -112,7 +113,7 @@ export function StackWorkloadsTab({ stackId }: { stackId: string }) {
         const Icon = style.icon;
         return (
           <Badge pill className={cn("whitespace-nowrap", style.className)}>
-            <Icon size={11} />
+            <Icon {...iconProps('xs')} />
             {/* phase 는 쿠버네티스 값(Running/Pending/…) 그대로다. ready 는 별개 —
                 Running 인데 준비가 안 된 파드가 장애의 대부분이라 함께 적는다. */}
             {row.original.phase}

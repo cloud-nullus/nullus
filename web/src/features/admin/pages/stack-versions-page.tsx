@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Plus, Pencil, Trash2, FolderOpen, Shield } from 'lucide-react'
+import { CircleCheck, CircleX, FolderOpen, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { PageHeader } from '../../../components/layout/page-header'
 import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
@@ -144,7 +145,7 @@ export function StackVersionsAdminPage() {
           className="flex flex-col items-center gap-2 py-12 text-center text-[var(--color-text-secondary)]"
           data-testid="matrix-empty-state"
         >
-          <FolderOpen size={32} className="opacity-40" />
+          <FolderOpen {...iconProps('lg')} className="opacity-40" />
           <p className="text-sm">
             {t('stackVersionsAdmin.empty.title', '등록된 호환성 매트릭스가 없습니다')}
           </p>
@@ -223,7 +224,7 @@ export function StackVersionsAdminPage() {
     if (verdict === 'compatible') {
       return (
         <span className="inline-flex items-center gap-1 text-[var(--color-success)]">
-          <CheckCircle2 size={14} />
+          <CircleCheck {...iconProps('sm')} />
           {t('stackVersionsAdmin.crossEval.compatible', 'Compatible')}
         </span>
       )
@@ -238,14 +239,14 @@ export function StackVersionsAdminPage() {
           className="inline-flex items-center gap-1 text-[var(--color-error)]"
           title={title || t('stackVersionsAdmin.crossEval.incompatible', 'Incompatible')}
         >
-          <XCircle size={14} />
+          <CircleX {...iconProps('sm')} />
           {t('stackVersionsAdmin.crossEval.incompatible', 'Incompatible')}
         </span>
       )
     }
     return (
       <span className="inline-flex items-center gap-1 text-[var(--color-warning)]">
-        <AlertTriangle size={14} />
+        <TriangleAlert {...iconProps('sm')} />
         {t('stackVersionsAdmin.crossEval.unknown', 'Unknown')}
       </span>
     )
@@ -268,7 +269,7 @@ export function StackVersionsAdminPage() {
             onClick={() => setModal({ mode: 'edit', initial: selectedMatrix })}
             aria-label={t('stackVersionsAdmin.actions.edit', 'Edit matrix')}
           >
-            <Pencil size={12} className="mr-1" />
+            <Pencil {...iconProps('xs')} className="mr-1" />
             {t('stackVersionsAdmin.actions.edit', 'Edit')}
           </Button>
           <Button
@@ -277,7 +278,7 @@ export function StackVersionsAdminPage() {
             onClick={() => setDeleteTarget(selectedMatrix)}
             aria-label={t('stackVersionsAdmin.actions.delete', 'Delete matrix')}
           >
-            <Trash2 size={12} className="mr-1 text-[var(--color-error)]" />
+            <Trash2 {...iconProps('xs')} className="mr-1 text-[var(--color-error)]" />
             {t('stackVersionsAdmin.actions.delete', 'Delete')}
           </Button>
         </div>
@@ -369,7 +370,7 @@ export function StackVersionsAdminPage() {
                       disabled={refreshDiscovery.isPending && refreshDiscovery.variables === cluster.id}
                       aria-label={t('stackVersionsAdmin.refreshDiscovery.button', 'Refresh Discovery')}
                     >
-                      <RefreshCw size={12} className="mr-1" />
+                      <RefreshCw {...iconProps('xs')} className="mr-1" />
                       {t('stackVersionsAdmin.refreshDiscovery.button', 'Refresh Discovery')}
                     </Button>
                   </td>
@@ -401,7 +402,7 @@ export function StackVersionsAdminPage() {
           { label: t('stackVersionsAdmin.breadcrumb.devsecops', 'DevSecOps Stack') },
           { label: t('stackVersionsAdmin.breadcrumb.stackVersions', 'Stack Version Management') },
         ]}
-        icon={<Shield size={16} />}
+        icon={<ShieldCheck {...iconProps('sm')} />}
         tone="info"
         title={t('stackVersionsAdmin.title', 'Stack Version Management')}
         subtitle={t(
@@ -410,7 +411,7 @@ export function StackVersionsAdminPage() {
         )}
         actions={
           <Button size="sm" onClick={() => setModal({ mode: 'create' })}>
-            <Plus size={14} className="mr-1" />
+            <Plus {...iconProps('sm')} className="mr-1" />
             {t('stackVersionsAdmin.actions.new', 'New matrix')}
           </Button>
         }

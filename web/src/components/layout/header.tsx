@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
-import { Sun, Moon, ShieldCheck, HardHat, LaptopMinimal } from 'lucide-react'
+import { HardHat, LaptopMinimal, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores/theme-store'
 import { useAuthStore } from '../../stores/auth-store'
@@ -8,9 +9,9 @@ import { LanguageSwitcher } from '../shared/language-switcher'
 import { IconButton } from '../ui/icon-button'
 
 const roleIcons: Record<Role, ReactNode> = {
-  admin: <ShieldCheck size={14} />,
-  devops: <HardHat size={14} />,
-  developer: <LaptopMinimal size={14} />,
+  admin: <ShieldCheck {...iconProps('sm')} />,
+  devops: <HardHat {...iconProps('sm')} />,
+  developer: <LaptopMinimal {...iconProps('sm')} />,
 }
 
 const roleLabels: Record<Role, string> = {
@@ -43,7 +44,7 @@ export function Header() {
         onClick={toggleTheme}
         aria-label={theme === 'dark' ? t('header.theme.switchToLight') : t('header.theme.switchToDark')}
       >
-        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        {theme === 'dark' ? <Sun {...iconProps('sm')} /> : <Moon {...iconProps('sm')} />}
       </IconButton>
     </header>
   )

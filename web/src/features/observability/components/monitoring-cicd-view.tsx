@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
-import { Activity, AlertCircle, CheckCircle, Clock, GitBranch, Layers, Package, XCircle } from "lucide-react"
+import { Activity, CircleCheck, Clock, GitBranch, Layers, Package } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
+import { StatusIcon, toneForStatus } from '../../../components/ui/status-icon'
 import { useDeployments, usePipelines } from "../../cicd/api/cicd-api"
 import { useStackWorkloads } from "../../stack/api/stack-api"
 import { cn } from "../../../lib/utils"
@@ -30,9 +32,23 @@ interface DeployedAppRow {
 }
 
 const APP_STATUS_CFG: Record<AppStatus, { label: string; cls: string; dot: string }> = {
-  healthy: { label: 'Healthy', cls: 'bg-emerald-500/15 text-emerald-400', dot: 'bg-emerald-400' },
-  degraded: { label: 'Degraded', cls: 'bg-amber-500/15 text-amber-400', dot: 'bg-amber-400' },
-  down: { label: 'Down', cls: 'bg-red-500/15 text-red-400', dot: 'bg-red-400' },
+  // 색은 토큰만 참조한다. 여기 emerald/amber/red 가 박혀 있어서 같은 "정상" 이
+  // 다른 화면의 --color-success 와 다른 초록으로 보였다.
+  healthy: {
+    label: 'Healthy',
+    cls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
+    dot: 'bg-[var(--color-success)]',
+  },
+  degraded: {
+    label: 'Degraded',
+    cls: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
+    dot: 'bg-[var(--color-warning)]',
+  },
+  down: {
+    label: 'Down',
+    cls: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
+    dot: 'bg-[var(--color-error)]',
+  },
 }
 
 /** Sample Grafana tab pre-seeded into CI/CD localStorage */
@@ -197,10 +213,10 @@ export function CicdDefault({
   const runningDeployments = deployments.filter((d) => ['running', 'pending', 'validating', 'installing', 'configuring', 'health_check', 'rolling_back'].includes(d.status)).length
 
   const appKpis = [
-    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers size={18} />, color: 'var(--color-primary)', iconCls: 'bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]', bar: 100 },
-    { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CheckCircle size={18} />, color: 'var(--color-success)', iconCls: 'bg-emerald-500/15 text-emerald-400', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
-    { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch size={18} />, color: 'var(--color-warning)', iconCls: 'bg-amber-500/15 text-amber-400', bar: 100 },
-    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity size={18} />, color: 'var(--color-success)', iconCls: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
+    { label: 'Total Pipelines', value: String(pipelines.length), icon: <Layers {...iconProps('md')} />, color: 'var(--color-primary)', token: '--color-primary', bar: 100 },
+    { label: 'Pipeline Success / Failed', value: `${successPipelines} / ${failedPipelines}`, icon: <CircleCheck {...iconProps('md')} />, color: 'var(--color-success)', token: '--color-success', bar: pipelines.length ? Math.round((successPipelines / pipelines.length) * 100) : 0 },
+    { label: 'Total Deployments', value: String(deployments.length), icon: <GitBranch {...iconProps('md')} />, color: 'var(--color-warning)', token: '--color-warning', bar: 100 },
+    { label: 'Running Deployments', value: String(runningDeployments), icon: <Activity {...iconProps('md')} />, color: 'var(--color-success)', token: '--color-success', bar: deployments.length ? Math.round((runningDeployments / deployments.length) * 100) : 0 },
   ]
 
   return (
@@ -258,7 +274,7 @@ export function CicdDefault({
       <div className="mb-5 rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-3">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
-            <Package size={15} className="text-[var(--color-primary)]" />
+            <Package {...iconProps('sm')} className="text-[var(--color-primary)]" />
             Deployed Applications
           </h2>
           <span className="text-xs text-[var(--color-text-secondary)]">{rows.length} apps</span>
@@ -295,7 +311,7 @@ export function CicdDefault({
                     <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">{app.version}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
-                        <GitBranch size={11} />{app.pipeline}
+                        <GitBranch {...iconProps('xs')} />{app.pipeline}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -305,7 +321,7 @@ export function CicdDefault({
                       <span className={cn(
                         'font-mono',
                         typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number' && app.pods[0] < app.pods[1]
-                          ? 'text-amber-400'
+                          ? 'text-[var(--color-warning)]'
                           : 'text-[var(--color-text-primary)]',
                       )}>
                         {typeof app.pods[0] === 'number' && typeof app.pods[1] === 'number'
@@ -326,7 +342,7 @@ export function CicdDefault({
                     <td className="px-4 py-3 font-mono text-[var(--color-text-secondary)]">{app.duration}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 text-[var(--color-text-secondary)]">
-                        <Clock size={11} />{app.lastDeploy}
+                        <Clock {...iconProps('xs')} />{app.lastDeploy}
                       </div>
                     </td>
                   </tr>
@@ -341,7 +357,7 @@ export function CicdDefault({
       <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
         <div className="border-b border-[var(--color-border-default)] px-4 py-3">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
-            <GitBranch size={15} className="text-[var(--color-primary)]" />
+            <GitBranch {...iconProps('sm')} className="text-[var(--color-primary)]" />
             Recent Deployments
           </h2>
         </div>
@@ -349,16 +365,12 @@ export function CicdDefault({
           {latestDeployments.map((d) => (
             <div key={`${d.pipelineName}-${d.startedAt}`} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3">
               <div className="flex items-center gap-2">
-                {d.status === 'success'
-                  ? <CheckCircle size={13} className="text-emerald-400" />
-                  : d.status === 'failed'
-                    ? <XCircle size={13} className="text-red-400" />
-                    : <AlertCircle size={13} className="text-amber-400" />}
+                <StatusIcon tone={toneForStatus(d.status)} size="xs" />
                 <span className="font-semibold text-[var(--color-text-primary)]">{d.pipelineName}</span>
               </div>
               <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">{d.version}</span>
               <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
-                <Clock size={10} />{formatDuration(d.startedAt, d.completedAt)}
+                <Clock {...iconProps('xs')} />{formatDuration(d.startedAt, d.completedAt)}
               </div>
               <span className="ml-auto text-[11px] text-[var(--color-text-secondary)]">{timeAgo(d.startedAt)}</span>
             </div>

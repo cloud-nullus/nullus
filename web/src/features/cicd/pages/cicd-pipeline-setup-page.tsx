@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Boxes, FileCode2, FileText, GitBranch, Rocket, Server, Settings2 } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { Button } from '../../../components/ui/button'
 import { Tabs } from '../../../components/ui/tabs'
 import { Select } from '../../../components/ui/select'
@@ -362,14 +363,14 @@ export function CicdPipelineSetupPage() {
             { label: t('cicdPipelineSetupPage.breadcrumb.current', 'Pipeline Setup') },
           ]
         }
-        icon={<Settings2 size={16} />}
+        icon={<Settings2 {...iconProps('sm')} />}
         tone="primary"
         title={t('cicdPipelineSetupPage.title', 'CI/CD Pipeline Setup')}
         subtitle={t('cicdPipelineSetupPage.description', "Configure your CI/CD pipeline and create it after completing each step.")}
         actions={
           <div className="flex gap-2">
             <Button variant="outline" size="md" type="button" onClick={() => navigate('/cicd/templates')}>
-              <GitBranch size={14} />
+              <GitBranch {...iconProps('sm')} />
               {t('cicdPipelineSetupPage.actions.changeTemplate', 'Change Template')}
             </Button>
             <Button
@@ -379,7 +380,7 @@ export function CicdPipelineSetupPage() {
               onClick={handleCreatePipeline}
               loading={createPipeline.isPending}
             >
-              <Rocket size={14} />
+              <Rocket {...iconProps('sm')} />
               {t('cicdPipelineSetupPage.actions.createPipeline', 'Create Pipeline')}
             </Button>
           </div>
@@ -421,7 +422,7 @@ export function CicdPipelineSetupPage() {
             onChange={setActiveTab}
             items={TABS.map((tab) => {
               const Icon = tab.icon
-              return { id: tab.id, icon: <Icon size={14} />, label: tab.label }
+              return { id: tab.id, icon: <Icon {...iconProps('sm')} />, label: tab.label }
             })}
           />
 

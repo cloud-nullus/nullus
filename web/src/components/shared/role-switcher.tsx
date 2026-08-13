@@ -1,4 +1,5 @@
 import { Code2, Shield, Wrench } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import type { Role } from '../../types'
 import { cn } from '../../lib/utils'
 
@@ -35,7 +36,7 @@ export function RoleSwitcher({ currentRole, onRoleChange, compact = false }: Rol
                 : 'border-[var(--color-border-default)] bg-[var(--color-surface-card)] font-semibold text-[var(--color-text-secondary)]'
             )}
           >
-            <Icon size={14} />
+            <Icon {...iconProps('sm')} />
             {!compact && option.label}
           </button>
         )

@@ -4,7 +4,8 @@ import type { TFunction } from 'i18next'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Network, Plus, CheckCircle, Clock, AlertCircle, MinusCircle, Upload } from 'lucide-react'
+import { Network, Plus, Upload } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useCluster, useClusters, useCreateCluster, useDeleteCluster, useUpdateCluster, useVerifyCluster, useVerifyClusterDraft } from '../api/admin-api'
 import type { Cluster, ClusterStatus, ClusterType, CloudProvider } from '../api/admin-api'
 import { Button } from '../../../components/ui/button'
@@ -17,38 +18,45 @@ import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
 import { Checkbox } from '../../../components/ui/checkbox'
 import { Badge } from '../../../components/ui/badge'
+import { StatusIcon, STATUS_TOKEN, type StatusTone } from '../../../components/ui/status-icon'
 
-const STATUS_CONFIG: Record<ClusterStatus, { icon: React.ReactNode; badgeClassName: string; panelClassName: string }> = {
-  connected: {
-    icon: <CheckCircle size={14} />,
-    badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
-    panelClassName: 'border-[color-mix(in_srgb,_var(--color-success)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
-  },
-  pending: {
-    icon: <Clock size={14} />,
-    badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-    panelClassName: 'border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-  },
-  error: {
-    icon: <AlertCircle size={14} />,
-    badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-    panelClassName: 'border-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-  },
-  inactive: {
-    icon: <MinusCircle size={14} />,
-    badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]',
-    panelClassName: 'border-[color-mix(in_srgb,_var(--color-text-muted)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-text-muted)_15%,_transparent)] text-[var(--color-text-muted)]',
-  },
-  unreachable: {
-    icon: <AlertCircle size={14} />,
-    badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-    panelClassName: 'border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-  },
-  auth_failed: {
-    icon: <AlertCircle size={14} />,
-    badgeClassName: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-    panelClassName: 'border-[color-mix(in_srgb,_var(--color-error)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-  },
+// 클러스터 상태의 아이콘·색을 여기서 다시 고르지 않는다.
+//
+// 개편 전 이 표는 pending 에 Clock, unreachable·auth_failed 에 CircleAlert 를
+// 직접 박고 있었다. StatusBadge 를 안 쓰는 화면이라 상태 레지스트리를 세워도
+// 여기만 옛 매핑으로 남았고, 실제로 실행해 보고서야 드러났다 — 같은 "대기" 가
+// 다른 화면에서는 CircleDashed 인데 이 화면만 시계였다.
+//
+// 이제 tone 만 정하고 글리프와 색은 registry 가 준다.
+const STATUS_TONE: Record<ClusterStatus, StatusTone> = {
+  connected: 'success',
+  pending: 'pending',
+  error: 'error',
+  inactive: 'neutral',
+  unreachable: 'warning',
+  auth_failed: 'error',
+}
+
+/** 배지·패널의 면 색. 토큰 이름을 조립해야 하므로 클래스가 아니라 style 이다. */
+const surfaceOf = (tone: StatusTone, borderAlpha?: number) => {
+  const token = `var(${STATUS_TOKEN[tone]})`
+  return {
+    backgroundColor: `color-mix(in srgb, ${token} 15%, transparent)`,
+    color: token,
+    ...(borderAlpha
+      ? { borderColor: `color-mix(in srgb, ${token} ${borderAlpha}%, transparent)` }
+      : {}),
+  }
+}
+
+const statusConfigOf = (status: ClusterStatus) => {
+  const tone = STATUS_TONE[status]
+  return {
+    tone,
+    icon: <StatusIcon tone={tone} inheritColor />,
+    badgeStyle: surfaceOf(tone),
+    panelStyle: surfaceOf(tone, 25),
+  }
 }
 
 function getStatusLabel(t: TFunction, status: ClusterStatus) {
@@ -505,13 +513,13 @@ export function ClusterPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.clusterManagement', 'Cluster Management') }]}
-        icon={<Network size={16} />}
+        icon={<Network {...iconProps('sm')} />}
         tone="info"
         title={t('sidebar.clusterManagement', 'Cluster Management')}
         subtitle={t('clusterPage.description', 'Register and manage Kubernetes clusters.')}
         actions={
           <Button variant="primary" size="md" onClick={openCreateModal} type="button">
-            <Plus size={15} />
+            <Plus {...iconProps('sm')} />
             {t('clusterPage.actions.registerCluster', 'Register Cluster')}
           </Button>
         }
@@ -532,7 +540,7 @@ export function ClusterPage() {
               )}
               {!isLoading && clusters.map((cluster) => {
                 const effectiveStatus = getEffectiveStatus(cluster)
-                const st = STATUS_CONFIG[effectiveStatus]
+                const st = statusConfigOf(effectiveStatus)
                 const isSelected = selected?.id === cluster.id
                 const clusterTypes = resolveClusterTypes(cluster)
                 return (
@@ -551,7 +559,7 @@ export function ClusterPage() {
                       <span className={cn('text-sm font-semibold', isSelected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
                         {cluster.name}
                       </span>
-                      <Badge className={cn('flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold', st.badgeClassName)}>
+                      <Badge className="flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-[11px] font-semibold" style={st.badgeStyle}>
                         {st.icon}
                         {getStatusLabel(t, effectiveStatus)}
                       </Badge>
@@ -611,7 +619,7 @@ export function ClusterPage() {
                     {t('clusterPage.connection.title', 'Connection Status')}
                   </h3>
                   {(() => {
-                    const st = STATUS_CONFIG[effectiveSelectedStatus]
+                    const st = statusConfigOf(effectiveSelectedStatus)
                     const baseHintMessage = showBaseHint ? connectionHint.text : ''
                     const statusMessage = isVerifyingConnection
                       ? t('clusterPage.connection.verifying', 'Verifying connection...')
@@ -631,7 +639,7 @@ export function ClusterPage() {
                     return (
                       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
                         <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-                          <div className={cn('inline-flex w-fit items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold', st.panelClassName)}>
+                          <div className="inline-flex w-fit items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold" style={st.panelStyle}>
                             {st.icon}
                             {getStatusLabel(t, effectiveSelectedStatus)}
                           </div>
@@ -770,7 +778,7 @@ export function ClusterPage() {
                  onClick={() => fileInputRef.current?.click()}
                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-2.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)]"
                >
-                 <Upload size={14} />
+                 <Upload {...iconProps('sm')} />
                  {t('clusterPage.form.chooseFile', 'Choose File')}
                </button>
                {fileInputRef.current?.files?.[0] && (

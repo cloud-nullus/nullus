@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LogOut, Menu, ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, LogOut, Menu } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { NullusMark } from '../brand/nullus-mark'
 import { useAuthStore } from '../../stores/auth-store'
 import { useSidebarStore } from '../../stores/sidebar-store'
@@ -62,7 +63,7 @@ export function Sidebar() {
           </button>
         )}
         <IconButton onClick={toggleSidebar} aria-label="Toggle sidebar">
-          <Menu size={16} />
+          <Menu {...iconProps('sm')} />
         </IconButton>
       </div>
 
@@ -86,8 +87,8 @@ export function Sidebar() {
               </span>
               {!collapsed && (
                 openGroups[group.key]
-                  ? <ChevronDown size={14} />
-                  : <ChevronRight size={14} />
+                  ? <ChevronDown {...iconProps('sm')} />
+                  : <ChevronRight {...iconProps('sm')} />
               )}
             </button>
 
@@ -160,7 +161,7 @@ export function Sidebar() {
           )}
           aria-label={t('sidebar.logout')}
         >
-          <LogOut size={16} />
+          <LogOut {...iconProps('sm')} />
           {!collapsed && t('sidebar.logout')}
         </button>
       </div>

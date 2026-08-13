@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { Copy, Check, AlignLeft } from 'lucide-react'
+import { AlignLeft, Check, Copy } from 'lucide-react'
+import { iconProps } from '../ui/icon'
 import { cn } from '../../lib/utils'
 
 interface YamlEditorProps {
@@ -84,7 +85,7 @@ export function YamlEditor({ value, onChange, readOnly = false, height = '400px'
               onClick={handleFormat}
               className="flex cursor-pointer items-center gap-[5px] rounded-md border border-[var(--color-border-default)] bg-none px-2.5 py-1 text-xs text-[var(--color-text-secondary)]"
             >
-              <AlignLeft size={12} />
+              <AlignLeft {...iconProps('xs')} />
               Format
             </button>
           )}
@@ -96,7 +97,7 @@ export function YamlEditor({ value, onChange, readOnly = false, height = '400px'
               copied ? 'text-[var(--color-success)]' : 'text-[var(--color-text-secondary)]'
             )}
           >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? <Check {...iconProps('xs')} /> : <Copy {...iconProps('xs')} />}
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>

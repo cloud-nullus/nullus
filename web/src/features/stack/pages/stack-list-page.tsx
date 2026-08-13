@@ -1,5 +1,6 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpCircle, BarChart2, Boxes, ClipboardList, GitBranch, History, Info, Layers, List, Plus, Terminal } from "lucide-react";
+import { ArrowUpCircle, Boxes, ChartColumn, ClipboardList, GitBranch, History, Info, Layers, List, Plus, Terminal } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -76,7 +77,7 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 				</div>
 				<div className="flex items-center gap-2">
 					<Button variant="outline" size="sm" onClick={() => navigate(`/stack/logs/${stack.id}`)} type="button">
-						<Terminal size={13} /> Open Logs
+						<Terminal {...iconProps('xs')} /> Open Logs
 					</Button>
 					<Button variant="outline" size="sm" onClick={() => navigate(`/stack/history/${stack.id}`)} type="button">
 						Open Full History
@@ -230,7 +231,7 @@ function StackVersionUpgradeTab() {
 								className="flex h-9 w-9 items-center justify-center rounded-lg"
 								style={{ background: item.iconBg }}
 							>
-								<GitBranch size={16} className="text-white" />
+								<GitBranch {...iconProps('sm')} className="text-white" />
 							</div>
 							<div>
 								<div className="font-semibold text-[var(--color-text-primary)]">
@@ -266,14 +267,14 @@ function StackVersionUpgradeTab() {
 										type="button"
 										className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)]"
 									>
-										<ClipboardList size={12} /> Changelog
+										<ClipboardList {...iconProps('xs')} /> Changelog
 									</button>
 									<button
 										type="button"
 										onClick={handleUpgradeClick}
 										className="flex items-center gap-1.5 rounded-md bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] px-2.5 py-1.5 text-[12px] font-semibold text-white"
 									>
-										<ArrowUpCircle size={12} /> Upgrade
+										<ArrowUpCircle {...iconProps('xs')} /> Upgrade
 									</button>
 								</>
 							)}
@@ -286,15 +287,15 @@ function StackVersionUpgradeTab() {
 }
 
 const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
-	{ key: "info", label: "Info", icon: <Info size={13} /> },
+	{ key: "info", label: "Info", icon: <Info {...iconProps('xs')} /> },
 	// 클러스터에 실제로 뜬 파드. 예전에는 Info 탭이 "Monitoring / History 탭에서
 	// 확인하세요" 라고 안내했지만 두 탭 어디에도 파드 목록은 없었다.
-	{ key: "workloads", label: "Workloads", icon: <Boxes size={13} /> },
-	{ key: "history", label: "History", icon: <History size={13} /> },
+	{ key: "workloads", label: "Workloads", icon: <Boxes {...iconProps('xs')} /> },
+	{ key: "history", label: "History", icon: <History {...iconProps('xs')} /> },
 	{
 		key: "version-upgrade",
 		label: "Version Upgrade",
-		icon: <ArrowUpCircle size={13} />,
+		icon: <ArrowUpCircle {...iconProps('xs')} />,
 	},
 ];
 
@@ -326,7 +327,7 @@ function StackDetailPanel({
 	const innerTabs = canShowMonitoring
 		? [
 				...BASE_INNER_TABS.slice(0, 2),
-				{ key: "monitoring" as const, label: "Monitoring", icon: <BarChart2 size={13} /> },
+				{ key: "monitoring" as const, label: "Monitoring", icon: <ChartColumn {...iconProps('xs')} /> },
 				...BASE_INNER_TABS.slice(2),
 			]
 		: BASE_INNER_TABS;
@@ -350,7 +351,7 @@ function StackDetailPanel({
 		>
 			<div className="flex items-center gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
 				<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-					<Layers size={16} />
+					<Layers {...iconProps('sm')} />
 				</div>
 				<h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
 					{stack.name}
@@ -704,7 +705,7 @@ export function StackListPage() {
 		<div className="flex h-full flex-col">
 			<PageHeader
 			  breadcrumb={[{ label: t("sidebar.stackList", "Stack List") }]}
-			  icon={<List size={16} />}
+			  icon={<List {...iconProps('sm')} />}
 			  tone="primary"
 			  title={t("stackList.title", "Stack List")}
 			  subtitle={t("stackList.description", "Deployed DevSecOps stack list")}
@@ -724,7 +725,7 @@ export function StackListPage() {
 			    			navigate("/stack/templates", { state: { from: "stack-list" } })
 			    		}
 			    	>
-			    		<Plus size={15} />
+			    		<Plus {...iconProps('sm')} />
 			    		{t("stackList.actions.newStack", "New Stack")}
 			    	</Button>
 			    </div>

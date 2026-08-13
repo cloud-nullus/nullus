@@ -196,3 +196,33 @@ export const layout = {
   "table-header-height": "28px",
   "control-height": "30px"
 } as const
+
+/**
+ * 아이콘 크기 단계. 크기와 선 굵기는 한 쌍이라 함께 내보낸다 —
+ * size 만 집어 가면 굵기가 따라오지 않아 작은 아이콘이 흐려진다.
+ * 화면에서는 components/ui/icon.ts 의 iconProps() 를 거쳐 쓴다.
+ */
+export const icon = {
+  "xs": {
+    "size": 12,
+    "strokeWidth": 2.25
+  },
+  "sm": {
+    "size": 16,
+    "strokeWidth": 2
+  },
+  "md": {
+    "size": 20,
+    "strokeWidth": 1.75
+  },
+  "lg": {
+    "size": 28,
+    "strokeWidth": 1.5
+  }
+} as const
+
+/** 아이콘에 바탕을 깔 때의 타일 크기 — DESIGN.md §아이콘 타일 */
+export const iconTile = {
+  "sm": 28,
+  "md": 36
+} as const

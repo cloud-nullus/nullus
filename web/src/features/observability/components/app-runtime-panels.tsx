@@ -18,6 +18,7 @@ import {
   YAxis,
 } from 'recharts'
 import { ScrollText } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useStackWorkloadLogs, useStackWorkloads } from '../../stack/api/stack-api'
 import { cn } from '../../../lib/utils'
 import { CHART_LEGEND_PROPS, CHART_STYLE, ChartPanel } from './monitoring-chart-widgets'
@@ -251,7 +252,7 @@ export function AppLogPanel({
     <div className="flex h-full min-h-[320px] flex-col overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)]">
       <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border-default)] px-4 py-3">
         <h2 className="flex items-center gap-2 text-[14px] font-bold text-[var(--color-text-primary)]">
-          <ScrollText size={15} className="text-[var(--color-primary)]" />
+          <ScrollText {...iconProps('sm')} className="text-[var(--color-primary)]" />
           Application Logs
         </h2>
         <div className="flex items-center gap-2">

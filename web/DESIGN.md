@@ -162,6 +162,28 @@ rounded:
   lg: 8px
   full: 9999px
 
+# 아이콘 크기와 그에 맞는 선 굵기. elevation·layout 과 같은 이유로 확장 키다.
+#
+# lucide 는 24 격자에 stroke 2 로 그려지므로, size 만 줄이면 실제 렌더 굵기가
+# 2 x (size / 24) 로 함께 줄어든다 — 12px 에서 1.0px, 28px 에서 2.33px. 크기를
+# 고를 때마다 굵기가 딸려 변하는 셈이라, 같은 화면의 작은 아이콘은 흐리고 큰
+# 아이콘은 뭉툭해진다. 그래서 크기마다 굵기를 함께 정한다.
+#
+# 작을수록 굵기를 올리되 렌더 굵기를 완전히 같게 맞추지는 않는다. 12px 에서
+# 렌더 1.5px(stroke 3)까지 올리면 톱니가 촘촘한 글리프(Settings)의 안쪽이
+# 메워진다. 아래 값은 실제로 그려 보고 고른 것이다.
+icon:
+  xs: 12px
+  sm: 16px
+  md: 20px
+  lg: 28px
+  stroke-xs: 2.25
+  stroke-sm: 2
+  stroke-md: 1.75
+  stroke-lg: 1.5
+  tile-sm: 28px
+  tile-md: 36px
+
 # 레이아웃·밀도. design.md 스펙에 레이아웃 카테고리가 없어서 elevation 과 같은
 # 이유로 확장 키에 둔다. 개편 전에는 이 값들이 generate-theme.mjs 에 하드코딩돼
 # 있어서 "단일 출처" 계약에 구멍이 있었다 — 여기로 끌어올린다.
@@ -557,9 +579,41 @@ Coinbase 구조를 따라 **브랜드 색은 한 곳(로고)에만, 액션은 pr
 둥근 모서리마다 여백이 생겨 화면이 헐거워 보인다. IDE 계열 도구가 거의 직각을
 쓰는 이유다.
 
+### 아이콘
+
 아이콘은 **lucide-react 하나만** 쓴다. `@mui/icons-material` 을 도입하지 않는다 —
 아이콘 세트가 둘이면 같은 뜻의 아이콘이 화면마다 달라진다.
-아이콘 컨테이너는 `--icon-size`(28x28), 반경 `rounded.sm`, 배경은 해당 기능 색의 15% 알파.
+
+크기는 **네 단계뿐**이고 굵기가 거기 딸려 온다. 값을 직접 쓰지 않고
+`iconProps()` 로 받는다 — `size` 만 적으면 굵기가 따라오지 않는다.
+
+| 단계 | 크기 | stroke | 렌더 굵기 | 쓰는 자리 |
+|------|------|--------|-----------|-----------|
+| `xs` | 12px | 2.25 | 1.13px | 표 안 인라인, 배지, 촘촘한 목록 |
+| `sm` | 16px | 2 | 1.33px | 본문·버튼·사이드바 — 기본값 |
+| `md` | 20px | 1.75 | 1.46px | 섹션 머리, 패널 제목 |
+| `lg` | 28px | 1.5 | 1.75px | KPI 카드, 빈 상태, 기능 카드 |
+
+개편 전에는 크기가 10·11·12·13·14·15·16·18·20·24·28·32px 열두 가지로 흩어져
+있었고(13~16px 만 213곳) 굵기는 전부 기본값 2 였다. 13px 과 14px 은 눈으로
+구분되지 않는다 — 규칙이 아니라 그때그때 고른 흔적이다.
+
+#### 아이콘 타일
+
+아이콘에 바탕을 깔 때는 `IconTile` 하나만 쓴다. 크기는 두 가지다.
+
+| 타일 | 크기 | 반경 | 담는 아이콘 | 쓰는 자리 |
+|------|------|------|-------------|-----------|
+| `sm` | 28px | `rounded.sm` | `sm`(16px) | 화면 제목 옆 |
+| `md` | 36px | `rounded.md` | `md`(20px) | KPI 카드, 기능 카드 |
+
+배경은 **해당 기능 색의 15% 알파**, 글리프는 그 색 원본이다. 색은 토큰 이름을
+받아 `color-mix` 로 만든다 — Tailwind 임의값은 문자열을 스캔해 만들어지므로
+토큰 이름을 조립해 클래스로 넘길 수 없다.
+
+개편 전에는 같은 타일이 `h-9 w-9 rounded-lg`(KPI), `h-9 w-9 rounded-[10px]`
+(기능 카드), `--icon-size` + `--icon-radius`(제목 옆)로 세 가지였고, 배경 알파도
+4%·8%·10%·15%·20% 가 섞여 있었다.
 
 ## Components
 
@@ -627,12 +681,33 @@ MUI 기본값은 여백이 넉넉하다. 그대로 쓰면 한 화면에 들어�
 
 | 상태 | 색 토큰 | 아이콘 |
 |------|---------|--------|
-| Connected / Success / Running | `*-success` | `CheckCircle` |
-| Pending / Warning | `*-warning` | `Clock` |
-| Error / Failed | `*-error` | `AlertCircle` |
-| Inactive / Unknown | `*-text-muted` | `MinusCircle` |
+| Success / Connected / Healthy | `*-success` | `CircleCheck` |
+| Running / In progress | `*-info` | `LoaderCircle` (회전) |
+| Pending / Queued | `*-text-muted` | `CircleDashed` |
+| Error / Failed / Down | `*-error` | `CircleX` |
+| Warning / Degraded | `*-warning` | `TriangleAlert` |
+| Inactive / Unknown | `*-text-muted` | `CircleMinus` |
+| Info | `*-info` | `Info` |
+
+상태색으로 `*-primary` 를 쓰지 않는다. 그 색은 CTA 의 색이라, 상태에 얹으면
+"도는 중" 과 "누르세요" 가 같은 파랑이 되어 화면에서 무엇이 행동인지 흐려진다.
+
+**여섯이 같은 원 실루엣을 쓰고 경고만 삼각형이다.** 상태가 한 벌로 읽히게
+하려는 것이고, 경고는 그 벌에서 튀어나와야 하므로 유일하게 모양을 깬다.
+
+`Running` 은 `Success` 와 분리한다. 개편 전 표는 둘을 한 줄에 묶어 두었는데,
+설치·파이프라인 화면은 "도는 중"과 "끝남"을 반드시 구별해야 한다 — 실제로 그
+자리에 `Loader2`·`Loader`·`RefreshCw`·`CircleDashed` 가 제각각 들어가 있었다.
+`Pending` 도 `Warning` 에서 뗐다. 대기는 시간의 문제고 경고는 주의의 문제라
+같은 색·같은 모양을 줄 이유가 없다.
+
+이름을 고를 때 `CheckCircle` 이 아니라 `CircleCheck` 인 것에 주의한다. lucide 에서
+`CheckCircle` 은 체크가 원을 뚫고 나오는 변형이라 옆에 서는 `CircleX`·`CircleMinus`
+와 실루엣이 어긋난다. `Check`(원 없는 체크)는 상태가 아니라 **선택됨**을 뜻하므로
+상태 자리에 쓰지 않는다.
 
 상태 배지는 `StatusBadge` 하나만 쓴다. 화면마다 배지를 다시 만들지 않는다.
+아이콘은 `statusIcon()` 이 이 표를 그대로 돌려주므로 화면에서 고르지 않는다.
 
 ## Do's and Don'ts
 

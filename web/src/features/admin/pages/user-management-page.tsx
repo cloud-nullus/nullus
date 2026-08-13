@@ -4,7 +4,8 @@ import type { TFunction } from 'i18next'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { GitBranch, Link2, Mail, Pencil, Plus, Server, Shield, Trash2, Users, UserPlus, Loader2 } from 'lucide-react'
+import { GitBranch, Link2, LoaderCircle, Mail, Pencil, Plus, Server, Shield, Trash2, UserPlus, Users } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useMembers, useInviteMember, useUpdateUserRole, useUpdateMember, useDeactivateUser, useOrganization, useSearchUser, useCreateInviteLink, useInviteLinks, useRevokeInviteLink } from '../api/admin-api'
 import type { MemberRole, MemberStatus, InviteLink } from '../api/admin-api'
@@ -450,7 +451,7 @@ export function UserManagementPage() {
             {t('userManagementPage.actions.deactivate', 'Deactivate')}
           </Button>
           <Button variant="outline" size="sm" type="button" onClick={() => handleOpenEditUser(row.original.id)}>
-            <Pencil size={12} />
+            <Pencil {...iconProps('xs')} />
             {t('userManagementPage.actions.edit', 'Edit')}
           </Button>
         </div>
@@ -462,7 +463,7 @@ export function UserManagementPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.userManagement', 'User Management') }]}
-        icon={<Users size={16} />}
+        icon={<Users {...iconProps('sm')} />}
         tone="accent"
         title={t('sidebar.userManagement', 'User Management')}
         subtitle={t('userManagementPage.description', 'User list and role management')}
@@ -503,7 +504,7 @@ export function UserManagementPage() {
                 type="button"
                 onClick={() => setInviteLinkModal(true)}
               >
-                <Link2 size={13} />
+                <Link2 {...iconProps('xs')} />
                 {t('userManagementPage.actions.generateInviteLink', 'Generate Invite Link')}
               </Button>
               <Button
@@ -515,7 +516,7 @@ export function UserManagementPage() {
                   setInviteModal(true)
                 }}
               >
-                <Plus size={13} />
+                <Plus {...iconProps('xs')} />
                 {t('userManagementPage.actions.inviteUser', 'Invite User')}
               </Button>
             </div>
@@ -539,7 +540,7 @@ export function UserManagementPage() {
                 style={{ backgroundColor: perm.color.bg, borderColor: perm.color.border }}
               >
                 <div className="flex items-center gap-2">
-                  <Icon size={13} style={{ color: perm.color.text }} />
+                  <Icon {...iconProps('xs')} style={{ color: perm.color.text }} />
                   <span className="text-sm font-bold capitalize" style={{ color: perm.color.text }}>
                     {perm.role}
                   </span>
@@ -704,7 +705,7 @@ export function UserManagementPage() {
                               disabled={expired}
                               onClick={() => setRevokeToken(invite.token)}
                             >
-                              <Trash2 size={12} />
+                              <Trash2 {...iconProps('xs')} />
                               {t('userManagementPage.actions.revoke', 'Revoke')}
                             </Button>
                           </td>
@@ -749,8 +750,8 @@ export function UserManagementPage() {
               type="button"
             >
               {existingUser
-                ? <><UserPlus size={13} /> {t('userManagementPage.actions.addMember', 'Add Member')}</>
-                : <><Mail size={13} /> {t('userManagementPage.actions.sendInvite', 'Send Invite')}</>}
+                ? <><UserPlus {...iconProps('xs')} /> {t('userManagementPage.actions.addMember', 'Add Member')}</>
+                : <><Mail {...iconProps('xs')} /> {t('userManagementPage.actions.sendInvite', 'Send Invite')}</>}
             </Button>
           </>
         }
@@ -764,7 +765,7 @@ export function UserManagementPage() {
               {...register('email')}
             />
             {isSearching && (
-              <Loader2 size={14} className="absolute right-3 top-[34px] animate-spin text-[var(--color-text-secondary)]" />
+              <LoaderCircle {...iconProps('sm')} className="absolute right-3 top-[34px] animate-spin text-[var(--color-text-secondary)]" />
             )}
           </div>
           {errors.email && <span className="text-xs text-[var(--color-error)]">{errors.email.message}</span>}
@@ -828,7 +829,7 @@ export function UserManagementPage() {
               loading={createInviteLink.isPending}
               onClick={handleGenerateLink}
             >
-              <Link2 size={13} />
+              <Link2 {...iconProps('xs')} />
               {t('userManagementPage.actions.generate', 'Generate')}
             </Button>
           </>

@@ -1,4 +1,5 @@
-import { Layers, ShieldCheck } from 'lucide-react'
+import { ShieldCheck, Tag } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useCompatibilityMatrix, useValidateCompatibility } from '../api/stack-api'
 import { Button } from '../../../components/ui/button'
@@ -60,13 +61,13 @@ export function StackVersionPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t('sidebar.stackVersion', 'Stack Version') }]}
-        icon={<Layers size={16} />}
+        icon={<Tag {...iconProps('sm')} />}
         tone="success"
         title={t('stackVersionPage.title', 'Stack Version')}
         subtitle={t('stackVersionPage.description', 'Manage compatibility based on validated version combinations.')}
         actions={
           <Button variant="primary" size="md" onClick={handleValidate}>
-            <ShieldCheck size={15} />
+            <ShieldCheck {...iconProps('sm')} />
             {t('stackVersionPage.actions.validateCurrentStack', 'Validate Current Stack')}
           </Button>
         }
@@ -153,7 +154,7 @@ export function StackVersionPage() {
                   : 'border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)]'
               )}
             >
-              <ShieldCheck size={20} color={validationResult.compatible ? 'var(--color-success)' : 'var(--color-error)'} />
+              <ShieldCheck {...iconProps('md')} color={validationResult.compatible ? 'var(--color-success)' : 'var(--color-error)'} />
               <span className={cn('text-sm font-bold', validationResult.compatible ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]')}>
                 {validationResult.compatible
                   ? t('stackVersionPage.validation.pass', 'Compatibility validation passed')

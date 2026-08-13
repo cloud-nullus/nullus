@@ -11,6 +11,7 @@
 
 import { forwardRef, type InputHTMLAttributes } from 'react'
 import { Search } from 'lucide-react'
+import { iconProps } from './icon'
 import { cn } from '../../lib/utils'
 import { textInputClass } from './text-input'
 
@@ -23,7 +24,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
   ({ className, wrapperClassName, ...props }, ref) => (
     <div className={cn('relative', wrapperClassName)}>
       <Search
-        size={13}
+        {...iconProps('xs')}
         className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)]"
       />
       <input

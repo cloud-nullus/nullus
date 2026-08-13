@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Check } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { cn } from '../../../lib/utils'
 import type { ToolSelection } from '../stores/stack-config-store'
 import type { ToolOption } from '../utils/install-constants'
@@ -114,7 +115,7 @@ export function MultiToolSelector({ label, options, values, onChange }: MultiToo
                 : 'border-[var(--color-border-hover)] bg-transparent'
             )}
           >
-            {values.length === 0 && <Check size={11} className="text-white" />}
+            {values.length === 0 && <Check {...iconProps('xs')} className="text-white" />}
           </div>
           <div>
             <div className={cn('text-sm font-semibold', values.length === 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>
@@ -149,7 +150,7 @@ export function MultiToolSelector({ label, options, values, onChange }: MultiToo
                     : 'border-[var(--color-border-hover)] bg-transparent'
                 )}
               >
-                {selected && <Check size={11} className="text-white" />}
+                {selected && <Check {...iconProps('xs')} className="text-white" />}
               </div>
               <div>
                 <div className={cn('text-sm font-semibold', selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-primary)]')}>

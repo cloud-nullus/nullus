@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  CheckCircle2,
-  CircleDashed,
-  Clock,
-  Loader2,
-  Terminal,
-  XCircle,
-} from "lucide-react";
+import { CircleCheck, CircleDashed, CircleX, Clock, LoaderCircle, Terminal } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { useTranslation } from "react-i18next";
 import { useParams, useSearchParams } from "react-router-dom";
 import { cn } from "../../../lib/utils";
@@ -82,7 +76,7 @@ export function CicdPipelineLogsPage() {
             { label: `${breadcrumbName} Logs` },
           ]
         }
-        icon={<Terminal size={16} />}
+        icon={<Terminal {...iconProps('sm')} />}
         tone="primary"
         title="Pipeline Logs"
         subtitle={
@@ -172,19 +166,19 @@ export function CicdPipelineLogsPage() {
             </span>
             {deploymentStatus?.status === "running" && (
               <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-warning)]">
-                <Loader2 size={11} className="animate-spin" />
+                <LoaderCircle {...iconProps('xs')} className="animate-spin" />
                 Streaming...
               </span>
             )}
             {deploymentStatus?.status === "success" && (
               <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-success)]">
-                <CheckCircle2 size={11} />
+                <CircleCheck {...iconProps('xs')} />
                 Completed
               </span>
             )}
             {deploymentStatus?.status === "failed" && (
               <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--color-error)]">
-                <XCircle size={11} />
+                <CircleX {...iconProps('xs')} />
                 Failed
               </span>
             )}
@@ -215,17 +209,17 @@ export function CicdPipelineLogsPage() {
               <div key={`${step.name}-${stepIdx}`} className="mb-3">
                 <div className="mb-1 flex items-center gap-2 text-[11px]">
                   {step.status === "success" ? (
-                    <CheckCircle2 size={11} className="text-[var(--color-terminal-success)]" />
+                    <CircleCheck {...iconProps('xs')} className="text-[var(--color-terminal-success)]" />
                   ) : step.status === "failed" ? (
-                    <XCircle size={11} className="text-[var(--color-terminal-error)]" />
+                    <CircleX {...iconProps('xs')} className="text-[var(--color-terminal-error)]" />
                   ) : step.status === "running" ? (
-                    <Loader2
-                      size={11}
+                    <LoaderCircle
+                      {...iconProps('xs')}
                       className="animate-spin text-[var(--color-warning)]"
                     />
                   ) : (
                     <CircleDashed
-                      size={11}
+                      {...iconProps('xs')}
                       className="text-[color-mix(in_srgb,_var(--color-text-primary)_30%,_transparent)]"
                     />
                   )}
@@ -250,7 +244,7 @@ export function CicdPipelineLogsPage() {
                   )}
                   {step.applied_at && (
                     <span className="ml-auto text-[color-mix(in_srgb,_var(--color-text-primary)_20%,_transparent)]">
-                      <Clock size={10} className="mr-0.5 inline" />
+                      <Clock {...iconProps('xs')} className="mr-0.5 inline" />
                       {step.applied_at}
                     </span>
                   )}

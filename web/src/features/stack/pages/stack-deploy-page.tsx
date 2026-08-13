@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Circle, Loader, PlayCircle, Terminal, XCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Circle, CircleCheck, CircleX, LoaderCircle, PlayCircle, Terminal, TriangleAlert } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { toast } from 'sonner'
 import { useDeployLog } from '../hooks/use-deploy-log'
 import type { LogEntry, LogLevel, DeployStatus } from '../hooks/use-deploy-log'
@@ -106,15 +107,15 @@ function TimelineStep({ stage, isLast }: { stage: DeployStage & { status: Timeli
         )}
       >
         {isError ? (
-          <XCircle size={15} />
+          <CircleX {...iconProps('sm')} />
         ) : isWarn ? (
-          <AlertTriangle size={15} />
+          <TriangleAlert {...iconProps('sm')} />
         ) : isDone ? (
-          <CheckCircle size={15} />
+          <CircleCheck {...iconProps('sm')} />
         ) : isRunning ? (
-          <Loader size={15} className="animate-spin" />
+          <LoaderCircle {...iconProps('sm')} className="animate-spin" />
         ) : (
-          <Circle size={13} />
+          <Circle {...iconProps('xs')} />
         )}
       </div>
       <span
@@ -194,7 +195,7 @@ function PodWatchPanel({
   return (
     <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
       <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-2.5">
-        <Terminal size={14} color="var(--color-text-secondary)" />
+        <Terminal {...iconProps('sm')} color="var(--color-text-secondary)" />
         <span className="font-mono text-xs font-semibold text-[var(--color-terminal-muted)]">
           $ kubectl get pods -n {namespace} -w
         </span>
@@ -261,7 +262,7 @@ function StatusSummary({
           : 'border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)]'
       )}
     >
-      {isSuccess ? <CheckCircle size={24} color="var(--color-success)" /> : <XCircle size={24} color="var(--color-error)" />}
+      {isSuccess ? <CircleCheck {...iconProps('lg')} color="var(--color-success)" /> : <CircleX {...iconProps('lg')} color="var(--color-error)" />}
       <div className="min-w-0 flex-1">
         <div className={cn('mb-0.5 text-[15px] font-bold', isSuccess ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]')}>
           {isSuccess ? 'Deployment Completed' : 'Deployment Failed'}
@@ -284,7 +285,7 @@ function StatusSummary({
           disabled={isContinuing}
           className="inline-flex shrink-0 items-center gap-1.5 rounded border border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] px-3 py-2 text-xs font-bold text-[var(--color-success)] hover:bg-[color-mix(in_srgb,_var(--color-success)_18%,_transparent)] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isContinuing ? <Loader size={14} className="animate-spin" /> : <PlayCircle size={14} />}
+          {isContinuing ? <LoaderCircle {...iconProps('sm')} className="animate-spin" /> : <PlayCircle {...iconProps('sm')} />}
           Continue
         </button>
       )}
@@ -393,7 +394,7 @@ export function StackDeployPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: 'Stack List', path: '/stack/list' }, { label: 'Deployment Log' }]}
-        icon={<Terminal size={16} />}
+        icon={<Terminal {...iconProps('sm')} />}
         tone="primary"
         title="Deployment Log"
         subtitle={
@@ -442,7 +443,7 @@ export function StackDeployPage() {
       {status === 'failed' && latestFailureLog && (
         <div className="mb-4 rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] p-4">
           <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[var(--color-error)]">
-            <XCircle size={16} />
+            <CircleX {...iconProps('sm')} />
             Deployment error
           </div>
           <div className="font-mono text-xs leading-[1.7] text-[var(--color-terminal-error)]">
@@ -454,7 +455,7 @@ export function StackDeployPage() {
       {highlightedLogs.length > 0 && (
         <div className="mb-4 overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-warning)_25%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_4%,_transparent)]">
           <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,_var(--color-warning)_18%,_transparent)] px-4 py-2.5">
-            <AlertTriangle size={14} className="text-[var(--color-warning)]" />
+            <TriangleAlert {...iconProps('sm')} className="text-[var(--color-warning)]" />
             <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-warning)]">
               Attention ({highlightedLogs.length})
             </span>
@@ -471,7 +472,7 @@ export function StackDeployPage() {
         {/* Log console */}
         <div className="overflow-hidden rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-terminal-bg)]">
           <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-4 py-2.5">
-            <Terminal size={14} color="var(--color-text-secondary)" />
+            <Terminal {...iconProps('sm')} color="var(--color-text-secondary)" />
             <span className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-text-secondary)]">
               Raw Logs ({logs.length})
             </span>
@@ -482,7 +483,7 @@ export function StackDeployPage() {
                 disabled={continueStack.isPending}
                 className="ml-auto inline-flex items-center gap-1.5 rounded border border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_12%,_transparent)] px-2.5 py-1 text-[11px] font-bold text-[var(--color-success)] hover:bg-[color-mix(in_srgb,_var(--color-success)_18%,_transparent)] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {continueStack.isPending ? <Loader size={13} className="animate-spin" /> : <PlayCircle size={13} />}
+                {continueStack.isPending ? <LoaderCircle {...iconProps('xs')} className="animate-spin" /> : <PlayCircle {...iconProps('xs')} />}
                 Continue
               </button>
             )}
@@ -494,7 +495,7 @@ export function StackDeployPage() {
                 status !== 'failed' && 'ml-auto'
               )}
             >
-              {rawLogsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              {rawLogsOpen ? <ChevronDown {...iconProps('xs')} /> : <ChevronRight {...iconProps('xs')} />}
               {rawLogsOpen ? 'Hide' : 'Show'}
             </button>
           </div>

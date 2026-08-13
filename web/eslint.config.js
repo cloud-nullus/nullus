@@ -130,6 +130,32 @@ export default defineConfig([
           message:
             '색 리터럴(rgb/rgba)을 TSX 에 쓰지 않는다. 토큰이 없으면 web/DESIGN.md 에 추가한다. 투명도가 필요하면 color-mix(in srgb, var(--color-*) N%, transparent) 를 쓴다.',
         },
+        // hex/rgba 만 막으면 Tailwind 기본 팔레트로 우회할 수 있다. 실제로
+        // text-emerald-400 · bg-amber-500/15 같은 클래스가 17곳 남아 있었고,
+        // 그 초록은 --color-success 와 다른 값이라 같은 "정상" 이 화면마다
+        // 달라 보였다. 클래스명은 문자열이라 hex 규칙에 걸리지 않는다.
+        {
+          selector:
+            'Literal[value=/(^|[\\s:\\[])(bg|text|border|ring|fill|stroke|from|via|to)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\\d{2,3}\\b/]',
+          message:
+            'Tailwind 기본 팔레트를 쓰지 않는다(예: text-emerald-400). 같은 뜻의 색이 화면마다 달라진다 — var(--color-*) 토큰을 쓰고, 투명도는 color-mix(in srgb, var(--color-*) N%, transparent) 로 만든다.',
+        },
+        // 아이콘 크기를 숫자로 직접 쓰면 선 굵기가 따라오지 않는다. lucide 는
+        // 24 격자에 stroke 2 라 size 만 줄이면 렌더 굵기가 함께 줄어든다 —
+        // 개편 전 크기가 12가지로 흩어지고 strokeWidth 지정이 0곳이던 이유다.
+        // MUI 는 size 에 문자열('small')을 받으므로 숫자만 막으면 겹치지 않는다.
+        {
+          // 숫자 리터럴을 정규식으로 거르려 하면 esquery 가 문자열만 비교해 걸리지 않는다.
+          // size={x} 처럼 변수를 넘기면 Identifier 라 애초에 매치되지 않으므로,
+          // Literal 이 오는 경우만 잡으면 숫자 하드코딩이 정확히 걸린다.
+          //
+          // NullusMark 는 뺀다. 로고는 아이콘이 아니라서 이 스케일을 따르지 않는다 —
+          // 로그인 카드 52px, 홈 히어로 80px 처럼 자리마다 크기가 따로 정해진다.
+          selector:
+            "JSXOpeningElement:not([name.name='NullusMark']) > JSXAttribute[name.name='size'] > JSXExpressionContainer > Literal",
+          message:
+            "아이콘 크기를 숫자로 쓰지 않는다. iconProps('xs'|'sm'|'md'|'lg') 로 크기와 굵기를 함께 받는다 — 단계는 web/DESIGN.md §아이콘 이 단일 출처다.",
+        },
       ],
     },
   },

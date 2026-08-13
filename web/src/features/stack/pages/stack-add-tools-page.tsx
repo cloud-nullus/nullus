@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Check, Plus, Wrench } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -359,7 +360,7 @@ export function StackAddToolsPage() {
             { label: t('stackAddTools.breadcrumb.current', 'Add Tools') },
           ]
         }
-        icon={<Wrench size={16} />}
+        icon={<Wrench {...iconProps('sm')} />}
         tone="primary"
         title={t('stackAddTools.title', 'Add Tools')}
         subtitle={t('stackAddTools.description', 'Safely add required tools to an existing stack.')}
@@ -418,12 +419,12 @@ export function StackAddToolsPage() {
                       <span className="flex items-center gap-1.5">
                         {installed && (
                           <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,_var(--color-success)_18%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
-                            <Check size={11} /> {t('stackAddTools.badge.installed', 'Installed')}
+                            <Check {...iconProps('xs')} /> {t('stackAddTools.badge.installed', 'Installed')}
                           </span>
                         )}
                         {!installed && selected && (
                           <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
-                            <Plus size={11} /> {t('stackAddTools.badge.selected', 'Selected')}
+                            <Plus {...iconProps('xs')} /> {t('stackAddTools.badge.selected', 'Selected')}
                           </span>
                         )}
                       </span>

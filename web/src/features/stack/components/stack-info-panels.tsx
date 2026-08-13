@@ -1,6 +1,7 @@
 import React from "react"
 import { useTranslation } from 'react-i18next'
-import { Archive, ArrowUpCircle, BarChart2, Boxes, FileText, GitBranch, Monitor, Server, Check } from "lucide-react"
+import { Archive, ArrowUpCircle, Boxes, ChartColumn, Check, FileText, GitBranch, Monitor, Server } from 'lucide-react'
+import { iconProps } from '../../../components/ui/icon'
 import { Select } from "../../../components/ui/select"
 import { cn } from "../../../lib/utils"
 
@@ -59,7 +60,7 @@ export function ToolOption({
 							: "border-[var(--color-border-default)]",
 					)}
 				>
-					{checked && <Check size={10} className="text-white" />}
+					{checked && <Check {...iconProps('xs')} className="text-white" />}
 				</div>
 				<div>
 					<div className="text-[13px] font-semibold text-[var(--color-text-primary)]">
@@ -131,7 +132,7 @@ export function ArtifactsPanel() {
 				desc={t('stackInfo.panels.artifacts', 'Artifact repositories configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-				<ConfigCard title="Package Registry" icon={<Archive size={14} />}>
+				<ConfigCard title="Package Registry" icon={<Archive {...iconProps('sm')} />}>
 					<div className="flex flex-col gap-2">
 						<ToolOption
 							checked
@@ -150,7 +151,7 @@ export function ArtifactsPanel() {
 				</ConfigCard>
 				<ConfigCard
 					title="Source Code Repository"
-					icon={<GitBranch size={14} />}
+					icon={<GitBranch {...iconProps('sm')} />}
 				>
 					<div className="flex flex-col gap-2">
 						<ToolOption
@@ -168,7 +169,7 @@ export function ArtifactsPanel() {
 						/>
 					</div>
 				</ConfigCard>
-				<ConfigCard title="Container Registry" icon={<Boxes size={14} />}>
+				<ConfigCard title="Container Registry" icon={<Boxes {...iconProps('sm')} />}>
 					<div className="flex flex-col gap-2">
 						<ToolOption
 							checked
@@ -199,7 +200,7 @@ export function PipelineToolsPanel() {
 				desc={t('stackInfo.panels.pipeline', 'CI/CD pipeline tools configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-				<ConfigCard title="CI/CD Platform" icon={<GitBranch size={14} />}>
+				<ConfigCard title="CI/CD Platform" icon={<GitBranch {...iconProps('sm')} />}>
 					<div className="flex flex-col gap-2">
 						<ToolOption
 							checked
@@ -217,7 +218,7 @@ export function PipelineToolsPanel() {
 				</ConfigCard>
 				<ConfigCard
 					title="Continuous Deployment"
-					icon={<ArrowUpCircle size={14} />}
+					icon={<ArrowUpCircle {...iconProps('sm')} />}
 				>
 					<div className="flex flex-col gap-2">
 						<ToolOption
@@ -249,7 +250,7 @@ export function MonitoringToolsPanel() {
 				desc={t('stackInfo.panels.monitoring', 'Monitoring tools configured for this stack')}
 			/>
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-				<ConfigCard title="Metrics Collection" icon={<BarChart2 size={14} />}>
+				<ConfigCard title="Metrics Collection" icon={<ChartColumn {...iconProps('sm')} />}>
 					<div className="flex flex-col gap-2">
 						<ToolOption
 							checked
@@ -265,7 +266,7 @@ export function MonitoringToolsPanel() {
 						/>
 					</div>
 				</ConfigCard>
-				<ConfigCard title="Visualization" icon={<Monitor size={14} />}>
+				<ConfigCard title="Visualization" icon={<Monitor {...iconProps('sm')} />}>
 					<div className="flex flex-col gap-2">
 						<ToolOption
 							checked
@@ -293,7 +294,7 @@ export function LoggingToolsPanel() {
 		<div>
 			<PanelHeader title="Logging Tools" desc={t('stackInfo.panels.logging', 'Logging tools configured for this stack')} />
 			<div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-				<ConfigCard title="Log Collection" icon={<FileText size={14} />}>
+				<ConfigCard title="Log Collection" icon={<FileText {...iconProps('sm')} />}>
 					<div className="flex flex-col gap-2">
 						<ToolOption
 							checked
@@ -349,7 +350,7 @@ export function ResourcesPanel() {
 			</div>
 			<div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4">
 				<h4 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
-					<Server size={14} /> {t('stackInfo.clusterInfo', 'Cluster Info')}
+					<Server {...iconProps('sm')} /> {t('stackInfo.clusterInfo', 'Cluster Info')}
 				</h4>
 				<div className="flex flex-wrap gap-6 text-[13px] text-[var(--color-text-secondary)]">
 					<span>

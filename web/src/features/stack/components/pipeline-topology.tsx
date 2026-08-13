@@ -17,7 +17,8 @@
 // 노드 8개가 늘 같은 값을 반복했다 — 1비트를 8번 그린 셈이다. 헤더에 한 번만 둔다.
 
 import { useState } from "react";
-import { AlertCircle, AlertTriangle, CheckCircle2, ChevronRight } from "lucide-react";
+import { ChevronRight, CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
+import { iconProps } from '../../../components/ui/icon'
 import { cn } from "../../../lib/utils";
 import type {
   PipelineNode,
@@ -29,11 +30,11 @@ import { toolLogoURL } from "../utils/tool-logo";
 // 색만으로 상태를 구분하지 않는다 — 색 + 아이콘 + 글자를 함께 쓴다 (DESIGN.md §상태 표시).
 const RUNTIME_STYLE: Record<
   ToolRuntimeStatus,
-  { icon: typeof CheckCircle2; className: string }
+  { icon: typeof CircleCheck; className: string }
 > = {
-  running: { icon: CheckCircle2, className: "text-[var(--color-success)]" },
-  warning: { icon: AlertTriangle, className: "text-[var(--color-warning)]" },
-  error: { icon: AlertCircle, className: "text-[var(--color-error)]" },
+  running: { icon: CircleCheck, className: "text-[var(--color-success)]" },
+  warning: { icon: TriangleAlert, className: "text-[var(--color-warning)]" },
+  error: { icon: CircleAlert, className: "text-[var(--color-error)]" },
 };
 
 function ToolMark({ name }: { name: string }) {
@@ -117,7 +118,7 @@ function RuntimeLine({ tool }: { tool: PipelineTool }) {
         className,
       )}
     >
-      <Icon size={11} className="shrink-0" />
+      <Icon {...iconProps('xs')} className="shrink-0" />
       <span>{tool.status}</span>
       <span className="text-[var(--color-text-muted)]">
         {/* 기대치가 아니라 실제 준비된 파드 수다. 3/4 면 하나가 안 떴다는 뜻. */}
@@ -163,7 +164,7 @@ export function PipelineTopologyRail({ nodes }: { nodes: PipelineNode[] }) {
                     선과 카드가 어긋났다. */}
                 <div className="h-px w-full bg-[var(--color-border-default)]" />
                 <ChevronRight
-                  size={12}
+                  {...iconProps('xs')}
                   className="-ml-1 shrink-0 text-[var(--color-text-muted)]"
                 />
               </div>
