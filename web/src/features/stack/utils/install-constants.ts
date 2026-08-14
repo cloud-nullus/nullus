@@ -184,7 +184,7 @@ export const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string
   // GitHub·GitHub Actions·GHCR 은 외부 SaaS 라 클러스터에 설치할 차트가 없다.
   // (예전에는 actions-runner-controller 차트가 걸려 있었으나, 백엔드는 이들을
   //  external 로 표시해 설치를 건너뛴다 — 차트를 남겨두면 설치 계획이 실제와 어긋난다.)
-  gitea: { repoUrl: 'https://dl.gitea.io/charts', chartName: 'gitea-charts/gitea' },
+  gitea: { repoUrl: 'https://dl.gitea.com/charts', chartName: 'gitea/gitea' },
   'gitlab-registry': { repoUrl: 'https://charts.gitlab.io', chartName: 'gitlab/container-registry' },
   harbor: { repoUrl: 'https://helm.goharbor.io', chartName: 'harbor/harbor' },
   'docker-hub': { repoUrl: 'https://registry-1.docker.io', chartName: 'dockerhub/proxy-cache' },

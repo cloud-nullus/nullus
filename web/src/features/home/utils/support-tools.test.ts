@@ -32,8 +32,6 @@ const COVERED = new Set(SUPPORT_TOOLS.flatMap((tool) => tool.wizardIds))
  * 배선이 생기면 여기서 빼고 카드를 추가한다 — 반대로 하면 아래 테스트가 막는다.
  */
 const NOT_INSTALLABLE: Record<string, string> = {
-  gitea: '설치 단계 없음',
-  jenkins: '설치 단계 없음',
   flux: '설치 단계 없음',
   spinnaker: '설치 단계 없음',
   jfrog: '설치 단계 없음',

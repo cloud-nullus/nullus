@@ -53,6 +53,10 @@ export const SUPPORT_TOOLS: SupportTool[] = [
   // 때문이다 — 리포·시크릿·워크플로 스캐폴딩까지 간다.
   { name: 'GitHub', icon: 'github', categoryKey: CATEGORY.source, wizardIds: ['github', 'ghcr'], monochromeWhite: true },
   { name: 'GitHub Actions', icon: 'githubactions', categoryKey: CATEGORY.cicd, wizardIds: ['github-actions'] },
+  // Gitea 는 소스 저장소만 담당한다 — GitLab 처럼 CI 도 레지스트리도 겸하지 않아
+  // wizardIds 가 하나다.
+  { name: 'Gitea', icon: 'gitea', categoryKey: CATEGORY.source, wizardIds: ['gitea'] },
+  { name: 'Jenkins', icon: 'jenkins', categoryKey: CATEGORY.cicd, wizardIds: ['jenkins'] },
   { name: 'Argo CD', icon: 'argo', categoryKey: CATEGORY.delivery, wizardIds: ['argocd'] },
   { name: 'Harbor', icon: 'harbor', categoryKey: CATEGORY.registry, wizardIds: ['harbor'] },
   { name: 'Nexus Repository', icon: 'sonatype', categoryKey: CATEGORY.registry, wizardIds: ['nexus'] },

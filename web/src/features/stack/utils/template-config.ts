@@ -98,6 +98,10 @@ export const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string 
     ko: 'GitLab CI·ArgoCD 위에 OpenTelemetry Collector 를 세워 추적·메트릭·로그를 한 곳에서 받습니다.',
     en: 'Adds an OpenTelemetry Collector on top of GitLab CI and ArgoCD to receive traces, metrics, and logs in one place.',
   },
+  'gitea-jenkins-argocd-v1': {
+    ko: '가벼운 Git 서버(Gitea)와 익숙한 CI(Jenkins)를 ArgoCD GitOps 에 연결합니다.',
+    en: 'Connects a lightweight Git server (Gitea) and familiar CI (Jenkins) to ArgoCD GitOps.',
+  },
 }
 
 export const TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES: Record<string, { ko: string; en: string }> = {
