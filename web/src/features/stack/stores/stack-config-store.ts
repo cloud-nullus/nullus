@@ -18,17 +18,33 @@ export interface ToolVersionCatalogEntry {
   chartVersion?: string
 }
 
+/**
+ * 화면이 "이 도구는 몇 버전인가" 를 물을 때 보는 표.
+ *
+ * 클러스터에 실제로 설치되는 도구의 값은 **백엔드가 소유한다**
+ * (`internal/stack/domain/connection.go`). 그 상수 하나가 설치 경로와 호환성
+ * 매트릭스를 함께 먹이고, 백엔드는 `TestChartVersionsMatchCompatibilityMatrix`
+ * 로 둘이 갈라지지 않게 붙들고 있다. 여기는 그 값을 베껴 오는 자리다.
+ *
+ * 베껴 오는 자리에 지킴이가 없어서 실제로 갈라졌다 — 설치는 Argo CD 7.7.16 을
+ * 올리는데 화면은 6.8.0 을, GitLab 은 8.7.2 인데 9.5.1 을 말하고 있었고 대조한
+ * 11개 중 9개가 어긋나 있었다. 템플릿 편집기가 기본값을 여기서 가져가므로,
+ * 관리자가 손대지 않으면 **존재하지 않는 버전이 그대로 템플릿에 pin 됐다.**
+ * `tool-version-catalog.test.ts` 가 이제 그 상수와 대조한다.
+ *
+ * 백엔드에 상수가 없는 도구(설치 경로가 없거나 외부 SaaS)는 여기서만 관리한다.
+ */
 export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
-  gitlab: { appVersion: '18.5.1', chartVersion: '9.5.1' },
-  'gitlab-registry': { appVersion: '18.5.1', chartVersion: '9.5.1' },
-  'gitlab-ci': { appVersion: '18.5.1', chartVersion: '9.5.1' },
-  argocd: { appVersion: 'v2.8.3', chartVersion: '6.8.0' },
-  minio: { appVersion: 'RELEASE.2024-08-03T04-33-23Z', chartVersion: '5.2.0' },
-  prometheus: { appVersion: 'v2.54.1' },
-  grafana: { appVersion: '11.1.0' },
+  gitlab: { appVersion: 'v17.7.0', chartVersion: '8.7.2' },
+  'gitlab-registry': { appVersion: 'v17.7.0', chartVersion: '8.7.2' },
+  'gitlab-ci': { appVersion: 'v17.7.0', chartVersion: '8.7.2' },
+  argocd: { appVersion: 'v2.13.3', chartVersion: '7.7.16' },
+  minio: { appVersion: 'RELEASE.2024-12-18T13-15-44Z', chartVersion: '5.4.0' },
+  prometheus: { appVersion: 'v3.1.0', chartVersion: '69.3.0' },
+  grafana: { appVersion: '11.5.1', chartVersion: '8.9.0' },
   opensearch: { appVersion: '2.14.0', chartVersion: '2.22.0' },
-  tempo: { appVersion: '2.5.0' },
-  nexus: { appVersion: '3.68.1', chartVersion: '62.1.0' },
+  tempo: { appVersion: '2.7.0', chartVersion: '1.18.1' },
+  nexus: { appVersion: '3.64.0', chartVersion: '64.2.0' },
   jfrog: { appVersion: '7.77.3', chartVersion: '107.95.10' },
   github: { appVersion: 'external' },
   gitea: { appVersion: '1.27.0', chartVersion: '12.7.0' },
@@ -51,9 +67,12 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   kibana: { appVersion: '8.14.1', chartVersion: '8.5.1' },
   'opensearch-dashboards': { appVersion: '2.14.0', chartVersion: '2.18.0' },
   jaeger: { appVersion: '1.57.0', chartVersion: '3.3.0' },
-  'opentelemetry-collector': { appVersion: '0.104.0', chartVersion: '0.75.0' },
+  'opentelemetry-collector': { appVersion: '0.90.0', chartVersion: '0.75.0' },
   elasticsearch: { appVersion: '8.14.1', chartVersion: '8.5.1' },
-  loki: { appVersion: '2.9.8', chartVersion: '2.10.2' },
+  // Loki·OpenSearch·Elasticsearch·Jaeger 의 차트 버전은 domain 상수가 아니라
+  // 설치 경로의 분기(helm-values.go 의 resolveChartSpecForStep)에만 있다.
+  // 아래 테스트가 못 잡는 값이므로 그쪽을 고칠 때 여기도 함께 본다.
+  loki: { appVersion: '2.9.8', chartVersion: '2.10.3' },
 }
 
 export function getToolAppVersion(toolId: string): string {

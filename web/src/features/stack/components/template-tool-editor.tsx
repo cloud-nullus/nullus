@@ -7,13 +7,7 @@ import { Tabs } from "../../../components/ui/tabs";
 import { TextInput } from "../../../components/ui/text-input";
 import { cn } from "../../../lib/utils";
 import { resolveToolIdByName } from "../utils/template-overrides";
-import {
-  ARTIFACTS_OPTIONS,
-  AUTHENTICATION_OPTIONS,
-  LOGGING_OPTIONS,
-  MONITORING_OPTIONS,
-  PIPELINE_OPTIONS,
-} from "../utils/install-constants";
+import { findSlotOption, toolCopyKeys } from "../utils/tool-copy";
 import type {
   AddToolDraft,
   ToolCategoryDefinition,
@@ -38,43 +32,41 @@ import type {
  * 안 된다.
  */
 
-const INSTALL_OPTIONS = [
-  ...Object.values(ARTIFACTS_OPTIONS).flat(),
-  ...Object.values(PIPELINE_OPTIONS).flat(),
-  ...Object.values(MONITORING_OPTIONS).flat(),
-  ...Object.values(LOGGING_OPTIONS).flat(),
-  ...AUTHENTICATION_OPTIONS,
-];
-
-const OPTION_BY_LABEL = new Map(INSTALL_OPTIONS.map((option) => [option.label, option] as const));
+/**
+ * 템플릿의 카테고리 → 설치 마법사의 슬롯.
+ *
+ * 문구를 찾을 때 슬롯까지 좁히기 위해 필요하다. 같은 도구 id 라도 슬롯이
+ * 다르면 다른 것을 뜻한다 — `gitlab` 은 소스 저장소이자 패키지 레지스트리다.
+ * 슬롯을 모르는 카테고리(관리자가 손으로 만든 섹션)는 종전대로 id 로만 찾는다.
+ */
+const SLOT_BY_CATEGORY: Record<string, string> = {
+  package_registry: "packageRegistry",
+  source_repository: "sourceRepository",
+  container_registry: "containerRegistry",
+  ci_platform: "cicdPlatform",
+  cd_tool: "cdTool",
+  monitoring_collection: "collection",
+  monitoring_visualization: "visualization",
+  log_search: "search",
+  trace_layer: "traceLayer",
+  agent: "traceExporter",
+  authentication: "authentication",
+};
 
 /**
- * 한 도구 id 가 역할마다 다른 이름으로 나오는 경우를 걸러 낸다.
+ * 템플릿이 쓰는 제품명에 붙일 설명.
  *
- * 설명 문구는 `stackAddTools.tools.<id>` 하나뿐인데 GitLab 은 소스 저장소이자
- * 패키지 레지스트리다. id 로만 찾으면 "GitLab Package Registry" 밑에 "GitLab
- * source code management" 가 붙는다 — 실제로 그렇게 떴다. 이름이 하나로
- * 정해지는 id 만 id 로 찾고, 나머지는 이름이 정확히 맞을 때만 쓴다.
+ * 슬롯 안에서만 찾으므로 id 가 겹쳐도 헷갈리지 않는다. 예전에는 전역 표에서
+ * id 로 찾다가 "GitLab Package Registry" 밑에 소스 저장소 설명을 붙였고, 그것을
+ * 막으려고 모호한 id 는 설명을 통째로 지웠다 — 맞는 설명까지 함께 사라졌다.
  */
-const UNAMBIGUOUS_ID_LABEL = new Map<string, string>();
-for (const option of INSTALL_OPTIONS) {
-  const seen = UNAMBIGUOUS_ID_LABEL.get(option.id);
-  if (seen === undefined) UNAMBIGUOUS_ID_LABEL.set(option.id, option.label);
-  else if (seen !== option.label) UNAMBIGUOUS_ID_LABEL.set(option.id, "");
-}
-
-/**
- * 템플릿이 쓰는 제품명에 붙일 설명. 확실하지 않으면 아무것도 돌려주지 않는다.
- *
- * 이름이 정확히 맞아도 그것만으로는 부족하다 — 설명 문구는 `t()` 로 읽는데 그
- * 키가 `stackAddTools.tools.<id>` 라서 id 가 모호하면 번역이 있는 한 언제나
- * 엉뚱한 쪽이 이긴다(옵션에 적힌 문구는 fallback 이라 무시된다). 그래서 판단
- * 기준은 이름이 아니라 **id 가 한 제품만 가리키는가** 다.
- */
-function toolCopyFor(optionName: string) {
-  const soleLabel = UNAMBIGUOUS_ID_LABEL.get(resolveToolIdByName(optionName));
-  if (!soleLabel) return undefined;
-  return OPTION_BY_LABEL.get(soleLabel);
+function toolCopyFor(categoryId: string, optionName: string) {
+  const slot = SLOT_BY_CATEGORY[categoryId];
+  const toolId = resolveToolIdByName(optionName);
+  const option =
+    findSlotOption(slot, (candidate) => candidate.label === optionName) ??
+    findSlotOption(slot, (candidate) => candidate.id === toolId);
+  return option ? { slot, option } : undefined;
 }
 
 export interface TemplateToolSectionsProps {
@@ -221,7 +213,7 @@ function TemplateToolCategory({
       <div role="radiogroup" aria-label={category.label} className="flex flex-col gap-2">
         {category.options.map((option) => {
           const selected = option === name;
-          const copy = toolCopyFor(option);
+          const copy = toolCopyFor(category.category, option);
           return (
             <button
               key={option}
@@ -259,7 +251,9 @@ function TemplateToolCategory({
                 </span>
                 {copy && (
                   <span className="block text-xs text-[var(--color-text-secondary)]">
-                    {t(`stackAddTools.tools.${copy.id}.description`, copy.description)}
+                    {t(toolCopyKeys(copy.slot, copy.option.id, "description"), {
+                      defaultValue: copy.option.description,
+                    })}
                   </span>
                 )}
               </span>

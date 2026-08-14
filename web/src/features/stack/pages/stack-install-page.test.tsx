@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { screen, fireEvent, act, within } from '@testing-library/react'
 import { optionLabels, renderWithProviders, selectOptionByValue } from '../../../__tests__/test-utils'
 import { StackInstallPage, findReusablePendingStackId, hasDuplicateStackNameInCluster } from './stack-install-page'
-import { useStackConfigStore } from '../stores/stack-config-store'
+import { getToolAppVersion, getToolChartVersion, useStackConfigStore } from '../stores/stack-config-store'
 import { useAuthStore } from '../../../stores/auth-store'
 import YAML from 'yaml'
 
@@ -262,7 +262,7 @@ describe('StackInstallPage', () => {
     expect(draft.artifacts.sourceRepository.tool).toBe('gitlab')
     expect(draft.pipeline.cicdPlatform.tool).toBe('gitlab-ci')
     expect(draft.artifacts.packageRegistry.tool).toBe('gitlab')
-    expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
+    expect(draft.artifacts.packageRegistry.version).toBe(getToolAppVersion('gitlab'))
     expect(draft.authentication.provider).toBe('')
   })
 
@@ -508,8 +508,8 @@ describe('StackInstallPage', () => {
     const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
     expect(editor.value).toContain('global:')
     expect(editor.value).toContain('chart:')
-    expect(editor.value).toContain('version: 9.5.1')
-    expect(editor.value).toContain('tag: 18.5.1')
+    expect(editor.value).toContain(`version: ${getToolChartVersion('gitlab')}`)
+    expect(editor.value).toContain(`tag: ${getToolAppVersion('gitlab')}`)
     expect(editor.value).not.toContain('kind: StackToolInstall')
     expect(screen.getByText(/역할:/)).toBeInTheDocument()
     expect(screen.getByText(/동일 OSS가 여러 역할에 선택돼도 설치 파일은 하나로 통합/)).toBeInTheDocument()
@@ -595,7 +595,7 @@ describe('StackInstallPage', () => {
     const editor = screen.getByTestId('monaco-yaml-editor') as HTMLTextAreaElement
     expect(editor.value).toContain('chart:')
     expect(editor.value).toContain('name: gitlab/gitlab')
-    expect(editor.value).toContain('version: 9.5.1')
+    expect(editor.value).toContain(`version: ${getToolChartVersion('gitlab')}`)
     expect(editor.value).toContain('tag: 17.2.0')
   })
 
@@ -681,7 +681,7 @@ describe('StackInstallPage', () => {
     expect(screen.getAllByText(/cat <<'NULLUS_VALUES_EOF_/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\.nullus\/generated-values\/gitlab\.values\.yaml/).length).toBeGreaterThan(0)
     expect(screen.getByText(/helm upgrade --install gitlab/)).toBeInTheDocument()
-    expect(screen.getByText(/--version 9.5.1/)).toBeInTheDocument()
+    expect(screen.getByText(new RegExp(`--version ${getToolChartVersion('gitlab')}`))).toBeInTheDocument()
     expect(screen.getByText(/helm upgrade --install grafana/)).toBeInTheDocument()
     expect(screen.getAllByText(/\.nullus\/generated-values\/grafana\.values\.yaml/).length).toBeGreaterThan(0)
   })
