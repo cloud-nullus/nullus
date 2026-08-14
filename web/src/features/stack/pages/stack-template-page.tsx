@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { BookOpen, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Trash2, Wrench, X } from 'lucide-react';
+import { BookOpen, ExternalLink, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import { iconProps } from '../../../components/ui/icon'
 import {
   useCreateTemplate,
@@ -28,7 +28,6 @@ import {
   TEMPLATE_DESCRIPTION_I18N,
   TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES,
   NS_PER_MINUTE,
-  buildInitialSectionOpenState,
   getSectionCategories,
   addToolDraftKey,
   buildInitialAddToolDrafts,
@@ -43,6 +42,7 @@ import {
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from "../../../components/ui/search-input"
 import { TextInput } from "../../../components/ui/text-input"
+import { TemplateToolSections } from "../components/template-tool-editor"
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   source_repository: { bg: "color-mix(in srgb, var(--color-info) 12%, transparent)", color: "var(--color-info)" },
@@ -130,12 +130,14 @@ export function StackTemplatePage() {
   );
   const estimatedInstallTimeNs = estimatedInstallMinutes * NS_PER_MINUTE;
 
-  const [openToolSections, setOpenToolSections] = useState<
-    Record<string, boolean>
-  >(buildInitialSectionOpenState);
   const [addToolDrafts, setAddToolDrafts] = useState<
     Record<string, AddToolDraft>
   >(buildInitialAddToolDrafts);
+  // 설치 마법사처럼 섹션을 탭으로 가른다. 지워진 섹션이 활성으로 남을 수 있어
+  // 렌더 쪽에서 실재하는 것으로 떨어뜨린다.
+  const [activeToolSectionId, setActiveToolSectionId] = useState<string>(
+    TOOL_SECTIONS[0]?.id ?? "",
+  );
 
   const templates = Array.isArray(apiTemplates) ? apiTemplates : [];
 
@@ -262,8 +264,8 @@ export function StackTemplatePage() {
     setForm(EMPTY_TEMPLATE_FORM);
     setFormError(null);
     setEditingTemplateId(null);
-    setOpenToolSections(buildInitialSectionOpenState);
     setAddToolDrafts(buildInitialAddToolDrafts);
+    setActiveToolSectionId(TOOL_SECTIONS[0]?.id ?? "");
     setRemovedBaseSectionIds([]);
   };
 
@@ -293,6 +295,25 @@ export function StackTemplatePage() {
         ),
     ).map((section) => section.id);
 
+    // 편집기의 선택 상태는 draft 가 소유한다. 여기서 템플릿 값을 심어 두지
+    // 않으면 초기 선택을 보여 주려고 "적용된 값"이 draft 를 이겨야 하고, 그러면
+    // 이미 담긴 카테고리는 다른 도구를 눌러도 선택이 움직이지 않는다.
+    setAddToolDrafts(() => {
+      const seeded = buildInitialAddToolDrafts();
+      for (const tool of tools) {
+        const section = TOOL_SECTIONS.find((candidate) =>
+          candidate.categories.some((category) => category.category === tool.category),
+        );
+        if (!section) continue;
+        seeded[addToolDraftKey(section.id, tool.category)] = { ...tool };
+      }
+      return seeded;
+    });
+    setActiveToolSectionId(
+      TOOL_SECTIONS.find((section) => !removedInTemplate.includes(section.id))?.id ??
+        TOOL_SECTIONS[0]?.id ??
+        "",
+    );
     setRemovedBaseSectionIds(removedInTemplate);
     setEditingTemplateId(template.id);
     setFormError(null);
@@ -314,10 +335,6 @@ export function StackTemplatePage() {
 
   const handleFormChange = (key: keyof TemplateFormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const toggleToolSection = (sectionId: string) => {
-    setOpenToolSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
   };
 
   const updateAddToolDraft = (
@@ -408,7 +425,7 @@ export function StackTemplatePage() {
       ],
     };
     setCustomSections((prev) => [...prev, newSection]);
-    setOpenToolSections((prev) => ({ ...prev, [sectionId]: true }));
+    setActiveToolSectionId(sectionId);
     setAddToolDrafts((prev) => {
       const defaultName = options[0] ?? "Custom Tool";
       const defaults = defaultVersionsForTool(defaultName);
@@ -444,11 +461,6 @@ export function StackTemplatePage() {
       );
     } else {
       setCustomSections((prev) => prev.filter((s) => s.id !== sectionId));
-      setOpenToolSections((prev) => {
-        const next = { ...prev };
-        delete next[sectionId];
-        return next;
-      });
       setAddToolDrafts((prev) => {
         const next = { ...prev };
         Object.keys(next).forEach((key) => {
@@ -873,7 +885,7 @@ export function StackTemplatePage() {
             ? t("stackTemplatePage.modal.editTitle", "Edit Template")
             : t("stackTemplatePage.modal.createTitle", "Create Template")
         }
-        wide
+        size="xl"
         footer={
           <>
             <Button
@@ -929,178 +941,20 @@ export function StackTemplatePage() {
                 "Create the template scaffold first, then add or refine tools by section.",
               )}
             </div>
-            <div className="rounded-lg border border-[var(--color-border-default)]">
-              {allSections.map((section) => {
-                const isOpen = openToolSections[section.id];
-                const sectionCategories = getSectionCategories(section);
-                return (
-                  <div
-                    key={section.id}
-                    className="border-b border-[var(--color-border-default)] last:border-b-0"
-                  >
-                    <div className="flex items-center bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)]">
-                      <button
-                        type="button"
-                        onClick={() => toggleToolSection(section.id)}
-                        className="flex flex-1 cursor-pointer items-center justify-between px-3 py-2 text-left"
-                      >
-                        <span className="text-sm font-semibold text-[var(--color-text-primary)]">
-                          {section.label}
-                        </span>
-                        {isOpen ? (
-                          <ChevronDown
-                            {...iconProps('sm')}
-                            className="text-[var(--color-text-secondary)]"
-                          />
-                        ) : (
-                          <ChevronRight
-                            {...iconProps('sm')}
-                            className="text-[var(--color-text-secondary)]"
-                          />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeSection(section.id);
-                        }}
-                        className="mr-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-transparent text-[var(--color-text-muted)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)] hover:text-[var(--color-error)]"
-                        title={t(
-                          "stackTemplatePage.actions.removeSection",
-                          "Remove {{section}} section",
-                          { section: section.label },
-                        )}
-                      >
-                        <Trash2 {...iconProps('xs')} />
-                      </button>
-                    </div>
-
-                    {isOpen && (
-                      <div className="flex flex-col gap-2 px-3 py-3">
-                        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_1%,_transparent)] p-2">
-                          {sectionCategories.map((category) => {
-                            const draftKey = addToolDraftKey(
-                              section.id,
-                              category.category,
-                            );
-                            const existing = form.tools.find(
-                              (tool) => tool.category === category.category,
-                            );
-                            const baseDraft = addToolDrafts[draftKey];
-                            const defaultName = category.options[0] ?? "";
-                            const name =
-                              existing?.name || baseDraft?.name || defaultName;
-                            const defaults = defaultVersionsForTool(name);
-                            const helmVersion =
-                              existing?.helm_version ||
-                              baseDraft?.helm_version ||
-                              defaults.helm_version;
-                            const appVersion =
-                              existing?.app_version ||
-                              baseDraft?.app_version ||
-                              defaults.app_version;
-                            const hasApplied = !!existing;
-                            return (
-                              <div
-                                key={draftKey}
-                                className="grid gap-2 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto_auto]"
-                              >
-                                <div className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-secondary)]">
-                                  {category.label}
-                                </div>
-                                <select
-                                  value={name}
-                                  onChange={(event) => {
-                                    const nextName = event.target.value;
-                                    const nextDefaults =
-                                      defaultVersionsForTool(nextName);
-                                    updateAddToolDraft(draftKey, {
-                                      category: category.category,
-                                      name: nextName,
-                                      helm_version: nextDefaults.helm_version,
-                                      app_version: nextDefaults.app_version,
-                                    });
-                                  }}
-                                  className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-3 py-[9px] text-sm text-[var(--color-text-primary)]"
-                                >
-                                  {category.options.map((option) => (
-                                    <option key={option} value={option}>
-                                      {option}
-                                    </option>
-                                  ))}
-                                </select>
-                                <TextInput
-                                  type="text"
-                                  value={helmVersion}
-                                  onChange={(event) =>
-                                    updateAddToolDraft(draftKey, {
-                                      category: category.category,
-                                      name,
-                                      helm_version: event.target.value,
-                                      app_version: appVersion,
-                                    })
-                                  }
-                                  placeholder={t(
-                                    "stackTemplatePage.form.helmVersionPlaceholder",
-                                    "Helm version",
-                                  )}
-                                />
-                                <TextInput
-                                  type="text"
-                                  value={appVersion}
-                                  onChange={(event) =>
-                                    updateAddToolDraft(draftKey, {
-                                      category: category.category,
-                                      name,
-                                      helm_version: helmVersion,
-                                      app_version: event.target.value,
-                                    })
-                                  }
-                                  placeholder={t(
-                                    "stackTemplatePage.form.appVersionPlaceholder",
-                                    "App version",
-                                  )}
-                                />
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  type="button"
-                                  onClick={() => submitAddTool(draftKey)}
-                                >
-                                  {hasApplied
-                                    ? t(
-                                        "stackTemplatePage.actions.updateTool",
-                                        "Update Tool",
-                                      )
-                                    : t(
-                                        "stackTemplatePage.actions.addTool",
-                                        "Add Tool",
-                                      )}
-                                </Button>
-                                <button
-                                  type="button"
-                                  aria-label={`Remove ${name}`}
-                                  onClick={() =>
-                                    removeCategoryTool(
-                                      section.id,
-                                      category.category,
-                                    )
-                                  }
-                                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--color-border-default)] text-[var(--color-text-secondary)] transition-colors hover:border-[color-mix(in_srgb,_var(--color-error)_50%,_transparent)] hover:text-[var(--color-error)]"
-                                >
-                                  <X {...iconProps('sm')} />
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <TemplateToolSections
+              sections={allSections}
+              activeSectionId={activeToolSectionId}
+              onSelectSection={setActiveToolSectionId}
+              getCategories={getSectionCategories}
+              tools={form.tools}
+              drafts={addToolDrafts}
+              draftKeyFor={addToolDraftKey}
+              defaultVersionsFor={defaultVersionsForTool}
+              onDraftChange={updateAddToolDraft}
+              onSubmitTool={submitAddTool}
+              onRemoveTool={removeCategoryTool}
+              onRemoveSection={removeSection}
+            />
 
             {addSectionOpen ? (
               <div className="mt-2 flex flex-col gap-2 rounded-lg border border-dashed border-[var(--color-border-default)] p-3">

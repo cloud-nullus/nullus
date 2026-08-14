@@ -189,7 +189,8 @@
       "add": "Add",
       "addTool": "Add Tool",
       "addSection": "Add Section",
-      "updateTool": "Update Tool"
+      "updateTool": "Update Tool",
+      "removeCategoryTool": "Remove {{category}}"
     },
     "card": {
       "estimatedMinutes": "{{minutes}} min",
@@ -229,7 +230,10 @@
       "estimatedInstallTimeValue": "{{minutes}} min ({{nanoseconds}} ns)",
       "recommendedUseCase": "Recommended Use Case",
       "minimumResources": "Minimum Resources",
-      "toolsHint": "Create the template scaffold first, then add or refine tools by section."
+      "toolsHint": "Create the template scaffold first, then add or refine tools by section.",
+      "helmVersion": "Helm version",
+      "appVersion": "App version",
+      "toolApplied": "In template"
     },
     "errors": {
       "updateFailed": "Failed to update template.",

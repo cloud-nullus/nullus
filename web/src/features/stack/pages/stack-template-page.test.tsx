@@ -222,22 +222,24 @@ describe('StackTemplatePage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Create Template' }))
 
-    expect(screen.getByText('Artifacts')).toBeInTheDocument()
-    expect(screen.getByText('CI/CD')).toBeInTheDocument()
-    expect(screen.getByText('Observability')).toBeInTheDocument()
+    // 섹션은 탭으로 갈린다. 한 번에 한 탭만 그려지므로 탭을 옮겨 가며 본다 —
+    // 검사하려는 것은 "모든 카테고리를 고를 수 있는가" 이지 "한 화면에 다 있는가"
+    // 가 아니다.
+    const SECTION_CATEGORIES: Record<string, string[]> = {
+      Artifacts: ['Package Registry', 'Source Repository', 'Container Registry'],
+      'CI/CD': ['CI Platform', 'CD Tool'],
+      Observability: ['Metrics', 'Visualization', 'Logs', 'Agent', 'Traces'],
+    }
 
-    expect(screen.getByText('Package Registry')).toBeInTheDocument()
-    expect(screen.getByText('Source Repository')).toBeInTheDocument()
-    expect(screen.getByText('Container Registry')).toBeInTheDocument()
-    expect(screen.getByText('CI Platform')).toBeInTheDocument()
-    expect(screen.getByText('CD Tool')).toBeInTheDocument()
-    expect(screen.getByText('Metrics')).toBeInTheDocument()
-    expect(screen.getByText('Visualization')).toBeInTheDocument()
-    expect(screen.getByText('Logs')).toBeInTheDocument()
-    expect(screen.getByText('Agent')).toBeInTheDocument()
-    expect(screen.getByText('Traces')).toBeInTheDocument()
+    for (const [section, categories] of Object.entries(SECTION_CATEGORIES)) {
+      fireEvent.click(screen.getByRole('button', { name: section }))
+      for (const category of categories) {
+        expect(screen.getByText(category), `${section} 탭에 ${category} 가 없다`).toBeInTheDocument()
+      }
+    }
 
-
+    // Artifacts 로 돌아와 카테고리마다 적용 버튼이 하나씩 있는지 본다.
+    fireEvent.click(screen.getByRole('button', { name: 'Artifacts' }))
     expect(screen.getAllByRole('button', { name: 'Add Tool' }).length).toBeGreaterThanOrEqual(3)
   })
 
