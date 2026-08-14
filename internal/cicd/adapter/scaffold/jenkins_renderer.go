@@ -138,7 +138,7 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	b.WriteString("            git commit -m \"chore(deploy): $IMAGE_TAG [skip ci]\"\n")
 	fmt.Fprintf(&b,
 		"            git push \"$(echo \"$GIT_URL\" | sed \"s#://#://$%s:$%s@#\")\" HEAD:main\n",
-		giteaUserVar, giteaTokenVar)
+		GitUsernameVar, GitPasswordVar)
 	b.WriteString("          '''\n")
 	b.WriteString("        }\n")
 	b.WriteString("      }\n")
@@ -150,10 +150,13 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 }
 
 const (
-	// giteaUserVar / giteaTokenVar 는 매니페스트 되커밋에 쓰는 자격증명이다.
+	// GitUsernameVar / GitPasswordVar 는 매니페스트 되커밋에 쓰는 자격증명이다.
 	// ESO 가 만든 파이프라인 Secret 에서 환경변수로 들어온다.
-	giteaUserVar  = "GIT_USERNAME"
-	giteaTokenVar = "GIT_PASSWORD" // #nosec G101 -- CI 변수 이름
+	//
+	// 자격증명을 채우는 쪽(cicd/usecase 의 configureGiteaPipeline)이 같은
+	// 이름을 써야 한다 — 갈라지면 push 가 인증 실패로 죽는다.
+	GitUsernameVar = "GIT_USERNAME"
+	GitPasswordVar = "GIT_PASSWORD" // #nosec G101 -- CI 변수 이름
 )
 
 // ciSecretName 은 이 파이프라인의 자격증명 Secret 이름이다.

@@ -60,6 +60,8 @@ type BundleFactory struct {
 
 	// Gitea 경로도 선택적으로 배선된다. 같은 이유로 없으면 조용히 흘리지 않는다.
 	giteaTokens port.SCMTokenIssuer
+	// giteaSecrets 는 파이프라인 자격증명을 OpenBao 에 기록한다.
+	giteaSecrets gitea.SecretWriter
 	// jenkinsCreds 는 Jenkins job 생성에 쓰는 관리자 자격증명을 스택별로 푼다.
 	// 기동 시점에 고정할 수 없다 — CI 서버가 스택마다 따로 서고 비밀번호도
 	// 스택마다 다르게 생성된다.
@@ -85,8 +87,9 @@ func (f *BundleFactory) WithGitHub(
 }
 
 // WithGitea 는 Gitea 스택을 프로비저닝할 수 있게 한다.
-func (f *BundleFactory) WithGitea(tokens port.SCMTokenIssuer) *BundleFactory {
+func (f *BundleFactory) WithGitea(tokens port.SCMTokenIssuer, secrets gitea.SecretWriter) *BundleFactory {
 	f.giteaTokens = tokens
+	f.giteaSecrets = secrets
 	return f
 }
 
@@ -291,6 +294,8 @@ func (f *BundleFactory) giteaBundle(
 		// 자격증명은 OpenBao → ESO → K8s Secret 평면이 나른다.
 		Registry:        resolver,
 		Webhooks:        client,
+		Credentials: gitea.NewCredentialPlane(
+			f.giteaSecrets, f.opts.Env, summary.OrgID, summary.ID, namespace),
 		Platform:        port.SCMPlatformGitea,
 		GroupPath:       f.opts.GroupPath,
 		RepoAccessToken: token,

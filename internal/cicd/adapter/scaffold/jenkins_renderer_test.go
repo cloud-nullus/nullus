@@ -117,3 +117,21 @@ func TestRender_GiteaJenkins_EmitsJenkinsfileNotGitLabCI(t *testing.T) {
 	assert.Contains(t, joined, "deploy/deployment.yaml")
 	assert.Contains(t, joined, "Dockerfile")
 }
+
+// Jenkinsfile 의 envFrom 이 참조하는 Secret 이름은 그 Secret 을 만드는 쪽
+// (gitea.CISecretName)과 같아야 한다. 레이어 방향 때문에 서로 import 하지
+// 않으므로 값을 양쪽에 고정한다 — 갈라지면 agent 파드가 없는 Secret 을
+// 참조해 기동하지 못하고, 실패가 첫 빌드 시점에야 나타난다.
+func TestCISecretName_MatchesCredentialPlaneContract(t *testing.T) {
+	assert.Equal(t, "nullus-ci-api", ciSecretName("api"))
+}
+
+// 파이프라인이 읽는 자격증명 변수 이름은 그것을 채우는 쪽과 같아야 한다.
+func TestJenkinsfile_UsesSharedGitCredentialVarNames(t *testing.T) {
+	content := renderJenkinsfile("api", jenkinsTarget())
+
+	assert.Equal(t, "GIT_USERNAME", GitUsernameVar)
+	assert.Equal(t, "GIT_PASSWORD", GitPasswordVar)
+	assert.Contains(t, content, "$"+GitUsernameVar)
+	assert.Contains(t, content, "$"+GitPasswordVar)
+}

@@ -26,6 +26,11 @@ type ProvisionAppProjectInput struct {
 	Namespace string
 	Port      int32
 	Replicas  int32
+	// RepoAccessToken 은 저장소 쓰기에 쓸 토큰이다.
+	//
+	// 플랫폼이 프로젝트 범위 토큰을 지원하지 않을 때 채워진다(Gitea·GitHub).
+	// deploy 단계가 매니페스트 태그를 되쓰려면 필요하다.
+	RepoAccessToken string
 	// RegistryCredentials 는 외부 레지스트리 자격증명이다.
 	// SCM 프로젝트 레지스트리를 쓰는 구성에서는 필요 없다.
 	RegistryCredentials map[string]string
@@ -99,6 +104,11 @@ type ProvisionAppProjectOutput struct {
 	// CIJobURL 은 만들어진 CI job 의 주소다. CI 가 SCM 과 분리된 플랫폼
 	// (Jenkins)에서만 채워진다.
 	CIJobURL string
+	// CredentialManifests 는 파이프라인 자격증명 ExternalSecret 이다.
+	//
+	// 여기서 적용하지 않는다 — 클러스터 접근은 상위 유스케이스가 한곳에서
+	// 맡는다(Argo CD 리소스와 같은 경로로 적용된다).
+	CredentialManifests []string
 }
 
 // ProvisionAppProject 는 앱 저장소를 만들고 CI/CD 가 돌 수 있는 상태로 만든다.
@@ -115,6 +125,19 @@ type ProvisionAppProject struct {
 	webhooks  port.SCMWebhookProvisioner
 	ciBaseURL string
 	scmURL    string
+	// creds 는 CI 변수 저장소가 없는 SCM(Gitea)에서 자격증명을 OpenBao → ESO
+	// 평면으로 나르는 경로다.
+	creds giteaCredentialPlane
+}
+
+// giteaCredentialPlane 은 포트의 별칭이다 — 어댑터 타입을 직접 받으면 레이어
+// 방향이 뒤집힌다.
+type giteaCredentialPlane = port.PipelineCredentialPlane
+
+// WithCredentialPlane 은 CI 변수 저장소가 없는 SCM 의 자격증명 경로를 배선한다.
+func (uc *ProvisionAppProject) WithCredentialPlane(plane port.PipelineCredentialPlane) *ProvisionAppProject {
+	uc.creds = plane
+	return uc
 }
 
 // WithCIJobs 는 CI 서버 job 생성 경로를 배선한다.
@@ -232,6 +255,66 @@ func (uc *ProvisionAppProject) Execute(
 	return out, nil
 }
 
+// configureGiteaPipeline 은 파이프라인 자격증명을 OpenBao → ESO 평면에 얹는다.
+//
+// Gitea 에는 GitLab 같은 프로젝트 CI 변수 저장소가 없다. Jenkinsfile 의
+// envFrom 이 참조하는 nullus-ci-<app> Secret 을 여기서 만든다 — 없으면 agent
+// 파드가 없는 Secret 을 참조해 기동하지 못한다.
+//
+// 레지스트리 자격증명은 사용자가 준 것이 없으면 채울 수 없다. 그때는 조용히
+// 넘기지 않고 "사람이 채워야 할 목록" 으로 알린다.
+func (uc *ProvisionAppProject) configureGiteaPipeline(
+	ctx context.Context,
+	project *port.SCMProject,
+	target *port.ImageTarget,
+	input ProvisionAppProjectInput,
+	out *ProvisionAppProjectOutput,
+) {
+	if uc.creds == nil {
+		out.Warnings = append(out.Warnings,
+			"자격증명 평면이 배선되지 않아 파이프라인 Secret 을 만들지 못했습니다")
+		out.MissingVariables = append(out.MissingVariables, target.RequiredVariables...)
+		return
+	}
+
+	vars := make([]port.PipelineVariable, 0, len(target.RequiredVariables)+2)
+
+	// deploy 단계가 매니페스트 태그를 되쓰려면 저장소 쓰기 권한이 필요하다.
+	// Gitea 에는 프로젝트 범위 토큰이 없으므로 스택의 자동화 토큰을 쓴다.
+	if token := strings.TrimSpace(input.RepoAccessToken); token != "" {
+		vars = append(vars,
+			port.PipelineVariable{Key: scaffold.GitUsernameVar, Value: giteaAutomationUser},
+			port.PipelineVariable{Key: scaffold.GitPasswordVar, Value: token},
+		)
+	} else {
+		out.Warnings = append(out.Warnings,
+			"Gitea 액세스 토큰이 없어 매니페스트 되커밋 자격증명을 채우지 못했습니다")
+		out.MissingVariables = append(out.MissingVariables, scaffold.GitPasswordVar)
+	}
+
+	for _, key := range target.RequiredVariables {
+		value := strings.TrimSpace(input.RegistryCredentials[key])
+		if value == "" {
+			out.MissingVariables = append(out.MissingVariables, key)
+			continue
+		}
+		vars = append(vars, port.PipelineVariable{Key: key, Value: value})
+	}
+
+	if len(vars) == 0 {
+		return
+	}
+
+	manifest, err := uc.creds.Provision(ctx, project.Name, vars)
+	if err != nil {
+		out.Warnings = append(out.Warnings, fmt.Sprintf("파이프라인 자격증명 준비 실패: %v", err))
+		return
+	}
+	if strings.TrimSpace(manifest) != "" {
+		out.CredentialManifests = append(out.CredentialManifests, manifest)
+	}
+}
+
 // ensureCIJob 은 CI 서버에 job 을 만들고 저장소에 webhook 을 건다.
 //
 // Jenkins 는 GitLab CI·GitHub Actions 와 달리 Jenkinsfile 만 커밋해서는 아무
@@ -297,6 +380,11 @@ func splitFullPath(fullPath string) (owner, name string, ok bool) {
 // JCasC 가 ESO 로 동기화한 Secret 을 읽어 이 이름으로 만든다.
 const giteaCredentialID = "nullus-gitea"
 
+// giteaAutomationUser 는 Gitea 자동화 계정이다.
+// 어댑터(gitea.AutomationUser)와 같아야 한다 — 레이어 방향 때문에 import 하지
+// 않고 값을 둔다.
+const giteaAutomationUser = "gitea_admin"
+
 // configurePipeline 은 CI 변수를 등록하고 무엇이 빠졌는지 모은다.
 //
 // 변수 등록 실패로 전체를 되돌리지 않는다 — 프로젝트와 스캐폴딩은 이미
@@ -311,6 +399,10 @@ func (uc *ProvisionAppProject) configurePipeline(
 ) {
 	if input.Platform == port.SCMPlatformGitHub {
 		uc.configureGitHubPipeline(ctx, project, target, input, out)
+		return
+	}
+	if input.Platform == port.SCMPlatformGitea {
+		uc.configureGiteaPipeline(ctx, project, target, input, out)
 		return
 	}
 	uc.configureGitLabPipeline(ctx, project, target, input, out)

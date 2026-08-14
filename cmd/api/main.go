@@ -276,7 +276,7 @@ func main() {
 			GitLabBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
 		},
 	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
-		WithGitea(cicdGiteaTokens).
+		WithGitea(cicdGiteaTokens, secretRouter).
 		WithJenkins(cicdJenkinsCreds)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)

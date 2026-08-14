@@ -26,6 +26,9 @@ type SCMBundle struct {
 	Webhooks SCMWebhookProvisioner
 	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
 	CIBaseURL string
+	// Credentials 는 CI 변수 저장소가 없는 SCM(Gitea)에서 파이프라인 자격증명을
+	// OpenBao → ESO → K8s Secret 평면으로 나른다. 지원하지 않으면 nil.
+	Credentials PipelineCredentialPlane
 
 	// Platform 은 이 묶음이 향하는 SCM 플랫폼이다.
 	// 파이프라인 파일 형식이 여기서 갈리므로 렌더러까지 전달돼야 한다.
@@ -49,6 +52,20 @@ type SCMBundle struct {
 	// 비어 있으면 앱은 클러스터 내부에서만 접근 가능하다.
 	AccessDomain string
 	GatewayName  string
+}
+
+// PipelineCredentialPlane 은 파이프라인 자격증명을 준비하고 그것을 클러스터에
+// 반영할 매니페스트를 돌려준다.
+//
+// 적용은 하지 않는다 — 클러스터 접근은 유스케이스가 한곳에서 맡는다.
+type PipelineCredentialPlane interface {
+	Provision(ctx context.Context, app string, vars []PipelineVariable) (manifest string, err error)
+}
+
+// PipelineVariable 은 파이프라인이 환경변수로 읽을 값 하나다.
+type PipelineVariable struct {
+	Key   string
+	Value string
 }
 
 // SCMBundleFactory 는 스택에 맞는 도구 묶음을 조립한다.

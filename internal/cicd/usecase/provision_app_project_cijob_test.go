@@ -130,3 +130,84 @@ func TestGiteaCredentialID_MatchesStackJCasCContract(t *testing.T) {
 	assert.Equal(t, stackSideValue, giteaCredentialID,
 		"internal/stack/adapter/helm 의 JenkinsGiteaCredentialID 와 같아야 한다")
 }
+
+type stubCredentialPlane struct {
+	app  string
+	vars []port.PipelineVariable
+	err  error
+}
+
+func (s *stubCredentialPlane) Provision(
+	_ context.Context, app string, vars []port.PipelineVariable,
+) (string, error) {
+	s.app = app
+	s.vars = vars
+	if s.err != nil {
+		return "", s.err
+	}
+	return "apiVersion: external-secrets.io/v1\nkind: ExternalSecret\n", nil
+}
+
+func giteaTarget() *port.ImageTarget {
+	return &port.ImageTarget{
+		Host:              "registry.otel.internal",
+		Repository:        "registry.otel.internal/nullus/api",
+		UsernameVar:       "HARBOR_USERNAME",
+		PasswordVar:       "HARBOR_PASSWORD",
+		RequiredVariables: []string{"HARBOR_USERNAME", "HARBOR_PASSWORD"},
+	}
+}
+
+// Gitea 에는 CI 변수 저장소가 없다. 자격증명은 OpenBao → ESO 평면이 나른다.
+func TestConfigureGiteaPipeline_ProvisionsCredentialSecret(t *testing.T) {
+	plane := &stubCredentialPlane{}
+	uc := (&ProvisionAppProject{}).WithCredentialPlane(plane)
+
+	out := &ProvisionAppProjectOutput{}
+	uc.configureGiteaPipeline(context.Background(), giteaProject(), giteaTarget(), ProvisionAppProjectInput{
+		Platform:        port.SCMPlatformGitea,
+		RepoAccessToken: "gitea-token",
+		RegistryCredentials: map[string]string{
+			"HARBOR_USERNAME": "robot", "HARBOR_PASSWORD": "pw",
+		},
+	}, out)
+
+	keys := map[string]string{}
+	for _, v := range plane.vars {
+		keys[v.Key] = v.Value
+	}
+	assert.Equal(t, "gitea_admin", keys["GIT_USERNAME"])
+	assert.Equal(t, "gitea-token", keys["GIT_PASSWORD"],
+		"deploy 단계가 매니페스트 태그를 되쓰려면 저장소 쓰기 자격증명이 필요하다")
+	assert.Equal(t, "robot", keys["HARBOR_USERNAME"])
+	assert.Len(t, out.CredentialManifests, 1)
+	assert.Empty(t, out.MissingVariables)
+}
+
+// 레지스트리 자격증명이 없으면 조용히 넘기지 않고 사람이 채울 목록으로 알린다.
+func TestConfigureGiteaPipeline_ReportsMissingRegistryCredentials(t *testing.T) {
+	plane := &stubCredentialPlane{}
+	uc := (&ProvisionAppProject{}).WithCredentialPlane(plane)
+
+	out := &ProvisionAppProjectOutput{}
+	uc.configureGiteaPipeline(context.Background(), giteaProject(), giteaTarget(), ProvisionAppProjectInput{
+		Platform:        port.SCMPlatformGitea,
+		RepoAccessToken: "gitea-token",
+	}, out)
+
+	assert.Contains(t, out.MissingVariables, "HARBOR_USERNAME")
+	assert.Contains(t, out.MissingVariables, "HARBOR_PASSWORD")
+}
+
+// 평면이 배선되지 않았는데 조용히 성공하면 사용자는 준비된 줄 안다.
+func TestConfigureGiteaPipeline_WarnsWhenPlaneMissing(t *testing.T) {
+	uc := &ProvisionAppProject{}
+
+	out := &ProvisionAppProjectOutput{}
+	uc.configureGiteaPipeline(context.Background(), giteaProject(), giteaTarget(), ProvisionAppProjectInput{
+		Platform: port.SCMPlatformGitea,
+	}, out)
+
+	require.NotEmpty(t, out.Warnings)
+	assert.Empty(t, out.CredentialManifests)
+}

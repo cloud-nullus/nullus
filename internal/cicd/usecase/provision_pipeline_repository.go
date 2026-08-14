@@ -92,6 +92,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 	// 한다. GitLab/GitHub 번들은 CIJobs 가 nil 이라 배선해도 동작이 같다.
 	appOut, err := NewProvisionAppProject(bundle.Provisioner, bundle.Pipeline, bundle.Registry).
 		WithCIJobs(bundle.CIJobs, bundle.Webhooks, bundle.CIBaseURL, scmServerURLFor(bundle)).
+		WithCredentialPlane(bundle.Credentials).
 		Execute(ctx, ProvisionAppProjectInput{
 			AppName:             app,
 			GroupPath:           commonOut.Group.FullPath,
@@ -100,6 +101,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			Port:                input.Port,
 			Replicas:            input.Replicas,
 			RegistryCredentials: input.RegistryCredentials,
+			RepoAccessToken:     bundle.RepoAccessToken,
 			Platform:            bundle.Platform,
 			SharedAccessToken:   bundle.RepoAccessToken,
 			AccessDomain:        bundle.AccessDomain,
@@ -207,6 +209,10 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 		out.Warnings = append(out.Warnings,
 			"Argo CD 저장소 자격증명이 없어 private 저장소 동기화가 실패할 수 있습니다")
 	}
+
+	// 파이프라인 자격증명 Secret 은 Argo 리소스와 같은 경로로 적용한다.
+	// 이것이 없으면 Jenkins agent 파드가 없는 Secret 을 참조해 기동하지 못한다.
+	manifests = append(manifests, appOut.CredentialManifests...)
 
 	manifest, err := argocd.RenderApplication(argocd.ApplicationSpec{
 		AppName:              app,

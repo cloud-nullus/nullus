@@ -21,9 +21,10 @@ const (
 	giteaStatefulSet = "statefulset/gitea"
 	giteaContainer   = "gitea"
 
-	// adminUser 는 차트가 만드는 관리자 계정이다.
-	// 스택 설치의 provisioning_secrets 가 같은 이름으로 자격증명을 만든다.
-	adminUser = "gitea_admin"
+	// AutomationUser 는 차트가 만드는 관리자 계정이다.
+	// 스택 설치의 provisioning_secrets 가 같은 이름으로 자격증명을 만든다
+	// (internal/stack/domain.GiteaAdminUser). 갈라지면 인증이 실패한다.
+	AutomationUser = "gitea_admin"
 
 	defaultTokenEnv = "dev"
 )
@@ -136,7 +137,7 @@ func (t *TokenIssuer) issueViaCLI(ctx context.Context, clusterID, namespace stri
 	script := fmt.Sprintf(
 		"gitea admin user delete-access-token --username %s --token-name %s >/dev/null 2>&1 || true; "+
 			"gitea admin user generate-access-token --username %s --token-name %s --scopes write:organization,write:repository,write:user --raw",
-		adminUser, AutomationTokenName, adminUser, AutomationTokenName)
+		AutomationUser, AutomationTokenName, AutomationUser, AutomationTokenName)
 
 	args := []string{
 		"-n", namespace,

@@ -5,8 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/cloud-nullus/draft/internal/shared/externalsecret"
 
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -242,45 +245,35 @@ func generateSecretValue() (string, error) {
 //
 // creationPolicy: Owner 로 ESO 가 대상 Secret 의 소유자가 된다. 차트는 이
 // Secret 을 만들지 않고 existingSecret 으로 참조만 하므로 소유권이 충돌하지 않는다.
+// externalSecretManifest 는 관리 대상 Secret 하나의 ExternalSecret 을 만든다.
+//
+// 매니페스트 모양 자체는 shared 가 소유한다 — CI/CD 모듈도 같은 평면에
+// 자격증명 Secret 을 만들기 때문이다. 두 곳에 각각 두면 반드시 갈라지고,
+// 갈라진 쪽은 ESO 가 조용히 무시해 파드가 FailedMount 로 멈춘다.
+//
+// 렌더 실패는 프로그래밍 오류다(이름·항목이 비는 경우). 호출부가 다룰 수 있는
+// 상황이 아니므로 빈 문자열을 돌려 apply 가 건너뛰게 한다.
 func externalSecretManifest(namespace, pathPrefix string, item ManagedSecret) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, `apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  refreshInterval: 5m
-  secretStoreRef:
-    name: %s
-    kind: SecretStore
-  target:
-    name: %s
-    creationPolicy: Owner
-`, item.TargetSecret, namespace, ESOSecretStoreName, item.TargetSecret)
-
-	if len(item.TemplateData) > 0 {
-		b.WriteString("    template:\n      engineVersion: v2\n      data:\n")
-		// 결정적 순서를 위해 키를 정렬한다.
-		keys := make([]string, 0, len(item.TemplateData))
-		for k := range item.TemplateData {
-			keys = append(keys, k)
-		}
-		sortStrings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(&b, "        %s: |\n%s\n", k, indentYAML(item.TemplateData[k], 10))
-		}
-	}
-
-	b.WriteString("  data:\n")
+	entries := make([]externalsecret.Entry, 0, len(item.Entries))
 	for _, entry := range item.Entries {
-		fmt.Fprintf(&b, `    - secretKey: %s
-      remoteRef:
-        key: %s
-        property: token
-`, entry.TargetKey, pathPrefix+entry.PathSuffix)
+		entries = append(entries, externalsecret.Entry{
+			SecretKey:  entry.TargetKey,
+			RemotePath: pathPrefix + entry.PathSuffix,
+		})
 	}
-	return b.String()
+
+	manifest, err := externalsecret.Render(externalsecret.Spec{
+		Name:            item.TargetSecret,
+		Namespace:       namespace,
+		SecretStoreName: ESOSecretStoreName,
+		Entries:         entries,
+		TemplateData:    item.TemplateData,
+	})
+	if err != nil {
+		slog.Error("ExternalSecret 렌더 실패", "secret", item.TargetSecret, "error", err)
+		return ""
+	}
+	return manifest
 }
 
 func sortStrings(s []string) {
