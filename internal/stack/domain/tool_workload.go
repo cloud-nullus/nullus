@@ -68,7 +68,6 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 				ToolSelection{Name: authProvider, Version: "latest"}, "openbao"),
 			enabled: strings.EqualFold(authProvider, "openbao"),
 		},
-		{workload("source_repository", cfg.Artifacts.SourceRepository, "gitlab"), cfg.Artifacts.SourceRepository.Enabled},
 		{workload("cd_tool", cfg.Pipeline.CDTool, "argo-cd-argocd"), cfg.Pipeline.CDTool.Enabled},
 		{workload("collection", cfg.Monitoring.Collection,
 			"prometheus", "kube-prometheus-stack", "alertmanager-kube-prometheus-stack"), cfg.Monitoring.Collection.Enabled},
@@ -79,6 +78,26 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 		// 아니라 릴리스명을 써야 실제 파드와 맞는다.
 		{workload("trace_exporter", cfg.Logging.TraceExporter, OTelCollectorReleaseName), cfg.Logging.TraceExporter.Enabled},
 		{workload("storage_backend", cfg.Artifacts.StorageBackend, MinIOServiceName, "minio"), cfg.Artifacts.StorageBackend.Enabled},
+	}
+
+	// 소스 저장소도 고른 제품에 따라 파드 접두사가 달라지고(GitLab / Gitea),
+	// 클러스터 밖(GitHub)이라 아예 설치되지 않는 선택도 있어 정적으로 적을 수 없다.
+	// 과거 "gitlab" 하드코딩 시절에는 Gitea 를 고르면 설치는 정상인데 화면만
+	// gitlab-* 를 찾다가 "0 파드 warning" 으로 남았다.
+	if sourcePrefixes := sourceRepositoryNamePrefixes(cfg.Artifacts.SourceRepository); sourcePrefixes != nil {
+		candidates = append(candidates, candidate{
+			workload("source_repository", cfg.Artifacts.SourceRepository, sourcePrefixes...), true,
+		})
+	}
+
+	// CI 플랫폼 슬롯. 과거에는 후보 목록에 아예 없어서, gitlab-runner 든 Jenkins 든
+	// 파드가 멀쩡히 떠 있어도 어느 화면에도 나오지 않았다.
+	// GitLab CI 를 골랐고 소스 저장소도 GitLab 이면 접두사가 겹치지 않는지 본다 —
+	// 러너는 gitlab-runner-* 로 별도 릴리스라 겹치지 않는다.
+	if ciPrefixes := ciPlatformNamePrefixes(cfg.Pipeline.CIPlatform, cfg.Artifacts.SourceRepository); ciPrefixes != nil {
+		candidates = append(candidates, candidate{
+			workload("ci_platform", cfg.Pipeline.CIPlatform, ciPrefixes...), true,
+		})
 	}
 
 	// 로그 저장소도 고른 제품에 따라 파드 이름이 달라진다. 접두사를 정적으로
@@ -143,6 +162,64 @@ func logStoreNamePrefixes(sel ToolSelection) []string {
 	default:
 		// 이름이 비면 검색 저장소의 기본값은 OpenSearch 다.
 		return []string{"opensearch"}
+	}
+}
+
+// sourceRepositoryNamePrefixes 는 소스 저장소 선택이 띄우는 워크로드 이름 접두사를
+// 돌려준다. 별도 워크로드가 생기지 않는 선택은 nil 을 돌려 대상에서 뺀다:
+//
+//   - 외부 서비스(version=external): GitHub 처럼 클러스터 밖에 있다. 항목을
+//     만들면 영구히 "0 파드 warning" 으로 남는다.
+//
+// 릴리스명이 곧 파드 이름 접두사이므로 설치 경로가 고르는 릴리스와 같은 기준을
+// 쓴다 (helm 어댑터의 defaultChartSpecForStep).
+func sourceRepositoryNamePrefixes(sel ToolSelection) []string {
+	if !sel.Enabled || strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return nil
+	}
+
+	switch name := strings.ToLower(strings.TrimSpace(sel.Name)); {
+	case strings.HasPrefix(name, "gitea"):
+		return []string{GiteaReleaseName}
+	case strings.HasPrefix(name, "github"):
+		// 이름만으로도 외부임이 분명하다. version 이 비어 있어도 빼야 한다.
+		return nil
+	case name == "":
+		// 이름이 비면 기본값은 GitLab 이다 (canonicalToolNameByKey 와 같은 기준).
+		return []string{"gitlab"}
+	default:
+		return []string{"gitlab"}
+	}
+}
+
+// ciPlatformNamePrefixes 는 CI 플랫폼 선택이 띄우는 워크로드 이름 접두사를
+// 돌려준다. 별도 워크로드가 생기지 않는 선택은 nil 을 돌려 대상에서 뺀다:
+//
+//   - 외부 서비스(GitHub Actions 등): 클러스터에 파드가 없다.
+//   - GitLab CI 인데 소스 저장소가 GitLab 이 아닌 경우: 러너를 세울 GitLab 이
+//     없으므로 설치 경로도 러너를 띄우지 않는다.
+func ciPlatformNamePrefixes(sel ToolSelection, source ToolSelection) []string {
+	if !sel.Enabled || strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return nil
+	}
+
+	switch name := strings.ToLower(strings.TrimSpace(sel.Name)); {
+	case strings.HasPrefix(name, "jenkins"):
+		return []string{JenkinsReleaseName}
+	case strings.HasPrefix(name, "github"):
+		// GitHub Actions 는 클러스터 밖에서 돈다.
+		return nil
+	default:
+		// 나머지는 GitLab CI 로 본다(빈 이름의 기본값 포함). 러너는 GitLab 이
+		// 있어야 등록 토큰을 받으므로, 소스 저장소가 GitLab 이 아니면 서지 않는다.
+		if sourceRepositoryNamePrefixes(source) == nil {
+			return nil
+		}
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(source.Name)), "gitlab") &&
+			strings.TrimSpace(source.Name) != "" {
+			return nil
+		}
+		return []string{"gitlab-runner"}
 	}
 }
 

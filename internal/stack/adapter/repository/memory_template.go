@@ -117,6 +117,26 @@ func goldenPathTemplates() []*domain.Template {
 			MinResources:         "10 vCPU / 20Gi RAM / 130Gi Storage",
 		},
 		{
+			// Gitea 는 소스 저장소만 담당한다 — GitLab 처럼 CI 도 레지스트리도
+			// 겸하지 않으므로 Jenkins 와 Harbor 를 따로 세운다. 그래서 도구 수는
+			// 많지만 개별 도구가 가벼워 GitLab 올인원과 자원 요구가 비슷하다.
+			ID:          "gitea-jenkins-argocd-v1",
+			Name:        "Gitea + Jenkins + Argo CD",
+			Description: "가벼운 Git 서버(Gitea)와 익숙한 CI(Jenkins)를 Argo CD GitOps에 연결합니다. 이미 Jenkins를 운영 중이거나 GitLab이 부담스러운 조직에 맞습니다.",
+			Tools: []domain.ToolConfig{
+				{Category: "source_repository", Name: "Gitea", HelmVersion: domain.GiteaChartVersion, AppVersion: domain.GiteaAppVersion},
+				{Category: "ci_platform", Name: "Jenkins", HelmVersion: domain.JenkinsChartVersion, AppVersion: domain.JenkinsAppVersion},
+				{Category: "container_registry", Name: "Harbor", HelmVersion: domain.HarborChartVersion, AppVersion: domain.HarborAppVersion},
+				{Category: "storage_backend", Name: "MinIO", HelmVersion: domain.MinIOChartVersion, AppVersion: domain.MinIOAppVersion},
+				{Category: "cd_tool", Name: "Argo CD", HelmVersion: domain.ArgoCDChartVersion, AppVersion: domain.ArgoCDAppVersion},
+				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: domain.PrometheusChartVersion, AppVersion: domain.PrometheusAppVersion},
+				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: domain.GrafanaChartVersion, AppVersion: domain.GrafanaAppVersion},
+			},
+			EstimatedInstallTime: 100 * time.Minute,
+			RecommendedUseCase:   "기존 Jenkins 운영 조직, 경량 Git 서버 선호",
+			MinResources:         "10 vCPU / 20Gi RAM / 120Gi Storage",
+		},
+		{
 			ID:          "gitlab-harbor-v1",
 			Name:        "GitLab + Harbor",
 			Description: "소스코드와 CI는 GitLab, 컨테이너 이미지는 Harbor에 둡니다. 이미지 보관을 GitLab에서 떼어내 레지스트리를 독립적으로 운영하려는 구성입니다.",

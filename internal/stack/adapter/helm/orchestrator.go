@@ -103,6 +103,11 @@ type Orchestrator struct {
 	secretOrgID string
 	// ssoFactory 는 스택별 SSO provisioner 생성기다 (auth 모듈 구현체 주입).
 	ssoFactory port.SSOProvisionerFactory
+	// imageProjectName 은 레지스트리에 만들 프로젝트 이름이다.
+	//
+	// CI/CD 모듈의 그룹 경로와 같아야 이미지 주소가 맞는다. 모듈 간 직접
+	// import 가 금지되므로 조립 지점에서 주입받는다.
+	imageProjectName string
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -110,6 +115,17 @@ type OrchestratorOption func(*Orchestrator)
 func WithResourceDefaultRepository(repo port.ResourceDefaultRepository) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.resourceDefaultRepo = repo
+	}
+}
+
+// WithImageProjectName 은 레지스트리 프로젝트 이름을 주입한다.
+//
+// CI/CD 모듈의 그룹 경로(NULLUS_SCM_GROUP)와 같은 값이어야 한다 — 다르면
+// 프로젝트는 만들어지는데 CI 가 push 하는 주소는 다른 프로젝트를 가리켜
+// "project not found" 로 막힌다.
+func WithImageProjectName(name string) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.imageProjectName = strings.TrimSpace(name)
 	}
 }
 
@@ -171,8 +187,19 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 			if step == stepInstallingRunner && isReleaseNotFoundError(err) {
 				// 릴리스 부재를 건너뛰면 러너 없는 스택이 health_check 를 통과한다.
 				// 설치 스텝이 성공했다면 릴리스는 반드시 존재해야 한다.
-				return fmt.Errorf("gitlab-runner 릴리스가 없습니다 (%s/%s): CI 실행기 없이 스택이 완료될 수 없습니다: %w",
-					namespace, releaseName, err)
+				//
+				// 단 이 요구는 GitLab CI 스택에만 해당한다. Jenkins 는 실행기를
+				// kubernetes 플러그인으로 직접 띄우므로 gitlab-runner 릴리스가
+				// 없는 것이 정상이다 — 여기서 걸러 내지 않으면 Jenkins 스택은
+				// 설치가 다 끝나도 completed 에 도달하지 못한다.
+				o.mu.Lock()
+				cfg := o.stackConfig
+				o.mu.Unlock()
+				if cfg == nil || runnerReleaseRequired(*cfg) {
+					return fmt.Errorf("gitlab-runner 릴리스가 없습니다 (%s/%s): CI 실행기 없이 스택이 완료될 수 없습니다: %w",
+						namespace, releaseName, err)
+				}
+				continue
 			}
 			return fmt.Errorf("status check failed for %s: %w", releaseName, err)
 		}
@@ -325,41 +352,6 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		// PostgreSQL/MinIO 차트가 provisioning_secrets 가 만든 Secret 을
 		// existingSecret 으로 참조하기 때문이다. usecase 의 installDAG 와
 		// 순서가 일치해야 한다 — ensureOrder 가 이 순서를 강제한다.
-		stepOrder: map[string]int{
-			stepInstallingCertManager:              0,
-			"installing_metrics_server":            1,
-			"installing_openbao":                   2,
-			"installing_external_secrets":          3,
-			"provisioning_secrets":                 4,
-			"installing_postgresql":                5,
-			"installing_minio":                     6,
-			"installing_object_storage_secret":     7,
-			"installing_object_storage_buckets":    8,
-			"installing_database_connection_check": 9,
-			// SSO 프로비저닝은 OIDC 클라이언트를 만들어 두는 단계라
-			// 이를 소비하는 GitLab/Argo CD/Grafana 보다 앞서야 한다.
-			"provisioning_sso":  10,
-			"installing_gitlab": 11,
-			// 독립 레지스트리는 GitLab 다음, Argo CD 앞이다. Argo CD 가 배포할
-			// 이미지를 여기서 받으므로 먼저 서 있어야 하고, Nexus 는 설치만으로는
-			// Docker 커넥터가 없어 provisioning_nexus 가 뒤따라야 쓸 수 있다.
-			"installing_harbor":        12,
-			"installing_nexus":         13,
-			"provisioning_nexus":       14,
-			"installing_argocd":        15,
-			stepInstallingRunner:       16,
-			"installing_prometheus":    17,
-			"installing_grafana":       18,
-			"installing_logging":       19,
-			"installing_log_search":    20,
-			"installing_opentelemetry": 21,
-			// 수집기는 자기가 내보낼 백엔드(Tempo/Prometheus/Loki)가 선 뒤에 온다.
-			stepInstallingOTelCollector: 22,
-			// 에이전트는 자기가 넘길 게이트웨이가 선 뒤에 온다.
-			stepInstallingOTelAgent: 23,
-			"installing_gateway":    24,
-			"integration_check":     25,
-		},
 		orderedStep: []string{
 			stepInstallingCertManager,
 			"installing_metrics_server",
@@ -373,11 +365,14 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_database_connection_check",
 			"provisioning_sso",
 			"installing_gitlab",
+			"installing_gitea",
 			"installing_harbor",
+			"provisioning_harbor",
 			"installing_nexus",
 			"provisioning_nexus",
 			"installing_argocd",
 			stepInstallingRunner,
+			"installing_jenkins",
 			"installing_prometheus",
 			"installing_grafana",
 			"installing_logging",
@@ -400,11 +395,14 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// provisioning_sso 는 선택형이라 매핑을 유지한다.
 			"provisioning_sso":          "config.authentication.provider",
 			"installing_gitlab":         "config.artifacts.source_repository",
+			"installing_gitea":          "config.artifacts.source_repository",
 			"installing_harbor":         "config.artifacts.container_registry",
+			"provisioning_harbor":       "config.artifacts.container_registry",
 			"installing_nexus":          "config.artifacts.container_registry",
 			"provisioning_nexus":        "config.artifacts.container_registry",
 			"installing_argocd":         "config.pipeline.cd_tool",
 			stepInstallingRunner:        "config.pipeline.ci_platform",
+			"installing_jenkins":        "config.pipeline.ci_platform",
 			"installing_prometheus":     "config.monitoring.collection",
 			"installing_grafana":        "config.monitoring.visualization",
 			"installing_logging":        "config.logging.collection",
@@ -438,9 +436,16 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
+			"installing_gitea": func(cfg domain.StackConfig) bool {
+				return isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+			},
 			// Harbor / Nexus 는 독립 레지스트리를 고른 경우에만 선다.
 			// GitLab Registry 를 고르면 GitLab 이 겸하므로 둘 다 꺼진다.
 			"installing_harbor": func(cfg domain.StackConfig) bool {
+				return isHarborRegistrySelection(cfg.Artifacts.ContainerRegistry)
+			},
+			// 설치만 한 Harbor 에는 프로젝트가 없어 CI 가 이미지를 올릴 곳이 없다.
+			"provisioning_harbor": func(cfg domain.StackConfig) bool {
 				return isHarborRegistrySelection(cfg.Artifacts.ContainerRegistry)
 			},
 			"installing_nexus": func(cfg domain.StackConfig) bool {
@@ -475,7 +480,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Pipeline.CDTool.Enabled
 			},
 			stepInstallingRunner: func(cfg domain.StackConfig) bool {
-				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository) || isGitLabCISelection(cfg.Pipeline.CIPlatform)
+				return runnerReleaseRequired(cfg)
+			},
+			"installing_jenkins": func(cfg domain.StackConfig) bool {
+				return isJenkinsCISelection(cfg.Pipeline.CIPlatform)
 			},
 			"installing_prometheus": func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Collection.Enabled
@@ -515,6 +523,13 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		},
 		progress: make(map[string]int),
 	}
+	// stepOrder 는 orderedStep 에서 파생한다. 두 목록을 손으로 맞추면 반드시
+	// 어긋나고, 어긋나면 ensureOrder 가 엉뚱한 단계를 기다리다 설치가 멈춘다.
+	o.stepOrder = make(map[string]int, len(o.orderedStep))
+	for i, step := range o.orderedStep {
+		o.stepOrder[step] = i
+	}
+
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -533,6 +548,21 @@ func isGitLabSourceRepositorySelection(sel domain.ToolSelection) bool {
 		return true
 	}
 	return name == "gitlab" || name == "gitlab-ce"
+}
+
+// isGiteaSourceRepositorySelection 은 소스 저장소로 Gitea 를 골랐는지 본다.
+//
+// 이름이 비어 있으면 false 다 — 빈 이름의 기본값은 GitLab 이므로
+// (isGitLabSourceRepositorySelection 이 true 를 돌려준다) 여기서도 true 를
+// 돌리면 두 스텝이 동시에 서서 같은 슬롯에 제품 둘이 올라간다.
+func isGiteaSourceRepositorySelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return false
+	}
+	return normalizeToolName(sel.Name) == "gitea"
 }
 
 // isHarborRegistrySelection 은 컨테이너 레지스트리로 Harbor 를 골랐는지 본다.
@@ -591,6 +621,36 @@ func isGitLabCISelection(sel domain.ToolSelection) bool {
 		return true
 	}
 	return name == "gitlab-ci" || name == "gitlab-runner"
+}
+
+// isJenkinsCISelection 은 CI 플랫폼으로 Jenkins 를 골랐는지 본다.
+//
+// 이름이 비면 false 다 — 빈 이름의 기본값은 GitLab CI 이므로
+// (isGitLabCISelection 이 true 를 돌려준다) 여기서도 true 를 돌리면 실행기가
+// 둘 다 선다.
+func isJenkinsCISelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if isExternalSelection(sel) {
+		return false
+	}
+	return normalizeToolName(sel.Name) == "jenkins"
+}
+
+// runnerReleaseRequired 는 이 스택이 gitlab-runner 릴리스를 반드시 가져야 하는지
+// 본다. health check 의 하드 게이트가 이 값을 본다.
+//
+// GitLab CI 스택은 실행기 없이 완료되면 안 된다 — 파이프라인이 돌 곳이 없다.
+// 반면 Jenkins 스택은 실행기를 Jenkins 가 kubernetes 플러그인으로 직접 띄우므로
+// gitlab-runner 릴리스가 존재하지 않는 것이 정상이다. 이 구분이 없으면 Jenkins
+// 스택은 설치가 다 끝나도 영원히 completed 에 도달하지 못한다.
+func runnerReleaseRequired(cfg domain.StackConfig) bool {
+	if isJenkinsCISelection(cfg.Pipeline.CIPlatform) {
+		return false
+	}
+	return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository) ||
+		isGitLabCISelection(cfg.Pipeline.CIPlatform)
 }
 
 func normalizeToolName(name string) string {
@@ -725,6 +785,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
 		if err := o.runSecretProvisioning(ctx, o.namespace); err != nil {
 			return fmt.Errorf("시크릿 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
+	if step == "provisioning_harbor" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureHarborProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("harbor 프로비저닝 실패: %w", err)
 		}
 		o.markCompleted(stackID, order)
 		return nil
@@ -998,7 +1070,12 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 // 켜진 것으로 본다 — 시크릿 평면처럼 항상 필요한 단계가 그렇다.
 func isOptInStep(step string) bool {
 	switch step {
-	case "provisioning_sso", "installing_harbor", "installing_nexus", "provisioning_nexus":
+	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "installing_nexus", "provisioning_nexus":
+		return true
+	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
+	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
+	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
+	case "installing_gitea", "installing_jenkins":
 		return true
 	}
 	return false

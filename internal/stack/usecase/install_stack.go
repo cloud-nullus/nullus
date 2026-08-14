@@ -55,17 +55,27 @@ var installDAG = []installStep{
 
 	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
 
+	// Gitea 는 GitLab 과 같은 슬롯(소스 저장소)의 다른 선택지다. 둘은 술어가
+	// 배타적이라 동시에 서지 않는다.
+	{name: "installing_gitea", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
+
 	// 독립 레지스트리(Harbor / Nexus)는 Argo CD 앞에 선다. Argo CD 가 배포할
 	// 이미지를 여기서 받으므로 먼저 서 있어야 한다.
 	//
 	// 설치만 한 Nexus 는 Docker 커넥터도 저장소도 없어 CI 가 이미지를 올릴 곳이
 	// 없다. provisioning_nexus 가 커넥터·저장소·관리자 비밀번호를 맞춘다.
 	{name: "installing_harbor", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+	// 설치만 한 Harbor 에는 프로젝트가 없어 CI 가 이미지를 올릴 곳이 없다.
+	{name: "provisioning_harbor", phase: "B", duration: time.Second, deps: []string{"installing_harbor"}},
 	{name: "installing_nexus", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
 	{name: "provisioning_nexus", phase: "B", duration: time.Second, deps: []string{"installing_nexus"}},
 
 	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_sso", "installing_gitlab"}},
+
+	// Jenkins 는 CI 슬롯의 다른 선택지다. GitLab 러너와 달리 소스 저장소에
+	// 의존하지 않는다 — job 등록은 설치가 아니라 파이프라인 생성 시점이다.
+	{name: "installing_jenkins", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 
 	{name: "installing_prometheus", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
 	{name: "installing_grafana", phase: "C", duration: time.Second, deps: []string{"installing_prometheus"}},

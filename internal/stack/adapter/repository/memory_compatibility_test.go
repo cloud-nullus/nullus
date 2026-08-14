@@ -62,8 +62,11 @@ func TestMemoryCompatibilityRepository_Validate_Match(t *testing.T) {
 func TestMemoryCompatibilityRepository_Validate_NoMatch(t *testing.T) {
 	repo := NewMemoryCompatibilityRepository()
 
+	// Jenkins 는 이제 검증된 조합(gitea-jenkins-argocd-v1)에 들어 있으므로
+	// "지원하지 않는 도구" 예시로 쓸 수 없다. 실제로 어느 매트릭스에도 없는
+	// 조합을 쓴다.
 	_, err := repo.Validate(context.Background(), map[string]string{
-		"ci_platform": "Jenkins",
+		"ci_platform": "Spinnaker",
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no compatible matrix found")

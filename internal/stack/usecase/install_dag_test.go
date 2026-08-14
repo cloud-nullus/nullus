@@ -25,13 +25,18 @@ var canonicalInstallOrder = []string{
 	"installing_database_connection_check",
 	"provisioning_sso",
 	"installing_gitlab",
+	// Gitea 는 소스 저장소 슬롯의 다른 선택지다. 술어가 배타적이라 둘 중 하나만 선다.
+	"installing_gitea",
 	// 독립 레지스트리는 Argo CD 가 배포할 이미지를 받는 곳이라 앞에 선다.
 	// Nexus 는 설치만으로는 Docker 커넥터가 없어 프로비저닝이 뒤따른다.
 	"installing_harbor",
+	"provisioning_harbor",
 	"installing_nexus",
 	"provisioning_nexus",
 	"installing_argocd",
 	"installing_runner",
+	// Jenkins 는 CI 슬롯의 다른 선택지다. 술어가 배타적이라 둘 중 하나만 선다.
+	"installing_jenkins",
 	"installing_prometheus",
 	"installing_grafana",
 	"installing_logging",

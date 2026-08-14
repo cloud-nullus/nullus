@@ -1,8 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import { buildStageStates, type StageState } from "../utils/stage-states";
 import { useTranslation } from "react-i18next";
-import { Activity, Box, Boxes, ChartColumn, CircleCheck, CircleDashed, CircleX, ExternalLink, Eye, EyeOff, FileCode2, GitBranch, Globe, History, Info, LoaderCircle, Package, Plus, RefreshCw, Rocket, Server, Terminal, Trash2, Workflow, X } from 'lucide-react';
-import { iconProps } from '../../../components/ui/icon'
+import {
+  Activity,
+  Box,
+  Boxes,
+  ChartColumn,
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileCode2,
+  GitBranch,
+  Globe,
+  History,
+  Info,
+  LoaderCircle,
+  Package,
+  Plus,
+  RefreshCw,
+  Rocket,
+  Server,
+  Terminal,
+  Trash2,
+  Workflow,
+  X,
+} from "lucide-react";
+import { iconProps } from "../../../components/ui/icon";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   AppLogPanel,
@@ -45,9 +73,9 @@ import {
   getPipelineStatusStyle,
 } from "../utils/pipeline-status";
 import { cn } from "../../../lib/utils";
-import { PageHeader } from '../../../components/layout/page-header'
-import { SearchInput } from "../../../components/ui/search-input"
-import { Badge } from "../../../components/ui/badge"
+import { PageHeader } from "../../../components/layout/page-header";
+import { SearchInput } from "../../../components/ui/search-input";
+import { Badge } from "../../../components/ui/badge";
 
 // ── Execute Modal ─────────────────────────────────────────────────────────────
 
@@ -187,9 +215,9 @@ const EXECUTE_SETUP_TABS: {
   label: string;
   icon: React.ReactNode;
 }[] = [
-  { id: "cluster", label: "Cluster", icon: <Server {...iconProps('xs')} /> },
-  { id: "build", label: "Build", icon: <FileCode2 {...iconProps('xs')} /> },
-  { id: "deploy", label: "Deploy", icon: <Boxes {...iconProps('xs')} /> },
+  { id: "cluster", label: "Cluster", icon: <Server {...iconProps("xs")} /> },
+  { id: "build", label: "Build", icon: <FileCode2 {...iconProps("xs")} /> },
+  { id: "deploy", label: "Deploy", icon: <Boxes {...iconProps("xs")} /> },
 ];
 
 function ExecuteModal({
@@ -267,7 +295,7 @@ function ExecuteModal({
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-              <Rocket {...iconProps('sm')} />
+              <Rocket {...iconProps("sm")} />
             </div>
             <div>
               <div className="text-[15px] font-bold text-[var(--color-text-primary)]">
@@ -281,11 +309,8 @@ function ExecuteModal({
               </div>
             </div>
           </div>
-          <IconButton
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <X {...iconProps('sm')} />
+          <IconButton onClick={onClose} aria-label="Close">
+            <X {...iconProps("sm")} />
           </IconButton>
         </div>
 
@@ -311,10 +336,7 @@ function ExecuteModal({
                 className="w-full"
               >
                 {clusterOptions.map((c) => (
-                  <option
-                    key={c.id}
-                    value={c.id}
-                  >
+                  <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
@@ -459,7 +481,7 @@ function ExecuteModal({
             loading={isExecuting}
             disabled={isExecuting}
           >
-            <Rocket {...iconProps('xs')} />
+            <Rocket {...iconProps("xs")} />
             Execute
           </Button>
         </div>
@@ -477,9 +499,13 @@ const INNER_TABS: Array<{
   label: string;
   icon: React.ReactNode;
 }> = [
-  { key: "info", label: "Info", icon: <Info {...iconProps('xs')} /> },
-  { key: "monitoring", label: "Monitoring", icon: <ChartColumn {...iconProps('xs')} /> },
-  { key: "history", label: "History", icon: <History {...iconProps('xs')} /> },
+  { key: "info", label: "Info", icon: <Info {...iconProps("xs")} /> },
+  {
+    key: "monitoring",
+    label: "Monitoring",
+    icon: <ChartColumn {...iconProps("xs")} />,
+  },
+  { key: "history", label: "History", icon: <History {...iconProps("xs")} /> },
 ];
 
 function DetailCard({
@@ -524,8 +550,6 @@ type PipelineResourceNode = {
   serviceUrls?: string[];
 };
 
-type StageState = "queued" | "in_progress" | "completed" | "failed";
-
 function pickResourcesByKind(
   resources: PipelineResourceNode[],
   kinds: string[],
@@ -536,31 +560,6 @@ function pickResourcesByKind(
   );
 }
 
-function buildStageStates(
-  stageCount: number,
-  deploymentStatus?: string,
-): StageState[] {
-  if (stageCount <= 0) return [];
-  const normalized = (deploymentStatus ?? "").toLowerCase();
-  if (!normalized) return Array.from({ length: stageCount }, () => "queued");
-
-  if (normalized === "success") {
-    return Array.from({ length: stageCount }, () => "completed");
-  }
-  if (normalized === "running") {
-    return Array.from({ length: stageCount }, (_, i) =>
-      i < stageCount - 1 ? "completed" : "in_progress",
-    );
-  }
-  if (normalized === "failed") {
-    return Array.from({ length: stageCount }, (_, i) => {
-      if (i < stageCount - 1) return "completed";
-      return "failed";
-    });
-  }
-  return Array.from({ length: stageCount }, () => "queued");
-}
-
 function stageMeta(state: StageState): {
   icon: React.ReactNode;
   label: string;
@@ -568,27 +567,34 @@ function stageMeta(state: StageState): {
 } {
   if (state === "completed") {
     return {
-      icon: <CircleCheck {...iconProps('sm')} />,
+      icon: <CircleCheck {...iconProps("sm")} />,
       label: "Completed",
       cls: "border-[color-mix(in_srgb,_var(--color-success)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-success)_8%,_transparent)] text-[var(--color-success)]",
     };
   }
   if (state === "failed") {
     return {
-      icon: <CircleX {...iconProps('sm')} />,
+      icon: <CircleX {...iconProps("sm")} />,
       label: "Failed",
       cls: "border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]",
     };
   }
+  if (state === "unknown") {
+    return {
+      icon: <CircleDashed {...iconProps("sm")} />,
+      label: "실행 정보 없음",
+      cls: "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-secondary)]",
+    };
+  }
   if (state === "in_progress") {
     return {
-      icon: <LoaderCircle {...iconProps('sm')} className="animate-spin" />,
+      icon: <LoaderCircle {...iconProps("sm")} className="animate-spin" />,
       label: "In progress",
       cls: "border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_8%,_transparent)] text-[var(--color-warning)]",
     };
   }
   return {
-    icon: <CircleDashed {...iconProps('sm')} />,
+    icon: <CircleDashed {...iconProps("sm")} />,
     label: "Queued",
     cls: "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-muted)]",
   };
@@ -784,7 +790,7 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,_var(--color-primary)_40%,_transparent)] bg-[color-mix(in_srgb,_var(--color-primary)_10%,_transparent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[color-mix(in_srgb,_var(--color-primary)_20%,_transparent)]"
             >
-              <ExternalLink {...iconProps('xs')} />
+              <ExternalLink {...iconProps("xs")} />
               {url}
             </a>
           ))}
@@ -1018,7 +1024,11 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                     onClick={() => toggleReveal(key)}
                     className="inline-flex items-center justify-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
                   >
-                    {isRevealed ? <EyeOff {...iconProps('xs')} /> : <Eye {...iconProps('xs')} />}
+                    {isRevealed ? (
+                      <EyeOff {...iconProps("xs")} />
+                    ) : (
+                      <Eye {...iconProps("xs")} />
+                    )}
                     {isRevealed ? "Hide" : "Show"}
                   </button>
                 </div>
@@ -1049,7 +1059,11 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
                       onClick={() => toggleReveal(key)}
                       className="inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2 py-[2px] text-[11px] text-[var(--color-text-secondary)]"
                     >
-                      {isRevealed ? <EyeOff {...iconProps('xs')} /> : <Eye {...iconProps('xs')} />}
+                      {isRevealed ? (
+                        <EyeOff {...iconProps("xs")} />
+                      ) : (
+                        <Eye {...iconProps("xs")} />
+                      )}
                       {isRevealed ? "Hide" : "Show"}
                     </button>
                   </div>
@@ -1071,21 +1085,38 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
 function resourceStatusColor(status: string) {
   const s = status.toLowerCase();
   if (s === "running" || s === "active" || s === "healthy")
-    return { dot: "var(--color-success)", bg: "color-mix(in srgb, var(--color-success) 10%, transparent)", text: "var(--color-success)" };
+    return {
+      dot: "var(--color-success)",
+      bg: "color-mix(in srgb, var(--color-success) 10%, transparent)",
+      text: "var(--color-success)",
+    };
   if (s === "pending" || s === "progressing" || s === "updating")
-    return { dot: "var(--color-warning)", bg: "color-mix(in srgb, var(--color-warning) 10%, transparent)", text: "var(--color-warning)" };
+    return {
+      dot: "var(--color-warning)",
+      bg: "color-mix(in srgb, var(--color-warning) 10%, transparent)",
+      text: "var(--color-warning)",
+    };
   if (s === "failed" || s === "error" || s === "degraded")
-    return { dot: "var(--color-error)", bg: "color-mix(in srgb, var(--color-error) 10%, transparent)", text: "var(--color-error)" };
-  return { dot: "var(--color-text-secondary)", bg: "color-mix(in srgb, var(--color-text-secondary) 8%, transparent)", text: "var(--color-text-secondary)" };
+    return {
+      dot: "var(--color-error)",
+      bg: "color-mix(in srgb, var(--color-error) 10%, transparent)",
+      text: "var(--color-error)",
+    };
+  return {
+    dot: "var(--color-text-secondary)",
+    bg: "color-mix(in srgb, var(--color-text-secondary) 8%, transparent)",
+    text: "var(--color-text-secondary)",
+  };
 }
 
 function kindIcon(kind: string) {
   const k = kind.toLowerCase();
-  if (k === "deployment" || k === "statefulset") return <Box {...iconProps('xs')} />;
-  if (k === "service") return <Activity {...iconProps('xs')} />;
-  if (k === "ingress") return <Globe {...iconProps('xs')} />;
-  if (k === "pod") return <Server {...iconProps('xs')} />;
-  return <Package {...iconProps('xs')} />;
+  if (k === "deployment" || k === "statefulset")
+    return <Box {...iconProps("xs")} />;
+  if (k === "service") return <Activity {...iconProps("xs")} />;
+  if (k === "ingress") return <Globe {...iconProps("xs")} />;
+  if (k === "pod") return <Server {...iconProps("xs")} />;
+  return <Package {...iconProps("xs")} />;
 }
 
 function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
@@ -1165,7 +1196,10 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-10">
-        <LoaderCircle {...iconProps('md')} className="animate-spin text-[var(--color-primary)]" />
+        <LoaderCircle
+          {...iconProps("md")}
+          className="animate-spin text-[var(--color-primary)]"
+        />
       </div>
     );
   }
@@ -1202,7 +1236,10 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
               total > 0
                 ? `${Math.round((failedCount / total) * 100)}% failure rate`
                 : "-",
-            color: failedCount > 0 ? "var(--color-error)" : "var(--color-text-secondary)",
+            color:
+              failedCount > 0
+                ? "var(--color-error)"
+                : "var(--color-text-secondary)",
           },
         ].map((item) => (
           <div
@@ -1230,9 +1267,17 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
           이 앱인지 알 수 없다. */}
       <div className="grid grid-cols-1 gap-3.5 xl:h-[544px] xl:grid-cols-2">
         <div className="grid min-h-0 grid-cols-1 gap-3.5 xl:grid-rows-2">
-          <AppUsageCharts stackId={pipeline.stackId} apps={pipelineApps} linkedHint />
+          <AppUsageCharts
+            stackId={pipeline.stackId}
+            apps={pipelineApps}
+            linkedHint
+          />
         </div>
-        <AppLogPanel stackId={pipeline.stackId} apps={pipelineApps} linkedHint />
+        <AppLogPanel
+          stackId={pipeline.stackId}
+          apps={pipelineApps}
+          linkedHint
+        />
       </div>
 
       {/* live k8s resources */}
@@ -1256,7 +1301,7 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
               aria-label="Refresh resources"
               className="rounded p-1 text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
             >
-              <RefreshCw {...iconProps('xs')} />
+              <RefreshCw {...iconProps("xs")} />
             </button>
           </div>
         </div>
@@ -1356,7 +1401,9 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
                   color: "var(--color-text-primary)",
                   fontSize: 12,
                 }}
-                cursor={{ fill: "color-mix(in srgb, var(--color-primary) 6%, transparent)" }}
+                cursor={{
+                  fill: "color-mix(in srgb, var(--color-primary) 6%, transparent)",
+                }}
               />
               <Bar
                 dataKey="success"
@@ -1408,11 +1455,8 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     deployments.find((d) => d.id === selectedDeploymentId) ?? null;
   const { data: deploymentStatus, isLoading: isDeploymentStatusLoading } =
     useDeploymentStatus(selectedDeploymentId);
-  const selectedStageStates = buildStageStates(
-    stages.length,
-    deploymentStatus?.status ?? selectedDeployment?.status,
-  );
   const stepDetails = deploymentStatus?.steps ?? [];
+  const selectedStageStates = buildStageStates(stages, stepDetails);
   const logLineCount = stepDetails.reduce(
     (total, step) => total + (step.logs?.length ?? 0),
     0,
@@ -1506,8 +1550,17 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
 
           {stages.length > 0 && (
             <div className="mt-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2">
-              <div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
-                Pipeline Stages
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+                  Pipeline Stages
+                </span>
+                {/* 스텝 정보가 없으면 템플릿에 선언된 단계일 뿐이라는 사실을
+                    분명히 한다 — 실행 결과로 읽히면 안 된다. */}
+                {stepDetails.length === 0 && (
+                  <span className="text-[11px] text-[var(--color-text-secondary)]">
+                    템플릿 정의 · 이 CI 는 단계별 결과를 보고하지 않습니다
+                  </span>
+                )}
               </div>
               {stages.map((stage: string, i: number) => {
                 const state = selectedStageStates[i] ?? "queued";
@@ -1518,24 +1571,20 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
                     className="relative"
                   >
                     {i < stages.length - 1 && (
-                      <div className="absolute left-[17px] top-8 h-[calc(100%-8px)] w-px bg-[color-mix(in_srgb,_var(--color-text-secondary)_30%,_transparent)]" />
+                      <div className="absolute left-[15px] top-7 h-[calc(100%-24px)] w-px bg-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)]" />
                     )}
                     <div
-                      className={`mb-2 grid grid-cols-[26px_1fr_auto] items-center gap-2 rounded-md border px-2.5 py-2 ${meta.cls}`}
+                      className={`mb-1 grid grid-cols-[22px_1fr_auto] items-center gap-2 rounded-md border px-2 py-1.5 ${meta.cls}`}
                     >
                       <span className="flex items-center justify-center">
                         {meta.icon}
                       </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[12px] font-semibold">
-                          {stage}
-                        </div>
-                        <div className="text-[10px] opacity-80">
-                          {meta.label}
-                        </div>
-                      </div>
-                      <span className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-1.5 py-[1px] text-[10px] font-mono">
-                        step {i + 1}
+                      <span className="truncate text-[12px] font-medium">
+                        {stage}
+                      </span>
+                      {/* 순서는 세로 배치가 이미 말해 준다. 상태만 남긴다. */}
+                      <span className="text-[11px] opacity-80">
+                        {meta.label}
                       </span>
                     </div>
                   </div>
@@ -1637,18 +1686,19 @@ function PipelineDetailPanel({
   const statusStyle = getPipelineStatusStyle(pipeline.status);
 
   return (
-    <div className="mt-2.5 overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[var(--color-surface-card)]">
+    <div className="overflow-hidden rounded-[var(--card-radius)] border border-[color-mix(in_srgb,_var(--color-primary)_30%,_transparent)] bg-[var(--color-surface-card)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-5 py-3.5">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] text-[var(--color-primary)]">
-            <GitBranch {...iconProps('sm')} />
+            <GitBranch {...iconProps("sm")} />
           </div>
           <h3 className="m-0 text-[15px] font-bold text-[var(--color-text-primary)]">
             {pipeline.name}
           </h3>
           <Badge
             className=""
-            style={{ background: statusStyle.bg, color: statusStyle.color }}>
+            style={{ background: statusStyle.bg, color: statusStyle.color }}
+          >
             {getPipelineStatusLabel(t, pipeline.status)}
           </Badge>
           <span className="text-[12px] text-[var(--color-text-secondary)]">
@@ -1666,7 +1716,7 @@ function PipelineDetailPanel({
             onClick={onDelete}
             disabled={isDeleting}
           >
-            <Trash2 {...iconProps('xs')} />
+            <Trash2 {...iconProps("xs")} />
             {isDeleting ? "Deleting..." : "Delete"}
           </Button>
           <Button
@@ -1675,7 +1725,7 @@ function PipelineDetailPanel({
             type="button"
             onClick={onOpenLogs}
           >
-            <Terminal {...iconProps('xs')} />
+            <Terminal {...iconProps("xs")} />
             Logs
           </Button>
           <Button
@@ -1684,7 +1734,7 @@ function PipelineDetailPanel({
             type="button"
             onClick={onExecuteClick}
           >
-            <Rocket {...iconProps('xs')} />
+            <Rocket {...iconProps("xs")} />
             Execute
           </Button>
         </div>
@@ -1918,7 +1968,7 @@ export function CicdListPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: t("sidebar.cicdList", "CI/CD List") }]}
-        icon={<Workflow {...iconProps('sm')} />}
+        icon={<Workflow {...iconProps("sm")} />}
         tone="primary"
         title={t("cicdListPage.title", "CI/CD List")}
         subtitle={t("cicdListPage.description", "CI/CD Pipeline List")}
@@ -1930,7 +1980,7 @@ export function CicdListPage() {
               onClick={() => navigate("/cicd/developer-deploy")}
               type="button"
             >
-              <Plus {...iconProps('sm')} />
+              <Plus {...iconProps("sm")} />
               {t("cicd.addPhase", "Add Phase")}
             </Button>
             <Button
@@ -1939,7 +1989,7 @@ export function CicdListPage() {
               onClick={() => navigate("/cicd/templates")}
               type="button"
             >
-              <Plus {...iconProps('sm')} />
+              <Plus {...iconProps("sm")} />
               {t("cicd.newPipeline", "New Pipeline")}
             </Button>
           </div>
@@ -1963,34 +2013,22 @@ export function CicdListPage() {
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                 >
-                  <option
-                    value=""
-                  >
+                  <option value="">
                     {t("cicdListPage.filters.allStatus", "All Status")}
                   </option>
-                  <option
-                    value="success"
-                  >
+                  <option value="success">
                     {t("cicd.status.success", "Success")}
                   </option>
-                  <option
-                    value="running"
-                  >
+                  <option value="running">
                     {t("cicd.status.running", "Running")}
                   </option>
-                  <option
-                    value="pending"
-                  >
+                  <option value="pending">
                     {t("cicd.status.pending", "Pending")}
                   </option>
-                  <option
-                    value="failed"
-                  >
+                  <option value="failed">
                     {t("cicd.status.failed", "Failed")}
                   </option>
-                  <option
-                    value="cancelled"
-                  >
+                  <option value="cancelled">
                     {t("cicd.status.cancelled", "Cancelled")}
                   </option>
                 </Select>
@@ -2011,8 +2049,8 @@ export function CicdListPage() {
                 <SearchInput
                   wrapperClassName="ml-auto w-[220px]"
                   placeholder={t(
-                  "cicdListPage.searchPlaceholder",
-                  "Search pipelines...",
+                    "cicdListPage.searchPlaceholder",
+                    "Search pipelines...",
                   )}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -2058,16 +2096,20 @@ export function CicdListPage() {
       </div>
 
       {!isDesktopLayout && expandedPipeline && (
-        <PipelineDetailPanel
-          key={`${expandedPipeline.id}-mobile`}
-          pipeline={expandedPipeline}
-          onDelete={() => void handleDeletePipeline(expandedPipeline)}
-          isDeleting={deletingPipelineId === expandedPipeline.id}
-          onExecuteClick={() => setExecuteModalPipeline(expandedPipeline)}
-          onOpenLogs={() =>
-            navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)
-          }
-        />
+        // 세로로 이어 붙는 배치라 목록과 간격이 필요하다. 2단 배치에서는
+        // 같은 여백이 상세 카드를 목록보다 낮게 그려 상단이 어긋난다.
+        <div className="mt-2.5">
+          <PipelineDetailPanel
+            key={`${expandedPipeline.id}-mobile`}
+            pipeline={expandedPipeline}
+            onDelete={() => void handleDeletePipeline(expandedPipeline)}
+            isDeleting={deletingPipelineId === expandedPipeline.id}
+            onExecuteClick={() => setExecuteModalPipeline(expandedPipeline)}
+            onOpenLogs={() =>
+              navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)
+            }
+          />
+        </div>
       )}
 
       {executeModalPipeline && (

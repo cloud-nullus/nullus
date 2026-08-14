@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
@@ -222,6 +223,127 @@ func DefaultValues(stepName string) map[string]any {
 			"persistence": map[string]any{
 				"enabled":     true,
 				"storageSize": "20Gi",
+			},
+		}
+	case "installing_jenkins":
+		// Jenkins 는 GitLab CI 와 달리 실행기를 별도 차트로 세우지 않는다.
+		// kubernetes 플러그인이 빌드마다 agent 파드를 띄우므로 컨트롤러만 세운다.
+		//
+		// admin 자격증명은 values 에 평문으로 두지 않는다 — provisioning_secrets 가
+		// OpenBao 에 만들어 ESO 로 동기화한 Secret 을 가리킨다. 차트가 읽는 키
+		// 이름은 controller.admin.userKey/passwordKey 기본값과 같아야 한다.
+		return map[string]any{
+			"controller": map[string]any{
+				"admin": map[string]any{
+					"existingSecret": domain.JenkinsAdminSecret,
+					"userKey":        domain.JenkinsAdminUserKey,
+					"passwordKey":    domain.JenkinsAdminPasswordKey,
+				},
+				// gitea 플러그인이 Gitea organization/multibranch 스캔을 제공한다.
+				// 이게 없으면 리포를 만들어도 Jenkins 가 Jenkinsfile 을 찾지 못한다.
+				// (이 플러그인이 Jenkins 2.528.3 이상을 요구하므로 차트 버전을
+				//  임의로 내릴 수 없다 — domain.JenkinsChartVersion 주석 참고)
+				"installPlugins": []any{
+					"kubernetes",
+					"workflow-aggregator",
+					"git",
+					"gitea",
+					"configuration-as-code",
+					// 단계별 실행 결과를 API 로 내보낸다(/wfapi). 없으면 실행
+					// 기록은 남지만 단계 정보가 없어 화면이 "실행 정보 없음" 으로
+					// 표시한다 — workflow-aggregator 에 포함되지 않는다.
+					"pipeline-stage-view",
+				},
+				// 서비스는 게이트웨이 라우트가 앞단을 맡으므로 ClusterIP 로 둔다.
+				"serviceType": "ClusterIP",
+				"servicePort": domain.JenkinsServicePort,
+				// ESO 가 동기화한 Gitea 자격증명을 컨트롤러에 마운트한다.
+				// JCasC 는 {name}-{keyName} 으로 참조하므로 아래 configScripts 의
+				// ${nullus-gitea-credentials-username} 과 짝이 맞아야 한다.
+				"additionalExistingSecrets": []any{
+					map[string]any{"name": domain.GiteaAdminSecret, "keyName": domain.GiteaAdminUserKey},
+					map[string]any{"name": domain.GiteaAdminSecret, "keyName": domain.GiteaAdminPasswordKey},
+				},
+				"JCasC": map[string]any{
+					"defaultConfig": true,
+					// multibranch job 이 private Gitea 리포를 스캔하려면 credential
+					// 객체가 필요하다. agent 파드의 env 로는 안 된다 — 스캔은
+					// 컨트롤러가 하고 Jenkins 는 실제 credential 을 요구한다.
+					//
+					// id 는 job 설정이 참조하는 이름과 같아야 한다
+					// (cicd/usecase 의 giteaCredentialID). 갈라지면 job 은 만들어지되
+					// 브랜치를 하나도 찾지 못한다.
+					"configScripts": map[string]any{
+						"nullus-gitea-credentials": jenkinsGiteaCredentialJCasC(),
+					},
+				},
+			},
+			// 컨트롤러 홈은 job 설정과 빌드 이력을 담는다. 비영속으로 두면
+			// 파드가 재시작될 때마다 multibranch job 이 사라진다.
+			"persistence": map[string]any{
+				"enabled": true,
+				"size":    "20Gi",
+			},
+		}
+	case "installing_gitea":
+		// Gitea 는 소스 저장소만 담당한다. GitLab 과 달리 CI 도 레지스트리도
+		// 겸하지 않으므로 이 스택은 Jenkins·Harbor 를 따로 세운다.
+		//
+		// 차트 기본값은 postgresql-ha 와 valkey-cluster 를 함께 올린다. 그대로 두면
+		// 스택 안에 두 번째 데이터베이스와 캐시 클러스터가 생겨 리소스를 두 배로
+		// 먹는다 — 스택이 이미 세운 PostgreSQL 을 가리키고 나머지는 끈다.
+		return map[string]any{
+			// Gitea 는 RWO 볼륨 하나에 leveldb 큐 락을 잡는다. 차트 기본값인
+			// RollingUpdate(maxUnavailable=0)로 두면 재배포가 교착된다 — 새 파드는
+			// 옛 파드가 쥔 락 때문에 뜨지 못하고, 옛 파드는 새 파드가 Ready 가
+			// 되어야 내려가므로 영원히 안 내려간다. 첫 설치는 되지만 values 를
+			// 바꾸는 모든 재배포가 멈춘다.
+			"strategy":       map[string]any{"type": "Recreate"},
+			"postgresql-ha":  map[string]any{"enabled": false},
+			"postgresql":     map[string]any{"enabled": false},
+			"valkey-cluster": map[string]any{"enabled": false},
+			"valkey":         map[string]any{"enabled": false},
+			"service": map[string]any{
+				"http": map[string]any{
+					"port": domain.GiteaServicePort,
+				},
+			},
+			"gitea": map[string]any{
+				"admin": map[string]any{
+					// 비밀번호를 values 에 평문으로 두지 않는다. provisioning_secrets 가
+					// OpenBao 에 만들어 ESO 로 동기화한 Secret 을 가리킨다.
+					// 차트는 이 Secret 안에서 username / password 키를 읽는다.
+					"existingSecret": domain.GiteaAdminSecret,
+					// keepUpdated 는 매 기동마다 비밀번호를 Secret 값으로 되돌린다.
+					// 회전이 실제로 반영되려면 이 모드여야 한다.
+					"passwordMode": "keepUpdated",
+				},
+				"config": map[string]any{
+					"database": map[string]any{
+						"DB_TYPE": "postgres",
+						"HOST": fmt.Sprintf("%s.%s.svc.cluster.local:%d",
+							domain.PostgresServiceName, defaultStackNamespace, domain.PostgresServicePort),
+						"NAME": domain.PostgresAppDatabase,
+						"USER": domain.PostgresAppUser,
+					},
+					// 캐시·큐를 껐으므로 Gitea 내부 구현을 쓴다. 그대로 두면
+					// 존재하지 않는 valkey 주소로 붙으려다 기동에 실패한다.
+					"cache":   map[string]any{"ADAPTER": "memory"},
+					"queue":   map[string]any{"TYPE": "level"},
+					"session": map[string]any{"PROVIDER": "file"},
+				},
+				// 비밀번호는 config 에 적지 않고 Secret 에서 환경변수로 주입한다.
+				"additionalConfigFromEnvs": []any{
+					map[string]any{
+						"name": "GITEA__database__PASSWD",
+						"valueFrom": map[string]any{
+							"secretKeyRef": map[string]any{
+								"name": ProvisionedPostgresSecret,
+								"key":  domain.PostgresPasswordKey,
+							},
+						},
+					},
+				},
 			},
 		}
 	case "installing_gitlab":
@@ -471,4 +593,54 @@ func randomArgoCDServerSecretKey() string {
 		return "nullus-argocd-server-secretkey"
 	}
 	return base64.StdEncoding.EncodeToString(key)
+}
+
+// jenkinsGiteaCredentialJCasC 는 Gitea 접속 credential 을 선언하는 JCasC 조각이다.
+//
+// 값은 ESO 가 동기화한 Secret 에서 보간된다 — OpenBao 가 여전히 단일 출처이고
+// Jenkins Credentials 는 파생 사본일 뿐이다. 차트는 마운트된 Secret 을
+// {name}-{keyName} 으로 노출한다.
+func jenkinsGiteaCredentialJCasC() string {
+	return `credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "` + JenkinsGiteaCredentialID + `"
+              username: "${` + domain.GiteaAdminSecret + `-` + domain.GiteaAdminUserKey + `}"
+              password: "${` + domain.GiteaAdminSecret + `-` + domain.GiteaAdminPasswordKey + `}"
+              description: "Nullus 가 만든 Gitea 접속 자격증명"
+`
+}
+
+// jenkinsGiteaServerValues 는 gitea 플러그인에 서버를 등록한다.
+//
+// 주소가 네임스페이스에 달려 있어 DefaultValues 에 넣을 수 없다.
+// 등록하지 않으면 job 의 SCM 소스가 가리키는 서버를 플러그인이 모르는 서버로
+// 보고 스캔을 거부한다.
+func jenkinsGiteaServerValues(namespace string) map[string]any {
+	if strings.TrimSpace(namespace) == "" {
+		namespace = defaultStackNamespace
+	}
+	serverURL := fmt.Sprintf("http://%s.%s.svc:%d",
+		domain.GiteaHTTPServiceName, namespace, domain.GiteaServicePort)
+
+	script := `unclassified:
+  giteaServers:
+    servers:
+      - displayName: "nullus-gitea"
+        serverUrl: "` + serverURL + `"
+        manageHooks: false
+        credentialsId: "` + JenkinsGiteaCredentialID + `"
+`
+	return map[string]any{
+		"controller": map[string]any{
+			"JCasC": map[string]any{
+				"configScripts": map[string]any{
+					"nullus-gitea-server": script,
+				},
+			},
+		},
+	}
 }

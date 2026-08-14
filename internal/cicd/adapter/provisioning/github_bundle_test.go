@@ -167,7 +167,8 @@ func TestFor_GitHubStackPropagatesTokenError(t *testing.T) {
 // 알 수 없는 도구를 어느 쪽으로든 추측하면 엉뚱한 주소로 호출한다.
 func TestFor_UnknownSourceRepositoryIsRejected(t *testing.T) {
 	summary := githubStack()
-	summary.SourceRepository = "Gitea"
+	// Gitea 는 이제 지원되므로 "알 수 없는 도구" 예시로 쓸 수 없다.
+	summary.SourceRepository = "Bitbucket"
 
 	f := NewBundleFactory(&fakeStackReader{summary: summary}, &fakeTokenIssuer{}, Options{}).
 		WithGitHub(&fakeTokenIssuer{token: "ghp"}, &fakeConnectionReader{
@@ -176,7 +177,7 @@ func TestFor_UnknownSourceRepositoryIsRejected(t *testing.T) {
 
 	_, err := f.For(context.Background(), "stk_gh")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Gitea")
+	assert.Contains(t, err.Error(), "Bitbucket")
 }
 
 func TestPlatformFor_NormalizesToolNames(t *testing.T) {
@@ -185,7 +186,8 @@ func TestPlatformFor_NormalizesToolNames(t *testing.T) {
 		"gitlab_ee":                port.SCMPlatformGitLab,
 		"GitHub":                   port.SCMPlatformGitHub,
 		"github enterprise server": port.SCMPlatformGitHub,
-		"Gitea":                    "",
+		"Gitea":                    port.SCMPlatformGitea,
+		"Bitbucket":                "",
 		"":                         "",
 	}
 	for name, want := range cases {

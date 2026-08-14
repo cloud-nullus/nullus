@@ -8,6 +8,13 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
+// JenkinsGiteaCredentialID 는 Jenkins 에 등록되는 Gitea 자격증명 식별자다.
+//
+// CI/CD 모듈의 job 설정이 같은 이름을 참조한다(cicd/usecase 의 giteaCredentialID).
+// 모듈 간 직접 import 는 금지되므로 값을 각자 두되, 갈라지면 job 이 브랜치를
+// 하나도 찾지 못하므로 계약 테스트로 묶는다.
+const JenkinsGiteaCredentialID = "nullus-gitea"
+
 func WithHelmStepMetadataRepository(repo port.HelmStepMetadataRepository) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.helmStepMetadataRepo = repo
@@ -122,6 +129,32 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Version:   domain.GitLabChartVersion,
 			Values:    DefaultValues("installing_gitlab"),
 			Wait:      false,
+		}, true
+	case "installing_gitea":
+		// 릴리스명이 곧 파드 접두사이자 Service 이름의 뿌리다(gitea-http).
+		// 워크로드 조회(domain.InstalledToolWorkloads)와 CI/CD 모듈의 in-cluster
+		// 주소가 모두 이 이름을 보므로 domain 상수를 쓴다.
+		//
+		// 저장소는 dl.gitea.io 와 dl.gitea.com 이 같은 내용을 서빙하지만 공식
+		// 도메인인 gitea.com 쪽을 쓴다.
+		return ChartSpec{
+			ReleaseName: domain.GiteaReleaseName,
+			ChartName:   "gitea",
+			RepoURL:     "https://dl.gitea.com/charts",
+			Version:     domain.GiteaChartVersion,
+			Values:      DefaultValues("installing_gitea"),
+			Wait:        false,
+		}, true
+	case "installing_jenkins":
+		// Jenkins 는 GitLab CI 와 달리 실행기를 별도 차트로 세우지 않는다 —
+		// kubernetes 플러그인이 빌드마다 agent 파드를 직접 띄운다.
+		return ChartSpec{
+			ReleaseName: domain.JenkinsReleaseName,
+			ChartName:   "jenkins",
+			RepoURL:     "https://charts.jenkins.io",
+			Version:     domain.JenkinsChartVersion,
+			Values:      DefaultValues("installing_jenkins"),
+			Wait:        false,
 		}, true
 	case "installing_harbor":
 		// 릴리스명이 곧 진입 Service 이름이 되므로 domain 상수를 쓴다.

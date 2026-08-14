@@ -47,7 +47,7 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   nexus: { appVersion: '3.64.0', chartVersion: '64.2.0' },
   jfrog: { appVersion: '7.77.3', chartVersion: '107.95.10' },
   github: { appVersion: 'external' },
-  gitea: { appVersion: '1.22.2', chartVersion: '10.4.0' },
+  gitea: { appVersion: '1.27.0', chartVersion: '12.7.0' },
   harbor: { appVersion: '2.11.0', chartVersion: '1.15.0' },
   'docker-hub': { appVersion: '2.0.0', chartVersion: '0.1.0' },
   s3: { appVersion: '1.0.0', chartVersion: '1.0.0' },
@@ -56,7 +56,10 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   // 버전은 표시용 값일 뿐이므로 external 로 둔다.
   'github-actions': { appVersion: 'external' },
   ghcr: { appVersion: 'external' },
-  jenkins: { appVersion: '2.452.3', chartVersion: '5.5.0' },
+  // Jenkins 차트는 임의로 내릴 수 없다 — Gitea multibranch 스캔에 쓰는 gitea
+  // 플러그인이 Jenkins 2.528.3 이상을 요구한다.
+  // (백엔드 단일 출처: internal/stack/domain/connection.go)
+  jenkins: { appVersion: '2.568.2', chartVersion: '5.9.54' },
   flux: { appVersion: 'v2.3.0', chartVersion: '2.13.0' },
   spinnaker: { appVersion: '1.33.0', chartVersion: '2.32.1' },
   thanos: { appVersion: '0.36.1', chartVersion: '15.7.1' },

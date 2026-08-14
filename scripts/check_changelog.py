@@ -29,6 +29,7 @@ from pathlib import Path
 CHANGELOG = Path("CHANGELOG.md")
 
 SECTION_RE = re.compile(r"^##\s+\[([^\]]+)\]")
+SUBSECTION_RE = re.compile(r"^###\s+(.+?)\s*$")
 ENTRY_PREFIX = "- "
 
 # CHANGELOG 항목이 필요 없는 변경. 사용자가 보는 동작이 그대로인 것들이다.
@@ -58,6 +59,39 @@ def parse_sections(text: str) -> dict[str, list[str]]:
         elif current is not None and line.startswith(ENTRY_PREFIX):
             sections[current].append(line.strip())
     return sections
+
+
+def check_duplicate_subsections(text: str) -> list[str]:
+    """한 릴리즈 안에서 같은 소제목이 두 번 나오는지 본다.
+
+    릴리즈를 자른 뒤 main 을 되머지하면 같은 소제목이 두 벌로 남는다. 항목
+    중복(check_structure)과 달리 내용이 겹치지 않아 그 검사에 걸리지 않는데,
+    실제로 [0.4.0-alpha] 가 Changed·Fixed 를 각각 두 블록으로 들고 있었다.
+
+    사람이 읽어서는 잘 걸러지지 않는다 — 섹션이 길면 스크롤 밖이라 두 번째
+    블록이 보이지 않는다. 릴리즈 노트를 자를 때 한쪽 블록이 통째로 빠진다.
+    """
+    errors: list[str] = []
+    current: str | None = None
+    seen: dict[str, int] = {}
+
+    for line in text.splitlines():
+        matched = SECTION_RE.match(line)
+        if matched:
+            current = matched.group(1)
+            seen = {}
+            continue
+        sub = SUBSECTION_RE.match(line)
+        if sub and current is not None:
+            name = sub.group(1)
+            seen[name] = seen.get(name, 0) + 1
+            if seen[name] == 2:
+                errors.append(
+                    f"`[{current}]` 에 `### {name}` 이 두 번 나옵니다. 소제목당 한 "
+                    f"블록으로 합치십시오 — 나뉘어 있으면 릴리즈 노트를 자를 때 한쪽이 "
+                    f"통째로 빠집니다."
+                )
+    return errors
 
 
 def check_structure(text: str) -> list[str]:
@@ -131,6 +165,7 @@ def main() -> int:
 
     text = CHANGELOG.read_text(encoding="utf-8")
     errors = check_structure(text)
+    errors += check_duplicate_subsections(text)
 
     if args.changed and not args.skip_entry_check:
         source = sys.stdin if args.changed == "-" else open(args.changed, encoding="utf-8")

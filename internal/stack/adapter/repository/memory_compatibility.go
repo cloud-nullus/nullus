@@ -154,6 +154,12 @@ const (
 	baselineNexusHelmVersion  = domain.NexusChartVersion
 	baselineNexusAppVersion   = domain.NexusAppVersion
 
+	baselineGiteaHelmVersion = domain.GiteaChartVersion
+	baselineGiteaAppVersion  = domain.GiteaAppVersion
+
+	baselineJenkinsHelmVersion = domain.JenkinsChartVersion
+	baselineJenkinsAppVersion  = domain.JenkinsAppVersion
+
 	baselineMinIOHelmVersion = domain.MinIOChartVersion
 	baselineMinIOAppVersion  = domain.MinIOAppVersion
 
@@ -188,6 +194,30 @@ const (
 // verdicts in tests vs. real deployments.
 func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 	return []*domain.CompatibilityMatrix{
+		{
+			// Gitea 는 소스 저장소만 담당한다 — GitLab 처럼 CI 도 레지스트리도
+			// 겸하지 않으므로 Jenkins 와 Harbor 를 따로 세운다.
+			//
+			// Jenkins 차트 버전은 임의로 내릴 수 없다: Gitea multibranch 스캔에
+			// 쓰는 gitea 플러그인이 Jenkins 2.528.3 이상을 요구한다.
+			ID:     "gitea-jenkins-argocd-v1",
+			Name:   "Gitea + Jenkins + Argo CD",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         baselineMinK8sWorkload,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository":        {Name: "Gitea", HelmVersion: baselineGiteaHelmVersion, AppVersion: baselineGiteaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "Jenkins", HelmVersion: baselineJenkinsHelmVersion, AppVersion: baselineJenkinsAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+			},
+		},
 		{
 			ID:     "gitlab-allinone-v1",
 			Name:   "GitLab All-in-One",

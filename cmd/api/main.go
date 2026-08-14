@@ -23,12 +23,15 @@ import (
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
 	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
+	cicdgitea "github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	cicdgitlab "github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	cicdjenkins "github.com/cloud-nullus/draft/internal/cicd/adapter/jenkins"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdprovisioning "github.com/cloud-nullus/draft/internal/cicd/adapter/provisioning"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
+	cicdport "github.com/cloud-nullus/draft/internal/cicd/port"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
 	obsprom "github.com/cloud-nullus/draft/internal/observability/adapter/prometheus"
@@ -173,6 +176,11 @@ func main() {
 				// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
 				// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
 				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
+				// 레지스트리 프로젝트 이름은 CI/CD 모듈의 그룹 경로와 같아야 한다.
+				// 두 모듈은 서로 import 할 수 없으므로 조립 지점인 여기서 같은
+				// 값을 넘겨 계약을 맞춘다 — 다르면 프로젝트는 만들어지는데 CI 가
+				// push 하는 주소는 다른 프로젝트를 가리켜 "project not found" 로 막힌다.
+				stackhelm.WithImageProjectName(cicdGroupPath()),
 			)
 			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
 			if ssoFactory != nil {
@@ -250,6 +258,19 @@ func main() {
 	cicdGitHubTokens := cicdgithub.NewTokenIssuer(secretRouter)
 	cicdGitHubConnections := cicdrepo.NewPostgresSCMConnectionReader(pool)
 
+	// Gitea 는 스택 안에 설치되므로 GitLab 과 같은 방식으로 토큰을 발급한다 —
+	// 외부에 노출하지 않고도 동작해야 하므로 API 가 아니라 파드 안의 CLI 를 쓴다.
+	cicdGiteaTokens := cicdgitea.NewTokenIssuer(
+		kubeconfigProvider,
+		cicdKubectlRunner,
+		secretRouter,
+	)
+	// Jenkins 자격증명은 발급하지 않고 읽기만 한다. 관리자 비밀번호는 스택
+	// 설치의 provisioning_secrets 가 이미 만들어 OpenBao 에 넣었고 같은 값을
+	// ESO 가 컨트롤러에 동기화한다 — 여기서 새로 발급하면 컨트롤러가 자기
+	// 비밀번호를 모르게 된다.
+	cicdJenkinsCreds := cicdjenkins.NewCredentialResolver(secretRouter)
+
 	cicdBundleFactory := cicdprovisioning.NewBundleFactory(
 		cicdStackReader,
 		cicdTokenIssuer,
@@ -258,9 +279,15 @@ func main() {
 			GroupPath: cicdGroupPath(),
 			// 기본은 클러스터 내부 서비스 DNS 다. API 서버를 클러스터 밖에서
 			// 돌리거나 외부 GitLab 을 붙일 때만 지정한다.
-			GitLabBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
+			GitLabBaseURLOverride:  strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
+			GiteaBaseURLOverride:   strings.TrimSpace(os.Getenv("NULLUS_GITEA_URL")),
+			JenkinsBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_JENKINS_URL")),
 		},
-	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections)
+	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
+		WithGitea(cicdGiteaTokens, secretRouter).
+		WithJenkins(cicdJenkinsCreds)
+	runSyncUC := cicduc.NewSyncPipelineRuns(nil, pgDeploymentRepo).
+		WithBundleFactory(cicdBundleFactory, pgPipelineRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 
@@ -295,6 +322,9 @@ func main() {
 		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter())
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool).
 		WithDeletePipeline(deletePipelineUC).
+		// GitOps 경로의 실행 기록은 CI 서버에만 있다. 들이지 않으면 빌드가
+		// 성공해도 화면의 실행 통계가 0 으로 남는다.
+		WithRunSync(runSyncUC).
 		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
 		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
 		WithManifestApplier(manifestApplier).
@@ -454,13 +484,32 @@ func main() {
 	// 회전이 한 번도 일어나지 않았다.
 	rotationCtx, stopRotation := context.WithCancel(context.Background())
 	defer stopRotation()
+	// 재발급기 등록. 여기 없는 provider 는 회전 대상에서 조용히 빠진다.
+	//
+	// Gitea 는 클러스터 안에 있어 HTTP 로 닿지 못할 수 있으므로 발급과 같은
+	// 경로(파드 안의 gitea CLI)를 재사용한다. 재발급 로직을 복제하면 스코프나
+	// 토큰 이름이 갈라져 회전 후 인증이 조용히 실패한다.
+	reissuerRouter := rotation.NewRouterReissuer()
+	reissuerRouter.Register("gitea", rotation.NewGiteaReissuer(
+		func(ctx context.Context, spec rotation.GiteaReissueSpec) (string, error) {
+			return cicdGiteaTokens.EnsureToken(ctx, cicdport.SCMTokenSpec{
+				StackID:   spec.StackID,
+				ClusterID: spec.ClusterID,
+				Namespace: spec.Namespace,
+				OrgID:     spec.OrgID,
+				Env:       spec.Env,
+				// 회전은 기존 토큰이 살아 있어도 새로 발급해야 한다.
+				Force: true,
+			})
+		}))
+
 	go adminscheduler.NewTokenRotationScheduler(
 		pool,
 		secretRouter,
 		tokenRotationInterval(),
 		0,
 		slog.Default(),
-		rotation.NewRouterReissuer(),
+		reissuerRouter,
 	).WithRestarter(
 		// 회전 후 반영: 소비자가 기동 시점에만 설정을 읽는 경우 rolling restart 한다.
 		adminrepo.NewClusterWorkloadRestarter(kubeconfigProvider),

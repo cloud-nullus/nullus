@@ -15,6 +15,31 @@ type SCMBundle struct {
 	// — 조용히 건너뛰면 사용자는 이미지가 지워진 줄 안다.
 	Images ImageRepositoryDeleter
 
+	// CIJobs 는 CI 서버에 job 을 만드는 수단이다.
+	//
+	// GitLab CI·GitHub Actions 는 파이프라인 정의를 푸시하면 자동 감지하므로
+	// nil 이다. Jenkins 는 job 이 먼저 존재해야 하므로 이 자리가 채워진다.
+	// 호출부는 nil 이면 건너뛴다 — 기존 경로 무영향.
+	CIJobs CIJobProvisioner
+	// Webhooks 는 저장소에 push webhook 을 거는 수단이다.
+	// Jenkins multibranch 가 새 커밋을 알려면 필요하다. 지원하지 않으면 nil.
+	Webhooks SCMWebhookProvisioner
+	// CIBuilds 는 CI 서버의 빌드 이력을 읽는다. 지원하지 않으면 nil.
+	CIBuilds CIBuildReader
+	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
+	CIBaseURL string
+	// SCMInClusterURL 은 클러스터 안에서 SCM 에 닿는 주소다.
+	//
+	// Provisioner 의 base URL 과 구분한다 — 그쪽은 API 서버가 쓰는 주소라
+	// 로컬 실행에서 우회 주소(localhost 포트포워드 등)일 수 있다. 반면 이 값은
+	// Jenkins·Argo CD 처럼 클러스터 안에서 도는 소비자가 쓰므로 항상 서비스
+	// DNS 여야 한다. 둘을 같은 값으로 두면 job 이
+	// "Unknown server: http://localhost:3000" 으로 죽는다.
+	SCMInClusterURL string
+	// Credentials 는 CI 변수 저장소가 없는 SCM(Gitea)에서 파이프라인 자격증명을
+	// OpenBao → ESO → K8s Secret 평면으로 나른다. 지원하지 않으면 nil.
+	Credentials PipelineCredentialPlane
+
 	// Platform 은 이 묶음이 향하는 SCM 플랫폼이다.
 	// 파이프라인 파일 형식이 여기서 갈리므로 렌더러까지 전달돼야 한다.
 	Platform SCMPlatform
@@ -37,6 +62,20 @@ type SCMBundle struct {
 	// 비어 있으면 앱은 클러스터 내부에서만 접근 가능하다.
 	AccessDomain string
 	GatewayName  string
+}
+
+// PipelineCredentialPlane 은 파이프라인 자격증명을 준비하고 그것을 클러스터에
+// 반영할 매니페스트를 돌려준다.
+//
+// 적용은 하지 않는다 — 클러스터 접근은 유스케이스가 한곳에서 맡는다.
+type PipelineCredentialPlane interface {
+	Provision(ctx context.Context, app string, vars []PipelineVariable) (manifest string, err error)
+}
+
+// PipelineVariable 은 파이프라인이 환경변수로 읽을 값 하나다.
+type PipelineVariable struct {
+	Key   string
+	Value string
 }
 
 // SCMBundleFactory 는 스택에 맞는 도구 묶음을 조립한다.

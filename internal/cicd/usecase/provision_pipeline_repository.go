@@ -88,7 +88,11 @@ func (uc *ProvisionPipelineRepository) Execute(
 		return nil, fmt.Errorf("provision common project: %w", err)
 	}
 
+	// CI 가 SCM 과 분리된 플랫폼(Gitea + Jenkins)에서는 job 을 따로 만들어야
+	// 한다. GitLab/GitHub 번들은 CIJobs 가 nil 이라 배선해도 동작이 같다.
 	appOut, err := NewProvisionAppProject(bundle.Provisioner, bundle.Pipeline, bundle.Registry).
+		WithCIJobs(bundle.CIJobs, bundle.Webhooks, bundle.CIBaseURL, scmServerURLFor(bundle)).
+		WithCredentialPlane(bundle.Credentials).
 		Execute(ctx, ProvisionAppProjectInput{
 			AppName:             app,
 			GroupPath:           commonOut.Group.FullPath,
@@ -97,6 +101,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			Port:                input.Port,
 			Replicas:            input.Replicas,
 			RegistryCredentials: input.RegistryCredentials,
+			RepoAccessToken:     bundle.RepoAccessToken,
 			Platform:            bundle.Platform,
 			SharedAccessToken:   bundle.RepoAccessToken,
 			AccessDomain:        bundle.AccessDomain,
@@ -140,6 +145,48 @@ func pullSecretUsername(bundle *port.SCMBundle) string {
 //
 // 실패해도 저장소 프로비저닝을 되돌리지 않는다 — 저장소는 이미 만들어졌고,
 // 되돌리면 재실행 시 무엇이 남았는지 알 수 없다. 경고로 알리고 계속한다.
+// scmServerURLFor 는 CI 가 저장소를 스캔할 때 쓸 SCM 서버 주소다.
+//
+// 리포 주소가 아니라 서버 루트여야 한다 — Gitea SCM 소스는 이 주소로 API 를
+// 불러 브랜치를 훑는다.
+// scmServerURLFor 는 CI 서버가 SCM 을 스캔할 때 쓸 주소다.
+//
+// 클러스터 안에서 해석되는 주소를 우선한다 — Provisioner 의 base URL 은 API
+// 서버가 쓰는 주소라 로컬 실행에서 우회 주소일 수 있고, 그것을 job 에 넣으면
+// Jenkins 가 "Unknown server" 로 스캔을 거부한다.
+func scmServerURLFor(bundle *port.SCMBundle) string {
+	if bundle == nil {
+		return ""
+	}
+	if inCluster := strings.TrimSpace(bundle.SCMInClusterURL); inCluster != "" {
+		return inCluster
+	}
+	type baseURLProvider interface{ BaseURL() string }
+	if p, ok := bundle.Provisioner.(baseURLProvider); ok {
+		return p.BaseURL()
+	}
+	return ""
+}
+
+// repoURLForInCluster 는 클러스터 안 소비자가 클론할 저장소 주소다.
+//
+// SCM 이 돌려준 clone_url 을 그대로 믿지 않는다 — Gitea 는 요청 Host 를 반영해
+// clone_url 을 만들므로, API 서버가 우회 주소로 호출했다면 그 주소가 박힌다.
+// 그러면 Argo CD 가 그 주소로 클론을 시도하다 connection refused 로 죽는다.
+func repoURLForInCluster(bundle *port.SCMBundle, project *port.SCMProject) string {
+	if project == nil {
+		return ""
+	}
+	if bundle != nil {
+		base := strings.TrimRight(strings.TrimSpace(bundle.SCMInClusterURL), "/")
+		path := strings.Trim(strings.TrimSpace(project.FullPath), "/")
+		if base != "" && path != "" {
+			return base + "/" + path + ".git"
+		}
+	}
+	return project.HTTPCloneURL
+}
+
 func (uc *ProvisionPipelineRepository) applyArgoApplication(
 	ctx context.Context,
 	bundle *port.SCMBundle,
@@ -177,7 +224,7 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 		secret, err := argocd.RenderRepositorySecret(argocd.RepositorySecretSpec{
 			AppName:       app,
 			ArgoNamespace: bundle.ArgoNamespace,
-			RepoURL:       project.HTTPCloneURL,
+			RepoURL:       repoURLForInCluster(bundle, project),
 			Password:      token,
 		})
 		if err != nil {
@@ -190,10 +237,14 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 			"Argo CD 저장소 자격증명이 없어 private 저장소 동기화가 실패할 수 있습니다")
 	}
 
+	// 파이프라인 자격증명 Secret 은 Argo 리소스와 같은 경로로 적용한다.
+	// 이것이 없으면 Jenkins agent 파드가 없는 Secret 을 참조해 기동하지 못한다.
+	manifests = append(manifests, appOut.CredentialManifests...)
+
 	manifest, err := argocd.RenderApplication(argocd.ApplicationSpec{
 		AppName:              app,
 		ArgoNamespace:        bundle.ArgoNamespace,
-		RepoURL:              project.HTTPCloneURL,
+		RepoURL:              repoURLForInCluster(bundle, project),
 		Path:                 argocd.DefaultManifestPath,
 		TargetRevision:       project.DefaultBranch,
 		DestinationNamespace: destNamespace,

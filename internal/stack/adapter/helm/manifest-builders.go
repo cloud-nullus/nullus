@@ -135,6 +135,16 @@ spec:
 	if isGitLabContainerRegistrySelection(cfg.Artifacts.ContainerRegistry) {
 		routes = append(routes, routeSpec{name: "registry-route", host: fmt.Sprintf("registry.%s", accessDomain), service: "gitlab-registry", port: 5000})
 	}
+	// Gitea 는 GitLab 과 같은 슬롯의 다른 선택지다. 노출하지 않으면 사용자가
+	// 웹 UI 로 들어갈 수도, git clone 을 할 수도 없다.
+	if isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository) {
+		routes = append(routes, routeSpec{name: "gitea-route", host: fmt.Sprintf("gitea.%s", accessDomain), service: domain.GiteaHTTPServiceName, port: domain.GiteaServicePort})
+	}
+	// Jenkins 웹 UI. 노출하지 않으면 사용자가 빌드 로그를 볼 수 없고, Gitea
+	// webhook 도 컨트롤러에 닿지 못한다.
+	if isJenkinsCISelection(cfg.Pipeline.CIPlatform) {
+		routes = append(routes, routeSpec{name: "jenkins-route", host: fmt.Sprintf("jenkins.%s", accessDomain), service: domain.JenkinsServiceName, port: domain.JenkinsServicePort})
+	}
 	if cfg.Monitoring.Visualization.Enabled && strings.EqualFold(cfg.Monitoring.Visualization.Name, "grafana") {
 		routes = append(routes, routeSpec{name: "grafana-route", host: fmt.Sprintf("grafana.%s", accessDomain), service: "grafana", port: 80})
 	}

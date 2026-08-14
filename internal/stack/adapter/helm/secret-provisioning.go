@@ -3,10 +3,12 @@ package helm
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/cloud-nullus/draft/internal/shared/externalsecret"
 
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -113,6 +115,36 @@ func managedSecrets(namespace string) []ManagedSecret {
 			},
 		},
 		{
+			// Gitea 차트의 gitea.admin.existingSecret 이 참조한다.
+			// 차트는 이 Secret 안에서 username / password 키를 읽는다
+			// (templates/gitea/deployment.yaml 의 GITEA_ADMIN_USERNAME/PASSWORD).
+			//
+			// 사용자명은 비밀이 아니지만 차트가 같은 Secret 안에서 요구하므로
+			// MinIO rootUser 와 같은 방식으로 Fixed 값을 함께 프로비저닝한다.
+			//
+			// 액세스 토큰은 여기 없다 — Gitea 가 뜬 뒤에만 발급할 수 있으므로
+			// 이 단계(phase A)가 아니라 CI/CD 프로비저닝과 회전 컨트롤러가 맡는다.
+			TargetSecret:    domain.GiteaAdminSecret,
+			Consumer:        "Gitea",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "artifacts/gitea/admin-username", TargetKey: domain.GiteaAdminUserKey, Fixed: domain.GiteaAdminUser},
+				{PathSuffix: "artifacts/gitea/admin-password", TargetKey: domain.GiteaAdminPasswordKey},
+			},
+		},
+		{
+			// Jenkins 차트의 controller.admin.existingSecret 이 참조한다.
+			// 키 이름은 차트의 userKey / passwordKey 기본값과 같아야 한다 —
+			// 틀리면 컨트롤러 파드가 FailedMount 로 기동하지 못한다.
+			TargetSecret:    domain.JenkinsAdminSecret,
+			Consumer:        "Jenkins",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "cicd/jenkins/admin-username", TargetKey: domain.JenkinsAdminUserKey, Fixed: domain.JenkinsAdminUser},
+				{PathSuffix: "cicd/jenkins/admin-password", TargetKey: domain.JenkinsAdminPasswordKey},
+			},
+		},
+		{
 			// GitLab object storage 연결 정보. 값 자체는 MinIO 자격이므로
 			// 같은 OpenBao 경로를 참조하고 ESO template 으로 YAML 을 만든다.
 			// 하드코딩 연결 문자열을 대체한다.
@@ -200,57 +232,80 @@ func objectStorageConnectionTemplate(endpoint string) string {
 }
 
 // generateSecretValue 는 32바이트 랜덤을 URL-safe base64 로 만든다.
+// secretAlphabet 은 생성 비밀번호에 쓰는 문자 집합이다.
+//
+// 영숫자만 쓴다. 이 값들은 CLI 인자로 그대로 넘어가는데(mc, gitea admin user,
+// nexus 프로비저닝), base64url 알파벳의 '-' 로 시작하는 값은 CLI 가 플래그로
+// 파싱해 죽는다 — 실제로 MinIO post-install 잡이 이렇게 실패했다:
+//
+//	mc: <ERROR> Invalid command usage, flag provided but not defined: -M-7HMgh...
+//
+// 확률적이라 어떤 설치는 통과하고 어떤 설치는 실패해 재현이 어렵다. '_' 도
+// 함께 뺀다 — 일부 차트가 특수문자를 다루지 못한다고 스스로 경고한다
+// (gitea 차트의 valkey 주석).
+const secretAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+// secretValueLength 는 생성 비밀번호의 길이다.
+// 62^43 ≈ 2^256 으로 기존 base64(32바이트)와 같은 수준의 엔트로피를 유지한다.
+const secretValueLength = 43
+
 func generateSecretValue() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("랜덤 생성 실패: %w", err)
+	// 나머지 연산으로 문자를 고르면 알파벳 크기가 256 의 약수가 아니라 앞쪽
+	// 문자가 더 자주 나온다. 남는 구간을 버려(rejection sampling) 편향을 없앤다.
+	const maxByte = 255 - (256 % len(secretAlphabet))
+
+	out := make([]byte, 0, secretValueLength)
+	buf := make([]byte, secretValueLength)
+	for len(out) < secretValueLength {
+		if _, err := rand.Read(buf); err != nil {
+			return "", fmt.Errorf("랜덤 생성 실패: %w", err)
+		}
+		for _, b := range buf {
+			if len(out) == secretValueLength {
+				break
+			}
+			if int(b) > maxByte {
+				continue
+			}
+			out = append(out, secretAlphabet[int(b)%len(secretAlphabet)])
+		}
 	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	return string(out), nil
 }
 
 // externalSecretManifest 는 하나의 관리 시크릿에 대한 ExternalSecret 을 만든다.
 //
 // creationPolicy: Owner 로 ESO 가 대상 Secret 의 소유자가 된다. 차트는 이
 // Secret 을 만들지 않고 existingSecret 으로 참조만 하므로 소유권이 충돌하지 않는다.
+// externalSecretManifest 는 관리 대상 Secret 하나의 ExternalSecret 을 만든다.
+//
+// 매니페스트 모양 자체는 shared 가 소유한다 — CI/CD 모듈도 같은 평면에
+// 자격증명 Secret 을 만들기 때문이다. 두 곳에 각각 두면 반드시 갈라지고,
+// 갈라진 쪽은 ESO 가 조용히 무시해 파드가 FailedMount 로 멈춘다.
+//
+// 렌더 실패는 프로그래밍 오류다(이름·항목이 비는 경우). 호출부가 다룰 수 있는
+// 상황이 아니므로 빈 문자열을 돌려 apply 가 건너뛰게 한다.
 func externalSecretManifest(namespace, pathPrefix string, item ManagedSecret) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, `apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  refreshInterval: 5m
-  secretStoreRef:
-    name: %s
-    kind: SecretStore
-  target:
-    name: %s
-    creationPolicy: Owner
-`, item.TargetSecret, namespace, ESOSecretStoreName, item.TargetSecret)
-
-	if len(item.TemplateData) > 0 {
-		b.WriteString("    template:\n      engineVersion: v2\n      data:\n")
-		// 결정적 순서를 위해 키를 정렬한다.
-		keys := make([]string, 0, len(item.TemplateData))
-		for k := range item.TemplateData {
-			keys = append(keys, k)
-		}
-		sortStrings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(&b, "        %s: |\n%s\n", k, indentYAML(item.TemplateData[k], 10))
-		}
-	}
-
-	b.WriteString("  data:\n")
+	entries := make([]externalsecret.Entry, 0, len(item.Entries))
 	for _, entry := range item.Entries {
-		fmt.Fprintf(&b, `    - secretKey: %s
-      remoteRef:
-        key: %s
-        property: token
-`, entry.TargetKey, pathPrefix+entry.PathSuffix)
+		entries = append(entries, externalsecret.Entry{
+			SecretKey:  entry.TargetKey,
+			RemotePath: pathPrefix + entry.PathSuffix,
+		})
 	}
-	return b.String()
+
+	manifest, err := externalsecret.Render(externalsecret.Spec{
+		Name:            item.TargetSecret,
+		Namespace:       namespace,
+		SecretStoreName: ESOSecretStoreName,
+		Entries:         entries,
+		TemplateData:    item.TemplateData,
+	})
+	if err != nil {
+		slog.Error("ExternalSecret 렌더 실패", "secret", item.TargetSecret, "error", err)
+		return ""
+	}
+	return manifest
 }
 
 func sortStrings(s []string) {
