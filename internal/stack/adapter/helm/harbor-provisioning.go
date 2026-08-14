@@ -85,7 +85,8 @@ esac
 `, name, name, name)
 }
 
-func (o *Orchestrator) runHarborProvisionJob(ctx context.Context, namespace string) error {
+// harborProvisionManifest 는 프로젝트를 만드는 Job 매니페스트다.
+func (o *Orchestrator) harborProvisionManifest(namespace string) string {
 	// 클러스터 안에서 Service 로 부른다 — Harbor 를 외부에 노출하지 않아도
 	// 동작해야 하고, 게이트웨이 라우트보다 앞서 도는 단계이기 때문이다.
 	harborURL := fmt.Sprintf("http://%s.%s.svc:%d",
@@ -120,6 +121,12 @@ spec:
 `, harborProvisionJobName, namespace, harborURL,
 		domain.HarborAdminSecret, domain.HarborAdminPassKey,
 		indentYAML(harborProjectScript(o.harborProjectName()), 10))
+
+	return manifest
+}
+
+func (o *Orchestrator) runHarborProvisionJob(ctx context.Context, namespace string) error {
+	manifest := o.harborProvisionManifest(namespace)
 
 	// 이전 실행이 남아 있으면 Job 은 불변 필드 때문에 갱신되지 않는다.
 	_, _ = o.runKubectl(ctx, "delete", "job", harborProvisionJobName, "-n", namespace, "--ignore-not-found")
