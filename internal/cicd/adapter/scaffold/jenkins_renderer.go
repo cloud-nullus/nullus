@@ -128,6 +128,12 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	b.WriteString("          sh '''\n")
 	b.WriteString("            set -eu\n")
 	b.WriteString("            apk add --no-cache git >/dev/null 2>&1 || true\n")
+	// 워크스페이스는 체크아웃을 한 jnlp 컨테이너(uid 1000)의 소유인데 이
+	// 컨테이너는 root 로 돈다. git 2.35.2+ 는 다른 사용자 소유의 저장소를
+	// 거부하므로, 풀어 주지 않으면 이어지는 git config 가
+	// "fatal: not in a git directory" 로 죽는다 — 이미지는 올라갔는데
+	// 매니페스트 되커밋만 실패해 Argo CD 가 배포할 새 커밋이 영영 없다.
+	b.WriteString("            git config --global --add safe.directory \"$PWD\"\n")
 	b.WriteString("            sed -i \"s#image: $IMAGE_REPOSITORY:.*#image: $IMAGE_REPOSITORY:$IMAGE_TAG#\" deploy/deployment.yaml\n")
 	b.WriteString("            git config user.email \"nullus-ci@local\"\n")
 	b.WriteString("            git config user.name \"Nullus CI\"\n")

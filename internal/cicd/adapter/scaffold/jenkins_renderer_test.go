@@ -135,3 +135,18 @@ func TestJenkinsfile_UsesSharedGitCredentialVarNames(t *testing.T) {
 	assert.Contains(t, content, "$"+GitUsernameVar)
 	assert.Contains(t, content, "$"+GitPasswordVar)
 }
+
+// 워크스페이스를 만든 사용자와 빌드 컨테이너의 사용자가 다르다.
+//
+// 체크아웃은 jnlp 컨테이너(uid 1000)가 하고 빌드는 docker:27-cli(root)가 하는데,
+// git 2.35.2+ 는 다른 사용자 소유의 저장소를 거부한다. 그러면 deploy 단계의
+// git config 가 "fatal: not in a git directory" 로 죽는다 — 이미지는 올라갔는데
+// 매니페스트 되커밋만 실패해 Argo CD 가 배포할 새 커밋이 영영 없다.
+func TestJenkinsfile_MarksWorkspaceAsSafeDirectory(t *testing.T) {
+	content := renderJenkinsfile("api", jenkinsTarget())
+
+	assert.Contains(t, content, "safe.directory",
+		"소유권 검사를 풀지 않으면 되커밋이 not in a git directory 로 죽는다")
+	// 되커밋보다 앞서야 한다.
+	assert.Less(t, strings.Index(content, "safe.directory"), strings.Index(content, "git config user.email"))
+}
