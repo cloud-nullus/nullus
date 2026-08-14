@@ -464,22 +464,52 @@ Gitea 리포에 Jenkins multibranch 스캔을 트리거하는 webhook 을 건다
 | 6 | `feat/cicd/jenkins-job-provisioning` | ✅ |
 | 7 | `feat/ui/gitea-jenkins-support` | ✅ |
 
-### ⚠️ 아직 닫히지 않은 구간 — 이대로는 파이프라인이 끝까지 돌지 않는다
+### 잔여 배선 완료 (R1~R5)
 
-설치(스택 → Gitea·Jenkins·Argo CD 기동)와 프로비저닝 코드 경로는 완성됐지만,
-**런타임 배선과 자격증명 평면이 남아 있어 실제 빌드는 아직 돌지 않는다.**
+설계안 작성 시점에 남아 있던 다섯 구간을 모두 닫았다.
 
-| # | 남은 일 | 없으면 무슨 일이 생기나 |
+| # | 내용 | 상태 |
 |---|---|---|
-| R1 | **`cmd/api/main.go` 배선** — `BundleFactory.WithGitea(...)` / `WithJenkins(...)` 호출 | Gitea 스택에서 파이프라인 생성이 *"Gitea 연동이 배선되지 않아 stack ... 를 프로비저닝할 수 없습니다"* 로 거부된다. 가장 먼저 해야 할 일 |
-| R2 | **`nullus-ci-<app>` Secret 생성** (§3.4.3) — OpenBao 기록 + ExternalSecret 렌더 | Jenkinsfile 의 `envFrom.secretRef` 가 없는 Secret 을 가리켜 agent 파드가 기동하지 못한다. 미해결 #8(모듈 경계) 결정이 선행돼야 한다 |
-| R3 | **Gitea 용 `PipelineConfigurator`** | 지금은 `bundle.Pipeline` 이 nil 이라 `configureGitLabPipeline` 으로 떨어져 GitLab 문구의 경고와 함께 누락 변수만 보고한다(패닉은 없음). R2 와 같은 작업이다 |
-| R4 | **JCasC `nullus-gitea` credential** — Jenkins values 에 `additionalExistingSecrets` + `configScripts` | multibranch job 이 private Gitea 리포를 스캔하지 못해 브랜치를 하나도 찾지 못한다. `giteaCredentialID` 상수가 이 이름을 기대하고 있다 |
-| R5 | **`internal/admin/rotation/gitea_reissuer.go`** | 액세스 토큰이 만료되면 자동 회전되지 않는다. 초기 동작에는 지장 없음 |
+| R1 | `cmd/api/main.go` 에 `WithGitea` / `WithJenkins` 배선 | ✅ |
+| R2/R3 | `nullus-ci-<app>` ExternalSecret 생성 + Gitea 자격증명 경로 | ✅ |
+| R4 | JCasC `nullus-gitea` credential + Gitea 서버 등록 | ✅ |
+| R5 | `rotation.GiteaReissuer` + 회전 스케줄러 등록 | ✅ |
+| #8 | ExternalSecret 렌더러 모듈 경계 | ✅ `internal/shared/externalsecret` 승격 |
 
-R1 → R4 → R2/R3 순서가 자연스럽다. R1 만 해도 리포 생성·스캐폴딩·Argo CD
-Application 까지는 동작하고, R4 까지 하면 job 이 브랜치를 찾는다. R2/R3 이
-끝나야 빌드가 레지스트리에 push 할 수 있다.
+**배선 중 드러난 설계 결함 하나를 함께 고쳤다.** PR6 의 `WithJenkins(user, token string)`
+가 기동 시점 고정 문자열을 받고 있었는데, Jenkins 관리자 비밀번호는
+`provisioning_secrets` 가 스택마다 따로 생성한다 — 고정 문자열은 비어 있거나 다른
+스택의 자격증명으로 붙는다. 다른 스택별 자격증명이 모두 그렇듯 요청 시점에 푸는
+`port.CICredentialResolver` 로 바꿨다.
+
+**미해결 #8 은 공유로 해소했다.** `externalSecretManifest` 를
+`internal/shared/externalsecret` 으로 올리고 스택 쪽을 위임시켰다 — 출력이 byte
+단위로 같아 기존 매니페스트 테스트가 그대로 통과한다. 두 곳에 각각 두면 반드시
+갈라지고, 갈라진 쪽은 ESO 가 조용히 무시해 파드가 FailedMount 로 멈춘다.
+
+### 모듈 경계 때문에 양쪽에 고정한 이름 계약
+
+`internal/stack` 과 `internal/cicd` 는 서로 import 할 수 없어 같은 값을 각자
+들고 있다. 갈라지면 실패가 설치 시점이 아니라 첫 빌드·첫 스캔 시점에야
+나타나므로 양쪽에 계약 테스트를 뒀다.
+
+| 값 | 한쪽 | 다른쪽 |
+|---|---|---|
+| `nullus-gitea` | `helm.JenkinsGiteaCredentialID` | `usecase.giteaCredentialID` |
+| `nullus-ci-<app>` | `scaffold.ciSecretName` | `gitea.CISecretName` |
+| `GIT_USERNAME`/`GIT_PASSWORD` | `scaffold.GitUsernameVar/GitPasswordVar` | `usecase.configureGiteaPipeline` |
+| `gitea_admin` | `domain.GiteaAdminUser` | `gitea.AutomationUser` |
+| `nullus-openbao` | `helm.ESOSecretStoreName` | `gitea.ESOSecretStoreName` |
+
+### 남은 것 — 실제 클러스터 검증
+
+코드 경로는 모두 닫혔고 빌드·vet·전체 테스트가 통과한다. 다만 **실제 스택을
+설치해 커밋 → 빌드 → push → 태그 되커밋 → Argo CD 동기화 전 구간을 돌려 본 적은
+없다.** 특히 아래는 실물에서만 드러난다:
+
+- Jenkins agent 파드가 dind 사이드카로 사설 레지스트리에 push 하는 경로
+- multibranch 스캔이 JCasC credential 로 private Gitea 리포를 읽는지
+- `changeset` 조건이 되커밋 루프를 실제로 끊는지
 
 ---
 
