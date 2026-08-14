@@ -176,6 +176,11 @@ func main() {
 				// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
 				// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
 				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
+				// 레지스트리 프로젝트 이름은 CI/CD 모듈의 그룹 경로와 같아야 한다.
+				// 두 모듈은 서로 import 할 수 없으므로 조립 지점인 여기서 같은
+				// 값을 넘겨 계약을 맞춘다 — 다르면 프로젝트는 만들어지는데 CI 가
+				// push 하는 주소는 다른 프로젝트를 가리켜 "project not found" 로 막힌다.
+				stackhelm.WithImageProjectName(cicdGroupPath()),
 			)
 			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
 			if ssoFactory != nil {

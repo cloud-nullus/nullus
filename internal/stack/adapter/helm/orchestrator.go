@@ -103,6 +103,11 @@ type Orchestrator struct {
 	secretOrgID string
 	// ssoFactory 는 스택별 SSO provisioner 생성기다 (auth 모듈 구현체 주입).
 	ssoFactory port.SSOProvisionerFactory
+	// imageProjectName 은 레지스트리에 만들 프로젝트 이름이다.
+	//
+	// CI/CD 모듈의 그룹 경로와 같아야 이미지 주소가 맞는다. 모듈 간 직접
+	// import 가 금지되므로 조립 지점에서 주입받는다.
+	imageProjectName string
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -110,6 +115,17 @@ type OrchestratorOption func(*Orchestrator)
 func WithResourceDefaultRepository(repo port.ResourceDefaultRepository) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.resourceDefaultRepo = repo
+	}
+}
+
+// WithImageProjectName 은 레지스트리 프로젝트 이름을 주입한다.
+//
+// CI/CD 모듈의 그룹 경로(NULLUS_SCM_GROUP)와 같은 값이어야 한다 — 다르면
+// 프로젝트는 만들어지는데 CI 가 push 하는 주소는 다른 프로젝트를 가리켜
+// "project not found" 로 막힌다.
+func WithImageProjectName(name string) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.imageProjectName = strings.TrimSpace(name)
 	}
 }
 
@@ -336,47 +352,6 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		// PostgreSQL/MinIO 차트가 provisioning_secrets 가 만든 Secret 을
 		// existingSecret 으로 참조하기 때문이다. usecase 의 installDAG 와
 		// 순서가 일치해야 한다 — ensureOrder 가 이 순서를 강제한다.
-		stepOrder: map[string]int{
-			stepInstallingCertManager:              0,
-			"installing_metrics_server":            1,
-			"installing_openbao":                   2,
-			"installing_external_secrets":          3,
-			"provisioning_secrets":                 4,
-			"installing_postgresql":                5,
-			"installing_minio":                     6,
-			"installing_object_storage_secret":     7,
-			"installing_object_storage_buckets":    8,
-			"installing_database_connection_check": 9,
-			// SSO 프로비저닝은 OIDC 클라이언트를 만들어 두는 단계라
-			// 이를 소비하는 GitLab/Argo CD/Grafana 보다 앞서야 한다.
-			"provisioning_sso":  10,
-			"installing_gitlab": 11,
-			// Gitea 는 소스 저장소 슬롯의 다른 선택지다. GitLab 과 술어가 배타적이라
-			// 둘 중 하나만 선다 — 순서는 GitLab 바로 뒤에 둔다.
-			"installing_gitea": 12,
-			// 독립 레지스트리는 소스 저장소 다음, Argo CD 앞이다. Argo CD 가 배포할
-			// 이미지를 여기서 받으므로 먼저 서 있어야 하고, Nexus 는 설치만으로는
-			// Docker 커넥터가 없어 provisioning_nexus 가 뒤따라야 쓸 수 있다.
-			"installing_harbor":        13,
-			"installing_nexus":         14,
-			"provisioning_nexus":       15,
-			"installing_argocd":  16,
-			stepInstallingRunner: 17,
-			// Jenkins 는 CI 슬롯의 다른 선택지다. gitlab-runner 와 술어가 배타적이라
-			// 둘 중 하나만 선다.
-			"installing_jenkins":       18,
-			"installing_prometheus":    19,
-			"installing_grafana":       20,
-			"installing_logging":       21,
-			"installing_log_search":    22,
-			"installing_opentelemetry": 23,
-			// 수집기는 자기가 내보낼 백엔드(Tempo/Prometheus/Loki)가 선 뒤에 온다.
-			stepInstallingOTelCollector: 24,
-			// 에이전트는 자기가 넘길 게이트웨이가 선 뒤에 온다.
-			stepInstallingOTelAgent: 25,
-			"installing_gateway":    26,
-			"integration_check":     27,
-		},
 		orderedStep: []string{
 			stepInstallingCertManager,
 			"installing_metrics_server",
@@ -392,6 +367,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_gitlab",
 			"installing_gitea",
 			"installing_harbor",
+			"provisioning_harbor",
 			"installing_nexus",
 			"provisioning_nexus",
 			"installing_argocd",
@@ -421,6 +397,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_gitlab":         "config.artifacts.source_repository",
 			"installing_gitea":          "config.artifacts.source_repository",
 			"installing_harbor":         "config.artifacts.container_registry",
+			"provisioning_harbor":       "config.artifacts.container_registry",
 			"installing_nexus":          "config.artifacts.container_registry",
 			"provisioning_nexus":        "config.artifacts.container_registry",
 			"installing_argocd":         "config.pipeline.cd_tool",
@@ -465,6 +442,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// Harbor / Nexus 는 독립 레지스트리를 고른 경우에만 선다.
 			// GitLab Registry 를 고르면 GitLab 이 겸하므로 둘 다 꺼진다.
 			"installing_harbor": func(cfg domain.StackConfig) bool {
+				return isHarborRegistrySelection(cfg.Artifacts.ContainerRegistry)
+			},
+			// 설치만 한 Harbor 에는 프로젝트가 없어 CI 가 이미지를 올릴 곳이 없다.
+			"provisioning_harbor": func(cfg domain.StackConfig) bool {
 				return isHarborRegistrySelection(cfg.Artifacts.ContainerRegistry)
 			},
 			"installing_nexus": func(cfg domain.StackConfig) bool {
@@ -542,6 +523,13 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		},
 		progress: make(map[string]int),
 	}
+	// stepOrder 는 orderedStep 에서 파생한다. 두 목록을 손으로 맞추면 반드시
+	// 어긋나고, 어긋나면 ensureOrder 가 엉뚱한 단계를 기다리다 설치가 멈춘다.
+	o.stepOrder = make(map[string]int, len(o.orderedStep))
+	for i, step := range o.orderedStep {
+		o.stepOrder[step] = i
+	}
+
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -797,6 +785,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
 		if err := o.runSecretProvisioning(ctx, o.namespace); err != nil {
 			return fmt.Errorf("시크릿 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
+	if step == "provisioning_harbor" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureHarborProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("harbor 프로비저닝 실패: %w", err)
 		}
 		o.markCompleted(stackID, order)
 		return nil
@@ -1070,7 +1070,7 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 // 켜진 것으로 본다 — 시크릿 평면처럼 항상 필요한 단계가 그렇다.
 func isOptInStep(step string) bool {
 	switch step {
-	case "provisioning_sso", "installing_harbor", "installing_nexus", "provisioning_nexus":
+	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "installing_nexus", "provisioning_nexus":
 		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면

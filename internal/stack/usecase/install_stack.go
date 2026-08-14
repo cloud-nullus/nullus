@@ -65,6 +65,8 @@ var installDAG = []installStep{
 	// 설치만 한 Nexus 는 Docker 커넥터도 저장소도 없어 CI 가 이미지를 올릴 곳이
 	// 없다. provisioning_nexus 가 커넥터·저장소·관리자 비밀번호를 맞춘다.
 	{name: "installing_harbor", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+	// 설치만 한 Harbor 에는 프로젝트가 없어 CI 가 이미지를 올릴 곳이 없다.
+	{name: "provisioning_harbor", phase: "B", duration: time.Second, deps: []string{"installing_harbor"}},
 	{name: "installing_nexus", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
 	{name: "provisioning_nexus", phase: "B", duration: time.Second, deps: []string{"installing_nexus"}},
 
