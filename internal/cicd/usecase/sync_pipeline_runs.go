@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
@@ -158,9 +159,16 @@ func (uc *SyncPipelineRuns) ForPipeline(ctx context.Context, pipelineID string) 
 	}
 
 	bundle, err := uc.factory.For(ctx, pipeline.StackID)
-	if err != nil || bundle == nil || bundle.CIBuilds == nil {
-		// 스택이 아직 준비되지 않았거나 CI 가 없는 구성이다. 통계가 비는 것이
-		// 조회 자체를 실패시키는 것보다 낫다.
+	if err != nil {
+		// 스택이 아직 준비되지 않았을 수 있다. 조회 자체를 실패시키지는 않되,
+		// 조용히 삼키면 통계가 왜 비는지 알 수 없으므로 남긴다.
+		slog.Warn("CI 실행 기록: 스택 번들을 만들지 못했습니다",
+			"pipeline_id", pipeline.ID, "stack_id", pipeline.StackID, "error", err)
+		return 0, nil
+	}
+	if bundle == nil || bundle.CIBuilds == nil {
+		slog.Warn("CI 실행 기록: 이 스택에는 빌드 이력을 읽을 CI 가 배선되지 않았습니다",
+			"pipeline_id", pipeline.ID, "stack_id", pipeline.StackID)
 		return 0, nil
 	}
 

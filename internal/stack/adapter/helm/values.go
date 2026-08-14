@@ -289,6 +289,12 @@ func DefaultValues(stepName string) map[string]any {
 		// 스택 안에 두 번째 데이터베이스와 캐시 클러스터가 생겨 리소스를 두 배로
 		// 먹는다 — 스택이 이미 세운 PostgreSQL 을 가리키고 나머지는 끈다.
 		return map[string]any{
+			// Gitea 는 RWO 볼륨 하나에 leveldb 큐 락을 잡는다. 차트 기본값인
+			// RollingUpdate(maxUnavailable=0)로 두면 재배포가 교착된다 — 새 파드는
+			// 옛 파드가 쥔 락 때문에 뜨지 못하고, 옛 파드는 새 파드가 Ready 가
+			// 되어야 내려가므로 영원히 안 내려간다. 첫 설치는 되지만 values 를
+			// 바꾸는 모든 재배포가 멈춘다.
+			"strategy":       map[string]any{"type": "Recreate"},
 			"postgresql-ha":  map[string]any{"enabled": false},
 			"postgresql":     map[string]any{"enabled": false},
 			"valkey-cluster": map[string]any{"enabled": false},

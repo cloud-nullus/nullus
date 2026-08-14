@@ -145,3 +145,18 @@ func TestGiteaSharedServiceValues_FallsBackToInClusterRootURL(t *testing.T) {
 
 	assert.Contains(t, server["ROOT_URL"], "gitea-http.nullus-gj3.svc:3000")
 }
+
+// Gitea 는 RWO 볼륨 하나에 leveldb 큐 락을 잡는다.
+//
+// 차트 기본값(RollingUpdate, maxUnavailable=0)이면 재배포가 교착된다:
+// 새 파드는 옛 파드가 쥔 락 때문에
+//   "unable to lock level db at /data/queues/common: resource temporarily unavailable"
+// 로 죽고, 옛 파드는 새 파드가 Ready 가 되어야 내려가므로 영원히 안 내려간다.
+// 첫 설치는 되지만 values 를 바꾸는 모든 재배포가 이렇게 멈춘다 — 실제로 멈췄다.
+func TestGiteaValues_UsesRecreateStrategy(t *testing.T) {
+	values := DefaultValues("installing_gitea")
+
+	strategy, ok := values["strategy"].(map[string]any)
+	require.True(t, ok, "전략을 지정하지 않으면 차트 기본값(RollingUpdate)이 교착을 만든다")
+	assert.Equal(t, "Recreate", strategy["type"])
+}
