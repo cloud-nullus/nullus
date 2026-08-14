@@ -32,6 +32,10 @@ const (
 	// 읽는 위치다. 경로가 틀리면 파일은 커밋되지만 CI 가 영영 돌지 않는다.
 	GitLabPipelinePath = ".gitlab-ci.yml"
 	GitHubWorkflowPath = ".github/workflows/nullus-ci.yml"
+	// JenkinsfilePath 는 Jenkins multibranch job 이 파이프라인 정의를 찾는
+	// 위치다. 리포 루트가 아니면 job 이 "Jenkinsfile not found" 로 브랜치를
+	// 통째로 건너뛴다.
+	JenkinsfilePath = "Jenkinsfile"
 
 	// githubActorVar / githubTokenVar 는 GitHub Actions 가 제공하는 값이다.
 	// 이 이름이면 사용자 시크릿이 아니라 내장 표현식으로 바꿔 써야 한다.
@@ -57,9 +61,13 @@ type Input struct {
 	Namespace string
 	Port      int32
 	Replicas  int32
-	// Platform 은 파이프라인 정의를 어느 형식으로 쓸지 정한다.
-	// 비면 GitLab 으로 본다.
+	// Platform 은 소스 저장소 플랫폼이다. 비면 GitLab 으로 본다.
 	Platform port.SCMPlatform
+	// CIPlatform 은 파이프라인 정의를 어느 형식으로 쓸지 정한다.
+	//
+	// SCM 과 별개의 축이다 — Gitea 는 소스만 담당하고 빌드는 Jenkins 가 한다.
+	// 비면 Platform 이 함의하는 기본 CI 를 쓴다.
+	CIPlatform port.CIPlatform
 	// ImageTarget 은 resolver 가 정한 이미지 저장 위치다.
 	ImageTarget *port.ImageTarget
 	// AccessDomain / GatewayName / GatewayNamespace 가 모두 있으면
@@ -103,7 +111,7 @@ func Render(in Input) ([]port.CommitFile, error) {
 		replicas = defaultReplicas
 	}
 
-	pipelinePath, pipelineContent := renderPipelineFor(in.Platform, app, in.ImageTarget)
+	pipelinePath, pipelineContent := renderPipelineFor(in.Platform, in.CIPlatform, app, in.ImageTarget)
 
 	files := []port.CommitFile{
 		{Path: pipelinePath, Content: pipelineContent},
@@ -123,12 +131,28 @@ func Render(in Input) ([]port.CommitFile, error) {
 	return files, nil
 }
 
-// renderPipelineFor 는 플랫폼에 맞는 파이프라인 정의 파일을 만든다.
-func renderPipelineFor(platform port.SCMPlatform, app string, target *port.ImageTarget) (path, content string) {
-	if platform == port.SCMPlatformGitHub {
-		return GitHubWorkflowPath, renderGitHubWorkflow(app, target)
+// renderPipelineFor 는 CI 플랫폼에 맞는 파이프라인 정의 파일을 만든다.
+//
+// 분기 기준은 SCM 이 아니라 CI 다. GitLab·GitHub 은 SCM 이 CI 를 겸해 둘이
+// 같아 보이지만, Gitea 는 소스만 담당하고 빌드는 Jenkins 가 한다 — SCM 으로
+// 분기하면 Gitea 스택에 .gitlab-ci.yml 이 깔리고 Jenkins 는 읽을 파일이 없다.
+func renderPipelineFor(
+	platform port.SCMPlatform,
+	ci port.CIPlatform,
+	app string,
+	target *port.ImageTarget,
+) (path, content string) {
+	if strings.TrimSpace(string(ci)) == "" {
+		ci = port.DefaultCIPlatformFor(platform)
 	}
-	return GitLabPipelinePath, renderPipeline(app, target)
+	switch ci {
+	case port.CIPlatformJenkins:
+		return JenkinsfilePath, renderJenkinsfile(app, target)
+	case port.CIPlatformGitHubActions:
+		return GitHubWorkflowPath, renderGitHubWorkflow(app, target)
+	default:
+		return GitLabPipelinePath, renderPipeline(app, target)
+	}
 }
 
 // renderGitHubWorkflow 는 build → deploy 2단계 GitHub Actions 워크플로를 만든다.

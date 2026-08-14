@@ -18,6 +18,36 @@ const (
 	SCMPlatformGitea SCMPlatform = "gitea"
 )
 
+// CIPlatform 은 파이프라인을 실행하는 CI 플랫폼이다.
+//
+// SCM 과 별개의 축이다. GitLab·GitHub 은 SCM 이 CI 를 겸하지만 Gitea 는 그렇지
+// 않다 — 소스는 Gitea, 빌드는 Jenkins 처럼 갈린다. 하나로 묶어 두면 Gitea
+// 스택에 .gitlab-ci.yml 이 깔리고 Jenkins 는 읽을 파일이 없어 영영 돌지 않는다.
+type CIPlatform string
+
+const (
+	// CIPlatformGitLabCI / CIPlatformGitHubActions 는 SCM 이 겸하는 CI 다.
+	CIPlatformGitLabCI      CIPlatform = "gitlab-ci"
+	CIPlatformGitHubActions CIPlatform = "github-actions"
+	// CIPlatformJenkins 는 SCM 과 독립적으로 도는 CI 다.
+	CIPlatformJenkins CIPlatform = "jenkins"
+)
+
+// DefaultCIPlatformFor 는 CI 를 명시하지 않았을 때 SCM 이 함의하는 CI 다.
+//
+// Gitea 는 자체 CI 를 쓰지 않으므로 Jenkins 로 본다 — Gitea 스택에
+// .gitlab-ci.yml 을 깔면 아무것도 그것을 읽지 않는다.
+func DefaultCIPlatformFor(platform SCMPlatform) CIPlatform {
+	switch platform {
+	case SCMPlatformGitHub:
+		return CIPlatformGitHubActions
+	case SCMPlatformGitea:
+		return CIPlatformJenkins
+	default:
+		return CIPlatformGitLabCI
+	}
+}
+
 // SCMConnection 은 외부 SCM 에 붙기 위한 조직 단위 설정이다.
 //
 // 스택 안에 설치되는 GitLab 과 달리 GitHub 은 주소도 소유자도 우리가 정할 수
