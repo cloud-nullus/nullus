@@ -3,6 +3,7 @@ package gitea
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/port"
@@ -24,6 +25,8 @@ const (
 	// 설치됐는데 파이프라인 생성만 실패하는 원인이 먼 오류가 된다.
 	giteaPodSelector = "app.kubernetes.io/name=gitea"
 	giteaContainer   = "gitea"
+	// giteaHTTPPort 는 파드 안에서 API 를 부를 때 쓰는 포트다.
+	giteaHTTPPort = 3000
 
 	// AutomationUser 는 차트가 만드는 관리자 계정이다.
 	// 스택 설치의 provisioning_secrets 가 같은 이름으로 자격증명을 만든다
@@ -64,6 +67,19 @@ func NewTokenIssuer(kubeconfig port.KubeconfigProvider, runKubectl KubectlRunner
 	return &TokenIssuer{kubeconfig: kubeconfig, runKubectl: runKubectl, secrets: secrets}
 }
 
+// AdminPasswordPath 는 Gitea 관리자 비밀번호의 시크릿 경로다.
+//
+// 스택 설치의 provisioning_secrets 가 쓰는 경로와 같아야 한다
+// (helm/secret-provisioning.go 의 "artifacts/gitea/admin-password").
+// 토큰 폐기에 관리자 자격이 필요하다 — CLI 에 삭제 명령이 없어 API 를 쓴다.
+func AdminPasswordPath(env, orgID string) string {
+	env = strings.TrimSpace(env)
+	if env == "" {
+		env = defaultTokenEnv
+	}
+	return fmt.Sprintf("kv/nullus/%s/%s/artifacts/gitea/admin-password", env, strings.TrimSpace(orgID))
+}
+
 // TokenSecretPath 는 액세스 토큰의 시크릿 경로다.
 //
 // 스택 모듈의 규약(kv/nullus/{env}/{org}/{module}/{provider}/...)을 따른다.
@@ -101,7 +117,17 @@ func (t *TokenIssuer) EnsureToken(ctx context.Context, spec port.SCMTokenSpec) (
 		}
 	}
 
-	token, err := t.issueViaCLI(ctx, spec.ClusterID, namespace)
+	// 폐기에 쓸 관리자 비밀번호. 없으면 폐기를 건너뛰고 생성만 시도한다 —
+	// 이름이 비어 있으면 생성이 이름 충돌로 실패하며 그 사실이 그대로 드러난다.
+	adminPassword := ""
+	if t.secrets != nil {
+		if pw, pwErr := t.secrets.GetTokenForStack(
+			ctx, SecretProvider, stackID, AdminPasswordPath(spec.Env, orgID)); pwErr == nil {
+			adminPassword = strings.TrimSpace(pw)
+		}
+	}
+
+	token, err := t.issueViaCLI(ctx, spec.ClusterID, namespace, adminPassword)
 	if err != nil {
 		return "", err
 	}
@@ -121,7 +147,7 @@ func (t *TokenIssuer) EnsureToken(ctx context.Context, spec port.SCMTokenSpec) (
 // 같은 이름의 토큰이 이미 있으면 발급이 실패하므로 먼저 지운다. 그래서 이
 // 경로는 항상 "새 토큰" 을 돌려준다 — 보관에 실패하면 이전 토큰까지 잃으므로
 // EnsureToken 이 저장 실패를 오류로 다룬다.
-func (t *TokenIssuer) issueViaCLI(ctx context.Context, clusterID, namespace string) (string, error) {
+func (t *TokenIssuer) issueViaCLI(ctx context.Context, clusterID, namespace, adminPassword string) (string, error) {
 	var kubeconfig []byte
 	if t.kubeconfig != nil {
 		var err error
@@ -134,19 +160,22 @@ func (t *TokenIssuer) issueViaCLI(ctx context.Context, clusterID, namespace stri
 		return "", fmt.Errorf("kubectl runner is not configured")
 	}
 
-	// gitea CLI 는 반드시 git 사용자로 돌아야 한다. root 로 실행하면
-	// "Gitea is not supposed to be run as root" 로 거부한다.
-	//
-	// 토큰 삭제는 없을 수도 있으므로 실패를 무시한다(|| true). 발급만 성패를 가른다.
-	script := fmt.Sprintf(
-		"gitea admin user delete-access-token --username %s --token-name %s >/dev/null 2>&1 || true; "+
-			"gitea admin user generate-access-token --username %s --token-name %s --scopes write:organization,write:repository,write:user --raw",
-		AutomationUser, AutomationTokenName, AutomationUser, AutomationTokenName)
-
 	pod, err := t.resolveGiteaPod(ctx, kubeconfig, namespace)
 	if err != nil {
 		return "", err
 	}
+
+	// 같은 이름의 토큰이 이미 있으면 생성이 실패한다. Gitea CLI 에는 토큰 삭제
+	// 명령이 없으므로(1.27 기준 create/list/delete/change-password/
+	// generate-access-token/must-change-password 뿐) API 로 폐기한다.
+	// 파드 안에서 localhost 로 부르므로 Gitea 를 외부에 노출하지 않아도 된다.
+	t.bestEffortRevokeToken(ctx, kubeconfig, namespace, pod, adminPassword)
+
+	// gitea CLI 는 반드시 git 사용자로 돌아야 한다. root 로 실행하면
+	// "Gitea is not supposed to be run as root" 로 거부한다.
+	script := fmt.Sprintf(
+		"gitea admin user generate-access-token --username %s --token-name %s --scopes write:organization,write:repository,write:user --raw",
+		AutomationUser, AutomationTokenName)
 
 	args := []string{
 		"-n", namespace,
@@ -165,6 +194,36 @@ func (t *TokenIssuer) issueViaCLI(ctx context.Context, clusterID, namespace stri
 		return "", fmt.Errorf("Gitea 토큰 발급 출력에서 토큰을 찾지 못했습니다 (%s)", namespace)
 	}
 	return token, nil
+}
+
+// bestEffortRevokeToken 은 같은 이름의 기존 토큰을 API 로 폐기한다.
+//
+// 실패해도 진행한다 — 토큰이 애초에 없는 경우가 정상이고, 실제로 남아 있어
+// 폐기에 실패했다면 이어지는 생성이 이름 충돌로 실패하며 그 사실이 드러난다.
+// 여기서 끊으면 "없는 토큰을 못 지웠다" 는 이유로 첫 발급까지 막힌다.
+func (t *TokenIssuer) bestEffortRevokeToken(
+	ctx context.Context,
+	kubeconfig []byte,
+	namespace, pod, adminPassword string,
+) {
+	if strings.TrimSpace(adminPassword) == "" {
+		return
+	}
+
+	script := fmt.Sprintf(
+		"curl -s -o /dev/null -X DELETE -u '%s:%s' http://localhost:%d/api/v1/users/%s/tokens/%s",
+		AutomationUser, adminPassword, giteaHTTPPort, AutomationUser, AutomationTokenName)
+
+	args := []string{
+		"-n", namespace,
+		"exec", pod,
+		"-c", giteaContainer,
+		"--", "sh", "-lc", script,
+	}
+	if _, err := t.runKubectl(ctx, kubeconfig, args...); err != nil {
+		slog.Warn("Gitea 기존 토큰 폐기 실패 — 생성 단계에서 이름 충돌이 날 수 있습니다",
+			"namespace", namespace, "token", AutomationTokenName, "error", err)
+	}
 }
 
 // resolveGiteaPod 은 gitea CLI 를 실행할 파드 이름을 찾는다.

@@ -45,6 +45,12 @@ type Options struct {
 	// 클러스터 안에서 돌 때만 해석된다. 로컬 실행이나 외부 GitLab 을 붙일 때
 	// 이 값으로 대체한다.
 	GitLabBaseURLOverride string
+	// GiteaBaseURLOverride 는 Gitea 의 클러스터 내부 서비스 DNS 대신 쓸 주소다.
+	//
+	// 기본 경로는 gitea-http.{ns}.svc 인데, 이는 API 서버가 클러스터 안에서 돌
+	// 때만 해석된다. 로컬 실행에서는 이 값이 없으면 인증 확인(Ping)이 DNS 오류로
+	// 실패하고, 그러면 토큰을 강제 재발급하는 경로로 잘못 흘러간다.
+	GiteaBaseURLOverride string
 }
 
 // BundleFactory 는 port.SCMBundleFactory 구현체다.
@@ -292,8 +298,8 @@ func (f *BundleFactory) giteaBundle(
 		Provisioner: client,
 		// Gitea 에는 GitLab 같은 프로젝트 CI 변수 저장소가 없다. 파이프라인
 		// 자격증명은 OpenBao → ESO → K8s Secret 평면이 나른다.
-		Registry:        resolver,
-		Webhooks:        client,
+		Registry: resolver,
+		Webhooks: client,
 		Credentials: gitea.NewCredentialPlane(
 			f.giteaSecrets, f.opts.Env, summary.OrgID, summary.ID, namespace),
 		Platform:        port.SCMPlatformGitea,
@@ -340,7 +346,10 @@ func (f *BundleFactory) authenticatedGiteaClient(
 	spec port.SCMTokenSpec,
 	namespace string,
 ) (*gitea.Client, string, error) {
-	baseURL := giteaBaseURL(namespace)
+	baseURL := strings.TrimSpace(f.opts.GiteaBaseURLOverride)
+	if baseURL == "" {
+		baseURL = giteaBaseURL(namespace)
+	}
 
 	// 토큰을 함께 돌려준다. 여기서 재발급이 일어날 수 있으므로 호출부가 다시
 	// EnsureToken 을 부르면 방금 발급한 것과 다른 값을 쥘 위험이 있다.

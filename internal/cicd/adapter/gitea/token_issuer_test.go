@@ -99,3 +99,30 @@ func TestTokenIssuer_ReusesStoredToken(t *testing.T) {
 	assert.Equal(t, "stored", token)
 	assert.Empty(t, kc.calls, "보관된 토큰이 있으면 kubectl 을 부르지 않는다")
 }
+
+// Gitea 1.27 에는 delete-access-token 서브커맨드가 없다(create/list/delete/
+// change-password/generate-access-token/must-change-password 뿐).
+// 없는 명령을 부르면 삭제가 조용히 실패하고, 이어지는 생성이
+// "access token name has been used already" 로 죽는다.
+//
+// 대신 파드 안에서 Gitea API 로 폐기한다 — 파드는 localhost:3000 에 닿는다.
+func TestTokenIssuer_RevokesViaAPINotMissingCLICommand(t *testing.T) {
+	kc := &recordingKubectl{podName: "gitea-abc", token: "tok-1"}
+	secrets := &memSecrets{m: map[string]string{
+		AdminPasswordPath("dev", "org-1"): "admin-pw",
+	}}
+	issuer := NewTokenIssuer(nil, kc.run, secrets)
+
+	_, err := issuer.EnsureToken(context.Background(), spec())
+	require.NoError(t, err)
+
+	all := ""
+	for _, c := range kc.calls {
+		all += strings.Join(c, " ") + "\n"
+	}
+	assert.NotContains(t, all, "delete-access-token",
+		"Gitea CLI 에 없는 명령이다")
+	assert.Contains(t, all, "DELETE",
+		"기존 토큰은 API 로 폐기해야 이름 충돌이 나지 않는다")
+	assert.Contains(t, all, AutomationTokenName)
+}
