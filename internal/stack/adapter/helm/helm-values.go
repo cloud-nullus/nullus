@@ -303,6 +303,34 @@ func (o *Orchestrator) giteaSharedServiceValues() map[string]any {
 		namespace = defaultStackNamespace
 	}
 
+	// ROOT_URL 은 Gitea 가 돌려주는 클론 주소의 출처다. 차트 기본값
+	// (http://git.example.com)을 그대로 두면 Argo CD 와 Jenkins 가 존재하지 않는
+	// 호스트를 클론하려 한다 — 리포는 만들어지는데 동기화와 빌드만 조용히 실패한다.
+	//
+	// 접근 도메인이 있으면 그것을 쓴다(GitLab 의 global.hosts.domain 과 같은 규약).
+	// 없으면 클러스터 내부 주소로 떨어뜨린다 — 최소한 in-cluster 소비자는 클론할
+	// 수 있다.
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+
+	host := ""
+	if cfg != nil {
+		if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
+			host = "gitea." + accessDomain
+		}
+	}
+	rootURL := fmt.Sprintf("http://%s.%s.svc:%d/",
+		domain.GiteaHTTPServiceName, namespace, domain.GiteaServicePort)
+	if host != "" {
+		rootURL = fmt.Sprintf("http://%s/", host)
+	}
+
+	server := map[string]any{"ROOT_URL": rootURL}
+	if host != "" {
+		server["DOMAIN"] = host
+	}
+
 	return map[string]any{
 		"gitea": map[string]any{
 			"config": map[string]any{
@@ -310,6 +338,7 @@ func (o *Orchestrator) giteaSharedServiceValues() map[string]any {
 					"HOST": fmt.Sprintf("%s.%s.svc.cluster.local:%d",
 						domain.PostgresServiceName, namespace, domain.PostgresServicePort),
 				},
+				"server": server,
 			},
 		},
 	}

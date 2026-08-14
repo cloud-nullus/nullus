@@ -51,6 +51,10 @@ type Options struct {
 	// 때만 해석된다. 로컬 실행에서는 이 값이 없으면 인증 확인(Ping)이 DNS 오류로
 	// 실패하고, 그러면 토큰을 강제 재발급하는 경로로 잘못 흘러간다.
 	GiteaBaseURLOverride string
+	// JenkinsBaseURLOverride 는 Jenkins 의 클러스터 내부 서비스 DNS 대신 쓸
+	// 주소다. Gitea 와 같은 이유로 필요하다 — 기본 경로는 API 서버가 클러스터
+	// 안에서 돌 때만 해석된다.
+	JenkinsBaseURLOverride string
 }
 
 // BundleFactory 는 port.SCMBundleFactory 구현체다.
@@ -323,7 +327,10 @@ func (f *BundleFactory) giteaBundle(
 			slog.Warn("jenkins 자격증명을 읽지 못해 CI job 생성을 건너뜁니다",
 				"stack_id", summary.ID, "error", credErr)
 		} else {
-			ciBaseURL := jenkinsBaseURL(namespace)
+			ciBaseURL := strings.TrimSpace(f.opts.JenkinsBaseURLOverride)
+			if ciBaseURL == "" {
+				ciBaseURL = jenkinsBaseURL(namespace)
+			}
 			bundle.CIJobs = jenkins.NewClient(ciBaseURL, user, password)
 			bundle.CIBaseURL = ciBaseURL
 		}

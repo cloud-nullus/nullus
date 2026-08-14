@@ -274,8 +274,9 @@ func main() {
 			GroupPath: cicdGroupPath(),
 			// 기본은 클러스터 내부 서비스 DNS 다. API 서버를 클러스터 밖에서
 			// 돌리거나 외부 GitLab 을 붙일 때만 지정한다.
-			GitLabBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
-			GiteaBaseURLOverride:  strings.TrimSpace(os.Getenv("NULLUS_GITEA_URL")),
+			GitLabBaseURLOverride:  strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
+			GiteaBaseURLOverride:   strings.TrimSpace(os.Getenv("NULLUS_GITEA_URL")),
+			JenkinsBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_JENKINS_URL")),
 		},
 	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
 		WithGitea(cicdGiteaTokens, secretRouter).

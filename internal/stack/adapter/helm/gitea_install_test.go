@@ -118,3 +118,30 @@ func TestGiteaSharedServiceValues_FallsBackWhenNamespaceEmpty(t *testing.T) {
 	database := o.giteaSharedServiceValues()["gitea"].(map[string]any)["config"].(map[string]any)["database"].(map[string]any)
 	assert.Contains(t, database["HOST"], defaultStackNamespace)
 }
+
+// Gitea 의 ROOT_URL 은 클론 주소의 출처다.
+//
+// 차트 기본값은 http://git.example.com 이라 그대로 두면 Argo CD 와 Jenkins 가
+// 존재하지 않는 호스트를 클론하려 한다 — 리포는 만들어지는데 동기화와 빌드만
+// 조용히 실패한다. GitLab 이 global.hosts.domain 으로 같은 문제를 푸는 것과
+// 같이 접근 도메인을 쓴다.
+func TestGiteaSharedServiceValues_SetsRootURLFromAccessDomain(t *testing.T) {
+	o := NewOrchestrator(nil, []byte("not-a-kubeconfig"), "nullus-gj3")
+	cfg := domain.StackConfig{AccessDomain: "gj3.internal"}
+	o.SetStackConfig(cfg)
+
+	server := o.giteaSharedServiceValues()["gitea"].(map[string]any)["config"].(map[string]any)["server"].(map[string]any)
+
+	assert.Equal(t, "http://gitea.gj3.internal/", server["ROOT_URL"])
+	assert.Equal(t, "gitea.gj3.internal", server["DOMAIN"])
+}
+
+// 접근 도메인이 없으면 클러스터 내부 주소로 떨어뜨린다 — 최소한 in-cluster
+// 소비자(Argo CD·Jenkins)는 클론할 수 있다.
+func TestGiteaSharedServiceValues_FallsBackToInClusterRootURL(t *testing.T) {
+	o := NewOrchestrator(nil, []byte("not-a-kubeconfig"), "nullus-gj3")
+
+	server := o.giteaSharedServiceValues()["gitea"].(map[string]any)["config"].(map[string]any)["server"].(map[string]any)
+
+	assert.Contains(t, server["ROOT_URL"], "gitea-http.nullus-gj3.svc:3000")
+}
