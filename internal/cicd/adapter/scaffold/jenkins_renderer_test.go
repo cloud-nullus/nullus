@@ -150,3 +150,29 @@ func TestJenkinsfile_MarksWorkspaceAsSafeDirectory(t *testing.T) {
 	// 되커밋보다 앞서야 한다.
 	assert.Less(t, strings.Index(content, "safe.directory"), strings.Index(content, "git config user.email"))
 }
+
+// 자격증명이 빌드 로그에 남으면 안 된다.
+//
+// GitLab 은 CI 변수를 masked 로 등록해 로그에서 가려 주지만, Jenkins 는 K8s
+// Secret 에서 env 로 주입된 값을 마스킹하지 않는다. URL 에 토큰을 박아 push 하면
+// 셸 트레이스에 그대로 찍혀, 빌드 로그를 볼 수 있는 사람이 저장소 쓰기 토큰을
+// 얻는다.
+func TestJenkinsfile_DoesNotLeakCredentialsIntoBuildLog(t *testing.T) {
+	content := renderJenkinsfile("api", jenkinsTarget())
+	idx := strings.Index(content, "stage('Deploy')")
+	require.Positive(t, idx, "deploy 단계를 찾지 못했다")
+	deploy := content[idx:]
+
+	// 보호는 두 겹이다: 트레이스를 끄고, 명령 출력도 버린다.
+	traceOff := strings.Index(deploy, "set +x")
+	push := strings.Index(deploy, "git push")
+	require.Positive(t, traceOff, "자격증명을 다루는 구간에서는 셸 트레이스를 꺼야 한다")
+	assert.Less(t, traceOff, push, "트레이스를 끄기 전에 push 하면 토큰이 이미 찍힌다")
+
+	line := deploy[push:]
+	if end := strings.Index(line, "\\n"); end > 0 {
+		line = line[:end]
+	}
+	assert.Contains(t, line, ">/dev/null 2>&1",
+		"push 출력에도 원격 주소가 섞여 나올 수 있다")
+}

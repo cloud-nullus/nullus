@@ -142,9 +142,17 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	// [skip ci] 는 사람이 로그에서 원인을 알아보게 하는 표식이자, webhook 을
 	// 거르는 쪽에서 쓰는 관례다.
 	b.WriteString("            git commit -m \"chore(deploy): $IMAGE_TAG [skip ci]\"\n")
+	// 자격증명을 URL 에 박으면 셸 트레이스(set -x)에 평문으로 찍힌다. Jenkins 는
+	// K8s Secret 에서 env 로 온 값을 마스킹하지 않으므로, 빌드 로그를 볼 수 있는
+	// 사람이 저장소 쓰기 토큰을 그대로 얻는다 — GitLab 은 CI 변수를 masked 로
+	// 등록해 가려 주지만 여기서는 우리가 직접 막아야 한다.
+	//
+	// 트레이스를 끈 구간에서만 URL 을 조립하고, 명령 자체도 출력하지 않는다.
+	b.WriteString("            set +x\n")
 	fmt.Fprintf(&b,
-		"            git push \"$(echo \"$GIT_URL\" | sed \"s#://#://$%s:$%s@#\")\" HEAD:main\n",
+		"            git push \"$(echo \"$GIT_URL\" | sed \"s#://#://$%s:$%s@#\")\" HEAD:main >/dev/null 2>&1\n",
 		GitUsernameVar, GitPasswordVar)
+	b.WriteString("            echo \"매니페스트 태그를 되커밋했습니다\"\n")
 	b.WriteString("          '''\n")
 	b.WriteString("        }\n")
 	b.WriteString("      }\n")
