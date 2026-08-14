@@ -224,6 +224,42 @@ func DefaultValues(stepName string) map[string]any {
 				"storageSize": "20Gi",
 			},
 		}
+	case "installing_jenkins":
+		// Jenkins 는 GitLab CI 와 달리 실행기를 별도 차트로 세우지 않는다.
+		// kubernetes 플러그인이 빌드마다 agent 파드를 띄우므로 컨트롤러만 세운다.
+		//
+		// admin 자격증명은 values 에 평문으로 두지 않는다 — provisioning_secrets 가
+		// OpenBao 에 만들어 ESO 로 동기화한 Secret 을 가리킨다. 차트가 읽는 키
+		// 이름은 controller.admin.userKey/passwordKey 기본값과 같아야 한다.
+		return map[string]any{
+			"controller": map[string]any{
+				"admin": map[string]any{
+					"existingSecret": domain.JenkinsAdminSecret,
+					"userKey":        domain.JenkinsAdminUserKey,
+					"passwordKey":    domain.JenkinsAdminPasswordKey,
+				},
+				// gitea 플러그인이 Gitea organization/multibranch 스캔을 제공한다.
+				// 이게 없으면 리포를 만들어도 Jenkins 가 Jenkinsfile 을 찾지 못한다.
+				// (이 플러그인이 Jenkins 2.528.3 이상을 요구하므로 차트 버전을
+				//  임의로 내릴 수 없다 — domain.JenkinsChartVersion 주석 참고)
+				"installPlugins": []any{
+					"kubernetes",
+					"workflow-aggregator",
+					"git",
+					"gitea",
+					"configuration-as-code",
+				},
+				// 서비스는 게이트웨이 라우트가 앞단을 맡으므로 ClusterIP 로 둔다.
+				"serviceType": "ClusterIP",
+				"servicePort": domain.JenkinsServicePort,
+			},
+			// 컨트롤러 홈은 job 설정과 빌드 이력을 담는다. 비영속으로 두면
+			// 파드가 재시작될 때마다 multibranch job 이 사라진다.
+			"persistence": map[string]any{
+				"enabled": true,
+				"size":    "20Gi",
+			},
+		}
 	case "installing_gitea":
 		// Gitea 는 소스 저장소만 담당한다. GitLab 과 달리 CI 도 레지스트리도
 		// 겸하지 않으므로 이 스택은 Jenkins·Harbor 를 따로 세운다.

@@ -36,6 +36,7 @@ var releaseStepNames = map[string]string{
 	"gitlab":                   "installing_gitlab",
 	domain.GiteaReleaseName:    "installing_gitea",
 	"gitlab-runner":            stepInstallingRunner,
+	domain.JenkinsReleaseName:  "installing_jenkins",
 	domain.HarborReleaseName:   "installing_harbor",
 	domain.NexusReleaseName:    "installing_nexus",
 	"argo-cd":                  "installing_argocd",

@@ -140,6 +140,11 @@ spec:
 	if isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository) {
 		routes = append(routes, routeSpec{name: "gitea-route", host: fmt.Sprintf("gitea.%s", accessDomain), service: domain.GiteaHTTPServiceName, port: domain.GiteaServicePort})
 	}
+	// Jenkins 웹 UI. 노출하지 않으면 사용자가 빌드 로그를 볼 수 없고, Gitea
+	// webhook 도 컨트롤러에 닿지 못한다.
+	if isJenkinsCISelection(cfg.Pipeline.CIPlatform) {
+		routes = append(routes, routeSpec{name: "jenkins-route", host: fmt.Sprintf("jenkins.%s", accessDomain), service: domain.JenkinsServiceName, port: domain.JenkinsServicePort})
+	}
 	if cfg.Monitoring.Visualization.Enabled && strings.EqualFold(cfg.Monitoring.Visualization.Name, "grafana") {
 		routes = append(routes, routeSpec{name: "grafana-route", host: fmt.Sprintf("grafana.%s", accessDomain), service: "grafana", port: 80})
 	}

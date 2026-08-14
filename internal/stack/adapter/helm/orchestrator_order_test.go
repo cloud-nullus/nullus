@@ -33,6 +33,8 @@ var canonicalInstallOrder = []string{
 	"provisioning_nexus",
 	"installing_argocd",
 	"installing_runner",
+	// Jenkins 는 CI 슬롯의 다른 선택지다. 술어가 배타적이라 둘 중 하나만 선다.
+	"installing_jenkins",
 	"installing_prometheus",
 	"installing_grafana",
 	"installing_logging",

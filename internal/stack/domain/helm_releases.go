@@ -29,7 +29,10 @@ var InstalledHelmReleaseNames = []string{
 	"gitlab",
 	GiteaReleaseName,
 	"argo-cd",
+	// installing_runner / installing_jenkins 변형. CI 슬롯도 둘 중 하나만 서지만
+	// 삭제는 어느 쪽인지 모른 채 훑으므로 둘 다 적는다.
 	"gitlab-runner",
+	JenkinsReleaseName,
 	"kube-prometheus-stack",
 	"grafana",
 	"loki",

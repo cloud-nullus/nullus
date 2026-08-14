@@ -138,6 +138,17 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Values:      DefaultValues("installing_gitea"),
 			Wait:        false,
 		}, true
+	case "installing_jenkins":
+		// Jenkins 는 GitLab CI 와 달리 실행기를 별도 차트로 세우지 않는다 —
+		// kubernetes 플러그인이 빌드마다 agent 파드를 직접 띄운다.
+		return ChartSpec{
+			ReleaseName: domain.JenkinsReleaseName,
+			ChartName:   "jenkins",
+			RepoURL:     "https://charts.jenkins.io",
+			Version:     domain.JenkinsChartVersion,
+			Values:      DefaultValues("installing_jenkins"),
+			Wait:        false,
+		}, true
 	case "installing_harbor":
 		// 릴리스명이 곧 진입 Service 이름이 되므로 domain 상수를 쓴다.
 		return ChartSpec{

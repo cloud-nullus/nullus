@@ -71,6 +71,10 @@ var installDAG = []installStep{
 	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_sso", "installing_gitlab"}},
 
+	// Jenkins 는 CI 슬롯의 다른 선택지다. GitLab 러너와 달리 소스 저장소에
+	// 의존하지 않는다 — job 등록은 설치가 아니라 파이프라인 생성 시점이다.
+	{name: "installing_jenkins", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
+
 	{name: "installing_prometheus", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},
 	{name: "installing_grafana", phase: "C", duration: time.Second, deps: []string{"installing_prometheus"}},
 	{name: "installing_logging", phase: "C", duration: time.Second, deps: []string{"installing_argocd"}},

@@ -105,6 +105,19 @@ const (
 	GiteaAdminSecret      = "nullus-gitea-credentials" // #nosec G101 -- Secret 리소스 이름
 	GiteaAdminUserKey     = "username"
 	GiteaAdminPasswordKey = "password"
+
+	// JenkinsReleaseName 은 Jenkins 릴리스명이다. 파드 접두사이자 Service 이름의
+	// 뿌리가 된다 — CI/CD 모듈이 이 주소로 job 을 만든다.
+	JenkinsReleaseName = "jenkins"
+	JenkinsServiceName = JenkinsReleaseName
+	JenkinsServicePort = 8080
+	JenkinsAdminUser   = "admin"
+	// JenkinsAdminSecret 은 controller.admin.existingSecret 이 참조하는 Secret 이다.
+	// 차트가 읽는 키 이름은 controller.admin.userKey / passwordKey 기본값과 같아야
+	// 한다 — 틀리면 파드가 FailedMount 로 영원히 기동하지 못한다.
+	JenkinsAdminSecret      = "nullus-jenkins-credentials" // #nosec G101 -- Secret 리소스 이름
+	JenkinsAdminUserKey     = "jenkins-admin-user"
+	JenkinsAdminPasswordKey = "jenkins-admin-password"
 )
 
 // 설치가 사용하는 차트 버전.
@@ -129,6 +142,15 @@ const (
 	// 않으므로, 이 스택은 CI(Jenkins)와 레지스트리(Harbor)를 따로 세운다.
 	GiteaChartVersion = "12.7.0"
 	GiteaAppVersion   = "1.27.0"
+
+	// Jenkins 차트 버전은 자유롭게 내릴 수 없다. Gitea multibranch 스캔에 쓰는
+	// jenkinsci/gitea 플러그인이 Jenkins 2.528.3 이상을 요구하므로, appVersion 이
+	// 그 하한을 넘는 차트여야 한다. 5.9.54 → 2.568.2 로 요건을 만족한다.
+	// (고정: TestJenkinsAppVersion_SatisfiesGiteaPluginMinimum)
+	JenkinsChartVersion = "5.9.54"
+	JenkinsAppVersion   = "2.568.2"
+	// JenkinsGiteaPluginMinAppVersion 은 gitea 플러그인이 요구하는 Jenkins 하한이다.
+	JenkinsGiteaPluginMinAppVersion = "2.528.3"
 
 	MinIOChartVersion = "5.4.0"
 	MinIOAppVersion   = "RELEASE.2024-12-18T13-15-44Z"

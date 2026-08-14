@@ -119,6 +119,7 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
 		{name: "installing_logging", phase: "C"},
@@ -245,6 +246,7 @@ func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 	}
 
 	for _, step := range steps {
@@ -575,6 +577,7 @@ func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
 		{name: "installing_logging", phase: "C"},
@@ -612,6 +615,7 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
 		{name: "installing_logging", phase: "C"},
@@ -923,6 +927,7 @@ func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
 		{name: "installing_logging", phase: "C"},
@@ -977,6 +982,7 @@ func TestOrchestrator_VerifyDeployment_UsesResolvedChartsForLoggingAndTrace(t *t
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 		{name: "installing_prometheus", phase: "C"},
 		{name: "installing_grafana", phase: "C"},
 		{name: "installing_logging", phase: "C"},
@@ -1024,6 +1030,7 @@ func TestOrchestrator_ExecuteStep_AppliesRunnerGitlabURL(t *testing.T) {
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 	}
 
 	for _, step := range steps {
@@ -1065,6 +1072,7 @@ func TestOrchestrator_ExecuteStep_SkipsGitLabAndRunnerForGitHubSelection(t *test
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 	}
 
 	for _, step := range steps {
@@ -1106,6 +1114,7 @@ func TestOrchestrator_ExecuteStep_InstallsGitLabAndRunnerForGitLabSelection(t *t
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 	}
 
 	for _, step := range steps {
@@ -1154,6 +1163,7 @@ func TestOrchestrator_ExecuteStep_InstallsRunnerWhenGitLabSourceRepositoryIsInst
 		{name: "installing_gitea", phase: "B"},
 		{name: "installing_argocd", phase: "B"},
 		{name: "installing_runner", phase: "B"},
+		{name: "installing_jenkins", phase: "B"},
 	}
 
 	for _, step := range steps {

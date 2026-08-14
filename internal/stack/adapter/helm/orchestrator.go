@@ -171,8 +171,19 @@ func (o *Orchestrator) VerifyDeployment(ctx context.Context, stackID string) err
 			if step == stepInstallingRunner && isReleaseNotFoundError(err) {
 				// 릴리스 부재를 건너뛰면 러너 없는 스택이 health_check 를 통과한다.
 				// 설치 스텝이 성공했다면 릴리스는 반드시 존재해야 한다.
-				return fmt.Errorf("gitlab-runner 릴리스가 없습니다 (%s/%s): CI 실행기 없이 스택이 완료될 수 없습니다: %w",
-					namespace, releaseName, err)
+				//
+				// 단 이 요구는 GitLab CI 스택에만 해당한다. Jenkins 는 실행기를
+				// kubernetes 플러그인으로 직접 띄우므로 gitlab-runner 릴리스가
+				// 없는 것이 정상이다 — 여기서 걸러 내지 않으면 Jenkins 스택은
+				// 설치가 다 끝나도 completed 에 도달하지 못한다.
+				o.mu.Lock()
+				cfg := o.stackConfig
+				o.mu.Unlock()
+				if cfg == nil || runnerReleaseRequired(*cfg) {
+					return fmt.Errorf("gitlab-runner 릴리스가 없습니다 (%s/%s): CI 실행기 없이 스택이 완료될 수 없습니다: %w",
+						namespace, releaseName, err)
+				}
+				continue
 			}
 			return fmt.Errorf("status check failed for %s: %w", releaseName, err)
 		}
@@ -349,19 +360,22 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_harbor":        13,
 			"installing_nexus":         14,
 			"provisioning_nexus":       15,
-			"installing_argocd":        16,
-			stepInstallingRunner:       17,
-			"installing_prometheus":    18,
-			"installing_grafana":       19,
-			"installing_logging":       20,
-			"installing_log_search":    21,
-			"installing_opentelemetry": 22,
+			"installing_argocd":  16,
+			stepInstallingRunner: 17,
+			// Jenkins 는 CI 슬롯의 다른 선택지다. gitlab-runner 와 술어가 배타적이라
+			// 둘 중 하나만 선다.
+			"installing_jenkins":       18,
+			"installing_prometheus":    19,
+			"installing_grafana":       20,
+			"installing_logging":       21,
+			"installing_log_search":    22,
+			"installing_opentelemetry": 23,
 			// 수집기는 자기가 내보낼 백엔드(Tempo/Prometheus/Loki)가 선 뒤에 온다.
-			stepInstallingOTelCollector: 23,
+			stepInstallingOTelCollector: 24,
 			// 에이전트는 자기가 넘길 게이트웨이가 선 뒤에 온다.
-			stepInstallingOTelAgent: 24,
-			"installing_gateway":    25,
-			"integration_check":     26,
+			stepInstallingOTelAgent: 25,
+			"installing_gateway":    26,
+			"integration_check":     27,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -382,6 +396,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_nexus",
 			"installing_argocd",
 			stepInstallingRunner,
+			"installing_jenkins",
 			"installing_prometheus",
 			"installing_grafana",
 			"installing_logging",
@@ -410,6 +425,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_nexus":        "config.artifacts.container_registry",
 			"installing_argocd":         "config.pipeline.cd_tool",
 			stepInstallingRunner:        "config.pipeline.ci_platform",
+			"installing_jenkins":        "config.pipeline.ci_platform",
 			"installing_prometheus":     "config.monitoring.collection",
 			"installing_grafana":        "config.monitoring.visualization",
 			"installing_logging":        "config.logging.collection",
@@ -483,7 +499,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return cfg.Pipeline.CDTool.Enabled
 			},
 			stepInstallingRunner: func(cfg domain.StackConfig) bool {
-				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository) || isGitLabCISelection(cfg.Pipeline.CIPlatform)
+				return runnerReleaseRequired(cfg)
+			},
+			"installing_jenkins": func(cfg domain.StackConfig) bool {
+				return isJenkinsCISelection(cfg.Pipeline.CIPlatform)
 			},
 			"installing_prometheus": func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Collection.Enabled
@@ -614,6 +633,36 @@ func isGitLabCISelection(sel domain.ToolSelection) bool {
 		return true
 	}
 	return name == "gitlab-ci" || name == "gitlab-runner"
+}
+
+// isJenkinsCISelection 은 CI 플랫폼으로 Jenkins 를 골랐는지 본다.
+//
+// 이름이 비면 false 다 — 빈 이름의 기본값은 GitLab CI 이므로
+// (isGitLabCISelection 이 true 를 돌려준다) 여기서도 true 를 돌리면 실행기가
+// 둘 다 선다.
+func isJenkinsCISelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if isExternalSelection(sel) {
+		return false
+	}
+	return normalizeToolName(sel.Name) == "jenkins"
+}
+
+// runnerReleaseRequired 는 이 스택이 gitlab-runner 릴리스를 반드시 가져야 하는지
+// 본다. health check 의 하드 게이트가 이 값을 본다.
+//
+// GitLab CI 스택은 실행기 없이 완료되면 안 된다 — 파이프라인이 돌 곳이 없다.
+// 반면 Jenkins 스택은 실행기를 Jenkins 가 kubernetes 플러그인으로 직접 띄우므로
+// gitlab-runner 릴리스가 존재하지 않는 것이 정상이다. 이 구분이 없으면 Jenkins
+// 스택은 설치가 다 끝나도 영원히 completed 에 도달하지 못한다.
+func runnerReleaseRequired(cfg domain.StackConfig) bool {
+	if isJenkinsCISelection(cfg.Pipeline.CIPlatform) {
+		return false
+	}
+	return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository) ||
+		isGitLabCISelection(cfg.Pipeline.CIPlatform)
 }
 
 func normalizeToolName(name string) string {
@@ -1026,7 +1075,7 @@ func isOptInStep(step string) bool {
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
 	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
-	case "installing_gitea":
+	case "installing_gitea", "installing_jenkins":
 		return true
 	}
 	return false

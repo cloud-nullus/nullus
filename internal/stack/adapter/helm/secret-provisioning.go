@@ -131,6 +131,18 @@ func managedSecrets(namespace string) []ManagedSecret {
 			},
 		},
 		{
+			// Jenkins 차트의 controller.admin.existingSecret 이 참조한다.
+			// 키 이름은 차트의 userKey / passwordKey 기본값과 같아야 한다 —
+			// 틀리면 컨트롤러 파드가 FailedMount 로 기동하지 못한다.
+			TargetSecret:    domain.JenkinsAdminSecret,
+			Consumer:        "Jenkins",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "cicd/jenkins/admin-username", TargetKey: domain.JenkinsAdminUserKey, Fixed: domain.JenkinsAdminUser},
+				{PathSuffix: "cicd/jenkins/admin-password", TargetKey: domain.JenkinsAdminPasswordKey},
+			},
+		},
+		{
 			// GitLab object storage 연결 정보. 값 자체는 MinIO 자격이므로
 			// 같은 OpenBao 경로를 참조하고 ESO template 으로 YAML 을 만든다.
 			// 하드코딩 연결 문자열을 대체한다.
