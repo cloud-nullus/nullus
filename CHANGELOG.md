@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Gitea + Jenkins + Argo CD 파이프라인** (`internal/stack/adapter/helm/`, `internal/cicd/adapter/{gitea,jenkins}/`, `db/migrations/000067~000071`): Gitea·Jenkins 는 **설치 마법사에서 고를 수는 있었지만 배포해도 아무것도 설치되지 않았다** — 저장소가 그 사실을 `NOT_INSTALLABLE` 로 명시하고 있었고 Go 프로덕션 코드의 관련 히트는 0건이었다. 두 도구를 실제 설치 경로와 CI/CD 프로비저닝 경로에 배선한다.
+
+  **Jenkins 는 GitLab CI 와 트리거 모델이 근본적으로 다르다**: `.gitlab-ci.yml` 은 푸시하면 자동 감지되지만 Jenkins 는 job 이 먼저 존재해야 한다. 그래서 렌더러에 case 를 하나 더 다는 것으로 끝나지 않고 `port.CIJobProvisioner` 와 multibranch job 생성 단계가 새로 필요했다. 러너도 다르다 — GitLab 은 `gitlab-runner` 차트를 세우지만 Jenkins 는 kubernetes 플러그인이 빌드마다 agent 파드를 직접 띄운다. 그래서 health check 의 러너 하드 게이트를 CI 플랫폼별로 좁혔다: 좁히지 않으면 Jenkins 스택은 설치가 다 끝나도 `completed` 에 도달하지 못하고, 그러면 bundle factory 가 파이프라인 생성을 거부한다.
+
+  **CI 자격증명은 OpenBao → ESO → K8s Secret 평면에 얹는다.** Gitea 에는 GitLab 같은 프로젝트 CI 변수 저장소가 없다. Jenkins Credentials 를 1차 저장소로 쓰지 않는 이유는 자격증명 사본이 하나 더 생기고 회전 경로가 둘로 갈리기 때문이다 — OpenBao 단일 출처 원칙이 깨진다. 다만 소비자가 둘이고 주입 방식이 다르다: agent 파드는 `secretKeyRef` 로 env 를 받으면 되지만, **multibranch 스캔은 컨트롤러가 하므로 실제 credential 객체가 필요하다**. ESO 가 만든 Secret 을 컨트롤러에 마운트하고 JCasC `${name-keyName}` 보간으로 선언한다.
+
+  자격증명은 발급 시점으로 두 부류다. 사전 생성 가능한 admin 비밀번호는 `provisioning_secrets`(phase A)가 만들지만, **Gitea 액세스 토큰·레지스트리 자격증명은 해당 OSS 가 뜬 뒤에만 얻을 수 있어** 그 단계에 넣을 수 없다 — 파이프라인 프로비저닝 시점과 회전 컨트롤러가 맡는다.
+
+  Jenkins 차트 버전은 자유롭게 내릴 수 없다: Gitea multibranch 스캔에 쓰는 `gitea` 플러그인이 Jenkins 2.528.3 이상을 요구한다. 하한 아래로 내리면 실패가 설치 시점이 아니라 **첫 빌드 시점**에 나타나 원인을 찾기 어렵다.
+
+- **CI 단계를 OSS 무관하게 표현한다** (`internal/cicd/port/ci_stage.go`): CI 마다 단계 어휘가 다르다 — Jenkins 는 `SUCCESS/FAILED/IN_PROGRESS/NOT_EXECUTED`, GitLab 은 `success/failed/running/pending/skipped`, GitHub Actions 는 `status` 와 `conclusion` 두 필드로 나눠 표현한다. 이 변환을 위쪽 계층에서 하면 OSS 를 하나 늘릴 때마다 도메인과 화면이 모두 바뀐다. **변환을 어댑터 경계에서 끝낸다**: port 에 정규화된 어휘를 두고 각 어댑터가 자기 표현을 옮기며, 유스케이스는 CI 종류를 모른 채 도메인 스텝으로 넘긴다. 모르는 값은 `unknown` 이다 — 성공으로 넘겨짚으면 돌지 않은 단계가 성공으로 보인다. 건너뛴 단계는 실패와 구분한다: 건너뛴 것은 잘못된 것이 아니다.
+
+- **CI 서버의 빌드 이력을 실행 통계로 들인다** (`internal/cicd/usecase/sync_pipeline_runs.go`): GitOps 경로에서는 플랫폼이 배포를 실행하지 않는다 — CI 가 빌드하고 Argo CD 가 동기화한다. 그래서 실행 기록이 CI 에만 있었고 `pipeline_deployments` 에 행을 넣는 경로는 플랫폼이 직접 배포하는 두 곳뿐이었다. 빌드가 성공해도 화면의 Success Rate·Total Runs 가 영원히 0 이었다. 배포 ID 를 빌드 번호에서 만들어 멱등하며, 동기화는 특정 파이프라인을 조회할 때만 돈다 — 목록 전체에서 하면 비용이 파이프라인 수에 비례해 CI 서버를 찾는다.
+
+- **Harbor 프로젝트를 만드는 `provisioning_harbor` 단계** (`internal/stack/adapter/helm/harbor-provisioning.go`): Harbor 는 push 전에 프로젝트가 존재해야 하는데 그것을 만드는 경로가 없어 첫 이미지 push 가 `unauthorized: project not found` 로 죽었다. 스택은 정상 설치됐고 빌드도 성공한 뒤라 원인이 멀리 떨어진 실패였다. 기존 `gitlab-harbor-v1` 템플릿도 같은 지점을 겪는다. Nexus 가 `provisioning_nexus` 로 커넥터·저장소를 맞추는 것과 같은 자리에 둔다.
+
 - **OpenTelemetry 수집기를 스택의 관측 계층으로** (`internal/stack/domain/config.go`, `internal/stack/adapter/helm/otel-collector.go`, `db/migrations/000063_seed_otel_stack_template.up.sql`): 설치 마법사의 **Exporter / Agent 선택이 아무 일도 하지 않고 있었다** — 프론트는 배포 요청에 `trace_exporter` 를 실어 보냈지만 도메인 설정에 받는 칸이 없어 조용히 버려졌다. `trace_layer`(추적 저장소)와 칸을 나눈다: 역할이 다르기 때문이다. `trace_layer` 는 추적을 저장·조회하는 백엔드(Tempo/Jaeger)이고, `trace_exporter` 는 그 앞에 서서 OTLP 를 받아 추적·메트릭·로그를 각각의 저장소로 나눠 보낸다 — 한 칸에 묶으면 둘 중 하나만 설치할 수 있어 "수집기를 통해 관측한다" 는 구성 자체가 불가능하다.
 
   수집기는 **둘로 나눈다**. OpenTelemetry 의 표준 배치다. 게이트웨이(Deployment)는 OTLP 를 받아 Tempo/Prometheus/Loki 로 내보내고 — 앱이 붙는 주소가 하나로 고정되어야 한다 — 에이전트(DaemonSet)는 노드의 `/var/log/pods` 를 읽어 게이트웨이로 넘긴다(로그 파일은 노드마다 있으므로 모든 노드에 떠야 한다). 에이전트가 저장소로 직접 보내지 않는 이유는 출구를 하나로 모아야 저장소를 바꿀 때 고칠 곳이 한 군데로 남기 때문이다. 게이트웨이가 없거나 로그를 받아 줄 저장소가 없으면 에이전트를 설치하지 않는다 — 갈 곳도 없는 로그를 위해 노드마다 DaemonSet 을 띄우지 않는다. **고르지 않은 백엔드로 보내는 exporter 는 만들지 않는다**: 주소가 풀리지 않아 수집기는 뜨는데 추적만 조용히 사라지는, 원인을 찾기 어려운 상태가 된다.
@@ -106,6 +122,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
+
+- **생성한 비밀번호가 CLI 인자로 안전하지 않던 문제** (`internal/stack/adapter/helm/secret-provisioning.go`): `base64.RawURLEncoding` 알파벳(`A-Za-z0-9-_`)은 `-` 로 시작하는 값을 만들 수 있다. 이 비밀번호들은 CLI 인자로 그대로 넘어가므로(`mc`, `gitea admin user`, Nexus 프로비저닝) 그런 값이 나오면 CLI 가 플래그로 파싱해 죽는다 — MinIO post-install 잡이 이렇게 실패해 스택 설치가 phase A 에서 멈췄다. **64분의 1 확률이라 어떤 설치는 통과하고 어떤 설치는 실패해 재현이 어렵다**(같은 코드로 첫 설치는 통과하고 두 번째가 걸렸다). 영숫자만 쓰고 나머지 연산의 편향을 피하려 rejection sampling 을 쓴다. 길이 43 으로 엔트로피는 유지한다.
+
+- **실행되지 않은 파이프라인 단계를 성공으로 그리던 문제** (`web/src/features/cicd/utils/stage-states.ts`): History 탭이 배포 상태 하나로 템플릿에 적힌 모든 단계를 초록 체크로 칠했다. 같은 화면이 바로 아래에서 `0 steps` 라고 밝히면서. 실제로 Jenkinsfile 은 Build·Deploy 2단계인데 템플릿의 4단계가 모두 완료로 보였다 — **돌지도 않은 Test 가 성공했다고 표시된다**. 실제 스텝 결과에서 단계 상태를 만들고, 스텝 정보가 없으면 초록 체크 대신 모른다고 말한다. 단계 목록의 출처도 렌더러로 옮겨(`scaffold.PipelineStageNames`) 템플릿 선언과 스캐폴딩 결과가 어긋나지 않게 계약 테스트로 묶었다.
+
+- **Gitea 재배포가 교착되던 문제** (`internal/stack/adapter/helm/values.go`): Gitea 는 RWO 볼륨 하나에 leveldb 큐 락을 잡는데 차트 기본값이 `RollingUpdate`(maxUnavailable=0)다. 새 파드는 옛 파드가 쥔 락 때문에 뜨지 못하고, 옛 파드는 새 파드가 Ready 가 되어야 내려가므로 영원히 안 내려간다. 첫 설치는 성공하므로 드러나지 않다가 values 를 바꾸는 첫 재배포에서 걸린다.
+
+- **되커밋 자격증명이 빌드 로그에 남던 문제** (`internal/cicd/adapter/scaffold/jenkins_renderer.go`): deploy 단계가 토큰을 URL 에 박아 push 하는데 셸 트레이스가 그 명령을 그대로 찍었다. GitLab 은 CI 변수를 masked 로 등록해 가려 주지만 Jenkins 는 K8s Secret 에서 env 로 온 값을 마스킹하지 않는다 — 빌드 로그를 볼 수 있는 사람이 저장소 쓰기 토큰을 그대로 얻는다.
+
+- **클러스터 밖 API 서버가 스택 내부 주소를 쓰던 문제** (`internal/cicd/adapter/provisioning/bundle_factory.go`): Gitea·Jenkins 의 기본 주소는 서비스 DNS 라 API 서버가 클러스터 안에서 돌 때만 해석된다. 더 중요한 것은 **job 과 Argo CD 에 넘기는 주소가 API 서버의 주소와 다른 관심사**라는 점이다 — 그 둘은 클러스터 안에서 도는 소비자다. 같은 값을 쓰면 job 이 `Unknown server` 로 스캔을 거부하고 Argo 는 `connection refused` 로 동기화에 실패한다. bundle 에 in-cluster 주소를 따로 둔다.
+
+- **Gitea 파드를 워크로드 종류로 찾던 문제** (`internal/cicd/adapter/gitea/token_issuer.go`): 차트 12.7.0 은 Deployment 로 배포하는데 StatefulSet 에 exec 하려 해서 파이프라인 생성만 실패했다. 차트는 버전·설정에 따라 종류가 달라지므로 레이블로 파드를 찾는다. 토큰 폐기도 Gitea CLI 에 없는 명령(`delete-access-token`)을 부르고 있어 API 로 바꿨다.
+
+- **Jenkins CSRF crumb 세션이 유지되지 않던 문제** (`internal/cicd/adapter/jenkins/client.go`): Jenkins 는 crumb 을 세션에 묶어 검증하는데 쿠키 jar 가 없어 매번 세션이 갈렸다 — crumb 이 유효해도 403 이 나고 job 생성이 전부 실패했다. multibranch job 의 `traits` 누락(Jenkins NPE 500)과 Gitea DB 호스트가 기본 네임스페이스를 가리키던 문제도 함께 고쳤다.
 
 - **모달 첫 줄 입력의 라벨 위쪽이 잘리던 문제** (`web/src/components/ui/modal.tsx`): 템플릿 편집 모달의 "Template ID" 가 위가 잘린 채로 떠 있었다. MUI 는 `DialogTitle` 바로 뒤에 오는 `DialogContent` 의 `padding-top` 을 0 으로 만드는데, 이 본문은 `overflow-y: auto` 라 그 경계에서 잘린다. 첫 줄이 외곽선 입력이면 떠 있는 라벨이 상자 위로 나가 있으므로 **라벨의 위쪽 절반이 사라진다**. 여백을 되돌려 준다 — 모든 모달에 적용된다.
 
