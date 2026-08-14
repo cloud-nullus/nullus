@@ -28,6 +28,13 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 	cfg := o.stackConfig
 	o.mu.Unlock()
 
+	// Jenkins 의 Gitea 서버 등록은 주소가 네임스페이스에 달려 있어 여기서
+	// 조립한다. 등록하지 않으면 job 의 SCM 소스가 가리키는 서버를 플러그인이
+	// 모르는 서버로 보고 스캔을 거부한다.
+	if step == "installing_jenkins" {
+		base = mergeMaps(base, jenkinsGiteaServerValues(o.namespace))
+	}
+
 	// OpenBao values 는 선택된 StorageClass 에 의존하므로 여기서 조립한다.
 	if step == "installing_openbao" {
 		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))

@@ -48,3 +48,15 @@ type CIJobProvisioner interface {
 type SCMWebhookProvisioner interface {
 	EnsureWebhook(ctx context.Context, projectID, targetURL, secret string) error
 }
+
+// CICredentialResolver 는 스택별 CI 서버 접속 자격증명을 돌려준다.
+//
+// 기동 시점에 고정할 수 없다 — CI 서버는 스택마다 따로 서고 관리자 비밀번호도
+// 스택마다 다르게 생성된다(provisioning_secrets 가 OpenBao 에 넣는다).
+// 고정 문자열을 쓰면 비어 있거나 다른 스택의 자격증명으로 붙게 된다.
+//
+// SCMTokenSpec 을 재사용한다 — 스택·클러스터·조직·환경이라는 조회 축이 SCM
+// 토큰과 완전히 같기 때문이다.
+type CICredentialResolver interface {
+	ResolveCICredential(ctx context.Context, spec SCMTokenSpec) (user, secret string, err error)
+}

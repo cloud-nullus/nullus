@@ -8,6 +8,13 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
+// JenkinsGiteaCredentialID 는 Jenkins 에 등록되는 Gitea 자격증명 식별자다.
+//
+// CI/CD 모듈의 job 설정이 같은 이름을 참조한다(cicd/usecase 의 giteaCredentialID).
+// 모듈 간 직접 import 는 금지되므로 값을 각자 두되, 갈라지면 job 이 브랜치를
+// 하나도 찾지 못하므로 계약 테스트로 묶는다.
+const JenkinsGiteaCredentialID = "nullus-gitea"
+
 func WithHelmStepMetadataRepository(repo port.HelmStepMetadataRepository) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.helmStepMetadataRepo = repo

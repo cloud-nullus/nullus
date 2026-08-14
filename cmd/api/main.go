@@ -23,9 +23,11 @@ import (
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
 	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
+	cicdgitea "github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	cicdgitlab "github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	cicdhandler "github.com/cloud-nullus/draft/internal/cicd/adapter/handler"
+	cicdjenkins "github.com/cloud-nullus/draft/internal/cicd/adapter/jenkins"
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdprovisioning "github.com/cloud-nullus/draft/internal/cicd/adapter/provisioning"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
@@ -250,6 +252,19 @@ func main() {
 	cicdGitHubTokens := cicdgithub.NewTokenIssuer(secretRouter)
 	cicdGitHubConnections := cicdrepo.NewPostgresSCMConnectionReader(pool)
 
+	// Gitea 는 스택 안에 설치되므로 GitLab 과 같은 방식으로 토큰을 발급한다 —
+	// 외부에 노출하지 않고도 동작해야 하므로 API 가 아니라 파드 안의 CLI 를 쓴다.
+	cicdGiteaTokens := cicdgitea.NewTokenIssuer(
+		kubeconfigProvider,
+		cicdKubectlRunner,
+		secretRouter,
+	)
+	// Jenkins 자격증명은 발급하지 않고 읽기만 한다. 관리자 비밀번호는 스택
+	// 설치의 provisioning_secrets 가 이미 만들어 OpenBao 에 넣었고 같은 값을
+	// ESO 가 컨트롤러에 동기화한다 — 여기서 새로 발급하면 컨트롤러가 자기
+	// 비밀번호를 모르게 된다.
+	cicdJenkinsCreds := cicdjenkins.NewCredentialResolver(secretRouter)
+
 	cicdBundleFactory := cicdprovisioning.NewBundleFactory(
 		cicdStackReader,
 		cicdTokenIssuer,
@@ -260,7 +275,9 @@ func main() {
 			// 돌리거나 외부 GitLab 을 붙일 때만 지정한다.
 			GitLabBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
 		},
-	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections)
+	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
+		WithGitea(cicdGiteaTokens).
+		WithJenkins(cicdJenkinsCreds)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 

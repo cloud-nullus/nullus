@@ -7,6 +7,7 @@ package provisioning
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
@@ -59,9 +60,10 @@ type BundleFactory struct {
 
 	// Gitea 경로도 선택적으로 배선된다. 같은 이유로 없으면 조용히 흘리지 않는다.
 	giteaTokens port.SCMTokenIssuer
-	// jenkinsAdmin 은 Jenkins job 생성에 쓰는 관리자 자격증명이다.
-	jenkinsUser  string
-	jenkinsToken string
+	// jenkinsCreds 는 Jenkins job 생성에 쓰는 관리자 자격증명을 스택별로 푼다.
+	// 기동 시점에 고정할 수 없다 — CI 서버가 스택마다 따로 서고 비밀번호도
+	// 스택마다 다르게 생성된다.
+	jenkinsCreds port.CICredentialResolver
 }
 
 // NewBundleFactory 는 팩토리를 만든다.
@@ -92,9 +94,8 @@ func (f *BundleFactory) WithGitea(tokens port.SCMTokenIssuer) *BundleFactory {
 //
 // 배선되지 않으면 CIJobs 가 nil 로 남고, 호출부는 job 생성을 건너뛴다 —
 // 리포와 스캐폴딩은 만들어지되 빌드는 돌지 않는다.
-func (f *BundleFactory) WithJenkins(user, token string) *BundleFactory {
-	f.jenkinsUser = strings.TrimSpace(user)
-	f.jenkinsToken = strings.TrimSpace(token)
+func (f *BundleFactory) WithJenkins(creds port.CICredentialResolver) *BundleFactory {
+	f.jenkinsCreds = creds
 	return f
 }
 
@@ -302,10 +303,19 @@ func (f *BundleFactory) giteaBundle(
 	// Jenkins 가 배선돼 있어야 job 을 만들 수 있다. 없으면 CIJobs 를 비워 두고
 	// 리포·스캐폴딩까지만 진행한다 — 조용히 성공한 것처럼 보이지 않도록
 	// 호출부가 job 생성 생략을 결과에 남긴다.
-	if f.jenkinsToken != "" {
-		ciBaseURL := jenkinsBaseURL(namespace)
-		bundle.CIJobs = jenkins.NewClient(ciBaseURL, f.jenkinsUser, f.jenkinsToken)
-		bundle.CIBaseURL = ciBaseURL
+	//
+	// 자격증명 조회 실패도 같게 다룬다. 여기서 끊으면 리포조차 만들어지지
+	// 않는데, 그 실패는 되돌리기 어려운 job 생성보다 앞 단계의 문제다.
+	if f.jenkinsCreds != nil {
+		user, password, credErr := f.jenkinsCreds.ResolveCICredential(ctx, spec)
+		if credErr != nil {
+			slog.Warn("jenkins 자격증명을 읽지 못해 CI job 생성을 건너뜁니다",
+				"stack_id", summary.ID, "error", credErr)
+		} else {
+			ciBaseURL := jenkinsBaseURL(namespace)
+			bundle.CIJobs = jenkins.NewClient(ciBaseURL, user, password)
+			bundle.CIBaseURL = ciBaseURL
+		}
 	}
 	return bundle, nil
 }

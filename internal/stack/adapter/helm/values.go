@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
@@ -252,6 +253,26 @@ func DefaultValues(stepName string) map[string]any {
 				// 서비스는 게이트웨이 라우트가 앞단을 맡으므로 ClusterIP 로 둔다.
 				"serviceType": "ClusterIP",
 				"servicePort": domain.JenkinsServicePort,
+				// ESO 가 동기화한 Gitea 자격증명을 컨트롤러에 마운트한다.
+				// JCasC 는 {name}-{keyName} 으로 참조하므로 아래 configScripts 의
+				// ${nullus-gitea-credentials-username} 과 짝이 맞아야 한다.
+				"additionalExistingSecrets": []any{
+					map[string]any{"name": domain.GiteaAdminSecret, "keyName": domain.GiteaAdminUserKey},
+					map[string]any{"name": domain.GiteaAdminSecret, "keyName": domain.GiteaAdminPasswordKey},
+				},
+				"JCasC": map[string]any{
+					"defaultConfig": true,
+					// multibranch job 이 private Gitea 리포를 스캔하려면 credential
+					// 객체가 필요하다. agent 파드의 env 로는 안 된다 — 스캔은
+					// 컨트롤러가 하고 Jenkins 는 실제 credential 을 요구한다.
+					//
+					// id 는 job 설정이 참조하는 이름과 같아야 한다
+					// (cicd/usecase 의 giteaCredentialID). 갈라지면 job 은 만들어지되
+					// 브랜치를 하나도 찾지 못한다.
+					"configScripts": map[string]any{
+						"nullus-gitea-credentials": jenkinsGiteaCredentialJCasC(),
+					},
+				},
 			},
 			// 컨트롤러 홈은 job 설정과 빌드 이력을 담는다. 비영속으로 두면
 			// 파드가 재시작될 때마다 multibranch job 이 사라진다.
@@ -562,4 +583,54 @@ func randomArgoCDServerSecretKey() string {
 		return "nullus-argocd-server-secretkey"
 	}
 	return base64.StdEncoding.EncodeToString(key)
+}
+
+// jenkinsGiteaCredentialJCasC 는 Gitea 접속 credential 을 선언하는 JCasC 조각이다.
+//
+// 값은 ESO 가 동기화한 Secret 에서 보간된다 — OpenBao 가 여전히 단일 출처이고
+// Jenkins Credentials 는 파생 사본일 뿐이다. 차트는 마운트된 Secret 을
+// {name}-{keyName} 으로 노출한다.
+func jenkinsGiteaCredentialJCasC() string {
+	return `credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "` + JenkinsGiteaCredentialID + `"
+              username: "${` + domain.GiteaAdminSecret + `-` + domain.GiteaAdminUserKey + `}"
+              password: "${` + domain.GiteaAdminSecret + `-` + domain.GiteaAdminPasswordKey + `}"
+              description: "Nullus 가 만든 Gitea 접속 자격증명"
+`
+}
+
+// jenkinsGiteaServerValues 는 gitea 플러그인에 서버를 등록한다.
+//
+// 주소가 네임스페이스에 달려 있어 DefaultValues 에 넣을 수 없다.
+// 등록하지 않으면 job 의 SCM 소스가 가리키는 서버를 플러그인이 모르는 서버로
+// 보고 스캔을 거부한다.
+func jenkinsGiteaServerValues(namespace string) map[string]any {
+	if strings.TrimSpace(namespace) == "" {
+		namespace = defaultStackNamespace
+	}
+	serverURL := fmt.Sprintf("http://%s.%s.svc:%d",
+		domain.GiteaHTTPServiceName, namespace, domain.GiteaServicePort)
+
+	script := `unclassified:
+  giteaServers:
+    servers:
+      - displayName: "nullus-gitea"
+        serverUrl: "` + serverURL + `"
+        manageHooks: false
+        credentialsId: "` + JenkinsGiteaCredentialID + `"
+`
+	return map[string]any{
+		"controller": map[string]any{
+			"JCasC": map[string]any{
+				"configScripts": map[string]any{
+					"nullus-gitea-server": script,
+				},
+			},
+		},
+	}
 }

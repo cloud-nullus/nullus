@@ -117,3 +117,16 @@ func TestSplitFullPath(t *testing.T) {
 	_, _, ok = splitFullPath("api")
 	assert.False(t, ok, "소유자를 모르면 job 이 브랜치를 찾지 못한 채 조용히 서 있는다")
 }
+
+// Jenkins 에 등록되는 credential 이름은 스택 모듈의 JCasC 설정이 만드는 이름과
+// 같아야 한다. 모듈 간 직접 import 가 금지돼 양쪽이 값을 각자 들고 있으므로,
+// 한쪽만 바뀌면 job 은 만들어지되 브랜치를 하나도 찾지 못한다 — 실패가 설치
+// 시점이 아니라 첫 스캔 시점에 나타나 원인을 찾기 어렵다.
+//
+// 스택 쪽 값은 internal/stack/adapter/helm 의 JenkinsGiteaCredentialID 다.
+func TestGiteaCredentialID_MatchesStackJCasCContract(t *testing.T) {
+	const stackSideValue = "nullus-gitea"
+
+	assert.Equal(t, stackSideValue, giteaCredentialID,
+		"internal/stack/adapter/helm 의 JenkinsGiteaCredentialID 와 같아야 한다")
+}
