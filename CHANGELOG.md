@@ -198,81 +198,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **CHANGELOG 누락과 릴리즈 중복을 CI 가 차단** (`scripts/check_changelog.py`, `Lint Review` 의 `📝 CHANGELOG Check`): 릴리즈 정책 §4.2 는 CHANGELOG 갱신을 PR 작성자의 의무로 규정하고 PR 템플릿 체크박스를 두기로 했으나, 체크박스는 차단 장치가 아니라 실제로 #114 가 CHANGELOG 없이 머지됐다 — GitLab 저장소 프로비저닝과 Argo CD 연동이라는 기능 본체가 릴리즈 노트에서 통째로 빠졌고, 릴리즈를 자를 때 커밋 36건을 손으로 대조해 17건을 백필해야 했다. 이제 동작이 바뀌는 파일을 고치고 `CHANGELOG.md` 를 건드리지 않으면 CI 가 실패한다(`no-changelog` 라벨로 면제, 문서·테스트 전용은 자동 면제). 같은 검사가 릴리즈를 자른 뒤 `main` 을 되머지할 때 생기는 `[Unreleased]`↔릴리즈 섹션 중복도 잡는다 — 이 역시 실제로 발생해 8건이 양쪽에 남아 있었다. 검사기는 로컬에서도 그대로 돈다.
+
 - **Zadara Cloud PoC 배포 산출물** (`deploy/csp/zadara/`): `values-zadara.yaml`(워커 1대·NodePort ingress·local-path 스토리지 기준)과 배포 런북 `README.md`.
+
 - **태그 push 로 릴리즈·배포까지 자동화** (`cd.yml`): `create-release` 가 CHANGELOG 의 해당 버전 섹션을 릴리즈 본문으로 쓰고(없으면 자동 생성 노트) GA 이전 버전은 프리릴리즈로 표시한다. `deploy-zadara` 가 bastion SSH 로 Zadara 클러스터에 `helm upgrade` 를 수행하고 공개 엔드포인트 2곳이 200 인지까지 확인한다. `environment: zadara` 로 실배포 직전 승인 게이트를 걸 수 있다. 필요한 secrets: `ZADARA_SSH_KEY`·`ZADARA_HOST`·`ZADARA_USER`·`NULLUS_DB_PASSWORD`·`NULLUS_ENCRYPTION_KEY`.
+
 - **Zadara Cloud PoC 운영 스크립트** (`deploy/csp/zadara/`): 웹 UI 터널(`tunnel.sh`), 로컬 kubectl kubeconfig(`kubeconfig.sh`), 표준 포트 노출(`expose-web.sh`), apiserver 노출(`expose-apiserver.sh`, 기본 미사용), Keycloak realm 구성(`setup-keycloak-realm.sh`), Let's Encrypt TLS(`setup-tls.sh`).
+
 - **차트에 SPA 런타임 설정 값 추가**: `web.auth.{mode,oidcProvider,oidcAuthority,oidcClientId}`. 비우면 이미지에 빌드된 값을 그대로 쓴다.
 
 ### Changed
 
 - **브랜치 명명 규칙을 중첩형으로 단일화** (컨벤션 v3): `CLAUDE.md` 는 `feat/<module>/<description>`, `Nullus_PR_커밋_컨벤션.md` v2 는 `feat/stack-tools-wizard` 로 서로 다르게 규정해 실제 브랜치가 34:33 으로 갈려 있었다(릴리즈 정책 §13-6 미해결 과제). 최근 브랜치가 전부 중첩형이라 **`<type>/<module>/<desc>` + `feat`/`fix`/`chore` 3종**으로 정하고 세 문서를 맞췄다. 기존 브랜치는 그대로 두고 신규 생성만 따른다.
+
 - **릴리즈 본문에 설치법·산출물 경로·CHANGELOG 링크 추가** (`create-release`): 기존에는 CHANGELOG 섹션만 그대로 실어, `v0.4.0-alpha` 기준 항목 55개가 아무 안내 없이 먼저 나왔다. 릴리즈 페이지만 보고도 무엇을 어떻게 받는지 알 수 있도록 `helm install` 명령, 이미지·차트 경로, CHANGELOG·릴리즈 정책 링크, 직전 태그와의 compare 링크를 앞에 붙인다. 프리릴리즈면 그 사실도 맨 위에 밝힌다.
+
 - **PR 이벤트 트리거에 `synchronize`·`edited` 추가** (`lint-review.yml`): 지적을 고쳐 push 해도 검사가 다시 돌지 않아, 통과시키려면 PR 을 close/reopen 해야 했다. CHANGELOG 검사처럼 "고치고 다시 밀면 통과" 가 전제인 검사는 이대로면 성립하지 않는다.
 
-### Fixed
-
-- **QEMU arm64 크로스빌드 시 npm ci Illegal instruction 크래시 방지** (`web/Dockerfile`): React/Vite 정적 자산 빌드 단계는 아키텍처에 독립적이므로 `FROM --platform=$BUILDPLATFORM node:22-alpine AS builder`를 도입해 호스트 네이티브(x86_64)에서 고속 빌드되도록 수정했다. QEMU 에뮬레이션 하에서 발생하는 Node 22 V8 JIT 크래시를 방지하고 Web 이미지 빌드 시간을 ~25분에서 59초로 단축했다.
-- **같은 커밋에서 CD 가 두 번 돌던 문제**: `cd.yml` 은 `main` push 와 `v*` 태그 push 양쪽에 걸려 있다. 릴리즈를 머지하고 곧바로 태그를 밀면 같은 커밋으로 두 런이 동시에 시작해 arm64 크로스빌드가 통째로 두 번 돈다 — `ec123dc` 에서 실제로 발생했다. 태그 런이 브랜치 런의 상위집합(차트·릴리즈·배포까지)이므로 커밋 SHA 기준 `concurrency` 로 묶어 앞선 런을 접는다. 태그는 언제나 그 커밋이 브랜치에 올라간 뒤에 밀리므로 남는 쪽이 태그 런이다.
-- **OpenBao 운영 모드 전환 및 ESO 시크릿 평면 구축**: dev 모드로 작동하던 OpenBao를 영속 스토리지 기반 운영 모드로 전환하고, 정적 토큰 인증을 Kubernetes Auth 기반 단기 자격으로 교체했다. OpenBao에 보관된 시크릿이 External Secrets Operator(ESO)를 거쳐 최종 애플리케이션 파드까지 안전하게 전달되도록 주입 경로를 구성했다.
-- **OSS OIDC 클라이언트 자동 프로비저닝 기능 추가**: 스택 설치 시 OSS 애플리케이션의 OIDC 클라이언트를 Keycloak에 자동으로 등록하는 SSO 핸드오프 경로를 구현했다. 클라이언트 시크릿을 플랫폼이 생성하여 OpenBao에 안전하게 기록하고 Keycloak에 즉시 동기화하도록 연동했다.
-- **시크릿 회전 후 소비자 워크로드 반영(Rolling Restart) 구현**: 회전된 시크릿이 실제 서비스에 즉시 반영되도록 시크릿 소비 워크로드를 재시작하는 단계를 추가했다. 시크릿 소비 방식(환경변수·파일 마운트 등)에 따라 재시작 필요 여부를 판별하여 프로바이더별 정책으로 분기 처리하도록 배선했다.
-- **에어갭 무인 설치의 백엔드 API 경로 통합**: Helm CLI를 직접 호출해 백엔드를 우회하던 기존 에어갭 설치 방식을 정식 백엔드 API 경로로 통합했다. 설치 과정에서 인-클러스터 자기 자신을 클러스터 목록에 자동 등록하고, 부트스트랩 자격증명의 안전한 폐기 및 멱등한 재발급 흐름을 추가했다.
-- **GitLab 저장소 자동 프로비저닝 및 Argo CD 연동**: CI/CD 파이프라인 생성 시 GitLab 앱 저장소와 빌드 스캐폴딩(.gitlab-ci.yml, Dockerfile, K8s 매니페스트)을 자동으로 생성하고, GitLab Runner 빌드 이미지와 Argo CD GitOps 배포까지 이어지는 엔드투엔드 연동 경로를 구현했다.
-- **스택 접속 정보 API 도입 및 리소스 이름 단일 출처화**: Helm values와 프런트엔드 안내 문구에 파편화되어 하드코딩되어 있던 Secret·서비스 이름을 `internal/stack/domain/connection.go` 상수로 단일 출처화했다. `GET /api/v1/stacks/:stackId/connection-info` 엔드포인트를 통해 서버가 확정한 정합성 있는 접속 정보를 내려주고, 프런트엔드는 응답 데이터를 직접 구동해 표시하도록 개선했다.
-
-- **컨테이너 레지스트리로 Harbor / Nexus 선택 가능** (스택 템플릿 `gitlab-harbor-v1`·`gitlab-nexus-v1` 추가): 기존에는 GitLab 내장 레지스트리뿐이었다. 템플릿은 Harbor 를 도구로 명시하면서도 **설치 단계가 아예 없어**, 고르면 CI 가 이미지를 올릴 곳이 존재하지 않았다. `installing_harbor`·`installing_nexus`·`provisioning_nexus` 를 설치 DAG 에 추가하고, 자격증명은 다른 도구와 같이 OpenBao → ESO 로 프로비저닝한다. Nexus 는 설치만으로는 Docker 커넥터도 저장소도 없고 관리자 비밀번호를 컨테이너가 무작위로 만들기 때문에, `provisioning_nexus` 가 비밀번호를 교체하고 `DockerToken` realm 을 켜고 docker/maven/npm 저장소와 8082 Service 를 만든다(재실행 가능). CI/CD 쪽에는 Nexus resolver 를 추가해 이미지를 UI(8081)가 아닌 Docker 커넥터(8082)로 보낸다 — UI 주소로 push 하면 이미지 대신 HTML 을 받는다. 로컬 kind 에서 두 레지스트리 모두 설치·이미지 push 를 확인했고, Harbor 는 GitLab CI 빌드 → push → Argo CD 동기화 → 파드 구동까지 digest 일치로 검증했다.
-- **CI/CD 리스트와 배포 확인 모달에 사용 스택 표시**: 파이프라인은 이미 `stack_id` 를 저장하고 API 로도 내려주고 있었으나 화면에 없었다. 스택마다 레지스트리가 달라 이미지가 어디로 올라가는지가 달라지므로, 배포 직전과 목록에서 어느 스택 위에서 도는지 드러낸다.
-### Changed
-
 - **`runbook_csp.sh`의 레지스트리·이미지 태그 기본값 교정**: `REGISTRY`를 실재 경로(`ghcr.io/cloud-nullus/nullus`)로 바로잡고, 프리릴리즈에 존재하지 않는 `IMAGE_TAG=latest` 대신 비워 두어 차트 `appVersion`으로 폴백한다. 마이그레이션 Job이 이미지 레퍼런스를 문자열로 조립하므로 배포 시작 전에 태그를 한 번 확정한다.
+
 - **스택 설치 경로의 리소스 이름 리터럴을 도메인 상수로 통일**: 스택 설치 오케스트레이터 및 어댑터 곳곳에 흩어져 있던 리소스 이름 리터럴들을 `internal/stack/domain` 및 `internal/shared/domain` 상수로 통일했다. 설치 경로의 리소스 명칭과 상수 정의가 어긋나지 않도록 `connection_contract_test.go` 통합 검증 테스트를 추가해 정합성을 고정했다.
 
 ### Fixed
 
+- **QEMU arm64 크로스빌드 시 npm ci Illegal instruction 크래시 방지** (`web/Dockerfile`): React/Vite 정적 자산 빌드 단계는 아키텍처에 독립적이므로 `FROM --platform=$BUILDPLATFORM node:22-alpine AS builder`를 도입해 호스트 네이티브(x86_64)에서 고속 빌드되도록 수정했다. QEMU 에뮬레이션 하에서 발생하는 Node 22 V8 JIT 크래시를 방지하고 Web 이미지 빌드 시간을 ~25분에서 59초로 단축했다.
+
+- **같은 커밋에서 CD 가 두 번 돌던 문제**: `cd.yml` 은 `main` push 와 `v*` 태그 push 양쪽에 걸려 있다. 릴리즈를 머지하고 곧바로 태그를 밀면 같은 커밋으로 두 런이 동시에 시작해 arm64 크로스빌드가 통째로 두 번 돈다 — `ec123dc` 에서 실제로 발생했다. 태그 런이 브랜치 런의 상위집합(차트·릴리즈·배포까지)이므로 커밋 SHA 기준 `concurrency` 로 묶어 앞선 런을 접는다. 태그는 언제나 그 커밋이 브랜치에 올라간 뒤에 밀리므로 남는 쪽이 태그 런이다.
+
+- **OpenBao 운영 모드 전환 및 ESO 시크릿 평면 구축**: dev 모드로 작동하던 OpenBao를 영속 스토리지 기반 운영 모드로 전환하고, 정적 토큰 인증을 Kubernetes Auth 기반 단기 자격으로 교체했다. OpenBao에 보관된 시크릿이 External Secrets Operator(ESO)를 거쳐 최종 애플리케이션 파드까지 안전하게 전달되도록 주입 경로를 구성했다.
+
+- **OSS OIDC 클라이언트 자동 프로비저닝 기능 추가**: 스택 설치 시 OSS 애플리케이션의 OIDC 클라이언트를 Keycloak에 자동으로 등록하는 SSO 핸드오프 경로를 구현했다. 클라이언트 시크릿을 플랫폼이 생성하여 OpenBao에 안전하게 기록하고 Keycloak에 즉시 동기화하도록 연동했다.
+
+- **시크릿 회전 후 소비자 워크로드 반영(Rolling Restart) 구현**: 회전된 시크릿이 실제 서비스에 즉시 반영되도록 시크릿 소비 워크로드를 재시작하는 단계를 추가했다. 시크릿 소비 방식(환경변수·파일 마운트 등)에 따라 재시작 필요 여부를 판별하여 프로바이더별 정책으로 분기 처리하도록 배선했다.
+
+- **에어갭 무인 설치의 백엔드 API 경로 통합**: Helm CLI를 직접 호출해 백엔드를 우회하던 기존 에어갭 설치 방식을 정식 백엔드 API 경로로 통합했다. 설치 과정에서 인-클러스터 자기 자신을 클러스터 목록에 자동 등록하고, 부트스트랩 자격증명의 안전한 폐기 및 멱등한 재발급 흐름을 추가했다.
+
+- **GitLab 저장소 자동 프로비저닝 및 Argo CD 연동**: CI/CD 파이프라인 생성 시 GitLab 앱 저장소와 빌드 스캐폴딩(.gitlab-ci.yml, Dockerfile, K8s 매니페스트)을 자동으로 생성하고, GitLab Runner 빌드 이미지와 Argo CD GitOps 배포까지 이어지는 엔드투엔드 연동 경로를 구현했다.
+
+- **스택 접속 정보 API 도입 및 리소스 이름 단일 출처화**: Helm values와 프런트엔드 안내 문구에 파편화되어 하드코딩되어 있던 Secret·서비스 이름을 `internal/stack/domain/connection.go` 상수로 단일 출처화했다. `GET /api/v1/stacks/:stackId/connection-info` 엔드포인트를 통해 서버가 확정한 정합성 있는 접속 정보를 내려주고, 프런트엔드는 응답 데이터를 직접 구동해 표시하도록 개선했다.
+
+- **컨테이너 레지스트리로 Harbor / Nexus 선택 가능** (스택 템플릿 `gitlab-harbor-v1`·`gitlab-nexus-v1` 추가): 기존에는 GitLab 내장 레지스트리뿐이었다. 템플릿은 Harbor 를 도구로 명시하면서도 **설치 단계가 아예 없어**, 고르면 CI 가 이미지를 올릴 곳이 존재하지 않았다. `installing_harbor`·`installing_nexus`·`provisioning_nexus` 를 설치 DAG 에 추가하고, 자격증명은 다른 도구와 같이 OpenBao → ESO 로 프로비저닝한다. Nexus 는 설치만으로는 Docker 커넥터도 저장소도 없고 관리자 비밀번호를 컨테이너가 무작위로 만들기 때문에, `provisioning_nexus` 가 비밀번호를 교체하고 `DockerToken` realm 을 켜고 docker/maven/npm 저장소와 8082 Service 를 만든다(재실행 가능). CI/CD 쪽에는 Nexus resolver 를 추가해 이미지를 UI(8081)가 아닌 Docker 커넥터(8082)로 보낸다 — UI 주소로 push 하면 이미지 대신 HTML 을 받는다. 로컬 kind 에서 두 레지스트리 모두 설치·이미지 push 를 확인했고, Harbor 는 GitLab CI 빌드 → push → Argo CD 동기화 → 파드 구동까지 digest 일치로 검증했다.
+
+- **CI/CD 리스트와 배포 확인 모달에 사용 스택 표시**: 파이프라인은 이미 `stack_id` 를 저장하고 API 로도 내려주고 있었으나 화면에 없었다. 스택마다 레지스트리가 달라 이미지가 어디로 올라가는지가 달라지므로, 배포 직전과 목록에서 어느 스택 위에서 도는지 드러낸다.
+
 - **OIDC 로그인이 유효한 토큰에도 401 로 거부되던 문제**: `setup-keycloak.sh` 가 `nullus-app` 클라이언트에 audience 매퍼를 만들지 않아 Keycloak 이 기본값 `aud: account` 로 토큰을 발급했고, `NULLUS_AUTH_OIDC_AUDIENCE=nullus-app` 를 검증하는 JWT 미들웨어가 이를 거부했다. audience 프로토콜 매퍼를 추가한다.
+
 - **OIDC 로그인 후 스택 생성이 FK 위반으로 실패하던 문제**: JWT 미들웨어가 `User.OrgID` 를 채우지 않고 토큰에도 `org_id` 클레임이 없어, `resolveOrgID` 가 어떤 마이그레이션에도 존재하지 않는 `00000000-0000-0000-0000-000000000001` 로 폴백해 `stacks_org_id_fkey` 위반이 났다. 미들웨어가 `org_id`(및 `organization_id`/`org` 별칭) 클레임을 principal 로 전달하고, `setup-keycloak.sh` 가 사용자 속성과 클레임 매퍼를 등록한다. 폴백 조직도 시드 마이그레이션이 실제로 만드는 조직(`internal/shared/domain.SeededDefaultOrgID`)으로 바로잡고 `NULLUS_DEFAULT_ORG_ID` 로 덮어쓸 수 있게 했다.
+
 - **로컬 Keycloak 이 기동 15분 뒤 realm 을 통째로 잃던 문제**: `KC_DB: dev-mem`(H2 인메모리)이 마지막 커넥션과 함께 사라져 `Table "REALM" not found (this database is empty)` 로그와 함께 토큰 엔드포인트가 500 을 반환했다. `dev-file` + 볼륨으로 바꾸고, KC 26 에서 deprecated 된 `KEYCLOAK_ADMIN*` 을 `KC_BOOTSTRAP_ADMIN_*` 로 교체했다.
+
 - **`setup-keycloak.sh` 가 수동 개입 없이는 완주하지 못하던 문제**: master realm 의 `sslRequired` 기본값 때문에 평문 HTTP 관리 API 호출이 `HTTPS required` 로 막혔다. 실패 시 컨테이너 안에서 `kcadm` 으로 한 번 완화하고 재시도하도록 자동화하고, `nullus` realm 도 `sslRequired=none` 으로 생성한다. 응답이 비었을 때 JSON 파서가 traceback 으로 죽던 문제, Keycloak 24+ User Profile 이 선언되지 않은 `org_id` 속성을 조용히 버리던 문제도 함께 정리했다.
+
 - **`external-secrets`·`metrics-server` 릴리스가 스택 삭제 대상에서 누락되던 문제**: `DeleteStack` 의 `stackHelmReleaseNames` 에 두 릴리스가 없어 `helm uninstall` 이 아예 호출되지 않았고, ESO 의 CRD 24개·ClusterRole 5개·webhook 2개가 그대로 남아 다음 설치를 Helm ownership 충돌로 막았다. 시크릿 평면이 상시 설치로 바뀌면서 스택을 지울 때마다 재현되는 상태가 됐다. 설치/삭제가 각자 목록을 들고 있던 것이 근본 원인이므로 `internal/stack/domain` 에 단일 출처(`InstalledHelmReleaseNames`)를 두고 양쪽이 참조하게 했다. 차트를 새로 추가하고 삭제 목록에 등록하지 않으면 설치 측 테스트가 먼저 실패한다.
+
 - **재설치 시 cluster-scoped 리소스 소유권 충돌**: CRD·ClusterRole·webhook 은 네임스페이스 리소스와 달리 스택 삭제 후에도 남기 쉬운데(Helm 이 CRD 를 의도적으로 남기고, uninstall 이 부분 실패하거나 네임스페이스가 강제 삭제되면 RBAC 도 남는다), 옛 `meta.helm.sh/release-namespace` 가 박혀 있으면 다른 네임스페이스로의 재설치가 `invalid ownership metadata` 로 거부된다. ESO 만 갖고 있던 소유권 인수 로직을 모든 차트 설치 경로로 일반화했다. **삭제가 아니라 인수인 이유**는 CRD 가 클러스터 전역이라 지우면 다른 스택의 커스텀 리소스가 함께 사라지기 때문이다. 같은 이유로 **옛 릴리스가 아직 살아 있으면 인수하지 않는다** — 살아 있는 다른 스택의 리소스를 탈취하면 그 스택 삭제 시 함께 삭제된다. ESO 전용 인수 경로에도 같은 가드를 적용했다.
+
 - **스택 설치 DAG에서 시크릿 평면 단계 누락 — GitLab+Argo CD 배포가 MinIO에서 멈추던 문제**: 오케스트레이터의 정식 순서(`orderedStep`)에는 `installing_external_secrets`·`provisioning_secrets`가 있었으나, 실제 실행을 구동하는 `internal/stack/usecase/install_stack.go`의 `installDAG`에는 두 단계가 없었다. PostgreSQL/MinIO 차트는 비밀번호를 values 로 받지 않고 `nullus-postgresql-credentials`·`nullus-minio-credentials`를 `existingSecret`으로 참조하는데, 이 Secret 을 만드는 경로가 `provisioning_secrets` 하나뿐이라 파드가 `FailedMount`로 영원히 기동하지 못하고 Helm 릴리스가 `pending-install`에 고착됐다. 두 단계를 DAG 에 추가하고, 시크릿 평면(OpenBao → ESO → provisioning)을 스토리지 차트 **앞으로** 재배치했다. OpenBao 는 file 스토리지 백엔드를 쓰므로 PostgreSQL/MinIO 에 의존하지 않아, `installing_openbao`의 잘못된 선행 의존도 함께 제거했다. `installDAG` 와 `orderedStep` 의 순서 일치를 양쪽 패키지에서 테스트로 고정한다.
+
 - **시크릿 평면이 `authentication.provider=openbao` 에서만 동작하던 문제**: 차트가 프로비저닝된 Secret 을 무조건 참조하므로 선택형일 수 없는데도 opt-in 으로 게이팅되어 있었다. 프런트엔드 기본값이 `provider: ''` 라 기본 구성에서 항상 설치가 실패했다. 게이팅을 제거해 항상 실행되도록 했다.
+
 - **`provisioning_secrets` 단계가 `unknown step` 으로 실패하던 문제**: 차트가 없는 단계인데 처리 블록이 `chartSpecForStep()` 뒤에 있어 spec 조회 실패로 떨어졌다. OpenBao 를 켜더라도 실행될 수 없던 잠재 결함으로, 다른 무차트 단계와 같이 spec 조회 앞으로 옮겼다.
+
 - **GitLab 이 존재하지 않는 DB Secret 을 참조하던 문제**: PostgreSQL 차트를 `auth.existingSecret=nullus-postgresql-credentials` 로 설치하면 bitnami 차트가 릴리스 이름(`nullus-postgresql`)으로 Secret 을 만들지 않는데, GitLab values 의 `global.psql.password.secret` 은 그 이름을 가리키고 있었다. 그 결과 migrations·webservice·toolbox·sidekiq 파드가 `MountVolume.SetUp failed ... secret "nullus-postgresql" not found` 로 기동하지 못했다. 두 참조가 같은 상수(`ProvisionedPostgresSecret`)를 쓰도록 맞추고, 어긋나면 실패하는 테스트를 추가했다.
+
 - **`OnDelete` 전략 워크로드에서 준비 검사가 실패하던 문제**: `kubectl rollout status` 는 RollingUpdate 전략에서만 동작하는데, OpenBao 차트의 StatefulSet 은 `OnDelete` 를 쓴다. 그래서 모든 차트가 정상 설치된 뒤에도 health_check 가 `rollout status is only available for RollingUpdate strategy type` 으로 실패해 배포가 통째로 failed 로 떨어졌다. 전략을 먼저 확인해 `OnDelete` 면 `readyReplicas` 도달을 기다리는 경로로 전환한다(에러 문구 기반 폴백 포함).
+
 - **배포 타임라인에서 `provisioning_secrets` 로그가 사라지던 문제**: UI 의 `DEPLOY_STAGES` 가 설치 단계를 `installing_` 접두사로만 매칭해, 접두사를 쓰지 않는 `provisioning_secrets` 가 어느 스테이지에도 잡히지 않았다. 이 단계가 실제로 실행되기 시작하면서 드러난 문제로, Install 스테이지에 명시적으로 추가했다.
+
 - **OpenBao unseal 사이드카가 키를 보내지 않고도 "제출 완료" 를 찍던 문제**: Secret 이 만들어지기 전이나 kubelet 이 마운트를 동기화하기 전에는 glob 이 아무것도 잡지 못하는데, 그때도 성공 로그를 남겨 "키를 보냈는데 안 열린다" 로 오독되었다. 제출한 조각 수를 세어 0 이면 대기 중임을 그대로 로그에 남긴다.
+
 - **사설 CA 시크릿이 필수 마운트로 걸려 있던 문제**: API 파드가 `nullus-wildcard-tls` 시크릿을 `optional` 없이 마운트해, 해당 시크릿이 없는 환경에서는 파드가 `FailedMount`로 Pending에 갇혔다. 실 클러스터 서버 사이드 dry-run 에서만 드러나고 로컬 `helm template`은 통과시킨다. 시크릿을 선택 사항으로 바꾸고, `merge-ca-certs` 초기화 컨테이너가 CA 파일이 없으면 시스템 번들만 쓰도록 수정했다. 시크릿 이름은 `caBundle.secretName` 값으로 분리했다.
+
 - **keycloak 서브차트 벤더링 누락으로 차트가 렌더조차 되지 않던 문제**: `Chart.yaml` 에 `keycloak` 의존성이 추가되었으나 `Chart.lock` 과 `charts/keycloak-24.4.5.tgz` 가 함께 커밋되지 않아, 저장소를 클론한 상태에서 `found in Chart.yaml, but missing in charts/ directory: keycloak` 으로 실패했다. 같은 디렉토리의 `postgresql` 은 벤더링되어 있어 규칙이 어긋나 있었다. 잠금 파일과 차트를 함께 커밋한다.
+
 - **`bitnami/*` 이미지 소멸로 차트 기본값이 pull 되지 않던 나머지 3건**: #106 이 `postgresql.image` 를 `bitnamilegacy/*` 로 옮겼으나, 같은 원인의 참조가 세 군데 남아 있었다 — 번들 PostgreSQL 의 `volumePermissions.image`(`bitnami/os-shell`), 그리고 keycloak 서브차트가 쓰는 `bitnami/keycloak:26.1.0-debian-12-r0` 와 그 서브차트 자신의 PostgreSQL `bitnami/postgresql:17.2.0-debian-12-r6`. 뒤의 두 건은 차트 기본값 렌더에 그대로 나타나 **기본 설치가 `ImagePullBackOff` 로 실패**했다. 세 건 모두 legacy 경로로 고정해, 이제 기본값이 참조하는 이미지 6종이 모두 익명 pull 된다.
+
 - **게시된 web 이미지로는 어떤 환경에서도 SSO 로그인이 되지 않던 문제**: Vite 는 `import.meta.env.VITE_*` 를 빌드 시점에 문자열로 인라인한다. 그래서 `cd.yml` 이 주입한 OIDC issuer(`http://keycloak.nullus.internal/realms/nullus`)가 이미지에 박혀, 그 호스트가 존재하지 않는 모든 배포에서 로그인 화면이 `Failed to fetch` 로 끝났다. 차트의 `config.auth.oidcIssuerUrl` 은 API 에만 적용되어 프런트엔드에는 닿지 않는다. 컨테이너 기동 시 `/config.js` 를 생성해 `window.__NULLUS_CONFIG__` 로 주입하는 런타임 설정을 도입한다 — 우선순위는 `런타임 > 빌드타임 > 기본값` 이라 로컬 개발 동작은 그대로다. 이제 환경마다 이미지를 다시 빌드하지 않아도 된다.
+
 - **`setup-keycloak.sh` 를 재실행하면 사용자 `email` 이 지워지던 문제**: 신규 생성 경로는 `email` 을 넣지만 기존 사용자 갱신 경로가 이를 빠뜨렸다. Keycloak 의 사용자 PUT 은 표현을 통째로 교체하므로 두 번째 실행부터 `email` 이 비었고, API 는 토큰의 `email` 클레임으로 사용자를 조회하므로 로그인 후 사용자 매칭이 깨졌다. 갱신 payload 에 `email`·`emailVerified`·`enabled` 를 함께 보낸다.
+
 - **재배포하면 열려 있던 탭이 죽던 문제**: 빌드 산출물은 파일명에 내용 해시가 들어가므로 재배포하면 이전 청크가 사라진다. 배포 전에 열려 있던 탭이 lazy import 를 시도하면 `Failed to fetch dynamically imported module` 로 화면이 죽고, 「다시 시도」를 눌러도 같은 옛 모듈 그래프를 다시 써서 복구되지 않았다. 게다가 nginx 의 SPA 폴백이 없는 `.js` 요청에도 `index.html` 을 200 으로 돌려줘, 브라우저가 HTML 을 모듈로 파싱하다 실패하는 혼란스러운 오류가 됐다. `/assets/` 는 없으면 404 를 주고(내용 해시가 있으므로 장기 캐시), 앱은 청크 오류를 감지해 **한 번만** 자동 새로고침한다.
+
 - **SSO 로그인 시 모든 사용자가 developer 로 보이던 문제**: Keycloak 은 `realm_access` 를 기본적으로 **액세스 토큰에만** 싣는데, 프런트엔드는 ID 토큰 클레임(`user.profile`)에서 롤을 찾았다. 항상 빈 배열이 나와 `admin`·`devops` 계정까지 전부 최저 권한인 `developer` 로 떨어졌고, 관리자 화면을 아무도 쓸 수 없었다. ID 토큰을 먼저 보고 없으면 액세스 토큰을 직접 열어 읽는다 — 액세스 토큰의 `realm_access` 는 Keycloak 이 항상 넣어 주므로 서버 매퍼 설정과 무관하게 동작한다. 프로비저닝 스크립트에는 ID 토큰에도 롤을 싣는 realm-roles 매퍼를 추가한다(보강).
+
 - **인증 오류가 나면 빠져나올 방법이 없던 문제**: 브라우저에 남은 세션과 서버 상태가 어긋나면 로그인 흐름이 화면에 문구만 남긴 채 끝났다(`Session not active`, `No matching state found in storage`, `login_required`). 개발자 도구로 저장소를 비우지 않으면 복구가 불가능했다. 저장소를 비우고 다시 시도하면 풀리는 오류를 가려내 **원인당 한 번만** 자동 재시도하고, 실패하면 「다시 로그인」 버튼을 함께 보여 준다. 무한 리다이렉트를 피하려고 마커를 `sessionStorage` 에 두어 새로고침해도 반복되지 않게 했다.
+
 - **클라이언트가 바뀐 뒤 로그아웃도 되지 않던 문제**: Keycloak 은 `id_token_hint` 가 오면 그 토큰의 발급 대상과 `client_id` 가 같은지 대조하고, 다르면 로그아웃을 통째로 거부한다(`Invalid parameter: id_token_hint`). 클라이언트 ID 를 바꾼 뒤 브라우저에 이전 세션이 남아 있으면 정확히 이 상태가 되어, 사용자가 **로그아웃도 못 하는** 막다른 화면에 갇힌다. 힌트로 쓸 토큰이 현재 클라이언트의 것인지(`azp`/`aud`) 확인하고, 어긋나면 힌트를 버리고 `client_id` 만으로 로그아웃한다. 클라이언트의 `post.logout.redirect.uris` 도 함께 설정한다.
+
 - **SSO 계정과 DB 시드 사용자의 이메일이 어긋나 있던 문제**: 인증이 OIDC 로 넘어가면서 API 는 토큰의 `email` 클레임으로 `users` 행을 찾는데, `scripts/setup-keycloak.sh` 가 만드는 계정(`admin@nullus.io`·`devops@nullus.io`·`dev@nullus.io`)과 시드 마이그레이션의 사용자(`admin@nullus.io`·`kim@nullus.io`·`park@nullus.io`)가 달랐다. `admin` 을 뺀 두 계정은 로그인은 되지만 사용자 매칭이 되지 않는다. Keycloak 쪽을 정본으로 삼아 대응 사용자와 조직 소속을 시드한다(`000058_seed_sso_users`). `kim@`·`park@` 는 여러 시드에서 문자열로 참조되는 화면 샘플이라 지우지 않고 추가만 한다.
+
 - **OIDC 클라이언트 ID 가 프런트엔드와 나머지에서 어긋나던 문제**: 프런트엔드 기본값과 `cd.yml` 은 `nullus-web`, `setup-keycloak.sh` 가 만드는 클라이언트와 API audience 기본값(`configs/config.yaml`, 차트 values)은 `nullus-app` 이었다. 실제로 존재하는 클라이언트인 `nullus-app` 으로 통일한다.
+
 - **Keycloak 번들 PostgreSQL 리소스 이름 충돌로 스택 설치가 실패하던 문제**: Keycloak 서브차트가 자체 PostgreSQL을 띄울 때 상위 PostgreSQL 차트와 릴리스 리소스 이름(`<release>-postgresql`)이 동일하게 조립되어 StatefulSet·Service·Secret 등 7종 리소스가 충돌하며 설치가 거부되었다. `keycloak.postgresql.nameOverride`를 통해 서브차트 리소스 이름을 분리 지정하여 충돌을 해소했다.
+
 - **Helm 차트 기본값 불일치로 인한 API 암호화 에러 및 DB 인증 실패 문제**: 차트의 `secrets.encryptionKey` 기본값이 26바이트라 AES-256 검증(32바이트)에서 500 에러가 났고, `secrets.dbPassword`와 `postgresql.auth.password`가 어긋나 API의 DB 접속이 거부되었다. 암호화 키를 32바이트 placeholder로 교체하고 DB 비밀번호 헬퍼를 도입해 단일 출처로 맞추었으며, 소멸된 Bitnami 이미지 태그를 `bitnamilegacy` 경로로 교정했다.
+
 - **로컬 런북 기동 시 Keycloak TLS 요구 및 OpenBao 시드 실패로 무인 실행이 차단되던 문제**: Keycloak realm의 `sslRequired` 기본값 때문에 로컬 HTTP 환경에서 관리 API 토큰 발급이 거부되었고, `seed-token-sources.sh`에서 호스트 도메인 해석이 불가능한 OpenBao 쓰기 실패 시 스크립트 전체가 중단되었다. 컨테이너 내부 `kcadm`으로 SSL 요구를 비활성화하도록 자동화하고, OpenBao 시드 실패는 경고 로그 후 계속 진행되도록 완화했다.
+
 - **GitLab CI/CD 스택 설치 후 러너 미등록·레지스트리 통신 오류로 파이프라인이 동작하지 않던 문제**: GitLab Runner 등록 토큰 조회 실패 에러가 상쇄되어 러너 설치 없이 완료 처리되었고, `privileged` 설정 누락으로 DinD 실행이 불가능했으며, Container Registry가 미노출 및 내부 S3 리다이렉트 문제로 이미지 push/pull에 실패했다. 러너 재시도 에러 보존 및 TOML 규격 적용, Registry S3 백엔드·Gateway 8181 포트 라우팅 및 `allowedRoutes` 전면 허용 정책을 적용해 CI/CD 파이프라인 정상 구동을 복구했다.
+
 - **OpenBao 부트스트랩 재실행 시 인증 토큰 부재로 스택 재배포가 막히던 문제**: 첫 부트스트랩 성공 후 root token이 폐기되어 재실행 시 `BAO_TOKEN`이 비어 있었는데, 부트스트랩 여부를 검증하는 `bao list` 호출이 인증을 요구해 항상 에러로 중단되었다. 토큰 부재 시 마운트된 ServiceAccount 토큰으로 Kubernetes Auth 로그인을 시도해 상태를 파악하도록 복구하고, 대기 타임아웃 확장 및 파드 에러 로그를 덤프하도록 개선했다.
+
 - **스택 시크릿 리졸버의 잘못된 DB 캐스팅으로 인한 OpenBao 시크릿 조회 실패 문제**: VARCHAR 타입인 `stacks.id`를 조회하는 SQL 쿼리에 `$1::uuid` 타입 캐스팅이 들어가 있어 SQL 오류(`SQLSTATE 42883`)가 발생하고 스택 범위 OpenBao 시크릿 조회가 항상 실패했다. 불필요한 UUID 캐스팅을 제거해 조회 쿼리를 정상화했다.
+
 - **스택 상세 화면의 연결 정보 안내 명령어가 고정 네임스페이스 및 잘못된 Secret 이름을 참조하던 문제**: Stack List의 connection info가 실제 네임스페이스와 상관없이 `-n nullus`를 하드코딩하고 Argo CD 시크릿 이름을 잘못 안내하여 명령 실행 시 `NotFound` 오류가 발생했다. 연결 정보 헬퍼에 네임스페이스 파라미터를 연결하고 Argo CD·PostgreSQL·MinIO 시크릿 명칭을 실제 Helm 릴리스 규격에 맞게 정정했다.
+
 - **CI/CD 목록 모바일 화면에서 파이프라인 상세 클릭 시 ReferenceError로 페이지가 크래시되던 문제**: 모바일 레이아웃의 `PipelineDetailPanel` 컴포넌트에 정의되지 않은 `activeDeploymentId` 변수를 넘기고 있어 런타임 `ReferenceError`가 발생하고 화면이 죽던 현상을 해결했다. 미정의 prop 전달 코드를 제거해 모바일 상세 패널 렌더링을 정상화했다.
+
 - **개발자 배포 및 스택 템플릿 화면에서 번역 키 문자열이 그대로 노출되던 문제**: 다국어 파일(ko/en)에서 `developerDeployPage.actions.execute` 및 `stackTemplatePage.actions.viewDetail` 키가 누락되어 UI 버튼에 번역되지 않은 키 문자열이 그대로 노출되던 문제를 다국어 항목 정의 보충으로 해결했다.
+
 - **게이트웨이 포트포워딩 스크립트가 컨텍스트 오류와 네임스페이스 누락 원인을 구분하지 못하던 문제**: 포트포워딩 스크립트(`port-forward-gateway.sh`)가 K8s 컨텍스트 연결 불능 상황과 특정 네임스페이스 미존재 상황을 구별하지 않고 동일한 컨텍스트 에러 문구로 안내하던 문제를 수정했다. 실패 원인을 분리해 탐지하고 등록된 컨텍스트 목록을 검색해 올바른 실행 명령을 제안하도록 보강했다.
 
 - **같은 클러스터에 두 번째 스택을 설치하면 metrics-server 에서 항상 실패하던 문제**: metrics-server 는 클러스터당 하나인데 차트가 ClusterRole 등 클러스터 범위 리소스를 만든다. 기존 스택이 그것을 소유하고 있어 `invalid ownership metadata` 로 설치가 멈췄다. cert-manager 는 이미 재사용 경로를 갖고 있었으나 metrics-server 에는 없었다. `v1beta1.metrics.k8s.io` APIService 존재로 감지해 재사용하며, 설치를 건너뛴 경우 health check 도 릴리스 부재를 허용한다(설치는 끝났는데 검증에서만 실패하던 구멍).
+
 - **스택을 지우고 다시 설치하면 Argo CD 설치가 막히던 문제**: helm 은 uninstall 시 CRD 를 지우지 않아 `applications.argoproj.io` 등이 삭제된 릴리스 소유로 남았다. 삭제 경로가 Argo CD CRD 를 정리하되, 다른 스택이 아직 Application 을 갖고 있으면 건너뛴다(지우면 그 스택의 배포 정의가 사라진다). `external-secrets` 릴리스도 삭제 대상에 포함한다.
+
 - **`registry.<도메인>` 을 두 라우트가 주장하던 문제**: 기존 registry 라우트가 어떤 레지스트리를 골랐든 `gitlab-registry` 로 보내, Harbor/Nexus 를 고른 스택이 비어 있는 GitLab 레지스트리를 가리켰다. 선택한 레지스트리 하나만 이 호스트를 갖도록 정리했다(고정: `TestGatewayRoutes_RegistryHostHasSingleOwner`).
+
 - **PostgreSQL 이 설치 시점마다 달라지던 문제**: 차트 버전이 고정돼 있지 않았고(다른 스텝은 모두 고정), 차트 기본 이미지도 `bitnami/postgresql:latest` 였다. bitnami 가 2025-08 에 버전 태그를 `bitnamilegacy/*` 로 옮기면서 `bitnami/postgresql` 에는 `latest` 만 남았기 때문이다. 차트 `16.7.27` 과 이미지 `bitnamilegacy/postgresql:17.6.0-debian-12-r4` 로 짝을 맞춰 고정한다. **주의**: `bitnamilegacy` 는 동결 저장소라 18.x 가 없어 PostgreSQL 이 17.6.0 으로 내려간다. `latest` 로 이미 18.x 데이터가 생긴 스택은 재설치나 dump/restore 가 필요하다. 동결 저장소는 보안 패치가 오지 않으므로 장기적으로는 다른 차트로 이전해야 한다.
+
 - **Harbor 설치 시 `externalURL` 이 실제 주소로 채워지지 않던 문제**: Harbor 는 이 값을 토큰 발급 엔드포인트로 클라이언트에 돌려준다. 기본값이 그대로 남아 `docker login`/push 가 존재하지 않는 호스트로 토큰을 요청해 `no such host` 로 실패했다 — 레지스트리는 떠 있는데 push 만 안 되는 상태다. accessDomain(없으면 네임스페이스)으로 채운다.
+
 - **스택 설정이 없을 때 선택형 설치 단계가 켜져 있던 문제**: `isStepEnabled` 가 설정을 모르면 모든 단계를 활성으로 봤다. 선택형 도구가 추가될수록 아무도 고르지 않은 것을 설치하게 되고, 순서 검증도 그 단계를 기다리다 멈춘다.
+
 - **레지스트리 템플릿이 인메모리에만 있고 DB 시드에는 없던 문제**: 런타임은 PostgreSQL 을 읽으므로 실제 배포에서는 템플릿 목록에 뜨지 않았다. `000059` 마이그레이션으로 템플릿과 호환성 매트릭스를 함께 시드하고, 인메모리에만 있고 마이그레이션에 없는 항목을 계약 테스트가 잡는다.
+
 - **로컬 런북이 helm 없이 API 를 기동하던 문제**: OCI 차트(envoy gateway)는 helm CLI 로 폴백하는데, PATH 에 helm 이 없으면 게이트웨이 설치만 `executable file not found` 로 실패하고 원인이 설치 로그 깊은 곳에만 남았다. 기동 전에 확인해 즉시 드러낸다.
+
 - **배포 워크플로가 뒤처진 커밋을 체크아웃하던 문제**: `git fetch` 는 원격 추적 ref(`origin/main`)만 갱신하고 로컬 브랜치는 그대로 두는데, `git checkout --detach "$REF"` 가 그 로컬 브랜치를 잡았다. `workflow_dispatch` 배포가 `success` 로 끝나면서도 24 커밋 전 소스로 차트를 렌더했다. 태그 push 경로는 태그가 fetch 되므로 드러나지 않던 자리다. 브랜치는 `refs/remotes/origin/`, 태그는 `refs/tags/` 로 풀어서 넘기고, 배포 디렉토리에 남은 손수정과 미추적 파일이 렌더에 섞이지 않도록 `--force` 와 `reset --hard` 를 함께 건다.
+
 ## [0.3.0-alpha] - 2026-07-28
 
 첫 GitHub Release·태그입니다. 이전 `0.1.0-alpha`·`0.2.0-alpha` 섹션은 태그가 발행되지 않은 기록상의 버전입니다 (릴리즈 정책 §0).
