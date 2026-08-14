@@ -531,3 +531,15 @@ spec:
           port: %[6]d
 `, app, namespace, gwName, gwNS, domain, appPort), true
 }
+
+// PipelineStageNames 는 스캐폴딩이 만드는 파이프라인의 단계 이름이다.
+//
+// 템플릿이 선언하는 stages 의 출처다. 손으로 적으면 실제와 어긋나고, 어긋나면
+// 화면이 돌지도 않은 단계를 보여준다 — 실제로 템플릿은 Build/Test/ImageBuild/
+// Deploy 4단계를 선언했지만 스캐폴딩은 2단계만 만들었다.
+//
+// GitLab 판과 Jenkins 판이 같은 단계를 만든다. 이름 표기만 다르므로(소문자 대
+// 대문자) 여기서는 표시용 표기를 쓴다.
+func PipelineStageNames() []string {
+	return []string{"Build", "Deploy"}
+}

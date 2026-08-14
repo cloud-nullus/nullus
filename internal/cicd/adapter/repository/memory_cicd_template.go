@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/scaffold"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 )
@@ -75,14 +76,14 @@ func cicdTemplates() []*domain.PipelineTemplate {
 			Name:        "User Custom Pipeline",
 			Description: "백엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 이미지 빌드, 배포 단계를 포함합니다.",
 			AppType:     domain.AppTypeBackend,
-			Stages:      []string{"Build", "Test", "ImageBuild", "Deploy"},
+			Stages:      scaffold.PipelineStageNames(),
 		},
 		{
 			ID:          "batch-job-v1",
 			Name:        "Batch Job Pipeline",
 			Description: "배치 작업을 위한 CI/CD 파이프라인. 빌드, 이미지 빌드, CronJob 배포 단계를 포함합니다.",
 			AppType:     domain.AppTypeBatch,
-			Stages:      []string{"Build", "ImageBuild", "CronJobDeploy"},
+			Stages:      scaffold.PipelineStageNames(),
 		},
 	}
 }
