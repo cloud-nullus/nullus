@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import { buildStageStates, type StageState } from "../utils/stage-states";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
@@ -548,8 +550,6 @@ type PipelineResourceNode = {
   serviceUrls?: string[];
 };
 
-type StageState = "queued" | "in_progress" | "completed" | "failed";
-
 function pickResourcesByKind(
   resources: PipelineResourceNode[],
   kinds: string[],
@@ -558,31 +558,6 @@ function pickResourcesByKind(
   return resources.filter((resource) =>
     lowered.includes(resource.kind.toLowerCase()),
   );
-}
-
-function buildStageStates(
-  stageCount: number,
-  deploymentStatus?: string,
-): StageState[] {
-  if (stageCount <= 0) return [];
-  const normalized = (deploymentStatus ?? "").toLowerCase();
-  if (!normalized) return Array.from({ length: stageCount }, () => "queued");
-
-  if (normalized === "success") {
-    return Array.from({ length: stageCount }, () => "completed");
-  }
-  if (normalized === "running") {
-    return Array.from({ length: stageCount }, (_, i) =>
-      i < stageCount - 1 ? "completed" : "in_progress",
-    );
-  }
-  if (normalized === "failed") {
-    return Array.from({ length: stageCount }, (_, i) => {
-      if (i < stageCount - 1) return "completed";
-      return "failed";
-    });
-  }
-  return Array.from({ length: stageCount }, () => "queued");
 }
 
 function stageMeta(state: StageState): {
@@ -602,6 +577,13 @@ function stageMeta(state: StageState): {
       icon: <CircleX {...iconProps("sm")} />,
       label: "Failed",
       cls: "border-[color-mix(in_srgb,_var(--color-error)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_8%,_transparent)] text-[var(--color-error)]",
+    };
+  }
+  if (state === "unknown") {
+    return {
+      icon: <CircleDashed {...iconProps("sm")} />,
+      label: "실행 정보 없음",
+      cls: "border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] text-[var(--color-text-secondary)]",
     };
   }
   if (state === "in_progress") {
@@ -1473,11 +1455,8 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     deployments.find((d) => d.id === selectedDeploymentId) ?? null;
   const { data: deploymentStatus, isLoading: isDeploymentStatusLoading } =
     useDeploymentStatus(selectedDeploymentId);
-  const selectedStageStates = buildStageStates(
-    stages.length,
-    deploymentStatus?.status ?? selectedDeployment?.status,
-  );
   const stepDetails = deploymentStatus?.steps ?? [];
+  const selectedStageStates = buildStageStates(stages, stepDetails);
   const logLineCount = stepDetails.reduce(
     (total, step) => total + (step.logs?.length ?? 0),
     0,
@@ -1571,8 +1550,17 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
 
           {stages.length > 0 && (
             <div className="mt-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2">
-              <div className="mb-2 text-[12px] font-semibold text-[var(--color-text-primary)]">
-                Pipeline Stages
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+                  Pipeline Stages
+                </span>
+                {/* 스텝 정보가 없으면 템플릿에 선언된 단계일 뿐이라는 사실을
+                    분명히 한다 — 실행 결과로 읽히면 안 된다. */}
+                {stepDetails.length === 0 && (
+                  <span className="text-[11px] text-[var(--color-text-secondary)]">
+                    템플릿 정의 · 이 CI 는 단계별 결과를 보고하지 않습니다
+                  </span>
+                )}
               </div>
               {stages.map((stage: string, i: number) => {
                 const state = selectedStageStates[i] ?? "queued";
@@ -1583,24 +1571,20 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
                     className="relative"
                   >
                     {i < stages.length - 1 && (
-                      <div className="absolute left-[17px] top-8 h-[calc(100%-8px)] w-px bg-[color-mix(in_srgb,_var(--color-text-secondary)_30%,_transparent)]" />
+                      <div className="absolute left-[15px] top-7 h-[calc(100%-24px)] w-px bg-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)]" />
                     )}
                     <div
-                      className={`mb-2 grid grid-cols-[26px_1fr_auto] items-center gap-2 rounded-md border px-2.5 py-2 ${meta.cls}`}
+                      className={`mb-1 grid grid-cols-[22px_1fr_auto] items-center gap-2 rounded-md border px-2 py-1.5 ${meta.cls}`}
                     >
                       <span className="flex items-center justify-center">
                         {meta.icon}
                       </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[12px] font-semibold">
-                          {stage}
-                        </div>
-                        <div className="text-[10px] opacity-80">
-                          {meta.label}
-                        </div>
-                      </div>
-                      <span className="rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] px-1.5 py-[1px] text-[10px] font-mono">
-                        step {i + 1}
+                      <span className="truncate text-[12px] font-medium">
+                        {stage}
+                      </span>
+                      {/* 순서는 세로 배치가 이미 말해 준다. 상태만 남긴다. */}
+                      <span className="text-[11px] opacity-80">
+                        {meta.label}
                       </span>
                     </div>
                   </div>
