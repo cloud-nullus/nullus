@@ -16,9 +16,13 @@ const (
 	// 사람이 만든 토큰과 구분되어야 재발급 시 정리 대상을 특정할 수 있다.
 	AutomationTokenName = "nullus-automation"
 
-	// giteaStatefulSet 은 gitea CLI 를 실행할 수 있는 워크로드다.
-	// 차트가 릴리스명으로 StatefulSet 을 만든다.
-	giteaStatefulSet = "statefulset/gitea"
+	// giteaPodSelector 는 gitea CLI 를 실행할 파드를 고르는 레이블이다.
+	//
+	// 워크로드 종류를 고정하지 않는다 — 차트는 버전·설정에 따라 Deployment 로도
+	// StatefulSet 으로도 배포한다(12.7.0 은 Deployment). 종류를 박아 두면
+	// "statefulsets.apps \"gitea\" not found" 로 토큰 발급이 죽고, 스택은 정상
+	// 설치됐는데 파이프라인 생성만 실패하는 원인이 먼 오류가 된다.
+	giteaPodSelector = "app.kubernetes.io/name=gitea"
 	giteaContainer   = "gitea"
 
 	// AutomationUser 는 차트가 만드는 관리자 계정이다.
@@ -139,16 +143,21 @@ func (t *TokenIssuer) issueViaCLI(ctx context.Context, clusterID, namespace stri
 			"gitea admin user generate-access-token --username %s --token-name %s --scopes write:organization,write:repository,write:user --raw",
 		AutomationUser, AutomationTokenName, AutomationUser, AutomationTokenName)
 
+	pod, err := t.resolveGiteaPod(ctx, kubeconfig, namespace)
+	if err != nil {
+		return "", err
+	}
+
 	args := []string{
 		"-n", namespace,
-		"exec", giteaStatefulSet,
+		"exec", pod,
 		"-c", giteaContainer,
 		"--", "sh", "-lc", script,
 	}
 
 	out, err := t.runKubectl(ctx, kubeconfig, args...)
 	if err != nil {
-		return "", fmt.Errorf("Gitea 토큰 발급 실패 (%s/%s): %w", namespace, giteaStatefulSet, err)
+		return "", fmt.Errorf("Gitea 토큰 발급 실패 (%s/%s): %w", namespace, pod, err)
 	}
 
 	token := parseIssuedToken(string(out))
@@ -156,6 +165,31 @@ func (t *TokenIssuer) issueViaCLI(ctx context.Context, clusterID, namespace stri
 		return "", fmt.Errorf("Gitea 토큰 발급 출력에서 토큰을 찾지 못했습니다 (%s)", namespace)
 	}
 	return token, nil
+}
+
+// resolveGiteaPod 은 gitea CLI 를 실행할 파드 이름을 찾는다.
+//
+// 파드를 못 찾았는데 그대로 exec 으로 넘어가면 빈 이름으로 호출해 엉뚱한
+// 오류가 나므로 여기서 끊는다.
+func (t *TokenIssuer) resolveGiteaPod(ctx context.Context, kubeconfig []byte, namespace string) (string, error) {
+	args := []string{
+		"-n", namespace,
+		"get", "pod",
+		"-l", giteaPodSelector,
+		"--field-selector=status.phase=Running",
+		"-o", "jsonpath={.items[0].metadata.name}",
+	}
+
+	out, err := t.runKubectl(ctx, kubeconfig, args...)
+	if err != nil {
+		return "", fmt.Errorf("Gitea 파드 조회 실패 (%s, %s): %w", namespace, giteaPodSelector, err)
+	}
+
+	pod := strings.TrimSpace(string(out))
+	if pod == "" {
+		return "", fmt.Errorf("Gitea 파드를 찾지 못했습니다 (%s, %s)", namespace, giteaPodSelector)
+	}
+	return pod, nil
 }
 
 // parseIssuedToken 은 CLI 출력에서 토큰만 골라낸다.
