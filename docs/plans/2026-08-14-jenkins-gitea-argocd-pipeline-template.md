@@ -450,6 +450,39 @@ Gitea 리포에 Jenkins multibranch 스캔을 트리거하는 webhook 을 건다
 
 ---
 
+## 4.6 구현 현황 (2026-08-14)
+
+7개 PR 모두 커밋됨. Go 전체 빌드·vet·테스트 통과, 프론트 751 테스트 + tsc 통과.
+
+| PR | 브랜치 | 상태 |
+|---|---|---|
+| 1 | `feat/stack/gitea-install-step` | ✅ |
+| 2 | `feat/stack/jenkins-install-step` | ✅ |
+| 3 | `feat/stack/gitea-jenkins-template` | ✅ |
+| 4 | `feat/cicd/gitea-scm-adapter` | ✅ |
+| 5 | `feat/cicd/jenkinsfile-scaffold` | ✅ |
+| 6 | `feat/cicd/jenkins-job-provisioning` | ✅ |
+| 7 | `feat/ui/gitea-jenkins-support` | ✅ |
+
+### ⚠️ 아직 닫히지 않은 구간 — 이대로는 파이프라인이 끝까지 돌지 않는다
+
+설치(스택 → Gitea·Jenkins·Argo CD 기동)와 프로비저닝 코드 경로는 완성됐지만,
+**런타임 배선과 자격증명 평면이 남아 있어 실제 빌드는 아직 돌지 않는다.**
+
+| # | 남은 일 | 없으면 무슨 일이 생기나 |
+|---|---|---|
+| R1 | **`cmd/api/main.go` 배선** — `BundleFactory.WithGitea(...)` / `WithJenkins(...)` 호출 | Gitea 스택에서 파이프라인 생성이 *"Gitea 연동이 배선되지 않아 stack ... 를 프로비저닝할 수 없습니다"* 로 거부된다. 가장 먼저 해야 할 일 |
+| R2 | **`nullus-ci-<app>` Secret 생성** (§3.4.3) — OpenBao 기록 + ExternalSecret 렌더 | Jenkinsfile 의 `envFrom.secretRef` 가 없는 Secret 을 가리켜 agent 파드가 기동하지 못한다. 미해결 #8(모듈 경계) 결정이 선행돼야 한다 |
+| R3 | **Gitea 용 `PipelineConfigurator`** | 지금은 `bundle.Pipeline` 이 nil 이라 `configureGitLabPipeline` 으로 떨어져 GitLab 문구의 경고와 함께 누락 변수만 보고한다(패닉은 없음). R2 와 같은 작업이다 |
+| R4 | **JCasC `nullus-gitea` credential** — Jenkins values 에 `additionalExistingSecrets` + `configScripts` | multibranch job 이 private Gitea 리포를 스캔하지 못해 브랜치를 하나도 찾지 못한다. `giteaCredentialID` 상수가 이 이름을 기대하고 있다 |
+| R5 | **`internal/admin/rotation/gitea_reissuer.go`** | 액세스 토큰이 만료되면 자동 회전되지 않는다. 초기 동작에는 지장 없음 |
+
+R1 → R4 → R2/R3 순서가 자연스럽다. R1 만 해도 리포 생성·스캐폴딩·Argo CD
+Application 까지는 동작하고, R4 까지 하면 job 이 브랜치를 찾는다. R2/R3 이
+끝나야 빌드가 레지스트리에 push 할 수 있다.
+
+---
+
 ## 5. 미해결 질문 — 구현 착수 전 확인 필요
 
 | # | 질문 | 왜 중요한가 | 확인 방법 |
