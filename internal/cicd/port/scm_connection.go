@@ -13,6 +13,9 @@ const (
 	SCMPlatformGitLab SCMPlatform = "gitlab"
 	// SCMPlatformGitHub 은 외부 SaaS 인 GitHub(또는 GitHub Enterprise Server)다.
 	SCMPlatformGitHub SCMPlatform = "github"
+	// SCMPlatformGitea 는 스택 안에 설치되는 Gitea 다. GitHub 과 달리 주소가
+	// 클러스터 내부 서비스 DNS 이고 조직도 우리가 만든다.
+	SCMPlatformGitea SCMPlatform = "gitea"
 )
 
 // SCMConnection 은 외부 SCM 에 붙기 위한 조직 단위 설정이다.

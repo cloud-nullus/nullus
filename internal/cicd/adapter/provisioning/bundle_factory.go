@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
@@ -17,6 +18,9 @@ import (
 
 // gitLabWebservicePort 는 GitLab 웹서비스의 클러스터 내부 포트다.
 const gitLabWebservicePort = 8181
+
+// giteaHTTPPort 는 Gitea HTTP Service 의 클러스터 내부 포트다.
+const giteaHTTPPort = 3000
 
 // Options 는 팩토리 기동 설정이다.
 type Options struct {
@@ -44,6 +48,9 @@ type BundleFactory struct {
 	// 안내와 함께 실패한다 — 조용히 GitLab 으로 흘리면 엉뚱한 곳에 리포가 생긴다.
 	githubTokens      port.SCMTokenIssuer
 	githubConnections port.SCMConnectionReader
+
+	// Gitea 경로도 선택적으로 배선된다. 같은 이유로 없으면 조용히 흘리지 않는다.
+	giteaTokens port.SCMTokenIssuer
 }
 
 // NewBundleFactory 는 팩토리를 만든다.
@@ -61,6 +68,12 @@ func (f *BundleFactory) WithGitHub(
 ) *BundleFactory {
 	f.githubTokens = tokens
 	f.githubConnections = connections
+	return f
+}
+
+// WithGitea 는 Gitea 스택을 프로비저닝할 수 있게 한다.
+func (f *BundleFactory) WithGitea(tokens port.SCMTokenIssuer) *BundleFactory {
+	f.giteaTokens = tokens
 	return f
 }
 
@@ -83,9 +96,11 @@ func (f *BundleFactory) For(ctx context.Context, stackID string) (*port.SCMBundl
 		return f.gitLabBundle(ctx, summary)
 	case port.SCMPlatformGitHub:
 		return f.gitHubBundle(ctx, summary)
+	case port.SCMPlatformGitea:
+		return f.giteaBundle(ctx, summary)
 	default:
 		return nil, fmt.Errorf(
-			"소스 저장소 %q 는 아직 지원하지 않습니다 (GitLab 또는 GitHub 스택에서만 프로젝트를 만들 수 있습니다)",
+			"소스 저장소 %q 는 아직 지원하지 않습니다 (GitLab·GitHub·Gitea 스택에서만 프로젝트를 만들 수 있습니다)",
 			summary.SourceRepository)
 	}
 }
@@ -208,6 +223,96 @@ func (f *BundleFactory) gitHubBundle(
 	}, nil
 }
 
+// giteaBundle 은 스택 안에 설치된 Gitea 를 향하는 묶음을 만든다.
+//
+// GitLab 과 마찬가지로 주소도 소유자도 우리가 정한다 — 다른 점은 Gitea 가
+// 소스 저장소만 담당한다는 것이다. CI 는 Jenkins, 레지스트리는 Harbor 가 맡으므로
+// 이미지 대상은 레지스트리 해석기가 따로 정한다.
+func (f *BundleFactory) giteaBundle(
+	ctx context.Context,
+	summary *port.StackSummary,
+) (*port.SCMBundle, error) {
+	if f.giteaTokens == nil {
+		return nil, fmt.Errorf("Gitea 연동이 배선되지 않아 stack %s 를 프로비저닝할 수 없습니다", summary.ID)
+	}
+	namespace := strings.TrimSpace(summary.Namespace)
+	if namespace == "" {
+		return nil, fmt.Errorf("stack %s 의 네임스페이스를 알 수 없습니다", summary.ID)
+	}
+
+	spec := port.SCMTokenSpec{
+		StackID:   summary.ID,
+		ClusterID: summary.ClusterID,
+		Namespace: namespace,
+		OrgID:     summary.OrgID,
+		Env:       f.opts.Env,
+	}
+
+	client, token, err := f.authenticatedGiteaClient(ctx, summary, spec, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	resolver, err := registry.ResolverFor(registry.Config{
+		ToolName:                 summary.ContainerRegistry,
+		HarborHost:               harborHostFor(summary.AccessDomain),
+		NexusDockerHost:          registryHostFor(summary.AccessDomain),
+		ExternalRepositoryPrefix: f.opts.ExternalRegistryPrefix,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
+	}
+
+	return &port.SCMBundle{
+		Provisioner: client,
+		// Gitea 에는 GitLab 같은 프로젝트 CI 변수 저장소가 없다. 파이프라인
+		// 자격증명은 OpenBao → ESO → K8s Secret 평면이 나른다.
+		Registry:        resolver,
+		Platform:        port.SCMPlatformGitea,
+		GroupPath:       f.opts.GroupPath,
+		RepoAccessToken: token,
+		ArgoNamespace:   namespace,
+		ClusterID:       summary.ClusterID,
+		AccessDomain:    summary.AccessDomain,
+		GatewayName:     gatewayNameFor(summary.AccessDomain),
+	}, nil
+}
+
+// authenticatedGiteaClient 는 실제로 인증되는 Gitea 클라이언트를 돌려준다.
+//
+// 보관된 토큰은 폐기·만료될 수 있다. 그대로 쓰면 이후 모든 호출이 401 로 죽고
+// 복구 경로가 없으므로, 한 번 확인하고 안 되면 재발급한다(GitLab 과 같은 규약).
+func (f *BundleFactory) authenticatedGiteaClient(
+	ctx context.Context,
+	summary *port.StackSummary,
+	spec port.SCMTokenSpec,
+	namespace string,
+) (*gitea.Client, string, error) {
+	baseURL := giteaBaseURL(namespace)
+
+	// 토큰을 함께 돌려준다. 여기서 재발급이 일어날 수 있으므로 호출부가 다시
+	// EnsureToken 을 부르면 방금 발급한 것과 다른 값을 쥘 위험이 있다.
+	token, err := f.giteaTokens.EnsureToken(ctx, spec)
+	if err != nil {
+		return nil, "", fmt.Errorf("ensure gitea token for stack %s: %w", summary.ID, err)
+	}
+	client := gitea.NewClient(baseURL, token)
+	if err := client.Ping(ctx); err == nil {
+		return client, token, nil
+	}
+
+	spec.Force = true
+	token, err = f.giteaTokens.EnsureToken(ctx, spec)
+	if err != nil {
+		return nil, "", fmt.Errorf("reissue gitea token for stack %s: %w", summary.ID, err)
+	}
+	client = gitea.NewClient(baseURL, token)
+	if err := client.Ping(ctx); err != nil {
+		return nil, "", fmt.Errorf("gitea 인증 실패 (stack %s): %w", summary.ID, err)
+	}
+	return client, token, nil
+}
+
 // authenticatedClient 는 실제로 인증되는 클라이언트를 돌려준다.
 //
 // 보관된 토큰은 폐기·만료될 수 있다. 그대로 쓰면 이후 모든 호출이 401 로 죽고
@@ -261,8 +366,16 @@ func platformFor(name string) port.SCMPlatform {
 		return port.SCMPlatformGitLab
 	case "github", "github-enterprise", "github-enterprise-server", "github-com":
 		return port.SCMPlatformGitHub
+	case "gitea":
+		return port.SCMPlatformGitea
 	}
 	return ""
+}
+
+// giteaBaseURL 은 클러스터 내부 Gitea 주소다.
+// 차트가 Service 이름을 {release}-http 로 유도한다.
+func giteaBaseURL(namespace string) string {
+	return fmt.Sprintf("http://gitea-http.%s.svc:%d", namespace, giteaHTTPPort)
 }
 
 // gitLabBaseURL 은 클러스터 내부 GitLab 주소다.
