@@ -254,6 +254,16 @@ func multibranchConfigXML(spec port.CIJobSpec) ([]byte, error) {
 						RepoOwner:    owner,
 						Repository:   repo,
 						CredentialID: strings.TrimSpace(spec.CredentialID),
+						// traits 는 비워 둘 수 없다. 없으면 Jenkins 가 job 생성
+						// 중 NullPointerException("traits" is null)으로 500 을 낸다.
+						//
+						// strategyId=1 은 "브랜치를 모두 탐색"이다. PR 탐색은 넣지
+						// 않는다 — 파이프라인은 기본 브랜치에서만 도는 것이 규약이고
+						// (Jenkinsfile 의 when { branch 'main' }), PR trait 을 켜면
+						// 포크마다 빌드가 돌아 자원을 예상 밖으로 먹는다.
+						Traits: &traitsBlock{
+							BranchDiscovery: &branchDiscoveryTrait{StrategyID: 1},
+						},
 					},
 				},
 			},
@@ -292,11 +302,20 @@ type branchSource struct {
 }
 
 type scmSource struct {
-	Class        string `xml:"class,attr"`
-	ServerURL    string `xml:"serverUrl"`
-	RepoOwner    string `xml:"repoOwner"`
-	Repository   string `xml:"repository"`
-	CredentialID string `xml:"credentialsId,omitempty"`
+	Class        string       `xml:"class,attr"`
+	ServerURL    string       `xml:"serverUrl"`
+	RepoOwner    string       `xml:"repoOwner"`
+	Repository   string       `xml:"repository"`
+	CredentialID string       `xml:"credentialsId,omitempty"`
+	Traits       *traitsBlock `xml:"traits,omitempty"`
+}
+
+type traitsBlock struct {
+	BranchDiscovery *branchDiscoveryTrait `xml:"org.jenkinsci.plugin.gitea.BranchDiscoveryTrait,omitempty"`
+}
+
+type branchDiscoveryTrait struct {
+	StrategyID int `xml:"strategyId"`
 }
 
 type factoryBlock struct {

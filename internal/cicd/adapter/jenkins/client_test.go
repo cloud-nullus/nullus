@@ -161,3 +161,31 @@ func TestClient_KeepsSessionAcrossCrumbAndPost(t *testing.T) {
 	assert.Equal(t, crumbSession, postCookie,
 		"crumb 을 받은 세션과 POST 세션이 같아야 한다")
 }
+
+// GiteaSCMSource 는 traits 없이 만들 수 없다.
+//
+// 비어 있으면 Jenkins 가 job 생성 중
+// NullPointerException: Cannot invoke "java.util.Collection.iterator()"
+// because "traits" is null
+// 로 500 을 낸다 — 실제로 job 생성이 이렇게 실패했다.
+//
+// 브랜치 탐색 trait 이 있어야 multibranch 가 브랜치를 찾는다.
+func TestMultibranchXML_IncludesBranchDiscoveryTraits(t *testing.T) {
+	raw, err := multibranchConfigXML(port.CIJobSpec{
+		Name:         "gj-demo-api",
+		ServerURL:    "http://gitea.gj3.internal",
+		RepoOwner:    "nullus",
+		RepoName:     "gj-demo-api",
+		CredentialID: "nullus-gitea",
+		PipelinePath: "Jenkinsfile",
+	})
+	require.NoError(t, err)
+	xml := string(raw)
+
+	assert.Contains(t, xml, "<traits>",
+		"traits 가 없으면 Jenkins 가 NPE 로 500 을 낸다")
+	assert.Contains(t, xml, "BranchDiscoveryTrait",
+		"브랜치 탐색 trait 이 없으면 브랜치를 하나도 찾지 못한다")
+	assert.Contains(t, xml, "org.jenkinsci.plugin.gitea.GiteaSCMSource")
+	assert.Contains(t, xml, "<scriptPath>Jenkinsfile</scriptPath>")
+}
