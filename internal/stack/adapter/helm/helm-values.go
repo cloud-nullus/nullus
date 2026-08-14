@@ -35,6 +35,11 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, jenkinsGiteaServerValues(o.namespace))
 	}
 
+	// Gitea 의 DB 호스트도 실제 네임스페이스를 알아야 한다.
+	if step == "installing_gitea" {
+		base = mergeMaps(base, o.giteaSharedServiceValues())
+	}
+
 	// OpenBao values 는 선택된 StorageClass 에 의존하므로 여기서 조립한다.
 	if step == "installing_openbao" {
 		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))
@@ -282,6 +287,31 @@ func (o *Orchestrator) harborExternalURLValues(cfg *domain.StackConfig) map[stri
 	}
 	return map[string]any{
 		"externalURL": fmt.Sprintf("http://%s.%s.svc.cluster.local", domain.HarborServiceName, namespace),
+	}
+}
+
+// giteaSharedServiceValues 는 Gitea 가 스택의 공용 PostgreSQL 을 가리키게 한다.
+//
+// DefaultValues 는 네임스페이스를 모르므로 기본값을 쓸 수밖에 없다. 그대로
+// 설치하면 init 컨테이너가 nullus-postgresql.nullus.svc 를 찾다가 "no such host"
+// 로 CrashLoopBackOff 에 빠진다 — 파드는 뜨는데 DB 만 못 찾는, 원인이 멀리
+// 떨어진 실패다. GitLab 이 gitlabExternalSharedServiceValues 로 같은 문제를
+// 푸는 것과 같은 방식이다.
+func (o *Orchestrator) giteaSharedServiceValues() map[string]any {
+	namespace := strings.TrimSpace(o.namespace)
+	if namespace == "" {
+		namespace = defaultStackNamespace
+	}
+
+	return map[string]any{
+		"gitea": map[string]any{
+			"config": map[string]any{
+				"database": map[string]any{
+					"HOST": fmt.Sprintf("%s.%s.svc.cluster.local:%d",
+						domain.PostgresServiceName, namespace, domain.PostgresServicePort),
+				},
+			},
+		},
 	}
 }
 

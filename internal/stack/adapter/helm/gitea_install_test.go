@@ -86,3 +86,35 @@ func TestGiteaValues_UsesStackPostgresAndDisablesBundledSubcharts(t *testing.T) 
 	assert.Equal(t, domain.GiteaAdminSecret, admin["existingSecret"],
 		"admin 비밀번호를 values 에 평문으로 두면 OpenBao 단일 출처 원칙이 깨진다")
 }
+
+// Gitea 의 DB 호스트는 실제 스택 네임스페이스를 가리켜야 한다.
+//
+// DefaultValues 는 네임스페이스를 모르므로 기본값을 쓸 수밖에 없는데, 그대로
+// 설치하면 init 컨테이너가 nullus-postgresql.nullus.svc 를 찾다가
+// "no such host" 로 CrashLoopBackOff 에 빠진다 — 실제로 그렇게 실패했다.
+// GitLab 이 gitlabExternalSharedServiceValues 로 같은 문제를 푸는 것과 같은
+// 방식으로 valuesForStep 에서 실제 네임스페이스를 채운다.
+func TestGiteaSharedServiceValues_UsesActualNamespace(t *testing.T) {
+	o := NewOrchestrator(nil, []byte("not-a-kubeconfig"), "nullus-gjdemo")
+
+	values := o.giteaSharedServiceValues()
+
+	gitea, ok := values["gitea"].(map[string]any)
+	require.True(t, ok)
+	config, ok := gitea["config"].(map[string]any)
+	require.True(t, ok)
+	database, ok := config["database"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t,
+		"nullus-postgresql.nullus-gjdemo.svc.cluster.local:5432",
+		database["HOST"],
+		"기본 네임스페이스를 그대로 두면 init 컨테이너가 DB 를 찾지 못해 CrashLoopBackOff 에 빠진다")
+}
+
+func TestGiteaSharedServiceValues_FallsBackWhenNamespaceEmpty(t *testing.T) {
+	o := NewOrchestrator(nil, []byte("not-a-kubeconfig"), "")
+
+	database := o.giteaSharedServiceValues()["gitea"].(map[string]any)["config"].(map[string]any)["database"].(map[string]any)
+	assert.Contains(t, database["HOST"], defaultStackNamespace)
+}
