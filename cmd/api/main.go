@@ -31,6 +31,7 @@ import (
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdprovisioning "github.com/cloud-nullus/draft/internal/cicd/adapter/provisioning"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
+	cicdport "github.com/cloud-nullus/draft/internal/cicd/port"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
 	obsprom "github.com/cloud-nullus/draft/internal/observability/adapter/prometheus"
@@ -471,13 +472,32 @@ func main() {
 	// 회전이 한 번도 일어나지 않았다.
 	rotationCtx, stopRotation := context.WithCancel(context.Background())
 	defer stopRotation()
+	// 재발급기 등록. 여기 없는 provider 는 회전 대상에서 조용히 빠진다.
+	//
+	// Gitea 는 클러스터 안에 있어 HTTP 로 닿지 못할 수 있으므로 발급과 같은
+	// 경로(파드 안의 gitea CLI)를 재사용한다. 재발급 로직을 복제하면 스코프나
+	// 토큰 이름이 갈라져 회전 후 인증이 조용히 실패한다.
+	reissuerRouter := rotation.NewRouterReissuer()
+	reissuerRouter.Register("gitea", rotation.NewGiteaReissuer(
+		func(ctx context.Context, spec rotation.GiteaReissueSpec) (string, error) {
+			return cicdGiteaTokens.EnsureToken(ctx, cicdport.SCMTokenSpec{
+				StackID:   spec.StackID,
+				ClusterID: spec.ClusterID,
+				Namespace: spec.Namespace,
+				OrgID:     spec.OrgID,
+				Env:       spec.Env,
+				// 회전은 기존 토큰이 살아 있어도 새로 발급해야 한다.
+				Force: true,
+			})
+		}))
+
 	go adminscheduler.NewTokenRotationScheduler(
 		pool,
 		secretRouter,
 		tokenRotationInterval(),
 		0,
 		slog.Default(),
-		rotation.NewRouterReissuer(),
+		reissuerRouter,
 	).WithRestarter(
 		// 회전 후 반영: 소비자가 기동 시점에만 설정을 읽는 경우 rolling restart 한다.
 		adminrepo.NewClusterWorkloadRestarter(kubeconfigProvider),
