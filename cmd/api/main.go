@@ -286,6 +286,8 @@ func main() {
 	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
 		WithGitea(cicdGiteaTokens, secretRouter).
 		WithJenkins(cicdJenkinsCreds)
+	runSyncUC := cicduc.NewSyncPipelineRuns(nil, pgDeploymentRepo).
+		WithBundleFactory(cicdBundleFactory, pgPipelineRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 
@@ -320,6 +322,9 @@ func main() {
 		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter())
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool).
 		WithDeletePipeline(deletePipelineUC).
+		// GitOps 경로의 실행 기록은 CI 서버에만 있다. 들이지 않으면 빌드가
+		// 성공해도 화면의 실행 통계가 0 으로 남는다.
+		WithRunSync(runSyncUC).
 		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
 		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
 		WithManifestApplier(manifestApplier).

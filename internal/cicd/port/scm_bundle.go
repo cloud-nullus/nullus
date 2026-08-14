@@ -24,6 +24,8 @@ type SCMBundle struct {
 	// Webhooks 는 저장소에 push webhook 을 거는 수단이다.
 	// Jenkins multibranch 가 새 커밋을 알려면 필요하다. 지원하지 않으면 nil.
 	Webhooks SCMWebhookProvisioner
+	// CIBuilds 는 CI 서버의 빌드 이력을 읽는다. 지원하지 않으면 nil.
+	CIBuilds CIBuildReader
 	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
 	CIBaseURL string
 	// SCMInClusterURL 은 클러스터 안에서 SCM 에 닿는 주소다.

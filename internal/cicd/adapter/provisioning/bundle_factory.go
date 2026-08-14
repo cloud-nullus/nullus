@@ -335,7 +335,11 @@ func (f *BundleFactory) giteaBundle(
 			if ciBaseURL == "" {
 				ciBaseURL = jenkinsBaseURL(namespace)
 			}
-			bundle.CIJobs = jenkins.NewClient(ciBaseURL, user, password)
+			client := jenkins.NewClient(ciBaseURL, user, password)
+			bundle.CIJobs = client
+			// 같은 클라이언트가 빌드 이력도 읽는다 — GitOps 경로의 실행 기록은
+			// CI 서버에만 있어서, 들이지 않으면 화면 통계가 0 으로 남는다.
+			bundle.CIBuilds = client
 			bundle.CIBaseURL = ciBaseURL
 		}
 	}

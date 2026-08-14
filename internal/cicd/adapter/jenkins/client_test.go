@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -188,4 +189,36 @@ func TestMultibranchXML_IncludesBranchDiscoveryTraits(t *testing.T) {
 		"브랜치 탐색 trait 이 없으면 브랜치를 하나도 찾지 못한다")
 	assert.Contains(t, xml, "org.jenkinsci.plugin.gitea.GiteaSCMSource")
 	assert.Contains(t, xml, "<scriptPath>Jenkinsfile</scriptPath>")
+}
+
+// GitOps 경로의 실행 기록은 Jenkins 가 갖고 있다.
+// 들이지 않으면 빌드가 성공해도 화면의 실행 통계가 영원히 0 으로 남는다.
+func TestClient_ListBuilds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.URL.Path, "/job/gj-demo-api/job/main/api/json")
+		_, _ = w.Write([]byte(`{"builds":[
+		  {"number":2,"result":null,"building":true,"timestamp":1786721700000,"duration":0},
+		  {"number":1,"result":"SUCCESS","building":false,"timestamp":1786721616732,"duration":26494}
+		]}`))
+	}))
+	defer srv.Close()
+
+	builds, err := NewClient(srv.URL, "admin", "pw").
+		ListBuilds(context.Background(), "gj-demo-api", "main", 20)
+	require.NoError(t, err)
+	require.Len(t, builds, 2)
+
+	assert.Equal(t, 2, builds[0].Number)
+	assert.True(t, builds[0].Building)
+	assert.Empty(t, builds[0].Result, "실행 중인 빌드는 결과가 없다")
+
+	assert.Equal(t, "SUCCESS", builds[1].Result)
+	assert.Equal(t, 26494*time.Millisecond, builds[1].Duration)
+	assert.Equal(t, int64(1786721616732), builds[1].StartedAt.UnixMilli())
+}
+
+// 폴더형 job 은 브랜치 경로가 없으면 빌드를 찾지 못한다.
+func TestClient_ListBuilds_RequiresJobName(t *testing.T) {
+	_, err := NewClient("http://x", "a", "b").ListBuilds(context.Background(), "  ", "main", 10)
+	require.Error(t, err)
 }

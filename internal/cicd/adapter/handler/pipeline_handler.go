@@ -40,6 +40,10 @@ type PipelineHandler struct {
 	stepTracker    *kube.StepTracker
 	pool           *pgxpool.Pool
 
+	// syncRuns 는 CI 서버의 빌드 이력을 배포 기록으로 들인다. 선택적으로
+	// 배선되며, 없으면 GitOps 경로의 실행 통계가 비어 있는 채로 남는다.
+	syncRuns *usecase.SyncPipelineRuns
+
 	// deletePipeline 은 부수 리소스까지 지우는 경로다. 선택적으로 배선되며,
 	// 없으면 삭제는 종전대로 레코드만 지운다.
 	deletePipeline *usecase.DeletePipeline
@@ -66,6 +70,15 @@ func (h *PipelineHandler) WithManifestApplier(a port.ManifestApplier) *PipelineH
 // 한다 — 한쪽만 배선하면 배포 경로에 따라 추적이 되기도 하고 안 되기도 한다.
 func (h *PipelineHandler) WithStackReader(r port.StackReader) *PipelineHandler {
 	h.stackReader = r
+	return h
+}
+
+// WithRunSync 는 CI 서버의 빌드 이력을 들이는 경로를 배선한다.
+//
+// 없으면 GitOps 경로(CI 가 빌드하고 Argo CD 가 배포)의 실행 통계가 비어 있는
+// 채로 남는다 — 플랫폼이 직접 실행한 배포만 기록에 남기 때문이다.
+func (h *PipelineHandler) WithRunSync(uc *usecase.SyncPipelineRuns) *PipelineHandler {
+	h.syncRuns = uc
 	return h
 }
 
@@ -376,6 +389,25 @@ func (h *PipelineHandler) ListDeployments(c echo.Context) error {
 	ctx := c.Request().Context()
 	orgID := h.validatedOrgID(ctx, c.Request().Header.Get("X-Org-ID"))
 
+	// 특정 파이프라인을 보는 요청이면 그 파이프라인의 실행 기록을 먼저 들인다.
+	//
+	// GitOps 경로에서는 플랫폼이 배포를 실행하지 않아 실행 기록이 CI 서버에만
+	// 있다. 여기서 들이지 않으면 빌드가 성공해도 화면 통계가 0 으로 남는다.
+	// 목록 전체 조회에서는 하지 않는다 — 파이프라인마다 CI 서버를 찾아야 해서
+	// 비용이 파이프라인 수에 비례한다.
+	//
+	// 실패는 조회를 막지 않는다. 통계가 잠시 비는 편이 목록 자체가 뜨지 않는
+	// 것보다 낫다.
+	pipelineFilter := strings.TrimSpace(c.QueryParam("pipeline_id"))
+	if pipelineFilter == "" {
+		pipelineFilter = strings.TrimSpace(c.QueryParam("pipelineId"))
+	}
+	if pipelineFilter != "" && h.syncRuns != nil {
+		if _, err := h.syncRuns.ForPipeline(ctx, pipelineFilter); err != nil {
+			slog.Warn("CI 실행 기록 동기화 실패", "pipeline_id", pipelineFilter, "error", err)
+		}
+	}
+
 	pipelines, err := h.pipelineRepo.List(ctx, orgID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
@@ -388,6 +420,9 @@ func (h *PipelineHandler) ListDeployments(c echo.Context) error {
 
 	results := make([]deploymentResponse, 0)
 	for _, pipeline := range pipelines {
+		if pipelineFilter != "" && pipeline.ID != pipelineFilter {
+			continue
+		}
 		items, err := h.deploymentRepo.ListByPipelineID(c.Request().Context(), pipeline.ID)
 		if err != nil {
 			return errorResponse(c, http.StatusInternalServerError, "DEPLOYMENT_LIST_FAILED", err.Error())

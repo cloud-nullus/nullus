@@ -1,6 +1,9 @@
 package port
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // CIJobSpec 은 CI 서버에 만들 job 하나의 요청이다.
 type CIJobSpec struct {
@@ -59,4 +62,25 @@ type SCMWebhookProvisioner interface {
 // 토큰과 완전히 같기 때문이다.
 type CICredentialResolver interface {
 	ResolveCICredential(ctx context.Context, spec SCMTokenSpec) (user, secret string, err error)
+}
+
+// CIBuild 는 CI 서버가 실행한 빌드 하나다.
+type CIBuild struct {
+	Number int
+	// Result 는 CI 가 보고한 결과다(SUCCESS/FAILURE/ABORTED). 실행 중이면 빈 값이다.
+	Result   string
+	Building bool
+	// StartedAt 은 빌드 시작 시각, Duration 은 실행 시간이다.
+	// 실행 중인 빌드의 Duration 은 0 이다.
+	StartedAt time.Time
+	Duration  time.Duration
+}
+
+// CIBuildReader 는 CI 서버에서 빌드 이력을 읽는다.
+//
+// 플랫폼이 직접 배포하는 경로와 달리, GitOps 경로의 실행 기록은 CI 서버가
+// 갖고 있다. 이것을 들이지 않으면 빌드가 성공해도 화면의 실행 통계가
+// 영원히 0 으로 남는다.
+type CIBuildReader interface {
+	ListBuilds(ctx context.Context, jobName, branch string, limit int) ([]CIBuild, error)
 }

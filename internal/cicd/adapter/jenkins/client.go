@@ -149,6 +149,36 @@ func (c *Client) jobExists(ctx context.Context, name string) (bool, error) {
 //
 // Jenkins 는 기본으로 CSRF 보호가 켜져 있어 crumb 없이 POST 하면 403 이다.
 // crumb 발급이 실패하면(보호가 꺼진 구성) 그대로 진행한다.
+// get 은 JSON 응답을 읽는다. 404 는 오류가 아니라 found=false 다 —
+// job 이 아직 없는 것은 정상 경로이기 때문이다.
+func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return false, err
+	}
+	c.applyAuth(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if resp.StatusCode >= 300 {
+		return false, fmt.Errorf("jenkins GET %s: %s", path, describeError(resp))
+	}
+	if out == nil {
+		return true, nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return false, fmt.Errorf("jenkins GET %s: 응답 해석 실패: %w", path, err)
+	}
+	return true, nil
+}
+
 func (c *Client) post(ctx context.Context, path, contentType string, body []byte) error {
 	var reader io.Reader
 	if body != nil {
@@ -339,4 +369,56 @@ func describeError(resp *http.Response) string {
 
 func decodeJSON(r io.Reader, out any) error {
 	return json.NewDecoder(r).Decode(out)
+}
+
+// ListBuilds 는 job 의 브랜치 빌드 이력을 읽는다.
+//
+// GitOps 경로에서는 플랫폼이 배포를 실행하지 않으므로 실행 기록이 여기에만
+// 있다. 들이지 않으면 빌드가 성공해도 화면의 실행 통계가 0 으로 남는다.
+func (c *Client) ListBuilds(ctx context.Context, jobName, branch string, limit int) ([]port.CIBuild, error) {
+	job := strings.TrimSpace(jobName)
+	if job == "" {
+		return nil, fmt.Errorf("jenkins: job 이름이 필요합니다")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	// multibranch job 은 브랜치가 하위 job 이다. 브랜치를 빼면 폴더 자체를
+	// 조회하게 되고 빌드가 하나도 없는 것처럼 보인다.
+	path := "/job/" + url.PathEscape(job)
+	if b := strings.TrimSpace(branch); b != "" {
+		path += "/job/" + url.PathEscape(b)
+	}
+	path += fmt.Sprintf("/api/json?tree=builds[number,result,building,timestamp,duration]{,%d}", limit)
+
+	var payload struct {
+		Builds []struct {
+			Number    int    `json:"number"`
+			Result    string `json:"result"`
+			Building  bool   `json:"building"`
+			Timestamp int64  `json:"timestamp"`
+			Duration  int64  `json:"duration"`
+		} `json:"builds"`
+	}
+	found, err := c.get(ctx, path, &payload)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, nil
+	}
+
+	out := make([]port.CIBuild, 0, len(payload.Builds))
+	for _, b := range payload.Builds {
+		out = append(out, port.CIBuild{
+			Number:   b.Number,
+			Result:   strings.TrimSpace(b.Result),
+			Building: b.Building,
+			// Jenkins 는 epoch 밀리초로 준다.
+			StartedAt: time.UnixMilli(b.Timestamp),
+			Duration:  time.Duration(b.Duration) * time.Millisecond,
+		})
+	}
+	return out, nil
 }
