@@ -241,3 +241,21 @@ type stubBaseURLProvisioner struct {
 }
 
 func (s stubBaseURLProvisioner) BaseURL() string { return s.base }
+
+// Argo CD 는 private 저장소를 읽을 자격증명이 필요하다.
+//
+// 비워 두면 Application 은 만들어지되 동기화가 "authentication required" 로
+// 실패한다 — 배포가 조용히 멈추는 형태다. Gitea 는 프로젝트 범위 토큰이 없으므로
+// 스택의 자동화 토큰을 그대로 쓴다(write 스코프가 read 를 포함한다).
+func TestConfigureGiteaPipeline_SetsArgoReadToken(t *testing.T) {
+	uc := (&ProvisionAppProject{}).WithCredentialPlane(&stubCredentialPlane{})
+
+	out := &ProvisionAppProjectOutput{}
+	uc.configureGiteaPipeline(context.Background(), giteaProject(), giteaTarget(), ProvisionAppProjectInput{
+		Platform:        port.SCMPlatformGitea,
+		RepoAccessToken: "gitea-token",
+	}, out)
+
+	assert.Equal(t, "gitea-token", out.ArgoReadToken,
+		"Argo CD 자격증명이 없으면 동기화가 authentication required 로 실패한다")
+}

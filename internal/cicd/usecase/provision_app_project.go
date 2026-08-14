@@ -282,6 +282,12 @@ func (uc *ProvisionAppProject) configureGiteaPipeline(
 	// deploy 단계가 매니페스트 태그를 되쓰려면 저장소 쓰기 권한이 필요하다.
 	// Gitea 에는 프로젝트 범위 토큰이 없으므로 스택의 자동화 토큰을 쓴다.
 	if token := strings.TrimSpace(input.RepoAccessToken); token != "" {
+		// Argo CD 도 같은 토큰으로 저장소를 읽는다. Gitea 에는 프로젝트 범위
+		// 토큰이 없고, 자동화 토큰의 write 스코프가 read 를 포함한다.
+		// 비워 두면 Application 은 만들어지되 동기화가 "authentication
+		// required" 로 실패해 배포가 조용히 멈춘다.
+		out.ArgoReadToken = token
+
 		vars = append(vars,
 			port.PipelineVariable{Key: scaffold.GitUsernameVar, Value: giteaAutomationUser},
 			port.PipelineVariable{Key: scaffold.GitPasswordVar, Value: token},
