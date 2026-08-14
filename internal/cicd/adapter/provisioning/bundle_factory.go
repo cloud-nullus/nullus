@@ -12,6 +12,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/jenkins"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
@@ -21,6 +22,13 @@ const gitLabWebservicePort = 8181
 
 // giteaHTTPPort 는 Gitea HTTP Service 의 클러스터 내부 포트다.
 const giteaHTTPPort = 3000
+
+// jenkinsPort 는 Jenkins 컨트롤러의 클러스터 내부 포트다.
+const jenkinsPort = 8080
+
+// giteaCredentialID 는 Jenkins 에 등록된 Gitea 자격증명 식별자다.
+// JCasC 가 ESO 로 동기화한 Secret 을 읽어 이 이름으로 만든다.
+const giteaCredentialID = "nullus-gitea"
 
 // Options 는 팩토리 기동 설정이다.
 type Options struct {
@@ -51,6 +59,9 @@ type BundleFactory struct {
 
 	// Gitea 경로도 선택적으로 배선된다. 같은 이유로 없으면 조용히 흘리지 않는다.
 	giteaTokens port.SCMTokenIssuer
+	// jenkinsAdmin 은 Jenkins job 생성에 쓰는 관리자 자격증명이다.
+	jenkinsUser  string
+	jenkinsToken string
 }
 
 // NewBundleFactory 는 팩토리를 만든다.
@@ -74,6 +85,16 @@ func (f *BundleFactory) WithGitHub(
 // WithGitea 는 Gitea 스택을 프로비저닝할 수 있게 한다.
 func (f *BundleFactory) WithGitea(tokens port.SCMTokenIssuer) *BundleFactory {
 	f.giteaTokens = tokens
+	return f
+}
+
+// WithJenkins 는 Gitea 스택의 CI job 을 만들 수 있게 한다.
+//
+// 배선되지 않으면 CIJobs 가 nil 로 남고, 호출부는 job 생성을 건너뛴다 —
+// 리포와 스캐폴딩은 만들어지되 빌드는 돌지 않는다.
+func (f *BundleFactory) WithJenkins(user, token string) *BundleFactory {
+	f.jenkinsUser = strings.TrimSpace(user)
+	f.jenkinsToken = strings.TrimSpace(token)
 	return f
 }
 
@@ -263,11 +284,12 @@ func (f *BundleFactory) giteaBundle(
 		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
 	}
 
-	return &port.SCMBundle{
+	bundle := &port.SCMBundle{
 		Provisioner: client,
 		// Gitea 에는 GitLab 같은 프로젝트 CI 변수 저장소가 없다. 파이프라인
 		// 자격증명은 OpenBao → ESO → K8s Secret 평면이 나른다.
 		Registry:        resolver,
+		Webhooks:        client,
 		Platform:        port.SCMPlatformGitea,
 		GroupPath:       f.opts.GroupPath,
 		RepoAccessToken: token,
@@ -275,7 +297,22 @@ func (f *BundleFactory) giteaBundle(
 		ClusterID:       summary.ClusterID,
 		AccessDomain:    summary.AccessDomain,
 		GatewayName:     gatewayNameFor(summary.AccessDomain),
-	}, nil
+	}
+
+	// Jenkins 가 배선돼 있어야 job 을 만들 수 있다. 없으면 CIJobs 를 비워 두고
+	// 리포·스캐폴딩까지만 진행한다 — 조용히 성공한 것처럼 보이지 않도록
+	// 호출부가 job 생성 생략을 결과에 남긴다.
+	if f.jenkinsToken != "" {
+		ciBaseURL := jenkinsBaseURL(namespace)
+		bundle.CIJobs = jenkins.NewClient(ciBaseURL, f.jenkinsUser, f.jenkinsToken)
+		bundle.CIBaseURL = ciBaseURL
+	}
+	return bundle, nil
+}
+
+// jenkinsBaseURL 은 클러스터 내부 Jenkins 주소다.
+func jenkinsBaseURL(namespace string) string {
+	return fmt.Sprintf("http://jenkins.%s.svc:%d", namespace, jenkinsPort)
 }
 
 // authenticatedGiteaClient 는 실제로 인증되는 Gitea 클라이언트를 돌려준다.

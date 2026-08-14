@@ -15,6 +15,18 @@ type SCMBundle struct {
 	// — 조용히 건너뛰면 사용자는 이미지가 지워진 줄 안다.
 	Images ImageRepositoryDeleter
 
+	// CIJobs 는 CI 서버에 job 을 만드는 수단이다.
+	//
+	// GitLab CI·GitHub Actions 는 파이프라인 정의를 푸시하면 자동 감지하므로
+	// nil 이다. Jenkins 는 job 이 먼저 존재해야 하므로 이 자리가 채워진다.
+	// 호출부는 nil 이면 건너뛴다 — 기존 경로 무영향.
+	CIJobs CIJobProvisioner
+	// Webhooks 는 저장소에 push webhook 을 거는 수단이다.
+	// Jenkins multibranch 가 새 커밋을 알려면 필요하다. 지원하지 않으면 nil.
+	Webhooks SCMWebhookProvisioner
+	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
+	CIBaseURL string
+
 	// Platform 은 이 묶음이 향하는 SCM 플랫폼이다.
 	// 파이프라인 파일 형식이 여기서 갈리므로 렌더러까지 전달돼야 한다.
 	Platform SCMPlatform

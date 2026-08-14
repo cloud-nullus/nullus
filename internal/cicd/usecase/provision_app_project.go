@@ -96,6 +96,9 @@ type ProvisionAppProjectOutput struct {
 	Warnings []string
 	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
 	ScaffoldSkipped bool
+	// CIJobURL 은 만들어진 CI job 의 주소다. CI 가 SCM 과 분리된 플랫폼
+	// (Jenkins)에서만 채워진다.
+	CIJobURL string
 }
 
 // ProvisionAppProject 는 앱 저장소를 만들고 CI/CD 가 돌 수 있는 상태로 만든다.
@@ -106,6 +109,28 @@ type ProvisionAppProject struct {
 	scm      port.SCMProvisioner
 	pipeline port.PipelineConfigurator
 	registry port.ImageRegistryResolver
+	// ciJobs / webhooks 는 CI 가 SCM 과 분리된 플랫폼에서만 채워진다.
+	// GitLab CI·GitHub Actions 는 파이프라인 정의를 푸시하면 자동 감지하므로 nil.
+	ciJobs    port.CIJobProvisioner
+	webhooks  port.SCMWebhookProvisioner
+	ciBaseURL string
+	scmURL    string
+}
+
+// WithCIJobs 는 CI 서버 job 생성 경로를 배선한다.
+//
+// Jenkins 처럼 job 이 먼저 존재해야 하는 CI 를 위한 것이다. 배선하지 않으면
+// job 생성을 건너뛴다 — 리포와 스캐폴딩은 만들어지되 빌드는 돌지 않는다.
+func (uc *ProvisionAppProject) WithCIJobs(
+	jobs port.CIJobProvisioner,
+	webhooks port.SCMWebhookProvisioner,
+	ciBaseURL, scmURL string,
+) *ProvisionAppProject {
+	uc.ciJobs = jobs
+	uc.webhooks = webhooks
+	uc.ciBaseURL = strings.TrimSpace(ciBaseURL)
+	uc.scmURL = strings.TrimSpace(scmURL)
+	return uc
 }
 
 // NewProvisionAppProject 는 유스케이스를 만든다.
@@ -201,10 +226,76 @@ func (uc *ProvisionAppProject) Execute(
 			project.FullPath))
 	}
 	uc.configurePipeline(ctx, project, target, input, out)
+	uc.ensureCIJob(ctx, project, out)
 
 	sort.Strings(out.MissingVariables)
 	return out, nil
 }
+
+// ensureCIJob 은 CI 서버에 job 을 만들고 저장소에 webhook 을 건다.
+//
+// Jenkins 는 GitLab CI·GitHub Actions 와 달리 Jenkinsfile 만 커밋해서는 아무
+// 일도 일어나지 않는다 — job 이 먼저 존재해야 한다. 배선이 없으면(GitLab/
+// GitHub 경로) 조용히 건너뛴다.
+//
+// 실패로 전체를 되돌리지 않는다. 리포와 스캐폴딩은 이미 만들어졌고, 되돌리면
+// 재실행 시 무엇이 남았는지 알 수 없다 — Argo CD Application 생성과 같은 방침이다.
+// 대신 무엇이 안 됐는지 경고로 남긴다. 조용히 넘기면 사용자는 파이프라인이
+// 준비된 줄 알고 커밋했다가 아무 일도 일어나지 않는 것을 보게 된다.
+func (uc *ProvisionAppProject) ensureCIJob(
+	ctx context.Context,
+	project *port.SCMProject,
+	out *ProvisionAppProjectOutput,
+) {
+	if uc.ciJobs == nil {
+		return
+	}
+
+	owner, name, ok := splitFullPath(project.FullPath)
+	if !ok {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"저장소 경로 %q 를 소유자/이름으로 나눌 수 없어 CI job 을 만들지 못했습니다", project.FullPath))
+		return
+	}
+
+	job, err := uc.ciJobs.EnsureJob(ctx, port.CIJobSpec{
+		Name:         name,
+		RepoCloneURL: project.HTTPCloneURL,
+		RepoOwner:    owner,
+		RepoName:     name,
+		ServerURL:    uc.scmURL,
+		CredentialID: giteaCredentialID,
+		PipelinePath: scaffold.JenkinsfilePath,
+	})
+	if err != nil {
+		out.Warnings = append(out.Warnings, fmt.Sprintf("CI job 생성 실패 (%s): %v", name, err))
+		return
+	}
+	out.CIJobURL = job.URL
+
+	// webhook 이 없으면 job 은 만들어졌지만 새 커밋을 모른다.
+	if uc.webhooks == nil || uc.ciBaseURL == "" {
+		return
+	}
+	hookURL := strings.TrimRight(uc.ciBaseURL, "/") + "/gitea-webhook/post"
+	if err := uc.webhooks.EnsureWebhook(ctx, project.ID, hookURL, ""); err != nil {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"webhook 등록 실패 (%s) — 커밋해도 빌드가 자동으로 시작되지 않습니다: %v", project.FullPath, err))
+	}
+}
+
+// splitFullPath 는 owner/name 을 나눈다.
+func splitFullPath(fullPath string) (owner, name string, ok bool) {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(fullPath), "/"), "/")
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	return parts[len(parts)-2], parts[len(parts)-1], true
+}
+
+// giteaCredentialID 는 Jenkins 에 등록된 Gitea 자격증명 식별자다.
+// JCasC 가 ESO 로 동기화한 Secret 을 읽어 이 이름으로 만든다.
+const giteaCredentialID = "nullus-gitea"
 
 // configurePipeline 은 CI 변수를 등록하고 무엇이 빠졌는지 모은다.
 //

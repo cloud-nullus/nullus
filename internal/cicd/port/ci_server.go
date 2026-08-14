@@ -1,0 +1,50 @@
+package port
+
+import "context"
+
+// CIJobSpec 은 CI 서버에 만들 job 하나의 요청이다.
+type CIJobSpec struct {
+	// Name 은 job 이름이다. 앱 이름과 같게 두어 화면에서 짝을 찾기 쉽게 한다.
+	Name string
+	// RepoCloneURL 은 CI 가 스캔할 저장소 주소다.
+	RepoCloneURL string
+	// RepoOwner / RepoName 은 organization 소스가 요구하는 분해된 형태다.
+	RepoOwner string
+	RepoName  string
+	// ServerURL 은 SCM 서버의 루트 주소다. Gitea 소스는 리포 주소가 아니라
+	// 서버 주소를 받아 API 로 브랜치를 훑는다.
+	ServerURL string
+	// CredentialID 는 CI 서버에 등록된 SCM 자격증명 식별자다.
+	// 비어 있으면 익명으로 스캔한다 — private 리포에서는 실패한다.
+	CredentialID string
+	// PipelinePath 는 파이프라인 정의 파일의 리포 내 경로다.
+	PipelinePath string
+}
+
+// CIJob 은 만들어진 job 이다.
+type CIJob struct {
+	Name string
+	URL  string
+}
+
+// CIJobProvisioner 는 CI 서버에 job 을 만든다.
+//
+// SCMProvisioner 와 분리한다. GitLab CI·GitHub Actions 는 파이프라인 정의를
+// 푸시하면 자동으로 감지하지만, Jenkins 는 job 이 먼저 존재해야 한다 —
+// Jenkinsfile 만 커밋해서는 아무 일도 일어나지 않는다. 그 차이를 흡수하는
+// 자리이므로 이 포트를 지원하지 않는 플랫폼에서는 nil 이고, 호출부는 nil 이면
+// 건너뛴다(기존 GitLab/GitHub 경로 무영향).
+type CIJobProvisioner interface {
+	// EnsureJob 은 job 을 만들거나 이미 있으면 그대로 둔다(멱등).
+	EnsureJob(ctx context.Context, spec CIJobSpec) (*CIJob, error)
+	// DeleteJob 은 job 을 지운다. 이미 없으면 성공으로 본다.
+	DeleteJob(ctx context.Context, name string) error
+}
+
+// SCMWebhookProvisioner 는 저장소에 webhook 을 건다.
+//
+// Jenkins multibranch job 은 스스로 폴링하지 않는 한 새 커밋을 모른다.
+// 폴링은 지연이 크고 리포가 늘수록 부하가 커지므로 push webhook 을 건다.
+type SCMWebhookProvisioner interface {
+	EnsureWebhook(ctx context.Context, projectID, targetURL, secret string) error
+}

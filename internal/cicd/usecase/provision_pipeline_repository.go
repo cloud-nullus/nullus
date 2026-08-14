@@ -88,7 +88,10 @@ func (uc *ProvisionPipelineRepository) Execute(
 		return nil, fmt.Errorf("provision common project: %w", err)
 	}
 
+	// CI 가 SCM 과 분리된 플랫폼(Gitea + Jenkins)에서는 job 을 따로 만들어야
+	// 한다. GitLab/GitHub 번들은 CIJobs 가 nil 이라 배선해도 동작이 같다.
 	appOut, err := NewProvisionAppProject(bundle.Provisioner, bundle.Pipeline, bundle.Registry).
+		WithCIJobs(bundle.CIJobs, bundle.Webhooks, bundle.CIBaseURL, scmServerURLFor(bundle)).
 		Execute(ctx, ProvisionAppProjectInput{
 			AppName:             app,
 			GroupPath:           commonOut.Group.FullPath,
@@ -140,6 +143,21 @@ func pullSecretUsername(bundle *port.SCMBundle) string {
 //
 // 실패해도 저장소 프로비저닝을 되돌리지 않는다 — 저장소는 이미 만들어졌고,
 // 되돌리면 재실행 시 무엇이 남았는지 알 수 없다. 경고로 알리고 계속한다.
+// scmServerURLFor 는 CI 가 저장소를 스캔할 때 쓸 SCM 서버 주소다.
+//
+// 리포 주소가 아니라 서버 루트여야 한다 — Gitea SCM 소스는 이 주소로 API 를
+// 불러 브랜치를 훑는다.
+func scmServerURLFor(bundle *port.SCMBundle) string {
+	if bundle == nil {
+		return ""
+	}
+	type baseURLProvider interface{ BaseURL() string }
+	if p, ok := bundle.Provisioner.(baseURLProvider); ok {
+		return p.BaseURL()
+	}
+	return ""
+}
+
 func (uc *ProvisionPipelineRepository) applyArgoApplication(
 	ctx context.Context,
 	bundle *port.SCMBundle,
