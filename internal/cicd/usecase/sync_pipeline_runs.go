@@ -76,7 +76,11 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 		// 이미 있으면 갱신한다 — 실행 중이던 빌드가 끝나면 상태가 바뀐다.
 		existing, getErr := uc.deployments.GetByID(ctx, deployment.ID)
 		if getErr == nil && existing != nil {
-			if existing.Status == deployment.Status {
+			// 상태가 같아도 단계 정보가 새로 생겼으면 갱신한다 — CI 에 단계
+			// 플러그인을 나중에 깔면 이미 끝난 실행에 단계가 붙는다. 상태만
+			// 보고 건너뛰면 그 실행은 영원히 "실행 정보 없음" 으로 남는다.
+			if existing.Status == deployment.Status &&
+				len(existing.Steps) == len(deployment.Steps) {
 				continue
 			}
 			if err := uc.deployments.Update(ctx, deployment); err != nil {

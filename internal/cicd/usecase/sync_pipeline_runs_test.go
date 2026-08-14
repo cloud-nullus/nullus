@@ -154,3 +154,28 @@ func TestSyncPipelineRuns_NoStagesLeavesStepsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, repo.rows[runDeploymentID("p", 1)].Steps)
 }
+
+// CI 에 단계 플러그인을 나중에 깔면 이미 끝난 실행에 단계가 붙는다.
+// 상태만 보고 건너뛰면 그 실행은 영원히 "실행 정보 없음" 으로 남는다.
+func TestSyncPipelineRuns_FillsStagesThatAppearLater(t *testing.T) {
+	repo := newMemDeployments()
+	reader := &stubBuildReader{builds: []port.CIBuild{
+		{Number: 1, Result: "SUCCESS", StartedAt: started(), Duration: time.Second},
+	}}
+	uc := NewSyncPipelineRuns(reader, repo)
+
+	_, err := uc.Execute(context.Background(), SyncPipelineRunsInput{PipelineID: "p", JobName: "app"})
+	require.NoError(t, err)
+	require.Empty(t, repo.rows[runDeploymentID("p", 1)].Steps)
+
+	// 플러그인 설치 후: 같은 빌드에 단계가 생긴다.
+	reader.builds[0].Stages = []port.CIStage{
+		{Name: "Build", Status: port.CIStageSuccess},
+		{Name: "Deploy", Status: port.CIStageSuccess},
+	}
+	n, err := uc.Execute(context.Background(), SyncPipelineRunsInput{PipelineID: "p", JobName: "app"})
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, n)
+	assert.Len(t, repo.rows[runDeploymentID("p", 1)].Steps, 2)
+}
