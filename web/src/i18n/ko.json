@@ -189,7 +189,8 @@
       "addTool": "도구 추가",
       "addSection": "섹션 추가",
       "duplicateTemplate": "복제",
-      "updateTool": "도구 수정"
+      "updateTool": "도구 수정",
+      "removeCategoryTool": "{{category}} 제거"
     },
     "card": {
       "estimatedMinutes": "약 {{minutes}}분",
@@ -229,7 +230,10 @@
       "estimatedInstallTimeValue": "약 {{minutes}}분 ({{nanoseconds}} ns)",
       "recommendedUseCase": "권장 사용 사례",
       "minimumResources": "최소 리소스",
-      "toolsHint": "먼저 템플릿 골격을 만들고, 이후 섹션별로 도구를 추가하거나 다듬습니다."
+      "toolsHint": "먼저 템플릿 골격을 만들고, 이후 섹션별로 도구를 추가하거나 다듬습니다.",
+      "helmVersion": "Helm 버전",
+      "appVersion": "앱 버전",
+      "toolApplied": "템플릿에 포함"
     },
     "errors": {
       "updateFailed": "템플릿 수정에 실패했습니다.",

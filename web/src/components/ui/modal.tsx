@@ -27,10 +27,19 @@ interface ModalProps {
   title?: string
   children: ReactNode
   wide?: boolean
+  /**
+   * wide(800) 보다 한 단계 넓은 자리. 탭 안에 선택 카드가 세로로 깔리는
+   * 편집 모달용이다 — 그 폭에서는 카드 안의 이름과 설명이 매 줄 접힌다.
+   * 기존 `wide` 를 키우지 않는 이유는 그 값을 쓰는 자리가 열 곳이 넘고
+   * 대부분은 폼 두 칸짜리라 더 넓어지면 오히려 휑해지기 때문이다.
+   */
+  size?: 'default' | 'wide' | 'xl'
   footer?: ReactNode
 }
 
-export function Modal({ open, onClose, title, children, wide = false, footer }: ModalProps) {
+const MAX_WIDTH_BY_SIZE = { default: 480, wide: 800, xl: 1080 } as const
+
+export function Modal({ open, onClose, title, children, wide = false, size, footer }: ModalProps) {
   // 닫히면 즉시 언마운트한다. 이전 구현이 `if (!open) return null` 이라 퇴장
   // 애니메이션이 아예 없었고, 소비자 테스트들이 그 동기적 제거에 의존한다
   // (예: Cancel 클릭 직후 queryByText(...).not.toBeInTheDocument()).
@@ -49,7 +58,7 @@ export function Modal({ open, onClose, title, children, wide = false, footer }: 
           'aria-label': title,
           sx: {
             width: '100%',
-            maxWidth: wide ? 800 : 480,
+            maxWidth: MAX_WIDTH_BY_SIZE[size ?? (wide ? 'wide' : 'default')],
             maxHeight: '90vh',
             backgroundColor: 'var(--color-surface-raised)',
             border: '1px solid var(--color-border-default)',
@@ -83,7 +92,12 @@ export function Modal({ open, onClose, title, children, wide = false, footer }: 
         </DialogTitle>
       )}
 
-      <DialogContent sx={{ color: 'var(--color-text-primary)' }}>{children}</DialogContent>
+      {/* 위쪽 여백을 되돌려 준다. MUI 는 DialogTitle 바로 뒤에 오는
+          DialogContent 의 padding-top 을 0 으로 만드는데, 이 본문은
+          overflow-y: auto 라 그 경계에서 잘린다. 첫 줄이 외곽선 입력(Input)이면
+          떠 있는 라벨이 상자 위로 나가 있으므로 **라벨의 위쪽 절반이 사라진다**
+          — 템플릿 편집 모달의 "Template ID" 가 그렇게 잘려 있었다. */}
+      <DialogContent sx={{ color: 'var(--color-text-primary)', pt: 1.5 }}>{children}</DialogContent>
 
       {footer && (
         <DialogActions sx={{ borderTop: '1px solid var(--color-border-default)', gap: 1.25, px: 2.5, py: 2 }}>
