@@ -2668,6 +2668,7 @@ export function StackInstallPage() {
                 <ToolSelector
                   label={t('stackInstall.labels.sourceRepository', 'Source Repository')}
                   options={ARTIFACTS_OPTIONS.sourceRepository}
+                  slot="sourceRepository"
                   value={draft.artifacts.sourceRepository}
                   onChange={(v) => setTool('artifacts', 'sourceRepository', v)}
                 />
@@ -2716,12 +2717,14 @@ export function StackInstallPage() {
                 <ToolSelector
                   label={t('stackInstall.labels.containerRegistry', 'Container Registry')}
                   options={ARTIFACTS_OPTIONS.containerRegistry}
+                  slot="containerRegistry"
                   value={draft.artifacts.containerRegistry}
                   onChange={(v) => setTool('artifacts', 'containerRegistry', v)}
                 />
                 <ToolSelector
                   label={t('stackInstall.labels.packageRegistry', 'Package Registry')}
                   options={ARTIFACTS_OPTIONS.packageRegistry}
+                  slot="packageRegistry"
                   value={draft.artifacts.packageRegistry}
                   onChange={(v) => setTool('artifacts', 'packageRegistry', v)}
                 />
@@ -2733,12 +2736,14 @@ export function StackInstallPage() {
                 <ToolSelector
                   label={t('stackInstall.labels.cicdPlatform', 'CI/CD Platform')}
                   options={PIPELINE_OPTIONS.cicdPlatform}
+                  slot="cicdPlatform"
                   value={draft.pipeline.cicdPlatform}
                   onChange={(v) => setTool('pipeline', 'cicdPlatform', v)}
                 />
                 <ToolSelector
                   label={t('stackInstall.labels.cdTool', 'CD Tool')}
                   options={PIPELINE_OPTIONS.cdTool}
+                  slot="cdTool"
                   value={draft.pipeline.cdTool}
                   onChange={(v) => setTool('pipeline', 'cdTool', v)}
                 />
@@ -2750,30 +2755,35 @@ export function StackInstallPage() {
                 <MultiToolSelector
                   label={t('stackInstall.labels.visualization', 'Visualization')}
                   options={MONITORING_OPTIONS.visualization}
+                  slot="visualization"
                   values={draft.monitoring.visualizations}
                   onChange={setMonitoringVisualizations}
                 />
                 <ToolSelector
                   label={t('stackInstall.labels.metrics', 'Metrics')}
                   options={MONITORING_OPTIONS.collection}
+                  slot="collection"
                   value={draft.monitoring.collection}
                   onChange={(v) => setTool('monitoring', 'collection', v)}
                 />
                 <ToolSelector
                   label={t('stackInstall.labels.logs', 'Logs')}
                   options={LOGGING_OPTIONS.search}
+                  slot="search"
                   value={draft.logging.search}
                   onChange={(v) => setTool('logging', 'search', v)}
                 />
                 <ToolSelector
                   label={t('stackInstall.labels.traces', 'Traces')}
                   options={MONITORING_OPTIONS.traceLayer}
+                  slot="traceLayer"
                   value={draft.logging.traceLayer}
                   onChange={(v) => setTool('logging', 'traceLayer', v)}
                 />
                 <ToolSelector
                   label={t('stackInstall.labels.traceExporter', 'Exporter / Agent')}
                   options={MONITORING_OPTIONS.traceExporter}
+                  slot="traceExporter"
                   value={draft.logging.traceExporter}
                   onChange={(v) => setTool('logging', 'traceExporter', v)}
                 />
@@ -2785,6 +2795,7 @@ export function StackInstallPage() {
                 <ToolSelector
                   label={t('stackInstall.authentication.title', 'Authentication')}
                   options={AUTHENTICATION_OPTIONS}
+                  slot="authentication"
                   value={{ tool: draft.authentication.provider, version: draft.authentication.provider ? 'latest' : '' }}
                   onChange={(v) => setAuthenticationProvider((v.tool as '' | 'openbao') || '')}
                 />

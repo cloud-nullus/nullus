@@ -449,6 +449,12 @@
       },
       "log_search": {
         "label": "로그 검색"
+      },
+      "packageRegistry": {
+        "gitlab": {
+          "label": "GitLab 패키지 레지스트리",
+          "description": "GitLab 내장 패키지 레지스트리"
+        }
       }
     },
     "tools": {
