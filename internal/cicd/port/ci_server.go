@@ -74,6 +74,9 @@ type CIBuild struct {
 	// 실행 중인 빌드의 Duration 은 0 이다.
 	StartedAt time.Time
 	Duration  time.Duration
+	// Stages 는 실행 안의 단계다. CI 가 단계 정보를 주지 않으면 비어 있다 —
+	// 비어 있는 것과 "모두 성공" 은 다르다.
+	Stages []CIStage
 }
 
 // CIBuildReader 는 CI 서버에서 빌드 이력을 읽는다.

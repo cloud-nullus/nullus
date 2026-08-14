@@ -109,3 +109,18 @@ func TestJenkinsValues_UsesProvisionedAdminSecretAndInstallsGiteaPlugin(t *testi
 		assert.Containsf(t, joined, want, "%s 플러그인이 없으면 Gitea multibranch 파이프라인을 만들 수 없다", want)
 	}
 }
+
+// 단계별 실행 결과는 pipeline-stage-view 가 /wfapi 로 내보낸다.
+// workflow-aggregator 에 포함되지 않아 따로 지정해야 한다 — 없으면 화면이
+// 단계를 "실행 정보 없음" 으로만 표시한다.
+func TestJenkinsValues_InstallsStageViewPlugin(t *testing.T) {
+	controller := DefaultValues("installing_jenkins")["controller"].(map[string]any)
+	plugins, ok := controller["installPlugins"].([]any)
+	require.True(t, ok)
+
+	var joined string
+	for _, p := range plugins {
+		joined += p.(string) + " "
+	}
+	assert.Contains(t, joined, "pipeline-stage-view")
+}

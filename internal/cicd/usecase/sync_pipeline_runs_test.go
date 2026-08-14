@@ -119,3 +119,38 @@ func TestSyncPipelineRuns_FailureStatuses(t *testing.T) {
 		assert.Equal(t, domain.DeploymentStatusFailed, repo.rows[runDeploymentID("p", 1)].Status, result)
 	}
 }
+
+// 어댑터가 정규화한 단계를 그대로 도메인 스텝으로 옮긴다.
+// 이 함수는 CI 종류를 모른다 — OSS 를 하나 늘려도 바뀌지 않아야 한다.
+func TestSyncPipelineRuns_MapsNormalizedStagesToSteps(t *testing.T) {
+	repo := newMemDeployments()
+	uc := NewSyncPipelineRuns(&stubBuildReader{builds: []port.CIBuild{{
+		Number: 1, Result: "SUCCESS", StartedAt: started(), Duration: time.Second,
+		Stages: []port.CIStage{
+			{Name: "Build", Status: port.CIStageSuccess, StartedAt: started()},
+			{Name: "Deploy", Status: port.CIStageSkipped},
+		},
+	}}}, repo)
+
+	_, err := uc.Execute(context.Background(), SyncPipelineRunsInput{PipelineID: "p", JobName: "app"})
+	require.NoError(t, err)
+
+	steps := repo.rows[runDeploymentID("p", 1)].Steps
+	require.Len(t, steps, 2)
+	assert.Equal(t, "Build", steps[0].Name)
+	assert.Equal(t, "success", steps[0].Status)
+	assert.Equal(t, "ci_stage", steps[0].Kind)
+	assert.Equal(t, "skipped", steps[1].Status, "건너뛴 단계를 실패로 옮기면 안 된다")
+}
+
+// 단계 정보가 없는 CI 도 있다. 빈 목록과 "모두 성공" 은 다르다.
+func TestSyncPipelineRuns_NoStagesLeavesStepsEmpty(t *testing.T) {
+	repo := newMemDeployments()
+	uc := NewSyncPipelineRuns(&stubBuildReader{builds: []port.CIBuild{
+		{Number: 1, Result: "SUCCESS", StartedAt: started(), Duration: time.Second},
+	}}, repo)
+
+	_, err := uc.Execute(context.Background(), SyncPipelineRunsInput{PipelineID: "p", JobName: "app"})
+	require.NoError(t, err)
+	assert.Empty(t, repo.rows[runDeploymentID("p", 1)].Steps)
+}

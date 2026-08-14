@@ -418,7 +418,52 @@ func (c *Client) ListBuilds(ctx context.Context, jobName, branch string, limit i
 			// Jenkins 는 epoch 밀리초로 준다.
 			StartedAt: time.UnixMilli(b.Timestamp),
 			Duration:  time.Duration(b.Duration) * time.Millisecond,
+			Stages:    c.listStages(ctx, job, branch, b.Number),
 		})
 	}
 	return out, nil
+}
+
+// stageDescribePath 는 실행 하나의 단계 정보를 주는 경로다.
+//
+// pipeline-stage-view(및 그 의존인 pipeline-rest-api) 플러그인이 제공한다.
+// 없으면 404 이며, 그때는 단계 정보 없이 실행 기록만 남는다 — 화면은 그것을
+// "실행 정보 없음" 으로 정직하게 표시한다.
+func stageDescribePath(job, branch string, build int) string {
+	path := "/job/" + url.PathEscape(job)
+	if b := strings.TrimSpace(branch); b != "" {
+		path += "/job/" + url.PathEscape(b)
+	}
+	return fmt.Sprintf("%s/%d/wfapi/describe", path, build)
+}
+
+// listStages 는 실행 하나의 단계를 읽어 정규화한다.
+//
+// 실패해도 오류를 올리지 않는다 — 단계 정보는 부가 정보이고, 이것 때문에
+// 실행 기록 전체를 잃는 편이 나쁘다. 플러그인이 없는 구성이 정상 경로다.
+func (c *Client) listStages(ctx context.Context, job, branch string, build int) []port.CIStage {
+	var payload struct {
+		Stages []struct {
+			Name               string `json:"name"`
+			Status             string `json:"status"`
+			StartTimeMillis    int64  `json:"startTimeMillis"`
+			DurationTimeMillis int64  `json:"durationTimeMillis"`
+		} `json:"stages"`
+	}
+
+	found, err := c.get(ctx, stageDescribePath(job, branch, build), &payload)
+	if err != nil || !found {
+		return nil
+	}
+
+	out := make([]port.CIStage, 0, len(payload.Stages))
+	for _, st := range payload.Stages {
+		out = append(out, port.CIStage{
+			Name:      strings.TrimSpace(st.Name),
+			Status:    port.NormalizeStageStatus(st.Status),
+			StartedAt: time.UnixMilli(st.StartTimeMillis),
+			Duration:  time.Duration(st.DurationTimeMillis) * time.Millisecond,
+		})
+	}
+	return out
 }

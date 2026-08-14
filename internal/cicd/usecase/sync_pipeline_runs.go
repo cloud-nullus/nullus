@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
@@ -110,7 +111,37 @@ func deploymentFromBuild(pipelineID string, b port.CIBuild) *domain.Deployment {
 		completed := b.StartedAt.Add(b.Duration)
 		deployment.CompletedAt = &completed
 	}
+
+	deployment.Steps = stepsFromStages(b.Stages)
 	return deployment
+}
+
+// stepsFromStages 는 정규화된 단계를 도메인 스텝으로 옮긴다.
+//
+// CI 별 어휘는 이미 어댑터가 정규화했다. 여기서 CI 종류를 알 필요가 없다 —
+// OSS 를 하나 늘려도 이 함수는 그대로다.
+//
+// 단계가 없으면 nil 이다. 빈 목록과 "모두 성공" 은 다르고, 화면은 그 차이를
+// "실행 정보 없음" 으로 표시한다.
+func stepsFromStages(stages []port.CIStage) []domain.DeployStep {
+	if len(stages) == 0 {
+		return nil
+	}
+
+	steps := make([]domain.DeployStep, 0, len(stages))
+	for _, st := range stages {
+		step := domain.DeployStep{
+			Name:   st.Name,
+			Status: string(st.Status),
+			// 플랫폼이 직접 적용한 리소스가 아니라 CI 가 실행한 단계다.
+			Kind: "ci_stage",
+		}
+		if !st.StartedAt.IsZero() {
+			step.AppliedAt = st.StartedAt.UTC().Format(time.RFC3339)
+		}
+		steps = append(steps, step)
+	}
+	return steps
 }
 
 func deploymentStatusFromBuild(b port.CIBuild) domain.DeploymentStatus {

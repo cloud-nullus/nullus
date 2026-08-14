@@ -195,6 +195,12 @@ func TestMultibranchXML_IncludesBranchDiscoveryTraits(t *testing.T) {
 // 들이지 않으면 빌드가 성공해도 화면의 실행 통계가 영원히 0 으로 남는다.
 func TestClient_ListBuilds(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 단계 정보는 별도 경로다. 플러그인이 없는 구성이 정상 경로이므로
+		// 404 로 답해 단계 없이도 실행 기록이 남는지 함께 본다.
+		if strings.Contains(r.URL.Path, "/wfapi/describe") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		assert.Contains(t, r.URL.Path, "/job/gj-demo-api/job/main/api/json")
 		_, _ = w.Write([]byte(`{"builds":[
 		  {"number":2,"result":null,"building":true,"timestamp":1786721700000,"duration":0},
@@ -215,6 +221,31 @@ func TestClient_ListBuilds(t *testing.T) {
 	assert.Equal(t, "SUCCESS", builds[1].Result)
 	assert.Equal(t, 26494*time.Millisecond, builds[1].Duration)
 	assert.Equal(t, int64(1786721616732), builds[1].StartedAt.UnixMilli())
+	assert.Empty(t, builds[1].Stages, "플러그인이 없으면 단계 없이 실행 기록만 남는다")
+}
+
+// 단계 정보를 주는 구성에서는 정규화된 어휘로 옮긴다.
+func TestClient_ListBuilds_NormalizesStages(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/wfapi/describe") {
+			_, _ = w.Write([]byte(`{"stages":[
+			  {"name":"Build","status":"SUCCESS","startTimeMillis":1786721616732,"durationTimeMillis":20000},
+			  {"name":"Deploy","status":"NOT_EXECUTED","startTimeMillis":0,"durationTimeMillis":0}
+			]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"builds":[{"number":1,"result":"SUCCESS","building":false,"timestamp":1786721616732,"duration":26494}]}`))
+	}))
+	defer srv.Close()
+
+	builds, err := NewClient(srv.URL, "admin", "pw").ListBuilds(context.Background(), "app", "main", 10)
+	require.NoError(t, err)
+	require.Len(t, builds, 1)
+	require.Len(t, builds[0].Stages, 2)
+
+	assert.Equal(t, port.CIStageSuccess, builds[0].Stages[0].Status)
+	assert.Equal(t, port.CIStageSkipped, builds[0].Stages[1].Status,
+		"NOT_EXECUTED 를 실패로 옮기면 안 된다")
 }
 
 // 폴더형 job 은 브랜치 경로가 없으면 빌드를 찾지 못한다.

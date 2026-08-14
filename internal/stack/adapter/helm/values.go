@@ -249,6 +249,10 @@ func DefaultValues(stepName string) map[string]any {
 					"git",
 					"gitea",
 					"configuration-as-code",
+					// 단계별 실행 결과를 API 로 내보낸다(/wfapi). 없으면 실행
+					// 기록은 남지만 단계 정보가 없어 화면이 "실행 정보 없음" 으로
+					// 표시한다 — workflow-aggregator 에 포함되지 않는다.
+					"pipeline-stage-view",
 				},
 				// 서비스는 게이트웨이 라우트가 앞단을 맡으므로 ClusterIP 로 둔다.
 				"serviceType": "ClusterIP",
