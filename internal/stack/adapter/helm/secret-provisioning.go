@@ -3,7 +3,6 @@ package helm
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -233,12 +232,45 @@ func objectStorageConnectionTemplate(endpoint string) string {
 }
 
 // generateSecretValue 는 32바이트 랜덤을 URL-safe base64 로 만든다.
+// secretAlphabet 은 생성 비밀번호에 쓰는 문자 집합이다.
+//
+// 영숫자만 쓴다. 이 값들은 CLI 인자로 그대로 넘어가는데(mc, gitea admin user,
+// nexus 프로비저닝), base64url 알파벳의 '-' 로 시작하는 값은 CLI 가 플래그로
+// 파싱해 죽는다 — 실제로 MinIO post-install 잡이 이렇게 실패했다:
+//
+//	mc: <ERROR> Invalid command usage, flag provided but not defined: -M-7HMgh...
+//
+// 확률적이라 어떤 설치는 통과하고 어떤 설치는 실패해 재현이 어렵다. '_' 도
+// 함께 뺀다 — 일부 차트가 특수문자를 다루지 못한다고 스스로 경고한다
+// (gitea 차트의 valkey 주석).
+const secretAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+// secretValueLength 는 생성 비밀번호의 길이다.
+// 62^43 ≈ 2^256 으로 기존 base64(32바이트)와 같은 수준의 엔트로피를 유지한다.
+const secretValueLength = 43
+
 func generateSecretValue() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("랜덤 생성 실패: %w", err)
+	// 나머지 연산으로 문자를 고르면 알파벳 크기가 256 의 약수가 아니라 앞쪽
+	// 문자가 더 자주 나온다. 남는 구간을 버려(rejection sampling) 편향을 없앤다.
+	const maxByte = 255 - (256 % len(secretAlphabet))
+
+	out := make([]byte, 0, secretValueLength)
+	buf := make([]byte, secretValueLength)
+	for len(out) < secretValueLength {
+		if _, err := rand.Read(buf); err != nil {
+			return "", fmt.Errorf("랜덤 생성 실패: %w", err)
+		}
+		for _, b := range buf {
+			if len(out) == secretValueLength {
+				break
+			}
+			if int(b) > maxByte {
+				continue
+			}
+			out = append(out, secretAlphabet[int(b)%len(secretAlphabet)])
+		}
 	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	return string(out), nil
 }
 
 // externalSecretManifest 는 하나의 관리 시크릿에 대한 ExternalSecret 을 만든다.
