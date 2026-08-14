@@ -64,9 +64,12 @@ func newDeployEchoWithGate(t *testing.T, clusterArchs []string) (*echo.Echo, *st
 
 // untestedComboTools 는 게이트의 "검증되지 않은 조합" 분기를 시험하기 위한
 // 조합이다. seedUntestedMatrix 가 세우는 행렬과 짝을 이룬다.
+// Gitea + Jenkins 는 이제 출하되는 Golden Path(gitea-jenkins-argocd-v1)라
+// 여기서 쓸 수 없다 — verified 매트릭스가 먼저 잡혀 warn 분기에 닿지 못한다.
+// 아래 주석이 경고한 그 상황이므로, 어느 Golden Path 와도 겹치지 않는 조합을 쓴다.
 var untestedComboTools = []domain.ToolConfig{
-	{Category: "source_repository", Name: "Gitea"},
-	{Category: "ci_platform", Name: "Jenkins"},
+	{Category: "source_repository", Name: "Bitbucket"},
+	{Category: "ci_platform", Name: "Drone"},
 	{Category: "container_registry", Name: "Harbor"},
 }
 
@@ -91,11 +94,11 @@ func seedUntestedMatrix(t *testing.T, repo *stackrepo.MemoryCompatibilityReposit
 		},
 		Tools: map[string]domain.ToolVersion{
 			"source_repository": {
-				Name: "Gitea", HelmVersion: "10.4.0", AppVersion: "1.22.0",
+				Name: "Bitbucket", HelmVersion: "1.0.0", AppVersion: "8.19.0",
 				MinK8sVersion: "1.26", ArchSupport: []string{"amd64", "arm64"}, Tier: "beta",
 			},
 			"ci_platform": {
-				Name: "Jenkins", HelmVersion: "5.7.0", AppVersion: "2.479.1",
+				Name: "Drone", HelmVersion: "0.6.5", AppVersion: "2.25.0",
 				MinK8sVersion: "1.26", ArchSupport: []string{"amd64", "arm64"}, Tier: "beta",
 			},
 			"container_registry": {
