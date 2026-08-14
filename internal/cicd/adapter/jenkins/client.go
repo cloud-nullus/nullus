@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"time"
@@ -45,17 +46,33 @@ type Client struct {
 // baseURL 은 컨트롤러 주소다 (예: http://jenkins.nullus.svc:8080).
 // user/token 은 관리자 계정과 API 토큰(또는 비밀번호)이다.
 func NewClient(baseURL, user, token string) *Client {
+	// 쿠키 jar 를 둔다. Jenkins 는 CSRF crumb 을 세션에 묶어 검증하므로, crumb 을
+	// 받은 요청과 그것을 쓰는 요청이 같은 세션이어야 한다 — 쿠키를 유지하지
+	// 않으면 crumb 이 유효해도 "No valid crumb was included in the request" 로
+	// 403 이 난다.
+	//
+	// jar 생성은 실패하지 않는 구성이지만(옵션 nil), 실패해도 클라이언트는
+	// 동작해야 하므로 오류를 삼키고 jar 없이 진행한다.
+	jar, _ := cookiejar.New(nil)
+
 	return &Client{
 		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		user:       strings.TrimSpace(user),
 		token:      strings.TrimSpace(token),
-		httpClient: &http.Client{Timeout: defaultTimeout},
+		httpClient: &http.Client{Timeout: defaultTimeout, Jar: jar},
 	}
 }
 
 // WithHTTPClient 는 타임아웃·전송 계층을 교체한다.
+//
+// 쿠키 jar 가 없으면 붙여 준다 — crumb 세션이 유지되지 않으면 모든 POST 가
+// 403 으로 죽는다.
 func (c *Client) WithHTTPClient(h *http.Client) *Client {
 	if h != nil {
+		if h.Jar == nil {
+			jar, _ := cookiejar.New(nil)
+			h.Jar = jar
+		}
 		c.httpClient = h
 	}
 	return c

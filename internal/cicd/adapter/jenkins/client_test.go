@@ -128,3 +128,36 @@ func TestDeleteJob_MissingIsSuccess(t *testing.T) {
 
 	require.NoError(t, NewClient(srv.URL, "admin", "tok").DeleteJob(context.Background(), "api"))
 }
+
+// Jenkins 는 CSRF crumb 을 세션에 묶어 검증한다.
+//
+// crumb 을 받은 요청과 그것을 쓰는 요청이 같은 세션이어야 한다 — 쿠키를
+// 유지하지 않으면 crumb 이 유효해도 "No valid crumb was included in the
+// request" 로 403 이 난다. 실제로 job 생성이 이렇게 실패했다.
+func TestClient_KeepsSessionAcrossCrumbAndPost(t *testing.T) {
+	var crumbSession string
+	var postCookie string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "crumbIssuer"):
+			crumbSession = "sess-1"
+			http.SetCookie(w, &http.Cookie{Name: "JSESSIONID", Value: crumbSession, Path: "/"})
+			_, _ = w.Write([]byte(`{"crumbRequestField":"Jenkins-Crumb","crumb":"abc"}`))
+		case r.Method == http.MethodPost:
+			if c, err := r.Cookie("JSESSIONID"); err == nil {
+				postCookie = c.Value
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "admin", "pw")
+	require.NoError(t, c.post(context.Background(), "/createItem?name=x", "application/xml", []byte("<x/>")))
+
+	assert.Equal(t, crumbSession, postCookie,
+		"crumb 을 받은 세션과 POST 세션이 같아야 한다")
+}
