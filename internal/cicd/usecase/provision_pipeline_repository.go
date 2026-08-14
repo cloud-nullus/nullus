@@ -168,6 +168,25 @@ func scmServerURLFor(bundle *port.SCMBundle) string {
 	return ""
 }
 
+// repoURLForInCluster 는 클러스터 안 소비자가 클론할 저장소 주소다.
+//
+// SCM 이 돌려준 clone_url 을 그대로 믿지 않는다 — Gitea 는 요청 Host 를 반영해
+// clone_url 을 만들므로, API 서버가 우회 주소로 호출했다면 그 주소가 박힌다.
+// 그러면 Argo CD 가 그 주소로 클론을 시도하다 connection refused 로 죽는다.
+func repoURLForInCluster(bundle *port.SCMBundle, project *port.SCMProject) string {
+	if project == nil {
+		return ""
+	}
+	if bundle != nil {
+		base := strings.TrimRight(strings.TrimSpace(bundle.SCMInClusterURL), "/")
+		path := strings.Trim(strings.TrimSpace(project.FullPath), "/")
+		if base != "" && path != "" {
+			return base + "/" + path + ".git"
+		}
+	}
+	return project.HTTPCloneURL
+}
+
 func (uc *ProvisionPipelineRepository) applyArgoApplication(
 	ctx context.Context,
 	bundle *port.SCMBundle,
@@ -205,7 +224,7 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 		secret, err := argocd.RenderRepositorySecret(argocd.RepositorySecretSpec{
 			AppName:       app,
 			ArgoNamespace: bundle.ArgoNamespace,
-			RepoURL:       project.HTTPCloneURL,
+			RepoURL:       repoURLForInCluster(bundle, project),
 			Password:      token,
 		})
 		if err != nil {
@@ -225,7 +244,7 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 	manifest, err := argocd.RenderApplication(argocd.ApplicationSpec{
 		AppName:              app,
 		ArgoNamespace:        bundle.ArgoNamespace,
-		RepoURL:              project.HTTPCloneURL,
+		RepoURL:              repoURLForInCluster(bundle, project),
 		Path:                 argocd.DefaultManifestPath,
 		TargetRevision:       project.DefaultBranch,
 		DestinationNamespace: destNamespace,

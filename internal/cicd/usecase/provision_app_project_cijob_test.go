@@ -259,3 +259,32 @@ func TestConfigureGiteaPipeline_SetsArgoReadToken(t *testing.T) {
 	assert.Equal(t, "gitea-token", out.ArgoReadToken,
 		"Argo CD 자격증명이 없으면 동기화가 authentication required 로 실패한다")
 }
+
+// Argo CD 가 클론할 주소는 SCM 이 돌려준 clone_url 을 그대로 믿으면 안 된다.
+//
+// Gitea 는 요청 Host 를 반영해 clone_url 을 만든다. API 서버가 우회 주소로
+// 호출했다면 그 주소가 그대로 박히고, 클러스터 안에서 도는 Argo CD 는
+// "dial tcp [::1]:3000: connect: connection refused" 로 동기화에 실패한다 —
+// Application 은 만들어졌는데 배포만 조용히 멈춘다.
+func TestRepoURLForInCluster_DerivesFromInClusterBase(t *testing.T) {
+	bundle := &port.SCMBundle{SCMInClusterURL: "http://gitea-http.nullus-gj3.svc:3000"}
+	project := &port.SCMProject{
+		FullPath:     "nullus/gj-demo-api",
+		HTTPCloneURL: "http://localhost:3000/nullus/gj-demo-api.git",
+	}
+
+	assert.Equal(t, "http://gitea-http.nullus-gj3.svc:3000/nullus/gj-demo-api.git",
+		repoURLForInCluster(bundle, project))
+}
+
+// in-cluster 주소가 없으면 기존 동작을 유지한다(GitLab·GitHub 무회귀).
+func TestRepoURLForInCluster_FallsBackToCloneURL(t *testing.T) {
+	bundle := &port.SCMBundle{}
+	project := &port.SCMProject{
+		FullPath:     "nullus/api",
+		HTTPCloneURL: "https://gitlab.example.com/nullus/api.git",
+	}
+
+	assert.Equal(t, "https://gitlab.example.com/nullus/api.git",
+		repoURLForInCluster(bundle, project))
+}
