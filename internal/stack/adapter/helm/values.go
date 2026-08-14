@@ -224,6 +224,61 @@ func DefaultValues(stepName string) map[string]any {
 				"storageSize": "20Gi",
 			},
 		}
+	case "installing_gitea":
+		// Gitea 는 소스 저장소만 담당한다. GitLab 과 달리 CI 도 레지스트리도
+		// 겸하지 않으므로 이 스택은 Jenkins·Harbor 를 따로 세운다.
+		//
+		// 차트 기본값은 postgresql-ha 와 valkey-cluster 를 함께 올린다. 그대로 두면
+		// 스택 안에 두 번째 데이터베이스와 캐시 클러스터가 생겨 리소스를 두 배로
+		// 먹는다 — 스택이 이미 세운 PostgreSQL 을 가리키고 나머지는 끈다.
+		return map[string]any{
+			"postgresql-ha":  map[string]any{"enabled": false},
+			"postgresql":     map[string]any{"enabled": false},
+			"valkey-cluster": map[string]any{"enabled": false},
+			"valkey":         map[string]any{"enabled": false},
+			"service": map[string]any{
+				"http": map[string]any{
+					"port": domain.GiteaServicePort,
+				},
+			},
+			"gitea": map[string]any{
+				"admin": map[string]any{
+					// 비밀번호를 values 에 평문으로 두지 않는다. provisioning_secrets 가
+					// OpenBao 에 만들어 ESO 로 동기화한 Secret 을 가리킨다.
+					// 차트는 이 Secret 안에서 username / password 키를 읽는다.
+					"existingSecret": domain.GiteaAdminSecret,
+					// keepUpdated 는 매 기동마다 비밀번호를 Secret 값으로 되돌린다.
+					// 회전이 실제로 반영되려면 이 모드여야 한다.
+					"passwordMode": "keepUpdated",
+				},
+				"config": map[string]any{
+					"database": map[string]any{
+						"DB_TYPE": "postgres",
+						"HOST": fmt.Sprintf("%s.%s.svc.cluster.local:%d",
+							domain.PostgresServiceName, defaultStackNamespace, domain.PostgresServicePort),
+						"NAME": domain.PostgresAppDatabase,
+						"USER": domain.PostgresAppUser,
+					},
+					// 캐시·큐를 껐으므로 Gitea 내부 구현을 쓴다. 그대로 두면
+					// 존재하지 않는 valkey 주소로 붙으려다 기동에 실패한다.
+					"cache":   map[string]any{"ADAPTER": "memory"},
+					"queue":   map[string]any{"TYPE": "level"},
+					"session": map[string]any{"PROVIDER": "file"},
+				},
+				// 비밀번호는 config 에 적지 않고 Secret 에서 환경변수로 주입한다.
+				"additionalConfigFromEnvs": []any{
+					map[string]any{
+						"name": "GITEA__database__PASSWD",
+						"valueFrom": map[string]any{
+							"secretKeyRef": map[string]any{
+								"name": ProvisionedPostgresSecret,
+								"key":  domain.PostgresPasswordKey,
+							},
+						},
+					},
+				},
+			},
+		}
 	case "installing_gitlab":
 		return map[string]any{
 			"postgresql": map[string]any{

@@ -123,6 +123,21 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Values:    DefaultValues("installing_gitlab"),
 			Wait:      false,
 		}, true
+	case "installing_gitea":
+		// 릴리스명이 곧 파드 접두사이자 Service 이름의 뿌리다(gitea-http).
+		// 워크로드 조회(domain.InstalledToolWorkloads)와 CI/CD 모듈의 in-cluster
+		// 주소가 모두 이 이름을 보므로 domain 상수를 쓴다.
+		//
+		// 저장소는 dl.gitea.io 와 dl.gitea.com 이 같은 내용을 서빙하지만 공식
+		// 도메인인 gitea.com 쪽을 쓴다.
+		return ChartSpec{
+			ReleaseName: domain.GiteaReleaseName,
+			ChartName:   "gitea",
+			RepoURL:     "https://dl.gitea.com/charts",
+			Version:     domain.GiteaChartVersion,
+			Values:      DefaultValues("installing_gitea"),
+			Wait:        false,
+		}, true
 	case "installing_harbor":
 		// 릴리스명이 곧 진입 Service 이름이 되므로 domain 상수를 쓴다.
 		return ChartSpec{

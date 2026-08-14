@@ -55,6 +55,10 @@ var installDAG = []installStep{
 
 	{name: "installing_gitlab", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
 
+	// Gitea 는 GitLab 과 같은 슬롯(소스 저장소)의 다른 선택지다. 둘은 술어가
+	// 배타적이라 동시에 서지 않는다.
+	{name: "installing_gitea", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
+
 	// 독립 레지스트리(Harbor / Nexus)는 Argo CD 앞에 선다. Argo CD 가 배포할
 	// 이미지를 여기서 받으므로 먼저 서 있어야 한다.
 	//

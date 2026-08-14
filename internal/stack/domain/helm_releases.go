@@ -23,7 +23,11 @@ var InstalledHelmReleaseNames = []string{
 	// 떠 있어 다음 스택이 같은 네임스페이스를 쓸 때 리소스를 물고 늘어진다.
 	HarborReleaseName,
 	NexusReleaseName,
+	// installing_gitlab / installing_gitea 변형. 소스 저장소 슬롯은 둘 중 하나만
+	// 서지만, 삭제는 어느 쪽이 설치됐는지 모른 채 훑으므로 둘 다 적는다.
+	// Gitea 를 빼면 스택을 지워도 리포 데이터 PVC 가 그대로 남는다.
 	"gitlab",
+	GiteaReleaseName,
 	"argo-cd",
 	"gitlab-runner",
 	"kube-prometheus-stack",

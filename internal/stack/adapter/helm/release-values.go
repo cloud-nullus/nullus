@@ -34,6 +34,7 @@ var releaseStepNames = map[string]string{
 	domain.PostgresServiceName: "installing_postgresql",
 	domain.MinIOServiceName:    "installing_minio",
 	"gitlab":                   "installing_gitlab",
+	domain.GiteaReleaseName:    "installing_gitea",
 	"gitlab-runner":            stepInstallingRunner,
 	domain.HarborReleaseName:   "installing_harbor",
 	domain.NexusReleaseName:    "installing_nexus",

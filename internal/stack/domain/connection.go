@@ -90,6 +90,21 @@ const (
 	NexusDockerRepository = "docker-hosted"
 	NexusMavenRepository  = "maven-hosted"
 	NexusNpmRepository    = "npm-hosted"
+
+	// GiteaReleaseName 은 Gitea 릴리스명이다. 릴리스명이 곧 파드 이름 접두사이자
+	// Service 이름의 뿌리가 되므로, 워크로드 조회와 in-cluster 주소가 같은 값을 본다.
+	GiteaReleaseName = "gitea"
+	// GiteaHTTPServiceName 은 Gitea 차트가 만드는 HTTP 진입 Service 다.
+	// 차트가 {release}-http 로 이름을 유도한다 — CI/CD 모듈이 이 주소로 API 를 부른다.
+	GiteaHTTPServiceName = GiteaReleaseName + "-http"
+	GiteaServicePort     = 3000
+	GiteaAdminUser       = "gitea_admin"
+	// GiteaAdminSecret 은 gitea.admin.existingSecret 이 참조하는 Secret 이다.
+	// 차트는 이 안에서 username / password 키를 읽는다
+	// (templates/gitea/deployment.yaml — GITEA_ADMIN_USERNAME / GITEA_ADMIN_PASSWORD).
+	GiteaAdminSecret      = "nullus-gitea-credentials" // #nosec G101 -- Secret 리소스 이름
+	GiteaAdminUserKey     = "username"
+	GiteaAdminPasswordKey = "password"
 )
 
 // 설치가 사용하는 차트 버전.
@@ -109,6 +124,11 @@ const (
 	// 세 항목이 같은 버전을 봐야 한다.
 	GitLabChartVersion = "8.7.2"
 	GitLabAppVersion   = "v17.7.0"
+
+	// Gitea 는 소스 저장소만 담당한다 — GitLab 과 달리 CI 도 레지스트리도 겸하지
+	// 않으므로, 이 스택은 CI(Jenkins)와 레지스트리(Harbor)를 따로 세운다.
+	GiteaChartVersion = "12.7.0"
+	GiteaAppVersion   = "1.27.0"
 
 	MinIOChartVersion = "5.4.0"
 	MinIOAppVersion   = "RELEASE.2024-12-18T13-15-44Z"

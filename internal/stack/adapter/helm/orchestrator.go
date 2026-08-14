@@ -340,25 +340,28 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 이를 소비하는 GitLab/Argo CD/Grafana 보다 앞서야 한다.
 			"provisioning_sso":  10,
 			"installing_gitlab": 11,
-			// 독립 레지스트리는 GitLab 다음, Argo CD 앞이다. Argo CD 가 배포할
+			// Gitea 는 소스 저장소 슬롯의 다른 선택지다. GitLab 과 술어가 배타적이라
+			// 둘 중 하나만 선다 — 순서는 GitLab 바로 뒤에 둔다.
+			"installing_gitea": 12,
+			// 독립 레지스트리는 소스 저장소 다음, Argo CD 앞이다. Argo CD 가 배포할
 			// 이미지를 여기서 받으므로 먼저 서 있어야 하고, Nexus 는 설치만으로는
 			// Docker 커넥터가 없어 provisioning_nexus 가 뒤따라야 쓸 수 있다.
-			"installing_harbor":        12,
-			"installing_nexus":         13,
-			"provisioning_nexus":       14,
-			"installing_argocd":        15,
-			stepInstallingRunner:       16,
-			"installing_prometheus":    17,
-			"installing_grafana":       18,
-			"installing_logging":       19,
-			"installing_log_search":    20,
-			"installing_opentelemetry": 21,
+			"installing_harbor":        13,
+			"installing_nexus":         14,
+			"provisioning_nexus":       15,
+			"installing_argocd":        16,
+			stepInstallingRunner:       17,
+			"installing_prometheus":    18,
+			"installing_grafana":       19,
+			"installing_logging":       20,
+			"installing_log_search":    21,
+			"installing_opentelemetry": 22,
 			// 수집기는 자기가 내보낼 백엔드(Tempo/Prometheus/Loki)가 선 뒤에 온다.
-			stepInstallingOTelCollector: 22,
+			stepInstallingOTelCollector: 23,
 			// 에이전트는 자기가 넘길 게이트웨이가 선 뒤에 온다.
-			stepInstallingOTelAgent: 23,
-			"installing_gateway":    24,
-			"integration_check":     25,
+			stepInstallingOTelAgent: 24,
+			"installing_gateway":    25,
+			"integration_check":     26,
 		},
 		orderedStep: []string{
 			stepInstallingCertManager,
@@ -373,6 +376,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_database_connection_check",
 			"provisioning_sso",
 			"installing_gitlab",
+			"installing_gitea",
 			"installing_harbor",
 			"installing_nexus",
 			"provisioning_nexus",
@@ -400,6 +404,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// provisioning_sso 는 선택형이라 매핑을 유지한다.
 			"provisioning_sso":          "config.authentication.provider",
 			"installing_gitlab":         "config.artifacts.source_repository",
+			"installing_gitea":          "config.artifacts.source_repository",
 			"installing_harbor":         "config.artifacts.container_registry",
 			"installing_nexus":          "config.artifacts.container_registry",
 			"provisioning_nexus":        "config.artifacts.container_registry",
@@ -437,6 +442,9 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			},
 			"installing_gitlab": func(cfg domain.StackConfig) bool {
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+			},
+			"installing_gitea": func(cfg domain.StackConfig) bool {
+				return isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			// Harbor / Nexus 는 독립 레지스트리를 고른 경우에만 선다.
 			// GitLab Registry 를 고르면 GitLab 이 겸하므로 둘 다 꺼진다.
@@ -533,6 +541,21 @@ func isGitLabSourceRepositorySelection(sel domain.ToolSelection) bool {
 		return true
 	}
 	return name == "gitlab" || name == "gitlab-ce"
+}
+
+// isGiteaSourceRepositorySelection 은 소스 저장소로 Gitea 를 골랐는지 본다.
+//
+// 이름이 비어 있으면 false 다 — 빈 이름의 기본값은 GitLab 이므로
+// (isGitLabSourceRepositorySelection 이 true 를 돌려준다) 여기서도 true 를
+// 돌리면 두 스텝이 동시에 서서 같은 슬롯에 제품 둘이 올라간다.
+func isGiteaSourceRepositorySelection(sel domain.ToolSelection) bool {
+	if !sel.Enabled {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(sel.Version), "external") {
+		return false
+	}
+	return normalizeToolName(sel.Name) == "gitea"
 }
 
 // isHarborRegistrySelection 은 컨테이너 레지스트리로 Harbor 를 골랐는지 본다.
@@ -999,6 +1022,11 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 func isOptInStep(step string) bool {
 	switch step {
 	case "provisioning_sso", "installing_harbor", "installing_nexus", "provisioning_nexus":
+		return true
+	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
+	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
+	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
+	case "installing_gitea":
 		return true
 	}
 	return false

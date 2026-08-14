@@ -113,6 +113,24 @@ func managedSecrets(namespace string) []ManagedSecret {
 			},
 		},
 		{
+			// Gitea 차트의 gitea.admin.existingSecret 이 참조한다.
+			// 차트는 이 Secret 안에서 username / password 키를 읽는다
+			// (templates/gitea/deployment.yaml 의 GITEA_ADMIN_USERNAME/PASSWORD).
+			//
+			// 사용자명은 비밀이 아니지만 차트가 같은 Secret 안에서 요구하므로
+			// MinIO rootUser 와 같은 방식으로 Fixed 값을 함께 프로비저닝한다.
+			//
+			// 액세스 토큰은 여기 없다 — Gitea 가 뜬 뒤에만 발급할 수 있으므로
+			// 이 단계(phase A)가 아니라 CI/CD 프로비저닝과 회전 컨트롤러가 맡는다.
+			TargetSecret:    domain.GiteaAdminSecret,
+			Consumer:        "Gitea",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "artifacts/gitea/admin-username", TargetKey: domain.GiteaAdminUserKey, Fixed: domain.GiteaAdminUser},
+				{PathSuffix: "artifacts/gitea/admin-password", TargetKey: domain.GiteaAdminPasswordKey},
+			},
+		},
+		{
 			// GitLab object storage 연결 정보. 값 자체는 MinIO 자격이므로
 			// 같은 OpenBao 경로를 참조하고 ESO template 으로 YAML 을 만든다.
 			// 하드코딩 연결 문자열을 대체한다.
