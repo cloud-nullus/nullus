@@ -501,6 +501,28 @@ Gitea 리포에 Jenkins multibranch 스캔을 트리거하는 webhook 을 건다
 | `gitea_admin` | `domain.GiteaAdminUser` | `gitea.AutomationUser` |
 | `nullus-openbao` | `helm.ESOSecretStoreName` | `gitea.ESOSecretStoreName` |
 
+### 별건 — Harbor 프로젝트 프로비저닝 부재 (선재 결함)
+
+실물 검증에서 드러났다. **Harbor 프로젝트를 만드는 경로가 아예 없다.**
+
+Harbor 는 push 전에 프로젝트가 존재해야 하는데, 레지스트리 리졸버는
+`harbor.<domain>/<group>/<app>` 주소만 만들고 그 `<group>` 프로젝트를 만들지
+않는다. 그래서 첫 push 가 이렇게 죽는다:
+
+```
+unauthorized: project nullus not found
+```
+
+Nexus 에는 `provisioning_nexus` 스텝이 있어 Docker 커넥터·저장소·관리자
+비밀번호를 맞춘다. Harbor 에는 그 대응물이 없다.
+
+**이번 작업 범위 밖의 선재 결함이다** — 기존 `gitlab-harbor-v1` 템플릿도 같은
+지점에서 막힌다. 정식 해결은 `provisioning_harbor` 스텝을 추가해
+`POST /api/v2.0/projects` 로 조직 그룹 이름의 프로젝트를 만드는 것이다
+(`provisioning_nexus` 와 같은 형태, 같은 위치 — `installing_harbor` 직후).
+
+검증 중에는 프로젝트를 직접 만들어 진행했다.
+
 ### 남은 것 — 실제 클러스터 검증
 
 코드 경로는 모두 닫혔고 빌드·vet·전체 테스트가 통과한다. 다만 **실제 스택을
