@@ -26,6 +26,14 @@ type SCMBundle struct {
 	Webhooks SCMWebhookProvisioner
 	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
 	CIBaseURL string
+	// SCMInClusterURL 은 클러스터 안에서 SCM 에 닿는 주소다.
+	//
+	// Provisioner 의 base URL 과 구분한다 — 그쪽은 API 서버가 쓰는 주소라
+	// 로컬 실행에서 우회 주소(localhost 포트포워드 등)일 수 있다. 반면 이 값은
+	// Jenkins·Argo CD 처럼 클러스터 안에서 도는 소비자가 쓰므로 항상 서비스
+	// DNS 여야 한다. 둘을 같은 값으로 두면 job 이
+	// "Unknown server: http://localhost:3000" 으로 죽는다.
+	SCMInClusterURL string
 	// Credentials 는 CI 변수 저장소가 없는 SCM(Gitea)에서 파이프라인 자격증명을
 	// OpenBao → ESO → K8s Secret 평면으로 나른다. 지원하지 않으면 nil.
 	Credentials PipelineCredentialPlane

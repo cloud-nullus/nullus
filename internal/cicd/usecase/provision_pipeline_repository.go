@@ -149,9 +149,17 @@ func pullSecretUsername(bundle *port.SCMBundle) string {
 //
 // 리포 주소가 아니라 서버 루트여야 한다 — Gitea SCM 소스는 이 주소로 API 를
 // 불러 브랜치를 훑는다.
+// scmServerURLFor 는 CI 서버가 SCM 을 스캔할 때 쓸 주소다.
+//
+// 클러스터 안에서 해석되는 주소를 우선한다 — Provisioner 의 base URL 은 API
+// 서버가 쓰는 주소라 로컬 실행에서 우회 주소일 수 있고, 그것을 job 에 넣으면
+// Jenkins 가 "Unknown server" 로 스캔을 거부한다.
 func scmServerURLFor(bundle *port.SCMBundle) string {
 	if bundle == nil {
 		return ""
+	}
+	if inCluster := strings.TrimSpace(bundle.SCMInClusterURL); inCluster != "" {
+		return inCluster
 	}
 	type baseURLProvider interface{ BaseURL() string }
 	if p, ok := bundle.Provisioner.(baseURLProvider); ok {

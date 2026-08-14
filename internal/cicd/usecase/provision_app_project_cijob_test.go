@@ -211,3 +211,33 @@ func TestConfigureGiteaPipeline_WarnsWhenPlaneMissing(t *testing.T) {
 	require.NotEmpty(t, out.Warnings)
 	assert.Empty(t, out.CredentialManifests)
 }
+
+// CI 서버가 SCM 을 스캔할 주소는 API 서버가 쓰는 주소와 다른 관심사다.
+//
+// Provisioner 의 base URL 은 로컬 실행에서 우회 주소(localhost 포트포워드)일 수
+// 있는데, 그것을 job 에 넣으면 Jenkins 가
+// "FATAL: Unknown server: http://localhost:3000" 으로 스캔을 거부한다 —
+// job 은 만들어지는데 브랜치를 하나도 못 찾는, 원인이 먼 실패다.
+func TestSCMServerURLFor_PrefersInClusterAddress(t *testing.T) {
+	bundle := &port.SCMBundle{
+		Provisioner:     stubBaseURLProvisioner{base: "http://localhost:3000"},
+		SCMInClusterURL: "http://gitea-http.nullus-gj3.svc:3000",
+	}
+
+	assert.Equal(t, "http://gitea-http.nullus-gj3.svc:3000", scmServerURLFor(bundle),
+		"Jenkins 는 클러스터 안에서 돌므로 서비스 DNS 를 받아야 한다")
+}
+
+// in-cluster 주소가 없으면 기존 동작을 유지한다(GitLab·GitHub 경로 무회귀).
+func TestSCMServerURLFor_FallsBackToProvisionerBaseURL(t *testing.T) {
+	bundle := &port.SCMBundle{Provisioner: stubBaseURLProvisioner{base: "https://gitlab.example.com"}}
+
+	assert.Equal(t, "https://gitlab.example.com", scmServerURLFor(bundle))
+}
+
+type stubBaseURLProvisioner struct {
+	base string
+	port.SCMProvisioner
+}
+
+func (s stubBaseURLProvisioner) BaseURL() string { return s.base }

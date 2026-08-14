@@ -309,6 +309,10 @@ func (f *BundleFactory) giteaBundle(
 		Platform:        port.SCMPlatformGitea,
 		GroupPath:       f.opts.GroupPath,
 		RepoAccessToken: token,
+		// 우회 주소를 쓰지 않는다. Jenkins 가 이 주소로 Gitea 를 스캔하므로
+		// 클러스터 안에서 해석되는 값이어야 하고, JCasC 가 등록한 서버 주소와
+		// 정확히 같은 형식이어야 한다(스택 모듈의 jenkinsGiteaServerValues).
+		SCMInClusterURL: giteaBaseURL(namespace),
 		ArgoNamespace:   namespace,
 		ClusterID:       summary.ClusterID,
 		AccessDomain:    summary.AccessDomain,
