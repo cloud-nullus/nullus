@@ -4,15 +4,21 @@ import { iconProps } from '../../../components/ui/icon'
 import { cn } from '../../../lib/utils'
 import type { ToolSelection } from '../stores/stack-config-store'
 import type { ToolOption } from '../utils/install-constants'
+import { toolCopyKeys } from '../utils/tool-copy'
 
 export interface ToolSelectorProps {
   label: string
   options: ToolOption[]
   value: ToolSelection
   onChange: (v: ToolSelection) => void
+  /**
+   * 이 선택지가 채우는 슬롯(`packageRegistry` 등). 문구를 (슬롯, id) 로 찾기
+   * 위해 쓴다 — 같은 id 가 역할마다 다른 것을 뜻하는 경우가 있다.
+   */
+  slot?: string
 }
 
-export function ToolSelector({ label, options, value, onChange }: ToolSelectorProps) {
+export function ToolSelector({ label, options, value, onChange, slot }: ToolSelectorProps) {
   const { t } = useTranslation()
   const optionsWithNone = [
     {
@@ -31,8 +37,12 @@ export function ToolSelector({ label, options, value, onChange }: ToolSelectorPr
       <div className="flex flex-col gap-2">
         {optionsWithNone.map((opt) => {
           const selected = value.tool === opt.id
-          const displayLabel = opt.id ? t(`stackAddTools.tools.${opt.id}.label`, opt.label) : opt.label
-          const displayDescription = opt.id ? t(`stackAddTools.tools.${opt.id}.description`, opt.description) : opt.description
+          const displayLabel = opt.id
+            ? t(toolCopyKeys(slot, opt.id, 'label'), { defaultValue: opt.label })
+            : opt.label
+          const displayDescription = opt.id
+            ? t(toolCopyKeys(slot, opt.id, 'description'), { defaultValue: opt.description })
+            : opt.description
           return (
             <button
               key={opt.id}
@@ -74,9 +84,11 @@ export interface MultiToolSelectorProps {
   options: ToolOption[]
   values: ToolSelection[]
   onChange: (values: ToolSelection[]) => void
+  /** ToolSelector 의 slot 과 같다. */
+  slot?: string
 }
 
-export function MultiToolSelector({ label, options, values, onChange }: MultiToolSelectorProps) {
+export function MultiToolSelector({ label, options, values, onChange, slot }: MultiToolSelectorProps) {
   const { t } = useTranslation()
   const selectedIds = new Set(values.map((item) => item.tool).filter(Boolean))
 
@@ -128,8 +140,10 @@ export function MultiToolSelector({ label, options, values, onChange }: MultiToo
         </button>
         {options.map((opt) => {
           const selected = selectedIds.has(opt.id)
-          const displayLabel = t(`stackAddTools.tools.${opt.id}.label`, opt.label)
-          const displayDescription = t(`stackAddTools.tools.${opt.id}.description`, opt.description)
+          const displayLabel = t(toolCopyKeys(slot, opt.id, 'label'), { defaultValue: opt.label })
+          const displayDescription = t(toolCopyKeys(slot, opt.id, 'description'), {
+            defaultValue: opt.description,
+          })
           return (
             <button
               key={opt.id}

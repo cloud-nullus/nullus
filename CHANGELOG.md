@@ -107,6 +107,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **화면이 안내하는 도구 버전이 실제 설치되는 버전과 달랐다** (`web/src/features/stack/stores/stack-config-store.ts`): 설치되는 버전은 `internal/stack/domain/connection.go` 하나가 소유하고 백엔드는 그 값이 호환성 매트릭스와 어긋나지 않는지 이미 검사한다(`TestChartVersionsMatchCompatibilityMatrix`). 정작 화면이 보는 표는 그것을 손으로 베껴 온 것이라 지킴이가 없었고, **대조한 11개 중 9개가 갈라져 있었다** — 설치는 Argo CD 7.7.16 을 올리는데 화면은 6.8.0 을, GitLab 은 8.7.2 인데 9.5.1 을 말했다. Prometheus·Grafana·Tempo 는 차트 버전이 아예 없어 템플릿의 helm 버전 칸이 빈칸으로 채워졌다.
+
+  표시 오류로 끝나지 않는 이유는 **템플릿 편집기가 기본값을 이 표에서 가져가기** 때문이다. 관리자가 버전 칸을 손대지 않으면 존재하지 않는 버전이 그대로 템플릿에 pin 되고, 그 템플릿으로 스택을 만들면 설치 전 검사가 매트릭스에 없는 조합이라며 막는다. 값을 맞추고, **Go 상수를 직접 읽어 대조하는 테스트**를 붙였다(`tool-version-catalog.test.ts`). 두 언어 사이에 값을 나르는 생성 단계를 만들 수도 있지만 표가 열 줄 남짓이라 그 배관이 값보다 커진다. 테스트 두 곳에 박혀 있던 리터럴 버전도 표를 참조하게 바꿨다 — 리터럴로 적어 두면 표와 테스트가 각자 출처가 되어 조용히 갈라지고, 실제로 그 숫자들이 뒤처진 상태를 "정상" 으로 굳히고 있었다.
+
+- **역할이 다른데 같은 설명이 붙던 도구** (`web/src/features/stack/utils/tool-copy.ts`): 문구 키가 `stackAddTools.tools.<id>` 하나뿐이라 **한 도구가 역할마다 다른 것을 뜻하는 경우를 표현하지 못했다.** GitLab 은 소스 저장소이면서 패키지 레지스트리인데 둘 다 id 가 `gitlab` 이라, 설치 마법사와 템플릿 편집기 양쪽에서 "GitLab Package Registry" 밑에 "GitLab 소스 코드 관리" 가 붙어 있었다. 키를 **(슬롯, id) 쌍**으로 넓히고 없으면 종전 id 키로 떨어뜨린다 — 실제로 갈라지는 id 는 `gitlab` 하나뿐이라 나머지 27개의 번역을 옮겨 적을 이유가 없다. 직전 커밋이 템플릿 편집기에서 쓰던 "모호하면 설명을 통째로 지운다" 는 임시 방편도 걷어냈다: 그것은 맞는 설명(GitLab CE 의 소스 저장소 설명)까지 함께 지우고 있었다.
+
+  테스트 목이 i18next 의 키 배열·`defaultValue` 를 몰라 배열을 넘기는 순간 `key.split is not a function` 으로 화면이 통째로 죽었다(43건). 목을 실제 동작에 맞췄다 — 목과 실물이 갈라지면 테스트는 화면이 아니라 목을 검사하게 된다.
+
 - **모달 첫 줄 입력의 라벨 위쪽이 잘리던 문제** (`web/src/components/ui/modal.tsx`): 템플릿 편집 모달의 "Template ID" 가 위가 잘린 채로 떠 있었다. MUI 는 `DialogTitle` 바로 뒤에 오는 `DialogContent` 의 `padding-top` 을 0 으로 만드는데, 이 본문은 `overflow-y: auto` 라 그 경계에서 잘린다. 첫 줄이 외곽선 입력이면 떠 있는 라벨이 상자 위로 나가 있으므로 **라벨의 위쪽 절반이 사라진다**. 여백을 되돌려 준다 — 모든 모달에 적용된다.
 
 - **탭 스트립에 세로 스크롤바가 상시로 뜨던 문제** (`web/src/components/ui/tabs.tsx`): 탭이 화면에 다 들어오는데도 스트립 오른쪽에 스크롤바가 붙어 있었다. 가로 스크롤 때문이 아니다 — `overflow-x: auto` 는 CSS 규칙상 반대 축이 `visible` 이면 그쪽을 `auto` 로 끌어올리는데, 탭 버튼이 활성 밑줄을 구분선 위에 겹치려고 `-mb-px` 로 상자를 **1px** 넘어가 있었다. 그 1px 이 세로 넘침으로 잡혀 스크롤바가 생겼다. 밑줄(`border-b`)을 스크롤 상자 바깥으로 빼고 상자 자체를 `-mb-px` 로 끌어내린다 — 겹침은 그대로 유지되고 넘칠 것은 없어진다. 시각 회귀 58장이 스냅샷 갱신 없이 통과해 픽셀이 같음을 확인했다.

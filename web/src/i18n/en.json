@@ -449,6 +449,12 @@
       },
       "log_search": {
         "label": "Log Search"
+      },
+      "packageRegistry": {
+        "gitlab": {
+          "label": "GitLab Package Registry",
+          "description": "GitLab built-in package registry"
+        }
       }
     },
     "tools": {

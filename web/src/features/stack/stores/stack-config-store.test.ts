@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useStackConfigStore } from './stack-config-store'
+import { getToolAppVersion, useStackConfigStore } from './stack-config-store'
 
 beforeEach(() => {
   useStackConfigStore.getState().resetConfig()
@@ -16,8 +16,11 @@ describe('stack-config-store', () => {
     expect(draft.accessDomainTls.issuerName).toBe('nullus-ca-issuer')
     expect(draft.selectedTemplateId).toBeNull()
     expect(draft.activeTab).toBe('artifacts')
-    expect(draft.artifacts.packageRegistry.version).toBe('18.5.1')
-    expect(draft.pipeline.cdTool.version).toBe('v2.8.3')
+    // 버전은 리터럴로 다시 적지 않는다. 적어 두면 표와 이 테스트가 각자
+    // 출처가 되어 조용히 갈라진다 — 실제로 표가 백엔드 상수보다 뒤처져 있었고
+    // 여기에 박힌 숫자가 그 상태를 "정상"으로 굳히고 있었다.
+    expect(draft.artifacts.packageRegistry.version).toBe(getToolAppVersion('gitlab'))
+    expect(draft.pipeline.cdTool.version).toBe(getToolAppVersion('argocd'))
     expect(draft.monitoring.visualizations.map((item) => item.tool)).toEqual(['grafana'])
     expect(draft.storage.planMode).toBe('integrated-create')
     expect(draft.storage.database.mode).toBe('create')
