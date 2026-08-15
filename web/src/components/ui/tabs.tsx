@@ -59,6 +59,9 @@ export function Tabs<T extends string | number>({
             <button
               key={String(item.id)}
               type="button"
+              // 라벨은 번역되면 바뀐다. id 를 속성으로 남겨 투어·테스트가
+              // 문자열이 아니라 계약으로 탭을 집게 한다.
+              data-tab={String(item.id)}
               aria-pressed={active}
               disabled={item.disabled}
               onClick={() => !item.disabled && onChange(item.id)}

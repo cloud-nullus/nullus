@@ -78,6 +78,34 @@ func TestTemplate_ToolsSliceEmptyVsPopulated(t *testing.T) {
 	assert.Equal(t, "2.18.0", populatedToolsTemplate.Tools[0].AppVersion)
 }
 
+func TestNormalizePlanningProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "빈 값은 기본 프로파일로 떨어진다", input: "", want: PlanningProfileStandard},
+		{name: "공백과 대소문자를 흡수한다", input: "  Local ", want: PlanningProfileLocal},
+		{name: "아는 값은 그대로 둔다", input: "enterprise", want: PlanningProfileEnterprise},
+		// 모르는 값을 기본값으로 조용히 바꾸면, 오타 하나가 8Gi 템플릿을
+		// standard 로 설치되게 만든다. 그건 핸들러가 400 으로 막아야 한다.
+		{name: "모르는 값은 빈 문자열로 남는다", input: "tiny", want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, NormalizePlanningProfile(tc.input))
+		})
+	}
+}
+
+func TestTemplate_PlanningProfileSerializesAsSnakeCase(t *testing.T) {
+	payloadBytes, err := json.Marshal(Template{ID: "lite", PlanningProfile: PlanningProfileLocal})
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(payloadBytes, &payload))
+	assert.Equal(t, "local", payload["planning_profile"])
+}
+
 func TestTemplate_EstimatedInstallTimeDurationHandling(t *testing.T) {
 	template := Template{EstimatedInstallTime: 45*time.Minute + 30*time.Second}
 

@@ -619,7 +619,7 @@ export function ClusterPage() {
         title={t('sidebar.clusterManagement', 'Cluster Management')}
         subtitle={t('clusterPage.description', 'Register and manage Kubernetes clusters.')}
         actions={
-          <Button variant="primary" size="md" onClick={openCreateModal} type="button">
+          <Button variant="primary" size="md" onClick={openCreateModal} type="button" data-tour="register-cluster">
             <Plus {...iconProps('sm')} />
             {t('clusterPage.actions.registerCluster', 'Register Cluster')}
           </Button>

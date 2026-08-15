@@ -380,7 +380,7 @@ function StackDetailPanel({
 				}))}
 			/>
 
-			<div className="flex-1 overflow-auto p-5">
+			<div className="flex-1 overflow-auto p-5" data-tour="stack-detail-panel">
 				{innerTab === "info" && (
 					<StackInfoTab
 						stack={stack}
@@ -656,6 +656,7 @@ export function StackListPage() {
 	// 데스크톱은 ListDetailPanel 안쪽, 그 아래 폭에서는 단독으로 선다.
 	// 마크업은 그대로 두고 렌더 위치만 바뀌므로 순수 추출이다.
 	const stackTable = (
+		<div data-tour="stack-list">
 		<DataTable
 			flush={isDesktopLayout}
 			key={`stack-list-${tablePageSize}`}
@@ -700,6 +701,7 @@ export function StackListPage() {
 			onRowClick={(row) => setExpandedStackId(row.id)}
 			emptyMessage={isLoading ? t("stackList.loading", "Loading stacks...") : t("stackList.empty", "No stacks found.")}
 		/>
+		</div>
 	);
 
 	return (

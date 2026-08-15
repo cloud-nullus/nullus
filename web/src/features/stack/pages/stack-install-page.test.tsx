@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { screen, fireEvent, act, within } from '@testing-library/react'
-import { optionLabels, renderWithProviders, selectOptionByValue } from '../../../__tests__/test-utils'
+import { optionLabels, renderWithProviders, selectOptionByValue, selectedLabel } from '../../../__tests__/test-utils'
 import { StackInstallPage, findReusablePendingStackId, hasDuplicateStackNameInCluster } from './stack-install-page'
 import { getToolAppVersion, getToolChartVersion, useStackConfigStore } from '../stores/stack-config-store'
 import { useAuthStore } from '../../../stores/auth-store'
@@ -78,6 +78,20 @@ const mockTemplates = [
       { category: 'ci_platform', name: 'GitLab CI', helm_version: '', app_version: '18.5.1' },
       { category: 'cd_tool', name: 'Argo CD', helm_version: '', app_version: 'v2.8.3' },
       { category: 'container_registry', name: 'Harbor', helm_version: '', app_version: '2.11.0' },
+    ],
+  },
+  {
+    id: 'gitea-jenkins-argocd-lite-v1',
+    name: 'Gitea + Jenkins + Argo CD (Lite)',
+    description: 'mock',
+    tools: ['Gitea', 'Jenkins', 'Argo CD'],
+    estimatedMinutes: 40,
+    category: 'default',
+    planningProfile: 'local',
+    toolDetails: [
+      { category: 'source_repository', name: 'Gitea', helm_version: '', app_version: '1.27.0' },
+      { category: 'ci_platform', name: 'Jenkins', helm_version: '', app_version: '2.568.2' },
+      { category: 'cd_tool', name: 'Argo CD', helm_version: '', app_version: 'v2.13.3' },
     ],
   },
   {
@@ -338,6 +352,18 @@ describe('StackInstallPage', () => {
     expect(screen.getByText('Sizing Profile')).toBeTruthy()
     const profileContainer = screen.getByText('Sizing Profile').parentElement as HTMLElement
     expect(optionLabels(within(profileContainer).getByRole('combobox'))).toContain('Local')
+  })
+
+  it('sizes the stack with the profile carried by the template', () => {
+    // 템플릿이 프로파일을 들고 오지 않으면 8Gi 를 노린 조합도 standard 로
+    // 계획돼 두 배 크기가 된다 — 고른 도구와 고른 규모는 함께 와야 한다.
+    renderWithProviders(<StackInstallPage />, {
+      route: '/stack/install?template=gitea-jenkins-argocd-lite-v1',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resources' }))
+    const profileContainer = screen.getByText('Sizing Profile').parentElement as HTMLElement
+    expect(selectedLabel(within(profileContainer).getByRole('combobox'))).toBe('Local')
   })
 
   it('saves the current applied resource planning to the selected built-in profile', () => {

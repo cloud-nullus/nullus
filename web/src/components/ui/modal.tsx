@@ -54,7 +54,11 @@ export function Modal({ open, onClose, title, children, wide = false, size, foot
       maxWidth={false}
       slotProps={{
         // role="dialog" 는 Paper 에 붙는다. 이전 구현의 aria-label={title} 계약을 유지한다.
+        // 투어·테스트가 "앱의 팝업" 만 집을 수 있어야 한다. role="dialog" 는
+        // 팝오버 성격의 다른 것들도 함께 쓰므로 선택자로 삼기에 너무 넓다.
+        // paper 슬롯 타입에 data-* 가 없어 캐스팅한다 — container 슬롯과 같은 사정이다.
         paper: {
+          'data-modal': '',
           'aria-label': title,
           sx: {
             width: '100%',
@@ -64,7 +68,7 @@ export function Modal({ open, onClose, title, children, wide = false, size, foot
             border: '1px solid var(--color-border-default)',
             borderRadius: 'var(--card-radius)',
           },
-        },
+        } as React.HTMLAttributes<HTMLDivElement>,
         // 배경 클릭 테스트가 잡을 지점. MUI 는 이 컨테이너에서 mouseDown/click 을 듣는다.
         // container 슬롯 타입에 data-* 가 없어 캐스팅한다 — 런타임에는 그대로 전달된다.
         container: { 'data-testid': 'modal-overlay' } as React.HTMLAttributes<HTMLDivElement>,

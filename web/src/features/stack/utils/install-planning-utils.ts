@@ -1,3 +1,5 @@
+import type { PlanningProfile } from '../../../types'
+
 export type ManifestInstallType = 'helm' | 'yaml'
 
 export type PlanningSlot =
@@ -13,7 +15,9 @@ export type PlanningSlot =
   | 'logging.traceLayer'
   | 'logging.traceExporter'
 
-export type PlanningProfile = 'local' | 'startup' | 'standard' | 'enterprise'
+// 어휘는 types/index.ts 가 갖는다 — 템플릿(API 응답)과 마법사가 같은 값을
+// 주고받아야 하므로 한쪽이 다른 쪽을 import 하는 관계로 두지 않는다.
+export type { PlanningProfile }
 
 export type ResourceVector = {
   cpuRequest: number

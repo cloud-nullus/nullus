@@ -35,8 +35,9 @@ func (r *PostgresTemplateRepository) Create(ctx context.Context, template *domai
 			tools,
 			estimated_install_time,
 			recommended_use_case,
-			min_resources
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			min_resources,
+			planning_profile
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err = r.pool.Exec(
 		ctx,
@@ -48,6 +49,7 @@ func (r *PostgresTemplateRepository) Create(ctx context.Context, template *domai
 		int64(template.EstimatedInstallTime),
 		template.RecommendedUseCase,
 		template.MinResources,
+		domain.NormalizePlanningProfile(template.PlanningProfile),
 	)
 	if err != nil {
 		return fmt.Errorf("create template: %w", err)
@@ -71,6 +73,7 @@ func (r *PostgresTemplateRepository) Update(ctx context.Context, template *domai
 			estimated_install_time = $5,
 			recommended_use_case = $6,
 			min_resources = $7,
+			planning_profile = $8,
 			updated_at = NOW()
 		WHERE id = $1`
 
@@ -84,6 +87,7 @@ func (r *PostgresTemplateRepository) Update(ctx context.Context, template *domai
 		int64(template.EstimatedInstallTime),
 		template.RecommendedUseCase,
 		template.MinResources,
+		domain.NormalizePlanningProfile(template.PlanningProfile),
 	)
 	if err != nil {
 		return fmt.Errorf("update template: %w", err)
@@ -111,7 +115,7 @@ func (r *PostgresTemplateRepository) Delete(ctx context.Context, id string) erro
 
 func (r *PostgresTemplateRepository) GetByID(ctx context.Context, id string) (*domain.Template, error) {
 	const q = `
-		SELECT id, name, description, tools, estimated_install_time, recommended_use_case, min_resources
+		SELECT id, name, description, tools, estimated_install_time, recommended_use_case, min_resources, planning_profile
 		FROM golden_path_templates
 		WHERE id = $1`
 
@@ -129,6 +133,7 @@ func (r *PostgresTemplateRepository) GetByID(ctx context.Context, id string) (*d
 		&estimatedDuration,
 		&t.RecommendedUseCase,
 		&t.MinResources,
+		&t.PlanningProfile,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -147,7 +152,7 @@ func (r *PostgresTemplateRepository) GetByID(ctx context.Context, id string) (*d
 
 func (r *PostgresTemplateRepository) List(ctx context.Context) ([]*domain.Template, error) {
 	const q = `
-		SELECT id, name, description, tools, estimated_install_time, recommended_use_case, min_resources
+		SELECT id, name, description, tools, estimated_install_time, recommended_use_case, min_resources, planning_profile
 		FROM golden_path_templates
 		ORDER BY id ASC`
 
@@ -173,6 +178,7 @@ func (r *PostgresTemplateRepository) List(ctx context.Context) ([]*domain.Templa
 			&estimatedDuration,
 			&t.RecommendedUseCase,
 			&t.MinResources,
+			&t.PlanningProfile,
 		); err != nil {
 			return nil, err
 		}

@@ -140,6 +140,58 @@ func TestMemoryTemplateRepository_GetByID_GitHubArgoCD(t *testing.T) {
 	assert.True(t, githubActions, "should have GitHub Actions (external)")
 }
 
+// 8Gi 노드에 들어가는 경량 템플릿.
+//
+// 고정비(PostgreSQL 2Gi + 게이트웨이 0.8Gi + OpenBao·ESO 0.6Gi + cert-manager
+// 1.5Gi)만으로 5Gi 가 나간다. 남는 예산이 3Gi 남짓이라 무엇을 빼느냐가 이
+// 템플릿의 전부다 — GitLab(4.5Gi)·Prometheus(5Gi, 벡터가 5개 컴포넌트에 그대로
+// 실린다)·Nexus(1.5Gi 고정)는 이 예산에 들어가지 않는다.
+func TestMemoryTemplateRepository_GetByID_LightweightTemplate(t *testing.T) {
+	repo := NewMemoryTemplateRepository()
+
+	tmpl, err := repo.GetByID(context.Background(), "gitea-jenkins-argocd-lite-v1")
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.PlanningProfileLocal, tmpl.PlanningProfile,
+		"경량 템플릿은 Local 프로파일로 설치돼야 한다 — standard 로 깔리면 8Gi 에 들어가지 않는다")
+
+	toolByCategory := make(map[string]domain.ToolConfig, len(tmpl.Tools))
+	for _, tool := range tmpl.Tools {
+		toolByCategory[tool.Category] = tool
+	}
+	assert.Equal(t, "Gitea", toolByCategory["source_repository"].Name)
+	assert.Equal(t, "Jenkins", toolByCategory["ci_platform"].Name)
+	assert.Equal(t, "Argo CD", toolByCategory["cd_tool"].Name)
+
+	// 레지스트리는 뺄 수 없다. 없으면 파이프라인을 만드는 순간
+	// registry.ResolverFor 가 "이미지 레지스트리를 결정할 수 없습니다" 로 막아
+	// 스택은 서는데 아무것도 배포할 수 없는 템플릿이 된다(실측 확인).
+	// 8Gi 안에서 세울 수 있는 레지스트리는 Harbor 뿐이다 — Nexus 는 JVM 고정으로
+	// 1.5Gi 를 요청한다.
+	assert.Equal(t, "Harbor", toolByCategory["container_registry"].Name)
+
+	for _, category := range []string{
+		"storage_backend",          // MinIO 는 GitLab 이 없으면 쓸 곳이 없다
+		"monitoring_collection",    // Prometheus 하나로 예산을 다 쓴다
+		"monitoring_visualization", //
+	} {
+		assert.NotContainsf(t, toolByCategory, category,
+			"경량 템플릿에 %s 가 들어가면 8Gi 예산을 넘는다", category)
+	}
+}
+
+func TestSeededTemplates_HaveValidPlanningProfile(t *testing.T) {
+	templates, err := NewMemoryTemplateRepository().List(context.Background())
+	require.NoError(t, err)
+
+	for _, tmpl := range templates {
+		t.Run(tmpl.ID, func(t *testing.T) {
+			assert.NotEmpty(t, domain.NormalizePlanningProfile(tmpl.PlanningProfile),
+				"planning profile %q is not a known profile", tmpl.PlanningProfile)
+		})
+	}
+}
+
 func TestMemoryTemplateRepository_GetByID_NotFound(t *testing.T) {
 	repo := NewMemoryTemplateRepository()
 

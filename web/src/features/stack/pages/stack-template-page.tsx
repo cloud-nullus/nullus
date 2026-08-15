@@ -13,10 +13,16 @@ import type { StackTemplate } from "../api/stack-api";
 import { useStackConfigStore } from "../stores/stack-config-store";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
+import { Select } from "../../../components/ui/select";
 import { Modal } from "../../../components/ui/modal";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { useAuthStore } from "../../../stores/auth-store";
 import { resolveLocale } from "../../../lib/locale";
+import {
+  DEFAULT_PLANNING_PROFILE,
+  PLANNING_PROFILE_VALUES,
+  type PlanningProfile,
+} from "../../../types";
 import { buildInstallOverridesFromTemplate } from "../utils/template-overrides";
 import {
   type TemplateFormState,
@@ -105,23 +111,16 @@ export function StackTemplatePage() {
   const [newCategoryLabel, setNewCategoryLabel] = useState("");
   const [newCategoryOptions, setNewCategoryOptions] = useState("");
 
-  const visibleBaseSections = useMemo(() => {
-    if (!editingTemplateId) {
-      return TOOL_SECTIONS.filter(
+  // 어떤 섹션을 감출지는 모달을 열 때 한 번 정한다(openEditModal). 편집 중의
+  // form.tools 로 매번 다시 고르면, 섹션의 마지막 도구를 지우는 순간 그 탭이
+  // 사라져 방금 지운 것을 되돌릴 수 없다.
+  const visibleBaseSections = useMemo(
+    () =>
+      TOOL_SECTIONS.filter(
         (section) => !removedBaseSectionIds.includes(section.id),
-      );
-    }
-
-    return TOOL_SECTIONS.filter((section) => {
-      if (removedBaseSectionIds.includes(section.id)) {
-        return false;
-      }
-      const categoryIds = new Set(
-        section.categories.map((category) => category.category),
-      );
-      return form.tools.some((tool) => categoryIds.has(tool.category));
-    });
-  }, [editingTemplateId, form.tools, removedBaseSectionIds]);
+      ),
+    [removedBaseSectionIds],
+  );
 
   const allSections = [...visibleBaseSections, ...customSections];
   const estimatedInstallMinutes = useMemo(
@@ -246,6 +245,7 @@ export function StackTemplatePage() {
         estimated_install_time: duplicateNs,
         recommended_use_case: template.recommendedUseCase ?? "",
         min_resources: template.minResources ?? "",
+        planning_profile: template.planningProfile ?? DEFAULT_PLANNING_PROFILE,
       },
       {
         onError: () => {
@@ -288,12 +288,19 @@ export function StackTemplatePage() {
           );
 
     const toolCategoryIds = new Set(tools.map((tool) => tool.category));
-    const removedInTemplate = TOOL_SECTIONS.filter(
-      (section) =>
-        !section.categories.some((category) =>
-          toolCategoryIds.has(category.category),
-        ),
-    ).map((section) => section.id);
+    // 편집은 템플릿이 실제로 쓰는 섹션만 편다. 다만 도구가 하나도 없는
+    // 템플릿(Empty Template)에 그 규칙을 그대로 적용하면 쓰는 섹션이 없어
+    // 편집기가 통째로 사라지고, 만들기 모달과 다른 옛 화면이 남는다 — 그때는
+    // 만들기와 같이 전부 편다.
+    const removedInTemplate =
+      tools.length === 0
+        ? []
+        : TOOL_SECTIONS.filter(
+            (section) =>
+              !section.categories.some((category) =>
+                toolCategoryIds.has(category.category),
+              ),
+          ).map((section) => section.id);
 
     // 편집기의 선택 상태는 draft 가 소유한다. 여기서 템플릿 값을 심어 두지
     // 않으면 초기 선택을 보여 주려고 "적용된 값"이 draft 를 이겨야 하고, 그러면
@@ -324,6 +331,8 @@ export function StackTemplatePage() {
       tools,
       recommendedUseCase: template.recommendedUseCase ?? "",
       minResources: template.minResources ?? "",
+      // 폼에 싣지 않으면 이름만 고쳐 저장해도 프로파일이 기본값으로 되돌아간다.
+      planningProfile: template.planningProfile ?? DEFAULT_PLANNING_PROFILE,
     });
     setFormOpen(true);
   };
@@ -482,6 +491,7 @@ export function StackTemplatePage() {
       estimated_install_time: estimatedInstallTimeNs,
       recommended_use_case: form.recommendedUseCase,
       min_resources: form.minResources,
+      planning_profile: form.planningProfile,
     };
 
     if (editingTemplateId) {
@@ -584,6 +594,8 @@ export function StackTemplatePage() {
         {filtered.map((template) => (
           <div
             key={template.id}
+            data-tour="template-card"
+            data-tour-template={template.id}
             className="flex h-full flex-col gap-[14px] rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)] transition-colors duration-150 hover:border-[var(--color-border-hover)]"
           >
             {/* Card header */}
@@ -681,6 +693,7 @@ export function StackTemplatePage() {
                   type="button"
                   className="ml-auto"
                   onClick={() => setSelectedTemplateId(template.id)}
+                  data-tour="template-detail"
                 >
                   <ExternalLink {...iconProps('xs')} />
                   {t("stackTemplatePage.actions.viewDetail", "상세 보기")}
@@ -756,6 +769,7 @@ export function StackTemplatePage() {
                     setSelectedTemplateId(null);
                     handleUseTemplate(selectedTemplate);
                   }}
+                  data-tour="use-base-template"
                 >
                   {t(
                     "stackTemplatePage.actions.useBaseTemplate",
@@ -800,6 +814,19 @@ export function StackTemplatePage() {
                   </p>
                 </div>
               )}
+              <div>
+                <span className="text-xs font-semibold text-[var(--color-text-muted)]">
+                  {t("stackTemplatePage.form.planningProfile", "Sizing Profile")}
+                </span>
+                {/* 최소 리소스 옆에 둔다. "4 vCPU / 8Gi" 가 어느 규모로 계획했을
+                    때의 값인지는 이 둘을 함께 봐야 읽힌다. */}
+                <p className="m-0 mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
+                  {t(
+                    `stackTemplatePage.form.planningProfileOption.${selectedTemplate.planningProfile}`,
+                    selectedTemplate.planningProfile,
+                  )}
+                </p>
+              </div>
               {selectedDetail.resource && (
                 <div className="col-span-2">
                   <span className="text-xs font-semibold text-[var(--color-text-muted)]">
@@ -1054,6 +1081,32 @@ export function StackTemplatePage() {
                 handleFormChange("minResources", event.target.value)
               }
             />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Select
+              label={t("stackTemplatePage.form.planningProfile", "Sizing Profile")}
+              value={form.planningProfile}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  planningProfile: event.target.value as PlanningProfile,
+                }))
+              }
+            >
+              {PLANNING_PROFILE_VALUES.map((profile) => (
+                <option key={profile} value={profile}>
+                  {t(`stackTemplatePage.form.planningProfileOption.${profile}`, profile)}
+                </option>
+              ))}
+            </Select>
+            {/* 고른 도구만으로는 스택이 몇 Gi 를 먹을지 정해지지 않는다.
+                여기서 고른 규모가 설치 마법사의 리소스 계획 시작값이 된다. */}
+            <span className="text-[11px] text-[var(--color-text-muted)]">
+              {t(
+                "stackTemplatePage.form.planningProfileHint",
+                "The install wizard starts its resource plan from this size.",
+              )}
+            </span>
           </div>
           {formError && (
             <div className="text-xs text-[var(--color-error)]">{formError}</div>

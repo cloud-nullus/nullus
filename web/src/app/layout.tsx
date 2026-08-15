@@ -6,6 +6,7 @@ import { Header } from '../components/layout/header'
 import { ErrorBoundary } from '../components/shared/error-boundary'
 import { ShortcutHelpModal } from '../components/shortcut-help-modal'
 import { useKeyboardShortcut } from '../hooks/use-keyboard-shortcut'
+import { TourOverlay } from '../features/tour/tour-overlay'
 
 export function AppLayout() {
   const { t } = useTranslation()
@@ -46,6 +47,8 @@ export function AppLayout() {
         ? {t('shortcuts.badge', '단축키')}
       </button>
       <ShortcutHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {/* 껍데기에 둔다 — 투어는 화면을 옮겨 다니므로 어느 페이지에도 속하지 않는다. */}
+      <TourOverlay />
     </div>
   )
 }

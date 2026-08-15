@@ -219,6 +219,25 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			},
 		},
 		{
+			// 8Gi 노드용 최소 구성. 도구 셋은 gitea-jenkins-argocd-v1 에서
+			// 레지스트리·오브젝트 스토리지·모니터링을 뺀 것이라 버전 판정 기준은
+			// 같다 — 같은 baseline 상수를 쓴다.
+			ID:     "gitea-jenkins-argocd-lite-v1",
+			Name:   "Gitea + Jenkins + Argo CD (Lite)",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         baselineMinK8sWorkload,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository": {Name: "Gitea", HelmVersion: baselineGiteaHelmVersion, AppVersion: baselineGiteaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"ci_platform":       {Name: "Jenkins", HelmVersion: baselineJenkinsHelmVersion, AppVersion: baselineJenkinsAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"container_registry": {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":           {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+			},
+		},
+		{
 			ID:     "gitlab-allinone-v1",
 			Name:   "GitLab All-in-One",
 			Status: "verified",

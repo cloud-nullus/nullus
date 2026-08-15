@@ -2,8 +2,9 @@ import { useNavigate } from 'react-router-dom'
 import { IconTile } from '../../../components/ui/icon-tile'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, Box, ChartColumn, Code2, Coins, FlaskConical, Hammer, Rocket, Settings, ShieldCheck, Users } from 'lucide-react'
+import { BookOpen, Box, ChartColumn, Code2, Coins, FlaskConical, Hammer, Rocket, Settings, ShieldCheck, Users, Zap } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
+import { useClusters } from '../../admin/api/admin-api'
 import { useAuthStore } from '../../../stores/auth-store'
 import { roleLandingPath } from '../../auth/role-landing'
 import { NullusMark } from '../../../components/brand/nullus-mark'
@@ -20,6 +21,15 @@ const features = [
   { id: 'monitoring', icon: ChartColumn, token: '--color-info' },
   { id: 'rbac', icon: Users, token: '--color-accent-alt' },
 ]
+
+/**
+ * 퀵스타트가 여는 템플릿.
+ *
+ * 8Gi 노드 하나에 들어가는 최소 구성이라 "일단 돌려 보는" 첫 설치에 맞는다.
+ * 템플릿이 규모 프로파일(local)까지 들고 있으므로 마법사가 자원 계획도 그
+ * 크기에서 시작한다 — 여기서 크기를 따로 넘길 필요가 없다.
+ */
+const QUICK_START_TEMPLATE_ID = 'gitea-jenkins-argocd-lite-v1'
 
 const roadmap = [{ id: 'phase1' }, { id: 'phase2' }, { id: 'phase3' }]
 
@@ -53,6 +63,7 @@ export function HomePage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { role } = useAuthStore()
+  const { data: clusters } = useClusters()
   const [selectedRoadmapPhase, setSelectedRoadmapPhase] = useState(roadmap[0].id)
   const isAdmin = role === 'admin'
   const isDevops = role === 'devops'
@@ -66,6 +77,11 @@ export function HomePage() {
   const canRegisterCluster = isAdmin
   const canStartStack = isAdmin || isDevops
   const canUseCicdPipeline = isAdmin || isDevops || isDeveloper
+
+  // 클러스터가 하나도 없으면 마법사는 설치할 곳을 찾지 못한다. 누를 수 있게
+  // 두면 사용자는 그 사실을 마법사 마지막 단계에 가서야 알게 된다.
+  const hasRegisteredCluster = (clusters?.items ?? []).length > 0
+  const canQuickStart = canStartStack && hasRegisteredCluster
 
   return (
     <div>
@@ -85,7 +101,7 @@ export function HomePage() {
           )}
         </p>
 
-        <div className="flex flex-wrap justify-center gap-3">
+        <div className="flex flex-wrap justify-center gap-3" data-tour="hero-cta">
           <button
             type="button"
             disabled={!canRegisterCluster}
@@ -113,7 +129,25 @@ export function HomePage() {
             <Code2 {...iconProps('sm')} />
             {t('home.cta.cicdPipeline', 'CI/CD Pipeline')}
           </button>
+          <button
+            type="button"
+            data-tour="quick-start"
+            disabled={!canQuickStart}
+            onClick={() => navigate(`/stack/install?template=${QUICK_START_TEMPLATE_ID}`)}
+            className={canQuickStart ? enabledButtonClassName : disabledButtonClassName}
+          >
+            <Zap {...iconProps('sm')} />
+            {t('home.cta.quickStart', 'Quick Start (8Gi)')}
+          </button>
         </div>
+
+        {canStartStack && !hasRegisteredCluster && (
+          // 비활성 버튼만 두면 왜 안 눌리는지 알 수 없다. 막힌 이유와 다음 걸음을
+          // 같은 자리에서 말한다.
+          <p className="m-0 mt-3 text-xs text-[var(--color-text-muted)]">
+            {t('home.cta.quickStartNeedsCluster', 'Register a cluster first to use Quick Start.')}
+          </p>
+        )}
       </div>
 
       <SupportToolsMarquee />

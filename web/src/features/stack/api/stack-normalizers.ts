@@ -1,12 +1,14 @@
 import type {
   CompatibilityMatrix,
   CompatibilityValidationResult,
+  PlanningProfile,
   Stack,
   StackHistoryEntry,
   StackTemplate,
   TemplateToolDetail,
   CreateStackRequest,
 } from '../../../types'
+import { DEFAULT_PLANNING_PROFILE, PLANNING_PROFILE_VALUES } from '../../../types'
 import type { MatrixInput } from './stack-api-types'
 
 export interface RawTemplate {
@@ -32,6 +34,9 @@ export interface RawTemplate {
   minResources?: string
   min_resources?: string
   MinResources?: string
+  planningProfile?: string
+  planning_profile?: string
+  PlanningProfile?: string
 }
 
 interface RawCompatibilityTool {
@@ -202,7 +207,20 @@ export const normalizeTemplate = (raw: RawTemplate): StackTemplate => ({
   createdBy: raw.createdBy ?? raw.created_by ?? raw.CreatedBy,
   recommendedUseCase: raw.recommendedUseCase ?? raw.recommended_use_case ?? raw.RecommendedUseCase,
   minResources: raw.minResources ?? raw.min_resources ?? raw.MinResources,
+  planningProfile: toPlanningProfile(raw.planningProfile ?? raw.planning_profile ?? raw.PlanningProfile),
 })
+
+/**
+ * 모르는 값·빈 값은 기본 프로파일로 떨어뜨린다.
+ *
+ * 프로파일 컬럼이 생기기 전에 만들어진 템플릿이 그대로 남아 있고, 그때의
+ * 동작이 곧 standard 였다. 빈 값을 흘려보내면 마법사가 프로파일 없이 계획을
+ * 세운다.
+ */
+const toPlanningProfile = (value: unknown): PlanningProfile =>
+  PLANNING_PROFILE_VALUES.includes(value as PlanningProfile)
+    ? (value as PlanningProfile)
+    : DEFAULT_PLANNING_PROFILE
 
 const normalizeArchs = (archs: string[] | undefined): string[] => {
   if (!Array.isArray(archs) || archs.length === 0) {

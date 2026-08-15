@@ -1997,7 +1997,7 @@ export function CicdListPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
-        <div className="min-w-0">
+        <div className="min-w-0" data-tour="pipeline-list">
           <DataTable
             columns={columns}
             data={filtered}

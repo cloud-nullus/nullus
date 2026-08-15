@@ -57,6 +57,7 @@ import {
   getManifestBundleId,
   SLOT_TOOL_BINDING,
 } from '../utils/install-constants'
+import { DEFAULT_PLANNING_PROFILE } from '../../../types'
 import {
   PLANNING_PROFILE_LABEL,
   PLANNING_PROFILES,
@@ -475,6 +476,12 @@ export function StackInstallPage() {
 
     const overrides = matchedTemplate ? buildInstallOverridesFromTemplate(matchedTemplate) : undefined
     loadFromTemplate(templateIdFromQuery, overrides)
+    // 고른 도구와 고른 규모는 함께 온다. 프로파일을 두고 오면 8Gi 를 노린
+    // 조합도 standard 로 계획돼 두 배 크기가 된다.
+    if (matchedTemplate) {
+      setPlanningProfile(matchedTemplate.planningProfile ?? DEFAULT_PLANNING_PROFILE)
+      setSelectedOrgProfileId('')
+    }
     initializedTemplateRef.current = templateIdFromQuery
   }, [isTemplatesFetched, loadFromTemplate, templateIdFromQuery, templates])
 
@@ -2282,6 +2289,7 @@ export function StackInstallPage() {
             <Button
               variant="primary"
               size="md"
+              data-tour="deploy-stack"
               loading={createStack.isPending || deployStack.isPending}
               onClick={handleDeploy}
               disabled={
@@ -2464,7 +2472,7 @@ export function StackInstallPage() {
           </div>
         </div>
 
-        <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4">
+        <div className="w-full rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-4" data-tour="install-resources">
           <div className="mb-3 flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_18%,_transparent)] text-[var(--color-primary)]">
               <ShoppingCart {...iconProps('sm')} />
@@ -2662,7 +2670,10 @@ export function StackInstallPage() {
           )}
 
           {/* Tab content */}
-          <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5">
+          <div
+            data-tour="install-panel"
+            className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-5"
+          >
             {activeTab === 'artifacts' && (
               <>
                 <ToolSelector

@@ -257,6 +257,25 @@ export interface Stack {
   deletedAt?: string;
 }
 
+/**
+ * 설치 규모 프로파일. 설치 마법사의 리소스 계획이 이 값에서 시작한다.
+ *
+ * 도구 선택만으로는 스택이 몇 Gi 를 먹을지 정해지지 않는다 — 같은
+ * Gitea + Jenkins + Argo CD 라도 standard 로 깔면 8Gi 노드에 들어가지 않는다.
+ * 그래서 템플릿이 "무엇을 깔지"와 함께 "얼마나 크게 깔지"도 들고 다닌다.
+ * 서버의 domain.PlanningProfile* 과 같은 어휘다.
+ */
+export type PlanningProfile = "local" | "startup" | "standard" | "enterprise";
+
+export const PLANNING_PROFILE_VALUES: PlanningProfile[] = [
+  "local",
+  "startup",
+  "standard",
+  "enterprise",
+];
+
+export const DEFAULT_PLANNING_PROFILE: PlanningProfile = "standard";
+
 export interface Template {
   id: string;
   name: string;
@@ -268,6 +287,7 @@ export interface Template {
   createdBy?: string;
   recommendedUseCase?: string;
   minResources?: string;
+  planningProfile: PlanningProfile;
 }
 
 export interface StackHistoryEntry {

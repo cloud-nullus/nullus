@@ -1,4 +1,4 @@
-import type { ClusterStatus } from "../../../types";
+import type { ClusterStatus, PlanningProfile } from "../../../types";
 
 export interface TemplateMutationRequest {
   id: string;
@@ -8,6 +8,7 @@ export interface TemplateMutationRequest {
   estimated_install_time: number;
   recommended_use_case: string;
   min_resources: string;
+  planning_profile: PlanningProfile;
 }
 
 export type {

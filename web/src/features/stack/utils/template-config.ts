@@ -1,4 +1,5 @@
 import type { StackTemplate } from '../api/stack-api'
+import { DEFAULT_PLANNING_PROFILE, type PlanningProfile } from '../../../types'
 import type { TemplateToolDetail } from '../../../types'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
 import { resolveToolIdByName } from '../utils/template-overrides'
@@ -10,6 +11,7 @@ export interface TemplateFormState {
   tools: ToolEntry[]
   recommendedUseCase: string
   minResources: string
+  planningProfile: PlanningProfile
 }
 
 export interface ToolEntry {
@@ -102,9 +104,17 @@ export const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string 
     ko: '가벼운 Git 서버(Gitea)와 익숙한 CI(Jenkins)를 ArgoCD GitOps 에 연결합니다.',
     en: 'Connects a lightweight Git server (Gitea) and familiar CI (Jenkins) to ArgoCD GitOps.',
   },
+  'gitea-jenkins-argocd-lite-v1': {
+    ko: '8Gi 노드 하나에 올라가는 최소 구성입니다. 오브젝트 스토리지와 모니터링은 뺐습니다.',
+    en: 'The smallest stack that fits a single 8Gi node — no object storage, no monitoring.',
+  },
 }
 
 export const TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES: Record<string, { ko: string; en: string }> = {
+  '8Gi 노드 하나에 올라가는 최소 구성입니다. Gitea·Jenkins·Harbor·Argo CD 만 세우고 오브젝트 스토리지와 모니터링은 뺐습니다. 로컬 검증이나 소규모 PoC 에 맞습니다.': {
+    ko: '8Gi 노드 하나에 올라가는 최소 구성입니다. Gitea·Jenkins·Harbor·Argo CD 만 세우고 오브젝트 스토리지와 모니터링은 뺐습니다. 로컬 검증이나 소규모 PoC 에 맞습니다.',
+    en: 'The smallest stack that fits a single 8Gi node. It installs only Gitea, Jenkins, Harbor, and Argo CD — no object storage, no monitoring. Suited to local verification and small PoCs.',
+  },
   'Start from an empty stack configuration with every tool left unselected.': {
     ko: '아직 도구가 선택되지 않은 빈 스택 템플릿입니다.',
     en: 'An empty stack template with no tools selected yet.',
@@ -264,4 +274,5 @@ export const EMPTY_TEMPLATE_FORM: TemplateFormState = {
   tools: [],
   recommendedUseCase: '',
   minResources: '',
+  planningProfile: DEFAULT_PLANNING_PROFILE,
 }

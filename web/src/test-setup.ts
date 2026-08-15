@@ -1,6 +1,18 @@
 import '@testing-library/jest-dom'
 import en from './i18n/en.json'
 
+// jsdom 은 ResizeObserver 를 구현하지 않는다. 크기를 재는 화면 코드(투어 설명
+// 상자의 높이 등)가 여기서 죽지 않도록 아무 일도 하지 않는 것을 심어 둔다 —
+// 레이아웃 자체가 없는 환경이라 관찰할 변화도 없다.
+vi.stubGlobal(
+  'ResizeObserver',
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+)
+
 // jsdom 28 + Vitest 4 localStorage compatibility fix
 let _localStorageData: Record<string, string> = {}
 vi.stubGlobal('localStorage', {
@@ -38,10 +50,16 @@ function interpolate(template: string, values: Record<string, unknown>): string 
 // options.defaultValue 로 떨어진다. 목이 그걸 몰라서 배열을 넘기는 순간
 // `key.split is not a function` 으로 화면이 통째로 죽었다 — 실제 동작과 목이
 // 갈라지면 테스트는 화면이 아니라 목을 검사하게 된다.
+// i18next 는 기본 문구를 두 번째 인자로도 받는다 — t(key, '기본 문구', { 값 }).
+// 화면 코드가 대부분 그 형태를 쓰는데 목이 세 번째 인자를 몰라서, 그 자리의
+// {{var}} 는 치환되지 않은 채 남았다. aria-label 처럼 보간으로만 만들어지는
+// 이름은 그래서 테스트에서 찾을 수 없었다.
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string | string[], options?: unknown) => {
+    t: (key: string | string[], second?: unknown, third?: unknown) => {
       const candidates = Array.isArray(key) ? key : [key]
+      const defaultFromSecond = typeof second === 'string' ? second : undefined
+      const options = defaultFromSecond === undefined ? second : third
       const opts =
         options !== null && typeof options === 'object' ? (options as Record<string, unknown>) : undefined
 
@@ -58,7 +76,7 @@ vi.mock('react-i18next', () => ({
         resolved =
           typeof opts?.defaultValue === 'string'
             ? opts.defaultValue
-            : candidates[candidates.length - 1]
+            : (defaultFromSecond ?? candidates[candidates.length - 1])
       }
 
       return opts ? interpolate(resolved, opts) : resolved
