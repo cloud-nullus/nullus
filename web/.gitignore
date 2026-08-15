@@ -25,3 +25,6 @@ dist-ssr
 
 # DESIGN.md lint 산출물 (CI 임시 파일)
 design-lint.json
+
+# 반응형 자동 점검 산출물 (스크린샷/리포트)
+.responsive-audit
