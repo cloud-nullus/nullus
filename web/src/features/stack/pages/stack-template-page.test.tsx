@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { renderWithProviders } from '../../../__tests__/test-utils'
+import { renderWithProviders, selectOptionByValue } from '../../../__tests__/test-utils'
 import { StackTemplatePage } from './stack-template-page'
 import { useStackConfigStore } from '../stores/stack-config-store'
 import { useAuthStore } from '../../../stores/auth-store'
@@ -54,6 +54,15 @@ const mockTemplates = [
     ],
     estimatedMinutes: 30,
     category: 'hybrid',
+  },
+  {
+    id: 'gitea-jenkins-argocd-lite-v1',
+    name: 'Lite Template',
+    description: '8Gi 노드 하나에 올라가는 최소 구성',
+    tools: ['Gitea', 'Jenkins', 'Argo CD'],
+    estimatedMinutes: 40,
+    category: 'lite',
+    planningProfile: 'local',
   },
   {
     id: 'github-argocd-v1',
@@ -121,10 +130,11 @@ describe('StackTemplatePage', () => {
     expect(within(dialog).getByText('Matrix App: 18.5.1')).toBeInTheDocument()
   })
 
-  it('renders 4 template detail buttons', () => {
+  it('renders one detail button per template', () => {
     renderWithProviders(<StackTemplatePage />)
     const buttons = screen.getAllByRole('button', { name: 'View Detail' })
-    expect(buttons).toHaveLength(4)
+    // 개수를 상수로 박으면 카탈로그에 하나 추가할 때마다 무관하게 깨진다.
+    expect(buttons).toHaveLength(mockTemplates.length)
   })
 
 
@@ -267,6 +277,40 @@ describe('StackTemplatePage', () => {
     )
   })
 
+  it('shows the tabbed tool editor when editing a template that has no tools', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(within(getTemplateCard('Empty Template')).getByRole('button', { name: 'Edit' }))
+
+    // 도구가 없다고 편집기가 사라지면 안 된다 — 만들기 모달과 같은 탭이 떠야
+    // 관리자가 빈 템플릿에 도구를 채워 넣을 수 있다.
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Template' })
+    for (const section of ['Artifacts', 'CI/CD', 'Observability']) {
+      expect(
+        within(dialog).getByRole('button', { name: section }),
+        `편집 모달에 ${section} 탭이 없다`,
+      ).toBeInTheDocument()
+    }
+    expect(within(dialog).getAllByRole('button', { name: 'Add Tool' }).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('keeps a section visible after its last tool is removed while editing', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(within(getTemplateCard('GitLab + ArgoCD')).getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Template' })
+
+    // CD Tool 은 CI/CD 섹션의 유일한 도구다. 지웠다고 탭까지 사라지면 방금 지운
+    // 것을 되돌릴 방법이 없다.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'CI/CD' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove CD Tool' }))
+
+    expect(within(dialog).getByRole('button', { name: 'CI/CD' })).toBeInTheDocument()
+    expect(within(dialog).getByText('CD Tool')).toBeInTheDocument()
+  })
+
   it('admin can update a template', async () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
@@ -301,6 +345,41 @@ describe('StackTemplatePage', () => {
   })
 
 
+
+  it('edits and saves the planning profile that sizes the stack', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    fireEvent.click(within(getTemplateCard('GitLab + ArgoCD')).getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Template' })
+
+    // 템플릿이 프로파일을 들고 다니지 않으면 8Gi 를 노린 조합도 standard 로
+    // 설치돼 두 배 크기가 된다.
+    const profileSelect = within(dialog).getByLabelText('Sizing Profile')
+    selectOptionByValue(profileSelect, 'local')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockUpdateTemplateMutate).toHaveBeenCalled()
+    })
+    const [payload] = mockUpdateTemplateMutate.mock.calls[0] as [{ planning_profile?: string }]
+    expect(payload.planning_profile).toBe('local')
+  })
+
+  it('keeps the stored planning profile when editing an untouched template', async () => {
+    useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
+    renderWithProviders(<StackTemplatePage />)
+
+    // 이름만 고치고 저장해도 프로파일이 기본값으로 되돌아가면 안 된다.
+    fireEvent.click(within(getTemplateCard('Lite Template')).getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockUpdateTemplateMutate).toHaveBeenCalled()
+    })
+    const [payload] = mockUpdateTemplateMutate.mock.calls[0] as [{ planning_profile?: string }]
+    expect(payload.planning_profile).toBe('local')
+  })
 
   it('admin can delete a template', async () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })

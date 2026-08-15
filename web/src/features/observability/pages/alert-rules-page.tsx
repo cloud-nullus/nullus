@@ -259,7 +259,7 @@ export function AlertRulesPage() {
         title={t('observability.alertRules', 'Alert Rules')}
         subtitle={t('observability.alertRulesDesc', 'Alert rule list and management')}
         actions={
-          <Button variant="primary" size="md" onClick={openCreateModal} type="button">
+          <Button variant="primary" size="md" onClick={openCreateModal} type="button" data-tour="alert-rule-new">
             <Plus {...iconProps('sm')} />
             {t('observability.newRule', 'New Rule')}
           </Button>

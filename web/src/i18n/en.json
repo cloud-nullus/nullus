@@ -233,6 +233,14 @@
       "toolsHint": "Create the template scaffold first, then add or refine tools by section.",
       "helmVersion": "Helm version",
       "appVersion": "App version",
+      "planningProfile": "Sizing Profile",
+      "planningProfileHint": "The install wizard starts its resource plan from this size.",
+      "planningProfileOption": {
+        "local": "Local",
+        "startup": "Startup",
+        "standard": "Standard",
+        "enterprise": "Enterprise"
+      },
       "toolApplied": "In template"
     },
     "errors": {
@@ -592,7 +600,9 @@
     "cta": {
       "registerCluster": "Register Cluster",
       "startStack": "Start Stack",
-      "cicdPipeline": "CI/CD Pipeline"
+      "cicdPipeline": "CI/CD Pipeline",
+      "quickStart": "Quick Start (8Gi)",
+      "quickStartNeedsCluster": "Register a cluster first to use Quick Start."
     },
     "coreFeatures": {
       "title": "Core Features",
@@ -1678,5 +1688,137 @@
     "reset": "Reset",
     "unmappedRelease": "This release is not mapped to an install step. You can edit it, but the change may not survive a redeploy.",
     "warningsTitle": "You changed platform-managed values"
+  },
+  "tour": {
+    "start": "Tutorial",
+    "title": "Product tour",
+    "controls": {
+      "next": "Next",
+      "prev": "Back",
+      "finish": "Finish",
+      "end": "End tour"
+    },
+    "steps": {
+      "welcome": {
+        "title": "Welcome to Nullus",
+        "body": "This tour walks the whole flow — register a cluster, pick a stack template, install it step by step, then build a pipeline and watch it run. Click a highlighted element, or use the buttons at the bottom right."
+      },
+      "quickStart": {
+        "title": "Quick Start",
+        "body": "The fastest way in: it installs the lightweight stack (Gitea, Jenkins, Harbor, Argo CD) that fits a single 8Gi node. It stays disabled until a cluster is registered."
+      },
+      "registerCluster": {
+        "title": "Register a cluster first",
+        "body": "Everything installs onto a Kubernetes cluster, so this is the starting point."
+      },
+      "clusterForm": {
+        "title": "The registration dialog",
+        "body": "Paste a kubeconfig and name the cluster. The platform connects to it and verifies the Kubernetes version before anything is deployed — a cluster that fails here never reaches an install."
+      },
+      "pickTemplate": {
+        "title": "Pick the Lite template",
+        "body": "Gitea + Jenkins + Argo CD (Lite) is the smallest complete stack — source, CI, registry, and CD in about 6Gi. Good for a first run on one node."
+      },
+      "templateDetail": {
+        "title": "Read the details before you commit",
+        "body": "The dialog shows every tool with its validated chart version, the sizing profile the template installs at, and the minimum resources it needs. That tells you whether it fits your cluster before you start."
+      },
+      "useBaseTemplate": {
+        "title": "Use it as the base",
+        "body": "This carries the template into the install wizard — tools, versions, and the sizing profile all come along. You still get to change anything you want."
+      },
+      "installAuthentication": {
+        "title": "Authentication",
+        "body": "Pick how the stack's tools sign users in. Choosing OpenBao provisions OIDC clients so Gitea, Jenkins, and Argo CD share one login."
+      },
+      "installArtifacts": {
+        "title": "Artifacts",
+        "body": "Source repository, container registry, and package registry. Picking a template fills these in; each row shows what will be installed and what stays external."
+      },
+      "installPipeline": {
+        "title": "CI/CD",
+        "body": "The CI platform that builds and the CD tool that deploys. Jenkins builds the image; Argo CD syncs it into the cluster."
+      },
+      "installObservability": {
+        "title": "Observability",
+        "body": "Metrics, dashboards, logs, and traces. The Lite template leaves these off — Prometheus alone would not fit in 8Gi."
+      },
+      "installStorage": {
+        "title": "Storage",
+        "body": "The database and object storage the stack itself needs. Gitea keeps its data in the stack's PostgreSQL."
+      },
+      "installResources": {
+        "title": "Resources",
+        "body": "Requests and limits are computed per tool from the sizing profile, and the total tells you whether the stack fits before you install."
+      },
+      "installDryRun": {
+        "title": "Dry Run",
+        "body": "The last gate before install: it renders every Helm release and checks the tool combination against the compatibility matrix, without touching the cluster."
+      },
+      "deployStack": {
+        "title": "Deploy",
+        "body": "This creates the stack and starts the install. From here the platform walks the steps itself — cert-manager, secrets, storage, then the tools you chose."
+      },
+      "stackList": {
+        "title": "Every stack lands here",
+        "body": "Status, cluster, and the tools each stack installed. Open one to follow the install or roll a version back."
+      },
+      "stackWorkloads": {
+        "title": "Workloads",
+        "body": "What is actually running: deployments, services, and pods per pipeline. This is where you look when an app is deployed but not answering."
+      },
+      "gatewayPfCopy": {
+        "title": "Gateway PF Copy",
+        "body": "Copies the kubectl port-forward command for the stack's gateway. Run it in a terminal and the stack's web UIs (Gitea, Jenkins, Argo CD) become reachable from your machine — no ingress or LoadBalancer needed."
+      },
+      "hostsCopy": {
+        "title": "/etc/hosts Copy",
+        "body": "Copies the host mappings for the stack's access domain. Paste them into /etc/hosts and names like harbor.<domain> resolve to the port-forward, so image pulls and browser links work with the same address the cluster uses."
+      },
+      "stackMonitoring": {
+        "title": "Stack monitoring",
+        "body": "Pods, CPU, memory, and storage for this stack in one place — the fastest way to see whether an install is actually healthy."
+      },
+      "cicdBasicInfo": {
+        "title": "1. Basic Info",
+        "body": "Name the app, pick its type, and choose the stack it deploys into. Everything after this is scaffolded from that choice."
+      },
+      "cicdCheckout": {
+        "title": "2. Code Checkout",
+        "body": "Where the source comes from. The platform can create the repository in the stack's Gitea and commit a starter project into it."
+      },
+      "cicdBuild": {
+        "title": "3. Build",
+        "body": "Dockerfile path, build context, and the image tag. The image name is resolved from the stack's registry — you never type a registry URL."
+      },
+      "cicdTest": {
+        "title": "4. Test",
+        "body": "Test commands that run before the image is pushed. A failing test stops the pipeline here rather than in production."
+      },
+      "cicdSecurity": {
+        "title": "5. Security",
+        "body": "Image and dependency scanning stages. They run after build and before deploy, so a vulnerable image never reaches the cluster."
+      },
+      "cicdCreate": {
+        "title": "6. Create",
+        "body": "Creating the pipeline provisions the repository, registers the CI job, and hands the deployment to Argo CD — the whole chain in one step."
+      },
+      "pipelineList": {
+        "title": "Your pipelines",
+        "body": "Every pipeline with its recent runs. Open one for build logs and the deployed resources it manages."
+      },
+      "observe": {
+        "title": "Watch it run",
+        "body": "Pick a cluster or stack to see pods, resource usage, and alerts in one place."
+      },
+      "alertRules": {
+        "title": "Alert rules",
+        "body": "Define what should page you — a pod restarting, memory over a threshold, a pipeline failing. That closes the loop: install, deploy, observe, get told."
+      },
+      "finish": {
+        "title": "Congratulations — now try it yourself!",
+        "body": "That is the whole flow, end to end. Press Quick Start and put up your first stack — it installs the lightweight one that fits a single 8Gi node. Stuck later? The tutorial button in the header reopens this tour anywhere."
+      }
+    }
   }
 }

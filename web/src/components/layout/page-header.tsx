@@ -86,6 +86,9 @@ export function PageHeader({
     // 갖는다(AppLayout 주석 참고). 배경은 본문 면과 같은 색이어야 글자가 겹쳐
     // 보이지 않는다.
     <div
+      // 스크롤 컨테이너 위에 붙어 있는 머리다. 무언가를 "화면 위쪽에 세우는"
+      // 쪽(투어의 강조 등)은 이 높이만큼 비켜 세워야 그 밑에 깔리지 않는다.
+      data-sticky-header
       className={[
         'sticky top-0 z-[var(--z-page-header)]',
         '-mx-[var(--page-padding)] px-[var(--page-padding)]',

@@ -61,3 +61,6 @@ airgap/helm/*.tgz.sha256
 # airgap 로컬 실행 로그/오케스트레이션 (커밋 금지)
 airgap/.runlog/
 scratch/
+
+# 투어 걸음별 확인용 스크린샷. tour-walkthrough.spec.ts 가 매 실행마다 다시 만든다.
+web/e2e/screenshots/tour/

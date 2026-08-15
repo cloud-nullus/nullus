@@ -599,6 +599,7 @@ export function DeveloperDeployPage() {
           <div key={step} className="flex items-center gap-1">
             <button
               type="button"
+              data-tour-cicd-step={step}
               aria-label={t(
                 `developerDeployPage.steps.${step}`,
                 STEP_LABEL_DEFAULTS[step],

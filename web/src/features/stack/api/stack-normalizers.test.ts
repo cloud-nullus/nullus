@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toCreateStackBody } from './stack-normalizers'
+import { normalizeTemplate, toCreateStackBody } from './stack-normalizers'
 
 describe('toCreateStackBody', () => {
   it('includes per-OSS resource override fields', () => {
@@ -60,5 +60,28 @@ describe('toCreateStackBody', () => {
     expect(payload.config.applied_resource_overrides['artifacts.packageRegistry:gitlab'].cpuRequest).toBe(1.5)
     expect(payload.config.row_units['artifacts.packageRegistry:gitlab'].memory).toBe('Gi')
     expect(payload.config.option_overrides['artifacts.packageRegistry'].registryCallsPerDay).toBe(3000)
+  })
+})
+
+describe('normalizeTemplate', () => {
+  const raw = {
+    id: 'gitea-jenkins-argocd-lite-v1',
+    name: 'Gitea + Jenkins + Argo CD (Lite)',
+    description: '8Gi 노드 하나에 올라가는 최소 구성',
+    tools: [{ category: 'cd_tool', name: 'Argo CD', helm_version: '7.7.16', app_version: 'v2.13.3' }],
+  }
+
+  it('carries the planning profile so the wizard can size the stack', () => {
+    expect(normalizeTemplate({ ...raw, planning_profile: 'local' }).planningProfile).toBe('local')
+  })
+
+  it('falls back to standard when the server sends no profile', () => {
+    // 프로파일 컬럼이 생기기 전에 만들어진 템플릿이 그대로 남아 있다.
+    // 빈 값을 흘려보내면 마법사가 프로파일 없이 계획을 세운다.
+    expect(normalizeTemplate(raw).planningProfile).toBe('standard')
+  })
+
+  it('falls back to standard when the profile is not one we know', () => {
+    expect(normalizeTemplate({ ...raw, planning_profile: 'tiny' }).planningProfile).toBe('standard')
   })
 })

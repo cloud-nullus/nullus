@@ -4,13 +4,38 @@ import { renderWithProviders } from '../../__tests__/test-utils'
 import { Header } from './header'
 import { useAuthStore } from '../../stores/auth-store'
 import { useThemeStore } from '../../stores/theme-store'
+import { useTourStore } from '../../stores/tour-store'
+
+const TUTORIAL_LABEL = /Tutorial|튜토리얼/
 
 beforeEach(() => {
   useAuthStore.setState({ role: 'developer', user: null, isAuthenticated: false })
   useThemeStore.setState({ theme: 'dark' })
+  useTourStore.getState().stop()
 })
 
 describe('Header', () => {
+  it('튜토리얼 버튼이 언어 버튼 바로 옆에 있다', () => {
+    renderWithProviders(<Header />)
+
+    const tutorial = screen.getByRole('button', { name: TUTORIAL_LABEL })
+    const languageSwitcher = screen.getByText('EN').closest('div') as HTMLElement
+    // 자리를 눈이 아니라 DOM 순서로 고정한다 — 다음 사람이 버튼을 하나 더 넣어도
+    // 이 둘 사이를 갈라놓지 못한다.
+    expect(languageSwitcher.nextElementSibling).toBe(tutorial)
+  })
+
+  it('튜토리얼 버튼이 현재 역할로 투어를 시작한다', () => {
+    useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
+    renderWithProviders(<Header />)
+
+    fireEvent.click(screen.getByRole('button', { name: TUTORIAL_LABEL }))
+
+    const { isActive, steps } = useTourStore.getState()
+    expect(isActive).toBe(true)
+    expect(steps.map((step) => step.id)).not.toContain('registerCluster')
+  })
+
   it('renders the header element', () => {
     renderWithProviders(<Header />)
     expect(screen.getByRole('banner')).toBeInTheDocument()

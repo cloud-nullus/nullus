@@ -129,6 +129,80 @@ func TestTemplateHandler_UpdateTemplate_200(t *testing.T) {
 	assert.Equal(t, "GitLab All-in-One Updated", resp["name"])
 }
 
+func TestTemplateHandler_CreateTemplate_RoundTripsPlanningProfile(t *testing.T) {
+	e := newTemplateEcho()
+
+	body := []byte(`{
+		"id":"lite-template-v1",
+		"name":"Lite Template",
+		"description":"8Gi 노드용",
+		"tools":[{"category":"cd_tool","name":"Argo CD","helm_version":"7.7.16","app_version":"v2.13.3"}],
+		"estimated_install_time":1800000000000,
+		"recommended_use_case":"단일 노드",
+		"min_resources":"4 vCPU / 8Gi RAM / 60Gi Storage",
+		"planning_profile":"local"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/templates", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	checkRec := httptest.NewRecorder()
+	e.ServeHTTP(checkRec, httptest.NewRequest(http.MethodGet, "/api/v1/stacks/templates/lite-template-v1", nil))
+	require.Equal(t, http.StatusOK, checkRec.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(checkRec.Body.Bytes(), &resp))
+	assert.Equal(t, "local", resp["planning_profile"])
+}
+
+func TestTemplateHandler_CreateTemplate_DefaultsPlanningProfile(t *testing.T) {
+	e := newTemplateEcho()
+
+	// 프로파일을 안 보내는 기존 클라이언트가 있다. 빈 값으로 저장하면 화면이
+	// 프로파일 칸을 비운 채로 그리게 되므로 여기서 기본값을 박아 둔다.
+	body := []byte(`{
+		"id":"no-profile-v1",
+		"name":"No Profile",
+		"description":"프로파일 없이 만든 템플릿",
+		"tools":[],
+		"estimated_install_time":1800000000000,
+		"recommended_use_case":"테스트",
+		"min_resources":"2 vCPU / 4Gi RAM / 20Gi Storage"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/templates", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "standard", resp["planning_profile"])
+}
+
+func TestTemplateHandler_CreateTemplate_RejectsUnknownPlanningProfile(t *testing.T) {
+	e := newTemplateEcho()
+
+	body := []byte(`{
+		"id":"bad-profile-v1",
+		"name":"Bad Profile",
+		"description":"오타 난 프로파일",
+		"tools":[],
+		"estimated_install_time":1800000000000,
+		"recommended_use_case":"테스트",
+		"min_resources":"2 vCPU / 4Gi RAM / 20Gi Storage",
+		"planning_profile":"tiny"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/templates", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 func TestTemplateHandler_DeleteTemplate_204(t *testing.T) {
 	e := newTemplateEcho()
 

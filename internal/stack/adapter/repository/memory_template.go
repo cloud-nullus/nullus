@@ -21,6 +21,9 @@ func NewMemoryTemplateRepository() *MemoryTemplateRepository {
 		templates: make(map[string]*domain.Template),
 	}
 	for _, t := range goldenPathTemplates() {
+		// 프로파일을 적지 않은 템플릿은 standard 로 읽는다. 시드 표 일곱 줄에
+		// 같은 값을 되풀이해 적는 대신 여기 한 곳에서 채운다.
+		t.PlanningProfile = domain.NormalizePlanningProfile(t.PlanningProfile)
 		repo.templates[t.ID] = t
 	}
 	return repo
@@ -192,6 +195,34 @@ func goldenPathTemplates() []*domain.Template {
 			EstimatedInstallTime: 130 * time.Minute,
 			RecommendedUseCase:   "추적·메트릭·로그를 한 수집기로 모으려는 조직",
 			MinResources:         "12 vCPU / 24Gi RAM / 150Gi Storage",
+		},
+		{
+			// 8Gi 노드 하나에 들어가는 스택.
+			//
+			// 예산의 대부분은 템플릿이 고르지 않는 것들이 먼저 가져간다 —
+			// cert-manager 세 파드에 1.5Gi, PostgreSQL 2Gi, OpenBao·ESO·
+			// metrics-server·게이트웨이가 1Gi. 남는 2Gi 남짓에 들어가는 조합만
+			// 여기 담는다. GitLab(4.5Gi)·Prometheus(계산된 벡터가 5개 컴포넌트에
+			// 그대로 실려 5Gi)·Nexus(1.5Gi 고정)·Harbor 는 들어가지 않는다.
+			//
+			// 레지스트리는 뺄 수 없다. 없으면 파이프라인을 만드는 순간
+			// registry.ResolverFor 가 "이미지 레지스트리를 결정할 수 없습니다" 로
+			// 막아, 스택은 서는데 아무것도 배포할 수 없는 템플릿이 된다(실측 확인).
+			// 그 예산에 들어가는 레지스트리는 Harbor 하나뿐이다 — core·registry 만
+			// 요청을 잡아 512Mi 로 서고, Nexus 는 JVM 고정으로 1.5Gi 를 요구한다.
+			ID:          "gitea-jenkins-argocd-lite-v1",
+			Name:        "Gitea + Jenkins + Argo CD (Lite)",
+			Description: "8Gi 노드 하나에 올라가는 최소 구성입니다. Gitea·Jenkins·Argo CD 만 세우고 레지스트리와 모니터링은 뺐습니다. 로컬 검증이나 소규모 PoC 에 맞습니다.",
+			Tools: []domain.ToolConfig{
+				{Category: "source_repository", Name: "Gitea", HelmVersion: domain.GiteaChartVersion, AppVersion: domain.GiteaAppVersion},
+				{Category: "ci_platform", Name: "Jenkins", HelmVersion: domain.JenkinsChartVersion, AppVersion: domain.JenkinsAppVersion},
+				{Category: "container_registry", Name: "Harbor", HelmVersion: domain.HarborChartVersion, AppVersion: domain.HarborAppVersion},
+				{Category: "cd_tool", Name: "Argo CD", HelmVersion: domain.ArgoCDChartVersion, AppVersion: domain.ArgoCDAppVersion},
+			},
+			EstimatedInstallTime: 40 * time.Minute,
+			RecommendedUseCase:   "단일 노드 로컬 검증, 소규모 PoC",
+			MinResources:         "4 vCPU / 8Gi RAM / 60Gi Storage",
+			PlanningProfile:      domain.PlanningProfileLocal,
 		},
 		{
 			ID:   "github-argocd-v1",

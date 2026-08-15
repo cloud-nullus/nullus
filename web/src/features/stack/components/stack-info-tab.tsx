@@ -289,6 +289,7 @@ export function StackInfoTab({
               size="sm"
               type="button"
               onClick={handleCopyGatewayPF}
+              data-tour="gateway-pf-copy"
               title={t(
                 "stackList.connection.gatewayCopyTitle",
                 "Copy gateway port-forward command",
@@ -306,6 +307,7 @@ export function StackInfoTab({
               size="sm"
               type="button"
               onClick={handleCopyHosts}
+              data-tour="hosts-copy"
               disabled={!hostsText}
               title={
                 hostsText

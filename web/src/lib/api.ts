@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth-store'
+import { applyTourFixture } from '../features/tour/tour-mock-adapter'
 
 interface StandardizedApiError {
   status: number
@@ -84,7 +85,9 @@ api.interceptors.request.use((config) => {
     config.headers.set('X-User-OrgID', user.orgId)
   }
 
-  return config
+  // 둘러보기 중에는 목록 응답을 화면 재료로 갈아 끼운다. 투어를 처음 도는
+  // 사람의 계정은 대개 비어 있어, 빈 표를 강조하며 흐름을 설명할 수 없다.
+  return applyTourFixture(config)
 })
 
 api.interceptors.response.use(

@@ -1,9 +1,10 @@
 import { type ReactNode } from 'react'
-import { HardHat, LaptopMinimal, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { GraduationCap, HardHat, LaptopMinimal, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { iconProps } from '../ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores/theme-store'
 import { useAuthStore } from '../../stores/auth-store'
+import { useTourStore } from '../../stores/tour-store'
 import type { Role } from '../../types'
 import { LanguageSwitcher } from '../shared/language-switcher'
 import { IconButton } from '../ui/icon-button'
@@ -24,6 +25,7 @@ export function Header() {
   const { i18n, t } = useTranslation()
   const { theme, toggleTheme } = useThemeStore()
   const { role } = useAuthStore()
+  const startTour = useTourStore((state) => state.start)
 
   const handleLanguageChange = (language: string) => {
     void i18n.changeLanguage(language)
@@ -38,6 +40,13 @@ export function Header() {
       </div>
 
       <LanguageSwitcher currentLanguage={i18n.language} onLanguageChange={handleLanguageChange} />
+
+      {/* 둘러보기. 역할을 넘기는 이유는 걸음 목록이 역할마다 다르기 때문이다 —
+          developer 를 관리자 전용 화면으로 안내하면 ProtectedRoute 가 되돌려
+          보내고 그 걸음은 빈 화면을 강조하게 된다. */}
+      <IconButton onClick={() => startTour(role)} aria-label={t('tour.start', 'Tutorial')}>
+        <GraduationCap {...iconProps('sm')} />
+      </IconButton>
 
       {/* Theme toggle */}
       <IconButton

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -49,6 +50,7 @@ type templateRequest struct {
 	EstimatedInstallTime int64           `json:"estimated_install_time"`
 	RecommendedUseCase   string          `json:"recommended_use_case"`
 	MinResources         string          `json:"min_resources"`
+	PlanningProfile      string          `json:"planning_profile"`
 }
 
 // ListTemplates handles GET /api/v1/templates.
@@ -128,6 +130,13 @@ func templateFromRequest(req templateRequest) (*domain.Template, error) {
 		}
 	}
 
+	// 모르는 프로파일은 여기서 막는다. 조용히 기본값으로 바꾸면 8Gi 를 노린
+	// 템플릿이 그 두 배 크기로 설치되고, 만든 사람은 그것을 알 길이 없다.
+	profile := domain.NormalizePlanningProfile(req.PlanningProfile)
+	if profile == "" {
+		return nil, fmt.Errorf("unknown planning profile %q", req.PlanningProfile)
+	}
+
 	return &domain.Template{
 		ID:                   req.ID,
 		Name:                 req.Name,
@@ -136,5 +145,6 @@ func templateFromRequest(req templateRequest) (*domain.Template, error) {
 		EstimatedInstallTime: time.Duration(req.EstimatedInstallTime),
 		RecommendedUseCase:   req.RecommendedUseCase,
 		MinResources:         req.MinResources,
+		PlanningProfile:      profile,
 	}, nil
 }

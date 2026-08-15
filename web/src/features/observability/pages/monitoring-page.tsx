@@ -108,6 +108,7 @@ export function MonitoringPage() {
         subtitle={t('observability.monitoringDesc', 'Select a Cluster or Stack to start monitoring')}
       />
 
+      <div data-tour="monitoring">
       <ClusterStackFilter
         selectedClusterId={selectedClusterId}
         selectedStackId={selectedStackId}
@@ -119,6 +120,7 @@ export function MonitoringPage() {
         selectedCluster={selectedCluster}
         selectedStack={selectedStack}
       />
+      </div>
 
       {/* ── Empty state ── */}
       {
