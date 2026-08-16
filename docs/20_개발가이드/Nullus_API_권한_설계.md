@@ -99,6 +99,57 @@ Nullus의 API 권한은 지금 **모듈(구역) 단위**로만 걸려 있다 —
 
 1·2단계만으로 발견된 권한 과다(High)가 전부 닫힌다. 프론트는 변경 불필요 — 이미 같은 정책을 기대하고 있다.
 
+## 부록 — 불일치별 대상 라우트와 조치 (구현 참고용)
+
+구현 시 이 표를 그대로 체크리스트로 쓴다. 모든 조치는 기존 `authmw.RequireRole(...)`을 해당 라우트(또는 서브그룹)에 거는 것이다. 등록 위치는 각 모듈 핸들러의 라우트 등록부와 `cmd/api/main.go`의 그룹 정의다.
+
+### 불일치 #1 — observability (High)
+
+| 라우트 | 현재 | 조치 |
+|---|---|---|
+| `POST /observability/alert-rules` | 인증만 | `RequireRole("admin","devops")` |
+| `PATCH /observability/alert-rules/:id` | 인증만 | `RequireRole("admin","devops")` |
+| `DELETE /observability/alert-rules/:id` | 인증만 | `RequireRole("admin","devops")` |
+| `GET /observability/*` (dashboard·alert-rules·alert-history·deployed-apps) | 인증만 | `RequireRole("admin","devops","developer")` — 그룹 기본 가드로 |
+
+### 불일치 #2 — cicd 템플릿·golden-path (High)
+
+| 라우트 | 현재 | 조치 |
+|---|---|---|
+| `POST /cicd/templates` · `PUT /cicd/templates/:id` · `DELETE /cicd/templates/:id` | 전 롤 | `RequireRole("admin","devops")` |
+| `POST /cicd/golden-paths` · `PUT /cicd/golden-paths/:id` · `DELETE /cicd/golden-paths/:id` | 전 롤 | `RequireRole("admin","devops")` |
+
+### 불일치 #3 — cicd 파이프라인 (Med)
+
+| 라우트 | 현재 | 조치 |
+|---|---|---|
+| `POST /cicd/pipelines` · `DELETE /cicd/pipelines/:id` | 전 롤 | `RequireRole("admin","devops")` |
+| `POST /cicd/pipelines/:id/deploy` | 전 롤 | **유지** (README: developer 는 배포 가능) |
+| `POST /cicd/deploy-app` | 전 롤 | **유지** (developer self-service 의 존재 이유) |
+| `GET /cicd/*` (templates·pipelines·deployments·history 등) | 전 롤 | **유지** |
+
+### 불일치 #4 — 토큰소스 민감 액션 (Med)
+
+| 라우트 | 현재 | 조치 |
+|---|---|---|
+| `POST /admin/token-sources/:id/reveal` | admin | admin 유지 + **감사 기록 필수 검증** (값이 아니라 행위·키만 기록) |
+| `POST /admin/token-sources/:id/rotate` · `/approve` · `/re-auth` · `/pause` · `/resume` | admin | 상동 |
+
+### 불일치 #5 — stacks 플랫폼 정책성 리소스 (Low, 팀 검토 후)
+
+| 라우트 | 현재 | 조치(제안) |
+|---|---|---|
+| `POST /stacks/resource-defaults` | admin·devops | admin 상향 검토 |
+| `POST/PUT/DELETE /stacks/templates(/:id)` | admin·devops | 현행 유지 가능성 높음 (화면도 devops 허용) — 팀 확인 |
+| `POST/PUT/DELETE /stacks/compatibility/matrices(/:id)` | admin·devops | admin 상향 검토 (버전 정책은 admin 화면 소관) |
+
+### 구현 시 공통 주의
+
+- `RequireRole` 은 **계층이 없다** — admin 도 목록에 명시해야 통과한다(`CanAccess` 는 단순 멤버십).
+- 가드는 `authMW`·`userRateLimit` **뒤에** 건다 — 403 요청도 사용량에 잡히게 하는 기존 순서 유지(`main.go:414` 주석).
+- 단계 1·2 반영 후 **정책표(§4)와 라우트 가드의 일치를 테스트로 고정**한다 — 표만 고치고 코드를 빠뜨리는(또는 반대) drift 방지.
+- development 모드는 인증 미들웨어가 꺼져 있으므로 로컬 검증은 `--auth=keycloak` 기동 + OIDC 계정으로 403 을 실측한다.
+
 ## 참고 (코드 위치)
 
 - 그룹 가드: `cmd/api/main.go:416-419` · 검사 장치: `internal/auth/adapter/middleware/auth_middleware.go:44`(RequireRole), `internal/admin/domain/user.go`(CanAccess — 단순 멤버십)
