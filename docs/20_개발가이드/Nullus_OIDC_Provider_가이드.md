@@ -24,7 +24,7 @@ Nullus는 OIDC(OpenID Connect) 기반 인증을 지원하며, **Keycloak**과 **
 VITE_AUTH_MODE=oidc
 VITE_OIDC_PROVIDER=keycloak
 VITE_OIDC_AUTHORITY=http://localhost:8180/realms/nullus
-VITE_OIDC_CLIENT_ID=nullus-web
+VITE_OIDC_CLIENT_ID=nullus-app
 
 # Backend (configs/config.yaml)
 auth:
@@ -42,7 +42,7 @@ oidc:
 VITE_AUTH_MODE=oidc
 VITE_OIDC_PROVIDER=authentik
 VITE_OIDC_AUTHORITY=http://localhost:9000/application/o/nullus-platform/
-VITE_OIDC_CLIENT_ID=nullus-web
+VITE_OIDC_CLIENT_ID=nullus-app
 
 # Backend (configs/config.yaml)
 oidc:
@@ -58,6 +58,8 @@ VITE_AUTH_MODE=mock
 # OIDC 관련 변수 불필요. 테스트 계정:
 # admin@nullus.dev / devops@nullus.dev / developer@nullus.dev
 ```
+
+> **client_id 주의 (로컬 vs 배포)**: 위 로컬 스니펫의 client는 `scripts/setup-keycloak.sh`가 realm에 만들고 `scripts/runbook_local.sh`가 웹에 주입하는 실제 값 `nullus-app`이다. 프론트 `VITE_OIDC_CLIENT_ID`와 백엔드 `audience`는 반드시 같아야 하며, 다르면 토큰 `aud` 불일치로 모든 API가 401이 된다. 배포 포털의 client는 `nullus-web`(#98, `cd.yml`)이므로 로컬 값과 혼동하지 말 것.
 
 ---
 
