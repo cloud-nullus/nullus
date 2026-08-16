@@ -17,7 +17,9 @@
     "theme:check": "node scripts/generate-theme.mjs --check",
     "e2e:stack-critical": "playwright test --grep @stack-critical",
     "e2e:headed": "playwright test --headed",
-    "e2e:report": "playwright show-report"
+    "e2e:report": "playwright show-report",
+    "responsive:audit": "node scripts/responsive-audit.mjs",
+    "responsive:audit:check": "node scripts/responsive-audit.mjs --check"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
