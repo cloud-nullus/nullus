@@ -2,6 +2,13 @@
 
 Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)
+![Kubernetes 1.26+](https://img.shields.io/badge/Kubernetes-1.26%2B-326CE5?logo=kubernetes&logoColor=white)
+![Helm v3](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)
+
+**[🚀 라이브 데모](https://cloud-nullus.github.io)** — 설치 없이 화면을 둘러보세요.
+
 ## 개요
 
 Nullus는 DevOps 엔지니어가 검증된 CI/CD 베스트 프랙티스 조합을 선택하고, 웹 UI에서 노코드로 설정한 후 한 번의 버튼 클릭으로 Kubernetes 클러스터에 전체 DevSecOps 스택을 자동 설치할 수 있도록 하는 오픈소스 플랫폼입니다.
@@ -452,6 +459,7 @@ Apache License 2.0
 
 ## 커뮤니티
 
+- **라이브 데모**: [cloud-nullus.github.io](https://cloud-nullus.github.io)
 - **GitHub**: [cloud-nullus/nullus](https://github.com/cloud-nullus/nullus)
 - **Issues**: 기능 요청 및 버그 리포트는 GitHub Issues를 이용
 - **Discussions**: 아이디어 및 질문은 GitHub Discussions에서 논의
