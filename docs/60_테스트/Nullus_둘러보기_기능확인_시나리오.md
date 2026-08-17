@@ -18,8 +18,8 @@
 | S4 | **설치 마법사 7탭** (installAuthentication~DryRun) | authentication → artifacts → pipeline → monitoring → storage → resources → **dry-run** 탭 순회: 각 탭 열림·입력 유지·클러스터 선택지에 kind 표시 → Dry Run 결과 렌더 | ✅ 통과 (Playwright) — **7탭 전부 전환 성공**, 클러스터 선택지에 `kind-nullus-platform` 노출 확인 |
 | S5 | **스택 배포** (deployStack) | Deploy 클릭 → 배포 시작 → 진행률·실시간 로그(WS) 표시 → 완료 상태 | ✅ 파이프라인 검증 (headed) — `installing→completed`, 기반 6릴리스(cert-manager·envoy-gw·ESO·openbao·postgresql·metrics) Running, 이상 파드 0. **단 [발견 F1]로 empty 구성 배포됨** → 도구 포함 재배포는 `lite-e2e-v2`(stk_8b349a88bb28)로 **진행 중(2026-08-17 중단 시점)** |
 | S6 | **스택 확인** (stackList·Workloads·gatewayPfCopy·hostsCopy·stackMonitoring) | Stack List 에 스택 표시 → 상세 workloads 탭 파드 목록 → Info 탭 gateway 포트포워드/hosts 복사 버튼 동작 → 스택 monitoring 탭 | ✅ 통과 (headed) — 행 표시(Running·클러스터)·탭 전환, **복사 2종 클립보드 실검증**(포트포워드 스크립트 `KUBE_CONTEXT=kind-nullus-platform`·hosts 엔트리). workloads "0/0 no pods" 는 도구 없는 스택과 정합. **재검 완료(08-17 Playwright)**: lite-e2e-v2 workloads 탭 **9/9 pods ready** — argocd 7·gitea·jenkins 파드 전부 Running·재시작 0 표시 확인 |
-| S7 | **CI/CD 셀프서비스** (cicdBasicInfo~Create·pipelineList) | CI/CD→Developer Deploy 6단계 폼(기본정보→checkout→build→test→security→생성) 순회 입력 → 생성 → CI/CD List 에 파이프라인 표시 | ➖ **부분 통과** (2026-08-17 headed) — 폼 자동채움(스택 연동·매니페스트 생성 렌더) → **Execute → `POST /cicd/pipelines` 201 → `pip_48e52f5af935` active** → deploy 202 → 로그 화면 이동, **실패한 배포도 `failed` 로 정직 기록** ✅. 빌드 실행은 2개 차단 요인으로 실패([F6][F7] — 제품 결함 아닌 로컬 환경·구성 요인) |
-| S8 | **관측** (observe·alertRules) | Monitoring Dashboard 에서 클러스터/스택 필터에 kind 클러스터 노출·선택 시 패널 렌더 → Alert Rules 신규 작성 폼 열림·저장 | ✅ 통과 (Playwright) — 대시보드 필터에 kind 클러스터 노출, Alert Rule 신규 폼 열림 확인 (**저장은 미실행** — 상태 변경 회피) |
+| S7 | **CI/CD 셀프서비스** (cicdBasicInfo~Create·pipelineList) | CI/CD→Developer Deploy 6단계 폼(기본정보→checkout→build→test→security→생성) 순회 입력 → 생성 → CI/CD List 에 파이프라인 표시 | ✅ **최종 통과** — ① UI: Execute → `POST /pipelines` 201 → active, deploy 202, 실패 배포 `failed` 정직 기록(1차, [F6][F7] 로 빌드 실패) ② **마지막 마일 완주**(API 경로): Gitea 시드(`gitea_admin/spring-sample`) + clone URL 을 PF(`localhost:3100`)로 지정 → `pip_53735947bf4e` → **clone→docker build→kind load(nullus-develop)→apply 전 구간 성공, `dep_14d781f7f8c1 success`, 파드 `e2e-direct` 1/1 Running, 앱 HTTP 응답 실확인** |
+| S8 | **관측** (observe·alertRules) | Monitoring Dashboard 에서 클러스터/스택 필터에 kind 클러스터 노출·선택 시 패널 렌더 → Alert Rules 신규 작성 폼 열림·저장 | ✅ **완전 통과** — 필터에 kind 클러스터 노출 + **Alert Rule 실제 저장**(`e2e-cpu-alert` 생성·목록 표시 확인, 08-17 재개 세션) |
 | S9 | **마무리** (finish) | 투어 종료 → Quick Start 로 복귀(시작 자리 = 끝 자리) | ✅ 통과 (2026-08-17 Playwright) — **30 스텝 전체 Next 순회**(전 스텝 카드 렌더 확인), 30/30 finish 가 홈 `/` 의 Quick Start 를 하이라이트 → Finish 클릭 시 오버레이 종료·홈 유지·Quick Start 노출(**시작 자리 = 끝 자리 확인**) |
 | R1 | **반응형 회귀** (부가 — 투어 외) | `npm run responsive:audit` 27건(9화면×3뷰포트) 오버플로우·사이드바 검사 | ✅ 통과 — **27/27 이슈 0** (모바일 aside 48px, #150 fix 확인) |
 
@@ -50,7 +50,7 @@
 
 - **`lite-e2e-v2`(stk_8b349a88bb28)**: completed — **도구 3종(gitea·jenkins·argocd) 전부 Running**, 릴리스 9개 deployed, workloads 9/9 pods ready
 - **`pip_48e52f5af935`(e2e-sample-app)**: active — 배포 1건 `failed` (F6·F7 요인, 이력·로그 화면 정상 동작)
-- **미완 구간(마지막 마일)**: 빌드 성공까지 가려면 ① hosts 엔트리+게이트웨이 포트포워드(sudo 필요) ② Gitea 에 샘플 리포 시드 ③ 레지스트리(외부 접두사 env 또는 registry 도구 포함 스택) — 별도 세션 과제
+- **마지막 마일 완주 (08-17 재개 세션)**: `pip_53735947bf4e` → `dep_14d781f7f8c1` **success** — 파드 `e2e-direct` 1/1 Running(develop 클러스터), 앱 HTTP 응답 실확인. **sudo·hosts·레지스트리 전부 불필요했던 우회 경로**: ① Gitea PF(`localhost:3100`)를 clone URL 로 직접 사용 ② `gitea_admin/spring-sample` 시드(nginx 8080 리슨 — backend 템플릿 포트) ③ 레지스트리는 애초에 불필요 — **`IMAGE_REGISTRY_URL` 이 비면 빌더가 `kind load docker-image` 로 적재**(`docker/builder.go`, `kind-` 접두사도 서버가 제거). F6 경고는 CI 기록용 WARN 일 뿐 직접 배포 비차단으로 판명
 - 환경: API 8091(+`NULLUS_GITEA_URL=:3100`·`NULLUS_JENKINS_URL=:8480` override) · web 5174(proxy 임시, **커밋 금지**) · 인프라 4종 · kind 듀얼 · PF 2개(gitea 3100·jenkins 8480)
 
 ## 이후 활용

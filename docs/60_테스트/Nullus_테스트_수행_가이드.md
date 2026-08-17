@@ -56,6 +56,44 @@ NULLUS_GITEA_URL=http://localhost:3100 NULLUS_JENKINS_URL=http://localhost:8480 
   NULLUS_SERVER_PORT=8091 ...  # API 재기동
 ```
 
+### 메가 프로세스 완주 (빌드→배포까지, 2026-08-17 실증)
+
+전 구간 흐름과 검증 지점:
+
+```mermaid
+flowchart LR
+    A[클러스터 등록·Verify<br/>kind 듀얼] --> B[스택 설치<br/>기반 6 + 도구 3종]
+    B --> C[파이프라인 생성<br/>UI 201 + API]
+    C --> D["git clone<br/>(Gitea PF)"]
+    D --> E[docker build]
+    E --> F["kind load<br/>→ develop"]
+    F --> G["apply → 파드 Running<br/>앱 HTTP 응답"]
+```
+
+**핵심 요령 — sudo·hosts·레지스트리 전부 불필요**:
+
+1. **샘플 리포 시드**: Gitea 관리자 자격은 k8s secret 에서 추출
+   (`kubectl -n nullus get secret nullus-gitea-credentials -o jsonpath='{.data}'` → base64 디코드)
+   → `gitea_admin/spring-sample` 리포 생성 후 `Dockerfile`(nginx **8080 리슨** — backend 템플릿의 기대 포트) + 앱 파일 push.
+2. **clone URL 을 PF 로 직접 지정**: 파이프라인의 `git_repo_url` 을 게이트웨이 도메인 대신
+   `http://localhost:3100/gitea_admin/spring-sample.git` 로 — 도메인 해석(hosts) 문제가 사라진다.
+3. **레지스트리 불필요**: `env_vars.IMAGE_REGISTRY_URL` 을 **비우면** 빌더가 push 대신
+   **`kind load docker-image` 로 대상 클러스터에 직접 적재**한다(`internal/cicd/adapter/docker/builder.go`).
+   등록 클러스터명의 `kind-` 접두사도 서버가 제거해 준다. "이미지 레지스트리를 결정할 수 없습니다" WARN 은
+   CI 실행 기록용일 뿐 직접 배포를 막지 않는다.
+4. API 로 재현하는 최소 페이로드:
+
+```bash
+curl -X POST $API/api/v1/cicd/pipelines -d '{
+  "name":"e2e-direct","cluster_id":"<develop-id>","stack_id":"<stack-id>",
+  "namespace":"default","app_type":"backend",
+  "git_repo_url":"http://localhost:3100/gitea_admin/spring-sample.git",
+  "dockerfile_path":"Dockerfile","docker_context":".","env_vars":{},
+  "provision_repository":false,"port":8080,"replicas":1}'
+curl -X POST $API/api/v1/cicd/pipelines/<pip-id>/deploy -d '{"version":"v1"}'   # version 필수
+# 검증: deployments 상태 success → kubectl --context kind-nullus-develop get pods
+```
+
 ## 3. Playwright 수행 방법
 
 ### 3.1 제품 내장 스위트 (`web/e2e`)
