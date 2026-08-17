@@ -208,6 +208,12 @@ Usage:
   ./scripts/runbook_local.sh smoke
   ./scripts/runbook_local.sh logs [api|web|all]
   ./scripts/runbook_local.sh down [--kind] [--auth=<keycloak|authentik|none>] [--volumes]
+  ./scripts/runbook_local.sh purge [--keep-kind] [--keep-volumes]
+  ./scripts/runbook_local.sh stack-up [--template=<id>] [--name=<n>] [--namespace=<ns>]
+                                      [--cluster=<ctx-name>] [--domain=<d>] [--wait]
+  ./scripts/runbook_local.sh stack-status <stack-id> [--wait]
+  ./scripts/runbook_local.sh stack-down [--all|<stack-id>]
+  ./scripts/runbook_local.sh pipeline-down
   ./scripts/runbook_local.sh all [--seed] [--kind] [--auth=<keycloak|authentik|none>]
   ./scripts/runbook_local.sh refresh
   ./scripts/runbook_local.sh kind-up
@@ -224,6 +230,17 @@ Commands:
   logs [svc]        Tail logs for a service (api, web) or all
   down [--kind] [--volumes]  Stop API, frontend, docker infra
         [--auth=authentik] Also stop Authentik services
+  purge             전체 초기화: 파이프라인 -> 스택 -> Nullus/백킹 -> kind 삭제
+     [--keep-kind]     kind 클러스터는 남긴다 (스택만 지우고 재설치 검증용)
+     [--keep-volumes]  DB 볼륨을 남긴다 (기본은 삭제 = 처음 설치 상태)
+  stack-up          템플릿으로 스택을 설치한다 (기본: gitea-jenkins-argocd-lite-v1)
+                    도구 선택은 템플릿 응답에서 가져오고, 설치는 백엔드 API 가 수행한다
+                    자원 계획은 stack_resource_defaults 를 쓴다 — 템플릿의
+                    planning_profile 로 축소 설치하려면 UI 마법사를 사용한다
+  stack-status <id> 스택 상태 조회. --wait 면 completed/failed 까지 폴링한다
+  stack-down [id]   설치된 스택을 제품 삭제 경로(helm uninstall + CRD 정리)로 삭제
+                    인자 없으면 --all. 삭제 후 남은 helm 릴리스를 보고한다
+  pipeline-down     CI/CD 파이프라인 전체 삭제 (스택보다 먼저 지워야 한다)
   all               Full lifecycle: up -> smoke -> keep running
   refresh           Rebuild backend + frontend, run pending migrations, restart
   kind-up           Create kind K8s cluster only
@@ -893,6 +910,413 @@ do_logs() {
   tail -f "$file"
 }
 
+# ------------------------------------------------------------
+# 삭제 경로
+#
+# kind 클러스터를 통째로 지우면 스택도 같이 사라진다. 하지만 그 길로는 제품이
+# 실제로 쓰는 삭제 경로 — DeleteStack usecase 의 helm uninstall + CRD /
+# ClusterRoleBinding 정리 — 를 한 번도 밟지 않는다. 커뮤니티 사용자는 클러스터를
+# 버리지 않고 스택만 지우므로, 런북도 같은 길을 지나야 삭제가 실제로 도는지
+# 확인된다. 그래서 'purge' 는 API 삭제를 먼저 태우고 그다음에 클러스터를 지운다.
+# ------------------------------------------------------------
+
+api_base() {
+  printf 'http://localhost:%s' "$API_PORT"
+}
+
+api_is_up() {
+  local code
+  code="$(curl -sS -m 5 -o /dev/null -w '%{http_code}' "$(api_base)/health" 2>/dev/null || echo "000")"
+  [[ "$code" == "200" ]]
+}
+
+# 목록 엔드포인트의 items[].id 만 뽑는다. 응답이 비었거나 형태가 달라도
+# 삭제 절차 전체를 멈추지 않는다 (set -e 아래에서도 빈 목록으로 수렴).
+api_item_ids() {
+  local url="$1"
+  curl -sS -m 30 "$url" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = data.get("items") if isinstance(data, dict) else data
+for item in items or []:
+    if isinstance(item, dict) and item.get("id"):
+        print(item["id"])
+' 2>/dev/null || true
+}
+
+api_delete() {
+  local url="$1"
+  curl -sS -X DELETE -m 900 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000"
+}
+
+# ------------------------------------------------------------
+# 설치 경로
+#
+# 스택 생성도 삭제와 같은 이유로 API 를 탄다 — helm 을 스크립트에서 직접 부르면
+# 설치 구현이 백엔드와 스크립트 둘로 갈라져 같은 템플릿이 경로마다 다른 결과를
+# 낸다 (airgap/scripts/29-install-stacks-via-api.sh 가 같은 판단을 적어 두었다).
+#
+# 도구 선택은 템플릿 응답에서 그대로 가져온다. 차트 버전 표를 여기 복사해 두면
+# 마이그레이션이 버전을 올릴 때마다 스크립트가 따로 낡는다.
+#
+# applied_resource_overrides 는 싣지 않는다. 그 계산은 설치 마법사
+# (web/src/features/stack/utils/install-planning-utils.ts)에만 있고, 비워 두면
+# 백엔드가 마이그레이션이 시드한 stack_resource_defaults 를 쓴다 — 값의 출처가
+# 하나로 남는다. 대신 템플릿의 planning_profile 이 요구하는 크기로 설치되지는
+# 않으므로, 8Gi 노드처럼 예산이 빠듯한 곳은 UI 마법사로 설치해야 한다.
+# ------------------------------------------------------------
+
+# 템플릿의 tools[] 를 StackConfig 의 슬롯으로 옮긴다. 고르지 않은 슬롯도
+# enabled=false 로 채워야 백엔드가 "미선택"과 "누락"을 구분한다.
+stack_create_payload() {
+  local template_id="$1" stack_name="$2" cluster_id="$3" namespace="$4" domain="$5"
+  curl -sS -m 30 "$(api_base)/api/v1/stacks/templates" 2>/dev/null | \
+  TEMPLATE_ID="$template_id" STACK_NAME="$stack_name" CLUSTER_ID="$cluster_id" \
+  STACK_NAMESPACE="$namespace" ACCESS_DOMAIN="$domain" python3 -c '
+import json, os, sys
+
+SLOTS = {
+    "package_registry":         ("artifacts",  "package_registry"),
+    "source_repository":        ("artifacts",  "source_repository"),
+    "container_registry":       ("artifacts",  "container_registry"),
+    "storage_backend":          ("artifacts",  "storage_backend"),
+    "ci_platform":              ("pipeline",   "ci_platform"),
+    "cd_tool":                  ("pipeline",   "cd_tool"),
+    "monitoring_collection":    ("monitoring", "collection"),
+    "monitoring_visualization": ("monitoring", "visualization"),
+    "log_search":               ("logging",    "search"),
+    "trace_layer":              ("logging",    "trace_layer"),
+    "agent":                    ("logging",    "trace_exporter"),
+}
+
+data = json.load(sys.stdin)
+items = data.get("items", data) if isinstance(data, dict) else data
+wanted = os.environ["TEMPLATE_ID"]
+template = next((t for t in items if t.get("id") == wanted), None)
+if template is None:
+    sys.stderr.write("template %s not found\n" % wanted)
+    sys.exit(1)
+
+config = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}}
+for section, field in SLOTS.values():
+    config[section][field] = {"name": "", "version": "", "enabled": False}
+
+for tool in template.get("tools") or []:
+    slot = SLOTS.get(tool.get("category"))
+    if slot is None:
+        continue
+    section, field = slot
+    config[section][field] = {
+        "name": tool.get("name", ""),
+        "version": tool.get("app_version", ""),
+        "enabled": True,
+    }
+
+config["access_domain"] = os.environ["ACCESS_DOMAIN"]
+config["authentication"] = {"provider": "openbao"}
+
+# storage 는 부분만 채우면 검증에서 400 이 난다 — integrated-create 는
+# database/object_storage 가 둘 다 mode=create 이어야 하고, create 모드는
+# provider_or_engine 과 size(Gi, >0)를 요구한다. 값은 설치 마법사의 기본값과
+# 같게 둔다 (web/src/features/stack/stores/stack-config-store.ts 의 storage,
+# size 는 stack-normalizers.ts 의 toStorageSizeGi 가 medium 을 옮긴 값).
+config["storage"] = {
+    "plan_mode": "integrated-create",
+    "database": {
+        "mode": "create",
+        "resource_name": "nullus",
+        "provider_or_engine": "postgres",
+        "version": "17",
+        "size": 50,
+    },
+    "object_storage": {
+        "mode": "create",
+        "resource_name": "nullus-artifacts",
+        "provider_or_engine": "minio",
+        "version": "latest",
+        "size": 100,
+    },
+}
+
+print(json.dumps({
+    "name": os.environ["STACK_NAME"],
+    "golden_path_id": wanted,
+    "cluster_id": os.environ["CLUSTER_ID"],
+    "namespace": os.environ["STACK_NAMESPACE"],
+    "config": config,
+}))
+'
+}
+
+do_stack_up() {
+  local template_id="gitea-jenkins-argocd-lite-v1"
+  local stack_name="" namespace="" cluster_name="kind-nullus-platform" domain=""
+  local wait_install="false"
+
+  for arg in "$@"; do
+    case "$arg" in
+      --template=*) template_id="${arg#*=}" ;;
+      --name=*)     stack_name="${arg#*=}" ;;
+      --namespace=*) namespace="${arg#*=}" ;;
+      --cluster=*)  cluster_name="${arg#*=}" ;;
+      --domain=*)   domain="${arg#*=}" ;;
+      --wait)       wait_install="true" ;;
+      *) echo "[nullus] unknown option: $arg"; exit 1 ;;
+    esac
+  done
+
+  [[ -n "$stack_name" ]] || stack_name="nullus-$(printf '%s' "$template_id" | sed 's/-v1$//' | cut -c1-24)"
+  [[ -n "$namespace" ]] || namespace="$stack_name"
+  [[ -n "$domain" ]] || domain="${stack_name}.internal"
+
+  if ! api_is_up; then
+    echo "[nullus] API 가 떠 있지 않습니다 (:$API_PORT). 'up' 후 다시 실행하세요."
+    return 1
+  fi
+
+  local cluster_id
+  cluster_id="$(curl -sS -m 30 "$(api_base)/api/v1/admin/clusters" 2>/dev/null | \
+    CLUSTER_NAME="$cluster_name" python3 -c '
+import json, os, sys
+data = json.load(sys.stdin)
+items = data.get("items", data) if isinstance(data, dict) else data
+target = os.environ["CLUSTER_NAME"]
+for c in items or []:
+    if c.get("name") == target:
+        print(c.get("id", ""))
+        break
+' 2>/dev/null || true)"
+
+  if [[ -z "$cluster_id" ]]; then
+    echo "[nullus] 클러스터 '$cluster_name' 을 찾지 못했습니다."
+    echo "[nullus] ./scripts/register-kind-clusters.sh 로 먼저 등록하세요."
+    return 1
+  fi
+
+  echo "[nullus] template=$template_id cluster=$cluster_name namespace=$namespace domain=$domain"
+
+  local payload
+  payload="$(stack_create_payload "$template_id" "$stack_name" "$cluster_id" "$namespace" "$domain")" || {
+    echo "[nullus] 스택 payload 생성 실패"
+    return 1
+  }
+
+  local stack_id
+  stack_id="$(curl -sS -m 60 -X POST -H 'Content-Type: application/json' \
+    -d "$payload" "$(api_base)/api/v1/stacks" 2>/dev/null | \
+    python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+
+  if [[ -z "$stack_id" ]]; then
+    echo "[nullus] 스택 생성 실패 — $LOG_DIR/api.log 확인"
+    return 1
+  fi
+  echo "[nullus] stack created: $stack_id"
+
+  # Pre-Deploy Gate 가 warn 을 내면 명시적 동의 없이는 막힌다. 로컬 검증에서는
+  # 동의한 것으로 보내되, 게이트가 block 을 내면 그대로 실패한다.
+  local deploy_code
+  deploy_code="$(curl -sS -m 120 -X POST -H 'Content-Type: application/json' \
+    -d '{"acknowledge_warnings":true}' -o /dev/null -w '%{http_code}' \
+    "$(api_base)/api/v1/stacks/$stack_id/deploy" 2>/dev/null || echo "000")"
+
+  if [[ "$deploy_code" != "200" && "$deploy_code" != "202" ]]; then
+    echo "[nullus] 배포 요청 실패 (HTTP $deploy_code) — $LOG_DIR/api.log 확인"
+    return 1
+  fi
+  echo "[nullus] deploy accepted ($deploy_code)"
+
+  if [[ "$wait_install" != "true" ]]; then
+    echo "[nullus] 진행 상황: ./scripts/runbook_local.sh stack-status $stack_id"
+    return 0
+  fi
+
+  do_stack_status "$stack_id" --wait
+}
+
+# 설치는 수십 분이 걸린다. 상태 폴링을 따로 두어 stack-up 을 기다리지 않고도
+# 같은 판정을 다시 볼 수 있게 한다.
+do_stack_status() {
+  local stack_id="${1:-}" wait_install="false"
+  shift || true
+  for arg in "$@"; do
+    case "$arg" in
+      --wait) wait_install="true" ;;
+    esac
+  done
+
+  if [[ -z "$stack_id" ]]; then
+    echo "[nullus] stack id 가 필요합니다"
+    return 1
+  fi
+
+  local deadline=$(( SECONDS + 3600 ))
+  local state last_state=""
+  while :; do
+    state="$(curl -sS -m 30 "$(api_base)/api/v1/stacks/$stack_id" 2>/dev/null | \
+      python3 -c 'import json,sys; print(json.load(sys.stdin).get("state",""))' 2>/dev/null || true)"
+    [[ -z "$state" ]] && state="unknown"
+
+    if [[ "$state" != "$last_state" ]]; then
+      echo "[nullus] stack $stack_id state: $state"
+      last_state="$state"
+    fi
+
+    case "$state" in
+      completed)
+        echo "[nullus] 설치 완료"
+        return 0
+        ;;
+      failed|rolled_back|cancelled)
+        echo "[nullus] 설치 실패 상태: $state — $LOG_DIR/api.log 확인"
+        return 1
+        ;;
+    esac
+
+    [[ "$wait_install" == "true" ]] || return 0
+    if (( SECONDS > deadline )); then
+      echo "[nullus] 60분 안에 완료되지 않았습니다 (마지막 상태: $state)"
+      return 1
+    fi
+    sleep 15
+  done
+}
+
+# 파이프라인은 스택을 참조한다. 스택을 먼저 지우면 남은 파이프라인이 사라진
+# 네임스페이스를 가리켜 화면에 유령 행으로 남는다 — 그래서 파이프라인이 먼저다.
+do_pipeline_down() {
+  if ! api_is_up; then
+    echo "[nullus] API 가 떠 있지 않습니다 (:$API_PORT). 'up' 후 다시 실행하세요."
+    return 1
+  fi
+
+  local ids
+  ids="$(api_item_ids "$(api_base)/api/v1/cicd/pipelines")"
+  if [[ -z "$ids" ]]; then
+    echo "[nullus] 삭제할 파이프라인이 없습니다"
+    return 0
+  fi
+
+  local id code failed=0
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    echo "[nullus] deleting pipeline $id..."
+    code="$(api_delete "$(api_base)/api/v1/cicd/pipelines/$id")"
+    if [[ "$code" == "200" || "$code" == "204" ]]; then
+      echo "[nullus]   pipeline $id deleted ($code)"
+    else
+      echo "[nullus]   pipeline $id delete FAILED (HTTP $code)"
+      failed=$((failed + 1))
+    fi
+  done <<<"$ids"
+
+  [[ "$failed" -eq 0 ]]
+}
+
+# 스택 삭제는 helm uninstall 을 순차로 돌아 수 분이 걸린다. API 는 동기로
+# 응답하므로 curl 타임아웃을 넉넉히 잡는다 (api_delete 의 -m 900).
+do_stack_down() {
+  local target="${1:---all}"
+
+  if ! api_is_up; then
+    echo "[nullus] API 가 떠 있지 않습니다 (:$API_PORT). 'up' 후 다시 실행하세요."
+    return 1
+  fi
+
+  local ids
+  if [[ "$target" == "--all" ]]; then
+    ids="$(api_item_ids "$(api_base)/api/v1/stacks")"
+  else
+    ids="$target"
+  fi
+
+  if [[ -z "$ids" ]]; then
+    echo "[nullus] 삭제할 스택이 없습니다"
+    return 0
+  fi
+
+  local id code failed=0
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    echo "[nullus] deleting stack $id (helm uninstall + CRD 정리, 수 분 소요)..."
+    code="$(api_delete "$(api_base)/api/v1/stacks/$id")"
+    if [[ "$code" == "200" || "$code" == "204" ]]; then
+      echo "[nullus]   stack $id deleted ($code)"
+    else
+      echo "[nullus]   stack $id delete FAILED (HTTP $code) — $LOG_DIR/api.log 확인"
+      failed=$((failed + 1))
+    fi
+  done <<<"$ids"
+
+  report_cluster_leftovers
+  [[ "$failed" -eq 0 ]]
+}
+
+# helm uninstall 은 cluster-scoped 리소스를 남긴다. 남은 릴리스를 보여주지
+# 않으면 "지웠다"고 믿은 채 다음 설치가 ownership 충돌로 깨진다.
+report_cluster_leftovers() {
+  command -v helm >/dev/null 2>&1 || return 0
+  command -v kind >/dev/null 2>&1 || return 0
+
+  local cluster_name remaining
+  while IFS= read -r cluster_name; do
+    [[ -z "$cluster_name" ]] && continue
+    kind_cluster_exists "$cluster_name" || continue
+    remaining="$(helm list -A --kube-context "kind-$cluster_name" --short 2>/dev/null || true)"
+    if [[ -n "$remaining" ]]; then
+      echo "[nullus] kind-$cluster_name 에 남은 helm 릴리스:"
+      printf '%s\n' "$remaining" | sed 's/^/[nullus]   - /'
+    else
+      echo "[nullus] kind-$cluster_name: 남은 helm 릴리스 없음"
+    fi
+  done < <(kind_cluster_names)
+}
+
+# 전체 초기화: 파이프라인 → 스택 → Nullus/백킹 → kind 클러스터 순.
+# --keep-kind 는 클러스터를 남겨 "스택만 지우고 다시 깔기" 를 검증할 때 쓴다.
+do_purge() {
+  local keep_kind="false" keep_volumes="false"
+  for arg in "$@"; do
+    if parse_auth_arg "$arg"; then continue; fi
+    case "$arg" in
+      --keep-kind) keep_kind="true" ;;
+      --keep-volumes) keep_volumes="true" ;;
+      *) echo "[nullus] unknown option: $arg"; exit 1 ;;
+    esac
+  done
+  validate_auth_provider
+
+  echo "[nullus] ── purge 1/3: CI/CD 파이프라인 ──"
+  if api_is_up; then
+    do_pipeline_down || echo "[nullus] 일부 파이프라인 삭제 실패 (계속 진행)"
+    echo ""
+    echo "[nullus] ── purge 2/3: 스택 ──"
+    do_stack_down --all || echo "[nullus] 일부 스택 삭제 실패 (계속 진행)"
+  else
+    echo "[nullus] API 가 내려가 있어 스택/파이프라인 API 삭제를 건너뜁니다."
+    echo "[nullus] 제품 삭제 경로를 검증하려면 'up' 후 'purge' 를 다시 실행하세요."
+  fi
+
+  echo ""
+  local step3_label="Nullus + 백킹"
+  [[ "$keep_kind" == "false" ]] && step3_label="$step3_label + kind"
+  echo "[nullus] ── purge 3/3: $step3_label ──"
+  local down_args=()
+  [[ "$keep_kind" == "false" ]] && down_args+=(--kind)
+  [[ "$keep_volumes" == "false" ]] && down_args+=(--volumes)
+  down_args+=("--auth=$AUTH_PROVIDER")
+  do_down "${down_args[@]}"
+
+  echo ""
+  if [[ "$keep_volumes" == "false" ]]; then
+    echo "[nullus] purge 완료 — DB 볼륨까지 삭제했습니다. 다음 'up' 은 처음 설치와 같습니다."
+  else
+    echo "[nullus] purge 완료 — DB 볼륨은 보존했습니다."
+  fi
+}
+
 do_down() {
   local with_kind="false" with_volumes="false"
   for arg in "$@"; do
@@ -1039,6 +1463,11 @@ main() {
     smoke) do_smoke "$@" ;;
     logs) do_logs "${1:-all}" ;;
     down) do_down "$@" ;;
+    purge) do_purge "$@" ;;
+    stack-up) do_stack_up "$@" ;;
+    stack-status) do_stack_status "$@" ;;
+    stack-down) do_stack_down "${1:---all}" ;;
+    pipeline-down) do_pipeline_down ;;
     all) do_all "$@" ;;
     refresh) do_refresh ;;
     kind-up) do_kind_up ;;

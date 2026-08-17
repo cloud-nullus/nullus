@@ -184,6 +184,61 @@ kind create cluster --config scripts/kind-cluster.yaml
 
 상세 가이드: [kind E2E 테스트 가이드](./docs/guides/kind-e2e-testing-guide.md)
 
+### 4-1. 스택 설치 (스크립트)
+
+UI 마법사를 거치지 않고 템플릿으로 바로 설치하려면 `stack-up` 을 씁니다. helm 을
+직접 부르지 않고 백엔드 API 를 호출하므로 UI 설치와 같은 파이프라인(OpenBao →
+ESO → 시크릿 → SSO)을 그대로 탑니다.
+
+```bash
+# 기본값: gitea-jenkins-argocd-lite-v1 을 kind-nullus-platform 에 설치
+./scripts/runbook_local.sh stack-up --name=nullus-lite --namespace=nullus-lite --wait
+
+# 다른 템플릿 / 다른 클러스터
+./scripts/runbook_local.sh stack-up \
+  --template=gitea-jenkins-argocd-v1 \
+  --cluster=kind-nullus-platform \
+  --name=nullus-gj --namespace=nullus-gj
+
+# 진행 상황만 다시 보기
+./scripts/runbook_local.sh stack-status stk_abc123 --wait
+```
+
+> **자원 계획 주의.** `stack-up` 은 `applied_resource_overrides` 를 싣지 않고
+> 백엔드가 `stack_resource_defaults`(마이그레이션 시드)를 쓰게 둡니다. 템플릿의
+> `planning_profile`(예: Lite = `local`)로 **축소 설치**하는 계산은 현재 설치
+> 마법사(`web/src/features/stack/utils/install-planning-utils.ts`)에만 있습니다.
+> 8Gi 단일 노드처럼 예산이 빠듯한 환경은 UI 마법사로 설치하세요.
+
+### 4-2. 설치한 것 되돌리기 (삭제)
+
+클러스터를 버리지 않고 **스택만** 지우려면 `stack-down` 을 씁니다. 제품이 실제로
+쓰는 삭제 경로(helm uninstall → CRD / ClusterRoleBinding 정리)를 그대로 타므로,
+클러스터를 통째로 지우는 방식과 달리 삭제 로직 자체가 검증됩니다.
+
+```bash
+./scripts/runbook_local.sh pipeline-down          # 파이프라인 먼저 (스택을 참조한다)
+./scripts/runbook_local.sh stack-down             # 설치된 스택 전체
+./scripts/runbook_local.sh stack-down stk_abc123  # 특정 스택만
+```
+
+`stack-down` 은 끝나고 클러스터에 남은 helm 릴리스를 출력합니다. `cert-manager`
+와 `metrics-server` 는 스택 소유가 아닌 플랫폼 선행 구성이라 남는 것이 정상입니다.
+
+처음 설치 상태로 완전히 되돌리려면 `purge` 를 씁니다. 파이프라인 → 스택 →
+Nullus/백킹 → kind 클러스터 순으로 지우고, DB 볼륨까지 삭제해 다음 `up` 이
+빈 DB에서 마이그레이션을 처음부터 돌리게 만듭니다.
+
+```bash
+./scripts/runbook_local.sh purge                  # 전부 초기화
+./scripts/runbook_local.sh purge --keep-kind      # 클러스터는 남기고 스택만
+./scripts/runbook_local.sh purge --keep-volumes   # DB 데이터는 보존
+```
+
+> `purge` 의 스택/파이프라인 삭제 단계는 API 를 통합니다. API 가 내려가 있으면
+> 그 단계를 건너뛰고 인프라만 정리하므로, 삭제 경로까지 검증하려면 `up` 이
+> 떠 있는 상태에서 실행하세요.
+
 ### 5. 클러스터 등록/검증 가이드 (팀 공통)
 
 스택 설치 전에 반드시 클러스터를 등록하고 연결 검증(Verify)을 완료하세요.
