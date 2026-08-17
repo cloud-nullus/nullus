@@ -10,12 +10,14 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // 8090 이 다른 프로세스에 점유된 환경(수행 가이드 §2)에서는 소스 수정 없이
+      // NULLUS_API_PORT=8091 npm run dev 로 바꾼다 — "임시 수정 후 커밋 금지" 관행 대체.
       '/api': {
-        target: 'http://localhost:8090',
+        target: `http://localhost:${process.env.NULLUS_API_PORT ?? '8090'}`,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8090',
+        target: `ws://localhost:${process.env.NULLUS_API_PORT ?? '8090'}`,
         ws: true,
       },
     },
