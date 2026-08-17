@@ -93,6 +93,21 @@ var gatewayCRDNames = []string{
 	"udproutes.gateway.networking.k8s.io",
 }
 
+// 스택 네임스페이스에서 지워야 할 Gateway API 리소스.
+//
+// gatewayclasses 는 없다 — 클러스터 스코프이고 다른 스택과 공유한다.
+var namespacedGatewayAPIResources = []string{
+	"httproutes.gateway.networking.k8s.io",
+	"grpcroutes.gateway.networking.k8s.io",
+	"tcproutes.gateway.networking.k8s.io",
+	"tlsroutes.gateway.networking.k8s.io",
+	"udproutes.gateway.networking.k8s.io",
+	"referencegrants.gateway.networking.k8s.io",
+	// Gateway 는 마지막이다. 라우트를 먼저 떼어내야 컨트롤러가 게이트웨이를
+	// 정리하는 동안 참조가 남지 않는다.
+	"gateways.gateway.networking.k8s.io",
+}
+
 type DeleteStack struct {
 	stackRepo           port.StackRepository
 	kubeconfigProvider  port.KubeconfigProvider
@@ -101,6 +116,16 @@ type DeleteStack struct {
 	deleteManifestFunc  func(ctx context.Context, kubeconfig []byte, namespace, manifest string) error
 	listResourcesFunc   func(ctx context.Context, kubeconfig []byte, namespace string) ([]string, error)
 	deleteResourceFunc  func(ctx context.Context, kubeconfig []byte, namespace, resource string) error
+	runKubectlFunc      func(ctx context.Context, kubeconfig []byte, args ...string) (string, error)
+}
+
+// runKubectl 은 삭제 경로의 모든 kubectl 호출이 지나는 한 지점이다. 테스트가
+// 실제 클러스터 없이 "무엇을 지우려 했는가" 를 검사할 수 있어야 하므로 주입한다.
+func (uc *DeleteStack) runKubectl(ctx context.Context, kubeconfig []byte, args ...string) (string, error) {
+	if uc.runKubectlFunc != nil {
+		return uc.runKubectlFunc(ctx, kubeconfig, args...)
+	}
+	return runKubectlWithKubeconfig(ctx, kubeconfig, args...)
 }
 
 func NewDeleteStack(
@@ -164,6 +189,9 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortUninstall(ctx, kubeconfig, stack.Namespace, stackID)
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
+	// Gateway 를 먼저 지운다. 순서가 뒤바뀌면 컨트롤러가 살아 있는 Gateway 를 보고
+	// 방금 지운 데이터플레인 Deployment 를 복구한다.
+	uc.bestEffortDeleteGatewayAPIResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteGatewayManagedResources(ctx, kubeconfig, stack, gatewayNames, stackID)
 	uc.bestEffortDeleteLegacyMonitoringResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
@@ -364,14 +392,14 @@ func (uc *DeleteStack) bestEffortDeleteArgoCDCRDs(ctx context.Context, kubeconfi
 		return
 	}
 
-	applicationsOut, err := runKubectlWithKubeconfig(ctx, kubeconfig,
+	applicationsOut, err := uc.runKubectl(ctx, kubeconfig,
 		"get", "applications.argoproj.io", "-A", "-o", "name")
 	if err != nil {
 		// CRD 자체가 없으면 조회가 실패한다 — 지울 것도 없으므로 그냥 끝낸다.
 		slog.Warn("argocd crd cleanup skipped due to check failure", "resource", "applications", "error", err)
 		return
 	}
-	appProjectsOut, err := runKubectlWithKubeconfig(ctx, kubeconfig,
+	appProjectsOut, err := uc.runKubectl(ctx, kubeconfig,
 		"get", "appprojects.argoproj.io", "-A", "-o", "name")
 	if err != nil {
 		slog.Warn("argocd crd cleanup skipped due to check failure", "resource", "appprojects", "error", err)
@@ -385,7 +413,7 @@ func (uc *DeleteStack) bestEffortDeleteArgoCDCRDs(ctx context.Context, kubeconfi
 
 	for _, crd := range argoCDCRDNames {
 		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting argocd crd %s", crd))
-		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "crd", crd, "--ignore-not-found"); err != nil {
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "crd", crd, "--ignore-not-found"); err != nil {
 			slog.Warn("argocd crd delete warning", "crd", crd, "error", err)
 			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("argocd crd %s delete warning: %v", crd, err))
 		}
@@ -432,7 +460,7 @@ func (uc *DeleteStack) bestEffortDeleteGatewayCRDs(ctx context.Context, kubeconf
 		{"get", "gatewayclasses.gateway.networking.k8s.io", "-o", "name"},
 	}
 	for _, args := range checks {
-		out, err := runKubectlWithKubeconfig(ctx, kubeconfig, args...)
+		out, err := uc.runKubectl(ctx, kubeconfig, args...)
 		if err != nil {
 			slog.Warn("gateway crd cleanup skipped due to check failure", "args", strings.Join(args, " "), "error", err)
 			return
@@ -449,7 +477,7 @@ func (uc *DeleteStack) bestEffortDeleteGatewayCRDs(ctx context.Context, kubeconf
 
 	for _, crd := range gatewayCRDNames {
 		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting gateway crd %s", crd))
-		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "crd", crd, "--ignore-not-found"); err != nil {
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "crd", crd, "--ignore-not-found"); err != nil {
 			slog.Warn("gateway crd delete warning", "crd", crd, "error", err)
 			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("gateway crd %s delete warning: %v", crd, err))
 		}
@@ -472,7 +500,7 @@ func (uc *DeleteStack) collectGatewayNames(ctx context.Context, kubeconfig []byt
 	}
 
 	if len(kubeconfig) != 0 && strings.TrimSpace(stack.Namespace) != "" {
-		output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "gateways.gateway.networking.k8s.io", "-n", stack.Namespace, "-o", "name")
+		output, err := uc.runKubectl(ctx, kubeconfig, "get", "gateways.gateway.networking.k8s.io", "-n", stack.Namespace, "-o", "name")
 		if err == nil {
 			lines := strings.Split(strings.TrimSpace(output), "\n")
 			for _, line := range lines {
@@ -595,7 +623,7 @@ func (uc *DeleteStack) collectGatewayNamesFromManagedResources(ctx context.Conte
 	selector := fmt.Sprintf("gateway.envoyproxy.io/owning-gateway-namespace=%s", stackNamespace)
 	set := make(map[string]struct{})
 	for _, targetNamespace := range namespaces {
-		output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "deploy,svc", "-n", targetNamespace, "-l", selector, "-o", "json")
+		output, err := uc.runKubectl(ctx, kubeconfig, "get", "deploy,svc", "-n", targetNamespace, "-l", selector, "-o", "json")
 		if err != nil {
 			continue
 		}
@@ -642,6 +670,40 @@ func (uc *DeleteStack) mergeGatewayNames(primary []string, extra []string) []str
 	return names
 }
 
+// bestEffortDeleteGatewayAPIResources 는 스택의 Gateway/HTTPRoute 를 지운다.
+//
+// 이 단계가 없으면 삭제가 끝나도 Gateway 커스텀 리소스가 남고, Envoy Gateway
+// 컨트롤러가 그것을 보고 데이터플레인 Deployment 를 다시 만든다. 그래서 아래
+// bestEffortDeleteGatewayManagedResources 가 envoy 파드를 지워도 곧바로 되살아나
+// 스택을 지운 뒤에도 envoy-<stack>-gateway 파드가 계속 떠 있었다 — helm list 는
+// 깨끗하게 나오므로 발견도 늦었다(실측: 삭제 2시간 뒤에도 2/2 Running).
+//
+// 지우는 범위는 스택 자신의 네임스페이스뿐이다. cleanupNamespacesForStack 이
+// 함께 도는 default·nullus·envoy-gateway-system 은 다른 스택과 공유될 수 있어
+// --all 로 지우면 남의 게이트웨이를 지운다.
+func (uc *DeleteStack) bestEffortDeleteGatewayAPIResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil {
+		return
+	}
+	namespace := strings.TrimSpace(stack.Namespace)
+	if namespace == "" {
+		return
+	}
+
+	for _, resource := range namespacedGatewayAPIResources {
+		uc.emit(ctx, stackID, "deleting_gateway_api", "info",
+			fmt.Sprintf("deleting %s in namespace %s", resource, namespace))
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", resource, "-n", namespace,
+			"--all", "--ignore-not-found", "--timeout=60s"); err != nil {
+			// CRD 자체가 없는 클러스터에서는 "the server doesn't have a resource
+			// type" 이 난다 — 지울 것이 없다는 뜻이므로 경고로만 남긴다.
+			slog.Warn("gateway api resource delete warning", "resource", resource, "namespace", namespace, "error", err)
+			uc.emit(ctx, stackID, "deleting_gateway_api", "warn",
+				fmt.Sprintf("%s delete warning in %s: %v", resource, namespace, err))
+		}
+	}
+}
+
 func (uc *DeleteStack) bestEffortDeleteGatewayManagedResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, gatewayNames []string, stackID string) {
 	if len(kubeconfig) == 0 || stack == nil || strings.TrimSpace(stack.Namespace) == "" || len(gatewayNames) == 0 {
 		return
@@ -653,7 +715,7 @@ func (uc *DeleteStack) bestEffortDeleteGatewayManagedResources(ctx context.Conte
 		for _, targetNamespace := range namespaces {
 			uc.emit(ctx, stackID, "deleting_gateway_managed", "info", fmt.Sprintf("deleting gateway managed resources for %s in namespace %s", gatewayName, targetNamespace))
 			for _, kind := range []string{"deploy", "svc", "cm", "sa", "pod", "rs", "secret", "pvc"} {
-				if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", kind, "-n", targetNamespace, "-l", selector, "--ignore-not-found"); err != nil {
+				if _, err := uc.runKubectl(ctx, kubeconfig, "delete", kind, "-n", targetNamespace, "-l", selector, "--ignore-not-found"); err != nil {
 					slog.Warn("gateway managed resource delete warning", "kind", kind, "namespace", targetNamespace, "gateway", gatewayName, "error", err)
 					uc.emit(ctx, stackID, "deleting_gateway_managed", "warn", fmt.Sprintf("gateway managed %s delete warning for %s in %s: %v", kind, gatewayName, targetNamespace, err))
 				}
@@ -677,7 +739,7 @@ func (uc *DeleteStack) bestEffortDeleteStackLabeledResources(ctx context.Context
 	for _, targetNamespace := range namespaces {
 		uc.emit(ctx, stackID, "deleting_stack_labeled", "info", fmt.Sprintf("deleting stack-labeled resources in namespace %s", targetNamespace))
 		for _, kind := range []string{"deploy", "svc", "cm", "sa", "pod", "rs", "sts", "job", "cronjob", "secret", "pvc"} {
-			if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", kind, "-n", targetNamespace, "-l", selector, "--ignore-not-found"); err != nil {
+			if _, err := uc.runKubectl(ctx, kubeconfig, "delete", kind, "-n", targetNamespace, "-l", selector, "--ignore-not-found"); err != nil {
 				slog.Warn("stack-labeled resource delete warning", "kind", kind, "namespace", targetNamespace, "selector", selector, "error", err)
 				uc.emit(ctx, stackID, "deleting_stack_labeled", "warn", fmt.Sprintf("stack-labeled %s delete warning in %s: %v", kind, targetNamespace, err))
 			}
@@ -696,7 +758,7 @@ func (uc *DeleteStack) bestEffortDeleteLegacyGatewayPolicyResources(ctx context.
 	}
 	for _, resource := range legacyResources {
 		uc.emit(ctx, stackID, "deleting_manifest", "info", fmt.Sprintf("deleting legacy gateway policy resource %s", resource))
-		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "-n", namespace, resource, "--ignore-not-found"); err != nil {
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "-n", namespace, resource, "--ignore-not-found"); err != nil {
 			slog.Warn("legacy gateway policy resource delete warning", "resource", resource, "namespace", namespace, "error", err)
 			uc.emit(ctx, stackID, "deleting_manifest", "warn", fmt.Sprintf("legacy gateway policy resource %s delete warning: %v", resource, err))
 		}
@@ -857,7 +919,7 @@ func (uc *DeleteStack) bestEffortClearResourceFinalizers(ctx context.Context, ku
 	if len(kubeconfig) == 0 || strings.TrimSpace(namespace) == "" || strings.TrimSpace(resource) == "" {
 		return
 	}
-	if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "patch", "-n", namespace, resource, "--type=merge", "-p", `{"metadata":{"finalizers":[]}}`); err != nil {
+	if _, err := uc.runKubectl(ctx, kubeconfig, "patch", "-n", namespace, resource, "--type=merge", "-p", `{"metadata":{"finalizers":[]}}`); err != nil {
 		slog.Warn("clear finalizers warning", "resource", resource, "namespace", namespace, "error", err)
 		uc.emit(ctx, stackID, "deleting_orphan_resources", "warn", fmt.Sprintf("clear finalizers warning for %s in %s: %v", resource, namespace, err))
 	}
@@ -867,7 +929,7 @@ func (uc *DeleteStack) bestEffortForceDeleteResource(ctx context.Context, kubeco
 	if len(kubeconfig) == 0 || strings.TrimSpace(namespace) == "" || strings.TrimSpace(resource) == "" {
 		return
 	}
-	if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", "-n", namespace, resource, "--ignore-not-found", "--force", "--grace-period=0"); err != nil {
+	if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "-n", namespace, resource, "--ignore-not-found", "--force", "--grace-period=0"); err != nil {
 		slog.Warn("force delete orphan warning", "resource", resource, "namespace", namespace, "error", err)
 		uc.emit(ctx, stackID, "deleting_orphan_resources", "warn", fmt.Sprintf("force delete warning for %s in %s: %v", resource, namespace, err))
 	}
@@ -1010,7 +1072,7 @@ func (uc *DeleteStack) bestEffortDeleteExternalSecretResources(ctx context.Conte
 	}
 
 	for _, kind := range externalSecretResourceKinds {
-		if _, err := runKubectlWithKubeconfig(ctx, kubeconfig, "delete", kind,
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", kind,
 			"-n", namespace, "--all", "--ignore-not-found", "--timeout=60s"); err != nil {
 			slog.Warn("external-secrets 리소스 삭제 경고", "kind", kind, "namespace", namespace, "error", err)
 			uc.emit(ctx, stackID, "deleting_external_secrets", "warn",

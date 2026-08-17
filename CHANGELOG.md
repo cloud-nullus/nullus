@@ -178,6 +178,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택을 지워도 Gateway 가 남아 envoy 파드가 계속 떴다** (`internal/stack/usecase/delete_stack.go`): 삭제 경로는 Gateway 가 **소유한** 리소스(envoy Deployment·Service 등)를 지웠지만, Gateway 와 HTTPRoute 커스텀 리소스 자체를 지우는 코드가 없었다. Gateway 가 살아 있으면 Envoy Gateway 컨트롤러가 그것을 보고 데이터플레인 Deployment 를 곧바로 다시 만든다 — 그래서 지우는 단계가 있어도 파드는 계속 떠 있었다. `helm list` 는 깨끗하게 나오므로 발견도 늦었다(실측: 삭제 2시간 뒤에도 `envoy-<stack>-gateway` 파드가 2/2 Running). 설치·삭제를 반복하면 envoy 파드가 그만큼 쌓인다.
+
+  Gateway·HTTPRoute·GRPCRoute·TCP/TLS/UDPRoute·ReferenceGrant 를 지운다. 순서가 핵심이라 **관리 리소스 삭제보다 먼저** 둔다 — 뒤에 두면 그 사이 컨트롤러가 데이터플레인을 복구해, 방금 지운 Deployment 가 되살아난 채로 삭제가 끝난다. 범위는 스택 자신의 네임스페이스뿐이다. 함께 훑는 `default`·`nullus`·`envoy-gateway-system` 은 다른 스택과 공유될 수 있어 `--all` 로 지우면 남의 게이트웨이가 날아간다.
+
+  `stack-down` 의 잔여물 보고도 helm 릴리스만 보던 것을 고쳤다. 이 누수가 바로 "helm 은 깨끗한데 파드는 살아 있는" 유형이라, 릴리스만 보여주면 지웠다는 잘못된 확신을 준다.
+
 - **Gitea·Jenkins·Harbor·Nexus 는 자원 계획을 아예 받지 못했다** (`internal/stack/adapter/helm/applied-resources.go`, `internal/stack/adapter/helm/resource-defaults.go`): 계획을 세워도 그 단계가 계획을 찾아보지 않으면 아무 일도 일어나지 않는다. `plannedSlotForStep` 에 슬롯 매핑이 없고 `resourceDefaultKeyForStep` 에 자원 키가 없어, 이 넷은 관리자 기본값조차 실리지 않고 차트 기본값으로 깔렸다. Lite 템플릿(Gitea + Jenkins + Harbor + Argo CD)은 도구 넷 중 **셋**이 여기 해당해, `local` 프로파일이 실제로는 Argo CD 하나에만 적용되고 있었다.
 
   Harbor 는 릴리스 하나가 7개 컴포넌트로 갈라지므로 계획 벡터를 비율로 나눈다 — 그대로 모든 칸에 실으면 릴리스 하나가 계획의 7배를 요청한다(GitLab 이 이미 같은 이유로 비율을 쓴다). 실측: Lite 를 다시 깔았을 때 Gitea 는 requests 없음 → 500m/512Mi, Harbor core 는 하드코딩 100m/256Mi → 계획값 기반 130m/256Mi 로 바뀌었다.
