@@ -300,6 +300,21 @@ cd web && npx playwright test --reporter=list
 ./scripts/runbook_local.sh smoke
 ```
 
+### 모바일/반응형 자동 점검
+
+주요 9개 화면을 3개 뷰포트(360/390/768px)로 렌더해 가로 오버플로우와 모바일 사이드바 미collapse 를 자동 감지합니다.
+
+```bash
+cd web && npm run responsive:audit          # 리포트 생성 (web/.responsive-audit/)
+cd web && npm run responsive:audit:check    # 이슈 발견 시 exit 1 (CI 게이트용)
+```
+
+### 테스트 수행 가이드
+
+로컬 E2E(클러스터 등록→스택 설치→파이프라인→배포 검증)·Playwright 수행법·환경 전제와 알려진 함정은
+[테스트 수행 가이드](./docs/60_테스트/Nullus_테스트_수행_가이드.md)를 참고하세요.
+둘러보기(투어) 여정 기반 기능 검증 결과는 [기능 확인 시나리오](./docs/60_테스트/Nullus_둘러보기_기능확인_시나리오.md)에 기록되어 있습니다.
+
 ## API 엔드포인트
 
 API 서버: `http://localhost:8090`
@@ -470,6 +485,7 @@ Apache License 2.0
 - [ROADMAP.md](./ROADMAP.md) — 개발 로드맵
 - [CLAUDE.md](./CLAUDE.md) — 아키텍처 원칙 및 개발 규칙
 - [kind E2E 테스트 가이드](./docs/guides/kind-e2e-testing-guide.md) — K8s 클러스터 대상 시나리오 테스트
+- [테스트 수행 가이드](./docs/60_테스트/Nullus_테스트_수행_가이드.md) — 로컬 E2E·반응형 점검·Playwright 수행법
 - [PRD v1.3](./docs/10_제품기획/nullus_PRD_1.3.md) — 제품 요구사항 명세
 - [API 설계](./docs/20_아키텍처/Nullus_API_설계.md) — API 상세 설계
 - [로컬 개발환경 세팅](./docs/50_운영/Nullus%20로컬%20개발환경%20세팅%20가이드.md) — 개발 환경 설정
