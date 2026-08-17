@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **설치 규모 계획을 서버가 계산한다** (`internal/stack/domain/planning.go`, `internal/stack/domain/planning_plan.go`, `internal/stack/usecase/create_stack.go`): 템플릿은 `planning_profile` 을 들고 있었지만, 그 값을 자원 요청으로 옮기는 계산은 설치 마법사(`web/src/features/stack/utils/install-planning-utils.ts`)에만 있었다. 그래서 API·CLI·에어갭으로 만든 스택은 프로파일을 저장만 하고 크기에는 반영하지 않아, 8Gi 노드용 Lite 템플릿도 standard 크기로 깔렸다. 계산을 도메인으로 옮겨 두 경로가 같은 크기를 내게 한다.
+
+  이식의 성공 기준은 "동작한다" 가 아니라 **"같다"** 다. 숫자가 갈리면 UI 설치와 API 설치가 서로 다른 크기로 깔리는데, 그건 조용히 벌어져 한참 뒤에야 드러난다. 그래서 마법사가 내놓는 값을 그대로 기대값으로 박은 테스트를 둔다(`TestPlanResourceVector_MatchesInstallWizard` — 프로파일 넷 × 슬롯 여섯의 정확값). `standard` 는 배수가 정확히 1 이라 관리자 기본값이 그대로 나와야 한다는 것도 따로 고정했다 — 여기가 어긋나면 프로파일을 고르지 않은 기존 스택의 설치 크기가 조용히 바뀐다.
+
+  마법사가 계획을 실어 보내면 그 값이 이긴다. 사용자가 화면에서 조정한 값을 서버가 덮어쓰면 계획 화면이 무의미해진다.
+
 - **런북의 스택 생성·삭제 명령** (`scripts/runbook_local.sh`): 런북에는 인프라를 올리고 내리는 명령만 있었고, 스택을 설치하거나 지우는 길은 없었다. 그래서 "지우고 처음부터 다시 깔아 본다" 를 하려면 `kind delete cluster` 로 클러스터를 통째로 버리는 수밖에 없었는데, 그 길로는 제품이 실제로 쓰는 삭제 경로(`DeleteStack` 의 helm uninstall + CRD 정리)를 **한 번도 밟지 않는다**. 커뮤니티 사용자는 클러스터를 버리지 않고 스택만 지우므로, 검증되지 않은 채 공개되는 경로가 된다.
 
   `stack-up` / `stack-status` / `stack-down` / `pipeline-down` / `purge` 를 추가했다. 생성도 삭제도 helm 을 직접 부르지 않고 **백엔드 API 를 통한다** — 스크립트가 helm 을 직접 부르면 설치 구현이 백엔드와 둘로 갈라져 같은 템플릿이 경로마다 다른 결과를 낸다(`airgap/scripts/29-install-stacks-via-api.sh` 가 같은 판단을 적어 두었다). 도구 선택도 템플릿 API 응답에서 가져온다. 차트 버전 표를 스크립트에 복사해 두면 마이그레이션이 버전을 올릴 때마다 스크립트만 낡는다.
@@ -171,6 +177,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
+
+- **Gitea·Jenkins·Harbor·Nexus 는 자원 계획을 아예 받지 못했다** (`internal/stack/adapter/helm/applied-resources.go`, `internal/stack/adapter/helm/resource-defaults.go`): 계획을 세워도 그 단계가 계획을 찾아보지 않으면 아무 일도 일어나지 않는다. `plannedSlotForStep` 에 슬롯 매핑이 없고 `resourceDefaultKeyForStep` 에 자원 키가 없어, 이 넷은 관리자 기본값조차 실리지 않고 차트 기본값으로 깔렸다. Lite 템플릿(Gitea + Jenkins + Harbor + Argo CD)은 도구 넷 중 **셋**이 여기 해당해, `local` 프로파일이 실제로는 Argo CD 하나에만 적용되고 있었다.
+
+  Harbor 는 릴리스 하나가 7개 컴포넌트로 갈라지므로 계획 벡터를 비율로 나눈다 — 그대로 모든 칸에 실으면 릴리스 하나가 계획의 7배를 요청한다(GitLab 이 이미 같은 이유로 비율을 쓴다). 실측: Lite 를 다시 깔았을 때 Gitea 는 requests 없음 → 500m/512Mi, Harbor core 는 하드코딩 100m/256Mi → 계획값 기반 130m/256Mi 로 바뀌었다.
+
+- **Lite 템플릿 설명이 자기 도구 목록과 어긋났다** (`internal/stack/adapter/repository/memory_template.go`): "레지스트리와 모니터링은 뺐습니다" 라고 적혀 있었지만 도구 목록에는 Harbor 가 들어 있다. 마이그레이션 `000072` 의 시드 문구와도 갈렸는데, 프론트의 `TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES` 가 설명 원문을 키로 영문을 찾으므로 문구가 갈리면 영어 화면에서만 번역이 조용히 빠진다.
 
 - **에어갭 API 설치 스크립트가 400 으로 죽었다** (`airgap/scripts/29-install-stacks-via-api.sh`): 스택 생성 요청의 `storage` 에 `plan_mode` 만 담고 있었다. 검증은 `integrated-create` 이면 `database`·`object_storage` 가 **둘 다** `mode=create` 여야 하고, `create` 모드는 `provider_or_engine` 과 `size`(Gi, 0 초과)를 요구한다. 그래서 이 스크립트는 스택을 만드는 첫 호출부터 `STACK_CONFIG_INVALID` 로 실패했다.
 

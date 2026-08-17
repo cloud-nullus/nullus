@@ -1,5 +1,13 @@
 import type { PlanningProfile } from '../../../types'
 
+// 이 계산은 서버에도 같은 값으로 존재한다 — internal/stack/domain/planning.go.
+// 설치 마법사를 거치지 않는 설치(API·CLI·에어갭)도 템플릿의 planning_profile
+// 대로 깔려야 하기 때문이다.
+//
+// 아래 상수나 계수를 고치면 Go 쪽도 함께 고쳐야 한다. 갈라지면 UI 설치와 API
+// 설치가 서로 다른 크기로 깔린다 — 그 순간을
+// TestPlanResourceVector_MatchesInstallWizard 가 잡는다.
+
 export type ManifestInstallType = 'helm' | 'yaml'
 
 export type PlanningSlot =

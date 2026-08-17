@@ -235,8 +235,8 @@ Commands:
      [--keep-volumes]  DB 볼륨을 남긴다 (기본은 삭제 = 처음 설치 상태)
   stack-up          템플릿으로 스택을 설치한다 (기본: gitea-jenkins-argocd-lite-v1)
                     도구 선택은 템플릿 응답에서 가져오고, 설치는 백엔드 API 가 수행한다
-                    자원 계획은 stack_resource_defaults 를 쓴다 — 템플릿의
-                    planning_profile 로 축소 설치하려면 UI 마법사를 사용한다
+                    자원 계획은 템플릿의 planning_profile 로 백엔드가 계산한다
+                    (Lite = local → 8Gi 노드 하나에 들어가는 크기)
   stack-status <id> 스택 상태 조회. --wait 면 completed/failed 까지 폴링한다
   stack-down [id]   설치된 스택을 제품 삭제 경로(helm uninstall + CRD 정리)로 삭제
                     인자 없으면 --all. 삭제 후 남은 helm 릴리스를 보고한다
@@ -962,11 +962,10 @@ api_delete() {
 # 도구 선택은 템플릿 응답에서 그대로 가져온다. 차트 버전 표를 여기 복사해 두면
 # 마이그레이션이 버전을 올릴 때마다 스크립트가 따로 낡는다.
 #
-# applied_resource_overrides 는 싣지 않는다. 그 계산은 설치 마법사
-# (web/src/features/stack/utils/install-planning-utils.ts)에만 있고, 비워 두면
-# 백엔드가 마이그레이션이 시드한 stack_resource_defaults 를 쓴다 — 값의 출처가
-# 하나로 남는다. 대신 템플릿의 planning_profile 이 요구하는 크기로 설치되지는
-# 않으므로, 8Gi 노드처럼 예산이 빠듯한 곳은 UI 마법사로 설치해야 한다.
+# applied_resource_overrides 도 싣지 않는다 — 백엔드가 템플릿의
+# planning_profile 을 읽어 직접 계산한다 (internal/stack/domain/planning.go).
+# 그래서 Lite 템플릿은 이 명령으로도 8Gi 노드용 크기로 깔린다. 계획을 직접
+# 정하고 싶으면 UI 마법사에서 조정한 값을 실어 보내면 되고, 그때는 그 값이 이긴다.
 # ------------------------------------------------------------
 
 # 템플릿의 tools[] 를 StackConfig 의 슬롯으로 옮긴다. 고르지 않은 슬롯도

@@ -204,11 +204,15 @@ ESO → 시크릿 → SSO)을 그대로 탑니다.
 ./scripts/runbook_local.sh stack-status stk_abc123 --wait
 ```
 
-> **자원 계획 주의.** `stack-up` 은 `applied_resource_overrides` 를 싣지 않고
-> 백엔드가 `stack_resource_defaults`(마이그레이션 시드)를 쓰게 둡니다. 템플릿의
-> `planning_profile`(예: Lite = `local`)로 **축소 설치**하는 계산은 현재 설치
-> 마법사(`web/src/features/stack/utils/install-planning-utils.ts`)에만 있습니다.
-> 8Gi 단일 노드처럼 예산이 빠듯한 환경은 UI 마법사로 설치하세요.
+**자원 계획.** 설치 규모는 템플릿의 `planning_profile` 로 백엔드가 계산합니다
+(`internal/stack/domain/planning.go`). Lite 템플릿은 `local` 프로파일이라 이
+명령으로도 8Gi 노드 하나에 들어가는 크기로 깔립니다 — 예를 들어 Harbor 는
+관리자 기본값 2코어/4Gi 대신 0.5코어/1Gi 로 요청합니다.
+
+계획 계산은 설치 마법사와 같은 값을 냅니다. 두 구현이 갈라지면 UI 설치와 API
+설치가 다른 크기로 깔리므로, `TestPlanResourceVector_MatchesInstallWizard` 가
+마법사의 출력값을 그대로 고정해 두었습니다. 마법사에서 조정한 값을 실어 보내면
+그 값이 서버 계산보다 우선합니다.
 
 ### 4-2. 설치한 것 되돌리기 (삭제)
 

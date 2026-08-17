@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -27,9 +28,10 @@ type CreateStackOutput struct {
 
 // CreateStack creates a new stack configuration, optionally loading defaults from a template.
 type CreateStack struct {
-	stackRepo     port.StackRepository
-	templateRepo  port.TemplateRepository
-	manageHistory *ManageHistory
+	stackRepo        port.StackRepository
+	templateRepo     port.TemplateRepository
+	manageHistory    *ManageHistory
+	resourceDefaults port.ResourceDefaultRepository
 }
 
 // CreateStackOption configures optional CreateStack dependencies.
@@ -39,6 +41,16 @@ type CreateStackOption func(*CreateStack)
 func WithManageHistory(manageHistory *ManageHistory) CreateStackOption {
 	return func(uc *CreateStack) {
 		uc.manageHistory = manageHistory
+	}
+}
+
+// WithResourcePlanning 은 템플릿의 planning_profile 로 설치 규모를 계획하게 한다.
+//
+// 계획 계산은 원래 설치 마법사에만 있었다. 그래서 API 로 만든 스택은 프로파일을
+// 저장만 하고 크기에는 반영하지 않아, Lite 템플릿도 standard 크기로 깔렸다.
+func WithResourcePlanning(resourceDefaults port.ResourceDefaultRepository) CreateStackOption {
+	return func(uc *CreateStack) {
+		uc.resourceDefaults = resourceDefaults
 	}
 }
 
@@ -98,6 +110,9 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	if strings.TrimSpace(input.Config.AccessDomain) == "" {
 		input.Config.AccessDomain = fmt.Sprintf("%s.internal", input.Name)
 	}
+
+	uc.planResources(ctx, &input)
+
 	stack := &domain.Stack{
 		ID:         generateID("stk"),
 		Name:       input.Name,
@@ -131,6 +146,59 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	}
 
 	return &CreateStackOutput{Stack: stack}, nil
+}
+
+// planResources 는 템플릿의 설치 규모 프로파일로 자원 계획을 채운다.
+//
+// 계획은 부가 정보다 — 못 세워도 스택 생성을 막지 않는다. 계획이 없으면 설치가
+// 관리자 기본값(stack_resource_defaults)이나 차트 기본값으로 진행될 뿐이다.
+// 그래서 이 함수는 error 를 돌려주지 않고 조용히 비운다.
+func (uc *CreateStack) planResources(ctx context.Context, input *CreateStackInput) {
+	if uc.resourceDefaults == nil || uc.templateRepo == nil {
+		return
+	}
+	// 호출자가 계획을 실어 보냈으면 그것이 이긴다. 설치 마법사에서 사용자가
+	// 손으로 조정한 값을 서버가 덮어쓰면 계획 화면이 무의미해진다.
+	if len(input.Config.AppliedResourceOverrides) > 0 {
+		return
+	}
+	if strings.TrimSpace(input.TemplateID) == "" {
+		return
+	}
+
+	template, err := uc.templateRepo.GetByID(ctx, input.TemplateID)
+	if err != nil || template == nil {
+		slog.Debug("resource planning skipped: template not found",
+			"template_id", input.TemplateID, "error", err)
+		return
+	}
+
+	defaults, err := uc.resourceDefaults.List(ctx)
+	if err != nil {
+		slog.Warn("resource planning skipped: resource defaults unavailable", "error", err)
+		return
+	}
+
+	baseByToolKey := make(map[string]domain.ResourceVector, len(defaults))
+	for _, item := range defaults {
+		if item == nil {
+			continue
+		}
+		baseByToolKey[item.ToolKey] = domain.ResourceVector{
+			CPURequest:       item.CPURequest,
+			CPULimit:         item.CPULimit,
+			MemoryRequestGi:  item.MemoryRequestGi,
+			MemoryLimitGi:    item.MemoryLimitGi,
+			StorageRequestGi: item.StorageRequestGi,
+			StorageLimitGi:   item.StorageLimitGi,
+		}
+	}
+
+	planned := domain.PlanAppliedResources(template.PlanningProfile, input.Config, baseByToolKey)
+	if len(planned) == 0 {
+		return
+	}
+	input.Config.AppliedResourceOverrides = planned
 }
 
 func validateStorageConfig(storage *domain.StorageConfig) error {

@@ -176,6 +176,42 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		return map[string]any{
 			"resources": resources,
 		}
+	// Gitea 는 파드 하나다 — 계획 벡터를 나누지 않고 그대로 싣는다.
+	case "installing_gitea":
+		return map[string]any{
+			"resources": resources,
+		}
+	// Jenkins 도 컨트롤러 하나다. 빌드는 kubernetes 플러그인이 별도 agent 파드로
+	// 띄우므로 이 벡터에 포함되지 않는다.
+	case "installing_jenkins":
+		return map[string]any{
+			"controller": map[string]any{"resources": resources},
+		}
+	// Harbor 는 릴리스 하나가 7개 컴포넌트로 갈라진다. 계획 벡터를 그대로 모든
+	// 칸에 실으면 릴리스 하나가 계획의 7배를 요청한다 — GitLab 과 같은 이유로
+	// 비율을 나눈다. 합이 대략 1 이 되게 두었다.
+	case "installing_harbor":
+		return map[string]any{
+			"core":       map[string]any{"resources": scaled(0.25)},
+			"jobservice": map[string]any{"resources": scaled(0.15)},
+			"portal":     map[string]any{"resources": scaled(0.05)},
+			"registry": map[string]any{
+				"registry":   map[string]any{"resources": scaled(0.22)},
+				"controller": map[string]any{"resources": scaled(0.08)},
+			},
+			"database": map[string]any{
+				"internal": map[string]any{"resources": scaled(0.18)},
+			},
+			"redis": map[string]any{
+				"internal": map[string]any{"resources": scaled(0.07)},
+			},
+		}
+	// Nexus 는 JVM 하나다. 다만 힙은 values 의 INSTALL4J_ADD_VM_PARAMS 가 따로
+	// 정하므로, 여기서 메모리를 줄여도 힙이 함께 줄지는 않는다.
+	case "installing_nexus":
+		return map[string]any{
+			"nexus": map[string]any{"resources": resources},
+		}
 	case "installing_gitlab":
 		return map[string]any{
 			"gitlab": map[string]any{
@@ -285,6 +321,17 @@ func (o *Orchestrator) resourceDefaultKeyForStep(step string, cfg *domain.StackC
 		return "minio"
 	case "installing_gitlab":
 		return "gitlab-ce"
+	// Gitea·Jenkins·Harbor·Nexus 는 오래 빠져 있었다. 키가 없으면 관리자
+	// 기본값도 계획값도 실리지 않아 차트 기본값 그대로 깔린다 — 8Gi 용 Lite
+	// 템플릿의 도구 넷 중 셋이 여기 해당했다.
+	case "installing_gitea":
+		return "gitea"
+	case "installing_harbor":
+		return "harbor"
+	case "installing_nexus":
+		return "nexus"
+	case "installing_jenkins":
+		return "jenkins"
 	case "installing_argocd":
 		return "argocd"
 	case stepInstallingRunner:

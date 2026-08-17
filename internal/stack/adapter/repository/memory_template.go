@@ -212,7 +212,10 @@ func goldenPathTemplates() []*domain.Template {
 			// 요청을 잡아 512Mi 로 서고, Nexus 는 JVM 고정으로 1.5Gi 를 요구한다.
 			ID:          "gitea-jenkins-argocd-lite-v1",
 			Name:        "Gitea + Jenkins + Argo CD (Lite)",
-			Description: "8Gi 노드 하나에 올라가는 최소 구성입니다. Gitea·Jenkins·Argo CD 만 세우고 레지스트리와 모니터링은 뺐습니다. 로컬 검증이나 소규모 PoC 에 맞습니다.",
+			// 설명 문구는 000072 마이그레이션의 시드 값과 같아야 한다. 프론트의
+			// TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES 가 설명 원문을 키로 영문을
+			// 찾으므로, 문구가 갈리면 영어 화면에서만 번역이 빠진다.
+			Description: "8Gi 노드 하나에 올라가는 최소 구성입니다. Gitea·Jenkins·Harbor·Argo CD 만 세우고 오브젝트 스토리지와 모니터링은 뺐습니다. 로컬 검증이나 소규모 PoC 에 맞습니다.",
 			Tools: []domain.ToolConfig{
 				{Category: "source_repository", Name: "Gitea", HelmVersion: domain.GiteaChartVersion, AppVersion: domain.GiteaAppVersion},
 				{Category: "ci_platform", Name: "Jenkins", HelmVersion: domain.JenkinsChartVersion, AppVersion: domain.JenkinsAppVersion},

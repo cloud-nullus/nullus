@@ -189,7 +189,15 @@ func main() {
 			return orch
 		}),
 	)
-	createStackUC := stackuc.NewCreateStack(pgStackRepo, pgTemplateRepo, stackuc.WithManageHistory(manageHistoryUC))
+	createStackUC := stackuc.NewCreateStack(
+		pgStackRepo,
+		pgTemplateRepo,
+		stackuc.WithManageHistory(manageHistoryUC),
+		// 설치 마법사를 거치지 않는 생성(API/CLI/에어갭)도 템플릿의 설치 규모
+		// 프로파일대로 깔리게 한다. 마법사가 계획을 실어 보낸 경우에는 그 값이
+		// 이기므로 UI 설치 동작은 그대로다.
+		stackuc.WithResourcePlanning(pgResourceDefaultRepo),
+	)
 	listStacksUC := stackuc.NewListStacks(pgStackRepo)
 	deleteStackUC := stackuc.NewDeleteStack(
 		pgStackRepo,
