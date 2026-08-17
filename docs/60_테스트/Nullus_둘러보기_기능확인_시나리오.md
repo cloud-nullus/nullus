@@ -55,4 +55,4 @@
 
 ## 이후 활용
 
-- 이 표의 통과 시나리오가 곧 **기능 회귀 테스트 스위트**(EPIC 예정)의 자동화 대상 목록이 된다 — S0·R1 은 이미 스크립트화됨(responsive-audit), S2 는 API 호출로 자동화 가능, S3~S8 이 Playwright 시나리오 후보.
+- 이 표의 통과 시나리오가 곧 **기능 회귀 테스트 스위트**(nullus-plan#53 "테스트 관리 1차" EPIC)의 자동화 대상 목록이 된다 — S0·R1 은 이미 스크립트화됨(responsive-audit), S2 는 API 호출로 자동화 가능, S3~S8 이 Playwright 시나리오 후보.
