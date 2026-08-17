@@ -203,6 +203,9 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
+	// PVC 는 마지막이다. 릴리스와 StatefulSet 이 아직 살아 있는 동안 지우면
+	// 컨트롤러가 곧바로 다시 만든다.
+	uc.bestEffortDeletePersistentVolumeClaims(ctx, kubeconfig, stack, stackID)
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
 	uc.clearStreamHistory(stackID)
@@ -668,6 +671,47 @@ func (uc *DeleteStack) mergeGatewayNames(primary []string, extra []string) []str
 	}
 	sort.Strings(names)
 	return names
+}
+
+// bestEffortDeletePersistentVolumeClaims 는 스택 네임스페이스의 PVC 를 지운다.
+//
+// helm uninstall 은 PVC 를 남긴다 — StatefulSet 의 volumeClaimTemplate 이 만든
+// 것은 애초에 릴리스 소유가 아니고, 차트가 직접 만든 것도 대개 남긴다. 그래서
+// 스택을 지울 때마다 디스크가 쌓였다(실측: Gitea 10Gi 포함 5개).
+//
+// 라벨로는 잡을 수 없다. bestEffortDeleteStackLabeledResources 의 목록에 pvc 가
+// 이미 있지만 이 PVC 들에는 nullus.io/stack-name 라벨이 붙지 않는다. 실측한
+// 라벨은 Helm 차트 것뿐이었고, 릴리스 라벨조차 없는 것이 있었다:
+//
+//	data-harbor-redis-0    release=harbor, heritage=Helm
+//	gitea-shared-storage   app.kubernetes.io/managed-by=Helm 하나뿐
+//
+// 그래서 네임스페이스를 통째로 훑는다. 범위는 스택 자신의 네임스페이스뿐이다 —
+// cleanupNamespacesForStack 이 함께 도는 default·nullus·envoy-gateway-system 은
+// 다른 스택이나 사용자의 볼륨이 있을 수 있고, 거기서 --all 을 던지면 남의
+// 데이터를 파기한다.
+//
+// 이 단계는 되돌릴 수 없다. Execute 의 마지막에 두는 이유도 그것이다 — 릴리스와
+// StatefulSet 이 모두 사라진 뒤여야 컨트롤러가 PVC 를 다시 만들지 않는다.
+func (uc *DeleteStack) bestEffortDeletePersistentVolumeClaims(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil {
+		return
+	}
+	namespace := strings.TrimSpace(stack.Namespace)
+	if namespace == "" {
+		// 네임스페이스를 모르면 --all 이 현재 컨텍스트의 기본 네임스페이스를
+		// 향한다. 지울 대상을 특정하지 못하면 아무것도 지우지 않는다.
+		return
+	}
+
+	uc.emit(ctx, stackID, "deleting_pvc", "info",
+		fmt.Sprintf("deleting persistent volume claims in namespace %s", namespace))
+	if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "pvc", "-n", namespace,
+		"--all", "--ignore-not-found", "--timeout=120s"); err != nil {
+		slog.Warn("pvc delete warning during stack delete", "namespace", namespace, "error", err)
+		uc.emit(ctx, stackID, "deleting_pvc", "warn",
+			fmt.Sprintf("pvc delete warning in %s: %v", namespace, err))
+	}
 }
 
 // bestEffortDeleteGatewayAPIResources 는 스택의 Gateway/HTTPRoute 를 지운다.
