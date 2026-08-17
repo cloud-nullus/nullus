@@ -62,12 +62,12 @@ Nullus는 이 문제를 해결하기 위해 검증된 OSS 조합을 Golden Path 
 - 배포된 스택 목록과 상태(Running 등)를 확인하고, 선택한 스택의 상세 정보를 우측 패널에서 즉시 조회합니다.
 - OSS 콘솔 링크, 토폴로지, 설치 요약 정보를 제공해 운영 가시성을 높입니다.
 
-### 4) 실시간 설치 로그/진행 상태
+### 4) 설치 마법사와 호환성 게이트
 
-![Nullus stack install progress](.github/assets/stack_install.png)
+![Nullus stack install wizard](.github/assets/stack_install.png)
 
-- Validate -> Install -> Configure -> Health Check -> Complete 단계로 설치 파이프라인 진행률을 추적합니다.
-- Raw 로그와 kubectl 스냅샷을 동시에 노출해 문제 진단 속도를 개선합니다.
+- 스택 이름/접속 도메인/대상 클러스터부터 인증·아티팩트·리소스·Dry Run까지 탭 기반 마법사로 구성합니다.
+- 선택한 OSS 조합의 리소스 합산과 **Pre-Deploy 호환성 게이트**(검증된 버전 매트릭스 매칭)를 배포 전에 확인합니다.
 
 ## 기술 스택
 
