@@ -19,7 +19,7 @@ Nullus는 "클러스터 준비 -> 스택 선택/설치 -> 배포 관측"의 흐�
 
 Nullus는 이 문제를 해결하기 위해 검증된 OSS 조합을 Golden Path 템플릿으로 제공하고, 설치/연동 절차를 UI 기반 워크플로우로 통일하며, 배포 진행률과 로그를 단일 화면에서 추적할 수 있게 설계되었습니다. 이를 통해 신규 프로젝트 온보딩 시간을 줄이고, 환경별 편차로 인한 장애 가능성을 낮추며, 플랫폼 팀의 반복 작업을 자동화합니다.
 
-> 참고: 현재 스택 자동화는 GitLab 기반 워크플로우를 중심으로 구현되어 있습니다. GitHub 호환성은 Phase 2에서 추가할 예정이며, CI/CD 영역은 현재 안정화 작업을 계속 진행 중입니다.
+> 참고: 로컬 E2E 검증이 완료된 조합은 **Gitea + Jenkins + Argo CD (Lite)** 스택입니다. GitLab 기반 워크플로우와 GitHub 연동 조합도 템플릿으로 제공되며, CI/CD 영역은 현재 안정화 작업을 계속 진행 중입니다.
 
 ### 주요 기능
 
@@ -45,14 +45,14 @@ Nullus는 이 문제를 해결하기 위해 검증된 OSS 조합을 Golden Path 
 
 ![Nullus main dashboard](.github/assets/main.png)
 
-- Nullus의 핵심 가치(자동 설치, Golden Path, 모니터링, RBAC)를 한 화면에서 요약합니다.
-- 빠른 시작 액션(클러스터 등록, 스택 시작, CI/CD 진입)으로 초기 온보딩 시간을 줄입니다.
+- Nullus의 핵심 가치(자동 설치, Golden Path 템플릿, CI/CD 파이프라인 관리, 버전 호환성 보장)와 지원 도구를 한 화면에서 요약합니다.
+- 빠른 시작 액션(클러스터 등록, 스택 시작, CI/CD 파이프라인, Quick Start)으로 초기 온보딩 시간을 줄입니다.
 
 ### 2) Stack Template 카탈로그
 
 ![Nullus stack template](.github/assets/stack_template.png)
 
-- GitLab/Argo CD/Prometheus/Grafana/MinIO 같은 도구 조합을 템플릿으로 표준화합니다.
+- Gitea + Jenkins + Argo CD (Lite), GitLab All-in-One, GitHub + Argo CD 같은 검증된 도구 조합을 템플릿으로 표준화합니다.
 - 예상 배포 시간, 리소스 요구사항, Helm/App 버전을 함께 보여 의사결정을 돕습니다.
 
 ### 3) Stack List 및 설치 결과 요약
@@ -60,7 +60,7 @@ Nullus는 이 문제를 해결하기 위해 검증된 OSS 조합을 Golden Path 
 ![Nullus stack list](.github/assets/stack_list.png)
 
 - 배포된 스택 목록과 상태(Running 등)를 확인하고, 선택한 스택의 상세 정보를 우측 패널에서 즉시 조회합니다.
-- OSS 콘솔 링크, 토폴로지, 설치 요약 정보를 제공해 운영 가시성을 높입니다.
+- OSS 콘솔 링크, 파이프라인 토폴로지(Source → CI → CD 상태·헬스), 설치 요약 정보를 제공해 운영 가시성을 높입니다.
 
 ### 4) 실시간 설치 로그/진행 상태
 
