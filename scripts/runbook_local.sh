@@ -1253,22 +1253,46 @@ do_stack_down() {
   [[ "$failed" -eq 0 ]]
 }
 
-# helm uninstall 은 cluster-scoped 리소스를 남긴다. 남은 릴리스를 보여주지
-# 않으면 "지웠다"고 믿은 채 다음 설치가 ownership 충돌로 깨진다.
+# helm uninstall 은 cluster-scoped 리소스를 남긴다. 남은 것을 보여주지 않으면
+# "지웠다"고 믿은 채 다음 설치가 ownership 충돌로 깨진다.
+#
+# helm 릴리스만 보면 안 된다 — 삭제 경로는 Gateway/HTTPRoute 를 남기고, 살아남은
+# Gateway 때문에 Envoy Gateway 가 데이터플레인 Deployment 를 계속 돌린다. 파드가
+# 조용히 자원을 먹는데 helm list 는 깨끗하게 나온다(실측 확인).
 report_cluster_leftovers() {
-  command -v helm >/dev/null 2>&1 || return 0
   command -v kind >/dev/null 2>&1 || return 0
 
   local cluster_name remaining
   while IFS= read -r cluster_name; do
     [[ -z "$cluster_name" ]] && continue
     kind_cluster_exists "$cluster_name" || continue
-    remaining="$(helm list -A --kube-context "kind-$cluster_name" --short 2>/dev/null || true)"
+
+    if command -v helm >/dev/null 2>&1; then
+      remaining="$(helm list -A --kube-context "kind-$cluster_name" --short 2>/dev/null || true)"
+      if [[ -n "$remaining" ]]; then
+        echo "[nullus] kind-$cluster_name 에 남은 helm 릴리스:"
+        printf '%s\n' "$remaining" | sed 's/^/[nullus]   - /'
+      else
+        echo "[nullus] kind-$cluster_name: 남은 helm 릴리스 없음"
+      fi
+    fi
+
+    command -v kubectl >/dev/null 2>&1 || continue
+
+    # 스택 네임스페이스는 kubectl 로 지워지지 않은 채 남는 일이 있다. 그 안의
+    # Gateway 가 살아 있으면 envoy 파드가 계속 뜬다.
+    remaining="$(kubectl --context "kind-$cluster_name" get gateways.gateway.networking.k8s.io \
+      -A --no-headers -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name' 2>/dev/null || true)"
     if [[ -n "$remaining" ]]; then
-      echo "[nullus] kind-$cluster_name 에 남은 helm 릴리스:"
+      echo "[nullus] kind-$cluster_name 에 남은 Gateway (envoy 데이터플레인이 함께 뜬다):"
       printf '%s\n' "$remaining" | sed 's/^/[nullus]   - /'
-    else
-      echo "[nullus] kind-$cluster_name: 남은 helm 릴리스 없음"
+    fi
+
+    remaining="$(kubectl --context "kind-$cluster_name" get ns --no-headers -o custom-columns=':.metadata.name' 2>/dev/null \
+      | grep -E '^nullus' || true)"
+    if [[ -n "$remaining" ]]; then
+      echo "[nullus] kind-$cluster_name 에 남은 스택 네임스페이스:"
+      printf '%s\n' "$remaining" | sed 's/^/[nullus]   - /'
     fi
   done < <(kind_cluster_names)
 }
