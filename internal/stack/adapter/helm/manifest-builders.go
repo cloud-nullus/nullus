@@ -83,7 +83,46 @@ func (o *Orchestrator) defaultGatewayBundleManifest(namespace string) string {
 		namespace = "nullus"
 	}
 
-	manifests := []string{fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1
+	// 도구 URL 과 OIDC redirect URI 는 전부 https:// 로 만들어진다
+	// (buildRedirectURI, oidc-values 의 grafana/argocd/minio, stack_handler).
+	// HTTP 리스너만 열려 있던 동안에는 Keycloak 인증이 끝난 뒤 브라우저가 443 으로
+	// 보내져 연결이 끊겼다 — SSO 를 붙여도 로그인이 완료될 수 없었다.
+	//
+	// 사내 인증서를 지정한 환경(access_domain_tls.enabled)은 그 시크릿을 그대로
+	// 쓴다. 그 위에 Certificate 를 또 만들면 cert-manager 가 사용자 인증서를
+	// 덮어쓴다.
+	tlsSecretName := domain.AccessDomainTLSSecretName
+	issueCert := true
+	if cfg.AccessDomainTLS != nil && cfg.AccessDomainTLS.Enabled {
+		if provided := strings.TrimSpace(cfg.AccessDomainTLS.SecretName); provided != "" {
+			tlsSecretName = provided
+			issueCert = false
+		}
+	}
+
+	manifests := make([]string, 0, 8)
+	if issueCert {
+		// 설치 파이프라인이 이미 만드는 내부 CA 로 와일드카드 인증서를 발급한다.
+		// "*.<도메인>" 은 한 단계만 덮으므로 도구 호스트(argocd.<도메인>)까지다.
+		manifests = append(manifests, fmt.Sprintf(`apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    nullus.io/stack-name: %s
+spec:
+  secretName: %s
+  dnsNames:
+    - "*.%s"
+    - "%s"
+  issuerRef:
+    name: %s
+    kind: ClusterIssuer
+`, domain.AccessDomainCertName, namespace, stackLabel, tlsSecretName, accessDomain, accessDomain, defaultInternalCAIssuer))
+	}
+
+	manifests = append(manifests, fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: %s
@@ -102,7 +141,19 @@ spec:
         # 앱이 게이트웨이에 라우트를 붙일 수 없어 외부에서 접근할 방법이 없다.
         namespaces:
           from: All
-`, gatewayName, namespace, stackLabel, accessDomain)}
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.%s"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: %s
+      allowedRoutes:
+        namespaces:
+          from: All
+`, gatewayName, namespace, stackLabel, accessDomain, accessDomain, tlsSecretName))
 
 	type routeSpec struct {
 		name    string

@@ -97,8 +97,15 @@ const (
 	// GiteaHTTPServiceName 은 Gitea 차트가 만드는 HTTP 진입 Service 다.
 	// 차트가 {release}-http 로 이름을 유도한다 — CI/CD 모듈이 이 주소로 API 를 부른다.
 	GiteaHTTPServiceName = GiteaReleaseName + "-http"
-	GiteaServicePort     = 3000
-	GiteaAdminUser       = "gitea_admin"
+
+	// 접속 도메인용 와일드카드 TLS. 설치가 게이트웨이 HTTPS 리스너를 위해 만들고
+	// 삭제가 이름으로 지운다 — 그 매니페스트의 라벨은 stack.Name 이 아니라 접속
+	// 도메인에서 오므로 라벨 셀렉터로는 잡히지 않는다.
+	// usecase 가 adapter 를 import 하면 레이어 방향이 뒤집히므로 여기 둔다.
+	AccessDomainCertName      = "nullus-access-domain-cert"
+	AccessDomainTLSSecretName = "nullus-access-domain-tls"
+	GiteaServicePort          = 3000
+	GiteaAdminUser            = "gitea_admin"
 	// GiteaAdminSecret 은 gitea.admin.existingSecret 이 참조하는 Secret 이다.
 	// 차트는 이 안에서 username / password 키를 읽는다
 	// (templates/gitea/deployment.yaml — GITEA_ADMIN_USERNAME / GITEA_ADMIN_PASSWORD).

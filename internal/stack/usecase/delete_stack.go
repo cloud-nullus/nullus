@@ -218,12 +218,42 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	uc.bestEffortDeletePersistentVolumeClaims(ctx, kubeconfig, stack, stackID)
 	// Keycloak 정리는 클러스터 밖이라 kubeconfig 와 무관하다. 클러스터 리소스를
 	// 다 치운 뒤에 한다 — Keycloak 이 안 떠 있어도 삭제는 끝나야 하기 때문이다.
+	uc.bestEffortDeleteAccessDomainCertificate(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeprovisionSSO(ctx, stack, stackID)
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
 	uc.clearStreamHistory(stackID)
 
 	return nil
+}
+
+// bestEffortDeleteAccessDomainCertificate 는 게이트웨이 HTTPS 리스너용 와일드카드
+// 인증서를 지운다.
+//
+// 라벨 정리(bestEffortDeleteStackLabeledResources)로는 잡히지 않는다 — 목록에
+// certificate 가 없고, 이 매니페스트의 라벨은 stack.Name 이 아니라 접속 도메인에서
+// 오기 때문이다. cert-manager 는 Certificate 를 지워도 TLS 시크릿을 남기므로
+// 시크릿도 함께 지운다.
+func (uc *DeleteStack) bestEffortDeleteAccessDomainCertificate(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || stack == nil {
+		return
+	}
+	namespace := strings.TrimSpace(stack.Namespace)
+	if namespace == "" {
+		return
+	}
+
+	targets := []struct{ kind, name string }{
+		{"certificate.cert-manager.io", domain.AccessDomainCertName},
+		{"secret", domain.AccessDomainTLSSecretName},
+	}
+	for _, t := range targets {
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", t.kind, t.name, "-n", namespace, "--ignore-not-found"); err != nil {
+			slog.Warn("access-domain certificate delete warning", "kind", t.kind, "name", t.name, "namespace", namespace, "error", err)
+			uc.emit(ctx, stackID, "deleting", "warn",
+				fmt.Sprintf("접속 도메인 %s(%s) 삭제 경고: %v", t.kind, t.name, err))
+		}
+	}
 }
 
 // bestEffortDeprovisionSSO 는 설치가 IdP 에 등록한 OIDC 클라이언트를 지운다.

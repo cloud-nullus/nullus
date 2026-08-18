@@ -91,3 +91,20 @@ func TestDeleteStack_WithoutSSOFactoryStillDeletes(t *testing.T) {
 	uc := newGatewayDeleteStack(t, newKubectlRecorder(), ssoStack())
 	assert.NoError(t, uc.Execute(context.Background(), "stk-sso"))
 }
+
+// 게이트웨이 HTTPS 리스너용 와일드카드 인증서는 설치가 생성한다. 라벨 정리 목록에
+// certificate 가 없고, 그 매니페스트의 라벨도 stack.Name 이 아니라 접속 도메인에서
+// 오므로 라벨 셀렉터로는 잡히지 않는다. 이름으로 지운다.
+//
+// cert-manager 는 Certificate 를 지워도 TLS 시크릿을 남기므로 둘 다 지워야 한다.
+func TestDeleteStack_DeletesAccessDomainCertificateAndSecret(t *testing.T) {
+	rec := newKubectlRecorder()
+	uc := newGatewayDeleteStack(t, rec, ssoStack())
+
+	require.NoError(t, uc.Execute(context.Background(), "stk-sso"))
+
+	assert.True(t, rec.has("delete certificate.cert-manager.io", domain.AccessDomainCertName, "-n ssowire"),
+		"접속 도메인 인증서를 지우지 않으면 설치·삭제를 반복할 때마다 남는다.\n호출: %v", rec.calls)
+	assert.True(t, rec.has("delete secret", domain.AccessDomainTLSSecretName, "-n ssowire"),
+		"cert-manager 는 Certificate 를 지워도 TLS 시크릿을 남긴다.\n호출: %v", rec.calls)
+}
