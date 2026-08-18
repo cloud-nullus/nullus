@@ -17,6 +17,7 @@
 #   KEYCLOAK_URL      Keycloak 주소 — 부트스트랩 자격 발급에 사용
 #   NULLUS_TOKEN      직접 지정 시 부트스트랩 발급을 건너뜀
 #   ORG_ID            조직 ID (미지정 시 첫 조직 사용)
+#   TEMPLATE_ID       설치할 골든패스 템플릿 (기본: gitea-jenkins-argocd-v1)
 #   STACK_NAME        스택 이름 (기본: airgap-stack)
 #   STACK_NAMESPACE   설치 네임스페이스 (기본: nullus)
 #   ACCESS_DOMAIN     접속 도메인 (기본: nullus.internal)
@@ -26,6 +27,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 NULLUS_API="${NULLUS_API:-http://127.0.0.1:18080/api/v1}"
+TEMPLATE_ID="${TEMPLATE_ID:-gitea-jenkins-argocd-v1}"
 STACK_NAME="${STACK_NAME:-airgap-stack}"
 STACK_NAMESPACE="${STACK_NAMESPACE:-nullus}"
 ACCESS_DOMAIN="${ACCESS_DOMAIN:-nullus.internal}"
@@ -100,21 +102,84 @@ CLUSTER_ID="$(api POST /admin/clusters/self-register \
 log "클러스터: ${CLUSTER_ID}"
 
 # --- 3) 스택 생성 -----------------------------------------------------------
-log "스택 생성"
+log "스택 생성 (템플릿: ${TEMPLATE_ID})"
+# 도구 선택은 템플릿 응답에서 가져온다. 여기에 차트 버전 표를 복사해 두면
+# 마이그레이션이 버전을 올릴 때마다 에어갭 경로만 낡는다.
+TEMPLATES_JSON="$(api GET /stacks/templates)" || die "템플릿 목록 조회 실패"
+
 # heredoc 안의 python 이 환경변수를 읽으므로 먼저 export 한다.
-export CLUSTER_ID STACK_NAME STACK_NAMESPACE ACCESS_DOMAIN STORAGE_CLASS
-STACK_PAYLOAD="$(python3 - <<PY
-import json, os
-cfg = {
-    "access_domain": os.environ["ACCESS_DOMAIN"],
-    "authentication": {"provider": "openbao"},
-    "storage": {"plan_mode": "integrated-create"},
+export CLUSTER_ID STACK_NAME STACK_NAMESPACE ACCESS_DOMAIN STORAGE_CLASS TEMPLATE_ID
+STACK_PAYLOAD="$(printf '%s' "${TEMPLATES_JSON}" | python3 - <<'PY'
+import json, os, sys
+
+SLOTS = {
+    "package_registry":         ("artifacts",  "package_registry"),
+    "source_repository":        ("artifacts",  "source_repository"),
+    "container_registry":       ("artifacts",  "container_registry"),
+    "storage_backend":          ("artifacts",  "storage_backend"),
+    "ci_platform":              ("pipeline",   "ci_platform"),
+    "cd_tool":                  ("pipeline",   "cd_tool"),
+    "monitoring_collection":    ("monitoring", "collection"),
+    "monitoring_visualization": ("monitoring", "visualization"),
+    "log_search":               ("logging",    "search"),
+    "trace_layer":              ("logging",    "trace_layer"),
+    "agent":                    ("logging",    "trace_exporter"),
 }
+
+data = json.load(sys.stdin)
+items = data.get("items", data) if isinstance(data, dict) else data
+wanted = os.environ["TEMPLATE_ID"]
+template = next((t for t in items if t.get("id") == wanted), None)
+if template is None:
+    sys.stderr.write("template %s not found\n" % wanted)
+    sys.exit(1)
+
+cfg = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}}
+for section, field in SLOTS.values():
+    cfg[section][field] = {"name": "", "version": "", "enabled": False}
+
+for tool in template.get("tools") or []:
+    slot = SLOTS.get(tool.get("category"))
+    if slot is None:
+        continue
+    section, field = slot
+    cfg[section][field] = {
+        "name": tool.get("name", ""),
+        "version": tool.get("app_version", ""),
+        "enabled": True,
+    }
+
+cfg["access_domain"] = os.environ["ACCESS_DOMAIN"]
+cfg["authentication"] = {"provider": "openbao"}
+
+# storage 는 부분만 채우면 검증에서 400 이 난다 — integrated-create 는
+# database/object_storage 가 둘 다 mode=create 이어야 하고, create 모드는
+# provider_or_engine 과 size(Gi, >0)를 요구한다.
+cfg["storage"] = {
+    "plan_mode": "integrated-create",
+    "database": {
+        "mode": "create",
+        "resource_name": "nullus",
+        "provider_or_engine": "postgres",
+        "version": "17",
+        "size": 50,
+    },
+    "object_storage": {
+        "mode": "create",
+        "resource_name": "nullus-artifacts",
+        "provider_or_engine": "minio",
+        "version": "latest",
+        "size": 100,
+    },
+}
+
 sc = os.environ.get("STORAGE_CLASS", "").strip()
 if sc:
     cfg["storage"]["storage_class"] = sc
+
 print(json.dumps({
     "name": os.environ["STACK_NAME"],
+    "golden_path_id": wanted,
     "cluster_id": os.environ["CLUSTER_ID"],
     "namespace": os.environ["STACK_NAMESPACE"],
     "config": cfg,
@@ -126,7 +191,11 @@ STACK_ID="$(api POST /stacks "${STACK_PAYLOAD}" | jsonget "['id']")" \
 log "스택: ${STACK_ID}"
 
 # --- 4) 배포 시작 -----------------------------------------------------------
+# Pre-Deploy Gate 가 warn 을 내면 명시적 동의 없이는 DEPLOY_COMPAT_WARN_UNACK 로
+# 막힌다. 무인 설치에는 동의할 사람이 없으므로 동의를 실어 보낸다 — block 판정은
+# 이 값과 무관하게 그대로 막힌다.
 log "배포 시작 — 백엔드 파이프라인이 OpenBao/ESO/SSO 까지 수행합니다"
-api POST "/stacks/${STACK_ID}/deploy" '{}' >/dev/null || die "배포 요청 실패"
+api POST "/stacks/${STACK_ID}/deploy" '{"acknowledge_warnings":true}' >/dev/null \
+  || die "배포 요청 실패"
 
 log "완료. 진행 상황은 Nullus UI 또는 GET /stacks/${STACK_ID} 로 확인하세요."

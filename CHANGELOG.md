@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **런북의 스택 생성·삭제 명령** (`scripts/runbook_local.sh`): 런북에는 인프라를 올리고 내리는 명령만 있었고, 스택을 설치하거나 지우는 길은 없었다. 그래서 "지우고 처음부터 다시 깔아 본다" 를 하려면 `kind delete cluster` 로 클러스터를 통째로 버리는 수밖에 없었는데, 그 길로는 제품이 실제로 쓰는 삭제 경로(`DeleteStack` 의 helm uninstall + CRD 정리)를 **한 번도 밟지 않는다**. 커뮤니티 사용자는 클러스터를 버리지 않고 스택만 지우므로, 검증되지 않은 채 공개되는 경로가 된다.
+
+  `stack-up` / `stack-status` / `stack-down` / `pipeline-down` / `purge` 를 추가했다. 생성도 삭제도 helm 을 직접 부르지 않고 **백엔드 API 를 통한다** — 스크립트가 helm 을 직접 부르면 설치 구현이 백엔드와 둘로 갈라져 같은 템플릿이 경로마다 다른 결과를 낸다(`airgap/scripts/29-install-stacks-via-api.sh` 가 같은 판단을 적어 두었다). 도구 선택도 템플릿 API 응답에서 가져온다. 차트 버전 표를 스크립트에 복사해 두면 마이그레이션이 버전을 올릴 때마다 스크립트만 낡는다.
+
+  `purge` 는 파이프라인 → 스택 → Nullus/백킹 → kind 순으로 지운다. 파이프라인이 먼저인 이유는 그것이 스택을 참조하기 때문이다 — 스택을 먼저 지우면 남은 파이프라인이 사라진 네임스페이스를 가리켜 화면에 유령 행으로 남는다. 기본값은 DB 볼륨까지 지우므로 다음 `up` 이 빈 DB에서 마이그레이션을 처음부터 돌린다. `stack-down` 은 끝나고 클러스터에 남은 helm 릴리스를 보고한다 — 남은 것을 보여주지 않으면 "지웠다" 고 믿은 채 다음 설치가 ownership 충돌로 깨진다.
+
 - **제품 둘러보기(투어)** (`web/src/features/tour/`, `web/src/stores/tour-store.ts`, `web/src/components/layout/header.tsx`): 처음 들어온 사람이 "무엇부터 눌러야 하는지" 를 알 방법이 화면 어디에도 없었다. 헤더의 언어 버튼 옆 튜토리얼 버튼을 누르면 클러스터 등록 팝업 → 경량 템플릿 상세 → 기본 템플릿 사용 → 설치 마법사 일곱 탭(Authentication·Artifacts·CI/CD·Observability·Storage·Resources·Dry Run) → 배포 → 스택 목록·워크로드·연결 정보 → CI/CD 여섯 단계(기본 정보·코드 체크아웃·빌드·테스트·보안·생성) → 모니터링·알림 규칙까지 **스물아홉 걸음**을 화면과 팝업과 탭을 실제로 열어 가며 훑는다.
 
   걸음을 이만큼 잘게 나눈 이유는 이 제품의 어려움이 "어느 메뉴에 있는가" 가 아니라 "무엇을 어떤 순서로 정해야 하는가" 에 있기 때문이다. 특히 설치 뒤의 **Gateway PF Copy / /etc/hosts Copy** 는 이름만 보고는 무엇을 하는 버튼인지 알 수 없어 각각 한 걸음을 준다 — 인그레스 없이 스택 화면에 닿는 방법과, 클러스터와 같은 주소로 이미지 pull·브라우저 링크를 맞추는 방법이다.
@@ -165,6 +171,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
+
+- **에어갭 API 설치 스크립트가 400 으로 죽었다** (`airgap/scripts/29-install-stacks-via-api.sh`): 스택 생성 요청의 `storage` 에 `plan_mode` 만 담고 있었다. 검증은 `integrated-create` 이면 `database`·`object_storage` 가 **둘 다** `mode=create` 여야 하고, `create` 모드는 `provider_or_engine` 과 `size`(Gi, 0 초과)를 요구한다. 그래서 이 스크립트는 스택을 만드는 첫 호출부터 `STACK_CONFIG_INVALID` 로 실패했다.
+
+  더 큰 문제는 그 앞에 있었다 — 스크립트에 **템플릿 선택이 아예 없었다**. 검증을 통과했더라도 도구를 하나도 고르지 않은 빈 스택을 만들었을 것이다. `TEMPLATE_ID` 를 받아 템플릿 응답의 `tools[]` 를 `StackConfig` 슬롯으로 옮긴다. 버전 표를 스크립트에 복사하지 않는 이유는 그러면 마이그레이션이 차트 버전을 올릴 때마다 에어갭 경로만 낡기 때문이다.
+
+  배포 요청에는 `acknowledge_warnings` 를 실어 보낸다. Pre-Deploy Gate 가 warn 을 내면 명시적 동의 없이 `DEPLOY_COMPAT_WARN_UNACK` 로 막히는데, 무인 설치에는 동의할 사람이 없다. block 판정은 이 값과 무관하게 그대로 막힌다.
 
 - **모바일 폭에서 사이드바가 본문을 짓눌렀다** (`web/src/stores/sidebar-store.ts`): 사이드바(`<aside>`)는 `shrink-0` 로 항상 240px 를 차지하고 접힘은 수동 토글뿐이라 뷰포트를 몰랐다 — 390px 화면에서 본문이 ~150px 로 눌려 히어로가 한 단어씩 쪼개지고 폼·버튼이 잘렸다. 문서 폭은 넘지 않아(가로 스크롤 없음) 오버플로우 지표로는 잡히지 않는 유형이라, 인증 페이지 전역에서 조용히 깨져 있었다. 768px 미만으로 진입하면 사이드바를 기본 collapse(48px 레일)로 두어 본문 폭을 확보한다. 진입 시점 값은 localStorage 에 쓰지 않아 데스크톱의 접힘/펼침 취향을 덮지 않는다. 리사이즈 중 재판정과 오프캔버스 드로어는 후속으로 남긴다(EPIC 모바일/반응형 점검 1차).
 
