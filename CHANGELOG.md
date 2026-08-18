@@ -178,6 +178,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택을 지워도 PVC 가 남아 디스크가 쌓였다** (`internal/stack/usecase/delete_stack.go`): `helm uninstall` 은 PVC 를 지우지 않는다 — StatefulSet 의 `volumeClaimTemplate` 이 만든 것은 애초에 릴리스 소유가 아니고, 차트가 직접 만든 것도 대개 남긴다. 라벨 기반 정리 목록에 `pvc` 가 이미 들어 있었지만 **하나도 지워지지 않았다**. 그 PVC 들에 `nullus.io/stack-name` 라벨이 붙지 않기 때문이다. 실측한 라벨은 Helm 차트 것뿐이었고, 릴리스 라벨조차 없는 것이 있었다 — `data-harbor-redis-0` 는 `release=harbor`, `gitea-shared-storage` 는 `app.kubernetes.io/managed-by=Helm` 하나뿐이다. 그래서 릴리스 라벨로도 전부 잡을 수 없다.
+
+  스택 네임스페이스를 통째로 훑는다. 범위는 스택 자신의 네임스페이스뿐이다 — `cleanupNamespacesForStack` 이 함께 도는 `default`·`nullus`·`envoy-gateway-system` 은 다른 스택이나 사용자의 볼륨이 있을 수 있고, 거기서 `--all` 을 던지면 남의 데이터를 파기한다. 네임스페이스를 모르는 스택은 건너뛴다. `--all` 이 현재 컨텍스트의 기본 네임스페이스를 향하기 때문이다.
+
+  삭제 순서의 맨 끝에 둔다. 릴리스와 StatefulSet 이 살아 있는 동안 PVC 를 지우면 컨트롤러가 곧바로 다시 만든다 — 아래 Gateway 건과 같은 실패 방식이다.
+
+  **되돌릴 수 없는 동작이다.** 스택을 지우면 그 스택의 볼륨 데이터도 함께 사라진다.
+
 - **스택을 지워도 Gateway 가 남아 envoy 파드가 계속 떴다** (`internal/stack/usecase/delete_stack.go`): 삭제 경로는 Gateway 가 **소유한** 리소스(envoy Deployment·Service 등)를 지웠지만, Gateway 와 HTTPRoute 커스텀 리소스 자체를 지우는 코드가 없었다. Gateway 가 살아 있으면 Envoy Gateway 컨트롤러가 그것을 보고 데이터플레인 Deployment 를 곧바로 다시 만든다 — 그래서 지우는 단계가 있어도 파드는 계속 떠 있었다. `helm list` 는 깨끗하게 나오므로 발견도 늦었다(실측: 삭제 2시간 뒤에도 `envoy-<stack>-gateway` 파드가 2/2 Running). 설치·삭제를 반복하면 envoy 파드가 그만큼 쌓인다.
 
   Gateway·HTTPRoute·GRPCRoute·TCP/TLS/UDPRoute·ReferenceGrant 를 지운다. 순서가 핵심이라 **관리 리소스 삭제보다 먼저** 둔다 — 뒤에 두면 그 사이 컨트롤러가 데이터플레인을 복구해, 방금 지운 Deployment 가 되살아난 채로 삭제가 끝난다. 범위는 스택 자신의 네임스페이스뿐이다. 함께 훑는 `default`·`nullus`·`envoy-gateway-system` 은 다른 스택과 공유될 수 있어 `--all` 로 지우면 남의 게이트웨이가 날아간다.
