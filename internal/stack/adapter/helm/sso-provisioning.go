@@ -46,7 +46,7 @@ func (o *Orchestrator) ssoProvisioner() port.SSOProvisioner {
 	o.mu.Lock()
 	factory := o.ssoFactory
 	cfg := o.stackConfig
-	slug := o.secretOrgID
+	namespace := o.namespace
 	o.mu.Unlock()
 
 	if factory == nil {
@@ -56,13 +56,12 @@ func (o *Orchestrator) ssoProvisioner() port.SSOProvisioner {
 	if cfg != nil {
 		accessDomain = strings.TrimSpace(cfg.AccessDomain)
 	}
-	// 스택 슬러그는 접속 도메인 기준이 가장 안정적이다.
-	// 도메인이 없으면 조직 ID 로 대체한다.
-	stackSlug := strings.TrimSuffix(accessDomain, ".internal")
-	if stackSlug == "" {
-		stackSlug = slug
-	}
-	return factory(accessDomain, stackSlug)
+	// client ID 는 공용 realm 안에서 스택을 구분하는 이름이다. 예전에는 접속
+	// 도메인에서 뽑았는데, 도메인은 스택마다 다르다는 보장이 없다 — 로컬처럼
+	// 모든 스택이 같은 도메인(nullus.local)을 쓰면 서로의 등록을 덮어쓴다.
+	// 네임스페이스는 스택마다 하나씩이고 NewOrchestrator 가 항상 채우므로
+	// (비면 "nullus") 이 값이 스택 식별자로 가장 안정적이다.
+	return factory(accessDomain, strings.TrimSpace(namespace))
 }
 
 // ssoManagedSecrets 는 SSO client secret 에 대한 관리 항목을 만든다.

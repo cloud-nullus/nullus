@@ -117,6 +117,16 @@ type DeleteStack struct {
 	listResourcesFunc   func(ctx context.Context, kubeconfig []byte, namespace string) ([]string, error)
 	deleteResourceFunc  func(ctx context.Context, kubeconfig []byte, namespace, resource string) error
 	runKubectlFunc      func(ctx context.Context, kubeconfig []byte, args ...string) (string, error)
+	// ssoFactory 는 설치 때 OIDC 클라이언트를 만든 provisioner 를 다시 만든다.
+	// 없으면 SSO 프로비저닝을 안 쓰는 설치다(BYO IdP / 미사용).
+	ssoFactory port.SSOProvisionerFactory
+}
+
+// SetSSOProvisionerFactory 는 SSO provisioner 생성기를 주입한다.
+//
+// 설치 때와 같은 팩토리여야 같은 client ID 를 계산해 지울 수 있다.
+func (uc *DeleteStack) SetSSOProvisionerFactory(factory port.SSOProvisionerFactory) {
+	uc.ssoFactory = factory
 }
 
 // runKubectl 은 삭제 경로의 모든 kubectl 호출이 지나는 한 지점이다. 테스트가
@@ -206,11 +216,40 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	// PVC 는 마지막이다. 릴리스와 StatefulSet 이 아직 살아 있는 동안 지우면
 	// 컨트롤러가 곧바로 다시 만든다.
 	uc.bestEffortDeletePersistentVolumeClaims(ctx, kubeconfig, stack, stackID)
+	// Keycloak 정리는 클러스터 밖이라 kubeconfig 와 무관하다. 클러스터 리소스를
+	// 다 치운 뒤에 한다 — Keycloak 이 안 떠 있어도 삭제는 끝나야 하기 때문이다.
+	uc.bestEffortDeprovisionSSO(ctx, stack, stackID)
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
 	uc.clearStreamHistory(stackID)
 
 	return nil
+}
+
+// bestEffortDeprovisionSSO 는 설치가 IdP 에 등록한 OIDC 클라이언트를 지운다.
+//
+// 실패해도 삭제를 멈추지 않는다. 여기서 멈추면 IdP 가 잠깐 안 떠 있다는 이유로
+// 클러스터 리소스가 통째로 남는다 — 훨씬 비싼 누수다.
+func (uc *DeleteStack) bestEffortDeprovisionSSO(ctx context.Context, stack *domain.Stack, stackID string) {
+	if uc.ssoFactory == nil {
+		return
+	}
+	accessDomain := ""
+	if cfg, ok := extractStackConfig(stack.Config); ok {
+		accessDomain = strings.TrimSpace(cfg.AccessDomain)
+	}
+	// 슬러그는 설치 때와 같아야 한다 — 오케스트레이터도 네임스페이스를 쓴다.
+	provisioner := uc.ssoFactory(accessDomain, strings.TrimSpace(stack.Namespace))
+	if provisioner == nil {
+		return
+	}
+	for _, step := range provisioner.ToolSteps() {
+		if err := provisioner.Deprovision(ctx, step); err != nil {
+			clientID, _ := provisioner.ClientIDFor(step)
+			uc.emit(ctx, stackID, "deleting", "warn",
+				fmt.Sprintf("OIDC 클라이언트 삭제 실패 (%s): %v", clientID, err))
+		}
+	}
 }
 
 func (uc *DeleteStack) markDeleteFailedState(ctx context.Context, stack *domain.Stack, stackID string) {

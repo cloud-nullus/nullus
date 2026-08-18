@@ -219,6 +219,11 @@ func main() {
 			return stackhelm.NewHelmInstaller(kubeconfig)
 		},
 	)
+	// 설치가 IdP 에 등록한 OIDC 클라이언트를 삭제 때 함께 지운다. 설치와 같은
+	// 팩토리를 줘야 같은 client ID 를 계산한다.
+	if ssoFactory != nil {
+		deleteStackUC.SetSSOProvisionerFactory(ssoFactory)
+	}
 	addToolsUC := stackuc.NewAddToolsUseCase(pgStackRepo)
 	importConfigUC := stackuc.NewImportConfig(createStackUC, addToolsUC, installStackUC)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)

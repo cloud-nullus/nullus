@@ -29,6 +29,8 @@ func (s stubSSOProvisioner) ToolSteps() []string {
 
 func (s stubSSOProvisioner) Provision(context.Context, port.SSOClientSpec) error { return nil }
 
+func (s stubSSOProvisioner) Deprovision(context.Context, string) error { return nil }
+
 func orchestratorWithSSO(t *testing.T, issuer, accessDomain string) *Orchestrator {
 	t.Helper()
 	o := NewOrchestrator(nil, nil, "ns", WithToolOIDCIssuer(issuer))
