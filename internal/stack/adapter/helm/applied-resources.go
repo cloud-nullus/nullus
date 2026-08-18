@@ -14,15 +14,24 @@ import (
 //
 // 여기 없는 단계는 계획 대상이 아니다. cert-manager·runner 처럼 사용자가 고르는
 // 자리가 아닌 것들과, Loki 처럼 계획 화면에 슬롯이 없는 것들이다.
+//
+// Gitea·Jenkins·Harbor·Nexus 는 오래 빠져 있었다. 그동안 이 넷은 계획을 세워도
+// 차트 기본값으로 깔렸고, 그 결과 Gitea + Jenkins + Harbor + Argo CD 로 이뤄진
+// 8Gi 용 Lite 템플릿이 실제로는 넷 중 Argo CD 하나에만 프로파일이 적용됐다.
+// (고정: TestPlannedResources_CoverEveryToolInLiteTemplate)
 var plannedSlotForStep = map[string]string{
-	"installing_minio":          "artifacts.storageBackend",
-	"installing_gitlab":         "artifacts.sourceRepository",
-	"installing_argocd":         "pipeline.cdTool",
-	"installing_prometheus":     "monitoring.collection",
-	"installing_grafana":        "monitoring.visualization",
-	"installing_log_search":     "logging.search",
-	"installing_opentelemetry":  "logging.traceLayer",
-	stepInstallingOTelCollector: "logging.traceExporter",
+	"installing_minio":          domain.SlotStorageBackend,
+	"installing_gitlab":         domain.SlotSourceRepository,
+	"installing_gitea":          domain.SlotSourceRepository,
+	"installing_harbor":         domain.SlotContainerRegistry,
+	"installing_nexus":          domain.SlotContainerRegistry,
+	"installing_argocd":         domain.SlotCDTool,
+	"installing_jenkins":        domain.SlotCICDPlatform,
+	"installing_prometheus":     domain.SlotMonitoringCollection,
+	"installing_grafana":        domain.SlotMonitoringVisualization,
+	"installing_log_search":     domain.SlotLogSearch,
+	"installing_opentelemetry":  domain.SlotTraceLayer,
+	stepInstallingOTelCollector: domain.SlotTraceExporter,
 }
 
 // plannedResourceFor 는 이 단계에 적용할 계획값을 찾는다.
