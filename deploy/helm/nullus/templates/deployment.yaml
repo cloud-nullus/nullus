@@ -106,6 +106,22 @@ spec:
         - name: NULLUS_AUTH_OIDC_AUDIENCE
           value: {{ .Values.config.auth.oidcAudience | quote }}
         {{- end }}
+        # 설치되는 OSS 의 OIDC 클라이언트를 등록할 Keycloak 관리자 자격.
+        # 주소가 없으면 아무것도 넣지 않는다 — API 가 SSO 프로비저닝을 건너뛴다.
+        {{- $kcAdminUrl := include "nullus.keycloak.adminUrl" . }}
+        {{- if $kcAdminUrl }}
+        - name: NULLUS_KEYCLOAK_ADMIN_URL
+          value: {{ $kcAdminUrl | quote }}
+        - name: NULLUS_KEYCLOAK_REALM
+          value: {{ .Values.config.keycloak.realm | quote }}
+        - name: NULLUS_KEYCLOAK_ADMIN_USER
+          value: {{ .Values.config.keycloak.adminUser | quote }}
+        - name: NULLUS_KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "nullus.keycloak.adminPasswordSecretName" . }}
+              key: {{ include "nullus.keycloak.adminPasswordSecretKey" . }}
+        {{- end }}
         # 자체서명 CA를 포함한 merged CA bundle 경로 (initContainer가 생성)
         - name: SSL_CERT_FILE
           value: /ssl-certs/ca-certificates.crt

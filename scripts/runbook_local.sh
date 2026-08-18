@@ -20,6 +20,12 @@ MINIO_PORT=9000
 MINIO_CONSOLE_PORT=9001
 REDIS_PORT=6380
 KEYCLOAK_PORT=8180
+# 로컬 Keycloak 의 부트스트랩 관리자. docker-compose.dev.yaml 의
+# KC_BOOTSTRAP_ADMIN_USERNAME / KC_BOOTSTRAP_ADMIN_PASSWORD 와 같아야 한다.
+KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
+KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+# setup-keycloak.sh 가 테스트 유저에게 심는 비밀번호. 요약 출력에만 쓴다.
+DEFAULT_KC_PASSWORD_HINT="${KEYCLOAK_TEST_USER_PASSWORD:-nullus123!}"
 
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!}"
 OPENBAO_ADDR="${OPENBAO_ADDR:-http://openbao.nullus.internal}"
@@ -207,6 +213,9 @@ Usage:
   ./scripts/runbook_local.sh info
   ./scripts/runbook_local.sh smoke
   ./scripts/runbook_local.sh logs [api|web|all]
+  ./scripts/runbook_local.sh refresh [--auth=<keycloak|authentik|none>]
+     API/web 만 재빌드·재기동한다. up 과 같은 --auth 를 줘야 인증 구성이 유지된다.
+
   ./scripts/runbook_local.sh down [--kind] [--auth=<keycloak|authentik|none>] [--volumes]
   ./scripts/runbook_local.sh purge [--keep-kind] [--keep-volumes]
   ./scripts/runbook_local.sh stack-up [--template=<id>] [--name=<n>] [--namespace=<ns>]
@@ -575,6 +584,65 @@ do_info() {
   echo -e "${BOLD}════════════════════════════════════════════════════════════════════════${NC}"
 }
 
+# API 프로세스에 인증 관련 환경을 넘긴다. do_up 과 do_refresh 가 같은 값을 써야
+# 한다 — 예전에는 do_refresh 가 이 블록을 빠뜨려, refresh 한 번에 API 가 조용히
+# 무인증 구성으로 되돌아갔다.
+export_api_auth_env() {
+  [[ "$AUTH_PROVIDER" == "none" ]] && return 0
+
+  export NULLUS_AUTH_OIDC_PROVIDER="$AUTH_PROVIDER"
+  case "$AUTH_PROVIDER" in
+    keycloak)  export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${KEYCLOAK_PORT}/realms/nullus" ;;
+    authentik) export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${AUTHENTIK_PORT}/application/o/nullus/" ;;
+  esac
+
+  # 스택이 설치하는 OSS(GitLab/Grafana/ArgoCD/Harbor/MinIO)의 OIDC 클라이언트를
+  # 자동 등록하는 provisioning_sso 단계가 이 자격을 쓴다. 주소를 안 주면 그 단계는
+  # 로그 한 줄만 남기고 통과해서, 설치는 초록불인데 OSS 는 전부 로컬 admin 계정으로
+  # 뜬다. Authentik 은 이 프로비저너가 없으므로 Keycloak 일 때만 넣는다.
+  if [[ "$AUTH_PROVIDER" == "keycloak" ]]; then
+    export NULLUS_KEYCLOAK_ADMIN_URL="http://localhost:${KEYCLOAK_PORT}"
+    export NULLUS_KEYCLOAK_REALM=nullus
+    export NULLUS_KEYCLOAK_ADMIN_USER="$KEYCLOAK_ADMIN_USER"
+    export NULLUS_KEYCLOAK_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD"
+  fi
+}
+
+# 프런트엔드를 선택한 provider 에 맞춰 놓는다.
+#
+# web/.env.development 는 git 에 추적되는 파일이라 여기서 덮어쓰면 실행할 때마다
+# 워킹트리가 더러워진다. Vite 는 .env.development.local 을 더 높은 우선순위로
+# 읽고 이 파일은 gitignore 대상이므로, 생성물은 그쪽에 쓴다.
+sync_web_oidc_env() {
+  local target="$PROJECT_ROOT/web/.env.development.local"
+
+  if [[ "$AUTH_PROVIDER" == "none" ]]; then
+    if [[ -f "$target" ]]; then
+      rm -f "$target"
+      echo "[nullus] removed web/.env.development.local (mock auth 로 되돌림)"
+    fi
+    return 0
+  fi
+
+  local authority
+  case "$AUTH_PROVIDER" in
+    keycloak)  authority="http://localhost:${KEYCLOAK_PORT}/realms/nullus" ;;
+    authentik) authority="http://localhost:${AUTHENTIK_PORT}/application/o/nullus/" ;;
+  esac
+
+  cat >"$target" <<EOF
+# runbook_local.sh 가 생성한 파일이다 — 직접 수정하지 말 것(실행 때마다 덮어쓴다).
+# Vite 는 이 파일을 .env.development 보다 먼저 적용한다.
+# mock 로그인으로 돌아가려면: ./scripts/runbook_local.sh up --auth=none
+VITE_AUTH_MODE=oidc
+VITE_OIDC_PROVIDER=${AUTH_PROVIDER}
+VITE_OIDC_AUTHORITY=${authority}
+# setup-keycloak.sh 가 만드는 클라이언트이자 API 의 audience 기본값이다.
+VITE_OIDC_CLIENT_ID=nullus-app
+EOF
+  echo "[nullus] wrote web/.env.development.local (VITE_AUTH_MODE=oidc, provider=$AUTH_PROVIDER)"
+}
+
 do_up() {
   local seed="false" with_kind="false"
   for arg in "$@"; do
@@ -656,13 +724,7 @@ do_up() {
   export NULLUS_DATABASE_HOST=localhost
   export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
   export NULLUS_SERVER_MODE=development
-  if [[ "$AUTH_PROVIDER" != "none" ]]; then
-    export NULLUS_AUTH_OIDC_PROVIDER="$AUTH_PROVIDER"
-    case "$AUTH_PROVIDER" in
-      keycloak)  export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${KEYCLOAK_PORT}/realms/nullus" ;;
-      authentik) export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${AUTHENTIK_PORT}/application/o/nullus/" ;;
-    esac
-  fi
+  export_api_auth_env
   run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
 
   echo "[nullus] waiting for API health (up to 60s)..."
@@ -675,6 +737,8 @@ do_up() {
   fi
 
   echo ""
+  sync_web_oidc_env
+
   echo "[nullus] installing frontend dependencies..."
   (cd "$PROJECT_ROOT/web" && npm ci --legacy-peer-deps --silent 2>/dev/null || npm ci --legacy-peer-deps)
 
@@ -737,13 +801,14 @@ do_up() {
   esac
   if [[ "$AUTH_PROVIDER" != "none" ]]; then
     echo ""
-    echo "  Web OIDC env (web/.env.development):"
-    echo "    VITE_AUTH_MODE=oidc"
-    echo "    VITE_OIDC_PROVIDER=$AUTH_PROVIDER"
-    [[ "$AUTH_PROVIDER" == "keycloak" ]] && \
-      echo "    VITE_OIDC_AUTHORITY=http://localhost:$KEYCLOAK_PORT/realms/nullus" || \
-      echo "    VITE_OIDC_AUTHORITY=http://localhost:$AUTHENTIK_PORT/application/o/nullus/"
-    echo "    VITE_OIDC_CLIENT_ID=nullus-app"
+    echo "  Web auth      OIDC (web/.env.development.local 자동 생성됨)"
+    echo "                포털 접속 시 $AUTH_PROVIDER 로그인 화면으로 바로 이동한다."
+    if [[ "$AUTH_PROVIDER" == "keycloak" ]]; then
+      echo "  SSO 프로비저닝  ON — 설치되는 OSS 의 OIDC 클라이언트를 Keycloak 에 자동 등록"
+      echo "                (스택 설치 시 authentication.provider=openbao 인 경우)"
+    fi
+    echo ""
+    echo "  Login         admin@nullus.io / devops@nullus.io / dev@nullus.io  (pw: $DEFAULT_KC_PASSWORD_HINT)"
   fi
   echo "  MinIO         http://localhost:$MINIO_CONSOLE_PORT  (nullus/nullus_dev)"
   echo "  Redis         localhost:$REDIS_PORT"
@@ -1395,6 +1460,13 @@ do_down() {
 }
 
 do_refresh() {
+  # refresh 도 provider 를 알아야 한다. 파싱하지 않으면 기본값(keycloak)이 잡혀,
+  # --auth=none 으로 띄운 환경을 refresh 한 번에 OIDC 로 되돌려 버린다.
+  for arg in "$@"; do
+    parse_auth_arg "$arg" || true
+  done
+  validate_auth_provider
+
   ensure_dirs
 
   echo "[nullus] refreshing backend + frontend..."
@@ -1424,6 +1496,7 @@ do_refresh() {
   export NULLUS_DATABASE_HOST=localhost
   export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
   export NULLUS_SERVER_MODE=development
+  export_api_auth_env
   run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
 
   echo "[nullus] waiting for API health (up to 30s)..."
@@ -1437,6 +1510,7 @@ do_refresh() {
 
   # 4. Restart frontend
   echo ""
+  sync_web_oidc_env
   echo "[nullus] starting frontend dev server on :$WEB_PORT..."
   run_bg "web" "$PROJECT_ROOT/web" "npx vite --port $WEB_PORT" "$WEB_PORT"
 
@@ -1492,7 +1566,7 @@ main() {
     stack-down) do_stack_down "${1:---all}" ;;
     pipeline-down) do_pipeline_down ;;
     all) do_all "$@" ;;
-    refresh) do_refresh ;;
+    refresh) do_refresh "$@" ;;
     kind-up) do_kind_up ;;
     kind-down) do_kind_down ;;
     *) usage; exit 1 ;;

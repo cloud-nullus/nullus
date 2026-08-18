@@ -57,6 +57,19 @@ config:
     # 예: https://auth.example.com/realms/nullus
     oidcIssuerUrl: ""
     oidcAudience: nullus-app
+  # 스택이 설치하는 OSS(GitLab/Grafana/ArgoCD/Harbor/MinIO)의 OIDC 클라이언트를
+  # 자동 등록할 Keycloak 관리자 자격이다(설치 파이프라인의 provisioning_sso 단계).
+  #
+  # adminUrl 을 비우면 keycloak.enabled=true 인 경우 클러스터 내부 서비스로
+  # 자동 연결된다. 외부 Keycloak(BYO)을 쓸 때만 주소와 adminPassword 를 채운다.
+  # 둘 다 비고 keycloak.enabled=false 이면 SSO 프로비저닝은 꺼진 채 동작한다 —
+  # 이때 설치되는 OSS 는 각자 로컬 admin 계정으로 뜬다.
+  keycloak:
+    adminUrl: ""
+    realm: nullus
+    adminUser: admin
+    # 서브차트를 쓰면 비워 둔다 — Keycloak 차트가 만든 시크릿을 그대로 참조한다.
+    adminPassword: ""
   helm:
     timeout: 600s
     namespacePrefix: nullus-

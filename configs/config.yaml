@@ -24,11 +24,18 @@ auth:
     issuer_url: http://localhost:8180/realms/nullus
     audience: nullus-app
 
+# 스택이 설치하는 OSS(GitLab/Grafana/ArgoCD/Harbor/MinIO)의 OIDC 클라이언트를
+# 자동 등록할 플랫폼 Keycloak 의 관리자 자격이다 (설치 파이프라인의 provisioning_sso).
+#
+# admin_url 이 비면 프로비저닝을 통째로 건너뛴다 — BYO IdP 나 SSO 미사용 구성이다.
+# 기본값을 비워 두는 것은 의도적이다: 값이 박혀 있으면 Keycloak 을 안 띄운 로컬
+# 실행(runbook --auth=none)에서도 프로비저닝을 시도해 설치가 깨진다.
+# 로컬에서 켜려면 runbook 이 --auth=keycloak 일 때 NULLUS_KEYCLOAK_* 를 넣어 준다.
 keycloak:
-  admin_url: http://localhost:8180
+  admin_url: ""
   realm: nullus
   admin_user: admin
-  admin_password: admin
+  admin_password: ""
 
 helm:
   timeout: 600s

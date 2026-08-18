@@ -68,6 +68,10 @@ func main() {
 		slog.Error("invalid auth configuration", "error", err)
 		os.Exit(1)
 	}
+	if err := cfg.ValidateKeycloakAdmin(); err != nil {
+		slog.Error("invalid keycloak configuration", "error", err)
+		os.Exit(1)
+	}
 	if cfg.TrustsClientSuppliedIdentity() {
 		slog.Warn("AUTH IS NOT ENFORCED: this mode trusts client-supplied X-User-* headers, "+
 			"so any caller can claim any role. Use auth.mode=oidc for a real deployment.",
@@ -140,15 +144,21 @@ func main() {
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
 	// 플랫폼 Keycloak 에 OSS OIDC 클라이언트를 등록하는 팩토리.
-	// KEYCLOAK_URL 이 없으면 SSO 프로비저닝은 건너뛴다 (BYO / 미사용 모드).
+	// keycloak.admin_url 이 비면 SSO 프로비저닝은 건너뛴다 (BYO / 미사용 모드).
+	//
+	// 이 값이 어디서도 주입되지 않아 팩토리가 항상 nil 이던 시절이 있었다. 그때는
+	// provisioning_sso 가 로그 한 줄만 남기고 성공으로 마킹돼, 설치는 초록불인데
+	// OSS 는 전부 로컬 admin 계정으로 뜨는 조용한 누락이 됐다. 그래서 건너뛸 때도
+	// 기동 로그에 남긴다.
 	var ssoFactory stackport.SSOProvisionerFactory
-	if kcURL := strings.TrimSpace(os.Getenv("KEYCLOAK_URL")); kcURL != "" {
+	if kc, ok := cfg.KeycloakAdmin(); ok {
 		ssoFactory = keycloakadapter.NewStackSSOFactory(keycloakadapter.NewKeycloakClient(
-			kcURL,
-			envOrDefault("KEYCLOAK_REALM", "nullus"),
-			envOrDefault("KEYCLOAK_ADMIN_USER", "admin"),
-			os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
+			kc.AdminURL, kc.Realm, kc.AdminUser, kc.AdminPassword,
 		))
+		slog.Info("OSS SSO provisioning enabled", "keycloak_url", kc.AdminURL, "realm", kc.Realm)
+	} else {
+		slog.Info("OSS SSO provisioning disabled: keycloak.admin_url is empty " +
+			"(installed tools will use their own local accounts)")
 	}
 
 	// 스택별 OpenBao 해석기. OpenBao 는 스택마다 배포되므로 주소가 전역 하나일 수 없다.

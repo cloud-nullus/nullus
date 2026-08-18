@@ -48,7 +48,7 @@
 
 | 실행 | 기대 결과 (화면에서 확인) |
 |---|---|
-| `./scripts/runbook_local.sh up --auth=keycloak` | ① `starting docker infra (postgres redis minio keycloak) [auth=keycloak]...` — **provider가 인프라 구성에 반영됨** ② `waiting for keycloak...` → `keycloak is ready, running realm setup...` → `Keycloak realm 'nullus' configured.` — **realm 자동 셋업** ③ 요약 박스에 `Keycloak      http://localhost:8180  (admin/admin)` ④ 요약에 `Web OIDC env (web/.env.development):` 블록 — `VITE_AUTH_MODE=oidc`, `VITE_OIDC_PROVIDER=keycloak`, `VITE_OIDC_AUTHORITY=http://localhost:8180/realms/nullus`, `VITE_OIDC_CLIENT_ID=nullus-app` |
+| `./scripts/runbook_local.sh up --auth=keycloak` | ① `starting docker infra (postgres redis minio keycloak) [auth=keycloak]...` — **provider가 인프라 구성에 반영됨** ② `waiting for keycloak...` → `keycloak is ready, running realm setup...` → `Keycloak realm 'nullus' configured.` — **realm 자동 셋업** ③ 요약 박스에 `Keycloak      http://localhost:8180  (admin/admin)` ④ `wrote web/.env.development.local (VITE_AUTH_MODE=oidc, provider=keycloak)` — **프런트가 자동으로 OIDC 모드로 전환됨** ⑤ 요약에 `Web auth      OIDC (web/.env.development.local 자동 생성됨)` 과 `SSO 프로비저닝  ON` |
 
 실패 시 확인: `keycloak realm setup failed (non-blocking...)`가 뜨면 Keycloak 기동 지연 — `scripts/setup-keycloak.sh` 수동 재실행. API 실패는 `.runbook-logs/api.log`.
 
@@ -73,11 +73,13 @@
 
 ### S4. 브라우저 관점 로그인 플로우 (Authorization Code + PKCE)
 
-`web/.env.development`는 기본 `VITE_AUTH_MODE=mock`이므로, S1 요약이 안내한 값으로 전환한다.
+S1의 `up --auth=keycloak`이 `web/.env.development.local`을 이미 만들어 뒀으므로 손으로 고칠 것이 없다.
+(추적 파일인 `web/.env.development`는 그대로 `VITE_AUTH_MODE=mock`으로 남는다 — Vite가 `.local`을 더 높은
+우선순위로 읽는다. 그래서 워킹트리가 더러워지지 않는다.)
 
 | # | 실행 | 기대 결과 |
 |---|---|---|
-| 4-1 | `web/.env.development`를 다음으로 교체:<br>`VITE_AUTH_MODE=oidc`<br>`VITE_OIDC_PROVIDER=keycloak`<br>`VITE_OIDC_AUTHORITY=http://localhost:8180/realms/nullus`<br>`VITE_OIDC_CLIENT_ID=nullus-app` | Vite dev server가 `.env` 변경을 감지해 자동 재시작 (재시작 로그가 `.runbook-logs/web.log`에 남음. 자동 재시작이 안 되면 `down` 후 `up --auth=keycloak` 재실행) |
+| 4-1 | `cat web/.env.development.local` | `VITE_AUTH_MODE=oidc` / `VITE_OIDC_PROVIDER=keycloak` / `VITE_OIDC_AUTHORITY=http://localhost:8180/realms/nullus` / `VITE_OIDC_CLIENT_ID=nullus-app` — runbook이 생성한 값. 반영이 안 됐으면 `./scripts/runbook_local.sh refresh` |
 | 4-2 | 브라우저: http://localhost:5173 접속 → 로그인 진입 | **Keycloak 로그인 페이지로 redirect** — 주소창이 `http://localhost:8180/realms/nullus/protocol/openid-connect/auth?...client_id=nullus-app...` |
 | 4-3 | admin@nullus.io / `nullus123!` 입력 | 인증 성공 → **`http://localhost:5173/...`으로 redirect back**, 웹 UI에 로그인된 상태로 진입 |
 | 4-4 | (선택) 개발자도구 Network 탭 | `.../protocol/openid-connect/token` 요청에 `code_verifier` 포함 (PKCE) |
@@ -95,11 +97,10 @@
 | # | 실행 | 기대 결과 |
 |---|---|---|
 | 6-1 | `./scripts/runbook_local.sh down` | api/web 프로세스 중지 + `stopping docker infra...` + `all stopped` (keycloak 컨테이너 포함 정리) |
-| 6-2 | `web/.env.development`를 `VITE_AUTH_MODE=mock` 한 줄로 원복 | — (mock 로그인 데모 준비) |
-| 6-3 | `./scripts/runbook_local.sh up --auth=none` | ① `starting docker infra (postgres redis minio) [auth=none]...` — **keycloak 미포함** ② 요약에 `Auth          none (frontend mock auth: VITE_AUTH_MODE=mock)` ③ Web OIDC env 안내 블록 **미출력** |
-| 6-4 | `docker ps --format '{{.Names}}' \| grep -c keycloak; true` | `0` — Keycloak 컨테이너 없음 (리소스 절약 확인) |
-| 6-5 | `./scripts/runbook_local.sh smoke --auth=none` | API smoke 14건 OK + `[auth smoke: provider=none]` 아래 `auth=none   SKIPPED (mock auth)`, `14 passed, 0 failed` |
-| 6-6 | (선택) 브라우저 http://localhost:5173 → admin@nullus.dev / admin123 | Keycloak 없이 mock 로그인 성공 |
+| 6-2 | `./scripts/runbook_local.sh up --auth=none` | ① `starting docker infra (postgres redis minio) [auth=none]...` — **keycloak 미포함** ② `removed web/.env.development.local (mock auth 로 되돌림)` — **원복도 자동** ③ 요약에 `Auth          none (frontend mock auth: VITE_AUTH_MODE=mock)` ④ Web auth/SSO 블록 **미출력** |
+| 6-3 | `docker ps --format '{{.Names}}' \| grep -c keycloak; true` | `0` — Keycloak 컨테이너 없음 (리소스 절약 확인) |
+| 6-4 | `./scripts/runbook_local.sh smoke --auth=none` | API smoke 14건 OK + `[auth smoke: provider=none]` 아래 `auth=none   SKIPPED (mock auth)`, `14 passed, 0 failed` |
+| 6-5 | (선택) 브라우저 http://localhost:5173 → admin@nullus.dev / admin123 | Keycloak 없이 mock 로그인 성공 |
 
 ### S7. `--authentik` 하위호환 별칭 확인 + 최종 정리 — `down`
 
