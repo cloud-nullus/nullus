@@ -12,17 +12,13 @@ import (
 // client secret 을 리터럴로 담고 있었다.
 //
 // 두 가지를 바꾼다.
-//   - issuer/auth_url 을 accessDomain 기반으로 생성 (하드코딩 도메인 제거)
+//   - issuer 는 플랫폼 설정에서 주입받는다 (WithToolOIDCIssuer)
 //   - client secret 은 값이 아니라 Secret 참조로 전달
-
-// oidcIssuerURL 은 Keycloak realm 의 issuer 주소를 만든다.
-func oidcIssuerURL(accessDomain string) string {
-	domain := strings.TrimSpace(accessDomain)
-	if domain == "" {
-		return ""
-	}
-	return fmt.Sprintf("https://keycloak.%s/realms/nullus", domain)
-}
+//
+// issuer 를 한때 accessDomain 에서 "https://keycloak.<도메인>/realms/nullus" 로
+// 만들어 냈는데, 플랫폼 Keycloak 은 스택마다가 아니라 하나뿐이라 스택이 둘 이상이면
+// 둘 중 하나는 반드시 없는 주소를 받았다. 접두사가 다른 배포(auth.nullus.io)도
+// 표현할 수 없었다. 도구 자신의 주소(argocd.<도메인>)만 accessDomain 을 따른다.
 
 // oidcValuesForStep 은 도구별 OIDC values 를 만든다.
 //
@@ -40,11 +36,13 @@ func (o *Orchestrator) oidcValuesForStep(step string) map[string]any {
 
 	o.mu.Lock()
 	cfg := o.stackConfig
+	issuer := o.toolOIDCIssuer
 	o.mu.Unlock()
 	if cfg == nil {
 		return nil
 	}
-	issuer := oidcIssuerURL(cfg.AccessDomain)
+	// issuer 가 없으면 값을 절반만 넣지 않는다. 반쯤 설정된 도구는 깨진 로그인
+	// 화면을 보여 주지만, 아예 없으면 로컬 계정으로라도 들어갈 수 있다.
 	if issuer == "" {
 		return nil
 	}

@@ -103,6 +103,8 @@ type Orchestrator struct {
 	secretOrgID string
 	// ssoFactory 는 스택별 SSO provisioner 생성기다 (auth 모듈 구현체 주입).
 	ssoFactory port.SSOProvisionerFactory
+	// toolOIDCIssuer 는 설치되는 OSS 가 쓸 Keycloak issuer 다 (조립 지점에서 주입).
+	toolOIDCIssuer string
 	// imageProjectName 은 레지스트리에 만들 프로젝트 이름이다.
 	//
 	// CI/CD 모듈의 그룹 경로와 같아야 이미지 주소가 맞는다. 모듈 간 직접
@@ -126,6 +128,17 @@ func WithResourceDefaultRepository(repo port.ResourceDefaultRepository) Orchestr
 func WithImageProjectName(name string) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.imageProjectName = strings.TrimSpace(name)
+	}
+}
+
+// WithToolOIDCIssuer 는 설치되는 OSS 에 넣을 Keycloak issuer 를 주입한다.
+//
+// 포털이 로그인한 Keycloak 과 오리진이 같아야 SSO 세션 쿠키가 실려 도구로 재인증
+// 없이 넘어간다. 그래서 이 값은 스택의 access_domain 이 아니라 플랫폼 설정에서
+// 온다 — 플랫폼 Keycloak 은 스택마다가 아니라 하나뿐이기 때문이다.
+func WithToolOIDCIssuer(issuer string) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.toolOIDCIssuer = strings.TrimRight(strings.TrimSpace(issuer), "/")
 	}
 }
 

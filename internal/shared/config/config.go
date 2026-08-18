@@ -57,7 +57,10 @@ type OIDCConfig struct {
 }
 
 type KeycloakConfig struct {
-	AdminURL      string `mapstructure:"admin_url"`
+	AdminURL string `mapstructure:"admin_url"`
+	// PublicURL 은 브라우저가 접근하는 Keycloak 주소다. AdminURL 이 클러스터 내부
+	// 주소일 수 있어 따로 둔다. 비우면 auth.oidc.issuer_url 을 물려받는다.
+	PublicURL     string `mapstructure:"public_url"`
 	Realm         string `mapstructure:"realm"`
 	AdminUser     string `mapstructure:"admin_user"`
 	AdminPassword string `mapstructure:"admin_password"`
@@ -108,6 +111,7 @@ func LoadConfig(path string) (*Config, error) {
 func bindKeycloakAdminEnv(v *viper.Viper) {
 	for key, names := range map[string][]string{
 		"keycloak.admin_url":      {"NULLUS_KEYCLOAK_ADMIN_URL", "KEYCLOAK_URL"},
+		"keycloak.public_url":     {"NULLUS_KEYCLOAK_PUBLIC_URL", "KEYCLOAK_PUBLIC_URL"},
 		"keycloak.realm":          {"NULLUS_KEYCLOAK_REALM", "KEYCLOAK_REALM"},
 		"keycloak.admin_user":     {"NULLUS_KEYCLOAK_ADMIN_USER", "KEYCLOAK_ADMIN_USER"},
 		"keycloak.admin_password": {"NULLUS_KEYCLOAK_ADMIN_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD"},

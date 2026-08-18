@@ -1134,7 +1134,10 @@ do_stack_up() {
 
   [[ -n "$stack_name" ]] || stack_name="nullus-$(printf '%s' "$template_id" | sed 's/-v1$//' | cut -c1-24)"
   [[ -n "$namespace" ]] || namespace="$stack_name"
-  [[ -n "$domain" ]] || domain="${stack_name}.internal"
+  # 기본 접속 도메인. sso_provisioner.go 의 defaultAccessDomain, setup-keycloak.sh 가
+  # 등록하는 redirect URI, 차트 ingress 기본값이 모두 nullus.local 이다. 여기만
+  # "<스택명>.internal" 로 어긋나 있어 SSO redirect 주소가 맞지 않았다.
+  [[ -n "$domain" ]] || domain="nullus.local"
 
   if ! api_is_up; then
     echo "[nullus] API 가 떠 있지 않습니다 (:$API_PORT). 'up' 후 다시 실행하세요."

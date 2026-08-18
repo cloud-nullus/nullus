@@ -114,6 +114,10 @@ spec:
           value: {{ $kcAdminUrl | quote }}
         - name: NULLUS_KEYCLOAK_REALM
           value: {{ .Values.config.keycloak.realm | quote }}
+        {{- if .Values.config.keycloak.publicUrl }}
+        - name: NULLUS_KEYCLOAK_PUBLIC_URL
+          value: {{ .Values.config.keycloak.publicUrl | quote }}
+        {{- end }}
         - name: NULLUS_KEYCLOAK_ADMIN_USER
           value: {{ .Values.config.keycloak.adminUser | quote }}
         - name: NULLUS_KEYCLOAK_ADMIN_PASSWORD

@@ -66,6 +66,9 @@ config:
   # 이때 설치되는 OSS 는 각자 로컬 admin 계정으로 뜬다.
   keycloak:
     adminUrl: ""
+    # 설치되는 OSS 가 브라우저를 보낼 Keycloak 주소. 비우면 auth.oidcIssuerUrl 을
+    # 물려받는다 — 포털과 같은 오리진이어야 SSO 세션이 이어지므로 대개 그게 맞다.
+    publicUrl: ""
     realm: nullus
     adminUser: admin
     # 서브차트를 쓰면 비워 둔다 — Keycloak 차트가 만든 시크릿을 그대로 참조한다.
