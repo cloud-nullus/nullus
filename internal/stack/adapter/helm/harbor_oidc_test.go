@@ -2,6 +2,7 @@ package helm
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -95,4 +96,37 @@ func TestHarborProvision_OIDCScriptTolerantOfRerun(t *testing.T) {
 	// 성공 코드를 명시적으로 다루는지 본다(200 계열을 성공으로).
 	assert.True(t, strings.Contains(manifest, "200"),
 		"재실행 시 Harbor 응답 코드를 다루지 않으면 설치가 깨진다")
+}
+
+// 생성된 스크립트의 JSON 이 실제로 파싱되는지 본다.
+//
+// 문자열만 검사하면 따옴표가 깨져도 통과한다 — 실제로 그렇게 나갔고 Harbor 가
+// 422 로 거부했다:
+//
+//	parsing configurations body ... invalid character 'a' looking for
+//	beginning of object key string
+//
+// 셸이 -d "{"auth_mode":...}" 를 받으면 바깥 따옴표가 첫 안쪽 따옴표에서 끝나
+// 따옴표 없는 쓰레기가 전달된다.
+func TestHarborProvision_OIDCPayloadIsValidJSON(t *testing.T) {
+	script := harborOIDCScript("ssoharbor-harbor", "http://keycloak.nullus.local:8180/realms/nullus")
+
+	// curl 의 -w '%{http_code}' 에도 중괄호가 있으므로 본문 시작을 키로 찾는다.
+	start := strings.Index(script, `{"auth_mode"`)
+	require.GreaterOrEqual(t, start, 0, "JSON 본문을 찾지 못했다:\n%s", script)
+	end := strings.Index(script[start:], "}")
+	require.Greater(t, end, 0, "JSON 끝을 찾지 못했다:\n%s", script)
+
+	// 셸의 따옴표 교차와 변수는 런타임에 풀린다 — 파싱을 위해 자리만 채운다.
+	payload := strings.ReplaceAll(script[start:start+end+1], `"'"$HARBOR_OIDC_SECRET"'"`, `"dummy-secret"`)
+
+	var parsed map[string]any
+	require.NoErrorf(t, json.Unmarshal([]byte(payload), &parsed),
+		"Harbor 에 보내는 본문이 JSON 이 아니다:\n%s", payload)
+
+	assert.Equal(t, "oidc_auth", parsed["auth_mode"])
+	assert.Equal(t, "ssoharbor-harbor", parsed["oidc_client_id"])
+	assert.Equal(t, "http://keycloak.nullus.local:8180/realms/nullus", parsed["oidc_endpoint"])
+	assert.Equal(t, "dummy-secret", parsed["oidc_client_secret"])
+	assert.Equal(t, true, parsed["oidc_auto_onboard"])
 }

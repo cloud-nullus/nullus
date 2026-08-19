@@ -103,8 +103,23 @@ func harborOIDCScript(clientID, issuer string) string {
 		verifyCert = "true"
 	}
 
+	// JSON 은 셸 작은따옴표로 감싸고 비밀값만 따옴표를 교차해 끼운다.
+	//
+	//   -d '{... "x":"'"$VAR"'" ...}'
+	//
+	// 큰따옴표로 감싸고 \" 로 이스케이프하는 방식은 한 겹만 어긋나도 셸이
+	// 바깥 따옴표를 첫 안쪽 따옴표에서 닫아 버린다. 실제로 그렇게 나가서
+	// Harbor 가 422 로 거부했다("invalid character 'a' looking for beginning
+	// of object key string"). heredoc 은 매니페스트 들여쓰기와 충돌해 못 쓴다
+	// (종료 표식이 열 맞춤으로 밀리면 셸이 인식하지 못한다).
+	//
+	// 비밀값에 따옴표가 들어가면 여전히 깨지지만, 생성 비밀번호는 영숫자만
+	// 쓴다(secretAlphabet).
 	return fmt.Sprintf(`
-code=$(curl -s -o /tmp/oidc -w '%%{http_code}' -u "admin:$HARBOR_PASSWORD"   -H 'Content-Type: application/json' -X PUT   "$HARBOR_URL/api/v2.0/configurations"   -d "{"auth_mode":"oidc_auth","oidc_name":"Keycloak","oidc_endpoint":"%s","oidc_client_id":"%s","oidc_client_secret":"$HARBOR_OIDC_SECRET","oidc_scope":"openid,profile,email","oidc_verify_cert":%s,"oidc_auto_onboard":true,"oidc_user_claim":"preferred_username"}")
+payload='{"auth_mode":"oidc_auth","oidc_name":"Keycloak","oidc_endpoint":"%s","oidc_client_id":"%s","oidc_client_secret":"'"$HARBOR_OIDC_SECRET"'","oidc_scope":"openid,profile,email","oidc_verify_cert":%s,"oidc_auto_onboard":true,"oidc_user_claim":"preferred_username"}'
+code=$(curl -s -o /tmp/oidc -w '%%{http_code}' -u "admin:$HARBOR_PASSWORD" \
+  -H 'Content-Type: application/json' -X PUT \
+  "$HARBOR_URL/api/v2.0/configurations" -d "$payload")
 case "$code" in
   200) echo "harbor OIDC 설정 완료 (client=%s)" ;;
   *) echo "harbor OIDC 설정 실패 (HTTP $code)"; cat /tmp/oidc; exit 1 ;;
