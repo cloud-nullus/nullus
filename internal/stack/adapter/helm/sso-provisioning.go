@@ -57,6 +57,9 @@ func gitlabOmniauthProvider(clientID, issuer, baseURL string) string {
 	// client_options 를 고쳐도 소용없다 — discovery 가 그보다 먼저 돈다.
 	// http 에서는 discovery 를 끄고 엔드포인트를 직접 준다. https 면 discovery 가
 	// 정상 동작하고, 엔드포인트가 바뀌어도 따라가므로 그쪽이 더 견고하다.
+	// pkce 는 항상 켠다. SSO 프로비저너가 gitlab 클라이언트를 PKCE(S256) 요구로
+	// 등록하므로, 끄면 콜백이 "Missing parameter: code challenge method" 로
+	// 깨진다. 젬의 기본 pkce_options 가 이미 S256 이라 방식은 지정하지 않는다.
 	discovery := "true"
 	endpoints := ""
 	if scheme == "http" {
@@ -84,9 +87,6 @@ args:
   issuer: "%s"
   discovery: %s
   uid_field: "preferred_username"
-  # Keycloak 클라이언트를 PKCE(S256) 요구로 등록하므로 함께 켠다. 끄면 콜백이
-  # "Missing parameter: code challenge method" 로 깨진다.
-  # 젬의 기본 pkce_options 가 이미 S256 이라 방식은 따로 지정하지 않는다.
   pkce: true
   client_options:
     identifier: "%s"
