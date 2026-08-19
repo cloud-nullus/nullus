@@ -122,3 +122,30 @@ func TestJenkinsOIDC_WithoutSSOYieldsNoValues(t *testing.T) {
 }
 
 var _ = strings.Contains
+
+// Jenkins 도 redirect_uri 를 자기 루트 URL 에서 만든다. 그런데 jenkinsUrl 이
+// 아예 설정돼 있지 않아 클러스터 내부 주소가 잡혔고, 등록된 redirect 와 달라
+// 로그인이 "Invalid parameter: redirect_uri" 로 막혔다. Harbor 의 externalURL,
+// Gitea 의 ROOT_URL 과 같은 실패다.
+func TestJenkinsURL_MatchesRegisteredRedirect(t *testing.T) {
+	o := ssoOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true)
+	values := o.jenkinsURLValues()
+
+	controller := values["controller"].(map[string]any)
+	assert.Equal(t, "https://jenkins.nullus.local", controller["jenkinsUrl"],
+		"등록된 redirect(https://jenkins.<도메인>/securityRealm/finishLogin)와 같은 출처여야 한다")
+}
+
+// 접속 도메인이 없으면 정할 수 없다 — 엉뚱한 주소를 박느니 차트 기본값에 맡긴다.
+func TestJenkinsURL_EmptyWithoutAccessDomain(t *testing.T) {
+	o := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus-sso")
+	o.SetStackConfig(domain.StackConfig{})
+	assert.Empty(t, o.jenkinsURLValues())
+}
+
+// SSO 를 안 쓰면 http 다 — Harbor·Gitea 와 같은 판단을 공유해야 한다.
+func TestJenkinsURL_SchemeFollowsSharedDecision(t *testing.T) {
+	o := ssoOrchestrator(t, "http://kc/realms/nullus", false)
+	controller := o.jenkinsURLValues()["controller"].(map[string]any)
+	assert.Equal(t, "http://jenkins.nullus.local", controller["jenkinsUrl"])
+}

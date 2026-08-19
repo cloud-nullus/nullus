@@ -28,17 +28,24 @@ func TestToolURLScheme_HTTPWithoutSSO(t *testing.T) {
 	assert.Equal(t, "http", ssoOrchestrator(t, "", true).toolURLScheme())
 }
 
-// Harbor 와 Gitea 가 같은 판단을 써야 한다 — 갈라지면 한쪽만 로그인이 깨진다.
-func TestToolURLScheme_SharedByHarborAndGitea(t *testing.T) {
+// 도구는 저마다 자기 기본 주소 설정에서 redirect_uri 를 만든다. 셋이 같은 판단을
+// 써야 한다 — 갈라지면 그 도구만 로그인이 깨지고, 원인은 인증이 아니라 주소
+// 설정에 있어 찾기 어렵다. 실제로 Harbor·Gitea·Jenkins 에서 차례로 같은 실패가 났다:
+//
+//	We are sorry... Invalid parameter: redirect_uri
+func TestToolURLScheme_SharedByAllToolsThatBuildRedirectURI(t *testing.T) {
 	o := ssoOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true)
 	scheme := o.toolURLScheme()
 
 	harbor := o.harborExternalURLValues(&domainStackConfigWithAccessDomain)
-	assert.Equal(t, scheme+"://harbor.nullus.local", harbor["externalURL"])
+	assert.Equal(t, scheme+"://harbor.nullus.local", harbor["externalURL"], "Harbor externalURL")
 
 	gitea := o.giteaSharedServiceValues()
 	server := gitea["gitea"].(map[string]any)["config"].(map[string]any)["server"].(map[string]any)
-	assert.Equal(t, scheme+"://gitea.nullus.local/", server["ROOT_URL"])
+	assert.Equal(t, scheme+"://gitea.nullus.local/", server["ROOT_URL"], "Gitea ROOT_URL")
+
+	jenkins := o.jenkinsURLValues()["controller"].(map[string]any)
+	assert.Equal(t, scheme+"://jenkins.nullus.local", jenkins["jenkinsUrl"], "Jenkins jenkinsUrl")
 }
 
 var domainStackConfigWithAccessDomain = domain.StackConfig{AccessDomain: "nullus.local"}

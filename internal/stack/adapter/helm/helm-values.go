@@ -33,6 +33,7 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 	// 모르는 서버로 보고 스캔을 거부한다.
 	if step == "installing_jenkins" {
 		base = mergeMaps(base, jenkinsGiteaServerValues(o.namespace))
+		base = mergeMaps(base, o.jenkinsURLValues())
 	}
 
 	// Gitea 의 DB 호스트도 실제 네임스페이스를 알아야 한다.
@@ -670,4 +671,32 @@ func mergeOIDCValues(base, oidc map[string]any) map[string]any {
 		}
 	}
 	return base
+}
+
+// jenkinsURLValues 는 Jenkins 가 자기 주소를 알게 한다.
+//
+// oic-auth 는 redirect_uri 를 이 값에서 만든다. 설정하지 않으면 클러스터 내부
+// 주소가 잡혀 Keycloak 에 등록된 redirect 와 어긋나고, 로그인이
+// "Invalid parameter: redirect_uri" 로 막힌다 — Harbor 의 externalURL,
+// Gitea 의 ROOT_URL 과 같은 실패다. 스킴도 그 둘과 같은 판단을 쓴다.
+//
+// 접속 도메인이 없으면 아무것도 넣지 않는다. 엉뚱한 주소를 박느니 차트 기본값에
+// 맡기는 편이 낫다.
+func (o *Orchestrator) jenkinsURLValues() map[string]any {
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+	if cfg == nil {
+		return nil
+	}
+	accessDomain := strings.TrimSpace(cfg.AccessDomain)
+	if accessDomain == "" {
+		return nil
+	}
+
+	return map[string]any{
+		"controller": map[string]any{
+			"jenkinsUrl": fmt.Sprintf("%s://jenkins.%s", o.toolURLScheme(), accessDomain),
+		},
+	}
 }
