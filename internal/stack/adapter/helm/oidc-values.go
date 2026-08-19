@@ -147,17 +147,26 @@ requestedScopes:
 //
 // 이 조각만 담는다. 기존 조각(Gitea credential)까지 실으면 병합에서 그것을 덮어
 // multibranch job 이 브랜치를 하나도 찾지 못한다.
+//
+// 속성 이름은 oic-auth 의 스키마를 그대로 따라야 한다. 맞지 않으면 JCasC 가
+// 부팅을 중단시켜 Jenkins 가 통째로 못 뜬다:
+//
+//	UnknownAttributesException: oic: Invalid configuration elements for type:
+//	class org.jenkinsci.plugins.oic.OicSecurityRealm : wellKnownOpenIDConfigurationUrl, scopes
+//
+// 디스커버리 URL 은 최상위가 아니라 serverConfiguration.wellKnown 아래다.
+// 스코프는 지정하지 않는다 — 기본값(openid email profile)으로 충분하고, 속성을
+// 덜 쓸수록 플러그인 버전이 올라갈 때 깨질 여지가 줄어든다.
 func jenkinsOIDCJCasC(clientID, secretName, issuer string) string {
 	return `jenkins:
   securityRealm:
     oic:
       clientId: "` + clientID + `"
       clientSecret: "${` + secretName + `-client-secret}"
-      wellKnownOpenIDConfigurationUrl: "` + issuer + `/.well-known/openid-configuration"
-      scopes: "openid profile email"
       userNameField: "preferred_username"
-      # 로그아웃 후 Jenkins 로 돌아오게 한다. 비우면 Keycloak 화면에 남는다.
-      postLogoutRedirectUrl: ""
+      serverConfiguration:
+        wellKnown:
+          wellKnownOpenIDConfigurationUrl: "` + strings.TrimRight(issuer, "/") + `/.well-known/openid-configuration"
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false

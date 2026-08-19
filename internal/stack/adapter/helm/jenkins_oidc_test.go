@@ -66,8 +66,18 @@ func TestJenkinsOIDC_InstallsPluginAndConfiguresSecurityRealm(t *testing.T) {
 
 	assert.Contains(t, script, "securityRealm")
 	assert.Contains(t, script, "oic")
-	assert.Contains(t, script, "http://keycloak.nullus.local:8180/realms/nullus")
 	assert.Contains(t, script, "nullus-sso-jenkins")
+
+	// 디스커버리 URL 은 최상위가 아니라 serverConfiguration.wellKnown 아래다.
+	// 최상위에 두면 JCasC 가 부팅을 중단시켜 Jenkins 가 통째로 못 뜬다
+	// (UnknownAttributesException: wellKnownOpenIDConfigurationUrl).
+	assert.Contains(t, script, "serverConfiguration:")
+	assert.Contains(t, script, "wellKnown:")
+	assert.Contains(t, script,
+		"http://keycloak.nullus.local:8180/realms/nullus/.well-known/openid-configuration")
+
+	// oic-auth 가 모르는 속성을 넣으면 같은 실패가 돌아온다.
+	assert.NotContains(t, script, "scopes:")
 }
 
 // client secret 은 JCasC 본문에 평문으로 들어가면 안 된다. ESO 가 만든 Secret 을
