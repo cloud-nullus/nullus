@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HTTP 를 HTTPS 로 강제한다** (`deploy/csp/zadara/setup-tls.sh`, `default-cert` → `ingress-https` 로 이름 변경): 기본 인증서를 걸면 새 호스트도 인증서를 받지만, **평문 HTTP 가 그대로 200 을 반환**한다. tls 섹션 없는 Ingress 를 실제로 만들어 확인했다 — `https://` 는 200 에 `*.nullus.io`, `http://` 는 200 에 리다이렉트 없음.
+
+  ingress-nginx 의 `ssl-redirect` 는 **그 Ingress 에 tls 항목이 있을 때만** 켜지기 때문이다. 기존 호스트(`nullus.io`·`auth`)는 tls 항목이 있어 308 이 나가고 있어서, 새 호스트에서만 조용히 빠진다.
+
+  평문으로 열리면 **SSO 로그인이 깨진다.** OIDC PKCE 가 쓰는 `crypto.subtle` 은 secure context 에서만 노출되고, 이건 이 저장소가 `setup-tls.sh` 머리말에 이미 적어 둔 이유다. 인증서를 붙여 놓고 이 구멍을 남기면 "HTTPS 로 들어가면 되는데 왜 안 되지" 가 된다.
+
+  ConfigMap 에 `force-ssl-redirect` 를 넣어 전역으로 건다. Ingress 마다 어노테이션을 붙여도 되지만 그건 도구를 늘릴 때마다 손대는 일이라, 기본 인증서를 쓰는 이유와 정면으로 어긋난다. ACME HTTP-01 은 영향받지 않는다 — Let's Encrypt 는 검증 시 http→https 리다이렉트를 따라가고 리다이렉트 대상의 인증서는 검사하지 않는다.
+
+  하는 일이 인증서 하나가 아니게 되어 `default-cert` 를 `ingress-https` 로 바꿨다. 이전 이름도 같은 동작으로 남겨 둔다.
+
 - **환경별 값을 저장소에서 걷어낸다** (`deploy/csp/zadara/env.example` 신규, `expose-apiserver.sh` · `expose-web.sh` · `kubeconfig.sh` · `tunnel.sh` · `setup-tls.sh`): bastion 주소가 네 스크립트에 기본값으로 박혀 있었다(`BASTION="${BASTION:-ubuntu@<공인IP>}"`). 이건 저장소가 아니라 환경에 속하는 값이다 — 오픈소스로 받은 사람이 우리 인프라 주소가 들어간 스크립트를 받게 되고, 다른 환경에 올릴 때마다 코드를 고쳐야 한다.
 
   `deploy/csp/zadara/.env`(gitignore, `.env` 패턴이 이미 있었다)에서 읽고, 없으면 환경변수로 받는다. **기본값은 두지 않는다** — 특정 환경의 주소를 코드에 박으면 다른 환경에서 조용히 엉뚱한 곳에 붙는다. 틀린 기본값보다 멈추는 편이 낫고, 멈출 때 무엇을 어떻게 채우는지 함께 출력한다.

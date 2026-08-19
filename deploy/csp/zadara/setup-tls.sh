@@ -27,7 +27,8 @@
 # 사용법:
 #   ./setup-tls.sh install       cert-manager (+DNS-01 웹훅) 설치 + ClusterIssuer
 #   ./setup-tls.sh wildcard      와일드카드 Certificate 생성 (DNS01_ZONE 필요)
-#   ./setup-tls.sh default-cert  ingress-nginx 기본 인증서를 와일드카드로 지정
+#   ./setup-tls.sh ingress-https ingress-nginx 를 와일드카드 HTTPS 로 설정
+#                                (기본 인증서 + HTTP→HTTPS 강제 리다이렉트)
 #   ./setup-tls.sh status        발급 상태 확인
 #   ./setup-tls.sh uninstall     되돌리기
 #
@@ -253,19 +254,28 @@ EOF
   info "진행 확인: $0 status"
 }
 
-# ingress-nginx 의 기본 인증서를 와일드카드로 지정한다.
+# ingress-nginx 가 모든 호스트에 와일드카드 HTTPS 를 서비스하게 만든다. 둘을 건다.
 #
-# 왜 필요한가: Ingress 의 tls 항목은 **거기 적힌 호스트만** 덮는다. 스택이 깔리며
-# 생기는 argocd/grafana/harbor/… 는 그 목록에 없으므로, 그대로 두면 컨트롤러의
-# 자체서명(Kubernetes Ingress Controller Fake Certificate)이 나가고 브라우저가
-# 경고를 띄운다. 기본 인증서를 지정하면 tls 항목이 없는 모든 호스트가 자동으로
-# 와일드카드를 받는다 — 도구를 늘려도 손댈 것이 없다.
+# 1) 기본 인증서 — Ingress 의 tls 항목은 **거기 적힌 호스트만** 덮는다. 스택이
+#    깔리며 생기는 argocd/grafana/harbor/… 는 그 목록에 없으므로, 그대로 두면
+#    컨트롤러 자체서명(Kubernetes Ingress Controller Fake Certificate)이 나가고
+#    브라우저가 경고를 띄운다.
+#
+# 2) HTTP→HTTPS 강제 — ingress-nginx 의 ssl-redirect 는 **그 Ingress 에 tls 항목이
+#    있을 때만** 켜진다. 기본 인증서만 걸면 인증서는 붙지만 평문 HTTP 가 그대로
+#    200 을 반환한다(실측). 그러면 http:// 로 들어온 사람에게 **SSO 로그인이
+#    깨진다** — OIDC PKCE 가 쓰는 crypto.subtle 은 secure context 에서만 노출된다.
+#    Ingress 마다 어노테이션을 붙여도 되지만 그건 도구를 늘릴 때마다 손대는 일이라,
+#    1) 을 쓰는 이유와 정면으로 어긋난다.
+#
+#    ACME HTTP-01 은 영향받지 않는다. Let's Encrypt 는 검증 시 http→https
+#    리다이렉트를 따라가며, 리다이렉트 대상의 인증서는 검사하지 않는다.
 #
 # 이 스크립트가 관리하지 않는 릴리스(ingress-nginx)를 건드리는 유일한 자리다.
-# --reuse-values 로 기존 설정을 보존하고 인자 하나만 더한다.
-do_default_cert() {
+# --reuse-values 로 기존 설정을 보존하고 필요한 것만 더한다.
+do_ingress_https() {
   command -v helm >/dev/null || die "helm 이 필요합니다"
-  [[ -n "$DNS01_ZONE" || -n "${WILDCARD_SECRET:-}" ]] || die "DNS01_ZONE 이 필요합니다 (예: DNS01_ZONE=nullus.io $0 default-cert)"
+  [[ -n "$DNS01_ZONE" || -n "${WILDCARD_SECRET:-}" ]] || die "DNS01_ZONE 이 필요합니다 (예: DNS01_ZONE=nullus.io $0 ingress-https)"
 
   local secret_ref="${WILDCARD_SECRET:-${NAMESPACE}/nullus-wildcard-tls}"
 
@@ -276,7 +286,7 @@ do_default_cert() {
 
   "${K[@]}" -n "$INGRESS_NGINX_NS" get deploy "${INGRESS_NGINX_RELEASE}-controller" >/dev/null 2>&1     || die "ingress-nginx 컨트롤러를 찾을 수 없습니다 (${INGRESS_NGINX_NS}/${INGRESS_NGINX_RELEASE}-controller)"
 
-  info "ingress-nginx 기본 인증서를 ${secret_ref} 로 지정"
+  info "ingress-nginx 설정: 기본 인증서=${secret_ref}, HTTP→HTTPS 강제"
   helm repo add ingress-nginx "$INGRESS_NGINX_REPO" >/dev/null 2>&1 || true
   helm repo update ingress-nginx >/dev/null 2>&1 || true
   helm upgrade "$INGRESS_NGINX_RELEASE" ingress-nginx/ingress-nginx \
@@ -284,9 +294,10 @@ do_default_cert() {
     --namespace "$INGRESS_NGINX_NS" \
     --reuse-values \
     --set "controller.extraArgs.default-ssl-certificate=${secret_ref}" \
+    --set "controller.config.force-ssl-redirect=true" \
     --wait --timeout 300s >/dev/null || die "ingress-nginx 갱신 실패"
 
-  ok "기본 인증서 지정 완료 — tls 항목이 없는 호스트도 와일드카드를 받는다"
+  ok "완료 — tls 항목이 없는 호스트도 와일드카드를 받고 HTTP 는 HTTPS 로 간다"
 }
 
 do_status() {
@@ -296,6 +307,9 @@ do_status() {
     printf '· lego DNS-01 웹훅 ... '
     if "${K[@]}" -n cert-manager get deploy cert-manager-lego-webhook >/dev/null 2>&1; then echo "설치됨"; else echo "없음"; fi
   fi
+  printf '· ingress-nginx HTTP→HTTPS 강제 ... '
+  "${K[@]}" -n "$INGRESS_NGINX_NS" get cm "${INGRESS_NGINX_RELEASE}-controller" \
+    -o jsonpath='{.data.force-ssl-redirect}' 2>/dev/null | grep . || echo "미설정"
   printf '· ingress-nginx 기본 인증서 ... '
   "${K[@]}" -n "$INGRESS_NGINX_NS" get deploy "${INGRESS_NGINX_RELEASE}-controller" \
     -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null \
@@ -328,8 +342,10 @@ do_uninstall() {
 case "${1:-status}" in
   install)      do_install ;;
   wildcard)     do_wildcard ;;
-  default-cert) do_default_cert ;;
+  ingress-https) do_ingress_https ;;
+  # 이전 이름. 같은 동작이라 남겨 둔다.
+  default-cert)  do_ingress_https ;;
   status)       do_status ;;
   uninstall)    do_uninstall ;;
-  *)            die "사용법: $0 [install|wildcard|default-cert|status|uninstall]" ;;
+  *)            die "사용법: $0 [install|wildcard|ingress-https|status|uninstall]" ;;
 esac

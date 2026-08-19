@@ -263,17 +263,44 @@ sleep 15 && kubectl -n nullus get certificate      # 재생성되지 않는지 �
 kubectl -n nullus delete secret auth.nullus.io-tls nullus-web-tls nullus-web-nipio-tls
 ```
 
-### 4.4 ingress-nginx 기본 인증서 — 나머지 전부를 덮는다
+### 4.4 ingress-nginx 를 와일드카드 HTTPS 로 설정한다
 
-§4.3까지 하면 **values에 적힌 호스트만** 와일드카드를 받는다. 스택이 깔리며 생기는 `argocd` `grafana` `harbor` … 는 그 목록에 없으므로 컨트롤러의 자체서명(`CN=Kubernetes Ingress Controller Fake Certificate`)이 나가고 브라우저가 경고를 띄운다.
-
-`--default-ssl-certificate` 는 **tls 항목이 없는 모든 호스트**에 폴백 인증서를 씌운다. 도구를 늘려도 손댈 것이 없어진다.
+§4.3까지 하면 **values에 적힌 호스트만** 제대로 동작한다. 스택이 깔리며 생기는 `argocd` `grafana` `harbor` … 는 그 목록에 없다. 두 가지가 필요하다.
 
 ```bash
-DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh default-cert
+DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh ingress-https
 ```
 
-`ingress-nginx` 릴리스를 `--reuse-values` 로 갱신해 인자 하나만 더한다. 이 스크립트가 관리하지 않는 릴리스를 건드리는 유일한 자리다.
+**① 기본 인증서** — 목록에 없는 호스트는 컨트롤러 자체서명(`CN=Kubernetes Ingress Controller Fake Certificate`)이 나가고 브라우저가 경고를 띄운다. `--default-ssl-certificate` 는 tls 항목이 없는 **모든** 호스트에 폴백 인증서를 씌운다.
+
+**② HTTP→HTTPS 강제** — ingress-nginx 의 `ssl-redirect` 는 **그 Ingress 에 tls 항목이 있을 때만** 켜진다. 기본 인증서만 걸면 인증서는 붙지만 평문 HTTP 가 그대로 200 을 반환한다. 실측이다.
+
+```
+tls 섹션 없는 Ingress 를 만들어 본 결과
+  https://tlstest.nullus.io/   200,  인증서 *.nullus.io    ← 인증서는 자동으로 붙는다
+  http://tlstest.nullus.io/    200,  리다이렉트 없음        ← 평문이 그대로 열린다
+```
+
+평문으로 열리면 **SSO 로그인이 깨진다** — OIDC PKCE 가 쓰는 `crypto.subtle` 은 secure context 에서만 노출된다(§1). Ingress 마다 `nginx.ingress.kubernetes.io/force-ssl-redirect: "true"` 를 붙여도 되지만, 그건 도구를 늘릴 때마다 손대는 일이라 ① 을 쓰는 이유와 정면으로 어긋난다. ConfigMap 에 한 번 넣어 전역으로 건다.
+
+> ACME HTTP-01 은 영향받지 않는다. Let's Encrypt 는 검증 시 http→https 리다이렉트를 따라가며, 리다이렉트 대상의 인증서는 검사하지 않는다.
+
+`ingress-nginx` 릴리스를 `--reuse-values` 로 갱신한다. 이 스크립트가 관리하지 않는 릴리스를 건드리는 유일한 자리다. (이전 이름 `default-cert` 도 같은 동작으로 남겨 두었다.)
+
+#### 이후 새 호스트를 붙일 때
+
+**Ingress 만 만들면 된다.** tls 섹션도 어노테이션도 필요 없다.
+
+```yaml
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.nullus.io
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: ..., port: {number: ...}}}}]
+```
+
+단 **한 레벨 서브도메인만** 된다. `a.b.nullus.io` 는 DNS 는 와일드카드가 잡지만 인증서가 덮지 못해 `SSL: no alternative certificate subject name matches` 로 끊긴다(RFC 6125). 실측으로 확인했다.
 
 교차 네임스페이스(`nullus/nullus-wildcard-tls`)를 참조하는데, ingress-nginx 컨트롤러가 secrets에 클러스터 범위 `list`/`watch` 를 갖고 있어 그대로 동작한다. 시크릿이 없는 채로 지정하면 컨트롤러가 그것을 찾다 실패하고 그동안 **모든 호스트가 자체서명으로 떨어지므로**, 스크립트가 먼저 존재를 확인한다.
 
@@ -371,7 +398,9 @@ DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh status     # 상태
 | 어노테이션을 뺐는데 계속 살아 있음 | `helm get values` 를 `-f` 로 되먹임 (맵 병합) | values 파일에서 새로 시작 |
 | 지운 Certificate 가 몇 분 뒤 되살아남 | CD 가 수정 전 values 로 배포 | 저장소 반영을 먼저. §4.3 의 사고 기록 |
 | 스크립트가 `BASTION 이 필요합니다` 로 멈춤 | `.env` 미생성 | `cp deploy/csp/zadara/env.example deploy/csp/zadara/.env` 후 채운다 |
-| 새 스택 호스트만 자체서명 | 기본 인증서 미지정 | §4.4 `default-cert` |
+| 새 스택 호스트만 자체서명 | 기본 인증서 미지정 | §4.4 `ingress-https` |
+| 새 호스트가 http:// 로 그냥 열림 | `force-ssl-redirect` 미설정 (tls 항목 없는 Ingress 는 리다이렉트 안 됨) | §4.4 `ingress-https` |
+| SSO 로그인만 깨짐 (`crypto.subtle`) | http 로 접근 중 | 위와 같음 |
 | `PASSWORDS ERROR` on dry-run | 클라이언트 dry-run이 시크릿 lookup 불가 | `--dry-run=server` |
 | `www` 가 404 | 규칙을 지우고 리다이렉트를 안 검 | `from-to-www-redirect: "true"` |
 | `connection refused` on `127.0.0.1:16443` | SSH 터널이 죽음 | `./deploy/csp/zadara/kubeconfig.sh` 재실행 |
