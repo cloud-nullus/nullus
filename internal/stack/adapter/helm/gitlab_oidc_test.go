@@ -161,3 +161,39 @@ func TestGitLabOIDC_ClientOptionsForHTTPSIssuer(t *testing.T) {
 	assert.Contains(t, provider, `host: "auth.nullus.io"`)
 	assert.Contains(t, provider, "port: 443")
 }
+
+// openid_connect 젬은 discovery URL 을 항상 HTTPS 로 만든다.
+//
+//	# swd.rb
+//	def self.url_builder
+//	  @@url_builder ||= URI::HTTPS
+//
+// 그래서 issuer 가 http 면 discovery 단계에서 평문 포트에 TLS 로 붙어 깨진다
+// (Ssl connect ... wrong version number). client_options 를 고쳐도 소용없다 —
+// discovery 가 그보다 먼저 돈다.
+//
+// http issuer 에서는 discovery 를 끄고 엔드포인트를 직접 준다.
+func TestGitLabOIDC_HTTPIssuerSkipsDiscovery(t *testing.T) {
+	item, _ := gitlabOIDCSecret(t, gitlabOrchestrator(t,
+		"http://keycloak.nullus.local:8180/realms/nullus", true))
+	provider := item.TemplateData["provider"]
+
+	assert.Contains(t, provider, "discovery: false",
+		"http issuer 에서 discovery 를 켜면 젬이 https 로 붙어 깨진다")
+	// 엔드포인트는 issuer 의 경로에서 파생된다. client_options 안에서는 경로다.
+	assert.Contains(t, provider, `authorization_endpoint: "/realms/nullus/protocol/openid-connect/auth"`)
+	assert.Contains(t, provider, `token_endpoint: "/realms/nullus/protocol/openid-connect/token"`)
+	assert.Contains(t, provider, `userinfo_endpoint: "/realms/nullus/protocol/openid-connect/userinfo"`)
+	assert.Contains(t, provider, `jwks_uri: "/realms/nullus/protocol/openid-connect/certs"`)
+}
+
+// https issuer 는 discovery 가 정상 동작한다. 엔드포인트가 바뀌어도 따라가므로
+// 그쪽이 더 견고하다.
+func TestGitLabOIDC_HTTPSIssuerUsesDiscovery(t *testing.T) {
+	item, _ := gitlabOIDCSecret(t, gitlabOrchestrator(t,
+		"https://auth.nullus.io/realms/nullus", true))
+	provider := item.TemplateData["provider"]
+
+	assert.Contains(t, provider, "discovery: true")
+	assert.NotContains(t, provider, "authorization_endpoint")
+}

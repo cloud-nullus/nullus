@@ -45,13 +45,30 @@ const GitLabOIDCSecretName = "gitlab-oidc-provider" // #nosec G101 -- Secret 리
 // 정의에 평문이 남는다.
 func gitlabOmniauthProvider(clientID, issuer, baseURL string) string {
 	// omniauth-openid_connect 의 client_options 는 scheme=https / port=443 이
-	// 기본값이고 issuer 의 스킴·포트를 따라가지 않는다. 그대로 두면 평문 포트에
-	// TLS 로 붙어 이렇게 깨진다:
+	// 기본값이라 issuer 의 스킴·포트를 따라가지 않는다. 분해해 함께 넣는다.
+	scheme, host, port, path := splitIssuerEndpoint(issuer)
+
+	// openid_connect 젬은 discovery URL 을 항상 HTTPS 로 만든다(swd.rb 의
+	// url_builder 가 URI::HTTPS 로 고정). 그래서 issuer 가 http 면 discovery
+	// 단계에서 평문 포트에 TLS 로 붙어 깨진다:
 	//
 	//	Ssl connect returned=1 ... state=error: wrong version number
 	//
-	// 그래서 issuer 를 분해해 함께 넣는다.
-	scheme, host, port := splitIssuerEndpoint(issuer)
+	// client_options 를 고쳐도 소용없다 — discovery 가 그보다 먼저 돈다.
+	// http 에서는 discovery 를 끄고 엔드포인트를 직접 준다. https 면 discovery 가
+	// 정상 동작하고, 엔드포인트가 바뀌어도 따라가므로 그쪽이 더 견고하다.
+	discovery := "true"
+	endpoints := ""
+	if scheme == "http" {
+		discovery = "false"
+		// client_options 안에서는 전체 URL 이 아니라 경로다
+		// (scheme/host/port 와 합쳐진다).
+		endpoints = fmt.Sprintf(`
+    authorization_endpoint: "%s/protocol/openid-connect/auth"
+    token_endpoint: "%s/protocol/openid-connect/token"
+    userinfo_endpoint: "%s/protocol/openid-connect/userinfo"
+    jwks_uri: "%s/protocol/openid-connect/certs"`, path, path, path, path)
+	}
 
 	return fmt.Sprintf(`name: "openid_connect"
 label: "Keycloak"
@@ -60,7 +77,7 @@ args:
   scope: ["openid","profile","email"]
   response_type: "code"
   issuer: "%s"
-  discovery: true
+  discovery: %s
   uid_field: "preferred_username"
   client_options:
     identifier: "%s"
@@ -68,18 +85,18 @@ args:
     redirect_uri: "%s/users/auth/openid_connect/callback"
     scheme: "%s"
     host: "%s"
-    port: %d
-`, strings.TrimRight(issuer, "/"), clientID, baseURL, scheme, host, port)
+    port: %d%s
+`, strings.TrimRight(issuer, "/"), discovery, clientID, baseURL, scheme, host, port, endpoints)
 }
 
 // splitIssuerEndpoint 는 issuer URL 을 스킴·호스트·포트로 나눈다.
 //
 // 포트가 없으면 스킴의 기본값을 쓴다 — 비워 두면 젬이 443 을 가정해 http issuer
 // 에서 곧바로 어긋난다.
-func splitIssuerEndpoint(issuer string) (scheme, host string, port int) {
+func splitIssuerEndpoint(issuer string) (scheme, host string, port int, path string) {
 	parsed, err := url.Parse(strings.TrimSpace(issuer))
 	if err != nil || parsed.Host == "" {
-		return "https", "", 443
+		return "https", "", 443, ""
 	}
 
 	scheme = parsed.Scheme
@@ -97,7 +114,7 @@ func splitIssuerEndpoint(issuer string) (scheme, host string, port int) {
 			port = n
 		}
 	}
-	return scheme, host, port
+	return scheme, host, port, strings.TrimRight(parsed.Path, "/")
 }
 
 // ArgoCDSecretName 은 ArgoCD 가 읽는 Secret 이름이다.
