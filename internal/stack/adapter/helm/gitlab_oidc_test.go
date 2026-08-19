@@ -197,3 +197,20 @@ func TestGitLabOIDC_HTTPSIssuerUsesDiscovery(t *testing.T) {
 	assert.Contains(t, provider, "discovery: true")
 	assert.NotContains(t, provider, "authorization_endpoint")
 }
+
+// Keycloak 클라이언트를 PKCE(S256) 요구로 등록하는데 GitLab 이 안 보내면
+// 콜백이 이렇게 깨진다:
+//
+//	Could not authenticate you from OpenIDConnect because
+//	"Missing parameter: code challenge method"
+//
+// omniauth_openid_connect 0.8 은 pkce 를 지원하고(option :pkce, false),
+// 기본 pkce_options 의 code_challenge_method 가 이미 S256 이다. 끄는 것보다
+// 켜는 쪽이 맞다 — Harbor 는 젬 자체가 안 보내서 뺀 것이고, 여기는 다르다.
+func TestGitLabOIDC_EnablesPKCE(t *testing.T) {
+	item, _ := gitlabOIDCSecret(t, gitlabOrchestrator(t,
+		"http://keycloak.nullus.local:8180/realms/nullus", true))
+
+	assert.Contains(t, item.TemplateData["provider"], "pkce: true",
+		"클라이언트가 PKCE 를 요구하는데 안 보내면 콜백이 깨진다")
+}

@@ -79,6 +79,10 @@ args:
   issuer: "%s"
   discovery: %s
   uid_field: "preferred_username"
+  # Keycloak 클라이언트를 PKCE(S256) 요구로 등록하므로 함께 켠다. 끄면 콜백이
+  # "Missing parameter: code challenge method" 로 깨진다.
+  # 젬의 기본 pkce_options 가 이미 S256 이라 방식은 따로 지정하지 않는다.
+  pkce: true
   client_options:
     identifier: "%s"
     secret: "{{ .clientSecret }}"
