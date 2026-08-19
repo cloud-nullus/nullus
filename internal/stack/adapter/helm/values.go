@@ -21,7 +21,9 @@ const (
 	jenkinsImageRegistry = "ghcr.io"
 	// 차트가 registry 와 이어 붙이므로 여기에 레지스트리를 넣으면 안 된다.
 	// 넣으면 ghcr.io/ghcr.io/... 가 되어 파드가 ImagePullBackOff 로 멈춘다.
-	jenkinsImageRepository = "cloud-nullus/nullus-jenkins"
+	// CI 는 ghcr.io/<repo>/<이미지> 로 push 한다(cd.yml). 경로가 어긋나면 게시된
+	// 이미지를 아무도 받지 못한다.
+	jenkinsImageRepository = "cloud-nullus/draft/nullus-jenkins"
 	jenkinsImageTag        = "2.568.2"
 )
 

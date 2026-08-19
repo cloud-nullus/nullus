@@ -14,7 +14,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="${IMAGE:-ghcr.io/cloud-nullus/nullus-jenkins}"
+IMAGE="${IMAGE:-ghcr.io/cloud-nullus/draft/nullus-jenkins}"
 TAG="${TAG:-2.568.2}"
 KIND_LOAD="false"
 KIND_CLUSTERS=""

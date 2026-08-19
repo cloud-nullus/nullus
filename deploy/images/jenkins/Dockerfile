@@ -13,7 +13,7 @@
 # 빌드로 옮겨 가고, 그 결과물은 에어갭 번들에도 그대로 실린다.
 #
 # 빌드:
-#   docker build -t ghcr.io/cloud-nullus/nullus-jenkins:<태그> deploy/images/jenkins
+#   docker build -t ghcr.io/cloud-nullus/draft/nullus-jenkins:<태그> deploy/images/jenkins
 # =============================================================================
 ARG JENKINS_VERSION=2.568.2
 FROM jenkins/jenkins:${JENKINS_VERSION}-jdk21

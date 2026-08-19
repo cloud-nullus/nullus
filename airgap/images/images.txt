@@ -82,3 +82,4 @@ registry:2
 openbao/openbao:2.5.5
 docker.io/bitnamilegacy/kubectl:1.33.4
 oci.external-secrets.io/external-secrets/external-secrets:v2.7.0
+ghcr.io/cloud-nullus/draft/nullus-jenkins:2.568.2

@@ -42,6 +42,32 @@ func TestJenkinsValues_UsesPrebuiltImage(t *testing.T) {
 //
 // 빌드 스크립트가 만드는 이름과 차트가 조립하는 이름이 갈라지면, 이미지는
 // 만들어졌는데 파드는 못 받는 상태가 된다. 두 출처를 여기서 묶어 둔다.
+// CI 는 ghcr.io/<repo>/<이미지> 로 push 한다(cd.yml 의 nullus-api / nullus-web).
+// 다른 이름을 쓰면 게시된 이미지를 아무도 못 받는다.
+func TestJenkinsImage_FollowsRegistryConvention(t *testing.T) {
+	controller := jenkinsValues(t)
+	image := controller["image"].(map[string]any)
+	assert.Equal(t, "ghcr.io", image["registry"])
+	assert.Equal(t, "cloud-nullus/draft/nullus-jenkins", image["repository"],
+		"CI 가 push 하는 경로와 같아야 한다")
+}
+
+// 에어갭 번들에 없으면 인터넷이 없는 설치에서 Jenkins 가 뜨지 않는다.
+// images.txt 는 자동 생성물이라 생성기 쪽에 있어야 한다(직접 고치면 드리프트
+// 검사가 막는다).
+func TestJenkinsImage_RegisteredForAirgapBundle(t *testing.T) {
+	gen, err := os.ReadFile(filepath.Join("..", "..", "..", "..",
+		"airgap", "scripts", "00-generate-images.sh"))
+	require.NoError(t, err)
+
+	controller := jenkinsValues(t)
+	image := controller["image"].(map[string]any)
+	ref := image["registry"].(string) + "/" + image["repository"].(string) + ":" + image["tag"].(string)
+
+	assert.Containsf(t, string(gen), ref,
+		"에어갭 이미지 생성기에 %s 가 없다 — 인터넷 없는 설치에서 Jenkins 가 못 뜬다", ref)
+}
+
 func TestJenkinsImage_ReferenceMatchesBuildScript(t *testing.T) {
 	controller := jenkinsValues(t)
 	image := controller["image"].(map[string]any)
