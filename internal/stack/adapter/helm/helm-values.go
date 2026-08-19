@@ -101,14 +101,8 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 				"gitlabUrl": fmt.Sprintf("http://gitlab-webservice-default.%s.svc:8181", namespace),
 			})
 		}
-		if cfg != nil && step == "installing_gitlab" && strings.TrimSpace(cfg.AccessDomain) != "" {
-			base = mergeMaps(base, map[string]any{
-				"global": map[string]any{
-					"hosts": map[string]any{
-						"domain": cfg.AccessDomain,
-					},
-				},
-			})
+		if step == "installing_gitlab" {
+			base = mergeMaps(base, o.gitlabSharedServiceValues())
 		}
 		return base
 	}
@@ -697,6 +691,34 @@ func (o *Orchestrator) jenkinsURLValues() map[string]any {
 	return map[string]any{
 		"controller": map[string]any{
 			"jenkinsUrl": fmt.Sprintf("%s://jenkins.%s", o.toolURLScheme(), accessDomain),
+		},
+	}
+}
+
+// gitlabSharedServiceValues 는 GitLab 이 자기 외부 주소를 알게 한다.
+//
+// GitLab 은 redirect_uri 를 global.hosts 에서 만든다. https 를 켜지 않으면
+// http 로 나가 Keycloak 에 등록된 https redirect 와 어긋나고, 로그인이
+// "redirect_uri" 오류로 막힌다 — Harbor·Gitea·Jenkins 와 같은 실패라 같은
+// 판단(toolURLScheme)을 쓴다.
+func (o *Orchestrator) gitlabSharedServiceValues() map[string]any {
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+	if cfg == nil {
+		return nil
+	}
+	accessDomain := strings.TrimSpace(cfg.AccessDomain)
+	if accessDomain == "" {
+		return nil
+	}
+
+	return map[string]any{
+		"global": map[string]any{
+			"hosts": map[string]any{
+				"domain": accessDomain,
+				"https":  o.toolURLScheme() == "https",
+			},
 		},
 	}
 }

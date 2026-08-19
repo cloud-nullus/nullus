@@ -46,6 +46,9 @@ func TestToolURLScheme_SharedByAllToolsThatBuildRedirectURI(t *testing.T) {
 
 	jenkins := o.jenkinsURLValues()["controller"].(map[string]any)
 	assert.Equal(t, scheme+"://jenkins.nullus.local", jenkins["jenkinsUrl"], "Jenkins jenkinsUrl")
+
+	gitlab := o.gitlabSharedServiceValues()["global"].(map[string]any)["hosts"].(map[string]any)
+	assert.Equal(t, scheme == "https", gitlab["https"], "GitLab global.hosts.https")
 }
 
 var domainStackConfigWithAccessDomain = domain.StackConfig{AccessDomain: "nullus.local"}

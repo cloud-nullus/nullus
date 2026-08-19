@@ -41,7 +41,7 @@ const GitLabOIDCSecretName = "gitlab-oidc-provider" // #nosec G101 -- Secret 리
 // redirect 와 갈라지면 로그인이 "redirect_uri" 오류로 막힌다.
 // client secret 은 ESO 템플릿에서 채운다 — 여기 값을 박으면 ExternalSecret
 // 정의에 평문이 남는다.
-func gitlabOmniauthProvider(clientID, issuer string) string {
+func gitlabOmniauthProvider(clientID, issuer, baseURL string) string {
 	return fmt.Sprintf(`name: "openid_connect"
 label: "Keycloak"
 args:
@@ -55,7 +55,7 @@ args:
     identifier: "%s"
     secret: "{{ .clientSecret }}"
     redirect_uri: "%s/users/auth/openid_connect/callback"
-`, strings.TrimRight(issuer, "/"), clientID, "https://gitlab.%ACCESS_DOMAIN%")
+`, strings.TrimRight(issuer, "/"), clientID, baseURL)
 }
 
 // ArgoCDSecretName 은 ArgoCD 가 읽는 Secret 이름이다.
@@ -295,6 +295,6 @@ func (o *Orchestrator) gitlabOmniauthProviderBlock(clientID string) string {
 	if strings.TrimSpace(issuer) == "" || accessDomain == "" {
 		return ""
 	}
-	block := gitlabOmniauthProvider(clientID, issuer)
-	return strings.ReplaceAll(block, "%ACCESS_DOMAIN%", accessDomain)
+	baseURL := fmt.Sprintf("%s://gitlab.%s", o.toolURLScheme(), accessDomain)
+	return gitlabOmniauthProvider(clientID, issuer, baseURL)
 }

@@ -106,3 +106,29 @@ func TestGitLabOIDC_ValuesEnableOmniauthWithSecret(t *testing.T) {
 }
 
 var _ = strings.Contains
+
+// GitLab 은 자기 외부 주소를 global.hosts 에서 만든다. https 를 켜지 않으면
+// redirect_uri 가 http 로 나가 등록된 https redirect 와 어긋난다 —
+// Harbor·Gitea·Jenkins 에서 세 번 반복된 실패다.
+func TestGitLabHosts_SchemeFollowsSharedDecision(t *testing.T) {
+	o := gitlabOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true)
+	hosts := o.gitlabSharedServiceValues()["global"].(map[string]any)["hosts"].(map[string]any)
+
+	assert.Equal(t, "nullus.local", hosts["domain"])
+	assert.Equal(t, true, hosts["https"],
+		"등록된 redirect 가 https 인데 hosts.https 가 false 면 로그인이 막힌다")
+}
+
+func TestGitLabHosts_StaysHTTPWithoutSSO(t *testing.T) {
+	o := gitlabOrchestrator(t, "http://kc/realms/nullus", false)
+	hosts := o.gitlabSharedServiceValues()["global"].(map[string]any)["hosts"].(map[string]any)
+	assert.Equal(t, false, hosts["https"])
+}
+
+// provider 블록의 redirect_uri 도 같은 판단을 써야 한다.
+func TestGitLabOIDC_ProviderRedirectUsesSharedScheme(t *testing.T) {
+	o := gitlabOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true)
+	item, _ := gitlabOIDCSecret(t, o)
+	assert.Contains(t, item.TemplateData["provider"],
+		o.toolURLScheme()+"://gitlab.nullus.local/users/auth/openid_connect/callback")
+}
