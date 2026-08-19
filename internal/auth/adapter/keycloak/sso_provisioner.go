@@ -61,7 +61,10 @@ func newToolSpecs() map[string]ToolSSOSpec {
 			DisplayName:  "Harbor",
 			Subdomain:    "harbor",
 			CallbackPath: "/c/oidc/callback",
-			PKCEMethod:   "S256",
+			// Harbor 는 인가 요청에 PKCE 파라미터를 보내지 않는다. 요구하도록
+			// 등록하면 콜백이 "Missing parameter: code_challenge_method" 로 깨진다.
+			// client secret 을 갖는 confidential client 라 PKCE 없이도 등급이
+			// 내려가지 않는다(ArgoCD 도 같은 이유로 쓰지 않는다).
 		},
 		"installing_minio": {
 			ClientID:     "minio",

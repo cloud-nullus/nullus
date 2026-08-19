@@ -123,12 +123,12 @@ func (kc *KeycloakClient) findClientUUID(ctx context.Context, token, clientID st
 	return clients[0].ID, nil
 }
 
-// pkceAttributes 는 PKCE 설정을 만든다.
-// 빈 값이면 속성을 비워 두어 도구별 지원 차이를 흡수한다.
+// pkceAttributes 는 클라이언트의 PKCE 요구 설정을 만든다.
+//
+// 쓰지 않을 때 키를 빼지 않고 빈 값으로 넣는다. 빼 버리면 이미 PKCE 로 등록된
+// 클라이언트에서 기존 속성이 그대로 남아, 스펙을 고쳐도 로그인이 계속 깨진다.
 func pkceAttributes(method string) map[string]any {
-	attrs := map[string]any{}
-	if m := strings.TrimSpace(method); m != "" {
-		attrs["pkce.code.challenge.method"] = m
+	return map[string]any{
+		"pkce.code.challenge.method": strings.TrimSpace(method),
 	}
-	return attrs
 }
