@@ -20,8 +20,12 @@ import (
 	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
+	authhandler "github.com/cloud-nullus/draft/internal/auth/adapter/handler"
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
+	authrepo "github.com/cloud-nullus/draft/internal/auth/adapter/repository"
+	authtoken "github.com/cloud-nullus/draft/internal/auth/adapter/token"
+	authusecase "github.com/cloud-nullus/draft/internal/auth/usecase"
 	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
 	cicdgitea "github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
@@ -415,6 +419,24 @@ func main() {
 	// API v1 group
 	v1 := e.Group("/api/v1")
 
+	// ID/PW 로그인 경로. OIDC 와 나란히 서는 두 번째 인증 수단이다 —
+	// IdP 가 죽어도 들어갈 수단이 있어야 한다.
+	//
+	// 인증 미들웨어보다 앞에 붙인다(로그인하려면 먼저 통과해야 한다).
+	// 무차별 대입을 막기 위해 로그인 전용 레이트리밋을 건다.
+	localIssuer := authtoken.NewLocalIssuer(cfg.Auth.Session.Secret, cfg.SessionTTL())
+	if localIssuer.Enabled() {
+		loginHandler := authhandler.NewLoginHandler(authusecase.NewLogin(
+			authrepo.NewPostgresCredentialRepository(pool),
+			authtoken.NewSessionIssuer(localIssuer),
+		))
+		loginHandler.RegisterRoutes(v1.Group("", middleware.LoginRateLimiter(rateLimits)))
+		slog.Info("password login enabled (ID/PW alongside OIDC)")
+	} else {
+		slog.Warn("password login disabled: auth.session.secret is empty " +
+			"(only the IdP can authenticate — an IdP outage locks everyone out)")
+	}
+
 	var admin, stacks, cicd, observability *echo.Group
 	// wsAuth 는 /ws/* 전용 체인이다. 브라우저 WebSocket 은 Authorization 헤더를 못
 	// 붙이므로 서브프로토콜로 온 토큰을 헤더로 옮긴 뒤 평소 인증을 태운다.
@@ -436,7 +458,8 @@ func main() {
 			IssuerURL: cfg.Auth.OIDC.IssuerURL,
 			Audience:  cfg.Auth.OIDC.Audience,
 		}, oidcProvider)
-		authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW)
+		authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW,
+			authmw.WithLocalTokens(localIssuer))
 		// userRateLimit 은 authMW 바로 뒤에 둔다. 권한 검사(RequireRole)보다 앞이어야
 		// 403 으로 튕기는 요청도 사용량에 잡힌다.
 		admin = v1.Group("/admin", authMW, userRateLimit, authmw.RequireRole("admin"))

@@ -61,3 +61,28 @@ func TestTrustsClientSuppliedIdentity(t *testing.T) {
 		})
 	}
 }
+
+// max_age 를 설정하지 않은 구성에서 0 을 그대로 쓰면 발급 즉시 만료된 토큰이
+// 나온다 — 로그인은 성공하는데 다음 요청이 401 이라 원인을 찾기 어렵다.
+func TestSessionTTL_FallsBackWhenUnset(t *testing.T) {
+	c := Config{}
+	if got := c.SessionTTL(); got <= 0 {
+		t.Fatalf("expected a positive default TTL, got %v", got)
+	}
+}
+
+func TestSessionTTL_UsesConfiguredSeconds(t *testing.T) {
+	c := Config{}
+	c.Auth.Session.MaxAge = 3600
+	if got := c.SessionTTL().Seconds(); got != 3600 {
+		t.Fatalf("expected 3600s, got %v", got)
+	}
+}
+
+func TestSessionTTL_IgnoresNegativeValue(t *testing.T) {
+	c := Config{}
+	c.Auth.Session.MaxAge = -1
+	if got := c.SessionTTL(); got <= 0 {
+		t.Fatalf("expected a negative max_age to fall back, got %v", got)
+	}
+}
