@@ -85,12 +85,77 @@ esac
 `, name, name, name)
 }
 
+// harborOIDCScript 는 Harbor 의 인증을 Keycloak 으로 바꾸는 셸 스크립트다.
+//
+// Harbor 는 OIDC 설정을 Helm values 가 아니라 자기 API 로 받는다. 그래서 다른
+// 도구처럼 oidc-values 의 switch 에 넣을 수 없고 이 Job 에 붙는다 — 그동안
+// Keycloak 에 클라이언트만 만들어지고 Harbor 는 db_auth 로 남아 있었다.
+//
+// 멱등하다. 같은 값을 다시 PUT 하면 Harbor 가 200 을 준다.
+// (주의: Harbor 는 admin 외 사용자가 생긴 뒤에는 auth_mode 변경을 거부한다.
+//
+//	그 경우 응답 본문과 함께 실패한다 — 조용히 넘기면 SSO 가 안 되는 이유가
+//	어디에도 남지 않는다.)
+func harborOIDCScript(clientID, issuer string) string {
+	// http endpoint 는 검증할 인증서가 없다. https 면 Harbor 가 체인을 검증한다.
+	verifyCert := "false"
+	if strings.HasPrefix(issuer, "https://") {
+		verifyCert = "true"
+	}
+
+	return fmt.Sprintf(`
+code=$(curl -s -o /tmp/oidc -w '%%{http_code}' -u "admin:$HARBOR_PASSWORD"   -H 'Content-Type: application/json' -X PUT   "$HARBOR_URL/api/v2.0/configurations"   -d "{"auth_mode":"oidc_auth","oidc_name":"Keycloak","oidc_endpoint":"%s","oidc_client_id":"%s","oidc_client_secret":"$HARBOR_OIDC_SECRET","oidc_scope":"openid,profile,email","oidc_verify_cert":%s,"oidc_auto_onboard":true,"oidc_user_claim":"preferred_username"}")
+case "$code" in
+  200) echo "harbor OIDC 설정 완료 (client=%s)" ;;
+  *) echo "harbor OIDC 설정 실패 (HTTP $code)"; cat /tmp/oidc; exit 1 ;;
+esac
+`, issuer, clientID, verifyCert, clientID)
+}
+
+// harborOIDCSettings 는 이 스택에서 Harbor SSO 를 켤 수 있는지와 그 값을 준다.
+//
+// 둘 중 하나라도 없으면 켜지 않는다. endpoint 없는 oidc_auth 는 아무도 로그인할
+// 수 없는 Harbor 를 만든다 — db_auth 로 두는 편이 낫다.
+func (o *Orchestrator) harborOIDCSettings() (clientID, issuer string, ok bool) {
+	provisioner := o.ssoProvisioner()
+	if provisioner == nil {
+		return "", "", false
+	}
+	clientID, found := provisioner.ClientIDFor("installing_harbor")
+	if !found || strings.TrimSpace(clientID) == "" {
+		return "", "", false
+	}
+
+	o.mu.Lock()
+	issuer = o.toolOIDCIssuer
+	o.mu.Unlock()
+	if strings.TrimSpace(issuer) == "" {
+		return "", "", false
+	}
+	return clientID, issuer, true
+}
+
 // harborProvisionManifest 는 프로젝트를 만드는 Job 매니페스트다.
 func (o *Orchestrator) harborProvisionManifest(namespace string) string {
 	// 클러스터 안에서 Service 로 부른다 — Harbor 를 외부에 노출하지 않아도
 	// 동작해야 하고, 게이트웨이 라우트보다 앞서 도는 단계이기 때문이다.
 	harborURL := fmt.Sprintf("http://%s.%s.svc:%d",
 		domain.HarborServiceName, namespace, domain.HarborServicePort)
+
+	// SSO 를 켠 설치에서만 OIDC 를 설정한다. client secret 은 ESO 가 만든
+	// Secret 을 참조한다 — 관리자 비밀번호와 같은 이유로 매니페스트에 평문이
+	// 실리면 안 되고, 회전돼도 Job 이 최신 값을 봐야 한다.
+	script := harborProjectScript(o.harborProjectName())
+	oidcEnv := ""
+	if clientID, issuer, ok := o.harborOIDCSettings(); ok {
+		script += harborOIDCScript(clientID, issuer)
+		oidcEnv = fmt.Sprintf(`
+        - name: HARBOR_OIDC_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: %s
+              key: client-secret`, SSOSecretName(clientID))
+	}
 
 	manifest := fmt.Sprintf(`apiVersion: batch/v1
 kind: Job
@@ -113,14 +178,14 @@ spec:
           valueFrom:
             secretKeyRef:
               name: %s
-              key: %s
+              key: %s%s
         command: ["sh", "-c"]
         args:
         - |
 %s
 `, harborProvisionJobName, namespace, harborURL,
-		domain.HarborAdminSecret, domain.HarborAdminPassKey,
-		indentYAML(harborProjectScript(o.harborProjectName()), 10))
+		domain.HarborAdminSecret, domain.HarborAdminPassKey, oidcEnv,
+		indentYAML(script, 10))
 
 	return manifest
 }
