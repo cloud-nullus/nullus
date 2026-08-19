@@ -10,7 +10,7 @@
 #                  외부에서 열리는 것은 node-10 의 22/tcp 하나뿐이다.
 #                  터널이 살아 있는 동안에만 동작한다.
 #
-#   public         kubectl → 121.78.39.184:36443 → (노드 REDIRECT) → 6443
+#   public         kubectl → <공인IP>:36443 → (노드 REDIRECT) → 6443
 #                  **문서 설계를 벗어난다.** 없던 외부 노출면을 만드는 선택이므로
 #                  터널로 감당이 안 되는 이유가 있을 때만 쓴다. 6443 을 직접 열지
 #                  않고 비표준 포트만 열며, 노드 규칙은 expose-apiserver.sh 가
@@ -44,7 +44,7 @@
 #   LOCAL_PORT   tunnel 모드 로컬 포트  (기본: 16443)
 #   TLS_NAME     검증에 쓸 인증서 이름  (기본: kubernetes)
 #   SSH_KEY      SSH 키 경로            (기본: nullus-key.pem 자동 탐색)
-#   BASTION      bastion 접속 대상      (기본: ubuntu@121.78.39.184)
+#   BASTION      bastion 접속 대상      (필수, .env 또는 환경변수)
 #   KUBECONFIG_OUT 출력 경로            (기본: ~/.kube/<NAME>.conf)
 #
 # 종료 코드: 0 성공 / 1 사전조건·검증 실패
@@ -53,9 +53,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+# 환경별 값은 저장소가 아니라 .env 에 둔다 (gitignore). 없으면 환경변수로 받는다.
+# env.example 을 복사해 채운다: cp env.example .env
+# .env 의 값은 "${VAR:-...}" 형태라 명령줄 환경변수가 우선한다.
+# shellcheck source=/dev/null
+[[ -f "$SCRIPT_DIR/.env" ]] && source "$SCRIPT_DIR/.env"
+
 MODE="${MODE:-tunnel}"
 CLUSTER="${CLUSTER:-platform}"
-BASTION="${BASTION:-ubuntu@121.78.39.184}"
+BASTION="${BASTION:-}"
 LOCAL_PORT="${LOCAL_PORT:-16443}"
 PUBLIC_IP="${PUBLIC_IP:-${BASTION#*@}}"
 # 퍼블릭 IP 는 인증서 SAN 에 없다. 검증에 쓸 이름을 SAN 에 있는 값으로 고정한다.
@@ -83,6 +89,13 @@ ok()   { printf '%s✔%s %s\n' "$C_OK"   "$C_RST" "$*"; }
 warn() { printf '%s!%s %s\n' "$C_WARN" "$C_RST" "$*"; }
 info() { printf '%s·%s %s\n' "$C_DIM"  "$C_RST" "$*"; }
 die()  { printf '%s✘%s %s\n' "$C_ERR"  "$C_RST" "$*" >&2; exit 1; }
+
+# BASTION 은 기본값을 두지 않는다. 특정 환경의 주소를 코드에 박으면 다른 환경에서
+# 조용히 엉뚱한 곳에 붙는다 — 틀린 기본값보다 멈추는 편이 낫다.
+[[ -n "${BASTION:-}" ]] || die "BASTION 이 필요합니다.
+    cp $SCRIPT_DIR/env.example $SCRIPT_DIR/.env 로 복사해 채우거나
+    BASTION=ubuntu@<공인IP> $0 ... 로 넘기십시오."
+
 
 find_key() {
   if [[ -n "${SSH_KEY:-}" ]]; then

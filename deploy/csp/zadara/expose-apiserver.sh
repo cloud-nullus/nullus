@@ -35,7 +35,7 @@
 #   API_PORT     apiserver 실제 포트     (기본: 6443)
 #   NODE         적용 대상 노드          (기본: bastion 자신 = control-plane)
 #   SSH_KEY      SSH 키 경로             (기본: nullus-key.pem 자동 탐색)
-#   BASTION      bastion 접속 대상       (기본: ubuntu@121.78.39.184)
+#   BASTION      bastion 접속 대상       (필수, .env 또는 환경변수)
 #   PUBLIC_IP    외부 접속 주소          (기본: BASTION 의 호스트 부분)
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / ZADARA_EC2_ENDPOINT / SG_ID
 #                주어지면 보안 그룹 규칙을 EC2 호환 API 로 직접 넣는다.
@@ -46,7 +46,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-BASTION="${BASTION:-ubuntu@121.78.39.184}"
+# 환경별 값은 저장소가 아니라 .env 에 둔다 (gitignore). 없으면 환경변수로 받는다.
+# env.example 을 복사해 채운다: cp env.example .env
+# .env 의 값은 "${VAR:-...}" 형태라 명령줄 환경변수가 우선한다.
+# shellcheck source=/dev/null
+[[ -f "$SCRIPT_DIR/.env" ]] && source "$SCRIPT_DIR/.env"
+
+BASTION="${BASTION:-}"
 PUBLIC_IP="${PUBLIC_IP:-${BASTION#*@}}"
 EXT_PORT="${EXT_PORT:-36443}"
 API_PORT="${API_PORT:-6443}"
@@ -62,6 +68,13 @@ ok()   { printf '%s✔%s %s\n' "$C_OK"   "$C_RST" "$*"; }
 warn() { printf '%s!%s %s\n' "$C_WARN" "$C_RST" "$*"; }
 info() { printf '%s·%s %s\n' "$C_DIM"  "$C_RST" "$*"; }
 die()  { printf '%s✘%s %s\n' "$C_ERR"  "$C_RST" "$*" >&2; exit 1; }
+
+# BASTION 은 기본값을 두지 않는다. 특정 환경의 주소를 코드에 박으면 다른 환경에서
+# 조용히 엉뚱한 곳에 붙는다 — 틀린 기본값보다 멈추는 편이 낫다.
+[[ -n "${BASTION:-}" ]] || die "BASTION 이 필요합니다.
+    cp $SCRIPT_DIR/env.example $SCRIPT_DIR/.env 로 복사해 채우거나
+    BASTION=ubuntu@<공인IP> $0 ... 로 넘기십시오."
+
 
 find_key() {
   if [[ -n "${SSH_KEY:-}" ]]; then
