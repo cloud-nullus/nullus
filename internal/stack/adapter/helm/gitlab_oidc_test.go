@@ -184,7 +184,12 @@ func TestGitLabOIDC_HTTPIssuerSkipsDiscovery(t *testing.T) {
 	assert.Contains(t, provider, `authorization_endpoint: "/realms/nullus/protocol/openid-connect/auth"`)
 	assert.Contains(t, provider, `token_endpoint: "/realms/nullus/protocol/openid-connect/token"`)
 	assert.Contains(t, provider, `userinfo_endpoint: "/realms/nullus/protocol/openid-connect/userinfo"`)
-	assert.Contains(t, provider, `jwks_uri: "/realms/nullus/protocol/openid-connect/certs"`)
+	// jwks_uri 만 예외다. 젬이 이 값을 scheme/host/port 와 합치지 않고 그대로
+	// HTTP 요청 대상으로 쓴다(http_client.get(client_options.jwks_uri)).
+	// 경로만 주면 호스트가 비어 ":80" 으로 붙는다:
+	//   Failed to open tcp connection to :80 (... for nil port 80)
+	assert.Contains(t, provider,
+		`jwks_uri: "http://keycloak.nullus.local:8180/realms/nullus/protocol/openid-connect/certs"`)
 }
 
 // https issuer 는 discovery 가 정상 동작한다. 엔드포인트가 바뀌어도 따라가므로

@@ -63,11 +63,16 @@ func gitlabOmniauthProvider(clientID, issuer, baseURL string) string {
 		discovery = "false"
 		// client_options 안에서는 전체 URL 이 아니라 경로다
 		// (scheme/host/port 와 합쳐진다).
+		// authorization/token/userinfo 는 scheme·host·port 와 합쳐지는 경로다.
+		// 반면 jwks_uri 는 젬이 그대로 HTTP 요청 대상으로 쓰므로 전체 URL 이어야
+		// 한다(http_client.get(client_options.jwks_uri)). 경로만 주면 호스트가
+		// 비어 ":80" 으로 붙는다.
+		base := fmt.Sprintf("%s://%s:%d", scheme, host, port)
 		endpoints = fmt.Sprintf(`
     authorization_endpoint: "%s/protocol/openid-connect/auth"
     token_endpoint: "%s/protocol/openid-connect/token"
     userinfo_endpoint: "%s/protocol/openid-connect/userinfo"
-    jwks_uri: "%s/protocol/openid-connect/certs"`, path, path, path, path)
+    jwks_uri: "%s%s/protocol/openid-connect/certs"`, path, path, path, base, path)
 	}
 
 	return fmt.Sprintf(`name: "openid_connect"
