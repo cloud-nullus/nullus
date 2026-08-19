@@ -72,23 +72,42 @@ echo "[nullus] 노드에서 본 호스트 IP: $HOST_IP"
 # 막히므로 반드시 함께 둔다.
 CURRENT_COREFILE="$(kubectl -n kube-system --context "$CONTEXT" get cm coredns -o jsonpath='{.data.Corefile}')"
 
-if grep -q "$KC_HOST" <<<"$CURRENT_COREFILE"; then
-  echo "[nullus] CoreDNS 에 $KC_HOST 가 이미 있습니다 — 갱신합니다"
-  CURRENT_COREFILE="$(sed "/hosts {/,/}/{ s/^\( *\)[0-9.]* ${KC_HOST}$/\1${HOST_IP} ${KC_HOST}/ }" <<<"$CURRENT_COREFILE")"
-else
-  CURRENT_COREFILE="$(awk -v ip="$HOST_IP" -v host="$KC_HOST" '
-    /^\.:53 \{/ && !done {
-      print
-      print "    hosts {"
-      print "        " ip " " host
-      print "        fallthrough"
-      print "    }"
-      done=1
-      next
+# 이전에 넣은 블록이 있으면 통째로 걷어내고 새로 넣는다. 값만 고쳐 쓰려 하면
+# sed 문법이 GNU/BSD 사이에서 갈려 macOS 에서 깨진다(실제로 깨졌다).
+# 마커로 우리 블록의 범위를 표시해 두어 남의 설정은 건드리지 않는다.
+MARKER="# nullus-local-domain"
+
+CURRENT_COREFILE="$(awk -v marker="$MARKER" -v host="$KC_HOST" '
+  # 마커 줄은 버린다.
+  index($0, marker) { next }
+  # hosts 블록은 통째로 모아 두었다가 우리 이름이 들어 있으면 버린다.
+  # 마커가 없던 옛 버전이 남긴 블록도 이렇게 걷힌다.
+  /^ *hosts *\{/ && !buffering { buffering = 1; buf = $0 ORS; next }
+  buffering {
+    buf = buf $0 ORS
+    if ($0 ~ /^ *\} *$/) {
+      buffering = 0
+      if (index(buf, host) == 0) printf "%s", buf
     }
-    { print }
-  ' <<<"$CURRENT_COREFILE")"
-fi
+    next
+  }
+  { print }
+' <<<"$CURRENT_COREFILE")"
+
+CURRENT_COREFILE="$(awk -v ip="$HOST_IP" -v host="$KC_HOST" -v marker="$MARKER" '
+  /^\.:53 \{/ && !inserted {
+    print
+    print "    " marker
+    print "    hosts {"
+    print "        " ip " " host
+    # fallthrough 를 빼면 여기서 못 찾은 이름의 조회가 전부 막힌다.
+    print "        fallthrough"
+    print "    }"
+    inserted = 1
+    next
+  }
+  { print }
+' <<<"$CURRENT_COREFILE")"
 
 TMP_COREFILE="$(mktemp)"
 printf '%s\n' "$CURRENT_COREFILE" >"$TMP_COREFILE"
@@ -127,7 +146,12 @@ CA_NS="$(kubectl get secret --all-namespaces --context "$CONTEXT" \
   -o jsonpath="{range .items[?(@.metadata.name=='${CA_SECRET}')]}{.metadata.namespace}{'\n'}{end}" 2>/dev/null | head -1 || true)"
 
 if [[ -n "$CA_NS" ]]; then
-  CA_FILE="${TMPDIR:-/tmp}/nullus-internal-ca.crt"
+  # TMPDIR 에 쓰면 macOS 에서 /var/folders/... 로 잡혀 경로를 옮겨 적기 어렵고,
+  # 주기적으로 청소돼 나중에 다시 신뢰시킬 때 파일이 사라져 있다.
+  # 저장소 안의 고정 위치에 둔다(.runbook-logs 는 gitignore 대상).
+  CA_DIR="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/.runbook-logs"
+  mkdir -p "$CA_DIR"
+  CA_FILE="${CA_DIR}/nullus-internal-ca.crt"
   kubectl -n "$CA_NS" --context "$CONTEXT" get secret "$CA_SECRET" \
     -o jsonpath='{.data.tls\.crt}' | base64 -d >"$CA_FILE"
   echo ""
