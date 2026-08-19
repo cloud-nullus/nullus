@@ -28,6 +28,36 @@ func ssoClientSecretPath(clientID string) string {
 	return fmt.Sprintf("auth/%s/client-secret", clientID)
 }
 
+// GitLabOIDCSecretName 은 GitLab 이 omniauth provider 로 읽는 Secret 이름이다.
+//
+// GitLab 은 provider 설정을 client secret 하나가 아니라 "블록 전체" 로 받는다.
+// 그래서 다른 도구처럼 client-secret 키만 담은 Secret 으로는 안 되고, ESO 의
+// target.template 으로 provider YAML 을 만들어 넣는다.
+const GitLabOIDCSecretName = "gitlab-oidc-provider" // #nosec G101 -- Secret 리소스 이름
+
+// gitlabOmniauthProvider 는 GitLab 이 읽는 omniauth provider 블록이다.
+//
+// name 은 콜백 경로와 짝이다(/users/auth/<name>/callback). Keycloak 에 등록한
+// redirect 와 갈라지면 로그인이 "redirect_uri" 오류로 막힌다.
+// client secret 은 ESO 템플릿에서 채운다 — 여기 값을 박으면 ExternalSecret
+// 정의에 평문이 남는다.
+func gitlabOmniauthProvider(clientID, issuer string) string {
+	return fmt.Sprintf(`name: "openid_connect"
+label: "Keycloak"
+args:
+  name: "openid_connect"
+  scope: ["openid","profile","email"]
+  response_type: "code"
+  issuer: "%s"
+  discovery: true
+  uid_field: "preferred_username"
+  client_options:
+    identifier: "%s"
+    secret: "{{ .clientSecret }}"
+    redirect_uri: "%s/users/auth/openid_connect/callback"
+`, strings.TrimRight(issuer, "/"), clientID, "https://gitlab.%ACCESS_DOMAIN%")
+}
+
 // ArgoCDSecretName 은 ArgoCD 가 읽는 Secret 이름이다.
 // admin 해시와 OIDC client secret 이 한 Secret 에 공존하므로 ESO 가 단독 소유한다.
 const ArgoCDSecretName = "argocd-secret" // #nosec G101 -- Secret 리소스 이름
@@ -121,6 +151,26 @@ func (o *Orchestrator) ssoManagedSecrets() []ManagedSecret {
 					// createSecret=false 로 꺼 두므로 ESO 가 함께 담아야 한다.
 					{PathSuffix: "pipeline/argocd/server-secretkey", TargetKey: "server.secretkey"},
 				},
+			})
+			continue
+		}
+
+		if step == "installing_gitlab" {
+			// GitLab 은 provider 블록 전체를 담은 Secret 을 읽는다. 그 블록에
+			// issuer 가 들어가므로, issuer 가 없으면 만들지 않는다 — 깨진 설정을
+			// 읽히면 GitLab 이 omniauth 초기화에서 실패한다.
+			block := o.gitlabOmniauthProviderBlock(clientID)
+			if block == "" {
+				continue
+			}
+			items = append(items, ManagedSecret{
+				TargetSecret:    GitLabOIDCSecretName,
+				Consumer:        step,
+				RestartRequired: true,
+				Entries: []SecretEntry{
+					{PathSuffix: ssoClientSecretPath(clientID), TargetKey: "clientSecret"},
+				},
+				TemplateData: map[string]string{"provider": block},
 			})
 			continue
 		}
@@ -229,4 +279,22 @@ func (o *Orchestrator) toolURLScheme() string {
 		return "http"
 	}
 	return "https"
+}
+
+// gitlabOmniauthProviderBlock 은 이 스택의 접속 도메인과 issuer 로 provider 를 만든다.
+func (o *Orchestrator) gitlabOmniauthProviderBlock(clientID string) string {
+	o.mu.Lock()
+	cfg := o.stackConfig
+	issuer := o.toolOIDCIssuer
+	o.mu.Unlock()
+
+	accessDomain := ""
+	if cfg != nil {
+		accessDomain = strings.TrimSpace(cfg.AccessDomain)
+	}
+	if strings.TrimSpace(issuer) == "" || accessDomain == "" {
+		return ""
+	}
+	block := gitlabOmniauthProvider(clientID, issuer)
+	return strings.ReplaceAll(block, "%ACCESS_DOMAIN%", accessDomain)
 }

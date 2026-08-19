@@ -110,6 +110,26 @@ requestedScopes:
 			},
 		}
 
+	case "installing_gitlab":
+		// GitLab 은 provider 설정을 Secret 으로 받는다. 만들어만 두고 여기서
+		// 가리키지 않으면 아무 일도 일어나지 않는다.
+		return map[string]any{
+			"global": map[string]any{
+				"appConfig": map[string]any{
+					"omniauth": map[string]any{
+						"enabled": true,
+						// 처음 로그인하는 Keycloak 사용자를 자동 생성한다. 없으면
+						// 관리자가 계정을 미리 만들어 둬야 로그인이 된다.
+						"allowSingleSignOn":     []any{"openid_connect"},
+						"blockAutoCreatedUsers": false,
+						"providers": []any{
+							map[string]any{"secret": GitLabOIDCSecretName},
+						},
+					},
+				},
+			},
+		}
+
 	case "installing_jenkins":
 		// Jenkins 는 JCasC 로 설정한다. 플러그인이 없으면 oic 설정이 통째로
 		// 무시되므로 additionalPlugins 에 함께 넣는다.
