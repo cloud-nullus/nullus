@@ -95,6 +95,12 @@ func (o *Orchestrator) ssoManagedSecrets() []ManagedSecret {
 				Entries: []SecretEntry{
 					{PathSuffix: ssoClientSecretPath(clientID), TargetKey: "oidc.keycloak.clientSecret"},
 					{PathSuffix: "pipeline/argocd/admin-password", TargetKey: "clearPassword"},
+					// server.secretkey 가 없으면 argocd-server 와 dex-server 가
+					// 기동 즉시 panic 한다("server.secretkey is missing").
+					// 차트는 이 값을 configs.secret.extra 로 넣지만(values.go),
+					// 그 경로는 차트가 Secret 을 만들 때만 유효하다. 여기서는
+					// createSecret=false 로 꺼 두므로 ESO 가 함께 담아야 한다.
+					{PathSuffix: "pipeline/argocd/server-secretkey", TargetKey: "server.secretkey"},
 				},
 			})
 			continue
