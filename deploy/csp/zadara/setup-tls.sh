@@ -25,10 +25,11 @@
 # cert-manager 는 더 구체적인 selector 를 고르므로 서로를 가리지 않는다.
 #
 # 사용법:
-#   ./setup-tls.sh install     cert-manager (+DNS-01 웹훅) 설치 + ClusterIssuer
-#   ./setup-tls.sh wildcard    와일드카드 Certificate 생성 (DNS01_ZONE 필요)
-#   ./setup-tls.sh status      발급 상태 확인
-#   ./setup-tls.sh uninstall   되돌리기
+#   ./setup-tls.sh install       cert-manager (+DNS-01 웹훅) 설치 + ClusterIssuer
+#   ./setup-tls.sh wildcard      와일드카드 Certificate 생성 (DNS01_ZONE 필요)
+#   ./setup-tls.sh default-cert  ingress-nginx 기본 인증서를 와일드카드로 지정
+#   ./setup-tls.sh status        발급 상태 확인
+#   ./setup-tls.sh uninstall     되돌리기
 #
 # 환경 변수:
 #   NAMESPACE      Nullus 네임스페이스   (기본: nullus)
@@ -46,6 +47,10 @@
 #   DNS01_SECRET   자격증명 시크릿 이름  (기본: spaceship-dns01, cert-manager ns)
 #   LEGO_WEBHOOK_VERSION  lego 웹훅 차트 버전 (기본: 1.4.0)
 #
+#   INGRESS_NGINX_NS       ingress-nginx 네임스페이스   (기본: ingress-nginx)
+#   INGRESS_NGINX_RELEASE  helm 릴리스 이름             (기본: ingress-nginx)
+#   INGRESS_NGINX_VERSION  차트 버전                    (기본: 4.15.1)
+#
 # 종료 코드: 0 성공 / 1 실패
 # =============================================================================
 set -euo pipefail
@@ -61,6 +66,11 @@ DNS01_SECRET="${DNS01_SECRET:-spaceship-dns01}"
 # 차트를 고정한다. 떠 있으면 어제 통하던 발급이 오늘 조용히 깨진다.
 LEGO_WEBHOOK_VERSION="${LEGO_WEBHOOK_VERSION:-1.4.0}"
 LEGO_WEBHOOK_REPO="https://yxwuxuanl.github.io/cert-manager-lego-webhook/"
+
+INGRESS_NGINX_NS="${INGRESS_NGINX_NS:-ingress-nginx}"
+INGRESS_NGINX_RELEASE="${INGRESS_NGINX_RELEASE:-ingress-nginx}"
+INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-4.15.1}"
+INGRESS_NGINX_REPO="https://kubernetes.github.io/ingress-nginx"
 
 if [[ -t 1 ]]; then
   C_OK=$'\033[1;32m'; C_ERR=$'\033[1;31m'; C_WARN=$'\033[1;33m'; C_DIM=$'\033[2m'; C_RST=$'\033[0m'
@@ -235,6 +245,42 @@ EOF
   info "진행 확인: $0 status"
 }
 
+# ingress-nginx 의 기본 인증서를 와일드카드로 지정한다.
+#
+# 왜 필요한가: Ingress 의 tls 항목은 **거기 적힌 호스트만** 덮는다. 스택이 깔리며
+# 생기는 argocd/grafana/harbor/… 는 그 목록에 없으므로, 그대로 두면 컨트롤러의
+# 자체서명(Kubernetes Ingress Controller Fake Certificate)이 나가고 브라우저가
+# 경고를 띄운다. 기본 인증서를 지정하면 tls 항목이 없는 모든 호스트가 자동으로
+# 와일드카드를 받는다 — 도구를 늘려도 손댈 것이 없다.
+#
+# 이 스크립트가 관리하지 않는 릴리스(ingress-nginx)를 건드리는 유일한 자리다.
+# --reuse-values 로 기존 설정을 보존하고 인자 하나만 더한다.
+do_default_cert() {
+  command -v helm >/dev/null || die "helm 이 필요합니다"
+  [[ -n "$DNS01_ZONE" || -n "${WILDCARD_SECRET:-}" ]] || die "DNS01_ZONE 이 필요합니다 (예: DNS01_ZONE=nullus.io $0 default-cert)"
+
+  local secret_ref="${WILDCARD_SECRET:-${NAMESPACE}/nullus-wildcard-tls}"
+
+  # 시크릿이 없는 채로 지정하면 컨트롤러가 기동 시 그것을 찾다 실패하고, 그동안
+  # 모든 호스트가 자체서명으로 떨어진다. 먼저 있는지 본다.
+  local ns="${secret_ref%%/*}" name="${secret_ref##*/}"
+  "${K[@]}" -n "$ns" get secret "$name" >/dev/null 2>&1     || die "시크릿 ${secret_ref} 가 없습니다. 먼저 '$0 wildcard' 로 발급하십시오."
+
+  "${K[@]}" -n "$INGRESS_NGINX_NS" get deploy "${INGRESS_NGINX_RELEASE}-controller" >/dev/null 2>&1     || die "ingress-nginx 컨트롤러를 찾을 수 없습니다 (${INGRESS_NGINX_NS}/${INGRESS_NGINX_RELEASE}-controller)"
+
+  info "ingress-nginx 기본 인증서를 ${secret_ref} 로 지정"
+  helm repo add ingress-nginx "$INGRESS_NGINX_REPO" >/dev/null 2>&1 || true
+  helm repo update ingress-nginx >/dev/null 2>&1 || true
+  helm upgrade "$INGRESS_NGINX_RELEASE" ingress-nginx/ingress-nginx \
+    --version "$INGRESS_NGINX_VERSION" \
+    --namespace "$INGRESS_NGINX_NS" \
+    --reuse-values \
+    --set "controller.extraArgs.default-ssl-certificate=${secret_ref}" \
+    --wait --timeout 300s >/dev/null || die "ingress-nginx 갱신 실패"
+
+  ok "기본 인증서 지정 완료 — tls 항목이 없는 호스트도 와일드카드를 받는다"
+}
+
 do_status() {
   printf '· cert-manager ... '
   if "${K[@]}" get deploy -n cert-manager cert-manager >/dev/null 2>&1; then echo "설치됨"; else echo "없음"; return; fi
@@ -242,6 +288,11 @@ do_status() {
     printf '· lego DNS-01 웹훅 ... '
     if "${K[@]}" -n cert-manager get deploy cert-manager-lego-webhook >/dev/null 2>&1; then echo "설치됨"; else echo "없음"; fi
   fi
+  printf '· ingress-nginx 기본 인증서 ... '
+  "${K[@]}" -n "$INGRESS_NGINX_NS" get deploy "${INGRESS_NGINX_RELEASE}-controller" \
+    -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null \
+    | tr ',' '\n' | sed -n 's/.*default-ssl-certificate=\([^"]*\).*/\1/p' | head -1 \
+    | grep . || echo "미지정"
   echo "· ClusterIssuer"
   "${K[@]}" get clusterissuer -o custom-columns=NAME:.metadata.name,READY:.status.conditions[0].status --no-headers 2>/dev/null | sed 's/^/    /'
   echo "· Certificate (${NAMESPACE})"
@@ -267,9 +318,10 @@ do_uninstall() {
 }
 
 case "${1:-status}" in
-  install)   do_install ;;
-  wildcard)  do_wildcard ;;
-  status)    do_status ;;
-  uninstall) do_uninstall ;;
-  *)         die "사용법: $0 [install|wildcard|status|uninstall]" ;;
+  install)      do_install ;;
+  wildcard)     do_wildcard ;;
+  default-cert) do_default_cert ;;
+  status)       do_status ;;
+  uninstall)    do_uninstall ;;
+  *)            die "사용법: $0 [install|wildcard|default-cert|status|uninstall]" ;;
 esac
