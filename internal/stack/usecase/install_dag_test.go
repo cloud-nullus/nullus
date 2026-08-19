@@ -14,6 +14,9 @@ import (
 // (helm 패키지 쪽 대칭 테스트: TestOrderedStep_MatchesCanonicalInstallOrder)
 var canonicalInstallOrder = []string{
 	"installing_cert_manager",
+	// ServiceMonitor / Probe 를 만드는 단계들이 kube-prometheus-stack 설치보다
+	// 앞서므로 CRD 를 먼저 깐다.
+	"installing_prometheus_crds",
 	"installing_metrics_server",
 	"installing_openbao",
 	"installing_external_secrets",

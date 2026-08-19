@@ -532,6 +532,11 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_prometheus":
 		return map[string]any{
+			// CRD 는 installing_prometheus_crds 가 먼저 깐다. 여기서 또 만들면
+			// 이미 있는 리소스의 소유권 충돌로 설치가 실패한다.
+			"crds": map[string]any{
+				"enabled": false,
+			},
 			"prometheus": map[string]any{
 				"ingress": map[string]any{
 					"enabled": false,

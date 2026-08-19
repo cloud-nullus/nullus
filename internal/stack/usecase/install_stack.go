@@ -27,6 +27,10 @@ type installStep struct {
 // installDAG defines step dependencies with phase labels.
 var installDAG = []installStep{
 	{name: "installing_cert_manager", phase: "A", duration: time.Second},
+	// ServiceMonitor / Probe 를 만드는 단계들이 kube-prometheus-stack 설치보다
+	// 앞서므로 그 CRD 를 먼저 깐다. 없으면 MinIO 설치가
+	// "no matches for kind Probe" 로 죽는다.
+	{name: "installing_prometheus_crds", phase: "A", duration: time.Second, deps: []string{"installing_cert_manager"}},
 	{name: "installing_metrics_server", phase: "A", duration: time.Second},
 
 	// 시크릿 평면(OpenBao → ESO → provisioning)이 스토리지보다 먼저 선다.

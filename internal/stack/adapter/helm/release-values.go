@@ -28,6 +28,7 @@ import (
 // 하나만으로는 되짚을 수 없다. 변형까지 모두 적어 둔다.
 var releaseStepNames = map[string]string{
 	"cert-manager":             stepInstallingCertManager,
+	"prometheus-operator-crds": stepInstallingPrometheusCRDs,
 	"metrics-server":           "installing_metrics_server",
 	"openbao":                  "installing_openbao",
 	"external-secrets":         "installing_external_secrets",

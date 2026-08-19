@@ -231,10 +231,10 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				Recommended: "1.35",
 			},
 			Tools: map[string]domain.ToolVersion{
-				"source_repository": {Name: "Gitea", HelmVersion: baselineGiteaHelmVersion, AppVersion: baselineGiteaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"ci_platform":       {Name: "Jenkins", HelmVersion: baselineJenkinsHelmVersion, AppVersion: baselineJenkinsAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"source_repository":  {Name: "Gitea", HelmVersion: baselineGiteaHelmVersion, AppVersion: baselineGiteaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"ci_platform":        {Name: "Jenkins", HelmVersion: baselineJenkinsHelmVersion, AppVersion: baselineJenkinsAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"container_registry": {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"cd_tool":           {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":            {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 			},
 		},
 		{

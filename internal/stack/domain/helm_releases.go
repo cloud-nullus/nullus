@@ -14,6 +14,10 @@ package domain
 // 로깅/트레이스처럼 설정에 따라 차트가 갈리는 단계는 가능한 변형을 모두 포함한다.
 var InstalledHelmReleaseNames = []string{
 	"cert-manager",
+	// Prometheus Operator CRD. ServiceMonitor 를 만드는 단계들이
+	// kube-prometheus-stack 설치보다 앞서 먼저 깔린다. 빼면 스택을 지워도
+	// 릴리스가 남아 다음 설치가 소유권 충돌로 막힌다.
+	"prometheus-operator-crds",
 	"metrics-server",
 	"openbao",
 	"external-secrets",

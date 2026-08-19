@@ -21,9 +21,12 @@ const (
 	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
 	stepInstallingCertManager        = "installing_cert_manager"
-	stepInstallingRunner             = "installing_runner"
-	stepInstallingOTelCollector      = "installing_otel_collector"
-	stepInstallingOTelAgent          = "installing_otel_agent"
+	// Prometheus Operator 의 CRD 를 먼저 깐다. ServiceMonitor / Probe 를 만드는
+	// 단계들이 kube-prometheus-stack 설치보다 한참 앞서기 때문이다.
+	stepInstallingPrometheusCRDs = "installing_prometheus_crds"
+	stepInstallingRunner         = "installing_runner"
+	stepInstallingOTelCollector  = "installing_otel_collector"
+	stepInstallingOTelAgent      = "installing_otel_agent"
 )
 
 var installGatewayOCIRelease = installOCIChartWithHelmCLI
@@ -367,6 +370,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		// 순서가 일치해야 한다 — ensureOrder 가 이 순서를 강제한다.
 		orderedStep: []string{
 			stepInstallingCertManager,
+			stepInstallingPrometheusCRDs,
 			"installing_metrics_server",
 			"installing_openbao",
 			"installing_external_secrets",
@@ -407,24 +411,25 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 않는다. config.authentication.provider 로 매핑해 두면 이 값이
 			// 설치 여부를 좌우하는 것처럼 읽혀 오해를 부르므로 넣지 않는다.
 			// provisioning_sso 는 선택형이라 매핑을 유지한다.
-			"provisioning_sso":          "config.authentication.provider",
-			"installing_gitlab":         "config.artifacts.source_repository",
-			"installing_gitea":          "config.artifacts.source_repository",
-			"provisioning_gitea":        "config.artifacts.source_repository",
-			"installing_harbor":         "config.artifacts.container_registry",
-			"provisioning_harbor":       "config.artifacts.container_registry",
-			"installing_nexus":          "config.artifacts.container_registry",
-			"provisioning_nexus":        "config.artifacts.container_registry",
-			"installing_argocd":         "config.pipeline.cd_tool",
-			stepInstallingRunner:        "config.pipeline.ci_platform",
-			"installing_jenkins":        "config.pipeline.ci_platform",
-			"installing_prometheus":     "config.monitoring.collection",
-			"installing_grafana":        "config.monitoring.visualization",
-			"installing_logging":        "config.logging.collection",
-			"installing_log_search":     "config.logging.search",
-			"installing_opentelemetry":  "config.logging.trace_layer",
-			stepInstallingOTelCollector: "config.logging.trace_exporter",
-			stepInstallingOTelAgent:     "config.logging.trace_exporter",
+			"provisioning_sso":           "config.authentication.provider",
+			stepInstallingPrometheusCRDs: "config.monitoring.collection",
+			"installing_gitlab":          "config.artifacts.source_repository",
+			"installing_gitea":           "config.artifacts.source_repository",
+			"provisioning_gitea":         "config.artifacts.source_repository",
+			"installing_harbor":          "config.artifacts.container_registry",
+			"provisioning_harbor":        "config.artifacts.container_registry",
+			"installing_nexus":           "config.artifacts.container_registry",
+			"provisioning_nexus":         "config.artifacts.container_registry",
+			"installing_argocd":          "config.pipeline.cd_tool",
+			stepInstallingRunner:         "config.pipeline.ci_platform",
+			"installing_jenkins":         "config.pipeline.ci_platform",
+			"installing_prometheus":      "config.monitoring.collection",
+			"installing_grafana":         "config.monitoring.visualization",
+			"installing_logging":         "config.logging.collection",
+			"installing_log_search":      "config.logging.search",
+			"installing_opentelemetry":   "config.logging.trace_layer",
+			stepInstallingOTelCollector:  "config.logging.trace_exporter",
+			stepInstallingOTelAgent:      "config.logging.trace_exporter",
 		},
 		stepConfigEnabled: map[string]func(domain.StackConfig) bool{
 			"installing_postgresql": func(cfg domain.StackConfig) bool {
@@ -490,6 +495,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			//
 			// 반면 provisioning_sso 는 OSS OIDC 연동을 켤 때만 필요하므로
 			// 선택형으로 유지한다.
+			// CRD 는 Prometheus 를 고른 스택에서만 필요하다.
+			stepInstallingPrometheusCRDs: func(cfg domain.StackConfig) bool {
+				return cfg.Monitoring.Collection.Enabled
+			},
 			"provisioning_sso": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
 					return false
@@ -1106,6 +1115,10 @@ func isOptInStep(step string) bool {
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
 	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
 	case "installing_gitea", "installing_jenkins":
+		return true
+	// CRD 는 Prometheus 를 고른 스택에서만 필요하다. 여기 없으면 설정을 모를 때
+	// 켜진 것으로 보고, 순서 검증이 오지 않을 단계를 기다리다 멈춘다.
+	case stepInstallingPrometheusCRDs:
 		return true
 	}
 	return false

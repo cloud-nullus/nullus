@@ -154,7 +154,7 @@ func TestBuildStackTokenSourceInputs_GitHubHasExactlyOneEntry(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
-// 마법사는 authentication.provider 를 기본값 '' 로 두고, 정규화기는 빈 값이면
+// 마법사는 authentication.provider 를 기본값 ” 로 두고, 정규화기는 빈 값이면
 // authentication 키를 통째로 뺀다. 그런데 시크릿 평면(OpenBao)은 이 값과 무관하게
 // 항상 설치된다 — PostgreSQL/MinIO 가 provisioning_secrets 가 만든 Secret 을
 // existingSecret 으로 참조하기 때문이다.

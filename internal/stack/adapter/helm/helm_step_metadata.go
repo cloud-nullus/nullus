@@ -218,6 +218,16 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Values:    DefaultValues(stepInstallingRunner),
 			Wait:      false,
 		}, true
+	case stepInstallingPrometheusCRDs:
+		// 버전은 kube-prometheus-stack 이 쓰는 operator 와 맞춘다. 어긋나면
+		// 오퍼레이터가 모르는 스키마의 CRD 가 깔린다.
+		return ChartSpec{
+			ReleaseName: "prometheus-operator-crds",
+			ChartName:   "prometheus-operator-crds",
+			RepoURL:     "https://prometheus-community.github.io/helm-charts",
+			Version:     domain.PrometheusOperatorCRDsChartVersion,
+			Wait:        false,
+		}, true
 	case "installing_prometheus":
 		return ChartSpec{
 			ChartName: "kube-prometheus-stack",

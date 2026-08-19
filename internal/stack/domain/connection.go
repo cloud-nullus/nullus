@@ -169,7 +169,11 @@ const (
 	// 그대로 쓰면 화면에 오퍼레이터 버전이 Prometheus 버전인 양 뜬다. 사용자가
 	// 알아야 하는 것은 실제로 서는 Prometheus 서버 버전이므로 그것을 적는다.
 	PrometheusChartVersion = "69.3.0"
-	PrometheusAppVersion   = "v3.1.0"
+	// PrometheusOperatorCRDsChartVersion 은 위 차트가 쓰는 operator(v0.80.0)와
+	// 같은 버전의 CRD 를 담는다. ServiceMonitor / Probe 를 만드는 단계가
+	// kube-prometheus-stack 설치보다 앞서므로 CRD 를 먼저 깐다.
+	PrometheusOperatorCRDsChartVersion = "18.0.0"
+	PrometheusAppVersion               = "v3.1.0"
 
 	GrafanaChartVersion = "8.9.0"
 	GrafanaAppVersion   = "11.5.1"

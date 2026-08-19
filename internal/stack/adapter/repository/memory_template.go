@@ -210,8 +210,8 @@ func goldenPathTemplates() []*domain.Template {
 			// 막아, 스택은 서는데 아무것도 배포할 수 없는 템플릿이 된다(실측 확인).
 			// 그 예산에 들어가는 레지스트리는 Harbor 하나뿐이다 — core·registry 만
 			// 요청을 잡아 512Mi 로 서고, Nexus 는 JVM 고정으로 1.5Gi 를 요구한다.
-			ID:          "gitea-jenkins-argocd-lite-v1",
-			Name:        "Gitea + Jenkins + Argo CD (Lite)",
+			ID:   "gitea-jenkins-argocd-lite-v1",
+			Name: "Gitea + Jenkins + Argo CD (Lite)",
 			// 설명 문구는 000072 마이그레이션의 시드 값과 같아야 한다. 프론트의
 			// TEMPLATE_DESCRIPTION_LOCALE_OVERRIDES 가 설명 원문을 키로 영문을
 			// 찾으므로, 문구가 갈리면 영어 화면에서만 번역이 빠진다.
