@@ -7,6 +7,7 @@ import { useAuthStore } from '../../../stores/auth-store'
 import { roleLandingPath } from '../role-landing'
 import { isOidcMode, getProviderConfig } from '../../../lib/oidc-providers'
 import { NullusMark } from '../../../components/brand/nullus-mark'
+import { loginWithPassword } from '../api/auth-api'
 import type { User } from '../../../types'
 
 const loginSchema = z.object({
@@ -43,9 +44,17 @@ function OidcLoginContent() {
   const providerLabel = getProviderConfig().type === 'authentik' ? 'Authentik' : 'Keycloak'
   const triedRef = useRef(false)
 
-  // Seamless SSO: 로그인 안 됐으면 자동으로 Keycloak 으로 redirect (버튼 클릭 불필요)
+  // IdP 가 깨졌을 때가 비밀번호 경로가 필요한 순간이다. 사용자가 전환 버튼을
+  // 찾아내야만 들어갈 수 있다면 break-glass 라고 할 수 없으므로, 오류가 나면
+  // 곧바로 입력을 내준다.
+  const [showPassword, setShowPassword] = useState(false)
+  const usePassword = showPassword || Boolean(auth.error)
+
+  // Seamless SSO: 로그인 안 됐으면 자동으로 IdP 로 redirect (버튼 클릭 불필요).
+  // 비밀번호 경로로 전환했으면 멈춘다 — 뒤에서 튕겨 나가면 폼을 쓸 수 없다.
   useEffect(() => {
     if (
+      !usePassword &&
       !auth.isLoading &&
       !auth.isAuthenticated &&
       !auth.activeNavigator &&
@@ -55,20 +64,23 @@ function OidcLoginContent() {
       triedRef.current = true
       void auth.signinRedirect()
     }
-  }, [auth.isLoading, auth.isAuthenticated, auth.activeNavigator, auth.error])
+  }, [usePassword, auth.isLoading, auth.isAuthenticated, auth.activeNavigator, auth.error])
 
   return (
     <>
       <p className="mb-4 text-center text-[13px] text-[var(--color-text-secondary)]">
         {auth.error
-          ? `${providerLabel} 로그인 중 오류가 발생했습니다.`
-          : `${providerLabel}(으)로 이동 중입니다…`}
+          ? `${providerLabel} 로그인 중 오류가 발생했습니다. 비밀번호로 로그인할 수 있습니다.`
+          : usePassword
+            ? 'Sign in with your Nullus account.'
+            : `${providerLabel}(으)로 이동 중입니다…`}
       </p>
       {auth.error && (
         <div className="mb-4 rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)] px-3 py-2.5 text-[13px] text-[var(--color-error)]">
           {auth.error.message}
         </div>
       )}
+
       <button
         type="button"
         onClick={() => {
@@ -79,7 +91,91 @@ function OidcLoginContent() {
       >
         Sign in with {providerLabel}
       </button>
+
+      {usePassword ? (
+        <>
+          <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-wide text-[var(--color-text-muted)]">
+            <span className="h-px flex-1 bg-[var(--color-border-default)]" />
+            or
+            <span className="h-px flex-1 bg-[var(--color-border-default)]" />
+          </div>
+          <PasswordLoginForm />
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowPassword(true)}
+          className="mt-3 w-full rounded-[10px] border border-[var(--color-border-default)] bg-transparent p-3 text-sm font-medium text-[var(--color-text-secondary)]"
+        >
+          Sign in with a password
+        </button>
+      )}
     </>
+  )
+}
+
+/**
+ * ID/PW 로그인 폼. 서버(POST /auth/login)가 자격을 검증하고 세션 토큰을 준다.
+ *
+ * mock 모드의 MockLoginContent 와 달리 브라우저에서 비밀번호를 대조하지 않는다.
+ */
+function PasswordLoginForm() {
+  const navigate = useNavigate()
+  const login = useAuthStore((s) => s.login)
+  const [error, setError] = useState<string | null>(null)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  })
+
+  const onSubmit = async (data: LoginFormData) => {
+    setError(null)
+    try {
+      const { token, user } = await loginWithPassword(data.email, data.password)
+      login(user, token)
+      navigate(roleLandingPath(user.role))
+    } catch (err) {
+      // 서버가 이미 "없는 계정" 과 "틀린 비밀번호" 를 구분하지 않는다.
+      setError(err instanceof Error ? err.message : 'Invalid email or password.')
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <label htmlFor="password-email" className="text-xs font-medium text-[var(--color-text-secondary)]">
+          Email
+        </label>
+        <TextInput id="password-email" type="email" {...register('email')} placeholder="you@nullus.dev" />
+        {errors.email && <span className="text-xs text-[var(--color-error)]">{errors.email.message}</span>}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="password-password" className="text-xs font-medium text-[var(--color-text-secondary)]">
+          Password
+        </label>
+        <TextInput id="password-password" type="password" {...register('password')} placeholder="••••••••" />
+        {errors.password && <span className="text-xs text-[var(--color-error)]">{errors.password.message}</span>}
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-[color-mix(in_srgb,_var(--color-error)_30%,_transparent)] bg-[color-mix(in_srgb,_var(--color-error)_10%,_transparent)] px-3 py-2.5 text-[13px] text-[var(--color-error)]">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="mt-1 rounded-[10px] border-none bg-[var(--color-primary)] p-3 text-sm font-bold text-[var(--color-on-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        Sign in
+      </button>
+    </form>
   )
 }
 
