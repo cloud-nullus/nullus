@@ -132,3 +132,32 @@ func TestGitLabOIDC_ProviderRedirectUsesSharedScheme(t *testing.T) {
 	assert.Contains(t, item.TemplateData["provider"],
 		o.toolURLScheme()+"://gitlab.nullus.local/users/auth/openid_connect/callback")
 }
+
+// GitLab 로그인이 이렇게 깨졌다:
+//
+//	Could not authenticate you from OpenIDConnect because
+//	"Ssl connect returned=1 ... peeraddr=192.168.65.254:8180 state=error: wrong version number"
+//
+// omniauth-openid_connect 의 client_options 는 scheme=https / port=443 이 기본값이라
+// issuer 의 스킴·포트를 따라가지 않는다. 평문 포트에 TLS 로 말해서 나는 오류다.
+// issuer 를 분해해 넣어야 한다.
+func TestGitLabOIDC_ClientOptionsCarryIssuerSchemeHostPort(t *testing.T) {
+	item, _ := gitlabOIDCSecret(t, gitlabOrchestrator(t,
+		"http://keycloak.nullus.local:8180/realms/nullus", true))
+	provider := item.TemplateData["provider"]
+
+	assert.Contains(t, provider, `scheme: "http"`, "평문 issuer 에 TLS 로 붙으면 wrong version number 가 난다")
+	assert.Contains(t, provider, `host: "keycloak.nullus.local"`)
+	assert.Contains(t, provider, "port: 8180")
+}
+
+// https issuer 는 기본 포트를 쓴다.
+func TestGitLabOIDC_ClientOptionsForHTTPSIssuer(t *testing.T) {
+	item, _ := gitlabOIDCSecret(t, gitlabOrchestrator(t,
+		"https://auth.nullus.io/realms/nullus", true))
+	provider := item.TemplateData["provider"]
+
+	assert.Contains(t, provider, `scheme: "https"`)
+	assert.Contains(t, provider, `host: "auth.nullus.io"`)
+	assert.Contains(t, provider, "port: 443")
+}

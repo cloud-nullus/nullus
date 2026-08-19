@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +44,15 @@ const GitLabOIDCSecretName = "gitlab-oidc-provider" // #nosec G101 -- Secret 리
 // client secret 은 ESO 템플릿에서 채운다 — 여기 값을 박으면 ExternalSecret
 // 정의에 평문이 남는다.
 func gitlabOmniauthProvider(clientID, issuer, baseURL string) string {
+	// omniauth-openid_connect 의 client_options 는 scheme=https / port=443 이
+	// 기본값이고 issuer 의 스킴·포트를 따라가지 않는다. 그대로 두면 평문 포트에
+	// TLS 로 붙어 이렇게 깨진다:
+	//
+	//	Ssl connect returned=1 ... state=error: wrong version number
+	//
+	// 그래서 issuer 를 분해해 함께 넣는다.
+	scheme, host, port := splitIssuerEndpoint(issuer)
+
 	return fmt.Sprintf(`name: "openid_connect"
 label: "Keycloak"
 args:
@@ -55,7 +66,38 @@ args:
     identifier: "%s"
     secret: "{{ .clientSecret }}"
     redirect_uri: "%s/users/auth/openid_connect/callback"
-`, strings.TrimRight(issuer, "/"), clientID, baseURL)
+    scheme: "%s"
+    host: "%s"
+    port: %d
+`, strings.TrimRight(issuer, "/"), clientID, baseURL, scheme, host, port)
+}
+
+// splitIssuerEndpoint 는 issuer URL 을 스킴·호스트·포트로 나눈다.
+//
+// 포트가 없으면 스킴의 기본값을 쓴다 — 비워 두면 젬이 443 을 가정해 http issuer
+// 에서 곧바로 어긋난다.
+func splitIssuerEndpoint(issuer string) (scheme, host string, port int) {
+	parsed, err := url.Parse(strings.TrimSpace(issuer))
+	if err != nil || parsed.Host == "" {
+		return "https", "", 443
+	}
+
+	scheme = parsed.Scheme
+	if scheme == "" {
+		scheme = "https"
+	}
+	host = parsed.Hostname()
+
+	port = 443
+	if scheme == "http" {
+		port = 80
+	}
+	if p := parsed.Port(); p != "" {
+		if n, convErr := strconv.Atoi(p); convErr == nil {
+			port = n
+		}
+	}
+	return scheme, host, port
 }
 
 // ArgoCDSecretName 은 ArgoCD 가 읽는 Secret 이름이다.
