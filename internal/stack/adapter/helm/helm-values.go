@@ -63,7 +63,7 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 	// OIDC 블록은 스택별 client ID / accessDomain 에 의존한다.
 	// 에어갭 values 파일에만 있던 설정을 코드 경로로 끌어와 일반 설치에도 적용한다.
 	if oidc := o.oidcValuesForStep(step); len(oidc) > 0 {
-		base = mergeMaps(base, oidc)
+		base = mergeOIDCValues(base, oidc)
 	}
 
 	base = mergeMaps(base, o.resourceDefaultValuesForStep(step, cfg))
@@ -641,4 +641,33 @@ func resourceOverrideFromManifest(doc map[string]any) (map[string]any, bool) {
 	}
 
 	return nil, false
+}
+
+// mergeOIDCValues 는 OIDC 블록을 기존 values 에 얹는다.
+//
+// mergeMaps 와 다른 점은 슬라이스를 이어붙인다는 것이다. OIDC values 는 기존
+// 설정을 바꾸는 게 아니라 "더하는" 성격인데, 통째로 바꾸면 같은 키를 쓰던 기존
+// 항목이 사라진다. 실제로 Jenkins 의 additionalExistingSecrets 에 OIDC 시크릿을
+// 넣자 기존 Gitea 자격 항목 두 개가 밀려나, JCasC 가 자격을 풀지 못해 Jenkins 가
+// 기동에 실패했다(SEVERE hudson.util.BootFailure).
+//
+// mergeMaps 자체를 바꾸지 않는다 — 사용자 오버라이드는 목록을 "교체" 하려는
+// 의도일 수 있어 전역 규칙을 바꾸면 다른 곳이 조용히 달라진다.
+func mergeOIDCValues(base, oidc map[string]any) map[string]any {
+	if base == nil {
+		base = map[string]any{}
+	}
+	for key, value := range oidc {
+		switch override := value.(type) {
+		case map[string]any:
+			subBase, _ := base[key].(map[string]any)
+			base[key] = mergeOIDCValues(subBase, override)
+		case []any:
+			existing, _ := base[key].([]any)
+			base[key] = append(append([]any{}, existing...), override...)
+		default:
+			base[key] = value
+		}
+	}
+	return base
 }
