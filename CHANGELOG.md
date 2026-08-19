@@ -201,6 +201,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **ArgoCD 가 SSO 로그인 후 권한 0 이던 것** (`internal/auth/adapter/keycloak/`, `internal/stack/adapter/helm/oidc-values.go`): `policy.default` 와 `policy.csv` 가 모두 비어 있어 OIDC 로 들어온 사용자에게 권한이 하나도 없었다. 로그인은 되는데 애플리케이션이 하나도 보이지 않는다 — 인증이 아니라 인가 문제라서 원인이 엉뚱한 데서 찾아진다.
+
+  권한을 주려면 토큰에 역할이 실려야 하는데 프로비저너가 만든 클라이언트에 역할 매퍼가 없었다. Keycloak 은 `realm_access.roles` 를 기본적으로 액세스 토큰에만 싣고 도구는 대개 ID 토큰을 읽으므로, 별도 매퍼로 명시해야 도달한다(프론트엔드 코드에도 같은 함정이 주석으로 적혀 있다).
+
+  매퍼에 종류를 둔다 — 고정 값(MinIO 의 `policy`)과 realm 역할은 페이로드가 다르고, 역할은 `multivalued` 여야 한다(단일값으로 두면 하나만 실려 나머지가 조용히 사라진다). `policy.default` 는 비워 둔다: 열어 두면 역할 없는 사용자도 들어와 매핑 자체가 무의미해진다. `developer` 는 읽기만 준다 — 파이프라인이 배포하는 구조라 사람이 직접 동기화할 이유가 없고, 실수로 되돌리면 GitOps 의 단일 출처가 흔들린다.
+
+  클레임도 역할도 요구하지 않는 도구(GitLab·Harbor·Gitea)에는 매퍼를 붙이지 않는다. 자동 온보딩이 일반 사용자를 만들고 그 기본값이 합리적이라 지금은 역할을 넘길 이유가 없다.
+
+
 - **설치되는 OSS 가 자기 주소를 몰라 OIDC 로그인이 막히던 것** (`internal/stack/adapter/helm/{helm-values,oidc-values}.go`): 도구는 저마다 자기 기본 주소 설정에서 `redirect_uri` 를 만든다. 그 스킴이 Keycloak 에 등록된 redirect 와 다르면 로그인이 `Invalid parameter: redirect_uri` 로 막힌다. Harbor(`externalURL`)·Gitea(`ROOT_URL`)·Jenkins(`jenkinsUrl` — 아예 미설정)·GitLab(`global.hosts.https`) 에서 **같은 실패가 네 번 반복됐다**.
 
   스킴을 도구마다 하드코딩하면 도구를 추가할 때마다 이 실수가 돌아온다. `toolURLScheme()` 하나로 모으고, 네 도구가 같은 판단을 쓰는지 한 테스트로 묶는다. 갈라지면 그 도구만 로그인이 깨지고, 원인은 인증이 아니라 주소 설정에 있어 찾기 어렵다. 네 번째(GitLab)는 그 뒤라 설치 전에 코드에서 잡았다.
