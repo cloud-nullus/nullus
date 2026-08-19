@@ -107,6 +107,8 @@ func TestOrchestrator_ExecuteStep_InExpectedOrder(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -195,6 +197,8 @@ func TestOrchestrator_ExecuteStep_SkipsSharedClusterScopedComponents(t *testing.
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -234,6 +238,8 @@ func TestOrchestrator_ApplyResourceDefaultsForArgoCDAndRunner(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -565,6 +571,8 @@ func TestOrchestrator_VerifyDeployment_Success(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -603,6 +611,8 @@ func TestOrchestrator_VerifyDeployment_FailsWhenReleaseNotHealthy(t *testing.T) 
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -916,6 +926,8 @@ func TestOrchestrator_ExecuteStep_UsesOpensearchForLoggingSearch(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -971,6 +983,8 @@ func TestOrchestrator_VerifyDeployment_UsesResolvedChartsForLoggingAndTrace(t *t
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -1019,6 +1033,8 @@ func TestOrchestrator_ExecuteStep_AppliesRunnerGitlabURL(t *testing.T) {
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -1061,6 +1077,8 @@ func TestOrchestrator_ExecuteStep_SkipsGitLabAndRunnerForGitHubSelection(t *test
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -1103,6 +1121,8 @@ func TestOrchestrator_ExecuteStep_InstallsGitLabAndRunnerForGitLabSelection(t *t
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},
@@ -1152,6 +1172,8 @@ func TestOrchestrator_ExecuteStep_InstallsRunnerWhenGitLabSourceRepositoryIsInst
 		phase string
 	}{
 		{name: "installing_cert_manager", phase: "A"},
+		// ServiceMonitor 를 만드는 단계보다 CRD 가 먼저 와야 한다.
+		{name: "installing_prometheus_crds", phase: "A"},
 		{name: "installing_metrics_server", phase: "A"},
 		{name: "installing_openbao", phase: "A"},
 		{name: "installing_external_secrets", phase: "A"},

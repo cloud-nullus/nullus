@@ -38,6 +38,13 @@ func (a *StackSSOAdapter) Provision(ctx context.Context, spec stackport.SSOClien
 	return a.inner.ProvisionSSO(ctx, spec.StepName, spec.ClientSecret)
 }
 
+func (a *StackSSOAdapter) Deprovision(ctx context.Context, stepName string) error {
+	if a == nil || a.inner == nil {
+		return nil
+	}
+	return a.inner.DeprovisionSSO(ctx, stepName)
+}
+
 // NewStackSSOFactory 는 스택별 provisioner 를 만드는 팩토리를 돌려준다.
 func NewStackSSOFactory(kc *KeycloakClient) stackport.SSOProvisionerFactory {
 	return func(accessDomain, stackSlug string) stackport.SSOProvisioner {

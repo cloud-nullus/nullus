@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **설치되는 OSS 를 Keycloak 으로 로그인시킨다** (`internal/auth/adapter/keycloak/`, `internal/stack/adapter/helm/oidc-values.go`, `internal/stack/adapter/helm/{harbor,gitea}-provisioning.go`): SSO 프로비저닝 코드는 처음부터 있었지만 **한 번도 돈 적이 없었다**. `KEYCLOAK_URL` 을 API 프로세스에 넣어 주는 곳이 리포 어디에도 없어(런북도, 차트 deployment 의 env 27개도) 팩토리가 항상 nil 이었고, `provisioning_sso` 는 로그 한 줄만 남기고 성공으로 마킹됐다. 설치는 초록불로 끝나는데 도구는 전부 로컬 admin 계정으로 뜨는, 실패가 아니라 **조용한 누락**이었다.
+
+  `configs/config.yaml` 에는 `keycloak` 블록이 처음부터 있었는데 `cfg.Keycloak` 소비처가 0건이었다. 새 환경변수를 파는 대신 그 죽은 설정을 잇는다. 건너뛸 때도 기동 로그에 남긴다 — 같은 누락이 다시 생겨도 이번에는 보이게.
+
+  ArgoCD·Harbor·Gitea·Jenkins·GitLab·Grafana·MinIO 일곱 도구를 붙였다. 도구마다 설정을 받는 방식이 달라 한 가지 규칙으로 덮이지 않는다: Helm values 로 받는 것(ArgoCD/Grafana/MinIO), 자기 API 로만 받는 것(Harbor), CLI 로만 받는 것(Gitea — app.ini 로 DB 를 찾으므로 별도 Job 이 아니라 기동된 파드에 exec 한다), JCasC 로 받는 것(Jenkins), provider 블록 전체를 담은 Secret 으로 받는 것(GitLab).
+
+- **포털에 ID/PW 로그인 경로** (`internal/auth/{domain,usecase,port}/`, `internal/auth/adapter/{token,handler,repository}/`, `web/src/features/auth/`): 포털은 OIDC 아니면 session 둘 중 하나만 썼다. `DualAuthMiddleware` 는 이름과 달리 authMode 로 하나를 골라 반환할 뿐이었고, session 모드는 클라이언트가 보낸 `X-User-*` 헤더를 그대로 믿어 사실상 무인증이었다. 비밀번호를 담을 컬럼도 로그인 엔드포인트도 없어 실제 자격 검증이 어디에도 없었다.
+
+  그래서 OIDC 배포에는 ID/PW 로 들어갈 방법이 아예 없고, IdP 가 죽으면 아무도 들어갈 수 없었다. 두 경로를 함께 세운다. 토큰의 issuer 로 갈래를 정하되, 우리 것이 아니면 기존 검증기로 넘긴다(가로채면 IdP 사용자가 전부 401 이 된다). 반대로 우리 issuer 를 자칭했는데 서명이 틀리면 넘기지 않는다 — 넘기면 위조 토큰이 두 번째 기회를 얻는다.
+
+  없는 이메일·비활성 계정·틀린 비밀번호를 같은 응답으로 답한다(구분하면 가입 여부가 샌다). 저장소 장애는 401 이 아니라 500 이다 — 401 로 답하면 DB 가 죽었을 때 전 사용자가 "비밀번호가 틀렸다" 는 답을 받고 원인을 못 찾는다.
+
+  같은 이유로 ArgoCD 와 Jenkins 에도 비밀번호 경로를 남긴다. 둘은 SSO 를 켜면 보안 영역이 통째로 교체되어 로컬 계정이 막히기 때문이다(Harbor·Gitea 는 admin 이 살아 있어 별도 조치가 필요 없었다).
+
+- **로컬에서 도구 간 SSO 가 성립하도록 단일 Keycloak 주소 배선** (`scripts/setup-local-domain.sh`, `scripts/runbook_local.sh`): Keycloak SSO 세션 쿠키는 호스트 단위다. 포털이 로그인한 주소와 도구가 브라우저를 보내는 주소가 다르면 쿠키가 실리지 않아 도구마다 다시 로그인해야 한다. 게다가 도구는 issuer 로 JWKS 를 직접 가져오는데, 기본값 `http://localhost:8180` 은 파드 안에서 파드 자신을 가리킨다(실측 확인).
+
+  브라우저는 `/etc/hosts`, 클러스터는 CoreDNS 로 같은 이름에 닿게 한다. 호스트 IP 는 노드 안의 `host.docker.internal` 을 읽어서 얻는다 — 박아 두면 Docker 버전이나 네트워크 구성이 바뀔 때 조용히 깨진다. `NULLUS_LOCAL_DOMAIN` 으로 옵트인이라 기존 로컬 구성은 그대로다.
+
+- **플러그인을 구운 Jenkins 이미지** (`deploy/images/jenkins/`, `scripts/build-jenkins-image.sh`, `.github/workflows/cd.yml`): 기본 차트는 파드가 뜰 때마다 `updates.jenkins.io` 에서 플러그인을 받는다. SSO 용 `oic-auth` 를 더하자 의존성 해석에 대용량 메타데이터가 필요해져 준비 검사 600초를 넘겼고(init 컨테이너가 11분째 `Cache miss for: plugin-versions` 에 머문 것을 실측), 에어갭에서는 애초에 나갈 수 없다. 타임아웃을 늘리는 건 해법이 아니다 — 설치 시간이 네트워크에 좌우되고 실패를 늦게 발견할 뿐이다.
+
+  느린 다운로드를 매 설치에서 한 번의 빌드로 옮긴다. 태그는 브랜치가 아니라 Jenkins 버전이다 — 차트가 그 값을 고정 참조하므로 브랜치 태그로 밀면 스택 설치가 없는 이미지를 가리킨다.
+
+
 - **설치 규모 계획을 서버가 계산한다** (`internal/stack/domain/planning.go`, `internal/stack/domain/planning_plan.go`, `internal/stack/usecase/create_stack.go`): 템플릿은 `planning_profile` 을 들고 있었지만, 그 값을 자원 요청으로 옮기는 계산은 설치 마법사(`web/src/features/stack/utils/install-planning-utils.ts`)에만 있었다. 그래서 API·CLI·에어갭으로 만든 스택은 프로파일을 저장만 하고 크기에는 반영하지 않아, 8Gi 노드용 Lite 템플릿도 standard 크기로 깔렸다. 계산을 도메인으로 옮겨 두 경로가 같은 크기를 내게 한다.
 
   이식의 성공 기준은 "동작한다" 가 아니라 **"같다"** 다. 숫자가 갈리면 UI 설치와 API 설치가 서로 다른 크기로 깔리는데, 그건 조용히 벌어져 한참 뒤에야 드러난다. 그래서 마법사가 내놓는 값을 그대로 기대값으로 박은 테스트를 둔다(`TestPlanResourceVector_MatchesInstallWizard` — 프로파일 넷 × 슬롯 여섯의 정확값). `standard` 는 배수가 정확히 1 이라 관리자 기본값이 그대로 나와야 한다는 것도 따로 고정했다 — 여기가 어긋나면 프로파일을 고르지 않은 기존 스택의 설치 크기가 조용히 바뀐다.
@@ -177,6 +200,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
+
+- **설치되는 OSS 가 자기 주소를 몰라 OIDC 로그인이 막히던 것** (`internal/stack/adapter/helm/{helm-values,oidc-values}.go`): 도구는 저마다 자기 기본 주소 설정에서 `redirect_uri` 를 만든다. 그 스킴이 Keycloak 에 등록된 redirect 와 다르면 로그인이 `Invalid parameter: redirect_uri` 로 막힌다. Harbor(`externalURL`)·Gitea(`ROOT_URL`)·Jenkins(`jenkinsUrl` — 아예 미설정)·GitLab(`global.hosts.https`) 에서 **같은 실패가 네 번 반복됐다**.
+
+  스킴을 도구마다 하드코딩하면 도구를 추가할 때마다 이 실수가 돌아온다. `toolURLScheme()` 하나로 모으고, 네 도구가 같은 판단을 쓰는지 한 테스트로 묶는다. 갈라지면 그 도구만 로그인이 깨지고, 원인은 인증이 아니라 주소 설정에 있어 찾기 어렵다. 네 번째(GitLab)는 그 뒤라 설치 전에 코드에서 잡았다.
+
+- **Prometheus Operator CRD 가 그것을 쓰는 리소스보다 20단계 뒤에 설치되던 것** (`internal/stack/adapter/helm/orchestrator.go`, `internal/stack/usecase/install_stack.go`): Prometheus 를 고른 스택은 각 도구의 ServiceMonitor 를 켜는데, 그 CRD 는 kube-prometheus-stack 이 가져오고 그 설치는 한참 뒤다. MinIO 에서 `no matches for kind "Probe"` 로 죽었다. ArgoCD 도 같은 상황이었고, MinIO 에서 먼저 죽어 거기까지 가지 못했을 뿐이다. **Prometheus 를 포함한 템플릿은 설치 자체가 불가능한 상태였다** — Prometheus 가 없는 템플릿에서는 ServiceMonitor 를 켜지 않아 드러나지 않았다.
+
+- **스택을 지워도 Keycloak OIDC 클라이언트가 남던 것** (`internal/stack/port/sso_provisioner.go`, `internal/stack/usecase/delete_stack.go`): `DeprovisionSSO` 구현은 진작 있었는데 포트 인터페이스에 없어 stack 모듈이 부를 방법이 없었다. 이미 고친 PVC·Gateway 누수와 같은 모양이고, 프로비저닝 배선이 끊겨 있던 동안에는 만들어지는 것이 없어 보이지 않았다.
+
+  client ID 슬러그도 접속 도메인 대신 네임스페이스에서 뽑는다. 로컬처럼 모든 스택이 같은 도메인을 쓰면 서로의 클라이언트 등록을 덮어쓴다.
+
+- **cert-manager 단계가 매번 2분씩 헛기다리던 것** (`internal/stack/adapter/helm/{cert-manager,kubectl}.go`): `startupapicheck` 은 Helm 훅 Job 이라 설치가 끝나면 사라진다. 재설치 때는 영원히 없는데 `waitForKubectlGet` 이 "없음" 도 재시도 대상으로 보고 60회 × 2초를 꼬박 돈 뒤에야 건너뛴다고 판단했다(실측: 파드는 14시간째 Running, Job 은 없음). 설치 시간이 18분에서 5분 30초로 줄어든 주된 이유다.
+
+  `waitForKubectlGet` 자체는 그대로 둔다. CRD 처럼 곧 만들어질 리소스를 기다리는 경로가 여럿이라, 거기서 "없음" 을 즉시 실패로 보면 설치가 깨진다.
+
 
 - **스택을 지워도 PVC 가 남아 디스크가 쌓였다** (`internal/stack/usecase/delete_stack.go`): `helm uninstall` 은 PVC 를 지우지 않는다 — StatefulSet 의 `volumeClaimTemplate` 이 만든 것은 애초에 릴리스 소유가 아니고, 차트가 직접 만든 것도 대개 남긴다. 라벨 기반 정리 목록에 `pvc` 가 이미 들어 있었지만 **하나도 지워지지 않았다**. 그 PVC 들에 `nullus.io/stack-name` 라벨이 붙지 않기 때문이다. 실측한 라벨은 Helm 차트 것뿐이었고, 릴리스 라벨조차 없는 것이 있었다 — `data-harbor-redis-0` 는 `release=harbor`, `gitea-shared-storage` 는 `app.kubernetes.io/managed-by=Helm` 하나뿐이다. 그래서 릴리스 라벨로도 전부 잡을 수 없다.
 

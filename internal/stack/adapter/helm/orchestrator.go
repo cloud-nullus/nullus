@@ -21,9 +21,12 @@ const (
 	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
 	stepInstallingCertManager        = "installing_cert_manager"
-	stepInstallingRunner             = "installing_runner"
-	stepInstallingOTelCollector      = "installing_otel_collector"
-	stepInstallingOTelAgent          = "installing_otel_agent"
+	// Prometheus Operator 의 CRD 를 먼저 깐다. ServiceMonitor / Probe 를 만드는
+	// 단계들이 kube-prometheus-stack 설치보다 한참 앞서기 때문이다.
+	stepInstallingPrometheusCRDs = "installing_prometheus_crds"
+	stepInstallingRunner         = "installing_runner"
+	stepInstallingOTelCollector  = "installing_otel_collector"
+	stepInstallingOTelAgent      = "installing_otel_agent"
 )
 
 var installGatewayOCIRelease = installOCIChartWithHelmCLI
@@ -103,6 +106,8 @@ type Orchestrator struct {
 	secretOrgID string
 	// ssoFactory 는 스택별 SSO provisioner 생성기다 (auth 모듈 구현체 주입).
 	ssoFactory port.SSOProvisionerFactory
+	// toolOIDCIssuer 는 설치되는 OSS 가 쓸 Keycloak issuer 다 (조립 지점에서 주입).
+	toolOIDCIssuer string
 	// imageProjectName 은 레지스트리에 만들 프로젝트 이름이다.
 	//
 	// CI/CD 모듈의 그룹 경로와 같아야 이미지 주소가 맞는다. 모듈 간 직접
@@ -126,6 +131,17 @@ func WithResourceDefaultRepository(repo port.ResourceDefaultRepository) Orchestr
 func WithImageProjectName(name string) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.imageProjectName = strings.TrimSpace(name)
+	}
+}
+
+// WithToolOIDCIssuer 는 설치되는 OSS 에 넣을 Keycloak issuer 를 주입한다.
+//
+// 포털이 로그인한 Keycloak 과 오리진이 같아야 SSO 세션 쿠키가 실려 도구로 재인증
+// 없이 넘어간다. 그래서 이 값은 스택의 access_domain 이 아니라 플랫폼 설정에서
+// 온다 — 플랫폼 Keycloak 은 스택마다가 아니라 하나뿐이기 때문이다.
+func WithToolOIDCIssuer(issuer string) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.toolOIDCIssuer = strings.TrimRight(strings.TrimSpace(issuer), "/")
 	}
 }
 
@@ -286,8 +302,26 @@ func (o *Orchestrator) cleanupResidualReleaseResources(ctx context.Context) erro
 	return nil
 }
 
+// isWorkloadlessRelease 는 파드를 만들지 않는 릴리스인지 본다.
+//
+// CRD 만 담은 차트가 그렇다. 준비 검사는 파드를 전제하므로 그대로 두면
+// "no pods found for release" 로 설치가 죽는다.
+//
+// "파드가 없으면 통과" 로 일반화하지 않는다. 정작 파드를 만들어야 하는 릴리스가
+// 아무것도 못 만들었을 때 그것까지 조용히 통과시키기 때문이다.
+func isWorkloadlessRelease(releaseName string) bool {
+	switch strings.TrimSpace(releaseName) {
+	case "prometheus-operator-crds":
+		return true
+	}
+	return false
+}
+
 func (o *Orchestrator) verifyReleaseRuntimeReadiness(ctx context.Context, step, releaseName, namespace string) error {
 	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+	if isWorkloadlessRelease(releaseName) {
 		return nil
 	}
 
@@ -354,6 +388,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		// 순서가 일치해야 한다 — ensureOrder 가 이 순서를 강제한다.
 		orderedStep: []string{
 			stepInstallingCertManager,
+			stepInstallingPrometheusCRDs,
 			"installing_metrics_server",
 			"installing_openbao",
 			"installing_external_secrets",
@@ -366,6 +401,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_sso",
 			"installing_gitlab",
 			"installing_gitea",
+			"provisioning_gitea",
 			"installing_harbor",
 			"provisioning_harbor",
 			"installing_nexus",
@@ -393,23 +429,25 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 않는다. config.authentication.provider 로 매핑해 두면 이 값이
 			// 설치 여부를 좌우하는 것처럼 읽혀 오해를 부르므로 넣지 않는다.
 			// provisioning_sso 는 선택형이라 매핑을 유지한다.
-			"provisioning_sso":          "config.authentication.provider",
-			"installing_gitlab":         "config.artifacts.source_repository",
-			"installing_gitea":          "config.artifacts.source_repository",
-			"installing_harbor":         "config.artifacts.container_registry",
-			"provisioning_harbor":       "config.artifacts.container_registry",
-			"installing_nexus":          "config.artifacts.container_registry",
-			"provisioning_nexus":        "config.artifacts.container_registry",
-			"installing_argocd":         "config.pipeline.cd_tool",
-			stepInstallingRunner:        "config.pipeline.ci_platform",
-			"installing_jenkins":        "config.pipeline.ci_platform",
-			"installing_prometheus":     "config.monitoring.collection",
-			"installing_grafana":        "config.monitoring.visualization",
-			"installing_logging":        "config.logging.collection",
-			"installing_log_search":     "config.logging.search",
-			"installing_opentelemetry":  "config.logging.trace_layer",
-			stepInstallingOTelCollector: "config.logging.trace_exporter",
-			stepInstallingOTelAgent:     "config.logging.trace_exporter",
+			"provisioning_sso":           "config.authentication.provider",
+			stepInstallingPrometheusCRDs: "config.monitoring.collection",
+			"installing_gitlab":          "config.artifacts.source_repository",
+			"installing_gitea":           "config.artifacts.source_repository",
+			"provisioning_gitea":         "config.artifacts.source_repository",
+			"installing_harbor":          "config.artifacts.container_registry",
+			"provisioning_harbor":        "config.artifacts.container_registry",
+			"installing_nexus":           "config.artifacts.container_registry",
+			"provisioning_nexus":         "config.artifacts.container_registry",
+			"installing_argocd":          "config.pipeline.cd_tool",
+			stepInstallingRunner:         "config.pipeline.ci_platform",
+			"installing_jenkins":         "config.pipeline.ci_platform",
+			"installing_prometheus":      "config.monitoring.collection",
+			"installing_grafana":         "config.monitoring.visualization",
+			"installing_logging":         "config.logging.collection",
+			"installing_log_search":      "config.logging.search",
+			"installing_opentelemetry":   "config.logging.trace_layer",
+			stepInstallingOTelCollector:  "config.logging.trace_exporter",
+			stepInstallingOTelAgent:      "config.logging.trace_exporter",
 		},
 		stepConfigEnabled: map[string]func(domain.StackConfig) bool{
 			"installing_postgresql": func(cfg domain.StackConfig) bool {
@@ -437,6 +475,11 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_gitea": func(cfg domain.StackConfig) bool {
+				return isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+			},
+			// Gitea 를 고르지 않은 스택에서는 이 단계도 서지 않는다. 술어가 없으면
+			// ensureOrder 가 항상 이 단계를 기대해 다음 설치가 순서 위반으로 막힌다.
+			"provisioning_gitea": func(cfg domain.StackConfig) bool {
 				return isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			// Harbor / Nexus 는 독립 레지스트리를 고른 경우에만 선다.
@@ -470,6 +513,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			//
 			// 반면 provisioning_sso 는 OSS OIDC 연동을 켤 때만 필요하므로
 			// 선택형으로 유지한다.
+			// CRD 는 Prometheus 를 고른 스택에서만 필요하다.
+			stepInstallingPrometheusCRDs: func(cfg domain.StackConfig) bool {
+				return cfg.Monitoring.Collection.Enabled
+			},
 			"provisioning_sso": func(cfg domain.StackConfig) bool {
 				if cfg.Authentication == nil {
 					return false
@@ -790,6 +837,16 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	if step == "provisioning_gitea" {
+		// Gitea 는 OAuth 소스를 Helm values 로 받지 않는다. CLI 로만 등록할 수
+		// 있어 기동된 파드에 exec 한다.
+		if err := o.ensureGiteaSSOProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("gitea SSO 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if step == "provisioning_harbor" {
 		if !looksLikeKubeconfig(o.kubeconfig) {
 			o.markCompleted(stackID, order)
@@ -1070,12 +1127,16 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 // 켜진 것으로 본다 — 시크릿 평면처럼 항상 필요한 단계가 그렇다.
 func isOptInStep(step string) bool {
 	switch step {
-	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "installing_nexus", "provisioning_nexus":
+	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "provisioning_gitea", "installing_nexus", "provisioning_nexus":
 		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
 	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
 	case "installing_gitea", "installing_jenkins":
+		return true
+	// CRD 는 Prometheus 를 고른 스택에서만 필요하다. 여기 없으면 설정을 모를 때
+	// 켜진 것으로 보고, 순서 검증이 오지 않을 단계를 기다리다 멈춘다.
+	case stepInstallingPrometheusCRDs:
 		return true
 	}
 	return false

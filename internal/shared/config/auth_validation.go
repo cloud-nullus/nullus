@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -55,4 +56,18 @@ func (c Config) TrustsClientSuppliedIdentity() bool {
 		return false
 	}
 	return c.normalizedAuthMode() != AuthModeOIDC
+}
+
+// defaultSessionTTL 은 auth.session.max_age 가 없을 때 쓰는 세션 수명이다.
+const defaultSessionTTL = 24 * time.Hour
+
+// SessionTTL 은 ID/PW 로그인이 발급하는 세션 토큰의 수명이다.
+//
+// max_age 가 0 이면 발급 즉시 만료된 토큰이 나온다 — 로그인은 성공하는데 다음
+// 요청이 401 이라 원인을 찾기 어렵다. 그래서 0 이하는 기본값으로 물러난다.
+func (c Config) SessionTTL() time.Duration {
+	if c.Auth.Session.MaxAge > 0 {
+		return time.Duration(c.Auth.Session.MaxAge) * time.Second
+	}
+	return defaultSessionTTL
 }

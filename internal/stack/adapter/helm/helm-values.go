@@ -33,6 +33,7 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 	// 모르는 서버로 보고 스캔을 거부한다.
 	if step == "installing_jenkins" {
 		base = mergeMaps(base, jenkinsGiteaServerValues(o.namespace))
+		base = mergeMaps(base, o.jenkinsURLValues())
 	}
 
 	// Gitea 의 DB 호스트도 실제 네임스페이스를 알아야 한다.
@@ -63,7 +64,7 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 	// OIDC 블록은 스택별 client ID / accessDomain 에 의존한다.
 	// 에어갭 values 파일에만 있던 설정을 코드 경로로 끌어와 일반 설치에도 적용한다.
 	if oidc := o.oidcValuesForStep(step); len(oidc) > 0 {
-		base = mergeMaps(base, oidc)
+		base = mergeOIDCValues(base, oidc)
 	}
 
 	base = mergeMaps(base, o.resourceDefaultValuesForStep(step, cfg))
@@ -100,14 +101,8 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 				"gitlabUrl": fmt.Sprintf("http://gitlab-webservice-default.%s.svc:8181", namespace),
 			})
 		}
-		if cfg != nil && step == "installing_gitlab" && strings.TrimSpace(cfg.AccessDomain) != "" {
-			base = mergeMaps(base, map[string]any{
-				"global": map[string]any{
-					"hosts": map[string]any{
-						"domain": cfg.AccessDomain,
-					},
-				},
-			})
+		if step == "installing_gitlab" {
+			base = mergeMaps(base, o.gitlabSharedServiceValues())
 		}
 		return base
 	}
@@ -277,7 +272,15 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 func (o *Orchestrator) harborExternalURLValues(cfg *domain.StackConfig) map[string]any {
 	if cfg != nil {
 		if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
-			return map[string]any{"externalURL": fmt.Sprintf("http://harbor.%s", accessDomain)}
+			// Harbor 는 redirect_uri 도 이 값에서 만든다. SSO 를 켠 설치에서는
+			// Keycloak 에 등록된 redirect(https://harbor.<도메인>/c/oidc/callback)와
+			// 스킴이 같아야 한다 — 다르면 로그인이 "Invalid parameter: redirect_uri"
+			// 로 막힌다.
+			//
+			// SSO 를 쓰지 않으면 http 그대로 둔다. 이 값은 docker login/push 의
+			// 토큰 realm 이기도 해서, 스킴을 바꾸면 클라이언트(containerd 포함)가
+			// 게이트웨이 인증서의 CA 를 신뢰해야 한다.
+			return map[string]any{"externalURL": fmt.Sprintf("%s://harbor.%s", o.toolURLScheme(), accessDomain)}
 		}
 	}
 
@@ -323,7 +326,9 @@ func (o *Orchestrator) giteaSharedServiceValues() map[string]any {
 	rootURL := fmt.Sprintf("http://%s.%s.svc:%d/",
 		domain.GiteaHTTPServiceName, namespace, domain.GiteaServicePort)
 	if host != "" {
-		rootURL = fmt.Sprintf("http://%s/", host)
+		// ROOT_URL 은 Gitea 가 만드는 OAuth redirect_uri 의 출처이기도 하다.
+		// Keycloak 에 등록된 redirect 와 스킴이 다르면 로그인이 막힌다.
+		rootURL = fmt.Sprintf("%s://%s/", o.toolURLScheme(), host)
 	}
 
 	server := map[string]any{"ROOT_URL": rootURL}
@@ -631,4 +636,89 @@ func resourceOverrideFromManifest(doc map[string]any) (map[string]any, bool) {
 	}
 
 	return nil, false
+}
+
+// mergeOIDCValues 는 OIDC 블록을 기존 values 에 얹는다.
+//
+// mergeMaps 와 다른 점은 슬라이스를 이어붙인다는 것이다. OIDC values 는 기존
+// 설정을 바꾸는 게 아니라 "더하는" 성격인데, 통째로 바꾸면 같은 키를 쓰던 기존
+// 항목이 사라진다. 실제로 Jenkins 의 additionalExistingSecrets 에 OIDC 시크릿을
+// 넣자 기존 Gitea 자격 항목 두 개가 밀려나, JCasC 가 자격을 풀지 못해 Jenkins 가
+// 기동에 실패했다(SEVERE hudson.util.BootFailure).
+//
+// mergeMaps 자체를 바꾸지 않는다 — 사용자 오버라이드는 목록을 "교체" 하려는
+// 의도일 수 있어 전역 규칙을 바꾸면 다른 곳이 조용히 달라진다.
+func mergeOIDCValues(base, oidc map[string]any) map[string]any {
+	if base == nil {
+		base = map[string]any{}
+	}
+	for key, value := range oidc {
+		switch override := value.(type) {
+		case map[string]any:
+			subBase, _ := base[key].(map[string]any)
+			base[key] = mergeOIDCValues(subBase, override)
+		case []any:
+			existing, _ := base[key].([]any)
+			base[key] = append(append([]any{}, existing...), override...)
+		default:
+			base[key] = value
+		}
+	}
+	return base
+}
+
+// jenkinsURLValues 는 Jenkins 가 자기 주소를 알게 한다.
+//
+// oic-auth 는 redirect_uri 를 이 값에서 만든다. 설정하지 않으면 클러스터 내부
+// 주소가 잡혀 Keycloak 에 등록된 redirect 와 어긋나고, 로그인이
+// "Invalid parameter: redirect_uri" 로 막힌다 — Harbor 의 externalURL,
+// Gitea 의 ROOT_URL 과 같은 실패다. 스킴도 그 둘과 같은 판단을 쓴다.
+//
+// 접속 도메인이 없으면 아무것도 넣지 않는다. 엉뚱한 주소를 박느니 차트 기본값에
+// 맡기는 편이 낫다.
+func (o *Orchestrator) jenkinsURLValues() map[string]any {
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+	if cfg == nil {
+		return nil
+	}
+	accessDomain := strings.TrimSpace(cfg.AccessDomain)
+	if accessDomain == "" {
+		return nil
+	}
+
+	return map[string]any{
+		"controller": map[string]any{
+			"jenkinsUrl": fmt.Sprintf("%s://jenkins.%s", o.toolURLScheme(), accessDomain),
+		},
+	}
+}
+
+// gitlabSharedServiceValues 는 GitLab 이 자기 외부 주소를 알게 한다.
+//
+// GitLab 은 redirect_uri 를 global.hosts 에서 만든다. https 를 켜지 않으면
+// http 로 나가 Keycloak 에 등록된 https redirect 와 어긋나고, 로그인이
+// "redirect_uri" 오류로 막힌다 — Harbor·Gitea·Jenkins 와 같은 실패라 같은
+// 판단(toolURLScheme)을 쓴다.
+func (o *Orchestrator) gitlabSharedServiceValues() map[string]any {
+	o.mu.Lock()
+	cfg := o.stackConfig
+	o.mu.Unlock()
+	if cfg == nil {
+		return nil
+	}
+	accessDomain := strings.TrimSpace(cfg.AccessDomain)
+	if accessDomain == "" {
+		return nil
+	}
+
+	return map[string]any{
+		"global": map[string]any{
+			"hosts": map[string]any{
+				"domain": accessDomain,
+				"https":  o.toolURLScheme() == "https",
+			},
+		},
+	}
 }

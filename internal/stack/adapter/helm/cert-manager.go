@@ -149,12 +149,12 @@ func (o *Orchestrator) waitForCertManagerWebhookTrust(ctx context.Context) error
 func (o *Orchestrator) waitForCertManagerStartupAPICheck(ctx context.Context, namespace string) error {
 	const resource = "job/cert-manager-startupapicheck"
 
-	if err := o.waitForKubectlGet(ctx, "-n", namespace, resource); err != nil {
-		if isKubectlNotFoundError(err) {
-			slog.Info("cert-manager startup API check job not found; skipping wait", "namespace", namespace)
-			return nil
-		}
-		return err
+	// 이 Job 은 Helm 훅이라 설치가 끝나면 사라진다. cert-manager 가 이미 깔린
+	// 클러스터에서는 영원히 없으므로 기다릴 대상이 아니다 — 기다리면 설치마다
+	// 재시도 시간(60회 × 2초)을 통째로 버린다.
+	if !o.kubectlResourceExists(ctx, "-n", namespace, resource) {
+		slog.Info("cert-manager startup API check job not found; skipping wait", "namespace", namespace)
+		return nil
 	}
 	if _, err := o.runKubectl(ctx, "wait", "-n", namespace, "--for=condition=complete", "--timeout=180s", resource); err != nil {
 		return err

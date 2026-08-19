@@ -34,6 +34,13 @@ type SecretEntry struct {
 	// Fixed 가 비어 있지 않으면 랜덤 생성 대신 이 값을 쓴다.
 	// 사용자명처럼 비밀이 아니지만 차트가 같은 Secret 안에서 요구하는 값에 쓴다.
 	Fixed string
+	// DeriveFrom 과 Derive 가 있으면 랜덤 생성 대신 다른 엔트리의 값에서 계산한다.
+	// bcrypt 해시처럼 평문과 짝을 이뤄야 하는 값에 쓴다 — 따로 생성하면 사용자가
+	// 안내받은 비밀번호로 로그인할 수 없다.
+	//
+	// 원본 엔트리가 이 엔트리보다 앞에 있어야 한다(같은 순서로 처리된다).
+	DeriveFrom string
+	Derive     func(source string) (string, error)
 }
 
 // ManagedSecret 은 ESO 가 소유하는 대상 Secret 하나를 기술한다.
@@ -369,6 +376,12 @@ func (o *Orchestrator) ProvisionSecrets(
 	for _, item := range items {
 		for _, entry := range item.Entries {
 			path := prefix + entry.PathSuffix
+			if entry.Derive != nil && entry.DeriveFrom != "" {
+				if err := ensureDerivedSecretValue(ctx, writer, path, prefix+entry.DeriveFrom, entry.Derive); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := ensureSecretValue(ctx, writer, path, entry.Fixed); err != nil {
 				return err
 			}
@@ -393,6 +406,28 @@ func ensureSecretValue(ctx context.Context, writer SecretWriter, path, fixed str
 			return err
 		}
 		value = generated
+	}
+	if err := writer.PutToken(ctx, path, value); err != nil {
+		return fmt.Errorf("OpenBao 기록 실패 (%s): %w", path, err)
+	}
+	return nil
+}
+
+// ensureDerivedSecretValue 는 원본 값에서 계산한 값을 없을 때만 기록한다 (멱등).
+//
+// 원본이 아직 없으면 계산할 수 없다 — 엔트리 순서가 잘못됐다는 뜻이므로 끊는다.
+// 조용히 넘기면 ArgoCD 가 비밀번호 없이 떠서 로그인만 안 되는 상태가 된다.
+func ensureDerivedSecretValue(ctx context.Context, writer SecretWriter, path, sourcePath string, derive func(string) (string, error)) error {
+	if existing, err := writer.GetToken(ctx, path); err == nil && strings.TrimSpace(existing) != "" {
+		return nil
+	}
+	source, err := writer.GetToken(ctx, sourcePath)
+	if err != nil || strings.TrimSpace(source) == "" {
+		return fmt.Errorf("파생 원본을 읽지 못했습니다 (%s): %w", sourcePath, err)
+	}
+	value, err := derive(source)
+	if err != nil {
+		return fmt.Errorf("값 파생 실패 (%s): %w", path, err)
 	}
 	if err := writer.PutToken(ctx, path, value); err != nil {
 		return fmt.Errorf("OpenBao 기록 실패 (%s): %w", path, err)

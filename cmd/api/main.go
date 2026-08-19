@@ -20,8 +20,12 @@ import (
 	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
+	authhandler "github.com/cloud-nullus/draft/internal/auth/adapter/handler"
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
 	authmw "github.com/cloud-nullus/draft/internal/auth/adapter/middleware"
+	authrepo "github.com/cloud-nullus/draft/internal/auth/adapter/repository"
+	authtoken "github.com/cloud-nullus/draft/internal/auth/adapter/token"
+	authusecase "github.com/cloud-nullus/draft/internal/auth/usecase"
 	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
 	cicdgitea "github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
@@ -66,6 +70,10 @@ func main() {
 	// "전부 401" 이나 "사실은 무인증" 을 운영 중에 발견하게 된다.
 	if err := cfg.ValidateAuth(); err != nil {
 		slog.Error("invalid auth configuration", "error", err)
+		os.Exit(1)
+	}
+	if err := cfg.ValidateKeycloakAdmin(); err != nil {
+		slog.Error("invalid keycloak configuration", "error", err)
 		os.Exit(1)
 	}
 	if cfg.TrustsClientSuppliedIdentity() {
@@ -140,15 +148,21 @@ func main() {
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
 	// 플랫폼 Keycloak 에 OSS OIDC 클라이언트를 등록하는 팩토리.
-	// KEYCLOAK_URL 이 없으면 SSO 프로비저닝은 건너뛴다 (BYO / 미사용 모드).
+	// keycloak.admin_url 이 비면 SSO 프로비저닝은 건너뛴다 (BYO / 미사용 모드).
+	//
+	// 이 값이 어디서도 주입되지 않아 팩토리가 항상 nil 이던 시절이 있었다. 그때는
+	// provisioning_sso 가 로그 한 줄만 남기고 성공으로 마킹돼, 설치는 초록불인데
+	// OSS 는 전부 로컬 admin 계정으로 뜨는 조용한 누락이 됐다. 그래서 건너뛸 때도
+	// 기동 로그에 남긴다.
 	var ssoFactory stackport.SSOProvisionerFactory
-	if kcURL := strings.TrimSpace(os.Getenv("KEYCLOAK_URL")); kcURL != "" {
+	if kc, ok := cfg.KeycloakAdmin(); ok {
 		ssoFactory = keycloakadapter.NewStackSSOFactory(keycloakadapter.NewKeycloakClient(
-			kcURL,
-			envOrDefault("KEYCLOAK_REALM", "nullus"),
-			envOrDefault("KEYCLOAK_ADMIN_USER", "admin"),
-			os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
+			kc.AdminURL, kc.Realm, kc.AdminUser, kc.AdminPassword,
 		))
+		slog.Info("OSS SSO provisioning enabled", "keycloak_url", kc.AdminURL, "realm", kc.Realm)
+	} else {
+		slog.Info("OSS SSO provisioning disabled: keycloak.admin_url is empty " +
+			"(installed tools will use their own local accounts)")
 	}
 
 	// 스택별 OpenBao 해석기. OpenBao 는 스택마다 배포되므로 주소가 전역 하나일 수 없다.
@@ -181,6 +195,9 @@ func main() {
 				// 값을 넘겨 계약을 맞춘다 — 다르면 프로젝트는 만들어지는데 CI 가
 				// push 하는 주소는 다른 프로젝트를 가리켜 "project not found" 로 막힌다.
 				stackhelm.WithImageProjectName(cicdGroupPath()),
+				// 설치되는 OSS 가 브라우저를 보낼 Keycloak 주소. 포털이 로그인한
+				// 곳과 같아야 SSO 세션이 이어진다.
+				stackhelm.WithToolOIDCIssuer(cfg.ToolOIDCIssuerURL()),
 			)
 			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
 			if ssoFactory != nil {
@@ -206,6 +223,11 @@ func main() {
 			return stackhelm.NewHelmInstaller(kubeconfig)
 		},
 	)
+	// 설치가 IdP 에 등록한 OIDC 클라이언트를 삭제 때 함께 지운다. 설치와 같은
+	// 팩토리를 줘야 같은 client ID 를 계산한다.
+	if ssoFactory != nil {
+		deleteStackUC.SetSSOProvisionerFactory(ssoFactory)
+	}
 	addToolsUC := stackuc.NewAddToolsUseCase(pgStackRepo)
 	importConfigUC := stackuc.NewImportConfig(createStackUC, addToolsUC, installStackUC)
 	getTemplateUC := stackuc.NewGetTemplate(pgTemplateRepo)
@@ -397,6 +419,24 @@ func main() {
 	// API v1 group
 	v1 := e.Group("/api/v1")
 
+	// ID/PW 로그인 경로. OIDC 와 나란히 서는 두 번째 인증 수단이다 —
+	// IdP 가 죽어도 들어갈 수단이 있어야 한다.
+	//
+	// 인증 미들웨어보다 앞에 붙인다(로그인하려면 먼저 통과해야 한다).
+	// 무차별 대입을 막기 위해 로그인 전용 레이트리밋을 건다.
+	localIssuer := authtoken.NewLocalIssuer(cfg.Auth.Session.Secret, cfg.SessionTTL())
+	if localIssuer.Enabled() {
+		loginHandler := authhandler.NewLoginHandler(authusecase.NewLogin(
+			authrepo.NewPostgresCredentialRepository(pool),
+			authtoken.NewSessionIssuer(localIssuer),
+		))
+		loginHandler.RegisterRoutes(v1.Group("", middleware.LoginRateLimiter(rateLimits)))
+		slog.Info("password login enabled (ID/PW alongside OIDC)")
+	} else {
+		slog.Warn("password login disabled: auth.session.secret is empty " +
+			"(only the IdP can authenticate — an IdP outage locks everyone out)")
+	}
+
 	var admin, stacks, cicd, observability *echo.Group
 	// wsAuth 는 /ws/* 전용 체인이다. 브라우저 WebSocket 은 Authorization 헤더를 못
 	// 붙이므로 서브프로토콜로 온 토큰을 헤더로 옮긴 뒤 평소 인증을 태운다.
@@ -418,7 +458,8 @@ func main() {
 			IssuerURL: cfg.Auth.OIDC.IssuerURL,
 			Audience:  cfg.Auth.OIDC.Audience,
 		}, oidcProvider)
-		authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW)
+		authMW := authmw.DualAuthMiddleware(cfg.Auth.Mode, sessionMW, oidcMW,
+			authmw.WithLocalTokens(localIssuer))
 		// userRateLimit 은 authMW 바로 뒤에 둔다. 권한 검사(RequireRole)보다 앞이어야
 		// 403 으로 튕기는 요청도 사용량에 잡힌다.
 		admin = v1.Group("/admin", authMW, userRateLimit, authmw.RequireRole("admin"))

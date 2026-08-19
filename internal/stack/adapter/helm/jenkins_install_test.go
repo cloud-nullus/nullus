@@ -1,6 +1,8 @@
 package helm
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -99,28 +101,28 @@ func TestJenkinsValues_UsesProvisionedAdminSecretAndInstallsGiteaPlugin(t *testi
 	assert.Equal(t, domain.JenkinsAdminSecret, admin["existingSecret"],
 		"admin 비밀번호를 values 에 평문으로 두면 OpenBao 단일 출처 원칙이 깨진다")
 
-	plugins, ok := controller["installPlugins"].([]any)
-	require.True(t, ok)
-	var joined string
-	for _, p := range plugins {
-		joined += p.(string) + " "
-	}
-	for _, want := range []string{"gitea", "kubernetes", "workflow-aggregator", "configuration-as-code"} {
-		assert.Containsf(t, joined, want, "%s 플러그인이 없으면 Gitea multibranch 파이프라인을 만들 수 없다", want)
-	}
+	// 플러그인 목록은 이미지로 옮겼다(deploy/images/jenkins/Dockerfile).
+	// 런타임 설치를 켜 두면 같은 다운로드를 다시 해 준비 검사를 넘긴다.
+	assert.Equal(t, false, controller["installPlugins"])
 }
 
-// 단계별 실행 결과는 pipeline-stage-view 가 /wfapi 로 내보낸다.
-// workflow-aggregator 에 포함되지 않아 따로 지정해야 한다 — 없으면 화면이
-// 단계를 "실행 정보 없음" 으로만 표시한다.
-func TestJenkinsValues_InstallsStageViewPlugin(t *testing.T) {
-	controller := DefaultValues("installing_jenkins")["controller"].(map[string]any)
-	plugins, ok := controller["installPlugins"].([]any)
-	require.True(t, ok)
+// 플러그인 목록의 단일 출처는 이미지 Dockerfile 이다. values 에서 옮겨 왔으므로
+// 보장도 그쪽을 검사한다 — 목록이 비면 파이프라인·SSO 가 조용히 죽는다.
+//
+// pipeline-stage-view 는 workflow-aggregator 에 포함되지 않아 따로 필요하다.
+// 없으면 화면이 단계를 "실행 정보 없음" 으로만 표시한다.
+func TestJenkinsImage_BakesRequiredPlugins(t *testing.T) {
+	dockerfile, err := os.ReadFile(filepath.Join("..", "..", "..", "..",
+		"deploy", "images", "jenkins", "Dockerfile"))
+	require.NoError(t, err, "Jenkins 이미지 Dockerfile 을 찾지 못했다")
 
-	var joined string
-	for _, p := range plugins {
-		joined += p.(string) + " "
+	joined := string(dockerfile)
+	for _, want := range []string{
+		"gitea", "kubernetes", "workflow-aggregator", "configuration-as-code",
+		"pipeline-stage-view",
+		// SSO 로그인. 이것이 빠지면 JCasC 의 oic 설정이 통째로 무시된다.
+		"oic-auth",
+	} {
+		assert.Containsf(t, joined, want, "%s 플러그인이 이미지에 없다", want)
 	}
-	assert.Contains(t, joined, "pipeline-stage-view")
 }

@@ -21,6 +21,12 @@ type SSOProvisioner interface {
 	ToolSteps() []string
 	// Provision 은 클라이언트를 등록하거나 갱신한다.
 	Provision(ctx context.Context, spec SSOClientSpec) error
+	// Deprovision 은 등록했던 클라이언트를 지운다.
+	//
+	// 스택을 지워도 이걸 부르지 않으면 realm 에 존재하지 않는 도구를 가리키는
+	// redirect URI 가 계속 남는다. 구현은 진작 있었는데 이 인터페이스에 없어서
+	// stack 모듈이 부를 방법이 없었다.
+	Deprovision(ctx context.Context, stepName string) error
 }
 
 // SSOProvisionerFactory 는 스택별 접속 도메인/슬러그로 provisioner 를 만든다.

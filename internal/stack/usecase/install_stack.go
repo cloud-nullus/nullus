@@ -27,6 +27,10 @@ type installStep struct {
 // installDAG defines step dependencies with phase labels.
 var installDAG = []installStep{
 	{name: "installing_cert_manager", phase: "A", duration: time.Second},
+	// ServiceMonitor / Probe 를 만드는 단계들이 kube-prometheus-stack 설치보다
+	// 앞서므로 그 CRD 를 먼저 깐다. 없으면 MinIO 설치가
+	// "no matches for kind Probe" 로 죽는다.
+	{name: "installing_prometheus_crds", phase: "A", duration: time.Second, deps: []string{"installing_cert_manager"}},
 	{name: "installing_metrics_server", phase: "A", duration: time.Second},
 
 	// 시크릿 평면(OpenBao → ESO → provisioning)이 스토리지보다 먼저 선다.
@@ -58,6 +62,9 @@ var installDAG = []installStep{
 	// Gitea 는 GitLab 과 같은 슬롯(소스 저장소)의 다른 선택지다. 둘은 술어가
 	// 배타적이라 동시에 서지 않는다.
 	{name: "installing_gitea", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
+	// Gitea 는 OAuth 소스를 Helm values 로 받지 않는다. CLI 로만 등록할 수 있고
+	// CLI 는 app.ini 로 DB 를 찾으므로 기동된 뒤에 파드에 exec 한다.
+	{name: "provisioning_gitea", phase: "B", duration: time.Second, deps: []string{"installing_gitea"}},
 
 	// 독립 레지스트리(Harbor / Nexus)는 Argo CD 앞에 선다. Argo CD 가 배포할
 	// 이미지를 여기서 받으므로 먼저 서 있어야 한다.

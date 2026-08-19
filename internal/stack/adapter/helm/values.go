@@ -14,6 +14,19 @@ import (
 // 안내 경로(연결정보)도 같은 값을 봐야 하므로 domain 의 상수를 그대로 쓴다.
 const defaultStackNamespace = domain.DefaultStackNamespace
 
+// Jenkins 이미지. 플러그인을 빌드 시점에 구운 것이라 런타임 다운로드가 없다.
+// 태그는 베이스 Jenkins 버전과 같게 둔다 — 갈라지면 JCasC 스키마가 안 맞을 수 있다.
+// 빌드: ./scripts/build-jenkins-image.sh
+const (
+	jenkinsImageRegistry = "ghcr.io"
+	// 차트가 registry 와 이어 붙이므로 여기에 레지스트리를 넣으면 안 된다.
+	// 넣으면 ghcr.io/ghcr.io/... 가 되어 파드가 ImagePullBackOff 로 멈춘다.
+	// CI 는 ghcr.io/<repo>/<이미지> 로 push 한다(cd.yml). 경로가 어긋나면 게시된
+	// 이미지를 아무도 받지 못한다.
+	jenkinsImageRepository = "cloud-nullus/draft/nullus-jenkins"
+	jenkinsImageTag        = "2.568.2"
+)
+
 func DefaultValues(stepName string) map[string]any {
 	switch stepName {
 	case "installing_cert_manager":
@@ -243,16 +256,24 @@ func DefaultValues(stepName string) map[string]any {
 				// 이게 없으면 리포를 만들어도 Jenkins 가 Jenkinsfile 을 찾지 못한다.
 				// (이 플러그인이 Jenkins 2.528.3 이상을 요구하므로 차트 버전을
 				//  임의로 내릴 수 없다 — domain.JenkinsChartVersion 주석 참고)
-				"installPlugins": []any{
-					"kubernetes",
-					"workflow-aggregator",
-					"git",
-					"gitea",
-					"configuration-as-code",
-					// 단계별 실행 결과를 API 로 내보낸다(/wfapi). 없으면 실행
-					// 기록은 남지만 단계 정보가 없어 화면이 "실행 정보 없음" 으로
-					// 표시한다 — workflow-aggregator 에 포함되지 않는다.
-					"pipeline-stage-view",
+				// 플러그인은 이미지에 구워져 있다(deploy/images/jenkins).
+				//
+				// 기본 차트는 파드가 뜰 때마다 updates.jenkins.io 에서 받는데,
+				// SSO 용 oic-auth 를 더하자 의존성 해석에 대용량 메타데이터가
+				// 필요해져 준비 검사 600초를 넘겼고 설치가 통째로 실패했다.
+				// 에어갭에서는 애초에 나갈 수 없다.
+				//
+				// 목록의 단일 출처는 Dockerfile 의 JENKINS_PLUGINS 다. 여기서
+				// 다시 지정하면 그 차이만큼 런타임에 또 받게 되어 같은 실패가
+				// 돌아온다.
+				"installPlugins": false,
+				"image": map[string]any{
+					"registry":   jenkinsImageRegistry,
+					"repository": jenkinsImageRepository,
+					"tag":        jenkinsImageTag,
+					// 고정 태그다. Always 면 노드에 적재해 둔 이미지를 두고
+					// 레지스트리를 쳐서, 아직 published 되지 않은 지금은 실패한다.
+					"pullPolicy": "IfNotPresent",
 				},
 				// 서비스는 게이트웨이 라우트가 앞단을 맡으므로 ClusterIP 로 둔다.
 				"serviceType": "ClusterIP",
@@ -513,6 +534,11 @@ func DefaultValues(stepName string) map[string]any {
 		}
 	case "installing_prometheus":
 		return map[string]any{
+			// CRD 는 installing_prometheus_crds 가 먼저 깐다. 여기서 또 만들면
+			// 이미 있는 리소스의 소유권 충돌로 설치가 실패한다.
+			"crds": map[string]any{
+				"enabled": false,
+			},
 			"prometheus": map[string]any{
 				"ingress": map[string]any{
 					"enabled": false,

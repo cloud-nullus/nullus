@@ -72,6 +72,57 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  build-and-push-jenkins:
+    permissions:
+      contents: read
+      packages: write
+    name: Build & Push Jenkins Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 태그는 브랜치나 커밋이 아니라 Jenkins 버전이다. 차트가 그 값을 고정으로
+      # 참조하므로(internal/stack/adapter/helm/values.go 의 jenkinsImageTag)
+      # 브랜치 태그로 밀면 스택 설치가 없는 이미지를 가리킨다.
+      # Dockerfile 의 ARG 를 단일 출처로 삼아 어긋날 여지를 없앤다.
+      - name: Resolve Jenkins version from Dockerfile
+        id: ver
+        run: |
+          version="$(grep -E '^ARG JENKINS_VERSION=' deploy/images/jenkins/Dockerfile | cut -d= -f2)"
+          [ -n "$version" ] || { echo "JENKINS_VERSION 을 찾지 못했습니다"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Jenkins image (linux/amd64,linux/arm64)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./deploy/images/jenkins
+          file: ./deploy/images/jenkins/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # attestation manifest 가 붙으면 manifest list 가 되어 kind load 가
+          # 다루지 못한다(로컬 검증 경로가 막힌다).
+          provenance: false
+          sbom: false
+          tags: ghcr.io/${{ github.repository }}/nullus-jenkins:${{ steps.ver.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   build-and-push-web:
     permissions:
       contents: read

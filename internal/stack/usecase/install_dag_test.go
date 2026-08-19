@@ -14,6 +14,9 @@ import (
 // (helm 패키지 쪽 대칭 테스트: TestOrderedStep_MatchesCanonicalInstallOrder)
 var canonicalInstallOrder = []string{
 	"installing_cert_manager",
+	// ServiceMonitor / Probe 를 만드는 단계들이 kube-prometheus-stack 설치보다
+	// 앞서므로 CRD 를 먼저 깐다.
+	"installing_prometheus_crds",
 	"installing_metrics_server",
 	"installing_openbao",
 	"installing_external_secrets",
@@ -27,6 +30,8 @@ var canonicalInstallOrder = []string{
 	"installing_gitlab",
 	// Gitea 는 소스 저장소 슬롯의 다른 선택지다. 술어가 배타적이라 둘 중 하나만 선다.
 	"installing_gitea",
+	// Gitea 는 OAuth 소스를 Helm values 로 받지 않는다 — 기동된 뒤 파드에 exec 한다.
+	"provisioning_gitea",
 	// 독립 레지스트리는 Argo CD 가 배포할 이미지를 받는 곳이라 앞에 선다.
 	// Nexus 는 설치만으로는 Docker 커넥터가 없어 프로비저닝이 뒤따른다.
 	"installing_harbor",

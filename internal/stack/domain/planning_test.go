@@ -116,9 +116,9 @@ func TestPlanResourceVector_ProfilesAreMonotonic(t *testing.T) {
 func TestDefaultPlanningOptions_MatchesInstallWizard(t *testing.T) {
 	local := DefaultPlanningOptions(PlanningProfileLocal, SlotCICDPlatform)
 	require.NotEmpty(t, local)
-	assert.Equal(t, 6.0, local["developers"])          // 20 × 0.3 (기타)
-	assert.Equal(t, 1.0, local["concurrentRunners"])   // 4 × 0.25 (동시성)
-	assert.Equal(t, 30.0, local["dailyCommits"])       // 120 × 0.25 (처리량)
+	assert.Equal(t, 6.0, local["developers"])        // 20 × 0.3 (기타)
+	assert.Equal(t, 1.0, local["concurrentRunners"]) // 4 × 0.25 (동시성)
+	assert.Equal(t, 30.0, local["dailyCommits"])     // 120 × 0.25 (처리량)
 
 	standard := DefaultPlanningOptions(PlanningProfileStandard, SlotCICDPlatform)
 	assert.Equal(t, 20.0, standard["developers"])
