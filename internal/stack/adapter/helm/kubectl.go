@@ -109,6 +109,29 @@ func (o *Orchestrator) runKubectl(ctx context.Context, args ...string) ([]byte, 
 	return output, nil
 }
 
+// runKubectlWithStdin 은 표준입력을 넘겨 kubectl 을 실행한다.
+//
+// 비밀값을 인자로 넘기면 프로세스 목록과 감사 로그에 남는다. stdin 으로 주면
+// 명령줄에 남지 않는다.
+func (o *Orchestrator) runKubectlWithStdin(ctx context.Context, stdin string, args ...string) ([]byte, error) {
+	kubeconfigPath, err := o.writeKubeconfigTempFile()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = os.Remove(kubeconfigPath)
+	}()
+
+	cmdArgs := append([]string{"--kubeconfig", kubeconfigPath}, args...)
+	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
+	cmd.Stdin = strings.NewReader(stdin)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return output, fmt.Errorf("kubectl %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return output, nil
+}
+
 func (o *Orchestrator) waitForKubectlGet(ctx context.Context, args ...string) error {
 	const (
 		maxAttempts = 60

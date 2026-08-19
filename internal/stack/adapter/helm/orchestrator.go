@@ -379,6 +379,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_sso",
 			"installing_gitlab",
 			"installing_gitea",
+			"provisioning_gitea",
 			"installing_harbor",
 			"provisioning_harbor",
 			"installing_nexus",
@@ -409,6 +410,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_sso":          "config.authentication.provider",
 			"installing_gitlab":         "config.artifacts.source_repository",
 			"installing_gitea":          "config.artifacts.source_repository",
+			"provisioning_gitea":        "config.artifacts.source_repository",
 			"installing_harbor":         "config.artifacts.container_registry",
 			"provisioning_harbor":       "config.artifacts.container_registry",
 			"installing_nexus":          "config.artifacts.container_registry",
@@ -450,6 +452,11 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_gitea": func(cfg domain.StackConfig) bool {
+				return isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+			},
+			// Gitea 를 고르지 않은 스택에서는 이 단계도 서지 않는다. 술어가 없으면
+			// ensureOrder 가 항상 이 단계를 기대해 다음 설치가 순서 위반으로 막힌다.
+			"provisioning_gitea": func(cfg domain.StackConfig) bool {
 				return isGiteaSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			// Harbor / Nexus 는 독립 레지스트리를 고른 경우에만 선다.
@@ -803,6 +810,16 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	if step == "provisioning_gitea" {
+		// Gitea 는 OAuth 소스를 Helm values 로 받지 않는다. CLI 로만 등록할 수
+		// 있어 기동된 파드에 exec 한다.
+		if err := o.ensureGiteaSSOProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("gitea SSO 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if step == "provisioning_harbor" {
 		if !looksLikeKubeconfig(o.kubeconfig) {
 			o.markCompleted(stackID, order)
@@ -1083,7 +1100,7 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 // 켜진 것으로 본다 — 시크릿 평면처럼 항상 필요한 단계가 그렇다.
 func isOptInStep(step string) bool {
 	switch step {
-	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "installing_nexus", "provisioning_nexus":
+	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "provisioning_gitea", "installing_nexus", "provisioning_nexus":
 		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면

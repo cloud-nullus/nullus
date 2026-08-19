@@ -108,6 +108,26 @@ requestedScopes:
 			},
 		}
 
+	case "installing_jenkins":
+		// Jenkins 는 JCasC 로 설정한다. 플러그인이 없으면 oic 설정이 통째로
+		// 무시되므로 additionalPlugins 에 함께 넣는다.
+		//
+		// client secret 은 ESO 가 만든 Secret 을 마운트하고 ${이름-키} 로
+		// 참조한다 — JCasC 본문에 평문이 들어가면 ConfigMap 으로 남는다.
+		return map[string]any{
+			"controller": map[string]any{
+				"additionalPlugins": []any{"oic-auth"},
+				"additionalExistingSecrets": []any{
+					map[string]any{"name": secretName, "keyName": "client-secret"},
+				},
+				"JCasC": map[string]any{
+					"configScripts": map[string]any{
+						"nullus-oidc": jenkinsOIDCJCasC(clientID, secretName, issuer),
+					},
+				},
+			},
+		}
+
 	case "installing_minio":
 		return map[string]any{
 			"oidc": map[string]any{
@@ -121,4 +141,25 @@ requestedScopes:
 		}
 	}
 	return nil
+}
+
+// jenkinsOIDCJCasC 는 Jenkins 의 보안 영역을 Keycloak 으로 바꾸는 JCasC 조각이다.
+//
+// 이 조각만 담는다. 기존 조각(Gitea credential)까지 실으면 병합에서 그것을 덮어
+// multibranch job 이 브랜치를 하나도 찾지 못한다.
+func jenkinsOIDCJCasC(clientID, secretName, issuer string) string {
+	return `jenkins:
+  securityRealm:
+    oic:
+      clientId: "` + clientID + `"
+      clientSecret: "${` + secretName + `-client-secret}"
+      wellKnownOpenIDConfigurationUrl: "` + issuer + `/.well-known/openid-configuration"
+      scopes: "openid profile email"
+      userNameField: "preferred_username"
+      # 로그아웃 후 Jenkins 로 돌아오게 한다. 비우면 Keycloak 화면에 남는다.
+      postLogoutRedirectUrl: ""
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+`
 }

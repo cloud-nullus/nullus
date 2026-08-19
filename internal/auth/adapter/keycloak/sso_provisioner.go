@@ -66,6 +66,24 @@ func newToolSpecs() map[string]ToolSSOSpec {
 			// client secret 을 갖는 confidential client 라 PKCE 없이도 등급이
 			// 내려가지 않는다(ArgoCD 도 같은 이유로 쓰지 않는다).
 		},
+		"installing_gitea": {
+			ClientID:    "gitea",
+			DisplayName: "Gitea",
+			Subdomain:   "gitea",
+			// Gitea 의 콜백은 /user/oauth2/<소스이름>/callback 이다. 소스 이름은
+			// 프로비저닝이 등록하는 이름(keycloak)과 같아야 한다 — 갈라지면
+			// Gitea 가 콜백을 자기 소스로 못 찾는다.
+			CallbackPath: "/user/oauth2/keycloak/callback",
+			// 보내지 않는 도구에 PKCE 를 요구하면 콜백이
+			// "Missing parameter: code_challenge_method" 로 깨진다(Harbor 사례).
+		},
+		"installing_jenkins": {
+			ClientID:    "jenkins",
+			DisplayName: "Jenkins",
+			Subdomain:   "jenkins",
+			// oic-auth 플러그인의 콜백 경로다.
+			CallbackPath: "/securityRealm/finishLogin",
+		},
 		"installing_minio": {
 			ClientID:     "minio",
 			DisplayName:  "MinIO",
