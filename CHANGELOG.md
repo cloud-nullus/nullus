@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **와일드카드 인증서를 DNS-01 로 발급한다** (`deploy/csp/zadara/setup-tls.sh`): `airgap/scripts/23-setup-gateway.sh` 는 이미 `*.<도메인>` HTTPS 리스너와 `nullus-wildcard-tls` 시크릿을 전제하는데, 정작 그 시크릿을 만들 방법이 없었다. `setup-tls.sh` 가 HTTP-01 전용이었고 **와일드카드는 HTTP-01 로 발급할 수 없기 때문이다** — ACME 규격이 그렇다. 그래서 호스트마다 인증서를 따로 받고 있었고, 스택에 도구를 하나 늘릴 때마다 발급이 하나 늘었다. 그중 하나가 실패하면 그 도구만 조용히 접속 불가가 된다.
+
+  `DNS01_ZONE` 을 주면 그 존만 DNS-01 로 검증한다. **HTTP-01 은 남긴다.** `121.78.39.184.nip.io` 처럼 와일드카드가 덮지 못하는 이름이 아직 ingress 에 있고, 그것까지 DNS-01 로 보내면 nip.io 존의 TXT 를 우리가 쓸 수 없어 발급이 통째로 막힌다. cert-manager 는 더 구체적인 `selector.dnsZones` 를 우선하므로 두 솔버가 한 ClusterIssuer 에 공존해도 서로를 가리지 않는다.
+
+  솔버는 lego 를 감싼 웹훅으로 붙인다. cert-manager 가 내장한 DNS-01 솔버는 Route53·Cloudflare·DigitalOcean·AzureDNS·acme-dns·RFC2136 뿐이고 우리 등록기관(Spaceship)이 없다. 흔한 우회는 `_acme-challenge` 를 지원되는 존으로 CNAME 위임하는 것인데, 그러면 남의 DNS 계정이 발급 경로에 하나 더 끼고 cert-manager #5751(와일드카드 + `cnameStrategy: Follow`)을 정면으로 밟는다. lego 는 v4.22.0 부터 Spaceship 을 1급 프로바이더로 지원하므로(차트 1.4.0 이 lego v4.30.1 을 벤더) 위임도 네임서버 이전도 없이 끝난다. 차트 버전은 고정한다 — 떠 있으면 어제 통하던 발급이 오늘 조용히 깨진다.
+
+  **API 키는 이 스크립트가 만들지 않는다.** 있는지만 보고, 없으면 넣는 방법을 출력하고 멈춘다. 키가 코드나 셸 히스토리, CI 로그를 통과하지 않게 하려는 것이다. 대신 **키 이름을 검사한다** — 웹훅은 시크릿의 키를 그 이름의 환경변수로 그대로 lego 에 주입하므로 `SPACESHIP_API_KEY` 가 아니라 `api-key` 로 넣으면 자격증명을 못 찾는다. 그때 챌린지는 에러 없이 pending 으로 굳어 원인이 어디에도 보이지 않는다. 설계 중 실제로 저지른 실수라 검사로 굳혔다.
+
+  `wildcard` 서브커맨드가 `*.<존>` 과 `<존>` 두 이름을 한 장에 담은 Certificate 를 만든다. 둘 다 적는 이유는 **와일드카드가 apex 를 덮지 않기** 때문이다. 이 한 장이 지금의 `nullus.io+www` 인증서와 `auth` 인증서를 모두 대체한다. 경로를 처음 뚫을 때는 `ISSUER=letsencrypt-staging` 으로 돌려라 — Let's Encrypt 는 등록 도메인당 주 50건이라 시행착오로 태우면 일주일을 기다린다.
+
 - **설치되는 OSS 를 Keycloak 으로 로그인시킨다** (`internal/auth/adapter/keycloak/`, `internal/stack/adapter/helm/oidc-values.go`, `internal/stack/adapter/helm/{harbor,gitea}-provisioning.go`): SSO 프로비저닝 코드는 처음부터 있었지만 **한 번도 돈 적이 없었다**. `KEYCLOAK_URL` 을 API 프로세스에 넣어 주는 곳이 리포 어디에도 없어(런북도, 차트 deployment 의 env 27개도) 팩토리가 항상 nil 이었고, `provisioning_sso` 는 로그 한 줄만 남기고 성공으로 마킹됐다. 설치는 초록불로 끝나는데 도구는 전부 로컬 admin 계정으로 뜨는, 실패가 아니라 **조용한 누락**이었다.
 
   `configs/config.yaml` 에는 `keycloak` 블록이 처음부터 있었는데 `cfg.Keycloak` 소비처가 0건이었다. 새 환경변수를 파는 대신 그 죽은 설정을 잇는다. 건너뛸 때도 기동 로그에 남긴다 — 같은 누락이 다시 생겨도 이번에는 보이게.
