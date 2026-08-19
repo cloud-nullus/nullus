@@ -21,9 +21,39 @@ type OIDCClientSpec struct {
 	Name         string
 	Secret       string
 	RedirectURIs []string
+	// ProtocolMappers 는 토큰에 실을 추가 클레임이다. 클라이언트 표현에 실어
+	// 보내도 Keycloak 이 갱신에서 무시하므로 전용 엔드포인트로 따로 등록한다.
+	ProtocolMappers []OIDCProtocolMapper
 	// PKCEMethod 가 비어 있으면 PKCE 속성을 설정하지 않는다.
 	// 도구마다 지원 여부가 달라 일괄 적용할 수 없다.
 	PKCEMethod string
+}
+
+// OIDCProtocolMapper 는 토큰에 고정 클레임을 싣는 매퍼다.
+type OIDCProtocolMapper struct {
+	Name       string
+	ClaimName  string
+	ClaimValue string
+}
+
+// hardcodedClaimMapperPayload 는 Keycloak 프로토콜 매퍼 표현을 만든다.
+//
+// ID 토큰과 액세스 토큰 양쪽에 싣는다. 도구마다 어느 토큰을 읽는지 달라서
+// 한쪽만 켜면 조용히 갈린다.
+func hardcodedClaimMapperPayload(m OIDCProtocolMapper) map[string]any {
+	return map[string]any{
+		"name":           m.Name,
+		"protocol":       "openid-connect",
+		"protocolMapper": "oidc-hardcoded-claim-mapper",
+		"config": map[string]any{
+			"claim.name":           m.ClaimName,
+			"claim.value":          m.ClaimValue,
+			"jsonType.label":       "String",
+			"id.token.claim":       "true",
+			"access.token.claim":   "true",
+			"userinfo.token.claim": "true",
+		},
+	}
 }
 
 // UpsertOIDCClient 는 클라이언트를 생성하거나 갱신한다.
@@ -85,11 +115,98 @@ func (kc *KeycloakClient) UpsertOIDCClient(ctx context.Context, spec OIDCClientS
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < 300 {
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- 오류 맥락용 best-effort 읽기
+		return fmt.Errorf("클라이언트 upsert 실패: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	if len(spec.ProtocolMappers) == 0 {
 		return nil
 	}
-	raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- 오류 맥락용 best-effort 읽기
-	return fmt.Errorf("클라이언트 upsert 실패: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	// 생성 직후에는 UUID 를 아직 모른다(POST 응답 본문이 비어 있다).
+	clientUUID := existingID
+	if clientUUID == "" {
+		clientUUID, err = kc.findClientUUID(ctx, token, spec.ClientID)
+		if err != nil {
+			return err
+		}
+	}
+	return kc.ensureProtocolMappers(ctx, token, clientUUID, spec.ProtocolMappers)
+}
+
+// ensureProtocolMappers 는 매퍼를 등록하거나 갱신한다.
+//
+// 이미 있는 이름을 다시 만들면 409 가 난다. 그것을 성공으로 다루면 값이 바뀌어도
+// 반영되지 않으므로, 이름으로 찾아 PUT 으로 갱신한다.
+func (kc *KeycloakClient) ensureProtocolMappers(ctx context.Context, token, clientUUID string, mappers []OIDCProtocolMapper) error {
+	base := fmt.Sprintf("%s/admin/realms/%s/clients/%s/protocol-mappers/models", kc.baseURL, kc.realm, clientUUID)
+
+	existing, err := kc.listProtocolMapperIDs(ctx, token, base)
+	if err != nil {
+		return err
+	}
+
+	for _, m := range mappers {
+		body, marshalErr := json.Marshal(hardcodedClaimMapperPayload(m))
+		if marshalErr != nil {
+			return fmt.Errorf("매퍼 페이로드 마샬 실패 (%s): %w", m.Name, marshalErr)
+		}
+
+		method, endpoint := http.MethodPost, base
+		if id, ok := existing[m.Name]; ok {
+			method, endpoint = http.MethodPut, base+"/"+id
+		}
+
+		req, reqErr := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
+		if reqErr != nil {
+			return fmt.Errorf("매퍼 요청 생성 실패 (%s): %w", m.Name, reqErr)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, doErr := kc.httpClient.Do(req)
+		if doErr != nil {
+			return fmt.Errorf("매퍼 등록 실패 (%s): %w", m.Name, doErr)
+		}
+		raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- 오류 맥락용 best-effort 읽기
+		resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("매퍼 등록 실패 (%s): status=%d body=%s", m.Name, resp.StatusCode, strings.TrimSpace(string(raw)))
+		}
+	}
+	return nil
+}
+
+// listProtocolMapperIDs 는 이름 → 매퍼 ID 를 돌려준다.
+func (kc *KeycloakClient) listProtocolMapperIDs(ctx context.Context, token, endpoint string) (map[string]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("매퍼 조회 요청 생성 실패: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := kc.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("매퍼 조회 실패: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("매퍼 조회 실패: status=%d", resp.StatusCode)
+	}
+
+	var items []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return nil, fmt.Errorf("매퍼 목록 파싱 실패: %w", err)
+	}
+
+	out := make(map[string]string, len(items))
+	for _, it := range items {
+		out[it.Name] = it.ID
+	}
+	return out, nil
 }
 
 // findClientUUID 는 clientId 로 내부 UUID 를 찾는다. 없으면 빈 문자열이다.

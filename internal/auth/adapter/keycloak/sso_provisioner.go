@@ -18,6 +18,10 @@ type ToolSSOSpec struct {
 	// PKCEMethod 는 도구가 PKCE 를 요구할 때만 채운다.
 	// MinIO/ArgoCD 는 PKCE 를 쓰지 않아 비워 둔다.
 	PKCEMethod string
+	// ProtocolMappers 는 토큰에 실어야 할 추가 클레임이다.
+	//
+	// 도구가 특정 클레임을 요구할 때만 채운다 — 불필요한 클레임은 토큰만 키운다.
+	ProtocolMappers []OIDCProtocolMapper
 }
 
 // buildRedirectURI constructs the OIDC redirect URI for a tool.
@@ -90,6 +94,17 @@ func newToolSpecs() map[string]ToolSSOSpec {
 			Subdomain:    "minio",
 			CallbackPath: "/oauth_callback",
 			// MinIO 는 PKCE 를 사용하지 않는다.
+			//
+			// 대신 토큰의 policy 클레임으로 부여할 정책을 정한다. 없으면 로그인
+			// 자체가 거부된다:
+			//   Policy claim missing from the JWT token, credentials will not be generated
+			//
+			// 지금은 고정값이라 로그인한 사람 모두가 같은 정책을 받는다. Keycloak
+			// 역할을 정책으로 잇는 것은 별도 과제다(클라이언트에 역할 매퍼가 없어
+			// 토큰에 역할 자체가 실리지 않는다).
+			ProtocolMappers: []OIDCProtocolMapper{
+				{Name: "minio-policy", ClaimName: "policy", ClaimValue: "consoleAdmin"},
+			},
 		},
 	}
 }
@@ -172,11 +187,12 @@ func (p *SSOProvisioner) ProvisionSSO(ctx context.Context, stepName, clientSecre
 	clientID, _ := p.ClientIDFor(stepName)
 
 	return p.kc.UpsertOIDCClient(ctx, OIDCClientSpec{
-		ClientID:     clientID,
-		Name:         spec.DisplayName,
-		Secret:       clientSecret,
-		RedirectURIs: []string{buildRedirectURI(spec.Subdomain, p.accessDomain, spec.CallbackPath)},
-		PKCEMethod:   spec.PKCEMethod,
+		ClientID:        clientID,
+		Name:            spec.DisplayName,
+		Secret:          clientSecret,
+		RedirectURIs:    []string{buildRedirectURI(spec.Subdomain, p.accessDomain, spec.CallbackPath)},
+		PKCEMethod:      spec.PKCEMethod,
+		ProtocolMappers: spec.ProtocolMappers,
 	})
 }
 
