@@ -165,7 +165,32 @@ else
   echo "[nullus] 내부 CA($CA_SECRET)를 찾지 못했습니다 — 스택 설치 후 다시 실행하세요."
 fi
 
-# ── 5. 다음 단계 ─────────────────────────────────────────────────────────────
+# ── 5. 게이트웨이 포워딩 명령 ────────────────────────────────────────────────
+# 명령을 손으로 조립하면 두 군데서 넘어진다.
+#   - sudo 는 root 의 HOME 을 쓰므로 kubeconfig 를 못 찾고 낡은 설정에 붙는다
+#     ("connection refused" 가 엉뚱한 포트로 뜬다)
+#   - 서비스 이름에 게이트웨이 해시가 붙어 예측할 수 없다
+# 그래서 여기서 실제 이름을 찾아 전체 명령을 만들어 준다.
+KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
+GW_NS="$(kubectl get svc --all-namespaces --context "$CONTEXT" \
+  -l gateway.envoyproxy.io/owning-gateway-name \
+  -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || true)"
+GW_SVC="$(kubectl get svc --all-namespaces --context "$CONTEXT" \
+  -l gateway.envoyproxy.io/owning-gateway-name \
+  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+
+if [[ -n "$GW_SVC" ]]; then
+  FORWARD_HINT="
+       sudo kubectl --kubeconfig '${KUBECONFIG_PATH}' --context '${CONTEXT}' \\
+         port-forward -n ${GW_NS} svc/${GW_SVC} 443:443
+
+     (sudo 는 root 의 HOME 을 쓰므로 --kubeconfig 를 반드시 넘겨야 한다)"
+else
+  FORWARD_HINT="
+       (게이트웨이 서비스를 찾지 못했습니다 — 스택 설치 후 다시 실행하세요)"
+fi
+
+# ── 6. 다음 단계 ─────────────────────────────────────────────────────────────
 cat <<EOF
 
 ══════════════════════════════════════════════════════════════════
@@ -182,8 +207,7 @@ cat <<EOF
      http://${KC_HOST}:${KEYCLOAK_PORT}/realms/nullus 를 쓰게 된다.
 
   3) 도구는 443 으로 접근하므로 게이트웨이를 포워딩한다 (sudo, 특권 포트):
-
-       sudo kubectl port-forward -n <스택네임스페이스> svc/<envoy-svc> 443:443
+${FORWARD_HINT}
 
   확인:  https://argocd.$DOMAIN  → Keycloak 재인증 없이 진입
 ══════════════════════════════════════════════════════════════════
