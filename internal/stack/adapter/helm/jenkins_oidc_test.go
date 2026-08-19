@@ -149,3 +149,41 @@ func TestJenkinsURL_SchemeFollowsSharedDecision(t *testing.T) {
 	controller := o.jenkinsURLValues()["controller"].(map[string]any)
 	assert.Equal(t, "http://jenkins.nullus.local", controller["jenkinsUrl"])
 }
+
+// SSO 를 켜면 JCasC 의 securityRealm: oic 가 기존 보안 영역을 통째로 교체한다.
+// 그래서 로컬 admin 계정으로는 더 이상 들어갈 수 없다 — IdP 가 죽으면 아무도
+// 못 들어가는 상태다. ArgoCD 에서 고친 것과 같은 문제다.
+//
+// oic-auth 4.x 는 escapeHatch 프로퍼티로 그 수단을 준다.
+func TestJenkinsOIDC_ProvidesEscapeHatch(t *testing.T) {
+	values := ssoOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true).
+		oidcValuesForStep("installing_jenkins")
+	script := values["controller"].(map[string]any)["JCasC"].(map[string]any)["configScripts"].(map[string]any)["nullus-oidc"].(string)
+
+	require.Contains(t, script, "escapeHatch", "IdP 가 죽으면 들어갈 수단이 없다")
+	// 스키마는 username / secret / group 이다. 이름이 틀리면 JCasC 가 부팅을 막는다.
+	assert.Contains(t, script, "username:")
+	assert.Contains(t, script, "secret:")
+}
+
+// 비밀번호를 JCasC 본문에 평문으로 두면 ConfigMap 으로 남는다. 기존 admin
+// 자격증명을 마운트해 참조한다 — 별도 비밀을 하나 더 만들지 않는다.
+func TestJenkinsOIDC_EscapeHatchUsesMountedAdminCredential(t *testing.T) {
+	values := ssoOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true).
+		oidcValuesForStep("installing_jenkins")
+	controller := values["controller"].(map[string]any)
+
+	var mounted bool
+	for _, s := range controller["additionalExistingSecrets"].([]any) {
+		m := s.(map[string]any)
+		if m["name"] == domain.JenkinsAdminSecret && m["keyName"] == domain.JenkinsAdminPasswordKey {
+			mounted = true
+		}
+	}
+	assert.True(t, mounted, "admin 자격증명이 마운트되지 않으면 ${...} 가 풀리지 않는다")
+
+	script := controller["JCasC"].(map[string]any)["configScripts"].(map[string]any)["nullus-oidc"].(string)
+	assert.Contains(t, script,
+		"${"+domain.JenkinsAdminSecret+"-"+domain.JenkinsAdminPasswordKey+"}")
+	assert.NotContains(t, script, "password: \"admin", "평문 비밀번호가 들어갔다")
+}

@@ -3,6 +3,8 @@ package helm
 import (
 	"fmt"
 	"strings"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 // 코드 생성 values 에 OIDC 블록을 주입한다.
@@ -119,6 +121,10 @@ requestedScopes:
 				"additionalPlugins": []any{"oic-auth"},
 				"additionalExistingSecrets": []any{
 					map[string]any{"name": secretName, "keyName": "client-secret"},
+					// escape hatch 가 쓸 자격. 기존 admin 자격증명을 재사용해
+					// 관리 대상 비밀을 하나 더 만들지 않는다.
+					map[string]any{"name": domain.JenkinsAdminSecret, "keyName": domain.JenkinsAdminUserKey},
+					map[string]any{"name": domain.JenkinsAdminSecret, "keyName": domain.JenkinsAdminPasswordKey},
 				},
 				"JCasC": map[string]any{
 					"configScripts": map[string]any{
@@ -167,6 +173,17 @@ func jenkinsOIDCJCasC(clientID, secretName, issuer string) string {
       serverConfiguration:
         wellKnown:
           wellKnownOpenIDConfigurationUrl: "` + strings.TrimRight(issuer, "/") + `/.well-known/openid-configuration"
+      # IdP 가 죽어도 들어갈 수단. securityRealm: oic 는 기존 보안 영역을 통째로
+      # 교체하므로 이것이 없으면 Keycloak 이 멈춘 순간 아무도 못 들어간다.
+      #
+      # 스키마는 username / secret / group 이다(oic-auth 4.x 의
+      # properties/EscapeHatch). 이름이 틀리면 JCasC 가 부팅을 막는다.
+      # 비밀번호는 기존 admin 자격증명을 마운트해 참조한다 — 본문에 평문을 두면
+      # ConfigMap 으로 남는다.
+      properties:
+        - escapeHatch:
+            username: "${` + domain.JenkinsAdminSecret + `-` + domain.JenkinsAdminUserKey + `}"
+            secret: "${` + domain.JenkinsAdminSecret + `-` + domain.JenkinsAdminPasswordKey + `}"
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
