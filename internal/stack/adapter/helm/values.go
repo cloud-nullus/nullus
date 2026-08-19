@@ -18,8 +18,10 @@ const defaultStackNamespace = domain.DefaultStackNamespace
 // 태그는 베이스 Jenkins 버전과 같게 둔다 — 갈라지면 JCasC 스키마가 안 맞을 수 있다.
 // 빌드: ./scripts/build-jenkins-image.sh
 const (
-	jenkinsImageRegistry   = "ghcr.io"
-	jenkinsImageRepository = "ghcr.io/cloud-nullus/nullus-jenkins"
+	jenkinsImageRegistry = "ghcr.io"
+	// 차트가 registry 와 이어 붙이므로 여기에 레지스트리를 넣으면 안 된다.
+	// 넣으면 ghcr.io/ghcr.io/... 가 되어 파드가 ImagePullBackOff 로 멈춘다.
+	jenkinsImageRepository = "cloud-nullus/nullus-jenkins"
 	jenkinsImageTag        = "2.568.2"
 )
 
@@ -267,6 +269,9 @@ func DefaultValues(stepName string) map[string]any {
 					"registry":   jenkinsImageRegistry,
 					"repository": jenkinsImageRepository,
 					"tag":        jenkinsImageTag,
+					// 고정 태그다. Always 면 노드에 적재해 둔 이미지를 두고
+					// 레지스트리를 쳐서, 아직 published 되지 않은 지금은 실패한다.
+					"pullPolicy": "IfNotPresent",
 				},
 				// 서비스는 게이트웨이 라우트가 앞단을 맡으므로 ClusterIP 로 둔다.
 				"serviceType": "ClusterIP",

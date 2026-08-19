@@ -1,6 +1,8 @@
 package helm
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,8 +32,29 @@ func TestJenkinsValues_UsesPrebuiltImage(t *testing.T) {
 
 	image, ok := controller["image"].(map[string]any)
 	require.True(t, ok, "이미지를 지정하지 않으면 기본 이미지가 뜨고 플러그인이 없다")
-	assert.Equal(t, "ghcr.io/cloud-nullus/nullus-jenkins", image["repository"])
 	assert.NotEmpty(t, image["tag"])
+	assert.Equal(t, "IfNotPresent", image["pullPolicy"],
+		"고정 태그인데 Always 면 노드에 적재해 둔 이미지를 두고 레지스트리를 친다")
+}
+
+// 차트는 registry 와 repository 를 이어 붙인다. repository 에 레지스트리를 또
+// 넣으면 ghcr.io/ghcr.io/... 가 되어 파드가 ImagePullBackOff 로 멈춘다(실측).
+//
+// 빌드 스크립트가 만드는 이름과 차트가 조립하는 이름이 갈라지면, 이미지는
+// 만들어졌는데 파드는 못 받는 상태가 된다. 두 출처를 여기서 묶어 둔다.
+func TestJenkinsImage_ReferenceMatchesBuildScript(t *testing.T) {
+	controller := jenkinsValues(t)
+	image := controller["image"].(map[string]any)
+	assembled := image["registry"].(string) + "/" + image["repository"].(string)
+
+	script, err := os.ReadFile(filepath.Join("..", "..", "..", "..",
+		"scripts", "build-jenkins-image.sh"))
+	require.NoError(t, err)
+
+	assert.Containsf(t, string(script), "IMAGE:-"+assembled,
+		"차트가 조립하는 이름(%s)이 빌드 스크립트의 기본 이미지와 다르다", assembled)
+	assert.Containsf(t, string(script), "TAG:-"+image["tag"].(string),
+		"태그가 빌드 스크립트와 다르다")
 }
 
 // 런타임 설치가 켜져 있으면 이미지에 구워 둔 의미가 없다 — 같은 다운로드를
