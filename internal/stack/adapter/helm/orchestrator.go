@@ -302,8 +302,26 @@ func (o *Orchestrator) cleanupResidualReleaseResources(ctx context.Context) erro
 	return nil
 }
 
+// isWorkloadlessRelease 는 파드를 만들지 않는 릴리스인지 본다.
+//
+// CRD 만 담은 차트가 그렇다. 준비 검사는 파드를 전제하므로 그대로 두면
+// "no pods found for release" 로 설치가 죽는다.
+//
+// "파드가 없으면 통과" 로 일반화하지 않는다. 정작 파드를 만들어야 하는 릴리스가
+// 아무것도 못 만들었을 때 그것까지 조용히 통과시키기 때문이다.
+func isWorkloadlessRelease(releaseName string) bool {
+	switch strings.TrimSpace(releaseName) {
+	case "prometheus-operator-crds":
+		return true
+	}
+	return false
+}
+
 func (o *Orchestrator) verifyReleaseRuntimeReadiness(ctx context.Context, step, releaseName, namespace string) error {
 	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+	if isWorkloadlessRelease(releaseName) {
 		return nil
 	}
 
