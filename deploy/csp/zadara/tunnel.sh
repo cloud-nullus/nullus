@@ -30,7 +30,7 @@
 # 환경 변수:
 #   MODE         direct | ingress          (기본: direct)
 #   SSH_KEY      SSH 키 경로               (기본: nullus-key.pem 자동 탐색)
-#   BASTION      bastion 접속 대상         (기본: ubuntu@121.78.39.184)
+#   BASTION      bastion 접속 대상         (필수, .env 또는 환경변수)
 #   LOCAL_PORT   로컬 포트                 (기본: 30080)
 #   NAMESPACE    Nullus 네임스페이스       (기본: nullus)
 #   KUBE_CONTEXT bastion 의 kube 컨텍스트  (기본: platform)
@@ -45,8 +45,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+# 환경별 값은 저장소가 아니라 .env 에 둔다 (gitignore). 없으면 환경변수로 받는다.
+# env.example 을 복사해 채운다: cp env.example .env
+# .env 의 값은 "${VAR:-...}" 형태라 명령줄 환경변수가 우선한다.
+# shellcheck source=/dev/null
+[[ -f "$SCRIPT_DIR/.env" ]] && source "$SCRIPT_DIR/.env"
+
 MODE="${MODE:-direct}"
-BASTION="${BASTION:-ubuntu@121.78.39.184}"
+BASTION="${BASTION:-}"
 # 로컬 포트는 NodePort 와 같은 30080 을 기본으로 쓴다. 8080 은 Docker 등이
 # 이미 잡고 있는 경우가 흔하다.
 LOCAL_PORT="${LOCAL_PORT:-30080}"
@@ -71,6 +77,13 @@ ok()   { printf '%s✔%s %s\n' "$C_OK"   "$C_RST" "$*"; }
 warn() { printf '%s!%s %s\n' "$C_WARN" "$C_RST" "$*"; }
 info() { printf '%s·%s %s\n' "$C_DIM"  "$C_RST" "$*"; }
 die()  { printf '%s✘%s %s\n' "$C_ERR"  "$C_RST" "$*" >&2; exit 1; }
+
+# BASTION 은 기본값을 두지 않는다. 특정 환경의 주소를 코드에 박으면 다른 환경에서
+# 조용히 엉뚱한 곳에 붙는다 — 틀린 기본값보다 멈추는 편이 낫다.
+[[ -n "${BASTION:-}" ]] || die "BASTION 이 필요합니다.
+    cp $SCRIPT_DIR/env.example $SCRIPT_DIR/.env 로 복사해 채우거나
+    BASTION=ubuntu@<공인IP> $0 ... 로 넘기십시오."
+
 
 # -----------------------------------------------------------------------------
 # SSH 키 탐색 — 저장소 밖에 두는 경우가 많아 몇 군데를 훑는다.

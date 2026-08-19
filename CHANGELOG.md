@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **환경별 값을 저장소에서 걷어낸다** (`deploy/csp/zadara/env.example` 신규, `expose-apiserver.sh` · `expose-web.sh` · `kubeconfig.sh` · `tunnel.sh` · `setup-tls.sh`): bastion 주소가 네 스크립트에 기본값으로 박혀 있었다(`BASTION="${BASTION:-ubuntu@<공인IP>}"`). 이건 저장소가 아니라 환경에 속하는 값이다 — 오픈소스로 받은 사람이 우리 인프라 주소가 들어간 스크립트를 받게 되고, 다른 환경에 올릴 때마다 코드를 고쳐야 한다.
+
+  `deploy/csp/zadara/.env`(gitignore, `.env` 패턴이 이미 있었다)에서 읽고, 없으면 환경변수로 받는다. **기본값은 두지 않는다** — 특정 환경의 주소를 코드에 박으면 다른 환경에서 조용히 엉뚱한 곳에 붙는다. 틀린 기본값보다 멈추는 편이 낫고, 멈출 때 무엇을 어떻게 채우는지 함께 출력한다.
+
+  `.env` 의 값은 `"${VAR:-...}"` 형태로 쓴다. 스크립트가 이 파일을 `source` 하므로 평범하게 `VAR=...` 로 쓰면 **명령줄에서 준 환경변수를 조용히 덮어쓴다.** 다른 환경에 한 번만 붙는 경우가 실제로 있어서 이 우선순위가 필요하다. `env.example` 에 그 이유를 적어 두었다.
+
+  `BASTION` 하나만 옮기면 품이 아까워 `DNS01_ZONE` · `ACCESS_DOMAIN` 도 같은 파일에 모았다. 다만 **비밀은 여기 두지 않는다** — API 키·비밀번호는 쿠버네티스 시크릿이고, 여기 있는 값(공인 IP)은 DNS 로 이미 공개된 것이다. 그래서 이 변경이 얻는 것은 기밀 유지가 아니라 이식성과 저장소 위생이다. git 히스토리에는 그대로 남아 있고, 공개 저장소 히스토리 재작성은 비용 대비 얻는 게 없어 하지 않았다.
+
 - **와일드카드 인증서를 실제 서비스에 연결한다** (`deploy/csp/zadara/values-zadara.yaml`, `deploy/csp/zadara/setup-tls.sh`): 인증서는 발급됐지만 어느 Ingress에도 붙지 않아 브라우저에는 여전히 자체서명이 나가고 있었다. 연결하면서 세 가지가 드러났다.
 
   **`cert-manager.io/cluster-issuer` 어노테이션을 빼야 한다.** 두면 ingress-shim 이 tls 항목마다 Certificate 를 자동 생성하는데, `nullus-wildcard-tls` 는 `setup-tls.sh` 가 만든 Certificate 가 이미 소유한다. 소유자가 둘이 되면 같은 시크릿을 서로 덮어쓰며 재발급을 반복하고 **Let's Encrypt 주 50 건을 태운다.** 조용히 벌어져 한참 뒤에나 드러나는 종류다. 실제로 기존 인증서 3 장이 전부 `owner=Ingress` 로 shim 소유였다.

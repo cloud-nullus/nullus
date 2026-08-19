@@ -123,6 +123,8 @@ kubectl -n cert-manager create secret generic spaceship-dns01 \
 
 ## 4. 발급 절차
 
+> `DNS01_ZONE` 같은 환경별 값은 `deploy/csp/zadara/.env` 에 둘 수 있다(gitignore). `env.example` 을 복사해 채운다. 명령줄 환경변수가 `.env` 보다 우선한다.
+
 ### 4.1 staging 먼저
 
 Let's Encrypt는 등록 도메인당 **주 50건**이다. 시행착오로 태우면 일주일을 기다린다. 경로를 처음 뚫을 때는 반드시 staging부터 돌린다.
@@ -237,6 +239,19 @@ helm upgrade nullus deploy/helm/nullus --namespace nullus \
 > **`helm get values` 를 `-f` 로 되먹이지 않는다.** `annotations` 는 맵이라 helm이 **병합**하므로, 새 values의 `{}` 가 기존 `cert-manager.io/cluster-issuer` 를 지우지 못한다. 어노테이션이 살아남아 위의 소유권 충돌이 그대로 재현된다. 반드시 values 파일에서 새로 시작한다.
 
 > **미리 보려면 `--dry-run=server`** 를 쓴다. 클라이언트 dry-run은 기존 시크릿을 lookup 하지 못해 Bitnami가 `PASSWORDS ERROR: You must provide your current passwords` 를 낸다 — 실제 문제가 아니라 dry-run의 한계다.
+
+#### ⚠ 수동 변경은 저장소 반영과 함께 한다
+
+실제로 겪은 사고다. 클러스터에 수동으로 `helm upgrade` 를 돌려 어노테이션을 빼고 Certificate 3 장을 지웠는데, **아직 고쳐지지 않은 values 로 CD 가 배포**되면서 어노테이션이 되살아났고 **4 초 만에** ingress-shim 이 3 장을 다시 만들었다.
+
+```
+11:26Z  수동 helm upgrade   → 어노테이션 제거
+11:3xZ  Certificate 3장 삭제
+11:37:35Z  CD 배포 (수정 전 values)  → 어노테이션 부활
+11:37:39Z  shim 이 3장 재생성        → Let's Encrypt 발급 3건 낭비
+```
+
+CD 가 배포하는 환경에서 수동 변경은 **다음 배포까지만 유효하다.** 저장소 반영(PR 머지)을 먼저 하거나, 최소한 같은 호흡에 끝낸다. 순서가 어긋나면 조용히 되돌아가고, 그 되돌아감이 rate limit 을 태운다.
 
 #### 옛 Certificate 정리
 
@@ -354,6 +369,8 @@ DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh status     # 상태
 | 같은 시크릿을 두 Certificate가 소유 | Ingress에 cert-manager 어노테이션이 남음 | §4.3 — 어노테이션 제거 후 자동 생성분 삭제 |
 | `helm upgrade` 후 API가 DB 접속 실패 | 시크릿을 `--set` 으로 다시 주지 않음 | §4.3 의 `helm get values` 재현 명령 |
 | 어노테이션을 뺐는데 계속 살아 있음 | `helm get values` 를 `-f` 로 되먹임 (맵 병합) | values 파일에서 새로 시작 |
+| 지운 Certificate 가 몇 분 뒤 되살아남 | CD 가 수정 전 values 로 배포 | 저장소 반영을 먼저. §4.3 의 사고 기록 |
+| 스크립트가 `BASTION 이 필요합니다` 로 멈춤 | `.env` 미생성 | `cp deploy/csp/zadara/env.example deploy/csp/zadara/.env` 후 채운다 |
 | 새 스택 호스트만 자체서명 | 기본 인증서 미지정 | §4.4 `default-cert` |
 | `PASSWORDS ERROR` on dry-run | 클라이언트 dry-run이 시크릿 lookup 불가 | `--dry-run=server` |
 | `www` 가 404 | 규칙을 지우고 리다이렉트를 안 검 | `from-to-www-redirect: "true"` |

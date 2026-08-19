@@ -55,6 +55,14 @@
 # =============================================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+# 환경별 값은 저장소가 아니라 .env 에 둔다 (gitignore). 없으면 환경변수로 받는다.
+# env.example 을 복사해 채운다: cp env.example .env
+# .env 의 값은 "${VAR:-...}" 형태라 명령줄 환경변수가 우선한다.
+# shellcheck source=/dev/null
+[[ -f "$SCRIPT_DIR/.env" ]] && source "$SCRIPT_DIR/.env"
+
 NAMESPACE="${NAMESPACE:-nullus}"
 ACME_EMAIL="${ACME_EMAIL:-admin@nullus.io}"
 ISSUER="${ISSUER:-letsencrypt}"
