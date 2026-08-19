@@ -326,8 +326,8 @@ const defaultRolloutTimeout = "180s"
 //
 // 기본 시간 안에 못 뜨는 릴리스는 설치가 통째로 실패한다. 두 곳이 그렇다.
 //   - GitLab: 구성요소가 많아 순차 기동이 길다
-//   - Jenkins: init 컨테이너가 updates.jenkins.io 에서 플러그인을 받는다.
-//     SSO 용 oic-auth 는 의존 플러그인이 여럿이라 시간이 더 든다
+//   - Jenkins: 플러그인은 이미지에 구워져 있지만(deploy/images/jenkins) 기동 시
+//     그것을 모두 적재하고 JCasC 를 적용하는 데 시간이 든다. 여유를 둔다
 func rolloutTimeoutFor(releaseName string) string {
 	switch strings.TrimSpace(releaseName) {
 	case "gitlab", "jenkins":
