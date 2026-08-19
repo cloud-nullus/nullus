@@ -107,6 +107,19 @@ requestedScopes:
 				"secret": map[string]any{
 					"createSecret": false,
 				},
+				// 역할을 권한으로 잇는다.
+				//
+				// 기본값은 policy.default 와 policy.csv 가 모두 비어 있어 OIDC
+				// 사용자에게 권한이 0 이다. 로그인은 되는데 애플리케이션이 하나도
+				// 보이지 않아, 인증 문제로 보이지 않는 상태가 된다.
+				//
+				// policy.default 는 비워 둔다. 열어 두면 역할이 없는 사용자도
+				// 들어와 매핑 자체가 무의미해진다.
+				"rbac": map[string]any{
+					"scopes":         "[groups]",
+					"policy.default": "",
+					"policy.csv":     argoCDRolePolicy(),
+				},
 			},
 		}
 
@@ -207,5 +220,20 @@ func jenkinsOIDCJCasC(clientID, secretName, issuer string) string {
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
+`
+}
+
+// argoCDRolePolicy 는 Keycloak realm 역할을 ArgoCD 역할로 잇는다.
+//
+// 역할 이름은 setup-keycloak.sh 가 만드는 것과 같아야 한다(admin/devops/developer).
+// 갈라지면 매핑이 대상 없이 돌아 사용자는 권한 0 으로 남는다.
+//
+// devops 는 배포를 운영하므로 admin 과 같은 권한을 준다. developer 는 읽기만
+// 준다 — 파이프라인이 배포하는 구조라 사람이 직접 동기화할 이유가 없고,
+// 실수로 되돌리면 GitOps 의 단일 출처가 흔들린다.
+func argoCDRolePolicy() string {
+	return `g, admin, role:admin
+g, devops, role:admin
+g, developer, role:readonly
 `
 }

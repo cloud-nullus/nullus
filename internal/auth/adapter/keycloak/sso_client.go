@@ -29,14 +29,38 @@ type OIDCClientSpec struct {
 	PKCEMethod string
 }
 
-// OIDCProtocolMapper 는 토큰에 고정 클레임을 싣는 매퍼다.
+// MapperKind 는 프로토콜 매퍼의 종류다.
+type MapperKind string
+
+const (
+	// MapperKindHardcoded 는 고정 값을 싣는다. 도구가 특정 값을 요구할 때 쓴다
+	// (예: MinIO 의 policy).
+	MapperKindHardcoded MapperKind = "hardcoded"
+	// MapperKindRealmRoles 는 사용자의 realm 역할을 싣는다.
+	//
+	// Keycloak 은 realm_access.roles 를 기본적으로 액세스 토큰에만 싣는데, 도구는
+	// 대개 ID 토큰을 읽는다. 그래서 별도 매퍼로 명시해야 역할이 도달한다.
+	MapperKindRealmRoles MapperKind = "realm-roles"
+)
+
+// OIDCProtocolMapper 는 토큰에 추가 클레임을 싣는 매퍼다.
 type OIDCProtocolMapper struct {
-	Name       string
-	ClaimName  string
+	Kind      MapperKind
+	Name      string
+	ClaimName string
+	// ClaimValue 는 Kind 가 hardcoded 일 때만 쓴다.
 	ClaimValue string
 }
 
-// hardcodedClaimMapperPayload 는 Keycloak 프로토콜 매퍼 표현을 만든다.
+// mapperPayload 는 종류에 맞는 Keycloak 매퍼 표현을 만든다.
+func mapperPayload(m OIDCProtocolMapper) map[string]any {
+	if m.Kind == MapperKindRealmRoles {
+		return realmRoleMapperPayload(m)
+	}
+	return hardcodedClaimMapperPayload(m)
+}
+
+// hardcodedClaimMapperPayload 는 고정 값 매퍼를 만든다.
 //
 // ID 토큰과 액세스 토큰 양쪽에 싣는다. 도구마다 어느 토큰을 읽는지 달라서
 // 한쪽만 켜면 조용히 갈린다.
@@ -48,6 +72,26 @@ func hardcodedClaimMapperPayload(m OIDCProtocolMapper) map[string]any {
 		"config": map[string]any{
 			"claim.name":           m.ClaimName,
 			"claim.value":          m.ClaimValue,
+			"jsonType.label":       "String",
+			"id.token.claim":       "true",
+			"access.token.claim":   "true",
+			"userinfo.token.claim": "true",
+		},
+	}
+}
+
+// realmRoleMapperPayload 는 realm 역할을 싣는 매퍼를 만든다.
+//
+// 역할은 여럿일 수 있으므로 multivalued 다. 단일값으로 두면 하나만 실려 나머지
+// 역할이 조용히 사라진다.
+func realmRoleMapperPayload(m OIDCProtocolMapper) map[string]any {
+	return map[string]any{
+		"name":           m.Name,
+		"protocol":       "openid-connect",
+		"protocolMapper": "oidc-usermodel-realm-role-mapper",
+		"config": map[string]any{
+			"claim.name":           m.ClaimName,
+			"multivalued":          "true",
 			"jsonType.label":       "String",
 			"id.token.claim":       "true",
 			"access.token.claim":   "true",
@@ -147,7 +191,7 @@ func (kc *KeycloakClient) ensureProtocolMappers(ctx context.Context, token, clie
 	}
 
 	for _, m := range mappers {
-		body, marshalErr := json.Marshal(hardcodedClaimMapperPayload(m))
+		body, marshalErr := json.Marshal(mapperPayload(m))
 		if marshalErr != nil {
 			return fmt.Errorf("매퍼 페이로드 마샬 실패 (%s): %w", m.Name, marshalErr)
 		}

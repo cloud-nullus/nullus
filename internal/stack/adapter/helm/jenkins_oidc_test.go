@@ -22,6 +22,7 @@ func (s stubMultiProvisioner) ClientIDFor(step string) (string, bool) {
 		"installing_jenkins": "jenkins",
 		"installing_gitea":   "gitea",
 		"installing_harbor":  "harbor",
+		"installing_argocd":  "argocd",
 	}[step]
 	if !ok {
 		return "", false
@@ -29,7 +30,7 @@ func (s stubMultiProvisioner) ClientIDFor(step string) (string, bool) {
 	return s.slug + "-" + name, true
 }
 func (s stubMultiProvisioner) ToolSteps() []string {
-	return []string{"installing_jenkins", "installing_gitea", "installing_harbor"}
+	return []string{"installing_jenkins", "installing_gitea", "installing_harbor", "installing_argocd"}
 }
 func (s stubMultiProvisioner) Provision(context.Context, port.SSOClientSpec) error { return nil }
 func (s stubMultiProvisioner) Deprovision(context.Context, string) error           { return nil }
@@ -39,6 +40,7 @@ func ssoOrchestrator(t *testing.T, issuer string, ssoOn bool) *Orchestrator {
 	cfg := domain.StackConfig{AccessDomain: "nullus.local"}
 	cfg.Pipeline.CIPlatform = domain.ToolSelection{Name: "jenkins", Enabled: true}
 	cfg.Artifacts.SourceRepository = domain.ToolSelection{Name: "gitea", Enabled: true}
+	cfg.Pipeline.CDTool = domain.ToolSelection{Name: "argocd", Enabled: true}
 
 	o := NewOrchestrator(&mockInstaller{}, []byte("kubeconfig"), "nullus-sso", WithToolOIDCIssuer(issuer))
 	o.SetStackConfig(cfg)
@@ -186,4 +188,36 @@ func TestJenkinsOIDC_EscapeHatchUsesMountedAdminCredential(t *testing.T) {
 	assert.Contains(t, script,
 		"${"+domain.JenkinsAdminSecret+"-"+domain.JenkinsAdminPasswordKey+"}")
 	assert.NotContains(t, script, "password: \"admin", "평문 비밀번호가 들어갔다")
+}
+
+// ArgoCD 는 policy.default 와 policy.csv 가 모두 비어 있어 OIDC 사용자에게 권한이
+// 0 이다. 로그인은 되는데 애플리케이션이 하나도 보이지 않는다 — 인증 문제로
+// 보이지 않아 원인을 찾기 어렵다.
+//
+// realm 역할을 ArgoCD 역할로 잇는다.
+func TestArgoCDOIDC_MapsRealmRolesToPermissions(t *testing.T) {
+	values := ssoOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true).
+		oidcValuesForStep("installing_argocd")
+	require.NotNil(t, values)
+
+	rbac, ok := values["configs"].(map[string]any)["rbac"].(map[string]any)
+	require.True(t, ok, "rbac 설정이 없으면 로그인해도 권한이 0 이다")
+
+	csv, _ := rbac["policy.csv"].(string)
+	assert.Contains(t, csv, "role:admin", "admin 역할이 관리자로 이어져야 한다")
+	assert.Contains(t, csv, "role:readonly", "developer 는 읽기 권한이어야 한다")
+	assert.Contains(t, csv, "g, admin,", "realm 역할 이름으로 매핑해야 한다")
+
+	// 기본값을 열어 두면 역할이 없는 사용자도 들어온다. 매핑에 걸린 역할만 준다.
+	assert.Equal(t, "", rbac["policy.default"],
+		"기본 권한을 열면 역할 매핑이 무의미해진다")
+}
+
+// 역할 클레임을 어디서 읽을지 알려줘야 한다. 기본 scopes 에 groups 가 없으면
+// 매핑이 대상 없이 돈다.
+func TestArgoCDOIDC_ReadsGroupsScope(t *testing.T) {
+	values := ssoOrchestrator(t, "http://kc/realms/nullus", true).
+		oidcValuesForStep("installing_argocd")
+	rbac := values["configs"].(map[string]any)["rbac"].(map[string]any)
+	assert.Contains(t, rbac["scopes"], "groups")
 }

@@ -59,6 +59,13 @@ func newToolSpecs() map[string]ToolSSOSpec {
 			Subdomain:    "argocd",
 			CallbackPath: "/auth/callback",
 			// ArgoCD 는 PKCE 를 사용하지 않는다.
+			//
+			// RBAC 은 토큰의 groups 클레임을 본다(argocd-rbac-cm 의 scopes).
+			// 역할이 실리지 않으면 로그인은 되는데 권한이 0 이라 아무것도 보이지
+			// 않는다 — 인증 문제로 보이지 않아 원인을 찾기 어렵다.
+			ProtocolMappers: []OIDCProtocolMapper{
+				{Kind: MapperKindRealmRoles, Name: "realm-roles", ClaimName: "groups"},
+			},
 		},
 		"installing_harbor": {
 			ClientID:     "harbor",
@@ -103,7 +110,7 @@ func newToolSpecs() map[string]ToolSSOSpec {
 			// 역할을 정책으로 잇는 것은 별도 과제다(클라이언트에 역할 매퍼가 없어
 			// 토큰에 역할 자체가 실리지 않는다).
 			ProtocolMappers: []OIDCProtocolMapper{
-				{Name: "minio-policy", ClaimName: "policy", ClaimValue: "consoleAdmin"},
+				{Kind: MapperKindHardcoded, Name: "minio-policy", ClaimName: "policy", ClaimValue: "consoleAdmin"},
 			},
 		},
 	}
