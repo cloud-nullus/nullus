@@ -285,11 +285,7 @@ func (o *Orchestrator) harborExternalURLValues(cfg *domain.StackConfig) map[stri
 			// SSO 를 쓰지 않으면 http 그대로 둔다. 이 값은 docker login/push 의
 			// 토큰 realm 이기도 해서, 스킴을 바꾸면 클라이언트(containerd 포함)가
 			// 게이트웨이 인증서의 CA 를 신뢰해야 한다.
-			scheme := "http"
-			if _, _, ssoOn := o.harborOIDCSettings(); ssoOn {
-				scheme = "https"
-			}
-			return map[string]any{"externalURL": fmt.Sprintf("%s://harbor.%s", scheme, accessDomain)}
+			return map[string]any{"externalURL": fmt.Sprintf("%s://harbor.%s", o.toolURLScheme(), accessDomain)}
 		}
 	}
 
@@ -335,7 +331,9 @@ func (o *Orchestrator) giteaSharedServiceValues() map[string]any {
 	rootURL := fmt.Sprintf("http://%s.%s.svc:%d/",
 		domain.GiteaHTTPServiceName, namespace, domain.GiteaServicePort)
 	if host != "" {
-		rootURL = fmt.Sprintf("http://%s/", host)
+		// ROOT_URL 은 Gitea 가 만드는 OAuth redirect_uri 의 출처이기도 하다.
+		// Keycloak 에 등록된 redirect 와 스킴이 다르면 로그인이 막힌다.
+		rootURL = fmt.Sprintf("%s://%s/", o.toolURLScheme(), host)
 	}
 
 	server := map[string]any{"ROOT_URL": rootURL}

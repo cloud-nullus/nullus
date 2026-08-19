@@ -202,3 +202,31 @@ func (o *Orchestrator) runSSOProvisioning(ctx context.Context, namespace string)
 	}
 	return nil
 }
+
+// toolURLScheme 은 접속 도메인 기반 도구 주소의 스킴이다.
+//
+// 도구는 저마다 자기 기본 주소 설정에서 redirect_uri 를 만든다(Harbor 의
+// externalURL, Gitea 의 ROOT_URL). 그 스킴이 Keycloak 에 등록된 redirect 와
+// 다르면 로그인이 "Invalid parameter: redirect_uri" 로 막힌다 — Harbor 와
+// Gitea 에서 실제로 같은 실패가 났다.
+//
+// 도구마다 따로 정하면 도구를 추가할 때마다 같은 실수가 반복되므로 여기서
+// 한 번만 정한다.
+//
+// SSO 를 쓰지 않으면 http 그대로 둔다. 이 주소들은 git clone 과 이미지 push 의
+// 출처이기도 해서, 스킴을 바꾸면 클라이언트가 게이트웨이 인증서의 CA 를
+// 신뢰해야 한다. SSO 를 켜는 환경은 어차피 그 배선을 하지만, 안 쓰는 설치에까지
+// 그 부담을 지울 이유가 없다.
+func (o *Orchestrator) toolURLScheme() string {
+	provisioner := o.ssoProvisioner()
+	if provisioner == nil {
+		return "http"
+	}
+	o.mu.Lock()
+	issuer := o.toolOIDCIssuer
+	o.mu.Unlock()
+	if strings.TrimSpace(issuer) == "" {
+		return "http"
+	}
+	return "https"
+}

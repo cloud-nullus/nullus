@@ -207,10 +207,7 @@ func (o *Orchestrator) releasePodSnapshot(ctx context.Context, releaseName, name
 func (o *Orchestrator) waitForReleaseRollouts(ctx context.Context, releaseName, namespace string) error {
 	resources := []string{"deployments", "statefulsets", "daemonsets"}
 	selectors := releaseLabelSelectors(releaseName)
-	rolloutTimeout := "180s"
-	if strings.TrimSpace(releaseName) == "gitlab" {
-		rolloutTimeout = "600s"
-	}
+	rolloutTimeout := rolloutTimeoutFor(releaseName)
 	for _, resourceType := range resources {
 		for _, selector := range selectors {
 			output, err := o.runKubectl(ctx,
@@ -319,5 +316,23 @@ func releaseLabelSelectors(releaseName string) []string {
 	return []string{
 		fmt.Sprintf("app.kubernetes.io/instance=%s", name),
 		fmt.Sprintf("release=%s", name),
+	}
+}
+
+// defaultRolloutTimeout 은 워크로드 준비를 기다리는 기본 시간이다.
+const defaultRolloutTimeout = "180s"
+
+// rolloutTimeoutFor 는 릴리스별 준비 대기 시간을 돌려준다.
+//
+// 기본 시간 안에 못 뜨는 릴리스는 설치가 통째로 실패한다. 두 곳이 그렇다.
+//   - GitLab: 구성요소가 많아 순차 기동이 길다
+//   - Jenkins: init 컨테이너가 updates.jenkins.io 에서 플러그인을 받는다.
+//     SSO 용 oic-auth 는 의존 플러그인이 여럿이라 시간이 더 든다
+func rolloutTimeoutFor(releaseName string) string {
+	switch strings.TrimSpace(releaseName) {
+	case "gitlab", "jenkins":
+		return "600s"
+	default:
+		return defaultRolloutTimeout
 	}
 }
