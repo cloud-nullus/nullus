@@ -9,9 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **와일드카드 인증서를 실제 서비스에 연결한다** (`deploy/csp/zadara/values-zadara.yaml`, `deploy/csp/zadara/setup-tls.sh`): 인증서는 발급됐지만 어느 Ingress에도 붙지 않아 브라우저에는 여전히 자체서명이 나가고 있었다. 연결하면서 세 가지가 드러났다.
+
+  **`cert-manager.io/cluster-issuer` 어노테이션을 빼야 한다.** 두면 ingress-shim 이 tls 항목마다 Certificate 를 자동 생성하는데, `nullus-wildcard-tls` 는 `setup-tls.sh` 가 만든 Certificate 가 이미 소유한다. 소유자가 둘이 되면 같은 시크릿을 서로 덮어쓰며 재발급을 반복하고 **Let's Encrypt 주 50 건을 태운다.** 조용히 벌어져 한참 뒤에나 드러나는 종류다. 실제로 기존 인증서 3 장이 전부 `owner=Ingress` 로 shim 소유였다.
+
+  **Ingress 는 하나가 아니다.** 플랫폼(`nullus`)과 Keycloak(`nullus-keycloak`)이 별개 리소스라 한쪽만 고치면 `auth.nullus.io` 만 옛 인증서로 남는다. Bitnami keycloak 차트는 `extraTls` 만 있어도 `tls:` 블록을 렌더하므로(`templates/ingress.yaml:50`), `tls:false` + `extraTls` 로 와일드카드를 직접 지정한다.
+
+  **`www` 는 규칙 대신 리다이렉트로 바꾼다.** 같은 내용을 두 호스트에 서비스하면 중복 콘텐츠가 되고 OIDC redirect_uri 도 호스트마다 등록해야 한다. 그렇다고 규칙만 지우면 `www` 를 친 사람이 404 를 본다. `from-to-www-redirect` 로 apex 에 301 보낸다. `tls` 에는 남긴다 — 리다이렉트도 HTTPS 로 받아야 하고, 인증서가 없으면 브라우저가 301 을 보기 전에 경고부터 띄운다.
+
+  전환이 끝나 `<IP>.nip.io` 호스트도 함께 걷어냈다. 원래 주석이 "도메인 전환 중 끊기지 않도록 남겨 둔다, 안정화되면 지워도 된다" 고 적어 둔 것이고, 공인 IP 가 저장소에서 하나 줄어든다.
+
+- **`setup-tls.sh default-cert` — ingress-nginx 기본 인증서** (`deploy/csp/zadara/setup-tls.sh`): Ingress 의 `tls` 항목은 거기 적힌 호스트만 덮는다. 스택이 깔리며 생기는 `argocd` `grafana` `harbor` 등 열둘은 그 목록에 없어, 연결을 마쳐도 여전히 컨트롤러 자체서명(`CN=Kubernetes Ingress Controller Fake Certificate`)이 나갔다.
+
+  `--default-ssl-certificate` 는 tls 항목이 없는 **모든** 호스트에 폴백 인증서를 씌운다. 도구를 하나 늘릴 때마다 values 를 고치는 일이 사라진다 — 라우트만 생기면 인증서는 이미 붙어 있다. 실제로 지정 후 열 개 호스트 전부가 `-k` 없이 curl 을 통과했다.
+
+  시크릿이 없는 채로 지정하면 컨트롤러가 그것을 찾다 실패하고 **그동안 모든 호스트가 자체서명으로 떨어지므로**, 존재를 먼저 확인하고 없으면 멈춘다. `ingress-nginx` 는 이 저장소가 관리하지 않는 릴리스라 `--reuse-values` 로 인자 하나만 더한다 — 스크립트가 남의 릴리스를 건드리는 유일한 자리이고, 그래서 상태 출력에도 현재 지정값을 함께 보여준다.
+
 - **와일드카드 인증서를 DNS-01 로 발급한다** (`deploy/csp/zadara/setup-tls.sh`): `airgap/scripts/23-setup-gateway.sh` 는 이미 `*.<도메인>` HTTPS 리스너와 `nullus-wildcard-tls` 시크릿을 전제하는데, 정작 그 시크릿을 만들 방법이 없었다. `setup-tls.sh` 가 HTTP-01 전용이었고 **와일드카드는 HTTP-01 로 발급할 수 없기 때문이다** — ACME 규격이 그렇다. 그래서 호스트마다 인증서를 따로 받고 있었고, 스택에 도구를 하나 늘릴 때마다 발급이 하나 늘었다. 그중 하나가 실패하면 그 도구만 조용히 접속 불가가 된다.
 
-  `DNS01_ZONE` 을 주면 그 존만 DNS-01 로 검증한다. **HTTP-01 은 남긴다.** `121.78.39.184.nip.io` 처럼 와일드카드가 덮지 못하는 이름이 아직 ingress 에 있고, 그것까지 DNS-01 로 보내면 nip.io 존의 TXT 를 우리가 쓸 수 없어 발급이 통째로 막힌다. cert-manager 는 더 구체적인 `selector.dnsZones` 를 우선하므로 두 솔버가 한 ClusterIssuer 에 공존해도 서로를 가리지 않는다.
+  `DNS01_ZONE` 을 주면 그 존만 DNS-01 로 검증한다. **HTTP-01 은 남긴다.** 도메인 전환기의 `<IP>.nip.io` 처럼 와일드카드가 덮지 못하는 이름이 섞일 수 있고, 그것까지 DNS-01 로 보내면 nip.io 존의 TXT 를 우리가 쓸 수 없어 발급이 통째로 막힌다. cert-manager 는 더 구체적인 `selector.dnsZones` 를 우선하므로 두 솔버가 한 ClusterIssuer 에 공존해도 서로를 가리지 않는다.
 
   솔버는 lego 를 감싼 웹훅으로 붙인다. cert-manager 가 내장한 DNS-01 솔버는 Route53·Cloudflare·DigitalOcean·AzureDNS·acme-dns·RFC2136 뿐이고 우리 등록기관(Spaceship)이 없다. 흔한 우회는 `_acme-challenge` 를 지원되는 존으로 CNAME 위임하는 것인데, 그러면 남의 DNS 계정이 발급 경로에 하나 더 끼고 cert-manager #5751(와일드카드 + `cnameStrategy: Follow`)을 정면으로 밟는다. lego 는 v4.22.0 부터 Spaceship 을 1급 프로바이더로 지원하므로(차트 1.4.0 이 lego v4.30.1 을 벤더) 위임도 네임서버 이전도 없이 끝난다. 차트 버전은 고정한다 — 떠 있으면 어제 통하던 발급이 오늘 조용히 깨진다.
 

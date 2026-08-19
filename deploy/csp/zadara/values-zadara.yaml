@@ -65,11 +65,18 @@ keycloak:
     enabled: true
     ingressClassName: nginx
     hostname: auth.nullus.io
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt
-    # true 로 두면 서브차트가 <hostname>-tls 시크릿을 tls 항목에 넣는다.
-    # cert-manager 가 그 시크릿에 발급 결과를 채운다.
-    tls: true
+    # cert-manager 어노테이션을 두지 않는다. 두면 ingress-shim 이 tls 항목마다
+    # Certificate 를 자동 생성하는데, 아래 시크릿은 setup-tls.sh 가 만든
+    # Certificate(nullus-wildcard)가 이미 소유한다. 소유자가 둘이 되면 같은
+    # 시크릿을 서로 덮어쓰며 재발급을 반복하고 Let's Encrypt 주 50건을 태운다.
+    annotations: {}
+    # tls:true 는 <hostname>-tls 라는 별도 시크릿을 만들어 넣는다. 와일드카드
+    # 한 장으로 덮는 지금은 그게 필요 없으므로 끄고 extraTls 로 직접 지정한다.
+    tls: false
+    extraTls:
+      - hosts:
+          - auth.nullus.io
+        secretName: nullus-wildcard-tls
   # KC_HOSTNAME 을 주지 않으면 Keycloak 이 요청에서 스킴을 추정해 issuer 에 https 를
   # 찍는다. 그러면 SPA 가 받은 discovery 의 issuer(https)와 실제 접속 스킴(http)이
   # 어긋나 로그인이 깨진다. 전체 URL 로 못박아 결정적으로 만든다.
@@ -105,38 +112,38 @@ keycloak:
 ingress:
   enabled: true
   className: nginx
+  # cert-manager 어노테이션을 두지 않는다. 두면 ingress-shim 이 tls 항목마다
+  # Certificate 를 자동 생성하는데, nullus-wildcard-tls 는 setup-tls.sh 가 만든
+  # Certificate(nullus-wildcard)가 이미 소유한다. 소유자가 둘이 되면 같은 시크릿을
+  # 서로 덮어쓰며 재발급을 반복하고 Let's Encrypt 주 50건을 태운다.
+  # 인증서 수명주기는 helm 밖(setup-tls.sh)에 있다 —
+  # docs/50_운영/Nullus_와일드카드_TLS_인증서_가이드.md 를 본다.
   annotations:
-    # cert-manager 가 아래 tls 항목을 보고 Let's Encrypt 인증서를 발급·갱신한다.
-    cert-manager.io/cluster-issuer: letsencrypt
+    # www 는 규칙을 따로 두지 않고 apex 로 301 보낸다. 같은 내용을 두 호스트에
+    # 서비스하면 중복 콘텐츠가 되고 OIDC redirect_uri 도 호스트마다 등록해야 한다.
+    # 규칙 없이 그냥 빼면 www 를 친 사람이 404 를 본다.
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
   hosts:
     # 실 도메인. Spaceship 에서 A 레코드가 node-10 공인 IP 를 가리킨다.
     - host: nullus.io
       paths:
         - path: /
           pathType: Prefix
-    - host: www.nullus.io
-      paths:
-        - path: /
-          pathType: Prefix
-    # nip.io 는 <IP>.nip.io 를 그대로 그 IP 로 해석해 주는 공개 DNS 다.
-    # 도메인 전환 중 끊기지 않도록 남겨 둔다. 안정화되면 지워도 된다.
-    - host: 121.78.39.184.nip.io
-      paths:
-        - path: /
-          pathType: Prefix
   # HTTPS 는 선택이 아니다 — OIDC PKCE 가 crypto.subtle 을 쓰고, 브라우저는 secure
   # context 에서만 이를 노출한다. 평문 HTTP 에서는 로그인이 성립하지 않는다.
   # nullus.zadara.poc 는 공인 DNS 가 없어 ACME 검증이 불가능하므로 제외한다.
-  # 호스트마다 인증서를 따로 둔다. 한 시크릿에 묶으면 한 호스트의 ACME 검증이
-  # 실패할 때 나머지까지 인증서를 못 받는다.
+  #
+  # 호스트마다 인증서를 두던 방식을 와일드카드 한 장으로 합친다. 스택이 노출하는
+  # 호스트는 열둘이라(argocd/grafana/harbor/…), 호스트마다 발급하면 도구를 하나
+  # 늘릴 때마다 발급이 하나 늘고 그중 하나가 실패하면 그 도구만 조용히 접속
+  # 불가가 된다. 시크릿은 keycloak ingress 와 공유한다 — 같은 네임스페이스다.
+  # www 는 rules 에 없지만 tls 에는 남긴다. 리다이렉트도 HTTPS 로 받아야 하고,
+  # 인증서가 없으면 브라우저가 301 을 보기 전에 경고부터 띄운다.
   tls:
-    - secretName: nullus-web-tls
+    - secretName: nullus-wildcard-tls
       hosts:
         - nullus.io
         - www.nullus.io
-    - secretName: nullus-web-nipio-tls
-      hosts:
-        - 121.78.39.184.nip.io
 
 # -----------------------------------------------------------------------------
 # PostgreSQL

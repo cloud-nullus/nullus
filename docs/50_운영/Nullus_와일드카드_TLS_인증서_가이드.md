@@ -53,11 +53,13 @@ cert-manager ──webhook──> lego(spaceship) ──API──> Spaceship 존
 
 ### 2.2 왜 HTTP-01을 남기는가
 
-`121.78.39.184.nip.io` 처럼 **와일드카드가 덮지 못하는 이름**이 아직 ingress에 있다. 그것까지 DNS-01로 보내면 nip.io 존의 TXT를 우리가 쓸 수 없어 발급이 통째로 막힌다. 그래서 존별로 나눈다 — cert-manager는 더 구체적인 `selector.dnsZones` 를 우선하므로 두 솔버가 한 ClusterIssuer에 공존해도 서로를 가리지 않는다.
+와일드카드가 덮지 못하는 이름이 섞일 수 있다. 도메인 전환기에는 `<IP>.nip.io` 같은 임시 호스트를 ingress에 함께 두는데, 그것까지 DNS-01로 보내면 **우리가 TXT를 쓸 수 없는 존**이라 발급이 통째로 막힌다.
+
+그래서 솔버를 존별로 나눈다 — cert-manager는 더 구체적인 `selector.dnsZones` 를 우선하므로 두 솔버가 한 ClusterIssuer에 공존해도 서로를 가리지 않는다. 이 환경은 `nullus.io` 로 완전히 넘어와 지금은 HTTP-01 경로를 쓰는 호스트가 없지만, 폴백으로 남겨 둔다. 지웠다가 다시 필요해지면 그때는 이미 발급이 막힌 뒤다.
 
 ```yaml
 solvers:
-  - http01: {ingress: {class: nginx}}      # nip.io 등 나머지
+  - http01: {ingress: {class: nginx}}      # 그 외 존 (폴백)
   - dns01:  {webhook: {...}}
     selector: {dnsZones: [nullus.io]}      # nullus.io 만
 ```
@@ -72,7 +74,7 @@ Advanced DNS에 A 레코드 하나를 더한다.
 
 | Type | Host | Value |
 |---|---|---|
-| `A` | `*` | 공인 IP (예: `121.78.39.184`) |
+| `A` | `*` | 인그레스 공인 IP |
 
 **기존 `@` · `www` · `auth` 는 지우지 않는다.**
 
@@ -169,7 +171,99 @@ DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh wildcard
 
 ### 4.3 Ingress에 연결
 
-**여기까지는 인증서를 만들기만 한 것이다.** 어느 Ingress에도 붙이지 않았으므로 브라우저에는 아직 나타나지 않는다. 연결은 `values-zadara.yaml` 의 `ingress.tls` 를 와일드카드 시크릿으로 바꾸고 `helm upgrade` 를 돌리는 별도 단계이며, **살아 있는 사이트의 인증서를 실제로 갈아끼우는 유일한 지점**이다. 서두를 이유가 없다면 기존 인증서 만료 전에 여유를 두고 한다.
+발급만으로는 브라우저에 나타나지 않는다. **살아 있는 사이트의 인증서를 실제로 갈아끼우는 단계**다.
+
+#### cert-manager 어노테이션을 반드시 제거한다
+
+이게 이 절의 핵심이다. `cert-manager.io/cluster-issuer` 어노테이션이 붙어 있으면 **ingress-shim이 tls 항목마다 Certificate를 자동 생성**한다. 그 상태에서 `secretName` 만 와일드카드로 바꾸면 같은 시크릿을 두 Certificate가 소유하게 된다 — 우리가 만든 `nullus-wildcard` 와, shim이 새로 만들 것.
+
+```bash
+# 자동 생성 여부는 ownerReferences 로 판별한다
+kubectl -n nullus get certificate -o json | python3 -c "
+import json,sys
+for c in json.load(sys.stdin)['items']:
+    o=(c['metadata'].get('ownerReferences') or [{}])[0]
+    print(c['metadata']['name'], 'owner=', o.get('kind','(수동)'))"
+```
+
+둘이 서로 덮어쓰며 재발급을 반복하고 **Let's Encrypt 주 50건을 태운다.** 조용히 벌어져 한참 뒤에나 드러난다.
+
+`values-zadara.yaml` 의 두 Ingress를 함께 고친다. **Ingress는 하나가 아니다** — 플랫폼(`nullus`)과 Keycloak(`nullus-keycloak`)이 별개 리소스이고, 한쪽만 바꾸면 `auth.nullus.io` 만 옛 인증서로 남는다. 시크릿은 같은 네임스페이스라 공유된다.
+
+```yaml
+ingress:
+  annotations:
+    # cert-manager 어노테이션 없음. www 는 규칙 없이 apex 로 301 보낸다.
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+  hosts:
+    - host: nullus.io
+      paths: [{path: /, pathType: Prefix}]
+  tls:
+    - secretName: nullus-wildcard-tls
+      hosts: [nullus.io, www.nullus.io]   # www 는 rules 에 없어도 tls 에는 남긴다
+
+keycloak:
+  ingress:
+    annotations: {}
+    tls: false          # <hostname>-tls 자동 항목을 끈다
+    extraTls:
+      - hosts: [auth.nullus.io]
+        secretName: nullus-wildcard-tls
+```
+
+> Bitnami keycloak 차트는 `extraTls` 만 있어도 `tls:` 블록을 렌더한다(`templates/ingress.yaml:50`). `tls: true` 로 두면 `<hostname>-tls` 항목이 따로 붙어 와일드카드와 뒤섞인다.
+
+#### helm upgrade — 시크릿 주입을 빠뜨리면 배포가 깨진다
+
+CD는 DB 비밀번호와 암호화 키를 `--set` 으로 주입한다(`.github/workflows/cd.yml`). **로컬에서 그냥 `helm upgrade` 를 돌리면 그 값들이 차트 기본값으로 되돌아가 running 배포가 깨진다.** 현재 릴리스에서 꺼내 CD와 동일한 명령을 재현한다 — 값은 변수로만 옮기고 출력하지 않는다.
+
+```bash
+eval "$(helm get values nullus -n nullus -o json | python3 -c "
+import json,sys,shlex
+v=json.load(sys.stdin)
+print('DBPW='+shlex.quote(v['secrets']['dbPassword']))
+print('ENCKEY='+shlex.quote(v['secrets']['encryptionKey']))
+print('APITAG='+shlex.quote(str(v['api']['image']['tag'])))
+print('WEBTAG='+shlex.quote(str(v['web']['image']['tag'])))")"
+
+helm upgrade nullus deploy/helm/nullus --namespace nullus \
+  -f deploy/csp/zadara/values-zadara.yaml \
+  --set secrets.dbPassword="$DBPW" --set postgresql.auth.password="$DBPW" \
+  --set secrets.encryptionKey="$ENCKEY" \
+  --set api.image.tag="$APITAG" --set web.image.tag="$WEBTAG" \
+  --wait --timeout 600s
+```
+
+> **`helm get values` 를 `-f` 로 되먹이지 않는다.** `annotations` 는 맵이라 helm이 **병합**하므로, 새 values의 `{}` 가 기존 `cert-manager.io/cluster-issuer` 를 지우지 못한다. 어노테이션이 살아남아 위의 소유권 충돌이 그대로 재현된다. 반드시 values 파일에서 새로 시작한다.
+
+> **미리 보려면 `--dry-run=server`** 를 쓴다. 클라이언트 dry-run은 기존 시크릿을 lookup 하지 못해 Bitnami가 `PASSWORDS ERROR: You must provide your current passwords` 를 낸다 — 실제 문제가 아니라 dry-run의 한계다.
+
+#### 옛 Certificate 정리
+
+어노테이션을 뺐다고 자동으로 사라지지 않는다. **Certificate → Secret 순**으로 지운다. 반대로 하면 cert-manager가 시크릿을 다시 만들며 발급을 한 번 더 태운다.
+
+```bash
+kubectl -n nullus delete certificate auth.nullus.io-tls nullus-web-tls nullus-web-nipio-tls
+sleep 15 && kubectl -n nullus get certificate      # 재생성되지 않는지 확인
+kubectl -n nullus delete secret auth.nullus.io-tls nullus-web-tls nullus-web-nipio-tls
+```
+
+### 4.4 ingress-nginx 기본 인증서 — 나머지 전부를 덮는다
+
+§4.3까지 하면 **values에 적힌 호스트만** 와일드카드를 받는다. 스택이 깔리며 생기는 `argocd` `grafana` `harbor` … 는 그 목록에 없으므로 컨트롤러의 자체서명(`CN=Kubernetes Ingress Controller Fake Certificate`)이 나가고 브라우저가 경고를 띄운다.
+
+`--default-ssl-certificate` 는 **tls 항목이 없는 모든 호스트**에 폴백 인증서를 씌운다. 도구를 늘려도 손댈 것이 없어진다.
+
+```bash
+DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh default-cert
+```
+
+`ingress-nginx` 릴리스를 `--reuse-values` 로 갱신해 인자 하나만 더한다. 이 스크립트가 관리하지 않는 릴리스를 건드리는 유일한 자리다.
+
+교차 네임스페이스(`nullus/nullus-wildcard-tls`)를 참조하는데, ingress-nginx 컨트롤러가 secrets에 클러스터 범위 `list`/`watch` 를 갖고 있어 그대로 동작한다. 시크릿이 없는 채로 지정하면 컨트롤러가 그것을 찾다 실패하고 그동안 **모든 호스트가 자체서명으로 떨어지므로**, 스크립트가 먼저 존재를 확인한다.
+
+> **보안 관점** — 인증서 자체는 숨길 대상이 아니다. TLS 핸드셰이크마다 평문으로 전송되고, 브라우저 신뢰를 받으려면 Certificate Transparency 로그 제출이 의무다. 개인키는 외부로 나가지 않고 컨트롤러만 읽으며, 컨트롤러는 원래부터 모든 Ingress TLS 시크릿을 읽는다 — 이 설정이 권한을 넓히지 않는다.
+> 다만 **와일드카드 자체의 트레이드오프는 실재한다**: 키 하나가 모든 서브도메인을 커버하므로 컨트롤러가 침해되면 `auth`·`harbor`·`argocd` 를 전부 위장할 수 있다. 호스트별 인증서였다면 한 호스트로 제한됐다. 이건 와일드카드를 택한 시점의 결정이다.
 
 ---
 
@@ -217,11 +311,21 @@ watch -n3 '
 | Spaceship API probe (클러스터 내부) | `HTTP=200`, 345ms |
 | lego 웹훅 APIService | `v1alpha1.lego.dns-solver` = True |
 | staging 발급 | 102초 |
-| prod 발급 | 114초 |
+| prod 발급 | 114초 → `CN=*.nullus.io`, SAN `*.nullus.io, nullus.io`, `issuer=CN=YR2` |
 | TXT 쓰기 / 정리 | 정상 (발급 후 잔여 0건) |
-| 기존 서비스 영향 | 없음 (`nullus.io` 200 · `www` 200 · `auth` 302 · nip.io 200) |
+| 챌린지 2건 충돌 | 없음. cert-manager가 순차 처리 |
+| Ingress 연결 후 | `nullus.io` 200 · `www` 308→apex · `auth` 302 — 모두 `*.nullus.io` |
+| 기본 인증서 지정 후 | 스택 호스트 10개 전부 `*.nullus.io` (`-k` 없이 curl 통과) |
+| 옛 Certificate 3장 정리 | 재생성 없음, 서비스 무영향, cert-manager 로그 에러 없음 |
 
----
+기본 인증서 지정 전후 비교 — 같은 호스트가 무엇을 내주는가.
+
+```
+지정 전   argocd.nullus.io   CN=Kubernetes Ingress Controller Fake Certificate
+지정 후   argocd.nullus.io   CN=*.nullus.io
+```
+
+스택 호스트가 여전히 404 인 것은 정상이다 — **인증서는 붙었고 앱이 아직 없다.**
 
 ## 6. 운영
 
@@ -247,13 +351,18 @@ DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh status     # 상태
 | 2단계 호스트에서 인증서 경고 | `*.nullus.io` 는 한 레벨만 검증 (RFC 6125) | `ACCESS_DOMAIN` 을 `nullus.io` 로 |
 | 발급은 됐는데 브라우저에 안 나옴 | Ingress에 연결하지 않음 (§4.3) | `ingress.tls` 교체 + `helm upgrade` |
 | 스택 호스트가 404 | 앱이 설치되지 않았거나 라우트 없음 | 인증서와 무관. 스택 설치 상태 확인 |
+| 같은 시크릿을 두 Certificate가 소유 | Ingress에 cert-manager 어노테이션이 남음 | §4.3 — 어노테이션 제거 후 자동 생성분 삭제 |
+| `helm upgrade` 후 API가 DB 접속 실패 | 시크릿을 `--set` 으로 다시 주지 않음 | §4.3 의 `helm get values` 재현 명령 |
+| 어노테이션을 뺐는데 계속 살아 있음 | `helm get values` 를 `-f` 로 되먹임 (맵 병합) | values 파일에서 새로 시작 |
+| 새 스택 호스트만 자체서명 | 기본 인증서 미지정 | §4.4 `default-cert` |
+| `PASSWORDS ERROR` on dry-run | 클라이언트 dry-run이 시크릿 lookup 불가 | `--dry-run=server` |
+| `www` 가 404 | 규칙을 지우고 리다이렉트를 안 검 | `from-to-www-redirect: "true"` |
 | `connection refused` on `127.0.0.1:16443` | SSH 터널이 죽음 | `./deploy/csp/zadara/kubeconfig.sh` 재실행 |
 
 ---
 
 ## 8. 제약과 남은 일
 
-- **Ingress 연결 미실행** — §4.3. 인증서는 발급되어 시크릿에 대기 중이다
 - **라우팅 경로가 두 갈래다** — 제품이 만드는 라우트는 Gateway API(HTTPRoute + envoy, `nullus-wildcard-tls` 참조)인데 zadara 클러스터는 nginx Ingress(`ingress.tls`)로 돈다. 스택 호스트가 실제로 뜨려면 이 정합이 먼저다
 - **lego 웹훅은 소규모 서드파티다** (star 23, 라이선스 표기 없음). 자체 운영에는 쓰되 **제품 차트에 넣어 재배포하지 않는다** — Apache-2.0 재배포에 걸린다
 - **메일 발신 경로 없음** — Spaceship 이메일 포워딩은 수신 전용이다. 초대 메일(`Nullus_사용자_초대_메일_설계.md`)에서 SES/SendGrid를 붙이면 SPF TXT에 `include` 를 추가해야 한다. 안 하면 스팸함으로 간다
