@@ -2,6 +2,9 @@ package helm
 
 import (
 	"testing"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/stretchr/testify/require"
 
@@ -65,4 +68,61 @@ func TestArgoCDSecret_ServerSecretKeyHasGenerationPath(t *testing.T) {
 		return
 	}
 	t.Fatal("server.secretkey 엔트리를 찾지 못했다")
+}
+
+// ArgoCD 가 실제로 읽는 admin 키는 admin.password(bcrypt 해시)와
+// admin.passwordMtime 이다. ESO 가 argocd-secret 을 단독 소유하므로
+// (creationPolicy=Owner, refresh 5m) ArgoCD 가 스스로 써넣어도 다음 동기화에
+// 되돌려진다. 실측한 키는 [clearPassword, oidc.keycloak.clientSecret,
+// server.secretkey] 뿐이라 비밀번호 로그인이 성립하지 않았다.
+//
+// SSO(IdP)가 죽었을 때 들어갈 수단이 없으면 안 되므로 두 경로를 모두 둔다.
+func TestArgoCDSecret_CarriesAdminPasswordHash(t *testing.T) {
+	item := argocdManagedSecret(t)
+
+	var keys []string
+	for _, e := range item.Entries {
+		keys = append(keys, e.TargetKey)
+	}
+	require.Containsf(t, keys, "admin.password",
+		"ArgoCD 는 bcrypt 해시를 admin.password 에서 읽는다. 현재 키: %v", keys)
+	require.Containsf(t, keys, "admin.passwordMtime",
+		"mtime 이 없으면 ArgoCD 가 비밀번호 설정을 무시한다. 현재 키: %v", keys)
+}
+
+// 해시는 OpenBao 에 있는 평문과 짝이어야 한다. 따로 생성하면 사용자가 안내받는
+// 비밀번호(clearPassword)로는 로그인할 수 없다.
+func TestArgoCDSecret_AdminHashDerivesFromStoredPlaintext(t *testing.T) {
+	item := argocdManagedSecret(t)
+
+	for _, e := range item.Entries {
+		if e.TargetKey != "admin.password" {
+			continue
+		}
+		require.Equal(t, "pipeline/argocd/admin-password", e.DeriveFrom,
+			"평문 비밀번호 경로에서 파생해야 한다")
+		require.NotNil(t, e.Derive, "파생 함수가 있어야 한다")
+
+		hash, err := e.Derive("s3cret-plaintext")
+		require.NoError(t, err)
+		require.NoError(t, bcrypt.CompareHashAndPassword([]byte(hash), []byte("s3cret-plaintext")),
+			"생성된 해시가 평문과 맞지 않으면 안내된 비밀번호로 로그인할 수 없다")
+		return
+	}
+	t.Fatal("admin.password 엔트리를 찾지 못했다")
+}
+
+func TestArgoCDSecret_AdminPasswordMtimeIsRFC3339(t *testing.T) {
+	item := argocdManagedSecret(t)
+
+	for _, e := range item.Entries {
+		if e.TargetKey != "admin.passwordMtime" {
+			continue
+		}
+		require.NotEmpty(t, e.Fixed, "mtime 은 생성 랜덤이 아니라 시각이어야 한다")
+		_, err := time.Parse(time.RFC3339, e.Fixed)
+		require.NoErrorf(t, err, "ArgoCD 는 RFC3339 를 기대한다: %q", e.Fixed)
+		return
+	}
+	t.Fatal("admin.passwordMtime 엔트리를 찾지 못했다")
 }

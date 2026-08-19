@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	"github.com/cloud-nullus/draft/internal/stack/port"
@@ -95,6 +98,22 @@ func (o *Orchestrator) ssoManagedSecrets() []ManagedSecret {
 				Entries: []SecretEntry{
 					{PathSuffix: ssoClientSecretPath(clientID), TargetKey: "oidc.keycloak.clientSecret"},
 					{PathSuffix: "pipeline/argocd/admin-password", TargetKey: "clearPassword"},
+					// IdP 가 죽어도 들어갈 수단을 남긴다. ArgoCD 는 bcrypt 해시를
+					// admin.password 에서 읽고, mtime 이 없으면 설정을 무시한다.
+					// ESO 가 이 Secret 을 단독 소유하므로(creationPolicy=Owner)
+					// ArgoCD 가 스스로 써넣어도 다음 동기화에 되돌려진다 —
+					// 여기 담지 않으면 비밀번호 로그인이 성립하지 않는다.
+					{
+						PathSuffix: "pipeline/argocd/admin-password-bcrypt",
+						TargetKey:  "admin.password",
+						DeriveFrom: "pipeline/argocd/admin-password",
+						Derive:     bcryptHash,
+					},
+					{
+						PathSuffix: "pipeline/argocd/admin-password-mtime",
+						TargetKey:  "admin.passwordMtime",
+						Fixed:      time.Now().UTC().Format(time.RFC3339),
+					},
 					// server.secretkey 가 없으면 argocd-server 와 dex-server 가
 					// 기동 즉시 panic 한다("server.secretkey is missing").
 					// 차트는 이 값을 configs.secret.extra 로 넣지만(values.go),
@@ -116,6 +135,16 @@ func (o *Orchestrator) ssoManagedSecrets() []ManagedSecret {
 		})
 	}
 	return items
+}
+
+// bcryptHash 는 평문 비밀번호의 bcrypt 해시를 만든다. ArgoCD 가 admin.password
+// 에서 기대하는 형식이다.
+func bcryptHash(plaintext string) (string, error) {
+	hashed, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("bcrypt 해시 생성 실패: %w", err)
+	}
+	return string(hashed), nil
 }
 
 // runSSOProvisioning 은 OpenBao 의 client secret 을 읽어 Keycloak 에 등록한다.
