@@ -27,6 +27,21 @@ KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 # setup-keycloak.sh 가 테스트 유저에게 심는 비밀번호. 요약 출력에만 쓴다.
 DEFAULT_KC_PASSWORD_HINT="${KEYCLOAK_TEST_USER_PASSWORD:-nullus123!}"
 
+# NULLUS_LOCAL_DOMAIN 을 주면 포털·API·설치되는 도구가 모두 같은 Keycloak 주소를
+# 쓴다(keycloak.<도메인>:8180). 브라우저와 파드가 같은 문자열로 닿아야 도구 간
+# SSO 가 성립한다 — 기본값 localhost:8180 은 파드 안에서 파드 자신을 가리킨다.
+# 이름 해석은 scripts/setup-local-domain.sh 가 배선한다.
+LOCAL_DOMAIN="${NULLUS_LOCAL_DOMAIN:-}"
+
+# keycloak_authority 는 이번 실행에서 쓸 Keycloak realm 주소를 돌려준다.
+keycloak_authority() {
+  if [[ -n "$LOCAL_DOMAIN" ]]; then
+    echo "http://keycloak.${LOCAL_DOMAIN}:${KEYCLOAK_PORT}/realms/nullus"
+  else
+    echo "http://localhost:${KEYCLOAK_PORT}/realms/nullus"
+  fi
+}
+
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-nullus-dev-key-32bytes-padding!!}"
 OPENBAO_ADDR="${OPENBAO_ADDR:-http://openbao.nullus.internal}"
 OPENBAO_TOKEN="${OPENBAO_TOKEN:-root}"
@@ -592,7 +607,7 @@ export_api_auth_env() {
 
   export NULLUS_AUTH_OIDC_PROVIDER="$AUTH_PROVIDER"
   case "$AUTH_PROVIDER" in
-    keycloak)  export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${KEYCLOAK_PORT}/realms/nullus" ;;
+    keycloak)  export NULLUS_AUTH_OIDC_ISSUER_URL="$(keycloak_authority)" ;;
     authentik) export NULLUS_AUTH_OIDC_ISSUER_URL="http://localhost:${AUTHENTIK_PORT}/application/o/nullus/" ;;
   esac
 
@@ -626,7 +641,7 @@ sync_web_oidc_env() {
 
   local authority
   case "$AUTH_PROVIDER" in
-    keycloak)  authority="http://localhost:${KEYCLOAK_PORT}/realms/nullus" ;;
+    keycloak)  authority="$(keycloak_authority)" ;;
     authentik) authority="http://localhost:${AUTHENTIK_PORT}/application/o/nullus/" ;;
   esac
 
@@ -802,6 +817,8 @@ do_up() {
   if [[ "$AUTH_PROVIDER" != "none" ]]; then
     echo ""
     echo "  Web auth      OIDC (web/.env.development.local 자동 생성됨)"
+    [[ -n "$LOCAL_DOMAIN" ]] && \
+      echo "  OIDC issuer   $(keycloak_authority)  (도구와 공유 — 도구 간 SSO 성립)"
     echo "                포털 접속 시 $AUTH_PROVIDER 로그인 화면으로 바로 이동한다."
     if [[ "$AUTH_PROVIDER" == "keycloak" ]]; then
       echo "  SSO 프로비저닝  ON — 설치되는 OSS 의 OIDC 클라이언트를 Keycloak 에 자동 등록"
@@ -1137,7 +1154,7 @@ do_stack_up() {
   # 기본 접속 도메인. sso_provisioner.go 의 defaultAccessDomain, setup-keycloak.sh 가
   # 등록하는 redirect URI, 차트 ingress 기본값이 모두 nullus.local 이다. 여기만
   # "<스택명>.internal" 로 어긋나 있어 SSO redirect 주소가 맞지 않았다.
-  [[ -n "$domain" ]] || domain="nullus.local"
+  [[ -n "$domain" ]] || domain="${LOCAL_DOMAIN:-nullus.local}"
 
   if ! api_is_up; then
     echo "[nullus] API 가 떠 있지 않습니다 (:$API_PORT). 'up' 후 다시 실행하세요."
