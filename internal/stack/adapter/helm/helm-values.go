@@ -277,7 +277,19 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 func (o *Orchestrator) harborExternalURLValues(cfg *domain.StackConfig) map[string]any {
 	if cfg != nil {
 		if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
-			return map[string]any{"externalURL": fmt.Sprintf("http://harbor.%s", accessDomain)}
+			// Harbor 는 redirect_uri 도 이 값에서 만든다. SSO 를 켠 설치에서는
+			// Keycloak 에 등록된 redirect(https://harbor.<도메인>/c/oidc/callback)와
+			// 스킴이 같아야 한다 — 다르면 로그인이 "Invalid parameter: redirect_uri"
+			// 로 막힌다.
+			//
+			// SSO 를 쓰지 않으면 http 그대로 둔다. 이 값은 docker login/push 의
+			// 토큰 realm 이기도 해서, 스킴을 바꾸면 클라이언트(containerd 포함)가
+			// 게이트웨이 인증서의 CA 를 신뢰해야 한다.
+			scheme := "http"
+			if _, _, ssoOn := o.harborOIDCSettings(); ssoOn {
+				scheme = "https"
+			}
+			return map[string]any{"externalURL": fmt.Sprintf("%s://harbor.%s", scheme, accessDomain)}
 		}
 	}
 

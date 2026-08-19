@@ -130,3 +130,29 @@ func TestHarborProvision_OIDCPayloadIsValidJSON(t *testing.T) {
 	assert.Equal(t, "dummy-secret", parsed["oidc_client_secret"])
 	assert.Equal(t, true, parsed["oidc_auto_onboard"])
 }
+
+// Harbor 는 redirect_uri 를 externalURL 에서 만든다. 그런데 externalURL 은 http
+// 였고 Keycloak 에 등록된 redirect 는 https 라 로그인이 막혔다:
+//
+//	We are sorry... Invalid parameter: redirect_uri
+//
+// 스킴을 두 곳에서 따로 정한 탓이다. SSO 를 켠 설치에서는 등록된 redirect 와
+// 같은 스킴이어야 한다.
+func TestHarborExternalURL_MatchesRegisteredRedirectSchemeWhenSSOEnabled(t *testing.T) {
+	o := harborOrchestrator(t, "http://keycloak.nullus.local:8180/realms/nullus", true)
+	cfg := domain.StackConfig{AccessDomain: "nullus.local"}
+
+	values := o.harborExternalURLValues(&cfg)
+	assert.Equal(t, "https://harbor.nullus.local", values["externalURL"],
+		"등록된 redirect(https://harbor.<도메인>/c/oidc/callback)와 스킴이 같아야 한다")
+}
+
+// SSO 를 쓰지 않는 설치는 예전 그대로다. externalURL 은 docker login/push 의 토큰
+// realm 이기도 해서, 스킴을 바꾸면 클라이언트가 CA 를 신뢰해야 한다.
+func TestHarborExternalURL_StaysHTTPWithoutSSO(t *testing.T) {
+	o := harborOrchestrator(t, "", false)
+	cfg := domain.StackConfig{AccessDomain: "nullus.local"}
+
+	values := o.harborExternalURLValues(&cfg)
+	assert.Equal(t, "http://harbor.nullus.local", values["externalURL"])
+}
