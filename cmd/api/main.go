@@ -35,6 +35,7 @@ import (
 	cicdkube "github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	cicdprovisioning "github.com/cloud-nullus/draft/internal/cicd/adapter/provisioning"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
+	cicdrunner "github.com/cloud-nullus/draft/internal/cicd/adapter/runner"
 	cicdport "github.com/cloud-nullus/draft/internal/cicd/port"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
@@ -335,11 +336,15 @@ func main() {
 	// 넣으므로, 배선이 빠진 상태에서는 계획에만 있고 절대 실행되지 않는 단계가 생겼다 —
 	// 배포가 success 인데 6단계 중 3개가 pending 으로 남아 있었다.
 	//
-	// Builder 는 host 의 git·docker 를, kind 로드 경로는 kind CLI 를 쓴다. 세 실행 파일이
-	// 없는 환경에서는 빌드 단계가 실패하는데, 그건 조용히 건너뛰는 것보다 낫다 —
-	// 실패는 로그와 단계 상태에 남지만, 건너뛰면 사용자는 이미지가 빌드된 줄 안다.
+	// 두 실행 경로를 함께 배선한다.
+	//
+	// Delegate 는 스택에 묶인 파이프라인의 일반 경로다 — 스택의 CI 러너가
+	// 빌드하고 Argo CD 가 반영한다. Builder 는 스택 컴포넌트를 쓸 수 없을 때의
+	// 장애 대응 경로이며 host 의 git·docker·kind CLI 를 쓴다. 어느 쪽을 탈지는
+	// 파이프라인이 정한다(domain.Pipeline.DelegatesBuildToRunner).
 	deployPipelineUC := cicduc.NewDeployPipeline(
 		pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier,
+		cicduc.WithBuildDelegate(cicdrunner.NewDelegate(cicdBundleFactory, manifestApplier.Tracker)),
 		cicduc.WithImagePreparer(cicddocker.NewBuilder(manifestApplier.Tracker)),
 		cicduc.WithClusterTargetProvider(
 			cicdrepo.NewPostgresClusterTargetProvider(pool, encryptionKey)),

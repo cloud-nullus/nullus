@@ -79,6 +79,14 @@ type CIBuild struct {
 	Stages []CIStage
 }
 
+// CIBuildTrigger 는 CI 서버의 job 을 지금 실행시킨다.
+//
+// webhook 은 커밋이 있을 때만 돈다. 사용자가 화면에서 "배포 실행" 을 누르는
+// 것은 커밋 없이 지금 실행하겠다는 뜻이라, 트리거가 따로 필요하다.
+type CIBuildTrigger interface {
+	TriggerBuild(ctx context.Context, jobName, branch string) error
+}
+
 // CIBuildReader 는 CI 서버에서 빌드 이력을 읽는다.
 //
 // 플랫폼이 직접 배포하는 경로와 달리, GitOps 경로의 실행 기록은 CI 서버가

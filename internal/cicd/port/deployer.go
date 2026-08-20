@@ -45,6 +45,32 @@ type PrepareImageOpts struct {
 	RegistryPassword string
 }
 
+// BuildDelegate 는 이미지 빌드를 스택의 CI 러너에 넘긴다.
+//
+// ImagePreparer 와 짝을 이루는 반대편이다. ImagePreparer 는 플랫폼이 직접
+// 빌드하는 장애 대응 경로(emergency_direct)이고, 이쪽은 스택 컴포넌트가
+// 실행하는 일반 경로(stack_integrated)다 — CI 가 빌드해 레지스트리에 올리고
+// CD 도구가 클러스터에 반영한다. 플랫폼은 실행을 시작시키고 결과를 들여올 뿐
+// git clone·docker build·kubectl apply 를 하지 않는다.
+type BuildDelegate interface {
+	// DelegateBuild 는 러너의 실행을 시작시키고 그 실행의 주소를 돌려준다.
+	DelegateBuild(ctx context.Context, opts DelegateBuildOpts) (runURL string, err error)
+}
+
+// DelegateBuildOpts 는 어느 스택의 어느 job 을 실행할지다.
+type DelegateBuildOpts struct {
+	StackID string
+	// JobName 은 CI 서버의 job 이름이다. 프로비저닝이 앱 이름으로 만든다.
+	JobName string
+	// Branch 는 실행할 브랜치다. multibranch job 은 브랜치가 하위 job 이라
+	// 이것이 없으면 무엇을 실행할지 정해지지 않는다.
+	Branch string
+	// DeploymentID 는 진행 상황을 기록할 배포 기록이다.
+	DeploymentID string
+	// StepIndex 는 이 작업이 기록될 단계 번호다.
+	StepIndex int
+}
+
 type ClusterTarget struct {
 	Kubeconfig  []byte
 	ClusterName string

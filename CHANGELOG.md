@@ -304,6 +304,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택 파이프라인의 배포가 플랫폼 안에서 빌드하려다 죽던 것** (`internal/cicd/usecase/deploy_pipeline.go`, `internal/cicd/adapter/runner/` 신규, `internal/cicd/adapter/jenkins/client.go`): 설치된 스택에서 CI/CD 템플릿을 실행하면 첫 단계 `git clone` 에서 끝났다. API 파드에는 git 도 도커 데몬도 없다 — 이 경로는 API 서버가 host 에서 `go run` 으로 돌던 시절에 만들어졌다.
+
+  git 을 이미지에 넣으면 clone 은 지나가지만 다음 단계 `docker build` 가 같은 이유로 멈춘다. 파드 안에 도커 데몬을 들이는 것이 답이 아니다 — 통합모드 설계가 이미 다른 답을 정해 두었다: *"Nullus API 서버가 정상 실행 과정에서 직접 git clone, docker build, kind load, kubectl apply 를 수행하지 않는다."*
+
+  그런데 실행 경로는 `ExecutionMode` 를 보지 않았다. `DockerfilePath` 만 있으면 무조건 플랫폼이 빌드했다.
+
+  이제 **스택에 묶인 파이프라인의 배포 실행은 스택의 CI 러너에게 넘어간다.** 플랫폼은 job 을 실행시키는 것으로 끝나고, 이어지는 일 — 빌드, 이미지 push, 매니페스트 태그 되커밋, 클러스터 동기화 — 는 Jenkins 와 Argo CD 가 한다. 그 결과는 이미 있던 `SyncPipelineRuns` 가 빌드 이력으로 들여와 화면에 보여 준다.
+
+  매니페스트도 플랫폼이 적용하지 않는다. 러너가 되커밋한 매니페스트를 Argo CD 가 동기화하는데 플랫폼이 같은 리소스를 따로 적용하면 둘이 서로를 덮어쓴다.
+
+  긴급 직접 배포(`emergency_direct`)와 스택에 묶이지 않은 파이프라인은 예전 경로 그대로다. 위임 대상인데 CI 러너가 없으면 조용히 직접 빌드로 되돌아가지 않고 무엇이 없는지 말하고 멈춘다 — 되돌아가 봐야 성공할 수 없는 경로이고, 그러면 사용자는 왜 실패했는지 알 수 없다.
 - **CI/CD 템플릿 실행이 `error:` 한 줄만 남기고 죽던 것** (`Dockerfile`, `internal/cicd/adapter/docker/builder.go`): 설치된 스택에서 파이프라인을 돌리면 첫 단계에서 끝났다.
 
   ```

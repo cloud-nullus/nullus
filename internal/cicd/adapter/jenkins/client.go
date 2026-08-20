@@ -122,6 +122,31 @@ func (c *Client) DeleteJob(ctx context.Context, name string) error {
 	return err
 }
 
+// TriggerBuild 는 job 을 지금 실행시킨다.
+//
+// 스택에 묶인 파이프라인의 "배포 실행" 이 여기로 온다. 플랫폼은 빌드하지 않고
+// 러너에게 넘긴다 — 빌드는 CI 가 하고 배포는 Argo CD 가 하며, 플랫폼은 그
+// 결과를 SyncPipelineRuns 로 들여 화면에 보여 준다.
+//
+// multibranch job 은 브랜치가 하위 job 이다. 브랜치를 빼면 폴더 자체를 실행하려
+// 들고 Jenkins 는 405 로 거절한다 — ListBuilds 와 같은 경로 규칙이다.
+func (c *Client) TriggerBuild(ctx context.Context, jobName, branch string) error {
+	job := strings.TrimSpace(jobName)
+	if job == "" {
+		return fmt.Errorf("jenkins: job 이름이 필요합니다")
+	}
+	b := strings.TrimSpace(branch)
+	if b == "" {
+		return fmt.Errorf("jenkins: job %q 를 실행할 브랜치가 필요합니다", job)
+	}
+
+	path := "/job/" + url.PathEscape(job) + "/job/" + url.PathEscape(b) + "/build"
+	if err := c.post(ctx, path, "", nil); err != nil {
+		return fmt.Errorf("trigger jenkins build %s/%s: %w", job, b, err)
+	}
+	return nil
+}
+
 func (c *Client) jobExists(ctx context.Context, name string) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		c.baseURL+"/job/"+url.PathEscape(name)+"/api/json", nil)
