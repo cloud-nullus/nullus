@@ -181,8 +181,14 @@ requestedScopes:
 //	class org.jenkinsci.plugins.oic.OicSecurityRealm : wellKnownOpenIDConfigurationUrl, scopes
 //
 // 디스커버리 URL 은 최상위가 아니라 serverConfiguration.wellKnown 아래다.
-// 스코프는 지정하지 않는다 — 기본값(openid email profile)으로 충분하고, 속성을
-// 덜 쓸수록 플러그인 버전이 올라갈 때 깨질 여지가 줄어든다.
+//
+// 스코프는 반드시 좁힌다. 지정하지 않으면 oic-auth 는 "request all" 로 동작해
+// 디스커버리 문서의 scopes_supported 를 통째로 요청하는데, 그 목록은 렐름 전체의
+// 것이라 이 클라이언트에 할당되지 않은 service_account·basic·acr·organization
+// 까지 들어간다. Keycloak 은 그것을 invalid_scope 로 거절하고 로그인은
+// "Could not extract credentials from request" 에서 끝난다.
+// wellKnown 아래에서 쓰는 이름은 scopes 가 아니라 scopesOverride 다(scopes 는
+// manual 설정용이며, 여기에 두면 JCasC 가 부팅을 막는다).
 func jenkinsOIDCJCasC(clientID, secretName, issuer string) string {
 	return `jenkins:
   securityRealm:
@@ -193,6 +199,7 @@ func jenkinsOIDCJCasC(clientID, secretName, issuer string) string {
       serverConfiguration:
         wellKnown:
           wellKnownOpenIDConfigurationUrl: "` + strings.TrimRight(issuer, "/") + `/.well-known/openid-configuration"
+          scopesOverride: "openid email profile"
       # IdP 가 죽어도 들어갈 수단. securityRealm: oic 는 기존 보안 영역을 통째로
       # 교체하므로 이것이 없으면 Keycloak 이 멈춘 순간 아무도 못 들어간다.
       #
