@@ -173,6 +173,7 @@ export function MonitoringPage() {
                   defaultContent={<StackDefault stackId={selectedStack?.id ?? selectedStackId} />}
                   firstTimePanel={(onConnect, onSkip) => (
                     <StackConnectPanel
+                      stackId={selectedStack?.id ?? selectedStackId}
                       stackName={selectedStack?.name ?? selectedStackId}
                       onConnect={onConnect}
                       onSkip={onSkip}
