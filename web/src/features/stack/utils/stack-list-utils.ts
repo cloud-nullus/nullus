@@ -642,6 +642,34 @@ function fallbackAccessDomain(stackName: string): string {
   return `${slug}.internal`;
 }
 
+/**
+ * 공용 진입 게이트웨이. 서버의 domain.SharedGateway* 와 같은 값이어야 한다.
+ *
+ * 게이트웨이는 스택마다가 아니라 클러스터에 하나 선다 — 스택을 지워도 밖에서
+ * 들어오는 현관이 남아 있어야 DNS·ingress 배선을 다시 하지 않는다.
+ */
+export const SHARED_GATEWAY_NAMESPACE = "nullus-gateway";
+export const SHARED_GATEWAY_NAME = "nullus-gateway";
+
+/**
+ * 로컬에서 게이트웨이를 브라우저로 여는 포트포워드 명령.
+ *
+ * 스택 네임스페이스가 아니라 공용 게이트웨이 자리를 가리킨다. 스택 쪽을 가리키면
+ * 데이터플레인 서비스가 없어 스크립트가 "Gateway 서비스가 없습니다" 로 끝난다.
+ */
+export function buildGatewayPortForwardCommand(
+  accessHost: string,
+  isKorean: boolean,
+): string {
+  const hostArg = toShellSingleQuoted(accessHost);
+  return [
+    isKorean
+      ? "# 80/443 동시 포트포워드 (Gateway 서비스 자동 선택)"
+      : "# Port-forward both 80/443 (auto-select Gateway service)",
+    `KUBE_CONTEXT=kind-nullus-platform GATEWAY_NAMESPACE=${toShellSingleQuoted(SHARED_GATEWAY_NAMESPACE)} GATEWAY_NAME=${toShellSingleQuoted(SHARED_GATEWAY_NAME)} ACCESS_HOST=${hostArg} sudo -E ./scripts/port-forward-gateway.sh`,
+  ].join("\n");
+}
+
 export function deriveGatewayName(
   accessDomain: string,
   stackName: string,

@@ -30,8 +30,7 @@ import {
   findToolCredential,
   buildConnectionInfoText,
   buildOssLoginHint,
-  deriveGatewayName,
-  toShellSingleQuoted,
+  buildGatewayPortForwardCommand,
   copyTextToClipboard,
   getStackStatusLabel,
 } from "../utils/stack-list-utils";
@@ -174,20 +173,12 @@ export function StackInfoTab({
   // 설치 규칙이 바뀌는 순간 존재하지 않는 Secret 을 안내하게 된다.
   const { data: serverConnection } = useStackConnectionInfo(stack.id);
   const connectionInfo = toConnectionInfoView(serverConnection, accessDomain);
-  const stackNamespace = stack.namespace?.trim() || "nullus";
-  const stackNamespaceArg = toShellSingleQuoted(stackNamespace);
-  const gatewayNameArg = toShellSingleQuoted(
-    deriveGatewayName(accessDomain, stack.name),
-  );
-  const accessHostArg = toShellSingleQuoted(
+  // 게이트웨이는 스택마다가 아니라 클러스터에 하나 선다. 명령이 스택
+  // 네임스페이스를 가리키면 데이터플레인 서비스를 찾지 못한다.
+  const gatewayPFCommand = buildGatewayPortForwardCommand(
     accessDomain || `${stack.name}.internal`,
+    isKorean,
   );
-  const gatewayPFCommand = [
-    isKorean
-      ? "# 80/443 동시 포트포워드 (Gateway 서비스 자동 선택)"
-      : "# Port-forward both 80/443 (auto-select Gateway service)",
-    `KUBE_CONTEXT=kind-nullus-platform STACK_NAMESPACE=${stackNamespaceArg} GATEWAY_NAME=${gatewayNameArg} ACCESS_HOST=${accessHostArg} sudo -E ./scripts/port-forward-gateway.sh`,
-  ].join("\n");
   const connectionInfoWithGatewayText = buildConnectionInfoText(
     stack.name,
     connectionInfo,

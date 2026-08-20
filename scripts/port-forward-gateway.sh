@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-STACK_NAMESPACE="${STACK_NAMESPACE:-nullus}"
+# 게이트웨이는 스택마다가 아니라 클러스터에 하나 선다(nullus-gateway 네임스페이스).
+# 옛 호출은 스택 네임스페이스를 STACK_NAMESPACE 로 넘겼으므로 그 이름도 계속 받는다.
+GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-${STACK_NAMESPACE:-nullus-gateway}}"
+STACK_NAMESPACE="$GATEWAY_NAMESPACE"
 GATEWAY_NAME="${GATEWAY_NAME:-nullus-gateway}"
 LOCAL_HTTP_PORT="${LOCAL_HTTP_PORT:-80}"
 REMOTE_HTTP_PORT="${REMOTE_HTTP_PORT:-80}"
