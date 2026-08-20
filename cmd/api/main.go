@@ -214,6 +214,8 @@ func main() {
 		// 프로파일대로 깔리게 한다. 마법사가 계획을 실어 보낸 경우에는 그 값이
 		// 이기므로 UI 설치 동작은 그대로다.
 		stackuc.WithResourcePlanning(pgResourceDefaultRepo),
+		// 플랫폼이 사는 네임스페이스에는 스택을 세우지 못하게 한다.
+		stackuc.WithPlatformNamespace(cfg.Platform.Namespace),
 	)
 	listStacksUC := stackuc.NewListStacks(pgStackRepo)
 	deleteStackUC := stackuc.NewDeleteStack(

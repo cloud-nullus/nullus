@@ -32,6 +32,9 @@ type CreateStack struct {
 	templateRepo     port.TemplateRepository
 	manageHistory    *ManageHistory
 	resourceDefaults port.ResourceDefaultRepository
+	// platformNamespace 는 플랫폼 자신이 사는 네임스페이스다. 알고 있으면 그곳에는
+	// 스택을 세우지 못하게 막는다. 비어 있으면 모른다는 뜻이라 검사하지 않는다.
+	platformNamespace string
 }
 
 // CreateStackOption configures optional CreateStack dependencies.
@@ -51,6 +54,17 @@ func WithManageHistory(manageHistory *ManageHistory) CreateStackOption {
 func WithResourcePlanning(resourceDefaults port.ResourceDefaultRepository) CreateStackOption {
 	return func(uc *CreateStack) {
 		uc.resourceDefaults = resourceDefaults
+	}
+}
+
+// WithPlatformNamespace 는 플랫폼이 사는 네임스페이스를 알려준다.
+//
+// 그곳에 스택을 세우면 설치는 Helm 소유권 충돌로 실패하고(플랫폼의
+// nullus-postgresql 과 이름이 겹친다), 삭제는 플랫폼 리소스를 지운다 —
+// 2026-08-20 에 실제로 nullus.io 가 통째로 내려갔다.
+func WithPlatformNamespace(namespace string) CreateStackOption {
+	return func(uc *CreateStack) {
+		uc.platformNamespace = strings.TrimSpace(namespace)
 	}
 }
 
@@ -91,9 +105,16 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 	}
 
 	now := time.Now()
-	namespace := input.Namespace
+	namespace := strings.TrimSpace(input.Namespace)
 	if namespace == "" {
-		namespace = "nullus"
+		// 스택마다 자기 네임스페이스를 준다. 예전에는 전부 "nullus" 로 모였고,
+		// 그것이 플랫폼 자신이 사는 곳이었다.
+		namespace = domain.DefaultStackNamespaceFor(input.Name)
+	}
+	if uc.platformNamespace != "" && strings.EqualFold(namespace, uc.platformNamespace) {
+		return nil, fmt.Errorf(
+			"네임스페이스 %q 에는 스택을 설치할 수 없습니다 — 플랫폼이 사는 곳입니다. 다른 이름을 지정하세요",
+			namespace)
 	}
 
 	existingStacks, err := uc.stackRepo.List(ctx, input.OrgID, false)

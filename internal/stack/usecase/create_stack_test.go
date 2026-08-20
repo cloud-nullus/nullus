@@ -25,7 +25,8 @@ func TestCreateStack_DefaultNamespaceWhenEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, out)
 	require.NotNil(t, out.Stack)
-	assert.Equal(t, "nullus", out.Stack.Namespace)
+	// 기본값은 플랫폼 네임스페이스("nullus")가 아니라 스택별 네임스페이스다.
+	assert.Equal(t, "nullus-stack-default-ns", out.Stack.Namespace)
 	versions, err := historyRepo.ListVersions(context.Background(), out.Stack.ID)
 	require.NoError(t, err)
 	require.Len(t, versions, 1)
