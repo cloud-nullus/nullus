@@ -304,6 +304,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI/CD 템플릿 실행이 `error:` 한 줄만 남기고 죽던 것** (`Dockerfile`, `internal/cicd/adapter/docker/builder.go`): 설치된 스택에서 파이프라인을 돌리면 첫 단계에서 끝났다.
+
+  ```
+  Git Clone [failed]
+  $ git clone --depth=1 https://gitea.nullus.io/root/spring-sample.git
+  error:
+  ```
+
+  `error:` 뒤가 빈 것이 곧 단서였다. `CombinedOutput()` 은 **실행 파일 자체가 없으면 출력 없이 에러만** 돌려주는데, 호출부는 출력만 찍고 `err` 를 버렸다. 그래서 화면에는 원인이 한 글자도 남지 않았다.
+
+  없던 것은 git 이다. API 이미지에는 helm·kubectl·migrate 는 넣어 두고 git 은 없었다 — 이 빌더는 host 에서 `go run` 하던 시절에 쓰였고, 그때는 git 이 늘 있었다.
+
+  이미지에 git 을 넣고, 실패 메시지가 스스로를 설명하게 했다: 출력이 있으면 출력을, 없으면 `err` 를, 실행 파일이 없어서 실패한 것이면 무엇이 없는지 이름을 대고 끝낸다.
+
+  **남은 것**: 두 번째 단계(`docker build`)는 아직 이 컨테이너 안에서 도커 데몬을 찾는데, 파드에는 데몬이 없다. 인클러스터 빌드를 어떤 방식으로 할지(dind 사이드카 / buildkit / kaniko / 스택의 러너에 위임)는 따로 정해야 한다.
 - **Jenkins 만 SSO 로그인이 `invalid_scope` 로 튕기던 것** (`internal/stack/adapter/helm/oidc-values.go`): 같은 realm 에서 Argo CD·Harbor·Gitea 는 들어가지는데 Jenkins 만 로그인이 끝에서 실패했다.
 
   ```

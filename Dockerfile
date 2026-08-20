@@ -17,7 +17,10 @@ ARG KUBECTL_VERSION=v1.30.0
 # 한다 — deploy/csp/vm-cluster/runbook_csp.sh 의 Job 은 migrate 가 없는 채로 이 이미지를
 # 부르고 있었고, 돌리면 "migrate: not found" 로 조용히 끝났다.
 ARG MIGRATE_VERSION=v4.18.1
-RUN apk add --no-cache ca-certificates tzdata curl \
+# CI/CD 파이프라인의 첫 단계는 이 컨테이너 안에서 소스를 clone 한다
+# (internal/cicd/adapter/docker/builder.go: PrepareImage). git 이 없으면
+# exec 가 출력 없이 실패해 배포 로그에 "error:" 만 남는다.
+RUN apk add --no-cache ca-certificates tzdata git curl \
     && ARCH="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" \
     && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" | tar -xz -C /tmp \
     && mv "/tmp/linux-${ARCH}/helm" /usr/local/bin/helm \
