@@ -340,6 +340,9 @@ func (f *BundleFactory) giteaBundle(
 			// 같은 클라이언트가 빌드 이력도 읽는다 — GitOps 경로의 실행 기록은
 			// CI 서버에만 있어서, 들이지 않으면 화면 통계가 0 으로 남는다.
 			bundle.CIBuilds = client
+			// 같은 클라이언트가 실행 트리거도 맡는다 — 스택에 묶인 파이프라인의
+			// "배포 실행" 은 플랫폼이 빌드하지 않고 이 job 을 실행시킨다.
+			bundle.CITrigger = client
 			bundle.CIBaseURL = ciBaseURL
 		}
 	}

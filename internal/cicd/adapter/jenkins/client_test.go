@@ -253,3 +253,34 @@ func TestClient_ListBuilds_RequiresJobName(t *testing.T) {
 	_, err := NewClient("http://x", "a", "b").ListBuilds(context.Background(), "  ", "main", 10)
 	require.Error(t, err)
 }
+
+// multibranch job 은 브랜치가 하위 job 이다. 브랜치를 빼면 폴더를 실행하려 들고
+// Jenkins 는 405 로 거절한다 — ListBuilds 와 같은 경로 규칙을 따라야 한다.
+func TestClient_TriggerBuild_UsesBranchSubJob(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "crumbIssuer") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "admin", "secret")
+	err := client.TriggerBuild(context.Background(), "orders-api", "main")
+
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Equal(t, "/job/orders-api/job/main/build", gotPath)
+}
+
+// 브랜치를 주지 않으면 job 이름만으로는 무엇을 실행할지 정해지지 않는다.
+func TestClient_TriggerBuild_RequiresJobAndBranch(t *testing.T) {
+	client := NewClient("http://jenkins.local", "admin", "secret")
+
+	assert.Error(t, client.TriggerBuild(context.Background(), "", "main"))
+	assert.Error(t, client.TriggerBuild(context.Background(), "orders-api", ""))
+}

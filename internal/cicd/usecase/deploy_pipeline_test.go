@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
+	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
 type mockDeployPipelineRepo struct {
@@ -344,4 +345,143 @@ func TestDeployPipeline_ApplierError(t *testing.T) {
 	assert.Contains(t, err.Error(), "deployment failed")
 	require.Len(t, deploymentRepo.created, 1)
 	assert.Equal(t, domain.DeploymentStatusFailed, deploymentRepo.created[0].Status)
+}
+
+type mockImagePreparer struct {
+	calls    []port.PrepareImageOpts
+	imageRef string
+	err      error
+}
+
+func (m *mockImagePreparer) PrepareImage(_ context.Context, opts port.PrepareImageOpts) (string, error) {
+	m.calls = append(m.calls, opts)
+	if m.imageRef == "" {
+		return opts.ImageName, m.err
+	}
+	return m.imageRef, m.err
+}
+
+type mockClusterTargetProvider struct {
+	err error
+}
+
+func (m *mockClusterTargetProvider) GetTarget(_ context.Context, _ string) (*port.ClusterTarget, error) {
+	return &port.ClusterTarget{Kubeconfig: []byte("fake"), ClusterName: "kind-nullus"}, m.err
+}
+
+type mockBuildDelegate struct {
+	calls  []port.DelegateBuildOpts
+	runURL string
+	err    error
+}
+
+func (m *mockBuildDelegate) DelegateBuild(_ context.Context, opts port.DelegateBuildOpts) (string, error) {
+	m.calls = append(m.calls, opts)
+	return m.runURL, m.err
+}
+
+func delegatingPipeline() *domain.Pipeline {
+	return &domain.Pipeline{
+		ID:             "pip-del",
+		Name:           "orders-api",
+		ClusterID:      "c1",
+		StackID:        "stk-1",
+		Namespace:      "apps",
+		AppType:        domain.AppTypeBackend,
+		DockerfilePath: "Dockerfile",
+	}
+}
+
+// 스택에 묶인 파이프라인의 빌드는 스택의 CI 러너가 맡는다. 플랫폼이 직접
+// 빌드하려 하면 API 파드 안에서 git·docker 를 찾다 죽는다 — 그 파드에는 도커
+// 데몬이 없다. 통합모드 설계 3.2 가 정한 경계이기도 하다.
+func TestDeployPipeline_DelegatesBuildToRunner(t *testing.T) {
+	pipeline := delegatingPipeline()
+	applier := &mockManifestApplier{}
+	preparer := &mockImagePreparer{}
+	delegate := &mockBuildDelegate{runURL: "https://jenkins.nullus.io/job/orders-api/job/main/"}
+
+	uc := NewDeployPipeline(
+		newMockDeployPipelineRepo(pipeline),
+		&mockDeployDeploymentRepo{},
+		&mockKubeconfigProvider{kubeconfig: []byte("fake")},
+		applier,
+		WithImagePreparer(preparer),
+		WithClusterTargetProvider(&mockClusterTargetProvider{}),
+		WithBuildDelegate(delegate),
+	)
+
+	_, err := uc.Execute(context.Background(), DeployPipelineInput{
+		PipelineID: pipeline.ID,
+		Version:    "v1.0.0",
+		DeployedBy: "dev@acme.io",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, delegate.calls, 1)
+	assert.Equal(t, "stk-1", delegate.calls[0].StackID)
+	assert.Equal(t, "orders-api", delegate.calls[0].JobName)
+	assert.Equal(t, "main", delegate.calls[0].Branch)
+
+	// 플랫폼은 빌드하지 않는다.
+	assert.Empty(t, preparer.calls, "위임한 파이프라인을 플랫폼이 빌드하면 안 된다")
+	// 클러스터 반영은 CD 도구(Argo CD)가 한다. 플랫폼이 같은 리소스를 따로
+	// 적용하면 러너가 되커밋한 매니페스트와 서로를 덮어쓴다.
+	assert.Empty(t, applier.appliedManifests, "위임한 파이프라인의 매니페스트를 플랫폼이 적용하면 안 된다")
+}
+
+// 위임 경로에는 러너가 반드시 배선돼 있어야 한다. 없다고 조용히 직접 빌드로
+// 되돌아가면 실패할 수 없는 경로로 되돌아가는 것이고, 사용자는 왜 실패했는지
+// 알 수 없다.
+func TestDeployPipeline_DelegationRequiresRunner(t *testing.T) {
+	pipeline := delegatingPipeline()
+
+	uc := NewDeployPipeline(
+		newMockDeployPipelineRepo(pipeline),
+		&mockDeployDeploymentRepo{},
+		&mockKubeconfigProvider{kubeconfig: []byte("fake")},
+		&mockManifestApplier{},
+	)
+
+	_, err := uc.Execute(context.Background(), DeployPipelineInput{
+		PipelineID: pipeline.ID,
+		Version:    "v1.0.0",
+		DeployedBy: "dev@acme.io",
+	})
+	require.Error(t, err)
+}
+
+// 긴급모드는 예전 그대로다 — 스택이 있어도 사용자가 직접 배포를 골랐으면
+// 플랫폼이 빌드한다.
+func TestDeployPipeline_EmergencyDirectStillBuildsInPlatform(t *testing.T) {
+	pipeline := delegatingPipeline()
+	pipeline.ExecutionMode = domain.ExecutionModeEmergencyDirect
+	preparer := &mockImagePreparer{}
+	delegate := &mockBuildDelegate{}
+
+	uc := NewDeployPipeline(
+		newMockDeployPipelineRepo(pipeline),
+		&mockDeployDeploymentRepo{},
+		&mockKubeconfigProvider{kubeconfig: []byte("fake")},
+		&mockManifestApplier{},
+		WithImagePreparer(preparer),
+		WithClusterTargetProvider(&mockClusterTargetProvider{}),
+		WithBuildDelegate(delegate),
+	)
+
+	_, err := uc.Execute(context.Background(), DeployPipelineInput{
+		PipelineID: pipeline.ID,
+		Version:    "v1.0.0",
+		DeployedBy: "dev@acme.io",
+	})
+	require.NoError(t, err)
+
+	assert.Len(t, preparer.calls, 1)
+	assert.Empty(t, delegate.calls)
+}
+
+// 화면의 단계 계획과 실제 실행이 어긋나면 결과가 엉뚱한 단계 이름 위에 찍힌다.
+// 위임 경로에서 플랫폼이 하는 일은 실행을 넘기는 것 하나뿐이다.
+func TestBuildStepPlan_DelegatedPipelineHasSingleStep(t *testing.T) {
+	assert.Equal(t, []string{"Trigger CI"}, BuildStepPlan(delegatingPipeline()))
 }

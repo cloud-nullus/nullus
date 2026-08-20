@@ -41,6 +41,9 @@ type DeployPipeline struct {
 	applier               port.ManifestApplier
 	imagePreparer         port.ImagePreparer
 	clusterTargetProvider port.ClusterTargetProvider
+	// buildDelegate 는 빌드를 스택의 CI 러너에 넘긴다. 통합모드 파이프라인의
+	// 배포 실행이 이 자리로 간다.
+	buildDelegate port.BuildDelegate
 	// stackReader 는 배포 대상 스택의 요약을 읽는다. 배포되는 앱에 넣어 줄
 	// 수집기 주소가 여기서 온다 — 없으면 추적 환경변수를 넣지 않는다.
 	stackReader port.StackReader
@@ -75,6 +78,15 @@ func WithClusterTargetProvider(p port.ClusterTargetProvider) DeployOption {
 	return func(dp *DeployPipeline) { dp.clusterTargetProvider = p }
 }
 
+// WithBuildDelegate 는 러너 위임 경로를 배선한다.
+//
+// 배선되지 않으면 위임 대상 파이프라인의 배포는 오류로 끝난다. 조용히 직접
+// 빌드로 되돌리지 않는다 — API 파드에는 도커 데몬이 없어 그 경로는 실패할 수
+// 없는 경로이고, 되돌리면 사용자는 왜 실패했는지 알 수 없다.
+func WithBuildDelegate(d port.BuildDelegate) DeployOption {
+	return func(dp *DeployPipeline) { dp.buildDelegate = d }
+}
+
 // WithStackReader 는 스택 요약 조회를 배선한다. 배선되지 않으면 배포는 그대로
 // 되고 추적 환경변수만 빠진다 — 관측 배선 때문에 배포가 막히면 안 된다.
 func WithStackReader(r port.StackReader) DeployOption {
@@ -102,6 +114,11 @@ func includesOptionalManifest(manifestTypes []string, target string) bool {
 // 없는 경로에서 "Git Clone" 단계에 "namespace/... configured" 가 기록됐다.
 // 두 곳이 같은 함수를 쓰게 해서 다시 갈라지지 않게 한다.
 func buildStepCount(pipeline *domain.Pipeline) int {
+	if pipeline.DelegatesBuildToRunner() {
+		// 위임 경로에서 플랫폼이 하는 일은 실행을 넘기는 것 하나뿐이다.
+		// 그 뒤의 매니페스트 단계는 없다 — 클러스터 반영은 CD 도구가 한다.
+		return 1
+	}
 	if pipeline != nil && pipeline.DockerfilePath != "" {
 		return 3
 	}
@@ -113,6 +130,13 @@ func BuildStepPlan(pipeline *domain.Pipeline, manifestTypes ...[]string) []strin
 	if len(manifestTypes) > 0 {
 		selected = manifestTypes[0]
 	}
+	// 위임 경로는 플랫폼이 매니페스트를 적용하지 않는다. 러너가 이미지를 올리고
+	// 매니페스트 태그를 되커밋하면 Argo CD 가 그 커밋을 동기화한다 — 플랫폼이
+	// 같은 리소스를 따로 적용하면 둘이 서로를 덮어쓴다.
+	if pipeline.DelegatesBuildToRunner() {
+		return []string{"Trigger CI"}
+	}
+
 	steps := []string{"Create Namespace", "Create Deployment"}
 	if buildStepCount(pipeline) > 0 {
 		hasRegistry := pipeline.EnvVars[envRegistryURL] != ""
@@ -228,6 +252,10 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 		namespace = "default"
 	}
 
+	if pipeline.DelegatesBuildToRunner() {
+		return uc.delegateToRunner(ctx, pipeline, deploymentID)
+	}
+
 	var imageRef string
 	// BuildStepPlan 과 같은 근거로 계산한다. 이미지 준비기 유무와 무관하게
 	// 계획에 빌드 단계가 있으면 매니페스트 단계는 그만큼 뒤에서 시작한다.
@@ -320,6 +348,40 @@ func (uc *DeployPipeline) applyToCluster(ctx context.Context, pipeline *domain.P
 	}
 
 	return uc.applier.ApplyWithTracking(ctx, kubeconfig, yamlDocs, deploymentID, stepOffset)
+}
+
+// delegateBranch 는 러너에게 실행시킬 브랜치다.
+//
+// 스캐폴딩이 만드는 Jenkinsfile 은 main 에서만 빌드·배포한다. 다른 브랜치를
+// 실행시키면 job 은 돌지만 모든 단계가 조건에서 걸러져 아무 일도 하지 않는다.
+const delegateBranch = "main"
+
+// delegateToRunner 는 배포 실행을 스택의 CI 러너에게 넘긴다.
+//
+// 플랫폼은 여기서 끝난다. 이어지는 일 — 빌드, 이미지 push, 매니페스트 되커밋,
+// 클러스터 동기화 — 는 CI 와 Argo CD 가 하고, 그 결과는 SyncPipelineRuns 가
+// 빌드 이력으로 들여와 화면에 보여 준다.
+func (uc *DeployPipeline) delegateToRunner(ctx context.Context, pipeline *domain.Pipeline, deploymentID string) error {
+	if uc.buildDelegate == nil {
+		return fmt.Errorf(
+			"파이프라인 %s 는 스택 %s 의 CI 러너가 실행합니다. 그런데 이 서버에는 러너 연결이 배선돼 있지 않습니다 — "+
+				"스택의 CI 플랫폼(Jenkins) 연결을 확인하세요",
+			pipeline.Name, pipeline.StackID)
+	}
+
+	runURL, err := uc.buildDelegate.DelegateBuild(ctx, port.DelegateBuildOpts{
+		StackID:      pipeline.StackID,
+		JobName:      pipeline.Name,
+		Branch:       delegateBranch,
+		DeploymentID: deploymentID,
+	})
+	if err != nil {
+		return fmt.Errorf("delegate build to runner: %w", err)
+	}
+
+	slog.Info("배포 실행을 스택의 CI 러너에 넘겼습니다",
+		"pipeline", pipeline.Name, "stack_id", pipeline.StackID, "run_url", runURL)
+	return nil
 }
 
 func firstNonEmptyManifest(value, fallback string) string {
