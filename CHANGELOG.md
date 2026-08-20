@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **로그인 화면 파비콘을 Nullus 마크로** (`.../login/resources/favicon.js` 신규, `theme.properties`): 탭에 키클록 로고가 떴다. 부모 테마(keycloak.v2)의 템플릿이 `<link rel="icon" href="${resourcesPath}/img/favicon.ico">` 를 박아 넣는데, 우리 테마에 그 파일이 없어 Keycloak 이 부모 테마의 것으로 폴백하기 때문이다.
+
+  `resources/img/favicon.ico` 를 만들어 덮어쓰는 대신 링크를 바꾼다. 그 파일을 두려면 resources 아래에 폴더가 하나 더 생기고, 쿠버네티스에서는 ConfigMap 볼륨을 중첩해서 마운트해야 한다 — `theme.properties` 가 리소스를 한 단으로 두기로 한 이유가 그것이다. 게다가 `.ico` 는 바이너리라 ConfigMap 의 `data`(문자열)로는 실을 수 없어 템플릿까지 손봐야 한다. 링크 한 줄이 훨씬 싸다.
+
+  스크립트가 막히면 키클록 기본 파비콘이 남을 뿐 화면은 그대로다 — JS 를 끈 채로 확인했다.
+
 - **로그인 테마를 Keycloak 이 보지 않는 자리에 얹고 있던 것** (`deploy/helm/nullus/values.yaml`, `deploy/helm/keycloak_theme_test.go`): realm 에 `loginTheme=nullus` 를 걸어도 화면은 기본 테마 그대로였다. 차트는 테마를 `/opt/keycloak/themes/` 에 마운트하는데, 차트가 띄우는 이미지는 `bitnamilegacy/keycloak` 이라 테마를 `/opt/bitnami/keycloak/themes/` 에서 찾는다. 파일은 컨테이너 안에 있는데 Keycloak 이 보지 않는 자리였고, 못 찾은 테마는 오류 없이 기본 화면으로 되돌아간다.
 
   로컬에서 멀쩡했던 건 `docker-compose.dev.yaml` 이 공식 `quay.io/keycloak` 이미지를 쓰기 때문이다 — 그쪽은 `/opt/keycloak` 이 맞다. 두 환경이 서로 다른 이미지 계열을 쓰는 줄 모르고 로컬 경로를 차트에 그대로 옮겼다.
