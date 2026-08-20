@@ -21,6 +21,8 @@ export type TimeRange = '1h' | '6h' | '24h' | '7d'
 // ─── DashboardTabLayout — shared tab system for all 3 views ──────────────────
 interface TabLayoutProps {
   viewId: ViewType
+  /** 탭이 매달릴 대상 — stack 뷰는 stackId, cluster/cicd 뷰는 clusterId */
+  scopeId: string
   isAdmin: boolean
   defaultContent: React.ReactNode
   /** Pre-seeded tabs written to localStorage on first load (when no saved tabs exist) */
@@ -32,17 +34,28 @@ interface TabLayoutProps {
   ) => React.ReactNode
 }
 
-export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, firstTimePanel }: TabLayoutProps) {
+/**
+ * 탭 상태는 스코프가 바뀌면 통째로 갈아탄다.
+ *
+ * 저장 키만 스코프별로 나누면 부족하다 — 컴포넌트가 마운트된 채 스택만 바뀌면
+ * state 에 남은 이전 스택의 탭이 계속 보인다. key 로 갈아끼워 열린 탭·관리 모드·
+ * skip 여부까지 함께 초기화한다.
+ */
+export function DashboardTabLayout(props: TabLayoutProps) {
+  return <ScopedTabLayout key={`${props.viewId}:${props.scopeId}`} {...props} />
+}
+
+function ScopedTabLayout({ viewId, scopeId, isAdmin, defaultContent, seedTabs, firstTimePanel }: TabLayoutProps) {
   const { t } = useTranslation()
   const uid = useId()
   const [activeId, setActiveId] = useState('default')
-  const [tabs, setTabs] = useState<EmbedTab[]>(() => loadTabs(viewId, seedTabs))
+  const [tabs, setTabs] = useState<EmbedTab[]>(() => loadTabs(viewId, scopeId, seedTabs))
   const [isManaging, setIsManaging] = useState(false)
   const [drafts, setDrafts] = useState<EmbedTab[]>([])
   const [saved, setSaved] = useState(false)
   const [embedError, setEmbedError] = useState(false)
   const [skipConnect, setSkipConnect] = useState(() => {
-    try { return localStorage.getItem(SKIP_KEY(viewId)) === 'true' } catch { return false }
+    try { return localStorage.getItem(SKIP_KEY(viewId, scopeId)) === 'true' } catch { return false }
   })
 
   const allTabs = [{ id: 'default', label: t('monitoringPage.customTabs.defaultTab', 'Default') }, ...tabs]
@@ -55,7 +68,7 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
   function cancelManage() { setIsManaging(false) }
   function saveManage() {
     const ordered = drafts.map((d, i) => ({ ...d, url: normalizeEmbedUrl(d.url), order: i }))
-    setTabs(ordered); persistTabs(viewId, ordered); setIsManaging(false); setSaved(true)
+    setTabs(ordered); persistTabs(viewId, scopeId, ordered); setIsManaging(false); setSaved(true)
     setTimeout(() => setSaved(false), 2500)
   }
 
@@ -83,13 +96,13 @@ export function DashboardTabLayout({ viewId, isAdmin, defaultContent, seedTabs, 
     }))
     const updated = [...tabs, ...toAdd]
     setTabs(updated)
-    persistTabs(viewId, updated)
+    persistTabs(viewId, scopeId, updated)
     setSkipConnect(true)
     if (toAdd[0]) setActiveId(toAdd[0].id)
   }
 
   function handleSkipConnect() {
-    try { localStorage.setItem(SKIP_KEY(viewId), 'true') } catch { /* */ }
+    try { localStorage.setItem(SKIP_KEY(viewId, scopeId), 'true') } catch { /* */ }
     setSkipConnect(true)
   }
 

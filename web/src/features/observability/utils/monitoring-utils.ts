@@ -7,8 +7,16 @@ export interface EmbedTab {
   order: number
 }
 
-export const STORAGE_KEY = (v: string) => `nullus_tabs_${v}_v1`
-export const SKIP_KEY = (v: string) => `nullus_skip_connect_${v}`
+// 탭은 뷰(cluster/stack/cicd)가 아니라 "무엇을 보고 있는가" 단위로 저장한다.
+//
+// v1 은 뷰 단위 키였다. 탭에 담기는 주소는 그 스택의 접속 도메인에서 나오므로
+// 스택 A 에서 등록한 탭이 스택 B 를 골라도 그대로 떴다 — 스택별로 주소를 미리
+// 채워 주기 시작하면 그대로 남의 도메인을 안내하는 오작동이 된다.
+// v1 키는 건드리지 않고 남겨 둔다(지우지 않으므로 되돌릴 여지가 있다).
+export const STORAGE_KEY = (viewId: string, scopeId: string) =>
+  `nullus_tabs_${viewId}_${scopeId || 'none'}_v2`
+export const SKIP_KEY = (viewId: string, scopeId: string) =>
+  `nullus_skip_connect_${viewId}_${scopeId || 'none'}_v2`
 
 export function timeAgo(dateStr: string | null): string {
   if (!dateStr) return '—'
@@ -55,20 +63,20 @@ export function formatDuration(startedAt: string | null, completedAt: string | n
   return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
 }
 
-export function loadTabs(viewId: string, seedTabs?: EmbedTab[]): EmbedTab[] {
+export function loadTabs(viewId: string, scopeId: string, seedTabs?: EmbedTab[]): EmbedTab[] {
   try {
-    const r = localStorage.getItem(STORAGE_KEY(viewId))
+    const r = localStorage.getItem(STORAGE_KEY(viewId, scopeId))
     if (r) return JSON.parse(r) as EmbedTab[]
     if (seedTabs?.length) {
-      localStorage.setItem(STORAGE_KEY(viewId), JSON.stringify(seedTabs))
+      localStorage.setItem(STORAGE_KEY(viewId, scopeId), JSON.stringify(seedTabs))
       return seedTabs
     }
   } catch { /* */ }
   return []
 }
 
-export function persistTabs(viewId: string, tabs: EmbedTab[]) {
-  try { localStorage.setItem(STORAGE_KEY(viewId), JSON.stringify(tabs)) } catch { /* */ }
+export function persistTabs(viewId: string, scopeId: string, tabs: EmbedTab[]) {
+  try { localStorage.setItem(STORAGE_KEY(viewId, scopeId), JSON.stringify(tabs)) } catch { /* */ }
 }
 
 export const normalizeEmbedUrl = (rawUrl: string): string => {
