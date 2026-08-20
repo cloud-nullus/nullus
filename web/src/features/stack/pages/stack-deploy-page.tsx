@@ -13,8 +13,7 @@ import { api } from '../../../lib/api'
 import { formatTime, resolveLocale } from '../../../lib/locale'
 import { cn } from '../../../lib/utils'
 import { PageHeader } from '../../../components/layout/page-header'
-
-const PROGRESS_SEGMENTS = Array.from({ length: 100 }, (_, i) => i + 1)
+import { DeployProgressBar, useDeployProgressDisplay } from '../components/deploy-progress-bar'
 
 const LOG_LEVEL_STYLE: Record<LogLevel, string> = {
   info: 'bg-[color-mix(in_srgb,_var(--color-info)_15%,_transparent)] text-[var(--color-info)]',
@@ -48,6 +47,10 @@ const DEPLOY_STAGES: DeployStage[] = [
   { key: 'health', label: 'Health Check', steps: ['health_check'], progressAt: 96 },
   { key: 'complete', label: 'Complete', steps: ['completed'], progressAt: 100 },
 ]
+
+// 표시용 진행률이 넘지 않아야 할 지점들. 단계 정의에서 끌어온다 — 따로 적으면
+// 단계를 늘렸을 때 막대가 아직 시작도 안 한 단계를 끝난 것처럼 보여 준다.
+const PROGRESS_MILESTONES = DEPLOY_STAGES.map((stage) => stage.progressAt)
 
 const TERMINAL_FAILURE_STEPS = new Set(['failed', 'rolling_back', 'rolled_back', 'delete_failed'])
 
@@ -348,6 +351,10 @@ export function StackDeployPage() {
   })
   const highlightedLogs = logs.filter((log) => log.level === 'warn' || log.level === 'error')
   const timeline = deriveTimeline(logs, progress, status)
+  // connecting 은 아직 아무것도 시작하지 않은 상태다. running 으로 넘기면 막대가
+  // 붙지도 않은 배포를 향해 차오른다.
+  const progressStatus = status === 'connecting' ? 'idle' : status
+  const displayProgress = useDeployProgressDisplay(progress, progressStatus, PROGRESS_MILESTONES)
 
   useEffect(() => {
     if (status !== 'failed' || !latestFailureLog) return
@@ -417,27 +424,7 @@ export function StackDeployPage() {
         </div>
 
         {/* Progress bar */}
-        <div>
-          <div className="mb-1.5 flex justify-between">
-            <span className="text-xs text-[var(--color-text-secondary)]">Overall Progress</span>
-            <span className="text-xs font-bold text-[var(--color-text-primary)]">{progress}%</span>
-          </div>
-          <div className="flex h-2 w-full overflow-hidden rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)]">
-            {PROGRESS_SEGMENTS.map((segment) => (
-              <div
-                key={segment}
-                className={cn(
-                  'h-full w-[1%] transition-colors duration-300',
-                  segment <= progress
-                    ? status === 'failed'
-                      ? 'bg-[var(--color-error)]'
-                      : 'bg-[linear-gradient(90deg,var(--color-primary),var(--color-accent-alt))]'
-                    : 'bg-transparent'
-                )}
-              />
-            ))}
-          </div>
-        </div>
+        <DeployProgressBar value={displayProgress} status={progressStatus} />
       </div>
 
       {status === 'failed' && latestFailureLog && (

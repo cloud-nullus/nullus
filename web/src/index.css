@@ -154,3 +154,125 @@ select option {
 [data-theme='light'] .nullus-mono-mark {
   filter: invert(1);
 }
+
+/* 배포 진행 막대와 로켓 (features/stack/components/deploy-progress-bar.tsx).
+
+   서버 진행률은 단계가 바뀔 때만 뛴다. 그 사이 몇 분 동안 막대가 멈춰 있으면
+   배포가 죽은 것처럼 보이므로, 표시 값이 조금씩 차오르고 표면에도 빛이 흐른다. */
+.nullus-progress-fill {
+  transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nullus-progress-fill--live {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 채워진 부분 위로 지나가는 빛. 막대 자체가 잠깐 멈춰도 살아 있어 보인다. */
+.nullus-progress-fill--live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, white 35%, transparent) 50%,
+    transparent 100%
+  );
+  animation: nullus-progress-sheen 1.8s ease-in-out infinite;
+}
+
+@keyframes nullus-progress-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* 불꽃 색은 의미 토큰이 아니라 그림이다.
+   --color-error 를 쓰면 실패 상태와 똑같은 빨강이 되어, 잘 돌고 있는 배포가
+   오류처럼 읽힌다. 그래서 이 셋만 따로 둔다. 바깥에서 안으로 갈수록 뜨거워지는
+   순서(빨강 → 주황 → 흰 심지)라 실제 화염과 같은 방향으로 읽힌다.
+   밝은 배경·어두운 배경 모두에서 성립하는 값이라 테마별로 나누지 않는다. */
+.nullus-rocket {
+  --nullus-flame-outer: #ff3b2f;
+  --nullus-flame-mid: #ff8f1f;
+  --nullus-flame-core: #fff1c9;
+  /* 금속 하이라이트. --color-surface-card 를 쓰면 다크 테마에서 near-black 이라
+     하이라이트가 아니라 검은 이음매로 보인다. 흰빛은 두 테마에서 같다. */
+  --nullus-rocket-sheen: #ffffff;
+}
+
+/* 로켓은 채워진 끝에 선다. 막대 위에 살짝 걸치도록 왼쪽으로 당겨 둔다. */
+.nullus-rocket {
+  transform: translate(-58%, -50%);
+}
+
+.nullus-rocket--flying {
+  animation: nullus-rocket-bob 1.1s ease-in-out infinite;
+}
+
+@keyframes nullus-rocket-bob {
+  0%,
+  100% {
+    transform: translate(-58%, -50%);
+  }
+  50% {
+    transform: translate(-58%, calc(-50% - 3px));
+  }
+}
+
+.nullus-rocket-flame {
+  transform-origin: 12px 16px;
+  animation: nullus-rocket-flame 220ms ease-in-out infinite alternate;
+}
+
+@keyframes nullus-rocket-flame {
+  from {
+    transform: scaleX(0.75);
+    opacity: 0.75;
+  }
+  to {
+    transform: scaleX(1.15);
+    opacity: 1;
+  }
+}
+
+/* 배포가 끝나면 그대로 날아오른다. forwards 로 끝 상태를 붙잡아 두지 않으면
+   다 날아간 로켓이 제자리로 되돌아온다. */
+.nullus-rocket--launched {
+  animation: nullus-rocket-launch 1.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes nullus-rocket-launch {
+  0% {
+    transform: translate(-58%, -50%) rotate(0deg);
+    opacity: 1;
+  }
+  25% {
+    transform: translate(-58%, calc(-50% + 3px)) rotate(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(240px, -170px) rotate(-40deg) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 전역 규칙은 duration 만 0.01ms 로 줄인다. 끝없이 도는 애니메이션에는 그것이
+     '정지'가 아니라 '초당 수백 번'이라 더 나쁘다. 여기서는 아예 끈다.
+     날아가는 연출도 끄되, 다 날아간 자리에 로켓이 남지 않도록 숨긴다. */
+  .nullus-progress-fill--live::after,
+  .nullus-rocket--flying,
+  .nullus-rocket-flame {
+    animation: none !important;
+  }
+
+  .nullus-rocket--launched {
+    animation: none !important;
+    opacity: 0;
+  }
+}

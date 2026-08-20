@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **배포 진행 막대가 차오르고, 끝나면 로켓이 날아간다** (`web/src/features/stack/utils/deploy-progress.ts` 신규, `web/src/features/stack/components/deploy-progress-bar.tsx` 신규, `web/src/index.css`): 배포 화면의 진행 막대가 멈춰 있는 것처럼 보였다. 애니메이션이 아니라 **데이터**가 문제였다 — 서버 진행률은 단계가 바뀔 때만 뛴다(5 → 15 → 90 → 96 → 100). 설치는 15 와 90 사이에서 대부분의 시간을 보내므로, 잘 돌고 있는 배포가 몇 분 동안 한 픽셀도 움직이지 않았다.
+
+  그래서 표시용 값을 따로 둔다. 실제 값이 앞서면 그쪽으로 빠르게 따라붙고, 값이 멈춰 있는 동안에는 다음 이정표를 향해 천천히 차오른다. **다만 이정표에는 닿지 않는다** — 닿으면 아직 시작하지도 않은 단계를 끝난 것처럼 보여 주는 거짓말이 된다. 되감기지 않고, 실패하면 그 자리에 멈춘다. 이정표는 화면의 단계 정의에서 끌어온다(따로 적으면 단계를 늘렸을 때 막대만 거짓말을 한다).
+
+  막대도 1% 짜리 칸 100 개를 색만 바꿔 칠하던 것에서 한 덩어리가 부드럽게 늘어나는 형태로 바꿨고, 채워진 면 위로 빛이 한 번씩 지나가 잠깐 멈춰도 살아 있어 보인다.
+
+  **로켓은 막대 앞머리를 타고 간다.** 배포가 끝나면 오른쪽 위로 회전하며 사라진다 — 100% 에서 그냥 멈추는 것보다 끝났다는 것이 한눈에 읽힌다. 동체는 막대와 같은 그라디언트라 막대에서 뽑혀 나온 것처럼 보이고, 불꽃은 바깥에서 안으로 갈수록 뜨거워지는 3겹(빨강 → 주황 → 흰 심지)이다. 실패하면 불꽃이 꺼지고 회색으로 멈춘다.
+
+  불꽃에 `--color-error` 를 쓰지 않았다. 그 빨강은 이 화면에서 "실패" 를 뜻하고 실패한 배포의 막대가 바로 그 색이다 — 잘 가고 있는 로켓의 불꽃이 같은 빨강이면 오류처럼 읽힌다. 금속 하이라이트·엔진 링에도 `--color-surface-card` 대신 흰빛을 쓴다. 그 토큰은 다크 테마에서 near-black 이라 하이라이트가 아니라 **검은 이음매**로 보였다.
+
+  접근성도 함께 챙겼다 — 옛 막대에는 `role="progressbar"` 가 없어 스크린리더가 진행률을 읽지 못했다. `prefers-reduced-motion` 에서는 불꽃·빛·비행을 모두 끈다.
+
 - **스택 도구가 밖에서 열린다 — 게이트웨이를 클러스터 공용으로** (`internal/stack/adapter/helm/{manifest-builders,shared-gateway-alias}.go`, `deploy/helm/nullus/templates/stack-gateway-bridge.yaml` 신규, `deploy/csp/zadara/values-zadara.yaml`): 운영에서 `gitlab.nullus.io` 같은 스택 도구 주소가 **404** 로 끝났다. 원인이 둘 겹쳐 있었다 — Zadara 에는 LoadBalancer 연동이 없어 Envoy Gateway 의 Service 가 외부 IP 를 영원히 못 받고, 밖에서 유일하게 열린 ingress-nginx 에는 그 호스트 규칙이 없었다. `*.nullus.io` DNS 는 이미 같은 공인 IP 로 잡혀 있어 요청은 도착하지만 받아 줄 규칙이 없었다.
 
   **게이트웨이를 스택 소유에서 클러스터 공용으로 옮겼다.** 예전에는 스택마다 자기 Gateway 를 자기 네임스페이스에 만들었다. 그러면 스택을 지울 때 현관도 함께 사라지고, 새로 깔 때마다 DNS·ingress·포트포워드 배선을 처음부터 다시 해야 한다. 이제 `nullus-gateway` 네임스페이스에 같은 이름으로 하나만 서고(Envoy Gateway 컨트롤러도 같은 자리), 스택이 만드는 것은 HTTPRoute 뿐이다. 리스너는 호스트를 가리지 않는다 — 운영 `nullus.io` 와 로컬 `*.internal` 이 한 게이트웨이를 쓴다.
