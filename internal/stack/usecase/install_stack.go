@@ -126,6 +126,12 @@ type resumeAwareExecutor interface {
 	ResumeFromStep(stackID, step string)
 }
 
+// preflightExecutor 는 설치를 시작하기 전에 대상 네임스페이스를 검사할 수 있는
+// 실행기다. 구현하지 않은 실행기(단위 테스트의 가짜 등)는 검사를 건너뛴다.
+type preflightExecutor interface {
+	PreflightNamespace(ctx context.Context, namespace string) error
+}
+
 type deploymentVerifiableExecutor interface {
 	VerifyDeployment(ctx context.Context, stackID string) error
 }
@@ -336,6 +342,25 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 	}
 
 	uc.markStepStarted(ctx, stack, "validate")
+
+	// 이전 설치의 볼륨이 남아 있으면 여기서 멈춘다.
+	//
+	// 그대로 두면 새 설치가 옛 데이터베이스를 물려받고, 그 안의 비밀번호는 이번에
+	// 새로 만든 Secret 과 다르다. 그 사실은 스무 단계쯤 뒤에 엉뚱한 도구의 오류로
+	// 드러난다 — 실제로 Gitea 의 28P01 과 Harbor 의 401 로 두 번 나왔고, 매번
+	// 20분을 태운 뒤였다.
+	//
+	// 이어서 진행(continue)하는 경우는 검사하지 않는다. 그때 남아 있는 볼륨은
+	// 지금 하고 있는 설치가 만든 것이라 지우면 안 된다.
+	if !input.Continue {
+		if preflight, ok := executor.(preflightExecutor); ok {
+			if err := preflight.PreflightNamespace(ctx, stack.Namespace); err != nil {
+				uc.handleFailure(ctx, stack, executor, err)
+				return
+			}
+		}
+	}
+
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
 	uc.markStepCompleted(ctx, stack, "validate")
 

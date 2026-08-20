@@ -304,6 +304,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택을 지워도 네임스페이스가 남던 것** (`internal/stack/usecase/delete_stack.go`): 삭제는 리소스를 종류별로 하나씩 지웠고 **네임스페이스는 건드리지 않았다.** 스택이 플랫폼과 같은 `nullus` 에 살던 시절의 규칙인데, 이제 스택은 자기 네임스페이스를 갖는다. 하나씩 지우는 방식은 놓치는 것이 생기고, 그것이 오늘의 사고들(Gitea `28P01`, Harbor `401`)의 뿌리였다.
+
+  스택 몫으로 만들어진 자리(`nullus-<스택명>`)는 통째로 회수한다. 플랫폼이 사는 곳, `default`, 옛 공용 기본값 `nullus`, 사용자가 직접 고른 네임스페이스는 지우지 않는다 — 다른 것과 함께 쓰고 있을 수 있고, `nullus` 를 지우면 플랫폼이 사라진다.
+
+- **이전 설치의 볼륨이 남은 채 다시 설치하면 스무 단계 뒤에야 알던 것** (`internal/stack/adapter/helm/preflight.go` 신규, `internal/stack/usecase/install_stack.go`): 남은 볼륨은 옛 데이터베이스를 물려주고, 그 안의 비밀번호는 이번에 새로 만든 Secret 과 다르다. 그 사실이 드러나는 자리는 원인에서 멀다 — **Gitea 의 `28P01` 과 Harbor 의 `401` 로 두 번 나왔고, 매번 20분을 태운 뒤였다.**
+
+  이제 설치를 시작할 때 대상 네임스페이스에 볼륨이 남아 있는지 먼저 본다. 있으면 몇 초 만에 멈추고, 무엇이 남았는지·왜 문제인지·어떻게 지우는지를 함께 알린다. 이어서 진행(continue)할 때는 검사하지 않는다 — 그때 남아 있는 볼륨은 지금 하고 있는 설치가 만든 것이다.
+
 - **스택을 지워도 볼륨이 남아 다음 설치의 자격증명이 어긋나던 것** (`internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/helm/harbor-provisioning.go`): PVC 는 그것을 마운트한 파드가 살아 있는 동안 `pvc-protection` finalizer 로 남는다. 삭제는 릴리스를 먼저 걷어내므로 파드가 곧 사라지지만, **첫 삭제 시도는 그 전에 끝나 타임아웃**이 났고 거기서 포기했다.
 
   남은 볼륨은 조용한 실패가 아니다. 다음 설치가 옛 데이터베이스를 물려받고, 그 안의 비밀번호는 새로 만든 Secret 과 다르다. **PostgreSQL 은 Gitea 의 `28P01` 로, Harbor 는 프로비저닝 `401` 로 드러났다** — 둘 다 원인에서 여섯 단계쯤 떨어진 자리다.
