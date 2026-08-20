@@ -17,16 +17,16 @@ const TICK_MS = 140
 export function useDeployProgressDisplay(
   target: number,
   status: DeployProgressStatus,
-  milestones: number[],
+  ceiling?: number,
 ): number {
   const [display, setDisplay] = useState(target)
   // 타이머는 한 번만 걸고 최신 값은 ref 로 들여다본다. 값이 바뀔 때마다 타이머를
   // 다시 걸면 그때마다 주기가 처음부터 시작해 막대가 끊겨 보인다.
-  const latest = useRef({ target, status, milestones })
+  const latest = useRef({ target, status, ceiling })
 
   useEffect(() => {
-    latest.current = { target, status, milestones }
-  }, [target, status, milestones])
+    latest.current = { target, status, ceiling }
+  }, [target, status, ceiling])
 
   useEffect(() => {
     if (status === 'success') {
@@ -36,11 +36,11 @@ export function useDeployProgressDisplay(
 
     const timer = setInterval(() => {
       setDisplay((current) => {
-        const { target: t, status: s, milestones: m } = latest.current
+        const { target: t, status: s, ceiling: c } = latest.current
         return nextDisplayProgress({
           current,
           target: t,
-          ceiling: progressCeiling(t, m),
+          ceiling: progressCeiling(t, c),
           status: s,
         })
       })

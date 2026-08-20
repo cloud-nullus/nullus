@@ -386,39 +386,10 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		// PostgreSQL/MinIO 차트가 provisioning_secrets 가 만든 Secret 을
 		// existingSecret 으로 참조하기 때문이다. usecase 의 installDAG 와
 		// 순서가 일치해야 한다 — ensureOrder 가 이 순서를 강제한다.
-		orderedStep: []string{
-			stepInstallingCertManager,
-			stepInstallingPrometheusCRDs,
-			"installing_metrics_server",
-			"installing_openbao",
-			"installing_external_secrets",
-			"provisioning_secrets",
-			"installing_postgresql",
-			"installing_minio",
-			"installing_object_storage_secret",
-			"installing_object_storage_buckets",
-			"installing_database_connection_check",
-			"provisioning_sso",
-			"installing_gitlab",
-			"installing_gitea",
-			"provisioning_gitea",
-			"installing_harbor",
-			"provisioning_harbor",
-			"installing_nexus",
-			"provisioning_nexus",
-			"installing_argocd",
-			stepInstallingRunner,
-			"installing_jenkins",
-			"installing_prometheus",
-			"installing_grafana",
-			"installing_logging",
-			"installing_log_search",
-			"installing_opentelemetry",
-			stepInstallingOTelCollector,
-			stepInstallingOTelAgent,
-			"installing_gateway",
-			"integration_check",
-		},
+		// 스텝 순서는 도메인이 소유한다. 진행률(domain.StepProgress)이 같은
+		// 목록에서 계산되므로, 여기서 따로 적으면 화면이 실제와 다른 퍼센트를
+		// 보여 준다 — 실제로 그렇게 시크릿만 깔린 시점에 막대가 절반을 넘겼다.
+		orderedStep: append([]string(nil), domain.InstallStepOrder...),
 		stepConfigFieldPath: map[string]string{
 			"installing_postgresql":                "config.storage.database",
 			"installing_minio":                     "config.artifacts.storage_backend",

@@ -477,8 +477,12 @@ func (h *DeployHandler) Continue(c echo.Context) error {
 
 // statusResponse is the response body for GET /stacks/:id/status.
 type statusResponse struct {
-	StackID           string    `json:"stack_id"`
-	State             string    `json:"state"`
+	StackID string `json:"stack_id"`
+	State   string `json:"state"`
+	// Progress 와 ProgressCeiling 은 저장된 스텝에서 되살린 진행률이다. 새로고침
+	// 직후에도 스트림과 같은 값을 보여 주기 위해 함께 내려준다.
+	Progress          int       `json:"progress"`
+	ProgressCeiling   int       `json:"progress_ceiling"`
 	ClusterID         string    `json:"cluster_id,omitempty"`
 	Namespace         string    `json:"namespace"`
 	CurrentStep       string    `json:"current_step,omitempty"`
@@ -500,10 +504,16 @@ func (h *DeployHandler) Status(c echo.Context) error {
 		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", "stack not found")
 	}
 
+	// 새로고침해도 같은 값을 보여 준다. WebSocket 이 처음부터 다시 붙어 그동안의
+	// 진행률을 모르므로, 저장된 스텝에서 같은 계산을 한 번 더 해 준다.
+	progress, ceiling := domain.StackProgress(stack.State, stack.CurrentStep, stack.LastCompletedStep)
+
 	return c.JSON(http.StatusOK, map[string]any{
 		"data": statusResponse{
 			StackID:           stack.ID,
 			State:             string(stack.State),
+			Progress:          progress,
+			ProgressCeiling:   ceiling,
 			ClusterID:         stack.ClusterID,
 			Namespace:         stack.Namespace,
 			CurrentStep:       stack.CurrentStep,
@@ -549,38 +559,14 @@ type wsLogMessage struct {
 	Level     string `json:"level,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Progress  int    `json:"progress"`
-	Status    string `json:"status,omitempty"`
+	// Ceiling 은 이 스텝이 끝났을 때 닿을 진행률이다. 화면이 스텝 안에서만
+	// 움직이도록 상한을 함께 준다.
+	Ceiling int    `json:"progress_ceiling,omitempty"`
+	Status  string `json:"status,omitempty"`
 }
 
-var stepProgress = map[string]int{
-	"validate":                  5,
-	"continue":                  5,
-	"installing_cert_manager":   15,
-	"installing_minio":          25,
-	"installing_gitlab":         40,
-	"installing_harbor":         45,
-	"installing_nexus":          48,
-	"provisioning_nexus":        50,
-	"installing_argocd":         55,
-	"installing_runner":         65,
-	"installing_prometheus":     75,
-	"installing_grafana":        85,
-	"installing_logging":        86,
-	"installing_log_search":     87,
-	"installing_opentelemetry":  88,
-	"installing_otel_collector": 89,
-	"installing_otel_agent":     89,
-	"installing_gateway":        90,
-	"integration_check":         90,
-	"configuring":               93,
-	"health_check":              96,
-	"completed":                 100,
-	"deleting_started":          5,
-	"deleting_release":          45,
-	"deleting_manifest":         75,
-	"deleted":                   100,
-	"delete_failed":             100,
-}
+// 진행률은 도메인이 계산한다. 여기 표를 따로 두면 스텝이 늘 때마다 빠뜨리고,
+// 빠진 스텝에서는 0 이 나가 화면이 값을 지어내게 된다.
 
 func (h *DeployHandler) StreamLogs(c echo.Context) error {
 	id := c.Param("id")
@@ -638,7 +624,19 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 				return nil
 			}
 
-			progress := stepProgress[entry.Step]
+			// 모르는 스텝은 0 으로 내보낸다. 화면은 0 을 "이 로그로는 알 수 없다" 로
+			// 읽고 마지막 값을 유지한다 — 음수를 그대로 보내면 클라이언트마다
+			// 해석이 갈린다.
+			progress := domain.StepProgress(entry.Step)
+			if progress < 0 {
+				progress = 0
+			}
+			// 이 스텝이 끝났을 때 닿을 값. 화면은 그 안에서만 조금씩 움직인다 —
+			// 다음 스텝의 몫까지 미리 채우면 하지 않은 일을 한 것처럼 보인다.
+			ceiling := domain.StepProgressCeiling(entry.Step)
+			if ceiling < progress {
+				ceiling = progress
+			}
 
 			msg := wsLogMessage{
 				Type:      "log",
@@ -648,6 +646,7 @@ func (h *DeployHandler) StreamLogs(c echo.Context) error {
 				Level:     entry.Level,
 				Message:   entry.Message,
 				Progress:  progress,
+				Ceiling:   ceiling,
 			}
 
 			if entry.Step == "continue" {
