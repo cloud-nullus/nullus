@@ -12,10 +12,29 @@
 
 export type DeployProgressStatus = "running" | "success" | "failed" | "idle";
 
-/** 실제 값이 앞설 때 따라붙는 비율. 한 번에 남은 거리의 이만큼을 좁힌다. */
-const CATCH_UP_RATIO = 0.34;
-/** 값이 멈춰 있을 때 이정표를 향해 좁히는 비율. 눈에 띄지만 성급하지 않은 속도. */
-const CREEP_RATIO = 0.012;
+/**
+ * 속도는 전부 "한 틱(약 140ms)에 몇 %p" 로 생각한다.
+ *
+ * 처음에는 남은 거리에 비례해서만 움직였다. 그런데 install 단계는 15 에서
+ * 다음 이정표 90 까지 75 포인트가 남아 있어서, 비례식이 초당 6%p 가 넘는
+ * 속도를 냈다 — 막대가 시작하자마자 확 달려 절반을 넘겼다.
+ *
+ * 그래서 비율에 더해 한 틱에 움직일 수 있는 최대치를 둔다. 거리가 멀어도
+ * 걸음 폭은 같고, 가까워지면 비율이 줄어들며 자연히 느려진다.
+ */
+
+/** 실제 값이 앞설 때 좁히는 비율. */
+const CATCH_UP_RATIO = 0.22;
+/** 따라붙을 때의 한 틱 최대 폭. 큰 도약도 몇 초에 걸쳐 미끄러진다. */
+const CATCH_UP_MAX_STEP = 1.2;
+/** 따라붙을 때의 한 틱 최소 폭. 없으면 남은 거리가 작을 때 영원히 못 닿는다. */
+const CATCH_UP_MIN_STEP = 0.15;
+
+/** 값이 멈춰 있을 때 이정표를 향해 좁히는 비율. */
+const CREEP_RATIO = 0.0018;
+/** 멈춰 있을 때의 한 틱 최대 폭. 초당 약 0.36%p — 분 단위 설치에 맞춘 속도다. */
+const CREEP_MAX_STEP = 0.05;
+
 /** 이정표 바로 앞에 남겨 두는 여백. 0 이면 다음 단계를 끝낸 것처럼 보인다. */
 const CEILING_MARGIN = 1.5;
 
@@ -42,8 +61,12 @@ export function nextDisplayProgress(input: {
 
   // 되감기지 않는다. 뒤로 가면 사용자는 뭔가 잘못됐다고 읽는다.
   if (target > current) {
-    const stepped = current + (target - current) * CATCH_UP_RATIO;
-    return Math.min(target, Math.max(stepped, current + 0.4));
+    const remaining = target - current;
+    const step = Math.min(
+      Math.max(remaining * CATCH_UP_RATIO, CATCH_UP_MIN_STEP),
+      CATCH_UP_MAX_STEP,
+    );
+    return Math.min(target, current + step);
   }
 
   if (status !== "running") {
@@ -54,5 +77,6 @@ export function nextDisplayProgress(input: {
   if (current >= limit) {
     return current;
   }
-  return current + (limit - current) * CREEP_RATIO;
+  const step = Math.min((limit - current) * CREEP_RATIO, CREEP_MAX_STEP);
+  return Math.min(limit, current + step);
 }
