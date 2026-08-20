@@ -41,7 +41,6 @@ var legacyReleaseArtifactExactNames = map[string]struct{}{
 	"argocd-initial-admin-secret":                           {},
 	"argocd-redis":                                          {},
 	"eg-gateway-helm-certgen":                               {},
-	"nullus-object-storage":                                 {},
 	"data-nullus-postgresql-0":                              {},
 	"opensearch-cluster-master-opensearch-cluster-master-0": {},
 	"redis-data-gitlab-redis-master-0":                      {},
@@ -52,13 +51,58 @@ var legacyReleaseArtifactExactNames = map[string]struct{}{
 	"data-openbao-0":      {},
 	"openbao-unseal-keys": {},
 	"openbao-init":        {},
+
+	// 프로비저닝 단계가 Helm 이 아니라 kubectl 로 만드는 것들. 소유자 표시가
+	// 없어 고아로 남으므로 이름으로 지운다. 접두사로 뭉뚱그리지 않고 하나씩
+	// 적는다 — 이 네임스페이스를 플랫폼과 공유할 수 있기 때문이다.
+	domain.ProvisionedPostgresSecret:        {},
+	domain.ProvisionedMinIOSecret:           {},
+	domain.ProvisionedObjectStorageSecret:   {},
+	domain.ProvisionedRegistryStorageSecret: {},
+	domain.HarborAdminSecret:                {},
+	domain.NexusAdminSecret:                 {},
+	domain.GiteaAdminSecret:                 {},
+	domain.JenkinsAdminSecret:               {},
+	domain.AccessDomainTLSSecretName:        {},
+	domain.AccessDomainCertName:             {},
+}
+
+// stackHelmReleaseNameSet 은 소유권 판정을 위한 조회용 집합이다.
+var stackHelmReleaseNameSet = func() map[string]struct{} {
+	set := make(map[string]struct{}, len(stackHelmReleaseNames))
+	for _, name := range stackHelmReleaseNames {
+		set[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+	return set
+}()
+
+func isStackHelmRelease(name string) bool {
+	_, ok := stackHelmReleaseNameSet[strings.ToLower(strings.TrimSpace(name))]
+	return ok
+}
+
+// namespacedResource 는 청소 후보 한 건과 그 소유자 표시다.
+//
+// 이름만 보고 지우면 같은 네임스페이스를 쓰는 남의 리소스를 지운다. 쿠버네티스는
+// 이미 소유자를 적어 두고 있다 — Helm 은 meta.helm.sh/release-name 애노테이션을,
+// 이 플랫폼은 nullus.io/stack-name 라벨을 붙인다. 그것을 읽어서 판단한다.
+type namespacedResource struct {
+	// Ref 는 kubectl 이 그대로 받는 형태다 (예: "deployment/nullus-api").
+	Ref string
+	// HelmRelease 는 meta.helm.sh/release-name 애노테이션이다. 비어 있으면 고아다.
+	HelmRelease string
+	// StackLabel 은 nullus.io/stack-name 라벨이다.
+	StackLabel string
 }
 
 var legacyReleaseArtifactPrefixes = []string{
 	"gitlab-",
 	"argo-cd-",
 	"argocd-",
-	"nullus-",
+	// "nullus-" 접두사는 뺐다. 스택이 플랫폼과 같은 네임스페이스에 깔리면 이
+	// 접두사가 플랫폼 자신의 리소스(nullus-api / nullus-web / nullus-keycloak)를
+	// 전부 삼킨다 — 2026-08-20 에 실제로 그렇게 nullus.io 가 통째로 지워졌다.
+	// 스택이 만드는 nullus-* 리소스는 이름을 알고 있으므로 아래 exact 목록에 적는다.
 	"opensearch-",
 	"tempo-",
 	"loki-",
@@ -114,9 +158,13 @@ type DeleteStack struct {
 	executorFactoryFunc func(kubeconfig []byte) port.HelmInstaller
 	streamer            port.LogStreamer
 	deleteManifestFunc  func(ctx context.Context, kubeconfig []byte, namespace, manifest string) error
-	listResourcesFunc   func(ctx context.Context, kubeconfig []byte, namespace string) ([]string, error)
-	deleteResourceFunc  func(ctx context.Context, kubeconfig []byte, namespace, resource string) error
-	runKubectlFunc      func(ctx context.Context, kubeconfig []byte, args ...string) (string, error)
+	listResourcesFunc   func(ctx context.Context, kubeconfig []byte, namespace string) ([]namespacedResource, error)
+	// platformNamespace 는 플랫폼 자신이 사는 네임스페이스다. 비어 있으면 모른다는
+	// 뜻이고(클러스터 밖에서 도는 개발 환경), 알고 있으면 그 안에서는 이름 기반
+	// 청소를 아예 하지 않는다.
+	platformNamespace  string
+	deleteResourceFunc func(ctx context.Context, kubeconfig []byte, namespace, resource string) error
+	runKubectlFunc     func(ctx context.Context, kubeconfig []byte, args ...string) (string, error)
 	// ssoFactory 는 설치 때 OIDC 클라이언트를 만든 provisioner 를 다시 만든다.
 	// 없으면 SSO 프로비저닝을 안 쓰는 설치다(BYO IdP / 미사용).
 	ssoFactory port.SSOProvisionerFactory
@@ -409,6 +457,9 @@ func (uc *DeleteStack) bestEffortDeleteLegacyMonitoringResources(ctx context.Con
 	if len(kubeconfig) == 0 || stack == nil || uc.listResourcesFunc == nil || uc.deleteResourceFunc == nil {
 		return
 	}
+	if uc.isPlatformNamespace(stack.Namespace) {
+		return
+	}
 
 	resources, err := uc.listResourcesFunc(ctx, kubeconfig, stack.Namespace)
 	if err != nil {
@@ -427,7 +478,7 @@ func (uc *DeleteStack) bestEffortDeleteLegacyMonitoringResources(ctx context.Con
 
 	seen := make(map[string]struct{}, len(resources))
 	for _, resource := range resources {
-		trimmed := strings.TrimSpace(resource)
+		trimmed := strings.TrimSpace(resource.Ref)
 		if trimmed == "" {
 			continue
 		}
@@ -435,6 +486,11 @@ func (uc *DeleteStack) bestEffortDeleteLegacyMonitoringResources(ctx context.Con
 			continue
 		}
 		seen[trimmed] = struct{}{}
+
+		// 남의 릴리스 소유물은 이름이 무엇이든 건드리지 않는다.
+		if ownedByAnotherRelease(resource) {
+			continue
+		}
 
 		shouldDelete := false
 		for _, token := range legacyTokens {
@@ -887,6 +943,11 @@ func (uc *DeleteStack) bestEffortDeleteLegacyReleaseArtifacts(ctx context.Contex
 	namespaces := cleanupNamespacesForStack(stack.Namespace)
 	seen := make(map[string]struct{})
 	for _, targetNamespace := range namespaces {
+		if uc.isPlatformNamespace(targetNamespace) {
+			uc.emit(ctx, stackID, "deleting_manifest", "warn",
+				fmt.Sprintf("%s 는 플랫폼 네임스페이스라 이름 기반 정리를 건너뜁니다", targetNamespace))
+			continue
+		}
 		resources, err := uc.listResourcesFunc(ctx, kubeconfig, targetNamespace)
 		if err != nil {
 			slog.Warn("legacy release artifact list warning", "namespace", targetNamespace, "error", err)
@@ -894,7 +955,7 @@ func (uc *DeleteStack) bestEffortDeleteLegacyReleaseArtifacts(ctx context.Contex
 			continue
 		}
 		for _, resource := range resources {
-			trimmed := strings.TrimSpace(resource)
+			trimmed := strings.TrimSpace(resource.Ref)
 			if trimmed == "" {
 				continue
 			}
@@ -904,7 +965,7 @@ func (uc *DeleteStack) bestEffortDeleteLegacyReleaseArtifacts(ctx context.Contex
 			}
 			seen[key] = struct{}{}
 
-			if !shouldDeleteLegacyReleaseArtifact(trimmed, stackName) {
+			if !shouldDeleteReleaseArtifact(resource, stackName) {
 				continue
 			}
 
@@ -917,8 +978,29 @@ func (uc *DeleteStack) bestEffortDeleteLegacyReleaseArtifacts(ctx context.Contex
 	}
 }
 
-func shouldDeleteLegacyReleaseArtifact(resourceRef, stackName string) bool {
-	name := strings.ToLower(strings.TrimSpace(resourceNameFromRef(resourceRef)))
+// shouldDeleteReleaseArtifact 는 "이 리소스가 이 스택 것인가" 를 판정한다.
+//
+// 판정 순서가 곧 안전장치다. 소유자를 밝힌 리소스는 그 말을 그대로 따르고,
+// 이름 규칙은 소유자가 없는 고아에만 쓴다. 예전에는 순서가 없었고 이름에 스택
+// 이름이 들어가기만 하면 지웠다 — 스택 이름이 "nullus" 이고 네임스페이스가
+// 플랫폼과 같았을 때 플랫폼 자신을 지워 버렸다.
+func shouldDeleteReleaseArtifact(resource namespacedResource, stackName string) bool {
+	if label := strings.TrimSpace(resource.StackLabel); label != "" {
+		return strings.EqualFold(label, strings.TrimSpace(stackName))
+	}
+
+	// Helm 이 소유를 밝혔으면 이 스택이 만든 릴리스일 때만 지운다. 남의
+	// 릴리스면 이름이 무엇이든 건드리지 않는다.
+	if release := strings.TrimSpace(resource.HelmRelease); release != "" {
+		return isStackHelmRelease(release)
+	}
+
+	return matchesLegacyArtifactName(resourceNameFromRef(resource.Ref))
+}
+
+// matchesLegacyArtifactName 은 소유자 표시가 없는 고아를 이름으로 알아본다.
+func matchesLegacyArtifactName(rawName string) bool {
+	name := strings.ToLower(strings.TrimSpace(rawName))
 	if name == "" {
 		return false
 	}
@@ -927,11 +1009,6 @@ func shouldDeleteLegacyReleaseArtifact(resourceRef, stackName string) bool {
 	}
 
 	if _, ok := legacyReleaseArtifactExactNames[name]; ok {
-		return true
-	}
-
-	stackName = strings.ToLower(strings.TrimSpace(stackName))
-	if stackName != "" && strings.Contains(name, stackName) {
 		return true
 	}
 
@@ -944,6 +1021,25 @@ func shouldDeleteLegacyReleaseArtifact(resourceRef, stackName string) bool {
 	return false
 }
 
+// ownedByAnotherRelease 는 이 스택이 만들지 않은 Helm 릴리스의 소유물인지 본다.
+func ownedByAnotherRelease(resource namespacedResource) bool {
+	release := strings.TrimSpace(resource.HelmRelease)
+	return release != "" && !isStackHelmRelease(release)
+}
+
+// SetPlatformNamespace 는 플랫폼 자신이 사는 네임스페이스를 알려준다.
+//
+// 스택이 그 네임스페이스에 깔려 있으면 이름 기반 청소를 하지 않는다. 소유권
+// 판정만으로도 남의 것은 지키지만, 플랫폼을 지우는 사고는 한 번으로 족하다.
+func (uc *DeleteStack) SetPlatformNamespace(namespace string) {
+	uc.platformNamespace = strings.TrimSpace(namespace)
+}
+
+func (uc *DeleteStack) isPlatformNamespace(namespace string) bool {
+	return uc.platformNamespace != "" &&
+		strings.EqualFold(strings.TrimSpace(namespace), uc.platformNamespace)
+}
+
 func (uc *DeleteStack) bestEffortDeleteOrphanGatewayTempoResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
 	if len(kubeconfig) == 0 || stack == nil || uc.listResourcesFunc == nil || uc.deleteResourceFunc == nil {
 		return
@@ -953,6 +1049,9 @@ func (uc *DeleteStack) bestEffortDeleteOrphanGatewayTempoResources(ctx context.C
 	namespaces := cleanupNamespacesForStack(stack.Namespace)
 	seen := make(map[string]struct{})
 	for _, targetNamespace := range namespaces {
+		if uc.isPlatformNamespace(targetNamespace) {
+			continue
+		}
 		resources, err := uc.listResourcesFunc(ctx, kubeconfig, targetNamespace)
 		if err != nil {
 			slog.Warn("orphan gateway/tempo resource list warning", "namespace", targetNamespace, "error", err)
@@ -961,7 +1060,7 @@ func (uc *DeleteStack) bestEffortDeleteOrphanGatewayTempoResources(ctx context.C
 		}
 
 		for _, resource := range resources {
-			trimmed := strings.TrimSpace(resource)
+			trimmed := strings.TrimSpace(resource.Ref)
 			if trimmed == "" {
 				continue
 			}
@@ -969,6 +1068,10 @@ func (uc *DeleteStack) bestEffortDeleteOrphanGatewayTempoResources(ctx context.C
 				continue
 			}
 			seen[targetNamespace+"::"+trimmed] = struct{}{}
+
+			if ownedByAnotherRelease(resource) {
+				continue
+			}
 
 			if !shouldDeleteOrphanGatewayTempoResource(trimmed, stackName, targetNamespace, stack.Namespace) {
 				continue
@@ -1093,19 +1196,56 @@ func deleteManifest(ctx context.Context, kubeconfig []byte, namespace, manifest 
 	return nil
 }
 
-func listNamespaceResources(ctx context.Context, kubeconfig []byte, namespace string) ([]string, error) {
+// listNamespaceResources 는 청소 후보와 그 소유자 표시를 함께 읽는다.
+//
+// 예전에는 -o name 으로 이름만 읽었다. 이름만 있으면 남의 것인지 알 길이 없어
+// 이름 규칙에 기대게 되고, 그 규칙이 플랫폼을 지웠다. 소유자는 이미 리소스에
+// 적혀 있으므로 함께 읽어 온다.
+func listNamespaceResources(ctx context.Context, kubeconfig []byte, namespace string) ([]namespacedResource, error) {
 	if strings.TrimSpace(namespace) == "" {
 		return nil, nil
 	}
-	output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "deploy,svc,cm,sa,pod,rs,sts,job,cronjob,secret,pvc", "-n", namespace, "-o", "name")
+	output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "deploy,svc,cm,sa,pod,rs,sts,job,cronjob,secret,pvc", "-n", namespace, "-o", "json")
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) == 1 && strings.TrimSpace(lines[0]) == "" {
+	return parseNamespaceResources(output)
+}
+
+func parseNamespaceResources(raw string) ([]namespacedResource, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return nil, nil
 	}
-	return lines, nil
+
+	var list struct {
+		Items []struct {
+			Kind     string `json:"kind"`
+			Metadata struct {
+				Name        string            `json:"name"`
+				Labels      map[string]string `json:"labels"`
+				Annotations map[string]string `json:"annotations"`
+			} `json:"metadata"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &list); err != nil {
+		return nil, fmt.Errorf("parse namespace resources: %w", err)
+	}
+
+	out := make([]namespacedResource, 0, len(list.Items))
+	for _, item := range list.Items {
+		kind := strings.ToLower(strings.TrimSpace(item.Kind))
+		name := strings.TrimSpace(item.Metadata.Name)
+		if kind == "" || name == "" {
+			continue
+		}
+		out = append(out, namespacedResource{
+			Ref:         kind + "/" + name,
+			HelmRelease: strings.TrimSpace(item.Metadata.Annotations["meta.helm.sh/release-name"]),
+			StackLabel:  strings.TrimSpace(item.Metadata.Labels[stackNameLabelKey]),
+		})
+	}
+	return out, nil
 }
 
 func deleteResource(ctx context.Context, kubeconfig []byte, namespace, resource string) error {

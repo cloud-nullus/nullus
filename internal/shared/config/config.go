@@ -15,6 +15,19 @@ type Config struct {
 	Helm       HelmConfig       `mapstructure:"helm"`
 	Prometheus PrometheusConfig `mapstructure:"prometheus"`
 	Log        LogConfig        `mapstructure:"log"`
+	Platform   PlatformConfig   `mapstructure:"platform"`
+}
+
+// PlatformConfig 는 플랫폼 자신이 어디에 떠 있는지를 담는다.
+//
+// 스택을 플랫폼과 같은 네임스페이스에 설치하면 Helm 소유권이 충돌하고, 스택을
+// 지울 때 플랫폼 리소스까지 지워진다 — 2026-08-20 에 실제로 그렇게 nullus.io 가
+// 통째로 내려갔다. 자기 자리를 알아야 그 자리를 지킬 수 있다.
+//
+// 차트가 Downward API 로 NULLUS_PLATFORM_NAMESPACE 를 넣어 준다. 클러스터 밖에서
+// 도는 개발 환경에서는 비어 있고, 그때는 이 검사를 하지 않는다.
+type PlatformConfig struct {
+	Namespace string `mapstructure:"namespace"`
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -89,6 +102,9 @@ func LoadConfig(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	bindKeycloakAdminEnv(v)
+	// 설정 파일에 없는 키는 AutomaticEnv 만으로 잡히지 않는다. 이 값은 차트가
+	// Downward API 로만 넣어 주므로 명시적으로 묶는다.
+	_ = v.BindEnv("platform.namespace", "NULLUS_PLATFORM_NAMESPACE")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err

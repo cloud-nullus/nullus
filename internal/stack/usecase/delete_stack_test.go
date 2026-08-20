@@ -335,12 +335,12 @@ func TestDeleteStack_DeletesLegacyMonitoringResources(t *testing.T) {
 	uc := NewDeleteStack(repo, provider, func([]byte) port.HelmInstaller {
 		return installer
 	}, streamer)
-	uc.listResourcesFunc = func(_ context.Context, _ []byte, _ string) ([]string, error) {
-		return []string{
-			"deployment.apps/prometheus-yaml-v2",
-			"service/grafana-yaml-svc",
-			"service/kubernetes",
-			"deployment.apps/app-web",
+	uc.listResourcesFunc = func(_ context.Context, _ []byte, _ string) ([]namespacedResource, error) {
+		return []namespacedResource{
+			{Ref: "deployment.apps/prometheus-yaml-v2"},
+			{Ref: "service/grafana-yaml-svc"},
+			{Ref: "service/kubernetes"},
+			{Ref: "deployment.apps/app-web"},
 		}, nil
 	}
 	deleted := []string{}
@@ -442,17 +442,17 @@ func TestDeleteStack_DeletesOrphanGatewayTempoResourcesAcrossSweepNamespaces(t *
 	uc := NewDeleteStack(repo, provider, func([]byte) port.HelmInstaller {
 		return installer
 	})
-	uc.listResourcesFunc = func(_ context.Context, _ []byte, namespace string) ([]string, error) {
+	uc.listResourcesFunc = func(_ context.Context, _ []byte, namespace string) ([]namespacedResource, error) {
 		switch namespace {
 		case "nullus":
-			return []string{
-				"deployment.apps/envoy-nullus-nullus-devsecops-stack-gateway-3197e0f2",
-				"deployment.apps/tempo",
-				"service/tempo-svc",
-				"service/kubernetes",
+			return []namespacedResource{
+				{Ref: "deployment.apps/envoy-nullus-nullus-devsecops-stack-gateway-3197e0f2"},
+				{Ref: "deployment.apps/tempo"},
+				{Ref: "service/tempo-svc"},
+				{Ref: "service/kubernetes"},
 			}, nil
 		case "default":
-			return []string{"deployment.apps/envoy-shared-gateway"}, nil
+			return []namespacedResource{{Ref: "deployment.apps/envoy-shared-gateway"}}, nil
 		default:
 			return nil, nil
 		}
@@ -474,12 +474,23 @@ func TestDeleteStack_DeletesOrphanGatewayTempoResourcesAcrossSweepNamespaces(t *
 	assert.NotContains(t, deleted, "default:deployment.apps/envoy-shared-gateway")
 }
 
-func TestShouldDeleteLegacyReleaseArtifact(t *testing.T) {
-	assert.True(t, shouldDeleteLegacyReleaseArtifact("secret/gitlab-gitlab-initial-root-password", "nullus-devsecops-stack"))
-	assert.True(t, shouldDeleteLegacyReleaseArtifact("pvc/data-nullus-postgresql-0", "nullus-devsecops-stack"))
-	assert.True(t, shouldDeleteLegacyReleaseArtifact("secret/nullus-devsecops-stack-wildcard-tls", "nullus-devsecops-stack"))
-	assert.False(t, shouldDeleteLegacyReleaseArtifact("configmap/kube-root-ca.crt", "nullus-devsecops-stack"))
-	assert.False(t, shouldDeleteLegacyReleaseArtifact("serviceaccount/default", "nullus-devsecops-stack"))
+func TestShouldDeleteReleaseArtifact(t *testing.T) {
+	artifact := func(ref string) namespacedResource { return namespacedResource{Ref: ref} }
+
+	assert.True(t, shouldDeleteReleaseArtifact(artifact("secret/gitlab-gitlab-initial-root-password"), "nullus-devsecops-stack"))
+	assert.True(t, shouldDeleteReleaseArtifact(artifact("pvc/data-nullus-postgresql-0"), "nullus-devsecops-stack"))
+	assert.False(t, shouldDeleteReleaseArtifact(artifact("configmap/kube-root-ca.crt"), "nullus-devsecops-stack"))
+	assert.False(t, shouldDeleteReleaseArtifact(artifact("serviceaccount/default"), "nullus-devsecops-stack"))
+
+	// 스택 이름이 들어간 와일드카드 TLS 시크릿은 더 이상 이름만으로 지우지 않는다.
+	// 스택이 플랫폼의 공용 인증서를 그대로 지정할 수 있기 때문이다 — 실제로
+	// 2026-08-20 의 스택 설정이 secret_name=nullus-wildcard-tls 를 가리키고 있었다.
+	// 그 이름을 지웠다면 플랫폼 전체의 TLS 가 끊긴다.
+	assert.False(t, shouldDeleteReleaseArtifact(artifact("secret/nullus-devsecops-stack-wildcard-tls"), "nullus-devsecops-stack"))
+
+	// 소유자를 밝힌 것은 그 말을 따른다.
+	assert.True(t, shouldDeleteReleaseArtifact(namespacedResource{Ref: "deployment.apps/harbor-core", HelmRelease: "harbor"}, "any"))
+	assert.False(t, shouldDeleteReleaseArtifact(namespacedResource{Ref: "deployment.apps/nullus-api", HelmRelease: "nullus"}, "nullus"))
 }
 
 func TestDeleteStack_DeletesLegacyReleaseArtifacts(t *testing.T) {
@@ -496,15 +507,15 @@ func TestDeleteStack_DeletesLegacyReleaseArtifacts(t *testing.T) {
 	uc := NewDeleteStack(repo, provider, func([]byte) port.HelmInstaller {
 		return installer
 	})
-	uc.listResourcesFunc = func(_ context.Context, _ []byte, namespace string) ([]string, error) {
+	uc.listResourcesFunc = func(_ context.Context, _ []byte, namespace string) ([]namespacedResource, error) {
 		if namespace != "nullus" {
 			return nil, nil
 		}
-		return []string{
-			"secret/gitlab-gitlab-initial-root-password",
-			"pvc/data-nullus-postgresql-0",
-			"serviceaccount/default",
-			"configmap/kube-root-ca.crt",
+		return []namespacedResource{
+			{Ref: "secret/gitlab-gitlab-initial-root-password"},
+			{Ref: "pvc/data-nullus-postgresql-0"},
+			{Ref: "serviceaccount/default"},
+			{Ref: "configmap/kube-root-ca.crt"},
 		}, nil
 	}
 
