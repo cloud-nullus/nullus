@@ -18,6 +18,7 @@
 {{- range $part := list
       (dict "suffix" "" "glob" "*")
       (dict "suffix" "-resources" "glob" "resources/*")
+      (dict "suffix" "-resources-img" "glob" "resources/img/*" "binary" true)
       (dict "suffix" "-messages" "glob" "messages/*") }}
 ---
 apiVersion: v1
@@ -31,10 +32,21 @@ metadata:
   labels:
     {{- include "nullus.labels" $ | nindent 4 }}
     app.kubernetes.io/component: keycloak-theme
+{{- if $part.binary }}
+{{- /*
+  파비콘은 .ico 라 바이트 그대로여야 한다. data 는 문자열이라 블록 스칼라로 넣으면
+  UTF-8 로 해석되며 뭉개진다. binaryData 는 base64 로 실어 그대로 복원한다.
+*/}}
+binaryData:
+{{- range $path, $_ := $.Files.Glob (printf "%s/%s" $root $part.glob) }}
+  {{ base $path }}: {{ $.Files.Get $path | b64enc }}
+{{- end }}
+{{- else }}
 data:
 {{- range $path, $_ := $.Files.Glob (printf "%s/%s" $root $part.glob) }}
   {{ base $path }}: |-
 {{ $.Files.Get $path | indent 4 }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

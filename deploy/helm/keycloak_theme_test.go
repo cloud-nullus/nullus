@@ -8,6 +8,7 @@ package helm_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"os"
 	"os/exec"
@@ -122,6 +123,44 @@ func themeFiles(t *testing.T) []themeFile {
 }
 
 // k8sObject 는 렌더 결과에서 우리가 보는 만큼만 뜬다.
+// cmSource 는 볼륨이 참조하는 ConfigMap 하나다. items 를 주면 키를 원하는
+// 경로에 놓을 수 있다 — ConfigMap 키에는 "/" 를 못 넣지만 이 path 에는 넣는다.
+type cmSource struct {
+	Name  string `yaml:"name"`
+	Items []struct {
+		Key  string `yaml:"key"`
+		Path string `yaml:"path"`
+	} `yaml:"items"`
+}
+
+type volume struct {
+	Name      string    `yaml:"name"`
+	ConfigMap *cmSource `yaml:"configMap"`
+	Projected *struct {
+		Sources []struct {
+			ConfigMap *cmSource `yaml:"configMap"`
+		} `yaml:"sources"`
+	} `yaml:"projected"`
+}
+
+// sources 는 볼륨이 실제로 읽는 ConfigMap 들이다. configMap 하나든 projected 로
+// 여럿을 합쳤든 같은 모양으로 돌려준다.
+func (v volume) sources() []cmSource {
+	if v.ConfigMap != nil {
+		return []cmSource{*v.ConfigMap}
+	}
+	if v.Projected == nil {
+		return nil
+	}
+	var out []cmSource
+	for _, s := range v.Projected.Sources {
+		if s.ConfigMap != nil {
+			out = append(out, *s.ConfigMap)
+		}
+	}
+	return out
+}
+
 type k8sObject struct {
 	Kind     string `yaml:"kind"`
 	Metadata struct {
@@ -129,7 +168,9 @@ type k8sObject struct {
 		Labels map[string]string `yaml:"labels"`
 	} `yaml:"metadata"`
 	Data map[string]string `yaml:"data"`
-	Spec struct {
+	// 파비콘(.ico)은 바이트 그대로여야 해서 base64 로 실린다.
+	BinaryData map[string]string `yaml:"binaryData"`
+	Spec       struct {
 		Template struct {
 			Spec struct {
 				Containers []struct {
@@ -139,12 +180,7 @@ type k8sObject struct {
 						SubPath   string `yaml:"subPath"`
 					} `yaml:"volumeMounts"`
 				} `yaml:"containers"`
-				Volumes []struct {
-					Name      string `yaml:"name"`
-					ConfigMap *struct {
-						Name string `yaml:"name"`
-					} `yaml:"configMap"`
-				} `yaml:"volumes"`
+				Volumes []volume `yaml:"volumes"`
 			} `yaml:"spec"`
 		} `yaml:"template"`
 	} `yaml:"spec"`
@@ -177,6 +213,14 @@ func themeData(t *testing.T, objs []k8sObject) map[string]string {
 		}
 		for k, v := range obj.Data {
 			data[k] = v
+		}
+		for k, v := range obj.BinaryData {
+			raw, err := base64.StdEncoding.DecodeString(v)
+			if err != nil {
+				t.Errorf("binaryData %q 가 base64 가 아니다: %v", k, err)
+				continue
+			}
+			data[k] = string(raw)
 		}
 	}
 	if len(data) == 0 {
@@ -220,49 +264,83 @@ func TestKeycloakTheme_ConfigMapsCarryEveryThemeFileVerbatim(t *testing.T) {
 func TestKeycloakTheme_EveryFileLandsWhereKeycloakLooks(t *testing.T) {
 	// 폴더가 하나 늘었는데 마운트를 안 붙이면, Keycloak 은 그 폴더만 빈 채로
 	// 화면을 낸다 — 오류 없이 기본 문구로 되돌아가므로 눈으로 봐야 안다.
+	//
+	// 마운트가 있는지만 봐서는 부족하다. ConfigMap 키에는 "/" 를 못 넣으므로
+	// 하위 폴더의 파일은 아무 것도 안 하면 **한 단 위에 평평하게** 떨어진다.
+	// 마운트 지점부터 볼륨이 실제로 놓는 경로까지 따라가 본다.
 	objs := decodeAll(t, renderChart(t))
 	themeRoot := themeRootFor(t)
 
-	type mount struct{ path, subPath string }
-	var mounts []mount
+	// ConfigMap 이름 → 그 안의 키
+	keys := map[string][]string{}
+	for _, obj := range objs {
+		if obj.Kind != "ConfigMap" {
+			continue
+		}
+		for k := range obj.Data {
+			keys[obj.Metadata.Name] = append(keys[obj.Metadata.Name], k)
+		}
+		for k := range obj.BinaryData {
+			keys[obj.Metadata.Name] = append(keys[obj.Metadata.Name], k)
+		}
+	}
+
+	vols := map[string]volume{}
+	for _, obj := range objs {
+		for _, v := range obj.Spec.Template.Spec.Volumes {
+			vols[v.Name] = v
+		}
+	}
+
+	// 파드 안에 실제로 생길 파일 경로
+	placed := map[string]bool{}
+	mounted := 0
 	for _, obj := range objs {
 		for _, ctr := range obj.Spec.Template.Spec.Containers {
 			for _, m := range ctr.VolumeMounts {
-				if strings.HasPrefix(m.MountPath, themeRoot) {
-					mounts = append(mounts, mount{m.MountPath, m.SubPath})
+				if !strings.HasPrefix(m.MountPath, themeRoot) {
+					continue
+				}
+				mounted++
+				vol, ok := vols[m.Name]
+				if !ok {
+					t.Errorf("마운트 %q 가 볼륨 %q 를 쓰는데 그런 볼륨이 없다",
+						m.MountPath, m.Name)
+					continue
+				}
+				if m.SubPath != "" {
+					// 파일 하나만 골라 붙이는 마운트다.
+					placed[m.MountPath] = true
+					continue
+				}
+				for _, src := range vol.sources() {
+					if len(src.Items) > 0 {
+						for _, it := range src.Items {
+							placed[m.MountPath+"/"+it.Path] = true
+						}
+						continue
+					}
+					// items 가 없으면 키 이름 그대로, 한 단에 평평하게 놓인다.
+					for _, k := range keys[src.Name] {
+						placed[m.MountPath+"/"+k] = true
+					}
 				}
 			}
 		}
 	}
-	if len(mounts) == 0 {
+	if mounted == 0 {
 		t.Fatal("테마 마운트가 하나도 없다")
-	}
-
-	covered := func(want string) bool {
-		for _, m := range mounts {
-			if m.subPath != "" {
-				if m.path == want {
-					return true
-				}
-				continue
-			}
-			// 폴더 마운트는 그 아래 파일을 모두 덮는다.
-			if strings.HasPrefix(want, m.path+"/") {
-				return true
-			}
-		}
-		return false
 	}
 
 	var missing []string
 	for _, f := range themeFiles(t) {
-		if p := containerPath(themeRoot, f); !covered(p) {
+		if p := containerPath(themeRoot, f); !placed[p] {
 			missing = append(missing, p)
 		}
 	}
 	sort.Strings(missing)
 	for _, p := range missing {
-		t.Errorf("%q 에 닿는 마운트가 없다 — 그 파일은 파드에 안 나타난다", p)
+		t.Errorf("%q 에 파일이 놓이지 않는다 — 그 파일은 파드에 안 나타난다", p)
 	}
 }
 
@@ -282,13 +360,15 @@ func TestKeycloakTheme_VolumesReferenceConfigMapsThatExist(t *testing.T) {
 	referenced := 0
 	for _, obj := range objs {
 		for _, vol := range obj.Spec.Template.Spec.Volumes {
-			if !strings.HasPrefix(vol.Name, "nullus-login-theme") || vol.ConfigMap == nil {
+			if !strings.HasPrefix(vol.Name, "nullus-login-theme") {
 				continue
 			}
-			referenced++
-			if !existing[vol.ConfigMap.Name] {
-				t.Errorf("볼륨 %q 가 %q 를 찾는데 그런 ConfigMap 이 없다",
-					vol.Name, vol.ConfigMap.Name)
+			for _, src := range vol.sources() {
+				referenced++
+				if !existing[src.Name] {
+					t.Errorf("볼륨 %q 가 %q 를 찾는데 그런 ConfigMap 이 없다",
+						vol.Name, src.Name)
+				}
 			}
 		}
 	}
