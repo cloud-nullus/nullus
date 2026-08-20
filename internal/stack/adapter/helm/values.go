@@ -96,9 +96,11 @@ func DefaultValues(stepName string) map[string]any {
 				},
 			},
 			"image": map[string]any{
-				"registry":   "docker.io",
-				"repository": "bitnamilegacy/postgresql",
-				"tag":        "17.6.0-debian-12-r4",
+				// 이미지 참조는 상수에서 온다. 비밀번호 동기화 Job 도 같은 값을
+				// 써야 에어갭 번들에 없는 이미지를 끌어오지 않는다.
+				"registry":   stackPostgresImageRegistry,
+				"repository": stackPostgresImageRepository,
+				"tag":        stackPostgresImageTag,
 			},
 			// 비밀번호는 values 에 넣지 않는다. provisioning_secrets 가 생성해
 			// OpenBao 에 기록하고 ESO 가 복제한 Secret 을 참조한다.

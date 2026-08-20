@@ -308,6 +308,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **볼륨이 남은 채 다시 설치하면 Gitea 가 DB 인증 실패로 못 뜨던 것** (`internal/stack/adapter/helm/postgres-role-sync.go` 신규, `internal/stack/usecase/delete_stack.go`): 운영에서 Gitea 의 `configure-gitea` 가 `password authentication failed for user "gitlab" (28P01)` 로 CrashLoopBackOff 에 빠졌다. DB 주소·이름·사용자는 전부 정상이었고 **비밀번호만 어긋나 있었다.**
+
+  비밀번호의 출처와 그것이 구워지는 곳의 수명이 다르기 때문이다. 출처는 OpenBao(→ ExternalSecrets → Secret)이고, PostgreSQL 은 **데이터 디렉터리가 비어 있을 때 딱 한 번** 그 값으로 사용자를 만든다. 실제 타임스탬프가 그대로 보여 준다:
+
+  ```
+  data-nullus-postgresql-0        09:45   ← 이전 설치의 PVC 가 살아남음
+  data-openbao-0                  12:41   ← 금고는 새로 초기화 → 새 비밀번호 생성
+  nullus-postgresql-credentials   12:45   ← 새 비밀번호
+  nullus-postgresql-0 (pod)       12:45   ← 옛 데이터로 기동 (옛 비밀번호 유지)
+  ```
+
+  설치는 여기서 멈추지 않는다. 여섯 단계쯤 더 간 뒤 Gitea 에서야 드러나므로, 원인에서 가장 먼 자리에서 증상을 보게 된다.
+
+  이제 PostgreSQL 을 세운 직후 앱 사용자의 비밀번호를 Secret 값과 맞춘다. 비밀번호는 매니페스트에 적지 않고(적으면 helm 히스토리와 이벤트에 평문으로 남는다) Secret 참조로 주입하며, psql 의 변수 인용(`:'pw'`)을 써서 따옴표가 든 비밀번호에서도 구문이 깨지지 않는다. Job 이미지는 차트가 쓰는 것과 같은 상수를 본다 — 갈라지면 에어갭 번들에 없는 이미지를 끌어온다.
+
+- **스택을 지웠는데 볼륨이 남은 것을 알려 주지 않던 것** (`internal/stack/usecase/delete_stack.go`): PVC 삭제가 타임아웃하면(파드가 아직 물고 있으면 그렇게 된다) 경고 한 줄만 남기고 삭제가 성공으로 끝났다. 사용자는 깨끗이 지워진 줄 알고 같은 네임스페이스에 다시 설치했고, 위 사고가 그렇게 시작됐다.
+
+  이제 삭제 뒤 남은 볼륨을 다시 확인해서, 무엇이 남았는지·그것이 다음 설치에 무엇을 하는지·어떻게 지우는지를 error 로 남긴다.
+
 - **스택 삭제가 게이트웨이 인프라를 걷어 가던 것** (`internal/stack/usecase/delete_stack.go`): 삭제는 Envoy Gateway 릴리스(`eg`)를 스택 네임스페이스·`default`·플랫폼 네임스페이스까지 훑어 언인스톨했다. 게이트웨이가 스택마다 하나였을 때는 자기 것을 지우는 동작이었지만, 클러스터에 하나만 두게 되면 스택 하나를 지울 때 **다른 스택의 현관이 함께 닫힌다.** 게이트웨이 계열 릴리스는 공용으로 보고 언인스톨하지 않으며, 이름 기반 청소가 훑는 네임스페이스에서도 공용 게이트웨이 자리를 뺐다.
 
   플랫폼 네임스페이스(`nullus`)를 훑던 것도 함께 걷어냈다. Envoy Gateway 를 거기서 찾겠다는 이유였는데, 그 경로가 2026-08-20 에 플랫폼을 지운 스윕이 지나간 길이다.
