@@ -30,17 +30,39 @@ const CATCH_UP_MAX_STEP = 1.2;
 /** 따라붙을 때의 한 틱 최소 폭. 없으면 남은 거리가 작을 때 영원히 못 닿는다. */
 const CATCH_UP_MIN_STEP = 0.15;
 
-/** 값이 멈춰 있을 때 이정표를 향해 좁히는 비율. */
-const CREEP_RATIO = 0.0018;
-/** 멈춰 있을 때의 한 틱 최대 폭. 초당 약 0.36%p — 분 단위 설치에 맞춘 속도다. */
+/**
+ * 값이 멈춰 있을 때 상한을 향해 좁히는 비율.
+ *
+ * 상한은 이제 "이 스텝이 끝났을 때 닿을 값" 이라 폭이 3%p 안팎이다. 그 폭을
+ * 스텝 하나가 걸리는 시간(대개 1~2분)에 걸쳐 메우도록 잡았다 — 시간 상수가
+ * 약 1분이다. 막대가 눈에 띄게 움직이는 것은 이 폭이 아니라 표면의 빛과
+ * 로켓이 맡는다. 폭은 실제로 한 일만큼만 정직하게 간다.
+ */
+const CREEP_RATIO = 0.0025;
+/** 멈춰 있을 때의 한 틱 최대 폭. 상한이 멀 때(대비책 경로) 급발진을 막는다. */
 const CREEP_MAX_STEP = 0.05;
 
 /** 이정표 바로 앞에 남겨 두는 여백. 0 이면 다음 단계를 끝낸 것처럼 보인다. */
 const CEILING_MARGIN = 1.5;
 
-export function progressCeiling(target: number, milestones: number[]): number {
-  const next = milestones.find((milestone) => milestone > target);
-  return next ?? 100;
+/** 서버가 상한을 주지 못했을 때 스텝 하나의 몫으로 가정하는 폭. */
+const FALLBACK_STEP_BAND = 3;
+
+/**
+ * 표시 값이 넘지 않아야 할 지점.
+ *
+ * 서버가 "이 스텝이 끝났을 때 닿을 값" 을 함께 보낸다(domain.StepProgressCeiling).
+ * 그 값을 그대로 쓴다 — 화면이 단계 경계를 따로 적어 두면 스텝이 늘 때마다
+ * 어긋나고, 실제로 그렇게 시크릿만 깔린 시점에 막대가 절반을 넘겼다.
+ *
+ * 상한을 못 받은 경우에만 스텝 하나의 몫만큼을 가정한다. 멀리 있는 다음 단계를
+ * 목표로 삼으면 그 사이를 시간으로만 메우게 되어 같은 문제가 돌아온다.
+ */
+export function progressCeiling(target: number, serverCeiling?: number): number {
+  if (serverCeiling !== undefined && serverCeiling > target) {
+    return Math.min(100, serverCeiling);
+  }
+  return Math.min(100, target + FALLBACK_STEP_BAND);
 }
 
 export function nextDisplayProgress(input: {
@@ -60,6 +82,14 @@ export function nextDisplayProgress(input: {
   }
 
   // 되감기지 않는다. 뒤로 가면 사용자는 뭔가 잘못됐다고 읽는다.
+  // 첫 값은 애니메이션 없이 그 자리에 앉힌다.
+  //
+  // 새로고침하면 표시 값이 0 에서 시작한다. 이때도 기어오르게 두면 이미 40% 인
+  // 배포가 0 부터 다시 차오르는 것처럼 보인다 — 새로고침해도 같은 자리여야 한다.
+  if (current <= 0 && target > 0) {
+    return target;
+  }
+
   if (target > current) {
     const remaining = target - current;
     const step = Math.min(

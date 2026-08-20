@@ -48,10 +48,6 @@ const DEPLOY_STAGES: DeployStage[] = [
   { key: 'complete', label: 'Complete', steps: ['completed'], progressAt: 100 },
 ]
 
-// 표시용 진행률이 넘지 않아야 할 지점들. 단계 정의에서 끌어온다 — 따로 적으면
-// 단계를 늘렸을 때 막대가 아직 시작도 안 한 단계를 끝난 것처럼 보여 준다.
-const PROGRESS_MILESTONES = DEPLOY_STAGES.map((stage) => stage.progressAt)
-
 const TERMINAL_FAILURE_STEPS = new Set(['failed', 'rolling_back', 'rolled_back', 'delete_failed'])
 
 function stepMatches(stage: DeployStage, step?: string): boolean {
@@ -307,9 +303,14 @@ const STATE_TO_STATUS: Record<string, DeployStatus> = {
   validating: 'running',
 }
 
+// 상태만 보고 뭉뚱그린 값. 서버가 진행률을 못 줄 때만 쓴다.
+//
+// 예전에는 새로고침할 때마다 이 표로 떨어져서 퍼센트가 튀었다 — 스트림은 스텝
+// 기반으로 40 을 보여 주고 있었는데 새로고침하면 installing 이라는 이유로 다른
+// 값이 됐다. 이제 서버가 저장된 스텝에서 같은 값을 되살려 준다.
 const STATE_TO_PROGRESS: Record<string, number> = {
-  pending: 0, validating: 5, installing: 40, configuring: 80,
-  health_check: 90, completed: 100, failed: 0, rolling_back: 0, rolled_back: 0,
+  pending: 0, validating: 5, installing: 15, configuring: 90,
+  health_check: 96, completed: 100, failed: 0, rolling_back: 0, rolled_back: 0,
 }
 
 export function StackDeployPage() {
@@ -317,23 +318,33 @@ export function StackDeployPage() {
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language)
   const params = useParams<{ id?: string; deploymentId?: string }>()
   const id = params.id ?? params.deploymentId ?? ''
-  const { logs, status: wsStatus, progress: wsProgress, isConnected } = useDeployLog(id)
+  const { logs, status: wsStatus, progress: wsProgress, progressCeiling: wsCeiling, isConnected } = useDeployLog(id)
   const { pods, error: podWatchError, isConnected: isPodWatchConnected, namespace: podWatchNamespace } = usePodWatch(id)
   const continueStack = useContinueStack()
   const logContainerRef = useRef<HTMLDivElement>(null)
   const shouldFollowLogsRef = useRef(true)
   const failureToastRef = useRef('')
-  const [apiState, setApiState] = useState<{ status: DeployStatus; progress: number; namespace?: string } | null>(null)
+  const [apiState, setApiState] = useState<{
+    status: DeployStatus
+    progress: number
+    ceiling?: number
+    namespace?: string
+  } | null>(null)
   const [rawLogsOpen, setRawLogsOpen] = useState(true)
 
   useEffect(() => {
     if (!id) return
-    api.get<{ data: { state: string; namespace?: string } }>(`/stacks/${id}/status`).then((r) => {
+    api.get<{
+      data: { state: string; namespace?: string; progress?: number; progress_ceiling?: number }
+    }>(`/stacks/${id}/status`).then((r) => {
       const state = r.data?.data?.state ?? ''
       if (state) {
         setApiState({
           status: STATE_TO_STATUS[state] ?? 'connecting',
-          progress: STATE_TO_PROGRESS[state] ?? 0,
+          // 서버가 저장된 스텝에서 되살린 값이 먼저다. 상태로 뭉뚱그린 표는
+          // 그 값이 없을 때만 쓴다 — 두 값이 다르면 새로고침마다 퍼센트가 튄다.
+          progress: r.data?.data?.progress ?? STATE_TO_PROGRESS[state] ?? 0,
+          ceiling: r.data?.data?.progress_ceiling,
           namespace: r.data?.data?.namespace,
         })
       }
@@ -343,6 +354,7 @@ export function StackDeployPage() {
   const hasWsData = logs.length > 0 || (wsStatus !== 'connecting' && wsStatus !== 'running')
   const status = hasWsData ? wsStatus : (apiState?.status ?? wsStatus)
   const progress = wsProgress > 0 ? wsProgress : (apiState?.progress ?? 0)
+  const ceiling = wsProgress > 0 ? wsCeiling : (apiState?.ceiling ?? 0)
   const podNamespace = podWatchNamespace || apiState?.namespace || '...'
   const latestFailureLog = [...logs].reverse().find((log) => {
     if (log.level === 'error') return true
@@ -354,7 +366,7 @@ export function StackDeployPage() {
   // connecting 은 아직 아무것도 시작하지 않은 상태다. running 으로 넘기면 막대가
   // 붙지도 않은 배포를 향해 차오른다.
   const progressStatus = status === 'connecting' ? 'idle' : status
-  const displayProgress = useDeployProgressDisplay(progress, progressStatus, PROGRESS_MILESTONES)
+  const displayProgress = useDeployProgressDisplay(progress, progressStatus, ceiling || undefined)
 
   useEffect(() => {
     if (status !== 'failed' || !latestFailureLog) return

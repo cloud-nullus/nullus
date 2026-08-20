@@ -210,3 +210,46 @@ describe('StackDeployPage', () => {
     })
   })
 })
+
+// 새로고침하면 WebSocket 이 처음부터 다시 붙어 그동안의 진행률을 모른다.
+// 예전에는 화면이 상태(installing)를 뭉뚱그린 표로 대신 채워서, 새로고침할
+// 때마다 퍼센트가 튀었다. 이제 서버가 저장된 스텝에서 같은 값을 되살려 준다.
+describe('StackDeployPage 새로고침', () => {
+  it('서버가 되살린 진행률을 그대로 보여 준다', async () => {
+    mockUseDeployLog.mockReturnValue({
+      logs: [],
+      status: 'connecting',
+      progress: 0,
+      progressCeiling: 0,
+      isConnected: false,
+    })
+    mockApiGet.mockResolvedValue({
+      data: { data: { state: 'installing', namespace: 'team-a', progress: 19, progress_ceiling: 22 } },
+    })
+
+    renderWithProviders(<StackDeployPage />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '19'),
+    )
+  })
+
+  it('서버가 진행률을 주지 못하면 상태로 뭉뚱그린 값으로 떨어진다', async () => {
+    mockUseDeployLog.mockReturnValue({
+      logs: [],
+      status: 'connecting',
+      progress: 0,
+      progressCeiling: 0,
+      isConnected: false,
+    })
+    mockApiGet.mockResolvedValue({
+      data: { data: { state: 'installing', namespace: 'team-a' } },
+    })
+
+    renderWithProviders(<StackDeployPage />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '15'),
+    )
+  })
+})
