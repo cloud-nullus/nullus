@@ -154,6 +154,7 @@ export function MonitoringPage() {
               {activeView === 'cluster' && (
                 <DashboardTabLayout
                   viewId="cluster"
+                  scopeId={selectedClusterId}
                   isAdmin={isAdmin}
                   defaultContent={
                     <ClusterDefault
@@ -167,10 +168,12 @@ export function MonitoringPage() {
               {activeView === 'stack' && (
                 <DashboardTabLayout
                   viewId="stack"
+                  scopeId={selectedStack?.id ?? selectedStackId}
                   isAdmin={isAdmin}
                   defaultContent={<StackDefault stackId={selectedStack?.id ?? selectedStackId} />}
                   firstTimePanel={(onConnect, onSkip) => (
                     <StackConnectPanel
+                      stackId={selectedStack?.id ?? selectedStackId}
                       stackName={selectedStack?.name ?? selectedStackId}
                       onConnect={onConnect}
                       onSkip={onSkip}
@@ -181,6 +184,7 @@ export function MonitoringPage() {
               {activeView === 'cicd' && (
                 <DashboardTabLayout
                   viewId="cicd"
+                  scopeId={selectedClusterId}
                   isAdmin={isAdmin}
                   defaultContent={<CicdDefault selectedClusterId={selectedClusterId} selectedStackId={selectedStackId} />}
                   seedTabs={CICD_DEFAULT_TABS}

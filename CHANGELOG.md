@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **모니터링 대시보드가 스택 컴포넌트 주소를 미리 채운다** (`internal/stack/domain/tool_access_url.go` 신규, `internal/stack/adapter/handler/monitoring_handler.go`, `web/src/features/observability/components/monitoring-connect-panel.tsx`): "Connect Stack Components" 는 `Tools detected in <스택>` 이라고 써 놓고 실제로는 아무것도 감지하지 않았다. 도구 6개와 그 상태·버전이 화면에 상수로 박혀 있어, 깔리지도 않은 Kibana 가 running 으로 뜨고 Grafana 는 무슨 스택을 골라도 warning 이었다. 주소도 설치할 때 이미 받아 둔 접속 도메인을 두고 사용자에게 다시 받아 적게 했다.
+
+  목록은 이제 스택 모니터링 응답에서 온다 — 무엇이 설치되는지는 `domain.InstalledToolWorkloads` 한 곳이 정하므로 스택 상세 화면과 같은 답을 본다. 상태·버전도 실제 값이고, 주소는 서버가 접속 도메인에서 만들어 준 값으로 미리 채운 뒤 고쳐 쓸 수 있다 — 게이트웨이 앞에 다른 주소를 두는 설치가 있으므로 미리 채운 값은 출발점이지 강제가 아니다.
+
+  **주소 규칙을 한 곳으로 모았다.** 같은 질문("Grafana 는 어디로 들어가는가")에 화면마다 다르게 답하고 있었다 — 스택 상세는 `http://grafana.<도메인>`, 임베드 탭은 스킴 없는 값에 `https` 를 덧붙이고, 설치 경로(`toolURLScheme()`)는 SSO 여부로 갈랐다. 접속 도메인은 게이트웨이 TLS 리스너 뒤에 서므로 `domain.ToolAccessURL` 에서 **https 로 고정**하고, 서버가 `oss_statuses[].url` 로 확정해 내려준다. 화면의 `toolLaunchURL` 은 서버가 아직 답하지 못할 때의 대비책으로만 남는다. 설치 목록에 오르는 OSS 가 전부 주소를 갖는지는 테스트로 고정했다 — `InstalledToolWorkloads` 에 도구를 추가하면서 호스트 규칙을 빠뜨리면 화면에는 뜨는데 주소만 빈 항목이 생긴다.
+
+  **기본 동작은 새 창으로 여는 것이다.** Grafana·Argo CD·Harbor 처럼 대부분의 OSS 는 `X-Frame-Options` 로 iframe 을 막아서, 주소를 누가 넣든 임베드 탭은 빈 화면이 된다. 그래서 임베드는 체크한 도구만 탭으로 만든다. 임베드가 실제로 되게 하려면 차트에 `allow_embedding` 을 켜야 하고, 그건 아직 없다.
 - **로그인 화면 파비콘을 Nullus 마크로** (`.../login/resources/img/favicon.ico` 신규, `scripts/make-favicon.mjs` 신규, ConfigMap 템플릿·`values.yaml`): 탭에 키클록 로고가 떴다. 부모 테마(keycloak.v2)의 템플릿이 `<link rel="icon" href="${resourcesPath}/img/favicon.ico">` 를 박아 넣는데, 우리 테마에 그 파일이 없어 Keycloak 이 부모 테마의 것으로 폴백하기 때문이다. 템플릿은 복사하지 않는 방침이라, 링크가 가리키는 그 자리에 파일을 두는 것이 유일하게 자바스크립트 없이 듣는 방법이다.
 
   `knot.svg` 를 16·32·48px PNG 로 구워 ICO 한 장에 담는다(`node scripts/make-favicon.mjs`). 결과물은 커밋한다 — 아이콘 하나 때문에 브라우저를 CI 의 필수 의존성으로 만들 이유가 없다.
@@ -277,6 +284,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **한 스택의 모니터링 탭이 다른 스택에도 뜨던 것** (`web/src/features/observability/utils/monitoring-utils.ts`, `monitoring-tab-layout.tsx`): 탭 저장 키가 뷰 단위(`nullus_tabs_stack_v1`)라 스택 A 에서 등록한 탭이 스택 B 를 골라도 그대로 떴다. cluster·cicd 뷰도 같았다. 사용자가 손으로 넣은 주소일 때는 "내가 넣은 게 남아 있네" 로 넘어갔지만, 스택 접속 도메인에서 주소를 미리 채우기 시작하면 그대로 남의 도메인을 안내하는 오작동이 된다.
+
+  키를 스코프별(v2)로 나눴다 — stack 뷰는 stackId, cluster·cicd 뷰는 clusterId 를 쓰고 skip 플래그도 같은 단위로 저장한다. **키만 나누면 부족하다**: 컴포넌트가 마운트된 채 스택만 바뀌면 state 에 남은 이전 스택의 탭이 계속 보인다. `DashboardTabLayout` 이 `key` 로 내부를 갈아끼워 열린 탭·관리 모드·skip 여부까지 함께 초기화한다. v1 키는 지우지 않고 남겨 둔다 — 기존에 등록한 탭은 화면에서 사라지지만 데이터는 남아 있다.
 - **배포가 DB 마이그레이션을 건너뛰던 것** (`deploy/helm/nullus/templates/migration-job.yaml`, `deploy/helm/nullus/values.yaml`, `Dockerfile`, `deploy/helm/migration_job_test.go` 신규): 배포된 nullus.io 에 스택 템플릿이 하나도 없었다. 템플릿은 seed 마이그레이션(`000008`/`000031`/`000059`/`000063`/`000069`)으로만 들어오는데, CD(`.github/workflows/cd.yml`)는 `helm upgrade` 와 `rollout restart` 만 돌린다 — 워크플로 전체에 `migrate` 라는 단어가 없다. 차트의 `migration-job.yaml` 은 "마이그레이션은 밖에서 처리한다"는 주석뿐인 빈 파일이었고, 밖에서 돌리는 쪽은 airgap 설치기와 vm-cluster 런북뿐이라 zadara 경로만 비어 있었다. 그래서 배포 DB 는 누군가 손으로 `migrate up` 을 돌린 시점에 멈춰 있었다. 템플릿만 없는 게 아니었다 — `users.password_hash`(`000073`)가 없어 ID/PW 로그인은 500 을 냈다.
 
   **아무도 실패를 못 본 이유는 실패가 없었기 때문이다.** helm 은 초록불로 끝나고 파드도 Ready 다. 새 코드가 아직 없는 컬럼을 읽을 때가 되어서야 드러난다. 그래서 배포가 스스로 실패하는 자리에 넣는다 — 차트가 `post-install,pre-upgrade` 훅 Job 으로 마이그레이션을 돌리고, 실패하면 `helm upgrade --wait` 가 그 자리에서 멈춘다. 설치 때 `pre-install` 이 아닌 것은 훅이 차트 리소스보다 먼저 돌아 아직 만들어지지도 않은 PostgreSQL 을 기다리게 되기 때문이고, 업그레이드 때 `pre-upgrade` 인 것은 새 코드가 옛 스키마 위에서 도는 창을 없애기 위해서다.

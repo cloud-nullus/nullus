@@ -834,9 +834,32 @@
     "newRule": "New Rule",
     "connectPanel": {
       "title": "Connect Stack Components",
-      "descriptionPrefix": "Tools detected in",
-      "descriptionSuffix": "Enter their dashboard URLs to add monitoring tabs.",
-      "enterDashboardUrls": "Enter dashboard URLs for the components you want to monitor"
+      "descriptionPrefix": "Tools installed by",
+      "descriptionSuffix": "Addresses come from the access domain you set at install time — edit any that differ.",
+      "skipForNow": "Skip for now",
+      "skip": "Skip",
+      "open": "Open",
+      "addTabs": "Add tabs",
+      "urlPlaceholder": "https://tool.your-domain",
+      "embedAsTab": "Add as embedded tab",
+      "embedHint": "Most tools block iframe embedding — open them in a new tab, and embed only the ones that allow it.",
+      "selectedCount": "{{count}} selected",
+      "noTools": "No installed components could be read for this stack yet.",
+      "role": {
+        "source_repository": "Source repository",
+        "ci_platform": "CI platform",
+        "cd_tool": "CD tool",
+        "collection": "Metrics collection",
+        "visualization": "Dashboards",
+        "logging_collection": "Log collection",
+        "logging_search": "Log search",
+        "trace_layer": "Trace storage",
+        "trace_exporter": "Telemetry collector",
+        "storage_backend": "Object storage",
+        "container_registry": "Container registry",
+        "package_registry": "Package registry",
+        "authentication": "Secrets & auth"
+      }
     },
     "severity": {
       "critical": "Critical",

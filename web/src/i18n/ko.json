@@ -834,9 +834,32 @@
     "newRule": "새 규칙",
     "connectPanel": {
       "title": "스택 컴포넌트 연결",
-      "descriptionPrefix": "다음 도구가 감지되었습니다:",
-      "descriptionSuffix": "모니터링 탭에 추가하려면 대시보드 URL을 입력하세요.",
-      "enterDashboardUrls": "모니터링할 컴포넌트의 대시보드 URL을 입력하세요"
+      "descriptionPrefix": "다음 스택이 설치한 도구입니다:",
+      "descriptionSuffix": "주소는 설치할 때 입력한 접속 도메인에서 만들어집니다 — 다르면 고쳐 쓰세요.",
+      "skipForNow": "나중에 하기",
+      "skip": "건너뛰기",
+      "open": "열기",
+      "addTabs": "탭 추가",
+      "urlPlaceholder": "https://도구.내-도메인",
+      "embedAsTab": "임베드 탭으로 추가",
+      "embedHint": "대부분의 도구는 iframe 임베드를 막습니다 — 새 창으로 열고, 허용하는 도구만 임베드하세요.",
+      "selectedCount": "{{count}}개 선택됨",
+      "noTools": "이 스택에 설치된 컴포넌트를 아직 읽지 못했습니다.",
+      "role": {
+        "source_repository": "소스 저장소",
+        "ci_platform": "CI 플랫폼",
+        "cd_tool": "CD 도구",
+        "collection": "메트릭 수집",
+        "visualization": "대시보드",
+        "logging_collection": "로그 수집",
+        "logging_search": "로그 검색",
+        "trace_layer": "추적 저장소",
+        "trace_exporter": "텔레메트리 수집기",
+        "storage_backend": "오브젝트 스토리지",
+        "container_registry": "컨테이너 레지스트리",
+        "package_registry": "패키지 저장소",
+        "authentication": "시크릿·인증"
+      }
     },
     "severity": {
       "critical": "심각",

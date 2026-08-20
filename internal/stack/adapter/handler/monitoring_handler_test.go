@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
@@ -302,4 +303,55 @@ func TestToOSSStatuses_ExcludesSucceededMigrationPodsFromHealth(t *testing.T) {
 		assert.Len(t, statuses[0].Pods, 1)
 		assert.Equal(t, "gitlab-webservice-default-0", statuses[0].Pods[0].Name)
 	}
+}
+
+// 도구 주소는 설치할 때 받은 접속 도메인에서 나온다. 화면이 도메인으로 주소를
+// 다시 조립하면 스킴·호스트 규칙이 서버와 갈라지므로 서버가 확정해 내려준다.
+func TestSelectedToolTypes_CarriesAccessURLFromAccessDomain(t *testing.T) {
+	cfg := domain.StackConfig{
+		AccessDomain: "nullus.local",
+		Monitoring: domain.MonitoringConfig{
+			Collection:    domain.ToolSelection{Enabled: true},
+			Visualization: domain.ToolSelection{Enabled: true},
+		},
+		Pipeline: domain.PipelineConfig{
+			CDTool: domain.ToolSelection{Enabled: true},
+		},
+	}
+
+	urlByKey := map[string]string{}
+	for _, item := range selectedToolTypes(cfg) {
+		urlByKey[item.Key] = item.URL
+	}
+
+	assert.Equal(t, "https://grafana.nullus.local", urlByKey["visualization"])
+	assert.Equal(t, "https://prometheus.nullus.local", urlByKey["collection"])
+	assert.Equal(t, "https://argocd.nullus.local", urlByKey["cd_tool"])
+}
+
+func TestSelectedToolTypes_LeavesAccessURLBlankWithoutAccessDomain(t *testing.T) {
+	cfg := domain.StackConfig{
+		Monitoring: domain.MonitoringConfig{
+			Visualization: domain.ToolSelection{Enabled: true},
+		},
+	}
+
+	items := selectedToolTypes(cfg)
+	require.Len(t, items, 1)
+	assert.Empty(t, items[0].URL)
+}
+
+func TestToOSSStatuses_ExposesAccessURL(t *testing.T) {
+	types := []selectedToolType{
+		{Key: "visualization", Name: "grafana", Version: "11.5.1", Enabled: true,
+			PodNamePrefixes: []string{"grafana"}, URL: "https://grafana.nullus.local"},
+	}
+	pods := []podMonitoringStatus{
+		{Name: "grafana-5d9f", Phase: "Running", Ready: true, Status: "running"},
+	}
+
+	out := toOSSStatuses(types, pods)
+
+	require.Len(t, out, 1)
+	assert.Equal(t, "https://grafana.nullus.local", out[0].URL)
 }
