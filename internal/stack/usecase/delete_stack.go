@@ -208,19 +208,60 @@ func NewDeleteStack(
 	}
 }
 
+// Execute 는 스택을 지우고 클러스터 정리가 끝날 때까지 기다린다.
 func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
+	stack, err := uc.deleteRecord(ctx, stackID)
+	if err != nil {
+		return err
+	}
+	uc.cleanupCluster(ctx, stack, stackID)
+	return nil
+}
+
+// ExecuteAsync 는 레코드만 요청 안에서 지우고, 클러스터 정리는 요청에서 떼어 보낸다.
+//
+// 정리는 릴리스 uninstall 과 PVC 재시도만으로도 몇 분이 걸리는데 HTTP 요청은 그만큼
+// 살아 있지 않다. 요청 컨텍스트에 매달아 두면 게이트웨이가 연결을 끊는 순간
+// 정리가 중간에서 멈추고, 마지막 단계인 볼륨·네임스페이스 회수는 아예 실행되지
+// 않는다 — 2026-08-21 운영에서 스택을 지운 뒤 PVC 와 네임스페이스가 함께 남았다.
+//
+// 레코드 삭제만 요청 안에서 끝내는 이유는, 목록 새로고침이 방금 지운 스택을 다시
+// 보여주면 사용자가 삭제가 실패한 줄 알기 때문이다. 정리 진행 상황은 이벤트
+// 스트림으로 계속 나간다.
+func (uc *DeleteStack) ExecuteAsync(ctx context.Context, stackID string) error {
+	stack, err := uc.deleteRecord(ctx, stackID)
+	if err != nil {
+		return err
+	}
+
+	detached := context.WithoutCancel(ctx)
+	go func() {
+		cleanupCtx, cancel := context.WithTimeout(detached, stackCleanupTimeout)
+		defer cancel()
+		uc.cleanupCluster(cleanupCtx, stack, stackID)
+	}()
+
+	return nil
+}
+
+// stackCleanupTimeout 은 떼어 보낸 정리가 영원히 매달리지 않게 하는 상한이다.
+// 릴리스가 많은 스택도 여기에 한참 못 미친다.
+const stackCleanupTimeout = 30 * time.Minute
+
+// deleteRecord 는 스택을 취소 상태로 옮기고 레코드를 지운다.
+func (uc *DeleteStack) deleteRecord(ctx context.Context, stackID string) (*domain.Stack, error) {
 	stack, err := uc.stackRepo.GetByID(ctx, stackID)
 	if err != nil {
 		if isStackNotFoundError(err) {
 			uc.emit(ctx, stackID, "delete_failed", "error", "stack not found")
-			return fmt.Errorf("%w: %s", ErrStackNotFound, stackID)
+			return nil, fmt.Errorf("%w: %s", ErrStackNotFound, stackID)
 		}
 		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
-		return fmt.Errorf("get stack: %w", err)
+		return nil, fmt.Errorf("get stack: %w", err)
 	}
 	if stack == nil {
 		uc.emit(ctx, stackID, "delete_failed", "error", "stack not found")
-		return fmt.Errorf("%w: %s", ErrStackNotFound, stackID)
+		return nil, fmt.Errorf("%w: %s", ErrStackNotFound, stackID)
 	}
 
 	uc.emit(ctx, stackID, "deleting_started", "info", "stack delete started")
@@ -229,13 +270,18 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	stack.UpdatedAt = time.Now()
 	if err := uc.stackRepo.Update(ctx, stack); err != nil {
 		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
-		return fmt.Errorf("mark stack canceled: %w", err)
+		return nil, fmt.Errorf("mark stack canceled: %w", err)
 	}
 	if err := uc.stackRepo.Delete(ctx, stackID); err != nil {
 		uc.emit(ctx, stackID, "delete_failed", "error", err.Error())
-		return fmt.Errorf("mark stack deleted: %w", err)
+		return nil, fmt.Errorf("mark stack deleted: %w", err)
 	}
 
+	return stack, nil
+}
+
+// cleanupCluster 는 스택이 클러스터에 남긴 것을 걷어낸다.
+func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, stackID string) {
 	kubeconfig := uc.loadKubeconfig(ctx, stack.ClusterID)
 	gatewayNames := uc.collectGatewayNames(ctx, kubeconfig, stack)
 	gatewayNames = uc.mergeGatewayNames(gatewayNames, uc.collectGatewayNamesFromManagedResources(ctx, kubeconfig, stack))
@@ -279,8 +325,6 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
 	uc.clearStreamHistory(stackID)
-
-	return nil
 }
 
 // namespaceOwnedByStack 은 이 네임스페이스를 통째로 지워도 되는지 본다.

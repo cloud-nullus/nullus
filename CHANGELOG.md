@@ -304,6 +304,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택을 지워도 PVC 와 네임스페이스가 남던 것** (`internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/handler/stack_handler.go`): 삭제가 성공했는데도 볼륨과 네임스페이스가 그대로 남았다. 다음 설치는 그 볼륨을 물려받아 옛 비밀번호를 쓰는 데이터베이스로 올라오고, 그 사실은 한참 뒤 Gitea 의 28P01 이나 Harbor 의 401 로 드러난다.
+
+  정리가 **HTTP 요청 컨텍스트에 매달려 있었다.** 릴리스 uninstall 20여 개와 PVC 재시도(최대 6 × 10초)를 합치면 몇 분인데, 게이트웨이는 그만큼 기다려 주지 않는다. 연결이 끊기는 순간 컨텍스트가 죽고 kubectl 호출이 전부 즉시 실패한다 — 그리고 볼륨·네임스페이스 회수는 그 **다음** 단계라 아예 실행되지 않는다. 둘이 함께 남은 이유가 이것이다.
+
+  설치는 이미 `context.WithoutCancel` 로 요청에서 떼어 놓고 있었다(`install_stack.go`). 삭제만 그렇지 않았다.
+
+  이제 `ExecuteAsync` 가 스택 레코드까지만 요청 안에서 지우고, 클러스터 정리는 떼어낸 컨텍스트로 넘긴다(상한 30분). 레코드를 요청 안에서 지우는 이유는, 목록 새로고침이 방금 지운 스택을 다시 보여주면 사용자가 삭제가 실패한 줄 알기 때문이다. 정리 진행 상황은 이벤트 스트림으로 계속 나간다.
+
 - **도구는 SSO 로 설정되는데 그 OIDC 클라이언트를 아무도 만들지 않던 것** (`internal/stack/adapter/helm/orchestrator.go`): Argo CD 에서 로그인하면 Keycloak 이 **`Client not found`** 를 돌려줬다. 리다이렉트는 정상이었고 `client_id=nullus-devsecops-stack-argocd` 도 제대로 실려 있었는데, 그 클라이언트가 realm 에 없었다.
 
   두 판단이 서로 다른 근거를 봤기 때문이다:

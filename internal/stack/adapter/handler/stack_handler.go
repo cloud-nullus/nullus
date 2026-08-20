@@ -468,7 +468,9 @@ func (h *StackHandler) GetStack(c echo.Context) error {
 
 func (h *StackHandler) DeleteStack(c echo.Context) error {
 	stackID := c.Param("stackId")
-	if err := h.deleteStack.Execute(c.Request().Context(), stackID); err != nil {
+	// 정리는 요청보다 오래 산다 — ExecuteAsync 는 레코드만 지우고 클러스터
+	// 정리를 요청에서 떼어 보낸다. 진행 상황은 이벤트 스트림으로 나간다.
+	if err := h.deleteStack.ExecuteAsync(c.Request().Context(), stackID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "STACK_DELETE_FAILED", err.Error())
 	}
 	return c.NoContent(http.StatusNoContent)

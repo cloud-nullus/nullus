@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -536,4 +538,87 @@ func TestDeleteStack_DeletesLegacyReleaseArtifacts(t *testing.T) {
 	assert.Contains(t, deleted, "nullus:pvc/data-nullus-postgresql-0")
 	assert.NotContains(t, deleted, "nullus:serviceaccount/default")
 	assert.NotContains(t, deleted, "nullus:configmap/kube-root-ca.crt")
+}
+
+// 삭제 정리는 HTTP 요청보다 오래 걸린다 — 릴리스 uninstall 과 PVC 재시도만으로도
+// 몇 분이다. 요청 컨텍스트에 매달아 두면 게이트웨이가 연결을 끊는 순간 정리가
+// 중간에서 멈추고, 마지막 단계인 볼륨·네임스페이스 회수는 아예 실행되지 않는다.
+// 2026-08-21 운영에서 스택을 지운 뒤 PVC 와 네임스페이스가 함께 남은 모양이 이것이다.
+func TestDeleteStack_ExecuteAsync_CleanupSurvivesRequestCancel(t *testing.T) {
+	stackName := "detach stack"
+	repo := newFakeStackRepo(&domain.Stack{
+		ID:        "stk-detach",
+		Name:      stackName,
+		ClusterID: "cluster-detach",
+		Namespace: domain.DefaultStackNamespaceFor(stackName),
+		State:     domain.StateCompleted,
+	})
+	provider := &fakeDeleteKubeconfigProvider{config: []byte("apiVersion: v1\nclusters:\n- name: kind\n")}
+
+	uc := NewDeleteStack(repo, provider, func([]byte) port.HelmInstaller {
+		return &fakeHelmInstaller{}
+	})
+
+	var mu sync.Mutex
+	commands := []string{}
+	uc.runKubectlFunc = func(ctx context.Context, _ []byte, args ...string) (string, error) {
+		// 실제 exec 은 컨텍스트가 끊기면 즉시 실패한다. 가짜도 그렇게 행동해야
+		// 이 테스트가 의미를 갖는다.
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		mu.Lock()
+		commands = append(commands, strings.Join(args, " "))
+		mu.Unlock()
+		return "", nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, uc.ExecuteAsync(ctx, "stk-detach"))
+	// 요청이 끝났다 — 클라이언트가 끊겼든 게이트웨이가 잘랐든 컨텍스트는 죽는다.
+	cancel()
+
+	want := "delete namespace " + domain.DefaultStackNamespaceFor(stackName)
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, cmd := range commands {
+			if strings.Contains(cmd, want) {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 10*time.Millisecond, "요청이 끊겨도 네임스페이스 회수까지 끝나야 한다")
+}
+
+// ExecuteAsync 는 스택 레코드까지는 요청 안에서 지운다. 목록 새로고침이 방금
+// 지운 스택을 다시 보여주면 사용자는 삭제가 실패한 줄 안다.
+func TestDeleteStack_ExecuteAsync_DeletesRecordBeforeReturning(t *testing.T) {
+	stackName := "record stack"
+	repo := newFakeStackRepo(&domain.Stack{
+		ID:        "stk-record",
+		Name:      stackName,
+		ClusterID: "cluster-record",
+		Namespace: domain.DefaultStackNamespaceFor(stackName),
+		State:     domain.StateCompleted,
+	})
+	provider := &fakeDeleteKubeconfigProvider{config: []byte("apiVersion: v1\nclusters:\n- name: kind\n")}
+
+	uc := NewDeleteStack(repo, provider, func([]byte) port.HelmInstaller {
+		return &fakeHelmInstaller{}
+	})
+	uc.runKubectlFunc = func(context.Context, []byte, ...string) (string, error) { return "", nil }
+
+	require.NoError(t, uc.ExecuteAsync(context.Background(), "stk-record"))
+
+	_, err := repo.GetByID(context.Background(), "stk-record")
+	require.Error(t, err, "ExecuteAsync 가 돌아온 시점에 레코드는 이미 없어야 한다")
+}
+
+func TestDeleteStack_ExecuteAsync_ReportsMissingStack(t *testing.T) {
+	repo := newFakeStackRepo()
+	uc := NewDeleteStack(repo, nil, nil)
+
+	err := uc.ExecuteAsync(context.Background(), "stk-missing")
+	require.ErrorIs(t, err, ErrStackNotFound)
 }
