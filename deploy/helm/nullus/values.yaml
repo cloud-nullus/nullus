@@ -120,6 +120,28 @@ global:
   security:
     allowInsecureImages: true
 
+# -----------------------------------------------------------------------------
+# Stack gateway bridge
+#
+# 스택 도구(gitlab.<도메인> 등)는 공용 Envoy Gateway 로 들어온다. LoadBalancer 가
+# 없는 환경에서는 그 게이트웨이가 외부 IP 를 받지 못해, 밖에서 온 요청이
+# ingress-nginx 에 도착하고 규칙이 없어 404 가 난다. 이 브리지가 넘겨 준다.
+#
+# 정확한 호스트 규칙(nullus.io / auth.nullus.io)이 와일드카드보다 우선하므로
+# 기존 인입은 그대로 산다.
+# -----------------------------------------------------------------------------
+gatewayBridge:
+  enabled: false
+  # 게이트웨이로 넘길 호스트. 예: ["*.nullus.io"] — 와일드카드는 한 단계만 덮는다.
+  hosts: []
+  # 브리지가 가리킬 데이터플레인. 스택 설치기가 만드는 고정 이름 별칭이 기본값이다
+  # (envoy-<ns>-<gw>-<해시> 를 그대로 적으면 게이트웨이를 다시 만들 때 어긋난다).
+  gatewayNamespace: nullus-gateway
+  serviceName: nullus-gateway-proxy
+  # ingress 가 TLS 를 끊을 때 쓸 시크릿. 비우면 TLS 섹션을 만들지 않는다.
+  tlsSecretName: ""
+  annotations: {}
+
 postgresql:
   enabled: true
   image:

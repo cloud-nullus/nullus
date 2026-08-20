@@ -88,14 +88,12 @@ func TestDeleteStack_UninstallsKnownReleasesThenDeletesStack(t *testing.T) {
 	assert.Contains(t, installer.uninstallCalls, "cert-manager@default")
 	assert.Contains(t, installer.uninstallCalls, "opensearch@devsecops")
 	assert.Contains(t, installer.uninstallCalls, "opensearch@default")
-	assert.Contains(t, installer.uninstallCalls, "eg@devsecops")
-	assert.Contains(t, installer.uninstallCalls, "eg@default")
-	assert.Contains(t, installer.uninstallCalls, "eg@nullus")
-	assert.Contains(t, installer.uninstallCalls, "eg@envoy-gateway-system")
-	assert.Contains(t, installer.uninstallCalls, "envoy-gateway@devsecops")
-	assert.Contains(t, installer.uninstallCalls, "envoy-gateway@default")
-	assert.Contains(t, installer.uninstallCalls, "envoy-gateway@nullus")
-	assert.Contains(t, installer.uninstallCalls, "envoy-gateway@envoy-gateway-system")
+	// Envoy Gateway 는 스택들이 함께 쓴다. 한 스택을 지운다고 걷어 가면 다른
+	// 스택의 현관까지 닫히므로 어느 네임스페이스에서도 언인스톨하지 않는다.
+	for _, call := range installer.uninstallCalls {
+		assert.NotContains(t, call, "eg@")
+		assert.NotContains(t, call, "envoy-gateway@")
+	}
 	steps := make([]string, 0, len(streamer.entries))
 	for _, e := range streamer.entries {
 		steps = append(steps, e.Step)
@@ -171,24 +169,29 @@ func TestArgoCDResourcesInUse(t *testing.T) {
 	}
 }
 
-func TestUninstallNamespacesForRelease_GatewayIncludesFallbackNamespaces(t *testing.T) {
-	namespaces := uninstallNamespacesForRelease("devsecops", "eg")
-	assert.Equal(t, []string{"devsecops", "default", "nullus", "envoy-gateway-system"}, namespaces)
+// eg 는 이제 공용이라 언인스톨 대상이 아니다. 옛 이름(envoy-gateway)으로 깔린
+// 잔재만 legacy 네임스페이스까지 훑는다.
+func TestUninstallNamespacesForRelease_LegacyGatewayIncludesFallbackNamespace(t *testing.T) {
+	namespaces := uninstallNamespacesForRelease("devsecops", "envoy-gateway")
+	assert.Equal(t, []string{"devsecops", "default", "envoy-gateway-system"}, namespaces)
 }
 
-func TestUninstallNamespacesForRelease_DeduplicatesNullusNamespace(t *testing.T) {
-	namespaces := uninstallNamespacesForRelease("nullus", "eg")
-	assert.Equal(t, []string{"nullus", "default", "envoy-gateway-system"}, namespaces)
+func TestUninstallNamespacesForRelease_StaysWithinStackAndDefault(t *testing.T) {
+	namespaces := uninstallNamespacesForRelease("devsecops", "harbor")
+	assert.Equal(t, []string{"devsecops", "default"}, namespaces)
 }
 
-func TestCleanupNamespacesForStack_UsesGatewaySweepNamespaces(t *testing.T) {
+// 게이트웨이가 전용 네임스페이스로 옮겨간 뒤로는 남의 집을 훑지 않는다.
+// 예전에는 Envoy Gateway 를 찾겠다고 플랫폼 네임스페이스(nullus)까지 뒤졌고,
+// 그것이 2026-08-20 플랫폼 삭제 사고의 경로였다.
+func TestCleanupNamespacesForStack_StaysWithinStackAndDefault(t *testing.T) {
 	namespaces := cleanupNamespacesForStack("devsecops")
-	assert.Equal(t, []string{"devsecops", "default", "nullus", "envoy-gateway-system"}, namespaces)
+	assert.Equal(t, []string{"devsecops", "default"}, namespaces)
 }
 
-func TestCleanupNamespacesForStack_DeduplicatesNullusNamespace(t *testing.T) {
+func TestCleanupNamespacesForStack_DeduplicatesNamespaces(t *testing.T) {
 	namespaces := cleanupNamespacesForStack("nullus")
-	assert.Equal(t, []string{"nullus", "default", "envoy-gateway-system"}, namespaces)
+	assert.Equal(t, []string{"nullus", "default"}, namespaces)
 }
 
 func TestDeleteStack_DeletesStackWhenKubeconfigAndUninstallFail(t *testing.T) {

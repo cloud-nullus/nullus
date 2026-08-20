@@ -33,8 +33,10 @@ func TestGatewayTLS_HasHTTPSListenerForAccessDomain(t *testing.T) {
 
 	require.Contains(t, manifest, "protocol: HTTPS")
 	assert.Contains(t, manifest, "port: 443")
-	assert.Contains(t, manifest, `hostname: "*.nullus.local"`)
 	assert.Contains(t, manifest, "certificateRefs:")
+	// 리스너는 호스트를 가리지 않는다 — 공용 게이트웨이라 접속 도메인이 다른
+	// 스택도 같은 리스너에 붙는다. 호스트 분리는 HTTPRoute 가 한다.
+	assert.NotContains(t, manifest, `hostname: "*.nullus.local"`)
 }
 
 // HTTP 리스너는 남는다. 게이트웨이 상태 확인이나 TLS 를 요구하지 않는 접근 경로가
