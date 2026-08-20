@@ -861,3 +861,7 @@ func indexOfStep(steps []string, target string) int {
 	}
 	return -1
 }
+
+func (r *fakeStackRepo) ListInFlight(context.Context) ([]*domain.Stack, error) {
+	return nil, nil
+}

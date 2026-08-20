@@ -75,6 +75,43 @@ func (r *PostgresStackRepository) FindByID(ctx context.Context, id string) (*dom
 	return stack, nil
 }
 
+// ListInFlight 는 설치가 진행 중인 상태로 남아 있는 스택을 조직과 무관하게 돌려준다.
+//
+// 조직으로 거르지 않는다. 끊긴 설치를 찾는 일은 조직 경계와 무관하고, 거르면
+// 조직 수만큼 조회를 반복해야 한다.
+func (r *PostgresStackRepository) ListInFlight(ctx context.Context) ([]*domain.Stack, error) {
+	q := `
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at, deleted_at
+		FROM stacks
+		WHERE deleted_at IS NULL AND state = ANY($1)
+		ORDER BY updated_at ASC LIMIT 200`
+
+	states := []string{
+		string(domain.StateValidating),
+		string(domain.StateInstalling),
+		string(domain.StateConfiguring),
+		string(domain.StateHealthCheck),
+	}
+
+	rows, err := r.pool.Query(ctx, q, states)
+	if err != nil {
+		return nil, fmt.Errorf("query in-flight stacks: %w", err)
+	}
+	defer rows.Close()
+
+	var stacks []*domain.Stack
+	for rows.Next() {
+		s, err := r.scanStack(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan stack: %w", err)
+		}
+		stacks = append(stacks, s)
+	}
+	return stacks, rows.Err()
+}
+
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string, includeDeleted bool) ([]*domain.Stack, error) {
 	q := `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,

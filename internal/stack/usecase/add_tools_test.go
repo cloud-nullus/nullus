@@ -103,3 +103,7 @@ func TestAddToolsUseCase_Execute_StackNotFound(t *testing.T) {
 	assert.Nil(t, out)
 	assert.Contains(t, err.Error(), "stack not found")
 }
+
+func (f *fakeAddToolsRepo) ListInFlight(context.Context) ([]*domain.Stack, error) {
+	return nil, nil
+}

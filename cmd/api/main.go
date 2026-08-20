@@ -568,6 +568,32 @@ func main() {
 		adminrepo.NewClusterWorkloadRestarter(kubeconfigProvider),
 	).Start(rotationCtx)
 
+	// 끊긴 설치를 주기적으로 실패로 옮긴다.
+	//
+	// 설치는 이 프로세스 안의 고루틴이 돌린다. 파드가 교체되면 그 고루틴이
+	// 사라지고 아무도 실패를 기록하지 않는다 — 스택은 installing 인 채로 남고,
+	// 그 상태에서는 이어서 진행조차 막혀 사용자에게 길이 없다.
+	//
+	// 기동 시 한 번이 아니라 주기적으로 돈다. 레플리카가 여럿이면 "내가 재시작
+	// 했다" 가 "아무도 안 돌리고 있다" 를 뜻하지 않으므로, 판단 근거는 시간뿐이다.
+	go func() {
+		reaper := stackuc.NewReapStaleInstalls(pgStackRepo)
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-rotationCtx.Done():
+				return
+			case <-ticker.C:
+				if reaped, err := reaper.Run(rotationCtx); err != nil {
+					slog.Warn("stale install reaper failed", "error", err)
+				} else if reaped > 0 {
+					slog.Warn("marked stale installs as failed", "count", reaped)
+				}
+			}
+		}
+	}()
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
 		slog.Info("starting server", "addr", addr)

@@ -1,6 +1,9 @@
 package domain
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // 설치가 밟는 단계의 순서. 진행률의 단일 출처다.
 //
@@ -139,4 +142,45 @@ func StackProgress(state DeploymentState, currentStep, lastCompletedStep string)
 		return done, done
 	}
 	return 0, 0
+}
+
+// 진행 중으로 남을 수 있는 상태들. 이 상태의 스택은 어딘가에서 고루틴이 돌고
+// 있다는 뜻이다.
+var inFlightStates = map[DeploymentState]struct{}{
+	StateValidating:  {},
+	StateInstalling:  {},
+	StateConfiguring: {},
+	StateHealthCheck: {},
+}
+
+// IsInFlight 는 설치가 진행 중인 상태인지 본다.
+func IsInFlight(state DeploymentState) bool {
+	_, ok := inFlightStates[state]
+	return ok
+}
+
+// StaleInstallThreshold 는 이만큼 아무 진전이 없으면 끊긴 것으로 본다.
+//
+// 한 스텝이 오래 걸릴 수 있다 — GitLab 은 helm --wait 타임아웃만 15분이다. 그
+// 동안에는 행이 갱신되지 않으므로 여유를 크게 잡는다. 너무 짧게 잡으면 살아 있는
+// 설치를 실패로 표시해 버린다.
+const StaleInstallThreshold = 30 * time.Minute
+
+// IsStaleInstall 은 진행 중이라고 표시돼 있지만 실제로는 끊긴 설치인지 본다.
+//
+// 설치는 API 프로세스 안의 고루틴이 돌린다. 파드가 교체되면 그 고루틴이 사라지고,
+// 아무도 실패를 기록하지 않는다 — 스택은 installing 인 채로 영원히 남는다. 그
+// 상태에서는 이어서 진행(continue)도 막히므로(failed/pending 만 허용) 사용자에게는
+// 지우고 다시 까는 길밖에 없다. 2026-08-20 운영에서 실제로 그렇게 갇혔다.
+//
+// 살아 있는 설치와 구분할 방법은 시간뿐이다. 여러 레플리카가 도는 환경에서는
+// "재시작했으니 죽었다" 고 단정할 수 없다.
+func IsStaleInstall(state DeploymentState, updatedAt, now time.Time) bool {
+	if !IsInFlight(state) {
+		return false
+	}
+	if updatedAt.IsZero() {
+		return false
+	}
+	return now.Sub(updatedAt) >= StaleInstallThreshold
 }
