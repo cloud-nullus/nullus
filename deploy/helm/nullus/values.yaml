@@ -12,6 +12,19 @@ api:
     port: 8080
   resources: {}
 
+# DB 마이그레이션 훅. api 이미지에 실려 오는 SQL(/etc/nullus/migrations)을 새 코드가
+# 뜨기 전에 적용한다. 끄면 스키마는 그대로 두고 코드만 올라가므로, 밖에서 migrate 를
+# 돌리는 환경(airgap 설치기 등)에서만 끈다.
+migration:
+  enabled: true
+  # DB 가 아직 안 떠서 한 번 실패하는 것과 SQL 이 틀린 것을 구분하려면 재시도가
+  # 있어야 한다. 다만 기본값(6)만큼 돌리면 틀린 SQL 도 여섯 번 돈다.
+  backoffLimit: 2
+  # 비우면 Job 을 남긴다 — 끝난 뒤에도 `kubectl logs job/<release>-migrate` 로
+  # 무엇이 적용됐는지 볼 수 있다. 다음 배포의 before-hook-creation 이 지운다.
+  ttlSecondsAfterFinished: ""
+  resources: {}
+
 web:
   replicaCount: 2
   image:
