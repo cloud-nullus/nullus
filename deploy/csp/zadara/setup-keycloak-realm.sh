@@ -22,6 +22,7 @@
 # 사용법:
 #   ./setup-keycloak-realm.sh                       구성 + 리다이렉트 URI 교정
 #   PUBLIC_URL=https://my.host ./setup-keycloak-realm.sh
+#   ./setup-keycloak-realm.sh theme                 로그인 테마·언어만 적용
 #   ./setup-keycloak-realm.sh status                현재 상태만 확인
 #
 # 환경 변수:
@@ -33,6 +34,8 @@
 #   KC_PUBLIC_URL Keycloak 공개 주소 (기본: https://auth.nullus.io)
 #   REALM         (기본: nullus)
 #   CLIENT_ID     (기본: nullus-app)
+#   KEYCLOAK_LOGIN_THEME   (기본: nullus)
+#   KEYCLOAK_DEFAULT_LOCALE (기본: en)
 #
 # 종료 코드: 0 성공 / 1 실패
 # =============================================================================
@@ -48,6 +51,8 @@ REALM="${REALM:-nullus}"
 CLIENT_ID="${CLIENT_ID:-nullus-app}"
 PUBLIC_URL="${PUBLIC_URL:-https://nullus.io}"
 KC_PUBLIC_URL="${KC_PUBLIC_URL:-https://auth.nullus.io}"
+LOGIN_THEME="${KEYCLOAK_LOGIN_THEME:-nullus}"
+DEFAULT_LOCALE="${KEYCLOAK_DEFAULT_LOCALE:-en}"
 POD="${RELEASE}-keycloak-0"
 
 if [[ -t 1 ]]; then
@@ -94,10 +99,53 @@ run_upstream() {
   local pw="$1"
   [[ -x "$UPSTREAM" ]] || die "업스트림 스크립트를 찾지 못했습니다: ${UPSTREAM}"
   info "업스트림 실행: ${UPSTREAM#$REPO_ROOT/}"
+  # 업스트림 기본값은 sslRequired=none 이다 (로컬 dev 전제). 그대로 두면 이
+  # 스크립트를 돌릴 때마다 배포 realm 이 평문 허용으로 되돌아간다.
   KEYCLOAK_URL="$KC_PUBLIC_URL" \
   KEYCLOAK_ADMIN_USER=admin \
   KEYCLOAK_ADMIN_PASSWORD="$pw" \
+  KEYCLOAK_SSL_REQUIRED="${KEYCLOAK_SSL_REQUIRED:-external}" \
+  KEYCLOAK_LOGIN_THEME="$LOGIN_THEME" \
+  KEYCLOAK_DEFAULT_LOCALE="$DEFAULT_LOCALE" \
     "$UPSTREAM" || die "업스트림 스크립트 실패"
+}
+
+# 로그인 테마와 언어만 건다. 차트는 테마 **파일**을 실어 줄 뿐이고, 그걸 쓰라고
+# realm 에 적는 것은 별개다 — 그래서 차트를 배포해도 로그인 화면은 그대로다.
+# setup 전체를 돌리면 사용자·클라이언트까지 건드리므로, 배포 때마다 돌릴 수 있게
+# 이 부분만 따로 뗀다. 여러 번 돌려도 결과가 같다.
+apply_login_theme() {
+  local kcadm="$1"
+  if ! "${K[@]}" exec -i "$POD" -c keycloak -- "$kcadm" get "realms/${REALM}" \
+        --fields realm --config /tmp/nullus-kcadm.config >/dev/null 2>&1; then
+    warn "realm ${REALM} 이 아직 없습니다 — 테마를 걸 대상이 없어 건너뜁니다."
+    warn "realm 은 차트가 만들지 않습니다. 먼저 '$0 setup' 을 한 번 돌리세요."
+    return 0
+  fi
+  "${K[@]}" exec -i "$POD" -c keycloak -- "$kcadm" update "realms/${REALM}" \
+    -s "loginTheme=${LOGIN_THEME}" \
+    -s internationalizationEnabled=true \
+    -s 'supportedLocales=["ko","en"]' \
+    -s "defaultLocale=${DEFAULT_LOCALE}" \
+    --config /tmp/nullus-kcadm.config >/dev/null || die "로그인 테마 적용 실패"
+  ok "로그인 테마 ${LOGIN_THEME} · 언어 ko,en (기본 ${DEFAULT_LOCALE})"
+}
+
+# theme 만 따로 — 배포 파이프라인이 helm upgrade 뒤에 부른다.
+do_theme() {
+  command -v kubectl >/dev/null || die "kubectl 이 필요합니다"
+  # 배포 파이프라인이 무인으로 부르는 경로다. Keycloak 을 이 차트가 띄우지 않는
+  # 구성(외부 Keycloak)에서는 파드가 없는 게 정상이므로, 그때는 배포를 세우지
+  # 않고 건너뛴다. 파드가 있는데 실패하면 그건 진짜 오류라 그대로 세운다.
+  if ! "${K[@]}" get pod "$POD" >/dev/null 2>&1; then
+    warn "Keycloak 파드가 없습니다 (${POD}) — 외부 Keycloak 구성으로 보고 건너뜁니다."
+    return 0
+  fi
+  local pw; pw="$(admin_password)"
+  [[ -n "$pw" ]] || die "Keycloak admin 비밀번호를 읽지 못했습니다 (${RELEASE}-keycloak)"
+  local kcadm; kcadm="$(resolve_kcadm)"
+  kcadm_login "$kcadm" "$pw"
+  apply_login_theme "$kcadm"
 }
 
 # 업스트림이 localhost 로 박아 둔 리다이렉트 URI 를 배포 주소로 바꾼다.
@@ -162,6 +210,7 @@ do_setup() {
   local kcadm; kcadm="$(resolve_kcadm)"
   kcadm_login "$kcadm" "$pw"
   fix_redirect_uris "$kcadm"
+  apply_login_theme "$kcadm"
   echo
   do_status
 }
@@ -193,6 +242,7 @@ except Exception: pass' || true
 
 case "${1:-setup}" in
   setup)  do_setup ;;
+  theme)  do_theme ;;
   status) do_status ;;
-  *)      die "사용법: $0 [setup|status]" ;;
+  *)      die "사용법: $0 [setup|theme|status]" ;;
 esac

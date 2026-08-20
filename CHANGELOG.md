@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **로그인 테마가 배포에 따라 붙는다** (`.github/workflows/cd.yml`, `deploy/csp/zadara/setup-keycloak-realm.sh` 에 `theme` 하위 명령, `scripts/setup-keycloak.sh` 의 `KEYCLOAK_SSL_REQUIRED`): 차트를 배포해도 `https://auth.nullus.io` 는 기본 Keycloak 화면 그대로였다. 차트는 테마 **파일**을 ConfigMap 으로 실어 줄 뿐이고, "그 테마를 쓰라" 고 realm 에 적는 것은 별개인데 그건 사람이 `setup-keycloak-realm.sh` 를 손으로 돌릴 때만 일어났기 때문이다. 실제로 서빙되는 페이지가 `login/keycloak.v2` 를 참조하는 것으로 확인했다.
+
+  `helm upgrade` 뒤에 realm 의 `loginTheme` 과 언어를 거는 단계를 CD 에 넣었다. setup 전체를 돌리면 클라이언트·사용자까지 건드리므로 그 부분만 `theme` 하위 명령으로 떼어 냈다 — 여러 번 돌려도 결과가 같다. realm 은 차트가 만들지 않으므로 아직 없으면 건너뛰고, Keycloak 파드가 없는 구성(외부 Keycloak)에서도 배포를 세우지 않는다.
+
+  **덤으로 평문 허용 되돌림을 막았다.** `setup-keycloak.sh` 는 realm 을 `sslRequired=none` 으로 PUT 한다 — 로컬 dev 전제다. 그런데 zadara 스크립트가 이걸 그대로 호출하고 있어서, 배포 realm 을 손볼 때마다 평문 허용으로 되돌아가고 있었다. `KEYCLOAK_SSL_REQUIRED` 로 밖에서 정하게 하고 배포 경로는 `external` 을 넘긴다.
+
 - **Keycloak 로그인 화면을 제품 화면으로 바꾼다** (`deploy/helm/nullus/files/keycloak-theme/` 신규, `scripts/emit-keycloak-theme-art.py` 신규, `keycloak-theme-configmap.yaml` 신규): 기본 Keycloak 로그인 화면은 이 제품이 무엇인지 한 글자도 말해 주지 않는다. 왼쪽에 파이프라인을 그림으로 설명하고 오른쪽에 로그인 폼을 두는 두 단 화면으로 바꿨다 — 검증된 OSS 를 컨베이어에 실어 Nullus 게이트로 넣으면 반대편으로 CI/CD 스택이 나오고 그 위에 애플리케이션이 얹힌다.
 
   **그림은 손으로 그리지 않고 생성기가 뽑는다.** 아이소메트릭은 좌표 하나가 어긋나면 조각들이 서로 떠 버리는데, SVG 를 손으로 고치면 CSS 가 얹는 움직이는 조각의 좌표와 조용히 어긋난다. 그래서 `emit-keycloak-theme-art.py` 가 정지 그림(SVG)과 조각 자리·안무(CSS 변수·keyframes)를 **같은 계산에서** 함께 뽑는다. 장면을 옮기면 조각이 따라온다.

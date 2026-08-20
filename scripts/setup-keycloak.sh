@@ -17,6 +17,9 @@ LOGIN_THEME="${KEYCLOAK_LOGIN_THEME:-nullus}"
 # 로그인 화면 언어. i18n 을 켜지 않으면 테마의 messages_ko 가 무시되고 화면이
 # 영어로 뜬다 — 테마와 한 벌로 묶어 둔다.
 DEFAULT_LOCALE="${KEYCLOAK_DEFAULT_LOCALE:-en}"
+# 배포 환경에서 이 스크립트를 재사용할 때 realm 을 평문 허용으로 되돌리지 않도록
+# 밖에서 바꿀 수 있게 둔다. 기본값은 로컬 dev 전제(평문 HTTP)다.
+SSL_REQUIRED="${KEYCLOAK_SSL_REQUIRED:-none}"
 
 # 응답이 비었거나 JSON 이 아닐 수 있다(예: 인증 실패로 본문이 없는 경우).
 # 그럴 때는 빈 문자열을 돌려주고 호출측이 판단하게 한다.
@@ -125,14 +128,15 @@ ensure_realm() {
     -H "Authorization: Bearer ${ADMIN_TOKEN}" \
     "${KEYCLOAK_URL}/admin/realms/${REALM}")
 
-  # sslRequired=NONE 이어야 평문 HTTP 로 토큰 발급이 된다 (로컬 개발 전용).
+  # sslRequired 는 기본 none 이어야 평문 HTTP 로 토큰 발급이 된다 (로컬 개발 전제).
+  # 배포 환경은 KEYCLOAK_SSL_REQUIRED=external 로 덮어쓴다.
   #
   # loginTheme 은 Nullus 로그인 화면이다. 테마 파일이 컨테이너에 마운트돼 있어야
   # 한다(docker-compose.dev.yaml / 차트의 extraVolumes) — 없으면 Keycloak 이
   # 테마를 못 찾아 기본 화면으로 조용히 되돌아간다.
   local realm_payload
   realm_payload=$(cat <<EOF
-{"realm":"${REALM}","enabled":true,"sslRequired":"none","loginTheme":"${LOGIN_THEME}","internationalizationEnabled":true,"supportedLocales":["ko","en"],"defaultLocale":"${DEFAULT_LOCALE}"}
+{"realm":"${REALM}","enabled":true,"sslRequired":"${SSL_REQUIRED}","loginTheme":"${LOGIN_THEME}","internationalizationEnabled":true,"supportedLocales":["ko","en"],"defaultLocale":"${DEFAULT_LOCALE}"}
 EOF
 )
 

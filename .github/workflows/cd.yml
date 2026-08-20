@@ -434,6 +434,13 @@ jobs:
           kubectl --context=platform -n nullus rollout restart deployment/nullus-api deployment/nullus-web
           kubectl --context=platform -n nullus rollout status deployment/nullus-api --timeout=300s
           kubectl --context=platform -n nullus rollout status deployment/nullus-web --timeout=300s
+
+          # 차트는 로그인 테마 **파일**을 실어 줄 뿐이다. 그 테마를 쓰라고 realm 에
+          # 적는 것은 별개라, 여기서 안 걸면 사람이 스크립트를 손으로 돌릴 때까지
+          # 기본 Keycloak 화면이 그대로 나간다 — PR #183 병합 뒤 실제로 그랬다.
+          # realm 자체는 차트가 만들지 않으므로, 아직 없으면 스크립트가 건너뛴다.
+          KUBE_CONTEXT=platform NAMESPACE=nullus RELEASE=nullus \
+            deploy/csp/zadara/setup-keycloak-realm.sh theme
           EOF
           } | ssh -o BatchMode=yes "${ZADARA_USER}@${ZADARA_HOST}" 'bash -s'
 
