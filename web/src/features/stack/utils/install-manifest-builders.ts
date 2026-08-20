@@ -116,26 +116,41 @@ export function getInstallType(toolId: string): ManifestInstallType {
   return TOOL_HELM_META[toolId] ? 'helm' : 'yaml'
 }
 
+/**
+ * 도구 호스트가 가리켜야 할 클러스터 안 서비스.
+ *
+ * 서버(internal/stack/domain/gateway_backends.go)와 같은 값이어야 한다. 예전에는
+ * 여기 없는 도구를 "<도구>-svc:80" 으로 지어냈는데, 실제 이름과 포트는 도구마다
+ * 다르다(gitea-http:3000, jenkins:8080, nexus:8081). 그래서 UI 로 설치하면
+ * gitea·harbor·jenkins·nexus 라우트가 존재하지 않는 서비스를 가리켰고, 설치는
+ * 성공했는데 그 주소만 열리지 않았다.
+ *
+ * 표 형태로 두는 이유가 있다 — 서버 테스트가 이 파일을 읽어 값이 갈라지지 않았는지
+ * 검사한다(TestGatewayBackends_MatchInstallWizard).
+ */
+export const GATEWAY_BACKENDS: Record<string, { serviceName: string; port: number }> = {
+  gitlab: { serviceName: 'gitlab-webservice-default', port: 8181 },
+  argocd: { serviceName: 'argo-cd-argocd-server', port: 80 },
+  gitea: { serviceName: 'gitea-http', port: 3000 },
+  jenkins: { serviceName: 'jenkins', port: 8080 },
+  harbor: { serviceName: 'harbor', port: 80 },
+  nexus: { serviceName: 'nexus', port: 8081 },
+  minio: { serviceName: 'nullus-minio-console', port: 9001 },
+  grafana: { serviceName: 'grafana', port: 80 },
+  prometheus: { serviceName: 'kube-prometheus-stack-prometheus', port: 9090 },
+  opensearch: { serviceName: 'opensearch-cluster-master', port: 9200 },
+  openbao: { serviceName: 'openbao', port: 8200 },
+}
+
 export function gatewayBackendForTool(toolId: string): { serviceName: string; port: number } {
-  switch (toolId) {
-    case 'gitlab':
-      return { serviceName: 'gitlab-webservice-default', port: 8181 }
-    case 'argo-cd':
-    case 'argocd':
-      return { serviceName: 'argo-cd-argocd-server', port: 80 }
-    case 'grafana':
-      return { serviceName: 'grafana-svc', port: 80 }
-    case 'prometheus':
-      return { serviceName: 'prometheus-svc', port: 80 }
-    case 'minio':
-      return { serviceName: 'nullus-minio-console', port: 9001 }
-    case 'opensearch':
-      return { serviceName: 'opensearch-cluster-master', port: 9200 }
-    case 'tempo':
-      return { serviceName: 'tempo-svc', port: 3200 }
-    default:
-      return { serviceName: `${toolId}-svc`, port: 80 }
-  }
+  const key = toolId.trim().toLowerCase().replace(/[_\s]+/g, '-')
+  return (
+    GATEWAY_BACKENDS[key] ??
+    GATEWAY_BACKENDS[key.replace(/^argo-cd$/, 'argocd')] ??
+    // 모르는 도구는 예전 규칙을 남긴다. 서버가 받아서 바로잡을 기회가 있고,
+    // 여기서 던지면 매니페스트 미리보기 자체가 깨진다.
+    { serviceName: `${toolId}-svc`, port: 80 }
+  )
 }
 
 export function workloadContainerPortForTool(toolId: string): number {
