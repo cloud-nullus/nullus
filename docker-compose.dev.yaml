@@ -59,6 +59,14 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     volumes:
       - keycloak_data:/opt/keycloak/data
+      # Nullus 로그인 테마. realm 의 loginTheme 이 이 이름을 가리킨다
+      # (scripts/setup-keycloak.sh). 마운트가 없으면 Keycloak 이 테마를 못 찾아
+      # 기본 화면으로 조용히 되돌아간다.
+      #
+      # 차트 안의 파일을 그대로 가리킨다 — 쿠버네티스에서는 같은 파일이
+      # ConfigMap 으로 들어간다. 사본을 두면 로컬에서 본 화면과 배포된 화면이
+      # 갈라진다.
+      - ./deploy/helm/nullus/files/keycloak-theme/nullus:/opt/keycloak/themes/nullus:ro
     ports:
       - "8180:8080"
 

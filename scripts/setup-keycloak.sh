@@ -12,6 +12,11 @@ ORG_MAPPER_NAME="nullus-org-id"
 # 시드 마이그레이션이 만드는 조직 (internal/shared/domain.SeededDefaultOrgID 와 동일)
 ORG_ID="${NULLUS_DEFAULT_ORG_ID:-11111111-1111-1111-1111-111111111111}"
 DEFAULT_PASSWORD="${KEYCLOAK_TEST_USER_PASSWORD:-nullus123!}"
+# 로그인 화면 테마. 테마를 마운트하지 않은 환경에서는 keycloak 으로 되돌린다.
+LOGIN_THEME="${KEYCLOAK_LOGIN_THEME:-nullus}"
+# 로그인 화면 언어. i18n 을 켜지 않으면 테마의 messages_ko 가 무시되고 화면이
+# 영어로 뜬다 — 테마와 한 벌로 묶어 둔다.
+DEFAULT_LOCALE="${KEYCLOAK_DEFAULT_LOCALE:-en}"
 
 # 응답이 비었거나 JSON 이 아닐 수 있다(예: 인증 실패로 본문이 없는 경우).
 # 그럴 때는 빈 문자열을 돌려주고 호출측이 판단하게 한다.
@@ -121,9 +126,13 @@ ensure_realm() {
     "${KEYCLOAK_URL}/admin/realms/${REALM}")
 
   # sslRequired=NONE 이어야 평문 HTTP 로 토큰 발급이 된다 (로컬 개발 전용).
+  #
+  # loginTheme 은 Nullus 로그인 화면이다. 테마 파일이 컨테이너에 마운트돼 있어야
+  # 한다(docker-compose.dev.yaml / 차트의 extraVolumes) — 없으면 Keycloak 이
+  # 테마를 못 찾아 기본 화면으로 조용히 되돌아간다.
   local realm_payload
-  realm_payload=$(cat <<'EOF'
-{"realm":"nullus","enabled":true,"sslRequired":"none"}
+  realm_payload=$(cat <<EOF
+{"realm":"${REALM}","enabled":true,"sslRequired":"none","loginTheme":"${LOGIN_THEME}","internationalizationEnabled":true,"supportedLocales":["ko","en"],"defaultLocale":"${DEFAULT_LOCALE}"}
 EOF
 )
 

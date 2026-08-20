@@ -160,16 +160,28 @@ provision_keycloak() {
 
   KC_API="${KC_LOCAL}/admin/realms"
 
-  # realm 생성 (idempotent)
+  # realm 생성 (idempotent).
+  #
+  # loginTheme 은 Nullus 로그인 화면이다. 테마 파일은 nullus 차트가 ConfigMap
+  # 으로 실어 Keycloak 파드에 붙인다(deploy/helm/nullus/values.yaml 의
+  # keycloak.extraVolumes). 파일이 없으면 Keycloak 은 오류 없이 기본 화면을 낸다.
+  REALM_PAYLOAD="{\"realm\":\"${REALM}\",\"enabled\":true,\"displayName\":\"Nullus\",\"loginTheme\":\"${KEYCLOAK_LOGIN_THEME:-nullus}\",\"internationalizationEnabled\":true,\"supportedLocales\":[\"ko\",\"en\"],\"defaultLocale\":\"${KEYCLOAK_DEFAULT_LOCALE:-en}\"}"
+
   REALM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: Bearer $TOKEN" "${KC_API}/${REALM}")
   if [[ "$REALM_STATUS" == "200" ]]; then
-    log_ok "realm '${REALM}' 이미 존재 — 건너뜀"
+    # 이미 있는 realm 에도 테마는 반영한다 — 예전에 만들어 둔 realm 이 기본
+    # 화면에 머무르면 재설치 때까지 아무도 눈치채지 못한다.
+    curl -s -X PUT "${KC_API}/${REALM}" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$REALM_PAYLOAD" -o /dev/null
+    log_ok "realm '${REALM}' 이미 존재 — 로그인 테마만 갱신"
   else
     curl -s -X POST "${KC_API}" \
       -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"realm\":\"${REALM}\",\"enabled\":true,\"displayName\":\"Nullus\"}" \
+      -d "$REALM_PAYLOAD" \
       -o /dev/null
     log_ok "realm '${REALM}' 생성"
   fi

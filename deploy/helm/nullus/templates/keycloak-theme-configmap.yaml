@@ -1,0 +1,40 @@
+{{- if .Values.keycloak.enabled }}
+{{- /*
+  Nullus 로그인 테마를 Keycloak 파드로 실어 나른다.
+
+  파일은 files/keycloak-theme/ 아래 하나만 둔다 — 같은 파일을
+  docker-compose.dev.yaml 이 로컬 Keycloak 에 직접 마운트한다. 사본을 두면
+  로컬에서 본 화면과 배포된 화면이 소리 없이 갈라진다.
+
+  테마 폴더 하나당 ConfigMap 하나다. ConfigMap 키에는 "/" 를 못 쓰므로 키는
+  파일 이름뿐이고, 그래서 폴더를 섞으면 어느 파일이 어디로 가야 하는지가 사라진다.
+  폴더별로 나눠 두면 볼륨을 통째로 그 자리에 붙일 수 있고, 파일이 늘어도
+  values.yaml 을 고칠 일이 없다.
+
+  마운트 지점은 서로 상위가 아니어야 한다(theme.properties 는 파일,
+  resources·messages 는 폴더). 겹치면 마운트 순서에 기대는 배선이 된다.
+*/}}
+{{- $root := "files/keycloak-theme/nullus/login" }}
+{{- range $part := list
+      (dict "suffix" "" "glob" "*")
+      (dict "suffix" "-resources" "glob" "resources/*")
+      (dict "suffix" "-messages" "glob" "messages/*") }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  # 이름은 .Release.Name 으로 짓는다. 이 ConfigMap 을 참조하는 쪽은 keycloak
+  # 서브차트의 values 이고, 거기서 렌더되는 헬퍼는 .Chart / .Values 를 서브차트
+  # 것으로 본다 — nullus.fullname 을 쓰면 양쪽 이름이 갈라진다.
+  # (deploy/helm/keycloak_theme_test.go 가 두 이름이 같은지 지킨다)
+  name: {{ $.Release.Name }}-keycloak-theme{{ $part.suffix }}
+  labels:
+    {{- include "nullus.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: keycloak-theme
+data:
+{{- range $path, $_ := $.Files.Glob (printf "%s/%s" $root $part.glob) }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

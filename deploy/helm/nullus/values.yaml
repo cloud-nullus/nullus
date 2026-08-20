@@ -168,6 +168,43 @@ keycloak:
   # 둘 다 <릴리즈>-postgresql 로 이름이 잡혀 StatefulSet/Service/Secret 등
   # 7종이 그대로 충돌한다. 설치가 "already exists" 로 실패하므로 이름을 분리한다.
   # (keycloak.databaseHost 도 이 값을 따라 nullus-keycloak-postgresql 이 된다)
+  # Nullus 로그인 테마. templates/keycloak-theme-configmap.yaml 이 만든 ConfigMap
+  # 을 파드에 붙인다. 서브차트 values 는 common.tplvalues.render 를 거치므로
+  # 템플릿 문자열을 쓸 수 있지만, nullus.fullname 같은 헬퍼는 안 된다 — 여기서는
+  # .Chart 와 .Values 가 keycloak 서브차트 것으로 잡혀 다른 이름이 나온다.
+  #
+  # theme.properties 는 파일 하나로(subPath), resources 와 messages 는 폴더로
+  # 붙인다. 셋 중 어느 것도 다른 것의 상위가 아니라 볼륨이 겹쳐 마운트되지
+  # 않는다 — 겹치면 마운트 순서에 기대는 배선이 된다.
+  #
+  # messages 는 로그인 화면 왼쪽 설명(loginTitleHtml)이 사는 자리다. 빠뜨리면
+  # 화면은 뜨는데 왼쪽이 realm 이름 한 줄로 비어 보인다.
+  #
+  # realm 의 loginTheme 을 "nullus" 로, 그리고 i18n 을 켜야 실제로 쓰인다
+  # (scripts/setup-keycloak.sh). 마운트만 있고 realm 설정이 없으면 Keycloak 은
+  # 조용히 기본 화면을 낸다.
+  extraVolumes:
+    - name: nullus-login-theme
+      configMap:
+        name: '{{ .Release.Name }}-keycloak-theme'
+    - name: nullus-login-theme-resources
+      configMap:
+        name: '{{ .Release.Name }}-keycloak-theme-resources'
+    - name: nullus-login-theme-messages
+      configMap:
+        name: '{{ .Release.Name }}-keycloak-theme-messages'
+  extraVolumeMounts:
+    - name: nullus-login-theme
+      mountPath: /opt/keycloak/themes/nullus/login/theme.properties
+      subPath: theme.properties
+      readOnly: true
+    - name: nullus-login-theme-resources
+      mountPath: /opt/keycloak/themes/nullus/login/resources
+      readOnly: true
+    - name: nullus-login-theme-messages
+      mountPath: /opt/keycloak/themes/nullus/login/messages
+      readOnly: true
+  # 서브차트가 자기 PostgreSQL 을 함께 띄운다 (아래 nameOverride 참고)
   postgresql:
     nameOverride: keycloak-postgresql
     image:
