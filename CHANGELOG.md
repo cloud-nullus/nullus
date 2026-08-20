@@ -304,6 +304,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **설치는 성공했는데 gitea·harbor 주소만 열리지 않던 것** (`internal/stack/domain/gateway_backends.go` 신규, `internal/stack/adapter/helm/gateway-tls.go`, `web/src/features/stack/utils/install-manifest-builders.ts`): minio·argocd 는 열리는데 gitea·harbor 는 닫혀 있었다. 설치 마법사가 게이트웨이 라우트의 백엔드를 **`<도구>-svc:80` 으로 지어냈기** 때문이다. 실제 서비스 이름과 포트는 도구마다 다르다 — `gitea-http:3000`, `jenkins:8080`, `nexus:8081`.
+
+  서버에 이것을 바로잡는 장치가 있었지만 **`grafana-svc` 와 `prometheus-svc` 둘만** 고쳤다. 같은 문제를 도구 하나씩 땜질해 온 자리다. 게다가 이름만 고치고 포트는 그대로 두어, 포트가 다른 도구는 이름을 고쳐도 연결되지 않았다.
+
+  이제 도구별 백엔드가 `domain.GatewayBackendForTool` 한 곳에 있다. 서버가 마법사의 매니페스트를 받아 **이름과 포트를 함께** 바로잡고, 마법사도 같은 표를 쓴다. 두 값이 갈라지면 **서버 테스트가 마법사 파일을 직접 읽어** 걸러낸다(`TestGatewayBackends_MatchInstallWizard`) — 그 검사가 없어서 이 문제가 배포까지 갔다.
+
 - **서버가 재시작되면 설치가 흔적 없이 멈추고, 이어서 진행조차 막히던 것** (`internal/stack/usecase/reap_stale_installs.go` 신규, `internal/stack/domain/deploy_steps.go`, `cmd/api/main.go`): 설치는 API 프로세스 안의 고루틴이 돌린다. 파드가 교체되면 그 고루틴이 사라지는데 **아무도 실패를 기록하지 않는다** — 스택은 `installing` 인 채로 남고, 화면은 진행 중처럼 보인다.
 
   더 나쁜 것은 그 상태에서 **이어서 진행(continue)이 막힌다**는 점이다. `continue` 는 `failed`/`pending` 만 받으므로 `409 STACK_CONTINUE_INVALID_STATE` 가 난다. 사용자에게는 지우고 다시 까는 길밖에 없다 — 2026-08-20 운영에서 `installing_gateway` 에서 그렇게 갇혔고, 몇 시간 뒤에야 발견됐다.

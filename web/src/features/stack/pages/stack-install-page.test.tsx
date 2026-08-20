@@ -570,8 +570,10 @@ describe('StackInstallPage', () => {
     expect(editor.value).toContain('hostname: opensearch-cluster-master.qa-namespace.svc.cluster.local')
     expect(editor.value).toContain('subjectAltNames:')
     expect(editor.value).toContain('wellKnownCACertificates: System')
-    expect(editor.value).toContain('name: grafana-svc')
-    expect(editor.value).toContain('name: prometheus-svc')
+    expect(editor.value).toContain(// 마법사가 "<도구>-svc" 를 지어내던 시절의 값이었다. 서버가 매번 고쳐 주고
+      // 있었고, 표에 없던 gitea·harbor 는 고쳐지지도 않아 라우트가 죽었다.
+      'name: grafana' )
+    expect(editor.value).toContain('name: kube-prometheus-stack-prometheus')
   })
 
   it('generates grafana and prometheus service target ports that match container defaults', () => {

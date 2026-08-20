@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 func (o *Orchestrator) filterOptionalGatewayPolicies(ctx context.Context, manifest string) (string, bool, error) {
@@ -119,11 +121,6 @@ func (o *Orchestrator) secretDataMatches(ctx context.Context, namespace, secretN
 }
 
 func normalizeGatewayBackendServiceAliases(manifest string) (string, bool, error) {
-	aliasByService := map[string]string{
-		"grafana-svc":    "grafana",
-		"prometheus-svc": "kube-prometheus-stack-prometheus",
-	}
-
 	decoder := yaml.NewDecoder(strings.NewReader(manifest))
 	docs := make([]string, 0)
 	normalizedAny := false
@@ -143,7 +140,7 @@ func normalizeGatewayBackendServiceAliases(manifest string) (string, bool, error
 		apiVersion := yamlDocumentStringField(doc, "apiVersion")
 		kind := yamlDocumentStringField(doc, "kind")
 		if strings.HasPrefix(apiVersion, "gateway.networking.k8s.io/") && kind == "HTTPRoute" {
-			if normalizeHTTPRouteBackendRefs(doc, aliasByService) {
+			if normalizeHTTPRouteBackendRefs(doc) {
 				normalizedAny = true
 			}
 		}
@@ -161,7 +158,13 @@ func normalizeGatewayBackendServiceAliases(manifest string) (string, bool, error
 	return strings.Join(docs, "\n---\n"), normalizedAny, nil
 }
 
-func normalizeHTTPRouteBackendRefs(doc any, aliasByService map[string]string) bool {
+// normalizeHTTPRouteBackendRefs 는 라우트의 백엔드를 실제 서비스로 바로잡는다.
+//
+// 설치 마법사는 모르는 도구의 백엔드를 "<도구>-svc:80" 으로 지어낸다. 실제 이름과
+// 포트는 도구마다 다르므로(gitea-http:3000, jenkins:8080, nexus:8081) 그대로 두면
+// 존재하지 않는 서비스를 가리키는 라우트가 만들어진다 — 설치는 성공하는데 그
+// 주소만 열리지 않는다. 이름뿐 아니라 포트도 함께 고친다.
+func normalizeHTTPRouteBackendRefs(doc any) bool {
 	root, ok := doc.(map[string]any)
 	if !ok {
 		return false
@@ -194,12 +197,20 @@ func normalizeHTTPRouteBackendRefs(doc any, aliasByService map[string]string) bo
 			if !ok {
 				continue
 			}
-			replacement, ok := aliasByService[strings.TrimSpace(name)]
+			backend, ok := domain.GatewayBackendForServiceAlias(name)
 			if !ok {
 				continue
 			}
-			backendRef["name"] = replacement
-			normalized = true
+			if strings.TrimSpace(name) != backend.Service {
+				backendRef["name"] = backend.Service
+				normalized = true
+			}
+			// 포트도 함께 본다. 이름만 고치면 gitea 는 3000, jenkins 는 8080 인데
+			// 80 으로 남아 연결이 되지 않는다.
+			if asInt(backendRef["port"]) != backend.Port {
+				backendRef["port"] = backend.Port
+				normalized = true
+			}
 		}
 	}
 
@@ -268,4 +279,18 @@ func yamlDocumentStringField(doc any, key string) string {
 		}
 	}
 	return ""
+}
+
+// asInt 는 YAML 이 숫자를 int 로도 float64 로도 줄 수 있어 둘 다 받는다.
+func asInt(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }
