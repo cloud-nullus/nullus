@@ -195,14 +195,14 @@ keycloak:
         name: '{{ .Release.Name }}-keycloak-theme-messages'
   extraVolumeMounts:
     - name: nullus-login-theme
-      mountPath: /opt/keycloak/themes/nullus/login/theme.properties
+      mountPath: /opt/bitnami/keycloak/themes/nullus/login/theme.properties
       subPath: theme.properties
       readOnly: true
     - name: nullus-login-theme-resources
-      mountPath: /opt/keycloak/themes/nullus/login/resources
+      mountPath: /opt/bitnami/keycloak/themes/nullus/login/resources
       readOnly: true
     - name: nullus-login-theme-messages
-      mountPath: /opt/keycloak/themes/nullus/login/messages
+      mountPath: /opt/bitnami/keycloak/themes/nullus/login/messages
       readOnly: true
   # 서브차트가 자기 PostgreSQL 을 함께 띄운다 (아래 nameOverride 참고)
   postgresql:
