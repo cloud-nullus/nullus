@@ -80,9 +80,17 @@ code=$(curl -s -o /tmp/out -w '%%{http_code}' -u "admin:$HARBOR_PASSWORD" \
 case "$code" in
   201) echo "harbor project %s 생성" ;;
   409) echo "harbor project %s 이미 존재" ;;
+  401|403)
+    echo "harbor project 생성 실패 (HTTP $code): 관리자 자격증명이 맞지 않습니다."
+    echo "Harbor 는 관리자 비밀번호를 자기 데이터베이스에 굽습니다. 이전 설치의"
+    echo "볼륨(database-data-harbor-database-0)이 남은 채 다시 설치하면, 새로 만든"
+    echo "Secret(%s)의 값과 DB 안의 값이 어긋납니다."
+    echo "네임스페이스를 통째로 지우고 다시 설치하거나, Harbor 볼륨을 지우세요."
+    cat /tmp/out
+    exit 1 ;;
   *) echo "harbor project 생성 실패 (HTTP $code)"; cat /tmp/out; exit 1 ;;
 esac
-`, name, name, name)
+`, name, name, name, domain.HarborAdminSecret)
 }
 
 // harborOIDCScript 는 Harbor 의 인증을 Keycloak 으로 바꾸는 셸 스크립트다.

@@ -267,12 +267,64 @@ func (uc *DeleteStack) Execute(ctx context.Context, stackID string) error {
 	// Keycloak 정리는 클러스터 밖이라 kubeconfig 와 무관하다. 클러스터 리소스를
 	// 다 치운 뒤에 한다 — Keycloak 이 안 떠 있어도 삭제는 끝나야 하기 때문이다.
 	uc.bestEffortDeleteAccessDomainCertificate(ctx, kubeconfig, stack, stackID)
+
+	// 스택이 자기 몫으로 만든 네임스페이스는 통째로 회수한다.
+	//
+	// 여기까지 오면 리소스를 하나씩 지운 뒤지만, 하나씩 지우는 방식은 놓치는 것이
+	// 생긴다 — 실제로 볼륨이 남아 다음 설치가 옛 데이터베이스를 물려받았고,
+	// Gitea 의 28P01 과 Harbor 의 401 로 두 번 드러났다. 네임스페이스를 지우면
+	// 그 안의 것은 종류를 몰라도 함께 사라진다.
+	uc.bestEffortDeleteStackNamespace(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeprovisionSSO(ctx, stack, stackID)
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
 	uc.clearStreamHistory(stackID)
 
 	return nil
+}
+
+// namespaceOwnedByStack 은 이 네임스페이스를 통째로 지워도 되는지 본다.
+//
+// 지워도 되는 것은 이 스택 몫으로 만들어진 자리뿐이다. 플랫폼이 사는 곳,
+// default, 그리고 옛 공용 기본값(nullus)은 절대 지우지 않는다 — 예전 스택들은
+// 플랫폼과 같은 nullus 에 함께 살았고, 그것을 지우면 플랫폼이 사라진다.
+//
+// 사용자가 직접 고른 네임스페이스도 지우지 않는다. 다른 것과 함께 쓰고 있을 수
+// 있어서, 스택이 만든 자리인지 확신할 수 없다.
+func namespaceOwnedByStack(stack *domain.Stack, platformNamespace string) bool {
+	if stack == nil {
+		return false
+	}
+	namespace := strings.TrimSpace(stack.Namespace)
+	if namespace == "" || namespace == "default" || namespace == domain.DefaultStackNamespace {
+		return false
+	}
+	if platformNamespace != "" && strings.EqualFold(namespace, platformNamespace) {
+		return false
+	}
+	// 설치가 스택 이름에서 만든 자리일 때만 회수한다.
+	return namespace == domain.DefaultStackNamespaceFor(stack.Name)
+}
+
+// bestEffortDeleteStackNamespace 는 스택 몫의 네임스페이스를 지운다.
+//
+// --wait=false 로 던진다. 네임스페이스는 그 안의 것이 다 빠질 때까지 Terminating
+// 으로 남는데, 여기서 기다리면 삭제 요청이 몇 분씩 붙잡힌다. 회수는 컨트롤러가
+// 이어서 한다.
+func (uc *DeleteStack) bestEffortDeleteStackNamespace(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
+	if len(kubeconfig) == 0 || !namespaceOwnedByStack(stack, uc.platformNamespace) {
+		return
+	}
+
+	namespace := strings.TrimSpace(stack.Namespace)
+	uc.emit(ctx, stackID, "deleting_namespace", "info",
+		fmt.Sprintf("네임스페이스 %s 를 회수합니다", namespace))
+	if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "namespace", namespace,
+		"--ignore-not-found", "--wait=false"); err != nil {
+		slog.Warn("namespace delete warning during stack delete", "namespace", namespace, "error", err)
+		uc.emit(ctx, stackID, "deleting_namespace", "warn",
+			fmt.Sprintf("네임스페이스 %s 삭제 경고: %v", namespace, err))
+	}
 }
 
 // bestEffortDeleteAccessDomainCertificate 는 게이트웨이 HTTPS 리스너용 와일드카드
@@ -846,16 +898,50 @@ func (uc *DeleteStack) bestEffortDeletePersistentVolumeClaims(ctx context.Contex
 	}
 
 	// 지웠다고 끝이 아니다. 파드가 아직 물고 있으면 PVC 는 Terminating 으로 남고
-	// 위 명령은 타임아웃으로 끝난다. 예전에는 경고 한 줄만 남기고 넘어가서,
-	// 사용자는 스택이 깨끗이 지워진 줄 알았다 — 그리고 다음 설치가 옛 볼륨을
-	// 물려받아 DB 안의 비밀번호와 새로 만든 Secret 이 어긋났다.
-	// 남은 것이 있으면 무엇이 왜 문제인지 분명히 남긴다.
+	// 위 명령은 타임아웃으로 끝난다. 파드가 빠지기를 잠깐 기다렸다가 한 번 더
+	// 시도한다 — 대개 그 사이에 finalizer 가 풀린다.
+	//
+	// 남은 볼륨은 조용한 실패가 아니다. 다음 설치가 옛 데이터베이스를 물려받고,
+	// 그 안의 비밀번호는 새로 만든 Secret 과 다르다. PostgreSQL 은 Gitea 의
+	// 28P01 로, Harbor 는 프로비저닝 401 로 드러났다 — 둘 다 원인에서 먼 자리다.
+	uc.retryDeletePersistentVolumeClaims(ctx, kubeconfig, namespace, stackID)
+
 	if out, err := uc.runKubectl(ctx, kubeconfig, "get", "pvc", "-n", namespace, "-o", "name"); err == nil {
 		if remaining := parseResourceNames(string(out)); len(remaining) > 0 {
 			message := remainingPVCMessage(namespace, remaining)
 			slog.Error("persistent volume claims survived stack delete",
 				"namespace", namespace, "remaining", remaining)
 			uc.emit(ctx, stackID, "deleting_pvc", "error", message)
+		}
+	}
+}
+
+// retryDeletePersistentVolumeClaims 는 파드가 빠지기를 기다렸다가 한 번 더 지운다.
+//
+// PVC 는 그것을 마운트한 파드가 살아 있는 동안 pvc-protection finalizer 로 남는다.
+// 삭제가 릴리스를 먼저 걷어내므로 파드는 곧 사라지지만, 첫 시도는 그 전에 끝나
+// 타임아웃이 난다. 여기서 한 박자 기다렸다가 다시 시도하면 대부분 회수된다.
+func (uc *DeleteStack) retryDeletePersistentVolumeClaims(ctx context.Context, kubeconfig []byte, namespace, stackID string) {
+	for attempt := 0; attempt < 6; attempt++ {
+		out, err := uc.runKubectl(ctx, kubeconfig, "get", "pvc", "-n", namespace, "-o", "name")
+		if err != nil {
+			return
+		}
+		if len(parseResourceNames(string(out))) == 0 {
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(10 * time.Second):
+		}
+
+		uc.emit(ctx, stackID, "deleting_pvc", "info",
+			fmt.Sprintf("남은 볼륨을 다시 지웁니다 (%d/6)", attempt+1))
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "pvc", "-n", namespace,
+			"--all", "--ignore-not-found", "--timeout=60s"); err != nil {
+			slog.Warn("pvc delete retry warning", "namespace", namespace, "attempt", attempt+1, "error", err)
 		}
 	}
 }
