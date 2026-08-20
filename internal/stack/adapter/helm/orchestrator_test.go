@@ -1220,7 +1220,7 @@ func TestOrchestrator_DefaultGatewayBundleManifest_IncludesEnabledOSSRoutes(t *t
 	manifest := orch.defaultGatewayBundleManifest("nullus")
 	require.NotEmpty(t, manifest)
 	assert.Contains(t, manifest, "kind: Gateway")
-	assert.Contains(t, manifest, "name: "+domain.SharedGatewayName)
+	assert.Contains(t, manifest, "name: nullus-devsecops-stack-gateway")
 	assert.Contains(t, manifest, "argocd.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "opensearch.nullus-devsecops-stack.internal")
 	assert.Contains(t, manifest, "gitlab.nullus-devsecops-stack.internal")

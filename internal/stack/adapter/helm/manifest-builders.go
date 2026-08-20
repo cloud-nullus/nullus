@@ -78,18 +78,10 @@ func (o *Orchestrator) defaultGatewayBundleManifest(namespace string) string {
 		stackLabel = "nullus-stack"
 	}
 
+	gatewayName := fmt.Sprintf("%s-gateway", sanitizeK8sName(stackLabel))
 	if strings.TrimSpace(namespace) == "" {
-		namespace = domain.DefaultStackNamespace
+		namespace = "nullus"
 	}
-
-	// 게이트웨이는 스택 소유물이 아니다.
-	//
-	// 스택마다 자기 Gateway 를 만들면 스택을 지울 때 밖에서 들어오는 현관이 함께
-	// 사라진다. LoadBalancer 가 없어 ingress 로 받아 넘겨야 하는 환경(Zadara)에서는
-	// 그 배선을 스택마다 다시 해야 한다는 뜻이다. 이름과 자리를 고정해 한 번만
-	// 배선하게 한다. 라우트만 스택 것으로 남는다.
-	gatewayNamespace := domain.SharedGatewayNamespace
-	gatewayName := domain.SharedGatewayName
 
 	// 도구 URL 과 OIDC redirect URI 는 전부 https:// 로 만들어진다
 	// (buildRedirectURI, oidc-values 의 grafana/argocd/minio, stack_handler).
@@ -112,17 +104,13 @@ func (o *Orchestrator) defaultGatewayBundleManifest(namespace string) string {
 	if issueCert {
 		// 설치 파이프라인이 이미 만드는 내부 CA 로 와일드카드 인증서를 발급한다.
 		// "*.<도메인>" 은 한 단계만 덮으므로 도구 호스트(argocd.<도메인>)까지다.
-		// 공용 리소스에는 스택 라벨을 붙이지 않는다. 붙이면 그 스택을 지울 때
-		// 라벨 청소가 다른 스택의 현관까지 걷어 간다.
-		//
-		// 한계: 게이트웨이가 하나이므로 이 시크릿도 하나다. 접속 도메인이 다른
-		// 스택을 여러 개 깔면 마지막 설치의 인증서가 남는다. 운영은 앞단
-		// ingress 가 TLS 를 끊으므로 영향이 없고, 로컬은 스택 하나가 기본이다.
 		manifests = append(manifests, fmt.Sprintf(`apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: %s
   namespace: %s
+  labels:
+    nullus.io/stack-name: %s
 spec:
   secretName: %s
   dnsNames:
@@ -131,31 +119,23 @@ spec:
   issuerRef:
     name: %s
     kind: ClusterIssuer
-`, domain.AccessDomainCertName, gatewayNamespace, tlsSecretName, accessDomain, accessDomain, defaultInternalCAIssuer))
+`, domain.AccessDomainCertName, namespace, stackLabel, tlsSecretName, accessDomain, accessDomain, defaultInternalCAIssuer))
 	}
-
-	// 게이트웨이 네임스페이스는 스택보다 먼저 있어야 한다. 설치기가 만든다 —
-	// 플랫폼 차트에 두면 차트를 안 쓰는 로컬(docker-compose)에서 게이트웨이가
-	// 아예 서지 않는다.
-	manifests = append([]string{fmt.Sprintf(`apiVersion: v1
-kind: Namespace
-metadata:
-  name: %s
-`, gatewayNamespace)}, manifests...)
 
 	manifests = append(manifests, fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: %s
   namespace: %s
+  labels:
+    nullus.io/stack-name: %s
 spec:
   gatewayClassName: envoy
   listeners:
-    # 리스너를 한 도메인에 묶지 않는다. 스택마다 접속 도메인이 다를 수 있고
-    # (운영 nullus.io / 로컬 *.internal), 호스트 분리는 HTTPRoute 가 이미 한다.
     - name: http
       protocol: HTTP
       port: 80
+      hostname: "*.%s"
       allowedRoutes:
         # 배포된 애플리케이션은 자기 네임스페이스에 산다. Same 으로 두면
         # 앱이 게이트웨이에 라우트를 붙일 수 없어 외부에서 접근할 방법이 없다.
@@ -164,6 +144,7 @@ spec:
     - name: https
       protocol: HTTPS
       port: 443
+      hostname: "*.%s"
       tls:
         mode: Terminate
         certificateRefs:
@@ -172,7 +153,7 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-`, gatewayName, gatewayNamespace, tlsSecretName))
+`, gatewayName, namespace, stackLabel, accessDomain, accessDomain, tlsSecretName))
 
 	type routeSpec struct {
 		name    string
@@ -252,7 +233,6 @@ metadata:
 spec:
   parentRefs:
     - name: %s
-      namespace: %s
   hostnames:
     - %s
   rules:
@@ -263,7 +243,7 @@ spec:
       backendRefs:
         - name: %s
           port: %d
-`, route.name, namespace, stackLabel, gatewayName, gatewayNamespace, route.host, route.service, route.port))
+`, route.name, namespace, stackLabel, gatewayName, route.host, route.service, route.port))
 	}
 
 	return strings.Join(manifests, "\n---\n")

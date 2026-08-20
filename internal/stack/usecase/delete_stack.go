@@ -378,11 +378,6 @@ func (uc *DeleteStack) bestEffortUninstall(ctx context.Context, kubeconfig []byt
 	}
 
 	for _, releaseName := range stackHelmReleaseNames {
-		if isSharedInfraRelease(releaseName) {
-			uc.emit(ctx, stackID, "deleting_release", "info",
-				fmt.Sprintf("%s 는 스택들이 함께 쓰므로 남겨 둡니다", releaseName))
-			continue
-		}
 		namespaces := uninstallNamespacesForRelease(namespace, releaseName)
 		for _, targetNamespace := range namespaces {
 			uc.emit(ctx, stackID, "deleting_release", "info", fmt.Sprintf("uninstalling release %s in namespace %s", releaseName, targetNamespace))
@@ -424,30 +419,12 @@ func uninstallNamespacesForRelease(stackNamespace, releaseName string) []string 
 	return ordered
 }
 
-// sharedInfraReleaseNames 는 스택들이 함께 쓰는 릴리스다. 한 스택을 지운다고
-// 걷어 가면 다른 스택의 라우팅이 함께 죽는다.
-var sharedInfraReleaseNames = map[string]struct{}{
-	"eg":            {},
-	"envoy-gateway": {},
-}
-
-func isSharedInfraRelease(name string) bool {
-	_, ok := sharedInfraReleaseNames[strings.ToLower(strings.TrimSpace(name))]
-	return ok
-}
-
 // cleanupNamespacesForStack 은 이름 기반 청소가 훑을 네임스페이스다.
 //
-// 공용 게이트웨이 자리는 절대 넣지 않는다 — 그 안의 것은 어느 스택 것도 아니다.
+// 스택 자신의 자리와 default 뿐이다. 플랫폼 네임스페이스는 절대 넣지 않는다 —
+// 2026-08-20 에 그 경로로 플랫폼이 지워졌다.
 func cleanupNamespacesForStack(stackNamespace string) []string {
-	out := make([]string, 0, 2)
-	for _, ns := range uninstallNamespacesForRelease(stackNamespace, "") {
-		if strings.EqualFold(ns, domain.SharedGatewayNamespace) {
-			continue
-		}
-		out = append(out, ns)
-	}
-	return out
+	return uninstallNamespacesForRelease(stackNamespace, "")
 }
 
 func (uc *DeleteStack) bestEffortDeleteYAMLResources(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {

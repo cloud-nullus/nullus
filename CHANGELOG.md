@@ -21,17 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   접근성도 함께 챙겼다 — 옛 막대에는 `role="progressbar"` 가 없어 스크린리더가 진행률을 읽지 못했다. `prefers-reduced-motion` 에서는 불꽃·빛·비행을 모두 끈다.
 
-- **스택 도구가 밖에서 열린다 — 게이트웨이를 클러스터 공용으로** (`internal/stack/adapter/helm/{manifest-builders,shared-gateway-alias}.go`, `deploy/helm/nullus/templates/stack-gateway-bridge.yaml` 신규, `deploy/csp/zadara/values-zadara.yaml`): 운영에서 `gitlab.nullus.io` 같은 스택 도구 주소가 **404** 로 끝났다. 원인이 둘 겹쳐 있었다 — Zadara 에는 LoadBalancer 연동이 없어 Envoy Gateway 의 Service 가 외부 IP 를 영원히 못 받고, 밖에서 유일하게 열린 ingress-nginx 에는 그 호스트 규칙이 없었다. `*.nullus.io` DNS 는 이미 같은 공인 IP 로 잡혀 있어 요청은 도착하지만 받아 줄 규칙이 없었다.
+- **스택 도구가 밖에서 열린다** (`internal/stack/adapter/helm/gateway-bridge.go` 신규): 운영에서 `gitlab.nullus.io` 같은 스택 도구 주소가 404 로 끝났다. Zadara 에는 LoadBalancer 연동이 없어 Gateway 의 Service 가 외부 IP 를 영원히 받지 못하고, 밖에서 유일하게 열린 ingress-nginx 에는 그 호스트 규칙이 없었다. `*.nullus.io` DNS 는 이미 같은 공인 IP 로 잡혀 있어 **요청은 도착하는데 받아 줄 규칙이 없었다.**
 
-  **게이트웨이를 스택 소유에서 클러스터 공용으로 옮겼다.** 예전에는 스택마다 자기 Gateway 를 자기 네임스페이스에 만들었다. 그러면 스택을 지울 때 현관도 함께 사라지고, 새로 깔 때마다 DNS·ingress·포트포워드 배선을 처음부터 다시 해야 한다. 이제 `nullus-gateway` 네임스페이스에 같은 이름으로 하나만 서고(Envoy Gateway 컨트롤러도 같은 자리), 스택이 만드는 것은 HTTPRoute 뿐이다. 리스너는 호스트를 가리지 않는다 — 운영 `nullus.io` 와 로컬 `*.internal` 이 한 게이트웨이를 쓴다.
+  설치가 게이트웨이를 세운 뒤 **브리지 Ingress 를 스택 네임스페이스에 함께 만든다.** 와일드카드 호스트를 받아 그 스택의 Envoy 데이터플레인으로 넘기고, 원래 Host 는 `upstream-vhost` 로 보존한다 — 게이트웨이의 HTTPRoute 가 호스트로 도구를 갈라내기 때문이다. Envoy Gateway 가 만드는 Service 이름에는 해시가 붙어 미리 적을 수 없으므로, 실제로 생긴 것을 조회해 쓴다.
 
-  만드는 주체는 그대로 설치기다. 플랫폼 차트에 두면 차트를 쓰지 않는 로컬(docker-compose 로 플랫폼을 띄우고 kind 에는 스택만 깐다)에서 게이트웨이가 아예 서지 않는다.
+  **게이트웨이·Envoy·라우트·인증서·브리지가 모두 스택 네임스페이스 한자리에 모인다.** Ingress 의 백엔드는 같은 네임스페이스여야 하는데 그 제약이 저절로 풀리고, 스택을 지우면 배선도 함께 사라진다. TLS 는 ingress-nginx 의 기본 인증서가 처리하므로 스택마다 시크릿을 복사할 필요가 없다.
 
-  **밖에서 들어오는 배선은 차트가 만든다.** 와일드카드 호스트를 받아 게이트웨이로 넘기는 Ingress 를 넣었다(기본 꺼짐, Zadara 값에서만 켠다). TLS 는 ingress 가 가진 와일드카드 인증서로 끊고 뒤로는 평문으로 보내며, 원래 Host 는 `upstream-vhost` 로 보존한다 — 게이트웨이의 HTTPRoute 가 호스트로 도구를 갈라내기 때문이다. 정확한 호스트(`nullus.io` / `auth.nullus.io`)가 와일드카드보다 우선하므로 기존 인입은 그대로다.
-
-  **고정 이름 별칭이 그 배선을 상수로 만든다.** Envoy Gateway 는 데이터플레인 Service 를 `envoy-<ns>-<gw>-<해시>` 로 만들어서 차트가 미리 적을 수 없었고, 사람이 조회해 옮겨 적으면 스택을 다시 깔 때마다 어긋난다. 설치 후 실제 Service 의 셀렉터와 포트를 **복사한** `nullus-gateway-proxy` 를 둔다 — 이름 규칙이나 포트 매핑(권한 포트에 10000 을 더하는 것 등)을 짐작하지 않으므로 Envoy Gateway 가 내부 규칙을 바꿔도 따라간다.
-
-  한계로 남긴 것: 게이트웨이가 하나이므로 데이터플레인 TLS 시크릿도 하나다. 접속 도메인이 다른 스택을 여러 개 깔면 마지막 설치의 인증서가 남는다. 운영은 앞단 ingress 가 TLS 를 끊으므로 영향이 없고, 로컬은 스택 하나가 기본이다.
+  접속 도메인이 `.internal` 이면 만들지 않는다 — 로컬(kind)에는 ingress 컨트롤러가 없고 포트포워드로 게이트웨이에 직접 붙는다. 브리지를 걸지 못해도 설치는 멈추지 않는다. 클러스터 안에서는 스택이 정상 동작하고, 그 배선은 나중에 손으로도 걸 수 있다.
 
 - **모니터링 대시보드가 스택 컴포넌트 주소를 미리 채운다** (`internal/stack/domain/tool_access_url.go` 신규, `internal/stack/adapter/handler/monitoring_handler.go`, `web/src/features/observability/components/monitoring-connect-panel.tsx`): "Connect Stack Components" 는 `Tools detected in <스택>` 이라고 써 놓고 실제로는 아무것도 감지하지 않았다. 도구 6개와 그 상태·버전이 화면에 상수로 박혀 있어, 깔리지도 않은 Kibana 가 running 으로 뜨고 Grafana 는 무슨 스택을 골라도 warning 이었다. 주소도 설치할 때 이미 받아 둔 접속 도메인을 두고 사용자에게 다시 받아 적게 했다.
 
@@ -331,9 +327,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   이제 삭제 뒤 남은 볼륨을 다시 확인해서, 무엇이 남았는지·그것이 다음 설치에 무엇을 하는지·어떻게 지우는지를 error 로 남긴다.
 
-- **스택 삭제가 게이트웨이 인프라를 걷어 가던 것** (`internal/stack/usecase/delete_stack.go`): 삭제는 Envoy Gateway 릴리스(`eg`)를 스택 네임스페이스·`default`·플랫폼 네임스페이스까지 훑어 언인스톨했다. 게이트웨이가 스택마다 하나였을 때는 자기 것을 지우는 동작이었지만, 클러스터에 하나만 두게 되면 스택 하나를 지울 때 **다른 스택의 현관이 함께 닫힌다.** 게이트웨이 계열 릴리스는 공용으로 보고 언인스톨하지 않으며, 이름 기반 청소가 훑는 네임스페이스에서도 공용 게이트웨이 자리를 뺐다.
-
-  플랫폼 네임스페이스(`nullus`)를 훑던 것도 함께 걷어냈다. Envoy Gateway 를 거기서 찾겠다는 이유였는데, 그 경로가 2026-08-20 에 플랫폼을 지운 스윕이 지나간 길이다.
+- **스택 삭제가 플랫폼 네임스페이스를 훑던 것** (`internal/stack/usecase/delete_stack.go`): 삭제는 Envoy Gateway 릴리스(`eg`)를 찾겠다고 스택 네임스페이스뿐 아니라 **플랫폼 네임스페이스까지** 훑었다. 그 경로가 2026-08-20 에 플랫폼을 지운 스윕이 지나간 길이다. 이제 스택은 자기 자리와 `default` 만 정리한다 — 게이트웨이는 스택 것이므로 스택 네임스페이스에서 정상적으로 회수된다.
 
 - **Jenkins 가 받을 수 없는 이미지를 가리켜 스택마다 뜨지 않던 것** (`internal/stack/adapter/helm/values.go`, `scripts/build-jenkins-image.sh`, `airgap/scripts/00-generate-images.sh`): 저장소가 `cloud-nullus/draft` → `cloud-nullus/nullus` 로 리네임됐을 때 `nullus-api` · `nullus-web` 은 새 경로로 고쳐졌지만(#78) **Jenkins 이미지만 옛 경로에 남았다.** CD 는 `ghcr.io/${{ github.repository }}/nullus-jenkins` 로 push 하므로 이미지는 새 경로에만 올라간다.
 

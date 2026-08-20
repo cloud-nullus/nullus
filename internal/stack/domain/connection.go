@@ -6,13 +6,6 @@ import shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 // 설치 경로와 안내 경로가 같은 값을 봐야 하므로 domain 이 소유한다.
 const DefaultStackNamespace = shareddomain.DefaultStackNamespace
 
-// 공용 진입 게이트웨이. 규칙은 shared 가 소유하고 여기서는 별칭만 둔다 —
-// 설치(helm 어댑터)와 삭제(usecase)가 같은 값을 봐야 한다.
-const (
-	SharedGatewayNamespace = shareddomain.SharedGatewayNamespace
-	SharedGatewayName      = shareddomain.SharedGatewayName
-)
-
 // 설치가 만들어내는 리소스 이름들. 여기가 단일 출처다.
 //
 // 이 값들은 두 곳에서 필요하다 — 설치 경로(Helm values 가 existingSecret 으로
