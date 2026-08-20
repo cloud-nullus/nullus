@@ -308,6 +308,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **배포 진행 막대가 초반에 확 달리던 것** (`web/src/features/stack/utils/deploy-progress.ts`): 표시용 진행률이 남은 거리에 **비례해서만** 움직였다. `install` 단계는 15%에서 다음 이정표 90%까지 75 포인트가 남아 있어서, 비례식이 초당 6%p 넘는 속도를 냈다 — 막대가 시작하자마자 절반을 넘겼다.
+
+  비율에 더해 **한 틱에 움직일 수 있는 최대 폭**을 뒀다. 거리가 멀어도 걸음 폭은 같고, 가까워지면 비율이 줄면서 자연히 느려진다. 멈춰 있을 때는 초당 약 0.36%p(1분에 21 포인트)로, 분 단위로 도는 설치에 맞춘 걸음이다. 실제 값이 뛰었을 때의 도약도 순간이동 대신 몇 초에 걸쳐 미끄러진다 — 값이 뛰었다는 것은 보여 주되 눈이 따라갈 수 있게.
+
 - **볼륨이 남은 채 다시 설치하면 Gitea 가 DB 인증 실패로 못 뜨던 것** (`internal/stack/adapter/helm/postgres-role-sync.go` 신규, `internal/stack/usecase/delete_stack.go`): 운영에서 Gitea 의 `configure-gitea` 가 `password authentication failed for user "gitlab" (28P01)` 로 CrashLoopBackOff 에 빠졌다. DB 주소·이름·사용자는 전부 정상이었고 **비밀번호만 어긋나 있었다.**
 
   비밀번호의 출처와 그것이 구워지는 곳의 수명이 다르기 때문이다. 출처는 OpenBao(→ ExternalSecrets → Secret)이고, PostgreSQL 은 **데이터 디렉터리가 비어 있을 때 딱 한 번** 그 값으로 사용자를 만든다. 실제 타임스탬프가 그대로 보여 준다:

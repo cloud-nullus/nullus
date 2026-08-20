@@ -63,3 +63,44 @@ describe("진행률 상한", () => {
     expect(progressCeiling(100, MILESTONES)).toBe(100);
   });
 });
+
+describe("진행률 속도", () => {
+  // 처음에는 남은 거리에 비례해서만 움직였다. install 단계는 15 에서 90 까지
+  // 75 포인트가 남아 있어 비례식이 초당 6%p 를 넘겼고, 막대가 시작하자마자
+  // 확 달려 절반을 넘겼다. 거리가 멀어도 걸음 폭은 같아야 한다.
+  it("이정표가 멀어도 한 틱에 확 달리지 않는다", () => {
+    const stalled = nextDisplayProgress({ current: 15, target: 15, ceiling: 90, status: "running" });
+    // 부동소수 오차를 감안한 여유. 요지는 "한 틱에 0.05%p 수준" 이다.
+    expect(stalled - 15).toBeLessThan(0.06);
+  });
+
+  it("멈춰 있는 동안 1초에 1%p 를 넘지 않는다", () => {
+    // 한 틱은 약 140ms — 1초는 대략 7틱이다.
+    let value = 15;
+    for (let i = 0; i < 7; i += 1) {
+      value = nextDisplayProgress({ current: value, target: 15, ceiling: 90, status: "running" });
+    }
+
+    expect(value - 15).toBeLessThan(1);
+    expect(value).toBeGreaterThan(15);
+  });
+
+  // 실제 값이 뛰었을 때는 따라가야 하지만, 순간이동처럼 보이면 안 된다.
+  it("큰 도약도 여러 틱에 걸쳐 미끄러진다", () => {
+    const one = nextDisplayProgress({ current: 15, target: 90, ceiling: 96, status: "running" });
+
+    expect(one - 15).toBeLessThanOrEqual(1.2);
+    expect(one).toBeGreaterThan(15);
+  });
+
+  // 따라붙은 뒤에는 다시 다음 이정표를 향해 기어간다 — 멈춰 서지 않는다.
+  it("도약이 실제 값을 지나 다음 이정표 앞까지 이어진다", () => {
+    let value = 15;
+    for (let i = 0; i < 400; i += 1) {
+      value = nextDisplayProgress({ current: value, target: 90, ceiling: 96, status: "running" });
+    }
+
+    expect(value).toBeGreaterThanOrEqual(90);
+    expect(value).toBeLessThan(96);
+  });
+});
