@@ -891,13 +891,6 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	if spec.Namespace != "" {
 		namespace = spec.Namespace
 	}
-	// Envoy Gateway 컨트롤러는 게이트웨이와 같은 자리에 산다.
-	//
-	// 스택 네임스페이스에 깔면 그 스택을 지울 때 다른 스택이 쓰는 데이터플레인까지
-	// 사라진다. 게이트웨이가 공용이 된 이상 컨트롤러도 공용이어야 한다.
-	if step == "installing_gateway" {
-		namespace = domain.SharedGatewayNamespace
-	}
 	if step == stepInstallingCertManager && looksLikeKubeconfig(o.kubeconfig) {
 		if releaseNamespace, err := o.detectCertManagerReleaseNamespaceFromCRD(ctx); err == nil && strings.TrimSpace(releaseNamespace) != "" {
 			namespace = strings.TrimSpace(releaseNamespace)
@@ -1088,12 +1081,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		if err := o.applyManifest(ctx, manifestNamespace, manifest); err != nil {
 			return fmt.Errorf("apply yaml manifest for step %s: %w", step, err)
 		}
-		// 밖에서 들어오는 배선(ingress 브리지)이 상수를 가리킬 수 있도록 고정
-		// 이름 별칭을 만든다. 실패해도 설치를 멈추지 않는다 — 클러스터 안에서는
-		// 스택이 정상 동작하고, 별칭이 없으면 그 배선만 손으로 하면 된다.
+		// 밖에서 들어오는 길을 함께 놓는다. LoadBalancer 가 없는 클러스터에서는
+		// 게이트웨이가 외부 IP 를 못 받아, 이 규칙이 없으면 요청이 ingress 까지만
+		// 오고 404 로 끝난다. 실패해도 설치를 멈추지 않는다 — 클러스터 안에서는
+		// 스택이 정상 동작하고, 이 배선은 나중에 손으로도 걸 수 있다.
 		if looksLikeKubeconfig(o.kubeconfig) {
-			if err := o.ensureSharedGatewayProxyAlias(ctx); err != nil {
-				slog.Warn("shared gateway proxy alias unavailable", "error", err)
+			accessDomain, stackLabel := o.stackAccessIdentity()
+			if err := o.ensureGatewayBridgeIngress(ctx, manifestNamespace, accessDomain, stackLabel); err != nil {
+				slog.Warn("gateway bridge ingress not created", "namespace", manifestNamespace, "error", err)
 			}
 		}
 	}

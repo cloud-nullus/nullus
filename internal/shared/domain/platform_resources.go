@@ -66,16 +66,3 @@ func otelCollectorEndpoint(namespace string, port int) string {
 
 // DefaultStackNamespace 는 스택 네임스페이스가 정해지지 않았을 때의 기본값이다.
 const DefaultStackNamespace = "nullus"
-
-// 스택들이 함께 쓰는 진입 게이트웨이.
-//
-// 예전에는 스택마다 자기 Gateway 를 자기 네임스페이스에 만들었다. 그러면 스택을
-// 지울 때 현관도 함께 사라지고, 밖에서 들어오는 배선(DNS·Ingress·포트포워드)을
-// 스택마다 다시 해야 한다. 이름과 자리가 고정돼야 그 배선을 한 번만 한다.
-//
-// 스택·플랫폼 어느 쪽 네임스페이스도 아닌 전용 자리에 둔다 — 스택 삭제에도,
-// 플랫폼 재배포에도 휘둘리지 않아야 하기 때문이다.
-const (
-	SharedGatewayNamespace = "nullus-gateway"
-	SharedGatewayName      = "nullus-gateway"
-)

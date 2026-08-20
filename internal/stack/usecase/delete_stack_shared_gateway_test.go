@@ -37,32 +37,29 @@ func newSharedGatewayDeleteStack(t *testing.T) (*DeleteStack, *fakeHelmInstaller
 	return uc, installer, &swept
 }
 
-func TestDeleteStack_KeepsSharedEnvoyGatewayRelease(t *testing.T) {
+// 게이트웨이는 스택 것이다. 스택을 지우면 함께 회수돼야 남은 Envoy 가 떠 있지 않다.
+func TestDeleteStack_UninstallsStackEnvoyGateway(t *testing.T) {
 	uc, installer, _ := newSharedGatewayDeleteStack(t)
 
 	require.NoError(t, uc.Execute(context.Background(), "stk-shared-gw"))
 
-	for _, call := range installer.uninstallCalls {
-		assert.NotContains(t, call, "eg@",
-			"Envoy Gateway 는 공용이다 — 스택 삭제가 언인스톨하면 다른 스택의 라우팅이 죽는다")
-	}
+	assert.Contains(t, installer.uninstallCalls, "eg@nullus-demo-stack")
 }
 
-func TestDeleteStack_NeverSweepsSharedGatewayNamespace(t *testing.T) {
+// 옛 코드가 eg 를 찾겠다고 플랫폼 네임스페이스까지 훑었다. 그 경로로
+// 2026-08-20 에 플랫폼이 지워졌다 — 스택은 자기 자리만 정리한다.
+func TestDeleteStack_NeverSweepsPlatformNamespace(t *testing.T) {
 	uc, _, swept := newSharedGatewayDeleteStack(t)
 
 	require.NoError(t, uc.Execute(context.Background(), "stk-shared-gw"))
 
-	assert.NotContains(t, *swept, domain.SharedGatewayNamespace)
+	assert.NotContains(t, *swept, domain.DefaultStackNamespace)
 	assert.Contains(t, *swept, "nullus-demo-stack", "자기 네임스페이스는 계속 정리한다")
 }
 
-// 옛 코드가 eg 를 찾으려고 플랫폼 네임스페이스까지 훑었다. 게이트웨이가 전용
-// 자리로 옮겨간 이상 남의 집을 뒤질 이유가 없다.
-func TestCleanupNamespaces_ExcludePlatformAndGatewayNamespaces(t *testing.T) {
+func TestCleanupNamespaces_StaysWithinStackAndDefault(t *testing.T) {
 	namespaces := cleanupNamespacesForStack("nullus-demo-stack")
 
-	assert.Contains(t, namespaces, "nullus-demo-stack")
-	assert.NotContains(t, namespaces, domain.SharedGatewayNamespace)
+	assert.Equal(t, []string{"nullus-demo-stack", "default"}, namespaces)
 	assert.NotContains(t, namespaces, domain.DefaultStackNamespace)
 }

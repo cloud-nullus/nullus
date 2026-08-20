@@ -88,11 +88,12 @@ func TestDeleteStack_UninstallsKnownReleasesThenDeletesStack(t *testing.T) {
 	assert.Contains(t, installer.uninstallCalls, "cert-manager@default")
 	assert.Contains(t, installer.uninstallCalls, "opensearch@devsecops")
 	assert.Contains(t, installer.uninstallCalls, "opensearch@default")
-	// Envoy Gateway 는 스택들이 함께 쓴다. 한 스택을 지운다고 걷어 가면 다른
-	// 스택의 현관까지 닫히므로 어느 네임스페이스에서도 언인스톨하지 않는다.
+	// 게이트웨이는 스택 것이다 — 지우면 함께 회수된다. 다만 훑는 자리는 스택
+	// 네임스페이스와 default 뿐이다. 플랫폼 네임스페이스까지 뒤지던 옛 동작이
+	// 2026-08-20 에 플랫폼을 지운 경로였다.
+	assert.Contains(t, installer.uninstallCalls, "eg@devsecops")
 	for _, call := range installer.uninstallCalls {
-		assert.NotContains(t, call, "eg@")
-		assert.NotContains(t, call, "envoy-gateway@")
+		assert.NotContains(t, call, "@nullus")
 	}
 	steps := make([]string, 0, len(streamer.entries))
 	for _, e := range streamer.entries {
