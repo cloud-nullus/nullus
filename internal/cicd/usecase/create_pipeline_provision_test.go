@@ -93,7 +93,14 @@ func TestCreatePipeline_PassesTemplateIDToProvisioner(t *testing.T) {
 	assert.Equal(t, "web-backend-v1", p.calls[0].TemplateID)
 }
 
-func TestCreatePipeline_SkipsProvisioningWhenNotRequested(t *testing.T) {
+// 스택에 묶인 파이프라인은 플래그가 없어도 준비한다.
+//
+// 이 테스트는 원래 "요청하지 않으면 만들지 않는다" 를 고정하고 있었다. 그런데
+// 요청하는 쪽이 없었다 — 프론트는 provision_repository 를 한 번도 보내지 않아
+// UI 로 만든 파이프라인에는 저장소도, Jenkinsfile 도, Jenkins job 도, Argo CD
+// Application 도 없었다. 통합모드는 그것들이 있다는 전제 위에 서 있으므로,
+// 준비 없이 만든 파이프라인은 배포를 눌러도 넘길 job 이 없다.
+func TestCreatePipeline_ProvisionsStackPipelineWithoutExplicitRequest(t *testing.T) {
 	p := &fakeRepoProvisioner{out: provisionedResult()}
 	uc, _ := newCreateWithProvisioner(p)
 
@@ -102,7 +109,36 @@ func TestCreatePipeline_SkipsProvisioningWhenNotRequested(t *testing.T) {
 
 	_, err := uc.Execute(context.Background(), in)
 	require.NoError(t, err)
-	assert.Empty(t, p.calls, "요청하지 않으면 저장소를 만들지 않는다")
+	require.Len(t, p.calls, 1, "스택에 묶인 파이프라인은 저장소·CI job 을 준비한다")
+}
+
+// 스택이 없으면 준비할 대상 자체가 없다. 기존 경로 그대로 둔다.
+func TestCreatePipeline_SkipsProvisioningWithoutStack(t *testing.T) {
+	p := &fakeRepoProvisioner{out: provisionedResult()}
+	uc, _ := newCreateWithProvisioner(p)
+
+	in := provisionInput()
+	in.ProvisionRepository = false
+	in.StackID = ""
+
+	_, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+	assert.Empty(t, p.calls)
+}
+
+// 긴급 직접 배포는 스택 컴포넌트를 쓸 수 없을 때의 경로다. 그 상황에서 저장소
+// 생성을 시도하면 쓰지 못하는 도구에 붙으려다 파이프라인 생성 자체가 막힌다.
+func TestCreatePipeline_EmergencyDirectSkipsProvisioning(t *testing.T) {
+	p := &fakeRepoProvisioner{out: provisionedResult()}
+	uc, _ := newCreateWithProvisioner(p)
+
+	in := provisionInput()
+	in.ProvisionRepository = false
+	in.ExecutionMode = domain.ExecutionModeEmergencyDirect
+
+	_, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+	assert.Empty(t, p.calls)
 }
 
 // 저장소 생성은 스택이 있어야 가능하다.
