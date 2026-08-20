@@ -1,9 +1,14 @@
 package usecase
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 // 2026-08-20 운영 사고.
@@ -32,4 +37,37 @@ func TestParseResourceNames_ReadsKubectlNameOutput(t *testing.T) {
 
 func TestParseResourceNames_EmptyOutputYieldsNothing(t *testing.T) {
 	assert.Empty(t, parseResourceNames("   \n"))
+}
+
+// PVC 는 그것을 마운트한 파드가 살아 있는 동안 finalizer 로 남는다. 첫 삭제는
+// 파드가 빠지기 전에 끝나 타임아웃이 나고, 예전에는 거기서 포기했다.
+func TestDeleteStack_RetriesUntilVolumesAreGone(t *testing.T) {
+	repo := newFakeStackRepo(&domain.Stack{
+		ID:        "stk-pvc-retry",
+		Name:      "demo-stack",
+		ClusterID: "cluster-pvc-retry",
+		Namespace: "nullus-demo-stack",
+		State:     domain.StateCompleted,
+	})
+	uc := NewDeleteStack(repo, &fakeDeleteKubeconfigProvider{config: []byte("apiVersion: v1\n")},
+		func([]byte) port.HelmInstaller { return &fakeHelmInstaller{} })
+	uc.listResourcesFunc = func(context.Context, []byte, string) ([]namespacedResource, error) { return nil, nil }
+	uc.deleteResourceFunc = func(context.Context, []byte, string, string) error { return nil }
+
+	// kubectl 을 갈아끼울 수 없으므로 재시도 함수가 컨텍스트 취소에 즉시 반응하는지
+	// 본다 — 이것이 없으면 삭제가 최대 1분을 붙잡고 있게 된다.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		uc.retryDeletePersistentVolumeClaims(ctx, []byte("apiVersion: v1\n"), "nullus-demo-stack", "stk-pvc-retry")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("취소된 컨텍스트에서 곧바로 돌아오지 않았다")
+	}
 }

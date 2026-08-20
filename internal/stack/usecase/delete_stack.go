@@ -846,16 +846,50 @@ func (uc *DeleteStack) bestEffortDeletePersistentVolumeClaims(ctx context.Contex
 	}
 
 	// 지웠다고 끝이 아니다. 파드가 아직 물고 있으면 PVC 는 Terminating 으로 남고
-	// 위 명령은 타임아웃으로 끝난다. 예전에는 경고 한 줄만 남기고 넘어가서,
-	// 사용자는 스택이 깨끗이 지워진 줄 알았다 — 그리고 다음 설치가 옛 볼륨을
-	// 물려받아 DB 안의 비밀번호와 새로 만든 Secret 이 어긋났다.
-	// 남은 것이 있으면 무엇이 왜 문제인지 분명히 남긴다.
+	// 위 명령은 타임아웃으로 끝난다. 파드가 빠지기를 잠깐 기다렸다가 한 번 더
+	// 시도한다 — 대개 그 사이에 finalizer 가 풀린다.
+	//
+	// 남은 볼륨은 조용한 실패가 아니다. 다음 설치가 옛 데이터베이스를 물려받고,
+	// 그 안의 비밀번호는 새로 만든 Secret 과 다르다. PostgreSQL 은 Gitea 의
+	// 28P01 로, Harbor 는 프로비저닝 401 로 드러났다 — 둘 다 원인에서 먼 자리다.
+	uc.retryDeletePersistentVolumeClaims(ctx, kubeconfig, namespace, stackID)
+
 	if out, err := uc.runKubectl(ctx, kubeconfig, "get", "pvc", "-n", namespace, "-o", "name"); err == nil {
 		if remaining := parseResourceNames(string(out)); len(remaining) > 0 {
 			message := remainingPVCMessage(namespace, remaining)
 			slog.Error("persistent volume claims survived stack delete",
 				"namespace", namespace, "remaining", remaining)
 			uc.emit(ctx, stackID, "deleting_pvc", "error", message)
+		}
+	}
+}
+
+// retryDeletePersistentVolumeClaims 는 파드가 빠지기를 기다렸다가 한 번 더 지운다.
+//
+// PVC 는 그것을 마운트한 파드가 살아 있는 동안 pvc-protection finalizer 로 남는다.
+// 삭제가 릴리스를 먼저 걷어내므로 파드는 곧 사라지지만, 첫 시도는 그 전에 끝나
+// 타임아웃이 난다. 여기서 한 박자 기다렸다가 다시 시도하면 대부분 회수된다.
+func (uc *DeleteStack) retryDeletePersistentVolumeClaims(ctx context.Context, kubeconfig []byte, namespace, stackID string) {
+	for attempt := 0; attempt < 6; attempt++ {
+		out, err := uc.runKubectl(ctx, kubeconfig, "get", "pvc", "-n", namespace, "-o", "name")
+		if err != nil {
+			return
+		}
+		if len(parseResourceNames(string(out))) == 0 {
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(10 * time.Second):
+		}
+
+		uc.emit(ctx, stackID, "deleting_pvc", "info",
+			fmt.Sprintf("남은 볼륨을 다시 지웁니다 (%d/6)", attempt+1))
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "pvc", "-n", namespace,
+			"--all", "--ignore-not-found", "--timeout=60s"); err != nil {
+			slog.Warn("pvc delete retry warning", "namespace", namespace, "attempt", attempt+1, "error", err)
 		}
 	}
 }

@@ -304,6 +304,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택을 지워도 볼륨이 남아 다음 설치의 자격증명이 어긋나던 것** (`internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/helm/harbor-provisioning.go`): PVC 는 그것을 마운트한 파드가 살아 있는 동안 `pvc-protection` finalizer 로 남는다. 삭제는 릴리스를 먼저 걷어내므로 파드가 곧 사라지지만, **첫 삭제 시도는 그 전에 끝나 타임아웃**이 났고 거기서 포기했다.
+
+  남은 볼륨은 조용한 실패가 아니다. 다음 설치가 옛 데이터베이스를 물려받고, 그 안의 비밀번호는 새로 만든 Secret 과 다르다. **PostgreSQL 은 Gitea 의 `28P01` 로, Harbor 는 프로비저닝 `401` 로 드러났다** — 둘 다 원인에서 여섯 단계쯤 떨어진 자리다.
+
+  이제 파드가 빠지기를 기다렸다가 최대 여섯 번까지 다시 지운다. 그래도 남으면 무엇이 남았는지·다음 설치에 무엇을 하는지·어떻게 지우는지를 error 로 남긴다.
+
+  Harbor 의 401 도 읽을 수 있게 고쳤다. 예전에는 `harbor project 생성 실패 (HTTP 401)` 한 줄이 전부라, Harbor 가 관리자 비밀번호를 **자기 데이터베이스에 굽는다**는 사실을 모르면 원인을 찾을 수 없었다.
+
 - **배포 진행률이 실제로 한 일과 어긋나고, 새로고침하면 값이 튀던 것** (`internal/stack/domain/deploy_steps.go` 신규, `internal/stack/adapter/handler/deploy_handler.go`, `web/src/features/stack/utils/deploy-progress.ts`): 시크릿까지만 깔린 시점에 막대가 **50%** 를 넘겼고, 새로고침하면 퍼센트가 다른 값으로 바뀌었다.
 
   진행률의 출처가 셋이었다. 서버에는 손으로 적은 스텝→퍼센트 표가 있었는데 `provisioning_secrets` · `installing_postgresql` · `installing_gitea` 처럼 **실제로 밟는 스텝의 절반이 빠져 있어** 그 스텝에서는 0 이 나갔다. 화면은 0 을 받으면 상태(`installing`)를 뭉뚱그린 자기 표로 떨어졌고, 그 위에서 시간 기반 크리프가 다음 단계(90%)를 향해 기어올랐다 — 그래서 초반 스텝에서 절반을 넘겼다. 새로고침하면 스트림이 처음부터 다시 붙어 그 뭉뚱그린 표만 남으므로 값이 튀었다.
