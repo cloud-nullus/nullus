@@ -304,6 +304,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **서버가 재시작되면 설치가 흔적 없이 멈추고, 이어서 진행조차 막히던 것** (`internal/stack/usecase/reap_stale_installs.go` 신규, `internal/stack/domain/deploy_steps.go`, `cmd/api/main.go`): 설치는 API 프로세스 안의 고루틴이 돌린다. 파드가 교체되면 그 고루틴이 사라지는데 **아무도 실패를 기록하지 않는다** — 스택은 `installing` 인 채로 남고, 화면은 진행 중처럼 보인다.
+
+  더 나쁜 것은 그 상태에서 **이어서 진행(continue)이 막힌다**는 점이다. `continue` 는 `failed`/`pending` 만 받으므로 `409 STACK_CONTINUE_INVALID_STATE` 가 난다. 사용자에게는 지우고 다시 까는 길밖에 없다 — 2026-08-20 운영에서 `installing_gateway` 에서 그렇게 갇혔고, 몇 시간 뒤에야 발견됐다.
+
+  이제 5분마다 훑어 **30분째 진전이 없는 설치를 실패로 옮긴다.** 실패 사유에 "서버가 재시작되면 진행이 이어지지 않는다, 이어서 진행하면 그 자리부터 계속된다" 까지 적는다 — "실패" 만 적으면 설치가 잘못된 줄 안다.
+
+  기동 시 한 번이 아니라 주기적으로 도는 이유가 있다. API 는 레플리카가 여럿이라 "내가 재시작했다" 가 "아무도 안 돌리고 있다" 를 뜻하지 않는다. 판단 근거는 시간뿐이고, 한 스텝이 오래 걸릴 수 있어(GitLab 은 helm `--wait` 만 15분) 여유를 크게 잡았다.
+
 - **스택을 지워도 네임스페이스가 남던 것** (`internal/stack/usecase/delete_stack.go`): 삭제는 리소스를 종류별로 하나씩 지웠고 **네임스페이스는 건드리지 않았다.** 스택이 플랫폼과 같은 `nullus` 에 살던 시절의 규칙인데, 이제 스택은 자기 네임스페이스를 갖는다. 하나씩 지우는 방식은 놓치는 것이 생기고, 그것이 오늘의 사고들(Gitea `28P01`, Harbor `401`)의 뿌리였다.
 
   스택 몫으로 만들어진 자리(`nullus-<스택명>`)는 통째로 회수한다. 플랫폼이 사는 곳, `default`, 옛 공용 기본값 `nullus`, 사용자가 직접 고른 네임스페이스는 지우지 않는다 — 다른 것과 함께 쓰고 있을 수 있고, `nullus` 를 지우면 플랫폼이 사라진다.

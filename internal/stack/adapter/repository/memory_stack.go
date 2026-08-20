@@ -66,6 +66,20 @@ func (r *MemoryStackRepository) List(_ context.Context, orgID string, includeDel
 	return result, nil
 }
 
+// ListInFlight 는 설치가 진행 중인 상태로 남아 있는 스택을 조직과 무관하게 돌려준다.
+func (r *MemoryStackRepository) ListInFlight(_ context.Context) ([]*domain.Stack, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*domain.Stack, 0, len(r.stacks))
+	for _, s := range r.stacks {
+		if s.DeletedAt == nil && domain.IsInFlight(s.State) {
+			cp := *s
+			result = append(result, &cp)
+		}
+	}
+	return result, nil
+}
+
 // Update replaces a stored stack with the given value.
 func (r *MemoryStackRepository) Update(_ context.Context, stack *domain.Stack) error {
 	r.mu.Lock()

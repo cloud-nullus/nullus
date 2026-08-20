@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -88,4 +89,47 @@ func TestStackProgress_UnknownStateStartsAtZero(t *testing.T) {
 
 	assert.Equal(t, 0, progress)
 	assert.Equal(t, 0, ceiling)
+}
+
+// 2026-08-20 운영에서 갇힌 상태.
+//
+// 설치 도중 API 파드가 교체되면 설치 고루틴이 사라진다. 아무도 실패를 기록하지
+// 않으므로 스택은 installing 인 채로 남고, 그 상태에서는 이어서 진행(continue)도
+// 막힌다(failed/pending 만 허용) — 지우고 다시 까는 길밖에 없었다.
+func TestIsStaleInstall_CatchesInterruptedInstalls(t *testing.T) {
+	now := time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)
+	updated := now.Add(-2 * time.Hour)
+
+	assert.True(t, IsStaleInstall(StateInstalling, updated, now))
+}
+
+// 한 스텝이 오래 걸릴 수 있다 — GitLab 은 helm --wait 타임아웃만 15분이다.
+// 그 동안 행이 갱신되지 않으므로, 짧게 잡으면 살아 있는 설치를 죽인다.
+func TestIsStaleInstall_LeavesSlowButLiveInstalls(t *testing.T) {
+	now := time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)
+
+	assert.False(t, IsStaleInstall(StateInstalling, now.Add(-10*time.Minute), now))
+	assert.False(t, IsStaleInstall(StateInstalling, now.Add(-29*time.Minute), now))
+}
+
+func TestIsStaleInstall_IgnoresTerminalStates(t *testing.T) {
+	now := time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)
+	old := now.Add(-10 * time.Hour)
+
+	assert.False(t, IsStaleInstall(StateCompleted, old, now))
+	assert.False(t, IsStaleInstall(StateFailed, old, now))
+	assert.False(t, IsStaleInstall(StatePending, old, now))
+}
+
+func TestIsStaleInstall_IgnoresMissingTimestamp(t *testing.T) {
+	assert.False(t, IsStaleInstall(StateInstalling, time.Time{}, time.Now()))
+}
+
+func TestIsInFlight_CoversTheStatesAnInstallPassesThrough(t *testing.T) {
+	for _, state := range []DeploymentState{StateValidating, StateInstalling, StateConfiguring, StateHealthCheck} {
+		assert.True(t, IsInFlight(state), "%s", state)
+	}
+	for _, state := range []DeploymentState{StatePending, StateCompleted, StateFailed, StateRolledBack} {
+		assert.False(t, IsInFlight(state), "%s", state)
+	}
 }
