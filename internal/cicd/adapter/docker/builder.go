@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -32,7 +33,7 @@ func (b *Builder) PrepareImage(ctx context.Context, opts port.PrepareImageOpts) 
 	b.log(opts.DeploymentID, 0, "$ git clone --depth=1 %s", opts.GitRepoURL)
 	cloneCmd := exec.CommandContext(ctx, "git", "clone", "--depth=1", opts.GitRepoURL, tmpDir)
 	if output, err := cloneCmd.CombinedOutput(); err != nil {
-		b.log(opts.DeploymentID, 0, "error: %s", strings.TrimSpace(string(output)))
+		b.log(opts.DeploymentID, 0, "error: %s", commandFailure("git", output, err))
 		b.markFailed(opts.DeploymentID, 0, "git clone failed")
 		return "", fmt.Errorf("git clone: %w", err)
 	}
@@ -49,7 +50,7 @@ func (b *Builder) PrepareImage(ctx context.Context, opts port.PrepareImageOpts) 
 		buildContext,
 	)
 	if output, err := buildCmd.CombinedOutput(); err != nil {
-		b.log(opts.DeploymentID, 1, "error: %s", strings.TrimSpace(string(output)))
+		b.log(opts.DeploymentID, 1, "error: %s", commandFailure("docker", output, err))
 		b.markFailed(opts.DeploymentID, 1, "docker build failed")
 		return "", fmt.Errorf("docker build: %w", err)
 	}
@@ -73,7 +74,7 @@ func (b *Builder) pushToRegistry(ctx context.Context, opts port.PrepareImageOpts
 		)
 		loginCmd.Stdin = strings.NewReader(opts.RegistryPassword)
 		if output, err := loginCmd.CombinedOutput(); err != nil {
-			b.log(opts.DeploymentID, 2, "error: %s", strings.TrimSpace(string(output)))
+			b.log(opts.DeploymentID, 2, "error: %s", commandFailure("docker", output, err))
 			b.markFailed(opts.DeploymentID, 2, "docker login failed")
 			return "", fmt.Errorf("docker login: %w", err)
 		}
@@ -82,7 +83,7 @@ func (b *Builder) pushToRegistry(ctx context.Context, opts port.PrepareImageOpts
 	b.log(opts.DeploymentID, 2, "$ docker tag %s %s", opts.ImageName, remoteRef)
 	tagCmd := exec.CommandContext(ctx, "docker", "tag", opts.ImageName, remoteRef)
 	if output, err := tagCmd.CombinedOutput(); err != nil {
-		b.log(opts.DeploymentID, 2, "error: %s", strings.TrimSpace(string(output)))
+		b.log(opts.DeploymentID, 2, "error: %s", commandFailure("docker", output, err))
 		b.markFailed(opts.DeploymentID, 2, "docker tag failed")
 		return "", fmt.Errorf("docker tag: %w", err)
 	}
@@ -90,7 +91,7 @@ func (b *Builder) pushToRegistry(ctx context.Context, opts port.PrepareImageOpts
 	b.log(opts.DeploymentID, 2, "$ docker push %s", remoteRef)
 	pushCmd := exec.CommandContext(ctx, "docker", "push", remoteRef)
 	if output, err := pushCmd.CombinedOutput(); err != nil {
-		b.log(opts.DeploymentID, 2, "error: %s", strings.TrimSpace(string(output)))
+		b.log(opts.DeploymentID, 2, "error: %s", commandFailure("docker", output, err))
 		b.markFailed(opts.DeploymentID, 2, "docker push failed")
 		return "", fmt.Errorf("docker push: %w", err)
 	}
@@ -104,7 +105,7 @@ func (b *Builder) loadIntoKind(ctx context.Context, opts port.PrepareImageOpts) 
 	b.log(opts.DeploymentID, 2, "$ kind load docker-image %s --name %s", opts.ImageName, opts.ClusterName)
 	loadCmd := exec.CommandContext(ctx, "kind", "load", "docker-image", opts.ImageName, "--name", opts.ClusterName)
 	if output, err := loadCmd.CombinedOutput(); err != nil {
-		b.log(opts.DeploymentID, 2, "error: %s", strings.TrimSpace(string(output)))
+		b.log(opts.DeploymentID, 2, "error: %s", commandFailure("kind", output, err))
 		b.markFailed(opts.DeploymentID, 2, "kind load failed")
 		return "", fmt.Errorf("kind load: %w", err)
 	}
@@ -136,4 +137,24 @@ func (b *Builder) markFailed(deploymentID string, stepIndex int, message string)
 	if b.tracker != nil && deploymentID != "" {
 		b.tracker.MarkFailed(deploymentID, stepIndex, message)
 	}
+}
+
+// commandFailure 는 실패한 CLI 호출을 배포 로그에 쓸 한 줄로 만든다.
+//
+// CombinedOutput 은 실행 파일 자체가 없으면 출력 없이 에러만 돌려준다. 출력만
+// 찍으면 로그에 "error:" 만 남아 무엇이 없어서 실패했는지 알 수 없다 — 운영에서
+// git clone 이 정확히 그렇게 끝났고, 원인은 이미지에 git 이 없다는 것이었다.
+func commandFailure(tool string, output []byte, err error) string {
+	if trimmed := strings.TrimSpace(string(output)); trimmed != "" {
+		return trimmed
+	}
+	var execErr *exec.Error
+	if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+		return fmt.Sprintf("%s 를 찾을 수 없습니다 — 이 파이프라인은 %s 가 설치된 환경에서 실행되어야 합니다 (%v)",
+			tool, tool, err)
+	}
+	if err != nil {
+		return err.Error()
+	}
+	return ""
 }
