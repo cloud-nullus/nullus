@@ -284,6 +284,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택 삭제가 플랫폼 리소스를 이름만 보고 지우던 것** (`internal/stack/usecase/delete_stack.go`, `internal/shared/config/config.go`, `deploy/helm/nullus/templates/deployment.yaml`): 삭제의 마지막 단계는 네임스페이스를 훑어 "레거시 잔재" 를 지운다. 그 판정이 이름 문자열이었다 — 리소스 이름에 스택 이름이 들어 있거나 `nullus-` 로 시작하면 지웠고, 소유자가 누구인지는 보지 않았다.
+
+  2026-08-20, 이름이 `nullus` 이고 네임스페이스도 플랫폼과 같은 `nullus` 인 스택을 지웠다. 그 규칙에 `nullus-api` · `nullus-web` · `nullus-keycloak` · `nullus-postgresql` 이 전부 걸려 **플랫폼 자신이 지워졌다.** nullus.io 가 전면 503 이 됐고, Helm 릴리스 기록만 남아 다음 배포가 `deployments.apps "nullus-api" not found` 로 막혔다.
+
+  **StatefulSet 과 PVC 가 살아남은 건 운이다.** 나열 순서가 `deploy,svc,cm,sa,pod,rs,sts,...` 라서, `deploy` 를 지운 순간 그 스윕을 실행하던 API 파드가 자기 자신을 죽이고 `sts` 차례 전에 멈췄다. 한 칸만 뒤였으면 데이터까지 갔다.
+
+  이제 소유자를 읽고 판단한다. 쿠버네티스는 이미 답을 갖고 있다 — Helm 은 `meta.helm.sh/release-name` 을, 이 플랫폼은 `nullus.io/stack-name` 라벨을 붙인다. 목록을 `-o name` 대신 `-o json` 으로 읽어 소유자와 함께 가져오고, **라벨 → Helm 릴리스 → (고아일 때만) 이름 규칙** 순서로 본다. `nullus-` 접두사는 뺐다(스택이 만드는 `nullus-*` 는 이름을 알고 있으므로 domain 상수로 하나씩 적었다). 스택 이름 부분일치 규칙은 없앴다.
+
+  마지막 안전망으로 **플랫폼이 사는 네임스페이스에서는 이름 기반 정리를 아예 하지 않는다.** 자기 자리는 차트가 Downward API 로 알려준다(`NULLUS_PLATFORM_NAMESPACE`) — 값을 차트에 적지 않으므로 릴리스를 다른 네임스페이스에 깔아도 저절로 맞는다.
+
+  스택 이름이 들어간 와일드카드 TLS 시크릿은 더 이상 지우지 않는다. 스택이 플랫폼의 공용 인증서를 그대로 지정할 수 있기 때문이다 — 이번 스택 설정이 실제로 `secret_name=nullus-wildcard-tls` 를 가리키고 있었다. 고아가 조금 남는 편이 남의 것을 지우는 것보다 낫다.
+
+- **스택이 플랫폼과 같은 네임스페이스에 설치되던 것** (`internal/stack/domain/stack_namespace.go` 신규, `internal/stack/usecase/create_stack.go`, `web/src/features/stack/utils/install-manifest-builders.ts`): 스택 네임스페이스 기본값이 `nullus` 였고 그것은 플랫폼 자신이 사는 곳이었다. 자기 클러스터에 스택을 까는 순간 두 가지가 동시에 깨진다.
+
+  **설치는 실패한다.** 스택의 PostgreSQL 릴리스(`nullus-postgresql`)가 플랫폼 차트의 bitnami postgresql 서브차트와 같은 이름의 리소스를 요구하는데, Helm 은 남의 릴리스 소유물을 인수하지 않는다. `installing_postgresql` 에서 `invalid ownership metadata` 로 멈춘다. **삭제는 더 나쁘다** — 위 항목이 그 결과다.
+
+  이제 스택마다 자기 네임스페이스를 갖는다. 비워 두면 스택 이름에서 만든다(`gitea-jenkins-v1` → `nullus-gitea-jenkins-v1`). RFC1123 라벨 규칙과 63자 제한에 맞춰 자르고, 쓸 수 없는 이름은 `nullus-stack` 으로 떨어진다. 사용자가 직접 플랫폼 네임스페이스를 골라도 막는다.
+
+  화면도 같은 규칙을 쓴다. 설치 마법사가 네임스페이스를 비우면 `nullus` 로 떨어지고 있었으므로 서버만 고치면 UI 설치가 전부 거부당한다. 두 규칙이 갈리지 않도록 테스트로 묶었다. **기존 스택은 자기 네임스페이스를 이미 저장하고 있어 영향받지 않는다.**
+
+- **형식이 깨진 접속 도메인을 그대로 받던 것** (`internal/stack/domain/access_domain.go` 신규, `internal/stack/usecase/create_stack.go`): 접속 도메인 하나가 스택의 모든 주소가 된다 — HTTPRoute 의 hostname, 게이트웨이 인증서의 commonName 과 dnsNames, 도구들의 redirect_uri. 그런데 생성 경로는 값이 비었는지만 보고 형식은 보지 않았다.
+
+  2026-08-20 운영 스택은 `access_domain` 이 `.io` 로 저장돼 있었고, 만들어진 매니페스트는 hostname `jenkins..io`, 인증서 `commonName: .io` / `dnsNames: [.io, *..io]` 였다. 라우팅도 발급도 될 수 없는 값인데 설치는 그대로 시작했다. 이제 스킴·경로·와일드카드·공백을 거부하고, 점으로 나뉜 조각이 둘 이상인지, 빈 조각이나 하이픈으로 시작·끝나는 조각이 없는지 본다. 값을 고쳐 주지는 않는다 — 무엇을 의도했는지는 사람만 안다.
+
 - **한 스택의 모니터링 탭이 다른 스택에도 뜨던 것** (`web/src/features/observability/utils/monitoring-utils.ts`, `monitoring-tab-layout.tsx`): 탭 저장 키가 뷰 단위(`nullus_tabs_stack_v1`)라 스택 A 에서 등록한 탭이 스택 B 를 골라도 그대로 떴다. cluster·cicd 뷰도 같았다. 사용자가 손으로 넣은 주소일 때는 "내가 넣은 게 남아 있네" 로 넘어갔지만, 스택 접속 도메인에서 주소를 미리 채우기 시작하면 그대로 남의 도메인을 안내하는 오작동이 된다.
 
   키를 스코프별(v2)로 나눴다 — stack 뷰는 stackId, cluster·cicd 뷰는 clusterId 를 쓰고 skip 플래그도 같은 단위로 저장한다. **키만 나누면 부족하다**: 컴포넌트가 마운트된 채 스택만 바뀌면 state 에 남은 이전 스택의 탭이 계속 보인다. `DashboardTabLayout` 이 `key` 로 내부를 갈아끼워 열린 탭·관리 모드·skip 여부까지 함께 초기화한다. v1 키는 지우지 않고 남겨 둔다 — 기존에 등록한 탭은 화면에서 사라지지만 데이터는 남아 있다.
