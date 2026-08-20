@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-64.8 -74.1 129.6 118.3" width="130" height="118" role="presentation" aria-hidden="true">
+<!-- 자동 생성 — scripts/emit-keycloak-theme-art.py
+     벨트에 얹히는 gitlab 컨테이너. -->
+<g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif">
+<polygon points="48.7,1.9 3.2,28.1 3.2,-1.9 48.7,-28.1" fill="#fc6d26"/>
+<polygon points="-48.7,-1.9 3.2,28.1 3.2,-1.9 -48.7,-31.9" fill="#ca571e"/>
+<polygon points="-3.2,-58.1 48.7,-28.1 3.2,-1.9 -48.7,-31.9" fill="#ff7c2b"/>
+<line x1="41.1" y1="3.0" x2="41.1" y2="-20.5" stroke="#e36222" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="33.6" y1="7.4" x2="33.6" y2="-16.1" stroke="#e36222" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="26.0" y1="11.8" x2="26.0" y2="-11.7" stroke="#e36222" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="18.4" y1="16.1" x2="18.4" y2="-7.4" stroke="#e36222" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="10.8" y1="20.5" x2="10.8" y2="-3.0" stroke="#e36222" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="-41.3" y1="-0.8" x2="-41.3" y2="-24.3" stroke="#b54e1b" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="-33.9" y1="3.4" x2="-33.9" y2="-20.1" stroke="#b54e1b" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="-26.4" y1="7.7" x2="-26.4" y2="-15.8" stroke="#b54e1b" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="-19.0" y1="12.0" x2="-19.0" y2="-11.5" stroke="#b54e1b" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="-11.6" y1="16.3" x2="-11.6" y2="-7.2" stroke="#b54e1b" stroke-width="1.0" stroke-linecap="round"/>
+<line x1="-4.2" y1="20.6" x2="-4.2" y2="-2.9" stroke="#b54e1b" stroke-width="1.0" stroke-linecap="round"/>
+<polygon points="48.8,1.9 3.4,28.2 3.4,24.9 48.8,-1.3" fill="#d95e21"/>
+<polygon points="-48.8,-1.8 3.1,28.2 3.1,24.9 -48.8,-5.1" fill="#ab4a1a"/>
+<polygon points="48.8,-24.8 3.4,1.4 3.4,-1.8 48.8,-28.1" fill="#d95e21"/>
+<polygon points="-48.8,-28.6 3.1,1.4 3.1,-1.8 -48.8,-31.8" fill="#ab4a1a"/>
+<polygon points="-3.2,-51.9 37.5,-28.4 3.2,-8.6 -37.5,-32.1" fill="#fff0e9" stroke="#eddfd9" stroke-width="1.0" stroke-linejoin="round"/>
+<g fill="#ab4a1a" transform="matrix(1.2503 0.7219 -1.2503 0.7219 0.00 -47.83)"><path d="m23.6004 9.5927-.0337-.0862L20.3.9814a.851.851 0 0 0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 0-.29-.4412.8748.8748 0 0 0-.9997-.0537.8585.8585 0 0 0-.3362.4049L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 2.0094-7.003z"/></g>
+</g>
+</svg>

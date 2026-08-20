@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Keycloak 로그인 화면을 제품 화면으로 바꾼다** (`deploy/helm/nullus/files/keycloak-theme/` 신규, `scripts/emit-keycloak-theme-art.py` 신규, `keycloak-theme-configmap.yaml` 신규): 기본 Keycloak 로그인 화면은 이 제품이 무엇인지 한 글자도 말해 주지 않는다. 왼쪽에 파이프라인을 그림으로 설명하고 오른쪽에 로그인 폼을 두는 두 단 화면으로 바꿨다 — 검증된 OSS 를 컨베이어에 실어 Nullus 게이트로 넣으면 반대편으로 CI/CD 스택이 나오고 그 위에 애플리케이션이 얹힌다.
+
+  **그림은 손으로 그리지 않고 생성기가 뽑는다.** 아이소메트릭은 좌표 하나가 어긋나면 조각들이 서로 떠 버리는데, SVG 를 손으로 고치면 CSS 가 얹는 움직이는 조각의 좌표와 조용히 어긋난다. 그래서 `emit-keycloak-theme-art.py` 가 정지 그림(SVG)과 조각 자리·안무(CSS 변수·keyframes)를 **같은 계산에서** 함께 뽑는다. 장면을 옮기면 조각이 따라온다.
+
+  생성기는 눈으로 봐야만 알 수 있는 것들을 불변식으로 들고 있다 — 집게 가로대가 컨테이너 뚜껑을 가로지르지 않는지, 집게발이 옆변 한가운데에 붙는지, 표시등이 화물이 지나는 길·모니터와 화면에서 겹치지 않는지. 겹침은 경계상자가 아니라 **실루엣(볼록 육각형) + 분리축 정리**로 잰다 — 경계상자로 재면 아이소메트릭 상자의 빈 모서리까지 겹친 것으로 쳐서 벨트 옆에는 놓을 자리가 없다고 나온다.
+
+  **움직이는 것은 전부 DOM 요소다.** WebKit 은 CSS 배경 이미지 속 SVG 애니메이션을 정지 프레임으로 렌더해서, SVG 안에 넣으면 사파리에서만 멈춘 채로 보인다.
+
+  테마 파일은 ConfigMap 세 개로 나눠 실어 Keycloak 에 마운트한다(root/resources/messages). `deploy/helm/keycloak_theme_test.go` 가 `helm template` 결과를 뜯어 **파일이 하나도 빠지지 않고 Keycloak 이 찾는 자리에 그대로 도착하는지**, 볼륨이 실재하는 ConfigMap 을 가리키는지, 그림이 최신인지(생성기를 다시 돌려 대조) 검사한다.
+
+  realm 기본 언어를 `en` 으로 바꿨다(`KEYCLOAK_DEFAULT_LOCALE` 로 덮어쓸 수 있다). 한국어·영어 두 벌을 다 싣는다.
+
 - **HTTP 를 HTTPS 로 강제한다** (`deploy/csp/zadara/setup-tls.sh`, `default-cert` → `ingress-https` 로 이름 변경): 기본 인증서를 걸면 새 호스트도 인증서를 받지만, **평문 HTTP 가 그대로 200 을 반환**한다. tls 섹션 없는 Ingress 를 실제로 만들어 확인했다 — `https://` 는 200 에 `*.nullus.io`, `http://` 는 200 에 리다이렉트 없음.
 
   ingress-nginx 의 `ssl-redirect` 는 **그 Ingress 에 tls 항목이 있을 때만** 켜지기 때문이다. 기존 호스트(`nullus.io`·`auth`)는 tls 항목이 있어 308 이 나가고 있어서, 새 호스트에서만 조용히 빠진다.

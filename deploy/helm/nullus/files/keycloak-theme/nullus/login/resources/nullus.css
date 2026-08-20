@@ -1,0 +1,1260 @@
+/*
+ * Nullus 로그인 화면.
+ *
+ * 부모 테마(keycloak.v2)의 구조를 그대로 두고 겉모습만 바꾼다. .ftl 을 복사하지
+ * 않는 이유는 Keycloak 을 올릴 때마다 템플릿을 따라 고쳐야 하고, 그 사이 새로
+ * 생긴 화면(passkey·organization 등)을 조용히 잃기 때문이다. 왼쪽 히어로의
+ * 마크업은 번역 가능한 자리인 messages/ 의 loginTitleHtml 에서 온다.
+ *
+ * 셀렉터 주의: keycloak.v2 의 로그인 마크업에는 `.login-pf-page` 조상이 없다
+ * (body#keycloak-bg > .pf-v5-c-login). 그 접두어를 달면 규칙이 통째로 헛돈다.
+ *
+ * 색은 제품과 같은 토큰을 쓴다(web/src/theme/tokens.generated.css 의 라이트 벌).
+ */
+
+:root {
+  --nl-bg: #f7f8fb;
+  --nl-surface: #ffffff;
+  --nl-sunken: #eef0f3;
+  --nl-border: #dfe3ea;
+  --nl-text: #0a0b0d;
+  --nl-text-2: #5b616e;
+  --nl-muted: #868d99;
+  --nl-primary: #0052ff;
+  --nl-primary-deep: #2740c8;
+  --nl-error: #c0341d;
+
+  /* 히어로 바탕 — 아이소메트릭 장면이 얹히는 옅은 하늘 */
+  --nl-hero-1: #eaf0fc;
+  --nl-hero-2: #f4f7fd;
+}
+
+/* ── 판 전체 ─────────────────────────────────────────────────────────────
+   부모 테마는 카드 하나를 화면 가운데 띄운다. 여기서는 왼쪽을 설명에, 오른쪽을
+   로그인에 내주는 두 단으로 바꾼다. */
+html {
+  background: var(--nl-surface);
+}
+
+body,
+body#keycloak-bg {
+  background: transparent !important;
+  color: var(--nl-text);
+}
+
+.pf-v5-c-login,
+.pf-c-login {
+  display: block !important;
+  padding: 0 !important;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.pf-v5-c-login__container,
+.pf-c-login__container {
+  display: grid;
+  /* PatternFly 는 자식을 이름 붙은 영역으로 앉힌다. 그대로 두면 아래에서 만든
+     두 열에 아무도 들어가지 않고 세로로 쌓인다. */
+  grid-template-areas: none !important;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  /* PatternFly 가 좌우 98px 을 넣는다. 두 단을 화면 끝까지 붙이려면 걷어내야 한다. */
+  padding: 0 !important;
+  gap: 0;
+  /* 높이를 화면에 못박는다. min-height 로 두면 히어로가 조금만 커져도 행이 같이
+     늘어나 페이지 전체가 스크롤된다. 대신 넘치는 쪽은 각자 처리한다 —
+     히어로는 잘리고(장식이다), 폼은 자기 안에서 스크롤한다. */
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* 이름 배치를 껐으니 자리는 우리가 지정한다. */
+#kc-header,
+.pf-v5-c-login__header {
+  grid-area: auto;
+  grid-column: 1;
+  grid-row: 1;
+  /* 격자 칸의 기본 최소 크기는 내용 크기다. 0 으로 낮춰야 칸이 화면 높이를
+     넘지 않고, overflow: hidden 이 실제로 잘라 준다. */
+  min-height: 0;
+}
+
+.pf-v5-c-login__main,
+.pf-c-login__main {
+  grid-area: auto;
+  grid-column: 1;
+  grid-row: 1;
+  /* PatternFly 가 align-self: start 를 준다. 그대로 두면 이 칸이 행 높이를 못
+     채우고, 안의 폼을 가운데 정렬해도 화면 위쪽에 붙는다. */
+  align-self: stretch;
+  /* 폼은 잘리면 안 되므로 자기 안에서 스크롤한다. */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@media (min-width: 64rem) {
+  .pf-v5-c-login__container,
+  .pf-c-login__container {
+    /* 왼쪽은 남는 만큼, 오른쪽 로그인은 읽기 좋은 폭으로 고정한다. */
+    /* 상한이 넓으면 폼이 흰 판 한가운데에 떠 오른쪽 가장자리와 멀어지고,
+       좁으면 판이 가장자리에 붙은 띠가 된다. 51rem 이면 폼이 판 안에서
+       가운데를 지키면서 좌우 여백이 120px 로 맞는다. */
+    grid-template-columns: minmax(0, 1fr) clamp(25rem, 34vw, 51rem);
+  }
+
+  .pf-v5-c-login__main,
+  .pf-c-login__main {
+    grid-column: 2;
+  }
+}
+
+/* ── 왼쪽: 히어로 ────────────────────────────────────────────────────── */
+#kc-header,
+.pf-v5-c-login__header {
+  margin: 0 !important;
+  padding: clamp(1rem, 2vw, 2rem) clamp(1.5rem, 4vw, 6rem);
+  display: flex;
+  align-items: center;
+  background:
+    radial-gradient(60rem 40rem at 18% -10%, #ffffff, transparent 60%),
+    linear-gradient(160deg, var(--nl-hero-1), var(--nl-hero-2) 55%, #eaf3f6);
+  overflow: hidden;
+}
+
+/* 좁은 화면에서는 로그인만 남긴다. 설명이 폼을 밀어내면 안 된다. */
+@media (max-width: 63.99rem) {
+  #kc-header,
+  .pf-v5-c-login__header {
+    display: none !important;
+  }
+}
+
+#kc-header-wrapper,
+.pf-v5-c-login__header .pf-v5-c-brand {
+  display: block;
+  width: 100%;
+  /* 고정 폭이면 넓은 화면에서 히어로가 허허벌판 가운데 뜬 작은 섬이 된다.
+     글줄이 너무 길어지지 않도록 위쪽은 묶어 둔다. */
+  max-width: clamp(44rem, 52vw, 120rem);
+  /* 왼쪽에 붙인다. 가운데로 두면 넓은 화면에서 제목·그림이 통째로 오른쪽으로
+     밀려 왼쪽에만 큰 빈 자리가 남는다. */
+  margin-inline: 0 auto;
+  padding: 0 !important;
+  color: var(--nl-text) !important;
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+}
+
+.nl-hero__title {
+  margin: clamp(1rem, 2.2vw, 1.9rem) 0 0;
+  font-size: clamp(1.9rem, 3.1vw, 3.4rem);
+  line-height: 1.24;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.nl-hero__title em {
+  font-style: normal;
+  color: var(--nl-primary);
+}
+
+.nl-hero__lead {
+  margin: 1rem 0 0;
+  font-size: clamp(0.95rem, 1.1vw, 1.25rem);
+  line-height: 1.75;
+  color: var(--nl-text-2);
+}
+
+/* ── 아이소메트릭 장면 ───────────────────────────────────────────────────
+   왼쪽 아래에서 올라오는 컨베이어 위로 크레인이 검증된 OSS 를 하나씩 얹어
+   스택을 쌓는다 → 그 스택이 Nullus 게이트로 들어간다 → 반대편으로 완성된
+   스택 상자가 나오고, 그 위에 다시 React·Go·Spring 이 얹혀 제품이 된다.
+
+   움직이는 것은 전부 DOM 요소다. SVG 안에 애니메이션을 넣으면 WebKit 이 CSS
+   배경 이미지를 정지 프레임으로 렌더해 멈춘 채로 보인다.
+
+   자리와 타이밍은 scene.generated.css 가 들고 있다 —
+   scripts/emit-keycloak-theme-art.py 가 그림과 같은 계산에서 뽑아 둔 값이라
+   장면을 옮겨도 조각들이 따라온다. 여기서는 언제 무엇이 움직이는지만 정한다. */
+.nl-scene {
+  position: relative;
+  /* 세로로 먼저 묶고 가로는 비율에서 받는다. 폭만 100% 로 두면 화면이 넓을 때
+     장면이 세로로 넘쳐 아래 단계 줄이 잘린다.
+     높이 상한이 두 겹인 이유: 제목·설명·단계 줄은 화면이 낮아져도 줄지 않아서,
+     vh 비율만으로 묶으면 낮은 화면에서 히어로가 통째로 넘친다. 그래서 "화면
+     높이에서 그 고정분을 뺀 값" 으로도 한 번 더 묶는다. */
+  width: min(
+    100%,
+    calc(min(52vh, 100vh - 28rem) * var(--nl-scene-w) / var(--nl-scene-h))
+  );
+  margin: clamp(0.5rem, 1.5vw, 1.25rem) auto 0;
+  aspect-ratio: var(--nl-scene-w) / var(--nl-scene-h);
+  /* 조각들이 장면 크기를 기준으로 자리를 잡는다 — 1cqw/1cqh 가 장면의 1%. */
+  container-type: size;
+  overflow: hidden;
+
+  /* 한 바퀴. 상자 하나가 벨트를 끝까지 지나는 데 걸리는 시간이고, 크레인도
+     한 바퀴에 한 번 내린다. 양쪽 갈래가 같은 주기로 돌아 게이트에서 하나가
+     들어가는 때와 다른 하나가 나오는 때가 맞물린다. */
+  --nl-t: 19s;
+}
+
+.nl-scene__back,
+.nl-scene__front {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
+.nl-scene__back { background-image: url("scene-back.svg"); }
+.nl-scene__front { background-image: url("scene-front.svg"); }
+
+/* ── 컨베이어 ────────────────────────────────────────────────────────────
+   아이소메트릭 평면 위에 눕히려고 기저 벡터를 그대로 쓴다 —
+   iso(1,0,0) = (cos30, 0.5), iso(0,1,0) = (-cos30, 0.5). 둘 다 길이가 1 이라
+   정규화 없이 matrix() 에 넣을 수 있다.
+   두 벨트는 흐르는 방향이 달라 행렬도 다르다: 입구는 -y(게이트 쪽), 출구는 +x. */
+.nl-belt {
+  position: absolute;
+  transform-origin: 0 0;
+  overflow: hidden;
+  background: #2f3a4c;
+}
+
+.nl-belt--in {
+  left: var(--nl-belt-in-left);
+  top: var(--nl-belt-in-top);
+  width: var(--nl-belt-in-len);
+  aspect-ratio: var(--nl-belt-in-ratio);
+  transform: matrix(0.8660254, -0.5, 0.8660254, 0.5, 0, 0);
+}
+
+.nl-belt--out {
+  left: var(--nl-belt-out-left);
+  top: var(--nl-belt-out-top);
+  width: var(--nl-belt-out-len);
+  aspect-ratio: var(--nl-belt-out-ratio);
+  transform: matrix(0.8660254, 0.5, -0.8660254, 0.5, 0, 0);
+}
+
+/* 슬랫을 두 배 폭으로 깔고 절반만큼 밀면 이음매 없이 흐른다.
+   background-position 대신 transform 을 쓰는 이유: 그라디언트 배경에서는
+   퍼센트 위치가 요소 크기 기준이 아니라 (요소 - 이미지) 기준이라 요소 크기가
+   달라지면 속도까지 같이 흔들린다.
+   무늬 주기는 1.25% — 미는 거리 50% 안에 정확히 40칸이 들어가야 되돌아오는
+   순간에 무늬가 튀지 않는다. 주기를 바꾸면 50 을 나누어떨어지게 골라야 한다. */
+.nl-belt > span {
+  position: absolute;
+  inset: 0;
+  width: 200%;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #2a3442 0 0.55%,
+    #47546b 0.55% 0.72%,
+    #2a3442 0.72% 1.25%
+  );
+  animation-name: nl-belt;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* 무늬가 도는 시간은 상자 속도에서 나온다 (scene.generated.css 의 *-rate).
+   고정값으로 두면 벨트만 따로 빨라져 상자가 미끄러지는 것처럼 보인다. */
+.nl-belt--in > span { animation-duration: calc(var(--nl-t) * var(--nl-belt-in-rate)); }
+.nl-belt--out > span { animation-duration: calc(var(--nl-t) * var(--nl-belt-out-rate)); }
+
+@keyframes nl-belt {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+
+/* ── 스트립 커튼 ─────────────────────────────────────────────────────────
+   개구부에 걸린 커튼. 짐이 닿기 직전 갈라졌다가 지나가면 닫힌다.
+   세로면에 눕히므로 가로축은 그 면을 따라가고 세로축은 그냥 아래다 —
+   z 가 화면에서 순수 세로이기 때문이다. 입구 면은 가로축이 +x, 출구 면은 +y 다. */
+.nl-curtain {
+  position: absolute;
+  width: var(--nl-curtain-w);
+  height: var(--nl-curtain-h);
+  transform-origin: 0 0;
+  overflow: hidden;
+}
+
+.nl-curtain--in {
+  left: var(--nl-curtain-in-x);
+  top: var(--nl-curtain-in-y);
+  transform: matrix(0.8660254, 0.5, 0, 1, 0, 0);
+}
+
+.nl-curtain--out {
+  left: var(--nl-curtain-out-x);
+  top: var(--nl-curtain-out-y);
+  transform: matrix(-0.8660254, 0.5, 0, 1, 0, 0);
+}
+
+.nl-curtain > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #151c25 0 5%,
+    #2b3646 5% 6%,
+    #151c25 6% 11%
+  );
+  animation-duration: var(--nl-t);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.nl-curtain > span:first-child { left: 0; }
+.nl-curtain > span:last-child { left: 50%; }
+
+.nl-curtain--in > span:first-child { animation-name: nl-curtain-in-l; }
+.nl-curtain--in > span:last-child { animation-name: nl-curtain-in-r; }
+.nl-curtain--out > span:first-child { animation-name: nl-curtain-out-l; }
+.nl-curtain--out > span:last-child { animation-name: nl-curtain-out-r; }
+
+/* ── 라인 설비 ───────────────────────────────────────────────────────────
+   경광등과 모니터링 키오스크. 정지 그림에는 기둥과 몸체만 있고, 깜빡이는 알과
+   화면 내용은 여기서 얹는다 — SVG 안에 넣으면 WebKit 이 CSS 배경 이미지를 정지
+   프레임으로 렌더해 멈춘 채로 보인다. */
+/* 자리·색·깜빡임 지연은 scene.generated.css 가 든다 — 개수도 자리도 데이터라
+   여기에 적으면 하나 늘릴 때마다 두 곳을 고쳐야 한다. 여기는 생김새와 동작만. */
+/* 경광등 알. 장면의 다른 것들이 다 아이소메트릭 상자인데 여기만 동그라미면
+   따로 논다 — 세 면을 각각 눕혀 정육면체로 세운다. 기준점은 알의 뒤쪽 위
+   모서리이고, 세 면은 거기서 상수만큼 밀어 놓는다 (한 변 길이가 모두 같다). */
+.nl-beacon {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 1;
+}
+
+/* 빛무리 — 알 한가운데(기준점에서 한 변만큼 아래)에 건다 */
+.nl-beacon::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--nl-lamp-glow) / -2);
+  top: calc(var(--nl-lamp) - var(--nl-lamp-glow) / 2);
+  width: var(--nl-lamp-glow);
+  height: var(--nl-lamp-glow);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--nl-glow) 0 10%, transparent 62%);
+  animation: nl-beacon-glow 1.6s ease-in-out infinite;
+  animation-delay: inherit;
+}
+
+/* 밝기는 filter 로 민다. opacity 로 깜빡이면 어두울 때 알이 반투명해져 뒤의
+   벨트가 비쳐 보인다 — 알은 늘 불투명한 덩어리여야 한다. */
+.nl-beacon > span {
+  position: absolute;
+  width: var(--nl-lamp);
+  height: var(--nl-lamp);
+  transform-origin: 0 0;
+  animation: nl-beacon 1.6s ease-in-out infinite;
+  animation-delay: inherit;
+}
+
+/* 윗면 */
+.nl-beacon > span:nth-child(1) {
+  left: 0;
+  top: 0;
+  background: var(--nl-lamp-top);
+  transform: matrix(0.8660254, 0.5, -0.8660254, 0.5, 0, 0);
+}
+
+/* 화면 왼쪽 아래를 보는 면 (+y) */
+.nl-beacon > span:nth-child(2) {
+  left: calc(var(--nl-lamp) * -0.8660254);
+  top: calc(var(--nl-lamp) * 0.5);
+  background: var(--nl-lamp-y);
+  transform: matrix(0.8660254, 0.5, 0, 1, 0, 0);
+}
+
+/* 화면 오른쪽 아래를 보는 면 (+x) */
+.nl-beacon > span:nth-child(3) {
+  left: 0;
+  top: var(--nl-lamp);
+  background: var(--nl-lamp-x);
+  transform: matrix(0.8660254, -0.5, 0, 1, 0, 0);
+}
+
+@keyframes nl-beacon {
+  0%, 100% { filter: brightness(0.52); }
+  45% { filter: brightness(1.12); }
+}
+
+@keyframes nl-beacon-glow {
+  0%, 100% { opacity: 0.15; transform: scale(0.66); }
+  45% { opacity: 0.9; transform: scale(1); }
+}
+
+/* 화면은 키오스크의 +y 면에 눕는다 — 가로축이 +x, 세로축은 그냥 아래다. */
+.nl-kiosk {
+  position: absolute;
+  /* 키오스크는 벨트 앞에 서므로 같은 앞 층의 경광등보다 위다. 겹칠 일이 없게
+     자리를 떼어 놓았지만, 자리를 옮기다 다시 겹쳐도 알이 화면을 뚫지 않도록
+     쌓임 순서를 못박아 둔다. */
+  z-index: 2;
+  transform-origin: 0 0;
+  transform: matrix(0.8660254, 0.5, 0, 1, 0, 0);
+  overflow: hidden;
+  background: #141b24;
+}
+
+/* 둘은 몸체 모양이 달라 화면 크기도 다르다 — 하나로 묶으면 한쪽이 삐져나간다. */
+.nl-kiosk--0 {
+  left: var(--nl-kiosk-0-x);
+  top: var(--nl-kiosk-0-y);
+  width: var(--nl-kiosk-0-w);
+  height: var(--nl-kiosk-0-h);
+}
+
+.nl-kiosk--1 {
+  left: var(--nl-kiosk-1-x);
+  top: var(--nl-kiosk-1-y);
+  width: var(--nl-kiosk-1-w);
+  height: var(--nl-kiosk-1-h);
+}
+
+/* 지표: 꺾은선 한 칸을 두 배 폭으로 깔고 절반만큼 밀어 끊김 없이 흐르게 한다.
+   벨트 무늬와 같은 방식이다. */
+.nl-kiosk__metric {
+  position: absolute;
+  inset: 0;
+  width: 200%;
+  background: url("metric.svg") repeat-x left center / 50% 100%;
+  animation: nl-metric 5s linear infinite;
+}
+
+@keyframes nl-metric {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* 로그: 줄이 하나씩 찍히고, 다 차면 처음부터 다시 쓴다. */
+.nl-kiosk__log {
+  position: absolute;
+  inset: 8% 8% 8% 8%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.nl-kiosk__log > span {
+  display: block;
+  height: 11%;
+  background: #7fd4a8;
+  opacity: 0;
+  animation: nl-log 5s steps(1, end) infinite;
+}
+
+/* 줄마다 길이를 달리해야 글이 쌓이는 것으로 읽힌다. */
+.nl-kiosk__log > span:nth-child(1) { width: 84%; animation-delay: 0s; }
+.nl-kiosk__log > span:nth-child(2) { width: 62%; animation-delay: 1s; }
+.nl-kiosk__log > span:nth-child(3) { width: 91%; animation-delay: 2s; }
+.nl-kiosk__log > span:nth-child(4) { width: 47%; animation-delay: 3s; }
+.nl-kiosk__log > span:nth-child(5) { width: 73%; animation-delay: 4s; }
+
+@keyframes nl-log {
+  0% { opacity: 0; }
+  4% { opacity: 0.9; }
+  96% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+/* ── 벨트를 타는 갈래 ────────────────────────────────────────────────────
+   앵커는 그 자리의 벨트 윗면이다. 실린 조각은 앵커에서 쌓인 높이만큼 올린다 —
+   z 축이 순수 세로라 올리는 값 하나면 된다. */
+.nl-run {
+  position: absolute;
+  width: 0;
+  height: 0;
+  animation-duration: var(--nl-t);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.nl-run--in {
+  left: var(--nl-in-x);
+  top: var(--nl-in-y);
+  animation-name: nl-run-in;
+}
+
+.nl-run--out {
+  left: var(--nl-out-x);
+  top: var(--nl-out-y);
+  animation-name: nl-run-out;
+}
+
+@keyframes nl-run-in {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(var(--nl-in-dx), var(--nl-in-dy)); }
+}
+
+@keyframes nl-run-out {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(var(--nl-out-dx), var(--nl-out-dy)); }
+}
+
+.nl-run > span {
+  position: absolute;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation-duration: var(--nl-t);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* 판넬은 싣는 것에 맞춰 규격이 둘이다. 위에 실리는 것은 모두 판넬 두께만큼
+   올라간다. */
+.nl-run--in .nl-pallet {
+  left: var(--nl-pallet-in-dx);
+  top: var(--nl-pallet-in-dy);
+  width: var(--nl-pallet-in-w);
+  height: var(--nl-pallet-in-h);
+  background-image: url("pallet-in.svg");
+  animation-name: nl-in-base;
+}
+
+.nl-run--out .nl-pallet {
+  left: var(--nl-pallet-out-dx);
+  top: var(--nl-pallet-out-dy);
+  width: var(--nl-pallet-out-w);
+  height: var(--nl-pallet-out-h);
+  background-image: url("pallet-out.svg");
+  animation-name: nl-out-base;
+}
+
+/* 올라오면서 쌓이는 OSS */
+.nl-part--in-a {
+  left: var(--nl-oss-box-dx);
+  top: calc(var(--nl-oss-box-dy) - var(--nl-pallet-lift));
+  width: var(--nl-oss-box-w);
+  height: var(--nl-oss-box-h);
+  background-image: var(--nl-oss-a);
+  animation-name: nl-in-land-a;
+}
+
+.nl-part--in-b {
+  left: var(--nl-oss-box-dx);
+  top: calc(var(--nl-oss-box-dy) - var(--nl-pallet-lift) - var(--nl-oss-step));
+  width: var(--nl-oss-box-w);
+  height: var(--nl-oss-box-h);
+  background-image: var(--nl-oss-b);
+  animation-name: nl-in-land-b;
+}
+
+.nl-part--in-c {
+  left: var(--nl-oss-box-dx);
+  top: calc(var(--nl-oss-box-dy) - var(--nl-pallet-lift) - 2 * var(--nl-oss-step));
+  width: var(--nl-oss-box-w);
+  height: var(--nl-oss-box-h);
+  background-image: var(--nl-oss-c);
+  animation-name: nl-in-land-c;
+}
+
+/* 게이트에서 나오는 완성된 스택 */
+.nl-base {
+  left: var(--nl-cicd-container-dx);
+  top: calc(var(--nl-cicd-container-dy) - var(--nl-pallet-lift));
+  width: var(--nl-cicd-container-w);
+  height: var(--nl-cicd-container-h);
+  background-image: url("cicd-container.svg");
+  animation-name: nl-out-base;
+}
+
+/* 긴 상자 위의 세 자리와 완성 배지. 셋 다 같은 높이이고 자리만 다르다 —
+   자리를 월드 x 로 옮기면 화면에서는 가로·세로가 함께 움직이므로 두 값을 쓴다.
+   오른쪽 자리(a)부터 차례로 채워진다.
+
+   이들은 판넬·상자와 한 묶음이 아니라 각자 벨트를 타는 형제다. 크레인이
+   내려오는 조각을 자기 자리의 깊이에 끼워 넣어야 하기 때문이다 — 한 묶음에
+   가둬 두면 그 묶음이 통째로 크레인 앞이나 뒤에 놓여, 먼 자리로 내려오는
+   컨테이너가 이미 놓인 가까운 컨테이너를 덮는다. */
+.nl-out {
+  position: absolute;
+  left: var(--nl-out-x);
+  top: var(--nl-out-y);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation-name: nl-run-out;
+  animation-duration: var(--nl-t);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.nl-part--out-a,
+.nl-part--out-b,
+.nl-part--out-c {
+  margin-top: calc(var(--nl-app-box-dy) - var(--nl-pallet-lift) - var(--nl-nullus-lift)
+                   + var(--nl-slot-y));
+  margin-left: calc(var(--nl-app-box-dx) + var(--nl-slot-x));
+  width: var(--nl-app-box-w);
+  height: var(--nl-app-box-h);
+}
+
+.nl-part--out-a {
+  --nl-slot-x: var(--nl-slot-a-x);
+  --nl-slot-y: var(--nl-slot-a-y);
+  background-image: url("app-react.svg");
+  /* 벨트를 타는 움직임과 나타나는 시점은 건드리는 성질이 달라 함께 걸 수 있다. */
+  animation-name: nl-run-out, nl-out-land-a;
+  animation-duration: var(--nl-t), var(--nl-t);
+  animation-timing-function: linear, linear;
+  animation-iteration-count: infinite, infinite;
+}
+
+.nl-part--out-b {
+  --nl-slot-x: var(--nl-slot-b-x);
+  --nl-slot-y: var(--nl-slot-b-y);
+  background-image: url("app-go.svg");
+  /* 벨트를 타는 움직임과 나타나는 시점은 건드리는 성질이 달라 함께 걸 수 있다. */
+  animation-name: nl-run-out, nl-out-land-b;
+  animation-duration: var(--nl-t), var(--nl-t);
+  animation-timing-function: linear, linear;
+  animation-iteration-count: infinite, infinite;
+}
+
+.nl-part--out-c {
+  --nl-slot-x: var(--nl-slot-c-x);
+  --nl-slot-y: var(--nl-slot-c-y);
+  background-image: url("app-spring.svg");
+  /* 벨트를 타는 움직임과 나타나는 시점은 건드리는 성질이 달라 함께 걸 수 있다. */
+  animation-name: nl-run-out, nl-out-land-c;
+  animation-duration: var(--nl-t), var(--nl-t);
+  animation-timing-function: linear, linear;
+  animation-iteration-count: infinite, infinite;
+}
+
+/* 배지는 두 겹이다 — 바깥이 벨트를 타고 안쪽이 톡 튀어나온다. 한 요소에 두면
+   둘 다 transform 이라 나중 것이 앞 것을 지운다. */
+.nl-badge {
+  margin-left: calc(var(--nl-badge-dx) + var(--nl-badge-ox));
+  margin-top: calc(var(--nl-badge-dy) + var(--nl-badge-oy));
+  width: var(--nl-badge-w);
+  height: var(--nl-badge-h);
+}
+
+.nl-badge > span {
+  position: absolute;
+  inset: 0;
+  background: url("badge.svg") no-repeat center / 100% 100%;
+  animation: nl-badge var(--nl-t) linear infinite;
+}
+
+/* ── 크레인 ──────────────────────────────────────────────────────────────
+   케이블을 내리고, 벨트가 그 아래를 지나는 바로 그 순간 짐을 놓고, 빈 채로
+   올라간 뒤 다음 짐을 집는다. 짐을 놓는 순간이 어긋나지 않도록 각 크레인의
+   시작을 --nl-rig-*-shift 만큼 당겨 둔다 (음수라 첫 바퀴부터 중간 자세). */
+.nl-rig {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.nl-rig--in-a { left: var(--nl-rig-in-a-x); top: var(--nl-rig-in-a-y); --nl-drop: var(--nl-rig-in-a-drop); --nl-shift: var(--nl-rig-in-a-shift); --nl-restf: var(--nl-rig-in-a-restf); }
+.nl-rig--in-b { left: var(--nl-rig-in-b-x); top: var(--nl-rig-in-b-y); --nl-drop: var(--nl-rig-in-b-drop); --nl-shift: var(--nl-rig-in-b-shift); --nl-restf: var(--nl-rig-in-b-restf); }
+.nl-rig--in-c { left: var(--nl-rig-in-c-x); top: var(--nl-rig-in-c-y); --nl-drop: var(--nl-rig-in-c-drop); --nl-shift: var(--nl-rig-in-c-shift); --nl-restf: var(--nl-rig-in-c-restf); }
+.nl-rig--out-a { left: var(--nl-rig-out-a-x); top: var(--nl-rig-out-a-y); --nl-drop: var(--nl-rig-out-a-drop); --nl-shift: var(--nl-rig-out-a-shift); --nl-restf: var(--nl-rig-out-a-restf); }
+.nl-rig--out-b { left: var(--nl-rig-out-b-x); top: var(--nl-rig-out-b-y); --nl-drop: var(--nl-rig-out-b-drop); --nl-shift: var(--nl-rig-out-b-shift); --nl-restf: var(--nl-rig-out-b-restf); }
+.nl-rig--out-c { left: var(--nl-rig-out-c-x); top: var(--nl-rig-out-c-y); --nl-drop: var(--nl-rig-out-c-drop); --nl-shift: var(--nl-rig-out-c-shift); --nl-restf: var(--nl-rig-out-c-restf); }
+
+/* 입구 크레인은 OSS 상자를, 출구 크레인은 애플리케이션 상자를 든다.
+   상자 크기가 달라 요크와 자리 계산도 갈린다. */
+/* 크레인이 든 짐은 그 자리에 놓일 것과 같은 도구여야 한다 — 같은 변수를 쓴다.
+   어느 셋인지는 접속할 때마다 pick-oss.js 가 고른다. */
+.nl-rig--in-a .nl-rig__load { background-image: var(--nl-oss-a); }
+.nl-rig--in-b .nl-rig__load { background-image: var(--nl-oss-b); }
+.nl-rig--in-c .nl-rig__load { background-image: var(--nl-oss-c); }
+.nl-rig--out-a .nl-rig__load { background-image: url("app-react.svg"); }
+.nl-rig--out-b .nl-rig__load { background-image: url("app-go.svg"); }
+.nl-rig--out-c .nl-rig__load { background-image: url("app-spring.svg"); }
+
+[class*="nl-rig--in"] {
+  --nl-hang: var(--nl-hang-in);
+  --nl-load-dx: var(--nl-oss-box-dx);
+  --nl-load-dy: var(--nl-oss-box-dy);
+  --nl-load-w: var(--nl-oss-box-w);
+  --nl-load-h: var(--nl-oss-box-h);
+  --nl-bar: url("grip-bar-in.svg");
+  --nl-bar-open: var(--nl-bar-open-in);
+  --nl-jaw-open-x: var(--nl-jaw-open-in-x);
+  --nl-jaw-open-y: var(--nl-jaw-open-in-y);
+  --nl-bar-dx: var(--nl-grip-bar-in-dx);
+  --nl-bar-dy: var(--nl-grip-bar-in-dy);
+  --nl-bar-w: var(--nl-grip-bar-in-w);
+  --nl-bar-h: var(--nl-grip-bar-in-h);
+  --nl-jaw-l: url("grip-jaw-l-in.svg");
+  --nl-jaw-l-dx: var(--nl-grip-jaw-l-in-dx);
+  --nl-jaw-l-dy: var(--nl-grip-jaw-l-in-dy);
+  --nl-jaw-l-w: var(--nl-grip-jaw-l-in-w);
+  --nl-jaw-l-h: var(--nl-grip-jaw-l-in-h);
+  --nl-jaw-r: url("grip-jaw-r-in.svg");
+  --nl-jaw-r-dx: var(--nl-grip-jaw-r-in-dx);
+  --nl-jaw-r-dy: var(--nl-grip-jaw-r-in-dy);
+  --nl-jaw-r-w: var(--nl-grip-jaw-r-in-w);
+  --nl-jaw-r-h: var(--nl-grip-jaw-r-in-h);
+}
+
+[class*="nl-rig--out"] {
+  --nl-hang: var(--nl-hang-out);
+  --nl-load-dx: var(--nl-app-box-dx);
+  --nl-load-dy: var(--nl-app-box-dy);
+  --nl-load-w: var(--nl-app-box-w);
+  --nl-load-h: var(--nl-app-box-h);
+  --nl-bar: url("grip-bar-out.svg");
+  --nl-bar-open: var(--nl-bar-open-out);
+  --nl-jaw-open-x: var(--nl-jaw-open-out-x);
+  --nl-jaw-open-y: var(--nl-jaw-open-out-y);
+  --nl-bar-dx: var(--nl-grip-bar-out-dx);
+  --nl-bar-dy: var(--nl-grip-bar-out-dy);
+  --nl-bar-w: var(--nl-grip-bar-out-w);
+  --nl-bar-h: var(--nl-grip-bar-out-h);
+  --nl-jaw-l: url("grip-jaw-l-out.svg");
+  --nl-jaw-l-dx: var(--nl-grip-jaw-l-out-dx);
+  --nl-jaw-l-dy: var(--nl-grip-jaw-l-out-dy);
+  --nl-jaw-l-w: var(--nl-grip-jaw-l-out-w);
+  --nl-jaw-l-h: var(--nl-grip-jaw-l-out-h);
+  --nl-jaw-r: url("grip-jaw-r-out.svg");
+  --nl-jaw-r-dx: var(--nl-grip-jaw-r-out-dx);
+  --nl-jaw-r-dy: var(--nl-grip-jaw-r-out-dy);
+  --nl-jaw-r-w: var(--nl-grip-jaw-r-out-w);
+  --nl-jaw-r-h: var(--nl-grip-jaw-r-out-h);
+}
+
+/* 케이블. 위쪽을 고정하고 세로로만 늘린다. 장면이 화면에서 절반 남짓으로
+   줄어드므로 장면 좌표 1 단위는 1px 이 안 된다 — 얇게 잡으면 안 보인다. */
+/* 쉴 때 후크에서 집게까지 남겨 두는 몫. 0 으로 두면 집게가 지브에 붙어
+   한 덩어리로 보인다 — 실제 크레인처럼 조금 내려와 매달려 있어야 한다.
+   케이블 길이가 크레인마다 달라 비율(--nl-restf)로 받는다. */
+.nl-rig {
+  --nl-rest: calc((var(--nl-drop) - var(--nl-hang)) * var(--nl-restf));
+}
+
+.nl-rig__cable {
+  position: absolute;
+  left: calc(-1.8 * var(--nl-u-w));
+  top: 0;
+  width: calc(3.6 * var(--nl-u-w));
+  /* 후크에서 짐 꼭대기까지. 짐은 후크 아래에 걸려 있으므로 그 몫을 뺀다. */
+  height: calc(var(--nl-drop) - var(--nl-hang));
+  transform-origin: 50% 0;
+  background: #4a5567;
+  animation: nl-cable var(--nl-t) ease-in-out infinite;
+  animation-delay: calc(var(--nl-t) * var(--nl-shift));
+}
+
+/* 매달린 짐과 그것을 잡은 요크. 둘 다 조각의 기준점이 상자 바닥 한가운데라
+   자리 계산이 같고, 같은 궤적으로 함께 오르내린다.
+   요크가 없으면 아이소메트릭에서 매달린 짐과 벨트에 얹힌 짐이 구별되지 않는다 —
+   높이와 "왼쪽 위로 이동" 이 화면에서 같은 방향이기 때문이다. */
+.nl-rig__load,
+.nl-rig__bar,
+.nl-rig__jaw {
+  position: absolute;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation-duration: var(--nl-t);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-delay: calc(var(--nl-t) * var(--nl-shift));
+}
+
+/* 짐은 놓는 순간 사라지고, 집게는 크레인 장비라 후크에 남아 빈 채로 올라간다.
+   짐을 무는 시점만 크레인마다 다르다 — 모두 한 바퀴의 같은 순간에 물어야 하는데
+   크레인 자기 주기에서는 서로 다른 지점이 되기 때문이다. 그래서 짐과 집게발의
+   안무는 크레인별로 받는다 (scene.generated.css 의 nl-hoist-* / nl-jaw-*). */
+.nl-rig__bar,
+.nl-rig__jaw { animation-name: nl-hook; }
+
+/* 조각 기준점이 상자 바닥이라, 그냥 두면 쉴 때 짐이 지브 위로 솟는다. */
+.nl-rig__load {
+  left: var(--nl-load-dx);
+  top: calc(var(--nl-load-dy) + var(--nl-hang));
+  width: var(--nl-load-w);
+  height: var(--nl-load-h);
+}
+
+/* 가로대도 집게발처럼 두 겹이다. 바깥은 후크를 따라 오르내리고, 안쪽이 발을
+   따라 늘었다 줄었다 한다 — 고정 길이로 두면 다물었을 때 양쪽이 허공에 남는다.
+   가로대는 두 발을 잇는 대각선 위에 있고 그 방향이 화면에서 순수 가로라,
+   윗면도 옆면도 화면에서는 직사각형이다. 그래서 scaleX 가 각도를 흐트러뜨리지
+   않고 길이만 늘인다. */
+.nl-rig__bar {
+  left: var(--nl-bar-dx);
+  top: calc(var(--nl-bar-dy) + var(--nl-hang));
+  width: var(--nl-bar-w);
+  height: var(--nl-bar-h);
+}
+
+.nl-rig__bar > span {
+  position: absolute;
+  inset: 0;
+  background: var(--nl-bar) no-repeat center / 100% 100%;
+  animation: nl-bar var(--nl-t) ease-in-out infinite;
+  animation-delay: calc(var(--nl-t) * var(--nl-shift));
+}
+
+/* 집게발은 두 겹이다. 바깥은 후크를 따라 오르내리고 안쪽이 벌어졌다 오므린다 —
+   한 요소에 두 애니메이션을 걸면 둘 다 transform 이라 나중 것이 앞 것을 지운다. */
+.nl-rig__jaw--l {
+  left: var(--nl-jaw-l-dx);
+  top: calc(var(--nl-jaw-l-dy) + var(--nl-hang));
+  width: var(--nl-jaw-l-w);
+  height: var(--nl-jaw-l-h);
+  --nl-open-x: calc(var(--nl-jaw-open-x) * -1);
+  --nl-open-y: calc(var(--nl-jaw-open-y) * -1);
+}
+
+.nl-rig__jaw--r {
+  left: var(--nl-jaw-r-dx);
+  top: calc(var(--nl-jaw-r-dy) + var(--nl-hang));
+  width: var(--nl-jaw-r-w);
+  height: var(--nl-jaw-r-h);
+  --nl-open-x: var(--nl-jaw-open-x);
+  --nl-open-y: var(--nl-jaw-open-y);
+}
+
+.nl-rig__jaw > span {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation: nl-jaw var(--nl-t) ease-in-out infinite;
+  animation-delay: calc(var(--nl-t) * var(--nl-shift));
+}
+
+.nl-rig__jaw--l > span { background-image: var(--nl-jaw-l); }
+.nl-rig__jaw--r > span { background-image: var(--nl-jaw-r); }
+
+.nl-rig--in-a .nl-rig__load { animation-name: nl-hoist-in-a; }
+.nl-rig--in-a .nl-rig__jaw > span { animation-name: nl-jaw-in-a; }
+.nl-rig--in-a .nl-rig__bar > span { animation-name: nl-bar-in-a; }
+.nl-rig--in-b .nl-rig__load { animation-name: nl-hoist-in-b; }
+.nl-rig--in-b .nl-rig__jaw > span { animation-name: nl-jaw-in-b; }
+.nl-rig--in-b .nl-rig__bar > span { animation-name: nl-bar-in-b; }
+.nl-rig--in-c .nl-rig__load { animation-name: nl-hoist-in-c; }
+.nl-rig--in-c .nl-rig__jaw > span { animation-name: nl-jaw-in-c; }
+.nl-rig--in-c .nl-rig__bar > span { animation-name: nl-bar-in-c; }
+.nl-rig--out-a .nl-rig__load { animation-name: nl-hoist-out-a; }
+.nl-rig--out-a .nl-rig__jaw > span { animation-name: nl-jaw-out-a; }
+.nl-rig--out-a .nl-rig__bar > span { animation-name: nl-bar-out-a; }
+.nl-rig--out-b .nl-rig__load { animation-name: nl-hoist-out-b; }
+.nl-rig--out-b .nl-rig__jaw > span { animation-name: nl-jaw-out-b; }
+.nl-rig--out-b .nl-rig__bar > span { animation-name: nl-bar-out-b; }
+.nl-rig--out-c .nl-rig__load { animation-name: nl-hoist-out-c; }
+.nl-rig--out-c .nl-rig__jaw > span { animation-name: nl-jaw-out-c; }
+.nl-rig--out-c .nl-rig__bar > span { animation-name: nl-bar-out-c; }
+
+/* 50% 가 벨트가 이 크레인 아래를 지나는 순간이다. 짐은 정확히 그때 바닥에
+   닿아야 하고, 닿자마자 놓아야 한다 — 먼저 닿아 기다리면 그동안 벨트가 계속
+   흘러가 버려 그만큼 어긋난 자리에 놓인다. */
+@keyframes nl-cable {
+  0%, 38% { transform: scaleY(var(--nl-restf)); }
+  50%     { transform: scaleY(1); }
+  50.01%  { transform: scaleY(1); }
+  70%     { transform: scaleY(var(--nl-restf)); }
+  100%    { transform: scaleY(var(--nl-restf)); }
+}
+
+/* 요크는 짐과 같은 궤적을 그리되 사라지지 않는다. */
+@keyframes nl-hook {
+  0%, 38% { transform: translateY(var(--nl-rest)); }
+  50%, 50.01% { transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  70%, 100% { transform: translateY(var(--nl-rest)); }
+}
+
+/* 움직임에 민감한 사람에게는 흘리지 않는다.
+   animation: none 으로 끄면 안 된다 — keyframes 가 통째로 빠져 조각이 전부
+   출발점에 겹쳐 쌓인다. 멈추되 자세는 유지하도록 일시정지시킨다. */
+@media (prefers-reduced-motion: reduce) {
+  .nl-belt > span,
+  .nl-curtain > span,
+  .nl-beacon > span,
+  .nl-kiosk__metric,
+  .nl-kiosk__log > span,
+  .nl-dev > span {
+    animation: none;
+  }
+
+  /* 로그와 코드는 멈춘 채로도 다 찍혀 있어야 화면으로 읽힌다. */
+  .nl-kiosk__log > span { opacity: 0.9; }
+  .nl-dev__bar { width: 100%; }
+  .nl-dev__cur { left: 100%; }
+
+  .nl-rig__cable,
+  .nl-rig__load,
+  .nl-rig__bar,
+  .nl-rig__bar > span,
+  .nl-rig__jaw,
+  .nl-rig__jaw > span,
+  .nl-run,
+  .nl-run > span,
+  .nl-out,
+  .nl-out > span {
+    animation-play-state: paused;
+  }
+
+  /* 크레인은 짐을 든 채 꼭대기에서 멈추고, 양쪽 갈래는 다 쌓인 자리에 선다. */
+  .nl-rig__cable,
+  .nl-rig__load,
+  .nl-rig__bar,
+  .nl-rig__jaw {
+    animation-delay: 0s;
+  }
+
+  /* 멈춘 자세에서는 집게가 짐을 문 채여야 한다. */
+  .nl-rig__jaw > span,
+  .nl-rig__bar > span { animation-delay: calc(var(--nl-t) * -0.4); }
+
+  /* 양쪽이 다 보이는 지점: 왼쪽은 세 개가 다 쌓여 게이트로 들어가기 직전,
+     오른쪽은 제품이 완성돼 배지가 붙은 뒤. */
+  .nl-run,
+  .nl-run > span,
+  .nl-out,
+  .nl-out > span {
+    animation-delay: calc(var(--nl-t) * -0.79);
+  }
+}
+
+/* ── 개발자 모니터 ──────────────────────────────────────────────────────
+   x 가 일정한 세로면이라 화면 가로축이 -y 다. 그래서 키오스크(+y 면)와 부호가
+   다른 행렬을 쓴다 — 여기서 부호를 틀리면 글이 거울처럼 뒤집힌다. */
+.nl-dev {
+  position: absolute;
+  left: var(--nl-dev-x);
+  top: var(--nl-dev-y);
+  width: var(--nl-dev-w);
+  height: var(--nl-dev-h);
+  transform-origin: 0 0;
+  transform: matrix(0.8660254, -0.5, 0, 1, 0, 0);
+}
+
+.nl-dev > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  animation-duration: 7.6s;
+  animation-timing-function: steps(1, end);
+  animation-iteration-count: infinite;
+}
+
+.nl-dev__bar {
+  background: #c9d6e4;
+  animation-name: nl-type;
+}
+
+.nl-dev__cur {
+  width: 16%;
+  top: -18%;
+  bottom: -18%;
+  background: #8fb6ff;
+  animation-name: nl-type-cur, nl-caret;
+  animation-duration: 7.6s, 1.06s;
+}
+
+/* 한 칸씩 늘었다가 줄을 지우고 처음부터 다시 친다 */
+@keyframes nl-type {
+  0%   { width: 0; }
+  9%   { width: 21%; }
+  18%  { width: 38%; }
+  27%  { width: 55%; }
+  36%  { width: 74%; }
+  45%, 88% { width: 100%; }
+  92%, 100% { width: 0; }
+}
+
+@keyframes nl-type-cur {
+  0%   { left: 0; }
+  9%   { left: 21%; }
+  18%  { left: 38%; }
+  27%  { left: 55%; }
+  36%  { left: 74%; }
+  45%, 88% { left: 100%; }
+  92%, 100% { left: 0; }
+}
+
+@keyframes nl-caret {
+  0%, 55%      { opacity: 1; }
+  55.01%, 100% { opacity: 0; }
+}
+
+/* ── 다섯 단계 ───────────────────────────────────────────────────────── */
+.nl-steps {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: min(100%, 58rem);
+  align-items: flex-start;
+  gap: clamp(0.5rem, 2vw, 1.5rem);
+  /* 넓은 화면에서는 이 줄이 그림보다 좁으므로 가운데로 모은다. 축약형이라
+     앞에 margin-inline 을 써도 여기서 덮인다 — 가운데 정렬은 이 줄이 한다. */
+  margin: clamp(0.75rem, 1.5vw, 1.25rem) auto 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: nl-step;
+}
+
+.nl-steps li {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 6rem;
+  padding-top: 2.6rem;
+  text-align: center;
+  counter-increment: nl-step;
+}
+
+/* 번호 원. 흰 알에 옅은 테를 두르고 바깥으로 한 겹 더 번지게 해 단추처럼 잡는다 —
+   점선 위에 맨 숫자만 있으면 줄이 아니라 목록으로 읽힌다. */
+.nl-steps li::before {
+  content: counter(nl-step);
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--nl-primary);
+  background: var(--nl-surface);
+  border: 1.5px solid rgba(0, 82, 255, 0.32);
+  box-shadow: 0 0 0 4px rgba(0, 82, 255, 0.07), 0 2px 6px rgba(10, 11, 13, 0.06);
+}
+
+/* 단계 사이의 줄. 왼쪽에서 오른쪽으로 흐른다는 게 보이도록 옅어지게 한다.
+   마지막 뒤에는 붙이지 않는다. */
+.nl-steps li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: calc(1.05rem - 1px);
+  left: calc(50% + 1.75rem);
+  right: calc(-50% + 1.75rem);
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, rgba(0, 82, 255, 0.3), rgba(0, 82, 255, 0.1));
+}
+
+.nl-steps b {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.nl-steps span {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nl-muted);
+}
+
+/* ── 오른쪽: 로그인 ──────────────────────────────────────────────────── */
+.pf-v5-c-login__main,
+.pf-c-login__main,
+.card-pf {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--nl-surface) !important;
+  background-image: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: clamp(2rem, 5vw, 3.5rem) clamp(1.5rem, 4vw, 3.5rem);
+}
+
+.pf-v5-c-login__main-header,
+.pf-v5-c-login__main-body,
+.pf-v5-c-login__main-footer {
+  background: transparent !important;
+  padding-inline: 0 !important;
+  width: 100%;
+  max-width: clamp(25rem, 26vw, 36rem);
+  margin-inline: auto;
+}
+
+/* 카드 머리: 마크 → 제품 이름 → 안내. 이 화면의 유일한 브랜드다 — 히어로 쪽에
+   한 번 더 넣으면 같은 이름이 두 번 나와 어느 쪽도 눈에 남지 않는다.
+   제품 이름은 번역되지 않으므로 CSS 가 들고 있어도 된다. 그 아래 안내 문구는
+   loginAccountTitle 에서 온다. */
+.pf-v5-c-login__main-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.pf-v5-c-login__main-header::before {
+  content: "";
+  order: 0;
+  width: 3.4rem;
+  height: 3.4rem;
+  background: url("knot.svg") no-repeat center / contain;
+}
+
+.pf-v5-c-login__main-header::after {
+  content: "Nullus";
+  order: 1;
+  margin-top: 0.75rem;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--nl-text);
+}
+
+#kc-page-title,
+.pf-v5-c-login__main-header .pf-v5-c-title {
+  order: 2;
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem !important;
+  font-weight: 400;
+  color: var(--nl-text-2) !important;
+}
+
+/* ── 입력 ────────────────────────────────────────────────────────────── */
+.pf-v5-c-form__label-text,
+.pf-v5-c-check__label {
+  color: var(--nl-text) !important;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.pf-v5-c-form-control {
+  background: var(--nl-surface) !important;
+  border: 1.5px solid var(--nl-border) !important;
+  border-radius: 10px !important;
+  color: var(--nl-text) !important;
+  padding-block: 0.2rem;
+}
+
+/* PatternFly 는 입력 밑줄을 ::after 로 그린다. 남겨 두면 둥근 테두리 안에
+   밑줄이 하나 더 겹친다. */
+.pf-v5-c-form-control::after,
+.pf-v5-c-form-control::before {
+  border: none !important;
+}
+
+.pf-v5-c-form-control input {
+  border: none !important;
+  background: transparent !important;
+  color: var(--nl-text) !important;
+}
+
+/* 포커스 표시는 감싼 상자가 한 번만 그린다. 안쪽 input 의 기본 링을 그대로 두면
+   테두리 + 바깥 링 + 안쪽 기본 링이 겹쳐 이중으로 focus 된 것처럼 보인다. */
+.pf-v5-c-form-control input:focus,
+.pf-v5-c-form-control input:focus-visible {
+  outline: none !important;
+}
+
+.pf-v5-c-form-control:focus-within {
+  border-color: var(--nl-primary) !important;
+  outline: 3px solid rgba(0, 82, 255, 0.14);
+  outline-offset: 0;
+}
+
+.pf-v5-c-form-control input::placeholder {
+  color: var(--nl-muted);
+}
+
+/* 비밀번호 보기 토글 */
+.pf-v5-c-button.pf-m-control {
+  background: transparent !important;
+  border: 1.5px solid var(--nl-border) !important;
+  border-radius: 10px !important;
+  color: var(--nl-muted) !important;
+}
+
+/* 부모 템플릿은 "로그인 상태 유지"·"비밀번호 찾기"가 모두 꺼진 realm 에서도 빈
+   .pf-v5-c-form__group 을 하나 남긴다. 그대로 두면 버튼 앞에 빈 줄이 뜬다.
+   :empty 는 안 먹는다 — 안에 개행 문자가 남아 있다. */
+.pf-v5-c-form__group:not(:has(*)) {
+  display: none;
+}
+
+/* ── 버튼·링크 ───────────────────────────────────────────────────────── */
+.pf-v5-c-button.pf-m-primary,
+.btn-primary {
+  background: var(--nl-primary) !important;
+  border: none !important;
+  border-radius: 10px !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  padding-block: 0.75rem;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+.btn-primary:hover {
+  background: var(--nl-primary-deep) !important;
+}
+
+a,
+.pf-v5-c-button.pf-m-link {
+  color: var(--nl-primary) !important;
+  font-weight: 600;
+}
+
+/* ── 오류 ────────────────────────────────────────────────────────────── */
+.pf-v5-c-alert.pf-m-danger,
+.alert-error {
+  background: rgba(192, 52, 29, 0.08) !important;
+  border: 1px solid rgba(192, 52, 29, 0.25) !important;
+  color: var(--nl-error) !important;
+  border-radius: 10px !important;
+}
+
+.pf-v5-c-helper-text__item.pf-m-error,
+.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text,
+.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-icon {
+  color: var(--nl-error) !important;
+}
+
+.pf-v5-c-form-control.pf-m-error {
+  border-color: var(--nl-error) !important;
+}
+
+.pf-v5-c-form-control.pf-m-error:focus-within {
+  outline-color: rgba(192, 52, 29, 0.16);
+}
+
+/* ── 언어 선택 ───────────────────────────────────────────────────────────
+   부모 템플릿은 이 <select> 를 카드 머리 안에 넣는다. 그대로 두면 마크와 제품
+   이름 사이에 끼어 앉는다 — 오른쪽 위 구석으로 빼낸다. */
+.pf-v5-c-login__main {
+  position: relative;
+}
+
+.pf-v5-c-login__main-header-utilities {
+  position: absolute;
+  top: clamp(1rem, 2vw, 1.75rem);
+  right: clamp(1rem, 2vw, 1.75rem);
+  width: auto;
+  max-width: none;
+  margin: 0;
+  z-index: 2;
+}
+
+.pf-v5-c-login__main-header-utilities .pf-v5-c-form-control {
+  border: 1px solid var(--nl-border) !important;
+  border-radius: 8px !important;
+  font-size: 0.85rem;
+  color: var(--nl-text-2) !important;
+}

@@ -1,0 +1,462 @@
+/* 자동 생성 — scripts/emit-keycloak-theme-art.py. 손으로 고치지 않는다. */
+/*
+ * 정지 장면 위에 움직이는 조각을 앉히는 좌표와, 크레인이 짐을 놓는 순간의
+ * 타이밍. 그림과 같은 계산에서 나온 값이라 장면을 옮기면 같이 따라온다.
+ * 길이는 컨테이너 질의 단위로 적는다 — .nl-scene 이 크기 컨테이너이므로
+ * 1cqw/1cqh 가 장면 폭·높이의 1% 다.
+ */
+:root {
+  --nl-scene-w: 1263.9;
+  --nl-scene-h: 733.2;
+  /* 장면 좌표 1 단위 */
+  --nl-u-w: calc(100cqw / 1263.9);
+  --nl-u-h: calc(100cqh / 733.2);
+
+  /* 입구 벨트 윗면: 먼 쪽 모서리에서 게이트 쪽으로 흐른다 */
+  --nl-belt-in-left: 1.2659%;
+  --nl-belt-in-top: 84.5210%;
+  --nl-belt-in-len: 41.1418%;
+  --nl-belt-in-ratio: 6.1176;
+  --nl-belt-in-rate: 0.9043;
+  /* 출구 벨트 윗면 */
+  --nl-belt-out-left: 53.6829%;
+  --nl-belt-out-top: 49.0624%;
+  --nl-belt-out-len: 45.0978%;
+  --nl-belt-out-ratio: 6.7059;
+  --nl-belt-out-rate: 1.2048;
+
+  /* 올라오는 갈래: 출발 자리와 한 바퀴 동안의 이동량 */
+  --nl-in-x: 4.1780%;
+  --nl-in-y: 87.4190%;
+  --nl-in-dx: 39.3984cqw;
+  --nl-in-dy: -39.2090cqh;
+  /* 나가는 갈래 */
+  --nl-out-x: 56.5521%;
+  --nl-out-y: 57.7139%;
+  --nl-out-dx: 32.4180cqw;
+  --nl-out-dy: 32.2622cqh;
+
+  /* 스트립 커튼: 개구부 왼쪽 위 모서리와 크기. 세로면에 눕히는 행렬은
+     nullus.css 가 들고 있다 (입구는 가로축 +x, 출구는 +y). */
+  --nl-curtain-in-x: 36.8958%;
+  --nl-curtain-in-y: 32.3559%;
+  --nl-curtain-out-x: 53.6829%;
+  --nl-curtain-out-y: 32.3559%;
+  --nl-curtain-w: calc(85.0 * var(--nl-u-w));
+  --nl-curtain-h: calc(150.0 * var(--nl-u-h));
+
+  --nl-lamp: calc(9.0 * var(--nl-u-w));
+  --nl-lamp-glow: calc(21.6 * var(--nl-u-w));
+
+  /* 키오스크 화면 — 세로면에 눕히는 행렬은 nullus.css 가 들고 있다 */
+  --nl-kiosk-0-x: 48.0815%;
+  --nl-kiosk-0-y: 55.6597%;
+  --nl-kiosk-0-w: calc(85.0 * var(--nl-u-w));
+  --nl-kiosk-0-h: calc(45.0 * var(--nl-u-h));
+  --nl-kiosk-1-x: 56.5521%;
+  --nl-kiosk-1-y: 66.6297%;
+  --nl-kiosk-1-w: calc(46.5 * var(--nl-u-w));
+  --nl-kiosk-1-h: calc(34.0 * var(--nl-u-h));
+
+  /* 개발자 모니터에서 지금 치고 있는 줄 */
+  --nl-dev-x: 25.2989%;
+  --nl-dev-y: 81.5036%;
+  --nl-dev-w: calc(15.5 * var(--nl-u-w));
+  --nl-dev-h: calc(2.1 * var(--nl-u-h));
+
+  /* 조각의 크기와 기준점(그 자리의 벨트 윗면)에서의 거리 */
+  --nl-pallet-in-dx: calc(-76.6 * var(--nl-u-w));
+  --nl-pallet-in-dy: calc(-58.5 * var(--nl-u-h));
+  --nl-pallet-in-w: calc(153.2 * var(--nl-u-w));
+  --nl-pallet-in-h: calc(105.8 * var(--nl-u-h));
+  --nl-pallet-out-dx: calc(-111.3 * var(--nl-u-w));
+  --nl-pallet-out-dy: calc(-78.5 * var(--nl-u-h));
+  --nl-pallet-out-w: calc(222.5 * var(--nl-u-w));
+  --nl-pallet-out-h: calc(145.8 * var(--nl-u-h));
+  --nl-cicd-container-dx: calc(-106.5 * var(--nl-u-w));
+  --nl-cicd-container-dy: calc(-130.7 * var(--nl-u-h));
+  --nl-cicd-container-w: calc(213.0 * var(--nl-u-w));
+  --nl-cicd-container-h: calc(198.9 * var(--nl-u-h));
+  --nl-grip-bar-in-dx: calc(-49.8 * var(--nl-u-w));
+  --nl-grip-bar-in-dy: calc(-104.8 * var(--nl-u-h));
+  --nl-grip-bar-in-w: calc(99.5 * var(--nl-u-w));
+  --nl-grip-bar-in-h: calc(76.5 * var(--nl-u-h));
+  --nl-grip-jaw-l-in-dx: calc(-75.1 * var(--nl-u-w));
+  --nl-grip-jaw-l-in-dy: calc(-104.2 * var(--nl-u-h));
+  --nl-grip-jaw-l-in-w: calc(72.1 * var(--nl-u-w));
+  --nl-grip-jaw-l-in-h: calc(115.7 * var(--nl-u-h));
+  --nl-grip-jaw-r-in-dx: calc(3.1 * var(--nl-u-w));
+  --nl-grip-jaw-r-in-dy: calc(-87.4 * var(--nl-u-h));
+  --nl-grip-jaw-r-in-w: calc(72.1 * var(--nl-u-w));
+  --nl-grip-jaw-r-in-h: calc(102.5 * var(--nl-u-h));
+  --nl-grip-bar-out-dx: calc(-38.4 * var(--nl-u-w));
+  --nl-grip-bar-out-dy: calc(-86.3 * var(--nl-u-h));
+  --nl-grip-bar-out-w: calc(76.8 * var(--nl-u-w));
+  --nl-grip-bar-out-h: calc(63.4 * var(--nl-u-h));
+  --nl-grip-jaw-l-out-dx: calc(-8.3 * var(--nl-u-w));
+  --nl-grip-jaw-l-out-dy: calc(-85.8 * var(--nl-u-h));
+  --nl-grip-jaw-l-out-w: calc(65.6 * var(--nl-u-w));
+  --nl-grip-jaw-l-out-h: calc(100.8 * var(--nl-u-h));
+  --nl-grip-jaw-r-out-dx: calc(-57.2 * var(--nl-u-w));
+  --nl-grip-jaw-r-out-dy: calc(-78.3 * var(--nl-u-h));
+  --nl-grip-jaw-r-out-w: calc(65.6 * var(--nl-u-w));
+  --nl-grip-jaw-r-out-h: calc(91.4 * var(--nl-u-h));
+  --nl-badge-dx: calc(-33.0 * var(--nl-u-w));
+  --nl-badge-dy: calc(-33.0 * var(--nl-u-h));
+  --nl-badge-w: calc(66.0 * var(--nl-u-w));
+  --nl-badge-h: calc(66.0 * var(--nl-u-h));
+  --nl-oss-box-dx: calc(-64.8 * var(--nl-u-w));
+  --nl-oss-box-dy: calc(-74.1 * var(--nl-u-h));
+  --nl-oss-box-w: calc(129.6 * var(--nl-u-w));
+  --nl-oss-box-h: calc(118.3 * var(--nl-u-h));
+  --nl-app-box-dx: calc(-47.0 * var(--nl-u-w));
+  --nl-app-box-dy: calc(-61.3 * var(--nl-u-h));
+  --nl-app-box-w: calc(93.9 * var(--nl-u-w));
+  --nl-app-box-h: calc(95.2 * var(--nl-u-h));
+
+  /* 완성 배지가 붙는 자리 (스택 오른쪽 위 모서리) */
+  --nl-badge-ox: calc(88.1 * var(--nl-u-w));
+  --nl-badge-oy: calc(-78.4 * var(--nl-u-h));
+
+  /* 집게가 벌어지는 거리와 방향. 크레인 팔과 같은 축을 따라 열린다. */
+  --nl-jaw-open-in-x: calc(11.91 * var(--nl-u-w));
+  --nl-jaw-open-in-y: calc(6.88 * var(--nl-u-h));
+  --nl-jaw-open-out-x: calc(-11.91 * var(--nl-u-w));
+  --nl-jaw-open-out-y: calc(6.88 * var(--nl-u-h));
+
+  /* 한 칸 쌓일 때의 세로 이동. z 축이 순수 세로라 이 값 하나면 된다. */
+  --nl-oss-step: calc(30.0 * var(--nl-u-h));
+  --nl-pallet-lift: calc(7.5 * var(--nl-u-h));
+  --nl-nullus-lift: calc(62.5 * var(--nl-u-h));
+  /* 긴 상자 위의 세 자리 — 오른쪽(a)부터 차례로 채워진다 */
+  --nl-slot-a-x: calc(50.23 * var(--nl-u-w));
+  --nl-slot-a-y: calc(19.75 * var(--nl-u-h));
+  --nl-slot-b-x: calc(8.01 * var(--nl-u-w));
+  --nl-slot-b-y: calc(-4.62 * var(--nl-u-h));
+  --nl-slot-c-x: calc(-34.21 * var(--nl-u-w));
+  --nl-slot-c-y: calc(-29.00 * var(--nl-u-h));
+  /* 후크에 걸린 짐이 후크보다 아래에 오도록 내리는 몫 (= 상자 높이) */
+  --nl-hang-in: calc(69.2 * var(--nl-u-h));
+  --nl-hang-out: calc(57.4 * var(--nl-u-h));
+
+  /* 집게가 벌어질 때 가로대가 축 방향으로만 늘어나는 변환 */
+  --nl-bar-open-in: matrix(1.1964, 0.1134, 0.3402, 1.1964, 0, 0);
+  --nl-bar-open-out: matrix(1.3143, -0.1815, -0.5444, 1.3143, 0, 0);
+
+  /* 크레인: 케이블이 시작하는 자리, 내리는 거리, 짐을 놓는 순간 */
+  --nl-rig-in-a-x: 14.4558%;
+  --nl-rig-in-a-y: 51.2786%;
+  --nl-rig-in-a-drop: calc(182.5 * var(--nl-u-h));
+  --nl-rig-in-a-restf: 0.2097;
+  --nl-rig-in-a-shift: -1.2391;
+  --nl-rig-in-b-x: 23.8772%;
+  --nl-rig-in-b-y: 41.9025%;
+  --nl-rig-in-b-drop: calc(152.5 * var(--nl-u-h));
+  --nl-rig-in-b-restf: 0.2853;
+  --nl-rig-in-b-shift: -1.0000;
+  --nl-rig-in-c-x: 33.2985%;
+  --nl-rig-in-c-y: 32.5264%;
+  --nl-rig-in-c-drop: calc(122.5 * var(--nl-u-h));
+  --nl-rig-in-c-restf: 0.4460;
+  --nl-rig-in-c-shift: -0.7609;
+  --nl-rig-out-a-x: 66.4788%;
+  --nl-rig-out-a-y: 40.4194%;
+  --nl-rig-out-a-drop: calc(120.0 * var(--nl-u-h));
+  --nl-rig-out-a-restf: 0.3792;
+  --nl-rig-out-a-shift: -1.3164;
+  --nl-rig-out-b-x: 72.4742%;
+  --nl-rig-out-b-y: 46.3860%;
+  --nl-rig-out-b-drop: calc(120.0 * var(--nl-u-h));
+  --nl-rig-out-b-restf: 0.3792;
+  --nl-rig-out-b-shift: -1.0284;
+  --nl-rig-out-c-x: 78.4696%;
+  --nl-rig-out-c-y: 52.3525%;
+  --nl-rig-out-c-drop: calc(120.0 * var(--nl-u-h));
+  --nl-rig-out-c-restf: 0.3792;
+  --nl-rig-out-c-shift: -0.7404;
+
+  /* 올라오는 컨테이너 셋. 접속할 때마다 pick-oss.js 가 카탈로그에서
+     다시 고른다 — 아래는 자바스크립트가 막힌 환경의 기본값이다. */
+  --nl-oss-a: url("oss-gitlab.svg");
+  --nl-oss-b: url("oss-argo.svg");
+  --nl-oss-c: url("oss-grafana.svg");
+}
+
+/*
+ * 안무. 백분율이 곧 상자가 벨트 위 어디쯤인지다 — 크레인을 옮기면 이 숫자도
+ * 같이 바뀌어야 하므로 손으로 적지 않고 여기서 뽑는다.
+ * 크레인이 손을 놓는 바로 그 자리에서 그대로 나타나야 한다. 조금이라도
+ * 떨어진 데서 미끄러져 오게 하면 교대하는 순간 툭 끊겨 보인다.
+ */
+@keyframes nl-in-land-a {
+  0%, 26.09% { opacity: 0; }
+  26.19% { opacity: 1; }
+  83.48% { opacity: 1; }
+  84.68%, 100% { opacity: 0; }
+}
+
+@keyframes nl-in-land-b {
+  0%, 50.00% { opacity: 0; }
+  50.10% { opacity: 1; }
+  83.48% { opacity: 1; }
+  84.68%, 100% { opacity: 0; }
+}
+
+@keyframes nl-in-land-c {
+  0%, 73.91% { opacity: 0; }
+  74.01% { opacity: 1; }
+  83.48% { opacity: 1; }
+  84.68%, 100% { opacity: 0; }
+}
+
+/* 벨트를 타는 판넬 (입구) */
+@keyframes nl-in-base {
+  0% { opacity: 0; }
+  2% { opacity: 1; }
+  83.48% { opacity: 1; }
+  84.68%, 100% { opacity: 0; }
+}
+
+/* 스트립 커튼. 짐이 닿기 직전에 갈라졌다가 지나가면 닫힌다. */
+@keyframes nl-curtain-in-l {
+  0%, 76.48% { transform: translateX(0); }
+  80.48%, 85.48% { transform: translateX(-100%); }
+  89.48%, 100% { transform: translateX(0); }
+}
+
+@keyframes nl-curtain-in-r {
+  0%, 76.48% { transform: translateX(0); }
+  80.48%, 85.48% { transform: translateX(100%); }
+  89.48%, 100% { transform: translateX(0); }
+}
+
+/* 나오는 쪽은 한 바퀴가 넘어가는 자리에서 열린다. */
+@keyframes nl-curtain-out-l {
+  0%, 4% { transform: translateX(-100%); }
+  9%, 92% { transform: translateX(0); }
+  97%, 100% { transform: translateX(-100%); }
+}
+
+@keyframes nl-curtain-out-r {
+  0%, 4% { transform: translateX(100%); }
+  9%, 92% { transform: translateX(0); }
+  97%, 100% { transform: translateX(100%); }
+}
+
+/* 게이트에서 나오는 완성된 스택 */
+@keyframes nl-out-base {
+  0% { opacity: 0; }
+  4% { opacity: 1; }
+  96% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes nl-out-land-a {
+  0%, 18.36% { opacity: 0; }
+  18.46% { opacity: 1; }
+  96% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes nl-out-land-b {
+  0%, 47.16% { opacity: 0; }
+  47.26% { opacity: 1; }
+  96% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes nl-out-land-c {
+  0%, 75.96% { opacity: 0; }
+  76.06% { opacity: 1; }
+  96% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 표시등 — 자리·색·깜빡임 지연. 생김새와 동작은 nullus.css 가 든다. */
+.nl-beacon--0 {
+  left: 12.0234%;
+  top: 86.7371%;
+  --nl-lamp-top: #ffcb38;
+  --nl-lamp-x: #ffa62e;
+  --nl-lamp-y: #cc8525;
+  --nl-glow: #ffa62e;
+  animation-delay: -0.00s;
+}
+
+.nl-beacon--1 {
+  left: 19.2179%;
+  top: 79.5772%;
+  --nl-lamp-top: #3ef383;
+  --nl-lamp-x: #33c76b;
+  --nl-lamp-y: #299f56;
+  --nl-glow: #33c76b;
+  animation-delay: -0.90s;
+}
+
+.nl-beacon--2 {
+  left: 34.1207%;
+  top: 64.7460%;
+  --nl-lamp-top: #3ef383;
+  --nl-lamp-x: #33c76b;
+  --nl-lamp-y: #299f56;
+  --nl-glow: #33c76b;
+  animation-delay: -0.35s;
+}
+
+.nl-beacon--3 {
+  left: 64.5089%;
+  top: 72.7583%;
+  --nl-lamp-top: #ffcb38;
+  --nl-lamp-x: #ffa62e;
+  --nl-lamp-y: #cc8525;
+  --nl-glow: #ffa62e;
+  animation-delay: -1.25s;
+}
+
+.nl-beacon--4 {
+  left: 72.7312%;
+  top: 80.9410%;
+  --nl-lamp-top: #3ef383;
+  --nl-lamp-x: #33c76b;
+  --nl-lamp-y: #299f56;
+  --nl-glow: #33c76b;
+  animation-delay: -0.60s;
+}
+
+.nl-beacon--5 {
+  left: 81.9812%;
+  top: 90.1466%;
+  --nl-lamp-top: #ffcb38;
+  --nl-lamp-x: #ffa62e;
+  --nl-lamp-y: #cc8525;
+  --nl-glow: #ffa62e;
+  animation-delay: -1.05s;
+}
+
+/* 크레인 안무 — 짐을 무는 시점만 크레인마다 다르다. */
+@keyframes nl-hoist-in-a {
+  0%, 26.41% { opacity: 0; transform: translateY(var(--nl-rest)); }
+  27.91%, 38.00% { opacity: 1; transform: translateY(var(--nl-rest)); }
+  50% { opacity: 1; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  50.01% { opacity: 0; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  70%, 100% { opacity: 0; transform: translateY(var(--nl-rest)); }
+}
+
+@keyframes nl-jaw-in-a {
+  0%, 25.91% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+  27.91%, 50% { transform: translate(0, 0); }
+  51%, 100% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+}
+
+@keyframes nl-bar-in-a {
+  0%, 25.91% { transform: var(--nl-bar-open); }
+  27.91%, 50% { transform: matrix(1, 0, 0, 1, 0, 0); }
+  51%, 100% { transform: var(--nl-bar-open); }
+}
+
+@keyframes nl-hoist-in-b {
+  0%, 2.50% { opacity: 0; transform: translateY(var(--nl-rest)); }
+  4.00%, 38.00% { opacity: 1; transform: translateY(var(--nl-rest)); }
+  50% { opacity: 1; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  50.01% { opacity: 0; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  70%, 100% { opacity: 0; transform: translateY(var(--nl-rest)); }
+}
+
+@keyframes nl-jaw-in-b {
+  0%, 2.00% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+  4.00%, 50% { transform: translate(0, 0); }
+  51%, 100% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+}
+
+@keyframes nl-bar-in-b {
+  0%, 2.00% { transform: var(--nl-bar-open); }
+  4.00%, 50% { transform: matrix(1, 0, 0, 1, 0, 0); }
+  51%, 100% { transform: var(--nl-bar-open); }
+}
+
+@keyframes nl-hoist-in-c {
+  0%, 38.00% { opacity: 1; transform: translateY(var(--nl-rest)); }
+  50% { opacity: 1; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  50.01% { opacity: 0; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  70%, 78.59% { opacity: 0; transform: translateY(var(--nl-rest)); }
+  80.09%, 100% { opacity: 1; transform: translateY(var(--nl-rest)); }
+}
+
+@keyframes nl-jaw-in-c {
+  0%, 50% { transform: translate(0, 0); }
+  51%, 78.09% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+  80.09%, 100% { transform: translate(0, 0); }
+}
+
+@keyframes nl-bar-in-c {
+  0%, 50% { transform: matrix(1, 0, 0, 1, 0, 0); }
+  51%, 78.09% { transform: var(--nl-bar-open); }
+  80.09%, 100% { transform: matrix(1, 0, 0, 1, 0, 0); }
+}
+
+@keyframes nl-hoist-out-a {
+  0%, 34.14% { opacity: 0; transform: translateY(var(--nl-rest)); }
+  35.64%, 38.00% { opacity: 1; transform: translateY(var(--nl-rest)); }
+  50% { opacity: 1; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  50.01% { opacity: 0; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  70%, 100% { opacity: 0; transform: translateY(var(--nl-rest)); }
+}
+
+@keyframes nl-jaw-out-a {
+  0%, 33.64% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+  35.64%, 50% { transform: translate(0, 0); }
+  51%, 100% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+}
+
+@keyframes nl-bar-out-a {
+  0%, 33.64% { transform: var(--nl-bar-open); }
+  35.64%, 50% { transform: matrix(1, 0, 0, 1, 0, 0); }
+  51%, 100% { transform: var(--nl-bar-open); }
+}
+
+@keyframes nl-hoist-out-b {
+  0%, 5.34% { opacity: 0; transform: translateY(var(--nl-rest)); }
+  6.84%, 38.00% { opacity: 1; transform: translateY(var(--nl-rest)); }
+  50% { opacity: 1; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  50.01% { opacity: 0; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  70%, 100% { opacity: 0; transform: translateY(var(--nl-rest)); }
+}
+
+@keyframes nl-jaw-out-b {
+  0%, 4.84% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+  6.84%, 50% { transform: translate(0, 0); }
+  51%, 100% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+}
+
+@keyframes nl-bar-out-b {
+  0%, 4.84% { transform: var(--nl-bar-open); }
+  6.84%, 50% { transform: matrix(1, 0, 0, 1, 0, 0); }
+  51%, 100% { transform: var(--nl-bar-open); }
+}
+
+@keyframes nl-hoist-out-c {
+  0%, 38.00% { opacity: 1; transform: translateY(var(--nl-rest)); }
+  50% { opacity: 1; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  50.01% { opacity: 0; transform: translateY(calc(var(--nl-drop) - var(--nl-hang))); }
+  70%, 76.54% { opacity: 0; transform: translateY(var(--nl-rest)); }
+  78.04%, 100% { opacity: 1; transform: translateY(var(--nl-rest)); }
+}
+
+@keyframes nl-jaw-out-c {
+  0%, 50% { transform: translate(0, 0); }
+  51%, 76.04% { transform: translate(var(--nl-open-x), var(--nl-open-y)); }
+  78.04%, 100% { transform: translate(0, 0); }
+}
+
+@keyframes nl-bar-out-c {
+  0%, 50% { transform: matrix(1, 0, 0, 1, 0, 0); }
+  51%, 76.04% { transform: var(--nl-bar-open); }
+  78.04%, 100% { transform: matrix(1, 0, 0, 1, 0, 0); }
+}
+
+@keyframes nl-badge {
+  0%, 78.07% { opacity: 0; transform: scale(0.5); }
+  81.07% { opacity: 1; transform: scale(1); }
+  96% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
