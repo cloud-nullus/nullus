@@ -84,6 +84,12 @@ func (uc *CreateStack) Execute(ctx context.Context, input CreateStackInput) (*Cr
 		return nil, err
 	}
 
+	if accessDomain := strings.TrimSpace(input.Config.AccessDomain); accessDomain != "" {
+		if err := domain.ValidateAccessDomain(accessDomain); err != nil {
+			return nil, err
+		}
+	}
+
 	now := time.Now()
 	namespace := input.Namespace
 	if namespace == "" {
