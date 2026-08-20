@@ -2,10 +2,12 @@
 # =============================================================================
 # 26-migrate-db.sh — DB 스키마 마이그레이션 적용 (airgap)
 # =============================================================================
-# 배경: nullus-api 는 부팅 시 자동 마이그레이션을 하지 않으며(golang-migrate CLI
-#       또는 CI 로 외부 적용하는 설계), airgap helm 차트에도 migration Job 이
-#       없다. 그 결과 설치 직후 DB 스키마가 비어 있어 `users` 등 테이블이 없고
-#       로그인/데이터 화면이 전부 실패한다. 본 스크립트가 그 공백을 메운다.
+# 배경: nullus-api 는 부팅 시 자동 마이그레이션을 하지 않는다(golang-migrate CLI
+#       로 밖에서 적용하는 설계). 지금은 nullus 차트가 post-install/pre-upgrade
+#       훅 Job 으로 이 일을 하므로 보통은 설치 중에 이미 끝나 있고, 본 스크립트는
+#       훅을 끈 경우(migration.enabled=false)나 훅이 없던 옛 번들을 위한 손길이다.
+#       추적 테이블(schema_migrations)을 golang-migrate 와 같은 규칙으로 쓰므로
+#       훅과 번갈아 돌려도 서로를 밟지 않는다 — 이미 적용된 버전은 건너뛴다.
 #
 # 동작:
 #   - 마이그레이션 SQL 은 nullus-api 이미지에 항상 포함된 /etc/nullus/migrations/

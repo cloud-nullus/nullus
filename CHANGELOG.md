@@ -277,6 +277,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **배포가 DB 마이그레이션을 건너뛰던 것** (`deploy/helm/nullus/templates/migration-job.yaml`, `deploy/helm/nullus/values.yaml`, `Dockerfile`, `deploy/helm/migration_job_test.go` 신규): 배포된 nullus.io 에 스택 템플릿이 하나도 없었다. 템플릿은 seed 마이그레이션(`000008`/`000031`/`000059`/`000063`/`000069`)으로만 들어오는데, CD(`.github/workflows/cd.yml`)는 `helm upgrade` 와 `rollout restart` 만 돌린다 — 워크플로 전체에 `migrate` 라는 단어가 없다. 차트의 `migration-job.yaml` 은 "마이그레이션은 밖에서 처리한다"는 주석뿐인 빈 파일이었고, 밖에서 돌리는 쪽은 airgap 설치기와 vm-cluster 런북뿐이라 zadara 경로만 비어 있었다. 그래서 배포 DB 는 누군가 손으로 `migrate up` 을 돌린 시점에 멈춰 있었다. 템플릿만 없는 게 아니었다 — `users.password_hash`(`000073`)가 없어 ID/PW 로그인은 500 을 냈다.
+
+  **아무도 실패를 못 본 이유는 실패가 없었기 때문이다.** helm 은 초록불로 끝나고 파드도 Ready 다. 새 코드가 아직 없는 컬럼을 읽을 때가 되어서야 드러난다. 그래서 배포가 스스로 실패하는 자리에 넣는다 — 차트가 `post-install,pre-upgrade` 훅 Job 으로 마이그레이션을 돌리고, 실패하면 `helm upgrade --wait` 가 그 자리에서 멈춘다. 설치 때 `pre-install` 이 아닌 것은 훅이 차트 리소스보다 먼저 돌아 아직 만들어지지도 않은 PostgreSQL 을 기다리게 되기 때문이고, 업그레이드 때 `pre-upgrade` 인 것은 새 코드가 옛 스키마 위에서 도는 창을 없애기 위해서다.
+
+  **Job 이 `migrate` 를 부르는 것과 이미지에 `migrate` 가 있는 것은 별개다.** `deploy/csp/vm-cluster/runbook_csp.sh` 의 Job 이 이미 그 상태였다 — api 이미지 안에서 `migrate` 를 실행하는데 Dockerfile 은 helm 과 kubectl 만 싣고 있어, 돌리면 `migrate: not found` 로 끝난다. golang-migrate CLI 를 이미지에 실어 그 Job 도 같이 살아난다. SQL 과 그것을 적용할 CLI 가 같은 이미지에 있으므로 코드와 스키마의 세대가 어긋날 수 없다.
+
+  DB 접속값은 api Deployment 와 **같은 헬퍼·같은 시크릿**에서 끌어온다(따로 적으면 한쪽만 고쳤을 때 마이그레이션은 성공했는데 API 가 보는 DB 에는 반영이 없다). 비밀번호는 URL 에 끼우기 전에 퍼센트 인코딩한다 — `@ : / ? #` 가 든 비밀번호면 접속 URL 이 갈라진다. 밖에서 돌리는 환경은 `migration.enabled=false` 로 끈다.
+
 - **설치되는 OSS 가 자기 주소를 몰라 OIDC 로그인이 막히던 것** (`internal/stack/adapter/helm/{helm-values,oidc-values}.go`): 도구는 저마다 자기 기본 주소 설정에서 `redirect_uri` 를 만든다. 그 스킴이 Keycloak 에 등록된 redirect 와 다르면 로그인이 `Invalid parameter: redirect_uri` 로 막힌다. Harbor(`externalURL`)·Gitea(`ROOT_URL`)·Jenkins(`jenkinsUrl` — 아예 미설정)·GitLab(`global.hosts.https`) 에서 **같은 실패가 네 번 반복됐다**.
 
   스킴을 도구마다 하드코딩하면 도구를 추가할 때마다 이 실수가 돌아온다. `toolURLScheme()` 하나로 모으고, 네 도구가 같은 판단을 쓰는지 한 테스트로 묶는다. 갈라지면 그 도구만 로그인이 깨지고, 원인은 인증이 아니라 주소 설정에 있어 찾기 어렵다. 네 번째(GitLab)는 그 뒤라 설치 전에 코드에서 잡았다.

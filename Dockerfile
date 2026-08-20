@@ -11,12 +11,21 @@ FROM alpine:3.21
 # airgap 에서 OCI 레지스트리(plain-http)에서 차트를 pull 하려면 helm 3.14+ 필요.
 ARG HELM_VERSION=v3.16.4
 ARG KUBECTL_VERSION=v1.30.0
+# DB 마이그레이션은 API 가 기동 시 스스로 돌리지 않는다(차트의 pre-upgrade 훅 Job 과
+# airgap/vm-cluster 런북이 밖에서 돌린다). 그 Job 들은 SQL 이 들어 있는 이 이미지를
+# 그대로 띄워 migrate 를 실행하므로, SQL 과 그것을 적용할 CLI 가 같은 이미지에 있어야
+# 한다 — deploy/csp/vm-cluster/runbook_csp.sh 의 Job 은 migrate 가 없는 채로 이 이미지를
+# 부르고 있었고, 돌리면 "migrate: not found" 로 조용히 끝났다.
+ARG MIGRATE_VERSION=v4.18.1
 RUN apk add --no-cache ca-certificates tzdata curl \
     && ARCH="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" \
     && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" | tar -xz -C /tmp \
     && mv "/tmp/linux-${ARCH}/helm" /usr/local/bin/helm \
     && curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" \
     && chmod +x /usr/local/bin/kubectl \
+    && curl -fsSL "https://github.com/golang-migrate/migrate/releases/download/${MIGRATE_VERSION}/migrate.linux-${ARCH}.tar.gz" \
+       | tar -xz -C /usr/local/bin migrate \
+    && chmod +x /usr/local/bin/migrate \
     && rm -rf "/tmp/linux-${ARCH}" \
     && apk del curl
 COPY --from=builder /bin/api /usr/local/bin/api
