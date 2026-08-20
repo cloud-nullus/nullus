@@ -33,6 +33,25 @@ export function normalizeAccessDomain(domain: string): string {
   return domain.trim().replace(/\.intenral$/i, '.internal')
 }
 
+/**
+ * 스택 기본 네임스페이스. 서버의 domain.DefaultStackNamespaceFor 와 같은 규칙이다.
+ *
+ * 예전 기본값은 'nullus' 였고 그것은 플랫폼 자신이 사는 네임스페이스였다.
+ * 그래서 설치는 플랫폼의 nullus-postgresql 과 이름이 충돌해 실패했고, 삭제는
+ * 플랫폼 리소스를 지웠다 — 2026-08-20 에 nullus.io 가 통째로 내려갔다.
+ */
+export function defaultStackNamespace(stackName: string): string {
+  const slug = stackName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) {
+    return "nullus-stack";
+  }
+  return `nullus-${slug}`.slice(0, 63).replace(/-+$/, "");
+}
+
 export function buildDefaultStackName(now = new Date()): string {
   const pad = (value: number) => value.toString().padStart(2, '0')
   const year = now.getFullYear()

@@ -67,3 +67,27 @@ func TestLoadConfig_KeycloakUnsetStaysUnconfigured(t *testing.T) {
 		t.Fatal("expected an unset keycloak block to leave provisioning disabled")
 	}
 }
+
+// 차트는 Downward API 로 NULLUS_PLATFORM_NAMESPACE 를 넣어 준다. 설정 파일에는
+// 이 키가 없으므로 AutomaticEnv 만으로는 잡히지 않는다 — BindEnv 가 있어야 한다.
+func TestLoadConfig_PlatformNamespaceFromEnv(t *testing.T) {
+	t.Setenv("NULLUS_PLATFORM_NAMESPACE", "nullus")
+	cfg, err := LoadConfig(writeMinimalConfig(t))
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if cfg.Platform.Namespace != "nullus" {
+		t.Fatalf("expected platform namespace from env, got %q", cfg.Platform.Namespace)
+	}
+}
+
+// 클러스터 밖에서 도는 개발 환경에서는 비어 있고, 그때는 네임스페이스 검사를 하지 않는다.
+func TestLoadConfig_PlatformNamespaceEmptyWhenUnset(t *testing.T) {
+	cfg, err := LoadConfig(writeMinimalConfig(t))
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if cfg.Platform.Namespace != "" {
+		t.Fatalf("expected empty platform namespace, got %q", cfg.Platform.Namespace)
+	}
+}

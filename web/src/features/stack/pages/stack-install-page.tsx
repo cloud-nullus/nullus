@@ -83,6 +83,7 @@ import {
   getHelmMeta,
   getInstallType,
   buildDefaultStackName,
+  defaultStackNamespace,
   buildToolManifest,
   buildGatewayManifest,
   buildHelmStepResourceOverride,
@@ -410,7 +411,12 @@ export function StackInstallPage() {
     mode: 'onChange',
   })
 
-  const effectiveNamespace = createNewNs ? draft.namespace.trim() : draft.namespace.trim() || 'nullus'
+  // 비워 두면 스택 이름에서 만든 별도 네임스페이스를 쓴다. 예전에는 'nullus' 로
+  // 떨어졌는데 그곳은 플랫폼 자신이 사는 자리였다 — 설치는 소유권 충돌로 실패하고
+  // 삭제는 플랫폼을 지웠다. 서버도 같은 규칙으로 기본값을 만든다.
+  const effectiveNamespace = createNewNs
+    ? draft.namespace.trim()
+    : draft.namespace.trim() || defaultStackNamespace(draft.stackName)
   // GitHub 은 클러스터 밖이라 설치할 것이 없는 대신 연동 정보를 받아야 한다.
   // 이것이 없으면 설치는 끝나도 파이프라인을 만들 수 없다.
   const usesGitHubSource = draft.artifacts.sourceRepository.tool === 'github'
