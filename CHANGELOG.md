@@ -304,6 +304,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **도구는 SSO 로 설정되는데 그 OIDC 클라이언트를 아무도 만들지 않던 것** (`internal/stack/adapter/helm/orchestrator.go`): Argo CD 에서 로그인하면 Keycloak 이 **`Client not found`** 를 돌려줬다. 리다이렉트는 정상이었고 `client_id=nullus-devsecops-stack-argocd` 도 제대로 실려 있었는데, 그 클라이언트가 realm 에 없었다.
+
+  두 판단이 서로 다른 근거를 봤기 때문이다:
+
+  | 무엇 | 조건 |
+  |---|---|
+  | 도구에 OIDC 설정을 넣는다 | 플랫폼이 Keycloak 을 가리키는가(provisioner + issuer) |
+  | Keycloak 에 클라이언트를 만든다 | 스택 설정의 `authentication.provider` 가 `openbao` 인가 |
+
+  스택이 인증 공급자를 고르지 않으면 도구만 SSO 로 설정되고 클라이언트는 만들어지지 않는다. 설치 로그에는 `skipping disabled stack install step step=provisioning_sso` 한 줄만 남아, 초록불 뒤에 숨는다.
+
+  그 게이트가 지키려던 의존성(클라이언트 시크릿을 OpenBao 에서 읽는다)은 **이미 항상 충족된다** — 시크릿 평면은 `authentication.provider` 와 무관하게 늘 선다. 이제 클라이언트 등록도 도구 쪽 OIDC 값과 **같은 근거**로 판단한다. 도구에 OIDC 를 넣으면서 등록을 건너뛰는 조합은 테스트로 막았다.
 - **설치는 성공했는데 gitea·harbor 주소만 열리지 않던 것** (`internal/stack/domain/gateway_backends.go` 신규, `internal/stack/adapter/helm/gateway-tls.go`, `web/src/features/stack/utils/install-manifest-builders.ts`): minio·argocd 는 열리는데 gitea·harbor 는 닫혀 있었다. 설치 마법사가 게이트웨이 라우트의 백엔드를 **`<도구>-svc:80` 으로 지어냈기** 때문이다. 실제 서비스 이름과 포트는 도구마다 다르다 — `gitea-http:3000`, `jenkins:8080`, `nexus:8081`.
 
   서버에 이것을 바로잡는 장치가 있었지만 **`grafana-svc` 와 `prometheus-svc` 둘만** 고쳤다. 같은 문제를 도구 하나씩 땜질해 온 자리다. 게다가 이름만 고치고 포트는 그대로 두어, 포트가 다른 도구는 이름을 고쳐도 연결되지 않았다.
