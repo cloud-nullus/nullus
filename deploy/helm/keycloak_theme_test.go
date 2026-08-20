@@ -22,8 +22,40 @@ import (
 // 테마 폴더 이름. realm 의 loginTheme 이 이 이름을 가리킨다.
 const themeName = "nullus"
 
-// 컨테이너 안에서 테마가 놓여야 하는 자리.
-const themeRoot = "/opt/keycloak/themes/" + themeName + "/login"
+// 컨테이너 안에서 테마가 놓여야 하는 자리. 이미지 계열마다 다르다 — bitnami 는
+// /opt/bitnami/keycloak, 공식 quay.io 이미지는 /opt/keycloak 이다.
+//
+// 이 값을 상수로 박아 두면 마운트 경로와 서로만 맞고 **실제 이미지와는 어긋난
+// 채로** 초록불이 난다. 실제로 그렇게 됐다 — 차트는 bitnamilegacy/keycloak 을
+// 띄우는데 /opt/keycloak 에 얹어 두어, 파일이 Keycloak 이 보지 않는 자리에
+// 놓였고 로그인 화면은 조용히 기본 테마로 돌아갔다. 그래서 values 의 이미지에서
+// 끌어낸다.
+func themeRootFor(t *testing.T) string {
+	t.Helper()
+	var v struct {
+		Keycloak struct {
+			Image struct {
+				Repository string `yaml:"repository"`
+			} `yaml:"image"`
+		} `yaml:"keycloak"`
+	}
+	raw, err := os.ReadFile(filepath.Join(chartDir(t), "values.yaml"))
+	if err != nil {
+		t.Fatalf("values.yaml 읽기: %v", err)
+	}
+	if err := yaml.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("values.yaml 파싱: %v", err)
+	}
+	repo := v.Keycloak.Image.Repository
+	if repo == "" {
+		t.Fatal("keycloak.image.repository 가 비었다 — 테마 경로를 정할 수 없다")
+	}
+	base := "/opt/keycloak"
+	if strings.HasPrefix(repo, "bitnami") {
+		base = "/opt/bitnami/keycloak"
+	}
+	return base + "/themes/" + themeName + "/login"
+}
 
 func chartDir(t *testing.T) string {
 	t.Helper()
@@ -154,11 +186,11 @@ func themeData(t *testing.T, objs []k8sObject) map[string]string {
 }
 
 // containerPath 는 테마 파일이 파드 안에서 놓여야 하는 자리다.
-func containerPath(f themeFile) string {
+func containerPath(root string, f themeFile) string {
 	if f.dir == "." {
-		return themeRoot + "/" + f.name
+		return root + "/" + f.name
 	}
-	return themeRoot + "/" + f.dir + "/" + f.name
+	return root + "/" + f.dir + "/" + f.name
 }
 
 func TestKeycloakTheme_ConfigMapsCarryEveryThemeFileVerbatim(t *testing.T) {
@@ -189,6 +221,7 @@ func TestKeycloakTheme_EveryFileLandsWhereKeycloakLooks(t *testing.T) {
 	// 폴더가 하나 늘었는데 마운트를 안 붙이면, Keycloak 은 그 폴더만 빈 채로
 	// 화면을 낸다 — 오류 없이 기본 문구로 되돌아가므로 눈으로 봐야 안다.
 	objs := decodeAll(t, renderChart(t))
+	themeRoot := themeRootFor(t)
 
 	type mount struct{ path, subPath string }
 	var mounts []mount
@@ -223,7 +256,7 @@ func TestKeycloakTheme_EveryFileLandsWhereKeycloakLooks(t *testing.T) {
 
 	var missing []string
 	for _, f := range themeFiles(t) {
-		if p := containerPath(f); !covered(p) {
+		if p := containerPath(themeRoot, f); !covered(p) {
 			missing = append(missing, p)
 		}
 	}
@@ -269,7 +302,7 @@ func TestKeycloakTheme_DisabledWhenKeycloakIsExternal(t *testing.T) {
 	// 덩그러니 남으면 아무도 안 읽는 리소스가 클러스터에 쌓인다.
 	rendered := renderChart(t, "--set", "keycloak.enabled=false")
 
-	if strings.Contains(rendered, themeRoot) {
+	if strings.Contains(rendered, themeRootFor(t)) {
 		t.Error("keycloak.enabled=false 인데 테마 배선이 남았다")
 	}
 }

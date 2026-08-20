@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **로그인 테마를 Keycloak 이 보지 않는 자리에 얹고 있던 것** (`deploy/helm/nullus/values.yaml`, `deploy/helm/keycloak_theme_test.go`): realm 에 `loginTheme=nullus` 를 걸어도 화면은 기본 테마 그대로였다. 차트는 테마를 `/opt/keycloak/themes/` 에 마운트하는데, 차트가 띄우는 이미지는 `bitnamilegacy/keycloak` 이라 테마를 `/opt/bitnami/keycloak/themes/` 에서 찾는다. 파일은 컨테이너 안에 있는데 Keycloak 이 보지 않는 자리였고, 못 찾은 테마는 오류 없이 기본 화면으로 되돌아간다.
+
+  로컬에서 멀쩡했던 건 `docker-compose.dev.yaml` 이 공식 `quay.io/keycloak` 이미지를 쓰기 때문이다 — 그쪽은 `/opt/keycloak` 이 맞다. 두 환경이 서로 다른 이미지 계열을 쓰는 줄 모르고 로컬 경로를 차트에 그대로 옮겼다.
+
+  **테스트가 이걸 놓친 이유도 같이 고쳤다.** `keycloak_theme_test.go` 는 컨테이너 경로를 상수로 박아 두고 있었다. 그러면 ConfigMap 과 마운트가 *서로만* 맞으면 초록불이 나고, 정작 실제 이미지와 어긋난 것은 잡지 못한다. 이제 `keycloak.image.repository` 에서 경로를 끌어낸다 — 경로를 되돌리거나 이미지 계열만 바꿔도 실패한다(양쪽 다 확인).
+
 - **로그인 테마가 배포에 따라 붙는다** (`.github/workflows/cd.yml`, `deploy/csp/zadara/setup-keycloak-realm.sh` 에 `theme` 하위 명령, `scripts/setup-keycloak.sh` 의 `KEYCLOAK_SSL_REQUIRED`): 차트를 배포해도 `https://auth.nullus.io` 는 기본 Keycloak 화면 그대로였다. 차트는 테마 **파일**을 ConfigMap 으로 실어 줄 뿐이고, "그 테마를 쓰라" 고 realm 에 적는 것은 별개인데 그건 사람이 `setup-keycloak-realm.sh` 를 손으로 돌릴 때만 일어났기 때문이다. 실제로 서빙되는 페이지가 `login/keycloak.v2` 를 참조하는 것으로 확인했다.
 
   `helm upgrade` 뒤에 realm 의 `loginTheme` 과 언어를 거는 단계를 CD 에 넣었다. setup 전체를 돌리면 클라이언트·사용자까지 건드리므로 그 부분만 `theme` 하위 명령으로 떼어 냈다 — 여러 번 돌려도 결과가 같다. realm 은 차트가 만들지 않으므로 아직 없으면 건너뛰고, Keycloak 파드가 없는 구성(외부 Keycloak)에서도 배포를 세우지 않는다.
