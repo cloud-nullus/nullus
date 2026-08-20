@@ -400,7 +400,6 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 않는다. config.authentication.provider 로 매핑해 두면 이 값이
 			// 설치 여부를 좌우하는 것처럼 읽혀 오해를 부르므로 넣지 않는다.
 			// provisioning_sso 는 선택형이라 매핑을 유지한다.
-			"provisioning_sso":           "config.authentication.provider",
 			stepInstallingPrometheusCRDs: "config.monitoring.collection",
 			"installing_gitlab":          "config.artifacts.source_repository",
 			"installing_gitea":           "config.artifacts.source_repository",
@@ -487,12 +486,6 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// CRD 는 Prometheus 를 고른 스택에서만 필요하다.
 			stepInstallingPrometheusCRDs: func(cfg domain.StackConfig) bool {
 				return cfg.Monitoring.Collection.Enabled
-			},
-			"provisioning_sso": func(cfg domain.StackConfig) bool {
-				if cfg.Authentication == nil {
-					return false
-				}
-				return strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao")
 			},
 			"installing_argocd": func(cfg domain.StackConfig) bool {
 				return cfg.Pipeline.CDTool.Enabled
@@ -1092,6 +1085,22 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 	}
 	if o.sharedClusterScoped && isSharedClusterScopedStep(step) {
 		return false
+	}
+
+	// SSO 클라이언트 등록은 도구에 OIDC 설정을 넣는 판단과 같은 근거를 봐야 한다.
+	//
+	// 예전에는 스택 설정의 authentication.provider 가 openbao 인지로 정했다.
+	// 그런데 도구 쪽 OIDC 값(oidcValuesForStep)은 플랫폼이 Keycloak 을 가리키는지
+	// 만 본다. 두 판단이 갈리면 도구는 SSO 로 설정되는데 그 클라이언트는 아무도
+	// 만들지 않는다 — 2026-08-21 운영에서 Argo CD 가 "Client not found" 로 막혔다.
+	//
+	// 그 게이트가 지키려던 의존성(클라이언트 시크릿을 OpenBao 에서 읽는다)은 이미
+	// 항상 충족된다. 시크릿 평면은 authentication.provider 와 무관하게 늘 선다.
+	if step == "provisioning_sso" {
+		o.mu.Lock()
+		issuer := strings.TrimSpace(o.toolOIDCIssuer)
+		o.mu.Unlock()
+		return issuer != "" && o.ssoProvisioner() != nil
 	}
 
 	o.mu.Lock()
