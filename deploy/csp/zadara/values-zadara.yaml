@@ -109,6 +109,24 @@ keycloak:
 #   http://<node-10-public-ip>:30080  (Host 헤더가 아래 host 와 일치해야 함)
 # MetalLB 는 VPC 여유 IP 대역이 확정되지 않아 쓰지 않는다.
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 스택 게이트웨이 브리지
+#
+# 스택 도구는 공용 Envoy Gateway(nullus-gateway 네임스페이스)로 들어오는데,
+# Zadara 에는 LoadBalancer 가 없어 그 게이트웨이가 외부 IP 를 받지 못한다.
+# *.nullus.io 는 이미 node-10 공인 IP 로 DNS 가 잡혀 있으므로 요청은 도착하지만,
+# ingress-nginx 에 규칙이 없어 404 가 났다. 여기서 게이트웨이로 넘긴다.
+#
+# TLS 는 ingress 가 와일드카드 인증서로 끊고 뒤로는 평문으로 보낸다.
+# 정확한 호스트(nullus.io / auth.nullus.io)가 와일드카드보다 우선하므로
+# 기존 인입은 그대로다.
+# -----------------------------------------------------------------------------
+gatewayBridge:
+  enabled: true
+  hosts:
+    - "*.nullus.io"
+  tlsSecretName: nullus-wildcard-tls
+
 ingress:
   enabled: true
   className: nginx
