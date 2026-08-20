@@ -3,6 +3,7 @@ package helm
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,16 +41,30 @@ func TestJenkinsValues_UsesPrebuiltImage(t *testing.T) {
 // 차트는 registry 와 repository 를 이어 붙인다. repository 에 레지스트리를 또
 // 넣으면 ghcr.io/ghcr.io/... 가 되어 파드가 ImagePullBackOff 로 멈춘다(실측).
 //
-// 빌드 스크립트가 만드는 이름과 차트가 조립하는 이름이 갈라지면, 이미지는
-// 만들어졌는데 파드는 못 받는 상태가 된다. 두 출처를 여기서 묶어 둔다.
-// CI 는 ghcr.io/<repo>/<이미지> 로 push 한다(cd.yml 의 nullus-api / nullus-web).
-// 다른 이름을 쓰면 게시된 이미지를 아무도 못 받는다.
-func TestJenkinsImage_FollowsRegistryConvention(t *testing.T) {
+// CI 는 ghcr.io/<github.repository>/<이미지> 로 push 한다. 그 경로에는 저장소
+// 이름이 들어가므로 리네임되면 함께 바뀐다 — cloud-nullus/draft →
+// cloud-nullus/nullus 리네임 때 nullus-api·nullus-web 만 고쳐지고 Jenkins 만 옛
+// 경로에 남았다. 스택은 받을 수 없는 이미지를 가리켰고 jenkins-0 이
+// Init:ImagePullBackOff 로 멈췄다(2026-08-20 운영에서 실측).
+//
+// 그래서 여기에 경로를 다시 적지 않는다. 같은 CI 가 올리는 nullus-api 의 경로를
+// 차트 기본값에서 끌어와 접두사를 맞춘다 — 플랫폼이 실제로 그 이미지로 떠 있으니
+// 그 값이 옳다는 것은 증명돼 있다. 다음 리네임에서도 한쪽만 고치면 여기서 걸린다.
+func TestJenkinsImage_SharesGHCRPathWithPlatformImages(t *testing.T) {
+	chartValues, err := os.ReadFile(filepath.Join("..", "..", "..", "..",
+		"deploy", "helm", "nullus", "values.yaml"))
+	require.NoError(t, err)
+
+	match := regexp.MustCompile(`repository:\s*(ghcr\.io/[^\s]+)/nullus-api`).FindSubmatch(chartValues)
+	require.Len(t, match, 2, "차트에서 nullus-api 이미지 경로를 찾지 못했다")
+	wantPrefix := string(match[1])
+
 	controller := jenkinsValues(t)
 	image := controller["image"].(map[string]any)
-	assert.Equal(t, "ghcr.io", image["registry"])
-	assert.Equal(t, "cloud-nullus/draft/nullus-jenkins", image["repository"],
-		"CI 가 push 하는 경로와 같아야 한다")
+	assembled := image["registry"].(string) + "/" + image["repository"].(string)
+
+	assert.Equal(t, wantPrefix+"/nullus-jenkins", assembled,
+		"CI 가 push 하는 경로(%s/...)와 같아야 한다", wantPrefix)
 }
 
 // 에어갭 번들에 없으면 인터넷이 없는 설치에서 Jenkins 가 뜨지 않는다.

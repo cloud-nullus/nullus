@@ -34,7 +34,7 @@ INFRA_IMAGES=(
   # Jenkins: 플러그인을 구운 자체 이미지라 helm render 로는 잡히지 않는다.
   # 스택 설치가 values 로 지정한다(internal/stack/adapter/helm/values.go 의
   # jenkinsImage* 상수). 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다.
-  "ghcr.io/cloud-nullus/draft/nullus-jenkins:2.568.2"
+  "ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2"
 )
 
 if [[ -t 1 ]]; then

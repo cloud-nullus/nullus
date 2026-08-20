@@ -284,6 +284,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Jenkins 가 받을 수 없는 이미지를 가리켜 스택마다 뜨지 않던 것** (`internal/stack/adapter/helm/values.go`, `scripts/build-jenkins-image.sh`, `airgap/scripts/00-generate-images.sh`): 저장소가 `cloud-nullus/draft` → `cloud-nullus/nullus` 로 리네임됐을 때 `nullus-api` · `nullus-web` 은 새 경로로 고쳐졌지만(#78) **Jenkins 이미지만 옛 경로에 남았다.** CD 는 `ghcr.io/${{ github.repository }}/nullus-jenkins` 로 push 하므로 이미지는 새 경로에만 올라간다.
+
+  ```
+  ghcr.io/cloud-nullus/draft/nullus-jenkins:2.568.2   →  403   ← 스택이 받으려던 것
+  ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2  →  200   ← CD 가 올리는 것
+  ```
+
+  받을 수 없는 이미지라 `jenkins-0` 이 `Init:ImagePullBackOff` 로 멈춘다 — Jenkins 차트의 init 컨테이너가 컨트롤러와 같은 이미지를 쓰므로 본 컨테이너는 시작조차 못 하고 `0/2` 로 남는다. 클러스터와 무관하게 **Jenkins 를 포함한 템플릿은 어디에 깔아도 Jenkins 가 뜨지 않았다.** 에어갭 번들도 같은 경로를 담고 있었다.
+
+  **테스트가 틀린 값을 고정하고 있어서 아무도 못 잡았다.** `TestJenkinsImage_FollowsRegistryConvention` 은 "CI 가 push 하는 경로와 같아야 한다" 는 주석을 달고 `cloud-nullus/draft/nullus-jenkins` 를 그대로 단언했다 — 지키려던 불변식은 옳았는데 비교 대상을 CI 가 아니라 자기 자신에 맞춰 놓은 것이다.
+
+  이제 경로를 테스트에 다시 적지 않는다. 같은 CI 가 올리는 `nullus-api` 의 경로를 차트 기본값(`deploy/helm/nullus/values.yaml`)에서 끌어와 접두사를 맞춘다 — 플랫폼이 실제로 그 이미지로 떠 있으니 옳다는 것이 증명된 값이다. 다음 리네임에서 한쪽만 고치면 여기서 걸린다.
 - **스택 삭제가 플랫폼 리소스를 이름만 보고 지우던 것** (`internal/stack/usecase/delete_stack.go`, `internal/shared/config/config.go`, `deploy/helm/nullus/templates/deployment.yaml`): 삭제의 마지막 단계는 네임스페이스를 훑어 "레거시 잔재" 를 지운다. 그 판정이 이름 문자열이었다 — 리소스 이름에 스택 이름이 들어 있거나 `nullus-` 로 시작하면 지웠고, 소유자가 누구인지는 보지 않았다.
 
   2026-08-20, 이름이 `nullus` 이고 네임스페이스도 플랫폼과 같은 `nullus` 인 스택을 지웠다. 그 규칙에 `nullus-api` · `nullus-web` · `nullus-keycloak` · `nullus-postgresql` 이 전부 걸려 **플랫폼 자신이 지워졌다.** nullus.io 가 전면 503 이 됐고, Helm 릴리스 기록만 남아 다음 배포가 `deployments.apps "nullus-api" not found` 로 막혔다.
