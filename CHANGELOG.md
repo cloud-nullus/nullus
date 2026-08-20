@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **로그인 화면 파비콘을 Nullus 마크로** (`.../login/resources/img/favicon.ico` 신규, `scripts/make-favicon.mjs` 신규, ConfigMap 템플릿·`values.yaml`): 탭에 키클록 로고가 떴다. 부모 테마(keycloak.v2)의 템플릿이 `<link rel="icon" href="${resourcesPath}/img/favicon.ico">` 를 박아 넣는데, 우리 테마에 그 파일이 없어 Keycloak 이 부모 테마의 것으로 폴백하기 때문이다. 템플릿은 복사하지 않는 방침이라, 링크가 가리키는 그 자리에 파일을 두는 것이 유일하게 자바스크립트 없이 듣는 방법이다.
+
+  `knot.svg` 를 16·32·48px PNG 로 구워 ICO 한 장에 담는다(`node scripts/make-favicon.mjs`). 결과물은 커밋한다 — 아이콘 하나 때문에 브라우저를 CI 의 필수 의존성으로 만들 이유가 없다.
+
+  **두 가지가 걸림돌이었고 둘 다 배선으로 풀었다.** (1) `.ico` 는 바이너리라 ConfigMap 의 `data`(문자열)로는 못 싣는다 → `binaryData` 로 base64 로 싣는다. (2) ConfigMap 키에는 `/` 를 못 넣어 `img/` 를 만들려면 볼륨을 중첩 마운트해야 한다 → `projected` 볼륨으로 두 ConfigMap 을 합치고 `items[].path` 에 `img/favicon.ico` 를 준다. 마운트 지점은 그대로 하나다.
+
+  **테스트도 그 자리까지 따라가게 고쳤다.** 종전에는 마운트가 있는지만 봤는데, 그러면 하위 폴더의 파일이 한 단 위에 평평하게 떨어져도 통과한다. 이제 마운트 → 볼륨 → ConfigMap 키/`items[].path` 를 따라가 파드 안에 실제로 생길 경로를 만들어 대조한다. `items` 를 빼거나, ConfigMap 을 볼륨에서 빼거나, `.ico` 를 문자열로 실으면 각각 실패한다(셋 다 확인).
+
 - **로그인 테마를 Keycloak 이 보지 않는 자리에 얹고 있던 것** (`deploy/helm/nullus/values.yaml`, `deploy/helm/keycloak_theme_test.go`): realm 에 `loginTheme=nullus` 를 걸어도 화면은 기본 테마 그대로였다. 차트는 테마를 `/opt/keycloak/themes/` 에 마운트하는데, 차트가 띄우는 이미지는 `bitnamilegacy/keycloak` 이라 테마를 `/opt/bitnami/keycloak/themes/` 에서 찾는다. 파일은 컨테이너 안에 있는데 Keycloak 이 보지 않는 자리였고, 못 찾은 테마는 오류 없이 기본 화면으로 되돌아간다.
 
   로컬에서 멀쩡했던 건 `docker-compose.dev.yaml` 이 공식 `quay.io/keycloak` 이미지를 쓰기 때문이다 — 그쪽은 `/opt/keycloak` 이 맞다. 두 환경이 서로 다른 이미지 계열을 쓰는 줄 모르고 로컬 경로를 차트에 그대로 옮겼다.

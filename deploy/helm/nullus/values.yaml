@@ -187,9 +187,20 @@ keycloak:
     - name: nullus-login-theme
       configMap:
         name: '{{ .Release.Name }}-keycloak-theme'
+    # 부모 테마의 템플릿이 파비콘을 <resources>/img/favicon.ico 에서 찾는다.
+    # ConfigMap 키에는 "/" 를 못 넣지만 projected 볼륨의 items[].path 에는 넣을 수
+    # 있다. 두 ConfigMap 을 한 볼륨으로 합치면 마운트 지점은 그대로 하나다 —
+    # resources 안에 볼륨을 또 겹쳐 마운트하면 마운트 순서에 기대는 배선이 된다.
     - name: nullus-login-theme-resources
-      configMap:
-        name: '{{ .Release.Name }}-keycloak-theme-resources'
+      projected:
+        sources:
+          - configMap:
+              name: '{{ .Release.Name }}-keycloak-theme-resources'
+          - configMap:
+              name: '{{ .Release.Name }}-keycloak-theme-resources-img'
+              items:
+                - key: favicon.ico
+                  path: img/favicon.ico
     - name: nullus-login-theme-messages
       configMap:
         name: '{{ .Release.Name }}-keycloak-theme-messages'
