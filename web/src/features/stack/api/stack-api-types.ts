@@ -53,6 +53,12 @@ export interface OSSMonitoringStatus {
   version: string;
   enabled: boolean;
   status: "running" | "warning" | "error";
+  /**
+   * 이 도구의 웹 주소. 서버가 스택의 접속 도메인에서 만들어 내려준다.
+   * 접속 도메인이 없거나 주소 규칙을 모르는 도구는 비어 있다 —
+   * 화면이 도메인으로 주소를 다시 조립하면 서버 규칙과 갈라진다.
+   */
+  url?: string;
   pod_count: number;
   ready_pods: number;
   pods: PodMonitoringStatus[];

@@ -793,6 +793,16 @@ export function buildConnectionInfoText(
   ].join("\n");
 }
 
+/**
+ * 접속 도메인에서 도구의 웹 주소를 만든다.
+ *
+ * 스킴은 항상 https 다 — 접속 도메인은 게이트웨이 TLS 리스너 뒤에 서고, 서버의
+ * 단일 출처(internal/stack/domain/tool_access_url.go)도 같은 규칙으로 내려준다.
+ * 여기만 http 로 두면 화면마다 다른 주소를 안내하게 된다.
+ *
+ * 이 함수는 서버가 아직 주소를 주지 못할 때의 대비책이다. 서버 응답이 있으면
+ * resolveToolLaunchURL 을 거쳐 그쪽을 먼저 쓴다.
+ */
 export function toolLaunchURL(
   toolName: string,
   accessDomain: string,
@@ -806,18 +816,43 @@ export function toolLaunchURL(
     .replace(/\s+/g, " ")
     .trim();
   if (["gitlab", "gitlab ce", "gitlab ci", "gitlab registry"].includes(key))
-    return `http://gitlab.${accessDomain}`;
+    return `https://gitlab.${accessDomain}`;
+  if (key.startsWith("gitea")) return `https://gitea.${accessDomain}`;
+  if (key.startsWith("jenkins")) return `https://jenkins.${accessDomain}`;
+  if (key === "nexus") return `https://nexus.${accessDomain}`;
   if (["argocd", "argo cd"].includes(key))
-    return `http://argocd.${accessDomain}`;
-  if (key === "grafana") return `http://grafana.${accessDomain}`;
-  if (key === "prometheus") return `http://prometheus.${accessDomain}`;
-  if (key === "harbor") return `http://harbor.${accessDomain}`;
-  if (key === "minio") return `http://minio.${accessDomain}`;
-  if (key === "opensearch") return `http://opensearch.${accessDomain}`;
-  if (key === "elasticsearch") return `http://kibana.${accessDomain}`;
-  if (key === "jaeger") return `http://jaeger.${accessDomain}`;
+    return `https://argocd.${accessDomain}`;
+  if (key === "grafana") return `https://grafana.${accessDomain}`;
+  if (key === "prometheus") return `https://prometheus.${accessDomain}`;
+  if (key === "harbor") return `https://harbor.${accessDomain}`;
+  if (key === "minio") return `https://minio.${accessDomain}`;
+  if (key === "opensearch") return `https://opensearch.${accessDomain}`;
+  if (key === "elasticsearch") return `https://kibana.${accessDomain}`;
+  if (key === "jaeger") return `https://jaeger.${accessDomain}`;
   if (["tempo", "loki", "opentelemetry collector"].includes(key))
-    return `http://grafana.${accessDomain}`;
-  if (key === "openbao") return `http://openbao.${accessDomain}`;
+    return `https://grafana.${accessDomain}`;
+  if (key === "openbao") return `https://openbao.${accessDomain}`;
   return null;
+}
+
+/**
+ * 도구의 접속 주소를 정한다. 서버가 준 값이 먼저다.
+ *
+ * 주소의 단일 출처는 서버(스택 모니터링 응답의 oss_statuses[].url)다. 화면이
+ * 접속 도메인으로 주소를 다시 조립하면 설치 규칙이 바뀌는 순간 조용히 갈라진다 —
+ * 그래서 서버 값이 있으면 그것을 쓰고, 아직 없을 때만 규칙으로 만든다.
+ */
+export function resolveToolLaunchURL(
+  toolName: string,
+  serverTools: Array<{ name: string; url?: string }> | undefined,
+  accessDomain: string,
+): string | null {
+  const wanted = toolName.trim().toLowerCase();
+  const fromServer = (serverTools ?? []).find(
+    (tool) => tool.name.trim().toLowerCase() === wanted,
+  )?.url;
+  if (fromServer && fromServer.trim()) {
+    return fromServer.trim();
+  }
+  return toolLaunchURL(toolName, accessDomain);
 }

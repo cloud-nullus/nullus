@@ -47,7 +47,7 @@ vi.mock('../utils/stack-list-utils', () => ({
   applyToolRuntimeStatus: (nodes: unknown) => nodes,
   buildInstalledToolsFromSnapshot: () => [],
   extractAccessDomain: () => '',
-  toolLaunchURL: () => '',
+  resolveToolLaunchURL: () => '',
   buildHostsText: () => '',
   toConnectionInfoView: () => ({
     accessDomain: '',

@@ -24,7 +24,7 @@ import {
   applyToolRuntimeStatus,
   buildInstalledToolsFromSnapshot,
   extractAccessDomain,
-  toolLaunchURL,
+  resolveToolLaunchURL,
   buildHostsText,
   toConnectionInfoView,
   findToolCredential,
@@ -166,7 +166,7 @@ export function StackInfoTab({
   const launchTools: LaunchTool[] = installedTools.map((tool) => ({
     name: tool.name,
     version: tool.version,
-    url: toolLaunchURL(tool.name, accessDomain),
+    url: resolveToolLaunchURL(tool.name, monitoringData?.oss_statuses, accessDomain),
     logo: toolLogoURL(tool.name),
   }));
   const hostsText = buildHostsText(stack.name, accessDomain, launchTools);

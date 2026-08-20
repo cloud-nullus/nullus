@@ -115,11 +115,13 @@ type installedResourceStatus struct {
 }
 
 type ossMonitoringStatus struct {
-	Key       string                `json:"key"`
-	Name      string                `json:"name"`
-	Version   string                `json:"version"`
-	Enabled   bool                  `json:"enabled"`
-	Status    string                `json:"status"`
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Enabled bool   `json:"enabled"`
+	Status  string `json:"status"`
+	// URL 은 이 도구의 웹 주소다. 설치 때 받은 접속 도메인이 없으면 비어 있다.
+	URL       string                `json:"url,omitempty"`
 	PodCount  int                   `json:"pod_count"`
 	ReadyPods int                   `json:"ready_pods"`
 	Pods      []podMonitoringStatus `json:"pods"`
@@ -751,6 +753,7 @@ func toOSSStatuses(types []selectedToolType, pods []podMonitoringStatus) []ossMo
 			Version:   t.Version,
 			Enabled:   t.Enabled,
 			Status:    status,
+			URL:       t.URL,
 			PodCount:  len(matched),
 			ReadyPods: ready,
 			Pods:      matched,
@@ -856,6 +859,7 @@ type selectedToolType struct {
 	Name                 string
 	Version              string
 	Enabled              bool
+	URL                  string
 	PodNamePrefixes      []string
 	ResourceNamePrefixes []string
 }
@@ -873,6 +877,7 @@ func selectedToolTypes(cfg domain.StackConfig) []selectedToolType {
 			Name:                 w.Name,
 			Version:              w.Version,
 			Enabled:              true,
+			URL:                  domain.ToolAccessURL(w.Name, cfg.AccessDomain),
 			PodNamePrefixes:      w.NamePrefixes,
 			ResourceNamePrefixes: w.NamePrefixes,
 		})
