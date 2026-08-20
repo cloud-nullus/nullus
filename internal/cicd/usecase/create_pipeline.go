@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"strings"
 	"time"
@@ -204,19 +205,54 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	return out, nil
 }
 
-// provisionRepository 는 요청 시 앱 저장소를 준비한다.
+// shouldProvisionRepository 는 이 파이프라인의 저장소·CI job 을 플랫폼이
+// 준비할지다.
 //
-// 요청하지 않았으면 nil, nil 을 돌려준다. 요청했는데 배선이 없거나 스택이
+// 스택에 묶인 파이프라인은 명시적 요청이 없어도 준비한다. 통합모드가 그것들이
+// 있다는 전제 위에 서 있기 때문이다 — 러너가 실행할 Jenkinsfile 도, Argo CD 가
+// 동기화할 매니페스트도, 배포 실행을 넘길 job 도 전부 이 단계에서 만들어진다.
+// 준비 없이 만든 파이프라인은 배포를 눌러도 넘길 job 이 없다.
+//
+// 실제로 그랬다. 프론트는 provision_repository 를 한 번도 보내지 않아, UI 로
+// 만든 파이프라인에는 저장소조차 없었다.
+//
+// EnsureProject 는 멱등하다 — 이미 있는 저장소는 그대로 쓰므로 기존 저장소를
+// 지정한 경우에도 안전하다.
+func shouldProvisionRepository(input CreatePipelineInput) bool {
+	if input.ProvisionRepository {
+		return true
+	}
+	// 긴급 직접 배포는 스택 컴포넌트를 쓸 수 없을 때의 경로다. 그 상황에서
+	// 저장소 생성을 시도하면 쓰지 못하는 도구에 붙으려다 파이프라인 생성 자체가
+	// 막힌다.
+	if strings.TrimSpace(input.ExecutionMode) == domain.ExecutionModeEmergencyDirect {
+		return false
+	}
+	return strings.TrimSpace(input.StackID) != ""
+}
+
+// provisionRepository 는 앱 저장소와 CI job 을 준비한다.
+//
+// 준비 대상이 아니면 nil, nil 을 돌려준다. 대상인데 배선이 없거나 스택이
 // 없으면 오류다 — 조용히 넘어가면 사용자는 저장소가 생긴 줄 알고 기다린다.
 func (uc *CreatePipeline) provisionRepository(
 	ctx context.Context,
 	input CreatePipelineInput,
 ) (*ProvisionPipelineRepositoryOutput, error) {
-	if !input.ProvisionRepository {
+	if !shouldProvisionRepository(input) {
 		return nil, nil
 	}
 	if uc.provisioner == nil {
-		return nil, fmt.Errorf("저장소 프로비저닝이 배선되지 않았습니다")
+		// 사용자가 명시적으로 요청했으면 오류다 — 요청을 받고 아무것도 하지
+		// 않으면 저장소가 생긴 줄 알고 기다린다.
+		if input.ProvisionRepository {
+			return nil, fmt.Errorf("저장소 프로비저닝이 배선되지 않았습니다")
+		}
+		// 자동 준비는 건너뛴다. 배선이 없는 구성에서 파이프라인 생성 자체를
+		// 막지는 않는다 — 요청하지 않은 부가 작업이 본래 작업을 무너뜨리면 안 된다.
+		slog.Warn("저장소 프로비저닝 배선이 없어 자동 준비를 건너뜁니다",
+			"pipeline", input.Name, "stack_id", input.StackID)
+		return nil, nil
 	}
 	if strings.TrimSpace(input.StackID) == "" {
 		return nil, fmt.Errorf("저장소를 만들려면 stack_id 가 필요합니다")

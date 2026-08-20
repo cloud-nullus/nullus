@@ -304,6 +304,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI 로 만든 파이프라인에 저장소도 CI job 도 없던 것** (`internal/cicd/usecase/create_pipeline.go`): 스택에 묶인 파이프라인을 만들어도 Gitea 저장소, Jenkinsfile, Jenkins job, Argo CD Application 이 하나도 만들어지지 않았다. 배포를 누르면 넘길 job 이 없다.
+
+  만드는 코드는 있었다 — `ProvisionAppProject` 가 저장소를 만들고 스캐폴딩을 커밋하고 job 과 webhook 과 Argo CD Application 까지 만든다. **부르는 쪽이 없었다.** 그 경로는 `provision_repository` 플래그로 열리는데 프론트는 그 필드를 한 번도 보내지 않았다.
+
+  이제 스택에 묶인 파이프라인은 플래그 없이도 준비한다. 통합모드가 그것들이 있다는 전제 위에 서 있기 때문이다 — 러너가 실행할 Jenkinsfile 도, Argo CD 가 동기화할 매니페스트도, 배포 실행을 넘길 job 도 전부 이 단계에서 만들어진다. `EnsureProject` 는 멱등해서 이미 있는 저장소는 그대로 쓴다.
+
+  긴급 직접 배포(`emergency_direct`)와 스택에 묶이지 않은 파이프라인은 예전 그대로다. 프로비저닝 배선이 없는 구성에서는 자동 준비만 건너뛰고 파이프라인 생성은 그대로 된다 — 요청하지 않은 부가 작업이 본래 작업을 무너뜨리면 안 된다(명시적으로 요청했는데 배선이 없으면 예전처럼 오류다).
+
 - **스택 파이프라인의 배포가 플랫폼 안에서 빌드하려다 죽던 것** (`internal/cicd/usecase/deploy_pipeline.go`, `internal/cicd/adapter/runner/` 신규, `internal/cicd/adapter/jenkins/client.go`): 설치된 스택에서 CI/CD 템플릿을 실행하면 첫 단계 `git clone` 에서 끝났다. API 파드에는 git 도 도커 데몬도 없다 — 이 경로는 API 서버가 host 에서 `go run` 으로 돌던 시절에 만들어졌다.
 
   git 을 이미지에 넣으면 clone 은 지나가지만 다음 단계 `docker build` 가 같은 이유로 멈춘다. 파드 안에 도커 데몬을 들이는 것이 답이 아니다 — 통합모드 설계가 이미 다른 답을 정해 두었다: *"Nullus API 서버가 정상 실행 과정에서 직접 git clone, docker build, kind load, kubectl apply 를 수행하지 않는다."*
