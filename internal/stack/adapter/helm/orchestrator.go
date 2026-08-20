@@ -1026,6 +1026,17 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			return fmt.Errorf("bootstrap internal ca: %w", err)
 		}
 	}
+	// PostgreSQL 을 세운 직후 앱 사용자의 비밀번호를 Secret 값과 맞춘다.
+	//
+	// 차트는 데이터 디렉터리가 비어 있을 때만 사용자를 만든다. 볼륨이 남은 채
+	// 다시 설치하거나 금고가 새로 초기화되면 DB 안의 비밀번호와 Secret 이 조용히
+	// 갈라지고, 설치는 멈추지 않은 채 여섯 단계쯤 뒤 Gitea 가 28P01 로 기동하지
+	// 못하는 모습으로 드러난다(2026-08-20 운영에서 실측).
+	if step == "installing_postgresql" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.ensureProvisionedPostgresRolePassword(ctx, namespace); err != nil {
+			return err
+		}
+	}
 	if step == "installing_openbao" {
 		// 차트 설치 직후 금고를 초기화한다. Job 이 멱등하므로 재시도해도 안전하다.
 		if err := o.runOpenBaoInit(ctx, namespace); err != nil {

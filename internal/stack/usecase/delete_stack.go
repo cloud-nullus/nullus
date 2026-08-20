@@ -867,6 +867,47 @@ func (uc *DeleteStack) bestEffortDeletePersistentVolumeClaims(ctx context.Contex
 		uc.emit(ctx, stackID, "deleting_pvc", "warn",
 			fmt.Sprintf("pvc delete warning in %s: %v", namespace, err))
 	}
+
+	// 지웠다고 끝이 아니다. 파드가 아직 물고 있으면 PVC 는 Terminating 으로 남고
+	// 위 명령은 타임아웃으로 끝난다. 예전에는 경고 한 줄만 남기고 넘어가서,
+	// 사용자는 스택이 깨끗이 지워진 줄 알았다 — 그리고 다음 설치가 옛 볼륨을
+	// 물려받아 DB 안의 비밀번호와 새로 만든 Secret 이 어긋났다.
+	// 남은 것이 있으면 무엇이 왜 문제인지 분명히 남긴다.
+	if out, err := uc.runKubectl(ctx, kubeconfig, "get", "pvc", "-n", namespace, "-o", "name"); err == nil {
+		if remaining := parseResourceNames(string(out)); len(remaining) > 0 {
+			message := remainingPVCMessage(namespace, remaining)
+			slog.Error("persistent volume claims survived stack delete",
+				"namespace", namespace, "remaining", remaining)
+			uc.emit(ctx, stackID, "deleting_pvc", "error", message)
+		}
+	}
+}
+
+// parseResourceNames 는 kubectl -o name 출력에서 이름만 뽑는다.
+func parseResourceNames(output string) []string {
+	names := make([]string, 0, 4)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		names = append(names, resourceNameFromRef(trimmed))
+	}
+	return names
+}
+
+// remainingPVCMessage 는 남은 볼륨이 다음 설치에 무엇을 하는지까지 알려 준다.
+//
+// "pvc delete warning" 만으로는 사용자가 무엇을 해야 하는지 알 수 없다. 남은
+// 볼륨은 다음 설치가 옛 데이터베이스를 물려받게 만들고, 그 안의 비밀번호는 새로
+// 만들어진 Secret 과 다르다 — 설치는 한참 뒤 Gitea 의 인증 실패로 드러난다.
+func remainingPVCMessage(namespace string, remaining []string) string {
+	return fmt.Sprintf(
+		"네임스페이스 %s 에 볼륨이 남았습니다: %s. "+
+			"이 상태로 같은 네임스페이스에 다시 설치하면 옛 데이터베이스를 그대로 물려받아 "+
+			"새로 만든 비밀번호와 어긋납니다. 지운 뒤 다시 설치하세요: "+
+			"kubectl -n %s delete pvc %s",
+		namespace, strings.Join(remaining, ", "), namespace, strings.Join(remaining, " "))
 }
 
 // bestEffortDeleteGatewayAPIResources 는 스택의 Gateway/HTTPRoute 를 지운다.
