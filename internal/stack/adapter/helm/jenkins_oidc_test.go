@@ -76,8 +76,25 @@ func TestJenkinsOIDC_InstallsPluginAndConfiguresSecurityRealm(t *testing.T) {
 	assert.Contains(t, script,
 		"http://keycloak.nullus.local:8180/realms/nullus/.well-known/openid-configuration")
 
-	// oic-auth 가 모르는 속성을 넣으면 같은 실패가 돌아온다.
-	assert.NotContains(t, script, "scopes:")
+	// oic-auth 가 모르는 속성을 넣으면 같은 실패가 돌아온다. 최상위 scopes 는
+	// manual 설정용 이름이라 wellKnown 아래에서는 부팅을 막는다.
+	assert.NotContains(t, script, "\n      scopes:")
+}
+
+// 스코프를 지정하지 않으면 oic-auth 는 디스커버리 문서의 scopes_supported 를
+// 통째로 요청한다(플러그인 기본값이 "request all"). 그 목록은 렐름 전체의 것이라
+// 이 클라이언트에 할당되지 않은 service_account·basic·acr 까지 들어가고,
+// Keycloak 은 로그인을 invalid_scope 로 거절한다:
+//
+//	/securityRealm/finishLogin?error=invalid_scope&error_description=Invalid+scopes:
+//	openid offline_access profile email roles phone address service_account ...
+//
+// wellKnown 설정에서 스코프를 좁히는 속성 이름은 scopesOverride 다.
+func TestJenkinsOIDC_NarrowsScopesToWhatTheClientHas(t *testing.T) {
+	script := jenkinsOIDCJCasC("nullus-stack-jenkins", "sso-jenkins",
+		"http://keycloak.nullus.local:8180/realms/nullus")
+
+	assert.Contains(t, script, "scopesOverride: \"openid email profile\"")
 }
 
 // client secret 은 JCasC 본문에 평문으로 들어가면 안 된다. ESO 가 만든 Secret 을

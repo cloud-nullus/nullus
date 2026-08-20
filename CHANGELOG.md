@@ -304,6 +304,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Jenkins 만 SSO 로그인이 `invalid_scope` 로 튕기던 것** (`internal/stack/adapter/helm/oidc-values.go`): 같은 realm 에서 Argo CD·Harbor·Gitea 는 들어가지는데 Jenkins 만 로그인이 끝에서 실패했다.
+
+  ```
+  /securityRealm/finishLogin?error=invalid_scope&error_description=Invalid+scopes:
+  openid offline_access profile email roles phone address service_account basic acr
+  organization web-origins microprofile-jwt
+  → Could not extract credentials from request
+  ```
+
+  요청한 스코프 목록이 곧 원인이다. 이것은 Jenkins 가 고른 값이 아니라 **realm 이 지원하는 전부**다 — oic-auth 는 스코프를 지정받지 못하면 "request all" 로 동작해 디스커버리 문서의 `scopes_supported` 를 그대로 요청한다. 그중 `service_account`·`basic`·`acr`·`organization` 은 이 클라이언트에 할당된 적이 없고, Keycloak 은 할당되지 않은 스코프를 보면 인가 요청 자체를 거절한다.
+
+  기본값이면 충분하다고 보고 지정하지 않았던 것인데, 그 기본값이 "적당한 셋" 이 아니라 "전부" 였다.
+
+  이제 `openid email profile` 로 좁힌다. 속성 이름은 `scopes` 가 아니라 `scopesOverride` 다 — `scopes` 는 manual 설정용이라 `wellKnown` 아래에 두면 JCasC 가 부팅을 막아 Jenkins 가 통째로 못 뜬다.
 - **스택을 지워도 PVC 와 네임스페이스가 남던 것** (`internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/handler/stack_handler.go`): 삭제가 성공했는데도 볼륨과 네임스페이스가 그대로 남았다. 다음 설치는 그 볼륨을 물려받아 옛 비밀번호를 쓰는 데이터베이스로 올라오고, 그 사실은 한참 뒤 Gitea 의 28P01 이나 Harbor 의 401 로 드러난다.
 
   정리가 **HTTP 요청 컨텍스트에 매달려 있었다.** 릴리스 uninstall 20여 개와 PVC 재시도(최대 6 × 10초)를 합치면 몇 분인데, 게이트웨이는 그만큼 기다려 주지 않는다. 연결이 끊기는 순간 컨텍스트가 죽고 kubectl 호출이 전부 즉시 실패한다 — 그리고 볼륨·네임스페이스 회수는 그 **다음** 단계라 아예 실행되지 않는다. 둘이 함께 남은 이유가 이것이다.
