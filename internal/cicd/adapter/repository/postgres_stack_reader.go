@@ -31,7 +31,7 @@ func (r *PostgresStackReader) GetStackSummary(ctx context.Context, stackID strin
 	// 도구 이름과 접근 도메인은 config JSONB 안에 있다. 없을 수 있으므로
 	// COALESCE 로 빈 문자열을 돌려준다 — 호출부가 nil 검사를 하지 않아도 되게.
 	const q = `
-		SELECT id, org_id, cluster_id, state,
+		SELECT id, name, org_id, cluster_id, state,
 		       COALESCE(namespace, ''),
 		       COALESCE(config->'artifacts'->'source_repository'->>'name', ''),
 		       COALESCE(config->'artifacts'->'container_registry'->>'name', ''),
@@ -43,7 +43,7 @@ func (r *PostgresStackReader) GetStackSummary(ctx context.Context, stackID strin
 	var s port.StackSummary
 	var collectorEnabled string
 	err := r.pool.QueryRow(ctx, q, stackID).Scan(
-		&s.ID, &s.OrgID, &s.ClusterID, &s.State,
+		&s.ID, &s.Name, &s.OrgID, &s.ClusterID, &s.State,
 		&s.Namespace, &s.SourceRepository, &s.ContainerRegistry, &s.AccessDomain,
 		&collectorEnabled,
 	)

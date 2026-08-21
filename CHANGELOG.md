@@ -332,6 +332,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **앱 라우트가 존재하지 않는 게이트웨이를 가리키던 것** (`internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/port/stack_reader.go`): 배포된 앱의 HTTPRoute 가 `default` 에 만들어졌는데 `status.parents` 가 **아예 비어 있었다.** `Accepted=False` 도 아니었다 — 어느 컨트롤러도 그 라우트를 집지 않았다는 뜻이다.
+
+  게이트웨이 이름을 두 곳이 **각자 다른 근거로** 만들고 있었다:
+
+  - 스택 설치: `<스택 이름>-gateway` → `nullus-devsecops-stack-gateway`
+  - CI/CD 스캐폴딩: `<접근 도메인>-gateway` → `nullus-io-gateway`
+
+  뒤엣것은 존재하지 않는다. 존재하지 않는 게이트웨이를 가리키는 라우트는 조용히 아무 데도 붙지 않는다 — 라우트도 있고 Argo CD 도 Synced 인데 주소만 열리지 않고, 어디에도 오류가 없다.
+
+  이제 스택이 자기 이름을 알려주고(`StackSummary.Name`) CI/CD 는 그것을 따라간다. 이름을 다듬지 않고 그대로 붙인다 — 한쪽만 다듬으면 다시 갈라진다. 스택 이름을 모르면 빈 값을 돌려주고, 그러면 스캐폴딩이 HTTPRoute 자체를 만들지 않는다(없는 게이트웨이를 가리키는 라우트를 만드는 것보다 낫다).
+
 - **Argo CD 에 SSO 로 로그인하면 화면이 비어 있던 것** (`internal/stack/adapter/helm/oidc-values.go`): Keycloak 으로 로그인은 되는데 `No applications available to you just yet` 만 떴다. 같은 순간 `kubectl` 로는 Application 이 `Synced`/`Healthy` 로 보였다.
 
   없는 것이 아니라 **안 보이는 것**이었다. Argo CD 는 정책이 없는 사용자에게 아무것도 보여 주지 않는데, 그 차이가 화면 문구에만 있다 — available **to you**. 그래서 "등록이 안 됐다" 로 읽힌다.
