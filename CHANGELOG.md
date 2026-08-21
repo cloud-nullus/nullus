@@ -332,6 +332,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **배포된 앱이 게이트웨이에 붙지 못해 주소가 열리지 않던 것** (`web/src/features/stack/utils/install-manifest-builders.ts`): 이미지가 레지스트리에 올라가고 Argo CD 가 `Synced`/`Healthy` 인데도 `sample-frontend.nullus.io` 가 열리지 않았다.
+
+  게이트웨이 리스너가 `allowedRoutes.namespaces.from: Same` 이었다. 게이트웨이는 스택 네임스페이스에 있고, 배포된 앱의 HTTPRoute 는 **앱이 서는 네임스페이스**(예: `default`)에 생긴다 — 라우트는 같은 네임스페이스의 Service 를 가리켜야 하므로 그 자리를 옮길 수 없다. `Same` 이면 그 라우트는 어느 게이트웨이에도 붙지 않는다.
+
+  스택 도구(Harbor·Gitea·Jenkins)는 게이트웨이와 같은 네임스페이스라 잘 열린다. **배포된 앱만** 안 열리는데, 그 경로의 어느 단계도 오류를 내지 않아 원인이 드러나지 않는다 — Argo CD 는 매니페스트를 정상 적용했고 라우트 리소스도 클러스터에 있으며, 다만 붙지 않았을 뿐이다.
+
+  두 리스너 모두 `All` 로 연다. 한쪽만 열면 앱이 http 로만 열리고 그 사실이 어디에도 드러나지 않는다.
+
 - **프로비저닝 경고가 서버에 아무 흔적도 남기지 않던 것** (`internal/cicd/usecase/provision_pipeline_repository.go`): 저장소는 만들어졌는데 Argo CD Application 이 없고, 왜 없는지 알 방법이 없었다.
 
   Argo CD Application 생성은 여러 지점에서 실패할 수 있고(적용 어댑터 부재, 자격증명 렌더 실패, kubeconfig 조회 실패, 적용 실패) 전부 경고로 남는다. 그런데 그 경고는 **HTTP 응답으로만** 돌아갔다. 화면이 그것을 버리면(#208 이전이 그랬다) 흔적이 통째로 사라진다 — 서버 로그에도, DB 에도 아무것도 없다.

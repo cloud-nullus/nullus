@@ -36,3 +36,34 @@ describe('buildGatewayManifest', () => {
     expect(manifest).toContain('backendRequest: 600s')
   })
 })
+
+describe('buildGatewayManifest listeners', () => {
+  // 배포된 앱의 HTTPRoute 는 앱이 서는 네임스페이스(예: default)에 생긴다.
+  // 라우트는 같은 네임스페이스의 Service 를 가리켜야 하므로 그 자리를 옮길 수 없다.
+  //
+  // 리스너가 Same 이면 그 라우트는 게이트웨이에 붙지 못한다. 스택 도구들은 같은
+  // 네임스페이스라 잘 열리고 배포된 앱만 안 열린다 — 2026-08-21 운영에서
+  // Argo CD 는 Synced/Healthy 인데 sample-frontend.nullus.io 가 열리지 않았다.
+  it('accepts routes from other namespaces', () => {
+    const manifest = buildGatewayManifest(draft(), [{ toolId: 'harbor' } as never])
+
+    expect(manifest).toContain('from: All')
+    expect(manifest).not.toContain('from: Same')
+  })
+
+  it('accepts cross-namespace routes on the https listener too', () => {
+    const tls = draft()
+    tls.accessDomainTls = {
+      enabled: true,
+      secretName: 'nullus-access-domain-tls',
+      secretNamespace: '',
+      issuerName: 'nullus-ca-issuer',
+    } as never
+
+    const manifest = buildGatewayManifest(tls, [{ toolId: 'harbor' } as never])
+
+    // 두 리스너 모두 열려 있어야 한다. https 만 막히면 앱이 http 로만 열리고
+    // 그 사실이 어디에도 드러나지 않는다.
+    expect(manifest.match(/from: All/g)?.length).toBe(2)
+  })
+})
