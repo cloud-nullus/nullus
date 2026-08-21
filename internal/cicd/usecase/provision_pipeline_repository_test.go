@@ -56,7 +56,7 @@ func (f *fakeKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]b
 func newBundle(scm *fakeSCM, pipe *fakePipelineConfig, res *fakeResolver) *port.SCMBundle {
 	return &port.SCMBundle{
 		Provisioner: scm, Pipeline: pipe, Registry: res,
-		GroupPath: "acme", ArgoNamespace: "devsecops", ClusterID: "c1",
+		GroupPath: "acme", CDNamespace: "devsecops", ClusterID: "c1",
 	}
 }
 

@@ -569,7 +569,7 @@ func newPipelineEchoWithDelete(t *testing.T, pipelineRepo *mockPipelineRepositor
 	deployPipelineUC := usecase.NewDeployPipeline(pipelineRepo, &mockDeploymentRepository{}, &noopKubeconfigProvider{}, &noopManifestApplier{})
 
 	factory := &stubBundleFactory{bundle: &port.SCMBundle{Provisioner: scm, GroupPath: "acme"}}
-	deleteUC := usecase.NewDeletePipeline(pipelineRepo, factory, noopArgoAppDeleter{}, &noopKubeconfigProvider{})
+	deleteUC := usecase.NewDeletePipeline(pipelineRepo, factory, &noopKubeconfigProvider{})
 
 	h := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC,
 		pipelineRepo, &mockDeploymentRepository{}, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil).

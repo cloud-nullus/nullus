@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **파이프라인을 지우면 이미지와 배포된 애플리케이션도 함께 지워진다** (`internal/cicd/adapter/harbor/` 신규, `internal/cicd/usecase/delete_pipeline.go`): 두 가지가 남고 있었다.
+
+  **하나 — Harbor 이미지 저장소.** `ImageRepositoryDeleter` 구현체가 GHCR 하나뿐이라, Harbor 를 쓰는 스택에서는 "이 레지스트리는 삭제를 지원하지 않습니다" 만 나왔다. 플랫폼이 프로젝트를 만들고 이미지를 밀어 넣으면서 정리는 못 하니, 파이프라인을 지워도 이미지가 계속 쌓였다. 이제 Harbor 구현체가 프로젝트 안의 저장소를 지운다 — 자격증명은 [#210] 이 만든 `registrycreds` 로 스택 시크릿에서 푼다.
+
+  **둘 — CD 도구가 배포한 애플리케이션.** 삭제 코드는 있었는데 **네임스페이스가 틀렸다.** 애플리케이션은 CD 도구가 사는 네임스페이스에 있는데 배포 대상 네임스페이스(앱이 서는 곳)를 넘겼고, 구현체는 "이미 없음" 을 성공으로 보므로 **조용히 남았다.** 파이프라인을 "클러스터 리소스까지" 지워도 Argo CD 에는 애플리케이션이 그대로였다.
+
+  **도구 이름을 계약에서 걷어냈다.** `ArgoApplicationDeleter` → `CDApplicationDeleter`, `SCMBundle.ArgoNamespace` → `CDNamespace`. 삭제기는 이제 번들이 공급한다 — `CIJobs`·`Images`·`CITrigger` 와 같은 자리다. 어느 도구를 쓰는지는 스택을 아는 쪽이 정하고, 다른 CD 도구를 들이면 그 구현체를 팩토리에서 갈아 끼우면 된다. 레지스트리도 같은 모양이다: 포트는 하나, 구현체는 도구마다.
+
+  지원하지 않는 도구에서는 `nil` 이고, 호출부는 그 사실을 밝히고 넘어간다 — 조용히 성공으로 처리하면 사용자는 지워진 줄 안다.
+
 - **프론트엔드 템플릿이 실제로 도는 React 앱을 만든다** (`internal/cicd/adapter/scaffold/react_app.go` 신규): 화면에서 앱 타입을 "web" 으로 골라도 리포에는 nginx 기본 페이지를 담은 Dockerfile 하나만 들어갔다. 배포는 성공하는데 열어 보면 "Welcome to nginx" 가 뜨고, 개발자는 그제서야 그 안에 앱이 없다는 것을 알게 된다.
 
   이제 `package.json`·`tsconfig.json`·`vite.config.ts`·`index.html`·`src/main.tsx`·`src/App.tsx`·`.dockerignore` 를 함께 커밋한다. 버전은 플랫폼 자신이 쓰는 조합에 맞춘다(React `^19.2.4`, Vite `^8`, TypeScript `~5.9`) — 함께 도는 것이 이미 검증됐고 팀이 아는 스택과 어긋나지 않는다. "최신" 을 따로 추적하면 서로 맞지 않는 조합을 사용자에게 떠넘기게 된다.

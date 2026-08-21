@@ -44,7 +44,7 @@ func NewArgoApplicationDeleter() *ArgoApplicationDeleter {
 // 때문이다 — 파괴적 동작은 삭제를 요청한 이 시점에만 켠다.
 //
 // Application 이 이미 없으면 성공으로 본다.
-func (d *ArgoApplicationDeleter) Delete(
+func (d *ArgoApplicationDeleter) DeleteApplication(
 	ctx context.Context,
 	kubeconfig []byte,
 	namespace, name string,
