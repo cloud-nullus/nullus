@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -280,4 +281,32 @@ func TestProvisionAppProject_CommitsScaffoldForNewRepository(t *testing.T) {
 
 	assert.False(t, out.ScaffoldSkipped)
 	assert.Len(t, scm.commits[out.Project.ID], 1)
+}
+
+// 화면에서 "web" 을 고르면 리포에 실제로 도는 React 앱이 들어가야 한다.
+//
+// 앱 타입은 파이프라인 생성 → 저장소 프로비저닝 → 스캐폴딩까지 이어져야 하는데,
+// 그 사슬 어디서든 끊기면 리포에는 nginx 자리표시자만 들어간다. 배포는 성공하고
+// 열어 보면 "Welcome to nginx" 가 뜨므로, 끊긴 사실이 배포 뒤에야 드러난다.
+func TestProvisionAppProject_WebAppCommitsReactSources(t *testing.T) {
+	scm, pipe, res := newFakeSCM(), newFakePipelineConfig(), harborResolver()
+	uc := NewProvisionAppProject(scm, pipe, res)
+
+	in := appInput()
+	in.AppType = domain.AppTypeWeb
+
+	out, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+
+	commits := scm.commits[out.Project.ID]
+	require.Len(t, commits, 1)
+	files := map[string]string{}
+	for _, f := range commits[0].Files {
+		files[f.Path] = f.Content
+	}
+
+	require.Contains(t, files, "package.json")
+	require.Contains(t, files, "src/App.tsx")
+	assert.Contains(t, files["package.json"], `"react"`)
+	assert.Contains(t, files["Dockerfile"], "npm run build")
 }

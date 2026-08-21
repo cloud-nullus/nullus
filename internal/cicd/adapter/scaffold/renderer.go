@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -57,7 +58,10 @@ const (
 
 // Input 은 스캐폴딩 렌더 요청이다.
 type Input struct {
-	AppName   string
+	AppName string
+	// AppType 은 어떤 앱을 만들지다. web 이면 바로 도는 React 앱을 스캐폴딩한다.
+	// 비면 예전처럼 자리만 잡는 nginx Dockerfile 을 만든다.
+	AppType   domain.AppType
 	Namespace string
 	Port      int32
 	Replicas  int32
@@ -115,10 +119,16 @@ func Render(in Input) ([]port.CommitFile, error) {
 
 	files := []port.CommitFile{
 		{Path: pipelinePath, Content: pipelineContent},
-		{Path: "Dockerfile", Content: renderDockerfile(appPort)},
+		{Path: "Dockerfile", Content: renderDockerfile(in.AppType, appPort)},
 		{Path: "README.md", Content: renderReadme(in.Platform, app, namespace, in.ImageTarget)},
 		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas, in.StackID, in.TemplateID)},
 		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort, in.StackID, in.TemplateID)},
+	}
+
+	// 웹 앱이면 실제로 도는 소스를 함께 넣는다. 자리만 잡아 두면 배포는
+	// 성공하는데 열어 보면 nginx 기본 페이지가 뜬다.
+	if in.AppType == domain.AppTypeWeb {
+		files = append(files, reactAppFiles(app, appPort)...)
 	}
 
 	// 게이트웨이 정보가 있으면 외부 접근 경로를 함께 만든다.
@@ -331,7 +341,10 @@ func writeScriptLines(b *strings.Builder, lines []string) {
 // 포트를 가리킨다. EXPOSE 는 문서일 뿐 바인딩을 바꾸지 않으므로, 설정을 함께
 // 고치지 않으면 첫 배포가 "파드는 Running 인데 아무도 응답하지 않는" 상태로 끝난다
 // — 자리표시자에는 readinessProbe 도 없어 Argo CD 까지 Healthy 로 보고한다.
-func renderDockerfile(appPort int32) string {
+func renderDockerfile(appType domain.AppType, appPort int32) string {
+	if appType == domain.AppTypeWeb {
+		return reactDockerfile(appPort)
+	}
 	header := `# Nullus 가 생성한 기본 Dockerfile 입니다. 애플리케이션에 맞게 수정하세요.
 # 조직 공용 베이스 이미지를 쓰려면 common 프로젝트의 이미지를 FROM 에 지정하면 됩니다.
 FROM nginx:alpine

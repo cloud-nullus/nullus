@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/argocd"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -19,6 +20,8 @@ type ProvisionPipelineRepositoryInput struct {
 	StackID string
 	// TemplateID 는 배포 매니페스트에 템플릿 라벨로 실린다. 비면 라벨을 붙이지 않는다.
 	TemplateID string
+	// AppType 은 어떤 앱을 스캐폴딩할지다. web 이면 React 앱을 만든다.
+	AppType domain.AppType
 	// RequestedByEmail 은 파이프라인을 만든 사람의 이메일이다.
 	// 저장소를 담은 조직의 멤버로 넣는 데 쓴다. 비면 건너뛴다.
 	RequestedByEmail string
@@ -107,6 +110,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 		WithCredentialPlane(bundle.Credentials).
 		Execute(ctx, ProvisionAppProjectInput{
 			AppName:             app,
+			AppType:             input.AppType,
 			GroupPath:           commonOut.Group.FullPath,
 			GroupID:             commonOut.Group.ID,
 			Namespace:           input.Namespace,
