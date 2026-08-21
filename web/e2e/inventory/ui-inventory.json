@@ -55,9 +55,12 @@
       "file": "src/components/layout/header.tsx",
       "i18nKeys": [
         "header.theme.switchToDark",
-        "header.theme.switchToLight"
+        "header.theme.switchToLight",
+        "tour.start"
       ],
-      "fallbacks": [],
+      "fallbacks": [
+        "Tutorial"
+      ],
       "labels": [],
       "columns": [],
       "jsxText": [],
@@ -347,6 +350,13 @@
         "clusterPage.actions.register",
         "clusterPage.actions.registerCluster",
         "clusterPage.actions.verifyConnection",
+        "clusterPage.capacity.coreUnit",
+        "clusterPage.capacity.cpu",
+        "clusterPage.capacity.freeOfTotal",
+        "clusterPage.capacity.hint",
+        "clusterPage.capacity.memory",
+        "clusterPage.capacity.nodes",
+        "clusterPage.capacity.title",
         "clusterPage.confirm.deleteDescription",
         "clusterPage.confirm.deleteTitle",
         "clusterPage.connection.authFailed",
@@ -399,6 +409,8 @@
         "Auth Failed",
         "Auth Method",
         "Authentication failed. Recheck credentials/kubeconfig.",
+        "Available Resources",
+        "CPU",
         "Cancel",
         "Choose File",
         "Cloud Provider",
@@ -420,10 +432,12 @@
         "Endpoint",
         "Endpoint unreachable. Verify DNS, firewall, and cluster API reachability.",
         "Error",
+        "Free space is allocatable capacity minus what running pods already request.",
         "Inactive",
         "Kubeconfig is required before verification.",
         "Loading clusters...",
         "Loading current kubeconfig...",
+        "Memory",
         "Namespace",
         "Organization Access",
         "Paste kubeconfig content...",
@@ -440,6 +454,7 @@
         "Verify Connection",
         "Verify connection at the final step before saving.",
         "Verifying connection...",
+        "cores",
         "e.g. https://prod.k8s.nullus.io",
         "e.g. prod-cluster"
       ],
@@ -896,6 +911,8 @@
         "Developer",
         "email",
         "password",
+        "password-email",
+        "password-password",
         "you@nullus.dev",
         "••••••••"
       ],
@@ -907,10 +924,12 @@
         "Sign in",
         "Sign in to your account",
         "Sign in with",
+        "Sign in with a password",
         "Test Accounts",
         "admin@nullus.dev / admin123",
         "developer@nullus.dev / developer123",
-        "devops@nullus.dev / devops123"
+        "devops@nullus.dev / devops123",
+        "or"
       ],
       "testIds": []
     },
@@ -1071,6 +1090,8 @@
         "cicd.status.pending",
         "cicd.status.running",
         "cicd.status.success",
+        "cicdListPage.accessUrl",
+        "cicdListPage.deleteWarnings.title",
         "cicdListPage.description",
         "cicdListPage.emptyDeployments",
         "cicdListPage.emptyDetail",
@@ -1079,6 +1100,7 @@
         "cicdListPage.filters.allStatus",
         "cicdListPage.listHint",
         "cicdListPage.searchPlaceholder",
+        "cicdListPage.table.accessUrl",
         "cicdListPage.table.appType",
         "cicdListPage.table.cluster",
         "cicdListPage.table.deletedStack",
@@ -1088,9 +1110,12 @@
         "cicdListPage.table.stack",
         "cicdListPage.table.status",
         "cicdListPage.title",
+        "common.dismiss",
         "sidebar.cicdList"
       ],
       "fallbacks": [
+        "Access",
+        "Access URL",
         "Add Phase",
         "All Clusters",
         "All Status",
@@ -1099,6 +1124,8 @@
         "CI/CD Pipeline List",
         "Cancelled",
         "Cluster",
+        "Deleted, but some resources remain",
+        "Dismiss",
         "Failed",
         "Last Deployed",
         "Name",
@@ -1159,6 +1186,7 @@
         "Pod",
         "Pods",
         "Queued",
+        "Refresh resources",
         "Service",
         "Services",
         "Stack",
@@ -1168,6 +1196,7 @@
         "Template",
         "Total Runs",
         "Workloads",
+        "accessUrl",
         "build",
         "c1",
         "c2",
@@ -1182,7 +1211,8 @@
         "kustomize",
         "prod-k8s",
         "stack",
-        "배치/스케줄 작업용 CronJob 매니페스트"
+        "배치/스케줄 작업용 CronJob 매니페스트",
+        "실행 정보 없음"
       ],
       "columns": [
         "appType",
@@ -1215,10 +1245,12 @@
         "lines",
         "pods running",
         "selector:",
-        "step",
-        "steps"
+        "steps",
+        "템플릿 정의 · 이 CI 는 단계별 결과를 보고하지 않습니다"
       ],
-      "testIds": []
+      "testIds": [
+        "delete-warnings"
+      ]
     },
     {
       "file": "src/features/cicd/pages/cicd-pipeline-logs-page.tsx",
@@ -1458,6 +1490,8 @@
         "developerDeployPage.form.stackRequired",
         "developerDeployPage.manifestDescription",
         "developerDeployPage.manifestTypes.deployment",
+        "developerDeployPage.provisionWarnings.title",
+        "developerDeployPage.removeItem",
         "developerDeployPage.reviewPending",
         "developerDeployPage.sections.appName",
         "developerDeployPage.sections.buildConfiguration",
@@ -1506,6 +1540,8 @@
         "Only lowercase letters, numbers, and hyphens are allowed.",
         "Phase",
         "Pipeline Setup",
+        "Pipeline created, but setup is incomplete",
+        "Remove",
         "Resource Configuration",
         "Review Manifest",
         "Review generated manifests before creating the pipeline.",
@@ -1564,6 +1600,7 @@
         "Replicas"
       ],
       "testIds": [
+        "provision-warnings",
         "required-dot"
       ]
     },
@@ -1582,51 +1619,73 @@
       "testIds": []
     },
     {
-      "file": "src/features/home/pages/home-page.tsx",
-      "i18nKeys": [],
-      "fallbacks": [],
+      "file": "src/features/home/components/support-tools-marquee.tsx",
+      "i18nKeys": [
+        "home.supportTools.description",
+        "home.supportTools.title"
+      ],
+      "fallbacks": [
+        "Open source that Nullus installs and wires into your cluster.",
+        "Support Tools"
+      ],
       "labels": [
-        "Automated DevSecOps Stack Installation",
-        "Automated DevSecOps stack install, CI/CD pipeline management, monitoring, and version compatibility",
-        "Build",
-        "CI/CD List",
-        "CI/CD Pipeline Management",
-        "CI/CD Templates",
-        "Check cluster, pipeline, and application status from a single dashboard.",
-        "Cluster Provisioning",
-        "Control feature access by role: Admin, DevOps, and Developer.",
-        "Create pipelines and manage deployment history with Web/API/Batch templates.",
-        "Deploy",
-        "Deploy GitLab, ArgoCD, and Prometheus stacks directly to Kubernetes from the UI.",
-        "DevSecOps Stack Install",
-        "Develop",
-        "Expose only validated tool version combinations to reduce unpredictable compatibility issues.",
-        "FinOps",
-        "Golden Path Templates",
-        "Kubernetes Cluster Provisioning, IaC integration, FinOps",
-        "Monitoring",
-        "Monitoring Dashboard",
-        "Nullus CLI, Security scanning, Automated Tests, Customization, Air-Gap (Offline Mode)",
-        "Provides validated combinations (GitHub + ArgoCD, GitLab All-in-One) as templates.",
-        "Role-based Access Control",
-        "Security",
-        "Stack Templates",
-        "Stack Version",
-        "Test",
-        "Unified Monitoring",
-        "Version Compatibility Assurance"
+        "support-tools-heading"
       ],
       "columns": [],
-      "jsxText": [
+      "jsxText": [],
+      "testIds": []
+    },
+    {
+      "file": "src/features/home/pages/home-page.tsx",
+      "i18nKeys": [
+        "home.coreFeatures.title",
+        "home.cta.cicdPipeline",
+        "home.cta.quickStart",
+        "home.cta.quickStartNeedsCluster",
+        "home.cta.registerCluster",
+        "home.cta.startStack",
+        "home.description",
+        "home.quickLinks.title",
+        "home.roadmap.title",
+        "home.tagline"
+      ],
+      "fallbacks": [
         "CI/CD Pipeline",
         "Core Features",
         "DevSecOps Infrastructure Automation Platform",
-        "Nullus Platform",
         "Quick Links",
+        "Quick Start (8Gi)",
         "Register Cluster",
+        "Register a cluster first to use Quick Start.",
         "Roadmap",
         "Select validated CI/CD golden path combinations and quickly build Kubernetes DevSecOps pipelines with a no-code UI.",
         "Start Stack"
+      ],
+      "labels": [
+        "build",
+        "cicd",
+        "cicdList",
+        "cicdTemplates",
+        "clusterProvisioning",
+        "compatibility",
+        "deploy",
+        "develop",
+        "finops",
+        "goldenPath",
+        "monitoring",
+        "phase1",
+        "phase2",
+        "phase3",
+        "rbac",
+        "security",
+        "stackInstall",
+        "stackTemplates",
+        "stackVersion",
+        "test"
+      ],
+      "columns": [],
+      "jsxText": [
+        "Nullus Platform"
       ],
       "testIds": []
     },
@@ -1742,42 +1801,40 @@
     {
       "file": "src/features/observability/components/monitoring-connect-panel.tsx",
       "i18nKeys": [
+        "observability.connectPanel.addTabs",
         "observability.connectPanel.descriptionPrefix",
         "observability.connectPanel.descriptionSuffix",
-        "observability.connectPanel.enterDashboardUrls",
-        "observability.connectPanel.title"
+        "observability.connectPanel.embedAsTab",
+        "observability.connectPanel.embedHint",
+        "observability.connectPanel.noTools",
+        "observability.connectPanel.open",
+        "observability.connectPanel.selectedCount",
+        "observability.connectPanel.skip",
+        "observability.connectPanel.skipForNow",
+        "observability.connectPanel.title",
+        "observability.connectPanel.urlPlaceholder"
       ],
       "fallbacks": [
+        "Add as embedded tab",
+        "Add tabs",
+        "Addresses come from the access domain you set at install time — edit any that differ.",
         "Connect Stack Components",
-        "Enter dashboard URLs for the components you want to monitor",
-        "Enter their dashboard URLs to add monitoring tabs.",
-        "Tools detected in"
-      ],
-      "labels": [
-        "ArgoCD",
-        "CI/CD pipelines",
-        "Container registry",
-        "GitLab",
-        "GitOps CD",
-        "Grafana",
-        "Harbor",
-        "Kibana",
-        "Log analysis",
-        "Metrics & alerting",
-        "Metrics & dashboards",
-        "Prometheus"
-      ],
-      "columns": [],
-      "jsxText": [
-        "Added",
-        "Confirm",
-        "Connect",
-        "Edit",
+        "Most tools block iframe embedding — open them in a new tab, and embed only the ones that allow it.",
+        "No installed components could be read for this stack yet.",
+        "Open",
         "Skip",
         "Skip for now",
-        "· v"
+        "Tools installed by",
+        "https://tool.your-domain",
+        "{{count}} selected"
       ],
-      "testIds": []
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": [
+        "connect-empty",
+        "connect-submit"
+      ]
     },
     {
       "file": "src/features/observability/components/monitoring-tab-layout.tsx",
@@ -1790,7 +1847,10 @@
         "monitoringPage.customTabs.empty",
         "monitoringPage.customTabs.manageCustomTabs",
         "monitoringPage.customTabs.manageTabs",
+        "monitoringPage.customTabs.moveDown",
+        "monitoringPage.customTabs.moveUp",
         "monitoringPage.customTabs.newTab",
+        "monitoringPage.customTabs.removeTab",
         "monitoringPage.customTabs.saveChanges",
         "monitoringPage.customTabs.saved",
         "monitoringPage.customTabs.tabNamePlaceholder"
@@ -1803,8 +1863,11 @@
         "Embed URL",
         "Manage Custom Tabs",
         "Manage Tabs",
+        "Move down",
+        "Move up",
         "New Tab",
         "No custom tabs yet. Click \"Add Tab\" to create one.",
+        "Remove tab",
         "Save Changes",
         "Tab configuration saved.",
         "Tab name"
@@ -2083,6 +2146,24 @@
       "testIds": []
     },
     {
+      "file": "src/features/stack/components/deploy-progress-bar.tsx",
+      "i18nKeys": [],
+      "fallbacks": [],
+      "labels": [
+        "Deployment progress"
+      ],
+      "columns": [],
+      "jsxText": [
+        "Overall Progress"
+      ],
+      "testIds": [
+        "deploy-progress-fill",
+        "deploy-progress-value",
+        "deploy-rocket",
+        "deploy-rocket-flame"
+      ]
+    },
+    {
       "file": "src/features/stack/components/install-tool-selector.tsx",
       "i18nKeys": [
         "stackInstall.common.notInstalled",
@@ -2131,6 +2212,74 @@
         "retry-warn-ack",
         "retry-warn-confirm"
       ]
+    },
+    {
+      "file": "src/features/stack/components/stack-config-tab.tsx",
+      "i18nKeys": [
+        "common.cancel",
+        "stackConfig.applied",
+        "stackConfig.apply",
+        "stackConfig.applyFailed",
+        "stackConfig.confirmBody",
+        "stackConfig.confirmTitle",
+        "stackConfig.confirmWarnings",
+        "stackConfig.editorLabel",
+        "stackConfig.effectiveValues",
+        "stackConfig.loadingEditor",
+        "stackConfig.loadingReleases",
+        "stackConfig.loadingValues",
+        "stackConfig.mode",
+        "stackConfig.modeLive",
+        "stackConfig.modeLiveHint",
+        "stackConfig.modeOverride",
+        "stackConfig.modeOverrideHint",
+        "stackConfig.noReleases",
+        "stackConfig.preview",
+        "stackConfig.previewClean",
+        "stackConfig.previewFailed",
+        "stackConfig.protectedPaths",
+        "stackConfig.refresh",
+        "stackConfig.release",
+        "stackConfig.releasesFailed",
+        "stackConfig.renderFailed",
+        "stackConfig.reset",
+        "stackConfig.unmappedRelease",
+        "stackConfig.warningsTitle"
+      ],
+      "fallbacks": [
+        "values 를 읽는 중…",
+        "내 오버라이드만",
+        "되돌리기",
+        "릴리스",
+        "릴리스 values 편집기",
+        "릴리스 목록 새로고침",
+        "릴리스 목록을 읽지 못했습니다. 클러스터 연결을 확인하세요.",
+        "릴리스에 실제로 배포된 values 전체입니다. 여기서 키를 지우면 그 값도 함께 사라집니다.",
+        "미리보기에 실패했습니다",
+        "배포된 값 위에 얹을 커스텀만 적습니다. 이미 적용된 값은 오버라이드를 비워도 되돌아가지 않습니다 — 되돌리려면 전체 values 모드에서 해당 키를 지우세요.",
+        "배포된 릴리스를 읽는 중…",
+        "변경 미리보기",
+        "설정 적용에 실패했습니다",
+        "설정을 적용할까요?",
+        "설치 단계를 알 수 없는 릴리스입니다. 편집은 되지만 재배포 시 유지되지 않을 수 있습니다.",
+        "실제로 적용되는 values",
+        "이 값으로는 차트가 렌더되지 않습니다",
+        "이 스택에는 편집할 Helm 릴리스가 없습니다.",
+        "적용",
+        "전체 values (배포된 그대로)",
+        "취소",
+        "편집 단위",
+        "편집기를 불러오는 중…",
+        "플랫폼 관리 값은 그대로입니다. 렌더도 통과했습니다.",
+        "플랫폼이 관리하는 값",
+        "플랫폼이 관리하는 값을 건드렸습니다"
+      ],
+      "labels": [],
+      "columns": [],
+      "jsxText": [
+        "rev"
+      ],
+      "testIds": []
     },
     {
       "file": "src/features/stack/components/stack-info-panels.tsx",
@@ -2313,6 +2462,33 @@
         "Status",
         "ns/"
       ],
+      "testIds": []
+    },
+    {
+      "file": "src/features/stack/components/template-tool-editor.tsx",
+      "i18nKeys": [
+        "stackTemplatePage.actions.addTool",
+        "stackTemplatePage.actions.removeCategoryTool",
+        "stackTemplatePage.actions.removeSection",
+        "stackTemplatePage.actions.updateTool",
+        "stackTemplatePage.form.appVersion",
+        "stackTemplatePage.form.appVersionPlaceholder",
+        "stackTemplatePage.form.helmVersion",
+        "stackTemplatePage.form.helmVersionPlaceholder",
+        "stackTemplatePage.form.toolApplied"
+      ],
+      "fallbacks": [
+        "Add Tool",
+        "App version",
+        "Helm version",
+        "In template",
+        "Remove {{category}}",
+        "Remove {{section}} section",
+        "Update Tool"
+      ],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
       "testIds": []
     },
     {
@@ -2529,7 +2705,6 @@
         "Deployment error",
         "Latest failure reason:",
         "Name",
-        "Overall Progress",
         "Raw Logs (",
         "Ready",
         "Restarts",
@@ -3005,6 +3180,7 @@
       ],
       "labels": [
         "Argo CD",
+        "Config",
         "GitLab",
         "Grafana",
         "History",
@@ -3085,15 +3261,12 @@
         "common.cancel",
         "common.save",
         "stackTemplatePage.actions.addSection",
-        "stackTemplatePage.actions.addTool",
         "stackTemplatePage.actions.close",
         "stackTemplatePage.actions.create",
         "stackTemplatePage.actions.createTemplate",
         "stackTemplatePage.actions.delete",
         "stackTemplatePage.actions.duplicateTemplate",
         "stackTemplatePage.actions.edit",
-        "stackTemplatePage.actions.removeSection",
-        "stackTemplatePage.actions.updateTool",
         "stackTemplatePage.actions.useBaseTemplate",
         "stackTemplatePage.actions.viewDetail",
         "stackTemplatePage.breadcrumb.current",
@@ -3112,14 +3285,14 @@
         "stackTemplatePage.errors.createFailed",
         "stackTemplatePage.errors.duplicateFailed",
         "stackTemplatePage.errors.updateFailed",
-        "stackTemplatePage.form.appVersionPlaceholder",
         "stackTemplatePage.form.description",
         "stackTemplatePage.form.estimatedInstallTimeAuto",
         "stackTemplatePage.form.estimatedInstallTimeValue",
         "stackTemplatePage.form.firstCategoryPlaceholder",
-        "stackTemplatePage.form.helmVersionPlaceholder",
         "stackTemplatePage.form.minimumResources",
         "stackTemplatePage.form.name",
+        "stackTemplatePage.form.planningProfile",
+        "stackTemplatePage.form.planningProfileHint",
         "stackTemplatePage.form.recommendedUseCase",
         "stackTemplatePage.form.sectionNamePlaceholder",
         "stackTemplatePage.form.templateId",
@@ -3142,8 +3315,6 @@
       ],
       "fallbacks": [
         "Add Section",
-        "Add Tool",
-        "App version",
         "Cancel",
         "Close",
         "Compatibility details are managed in Stack Version.",
@@ -3162,27 +3333,26 @@
         "Failed to duplicate template.",
         "Failed to update template.",
         "First category (e.g. Scanner)",
-        "Helm version",
         "Included Tools",
         "Minimum Resources",
         "N/A",
         "Name",
         "No search results found.",
         "Recommended Use Case",
-        "Remove {{section}} section",
         "Save",
         "Search templates...",
         "Section name (e.g. Security)",
         "Select a validated DevSecOps stack template to get started quickly.",
+        "Sizing Profile",
         "Stack List",
         "Stack Template",
         "Template Detail",
         "Template ID",
+        "The install wizard starts its resource plan from this size.",
         "These versions reflect the validated matrix snapshot used for template guidance.",
         "This template will no longer be shown in the list. Continue?",
         "Tool options (comma separated, e.g. Trivy, SonarQube)",
         "Tools",
-        "Update Tool",
         "Use Base Template",
         "{{minutes}} min",
         "{{minutes}} min ({{nanoseconds}} ns)",
@@ -3249,6 +3419,33 @@
       "columns": [],
       "jsxText": [],
       "testIds": []
+    },
+    {
+      "file": "src/features/tour/tour-overlay.tsx",
+      "i18nKeys": [
+        "tour.controls.end",
+        "tour.controls.finish",
+        "tour.controls.next",
+        "tour.controls.prev",
+        "tour.title"
+      ],
+      "fallbacks": [
+        "Back",
+        "End tour",
+        "Finish",
+        "Next",
+        "Product tour"
+      ],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": [
+        "tour-end",
+        "tour-next",
+        "tour-overlay",
+        "tour-prev",
+        "tour-spotlight"
+      ]
     }
   ]
 }

@@ -350,6 +350,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI 가 다섯 달 동안 꺼져 있어 어떤 PR 도 빌드·테스트를 거치지 않던 것** (`.github/workflows/ci.yml`, `scripts/check-coverage.sh`): `CI` 워크플로가 `disabled_manually` 상태였고 마지막 실행은 2026-03-15, 그것도 실패였다. 그 뒤로 PR 에 붙는 검사는 전부 린트·포맷·컨벤션뿐이었다 — **`go build` 도 `go test` 도 PR 을 막지 못했다.**
+
+  실제로 드러났다. 2026-08-21 에 충돌 마커가 그대로 든 브랜치(컴파일 불가)가 CI 초록에 MERGEABLE 로 통과했다.
+
+  꺼져 있던 이유를 셋 찾아 고쳤다:
+
+  - **커버리지 문턱이 통과할 수 없었다.** 60% 를 요구하는데 실제는 49.5% 였다. 통과할 수 없는 문턱은 아무것도 지키지 못한다 — 검사 하나 때문에 CI 전체가 꺼졌고, 그동안 빌드 검증까지 함께 사라졌다. 지금 수준(49)으로 낮춰 **더 내려가지 않게** 잡는다. CLAUDE.md 의 v1 GA 목표는 70% 이고, 커버리지가 오르면 이 값도 함께 올린다
+  - **Go 버전이 갈라져 있었다.** 워크플로는 1.24 를 설치하는데 `go.mod` 는 1.26.1 을 요구했다. 이제 `go-version-file: go.mod` 로 읽는다
+  - **`go vet` 이 실패했다.** `ResourceVector` 를 순서만으로 채운 테스트 두 곳을 필드 이름으로 바꿨다 — 필드가 하나 끼어들면 조용히 다른 값을 검사하게 되는 자리다
+
+  e2e 잡은 `continue-on-error` 로 둔다. 다섯 달간 돌지 않아 통과가 확인되지 않았고, 검증되지 않은 잡 하나가 모든 PR 을 세우면 CI 를 되살린 의미가 없다. 안정적으로 통과하는 것을 확인한 뒤 막는 검사로 올린다.
+
+  화면 정보 인벤토리 스냅샷도 갱신했다. 2026-08-13 이후의 의도된 UI 변경 14건(모니터링 패널을 실제 설치 목록으로 바꾼 것 13건, 실행되지 않은 단계 라벨 제거 1건)이 유실로 잡혀 있었다 — 사고로 사라진 문자열은 없었다.
+
 - **앱 라우트가 존재하지 않는 게이트웨이를 가리키던 것** (`internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/port/stack_reader.go`): 배포된 앱의 HTTPRoute 가 `default` 에 만들어졌는데 `status.parents` 가 **아예 비어 있었다.** `Accepted=False` 도 아니었다 — 어느 컨트롤러도 그 라우트를 집지 않았다는 뜻이다.
 
   게이트웨이 이름을 두 곳이 **각자 다른 근거로** 만들고 있었다:
