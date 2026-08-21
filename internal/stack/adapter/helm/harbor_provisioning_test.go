@@ -61,3 +61,47 @@ func TestHarborProjectScript_RejectsUnsafeProjectName(t *testing.T) {
 	assert.True(t, strings.Contains(script, defaultImageProjectName),
 		"안전하지 않은 이름은 기본값으로 떨어뜨린다")
 }
+
+// 접속 도메인이 TLS 로 서비스되면 도구 주소도 https 여야 한다.
+//
+// 예전에는 SSO 켜짐 여부로 스킴을 정했다. 스킴은 도메인이 TLS 로 열려 있느냐에
+// 달린 것이지 SSO 와는 별개인데 그 둘을 묶어 놓아서, SSO 없이 TLS 만 켠 스택은
+// http 를 받았다.
+//
+// 그 결과가 2026-08-21 운영에서 드러났다. Harbor 의 externalURL 이
+// http://harbor.<도메인> 이 되고, Harbor 는 blob 업로드 주소(Location)를 그
+// 스킴으로 돌려준다. 게이트웨이는 http 를 https 로 308 리다이렉트하는데, 20MB
+// 본문이 실린 PATCH 에 308 이 오면 docker 는 연결을 끊는다 — push 가 모든
+// layer 를 재시도하다 EOF 로 죽었다.
+func TestToolURLScheme_HTTPSWhenAccessDomainUsesTLS(t *testing.T) {
+	o := &Orchestrator{}
+	o.SetStackConfig(domain.StackConfig{
+		AccessDomain:    "nullus.io",
+		AccessDomainTLS: &domain.AccessDomainTLSConfig{Enabled: true},
+	})
+
+	assert.Equal(t, "https", o.toolURLScheme(),
+		"TLS 로 열린 도메인에 http 를 돌려주면 업로드가 308 에서 끊긴다")
+}
+
+func TestToolURLScheme_HTTPWhenNeitherTLSNorSSO(t *testing.T) {
+	o := &Orchestrator{}
+	o.SetStackConfig(domain.StackConfig{AccessDomain: "nullus.local"})
+
+	assert.Equal(t, "http", o.toolURLScheme())
+}
+
+// TLS 를 켠 스택의 Harbor externalURL 은 https 여야 한다. 이 값이 곧 업로드
+// Location 의 스킴이 된다.
+func TestHarborExternalURL_UsesHTTPSWhenTLSEnabled(t *testing.T) {
+	o := &Orchestrator{}
+	cfg := domain.StackConfig{
+		AccessDomain:    "nullus.io",
+		AccessDomainTLS: &domain.AccessDomainTLSConfig{Enabled: true},
+	}
+	o.SetStackConfig(cfg)
+
+	values := o.harborExternalURLValues(&cfg)
+
+	assert.Equal(t, "https://harbor.nullus.io", values["externalURL"])
+}

@@ -336,14 +336,30 @@ func (o *Orchestrator) runSSOProvisioning(ctx context.Context, namespace string)
 // 신뢰해야 한다. SSO 를 켜는 환경은 어차피 그 배선을 하지만, 안 쓰는 설치에까지
 // 그 부담을 지울 이유가 없다.
 func (o *Orchestrator) toolURLScheme() string {
-	provisioner := o.ssoProvisioner()
-	if provisioner == nil {
-		return "http"
-	}
+	// 접속 도메인이 TLS 로 열려 있으면 https 다. 이것이 스킴을 정하는 1차 근거다.
+	//
+	// 예전에는 SSO 켜짐 여부만 봤다. 스킴은 도메인이 TLS 로 서비스되느냐에 달린
+	// 것이지 SSO 와는 별개인데 그 둘을 묶어 놓아서, SSO 없이 TLS 만 켠 스택은
+	// http 를 받았다.
+	//
+	// 그 결과는 로그인이 아니라 **업로드**에서 드러난다. Harbor 는 externalURL 의
+	// 스킴으로 blob 업로드 주소(Location)를 돌려주는데, 게이트웨이는 http 를
+	// https 로 308 리다이렉트한다. 본문이 실린 PATCH 에 308 이 오면 클라이언트는
+	// 본문을 다시 보내야 하고 docker 는 거기서 연결을 끊는다 — 2026-08-21 운영에서
+	// push 가 모든 layer 를 재시도하다 EOF 로 죽었다. 작은 요청은 다 지나가므로
+	// 원인이 멀리 떨어져 보인다.
 	o.mu.Lock()
-	issuer := o.toolOIDCIssuer
+	cfg := o.stackConfig
+	issuer := strings.TrimSpace(o.toolOIDCIssuer)
 	o.mu.Unlock()
-	if strings.TrimSpace(issuer) == "" {
+
+	if cfg != nil && cfg.AccessDomainTLS != nil && cfg.AccessDomainTLS.Enabled {
+		return "https"
+	}
+
+	// SSO 를 켜면 도구 주소가 Keycloak 에 등록된 redirect 와 스킴이 같아야 한다.
+	// 그쪽은 https 이므로 여기서도 https 다.
+	if issuer == "" || o.ssoProvisioner() == nil {
 		return "http"
 	}
 	return "https"
