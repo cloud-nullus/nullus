@@ -145,7 +145,13 @@ func main() {
 	pgHelmStepMetadataRepo := stackrepo.NewPostgresHelmStepMetadataRepository(pool)
 	pgHistoryRepo := stackrepo.NewPostgresHistoryRepository(pool)
 	manageHistoryUC := stackuc.NewManageHistory(pgHistoryRepo)
-	memStreamer := logadapter.NewMemoryStreamer()
+	// 설치 로그는 DB 에도 남긴다. 메모리에만 두면 파드가 재시작되는 순간
+	// 사라지는데, 설치는 20~30분짜리라 그 사이 재시작이 겹치면 무엇이 왜
+	// 멈췄는지 사후에 알 방법이 없다.
+	memStreamer := logadapter.NewPersistentStreamer(
+		logadapter.NewMemoryStreamer(),
+		stackrepo.NewPostgresDeployLogStore(pool),
+	)
 	kubeconfigProvider := stackrepo.NewPostgresKubeconfigProvider(pool, []byte(os.Getenv("ENCRYPTION_KEY")))
 
 	// 플랫폼 Keycloak 에 OSS OIDC 클라이언트를 등록하는 팩토리.
