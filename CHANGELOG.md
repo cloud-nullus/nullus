@@ -332,6 +332,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Harbor 가 프록시 뒤에서 http Location 을 돌려줘 push 가 308 에서 끊기던 것** (`internal/stack/adapter/helm/values.go`): `externalURL` 을 https 로 맞췄는데도 `docker push` 가 그대로 죽었다. `Location` 을 만드는 것은 `externalURL` 이 아니라 **registry(distribution)** 이고, 그 스킴은 프록시가 넘긴 `X-Forwarded-Proto` 에서 온다.
+
+  체인이 `클라이언트 →(https) ingress-nginx →(http) Envoy → Harbor` 다. Envoy 는 자기 리스너가 평문이므로 그 헤더를 `http` 로 다시 쓴다. 그래서 registry 는 `http://harbor.<도메인>/v2/.../blobs/uploads/...` 를 돌려주고, 게이트웨이는 그것을 https 로 308 되돌린다. 본문이 실린 PATCH 에 308 이 오면 클라이언트는 본문을 처음부터 다시 보내야 하고 docker 는 거기서 연결을 끊는다.
+
+  프록시마다 헤더를 맞추는 대신 **스킴을 아예 내보내지 않기로 했다.** `registry.relativeurls` 를 켜면 Location 이 상대 경로로 나가고 클라이언트가 원래 요청한 주소를 기준으로 이어 붙인다 — 프록시가 몇 겹이든 어긋날 것이 없다. 헤더를 맞추는 쪽은 체인의 모든 홉을 알아야 하는데, 그 체인은 배포 환경마다 다르다(로컬 kind 는 nginx 가 없고 Zadara 는 두 겹이다).
 - **이미지 push 가 308 리다이렉트에서 죽던 것 — 도구 주소 스킴이 SSO 에 묶여 있었다** (`internal/stack/adapter/helm/sso-provisioning.go`): `docker push` 가 모든 layer 를 재시도하다 `EOF` 로 끝났다. 본문 상한도(#211) 라우트 타임아웃도(#214) 아니었다.
 
   실제로 오간 것은 이렇다:
