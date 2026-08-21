@@ -194,7 +194,7 @@ func (f *BundleFactory) gitLabBundle(
 		ArgoNamespace: namespace,
 		ClusterID:     summary.ClusterID,
 		AccessDomain:  summary.AccessDomain,
-		GatewayName:   gatewayNameFor(summary.AccessDomain),
+		GatewayName:   gatewayNameForStack(summary.Name),
 	}, nil
 }
 
@@ -267,7 +267,7 @@ func (f *BundleFactory) gitHubBundle(
 		ArgoNamespace: strings.TrimSpace(summary.Namespace),
 		ClusterID:     summary.ClusterID,
 		AccessDomain:  summary.AccessDomain,
-		GatewayName:   gatewayNameFor(summary.AccessDomain),
+		GatewayName:   gatewayNameForStack(summary.Name),
 	}, nil
 }
 
@@ -333,7 +333,7 @@ func (f *BundleFactory) giteaBundle(
 		ArgoNamespace:   namespace,
 		ClusterID:       summary.ClusterID,
 		AccessDomain:    summary.AccessDomain,
-		GatewayName:     gatewayNameFor(summary.AccessDomain),
+		GatewayName:     gatewayNameForStack(summary.Name),
 	}
 
 	// 스택이 설치한 레지스트리의 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게
@@ -514,21 +514,22 @@ func normalize(name string) string {
 	return strings.NewReplacer(" ", "-", "_", "-").Replace(n)
 }
 
-// gatewayNameFor 는 접근 도메인에서 게이트웨이 이름을 만든다.
+// gatewayNameForStack 은 스택이 만든 게이트웨이의 이름이다.
 //
-// 스택 모듈이 게이트웨이를 만들 때 쓰는 규약과 같아야 한다
-// (accessDomain 에서 .internal 을 떼고 - 로 정규화한 뒤 "-gateway").
-// 규약이 갈리면 앱 라우트가 존재하지 않는 게이트웨이를 가리키게 된다.
-func gatewayNameFor(accessDomain string) string {
-	domain := strings.TrimSpace(accessDomain)
-	if domain == "" {
+// 여기서 이름을 "정하는" 것이 아니라 스택이 정한 것을 따라간다. 스택 설치는
+// 게이트웨이를 `<스택 이름>-gateway` 로 만든다
+// (web/src/features/stack/utils/install-manifest-builders.ts 의 buildGatewayManifest).
+//
+// 예전에는 **접근 도메인**에서 만들었다. nullus.io 에서 "nullus-io-gateway" 가
+// 나왔고 그런 게이트웨이는 존재하지 않는다. 없는 게이트웨이를 가리키는 HTTPRoute 는
+// 어느 컨트롤러도 집지 않아 status.parents 가 아예 비고, Accepted=False 조차
+// 남지 않는다 — 라우트는 만들어졌는데 주소만 열리지 않고 어디에도 오류가 없다.
+//
+// 다듬지 않고 그대로 붙인다. 한쪽만 다듬으면 이름이 다시 갈라진다.
+func gatewayNameForStack(stackName string) string {
+	name := strings.TrimSpace(stackName)
+	if name == "" {
 		return ""
 	}
-	label := strings.TrimSuffix(domain, ".internal")
-	label = strings.NewReplacer(".", "-", "_", "-", " ", "-").Replace(strings.ToLower(label))
-	label = strings.Trim(label, "-")
-	if label == "" {
-		return ""
-	}
-	return label + "-gateway"
+	return name + "-gateway"
 }

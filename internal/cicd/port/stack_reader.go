@@ -11,6 +11,10 @@ type StackSummary struct {
 	ClusterID string `json:"cluster_id"`
 	State     string `json:"state"` // "completed", "failed", etc.
 
+	// Name 은 스택 이름이다. 스택이 만든 게이트웨이 이름이 여기서 나온다
+	// (`<이름>-gateway`). 도메인에서 유추하면 존재하지 않는 이름이 만들어진다.
+	Name string `json:"name"`
+
 	// Namespace 는 스택이 설치된 네임스페이스다. GitLab/Argo CD 의 클러스터 내
 	// 주소를 만들 때 쓴다.
 	Namespace string `json:"namespace"`
