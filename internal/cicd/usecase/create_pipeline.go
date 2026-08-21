@@ -268,6 +268,7 @@ func (uc *CreatePipeline) provisionRepository(
 		Namespace:           input.Namespace,
 		Port:                input.Port,
 		Replicas:            input.Replicas,
+		AppType:             input.AppType,
 		RegistryCredentials: input.RegistryCredentials,
 		RequestedByEmail:    input.RequestedByEmail,
 	})

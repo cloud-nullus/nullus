@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/scaffold"
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -40,6 +41,8 @@ type ProvisionAppProjectInput struct {
 	// SharedAccessToken 은 리포 범위 토큰을 발급할 수 없는 플랫폼에서
 	// Argo CD 인증에 재사용할 토큰이다 (GitHub 의 조직 PAT).
 	SharedAccessToken string
+	// AppType 은 어떤 앱을 스캐폴딩할지다. web 이면 바로 도는 React 앱을 만든다.
+	AppType domain.AppType
 	// AccessDomain / GatewayName / GatewayNamespace 가 있으면
 	// 외부 접근용 HTTPRoute 도 스캐폴딩에 포함한다.
 	AccessDomain     string
@@ -206,6 +209,7 @@ func (uc *ProvisionAppProject) Execute(
 
 	files, err := scaffold.Render(scaffold.Input{
 		AppName:          app,
+		AppType:          input.AppType,
 		Namespace:        input.Namespace,
 		Port:             input.Port,
 		Replicas:         input.Replicas,

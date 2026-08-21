@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **프론트엔드 템플릿이 실제로 도는 React 앱을 만든다** (`internal/cicd/adapter/scaffold/react_app.go` 신규): 화면에서 앱 타입을 "web" 으로 골라도 리포에는 nginx 기본 페이지를 담은 Dockerfile 하나만 들어갔다. 배포는 성공하는데 열어 보면 "Welcome to nginx" 가 뜨고, 개발자는 그제서야 그 안에 앱이 없다는 것을 알게 된다.
+
+  이제 `package.json`·`tsconfig.json`·`vite.config.ts`·`index.html`·`src/main.tsx`·`src/App.tsx`·`.dockerignore` 를 함께 커밋한다. 버전은 플랫폼 자신이 쓰는 조합에 맞춘다(React `^19.2.4`, Vite `^8`, TypeScript `~5.9`) — 함께 도는 것이 이미 검증됐고 팀이 아는 스택과 어긋나지 않는다. "최신" 을 따로 추적하면 서로 맞지 않는 조합을 사용자에게 떠넘기게 된다.
+
+  Dockerfile 은 빌드와 서빙을 나눈 2단계다. node 이미지를 그대로 배포하면 개발 서버가 프로덕션에 뜨고 이미지도 수백 MB 가 된다. nginx 설정에는 `try_files` 를 넣는다 — SPA 는 새로고침하면 서버가 그 경로를 찾으므로, index.html 로 되돌리지 않으면 첫 화면 말고는 전부 404 가 된다. 포트도 배포 매니페스트가 가리키는 값으로 맞춘다(기본 80 으로 두면 Service 의 targetPort 와 어긋나 endpoints 가 비고, 원인이 멀리 떨어진 503 이 된다).
+
+  앱 타입이 파이프라인 생성 → 저장소 프로비저닝 → 스캐폴딩까지 이어지게 배선했다. 웹이 아닌 앱은 예전 그대로다 — 백엔드 리포에 React 소스를 넣지 않는다.
+
 - **CI/CD 목록이 배포된 앱의 접속 주소를 보여준다** (`internal/cicd/domain/app_access_url.go` 신규, `internal/cicd/adapter/handler/pipeline_handler.go`, `web/src/features/cicd/pages/cicd-list-page.tsx`): 앱은 이미 `<앱이름>.<스택 도메인>` 으로 열리고 있었다 — 스캐폴딩이 만드는 HTTPRoute 의 hostname 이 그 형태다. 그런데 그 주소를 어디에서도 보여 주지 않아, 사용자가 규칙을 알고 직접 조합해야 했다.
 
   이제 목록에 `접속 주소` 열이 서고 상세 패널에도 링크가 뜬다. 파이프라인을 만든 직후 응답에도 실어, 목록으로 돌아가 다시 찾게 하지 않는다.
