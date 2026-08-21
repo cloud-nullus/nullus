@@ -176,3 +176,36 @@ func TestJenkinsfile_DoesNotLeakCredentialsIntoBuildLog(t *testing.T) {
 	assert.Contains(t, line, ">/dev/null 2>&1",
 		"push 출력에도 원격 주소가 섞여 나올 수 있다")
 }
+
+// Jenkins 는 sh -xe 로 실행한다. 모든 명령이 그대로 로그에 찍히므로, 비밀값이
+// 인자나 echo 로 지나가면 빌드 로그를 볼 수 있는 사람이 그것을 그대로 얻는다.
+//
+// 2026-08-21 운영 빌드 로그에 Harbor 관리자 비밀번호가 평문으로 남았다:
+//
+//   - echo <레지스트리 관리자 비밀번호가 그대로>
+//
+// Deploy 단계는 git 자격증명 앞에서 이미 트레이스를 끄고 있었다. Build 단계만
+// 빠져 있었다.
+func TestJenkinsfile_DoesNotTraceRegistryPassword(t *testing.T) {
+	pipeline := renderJenkinsfile("orders-api", &port.ImageTarget{
+		Host:        "harbor.nullus.io",
+		Repository:  "harbor.nullus.io/nullus/orders-api",
+		UsernameVar: "HARBOR_USERNAME",
+		PasswordVar: "HARBOR_PASSWORD",
+	})
+
+	loginLine := "echo \"$HARBOR_PASSWORD\" | docker login"
+	require.Contains(t, pipeline, loginLine)
+
+	// 로그인 줄 앞에서 트레이스가 꺼져 있어야 한다.
+	before := pipeline[:strings.Index(pipeline, loginLine)]
+	lastOff := strings.LastIndex(before, "set +x")
+	require.NotEqual(t, -1, lastOff, "로그인 앞에서 셸 트레이스를 꺼야 한다")
+
+	// 그리고 그 사이에 다시 켜지지 않아야 한다.
+	assert.NotContains(t, before[lastOff:], "set -x")
+
+	// 로그인 뒤에는 다시 켠다 — 빌드·push 는 로그로 보여야 진단이 된다.
+	after := pipeline[strings.Index(pipeline, loginLine)+len(loginLine):]
+	assert.Contains(t, after, "set -x")
+}

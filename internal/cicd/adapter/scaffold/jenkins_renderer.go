@@ -105,8 +105,21 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	b.WriteString("            set -eu\n")
 	b.WriteString("            for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 2; done\n")
 	b.WriteString("            docker info >/dev/null 2>&1 || { echo \"docker 데몬(dind)에 연결하지 못했습니다\"; exit 1; }\n")
+	// Jenkins 는 sh -xe 로 실행한다. 모든 명령이 그대로 로그에 찍히므로, 트레이스를
+	// 끄지 않으면 다음 줄이 그대로 남는다:
+	//
+	//	+ echo <레지스트리 관리자 비밀번호가 그대로>
+	//
+	// 빌드 로그를 볼 수 있는 사람이 레지스트리 관리자 비밀번호를 그대로 얻는다.
+	// GitLab 은 CI 변수를 masked 로 등록해 가려 주지만, Jenkins 는 K8s Secret 에서
+	// env 로 온 값을 마스킹하지 않으므로 우리가 직접 막아야 한다 — Deploy 단계가
+	// git 자격증명에 이미 그렇게 하고 있다.
+	b.WriteString("            set +x\n")
 	fmt.Fprintf(&b, "            echo \"$%s\" | docker login \"$REGISTRY_HOST\" -u \"$%s\" --password-stdin\n",
 		target.PasswordVar, target.UsernameVar)
+	// 빌드와 push 는 다시 보이게 한다. 그 줄들이 로그에 없으면 어디서 막혔는지
+	// 알 수 없다 — 실제로 push 실패를 진단하는 데 그 출력이 필요했다.
+	b.WriteString("            set -x\n")
 	b.WriteString("            docker build -t \"$IMAGE_REPOSITORY:$IMAGE_TAG\" .\n")
 	b.WriteString("            docker push \"$IMAGE_REPOSITORY:$IMAGE_TAG\"\n")
 	b.WriteString("          '''\n")
