@@ -44,6 +44,8 @@ type DeployPipeline struct {
 	// buildDelegate 는 빌드를 스택의 CI 러너에 넘긴다. 통합모드 파이프라인의
 	// 배포 실행이 이 자리로 간다.
 	buildDelegate port.BuildDelegate
+	// deployTimeout 은 배포 한 번의 상한이다.
+	deployTimeout time.Duration
 	// stackReader 는 배포 대상 스택의 요약을 읽는다. 배포되는 앱에 넣어 줄
 	// 수집기 주소가 여기서 온다 — 없으면 추적 환경변수를 넣지 않는다.
 	stackReader port.StackReader
@@ -61,6 +63,7 @@ func NewDeployPipeline(
 		deploymentRepo:     deploymentRepo,
 		kubeconfigProvider: kubeconfigProvider,
 		applier:            applier,
+		deployTimeout:      defaultDeployTimeout,
 	}
 	for _, opt := range opts {
 		opt(dp)
@@ -76,6 +79,21 @@ func WithImagePreparer(p port.ImagePreparer) DeployOption {
 
 func WithClusterTargetProvider(p port.ClusterTargetProvider) DeployOption {
 	return func(dp *DeployPipeline) { dp.clusterTargetProvider = p }
+}
+
+// defaultDeployTimeout 은 배포 한 번이 걸릴 수 있는 최대 시간이다.
+//
+// 직접 빌드 경로(docker build + push)를 넉넉히 담되, 매달린 호출이 영원히 남지는
+// 않게 한다.
+const defaultDeployTimeout = 15 * time.Minute
+
+// WithDeployTimeout 은 배포 한 번의 상한을 바꾼다. 0 이하면 기본값을 쓴다.
+func WithDeployTimeout(d time.Duration) DeployOption {
+	return func(dp *DeployPipeline) {
+		if d > 0 {
+			dp.deployTimeout = d
+		}
+	}
 }
 
 // WithBuildDelegate 는 러너 위임 경로를 배선한다.
@@ -186,7 +204,22 @@ func (uc *DeployPipeline) Start(ctx context.Context, input DeployPipelineInput) 
 
 // ApplyAsync runs the actual K8s deployment in the background.
 func (uc *DeployPipeline) ApplyAsync(deploymentID string, manifestTypes ...[]string) {
-	ctx := context.Background()
+	// 배포에는 데드라인이 있어야 한다.
+	//
+	// 예전에는 context.Background() 를 그대로 썼다. 러너 위임 경로는 스택 번들을
+	// 조립하며 OpenBao 호출과 Gitea 파드 exec 까지 하는데, 스택이 온전치 않으면
+	// 그 호출이 돌아오지 않는다. 그러면 배포 기록이 영원히 running 으로 남고
+	// 화면은 "실행 중" 만 보여 준다 — 2026-08-21 운영에서 그랬다.
+	timeout := uc.deployTimeout
+	if timeout <= 0 {
+		timeout = defaultDeployTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// 상태 기록은 데드라인 밖에서 한다. 시간을 넘겨 실패한 배포를 "실패" 로
+	// 남기려는데 그 쓰기까지 같은 만료된 컨텍스트를 타면 아무것도 남지 않는다.
+	recordCtx := context.WithoutCancel(ctx)
 
 	deployment, err := uc.deploymentRepo.GetByID(ctx, deploymentID)
 	if err != nil {
@@ -197,7 +230,7 @@ func (uc *DeployPipeline) ApplyAsync(deploymentID string, manifestTypes ...[]str
 	pipeline, err := uc.pipelineRepo.GetByID(ctx, deployment.PipelineID)
 	if err != nil {
 		slog.Error("apply: pipeline not found", "id", deployment.PipelineID, "error", err)
-		uc.failDeployment(ctx, deployment, err)
+		uc.failDeployment(recordCtx, deployment, err)
 		return
 	}
 
@@ -207,14 +240,14 @@ func (uc *DeployPipeline) ApplyAsync(deploymentID string, manifestTypes ...[]str
 	}
 	if deployErr := uc.applyToCluster(ctx, pipeline, deploymentID, selected); deployErr != nil {
 		slog.Error("apply: cluster deploy failed", "deployment", deploymentID, "error", deployErr)
-		uc.failDeployment(ctx, deployment, deployErr)
+		uc.failDeployment(recordCtx, deployment, deployErr)
 		return
 	}
 
 	completed := time.Now()
 	deployment.CompletedAt = &completed
 	deployment.Status = domain.DeploymentStatusSuccess
-	_ = uc.deploymentRepo.Update(ctx, deployment)
+	_ = uc.deploymentRepo.Update(recordCtx, deployment)
 	slog.Info("apply: deployment succeeded", "deployment", deploymentID)
 }
 

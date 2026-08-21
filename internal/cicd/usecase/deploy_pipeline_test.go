@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -484,4 +486,61 @@ func TestDeployPipeline_EmergencyDirectStillBuildsInPlatform(t *testing.T) {
 // 위임 경로에서 플랫폼이 하는 일은 실행을 넘기는 것 하나뿐이다.
 func TestBuildStepPlan_DelegatedPipelineHasSingleStep(t *testing.T) {
 	assert.Equal(t, []string{"Trigger CI"}, BuildStepPlan(delegatingPipeline()))
+}
+
+type blockingBuildDelegate struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (b *blockingBuildDelegate) DelegateBuild(ctx context.Context, _ port.DelegateBuildOpts) (string, error) {
+	b.once.Do(func() { close(b.started) })
+	// 러너 위임은 스택 번들을 조립하며 OpenBao 호출과 Gitea 파드 exec 까지 한다.
+	// 스택이 온전치 않으면 그 호출이 돌아오지 않는다.
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+// 배포는 데드라인 없이 돌면 안 된다.
+//
+// ApplyAsync 는 context.Background() 를 그대로 썼다. 위임 경로가 매달리면 배포
+// 기록이 영원히 running 으로 남아, 화면은 "실행 중" 만 보여 주고 사용자는 무엇이
+// 잘못됐는지 영영 알 수 없다 — 2026-08-21 운영에서 그랬다.
+func TestDeployPipeline_FailsDeploymentWhenWorkExceedsTimeout(t *testing.T) {
+	pipeline := delegatingPipeline()
+	deploymentRepo := &mockDeployDeploymentRepo{}
+	delegate := &blockingBuildDelegate{started: make(chan struct{})}
+
+	uc := NewDeployPipeline(
+		newMockDeployPipelineRepo(pipeline),
+		deploymentRepo,
+		&mockKubeconfigProvider{kubeconfig: []byte("fake")},
+		&mockManifestApplier{},
+		WithBuildDelegate(delegate),
+		WithDeployTimeout(50*time.Millisecond),
+	)
+
+	out, err := uc.Start(context.Background(), DeployPipelineInput{
+		PipelineID: pipeline.ID,
+		Version:    "v1.0.0",
+		DeployedBy: "dev@acme.io",
+	})
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		uc.ApplyAsync(out.Deployment.ID)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("데드라인이 없어 배포가 끝나지 않았습니다")
+	}
+
+	stored, err := deploymentRepo.GetByID(context.Background(), out.Deployment.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.DeploymentStatusFailed, stored.Status,
+		"시간을 넘긴 배포는 실패로 남아야 한다 — running 으로 두면 아무도 원인을 모른다")
 }

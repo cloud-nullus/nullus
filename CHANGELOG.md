@@ -312,6 +312,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **파이프라인은 "정상" 인데 저장소도 이미지도 파드도 비어 있던 것** (`web/src/features/cicd/api/cicd-api.ts`, `web/src/features/cicd/pages/developer-deploy-page.tsx`, `internal/cicd/usecase/deploy_pipeline.go`): CI/CD 템플릿으로 파이프라인을 만들면 화면은 "활성" 을 보여 주는데 Gitea 저장소도, 이미지 레지스트리도, 파드도 비어 있었다.
+
+  **하나 — 서버는 문제를 보고했고 화면이 버렸다.** 프로비저닝은 저장소·CI job·Argo CD Application 을 준비하며 실패를 `warnings`·`scaffold_skipped`·`missing_variables` 로 돌려준다. 핸들러는 그것을 응답에 실었지만, 프론트의 `createPipeline` 은 파이프라인 필드만 골라 담고 나머지를 통째로 버렸다. 그래서 스캐폴딩이 건너뛰어졌든 CI job 이 만들어지지 않았든 화면에는 "정상" 만 남았다.
+
+  이제 그 값을 함께 실어 오고, 문제가 있으면 배포로 넘어가지 않고 무엇이 빠졌는지 보여 준다. 러너가 실행할 Jenkinsfile 이 없는 파이프라인에 배포를 눌러 봐야 아무 일도 일어나지 않는다 — 사용자가 그 사실을 알고 나서 고르게 한다.
+
+  **둘 — 배포에 데드라인이 없었다.** `ApplyAsync` 가 `context.Background()` 를 그대로 썼다. 러너 위임 경로는 스택 번들을 조립하며 OpenBao 호출과 Gitea 파드 `kubectl exec` 까지 하는데, 스택이 온전치 않으면 그 호출이 돌아오지 않는다. 그러면 배포 기록이 영원히 `running` 으로 남아 화면은 "실행 중" 만 보여 주고, 실패조차 기록되지 않는다.
+
+  이제 15분 상한을 둔다. 상태 기록은 그 데드라인 **밖**에서 한다 — 시간을 넘겨 실패한 배포를 "실패" 로 남기려는데 그 쓰기까지 만료된 컨텍스트를 타면 아무것도 남지 않는다.
+
 - **잘 돌고 있는 설치가 실패로 뒤집히고, 로그는 초반에서 끊기고, 진행률은 5% 에서 굳던 것** (`internal/stack/usecase/install_stack.go`, `internal/stack/adapter/log/memory_streamer.go`): 세 증상이 함께 나타났다. 설치가 "실패" 로 표시됐는데 오류 로그가 하나도 없고, 나중에 보면 게이트웨이는 만들어져 있었다.
 
   **하나 — 리퍼가 느린 단계를 죽은 설치로 오인했다.** 끊긴 설치를 찾는 리퍼는 갱신 시각만 본다. 그런데 그 시각은 단계가 시작·완료될 때만 움직인다. 한 단계가 임계값(30분)보다 오래 걸리면 — Harbor·GitLab 이미지 풀은 흔히 그렇다 — 멀쩡히 도는 설치가 끊긴 것으로 표시된다. 고루틴은 계속 돌고 있으니 게이트웨이는 "실패" 표시 뒤에 만들어졌고, 진짜 오류가 없었으니 오류 로그도 없었다.

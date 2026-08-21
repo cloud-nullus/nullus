@@ -1395,7 +1395,10 @@
     },
     "yamlPreview": "YAML 매니페스트 미리보기",
     "manifestDescription": "파이프라인을 만들기 전에 생성된 매니페스트를 검토하세요.",
-    "removeItem": "삭제"
+    "removeItem": "삭제",
+    "provisionWarnings": {
+      "title": "파이프라인은 만들어졌지만 준비가 끝나지 않았습니다"
+    }
   },
   "stackHistoryPage": {
     "title": "스택 이력",

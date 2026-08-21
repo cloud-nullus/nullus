@@ -51,6 +51,23 @@ export interface DeletePipelineResult {
   warnings?: string[] | null;
 }
 
+/**
+ * 파이프라인 생성 시 플랫폼이 준비한 것과, 준비하지 못한 것.
+ *
+ * 서버는 저장소·CI job·Argo CD Application 을 준비하며 문제를 warnings 로
+ * 보고한다. 예전에는 이 값을 화면이 통째로 버려서, 저장소가 비어 있는데도
+ * 파이프라인은 "정상" 으로 보였다.
+ */
+export interface PipelineProvisioning {
+  warnings: string[];
+  /** 이미 있던 저장소라 스캐폴딩을 쓰지 않았다 — 리포에 Jenkinsfile 이 없을 수 있다. */
+  scaffoldSkipped: boolean;
+  /** CI 가 필요로 하는데 등록되지 못한 변수들. */
+  missingVariables: string[];
+  repositoryPath?: string;
+  argoApplicationCreated?: boolean;
+}
+
 export interface CICDTool {
   category: string;
   name: string;
@@ -250,8 +267,16 @@ export const cicdApiCalls = {
       .then((r) => r.data);
 
     const raw = res.pipeline ?? res;
+    const provisioning: PipelineProvisioning = {
+      warnings: res.warnings ?? [],
+      scaffoldSkipped: res.scaffold_skipped ?? false,
+      missingVariables: res.missing_variables ?? [],
+      repositoryPath: res.repository_path ?? undefined,
+      argoApplicationCreated: res.argo_application_created ?? undefined,
+    };
 
     return {
+      provisioning,
       id: raw.id,
       name: raw.name,
       mode: "ci_cd",
@@ -269,7 +294,7 @@ export const cicdApiCalls = {
       status: (raw.status ?? "active") as Pipeline["status"],
       lastDeployedAt: null,
       createdAt: raw.created_at ?? "",
-    } as Pipeline;
+    } as Pipeline & { provisioning: PipelineProvisioning };
   },
 
   deployPipeline: async ({

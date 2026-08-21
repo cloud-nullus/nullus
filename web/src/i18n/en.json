@@ -1395,7 +1395,10 @@
     },
     "yamlPreview": "YAML Manifest Preview",
     "manifestDescription": "Review generated manifests before creating the pipeline.",
-    "removeItem": "Remove"
+    "removeItem": "Remove",
+    "provisionWarnings": {
+      "title": "Pipeline created, but setup is incomplete"
+    }
   },
   "stackHistoryPage": {
     "title": "Stack History",
