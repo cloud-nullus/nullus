@@ -61,10 +61,20 @@ func TestCreateStack_PlansResourcesFromTemplateProfile(t *testing.T) {
 	require.True(t, ok, "config 는 StackConfig 여야 한다")
 
 	require.Len(t, cfg.AppliedResourceOverrides, 4)
-	assert.Equal(t, domain.ResourceVector{0.5, 1, 1, 2, 9, 18},
+	// 필드 이름을 적는다. 순서만으로 여섯 개를 맞추면 필드가 하나 끼어들 때
+	// 조용히 다른 값을 검사하게 된다(go vet 이 지적하는 그것이다).
+	assert.Equal(t, domain.ResourceVector{
+		CPURequest: 0.5, CPULimit: 1,
+		MemoryRequestGi: 1, MemoryLimitGi: 2,
+		StorageRequestGi: 9, StorageLimitGi: 18,
+	},
 		cfg.AppliedResourceOverrides["artifacts.containerRegistry:harbor"],
 		"Harbor 가 2코어/4Gi 그대로면 8Gi 노드에 들어가지 않는다")
-	assert.Equal(t, domain.ResourceVector{0.5, 0.5, 0.5, 1, 3.5, 7},
+	assert.Equal(t, domain.ResourceVector{
+		CPURequest: 0.5, CPULimit: 0.5,
+		MemoryRequestGi: 0.5, MemoryLimitGi: 1,
+		StorageRequestGi: 3.5, StorageLimitGi: 7,
+	},
 		cfg.AppliedResourceOverrides["artifacts.sourceRepository:gitea"])
 }
 
