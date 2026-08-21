@@ -360,6 +360,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI 에서만 나던 프론트 테스트 타임아웃** (`web/vite.config.ts`): 페이지를 통째로 렌더하는 컴포넌트 테스트가 vitest 기본 타임아웃(5초)을 CI 에서만 넘겼다. 로컬에서는 통과하므로 실패가 회귀처럼 보인다 — 실제로는 v8 커버리지 계측과 느린 러너가 겹친 것이고, 테스트가 멈춘 것이 아니다.
+
+  `testTimeout` 을 20초로 둔다. 멈춘 테스트는 여전히 실패한다 — 늦게 실패할 뿐이다. 되살린 CI(#224)가 이런 이유로 다시 꺼지지 않게 하는 것이 목적이다.
+
 - **CI 가 다섯 달 동안 꺼져 있어 어떤 PR 도 빌드·테스트를 거치지 않던 것** (`.github/workflows/ci.yml`, `scripts/check-coverage.sh`): `CI` 워크플로가 `disabled_manually` 상태였고 마지막 실행은 2026-03-15, 그것도 실패였다. 그 뒤로 PR 에 붙는 검사는 전부 린트·포맷·컨벤션뿐이었다 — **`go build` 도 `go test` 도 PR 을 막지 못했다.**
 
   실제로 드러났다. 2026-08-21 에 충돌 마커가 그대로 든 브랜치(컴파일 불가)가 CI 초록에 MERGEABLE 로 통과했다.

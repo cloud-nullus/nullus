@@ -59,6 +59,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
+    // 기본값 5초는 CI 러너에 비해 빡빡하다. 페이지를 통째로 렌더하는 컴포넌트
+    // 테스트가 v8 커버리지 계측 아래에서 그 선을 넘는다 — 로컬에서는 통과하고
+    // CI 에서만 타임아웃이 나서, 실패가 회귀처럼 보인다.
+    //
+    // 멈춘 테스트는 여전히 실패한다. 늦게 실패할 뿐이다.
+    testTimeout: 20000,
     exclude: ['e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
