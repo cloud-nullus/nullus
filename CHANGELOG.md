@@ -312,6 +312,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **레지스트리가 이미지 삭제를 지원하지 않으면 파이프라인을 영영 못 지우던 것** (`internal/cicd/usecase/delete_pipeline.go`, `internal/cicd/adapter/handler/pipeline_handler.go`, `web/src/features/cicd/pages/cicd-list-page.tsx`): 삭제에서 "이미지도 지우기" 를 고르면 **400 이 나고 아무것도 지워지지 않았다.** 몇 번을 눌러도 같은 자리에서 막혀 파이프라인이 목록에 남았다.
+
+  Harbor·Nexus 처럼 이미지 저장소 삭제 수단이 없는 구성에서는 `ErrImageDeletionUnsupported` 가 나는데, 그것이 삭제 전체를 중단시켰다. 더 나쁜 것은 순서다 — 클러스터 리소스는 그 앞에서 이미 지워진 뒤였다. 리소스는 사라졌는데 레코드는 남는, 가장 회복하기 어려운 상태다.
+
+  지원하지 않는 것은 **삭제의 실패가 아니라 이 플랫폼이 할 수 없는 일**이다. 이제 할 수 있는 것은 다 하고, 하지 못한 것을 경고로 남긴다. 조용히 넘기지도 않는다 — 성공으로 처리하면 사용자는 레지스트리에 남은 것을 영영 모른다.
+
+  진짜 실패(인증·네트워크)는 예전대로 레코드를 남긴다. 레코드가 사라지면 목록에서 보이지 않는데 리소스는 남아, 다시 시도할 방법조차 없어지기 때문이다.
+
+  화면도 결과를 받는다. 예전에는 삭제 응답을 아무도 읽지 않아 경고는 물론 **실패조차 브라우저 콘솔에만 남았다** — 사용자 화면은 아무 일도 없었던 것처럼 보였다.
+
 - **파이프라인은 "정상" 인데 저장소도 이미지도 파드도 비어 있던 것** (`web/src/features/cicd/api/cicd-api.ts`, `web/src/features/cicd/pages/developer-deploy-page.tsx`, `internal/cicd/usecase/deploy_pipeline.go`): CI/CD 템플릿으로 파이프라인을 만들면 화면은 "활성" 을 보여 주는데 Gitea 저장소도, 이미지 레지스트리도, 파드도 비어 있었다.
 
   **하나 — 서버는 문제를 보고했고 화면이 버렸다.** 프로비저닝은 저장소·CI job·Argo CD Application 을 준비하며 실패를 `warnings`·`scaffold_skipped`·`missing_variables` 로 돌려준다. 핸들러는 그것을 응답에 실었지만, 프론트의 `createPipeline` 은 파이프라인 필드만 골라 담고 나머지를 통째로 버렸다. 그래서 스캐폴딩이 건너뛰어졌든 CI job 이 만들어지지 않았든 화면에는 "정상" 만 남았다.

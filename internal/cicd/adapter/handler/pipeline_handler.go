@@ -353,11 +353,9 @@ func deletePipelineError(c echo.Context, err error) error {
 	if strings.Contains(msg, "not found") || strings.Contains(msg, "no rows") {
 		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
 	}
-	if errors.Is(err, port.ErrImageDeletionUnsupported) {
-		// 지우지 못했음을 분명히 알린다. 성공으로 넘기면 사용자는 이미지가
-		// 사라진 줄 알고 레지스트리에 남은 것을 영영 모른다.
-		return errorResponse(c, http.StatusBadRequest, "IMAGE_DELETION_UNSUPPORTED", err.Error())
-	}
+	// ErrImageDeletionUnsupported 는 여기까지 오지 않는다. 지원하지 않는 것은
+	// 삭제의 실패가 아니므로 유스케이스가 경고로 옮겨 담고 나머지를 계속한다 —
+	// 예전에는 그것이 400 이 되어 파이프라인을 영영 못 지웠다.
 	return errorResponse(c, http.StatusInternalServerError, "PIPELINE_DELETE_FAILED", err.Error())
 }
 
