@@ -45,6 +45,12 @@ type SCMBundle struct {
 	// OpenBao → ESO → K8s Secret 평면으로 나른다. 지원하지 않으면 nil.
 	Credentials PipelineCredentialPlane
 
+	// OrgMembers 는 사람을 조직에 넣는 수단이다. 지원하지 않으면 nil.
+	//
+	// 플랫폼이 만든 저장소는 자동화 계정 소유의 private 조직 안에 있어서,
+	// 그대로 두면 정작 소스를 밀어야 할 사람이 보지도 못한다.
+	OrgMembers OrgMemberProvisioner
+
 	// RegistryCredentials 는 스택이 설치한 레지스트리(Harbor·Nexus)의 자격증명을
 	// 푼다. 그 값은 스택 설치가 OpenBao 에 만들어 두므로 사용자에게 다시 받을
 	// 이유가 없다. 플랫폼이 소유하지 않는 레지스트리에서는 아무것도 돌려주지 않는다.

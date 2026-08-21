@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -18,6 +19,9 @@ type ProvisionPipelineRepositoryInput struct {
 	StackID string
 	// TemplateID 는 배포 매니페스트에 템플릿 라벨로 실린다. 비면 라벨을 붙이지 않는다.
 	TemplateID string
+	// RequestedByEmail 은 파이프라인을 만든 사람의 이메일이다.
+	// 저장소를 담은 조직의 멤버로 넣는 데 쓴다. 비면 건너뛴다.
+	RequestedByEmail string
 	// Namespace 는 배포 대상 쿠버네티스 네임스페이스다.
 	Namespace string
 	Port      int32
@@ -122,6 +126,10 @@ func (uc *ProvisionPipelineRepository) Execute(
 		return nil, fmt.Errorf("provision app project: %w", err)
 	}
 
+	// 만든 사람을 조직에 넣는다. 그러지 않으면 자기 저장소를 보지도 못한다.
+	memberWarning := ensureRequesterIsOrgMember(
+		ctx, bundle, commonOut.Group.FullPath, input.RequestedByEmail)
+
 	out := &ProvisionPipelineRepositoryOutput{
 		CommonProject:    commonOut.Project,
 		Project:          appOut.Project,
@@ -130,6 +138,9 @@ func (uc *ProvisionPipelineRepository) Execute(
 		MissingVariables: appOut.MissingVariables,
 		Warnings:         appOut.Warnings,
 		ScaffoldSkipped:  appOut.ScaffoldSkipped,
+	}
+	if memberWarning != "" {
+		out.Warnings = append(out.Warnings, memberWarning)
 	}
 
 	uc.applyArgoApplication(ctx, bundle, app, input.Namespace, appOut, out)
@@ -193,6 +204,41 @@ func repoURLForInCluster(bundle *port.SCMBundle, project *port.SCMProject) strin
 		}
 	}
 	return project.HTTPCloneURL
+}
+
+// ensureRequesterIsOrgMember 는 파이프라인을 만든 사람을 저장소가 든 조직에
+// 넣는다. 넣지 못했으면 그 사유를 돌려준다(빈 문자열이면 알릴 것이 없다).
+//
+// 실패해도 프로비저닝을 멈추지 않는다. 저장소·CI job 은 이미 만들어졌고,
+// 멤버 등록은 나중에 손으로도 할 수 있다 — 여기서 끊으면 되돌리기 어려운 것을
+// 되돌려야 한다.
+func ensureRequesterIsOrgMember(
+	ctx context.Context,
+	bundle *port.SCMBundle,
+	org, email string,
+) string {
+	if bundle == nil || bundle.OrgMembers == nil {
+		return ""
+	}
+	if strings.TrimSpace(org) == "" || strings.TrimSpace(email) == "" {
+		return ""
+	}
+
+	err := bundle.OrgMembers.EnsureOrgMember(ctx, org, email)
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, port.ErrSCMUserNotFound):
+		// 아직 로그인하지 않아 계정이 없는 것이다. 실패가 아니라 "아직" 이므로
+		// 무엇을 하면 되는지 적어 준다.
+		return fmt.Sprintf(
+			"%s 계정이 아직 저장소 플랫폼에 없어 %s 조직 멤버로 넣지 못했습니다 — "+
+				"SSO 로 한 번 로그인한 뒤 파이프라인을 다시 만들거나 관리자가 직접 추가하세요",
+			email, org)
+	default:
+		slog.Warn("조직 멤버 등록 실패", "org", org, "email", email, "error", err)
+		return fmt.Sprintf("%s 를 %s 조직 멤버로 넣지 못했습니다: %v", email, org, err)
+	}
 }
 
 // resolveRegistryCredentials 는 CI 가 레지스트리 로그인에 쓸 값을 모은다.

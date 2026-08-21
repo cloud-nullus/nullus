@@ -23,6 +23,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 	"github.com/cloud-nullus/draft/internal/cicd/usecase"
+	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 )
@@ -190,6 +191,9 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		EnvVars:        req.EnvVars,
 
 		ProvisionRepository: req.ProvisionRepository,
+		// 만든 사람을 저장소가 든 조직의 멤버로 넣는다. 인증 컨텍스트에서
+		// 읽는다 — 요청 본문으로 받으면 남의 계정을 조직에 넣을 수 있다.
+		RequestedByEmail:    middleware.UserEmailFromEchoContext(c),
 		Port:                req.Port,
 		Replicas:            req.Replicas,
 		RegistryCredentials: req.RegistryCredentials,
