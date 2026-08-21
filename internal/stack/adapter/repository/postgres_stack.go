@@ -143,6 +143,20 @@ func (r *PostgresStackRepository) List(ctx context.Context, orgID string, includ
 	return stacks, nil
 }
 
+// TouchUpdatedAt 은 갱신 시각만 찍는다.
+//
+// 끊긴 설치를 찾는 리퍼는 갱신 시각만 본다. 그런데 그 시각은 단계가 시작·완료될
+// 때만 움직여서, 한 단계가 임계값보다 오래 걸리면 멀쩡히 도는 설치가 끊긴 것으로
+// 표시된다 — 2026-08-21 운영에서 그렇게 됐다. 설치가 도는 동안 이것을 주기적으로
+// 찍으면 "시각이 멈췄다" 가 "돌리던 것이 사라졌다" 를 뜻하게 된다.
+func (r *PostgresStackRepository) TouchUpdatedAt(ctx context.Context, stackID string) error {
+	const q = `UPDATE stacks SET updated_at = $2 WHERE id = $1 AND deleted_at IS NULL`
+	if _, err := r.pool.Exec(ctx, q, stackID, time.Now()); err != nil {
+		return fmt.Errorf("touch stack %s: %w", stackID, err)
+	}
+	return nil
+}
+
 func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stack) error {
 	configJSON, err := json.Marshal(stack.Config)
 	if err != nil {

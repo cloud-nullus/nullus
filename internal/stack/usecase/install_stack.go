@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
@@ -327,6 +328,11 @@ func stackConfigFromInterface(rawConfig any) (domain.StackConfig, bool) {
 // emitting log entries. On any failure it initiates rollback.
 func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor port.StepExecutor, input InstallStackInput) {
 	deploymentID := stack.ID
+
+	// 설치가 도는 동안 살아 있음을 알린다. 없으면 오래 걸리는 단계 하나가
+	// 멀쩡한 설치를 끊긴 것으로 만든다.
+	stopHeartbeat := uc.startHeartbeat(ctx, stack.ID, installHeartbeatInterval)
+	defer stopHeartbeat()
 
 	if !input.PreserveLogs {
 		if resetter, ok := uc.streamer.(deploymentLogResetter); ok {
@@ -713,6 +719,56 @@ func (uc *InstallStack) transition(ctx context.Context, stack *domain.Stack, nex
 		return fmt.Errorf("persist state %s: %w", next, err)
 	}
 	return nil
+}
+
+// installHeartbeatInterval 은 설치가 살아 있음을 알리는 주기다.
+//
+// domain.StaleInstallThreshold 보다 충분히 짧아야 한다 — 몇 번 걸러도 끊긴
+// 것으로 오인되지 않을 만큼.
+const installHeartbeatInterval = 2 * time.Minute
+
+// stackToucher 는 갱신 시각만 찍는 저장소다.
+type stackToucher interface {
+	TouchUpdatedAt(ctx context.Context, stackID string) error
+}
+
+// startHeartbeat 는 설치가 도는 동안 스택의 갱신 시각을 주기적으로 찍는다.
+// 돌려주는 함수를 부르면 멈춘다(여러 번 불러도 안전하다).
+//
+// 끊긴 설치를 찾는 리퍼는 갱신 시각만 본다. 그런데 그 시각은 단계가 시작·완료될
+// 때만 움직인다 — 한 단계가 임계값보다 오래 걸리면(Harbor·GitLab 이미지 풀은
+// 흔히 그렇다) 멀쩡히 도는 설치가 끊긴 것으로 표시된다. 2026-08-21 운영에서
+// 그렇게 됐다: 상태만 실패로 뒤집히고 고루틴은 계속 돌아, "실패" 로 표시된 뒤에
+// 게이트웨이가 만들어졌다. 오류 로그가 없던 것은 실제로 오류가 없었기 때문이다.
+//
+// 하트비트가 있으면 "갱신 시각이 멈췄다" 가 "설치를 돌리던 것이 사라졌다" 를
+// 뜻하게 된다 — 리퍼가 원래 판정하려던 그것이다.
+func (uc *InstallStack) startHeartbeat(ctx context.Context, stackID string, interval time.Duration) func() {
+	toucher, ok := uc.stackRepo.(stackToucher)
+	if !ok || strings.TrimSpace(stackID) == "" || interval <= 0 {
+		return func() {}
+	}
+
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := toucher.TouchUpdatedAt(ctx, stackID); err != nil {
+					slog.Warn("install heartbeat failed", "stack_id", stackID, "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { once.Do(func() { close(done) }) }
 }
 
 func (uc *InstallStack) markStepStarted(ctx context.Context, stack *domain.Stack, step string) {

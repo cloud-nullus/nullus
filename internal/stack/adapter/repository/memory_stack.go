@@ -81,6 +81,16 @@ func (r *MemoryStackRepository) ListInFlight(_ context.Context) ([]*domain.Stack
 }
 
 // Update replaces a stored stack with the given value.
+// TouchUpdatedAt 은 갱신 시각만 찍는다. 설치가 살아 있음을 알리는 데 쓴다.
+func (r *MemoryStackRepository) TouchUpdatedAt(_ context.Context, stackID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if stack, ok := r.stacks[stackID]; ok {
+		stack.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
 func (r *MemoryStackRepository) Update(_ context.Context, stack *domain.Stack) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
