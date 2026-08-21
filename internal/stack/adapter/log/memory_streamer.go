@@ -34,8 +34,22 @@ func NewMemoryStreamer() *MemoryStreamer {
 // Subscribe registers a new channel to receive log entries for deploymentID.
 // Any previously buffered entries are replayed to the new subscriber immediately.
 func (s *MemoryStreamer) Subscribe(deploymentID string) <-chan port.LogEntry {
+	return s.SubscribeWithHistory(deploymentID, nil)
+}
+
+// SubscribeWithHistory 는 메모리에 없는 이력을 앞에 붙여 구독한다.
+//
+// 프로세스가 재시작되면 메모리 이력은 비어 있다. 그때 저장소에서 읽어 온 것을
+// 이 자리로 넘기면, 재생과 구독 등록이 같은 잠금 안에서 일어나 그 사이에 들어온
+// 실시간 항목을 놓치지 않는다.
+func (s *MemoryStreamer) SubscribeWithHistory(deploymentID string, seed []port.LogEntry) <-chan port.LogEntry {
 	s.mu.Lock()
 	history := s.history[deploymentID]
+	if len(seed) > 0 {
+		combined := make([]port.LogEntry, 0, len(seed)+len(history))
+		combined = append(combined, seed...)
+		history = append(combined, history...)
+	}
 
 	// 채널은 히스토리 전체가 들어갈 만큼 잡는다.
 	//
@@ -55,6 +69,16 @@ func (s *MemoryStreamer) Subscribe(deploymentID string) <-chan port.LogEntry {
 	return ch
 }
 
+// HasHistory 는 이 배포의 이력이 메모리에 있는지다.
+//
+// 있으면 이 프로세스가 그 배포를 스트리밍했다는 뜻이라, 저장소를 겹쳐 읽으면
+// 같은 줄이 두 번 보인다.
+func (s *MemoryStreamer) HasHistory(deploymentID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.history[deploymentID]) > 0
+}
+
 // Unsubscribe removes ch from the subscriber list for deploymentID and closes it.
 func (s *MemoryStreamer) Unsubscribe(deploymentID string, ch <-chan port.LogEntry) {
 	s.mu.Lock()
@@ -71,6 +95,16 @@ func (s *MemoryStreamer) Unsubscribe(deploymentID string, ch <-chan port.LogEntr
 	if len(s.subscribers[deploymentID]) == 0 {
 		delete(s.subscribers, deploymentID)
 	}
+}
+
+// ClearHistory 는 이 배포의 이력을 지운다.
+//
+// 새 실행이 이전 실행의 로그 위에 겹쳐 쌓이지 않게 한다. 구독은 건드리지
+// 않는다 — 보고 있는 화면을 끊을 이유가 없다.
+func (s *MemoryStreamer) ClearHistory(deploymentID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.history, deploymentID)
 }
 
 // Stream publishes entry to all subscribers of deploymentID.
