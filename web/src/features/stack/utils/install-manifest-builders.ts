@@ -670,7 +670,14 @@ export function buildGatewayManifest(draft: StackConfigDraft, manifestTools: Man
           hostname: `*.${accessDomain}`,
           allowedRoutes: {
             namespaces: {
-              from: 'Same',
+              // 배포된 앱의 HTTPRoute 는 앱이 서는 네임스페이스에 생긴다. 라우트는
+              // 같은 네임스페이스의 Service 를 가리켜야 하므로 그 자리를 옮길 수 없다.
+              //
+              // Same 으로 두면 그 라우트가 게이트웨이에 붙지 못한다. 스택 도구들은
+              // 같은 네임스페이스라 잘 열리고 배포된 앱만 안 열리는데, 어느 쪽도
+              // 오류를 내지 않아 원인이 드러나지 않는다 — Argo CD 는 Synced/Healthy
+              // 인데 주소만 404 로 끝난다.
+              from: 'All',
             },
           },
         },
@@ -693,7 +700,9 @@ export function buildGatewayManifest(draft: StackConfigDraft, manifestTools: Man
                 },
                 allowedRoutes: {
                   namespaces: {
-                    from: 'Same',
+                    // http 리스너와 같은 이유다. 한쪽만 열어 두면 앱이 http 로만
+                    // 열리고 그 사실이 어디에도 드러나지 않는다.
+                    from: 'All',
                   },
                 },
               },
