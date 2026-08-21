@@ -36,6 +36,9 @@ type CreatePipelineInput struct {
 	// ProvisionRepository 가 true 면 앱 저장소를 만들고 스캐폴딩을 커밋한 뒤
 	// Argo CD Application 까지 연결한다. StackID 가 필요하다.
 	ProvisionRepository bool
+	// RequestedByEmail 은 요청한 사람의 이메일이다. 저장소가 든 조직의 멤버로
+	// 넣는 데 쓴다 — 넣지 않으면 자기 저장소를 보지도 못한다.
+	RequestedByEmail string
 	// Port / Replicas 는 스캐폴딩 매니페스트에 반영된다.
 	Port     int32
 	Replicas int32
@@ -266,6 +269,7 @@ func (uc *CreatePipeline) provisionRepository(
 		Port:                input.Port,
 		Replicas:            input.Replicas,
 		RegistryCredentials: input.RegistryCredentials,
+		RequestedByEmail:    input.RequestedByEmail,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("provision repository for %q: %w", input.Name, err)

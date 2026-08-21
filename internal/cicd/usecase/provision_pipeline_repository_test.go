@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -201,4 +202,47 @@ func TestProvisionPipelineRepository_AsksFactoryForRequestedStack(t *testing.T) 
 	_, err := uc.Execute(context.Background(), repoInput())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"stk_1"}, factory.asked)
+}
+
+type fakeOrgMembers struct {
+	org   string
+	email string
+	err   error
+}
+
+func (f *fakeOrgMembers) EnsureOrgMember(_ context.Context, org, email string) error {
+	f.org, f.email = org, email
+	return f.err
+}
+
+// 아직 로그인하지 않아 SCM 계정이 없는 것은 실패가 아니라 "아직" 이다.
+// 프로비저닝을 멈추지 않고, 무엇을 하면 되는지 경고로 남긴다.
+func TestEnsureRequesterIsOrgMember_ExplainsMissingAccount(t *testing.T) {
+	members := &fakeOrgMembers{err: fmt.Errorf("%w: dev@acme.io", port.ErrSCMUserNotFound)}
+	bundle := &port.SCMBundle{OrgMembers: members}
+
+	warning := ensureRequesterIsOrgMember(context.Background(), bundle, "nullus", "dev@acme.io")
+
+	assert.Contains(t, warning, "dev@acme.io")
+	assert.Contains(t, warning, "로그인")
+}
+
+func TestEnsureRequesterIsOrgMember_PassesOrgAndEmail(t *testing.T) {
+	members := &fakeOrgMembers{}
+	bundle := &port.SCMBundle{OrgMembers: members}
+
+	warning := ensureRequesterIsOrgMember(context.Background(), bundle, "nullus", "dev@acme.io")
+
+	assert.Equal(t, "", warning)
+	assert.Equal(t, "nullus", members.org)
+	assert.Equal(t, "dev@acme.io", members.email)
+}
+
+// 이메일을 모르는 경로(자동화 호출 등)까지 경고를 남길 이유는 없다.
+func TestEnsureRequesterIsOrgMember_SilentWithoutEmail(t *testing.T) {
+	members := &fakeOrgMembers{}
+	bundle := &port.SCMBundle{OrgMembers: members}
+
+	assert.Equal(t, "", ensureRequesterIsOrgMember(context.Background(), bundle, "nullus", ""))
+	assert.Equal(t, "", members.org)
 }

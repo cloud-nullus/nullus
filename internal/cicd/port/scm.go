@@ -1,6 +1,9 @@
 package port
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // SCMGroup 은 소스 저장소 플랫폼의 그룹(네임스페이스)이다.
 type SCMGroup struct {
@@ -68,6 +71,22 @@ type CommitSpec struct {
 	Branch  string
 	Message string
 	Files   []CommitFile
+}
+
+// ErrSCMUserNotFound 는 그 이메일의 SCM 계정이 아직 없다는 뜻이다.
+//
+// 실패가 아니라 "아직" 이다 — OIDC 첫 로그인 전에는 계정이 존재하지 않는다.
+// 호출부는 이것을 경고로 옮겨 담아야 한다.
+var ErrSCMUserNotFound = errors.New("SCM 사용자 계정을 찾지 못했습니다")
+
+// OrgMemberProvisioner 는 사람을 조직에 넣는다.
+//
+// 플랫폼이 만든 저장소는 자동화 계정 소유의 private 조직 안에 있어서, 그대로
+// 두면 정작 그 저장소에 소스를 밀어야 할 사람이 보지도 못한다.
+// 지원하지 않는 플랫폼에서는 nil 이며, 호출부는 nil 이면 건너뛴다.
+type OrgMemberProvisioner interface {
+	// EnsureOrgMember 는 이메일로 찾은 사용자를 조직에 넣는다(멱등).
+	EnsureOrgMember(ctx context.Context, org, email string) error
 }
 
 // SCMProvisioner 는 소스 저장소 플랫폼에 그룹·프로젝트·파일을 만든다.

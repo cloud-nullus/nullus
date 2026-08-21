@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **파이프라인을 만든 사람이 자기 저장소를 볼 수 있다** (`internal/cicd/adapter/gitea/org_members.go` 신규, `internal/cicd/usecase/provision_pipeline_repository.go`): SSO 로 Gitea 에 들어가면 화면이 텅 비어 보였다. 저장소가 없어서가 아니라 **보이지 않아서**다.
+
+  플랫폼이 만드는 조직은 `visibility: private` 이고 저장소도 기본 private 이며, 둘 다 소유자는 자동화 계정(`gitea_admin`)이다. 그런데 사람을 그 조직에 넣는 코드가 없었다 — OIDC 로 들어온 계정은 멤버가 아니므로 Explore 에도 뜨지 않는다. 정작 그 저장소에 앱 소스를 밀어야 할 사람이 보지도 못하는 구조였다.
+
+  이제 파이프라인을 만들면 만든 사람을 조직의 write 팀(`developers`)에 넣는다. Owners 가 아니다 — 저장소를 보고 밀 수 있으면 충분하고, 조직 소유권까지 주면 되돌리기 어려운 권한이 조용히 퍼진다. 팀이 없으면 만든다(새 조직에는 Owners 밖에 없다).
+
+  이메일은 **인증 컨텍스트에서 읽는다**. 요청 본문으로 받으면 남의 계정을 조직에 넣을 수 있다. 검색 결과 중 이메일이 정확히 일치하는 것만 쓴다 — 엉뚱한 사람을 조직에 넣는 것이 못 넣는 것보다 나쁘다.
+
+  아직 한 번도 로그인하지 않았으면 Gitea 계정 자체가 없다. 그것은 실패가 아니라 "아직" 이므로 프로비저닝을 멈추지 않고, 무엇을 하면 되는지 경고로 남긴다.
+
 - **설치 로그가 재시작을 견딘다** (`db/migrations/000074_stack_deploy_logs.up.sql` 신규, `internal/stack/adapter/log/persistent_streamer.go` 신규, `internal/stack/adapter/repository/postgres_deploy_log.go` 신규): 지금까지 설치 로그는 API 프로세스 메모리에만 있었다. 파드가 재시작되면 통째로 사라져, 무엇이 왜 멈췄는지 사후에 알 방법이 없었다 — 설치는 20~30분짜리라 그 사이 재시작이 겹칠 확률이 낮지 않다.
 
   이제 같은 항목을 DB 에도 남긴다. 실시간 팬아웃은 그대로 메모리가 맡고, 재접속했을 때 메모리 이력이 비어 있으면 — 즉 재시작 뒤에만 — 저장소에서 읽어 재생한다. 이 프로세스가 그 배포를 스트리밍했으면 메모리가 진실이다. 겹쳐 읽으면 같은 줄이 두 번 보인다.

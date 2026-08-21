@@ -313,6 +313,10 @@ func (f *BundleFactory) giteaBundle(
 
 	bundle := &port.SCMBundle{
 		Provisioner: client,
+		// 같은 클라이언트가 조직 멤버도 넣는다. 플랫폼이 만든 저장소는 자동화
+		// 계정 소유의 private 조직 안에 있어서, 그대로 두면 정작 소스를 밀어야
+		// 할 사람이 보지도 못한다.
+		OrgMembers: client,
 		// Gitea 에는 GitLab 같은 프로젝트 CI 변수 저장소가 없다. 파이프라인
 		// 자격증명은 OpenBao → ESO → K8s Secret 평면이 나른다.
 		Registry: resolver,

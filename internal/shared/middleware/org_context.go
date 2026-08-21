@@ -80,3 +80,46 @@ func orgIDFromUser(user any) string {
 
 	return ""
 }
+
+// UserEmailFromEchoContext 는 인증된 사용자의 이메일을 꺼낸다.
+//
+// 리플렉션으로 읽는 이유는 orgIDFromUser 와 같다 — 이 패키지는 인증 모듈의
+// 사용자 타입을 알지 못하고, 알아서도 안 된다(모듈 간 직접 import 금지).
+func UserEmailFromEchoContext(c echo.Context) string {
+	if email := userEmail(c.Get("current_user")); email != "" {
+		return email
+	}
+	return userEmail(c.Get("user"))
+}
+
+func userEmail(user any) string {
+	if user == nil {
+		return ""
+	}
+
+	switch u := user.(type) {
+	case map[string]any:
+		if email, ok := u["email"].(string); ok {
+			return email
+		}
+	case map[string]string:
+		if email, ok := u["email"]; ok {
+			return email
+		}
+	}
+
+	v := reflect.ValueOf(user)
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return ""
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+	if field := v.FieldByName("Email"); field.IsValid() && field.Kind() == reflect.String {
+		return field.String()
+	}
+	return ""
+}
