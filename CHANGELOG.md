@@ -332,6 +332,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **게이트웨이가 15초에 업로드를 끊어 이미지 push 가 끝없이 재시도하던 것** (`web/src/features/stack/utils/install-manifest-builders.ts`): 스택을 새로 설치해도 `docker push` 가 모든 layer 를 재시도하다 죽었다. #211 로 앞단 ingress 의 본문 상한을 풀었는데도 그대로였다 — **관문이 하나 더 있었다.**
+
+  도구 HTTPRoute 에 타임아웃이 없었다. 그러면 Envoy 의 기본값 **15초**가 적용된다. 이미지 layer push 와 git push 는 그보다 오래 걸리는 **단일 요청**이라 반드시 잘린다. docker 는 끊긴 연결을 재시도로 받아, 모든 layer 가 `Retrying in 5/10/15/20 seconds` 를 반복한다.
+
+  본문 상한과 증상이 똑같아서 구분되지 않는다. 둘 다 "작은 요청은 되는데 큰 것만 안 되는" 모양이고, 어느 관문이 끊었는지는 로그에 드러나지 않는다.
+
+  이제 라우트에 `timeouts.request` / `backendRequest` 를 600초로 둔다. 앞단 ingress 의 proxy 타임아웃과 같은 값이다 — 두 관문의 값이 갈라지면 짧은 쪽에서 끊기는데, 그 사실 역시 로그에 남지 않는다. `backendRequest` 는 `request` 보다 클 수 없다(크면 Gateway API 가 라우트를 거부해 도구가 통째로 열리지 않는다).
+
 - **이미지 push 가 끝없이 재시도하다 실패하던 것** (`internal/stack/adapter/helm/gateway-bridge.go`): CI 빌드에서 `docker login` 과 `docker build` 는 지나가는데 `docker push` 만 모든 layer 가 `Retrying in N seconds` 를 반복하다 죽었다.
 
   게이트웨이 브리지 ingress 에 본문 상한이 없었다 — 그래서 **ingress-nginx 기본값 1m** 이 걸렸다. 이미지 layer 는 수십 MB 다.

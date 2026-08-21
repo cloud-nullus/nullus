@@ -607,6 +607,12 @@ export function buildHelmStepResourceOverride(toolId: string, resources: Resourc
   }
 }
 
+// GATEWAY_ROUTE_TIMEOUT_SECONDS 는 도구 라우트 하나가 붙잡을 수 있는 최대 시간이다.
+//
+// 앞단 ingress 의 proxy 타임아웃과 같은 값이다(gateway-bridge.go). 두 관문의
+// 값이 갈라지면 짧은 쪽에서 끊기는데, 어느 쪽이 끊었는지는 로그에 드러나지 않는다.
+const GATEWAY_ROUTE_TIMEOUT_SECONDS = 600
+
 export function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestToolEntry[]): string {
   const namespace = draft.namespace.trim() || 'nullus'
   const stackName = draft.stackName || 'nullus-stack'
@@ -731,6 +737,17 @@ export function buildGatewayManifest(draft: StackConfigDraft, manifestTools: Man
                 },
               },
             ],
+            // Envoy 의 기본 라우트 타임아웃은 15초다. 이미지 layer push 와
+            // git push 는 그보다 오래 걸리는 **단일 요청**이라, 정해 두지 않으면
+            // 게이트웨이가 중간에 끊는다 — docker 는 그것을 재시도로 받아 모든
+            // layer 가 끝없이 "Retrying in N seconds" 를 반복한다.
+            //
+            // backendRequest 는 request 보다 클 수 없다. 크면 Gateway API 가
+            // 라우트를 거부해 도구가 통째로 열리지 않는다.
+            timeouts: {
+              request: `${GATEWAY_ROUTE_TIMEOUT_SECONDS}s`,
+              backendRequest: `${GATEWAY_ROUTE_TIMEOUT_SECONDS}s`,
+            },
             backendRefs: [
               {
                 name: backendServiceName,
