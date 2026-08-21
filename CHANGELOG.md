@@ -332,6 +332,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **이미지 push 가 308 리다이렉트에서 죽던 것 — 도구 주소 스킴이 SSO 에 묶여 있었다** (`internal/stack/adapter/helm/sso-provisioning.go`): `docker push` 가 모든 layer 를 재시도하다 `EOF` 로 끝났다. 본문 상한도(#211) 라우트 타임아웃도(#214) 아니었다.
+
+  실제로 오간 것은 이렇다:
+
+  ```
+  location: http://harbor.nullus.io/v2/nullus/sample-frontend/blobs/uploads/...
+  PATCH(20MB) → 308
+  ```
+
+  Harbor 는 `externalURL` 의 스킴으로 blob 업로드 주소(Location)를 돌려준다. 그 값이 `http://` 였고, 게이트웨이는 http 를 https 로 **308 리다이렉트**한다. 본문이 실린 PATCH 에 308 이 오면 클라이언트는 본문을 처음부터 다시 보내야 하고, docker 는 거기서 연결을 끊는다.
+
+  스킴을 정하는 `toolURLScheme()` 이 **SSO 켜짐 여부**만 봤다. 스킴은 접속 도메인이 TLS 로 서비스되느냐에 달린 것이지 SSO 와는 별개인데 그 둘을 묶어 놓아서, SSO 없이 TLS 만 켠 스택은 http 를 받았다.
+
+  이제 접속 도메인의 TLS 설정을 1차 근거로 본다. SSO 경로는 그대로 남는다 — 도구 주소가 Keycloak 에 등록된 redirect 와 스킴이 같아야 하기 때문이다.
+
+  같은 함수를 Gitea `ROOT_URL`, Jenkins URL, GitLab 주소도 쓴다. 그쪽도 함께 바로잡힌다 — https 도메인에서 git push 가 같은 리다이렉트를 만나던 문제다.
+
+  **증상이 멀리 떨어져 보이는 이유**: 로그인·조회 같은 작은 요청은 리다이렉트를 따라가도 아무 손해가 없어 전부 성공한다. 본문이 큰 요청만 죽는다.
+
 - **레지스트리 비밀번호가 빌드 로그에 평문으로 찍히던 것** (`internal/cicd/adapter/scaffold/jenkins_renderer.go`): 스캐폴딩된 Jenkinsfile 의 Build 단계가 `echo "$HARBOR_PASSWORD" | docker login ...` 을 도는데, Jenkins 는 `sh -xe` 로 실행하므로 그 명령이 값과 함께 그대로 로그에 남았다.
 
   ```
