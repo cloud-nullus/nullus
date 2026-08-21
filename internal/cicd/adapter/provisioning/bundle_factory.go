@@ -16,6 +16,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/harbor"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/jenkins"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/nexus"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registrycreds"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
@@ -565,9 +566,23 @@ func (f *BundleFactory) imageDeleterFor(
 			values[harborUsernameVariable],
 			values[harborPasswordVariable],
 		)
+	case port.RegistryKindNexus:
+		values, credErr := creds.Resolve(ctx, []string{nexusUsernameVariable, nexusPasswordVariable})
+		if credErr != nil || values[nexusPasswordVariable] == "" {
+			slog.Warn("nexus 자격증명을 읽지 못해 이미지 삭제를 배선하지 못했습니다",
+				"stack_id", summary.ID, "error", credErr)
+			return nil
+		}
+		// API 주소는 docker 커넥터 주소와 다르다. 그쪽은 push/pull 전용 포트라
+		// REST API 가 없다.
+		return nexus.NewClient(
+			nexusBaseURL(summary.AccessDomain),
+			values[nexusUsernameVariable],
+			values[nexusPasswordVariable],
+		)
 	default:
-		// Nexus 등은 아직 삭제 수단이 없다. nil 을 돌려주면 호출부가
-		// "이 레지스트리는 지원하지 않는다" 를 경고로 남긴다.
+		// 삭제 수단이 없는 레지스트리는 nil 이다. 호출부가 "이 레지스트리는
+		// 지원하지 않는다" 를 경고로 남긴다 — 조용히 성공으로 넘기지 않는다.
 		return nil
 	}
 }
@@ -582,9 +597,22 @@ func harborBaseURL(accessDomain string) string {
 	return "https://" + host
 }
 
+// nexusBaseURL 은 Nexus REST API 주소다. docker 커넥터(registry.<도메인>)와
+// 다른 호스트다.
+func nexusBaseURL(accessDomain string) string {
+	domain := strings.Trim(strings.TrimSpace(accessDomain), "/")
+	if domain == "" {
+		return ""
+	}
+	return "https://nexus." + domain
+}
+
 const (
 	harborUsernameVariable = "HARBOR_USERNAME"
 	harborPasswordVariable = "HARBOR_PASSWORD" // #nosec G101 -- CI 변수 이름
+
+	nexusUsernameVariable = "NEXUS_USERNAME"
+	nexusPasswordVariable = "NEXUS_PASSWORD" // #nosec G101 -- CI 변수 이름
 )
 
 // gatewayNameForStack 은 스택이 만든 게이트웨이의 이름이다.

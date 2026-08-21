@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **파이프라인 삭제가 CI job 과 Nexus 이미지까지 걷어낸다** (`internal/cicd/adapter/nexus/` 신규, `internal/cicd/usecase/delete_pipeline.go`): 두 가지가 더 남고 있었다.
+
+  **하나 — Jenkins job.** `DeleteJob` 은 포트에도 있고 Jenkins 클라이언트도 구현했는데 **아무도 부르지 않았다.** 파이프라인을 지워도 job 이 남아, 없어진 리포를 계속 스캔하며 실패한다. 이제 플래그 없이도 지운다 — job 은 이 파이프라인 몫으로 플랫폼이 만든 것이고, 파이프라인이 사라진 뒤에는 쓸모가 없다.
+
+  지우지 못해도 삭제를 멈추지 않는다. CI 서버가 잠깐 응답하지 않는다고 파이프라인을 못 지우게 되면, 클러스터 리소스는 이미 지워진 뒤라 되돌리기 어려운 상태에 갇힌다. 대신 지우지 못했다는 사실을 경고로 남긴다. GitLab CI·GitHub Actions 는 파이프라인 정의를 리포에서 읽으므로 지울 job 이 없고, 그 구성에서는 조용하다.
+
+  **둘 — Nexus 이미지.** Harbor 와 달리 "저장소를 통째로 지운다" 는 단일 API 가 없어, 이름으로 컴포넌트를 찾아 하나씩 지운다(태그마다 컴포넌트가 하나씩 생긴다). 검색 결과가 쪽으로 나뉘므로 `continuationToken` 을 따라간다 — 첫 쪽만 지우면 나머지 태그가 조용히 남는다. 하나가 실패해도 나머지를 시도한 뒤 실패 사실을 올린다. 첫 실패에서 멈추면 절반만 지워진 채 성공도 실패도 아닌 상태가 된다.
+
+  이름을 가려내지 못하면 지우지 않는다 — 빈 이름으로 검색하면 저장소의 모든 컴포넌트가 걸려 남의 이미지까지 지운다.
+
 - **파이프라인을 지우면 이미지와 배포된 애플리케이션도 함께 지워진다** (`internal/cicd/adapter/harbor/` 신규, `internal/cicd/usecase/delete_pipeline.go`): 두 가지가 남고 있었다.
 
   **하나 — Harbor 이미지 저장소.** `ImageRepositoryDeleter` 구현체가 GHCR 하나뿐이라, Harbor 를 쓰는 스택에서는 "이 레지스트리는 삭제를 지원하지 않습니다" 만 나왔다. 플랫폼이 프로젝트를 만들고 이미지를 밀어 넣으면서 정리는 못 하니, 파이프라인을 지워도 이미지가 계속 쌓였다. 이제 Harbor 구현체가 프로젝트 안의 저장소를 지운다 — 자격증명은 [#210] 이 만든 `registrycreds` 로 스택 시크릿에서 푼다.
@@ -349,6 +359,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
+
+- **CI 에서만 나던 프론트 테스트 타임아웃** (`web/vite.config.ts`): 페이지를 통째로 렌더하는 컴포넌트 테스트가 vitest 기본 타임아웃(5초)을 CI 에서만 넘겼다. 로컬에서는 통과하므로 실패가 회귀처럼 보인다 — 실제로는 v8 커버리지 계측과 느린 러너가 겹친 것이고, 테스트가 멈춘 것이 아니다.
+
+  `testTimeout` 을 20초로 둔다. 멈춘 테스트는 여전히 실패한다 — 늦게 실패할 뿐이다. 되살린 CI(#224)가 이런 이유로 다시 꺼지지 않게 하는 것이 목적이다.
 
 - **CI 가 다섯 달 동안 꺼져 있어 어떤 PR 도 빌드·테스트를 거치지 않던 것** (`.github/workflows/ci.yml`, `scripts/check-coverage.sh`): `CI` 워크플로가 `disabled_manually` 상태였고 마지막 실행은 2026-03-15, 그것도 실패였다. 그 뒤로 PR 에 붙는 검사는 전부 린트·포맷·컨벤션뿐이었다 — **`go build` 도 `go test` 도 PR 을 막지 못했다.**
 

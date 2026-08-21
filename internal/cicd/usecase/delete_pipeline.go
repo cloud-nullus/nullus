@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
@@ -94,15 +95,29 @@ func (uc *DeletePipeline) Execute(
 	// 사는지는 스택이 알고, 그것 없이는 애플리케이션을 없는 곳에서 찾게 된다.
 	needsExternal := input.DeleteRepository || input.DeleteImages || input.DeleteClusterResources
 
+	// 번들은 언제나 시도한다. CI job 은 플래그 없이도 지워야 하기 때문이다 —
+	// 파이프라인이 사라진 뒤에도 job 이 남으면, 없어진 리포를 계속 스캔하며
+	// 실패한다. 다만 조립에 실패했을 때 삭제 전체를 세우는 것은 사용자가
+	// 요청한 항목(저장소·이미지·클러스터 리소스)이 있을 때뿐이다.
 	var bundle *port.SCMBundle
-	if needsExternal {
-		if uc.factory == nil {
-			return nil, fmt.Errorf("SCM 연동이 배선되지 않아 저장소·이미지를 지울 수 없습니다")
-		}
+	if uc.factory != nil {
 		bundle, err = uc.factory.For(ctx, pipeline.StackID)
 		if err != nil {
-			return nil, fmt.Errorf("resolve scm bundle for stack %s: %w", pipeline.StackID, err)
+			if needsExternal {
+				return nil, fmt.Errorf("resolve scm bundle for stack %s: %w", pipeline.StackID, err)
+			}
+			slog.Warn("스택 연동을 읽지 못해 CI job 정리를 건너뜁니다",
+				"stack_id", pipeline.StackID, "error", err)
+			bundle = nil
 		}
+	} else if needsExternal {
+		return nil, fmt.Errorf("SCM 연동이 배선되지 않아 저장소·이미지를 지울 수 없습니다")
+	}
+
+	// CI job 을 먼저 지운다. 저장소나 이미지를 지우는 동안 job 이 살아 있으면
+	// 그 사이 트리거된 빌드가 방금 지운 것을 다시 만들 수 있다.
+	if warning := uc.deleteCIJob(ctx, bundle, pipeline.Name); warning != "" {
+		out.Warnings = append(out.Warnings, warning)
 	}
 
 	if input.DeleteClusterResources {
@@ -148,6 +163,28 @@ func (uc *DeletePipeline) Execute(
 		return nil, err
 	}
 	return out, nil
+}
+
+// deleteCIJob 은 CI 서버에 만들어 둔 job 을 지운다.
+//
+// 플래그로 고르게 하지 않는다. job 은 이 파이프라인 몫으로 플랫폼이 만든 것이고,
+// 파이프라인이 사라진 뒤에는 없어진 리포를 계속 스캔하며 실패할 뿐이다.
+//
+// 지우지 못해도 삭제를 멈추지 않는다 — CI 서버가 잠깐 응답하지 않는다고 해서
+// 파이프라인을 못 지우게 되면, 클러스터 리소스는 이미 지워진 뒤라 되돌리기
+// 어려운 상태에 갇힌다. 대신 지우지 못했다는 사실을 경고로 남긴다.
+//
+// 지원하지 않는 플랫폼(GitLab CI·GitHub Actions)은 CIJobs 가 nil 이다. 그쪽은
+// 파이프라인 정의를 리포에서 읽으므로 지울 job 자체가 없다.
+func (uc *DeletePipeline) deleteCIJob(ctx context.Context, bundle *port.SCMBundle, appName string) string {
+	if bundle == nil || bundle.CIJobs == nil {
+		return ""
+	}
+	if err := bundle.CIJobs.DeleteJob(ctx, appName); err != nil {
+		slog.Warn("CI job 삭제 실패", "app", appName, "error", err)
+		return fmt.Sprintf("CI job %s 를 지우지 못했습니다: %v. CI 서버에서 직접 지워야 합니다", appName, err)
+	}
+	return ""
 }
 
 func (uc *DeletePipeline) deleteClusterResources(
