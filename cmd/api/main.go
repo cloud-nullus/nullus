@@ -326,7 +326,11 @@ func main() {
 		},
 	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
 		WithGitea(cicdGiteaTokens, secretRouter).
-		WithJenkins(cicdJenkinsCreds)
+		WithJenkins(cicdJenkinsCreds).
+		// 스택이 설치한 Harbor·Nexus 의 관리자 자격증명은 설치 과정이 이미
+		// OpenBao 에 만들어 두었다. 배선하지 않으면 CI 레지스트리 변수가 비어
+		// 스캐폴딩된 파이프라인의 docker login 이 죽는다.
+		WithRegistrySecrets(secretRouter)
 	runSyncUC := cicduc.NewSyncPipelineRuns(nil, pgDeploymentRepo).
 		WithBundleFactory(cicdBundleFactory, pgPipelineRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
