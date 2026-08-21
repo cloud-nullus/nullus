@@ -317,3 +317,69 @@ func TestDeletePipeline_RefusesWhenCDNamespaceUnknown(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, repo.deleted, "지우지 못했으면 레코드를 남겨 다시 시도할 수 있어야 한다")
 }
+
+type recordingCIJobs struct {
+	deleted []string
+	err     error
+}
+
+func (r *recordingCIJobs) EnsureJob(context.Context, port.CIJobSpec) (*port.CIJob, error) {
+	return &port.CIJob{}, nil
+}
+
+func (r *recordingCIJobs) DeleteJob(_ context.Context, name string) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.deleted = append(r.deleted, name)
+	return nil
+}
+
+// CI job 은 플래그 없이도 지운다. 파이프라인이 사라진 뒤에 job 이 남으면
+// 없어진 리포를 계속 스캔하며 실패한다.
+func TestDeletePipeline_DeletesCIJobWithoutAnyFlag(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	jobs := &recordingCIJobs{}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.CIJobs = jobs
+
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, &fakeKubeconfigProvider{})
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{PipelineID: "pip_1"})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"myapp"}, jobs.deleted)
+	assert.Empty(t, out.Warnings)
+}
+
+// CI 서버가 잠깐 응답하지 않는다고 파이프라인을 못 지우면, 클러스터 리소스는
+// 이미 지워진 뒤라 되돌리기 어려운 상태에 갇힌다. 경고로 남기고 진행한다.
+func TestDeletePipeline_ContinuesWhenCIJobDeleteFails(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.CIJobs = &recordingCIJobs{err: errors.New("jenkins unreachable")}
+
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, &fakeKubeconfigProvider{})
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{PipelineID: "pip_1"})
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, repo.deleted)
+	require.Len(t, out.Warnings, 1)
+	assert.Contains(t, out.Warnings[0], "CI job")
+}
+
+// GitLab CI·GitHub Actions 는 파이프라인 정의를 리포에서 읽으므로 지울 job 이
+// 없다. CIJobs 가 nil 인 그 구성에서 경고를 남기면 매번 거짓 경고가 뜬다.
+func TestDeletePipeline_SilentWhenCIHasNoJobs(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.CIJobs = nil
+
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, &fakeKubeconfigProvider{})
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{PipelineID: "pip_1"})
+
+	require.NoError(t, err)
+	assert.Empty(t, out.Warnings)
+}
