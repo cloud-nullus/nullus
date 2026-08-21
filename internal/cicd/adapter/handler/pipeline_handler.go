@@ -208,7 +208,12 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_CONFIG_INVALID", err.Error())
 	}
 
+	// 만들자마자 어디로 열리는지 알려 준다. 목록으로 돌아가 다시 찾게 하지 않는다.
+	views := h.withAccessURLs(c.Request().Context(), []*domain.Pipeline{out.Pipeline})
 	resp := map[string]any{"pipeline": out.Pipeline}
+	if len(views) == 1 && views[0].AccessURL != "" {
+		resp["access_url"] = views[0].AccessURL
+	}
 	if out.StackWarning != "" {
 		resp["warning"] = out.StackWarning
 	}
@@ -233,6 +238,51 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 
 // ListPipelines handles GET /api/v1/pipelines.
 // Supports optional ?stack_id= query parameter to filter by stack.
+// pipelineView 는 파이프라인에 계산된 값을 덧붙인 응답 형태다.
+//
+// 접속 주소는 저장하지 않는다 — 스택의 접근 도메인에서 나오므로, 도메인이 바뀌면
+// 저장된 값은 그 순간 거짓이 된다. 응답을 만들 때 계산한다.
+type pipelineView struct {
+	*domain.Pipeline
+	// AccessURL 은 배포된 앱의 외부 접속 주소다.
+	// 스택에 접근 도메인이 없으면 비어 있다 — 앱이 클러스터 안에서만 닿는다.
+	AccessURL string `json:"access_url,omitempty"`
+}
+
+// withAccessURLs 는 파이프라인 목록에 접속 주소를 붙인다.
+//
+// 스택마다 한 번만 조회한다. 같은 스택의 파이프라인이 여럿인 것이 보통이라,
+// 파이프라인 수만큼 조회하면 목록 한 번에 같은 질의가 수십 번 나간다.
+//
+// 조회에 실패해도 목록은 그대로 돌려준다. 주소를 못 보여 주는 것이 목록 전체를
+// 못 보여 줄 이유는 아니다.
+func (h *PipelineHandler) withAccessURLs(ctx context.Context, pipelines []*domain.Pipeline) []pipelineView {
+	views := make([]pipelineView, 0, len(pipelines))
+	domains := make(map[string]string, 4)
+
+	for _, pipeline := range pipelines {
+		if pipeline == nil {
+			continue
+		}
+		view := pipelineView{Pipeline: pipeline}
+
+		stackID := strings.TrimSpace(pipeline.StackID)
+		if stackID != "" && h.stackReader != nil {
+			accessDomain, seen := domains[stackID]
+			if !seen {
+				if summary, err := h.stackReader.GetStackSummary(ctx, stackID); err == nil && summary != nil {
+					accessDomain = summary.AccessDomain
+				}
+				domains[stackID] = accessDomain
+			}
+			view.AccessURL = domain.AppAccessURL(pipeline.Name, accessDomain)
+		}
+
+		views = append(views, view)
+	}
+	return views
+}
+
 func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 	orgID := h.validatedOrgID(c.Request().Context(), c.Request().Header.Get("X-Org-ID"))
 
@@ -244,7 +294,8 @@ func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"items": out.Pipelines, "total": len(out.Pipelines)})
+	views := h.withAccessURLs(c.Request().Context(), out.Pipelines)
+	return c.JSON(http.StatusOK, map[string]any{"items": views, "total": len(views)})
 }
 
 // ListPipelinesByStack handles GET /api/v1/stacks/:stackId/pipelines.
@@ -260,7 +311,8 @@ func (h *PipelineHandler) ListPipelinesByStack(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"items": pipelines, "total": len(pipelines)})
+	views := h.withAccessURLs(c.Request().Context(), pipelines)
+	return c.JSON(http.StatusOK, map[string]any{"items": views, "total": len(views)})
 }
 
 // deployRequest is the request body for POST /pipelines/:id/deploy.

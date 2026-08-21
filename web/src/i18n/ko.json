@@ -779,7 +779,8 @@
       "lastDeployed": "최근 배포",
       "noStack": "—",
       "stack": "스택",
-      "deletedStack": "삭제됨"
+      "deletedStack": "삭제됨",
+      "accessUrl": "접속 주소"
     },
     "emptyPipelines": "파이프라인이 없습니다.",
     "emptyDeployments": "배포 이력이 없습니다.",
@@ -795,7 +796,8 @@
     "listHint": "목록에서 파이프라인을 선택하면 상세 패널이 즉시 갱신됩니다.",
     "deleteWarnings": {
       "title": "삭제했지만 남은 자원이 있습니다"
-    }
+    },
+    "accessUrl": "접속 주소"
   },
   "cicdHistoryPage": {
     "title": "CI/CD 이력",

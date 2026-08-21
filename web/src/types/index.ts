@@ -386,6 +386,8 @@ export interface Pipeline {
   stackId: string;
   executionMode: string;
   gitRepoUrl: string;
+  /** 배포된 앱이 열리는 주소(`https://<앱>.<스택 도메인>`). 도메인이 없으면 빈 문자열. */
+  accessUrl?: string;
   clusterId: string;
   clusterName: string;
   namespace: string;

@@ -227,6 +227,9 @@ export const cicdApiCalls = {
     const items: Pipeline[] = (raw.items ?? []).map((p: any) => ({
       id: p.id,
       name: p.name,
+      // 배포된 앱이 열리는 주소. 스택에 접근 도메인이 없으면 비어 있다 —
+      // 서버가 계산해 내려준다(도메인이 바뀌면 저장된 값은 그 순간 거짓이 된다).
+      accessUrl: p.access_url ?? "",
       mode: cicdApiCalls.resolvePipelineMode(
         templateStagesMap.get(p.template_id),
       ),
