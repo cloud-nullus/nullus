@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -133,5 +134,64 @@ func TestMemoryStreamer_ReplaysHistoryToLateSubscriber(t *testing.T) {
 		assert.Equal(t, second.Message, got.Message)
 	case <-time.After(time.Second):
 		t.Fatal("expected second replayed log entry")
+	}
+}
+
+// 재접속하면 그동안의 로그를 전부 돌려받아야 한다.
+//
+// 예전에는 버퍼 64짜리 채널에 default 로 흘려보내, 64줄이 차는 순간 이후가 전부
+// 조용히 버려졌다. 설치 로그는 그보다 훨씬 길어서 화면에는 초반(cert-manager
+// 언저리)까지만 남았고, 마지막으로 전달된 항목이 초반이라 진행률도 5% 로 굳었다.
+func TestMemoryStreamer_ReplaysEntireHistory(t *testing.T) {
+	s := NewMemoryStreamer()
+	const total = defaultChannelBuffer * 5
+
+	for i := range total {
+		s.Stream(context.Background(), "stk-1", port.LogEntry{Message: fmt.Sprintf("line-%d", i)})
+	}
+
+	ch := s.Subscribe("stk-1")
+	defer s.Unsubscribe("stk-1", ch)
+
+	got := make([]string, 0, total)
+	for range total {
+		select {
+		case entry := <-ch:
+			got = append(got, entry.Message)
+		case <-time.After(time.Second):
+			t.Fatalf("재생이 %d줄에서 끊겼습니다 (전체 %d줄)", len(got), total)
+		}
+	}
+
+	require.Len(t, got, total)
+	assert.Equal(t, "line-0", got[0])
+	assert.Equal(t, fmt.Sprintf("line-%d", total-1), got[total-1],
+		"마지막 줄까지 와야 진행률이 최신 값으로 복원된다")
+}
+
+// 재생 뒤에도 새 로그를 받을 자리가 남아야 한다.
+func TestMemoryStreamer_AcceptsLiveEntriesAfterReplay(t *testing.T) {
+	s := NewMemoryStreamer()
+	for i := range defaultChannelBuffer * 3 {
+		s.Stream(context.Background(), "stk-2", port.LogEntry{Message: fmt.Sprintf("old-%d", i)})
+	}
+
+	ch := s.Subscribe("stk-2")
+	defer s.Unsubscribe("stk-2", ch)
+
+	for i := range defaultChannelBuffer * 3 {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatalf("재생이 %d줄에서 끊겼습니다", i)
+		}
+	}
+	s.Stream(context.Background(), "stk-2", port.LogEntry{Message: "live"})
+
+	select {
+	case entry := <-ch:
+		assert.Equal(t, "live", entry.Message)
+	case <-time.After(time.Second):
+		t.Fatal("재생 뒤 새 로그를 받지 못했습니다")
 	}
 }

@@ -18,12 +18,32 @@ import (
 // --- fakes ---
 
 type fakeStackRepo struct {
-	mu     sync.Mutex
-	stacks map[string]*domain.Stack
+	mu      sync.Mutex
+	stacks  map[string]*domain.Stack
+	touches map[string]int
+}
+
+func (r *fakeStackRepo) TouchUpdatedAt(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.touches == nil {
+		r.touches = make(map[string]int)
+	}
+	r.touches[id]++
+	if stack, ok := r.stacks[id]; ok {
+		stack.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
+func (r *fakeStackRepo) touchCount(id string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.touches[id]
 }
 
 func newFakeStackRepo(stacks ...*domain.Stack) *fakeStackRepo {
-	r := &fakeStackRepo{stacks: make(map[string]*domain.Stack)}
+	r := &fakeStackRepo{stacks: make(map[string]*domain.Stack), touches: make(map[string]int)}
 	for _, s := range stacks {
 		cp := *s
 		r.stacks[s.ID] = &cp
@@ -864,4 +884,36 @@ func indexOfStep(steps []string, target string) int {
 
 func (r *fakeStackRepo) ListInFlight(context.Context) ([]*domain.Stack, error) {
 	return nil, nil
+}
+
+// 리퍼는 갱신 시각만 보고 끊긴 설치를 판정한다. 그런데 갱신 시각은 단계가
+// 시작·완료될 때만 움직인다 — 한 단계가 임계값보다 오래 걸리면(Harbor·GitLab
+// 이미지 풀은 흔히 그렇다) 멀쩡히 도는 설치가 끊긴 것으로 표시된다.
+//
+// 2026-08-21 운영에서 그렇게 됐다. 상태만 실패로 뒤집히고 고루틴은 계속 돌아,
+// "실패" 로 표시된 뒤에 게이트웨이가 만들어졌다. 오류 로그가 없던 것은 실제로
+// 오류가 없었기 때문이다.
+func TestInstallStack_HeartbeatsWhileAStepIsSlow(t *testing.T) {
+	repo := newFakeStackRepo(&domain.Stack{
+		ID:        "stk-hb",
+		Name:      "heartbeat stack",
+		ClusterID: "cluster-hb",
+		Namespace: "nullus-heartbeat-stack",
+		State:     domain.StatePending,
+	})
+
+	uc := NewInstallStack(repo, nil)
+
+	stop := uc.startHeartbeat(context.Background(), "stk-hb", 10*time.Millisecond)
+	defer stop()
+
+	require.Eventually(t, func() bool {
+		return repo.touchCount("stk-hb") >= 2
+	}, 2*time.Second, 5*time.Millisecond,
+		"단계가 도는 동안 갱신 시각이 계속 찍혀야 리퍼가 살아 있는 설치를 죽은 것으로 보지 않는다")
+
+	stop()
+	settled := repo.touchCount("stk-hb")
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, settled, repo.touchCount("stk-hb"), "설치가 끝나면 하트비트도 멈춘다")
 }
