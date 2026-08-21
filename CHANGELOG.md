@@ -360,6 +360,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **설치 테스트가 배경 고루틴과 경합하던 것** (`internal/stack/usecase/install_stack_test.go`): `Execute` 직후 상태를 `validating` 으로 단정했는데, 그 사이 설치 고루틴이 `installing` 으로 넘어가 있으면 실패한다. 테스트 주석 자체가 그 가능성을 인정하고 있었다("goroutine may not have finished yet").
+
+  `Execute` 가 **동기적으로** 보장하는 것은 "pending 을 벗어났다" 까지다. 그 지점을 검사한다. 되살린 CI(#224)가 처음 돌면서 드러난 실패다 — 다섯 달 동안 아무도 이 테스트를 돌리지 않았다.
+
 - **스택을 지워도 네임스페이스가 남던 것** (`internal/stack/usecase/delete_stack.go`): PVC 는 확실히 지워지는데 네임스페이스만 남았다 — 정리는 끝까지 돌았고 **소유권 판정에서 걸렸다**.
 
   회수 조건이 "설치가 스택 이름에서 만든 자리(`nullus-<슬러그>`)와 **정확히 같을 때**" 였다. 그런데 스택 이름이 이미 `nullus-` 로 시작하면 파생값은 `nullus-nullus-devsecops-stack` 이 되어 실제 네임스페이스(`nullus-devsecops-stack`)와 어긋난다.
