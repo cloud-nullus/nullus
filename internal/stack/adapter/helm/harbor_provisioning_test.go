@@ -105,3 +105,24 @@ func TestHarborExternalURL_UsesHTTPSWhenTLSEnabled(t *testing.T) {
 
 	assert.Equal(t, "https://harbor.nullus.io", values["externalURL"])
 }
+
+// registry 는 리버스 프록시 뒤에 선다. Location 헤더를 절대 주소로 만들면
+// 그 스킴이 프록시가 넘긴 X-Forwarded-Proto 에서 오는데, 체인이
+// 클라이언트 →(https) ingress-nginx →(http) Envoy → Harbor 라서 Envoy 가
+// 자기 리스너 기준으로 http 를 다시 쓴다.
+//
+// 그러면 blob 업로드 Location 이 http:// 로 나가고, 게이트웨이가 그것을 https 로
+// 308 되돌린다. 본문이 실린 PATCH 에 308 이 오면 클라이언트는 본문을 처음부터
+// 다시 보내야 하고 docker 는 거기서 연결을 끊는다 — push 가 모든 layer 를
+// 재시도하다 EOF 로 죽었다.
+//
+// 상대 경로를 쓰면 스킴 자체가 나가지 않는다. 클라이언트가 원래 요청한 주소를
+// 기준으로 이어 붙이므로 프록시가 몇 겹이든 어긋날 것이 없다.
+func TestHarborValues_RegistryUsesRelativeURLs(t *testing.T) {
+	values := DefaultValues("installing_harbor")
+
+	registry, ok := values["registry"].(map[string]any)
+	assert.True(t, ok, "registry 설정이 있어야 한다")
+	assert.Equal(t, true, registry["relativeurls"],
+		"프록시 뒤에서 절대 Location 을 쓰면 스킴이 어긋나 업로드가 308 에서 끊긴다")
+}
