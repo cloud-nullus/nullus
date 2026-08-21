@@ -49,7 +49,7 @@ type fakeArgoAppDeleter struct {
 	err   error
 }
 
-func (f *fakeArgoAppDeleter) Delete(_ context.Context, _ []byte, namespace, name string) error {
+func (f *fakeArgoAppDeleter) DeleteApplication(_ context.Context, _ []byte, namespace, name string) error {
 	if f.err != nil {
 		return f.err
 	}
@@ -89,8 +89,10 @@ func deleteFixture(t *testing.T) (
 
 	bundle := newBundle(scm, newFakePipelineConfig(), harborResolver())
 	bundle.Images = images
+	// CD 도구의 삭제기는 번들이 공급한다 — 스택마다 다른 도구를 쓸 수 있다.
+	bundle.CDApplications = argo
 
-	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, argo, &fakeKubeconfigProvider{})
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, &fakeKubeconfigProvider{})
 	return uc, repo, scm, argo, images
 }
 
@@ -116,7 +118,10 @@ func TestDeletePipeline_DeletesClusterResourcesWhenRequested(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"apps/myapp"}, argo.calls)
+	// 애플리케이션은 **CD 도구의 네임스페이스**(devsecops)에 산다. 예전에는
+	// 배포 대상 네임스페이스(apps)를 넘겼는데, 구현체가 "이미 없음" 을 성공으로
+	// 보므로 애플리케이션이 조용히 남았다.
+	assert.Equal(t, []string{"devsecops/myapp"}, argo.calls)
 	assert.True(t, out.ClusterResourcesDeleted)
 	assert.Equal(t, []string{"pip_1"}, repo.deleted)
 }
@@ -160,8 +165,7 @@ func TestDeletePipeline_ContinuesWhenImageDeletionUnsupported(t *testing.T) {
 	bundle := newBundle(scm, newFakePipelineConfig(), harborResolver())
 	bundle.Images = nil // Harbor·Nexus 처럼 삭제 수단이 없는 구성
 
-	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle},
-		&fakeArgoAppDeleter{}, &fakeKubeconfigProvider{})
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, &fakeKubeconfigProvider{})
 
 	out, err := uc.Execute(context.Background(), DeletePipelineInput{
 		PipelineID: "pip_1", DeleteImages: true, DeleteRepository: true,
@@ -274,6 +278,42 @@ func TestDeletePipeline_WorkloadCleanupIsOptional(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"apps/myapp"}, argo.calls)
+	assert.Equal(t, []string{"devsecops/myapp"}, argo.calls)
 	assert.Equal(t, []string{"pip_1"}, repo.deleted)
+}
+
+// CD 도구를 지원하지 않는 스택에서도 삭제는 진행돼야 한다. 애플리케이션을
+// 지울 수단이 없는 것이 파이프라인을 못 지울 이유는 아니다.
+func TestDeletePipeline_ContinuesWhenCDToolHasNoDeleter(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.CDApplications = nil
+
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, &fakeKubeconfigProvider{})
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+
+	require.NoError(t, err)
+	assert.True(t, out.ClusterResourcesDeleted)
+	assert.NotEmpty(t, repo.deleted)
+}
+
+// CD 네임스페이스를 모르면 지우지 않는다. 배포 대상 네임스페이스로 대신
+// 시도하면 없는 곳을 뒤지고 성공으로 끝나, 애플리케이션이 조용히 남는다.
+func TestDeletePipeline_RefusesWhenCDNamespaceUnknown(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.CDApplications = &fakeArgoAppDeleter{}
+	bundle.CDNamespace = ""
+
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, &fakeKubeconfigProvider{})
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+
+	require.Error(t, err)
+	assert.Empty(t, repo.deleted, "지우지 못했으면 레코드를 남겨 다시 시도할 수 있어야 한다")
 }

@@ -91,7 +91,7 @@ func TestFor_BuildsBundleFromStack(t *testing.T) {
 	assert.NotNil(t, bundle.Registry)
 	assert.Equal(t, "acme", bundle.GroupPath)
 	// Argo CD 는 스택 네임스페이스에 설치되므로 Application 도 거기 만든다.
-	assert.Equal(t, "devsecops", bundle.ArgoNamespace)
+	assert.Equal(t, "devsecops", bundle.CDNamespace)
 	assert.Equal(t, "c1", bundle.ClusterID)
 }
 

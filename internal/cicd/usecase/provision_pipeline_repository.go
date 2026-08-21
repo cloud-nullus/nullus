@@ -122,7 +122,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			SharedAccessToken:   bundle.RepoAccessToken,
 			AccessDomain:        bundle.AccessDomain,
 			GatewayName:         bundle.GatewayName,
-			GatewayNamespace:    bundle.ArgoNamespace,
+			GatewayNamespace:    bundle.CDNamespace,
 			StackID:             stackID,
 			TemplateID:          input.TemplateID,
 		})
@@ -350,7 +350,7 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 
 		secret, err := argocd.RenderRepositorySecret(argocd.RepositorySecretSpec{
 			AppName:       app,
-			ArgoNamespace: bundle.ArgoNamespace,
+			ArgoNamespace: bundle.CDNamespace,
 			RepoURL:       repoURLForInCluster(bundle, project),
 			Password:      token,
 		})
@@ -370,7 +370,7 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 
 	manifest, err := argocd.RenderApplication(argocd.ApplicationSpec{
 		AppName:              app,
-		ArgoNamespace:        bundle.ArgoNamespace,
+		ArgoNamespace:        bundle.CDNamespace,
 		RepoURL:              repoURLForInCluster(bundle, project),
 		Path:                 argocd.DefaultManifestPath,
 		TargetRevision:       project.DefaultBranch,

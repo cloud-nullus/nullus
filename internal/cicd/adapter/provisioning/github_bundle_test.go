@@ -69,7 +69,7 @@ func TestFor_BuildsGitHubBundle(t *testing.T) {
 	// 리포는 GitHub org 아래에 생긴다. nullus 그룹 경로를 쓰면 없는 네임스페이스를 가리킨다.
 	assert.Equal(t, "acme", bundle.GroupPath)
 	// Argo CD 는 여전히 클러스터 안에 있다.
-	assert.Equal(t, "devsecops", bundle.ArgoNamespace)
+	assert.Equal(t, "devsecops", bundle.CDNamespace)
 	assert.Equal(t, "c1", bundle.ClusterID)
 	// GitHub 은 리포 범위 토큰 API 가 없어 조직 PAT 를 재사용한다.
 	assert.Equal(t, "ghp_valid", bundle.RepoAccessToken)

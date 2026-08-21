@@ -16,13 +16,18 @@ type WorkloadDeleter interface {
 	DeleteByLabel(ctx context.Context, kubeconfig []byte, namespace, selector string) error
 }
 
-// ArgoApplicationDeleter 는 Argo CD Application 과 그것이 배포한 리소스를 지운다.
+// CDApplicationDeleter 는 CD 도구가 배포한 애플리케이션을 지운다.
 //
-// Application 만 지우면 Deployment·Service·HTTPRoute 가 클러스터에 남아 앱이
-// 계속 돈다. 구현체는 정리 finalizer 를 붙여 Argo CD 가 함께 걷어내게 해야 한다.
-type ArgoApplicationDeleter interface {
-	// Delete 는 Application 이 이미 없으면 성공으로 본다.
-	Delete(ctx context.Context, kubeconfig []byte, namespace, name string) error
+// 도구 이름을 계약에 넣지 않는다. Argo CD 든 다른 것이든 "배포된 애플리케이션을
+// 지운다" 는 같은 일이고, 도구가 바뀌면 구현체만 갈아 끼우면 된다.
+//
+// 애플리케이션만 지우면 Deployment·Service·HTTPRoute 가 클러스터에 남아 앱이
+// 계속 돈다. 구현체는 그 도구의 방식대로 배포된 리소스까지 함께 걷어내야 한다
+// (Argo CD 는 정리 finalizer 를 붙인다).
+type CDApplicationDeleter interface {
+	// DeleteApplication 은 애플리케이션이 이미 없으면 성공으로 본다 —
+	// 삭제의 목표는 "없는 상태" 이고, 없음을 오류로 올리면 재시도가 끝나지 않는다.
+	DeleteApplication(ctx context.Context, kubeconfig []byte, namespace, name string) error
 }
 
 type KubeconfigProvider interface {

@@ -365,7 +365,9 @@ func main() {
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
 	deletePipelineUC := cicduc.NewDeletePipeline(
-		pgPipelineRepo, cicdBundleFactory, cicdkube.NewArgoApplicationDeleter(), kubeconfigProvider).
+		// CD 도구의 애플리케이션 삭제기는 번들이 공급한다 — 스택마다 다른 도구를
+		// 쓸 수 있고, 그 판단은 스택을 아는 쪽이 해야 한다.
+		pgPipelineRepo, cicdBundleFactory, kubeconfigProvider).
 		// 매니페스트를 직접 적용한 파이프라인은 Argo CD Application 이 없어
 		// 워크로드를 지워 줄 주체가 없다.
 		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter())

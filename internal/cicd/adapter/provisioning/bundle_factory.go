@@ -13,7 +13,9 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/github"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/harbor"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/jenkins"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registrycreds"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
@@ -186,15 +188,16 @@ func (f *BundleFactory) gitLabBundle(
 	}
 
 	return &port.SCMBundle{
-		Provisioner:   client,
-		Pipeline:      client,
-		Registry:      resolver,
-		Platform:      port.SCMPlatformGitLab,
-		GroupPath:     f.opts.GroupPath,
-		ArgoNamespace: namespace,
-		ClusterID:     summary.ClusterID,
-		AccessDomain:  summary.AccessDomain,
-		GatewayName:   gatewayNameForStack(summary.Name),
+		Provisioner:    client,
+		Pipeline:       client,
+		Registry:       resolver,
+		Platform:       port.SCMPlatformGitLab,
+		GroupPath:      f.opts.GroupPath,
+		CDNamespace:    namespace,
+		CDApplications: kube.NewArgoApplicationDeleter(),
+		ClusterID:      summary.ClusterID,
+		AccessDomain:   summary.AccessDomain,
+		GatewayName:    gatewayNameForStack(summary.Name),
 	}, nil
 }
 
@@ -264,10 +267,11 @@ func (f *BundleFactory) gitHubBundle(
 		GroupPath:       conn.Owner,
 		RepoAccessToken: token,
 		// Argo CD 는 여전히 클러스터 안에 있다.
-		ArgoNamespace: strings.TrimSpace(summary.Namespace),
-		ClusterID:     summary.ClusterID,
-		AccessDomain:  summary.AccessDomain,
-		GatewayName:   gatewayNameForStack(summary.Name),
+		CDNamespace:    strings.TrimSpace(summary.Namespace),
+		CDApplications: kube.NewArgoApplicationDeleter(),
+		ClusterID:      summary.ClusterID,
+		AccessDomain:   summary.AccessDomain,
+		GatewayName:    gatewayNameForStack(summary.Name),
 	}, nil
 }
 
@@ -330,18 +334,32 @@ func (f *BundleFactory) giteaBundle(
 		// 클러스터 안에서 해석되는 값이어야 하고, JCasC 가 등록한 서버 주소와
 		// 정확히 같은 형식이어야 한다(스택 모듈의 jenkinsGiteaServerValues).
 		SCMInClusterURL: giteaBaseURL(namespace),
-		ArgoNamespace:   namespace,
-		ClusterID:       summary.ClusterID,
-		AccessDomain:    summary.AccessDomain,
-		GatewayName:     gatewayNameForStack(summary.Name),
+		CDNamespace:     namespace,
+		// 지금은 모든 스택이 Argo CD 를 쓴다. 다른 CD 도구를 들이면 그 도구의
+		// CDApplicationDeleter 구현체를 여기서 갈아 끼운다.
+		CDApplications: kube.NewArgoApplicationDeleter(),
+		ClusterID:      summary.ClusterID,
+		AccessDomain:   summary.AccessDomain,
+		GatewayName:    gatewayNameForStack(summary.Name),
 	}
 
 	// 스택이 설치한 레지스트리의 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게
 	// 다시 받아 적게 하지 않는다 — 화면은 묻지도 않으므로, 받지 못하면 CI 의
 	// docker login 이 빈 변수로 죽는다.
 	if f.registrySecrets != nil {
-		bundle.RegistryCredentials = registrycreds.New(
-			f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
+		creds := registrycreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
+		bundle.RegistryCredentials = creds
+
+		// 같은 자격증명으로 이미지 저장소도 지운다.
+		//
+		// 플랫폼이 Harbor 프로젝트를 만들고 이미지를 밀어 넣으면서 정리는 못
+		// 했다. 파이프라인을 지워도 이미지가 남아 디스크는 아무도 안 보는
+		// 사이에 찬다. 자격증명을 못 풀면 Images 를 비워 두고, 호출부가
+		// "지우지 못했다" 를 경고로 남긴다 — 조용히 넘기면 사용자는 이미지가
+		// 사라진 줄 안다.
+		if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
+			bundle.Images = deleter
+		}
 	}
 
 	// Jenkins 가 배선돼 있어야 job 을 만들 수 있다. 없으면 CIJobs 를 비워 두고
@@ -513,6 +531,61 @@ func normalize(name string) string {
 	n := strings.ToLower(strings.TrimSpace(name))
 	return strings.NewReplacer(" ", "-", "_", "-").Replace(n)
 }
+
+// imageDeleterFor 는 이 스택의 레지스트리에 맞는 이미지 저장소 삭제기를 만든다.
+//
+// 레지스트리마다 삭제 API 가 다르므로 구현체도 다르다. 지원하지 않는 레지스트리는
+// nil 이며, 호출부는 그것을 ErrImageDeletionUnsupported 와 같게 다룬다.
+func (f *BundleFactory) imageDeleterFor(
+	ctx context.Context,
+	resolver port.ImageRegistryResolver,
+	creds port.RegistryCredentialResolver,
+	summary *port.StackSummary,
+) port.ImageRepositoryDeleter {
+	if resolver == nil || creds == nil {
+		return nil
+	}
+	// 어떤 레지스트리인지는 대상을 한 번 풀어 보면 알 수 있다. 도구 이름을 여기서
+	// 다시 해석하면 resolver 와 판단이 갈릴 수 있다.
+	target, err := resolver.Resolve(ctx, port.ImageTargetSpec{AppName: "probe"})
+	if err != nil || target == nil {
+		return nil
+	}
+
+	switch target.Kind {
+	case port.RegistryKindHarbor:
+		values, credErr := creds.Resolve(ctx, []string{harborUsernameVariable, harborPasswordVariable})
+		if credErr != nil || values[harborPasswordVariable] == "" {
+			slog.Warn("harbor 자격증명을 읽지 못해 이미지 삭제를 배선하지 못했습니다",
+				"stack_id", summary.ID, "error", credErr)
+			return nil
+		}
+		return harbor.NewClient(
+			harborBaseURL(summary.AccessDomain),
+			values[harborUsernameVariable],
+			values[harborPasswordVariable],
+		)
+	default:
+		// Nexus 등은 아직 삭제 수단이 없다. nil 을 돌려주면 호출부가
+		// "이 레지스트리는 지원하지 않는다" 를 경고로 남긴다.
+		return nil
+	}
+}
+
+// harborBaseURL 은 Harbor API 주소다. 접속 도메인이 없으면 밖에서 닿을 주소가
+// 없으므로 빈 값이고, 그러면 삭제 호출이 곧바로 실패한다.
+func harborBaseURL(accessDomain string) string {
+	host := harborHostFor(accessDomain)
+	if host == "" {
+		return ""
+	}
+	return "https://" + host
+}
+
+const (
+	harborUsernameVariable = "HARBOR_USERNAME"
+	harborPasswordVariable = "HARBOR_PASSWORD" // #nosec G101 -- CI 변수 이름
+)
 
 // gatewayNameForStack 은 스택이 만든 게이트웨이의 이름이다.
 //

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -39,7 +40,6 @@ type DeletePipelineOutput struct {
 type DeletePipeline struct {
 	pipelines  port.PipelineRepository
 	factory    port.SCMBundleFactory
-	argoApps   port.ArgoApplicationDeleter
 	kubeconfig port.KubeconfigProvider
 	// workloads 는 매니페스트를 직접 적용한 경로가 남긴 워크로드를 지운다.
 	// 배선되지 않으면 Argo CD 경로만 정리된다 — 종전 동작이다.
@@ -55,13 +55,11 @@ func (uc *DeletePipeline) WithWorkloadDeleter(d port.WorkloadDeleter) *DeletePip
 func NewDeletePipeline(
 	pipelines port.PipelineRepository,
 	factory port.SCMBundleFactory,
-	argoApps port.ArgoApplicationDeleter,
 	kubeconfig port.KubeconfigProvider,
 ) *DeletePipeline {
 	return &DeletePipeline{
 		pipelines:  pipelines,
 		factory:    factory,
-		argoApps:   argoApps,
 		kubeconfig: kubeconfig,
 	}
 }
@@ -92,7 +90,9 @@ func (uc *DeletePipeline) Execute(
 	}
 
 	out := &DeletePipelineOutput{}
-	needsExternal := input.DeleteRepository || input.DeleteImages
+	// 클러스터 리소스 삭제도 번들이 필요하다. CD 도구가 어느 네임스페이스에
+	// 사는지는 스택이 알고, 그것 없이는 애플리케이션을 없는 곳에서 찾게 된다.
+	needsExternal := input.DeleteRepository || input.DeleteImages || input.DeleteClusterResources
 
 	var bundle *port.SCMBundle
 	if needsExternal {
@@ -106,7 +106,7 @@ func (uc *DeletePipeline) Execute(
 	}
 
 	if input.DeleteClusterResources {
-		if err := uc.deleteClusterResources(ctx, pipeline.ClusterID, pipeline.Namespace, pipeline.Name); err != nil {
+		if err := uc.deleteClusterResources(ctx, bundle, pipeline); err != nil {
 			return nil, err
 		}
 		out.ClusterResourcesDeleted = true
@@ -152,17 +152,29 @@ func (uc *DeletePipeline) Execute(
 
 func (uc *DeletePipeline) deleteClusterResources(
 	ctx context.Context,
-	clusterID, namespace, appName string,
+	bundle *port.SCMBundle,
+	pipeline *domain.Pipeline,
 ) error {
-	if uc.argoApps == nil || uc.kubeconfig == nil {
+	if uc.kubeconfig == nil {
 		return fmt.Errorf("클러스터 접근이 배선되지 않아 배포 리소스를 지울 수 없습니다")
 	}
-	kubeconfig, err := uc.kubeconfig.GetKubeconfig(ctx, clusterID)
+	kubeconfig, err := uc.kubeconfig.GetKubeconfig(ctx, pipeline.ClusterID)
 	if err != nil {
-		return fmt.Errorf("클러스터 %s kubeconfig 로드 실패: %w", clusterID, err)
+		return fmt.Errorf("클러스터 %s kubeconfig 로드 실패: %w", pipeline.ClusterID, err)
 	}
-	if err := uc.argoApps.Delete(ctx, kubeconfig, namespace, appName); err != nil {
-		return fmt.Errorf("Argo CD Application 삭제 실패: %w", err)
+
+	if bundle != nil && bundle.CDApplications != nil {
+		// 애플리케이션은 **CD 도구의 네임스페이스**에 산다. 배포 대상
+		// 네임스페이스(앱이 서는 곳)를 넘기면 없는 곳을 뒤지고, 구현체는
+		// "이미 없음" 을 성공으로 보므로 조용히 남는다 — 실제로 그렇게
+		// 파이프라인을 지워도 Argo CD 에 애플리케이션이 계속 남았다.
+		cdNamespace := strings.TrimSpace(bundle.CDNamespace)
+		if cdNamespace == "" {
+			return fmt.Errorf("CD 도구의 네임스페이스를 알 수 없어 배포된 애플리케이션을 지울 수 없습니다")
+		}
+		if err := bundle.CDApplications.DeleteApplication(ctx, kubeconfig, cdNamespace, pipeline.Name); err != nil {
+			return fmt.Errorf("배포된 애플리케이션 삭제 실패: %w", err)
+		}
 	}
 
 	// Argo CD Application 이 없어도 위 호출은 성공으로 본다 — 매니페스트를
@@ -173,8 +185,10 @@ func (uc *DeletePipeline) deleteClusterResources(
 		return nil
 	}
 	// 매니페스트 생성기가 모든 리소스에 붙이는 라벨이다.
-	selector := "app=" + appName
-	if err := uc.workloads.DeleteByLabel(ctx, kubeconfig, namespace, selector); err != nil {
+	//
+	// 워크로드는 **배포 대상 네임스페이스**에 있다 — CD 도구가 사는 곳이 아니다.
+	selector := "app=" + pipeline.Name
+	if err := uc.workloads.DeleteByLabel(ctx, kubeconfig, pipeline.Namespace, selector); err != nil {
 		return fmt.Errorf("배포된 워크로드 삭제 실패 (%s): %w", selector, err)
 	}
 	return nil

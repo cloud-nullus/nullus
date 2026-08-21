@@ -45,6 +45,10 @@ type SCMBundle struct {
 	// OpenBao → ESO → K8s Secret 평면으로 나른다. 지원하지 않으면 nil.
 	Credentials PipelineCredentialPlane
 
+	// CDApplications 는 CD 도구가 배포한 애플리케이션을 지우는 수단이다.
+	// 지원하지 않는 도구에서는 nil 이며, 호출부는 그것을 밝히고 넘어간다.
+	CDApplications CDApplicationDeleter
+
 	// OrgMembers 는 사람을 조직에 넣는 수단이다. 지원하지 않으면 nil.
 	//
 	// 플랫폼이 만든 저장소는 자동화 계정 소유의 private 조직 안에 있어서,
@@ -69,9 +73,11 @@ type SCMBundle struct {
 	// GroupPath 는 프로젝트가 만들어질 네임스페이스다.
 	// GitLab 은 그룹 경로, GitHub 은 organization/사용자 이름이다.
 	GroupPath string
-	// ArgoNamespace 는 Argo CD 가 설치된 네임스페이스다.
-	// Application 리소스를 여기에 만들어야 컨트롤러가 인식한다.
-	ArgoNamespace string
+	// CDNamespace 는 CD 도구가 설치된 네임스페이스다.
+	//
+	// 애플리케이션 리소스는 **여기**에 산다. 배포 대상 네임스페이스(앱이 서는
+	// 곳)와 다르다 — 둘을 혼동하면 삭제가 없는 곳을 뒤지고 성공으로 끝난다.
+	CDNamespace string
 	// ClusterID 는 Application 을 적용할 클러스터다.
 	ClusterID string
 	// AccessDomain / GatewayName 은 배포된 앱을 외부에 노출할 때 쓴다.
