@@ -332,6 +332,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **프로비저닝 경고가 서버에 아무 흔적도 남기지 않던 것** (`internal/cicd/usecase/provision_pipeline_repository.go`): 저장소는 만들어졌는데 Argo CD Application 이 없고, 왜 없는지 알 방법이 없었다.
+
+  Argo CD Application 생성은 여러 지점에서 실패할 수 있고(적용 어댑터 부재, 자격증명 렌더 실패, kubeconfig 조회 실패, 적용 실패) 전부 경고로 남는다. 그런데 그 경고는 **HTTP 응답으로만** 돌아갔다. 화면이 그것을 버리면(#208 이전이 그랬다) 흔적이 통째로 사라진다 — 서버 로그에도, DB 에도 아무것도 없다.
+
+  이제 클라이언트가 읽든 말든 서버 로그에 남긴다. 문제가 없으면 조용하다 — 매번 찍으면 진짜 경고가 묻힌다.
+
 - **Harbor 가 프록시 뒤에서 http Location 을 돌려줘 push 가 308 에서 끊기던 것** (`internal/stack/adapter/helm/values.go`): `externalURL` 을 https 로 맞췄는데도 `docker push` 가 그대로 죽었다. `Location` 을 만드는 것은 `externalURL` 이 아니라 **registry(distribution)** 이고, 그 스킴은 프록시가 넘긴 `X-Forwarded-Proto` 에서 온다.
 
   체인이 `클라이언트 →(https) ingress-nginx →(http) Envoy → Harbor` 다. Envoy 는 자기 리스너가 평문이므로 그 헤더를 `http` 로 다시 쓴다. 그래서 registry 는 `http://harbor.<도메인>/v2/.../blobs/uploads/...` 를 돌려주고, 게이트웨이는 그것을 https 로 308 되돌린다. 본문이 실린 PATCH 에 308 이 오면 클라이언트는 본문을 처음부터 다시 보내야 하고 docker 는 거기서 연결을 끊는다.
