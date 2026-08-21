@@ -54,3 +54,22 @@ func TestShouldCreateGatewayBridge_SkipsLocalDomains(t *testing.T) {
 	require.True(t, shouldCreateGatewayBridge("nullus.io"))
 	require.True(t, shouldCreateGatewayBridge("stack.example.com"))
 }
+
+// 브리지를 지나는 것은 웹 요청만이 아니다. 이미지 push 와 git push 가 같은 길로
+// 간다 — ingress-nginx 기본 본문 상한은 1m 이라, 수십 MB 짜리 layer 업로드가
+// 통째로 막힌다.
+//
+// 2026-08-21 운영에서 그랬다. docker login 과 build 는 지나가고 push 만 끝없이
+// 재시도했다. 작은 요청은 통과하고 큰 본문만 막히는 것이 이 증상의 특징이다.
+func TestGatewayBridgeIngress_AllowsLargeUploads(t *testing.T) {
+	manifest := gatewayBridgeIngressManifest(
+		"nullus-devsecops-stack", "nullus-devsecops-stack", "nullus.io", "envoy-gateway-svc")
+
+	// 0 은 무제한이다. 고정 상한을 두면 그보다 큰 layer 에서 다시 막힌다.
+	assert.Contains(t, manifest, "nginx.ingress.kubernetes.io/proxy-body-size: \"0\"")
+	// 본문을 디스크에 모았다가 넘기면 큰 업로드에서 버퍼가 터지고 지연도 커진다.
+	assert.Contains(t, manifest, "nginx.ingress.kubernetes.io/proxy-request-buffering: \"off\"")
+	// 기본 60초로는 느린 회선의 큰 layer 가 중간에 끊긴다.
+	assert.Contains(t, manifest, "nginx.ingress.kubernetes.io/proxy-read-timeout:")
+	assert.Contains(t, manifest, "nginx.ingress.kubernetes.io/proxy-send-timeout:")
+}

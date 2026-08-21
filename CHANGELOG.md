@@ -312,6 +312,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **이미지 push 가 끝없이 재시도하다 실패하던 것** (`internal/stack/adapter/helm/gateway-bridge.go`): CI 빌드에서 `docker login` 과 `docker build` 는 지나가는데 `docker push` 만 모든 layer 가 `Retrying in N seconds` 를 반복하다 죽었다.
+
+  게이트웨이 브리지 ingress 에 본문 상한이 없었다 — 그래서 **ingress-nginx 기본값 1m** 이 걸렸다. 이미지 layer 는 수십 MB 다.
+
+  작은 요청은 통과하고 큰 본문만 막히므로 증상이 엉뚱하게 보인다. 인증도 되고 조회도 되니 "레지스트리는 살아 있는데 push 만 안 되는" 모양이 된다.
+
+  이 브리지를 지나는 것은 웹 요청만이 아니다. 이미지 push 와 git push 가 같은 길로 간다. 고정 상한 대신 0(무제한)을 쓴다 — 값을 정해 두면 그보다 큰 layer 에서 다시 막힌다. 본문 버퍼링도 끈다(레지스트리·git 은 스트리밍이 정상 경로다). 읽기·쓰기 타임아웃도 기본 60초로는 느린 회선의 큰 layer 가 중간에 끊겨 600초로 올렸다.
+
 - **CI 빌드가 `docker login` 줄에서 2초 만에 죽던 것** (`internal/cicd/adapter/registrycreds/` 신규, `internal/cicd/usecase/provision_pipeline_repository.go`): Jenkins 가 체크아웃까지는 성공하는데 Build 스테이지가 2초 만에 실패했다.
 
   스캐폴딩된 Jenkinsfile 은 `set -eu` 아래에서 `echo "$HARBOR_PASSWORD" | docker login "$REGISTRY_HOST" -u "$HARBOR_USERNAME"` 를 돈다. 그 두 변수가 없으면 `set -u` 가 그 줄에서 즉시 죽는다.
