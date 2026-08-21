@@ -144,7 +144,29 @@ func (uc *ProvisionPipelineRepository) Execute(
 	}
 
 	uc.applyArgoApplication(ctx, bundle, app, input.Namespace, appOut, out)
+
+	// 무엇이 준비되지 못했는지는 서버에도 남긴다.
+	//
+	// 예전에는 응답으로만 돌아갔다. 화면이 그것을 버리면 흔적이 통째로 사라져,
+	// 저장소는 만들어졌는데 Argo CD Application 이 왜 없는지 사후에 알 방법이
+	// 없었다 — 클라이언트가 읽든 말든 서버 로그에는 남아야 한다.
+	logProvisioningWarnings(app, stackID, out)
 	return out, nil
+}
+
+// logProvisioningWarnings 는 준비되지 못한 것을 서버 로그에 남긴다.
+// 문제가 없으면 조용하다 — 매번 찍으면 진짜 경고가 묻힌다.
+func logProvisioningWarnings(app, stackID string, out *ProvisionPipelineRepositoryOutput) {
+	if out == nil || (len(out.Warnings) == 0 && len(out.MissingVariables) == 0) {
+		return
+	}
+	slog.Warn("파이프라인 프로비저닝이 일부 준비되지 못했습니다",
+		"app", app,
+		"stack_id", stackID,
+		"warnings", out.Warnings,
+		"missing_variables", out.MissingVariables,
+		"argo_application_created", out.ArgoApplicationCreated,
+		"scaffold_skipped", out.ScaffoldSkipped)
 }
 
 // pullSecretUsername 은 kubelet 이 레지스트리에 로그인할 사용자명을 고른다.
