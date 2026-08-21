@@ -35,7 +35,8 @@
     "goHome": "Go to Home",
     "notFound": "Page not found",
     "notFoundDesc": "The page you are looking for does not exist or has been moved.",
-    "close": "Close"
+    "close": "Close",
+    "dismiss": "Dismiss"
   },
   "header": {
     "roles": {
@@ -791,7 +792,10 @@
       "active": "Active"
     },
     "emptyDetail": "Select a pipeline from the list to view details here.",
-    "listHint": "Selecting a pipeline from the list updates the detail panel immediately."
+    "listHint": "Selecting a pipeline from the list updates the detail panel immediately.",
+    "deleteWarnings": {
+      "title": "Deleted, but some resources remain"
+    }
   },
   "cicdHistoryPage": {
     "title": "CI/CD History",

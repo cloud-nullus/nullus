@@ -1761,6 +1761,15 @@ function PipelineDetailPanel({
   );
 }
 
+// deletePipelineErrorMessage 는 삭제 실패를 사용자가 읽을 수 있는 한 줄로 만든다.
+function deletePipelineErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim() !== "") return message;
+  }
+  return "파이프라인을 지우지 못했습니다";
+}
+
 export function CicdListPage() {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
@@ -1776,6 +1785,8 @@ export function CicdListPage() {
   const [deletingPipelineId, setDeletingPipelineId] = useState<string | null>(
     null,
   );
+  // 삭제가 끝난 뒤 알려야 할 것들 — 지우지 못한 자원, 또는 삭제 실패 사유.
+  const [deleteWarnings, setDeleteWarnings] = useState<string[]>([]);
   const [deployingPipelineId, setDeployingPipelineId] = useState<string | null>(
     null,
   );
@@ -1936,14 +1947,22 @@ export function CicdListPage() {
 
     try {
       setDeletingPipelineId(pipeline.id);
-      await deletePipelineMutation.mutateAsync({
+      setDeleteWarnings([]);
+      const result = await deletePipelineMutation.mutateAsync({
         id: pipeline.id,
         ...selection,
       });
+      // 지우지 못한 것이 있으면 말해 준다. 레지스트리가 이미지 삭제를 지원하지
+      // 않는 경우가 그렇다 — 조용히 넘기면 레지스트리에 남은 것을 영영 모른다.
+      setDeleteWarnings(result?.warnings ?? []);
       setPipelinePendingDelete(null);
       if (selectedPipelineId === pipeline.id) {
         setExpandedPipelineId(null);
       }
+    } catch (error) {
+      // 예전에는 이 거부를 아무도 받지 않아 콘솔에만 남았다. 사용자 화면은
+      // 아무 일도 없었던 것처럼 보였다.
+      setDeleteWarnings([deletePipelineErrorMessage(error)]);
     } finally {
       setDeletingPipelineId(null);
     }
@@ -1995,6 +2014,34 @@ export function CicdListPage() {
           </div>
         }
       />
+
+      {deleteWarnings.length > 0 && (
+        <div
+          className="mb-4 rounded-md border border-[var(--color-warning)] p-3 text-sm text-[var(--color-text-secondary)]"
+          data-testid="delete-warnings"
+        >
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <p className="m-0 font-medium text-[var(--color-warning)]">
+              {t(
+                "cicdListPage.deleteWarnings.title",
+                "Deleted, but some resources remain",
+              )}
+            </p>
+            <button
+              type="button"
+              className="text-xs underline"
+              onClick={() => setDeleteWarnings([])}
+            >
+              {t("common.dismiss", "Dismiss")}
+            </button>
+          </div>
+          <ul className="m-0 list-disc pl-4">
+            {deleteWarnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(300px,38%)_minmax(0,62%)]">
         <div className="min-w-0" data-tour="pipeline-list">

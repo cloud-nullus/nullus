@@ -116,10 +116,24 @@ func (uc *DeletePipeline) Execute(
 	// 어느 패키지인지 알아내는 경로가 리포 소유자에 기대므로, 리포가 사라진 뒤에는
 	// 정리가 더 번거로워진다.
 	if input.DeleteImages {
-		if err := uc.deleteImages(ctx, bundle, pipeline.Name); err != nil {
+		err := uc.deleteImages(ctx, bundle, pipeline.Name)
+		switch {
+		case err == nil:
+			out.ImagesDeleted = true
+		case errors.Is(err, port.ErrImageDeletionUnsupported):
+			// 지원하지 않는 것은 삭제의 실패가 아니라 이 플랫폼이 할 수 없는
+			// 일이다. 그것으로 삭제 전체를 막으면 파이프라인을 영영 못 지운다 —
+			// 클러스터 리소스는 이미 지워진 뒤인데 레코드는 남고, 다시 눌러도
+			// 같은 자리에서 막힌다.
+			//
+			// 그렇다고 조용히 넘기지도 않는다. 지우지 못했다는 사실을 경고로
+			// 남긴다 — 성공으로 넘기면 사용자는 레지스트리에 남은 것을 영영 모른다.
+			out.Warnings = append(out.Warnings, fmt.Sprintf(
+				"이미지 저장소는 지우지 못했습니다: %v. 레지스트리에서 직접 지워야 합니다", err))
+		default:
+			// 진짜 실패는 레코드를 남겨 다시 시도할 수 있게 한다.
 			return nil, err
 		}
-		out.ImagesDeleted = true
 	}
 
 	if input.DeleteRepository {

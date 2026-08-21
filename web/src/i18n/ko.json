@@ -35,7 +35,8 @@
     "goHome": "홈으로 돌아가기",
     "notFound": "페이지를 찾을 수 없습니다",
     "notFoundDesc": "요청하신 페이지가 존재하지 않거나 이동되었습니다.",
-    "close": "닫기"
+    "close": "닫기",
+    "dismiss": "닫기"
   },
   "header": {
     "roles": {
@@ -791,7 +792,10 @@
       "active": "활성"
     },
     "emptyDetail": "목록에서 파이프라인을 선택하면 여기에 상세가 표시됩니다.",
-    "listHint": "목록에서 파이프라인을 선택하면 상세 패널이 즉시 갱신됩니다."
+    "listHint": "목록에서 파이프라인을 선택하면 상세 패널이 즉시 갱신됩니다.",
+    "deleteWarnings": {
+      "title": "삭제했지만 남은 자원이 있습니다"
+    }
   },
   "cicdHistoryPage": {
     "title": "CI/CD 이력",

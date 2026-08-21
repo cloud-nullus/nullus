@@ -148,20 +148,46 @@ func TestDeletePipeline_DeletesImagesWhenRequested(t *testing.T) {
 }
 
 // 지원하지 않는 레지스트리에서 조용히 넘어가면 사용자는 이미지가 지워진 줄 안다.
-func TestDeletePipeline_ReportsUnsupportedImageDeletion(t *testing.T) {
+// 레지스트리가 이미지 삭제를 지원하지 않는 것은 삭제의 실패가 아니라 이 플랫폼이
+// 할 수 없는 일이다. 그것으로 삭제 전체를 막으면 파이프라인을 영영 못 지운다 —
+// 2026-08-21 운영에서 그랬다. 클러스터 리소스는 이미 지워진 뒤인데 레코드는 남고,
+// images=true 인 한 몇 번을 눌러도 400 이었다.
+//
+// 할 수 있는 것은 다 하고, 하지 못한 것을 정확히 말한다.
+func TestDeletePipeline_ContinuesWhenImageDeletionUnsupported(t *testing.T) {
 	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
-	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	scm := newFakeSCM()
+	bundle := newBundle(scm, newFakePipelineConfig(), harborResolver())
 	bundle.Images = nil // Harbor·Nexus 처럼 삭제 수단이 없는 구성
 
 	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle},
 		&fakeArgoAppDeleter{}, &fakeKubeconfigProvider{})
 
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteImages: true, DeleteRepository: true,
+	})
+
+	require.NoError(t, err)
+	assert.False(t, out.ImagesDeleted, "지우지 못한 것을 지웠다고 하면 안 된다")
+	assert.True(t, out.RepositoryDeleted, "할 수 있는 것은 해야 한다")
+	assert.NotEmpty(t, repo.deleted, "레코드는 지워져야 한다 — 남기면 다시 눌러도 같은 자리에서 막힌다")
+
+	require.Len(t, out.Warnings, 1)
+	assert.Contains(t, out.Warnings[0], "이미지")
+}
+
+// 지원하지 않는 것과 진짜 실패는 다르다. 진짜 실패는 레코드를 남겨 다시 시도할
+// 수 있게 한다.
+func TestDeletePipeline_KeepsRecordWhenImageDeleteFails(t *testing.T) {
+	uc, repo, _, _, images := deleteFixture(t)
+	images.err = errors.New("harbor unreachable")
+
 	_, err := uc.Execute(context.Background(), DeletePipelineInput{
 		PipelineID: "pip_1", DeleteImages: true,
 	})
+
 	require.Error(t, err)
-	assert.ErrorIs(t, err, port.ErrImageDeletionUnsupported)
-	assert.Empty(t, repo.deleted, "지우지 못했으면 레코드를 남겨 다시 시도할 수 있어야 한다")
+	assert.Empty(t, repo.deleted)
 }
 
 // 요청한 삭제가 실패하면 레코드를 남긴다. 레코드가 사라지면 목록에서 보이지
