@@ -74,8 +74,18 @@ func (r *fakeStackRepo) FindByID(ctx context.Context, id string) (*domain.Stack,
 	return r.GetByID(ctx, id)
 }
 
-func (r *fakeStackRepo) List(_ context.Context, _ string, _ bool) ([]*domain.Stack, error) {
-	return nil, nil
+func (r *fakeStackRepo) List(_ context.Context, orgID string, _ bool) ([]*domain.Stack, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*domain.Stack, 0, len(r.stacks))
+	for _, stack := range r.stacks {
+		if orgID != "" && stack.OrgID != orgID {
+			continue
+		}
+		cp := *stack
+		out = append(out, &cp)
+	}
+	return out, nil
 }
 
 func (r *fakeStackRepo) Update(_ context.Context, s *domain.Stack) error {

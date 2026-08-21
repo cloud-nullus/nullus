@@ -1,6 +1,9 @@
 package port
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // SCMBundle 은 특정 스택에 묶인 프로비저닝 도구 묶음이다.
 //
@@ -107,6 +110,13 @@ type PipelineVariable struct {
 type RegistryCredentialResolver interface {
 	Resolve(ctx context.Context, variables []string) (map[string]string, error)
 }
+
+// ErrStackToolsUnavailable 은 이 스택의 도구에 닿을 수 없다는 뜻이다.
+//
+// 스택이 지워졌거나 아직 설치 중일 때다. 둘 다 "지금은 그 도구들에 아무것도
+// 할 수 없다" 는 같은 상황이고, 호출부는 그것을 실패가 아니라 **할 수 없는 일**로
+// 다뤄야 한다 — 스택이 사라진 파이프라인을 영영 못 지우게 되면 좀비가 남는다.
+var ErrStackToolsUnavailable = errors.New("스택의 도구에 닿을 수 없습니다")
 
 // SCMBundleFactory 는 스택에 맞는 도구 묶음을 조립한다.
 type SCMBundleFactory interface {
