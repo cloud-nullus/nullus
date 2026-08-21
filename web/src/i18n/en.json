@@ -779,7 +779,8 @@
       "lastDeployed": "Last Deployed",
       "noStack": "—",
       "stack": "Stack",
-      "deletedStack": "Deleted"
+      "deletedStack": "Deleted",
+      "accessUrl": "Access"
     },
     "emptyPipelines": "No pipelines found.",
     "emptyDeployments": "No deployment history.",
@@ -795,7 +796,8 @@
     "listHint": "Selecting a pipeline from the list updates the detail panel immediately.",
     "deleteWarnings": {
       "title": "Deleted, but some resources remain"
-    }
+    },
+    "accessUrl": "Access URL"
   },
   "cicdHistoryPage": {
     "title": "CI/CD History",

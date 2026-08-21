@@ -839,6 +839,25 @@ function PipelineInfoTab({ pipeline }: { pipeline: Pipeline }) {
             label="Last Deployed"
             value={formatDateTime(pipeline.lastDeployedAt, locale)}
           />
+          {/* 배포된 앱이 어디로 열리는지. 스택에 접근 도메인이 없으면 서버가
+              빈 값을 주므로 줄 자체를 그리지 않는다 — 열리지 않는 링크를
+              보여 주는 것이 없는 것보다 나쁘다. */}
+          {pipeline.accessUrl && (
+            <ConfigRow
+              label={t("cicdListPage.accessUrl", "Access URL")}
+              value={
+                <a
+                  href={pipeline.accessUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="max-w-[260px] truncate text-[12px] underline"
+                  title={pipeline.accessUrl}
+                >
+                  {pipeline.accessUrl.replace(/^https:\/\//, "")}
+                </a>
+              }
+            />
+          )}
         </div>
       </DetailCard>
 
@@ -1870,6 +1889,32 @@ export function CicdListPage() {
           {row.original.appType}
         </span>
       ),
+    },
+    {
+      id: "accessUrl",
+      header: t("cicdListPage.table.accessUrl", "Access"),
+      cell: ({ row }) => {
+        const url = row.original.accessUrl?.trim();
+        // 스택에 접근 도메인이 없으면 앱은 클러스터 안에서만 닿는다. 열리지
+        // 않는 링크를 보여 주는 것이 없다고 밝히는 것보다 나쁘다.
+        if (!url) {
+          return <span className="text-[var(--color-text-muted)]">—</span>;
+        }
+        return (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            title={url}
+            // 행 클릭은 상세 패널을 여는 동작이다. 링크까지 그것을 타면
+            // 새 탭이 열리면서 패널도 바뀐다.
+            onClick={(event) => event.stopPropagation()}
+            className="block max-w-[180px] truncate underline"
+          >
+            {url.replace(/^https:\/\//, "")}
+          </a>
+        );
+      },
     },
     {
       accessorKey: "clusterName",

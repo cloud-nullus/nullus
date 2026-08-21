@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CI/CD 목록이 배포된 앱의 접속 주소를 보여준다** (`internal/cicd/domain/app_access_url.go` 신규, `internal/cicd/adapter/handler/pipeline_handler.go`, `web/src/features/cicd/pages/cicd-list-page.tsx`): 앱은 이미 `<앱이름>.<스택 도메인>` 으로 열리고 있었다 — 스캐폴딩이 만드는 HTTPRoute 의 hostname 이 그 형태다. 그런데 그 주소를 어디에서도 보여 주지 않아, 사용자가 규칙을 알고 직접 조합해야 했다.
+
+  이제 목록에 `접속 주소` 열이 서고 상세 패널에도 링크가 뜬다. 파이프라인을 만든 직후 응답에도 실어, 목록으로 돌아가 다시 찾게 하지 않는다.
+
+  주소는 **저장하지 않는다.** 스택의 접근 도메인에서 나오므로, 도메인이 바뀌면 저장된 값은 그 순간 거짓이 된다. 응답을 만들 때 계산한다. 계산 규칙은 `domain.AppAccessURL` 한 곳에 둔다 — 화면이 따로 조합하면 스캐폴딩의 hostname 규칙이 바뀔 때 화면만 거짓말을 한다.
+
+  스택에 접근 도메인이 없으면 빈 값이고 링크를 그리지 않는다. 그때 앱은 클러스터 안에서만 닿는데, 없는 주소를 지어내면 사용자는 열리지 않는 링크를 계속 누른다.
+
+  조회는 스택마다 한 번만 한다. 같은 스택의 파이프라인이 여럿인 것이 보통이라, 파이프라인 수만큼 조회하면 목록 한 번에 같은 질의가 수십 번 나간다.
+
 - **파이프라인을 만든 사람이 자기 저장소를 볼 수 있다** (`internal/cicd/adapter/gitea/org_members.go` 신규, `internal/cicd/usecase/provision_pipeline_repository.go`): SSO 로 Gitea 에 들어가면 화면이 텅 비어 보였다. 저장소가 없어서가 아니라 **보이지 않아서**다.
 
   플랫폼이 만드는 조직은 `visibility: private` 이고 저장소도 기본 private 이며, 둘 다 소유자는 자동화 계정(`gitea_admin`)이다. 그런데 사람을 그 조직에 넣는 코드가 없었다 — OIDC 로 들어온 계정은 멤버가 아니므로 Explore 에도 뜨지 않는다. 정작 그 저장소에 앱 소스를 밀어야 할 사람이 보지도 못하는 구조였다.
