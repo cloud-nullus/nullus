@@ -102,6 +102,19 @@ requestedScopes:
   - email
 `, issuer, clientID),
 				},
+				// 로그인을 열어 주었으면 볼 권한도 함께 준다.
+				//
+				// Argo CD 는 정책이 없는 사용자에게 아무것도 보여 주지 않는다 —
+				// 로그인은 되는데 화면에는 "No applications available to you just yet"
+				// 만 뜬다. kubectl 로는 Application 이 Synced/Healthy 로 보이므로,
+				// 없는 것이 아니라 안 보이는 것인데 그 차이가 화면 문구에만
+				// 있어서(available "to you") 없는 것으로 읽힌다.
+				//
+				// 읽기까지만 연다. 동기화는 CI 가 되커밋한 매니페스트를 보고
+				// 자동으로 일어나므로 보는 데 쓰기 권한이 필요하지 않다.
+				"rbac": map[string]any{
+					"policy.default": "role:readonly",
+				},
 				// argocd-secret 은 ESO 가 단독 소유한다.
 				// 차트가 만들면 ESO 가 주기적으로 덮어써 OIDC 키가 사라진다.
 				"secret": map[string]any{

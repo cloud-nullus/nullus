@@ -22,6 +22,7 @@ func (s stubMultiProvisioner) ClientIDFor(step string) (string, bool) {
 		"installing_jenkins": "jenkins",
 		"installing_gitea":   "gitea",
 		"installing_harbor":  "harbor",
+		"installing_argocd":  "argocd",
 	}[step]
 	if !ok {
 		return "", false
@@ -29,7 +30,7 @@ func (s stubMultiProvisioner) ClientIDFor(step string) (string, bool) {
 	return s.slug + "-" + name, true
 }
 func (s stubMultiProvisioner) ToolSteps() []string {
-	return []string{"installing_jenkins", "installing_gitea", "installing_harbor"}
+	return []string{"installing_jenkins", "installing_gitea", "installing_harbor", "installing_argocd"}
 }
 func (s stubMultiProvisioner) Provision(context.Context, port.SSOClientSpec) error { return nil }
 func (s stubMultiProvisioner) Deprovision(context.Context, string) error           { return nil }

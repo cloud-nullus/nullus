@@ -332,6 +332,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Argo CD 에 SSO 로 로그인하면 화면이 비어 있던 것** (`internal/stack/adapter/helm/oidc-values.go`): Keycloak 으로 로그인은 되는데 `No applications available to you just yet` 만 떴다. 같은 순간 `kubectl` 로는 Application 이 `Synced`/`Healthy` 로 보였다.
+
+  없는 것이 아니라 **안 보이는 것**이었다. Argo CD 는 정책이 없는 사용자에게 아무것도 보여 주지 않는데, 그 차이가 화면 문구에만 있다 — available **to you**. 그래서 "등록이 안 됐다" 로 읽힌다.
+
+  플랫폼은 OIDC 클라이언트를 등록해 로그인을 열어 주면서 RBAC 정책은 주지 않았다. 로그인과 권한을 따로 두면 SSO 를 켠 것이 오히려 아무것도 못 보는 상태를 만든다.
+
+  이제 `policy.default: role:readonly` 를 함께 넣는다. 읽기까지만 연다 — 동기화는 CI 가 되커밋한 매니페스트를 보고 자동으로 일어나므로 보는 데 쓰기 권한이 필요하지 않다.
 - **배포된 앱이 게이트웨이에 붙지 못해 주소가 열리지 않던 것** (`web/src/features/stack/utils/install-manifest-builders.ts`): 이미지가 레지스트리에 올라가고 Argo CD 가 `Synced`/`Healthy` 인데도 `sample-frontend.nullus.io` 가 열리지 않았다.
 
   게이트웨이 리스너가 `allowedRoutes.namespaces.from: Same` 이었다. 게이트웨이는 스택 네임스페이스에 있고, 배포된 앱의 HTTPRoute 는 **앱이 서는 네임스페이스**(예: `default`)에 생긴다 — 라우트는 같은 네임스페이스의 Service 를 가리켜야 하므로 그 자리를 옮길 수 없다. `Same` 이면 그 라우트는 어느 게이트웨이에도 붙지 않는다.
