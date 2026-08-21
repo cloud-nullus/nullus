@@ -102,10 +102,22 @@ func (uc *DeletePipeline) Execute(
 	var bundle *port.SCMBundle
 	if uc.factory != nil {
 		bundle, err = uc.factory.For(ctx, pipeline.StackID)
-		if err != nil {
-			if needsExternal {
-				return nil, fmt.Errorf("resolve scm bundle for stack %s: %w", pipeline.StackID, err)
-			}
+		switch {
+		case err == nil:
+		case errors.Is(err, port.ErrStackToolsUnavailable):
+			// 스택이 사라졌거나 아직 준비되지 않았다. 그 도구들에 지금 아무것도
+			// 할 수 없다는 뜻이지 삭제의 실패가 아니다.
+			//
+			// 여기서 막으면 스택을 먼저 지운 파이프라인은 영영 지워지지 않는다 —
+			// 목록에는 보이는데 손댈 수 없는 좀비가 남는다. 할 수 있는 것(레코드
+			// 삭제)은 하고, 하지 못한 것을 정확히 말한다.
+			out.Warnings = append(out.Warnings, fmt.Sprintf(
+				"스택의 도구에 닿을 수 없어 저장소·이미지·CI job 을 지우지 못했습니다: %v. "+
+					"각 도구에서 직접 지워야 합니다", err))
+			bundle = nil
+		case needsExternal:
+			return nil, fmt.Errorf("resolve scm bundle for stack %s: %w", pipeline.StackID, err)
+		default:
 			slog.Warn("스택 연동을 읽지 못해 CI job 정리를 건너뜁니다",
 				"stack_id", pipeline.StackID, "error", err)
 			bundle = nil
@@ -151,7 +163,7 @@ func (uc *DeletePipeline) Execute(
 		}
 	}
 
-	if input.DeleteRepository {
+	if input.DeleteRepository && bundle != nil {
 		repoPath := repositoryPathFor(bundle.GroupPath, pipeline.Name)
 		if err := bundle.Provisioner.DeleteProject(ctx, repoPath); err != nil {
 			return nil, fmt.Errorf("저장소 %s 삭제 실패: %w", repoPath, err)
@@ -236,7 +248,8 @@ func (uc *DeletePipeline) deleteImages(
 	bundle *port.SCMBundle,
 	appName string,
 ) error {
-	if bundle.Images == nil {
+	// 번들이 없으면 레지스트리에 닿을 수단 자체가 없다 — 스택이 사라진 경우다.
+	if bundle == nil || bundle.Images == nil {
 		return port.ErrImageDeletionUnsupported
 	}
 	target, err := bundle.Registry.Resolve(ctx, port.ImageTargetSpec{

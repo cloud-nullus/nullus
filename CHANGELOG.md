@@ -360,6 +360,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **설치 테스트가 배경 고루틴과 경합하던 것** (`internal/stack/usecase/install_stack_test.go`): `Execute` 직후 상태를 `validating` 으로 단정했는데, 그 사이 설치 고루틴이 `installing` 으로 넘어가 있으면 실패한다. 테스트 주석 자체가 그 가능성을 인정하고 있었다("goroutine may not have finished yet").
+
+  `Execute` 가 **동기적으로** 보장하는 것은 "pending 을 벗어났다" 까지다. 그 지점을 검사한다. 되살린 CI(#224)가 처음 돌면서 드러난 실패다 — 다섯 달 동안 아무도 이 테스트를 돌리지 않았다.
+
+- **스택을 지워도 네임스페이스가 남던 것** (`internal/stack/usecase/delete_stack.go`): PVC 는 확실히 지워지는데 네임스페이스만 남았다 — 정리는 끝까지 돌았고 **소유권 판정에서 걸렸다**.
+
+  회수 조건이 "설치가 스택 이름에서 만든 자리(`nullus-<슬러그>`)와 **정확히 같을 때**" 였다. 그런데 스택 이름이 이미 `nullus-` 로 시작하면 파생값은 `nullus-nullus-devsecops-stack` 이 되어 실제 네임스페이스(`nullus-devsecops-stack`)와 어긋난다.
+
+  이제 세 가지를 본다: 지켜야 할 자리(플랫폼·`default`·`nullus`·`kube-*`)는 절대 지우지 않고, 이름에서 파생된 자리는 예전대로 회수하며, `nullus-` 접두사를 가진 스택 몫의 자리는 **다른 스택이 쓰지 않을 때만** 회수한다. 접두사가 없는 자리는 손대지 않는다 — 사용자가 직접 고른 곳은 스택이 만든 것이라는 보장이 없다.
+
+  다른 스택 조회에 실패하면 "쓰고 있다" 로 본다. 확인하지 못한 채 남의 자리를 지우는 것보다 남겨 두는 편이 낫다.
+
+- **스택이 사라진 파이프라인이 좀비로 남던 것** (`internal/cicd/usecase/delete_pipeline.go`, `internal/cicd/port/scm_bundle.go`): 스택을 먼저 지운 뒤 파이프라인을 지우려 하면 이렇게 끝났다.
+
+  ```
+  resolve scm bundle for stack stk_c8b3f627ef34:
+  stack stk_c8b3f627ef34 가 아직 준비되지 않았습니다 (state="cancelled")
+  ```
+
+  삭제가 통째로 중단되고 레코드가 남는다. 목록에는 보이는데 손댈 수 없는 좀비다.
+
+  **스택이 사라지면 그 도구들도 함께 사라진다** — 지울 저장소도 이미지도 CI job 도 없다. 그것을 삭제의 실패로 다룰 이유가 없다. `port.ErrStackToolsUnavailable` 로 그 상황을 구분해, 할 수 있는 것(레코드 삭제)은 하고 하지 못한 것을 경고로 남긴다. 조용히 성공으로 넘기지도 않는다 — 그러면 사용자는 저장소와 이미지가 사라진 줄 안다.
+
 - **CI 에서만 나던 프론트 테스트 타임아웃** (`web/vite.config.ts`): 페이지를 통째로 렌더하는 컴포넌트 테스트가 vitest 기본 타임아웃(5초)을 CI 에서만 넘겼다. 로컬에서는 통과하므로 실패가 회귀처럼 보인다 — 실제로는 v8 커버리지 계측과 느린 러너가 겹친 것이고, 테스트가 멈춘 것이 아니다.
 
   `testTimeout` 을 20초로 둔다. 멈춘 테스트는 여전히 실패한다 — 늦게 실패할 뿐이다. 되살린 CI(#224)가 이런 이유로 다시 꺼지지 않게 하는 것이 목적이다.

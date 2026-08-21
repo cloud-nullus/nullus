@@ -135,11 +135,15 @@ func (f *BundleFactory) For(ctx context.Context, stackID string) (*port.SCMBundl
 		return nil, fmt.Errorf("read stack %s: %w", stackID, err)
 	}
 	if summary == nil {
-		return nil, fmt.Errorf("stack %s not found", stackID)
+		// 스택이 사라졌으면 그 도구들도 함께 사라졌다. 호출부가 "지울 것이 없다" 로
+		// 다룰 수 있게 센티널로 감싼다.
+		return nil, fmt.Errorf("%w: stack %s not found", port.ErrStackToolsUnavailable, stackID)
 	}
 	if !strings.EqualFold(strings.TrimSpace(summary.State), "completed") {
-		// 설치 중인 스택은 SCM 이 아직 응답하지 않을 수 있다.
-		return nil, fmt.Errorf("stack %s 가 아직 준비되지 않았습니다 (state=%q)", stackID, summary.State)
+		// 설치 중이거나 취소된 스택은 SCM 이 응답하지 않는다. 실패가 아니라
+		// 지금은 할 수 없는 일이다.
+		return nil, fmt.Errorf("%w: stack %s (state=%q)",
+			port.ErrStackToolsUnavailable, stackID, summary.State)
 	}
 
 	switch platformFor(summary.SourceRepository) {

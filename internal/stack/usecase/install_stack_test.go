@@ -74,8 +74,18 @@ func (r *fakeStackRepo) FindByID(ctx context.Context, id string) (*domain.Stack,
 	return r.GetByID(ctx, id)
 }
 
-func (r *fakeStackRepo) List(_ context.Context, _ string, _ bool) ([]*domain.Stack, error) {
-	return nil, nil
+func (r *fakeStackRepo) List(_ context.Context, orgID string, _ bool) ([]*domain.Stack, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*domain.Stack, 0, len(r.stacks))
+	for _, stack := range r.stacks {
+		if orgID != "" && stack.OrgID != orgID {
+			continue
+		}
+		cp := *stack
+		out = append(out, &cp)
+	}
+	return out, nil
 }
 
 func (r *fakeStackRepo) Update(_ context.Context, s *domain.Stack) error {
@@ -329,8 +339,13 @@ func TestInstallStack_SuccessfulInstallation(t *testing.T) {
 	err := uc.Execute(context.Background(), InstallStackInput{StackID: "stk_test01"})
 	require.NoError(t, err)
 
-	// After Execute returns, state should be Validating (goroutine may not have finished yet).
-	assert.Equal(t, domain.StateValidating, repo.getState("stk_test01"))
+	// Execute 가 동기적으로 보장하는 것은 "pending 을 벗어났다" 까지다.
+	//
+	// 정확한 상태를 단정하면 설치 고루틴과 경합한다 — validating 을 기대했는데
+	// 그 사이 installing 으로 넘어가 있으면 실패한다. 느린 러너에서 나던
+	// 실패가 이것이었다(CI 가 5개월간 꺼져 있어 아무도 돌리지 않았다).
+	assert.NotEqual(t, domain.StatePending, repo.getState("stk_test01"),
+		"Execute 는 돌아오기 전에 상태를 옮겨 놓는다")
 
 	deadline := time.Now().Add(dagTotalDuration() + 10*time.Second)
 	for time.Now().Before(deadline) {

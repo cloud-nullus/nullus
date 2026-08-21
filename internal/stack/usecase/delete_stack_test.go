@@ -622,3 +622,76 @@ func TestDeleteStack_ExecuteAsync_ReportsMissingStack(t *testing.T) {
 	err := uc.ExecuteAsync(context.Background(), "stk-missing")
 	require.ErrorIs(t, err, ErrStackNotFound)
 }
+
+// 네임스페이스 회수 판정.
+//
+// 예전에는 "설치가 스택 이름에서 만든 자리"(nullus-<슬러그>)와 **정확히 같을
+// 때만** 회수했다. 그런데 스택 이름이 이미 nullus- 로 시작하면 파생값은
+// nullus-nullus-… 가 되어 실제 네임스페이스와 어긋난다. 그래서 정리가 끝까지
+// 돌아 PVC 는 다 지워지는데 네임스페이스만 남았다.
+func TestNamespaceReclaimable(t *testing.T) {
+	cases := []struct {
+		name     string
+		stack    *domain.Stack
+		platform string
+		others   []*domain.Stack
+		want     bool
+	}{
+		{
+			name:  "이름에서 파생된 자리는 회수한다",
+			stack: &domain.Stack{ID: "s1", Name: "devsecops stack", Namespace: "nullus-devsecops-stack"},
+			want:  true,
+		},
+		{
+			// 스택 이름이 이미 nullus- 로 시작하는 경우다. 파생값과 어긋나지만
+			// nullus- 접두사를 가진 스택 몫의 자리이고, 다른 스택이 쓰지 않는다.
+			name:  "이름이 이미 nullus- 로 시작해 파생값과 어긋나도 회수한다",
+			stack: &domain.Stack{ID: "s1", Name: "nullus-devsecops-stack", Namespace: "nullus-devsecops-stack"},
+			want:  true,
+		},
+		{
+			name:     "플랫폼이 사는 자리는 절대 지우지 않는다",
+			stack:    &domain.Stack{ID: "s1", Name: "x", Namespace: "nullus-platform"},
+			platform: "nullus-platform",
+			want:     false,
+		},
+		{
+			// 예전 스택들은 플랫폼과 같은 nullus 에 함께 살았다.
+			name:  "옛 공용 기본값은 지우지 않는다",
+			stack: &domain.Stack{ID: "s1", Name: "x", Namespace: domain.DefaultStackNamespace},
+			want:  false,
+		},
+		{
+			name:  "default 는 지우지 않는다",
+			stack: &domain.Stack{ID: "s1", Name: "x", Namespace: "default"},
+			want:  false,
+		},
+		{
+			name:  "kube- 네임스페이스는 지우지 않는다",
+			stack: &domain.Stack{ID: "s1", Name: "x", Namespace: "kube-system"},
+			want:  false,
+		},
+		{
+			// 사용자가 직접 고른 자리는 스택이 만든 것이라는 보장이 없다.
+			name:  "nullus- 접두사가 없는 자리는 손대지 않는다",
+			stack: &domain.Stack{ID: "s1", Name: "x", Namespace: "my-apps"},
+			want:  false,
+		},
+		{
+			name:   "다른 스택이 같은 자리를 쓰면 지우지 않는다",
+			stack:  &domain.Stack{ID: "s1", OrgID: "org-1", Name: "a", Namespace: "nullus-shared"},
+			others: []*domain.Stack{{ID: "s2", OrgID: "org-1", Name: "b", Namespace: "nullus-shared"}},
+			want:   false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newFakeStackRepo(tc.others...)
+			uc := NewDeleteStack(repo, nil, nil)
+			uc.SetPlatformNamespace(tc.platform)
+
+			assert.Equal(t, tc.want, uc.namespaceReclaimable(context.Background(), tc.stack))
+		})
+	}
+}

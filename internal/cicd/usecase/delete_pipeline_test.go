@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -382,4 +383,34 @@ func TestDeletePipeline_SilentWhenCIHasNoJobs(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, out.Warnings)
+}
+
+type unavailableStackFactory struct{}
+
+func (unavailableStackFactory) For(context.Context, string) (*port.SCMBundle, error) {
+	return nil, fmt.Errorf("%w: stack stk_1 (state=%q)", port.ErrStackToolsUnavailable, "cancelled")
+}
+
+// 스택을 먼저 지운 파이프라인도 지워져야 한다.
+//
+// 스택이 사라지면 그 도구들도 함께 사라진다. 그것을 삭제의 실패로 다루면
+// 파이프라인이 영영 지워지지 않고, 목록에는 보이는데 손댈 수 없는 좀비가 남는다 —
+// 2026-08-21 운영에서 그랬다.
+func TestDeletePipeline_DeletesRecordWhenStackIsGone(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	uc := NewDeletePipeline(repo, unavailableStackFactory{}, &fakeKubeconfigProvider{})
+
+	out, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteRepository: true, DeleteImages: true,
+	})
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, repo.deleted, "레코드는 지워져야 한다 — 남기면 손댈 수 없는 좀비가 된다")
+	assert.False(t, out.RepositoryDeleted)
+	assert.False(t, out.ImagesDeleted)
+
+	// 지우지 못한 것은 정확히 말한다. 조용히 성공으로 넘기면 사용자는
+	// 저장소와 이미지가 사라진 줄 안다.
+	require.NotEmpty(t, out.Warnings)
+	assert.Contains(t, out.Warnings[0], "직접 지워야")
 }

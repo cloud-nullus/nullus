@@ -327,27 +327,82 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	uc.clearStreamHistory(stackID)
 }
 
-// namespaceOwnedByStack 은 이 네임스페이스를 통째로 지워도 되는지 본다.
+// stackNamespacePrefix 는 플랫폼이 스택 몫으로 만드는 네임스페이스의 접두사다.
+// 스택 모듈의 DefaultStackNamespaceFor 가 붙이는 것과 같아야 한다.
+const stackNamespacePrefix = "nullus-"
+
+// isProtectedNamespace 는 절대 지워서는 안 되는 자리인지 본다.
 //
-// 지워도 되는 것은 이 스택 몫으로 만들어진 자리뿐이다. 플랫폼이 사는 곳,
-// default, 그리고 옛 공용 기본값(nullus)은 절대 지우지 않는다 — 예전 스택들은
-// 플랫폼과 같은 nullus 에 함께 살았고, 그것을 지우면 플랫폼이 사라진다.
+// 플랫폼이 사는 곳, default, 옛 공용 기본값(nullus), 그리고 쿠버네티스 자신의
+// 자리다. 예전 스택들은 플랫폼과 같은 nullus 에 함께 살았고, 그것을 지우면
+// 플랫폼이 사라진다 — 2026-08-20 에 실제로 nullus.io 가 통째로 내려갔다.
+func isProtectedNamespace(namespace, platformNamespace string) bool {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" || ns == "default" || ns == domain.DefaultStackNamespace {
+		return true
+	}
+	if strings.HasPrefix(ns, "kube-") {
+		return true
+	}
+	return platformNamespace != "" && strings.EqualFold(ns, strings.TrimSpace(platformNamespace))
+}
+
+// namespaceReclaimable 은 이 네임스페이스를 통째로 지워도 되는지 본다.
 //
-// 사용자가 직접 고른 네임스페이스도 지우지 않는다. 다른 것과 함께 쓰고 있을 수
-// 있어서, 스택이 만든 자리인지 확신할 수 없다.
-func namespaceOwnedByStack(stack *domain.Stack, platformNamespace string) bool {
+// 예전에는 "설치가 스택 이름에서 만든 자리"(DefaultStackNamespaceFor)와 정확히
+// 같을 때만 회수했다. 그런데 스택 이름이 이미 nullus- 로 시작하면 파생값은
+// nullus-nullus-… 가 되어 실제 네임스페이스와 어긋난다. 그래서 정리가 끝까지
+// 돌아 PVC 는 다 지워지는데 **네임스페이스만 남았다.**
+//
+// 이제 세 가지를 본다.
+//
+//   - 지켜야 할 자리인가 (플랫폼·default·nullus·kube-*) → 지우지 않는다
+//   - 이름에서 파생된 자리인가 → 회수한다 (예전 규칙 그대로)
+//   - nullus- 접두사를 가진 스택 몫의 자리인가 → 다른 스택이 쓰지 않으면 회수한다
+//
+// 접두사가 없는 자리는 손대지 않는다. 사용자가 직접 고른 곳은 스택이 만든
+// 것이라는 보장이 없고, 다른 것과 함께 쓰고 있을 수 있다.
+func (uc *DeleteStack) namespaceReclaimable(ctx context.Context, stack *domain.Stack) bool {
 	if stack == nil {
 		return false
 	}
 	namespace := strings.TrimSpace(stack.Namespace)
-	if namespace == "" || namespace == "default" || namespace == domain.DefaultStackNamespace {
+	if isProtectedNamespace(namespace, uc.platformNamespace) {
 		return false
 	}
-	if platformNamespace != "" && strings.EqualFold(namespace, platformNamespace) {
+	if namespace == domain.DefaultStackNamespaceFor(stack.Name) {
+		return true
+	}
+	if !strings.HasPrefix(namespace, stackNamespacePrefix) {
 		return false
 	}
-	// 설치가 스택 이름에서 만든 자리일 때만 회수한다.
-	return namespace == domain.DefaultStackNamespaceFor(stack.Name)
+	return !uc.namespaceUsedByAnotherStack(ctx, stack)
+}
+
+// namespaceUsedByAnotherStack 은 살아 있는 다른 스택이 같은 자리를 쓰는지 본다.
+//
+// 이 스택의 레코드는 정리가 시작되기 전에 이미 지워지므로 목록에 없다.
+// 조회에 실패하면 "쓰고 있다" 로 본다 — 확인하지 못한 채 남의 자리를 지우는
+// 것보다 남겨 두는 편이 낫다.
+func (uc *DeleteStack) namespaceUsedByAnotherStack(ctx context.Context, stack *domain.Stack) bool {
+	if uc.stackRepo == nil {
+		return true
+	}
+	others, err := uc.stackRepo.List(ctx, stack.OrgID, false)
+	if err != nil {
+		slog.Warn("스택 목록을 읽지 못해 네임스페이스를 남깁니다",
+			"stack_id", stack.ID, "namespace", stack.Namespace, "error", err)
+		return true
+	}
+	for _, other := range others {
+		if other == nil || other.ID == stack.ID {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(other.Namespace), strings.TrimSpace(stack.Namespace)) {
+			return true
+		}
+	}
+	return false
 }
 
 // bestEffortDeleteStackNamespace 는 스택 몫의 네임스페이스를 지운다.
@@ -356,7 +411,7 @@ func namespaceOwnedByStack(stack *domain.Stack, platformNamespace string) bool {
 // 으로 남는데, 여기서 기다리면 삭제 요청이 몇 분씩 붙잡힌다. 회수는 컨트롤러가
 // 이어서 한다.
 func (uc *DeleteStack) bestEffortDeleteStackNamespace(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
-	if len(kubeconfig) == 0 || !namespaceOwnedByStack(stack, uc.platformNamespace) {
+	if len(kubeconfig) == 0 || !uc.namespaceReclaimable(ctx, stack) {
 		return
 	}
 
