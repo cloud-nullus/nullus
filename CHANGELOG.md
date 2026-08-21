@@ -332,6 +332,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **레지스트리 비밀번호가 빌드 로그에 평문으로 찍히던 것** (`internal/cicd/adapter/scaffold/jenkins_renderer.go`): 스캐폴딩된 Jenkinsfile 의 Build 단계가 `echo "$HARBOR_PASSWORD" | docker login ...` 을 도는데, Jenkins 는 `sh -xe` 로 실행하므로 그 명령이 값과 함께 그대로 로그에 남았다.
+
+  ```
+  + echo <레지스트리 관리자 비밀번호가 그대로>
+  ```
+
+  빌드 로그를 볼 수 있는 사람은 누구나 레지스트리 관리자 자격증명을 얻는다. GitLab 은 CI 변수를 masked 로 등록해 가려 주지만, Jenkins 는 K8s Secret 에서 env 로 온 값을 마스킹하지 않는다 — 우리가 직접 막아야 한다.
+
+  Deploy 단계는 이미 그렇게 하고 있었다(git 자격증명 앞에서 `set +x`). **Build 단계만 빠져 있었다.** 로그인 앞에서 트레이스를 끄고, 그 뒤 `docker build`/`push` 는 다시 켠다 — 그 줄들이 로그에 없으면 어디서 막혔는지 알 수 없다.
+
+  **이미 노출된 자격증명은 회전해야 한다.** 이 수정은 앞으로 찍히지 않게 할 뿐, 지난 빌드 로그에 남은 값을 지우지 않는다.
+
 - **게이트웨이가 15초에 업로드를 끊어 이미지 push 가 끝없이 재시도하던 것** (`web/src/features/stack/utils/install-manifest-builders.ts`): 스택을 새로 설치해도 `docker push` 가 모든 layer 를 재시도하다 죽었다. #211 로 앞단 ingress 의 본문 상한을 풀었는데도 그대로였다 — **관문이 하나 더 있었다.**
 
   도구 HTTPRoute 에 타임아웃이 없었다. 그러면 Envoy 의 기본값 **15초**가 적용된다. 이미지 layer push 와 git push 는 그보다 오래 걸리는 **단일 요청**이라 반드시 잘린다. docker 는 끊긴 연결을 재시도로 받아, 모든 layer 가 `Retrying in 5/10/15/20 seconds` 를 반복한다.
