@@ -15,6 +15,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitlab"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/jenkins"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/registrycreds"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -76,6 +77,18 @@ type BundleFactory struct {
 	// 기동 시점에 고정할 수 없다 — CI 서버가 스택마다 따로 서고 비밀번호도
 	// 스택마다 다르게 생성된다.
 	jenkinsCreds port.CICredentialResolver
+	// registrySecrets 는 스택이 설치한 레지스트리의 관리자 자격증명을 읽는다.
+	// 배선되지 않으면 CI 레지스트리 변수는 사용자가 준 값만 쓴다(종전 동작).
+	registrySecrets registrycreds.SecretStore
+}
+
+// WithRegistrySecrets 는 스택이 설치한 레지스트리의 자격증명 저장소를 배선한다.
+//
+// 배선하지 않으면 CI 레지스트리 변수는 사용자가 준 값만 쓴다 — 화면이 그 값을
+// 묻지 않으므로, 그 경우 변수가 비어 CI 의 docker login 이 죽는다.
+func (f *BundleFactory) WithRegistrySecrets(store registrycreds.SecretStore) *BundleFactory {
+	f.registrySecrets = store
+	return f
 }
 
 // NewBundleFactory 는 팩토리를 만든다.
@@ -317,6 +330,14 @@ func (f *BundleFactory) giteaBundle(
 		ClusterID:       summary.ClusterID,
 		AccessDomain:    summary.AccessDomain,
 		GatewayName:     gatewayNameFor(summary.AccessDomain),
+	}
+
+	// 스택이 설치한 레지스트리의 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게
+	// 다시 받아 적게 하지 않는다 — 화면은 묻지도 않으므로, 받지 못하면 CI 의
+	// docker login 이 빈 변수로 죽는다.
+	if f.registrySecrets != nil {
+		bundle.RegistryCredentials = registrycreds.New(
+			f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
 	}
 
 	// Jenkins 가 배선돼 있어야 job 을 만들 수 있다. 없으면 CIJobs 를 비워 두고

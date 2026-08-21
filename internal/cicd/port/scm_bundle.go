@@ -45,6 +45,11 @@ type SCMBundle struct {
 	// OpenBao → ESO → K8s Secret 평면으로 나른다. 지원하지 않으면 nil.
 	Credentials PipelineCredentialPlane
 
+	// RegistryCredentials 는 스택이 설치한 레지스트리(Harbor·Nexus)의 자격증명을
+	// 푼다. 그 값은 스택 설치가 OpenBao 에 만들어 두므로 사용자에게 다시 받을
+	// 이유가 없다. 플랫폼이 소유하지 않는 레지스트리에서는 아무것도 돌려주지 않는다.
+	RegistryCredentials RegistryCredentialResolver
+
 	// Platform 은 이 묶음이 향하는 SCM 플랫폼이다.
 	// 파이프라인 파일 형식이 여기서 갈리므로 렌더러까지 전달돼야 한다.
 	Platform SCMPlatform
@@ -81,6 +86,14 @@ type PipelineCredentialPlane interface {
 type PipelineVariable struct {
 	Key   string
 	Value string
+}
+
+// RegistryCredentialResolver 는 CI 가 레지스트리 로그인에 쓸 변수 값을 푼다.
+//
+// 요청한 변수 중 아는 것만 채워 돌려준다. 모르는 것은 손대지 않는다 — 조용히
+// 빈 값을 채우면 CI 가 엉뚱한 자격증명으로 로그인을 시도한다.
+type RegistryCredentialResolver interface {
+	Resolve(ctx context.Context, variables []string) (map[string]string, error)
 }
 
 // SCMBundleFactory 는 스택에 맞는 도구 묶음을 조립한다.

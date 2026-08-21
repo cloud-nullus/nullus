@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"maps"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/argocd"
@@ -79,6 +81,12 @@ func (uc *ProvisionPipelineRepository) Execute(
 		return nil, fmt.Errorf("resolve scm bundle for stack %s: %w", stackID, err)
 	}
 
+	// 스택이 설치한 레지스트리의 자격증명은 플랫폼이 이미 갖고 있다.
+	//
+	// 사용자가 준 값이 우선이다 — 외부 레지스트리를 쓰는 구성에서는 그쪽이 유일한
+	// 출처다. 비어 있는 것만 채운다.
+	registryCredentials := uc.resolveRegistryCredentials(ctx, bundle, input)
+
 	commonOut, err := NewProvisionCommonProject(bundle.Provisioner).Execute(ctx, ProvisionCommonProjectInput{
 		GroupPath:   bundle.GroupPath,
 		ProjectPath: input.CommonProjectPath,
@@ -100,7 +108,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			Namespace:           input.Namespace,
 			Port:                input.Port,
 			Replicas:            input.Replicas,
-			RegistryCredentials: input.RegistryCredentials,
+			RegistryCredentials: registryCredentials,
 			RepoAccessToken:     bundle.RepoAccessToken,
 			Platform:            bundle.Platform,
 			SharedAccessToken:   bundle.RepoAccessToken,
@@ -185,6 +193,53 @@ func repoURLForInCluster(bundle *port.SCMBundle, project *port.SCMProject) strin
 		}
 	}
 	return project.HTTPCloneURL
+}
+
+// resolveRegistryCredentials 는 CI 가 레지스트리 로그인에 쓸 값을 모은다.
+//
+// 화면은 레지스트리 자격증명을 묻지 않는다. 그런데 스택이 설치한 Harbor·Nexus 의
+// 관리자 자격증명은 설치 과정이 이미 OpenBao 에 만들어 두었다 — 그것을 쓰지
+// 않으면 HARBOR_USERNAME/HARBOR_PASSWORD 가 비고, 스캐폴딩된 Jenkinsfile 의
+// `set -eu` 가 docker login 줄에서 즉시 죽는다.
+//
+// 해석에 실패해도 여기서 멈추지 않는다. 사용자가 준 값만으로 진행하고, 무엇이
+// 비었는지는 뒤의 MissingVariables 가 잡는다.
+func (uc *ProvisionPipelineRepository) resolveRegistryCredentials(
+	ctx context.Context,
+	bundle *port.SCMBundle,
+	input ProvisionPipelineRepositoryInput,
+) map[string]string {
+	if bundle == nil || bundle.RegistryCredentials == nil || bundle.Registry == nil {
+		return input.RegistryCredentials
+	}
+
+	target, err := bundle.Registry.Resolve(ctx, port.ImageTargetSpec{
+		AppName: strings.TrimSpace(input.AppName),
+		OrgPath: bundle.GroupPath,
+	})
+	if err != nil || target == nil || len(target.RequiredVariables) == 0 {
+		return input.RegistryCredentials
+	}
+
+	resolved, err := bundle.RegistryCredentials.Resolve(ctx, target.RequiredVariables)
+	if err != nil {
+		slog.Warn("레지스트리 자격증명을 읽지 못해 사용자가 준 값만 씁니다",
+			"stack_id", input.StackID, "error", err)
+		return input.RegistryCredentials
+	}
+	if len(resolved) == 0 {
+		return input.RegistryCredentials
+	}
+
+	// 사용자가 준 값이 우선이다.
+	merged := make(map[string]string, len(resolved)+len(input.RegistryCredentials))
+	maps.Copy(merged, resolved)
+	for key, value := range input.RegistryCredentials {
+		if strings.TrimSpace(value) != "" {
+			merged[key] = value
+		}
+	}
+	return merged
 }
 
 func (uc *ProvisionPipelineRepository) applyArgoApplication(

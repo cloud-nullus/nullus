@@ -312,6 +312,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI 빌드가 `docker login` 줄에서 2초 만에 죽던 것** (`internal/cicd/adapter/registrycreds/` 신규, `internal/cicd/usecase/provision_pipeline_repository.go`): Jenkins 가 체크아웃까지는 성공하는데 Build 스테이지가 2초 만에 실패했다.
+
+  스캐폴딩된 Jenkinsfile 은 `set -eu` 아래에서 `echo "$HARBOR_PASSWORD" | docker login "$REGISTRY_HOST" -u "$HARBOR_USERNAME"` 를 돈다. 그 두 변수가 없으면 `set -u` 가 그 줄에서 즉시 죽는다.
+
+  변수는 `setRegistryVariables` 가 등록하는데, 그 값을 **사용자 입력에서만** 가져왔다. 그리고 **화면은 그 값을 묻지 않는다** — `registry_credentials` 를 프론트가 한 번도 보내지 않는다. 그래서 Harbor 를 쓰는 스택에서는 항상 비었다.
+
+  그런데 스택이 Harbor 를 직접 설치했다면 그 관리자 자격증명은 설치 과정(`provisioning_secrets`)이 이미 OpenBao 에 만들어 두었다 — 플랫폼이 갖고 있는 값을 사용자에게 다시 받아 적게 할 이유가 없다. Gitea 가 `gitea_admin` 으로 토큰을 스스로 발급받는 것과 같은 방식으로, Harbor·Nexus 자격증명도 시크릿 저장소에서 푼다.
+
+  사용자가 준 값이 우선이다 — 외부 레지스트리를 쓰는 구성에서는 그쪽이 유일한 출처다. 플랫폼이 소유하지 않는 레지스트리의 변수는 손대지 않는다. 조용히 빈 값을 채우면 CI 가 엉뚱한 자격증명으로 로그인을 시도해 원인이 한 겹 더 멀어진다.
+
 - **레지스트리가 이미지 삭제를 지원하지 않으면 파이프라인을 영영 못 지우던 것** (`internal/cicd/usecase/delete_pipeline.go`, `internal/cicd/adapter/handler/pipeline_handler.go`, `web/src/features/cicd/pages/cicd-list-page.tsx`): 삭제에서 "이미지도 지우기" 를 고르면 **400 이 나고 아무것도 지워지지 않았다.** 몇 번을 눌러도 같은 자리에서 막혀 파이프라인이 목록에 남았다.
 
   Harbor·Nexus 처럼 이미지 저장소 삭제 수단이 없는 구성에서는 `ErrImageDeletionUnsupported` 가 나는데, 그것이 삭제 전체를 중단시켰다. 더 나쁜 것은 순서다 — 클러스터 리소스는 그 앞에서 이미 지워진 뒤였다. 리소스는 사라졌는데 레코드는 남는, 가장 회복하기 어려운 상태다.
