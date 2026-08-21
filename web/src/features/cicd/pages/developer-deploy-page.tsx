@@ -207,6 +207,9 @@ export function DeveloperDeployPage() {
   const [isLoadingManifests, setIsLoadingManifests] = useState(false);
   const [createNewNamespace, setCreateNewNamespace] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  // 서버가 보고한 프로비저닝 문제. 저장소가 비었거나 CI job 이 없는데도
+  // 파이프라인이 "정상" 으로 보이던 것을 막는다.
+  const [provisionWarnings, setProvisionWarnings] = useState<string[]>([]);
   const sectionRefs = useRef<Record<Step, HTMLDivElement | null>>({
     1: null,
     2: null,
@@ -562,6 +565,17 @@ export function DeveloperDeployPage() {
           [MANIFEST_ENV_KEYS.ingress]: reviewManifests.ingress,
         },
       });
+
+      // 준비가 온전하지 않으면 배포로 넘어가지 않는다.
+      //
+      // 스캐폴딩이 건너뛰어졌거나 CI job 이 만들어지지 않았으면 러너가 실행할
+      // Jenkinsfile 이 없다. 그대로 배포를 눌러 봐야 아무 일도 일어나지 않고,
+      // 화면만 "정상" 으로 보인다 — 무엇이 빠졌는지 여기서 말해 준다.
+      const warnings = pipeline.provisioning?.warnings ?? [];
+      if (warnings.length > 0) {
+        setProvisionWarnings(warnings);
+        return;
+      }
 
       const result = await deployPipelineMutation.mutateAsync({
         pipelineId: pipeline.id,
@@ -1399,6 +1413,24 @@ export function DeveloperDeployPage() {
                         <p className="mt-3 text-right text-xs text-[var(--color-error)]">
                           {submitError}
                         </p>
+                      )}
+                      {provisionWarnings.length > 0 && (
+                        <div
+                          className="mt-3 rounded-md border border-[var(--color-warning)] p-3 text-left text-xs text-[var(--color-text-secondary)]"
+                          data-testid="provision-warnings"
+                        >
+                          <p className="m-0 mb-2 font-medium text-[var(--color-warning)]">
+                            {t(
+                              "developerDeployPage.provisionWarnings.title",
+                              "Pipeline created, but setup is incomplete",
+                            )}
+                          </p>
+                          <ul className="m-0 list-disc pl-4">
+                            {provisionWarnings.map((warning) => (
+                              <li key={warning}>{warning}</li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                     </section>
                   ) : (
