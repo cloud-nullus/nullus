@@ -59,6 +59,19 @@ metadata:
     # 원래 Host 를 그대로 넘긴다. 게이트웨이의 HTTPRoute 가 호스트로 도구를
     # 갈라내므로, 여기서 호스트가 바뀌면 어느 라우트에도 걸리지 않는다.
     nginx.ingress.kubernetes.io/upstream-vhost: $host
+    # 이 브리지를 지나는 것은 웹 요청만이 아니다. 이미지 push 와 git push 가 같은
+    # 길로 간다. ingress-nginx 기본 본문 상한은 1m 이라 수십 MB 짜리 layer 가
+    # 통째로 막히는데, 작은 요청(인증·조회)은 통과하므로 증상이 엉뚱하게 보인다 —
+    # docker login 과 build 는 지나가고 push 만 끝없이 재시도했다.
+    #
+    # 고정 상한 대신 0(무제한)을 쓴다. 값을 정해 두면 그보다 큰 layer 에서 다시 막힌다.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # 본문을 디스크에 모았다가 넘기면 큰 업로드에서 버퍼가 터지고 지연도 커진다.
+    # 레지스트리·git 은 스트리밍이 정상 경로다.
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    # 기본 60초로는 느린 회선의 큰 layer 가 중간에 끊긴다.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
 spec:
   ingressClassName: %s
   rules:
