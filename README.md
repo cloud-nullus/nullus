@@ -9,6 +9,8 @@ Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 
 **[🚀 라이브 데모](https://cloud-nullus.github.io)** — 설치 없이 화면을 둘러보세요.
 
+**[▶️ 시연 영상](https://www.youtube.com/watch?v=VrTqBKInlNw)** — 클러스터 연결부터 배포까지 여섯 단계를 한 화면에서.
+
 ## 개요
 
 Nullus는 DevOps 엔지니어가 검증된 CI/CD 베스트 프랙티스 조합을 선택하고, 웹 UI에서 노코드로 설정한 후 한 번의 버튼 클릭으로 Kubernetes 클러스터에 전체 DevSecOps 스택을 자동 설치할 수 있도록 하는 오픈소스 플랫폼입니다.
@@ -548,3 +550,4 @@ Apache License 2.0
 - [PRD v1.3](./docs/10_제품기획/nullus_PRD_1.3.md) — 제품 요구사항 명세
 - [API 설계](./docs/20_아키텍처/Nullus_API_설계.md) — API 상세 설계
 - [로컬 개발환경 세팅](./docs/50_운영/Nullus%20로컬%20개발환경%20세팅%20가이드.md) — 개발 환경 설정
+- [2차 기술 검증 발표 장표](./docs/80_프로젝트관리/Nullus_2차기술검증_발표장표.html) — OPEN PROJECT SEASON III 발표 자료 (브라우저로 열어 보세요)
