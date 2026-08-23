@@ -421,4 +421,4 @@ DNS01_ZONE=nullus.io ./deploy/csp/zadara/setup-tls.sh status     # 상태
 - 클러스터 접속(SSH 터널): `deploy/csp/zadara/kubeconfig.sh`
 - kind/airgap 도메인·SSO: `docs/20_개발가이드/Nullus_접속_도메인_SSO_가이드.md`
 - zadara 환경 전제: `docs/50_운영/zadara_cloud_poc.md`
-- 초대 메일 설계: `docs/20_개발가이드/Nullus_사용자_초대_메일_설계.md`
+- 초대 메일 설계: `docs/11_기능설계/Nullus_사용자_초대_메일_설계.md`

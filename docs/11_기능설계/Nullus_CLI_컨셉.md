@@ -153,4 +153,4 @@ nullus argo app list         # 스택이 설치한 Argo CD로 위임(SSO 토큰 
 - EPIC: [nullus-plan#42](https://github.com/cloud-nullus/nullus-plan/issues/42) (본 문서의 As-Is·명령 골격은 #42 코멘트에서 제안됨)
 - API 표면: `cmd/api/main.go`(라우트 그룹), 각 `internal/*/adapter/handler`
 - 기존 도구: `cmd/nullus-bootstrap`, `cmd/token-source-sync`, `scripts/runbook_local.sh`
-- 인증/RBAC: `internal/auth/`, [Nullus OIDC Provider 가이드](./Nullus_OIDC_Provider_가이드.md)
+- 인증/RBAC: `internal/auth/`, [Nullus OIDC Provider 가이드](../20_개발가이드/Nullus_OIDC_Provider_가이드.md)

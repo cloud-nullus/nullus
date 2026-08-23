@@ -144,5 +144,5 @@ SSO 무재인증 로그인은 반드시 :80.
 ---
 
 ## 7. 관련 문서
-- SSO 설계: `docs/20_개발가이드/Nullus_OSS_SSO_자동로그인_설계.md`
+- SSO 설계: `docs/11_기능설계/Nullus_OSS_SSO_자동로그인_설계.md`
 - OIDC Provider: `docs/20_개발가이드/Nullus_OIDC_Provider_가이드.md`

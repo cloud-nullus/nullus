@@ -161,7 +161,7 @@ config:
 
 - 마법사에는 이미 YAML View 탭과 `toCreateStackBody()` 조립 로직이 있어, 그 결과를 본 스키마로 직렬화하는 작업은 소규모다 (top-level 4필드 + config 그대로)
 - 가치: 사용자가 마법사로 탐색·확정한 구성을 내보내 CI에서 `nullus stack deploy -f`로 재사용 — 스키마 검증을 겸하는 왕복 경로
-- 처리: 백로그 트랙 A에 **A-9 (S, 선택): 웹 마법사 Export stack.yaml** 후보로 등록. 웹(ui 모듈) 작업이므로 CLI 트랙과 독립
+- 처리: 백로그 트랙 A에 **A-12 (S, 선택): 웹 마법사 Export stack.yaml** 후보로 등록. 웹(ui 모듈) 작업이므로 CLI 트랙과 독립
 
 ## 6. 버저닝 정책
 
