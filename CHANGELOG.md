@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`pkg/nullusclient` — CLI·MCP 공유 기반** (`pkg/nullusclient/{config,client,errors}.go` 신규): 통합 `nullus` CLI(트랙 A)와 MCP 서버(트랙 B)가 함께 쓸 유일한 공유층이다 — API 클라이언트와 설정·토큰 해석(CLI+MCP 구현 백로그 S-1·S-2). 설정 우선순위는 플래그 > `NULLUS_*` env > `~/.nullus/` 파일이라 CI 는 파일 없이 env 만으로 돈다. 토큰 파일은 0600 으로만 쓰고, group/other 가 읽을 수 있으면 **읽기를 거부한다** — 자동으로 고쳐 주지 않는 이유는 이미 노출된 뒤일 수 있어서다(회전 판단은 사용자 몫). API 오류는 `Kind` 하나로 분류되고 그 값이 automation 계약의 exit code(2~5)와 같다 — CLI 는 그대로 종료 코드로 쓰고 재시도는 하지 않는다(재시도 여부는 호출한 자동화가 정한다).
+
 - **파이프라인 삭제가 CI job 과 Nexus 이미지까지 걷어낸다** (`internal/cicd/adapter/nexus/` 신규, `internal/cicd/usecase/delete_pipeline.go`): 두 가지가 더 남고 있었다.
 
   **하나 — Jenkins job.** `DeleteJob` 은 포트에도 있고 Jenkins 클라이언트도 구현했는데 **아무도 부르지 않았다.** 파이프라인을 지워도 job 이 남아, 없어진 리포를 계속 스캔하며 실패한다. 이제 플래그 없이도 지운다 — job 은 이 파이프라인 몫으로 플랫폼이 만든 것이고, 파이프라인이 사라진 뒤에는 쓸모가 없다.
