@@ -3,6 +3,7 @@ package nullusclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -93,6 +94,8 @@ func TestClient_Do_SendsJSONBody(t *testing.T) {
 
 func TestClient_Do_MapsStatusToErrorKind(t *testing.T) {
 	// Automation 계약 §1: 400/409→Usage(2), 401/403→Auth(3), 404→NotFound(4), 5xx→Server(5).
+	// 응답 형태는 실서버(internal/shared/middleware/error_handler.go)의
+	// {"error": {code, http_status, message, ..., trace_id}} 중첩 envelope 그대로다.
 	cases := []struct {
 		status int
 		kind   Kind
@@ -110,7 +113,8 @@ func TestClient_Do_MapsStatusToErrorKind(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(tc.status)
-			_, _ = w.Write([]byte(`{"message":"boom"}`))
+			_, _ = w.Write([]byte(`{"error":{"code":"SOME_CODE","http_status":` +
+				fmt.Sprint(tc.status) + `,"message":"boom","retryable":false,"trace_id":"req-42"}}`))
 		}))
 		c, _ := New(Config{Server: srv.URL})
 		err := c.Do(context.Background(), http.MethodGet, "/api/v1/x", nil, nil)
@@ -127,8 +131,63 @@ func TestClient_Do_MapsStatusToErrorKind(t *testing.T) {
 			t.Errorf("status %d: StatusCode = %d", tc.status, apiErr.StatusCode)
 		}
 		if apiErr.Message != "boom" {
-			t.Errorf("status %d: Message = %q, want 서버 message 필드", tc.status, apiErr.Message)
+			t.Errorf("status %d: Message = %q, want envelope 의 message", tc.status, apiErr.Message)
 		}
+		if apiErr.Code != "SOME_CODE" {
+			t.Errorf("status %d: Code = %q, want envelope 의 code", tc.status, apiErr.Code)
+		}
+		if apiErr.TraceID != "req-42" {
+			t.Errorf("status %d: TraceID = %q, want envelope 의 trace_id", tc.status, apiErr.TraceID)
+		}
+	}
+}
+
+func TestClient_Do_ErrorCodeDistinguishesCompatWarn(t *testing.T) {
+	// A-5 의 --ack-warnings UX 는 같은 400 이라도 DEPLOY_COMPAT_WARN_UNACK 를
+	// 구분해야 한다 — Kind 만으로는 부족하고 Code 가 살아 있어야 한다.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"DEPLOY_COMPAT_WARN_UNACK","http_status":400,"message":"acknowledge warnings to proceed","trace_id":"req-7"}}`))
+	}))
+	defer srv.Close()
+
+	c, _ := New(Config{Server: srv.URL})
+	err := c.Do(context.Background(), http.MethodPost, "/api/v1/stacks/s/deploy", nil, nil)
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want *APIError", err)
+	}
+	if apiErr.Code != "DEPLOY_COMPAT_WARN_UNACK" {
+		t.Errorf("Code = %q", apiErr.Code)
+	}
+	if apiErr.Kind != KindUsage {
+		t.Errorf("Kind = %v, want KindUsage", apiErr.Kind)
+	}
+}
+
+func TestClient_Do_FallsBackToTopLevelMessage(t *testing.T) {
+	// 미들웨어를 거치지 않는 응답(구버전·프록시 등)은 top-level message 만 온다.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"plain not found"}`))
+	}))
+	defer srv.Close()
+
+	c, _ := New(Config{Server: srv.URL})
+	err := c.Do(context.Background(), http.MethodGet, "/api/v1/x", nil, nil)
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want *APIError", err)
+	}
+	if apiErr.Message != "plain not found" {
+		t.Errorf("Message = %q", apiErr.Message)
+	}
+	if apiErr.Code != "" {
+		t.Errorf("Code = %q, want empty", apiErr.Code)
 	}
 }
 

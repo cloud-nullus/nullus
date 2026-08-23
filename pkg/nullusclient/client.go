@@ -93,27 +93,39 @@ func (c *Client) Do(ctx context.Context, method, path string, in, out any) error
 	return nil
 }
 
-// apiErrorFromResponse 는 실패 응답을 APIError 로 바꾼다. 서버(echo)는 보통
-// {"message": "..."} 를 주므로 그걸 우선 취하고, 아니면 본문을 자른다.
+// apiErrorFromResponse 는 실패 응답을 APIError 로 바꾼다. 서버 에러 미들웨어
+// (internal/shared/middleware/error_handler.go)는 {"error": {code, message,
+// trace_id, ...}} 중첩 envelope 를 주므로 그걸 우선 취하고, 미들웨어를 거치지
+// 않은 응답(프록시 등)은 top-level message → 본문 순으로 물러난다.
 func apiErrorFromResponse(resp *http.Response) *APIError {
 	const maxBody = 2 << 10 // 에러 메시지용으로 2KiB 면 충분하다
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 
-	msg := ""
-	var payload struct {
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(b, &payload); err == nil && payload.Message != "" {
-		msg = payload.Message
-	} else {
-		msg = strings.TrimSpace(string(b))
-	}
-	if msg == "" {
-		msg = resp.Status
-	}
-	return &APIError{
+	apiErr := &APIError{
 		Kind:       kindForStatus(resp.StatusCode),
 		StatusCode: resp.StatusCode,
-		Message:    msg,
 	}
+
+	var payload struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			TraceID string `json:"trace_id"`
+		} `json:"error"`
+		Message string `json:"message"`
+	}
+	switch err := json.Unmarshal(b, &payload); {
+	case err == nil && payload.Error.Message != "":
+		apiErr.Code = payload.Error.Code
+		apiErr.Message = payload.Error.Message
+		apiErr.TraceID = payload.Error.TraceID
+	case err == nil && payload.Message != "":
+		apiErr.Message = payload.Message
+	default:
+		apiErr.Message = strings.TrimSpace(string(b))
+	}
+	if apiErr.Message == "" {
+		apiErr.Message = resp.Status
+	}
+	return apiErr
 }

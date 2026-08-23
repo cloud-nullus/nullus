@@ -32,12 +32,15 @@ func (k Kind) String() string {
 }
 
 // APIError 는 실패한 API 호출 하나를 설명한다. HTTP 응답 실패와 transport
-// 실패(연결 불가 등) 모두 이 타입으로 돌아온다 — 호출측 분기는 Kind 하나로
-// 끝나야 한다.
+// 실패(연결 불가 등) 모두 이 타입으로 돌아온다 — 일반 분기는 Kind 로 하고,
+// 같은 상태 코드 안에서 갈라야 하는 경우(예: 400 중 DEPLOY_COMPAT_WARN_UNACK
+// 를 --ack-warnings 안내로 바꾸는 A-5)만 Code 를 본다.
 type APIError struct {
 	Kind       Kind
 	StatusCode int    // transport 실패면 0
-	Message    string // 서버 응답의 message 필드, 없으면 본문/원인 요약
+	Code       string // 서버 error envelope 의 도메인 코드 (예: DEPLOY_COMPAT_WARN_UNACK)
+	Message    string // envelope 의 message, 없으면 본문/원인 요약
+	TraceID    string // 서버 request id — 지원 문의·로그 대조용
 	cause      error
 }
 
@@ -45,7 +48,11 @@ func (e *APIError) Error() string {
 	if e.StatusCode == 0 {
 		return fmt.Sprintf("nullus API 연결 실패: %s", e.Message)
 	}
-	return fmt.Sprintf("nullus API %d (%s): %s", e.StatusCode, e.Kind, e.Message)
+	s := fmt.Sprintf("nullus API %d (%s): %s", e.StatusCode, e.Kind, e.Message)
+	if e.TraceID != "" {
+		s += " [trace_id=" + e.TraceID + "]"
+	}
+	return s
 }
 
 func (e *APIError) Unwrap() error { return e.cause }
