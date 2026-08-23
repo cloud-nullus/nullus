@@ -6,6 +6,16 @@
 
 `nullus`는 Nullus 플랫폼의 통합 CLI다. 웹 UI가 "탐색·설정 마법사(노코드)"라면 CLI는 **반복·자동화·헤드리스**를 맡는다 — 두 표면은 같은 `/api/v1/*` REST를 쓰므로 웹에서 만든 것을 CLI로 조작할 수 있고 그 반대도 된다.
 
+**명령 구조는 `nullus <명사> <동사>`다** — 대상 리소스가 먼저, 행위가 나중이다(컨셉 문서 §3):
+
+```
+nullus stack ls                  # stack(명사) ls(동사)
+nullus cluster verify prod-01
+nullus stack deploy -f stack.yaml
+```
+
+예외는 최상위 단독 명령 `nullus login` · `nullus version`, 그리고 서버 모드 `nullus mcp serve`뿐이다.
+
 **이런 경우에 CLI를 쓴다:**
 
 | 상황 | 명령 |
