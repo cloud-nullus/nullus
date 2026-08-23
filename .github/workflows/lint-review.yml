@@ -34,7 +34,7 @@ jobs:
             // §3.2 PR 제목: <type>(<module>): <description>
             // 모듈은 선택(공통 작업은 생략 가능)
             const TYPES   = ['feat','fix','refactor','test','docs','chore','perf','ci'];
-            const MODULES = ['stack','cicd','admin','auth','o11y','product','ui','shared','infra'];
+            const MODULES = ['stack','cicd','admin','auth','o11y','product','ui','shared','infra','cli'];
 
             const titleRe = new RegExp(
               `^(${TYPES.join('|')})(?:\\((${MODULES.join('|')})\\))?!?: .{1,72}$`
