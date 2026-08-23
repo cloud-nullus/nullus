@@ -45,10 +45,11 @@ Nullus 프로젝트의 브랜치, PR, 커밋 작성 규칙을 정의합니다.
 
 브랜치/커밋 모듈은 아래 enum만 허용합니다.
 
-- `stack`, `cicd`, `admin`, `auth`, `o11y`, `product`, `ui`, `shared`, `infra`
+- `stack`, `cicd`, `admin`, `auth`, `o11y`, `product`, `ui`, `shared`, `infra`, `cli`
 
 주의:
 - `observability`는 사용하지 않고 `o11y`로 통일합니다.
+- `cli`는 CLI+MCP 트랙(`cmd/nullus`, `internal/cli`, `pkg/nullusclient`, MCP 서버) 작업에 사용합니다 (2026-08-23 추가 — CLI+MCP 구현 백로그 0-5).
 
 ### 1.4 브랜치 예시
 

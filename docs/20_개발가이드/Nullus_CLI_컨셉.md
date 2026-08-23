@@ -140,12 +140,12 @@ nullus argo app list         # 스택이 설치한 Argo CD로 위임(SSO 토큰 
 
 ---
 
-## 8. 열린 질문 (결정 필요)
+## 8. 열린 질문 (→ 순차 확정 중, 2026-08-23)
 
-- 배포 형태: 단일 정적 바이너리(cobra) vs 이미지 동봉? (현재 `nullus-bootstrap`도 이미지 미포함)
-- 기존 조각 흡수 범위: `runbook_local.sh`를 `nullus dev`로 편입할지, dev 전용 스크립트로 남길지.
-- 설정/토큰 저장 위치와 형식(`~/.nullus/config`).
-- `-o json`/`--wait`/exit code 등 automation 계약의 표준.
+- 배포 형태: 단일 정적 바이너리(cobra) vs 이미지 동봉? — [CLI+MCP 구현 백로그](../plans/2026-08-22-cli-mcp-구현-백로그.md) 0-4·R-1에서 확정 예정
+- 기존 조각 흡수 범위: **결정** — `runbook_local.sh`는 편입하지 않고 스크립트로 존치 ([ADR-0001](../adr/0001-cli-구현을-위한-논의.md))
+- 설정/토큰 저장 위치와 형식: **결정** — `~/.nullus/config` + 파일 권한 0600, `NULLUS_*` env 우선 ([Automation 계약](./Nullus_CLI_Automation_계약.md) §5, 구현은 백로그 S-2)
+- `-o json`/`--wait`/exit code 등 automation 계약: **결정** — [Nullus CLI Automation 계약](./Nullus_CLI_Automation_계약.md)으로 확정
 
 ---
 
