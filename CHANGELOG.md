@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **통합 `nullus` CLI 첫 조회 명령** (`cmd/nullus/main.go` 신규, `internal/cli/{root,stack}.go` 신규): `nullus stack ls` 가 동작한다 — 사람용 표와 `-o json`, 그리고 exit code 규약(인증 실패 3, 대상 없음 4, 서버·연결 오류 5, 설정 부재 2). 출력 스키마는 CLI 가 소유한다 — 서버 응답을 그대로 통과시키면 서버 필드 변경이 곧 스크립트 파손이라서다. cobra 는 이번에 direct 의존으로 승격했다.
+
 - **`pkg/nullusclient` — CLI·MCP 공유 기반** (`pkg/nullusclient/{config,client,errors}.go` 신규): 통합 `nullus` CLI(트랙 A)와 MCP 서버(트랙 B)가 함께 쓸 유일한 공유층이다 — API 클라이언트와 설정·토큰 해석(CLI+MCP 구현 백로그 S-1·S-2). 설정 우선순위는 플래그 > `NULLUS_*` env > `~/.nullus/` 파일이라 CI 는 파일 없이 env 만으로 돈다. 토큰 파일은 0600 으로만 쓰고, group/other 가 읽을 수 있으면 **읽기를 거부한다** — 자동으로 고쳐 주지 않는 이유는 이미 노출된 뒤일 수 있어서다(회전 판단은 사용자 몫). API 오류는 `Kind` 하나로 분류되고 그 값이 automation 계약의 exit code(2~5)와 같다 — CLI 는 그대로 종료 코드로 쓰고 재시도는 하지 않는다(재시도 여부는 호출한 자동화가 정한다).
 
 - **파이프라인 삭제가 CI job 과 Nexus 이미지까지 걷어낸다** (`internal/cicd/adapter/nexus/` 신규, `internal/cicd/usecase/delete_pipeline.go`): 두 가지가 더 남고 있었다.
