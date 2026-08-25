@@ -138,14 +138,16 @@ nullus argo app list         # 스택이 설치한 Argo CD로 위임(SSO 토큰 
 - 가치: 사용자가 스택별 OSS 콘솔/CLI 자격증명을 따로 챙기지 않아도 됨 — 플랫폼이 이미 OSS 앱 단일 SSO·토큰을 관리한다(OSS SSO 자동로그인, `cloud-nullus/nullus` PR #98).
 - 리스크: 각 OSS CLI 버전·인증 방식을 따라가야 해 유지비가 큼 → **아이디어로만 기록, 범위 밖.**
 
+**TUI 표면 (같은 취급의 아이디어, 2026-08-23 추가)**: k9s/lazygit 류의 터미널 전체 화면 표면. 배포 여러 개를 한 화면에서 지켜보는 용도다. 자동화(CLI)도 탐색(웹)도 대체하지 못하는 제3의 표면이라 v1 범위 밖 — 터미널 상주 운영자가 실사용자로 확인되면 `nullus tui` 서브커맨드로 검토한다. API·인증은 `pkg/nullusclient` 재사용이므로 추가 비용은 화면 계층뿐이다.
+
 ---
 
-## 8. 열린 질문 (결정 필요)
+## 8. 열린 질문 (→ 순차 확정 중, 2026-08-23)
 
-- 배포 형태: 단일 정적 바이너리(cobra) vs 이미지 동봉? (현재 `nullus-bootstrap`도 이미지 미포함)
-- 기존 조각 흡수 범위: `runbook_local.sh`를 `nullus dev`로 편입할지, dev 전용 스크립트로 남길지.
-- 설정/토큰 저장 위치와 형식(`~/.nullus/config`).
-- `-o json`/`--wait`/exit code 등 automation 계약의 표준.
+- 배포 형태: 단일 정적 바이너리(cobra) vs 이미지 동봉? — [CLI+MCP 구현 백로그](../plans/2026-08-22-cli-mcp-구현-백로그.md) 0-4·R-1에서 확정 예정
+- 기존 조각 흡수 범위: **결정** — `runbook_local.sh`는 편입하지 않고 스크립트로 존치 ([ADR-0001](../adr/0001-cli-구현을-위한-논의.md))
+- 설정/토큰 저장 위치와 형식: **결정** — `~/.nullus/config` + 파일 권한 0600, `NULLUS_*` env 우선 ([Automation 계약](./Nullus_CLI_Automation_계약.md) §5, 구현은 백로그 S-2)
+- `-o json`/`--wait`/exit code 등 automation 계약: **결정** — [Nullus CLI Automation 계약](./Nullus_CLI_Automation_계약.md)으로 확정
 
 ---
 
@@ -153,4 +155,4 @@ nullus argo app list         # 스택이 설치한 Argo CD로 위임(SSO 토큰 
 - EPIC: [nullus-plan#42](https://github.com/cloud-nullus/nullus-plan/issues/42) (본 문서의 As-Is·명령 골격은 #42 코멘트에서 제안됨)
 - API 표면: `cmd/api/main.go`(라우트 그룹), 각 `internal/*/adapter/handler`
 - 기존 도구: `cmd/nullus-bootstrap`, `cmd/token-source-sync`, `scripts/runbook_local.sh`
-- 인증/RBAC: `internal/auth/`, [Nullus OIDC Provider 가이드](./Nullus_OIDC_Provider_가이드.md)
+- 인증/RBAC: `internal/auth/`, [Nullus OIDC Provider 가이드](../20_개발가이드/Nullus_OIDC_Provider_가이드.md)
