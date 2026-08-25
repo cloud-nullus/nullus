@@ -166,7 +166,7 @@ main (프로덕션)
 ```
 
 브랜치 타입은 위 3종만 쓴다. `refactor`·`test`·`docs`·`perf`·`ci`는 **커밋 타입**으로만 쓴다.
-`<module>` 은 `stack | cicd | admin | auth | o11y | product | ui | shared | infra`.
+`<module>` 은 `stack | cicd | admin | auth | o11y | product | ui | shared | infra | cli`.
 
 전체 규칙은 `docs/20_개발가이드/Nullus_PR_커밋_컨벤션.md` (v3).
 
@@ -188,7 +188,7 @@ docs: PRD v1.3 업데이트
 
 **제목**: `<type>(<module>): <설명>` (설명 1~72자)
 - type: `feat | fix | refactor | test | docs | chore | perf | ci`
-- module(선택): `stack | cicd | admin | auth | o11y | product | ui | shared | infra`
+- module(선택): `stack | cicd | admin | auth | o11y | product | ui | shared | infra | cli`
 - ⚠️ `csp` 모듈은 없음 — 클라우드/CSP·배포 인프라는 **`infra`** 사용
 
 **본문 필수 요소**: `## Summary`, `## Changes`, `## Testing` 섹션 + `Scope:` 줄(내용 필수)

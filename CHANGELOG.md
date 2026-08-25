@@ -318,6 +318,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **PR 컨벤션 모듈 화이트리스트에 `cli` 를 추가한다** (`.github/workflows/lint-review.yml`, `CLAUDE.md`): CLI+MCP 트랙 착수(구현 백로그 0-5)에 따라 `cmd/nullus`·`internal/cli`·`pkg/nullusclient`·MCP 서버 작업이 쓸 모듈이 필요해졌다. 컨벤션 문서(§1.3)와 강제 장치(PR Convention Check)를 함께 맞춘다 — 문서만 바꾸고 CI 를 안 바꾸면 규칙이 둘로 갈라진다.
+
 - **템플릿 편집 모달을 설치 마법사와 같은 구조로 바꾼다** (`web/src/features/stack/components/template-tool-editor.tsx`, `web/src/components/ui/modal.tsx`): 같은 일(스택을 이루는 OSS 고르기)을 하는 두 화면이 서로 다르게 생겨 있었다. 편집 모달은 섹션이 아코디언으로 세로로 쌓이고 그 안에 한 줄짜리 6열 그리드가 들어 있었는데, 카테고리 칸이 `0.7fr` 고정이라 "Package Registry"·"Source Repository" 가 두 줄로 접혔고, **고를 수 있는 도구는 좁은 `<select>` 안에 갇혀 열어 보기 전에는 무엇이 있는지 알 수 없었다.** 이제 섹션이 탭으로 갈리고 탭 안에서 도구가 전폭 카드로 펼쳐진다 — 설치 마법사의 `ToolSelector` 와 같은 읽는 순서다. 마법사와 다른 것은 버전뿐이다: 템플릿은 helm/app 버전을 함께 pin 해야 하므로 그 둘은 카드 아래 '상세' 줄로 내리고 적용은 명시적 버튼으로 남긴다(관리자가 버전을 타이핑하는 도중에 저장이 일어나면 안 된다). 모달에 `size="xl"`(1080) 을 더했다 — 기존 `wide`(800) 를 키우지 않은 이유는 그 값을 쓰는 자리가 열 곳이 넘고 대부분은 폼 두 칸짜리라 넓히면 오히려 휑해지기 때문이다.
 
   **편집을 열 때 선택이 반쪽만 살아 있었다.** 화면에는 템플릿의 도구가 골라진 채로 떴지만 그것은 "적용된 값"이 draft 를 이기게 해 둔 결과였고, 그 대가로 **이미 템플릿에 담긴 카테고리는 다른 도구를 눌러도 선택이 움직이지 않았다** — `<select>` 시절부터 있던 것이 카드로 바뀌며 드러났다. 이제 모달을 열 때 draft 에 템플릿 값을 심고 draft 를 단일 출처로 쓴다. 초기 선택은 그대로이고 클릭이 즉시 반영된다.
