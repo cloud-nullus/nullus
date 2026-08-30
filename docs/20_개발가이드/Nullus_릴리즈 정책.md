@@ -2,9 +2,10 @@
 
 Nullus Platform(`cloud-nullus/nullus`)의 GitHub Release · CHANGELOG · 버전(SemVer) 관리 규칙을 정의합니다.
 
-- 초안: 2026-07-25 / 개정: 2026-07-26 (v2) / 2026-07-28 (v2.1) / 2026-08-07 (v2.2)
-- 상태: **적용 개시** — §13의 선행 과제 1·3·7·9·10이 끝나 `v0.3.0-alpha`부터 이 문서대로 릴리즈합니다. 남은 과제 2·4·5·6·8·11은 §13에 그대로 두고, 그중 §9.0의 품질 게이트(과제 2)는 `ci.yml` 재활성화 전까지 **릴리즈 담당의 로컬 검증 + PR 첨부**로 대체합니다.
-- v2.2 개정 사유: `v0.3.0-alpha`를 실제로 릴리즈하고 실 클러스터에 배포해 보니, 문서대로 밟았는데도 산출물이 설치되지 않았습니다. 원인을 §7.1(패키지 가시성)과 §9.1 step 11(실 클러스터 검증)에 반영했습니다.
+- 초안: 2026-07-25 / 개정: 2026-07-26 (v2) / 2026-07-28 (v2.1) / 2026-08-07 (v2.2) / 2026-08-31 (v2.3)
+- 상태: **적용 중** — 태그 3건(`v0.3.0-alpha`·`v0.4.0-alpha`·`v0.4.1`)을 이 문서 기준으로 발행했습니다. 남은 과제는 §13에 있습니다.
+- v2.3 개정 사유: `cd.yml`에 `create-release` 잡이 들어오면서 **§9.1의 9·10단계(Release 수동 생성·prerelease 체크)가 자동화**됐는데, 절차는 사람이 하는 것으로 남아 있었습니다. 그대로 따르면 자동 생성본과 충돌합니다. 실제 릴리즈에서 어긋난 지점(`v0.4.1`의 compare 링크·`Chart.yaml` 누락, 접미사를 떼면서 생긴 `0.4` 롤링 태그)도 함께 반영합니다.
+- v2.2 개정 사유: `v0.3.0-alpha`를 실제로 릴리즈하고 실 클러스터에 배포해 보니, 문서대로 밟았는데도 산출물이 설치되지 않았습니다. 원인을 §7.1(패키지 가시성)과 §9.1의 실 클러스터 검증(v2.3 이후 D-9)에 반영했습니다.
 - 적용 대상: `cloud-nullus/nullus` (구 `cloud-nullus/draft`, 2026-05-25경 리네임)
 - 관련 문서: `Nullus_PR_커밋_컨벤션.md`, `Nullus_브랜치_관리_개선안.md`, `Nullus_CICD 흐름.md`, `CLAUDE.md`
 
@@ -44,7 +45,7 @@ Nullus는 릴리즈마다 아래 3가지 산출물이 함께 나갑니다.
 | Web 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-web` |
 | Helm 차트 | `oci://ghcr.io/cloud-nullus/charts/nullus` (§7.2로 신설) |
 
-> **세 산출물은 모두 ghcr 패키지 가시성이 `public`이어야 합니다.** 저장소가 public이어도 패키지는 **기본 private으로 생성**되며, private이면 위 경로는 익명 pull이 되지 않아 사실상 산출물이 아닙니다. 전환은 REST API로 불가능하고 `https://github.com/orgs/cloud-nullus/packages` 아래 **패키지별 Settings → Danger Zone**에서만 됩니다 — 저장소 Settings의 "Make … private"과 혼동하면 저장소 자체를 비공개로 만들게 되니 주의하십시오. 확인은 §9.1 step 11에서 합니다.
+> **세 산출물은 모두 ghcr 패키지 가시성이 `public`이어야 합니다.** 저장소가 public이어도 패키지는 **기본 private으로 생성**되며, private이면 위 경로는 익명 pull이 되지 않아 사실상 산출물이 아닙니다. 전환은 REST API로 불가능하고 `https://github.com/orgs/cloud-nullus/packages` 아래 **패키지별 Settings → Danger Zone**에서만 됩니다 — 저장소 Settings의 "Make … private"과 혼동하면 저장소 자체를 비공개로 만들게 되니 주의하십시오. 확인은 §9.1 D-9에서 합니다.
 >
 > 경로에 `nullus`가 두 번 들어가는 것은 오타가 아닙니다. `cd.yml`이 `ghcr.io/${{ github.repository }}/nullus-api`를 쓰고 `github.repository`가 `cloud-nullus/nullus`이기 때문입니다. 리네임 이전 경로(`ghcr.io/cloud-nullus/draft/*`)의 패키지도 ghcr에 남아 있으나 **더 이상 갱신되지 않으므로 참조 금지**입니다 — 이 혼동이 실제 로그인 장애를 일으킨 적이 있습니다(#78).
 
@@ -83,18 +84,25 @@ Release마다 CHANGELOG의 해당 버전 섹션을 그대로 Release Note 본문
 main
  ├── commit
  ├── commit
- ├── v0.3.0-alpha Release  ── CHANGELOG.md [0.3.0-alpha] 섹션과 1:1 대응   ← 최초 발행 예정
+ ├── v0.3.0-alpha Release  ── CHANGELOG.md [0.3.0-alpha] 섹션과 1:1 대응   ← 2026-07-27 발행
  └── commit (Unreleased)
 ```
 
-> `0.1.0-alpha`(2026-03-15)·`0.2.0-alpha`(2026-03-28)는 **CHANGELOG에 섹션만 존재하고 git 태그·GitHub Release는 발행된 적이 없습니다.** 소급 태깅은 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않으므로 하지 않으며, 다음 릴리즈부터 1:1 대응을 시작합니다.
+> `0.1.0-alpha`(2026-03-15)·`0.2.0-alpha`(2026-03-28)는 **CHANGELOG에 섹션만 존재하고 git 태그·GitHub Release는 발행된 적이 없습니다.** 소급 태깅은 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않으므로 하지 않습니다. 1:1 대응은 `0.3.0-alpha`부터 시작됐습니다.
 
 CHANGELOG.md 하단의 compare 링크는 **실제로 존재하는 태그만** 가리켜야 합니다. 발행되지 않은 태그를 가리키는 링크는 404가 되므로 두지 않습니다.
 
 ```markdown
-[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...HEAD
+[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/cloud-nullus/nullus/compare/v0.4.0-alpha...v0.4.1
+[0.4.0-alpha]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/cloud-nullus/nullus/releases/tag/v0.3.0-alpha
 ```
+
+> **compare 링크는 두 군데에 따로 있습니다 (v2.3).** 위의 `CHANGELOG.md` 하단 링크는 **사람이** 릴리즈
+> 절차에서 갱신하고(§9.1 A-4), GitHub Release 본문의 `[<직전 태그> 이후 변경된 코드]` 링크는
+> `create-release`가 `git describe`로 직전 태그를 찾아 **자동으로** 붙입니다. 자동 쪽이 붙는다고 해서
+> `CHANGELOG.md` 쪽이 갱신되지는 않습니다 — `v0.4.1`에서 실제로 빠졌습니다(§13-12).
 
 ---
 
@@ -141,11 +149,23 @@ v1은 CHANGELOG 갱신을 "PR 작성자의 의무"로만 규정했고 강제 수
 
 ---
 
-## 5. GitHub 자동 생성 기능
+## 5. Release 본문은 누가 쓰는가 (v2.3 개정)
 
-Release 생성 화면의 **"Generate release notes"** 버튼은 머지된 PR·기여자·커밋 목록을 자동으로 나열해 줍니다.
+**Release 본문은 사람이 쓰지 않습니다.** `cd.yml`의 `create-release` 잡이 `CHANGELOG.md`에서
+`## [X.Y.Z]` 섹션을 찾아 본문으로 싣고, 그 앞에 설치 명령·산출물 경로·문서 링크를 붙입니다.
 
-Nullus는 이를 **보조 참고용**으로만 사용합니다. Release Note 본문은 사람이 큐레이션한 `CHANGELOG.md`의 해당 버전 섹션을 그대로 붙여넣는 것을 기본으로 하고, 자동 생성 내용은 "Full Changelog" 링크 형태로 하단에 덧붙이는 정도로 제한합니다.
+```
+릴리즈 본문 = [prerelease 경고] + 설치 + 산출물 표 + 문서 링크 + 직전 태그 compare
+              + '## 변경 내역' + CHANGELOG 의 [X.Y.Z] 섹션 원문
+```
+
+GitHub Release 화면의 **"Generate release notes"**(머지된 PR·기여자 목록 자동 나열)는 이제
+**폴백 경로**입니다 — `create-release`가 CHANGELOG에서 해당 버전 섹션을 **찾지 못했을 때만**
+`generate_release_notes: true`로 넘어갑니다. 사람이 누르는 버튼이 아닙니다.
+
+> **폴백은 실패가 아니라 조용한 열화입니다.** 섹션이 없어도 워크플로는 성공하고, PR 제목이
+> 영문 그대로 나열된 Release가 남습니다(§4.1 언어 규칙 위반). 그래서 §9.1은 CHANGELOG 절단을
+> **태그 push보다 앞**에 둡니다.
 
 ---
 
@@ -200,13 +220,31 @@ v1.0.0(GA) 이전에는 `0.x.x`를 사용하며, 상태에 따라 접미사를 �
 
 `0.x.x` 구간에서는 SemVer 상 MINOR 상향도 Breaking Change를 포함할 수 있다는 점(SemVer §4)을 감안해, Breaking Change가 있으면 CHANGELOG `Added`/`Changed` 항목 앞에 `**BREAKING**` 표기를 남깁니다.
 
+**접미사를 뗄 수 있습니다 — 다만 이미지 태그가 달라집니다 (v2.3 신설).**
+
+`v0.4.1`은 접미사 없이 발행했습니다. 그래도 GitHub Release는 pre-release로 표시됩니다 —
+`create-release`는 접미사뿐 아니라 **MAJOR가 `0`이면 prerelease로 판정**하기 때문입니다.
+prerelease 표시는 접미사에 의존하지 않으니, 접미사를 떼도 GA로 오인될 위험은 없습니다.
+
+바뀌는 것은 **이미지 롤링 태그**입니다.
+
+| 태그 | 생성되는 이미지 태그 | GitHub Release |
+|---|---|---|
+| `v0.4.0-alpha` | `0.4.0-alpha` | Pre-release |
+| `v0.4.1` | `0.4.1` **+ `0.4` (롤링)** | Pre-release |
+
+`docker/metadata-action`이 프리릴리즈에는 `{{major}}.{{minor}}` 패턴을 만들지 않기 때문입니다(§7.1).
+ghcr에 `0.4` 태그가 실재하는 것이 그 결과이고, **접미사를 뗀 첫 릴리즈에서 예고 없이 생겼습니다.**
+롤링 태그는 다음 패치에서 말없이 다른 이미지를 가리키므로, `0.x`에서 접미사를 떼기로 했다면
+§7.1의 "배포에는 patch까지 명시된 전체 버전 태그를 쓴다"를 함께 지켜야 합니다.
+
 ---
 
 ## 7. 태그 → CD 파이프라인 연동
 
 ### 7.1 이미지 (현행)
 
-`v*` 태그를 push하면 `.github/workflows/cd.yml`이 두 이미지를 빌드해 ghcr에 푸시합니다.
+`v*` 태그를 push하면 `.github/workflows/cd.yml`이 **세 이미지**를 빌드해 ghcr에 푸시합니다.
 
 ```yaml
 on:
@@ -228,7 +266,23 @@ on:
 
 **따라서 alpha/beta/rc 단계에서는 `0.3` 같은 rolling 태그가 만들어지지 않으므로, 배포 시 반드시 patch까지 명시된 전체 버전 태그(`0.3.0-alpha` 등)를 사용해야 합니다.** `0.3`/`latest` 같은 rolling 태그에 의존한 배포는 GA 이후에만 안전합니다.
 
-> 현재 ghcr에 존재하는 이미지 태그는 `main`과 커밋 short SHA뿐입니다. 버전 태그는 첫 릴리즈 이후에 생깁니다.
+> **접미사 없는 `0.x` 태그는 이 규칙의 예외가 아니라 대상입니다 (v2.3).** `v0.4.1`이 프리릴리즈가
+> 아니라서 `0.4` 롤링 태그가 만들어졌습니다. 2026-08-31 기준 ghcr `nullus-api`의 버전 태그는
+> `0.3.0-alpha`·`0.4.0-alpha`·`0.4.1`·**`0.4`** 입니다. 배포 매니페스트가 `0.4`를 가리키면
+> 다음 패치에서 말없이 다른 이미지로 바뀝니다 — §6.2를 함께 보십시오.
+
+**세 번째 이미지는 릴리즈 버전을 따르지 않습니다.** `build-and-push-jenkins`는 스택이 설치하는
+Jenkins 커스텀 이미지를 빌드하는데, 태그를 릴리즈 버전이 아니라
+`deploy/images/jenkins/Dockerfile`의 `ARG JENKINS_VERSION` 값에서 뽑습니다.
+
+| 이미지 | 태그 기준 | 태그 push 전용? |
+|---|---|---|
+| `nullus-api` | 릴리즈 태그 (`docker/metadata-action`) | 아니오 — `main` push 시에도 `main`·SHA 태그로 빌드 |
+| `nullus-web` | 릴리즈 태그 (`docker/metadata-action`) | 아니오 — 위와 같음 |
+| `nullus-jenkins` | `Dockerfile`의 `JENKINS_VERSION` | 아니오 — 릴리즈와 무관하게 갱신 |
+
+따라서 `nullus-jenkins`는 릴리즈 산출물 표(§1)에 넣지 않고, 버전 동기화 대상(§8)에서도 제외합니다.
+Jenkins를 올리는 것은 릴리즈가 아니라 그 `ARG` 값을 바꾸는 PR입니다.
 
 ### 7.2 Helm 차트 게시 (v2 신설)
 
@@ -261,6 +315,30 @@ helm install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version 0.3.0-alp
 ```
 
 > `--version`/`--app-version`을 태그에서 주입하므로, `Chart.yaml`에 커밋된 값은 개발 중 기본값 역할만 합니다. 그래도 §8의 동기화 대상에서 빼지 않습니다 — 저장소를 직접 clone해 설치하는 경로가 남아 있기 때문입니다.
+
+### 7.3 태그를 밀면 자동으로 일어나는 일 (v2.3 신설)
+
+v2.2까지 이 문서는 이미지와 차트 게시만 자동으로 서술하고, Release 생성과 배포는 §9.1에서
+사람이 하는 것으로 두었습니다. 실제로는 아래 5종이 태그 push 하나로 모두 돕니다.
+
+| 잡 | 하는 일 | 조건 | 선행 |
+|---|---|---|---|
+| `build-and-push-api` | API 이미지 빌드·푸시 (amd64/arm64) | 태그·`main`·`phase1` | — |
+| `build-and-push-web` | Web 이미지 빌드·푸시 (amd64/arm64) | 태그·`main`·`phase1` | — |
+| `build-and-push-jenkins` | Jenkins 이미지 (§7.1 — 릴리즈 버전 아님) | 태그·`main`·`phase1` | — |
+| `publish-chart` | 차트 package·push, `--version`/`--app-version`을 **태그에서 주입** | **태그만** | — |
+| `create-release` | GitHub Release 생성, 본문·prerelease 자동 판정 (§5) | **태그만** | api·web·chart |
+| `deploy-zadara` | Zadara Cloud 배포 (`environment: zadara`) | 태그·`main`·수동 | api·web |
+
+읽는 방법 세 가지.
+
+1. **`create-release`는 `publish-chart`를 기다립니다.** 차트 게시가 실패하면 Release는 생기지
+   않습니다 — 태그만 남고 Release가 없다면 여기부터 봅니다.
+2. **`deploy-zadara`는 `main` 머지에서도 돕니다.** 릴리즈 태그는 이 배포의 유일한 경로가 아니며,
+   `environment: zadara`에 승인 게이트를 걸어 두면 태그 런도 그 게이트에서 멈춥니다.
+3. **같은 커밋에 브랜치 push와 태그 push가 잇따르면** `concurrency` 설정이 앞선 브랜치 런을
+   접고 태그 런을 남깁니다(태그 런이 하는 일이 상위 집합이라서). 릴리즈 PR을 머지하고 곧바로
+   태그를 밀면 반드시 일어나는 일이며, 접힌 런은 실패가 아닙니다.
 
 ---
 
@@ -315,56 +393,127 @@ web:
 | 차트 템플릿·기본값만 변경 (이미지 동일) | 유지 | PATCH 상향 |
 | 차트 의존성(postgresql 등) 버전 변경 | 유지 | MINOR 상향 |
 
-릴리즈 태그에서 두 값을 함께 주입하는 §7.2 경로에서는 둘이 같아집니다. 위 규칙은 **저장소에 커밋되는 `Chart.yaml` 값**과, 차트만 따로 패치 게시할 때 적용합니다.
+릴리즈 태그에서 두 값을 함께 주입하는 §7.2 경로에서는 둘이 같아집니다. 위 규칙은 **저장소에 커밋되는 `Chart.yaml` 값**에 적용합니다.
+
+> **차트 전용 패치는 태그로 게시하지 않습니다 (v2.3 — §13-11 결론).** `publish-chart`는 태그 하나를
+> `--version`과 `--app-version`에 **모두** 넣습니다. 차트 템플릿만 고치고 `v0.4.2` 태그를 밀면
+> `appVersion: 0.4.2`인 차트가 나오는데 그 버전의 이미지는 존재하지 않아, 설치하면 `ImagePullBackOff`가
+> 됩니다. 위 표의 "차트만 변경 → `version`만 상향"은 **저장소 clone 설치 경로에만** 유효합니다.
+>
+> 차트만 고쳐야 한다면 둘 중 하나입니다 — (a) 다음 애플리케이션 릴리즈에 얹어 함께 나간다,
+> (b) 급하면 `Chart.yaml`의 `version`만 올려 머지하고 clone 설치 경로로 안내한다. 태그는 밀지 않습니다.
 
 ---
 
 ## 9. 릴리즈 프로세스 (정식 릴리즈)
 
-### 9.0 사전 게이트 (v2 신설)
+### 9.0 사전 게이트 (v2 신설 / v2.3 개정)
 
-v1에는 품질 확인 단계가 없어, **테스트가 깨진 상태에서도 태그를 찍을 수 있었습니다.** 아래를 통과하지 못하면 태그를 만들지 않습니다.
+아래를 통과하지 못하면 태그를 만들지 않습니다.
 
 1. `ci.yml`(backend/frontend/E2E)이 대상 커밋에서 **성공**했을 것.
-   > 현재 `ci.yml`은 `disabled_manually` 상태이고 마지막 실행이 2026-03-15 실패입니다. §13-2를 먼저 끝내야 이 항목이 의미를 가집니다. 그때까지는 릴리즈 담당이 `make build` / `make test` / `web` 타입체크·유닛테스트를 로컬에서 돌리고 **결과를 릴리즈 PR 본문에 붙입니다.**
-2. `main` ruleset의 필수 상태 체크가 모두 green일 것 (§13-2 완료 후).
-3. 알려진 실패가 남아 있다면 CHANGELOG에 `Known Issues` 항목으로 명시하고, 릴리즈 담당이 승인 근거를 PR에 남길 것.
+2. `Lint Review`의 `📋 PR Convention Check`·`📝 CHANGELOG Check`가 릴리즈 PR에서 통과했을 것.
 
-### 9.1 절차
+> **`ci.yml`은 2026-08-31 기준 `active`입니다** — v2.2까지 적혀 있던 "`disabled_manually`라
+> 릴리즈 담당이 로컬에서 돌리고 결과를 PR 본문에 붙인다"는 대체 절차는 더 이상 필요 없습니다.
+> PR을 열면 `backend`·`frontend` 잡이 자동으로 돕니다.
+>
+> **다만 강제되지는 않습니다.** `main` ruleset의 필수 상태 체크는 여전히 **0건**이라
+> (`required_status_checks` 규칙 없음), 잡이 빨간 상태에서도 머지와 태그가 가능합니다.
+> 이 게이트는 아직 **릴리즈 담당이 눈으로 확인하는 규칙**입니다 — 설정으로 올리는 것은 §13-2.
+
+### 9.1 절차 (v2.3 전면 개정)
+
+릴리즈 한 번은 **사람 6단계 → 태그 push → 자동 6잡(§7.3) → 사람 검증**입니다.
+
+v2.2까지의 절차는 11단계를 모두 사람이 하는 것으로 적혀 있었으나, `create-release`가 들어오면서
+9·10단계(Release 생성, prerelease 체크)가 자동화됐습니다. **그대로 따라 사람이 Release를 따로
+만들면 자동 생성본과 충돌합니다.** 아래는 그 경계를 다시 그은 것입니다.
+
+#### A. 태그 전 — 사람이 한다
 
 1. `CHANGELOG.md`의 `## [Unreleased]` 내용을 검토·정리한다.
-2. §6의 SemVer 기준으로 버전 번호를 결정한다.
-3. `## [Unreleased]` → `## [X.Y.Z] - YYYY-MM-DD`로 헤더를 바꾸고, 그 위에 새 빈 `## [Unreleased]` 섹션을 추가한다.
-4. 파일 하단 compare 링크를 갱신한다 (실재하는 태그만 — §3).
-5. `deploy/helm/nullus/Chart.yaml`의 `version`/`appVersion`을 §8.2에 따라 동기화한다.
-6. 위 변경을 `docs: CHANGELOG vX.Y.Z 릴리즈 준비` 커밋으로 PR 생성 → 리뷰 → `main` 머지. §9.0의 검증 근거를 PR 본문에 첨부한다.
-7. `main`에서 태그 생성 및 push:
+2. §6의 SemVer 기준으로 버전 번호를 결정한다. `0.x`에서 접미사를 뗄지는 §6.2를 먼저 읽는다
+   (롤링 태그가 생긴다).
+3. `## [Unreleased]` → `## [X.Y.Z] - YYYY-MM-DD`로 헤더를 바꾸고, 그 위에 새 빈 `## [Unreleased]`
+   섹션을 추가한다.
+   > **이 단계를 건너뛰고 태그를 밀면 Release 본문이 조용히 열화됩니다.** `create-release`는
+   > `CHANGELOG.md`에서 `## [X.Y.Z]` 섹션을 정규식으로 찾고, 못 찾으면 실패하는 대신
+   > `generate_release_notes`로 폴백합니다(§5). 워크플로는 초록불이고, 영문 PR 제목만 나열된
+   > Release가 남습니다.
+4. 파일 하단 compare 링크를 갱신한다 — `[unreleased]`의 기준 태그를 이번 버전으로 바꾸고,
+   `[X.Y.Z]` 줄을 새로 추가한다 (실재하는 태그만 — §3).
+5. `deploy/helm/nullus/Chart.yaml`의 `version`/`appVersion`을 이번 릴리즈 버전으로 맞춘다 (§8.2).
+6. 위 변경을 `docs: CHANGELOG vX.Y.Z 릴리즈 준비` 커밋으로 PR 생성 → 리뷰 → `main` 머지.
+   §9.0의 게이트가 초록인지 확인한다.
+
+> **4·5는 빠져도 아무 것도 실패하지 않습니다.** `v0.4.1`에서 실제로 둘 다 누락됐고, 이미지·차트·
+> Release·배포가 전부 성공했습니다. 자동화가 검사하지 않는 두 단계라서, 여기서 놓치면 다음
+> 릴리즈 담당이 잘못된 기준값을 그대로 물려받습니다(§13-12). **D-10에서 되짚습니다.**
+
+#### B. 태그 push — 사람이 한다
+
+7. `main`에서 태그를 만들어 push한다. 태그는 `main`에서만 만든다 (§10.1).
    ```bash
    git switch main && git pull
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
-8. `cd.yml` 실행을 Actions 탭에서 확인한다 — 이미지 2종 + 차트(§7.2) 푸시 성공.
-9. GitHub Release를 생성한다 — 제목 `vX.Y.Z`, 본문은 `CHANGELOG.md`의 해당 섹션(§5).
-10. GA(`1.0.0`) 이전 버전은 Release 생성 시 **"Set as a pre-release"**를 반드시 체크한다.
-11. 설치 경로를 검증한다 — **실 Kubernetes 클러스터에서, 인증 없이, 차트 기본값으로** 수행한다. 로컬 `helm template`은 이 단계를 대체하지 못한다.
+
+#### C. 태그 push 이후 — `cd.yml`이 한다 (사람은 보기만)
+
+8. Actions 탭에서 §7.3의 잡들이 초록인지 확인한다. **사람이 손으로 할 일은 없다** — 이미지 3종,
+   차트 게시, GitHub Release 생성(본문 = CHANGELOG 섹션, prerelease 자동 판정), Zadara 배포까지
+   자동이다.
+   - Release가 생기지 않았다면 `publish-chart` 실패를 먼저 본다 (`create-release`의 선행 잡).
+   - Release 본문이 영문 PR 목록이라면 A-3을 건너뛴 것이다. **CHANGELOG를 고쳐 머지한 뒤
+     Release 본문을 수동으로 교체한다** — 태그를 지우고 다시 밀지 않는다 (§10.3).
+
+#### D. 릴리즈 후 검증 — 사람이 한다
+
+9. 설치 경로를 검증한다 — **실 Kubernetes 클러스터에서, 인증 없이, 차트 기본값으로** 수행한다.
+   로컬 `helm template`은 이 단계를 대체하지 못한다.
+
+   ```bash
+   # (a) 산출물 3종이 익명 접근 가능한가 (§7.1)
+   gh api /orgs/cloud-nullus/packages/container/nullus%2Fnullus-api --jq .visibility   # public
+   gh api /orgs/cloud-nullus/packages/container/nullus%2Fnullus-web --jq .visibility   # public
+   gh api /orgs/cloud-nullus/packages/container/charts%2Fnullus     --jq .visibility   # public
+   helm registry logout ghcr.io 2>/dev/null
+   helm pull oci://ghcr.io/cloud-nullus/charts/nullus --version X.Y.Z
+
+   # (b) 클러스터가 실제로 받아들이는가 — 서버 사이드 렌더 후 설치
+   helm upgrade --install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version X.Y.Z \
+     --namespace nullus --create-namespace --dry-run=server
+   ```
+
+   이어서 실제 설치 → 전 Pod Running → 로그인까지 확인한다.
+
+   > 이 단계를 로컬 렌더로 대신하면 놓치는 유형: 이미지 경로 오류(#78), 존재하지 않는 이미지 태그,
+   > 필수 마운트된 시크릿 부재로 인한 `FailedMount`, 패키지 가시성. **v0.3.0-alpha에서 실제로 4종
+   > 모두 발생했습니다** (§13-9, §13-10).
+
+10. **A-4·A-5가 실제로 반영됐는지 되짚는다.** 자동화가 검사하지 않는 두 지점이다.
 
     ```bash
-    # (a) 산출물 3종이 익명 접근 가능한가 (§7.1)
-    gh api /orgs/cloud-nullus/packages/container/nullus%2Fnullus-api --jq .visibility   # public
-    gh api /orgs/cloud-nullus/packages/container/nullus%2Fnullus-web --jq .visibility   # public
-    gh api /orgs/cloud-nullus/packages/container/charts%2Fnullus     --jq .visibility   # public
-    helm registry logout ghcr.io 2>/dev/null
-    helm pull oci://ghcr.io/cloud-nullus/charts/nullus --version X.Y.Z
-
-    # (b) 클러스터가 실제로 받아들이는가 — 서버 사이드 렌더 후 설치
-    helm upgrade --install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version X.Y.Z \
-      --namespace nullus --create-namespace --dry-run=server
+    grep -n "^\[X.Y.Z\]:" CHANGELOG.md                    # compare 링크가 있는가
+    grep -nE "^(version|appVersion):" deploy/helm/nullus/Chart.yaml   # 릴리즈 버전과 같은가
     ```
 
-    이어서 실제 설치 → 전 Pod Running → 로그인까지 확인한다.
+    빠졌으면 **후속 PR로 채운다.** 태그를 다시 밀지 않는다 — 두 값 모두 게시된 산출물에 영향을
+    주지 않고(차트는 태그에서 주입, §7.2), 저장소 기준값만 어긋난 상태이기 때문이다.
 
-    > 이 단계를 로컬 렌더로 대신하면 놓치는 유형: 이미지 경로 오류(#78), 존재하지 않는 이미지 태그, 필수 마운트된 시크릿 부재로 인한 `FailedMount`, 패키지 가시성. **v0.3.0-alpha에서 실제로 4종 모두 발생했습니다** (§13-9, §13-10).
+#### 요약 체크리스트
+
+| # | 단계 | 주체 | 빠뜨리면 |
+|---|---|---|---|
+| A-3 | CHANGELOG 절단 | 사람 | Release 본문이 영문 자동 생성으로 폴백 (조용함) |
+| A-4 | compare 링크 | 사람 | CHANGELOG 하단이 옛 태그를 가리킴 (조용함) |
+| A-5 | `Chart.yaml` 동기화 | 사람 | clone 설치 경로가 옛 버전을 씀 (조용함) |
+| B-7 | `main`에서 태그 push | 사람 | — |
+| C-8 | 자동 6잡 확인 | 사람 | 산출물 누락을 릴리즈 후에 발견 |
+| D-9 | 실 클러스터 설치 검증 | 사람 | 설치되지 않는 릴리즈 발행 (v0.3.0-alpha 사례) |
+| D-10 | A-4·A-5 되짚기 | 사람 | 다음 담당이 잘못된 기준값을 물려받음 (v0.4.1 사례) |
 
 ### 9.2 롤백 절차 (v2 신설)
 
@@ -393,7 +542,8 @@ helm upgrade nullus oci://ghcr.io/cloud-nullus/charts/nullus --version <이전�
 
 1. `fix/<module>-<desc>` 브랜치에서 수정 + 실패 재현 테스트 추가.
 2. PR 리뷰·머지 후 `CHANGELOG.md`의 `Unreleased > Fixed`에 항목을 남긴다.
-3. 긴급도가 높으면 §9.1의 3~10단계만 압축해 바로 PATCH 태그를 올린다.
+3. 긴급도가 높으면 §9.1의 A-3~B-7만 압축해 바로 PATCH 태그를 올린다. **D-9·D-10은 압축 대상이
+   아니다** — 급한 릴리즈일수록 설치 검증과 되짚기를 건너뛰기 쉽고, `v0.4.1`이 그렇게 나왔다.
 
 > **릴리즈 브랜치**: 이미 다음 MINOR가 `main`에 머지된 뒤 이전 버전에 핫픽스가 필요한 경우, 위 절차로는 처리할 수 없습니다. `0.x` 구간에서는 사용자에게 최신 버전 업그레이드를 안내하는 것으로 갈음하고, **GA(`1.0.0`) 시점에 `release/X.Y` 브랜치 도입 여부를 재검토**합니다.
 
@@ -427,17 +577,19 @@ helm upgrade nullus oci://ghcr.io/cloud-nullus/charts/nullus --version <이전�
 
 ---
 
-## 11. 버전 로드맵 (참고)
+## 11. 버전 로드맵 (v2.3 갱신)
 
 | 버전 | 상태 | 주요 내용 |
 |---|---|---|
 | `0.1.0-alpha` | CHANGELOG 기록만 존재 (2026-03-15, **태그 미발행**) | Org/Cluster 등록, Stack 5단계 Wizard, CI/CD Pipeline 템플릿, 모니터링/알림, Keycloak OIDC 인증 기반 |
 | `0.2.0-alpha` | CHANGELOG 기록만 존재 (2026-03-28, **태그 미발행**) | Stack Install Wizard 5단계 완성, Helm Orchestrator 다중 Phase DAG, OSS Resource Defaults |
-| `0.3.0-alpha` | **릴리즈 준비 완료 — 최초로 실제 태그를 발행할 대상** (태그 미push) | Stack Continue 배포·Pod Watch WebSocket, Compatibility Matrix Admin CRUD, OpenBao 연동, 에어갭 클린설치 전 과정 자동화, 카카오클라우드 air-gap 배포 자산, SBOM 자동 생성, 스택 설정 export/import, OIDC 설치 옵션화 |
+| `0.3.0-alpha` | **발행 완료 (2026-07-27)** — 최초 태그·Release | Stack Continue 배포·Pod Watch WebSocket, Compatibility Matrix Admin CRUD, OpenBao 연동, 에어갭 클린설치 전 과정 자동화, 카카오클라우드 air-gap 배포 자산, SBOM 자동 생성, 스택 설정 export/import, OIDC 설치 옵션화 |
+| `0.4.0-alpha` | **발행 완료 (2026-08-09)** | CHANGELOG·PR 컨벤션 CI 강제, Zadara Cloud PoC 배포 자산·운영 스크립트, `create-release`로 태그 push 릴리즈 자동화, 차트 SPA 런타임 설정 값, 브랜치 규칙 v3 단일화 |
+| `0.4.1` | **발행 완료 (2026-08-09)** — 접미사를 뗀 첫 릴리즈 | 릴리즈 파이프라인(멀티아키 이미지·차트 게시·Release 본문 렌더링·Zadara 배포) 전 구간 검증. 부수 효과로 `0.4` 롤링 태그가 생겼다(§6.2) |
 | `0.9.0-beta` | 예정 | 오픈 베타 — 외부 사용자 테스트 가능 수준 |
 | `1.0.0` | 예정 | 정식 출시(GA) — Domain 100% / UseCase 핵심 시나리오 커버리지 확보, `release/X.Y` 브랜치 도입 재검토(§9.4) |
 
-**버전 산정 근거**: `0.2.0-alpha` 이후 누적된 변경은 신규 기능 다수(에어갭 설치 자동화, export/import, SBOM, OIDC 옵션화 등)와 버그 수정이 섞여 있고, REST 응답 필드 제거·비가역 마이그레이션·`values.yaml` 필수 키 삭제 등 §6.1의 Breaking Change 항목에는 해당하지 않습니다. 따라서 §6의 "가장 상위 자릿수 기준으로 한 번만 올린다"에 따라 **MINOR 상향 → `0.3.0-alpha`**입니다.
+**`0.3.0-alpha` 산정 근거 (2026-07-26 기록)**: `0.2.0-alpha` 이후 누적된 변경은 신규 기능 다수(에어갭 설치 자동화, export/import, SBOM, OIDC 옵션화 등)와 버그 수정이 섞여 있고, REST 응답 필드 제거·비가역 마이그레이션·`values.yaml` 필수 키 삭제 등 §6.1의 Breaking Change 항목에는 해당하지 않습니다. 따라서 §6의 "가장 상위 자릿수 기준으로 한 번만 올린다"에 따라 **MINOR 상향 → `0.3.0-alpha`**입니다.
 
 ---
 
@@ -451,7 +603,9 @@ A. 아니요. legacy이며 제거 대상입니다(§10.4). 릴리즈는 항상 `
 
 **Q3. 코드에 현재 버전을 하드코딩해야 하나요?**
 A. 아니요. git 태그를 기준으로 관리합니다(§8). 애플리케이션이 자기 버전을 알아야 한다면 빌드 시 `ldflags`로 주입합니다.
-> 현재 `Makefile`·`Dockerfile`·워크플로 어디에도 `ldflags` 주입이 없습니다. 필요해지면 그때 도입하며, 그전까지 앱은 자기 버전을 알지 못합니다.
+> **규칙과 코드가 어긋나 있습니다 (v2.3 확인).** `ldflags` 주입은 여전히 `Makefile`·`Dockerfile`·워크플로 어디에도 없는데, `cmd/api/main.go`의 `/health` 핸들러가 `"version": "0.1.0-alpha"`를 **하드코딩**해 응답합니다. 태그 3건을 발행하는 동안 이 값은 한 번도 바뀌지 않았습니다.
+>
+> v2.2까지는 "앱이 자기 버전을 모른다"로 끝나는 문제였지만, 이제 **틀린 버전을 단언합니다.** `pkg/nullusclient`의 서버 버전 스큐 검사가 이 필드를 읽으므로(`MinServerVersion = "0.1.0-alpha"`), 어느 버전을 배포하든 스큐 판정이 같은 값을 보고 통과합니다 — 검사가 있으나 아무것도 걸러내지 못합니다. 처리는 §13-13.
 
 **Q4. MAJOR를 올려야 할지 애매합니다.**
 A. §6.1 기준표를 먼저 확인하고, 애매하면 리뷰어와 PR에서 논의해 결정합니다.
@@ -465,18 +619,24 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 
 릴리즈 산출물에 직접 걸리는 1·3·7이 끝나 `v0.3.0-alpha`부터 정책을 적용합니다. 남은 항목은 릴리즈를 막지는 않지만, **§9.0의 자동 품질 게이트와 §10의 강제 장치가 아직 없다는 뜻**이므로 그때까지는 릴리즈 담당의 수동 검증에 의존합니다.
 
-과제 9~11은 **`v0.3.0-alpha`를 실제로 릴리즈하고 실 클러스터에 배포해 보고서 드러난 것**입니다. 셋 다 "정책 문서에 쓰인 절차를 그대로 밟았는데도 산출물이 쓸 수 없는 상태로 나온" 사례입니다. 9·10은 v2.2에서 §7.1·§9.1에 반영해 닫았고, **11은 `cd.yml` 수정이 필요해 열려 있습니다** — 차트 전용 패치를 태그로 게시하기 전에 반드시 처리해야 합니다.
+**2026-08-31 재측정 (v2.3)**: 과제 11은 §8.2에 규칙을 명시해 닫았고, 과제 2는 절반만 진척됐습니다(`ci.yml`은 `active`이나 필수 체크 미등록). 4·5·8은 그대로 열려 있습니다 — 저장소·ruleset 설정은 이 저장소를 소유한 계정에서만 바꿀 수 있어 문서 PR로는 닫히지 않습니다. `v0.4.1`에서 드러난 것 두 가지를 12·13으로 추가합니다.
+
+과제 9~11은 **`v0.3.0-alpha`를 실제로 릴리즈하고 실 클러스터에 배포해 보고서 드러난 것**입니다. 셋 다 "정책 문서에 쓰인 절차를 그대로 밟았는데도 산출물이 쓸 수 없는 상태로 나온" 사례입니다. 9·10은 v2.2에서 §7.1·§9.1에 반영해 닫았고, 11은 v2.3에서 **`cd.yml`을 고치는 대신 규칙을 코드에 맞춰** 닫았습니다(§8.2 — 차트 전용 패치를 태그로 게시하지 않는다).
+
+과제 12~13은 **`v0.4.1`을 발행하고 나서 드러난 것**입니다. 둘 다 "자동화가 검사하지 않아 조용히 지나간" 유형입니다.
 
 | # | 과제 | 관련 절 | 비고 |
 |---|---|---|---|
 | 1 | ~~CHANGELOG `Unreleased` 소급 정리~~ | §2, §4.2 | **완료 (2026-07-26)** — PR #54 이후 37건을 검토해 사용자 영향이 있는 26건을 24개 항목으로 `0.3.0-alpha` 섹션에 편입. 문서·테스트·CI 전용 11건(#69·#72·#74·#77·#80·#81·#84·#89·#94·#95·#96)은 §4.2의 `no-changelog` 기준으로 제외 |
-| 2 | `ci.yml` 재활성화 + 현재 실패 2종 수정 후 main ruleset 필수 체크 등록 | §9.0 | 2026-07-28 재측정: `e2e` 2건(`TestScenario4_CICDPipelineFlow`, `TestUAT2_Jieun_Developer`), `vitest` 38건(9파일) — 모두 기존 결함. `tsc` 3건(`cicd-list-page.tsx`)은 해소되어 현재 통과 |
+| 2 | ~~`ci.yml` 재활성화~~ + main ruleset 필수 체크 등록 | §9.0 | **절반 완료 (2026-08-31 확인)** — `ci.yml`은 `active`이고 PR마다 `backend`·`frontend`가 돈다. 그러나 `main` ruleset의 `required_status_checks`가 여전히 **0건**이라 빨간 상태로도 머지된다. 게이트를 설정으로 올리는 일이 남아 있다. 이전 측정 기록 — 2026-07-28 재측정: `e2e` 2건(`TestScenario4_CICDPipelineFlow`, `TestUAT2_Jieun_Developer`), `vitest` 38건(9파일) — 모두 기존 결함. `tsc` 3건(`cicd-list-page.tsx`)은 해소되어 현재 통과 |
 | 3 | ~~차트 이미지 기본값 교정 + `values-dev.yaml` 분리 + 관련 문서 동기화~~ | §8.1 | **완료 (2026-07-28, #100)** — `repository`를 `ghcr.io/cloud-nullus/nullus/nullus-*`로, `tag`를 `""`로. `values-dev.yaml` 신설, `docs/agent-reference.md`·`airgap/helm/README.md` 동기화. `phase1` 트리거 제거는 §10.4에 미완으로 남김 |
-| 4 | 저장소 설정: `allowed_merge_methods: ["squash"]`, `delete_branch_on_merge: true`, 릴리즈 PR 승인 1인 이상 | §9.3, §10.2 | 설정 변경 |
-| 5 | tag ruleset 신설 (`refs/tags/v*`) | §10.3 | 설정 변경 |
+| 4 | 저장소 설정: `allowed_merge_methods: ["squash"]`, ~~`delete_branch_on_merge: true`~~, 릴리즈 PR 승인 1인 이상 | §9.3, §10.2 | **부분 완료 (2026-08-31 확인)** — `delete_branch_on_merge`는 `true`로 반영됐다. `allowed_merge_methods`는 아직 `["merge","squash","rebase"]` 3종 허용이고 `required_approving_review_count`는 `0`이다 |
+| 5 | tag ruleset 신설 (`refs/tags/v*`) | §10.3 | **미착수 (2026-08-31 확인)** — `target: tag` ruleset 여전히 0건. 태그 3건을 발행한 지금은 §9.1 C-8의 "태그를 지우고 다시 밀지 않는다"가 규칙일 뿐 강제되지 않는다 |
 | 6 | ~~브랜치 명명 규칙을 `CLAUDE.md`와 `Nullus_PR_커밋_컨벤션.md` 중 한쪽으로 단일화~~ | §10.4 | **완료 (2026-08-09, 컨벤션 v3)** — 중첩형 `<type>/<module>/<desc>` + `feat`/`fix`/`chore` 3종으로 단일화. 두 문서와 `CLAUDE.md`를 모두 갱신. 실제 브랜치가 평면형 34 : 중첩형 33으로 갈려 있었으나 최근 것이 전부 중첩형이라 그쪽을 정본으로 삼음 |
 | 7 | ~~`cd.yml`에 `publish-chart` 잡 추가~~ | §7.2 | **완료 (2026-07-28, #100)** — `v*` 태그에서만 도는 잡으로 추가. 실제 게시 성공 여부는 v0.3.0-alpha 태그 push 시 확인 |
-| 8 | `cd.yml`의 `phase1` 브랜치 트리거 제거 | §10.4 | 과제 3에서 분리 |
+| 8 | `cd.yml`의 `phase1` 브랜치 트리거 제거 | §10.4, §7.3 | **미착수 (2026-08-31 확인)** — `cd.yml` `on.push.branches`에 `phase1`이 남아 있어 이미지 3종과 Zadara 배포가 그 브랜치에서도 돈다 |
 | 9 | ~~ghcr 패키지 가시성을 릴리즈 산출물 정의(§7.1)와 §9.1 체크리스트에 포함~~ | §7.1, §9.1 | **완료 (2026-08-07, v2.2)** — 저장소가 public이어도 패키지는 기본 private이다. 2026-07-28 확인 시점에 `nullus-api`·`nullus-web`·`charts/nullus` 3건 모두 private이라 §7.1이 광고하는 `helm install oci://…` 익명 설치 경로가 동작하지 않았다. **2026-08-07 public 전환 완료** — 익명 `helm pull`과 클러스터의 pull secret 없는 이미지 pull로 검증했다. 다만 이는 **1회성 수동 조치**이고 새 패키지는 다시 private으로 생성되므로, §9.1에 확인 항목이 남아야 한다. 전환은 REST API로 불가능하고 패키지 설정 UI에서만 된다 (저장소 Settings가 아님 — 혼동 시 저장소 자체를 private으로 만들 위험) |
 | 10 | ~~§9.1 step 11(설치 검증)을 **실 클러스터 서버 사이드**로 명시~~ | §9.1 | **완료 (2026-08-07, v2.2)** — step 11을 가시성 확인 + 익명 `helm pull` + `--dry-run=server` + 실제 설치 4단계로 구체화. v0.3.0-alpha 릴리즈 후 Zadara PoC 클러스터에 `--dry-run=server`를 돌려서야 차트 결함 2건(사설 CA 시크릿 필수 마운트, `bitnami/postgresql` 이미지 소멸)이 드러났다. 로컬 `helm template`은 둘 다 통과시킨다 — step 11이 로컬 렌더로 충족된다고 읽히면 같은 유형을 계속 놓친다 |
-| 11 | §7.2 `publish-chart`가 `--version`/`--app-version`을 함께 주입하는 문제 | §7.2, §8.2 | §8.2는 "차트만 바뀐 경우 `version`만 올리고 `appVersion`은 유지"라고 규정하지만, §7.2 잡은 태그 하나를 두 값에 모두 넣는다. 차트 전용 패치를 태그로 게시하면 **이미지가 없는 `appVersion`이 찍힌 차트**가 나온다. 2026-08-07 게시본에서 실증: 커밋된 `Chart.yaml`은 `version: 0.3.0`인데 게시된 차트는 `version: 0.3.0-alpha`로, `helm pull --version 0.3.0`으로는 조회되지 않는다. 잡이 `appVersion`은 `Chart.yaml` 값을 그대로 쓰도록 바꾸거나, §8.2에 "태그 릴리즈에서는 차트 전용 패치를 하지 않는다"를 명시해 규칙을 일치시켜야 한다 |
+| 11 | ~~§7.2 `publish-chart`가 `--version`/`--app-version`을 함께 주입하는 문제~~ | §7.2, §8.2 | **완료 (2026-08-31, v2.3)** — 잡을 고치는 대신 규칙을 코드에 맞췄다. `publish-chart`가 태그를 두 값에 모두 넣는 것은 "차트와 앱이 같은 버전으로 함께 나간다"는 전제에서 옳고, 어긋나는 것은 §8.2의 "차트만 바뀌면 `version`만 올린다" 쪽이다. §8.2에 **차트 전용 패치는 태그로 게시하지 않는다**를 명시했다 — 태그로 게시하면 존재하지 않는 `appVersion`이 찍혀 `ImagePullBackOff`가 된다 |
+| 12 | 릴리즈 절단 시 compare 링크·`Chart.yaml` 누락 | §9.1 A-4·A-5 | **열림** — `v0.4.1` 발행 시 둘 다 빠졌다. `CHANGELOG.md` 하단은 아직 `[unreleased]: …/compare/v0.4.0-alpha...HEAD`이고 `[0.4.1]` 줄이 없으며, `Chart.yaml`은 `version: 0.4.0` / `appVersion: "0.4.0-alpha"`다. **게시된 산출물에는 영향이 없다**(차트 버전은 태그에서 주입) — 저장소 기준값만 어긋난 상태라 후속 PR로 채우면 된다. 절차 쪽 방어는 v2.3에서 §9.1 D-10으로 넣었고, 자동 검사로 올리려면 `check_changelog.py`에 "릴리즈 섹션이 있으면 같은 버전의 compare 링크도 있어야 한다"를 더하는 방법이 있다 |
+| 13 | `/health`가 버전을 하드코딩한다 | §8, §12 Q3 | **열림** — `cmd/api/main.go`의 `/health`가 `"version": "0.1.0-alpha"`를 고정 응답한다. §8의 "코드에 하드코딩하지 않는다"에 정면으로 어긋나고, `pkg/nullusclient`의 버전 스큐 검사가 이 필드를 읽으므로 **검사가 어떤 스큐도 잡지 못한다**. `ldflags`로 태그를 주입하고(§12 Q3) `MinServerVersion`을 실제 하한으로 올리는 코드 변경이 필요하다 |
