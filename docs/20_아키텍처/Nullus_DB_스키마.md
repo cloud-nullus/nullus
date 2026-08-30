@@ -1,20 +1,20 @@
 # Nullus Platform PostgreSQL 데이터베이스 스키마 설계
 
 **작성일**: 2026-03-14
-**최종 갱신**: 2026-08-11 (현행 스키마 대조)
-**버전**: 1.1
+**최종 갱신**: 2026-08-31 (현행 스키마 재대조)
+**버전**: 1.2
 **기반 문서**: nullus_PRD_1.3.md, Nullus_시스템_아키텍처.md, Nullus_기능목록.md, Nullus_기능분해도.csv, CLAUDE.md
 **대상 독자**: 백엔드 엔지니어, DBA, 아키텍트
 
 > **이 문서의 6장 이하는 2026-03-14 설계안이며 현재 스키마와 상당히 다르다.**
-> 마이그레이션은 `000061` 까지 적용됐고, 설계안의 13개 테이블은 만들어지지 않았으며
-> 9개 테이블이 설계안 없이 추가됐다. 실제 상태는 아래 0장을 기준으로 본다.
+> 마이그레이션은 `000074` 까지 적용됐고, 설계안의 13개 테이블은 만들어지지 않았으며
+> 10개 테이블이 설계안 없이 추가됐다. 실제 상태는 아래 0장을 기준으로 본다.
 
 ---
 
-## 0. 현행 스키마 인벤토리 (2026-08-11)
+## 0. 현행 스키마 인벤토리 (2026-08-31)
 
-`db/migrations/` 를 `000061` 까지 적용한 데이터베이스에서 추출했다.
+`db/migrations/` 를 `000074` 까지 적용한 데이터베이스에서 추출했다.
 
 | 테이블 | Context | 컬럼 수 | 설계 문서 반영 |
 |--------|---------|---------|----------------|
@@ -23,25 +23,36 @@
 | `audit_logs` | 공통 | 8 | ○ |
 | `clusters` | Cluster | 12 | ○ |
 | `compatibility_matrices` | Stack | 9 | ○ |
-| `golden_path_templates` | Stack | 9 | ○ |
+| `golden_path_templates` | Stack | 10 | ○ |
 | `known_issues` | Observability | 8 | **미반영** |
 | `notification_configs` | Observability | 7 | **미반영** |
 | `notification_history` | Observability | 8 | **미반영** |
 | `org_members` | Organization | 5 | ○ |
 | `org_resource_profiles` | Organization | 8 | **미반영** |
 | `organizations` | Organization | 9 | ○ |
-| `pipeline_deployments` | CI/CD | 7 | ○ |
+| `pipeline_deployments` | CI/CD | 8 | ○ |
 | `pipeline_templates` | CI/CD | 10 | ○ |
 | `pipelines` | CI/CD | 15 | **미반영** |
 | `stack_config_versions` | Stack | 7 | ○ |
+| `stack_deploy_logs` | Stack | 7 | **미반영** |
 | `stack_helm_step_configs` | Stack | 12 | ○ |
 | `stack_resource_defaults` | Stack | 10 | **미반영** |
 | `stacks` | Stack | 15 | **미반영** |
 | `token_rotation_events` | Secrets | 8 | ○ |
 | `token_sources` | Secrets | 15 | ○ |
-| `users` | Organization | 8 | ○ |
+| `users` | Organization | 10 | ○ |
 
-> 실제 테이블 **22개**(`schema_migrations` 제외).
+> 실제 테이블 **23개**(`schema_migrations` 제외).
+
+2026-08-11 대비 달라진 것 — 테이블 1개(`stack_deploy_logs`)가 늘고 세 테이블의 컬럼이
+붙었다.
+
+| 변경 | 마이그레이션 | 이유 |
+|------|-------------|------|
+| `stack_deploy_logs` 신규 | `000074` | 설치 로그가 API 프로세스 메모리에만 있어, 20~30분짜리 설치 도중 파드가 재시작되면 통째로 사라졌다. `seq BIGSERIAL` 로 순서를 잡는다 — 같은 밀리초에 여러 줄이 들어와 타임스탬프로는 정렬할 수 없다 |
+| `pipeline_deployments.steps JSONB` | `000071` | CI 서버에서 들인 실행은 단계를 담을 곳이 없어 버려졌고, 화면이 계속 "실행 정보 없음" 을 표시했다 |
+| `golden_path_templates.planning_profile` | `000072` | 도구 선택만으로는 설치 규모가 정해지지 않는다. `local`/`startup`/`standard`/`enterprise` 중 하나이며 기존 행은 지금까지의 동작과 같은 `standard` 로 채웠다 |
+| `users.password_hash`, `users.password_updated_at` | `000073` | 포털 ID/PW 로그인 자격 저장. `NULL` 은 OIDC 전용 계정이며 어떤 비밀번호로도 통과하지 않는다 |
 
 ### 0.1 설계안에만 있고 만들어지지 않은 테이블
 
@@ -51,8 +62,14 @@
 
 일부는 이름이 바뀌어 구현됐다 — `deployments` → `pipeline_deployments`,
 `stack_configs` → `stacks`(+`stack_config_versions`), `alert_configs`/`alert_history`
-→ `alert_rules`/`alerts`/`notification_*`. `sessions`·`rbac_policies`·`menu_permissions`
-는 인증이 OIDC 로 가면서 DB 테이블 없이 처리된다. 6장 이하를 읽을 때 이 대응을 감안해야 한다.
+→ `alert_rules`/`alerts`/`notification_*`, `deployment_logs` → `stack_deploy_logs`
+(스택 설치 로그에 한정. 파이프라인 로그는 여전히 CI 서버에서 읽는다),
+`deployment_steps` → `pipeline_deployments.steps` JSONB 컬럼(테이블로 쪼개지 않았다 —
+단계 목록은 항상 배포 하나와 함께 읽고 따로 질의하지 않는다).
+`sessions`·`rbac_policies`·`menu_permissions` 는 인증이 OIDC 로 가면서 DB 테이블 없이
+처리된다. 다만 `sessions` 의 자리 일부는 `users.password_hash`(`000073`)가 대신한다 —
+세션 자체는 여전히 토큰이고, DB 에 남는 것은 자격뿐이다. 6장 이하를 읽을 때 이 대응을
+감안해야 한다.
 
 ### 0.2 마이그레이션 이력에서 참고할 것
 
@@ -61,6 +78,26 @@
 - `000061_prune_external_scm_token_sources` — `token_type='reissue'` 인 외부 SaaS
   (github/github-actions/ghcr) 토큰 소스를 소프트 삭제한다. 사용자 PAT(`token_type='pat'`)
   는 대상이 아니다.
+- `000063`~`000065` — OpenTelemetry 관측 계층. 템플릿 `gitlab-argocd-otel-v1` 을 시드하고
+  otel collector·agent 의 Helm 스텝 설정을 넣는다.
+- `000067`~`000069` — Gitea·Jenkins 를 설치 스텝으로 들이고 `gitea-jenkins-argocd-v1`
+  템플릿·호환성 행렬을 시드한다. 이때부터 스택의 SCM/CI 가 GitLab 전용이 아니다.
+- `000070_align_pipeline_template_stages` — 템플릿이 선언한 단계를 스캐폴딩 결과와 맞춘다.
+  선언과 실제가 어긋나면 화면이 실행되지 않은 단계를 성공으로 그린다.
+- `000072_template_planning_profile` — 위 표 참고. 8Gi 노드용
+  `gitea-jenkins-argocd-lite-v1` 템플릿과 같은 id 의 호환성 행렬을 함께 시드한다.
+  템플릿만 넣고 행렬을 빠뜨리면 Pre-Deploy Gate 가 판정 근거를 잃어 설치 직전에 막힌다.
+
+### 0.3 시드 데이터 현황
+
+| 테이블 | 시드 건수 | 내용 |
+|--------|-----------|------|
+| `golden_path_templates` | 9 | Empty, GitLab All-in-One, GitLab+Argo CD, GitLab+Harbor, GitLab+Nexus, GitLab+Argo CD+OTel, GitHub+Argo CD, Gitea+Jenkins+Argo CD, Gitea+Jenkins+Argo CD (Lite) |
+| `compatibility_matrices` | 8 | 위 목록에서 Empty 를 뺀 8개. 템플릿과 id 를 맞춘다 |
+| `pipeline_templates` | 4 | `web-backend-v1`, `batch-job-v1`, `nullus-sample-backend-v1`, `nullus-sample-frontend-v1` |
+
+> 템플릿의 차트 버전은 설치 경로가 쓰는 값(`internal/stack/domain/connection.go`)과 같아야
+> 하며, `TestChartVersionsMatchCompatibilityMatrix` 가 이를 고정한다.
 
 ---
 

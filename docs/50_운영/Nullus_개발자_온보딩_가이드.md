@@ -33,7 +33,7 @@
 | 영역 | 기술 |
 |------|------|
 | **Backend** | Go 1.26+ (Echo v4) + PostgreSQL 18+ |
-| **Frontend** | React 19 + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui 패턴 |
+| **Frontend** | React 19 + TypeScript + Vite + Tailwind CSS 4 + 자체 프리미티브(내부 MUI 9) |
 | **상태 관리** | Zustand 5 |
 | **API 통신** | TanStack Query 5 + Axios |
 | **테스트 (Go)** | `testing`, `testify/mock`, `testcontainers` |
@@ -42,7 +42,9 @@
 
 ### 1.4 아키텍처 원칙
 
-**Modular Monolith**: 5개 모듈(stack, cicd, admin, observability, auth)로 경계를 나눈다. 모듈 간 직접 import는 금지이며 공유 타입은 `internal/shared/`에 둔다.
+**Modular Monolith**: 5개 바운디드 컨텍스트(stack, cicd, admin, observability, auth)로 경계를 나눈다. 모듈 간 직접 import는 금지이며 공유 타입은 `internal/shared/`에 둔다.
+
+`internal/cli` 가 하나 더 있지만 바운디드 컨텍스트가 아니라 **표면**이다 — cobra 명령 트리와 출력 형식만 들고, 서버와 이야기하는 일은 `pkg/nullusclient` 가 한다. 클라이언트를 `pkg/` 에 둔 이유는 MCP 서버가 import 해야 해서다.
 
 **Clean Architecture**: 의존성 방향은 항상 안쪽(도메인)을 향한다.
 

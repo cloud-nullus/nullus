@@ -64,7 +64,9 @@ Nullus 개발 환경은 단순히 코드를 작성하는 공간을 넘어, 실�
 | | Vite | 8.x | 빠른 빌드 및 HMR |
 | | Zustand | 5.x | 가벼운 상태 관리 |
 | | Tailwind CSS | 4.x | 유틸리티 퍼스트 스타일링 |
-| | shadcn/ui | latest | Radix UI 기반 컴포넌트 |
+| | MUI | 9.x | `@mui/material` + Emotion. 프리미티브(`components/ui/*`)의 **내부**로만 쓴다 |
+| | 디자인 토큰 | — | `web/DESIGN.md` → `web/src/theme/tokens.generated.*` (색·간격 단일 출처) |
+| | Recharts | 3.x | 차트. Chart.js 는 2026-08-12 에 제거됐다 |
 | **Backend** | Go | 1.26 | `go.mod` 이 요구하는 버전 |
 | | Echo | v4 | 고성능 HTTP 웹 프레임워크 |
 | | PostgreSQL | 18+ | JSONB 및 고급 쿼리 기능 활용 |
@@ -416,7 +418,9 @@ Nullus는 복잡한 명령어를 단순화하기 위해 `Makefile`을 적극 활
 ### 5.3 프론트엔드 개발 프로세스 (React)
 
 1. **서버 실행**: `web/` 디렉토리에서 `npm run dev`가 실행됩니다.
-2. **컴포넌트 개발**: `web/src/components/ui/`에 shadcn 컴포넌트를 추가하여 사용합니다.
+2. **컴포넌트 개발**: `web/src/components/ui/` 의 프리미티브를 씁니다. 필요한 것이 없으면
+   여기에 새로 만들고, 화면에서 MUI 를 직접 import 하지 않습니다 — 그래야 내부 라이브러리를
+   갈아 끼워도 화면 코드가 흔들리지 않습니다.
 3. **상태 관리 (Zustand)**:
    ```typescript
    // web/src/stores/useAuthStore.ts 예시
@@ -552,17 +556,32 @@ export const useUIStore = create<UIState>((set) => ({
 }));
 ```
 
-### 5.9 스타일링 및 UI 컴포넌트 (Tailwind & shadcn/ui)
+### 5.9 스타일링 및 UI 컴포넌트 (Tailwind & 프리미티브)
+
+> **2026-08-31 정정** — 이 절은 오래 shadcn/ui 사용법을 안내했으나, **shadcn/ui 는 이
+> 프로젝트에 도입된 적이 없다.** `@radix-ui/*` 도 `shadcn` CLI 도 들어온 적이 없고,
+> `npx shadcn-ui@latest add ...` 는 실행해도 이 저장소의 구조와 맞지 않는다.
+> `components/ui/*` 는 처음부터 손수 구현이었고, 2026-08-11 개편에서 그 **내부만** MUI 로
+> 바뀌었다.
 
 #### Tailwind CSS 사용 원칙
 - **Utility-First**: 가급적 커스텀 CSS 파일 작성을 지양하고 Tailwind 클래스만 사용합니다.
+- **색은 토큰만**: 색 리터럴(`#fff`, `rgb(...)`)을 직접 적으면 **ESLint 가 막습니다.**
+  `web/DESIGN.md` 에서 파생된 CSS 변수(`var(--color-*)`)를 씁니다.
 - **Arbitrary Values**: `h-[123px]`와 같은 임의 값 사용은 최소화하고 디자인 시스템의 토큰을 사용합니다.
 - **Dark Mode**: `dark:` 접두사를 사용하여 다크 모드 대응을 기본으로 합니다.
 
-#### shadcn/ui 활용
-- **컴포넌트 추가**: `npx shadcn-ui@latest add [component-name]`
-- **커스터마이징**: `web/src/components/ui/`에 생성된 코드를 직접 수정하여 프로젝트에 맞게 변경합니다.
-- **조합**: 복잡한 UI는 여러 shadcn 컴포넌트를 조합하여 새로운 컴포넌트를 만들어 사용합니다.
+#### 프리미티브 활용
+- **위치**: `web/src/components/ui/` — `badge`, `button`, `card`, `checkbox`, `icon-button`,
+  `icon-tile`, `input`, `modal`, `search-input`, `select`, `skeleton`, `status-icon`,
+  `tabs`, `text-input`, `toast-provider`.
+- **화면에서 MUI 를 직접 import 하지 않습니다.** MUI 는 프리미티브 내부 구현일 뿐이며,
+  화면이 직접 쓰기 시작하면 내부 교체가 다시 전면 개편이 됩니다.
+- **없으면 여기에 만듭니다.** 화면마다 생 `<input>`·손수 만든 `<table>` 을 두는 것이
+  2026-08 개편의 원인이었습니다(생 `<input>` 45곳, 손수 만든 표 17곳).
+- **표는 `DataTable`(TanStack) 하나로 유지합니다** — AG Grid 검토 후 기각(D6 결정 = A안).
+  상용 라이선스 도입과 라이브러리 중복은 ESLint 규칙이 막습니다.
+- **차트는 Recharts 하나만 씁니다.** Chart.js 는 제거됐습니다.
 
 ---
 

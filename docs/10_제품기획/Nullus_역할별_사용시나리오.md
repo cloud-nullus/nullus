@@ -1,7 +1,7 @@
 # Nullus 역할별 사용 시나리오
 
 **작성일**: 2026-03-22
-**최종 갱신**: 2026-08-11 (메뉴 가시성 구현 대조)
+**최종 갱신**: 2026-08-31 (메뉴 가시성 재대조 — Developer 랜딩 불일치 해소)
 **기반 문서**: nullus_PRD_1.3.md, Nullus_기능목록.md, Nullus_메뉴체계.md
 **범위**: Phase 1 (DevOps) 3역할 체계 기반 사용 시나리오
 
@@ -15,32 +15,45 @@ Nullus는 3단계 RBAC 역할을 사용한다.
 |------|------|----------|-----------|
 | **Admin** | 플랫폼 관리자 | 조직/인원/인프라 관리 | 관리 > 조직 |
 | **DevOps Engineer** | DevOps/Platform Engineer | DevSecOps 스택 구성, 배포, 운영 | 데브섹옵스 스택 > 스택 템플릿 |
-| **Developer** | 애플리케이션 개발자 | 앱 배포, 모니터링 조회 | CI/CD > CI/CD 템플릿 |
+| **Developer** | 애플리케이션 개발자 | 앱 배포, 모니터링 조회 | **CI/CD > 앱 배포**(`/cicd/developer-deploy`) |
 
-### 역할별 메뉴 가시성 (2026-08-11 구현 대조)
+### 역할별 메뉴 가시성 (2026-08-31 구현 대조)
 
-`web/src/components/layout/sidebar.tsx` 에서 추출했다. 대메뉴만이 아니라 **하위 메뉴마다**
-역할이 걸려 있어서, 대메뉴가 보여도 항목이 다를 수 있다.
+`web/src/components/layout/nav-model.tsx` 에서 추출했다(2026-08-11 판은 `sidebar.tsx` 라고
+적었으나 그 뒤 메뉴 정의가 분리됐다). 대메뉴만이 아니라 **하위 메뉴마다** 역할이 걸려
+있어서, 대메뉴가 보여도 항목이 다를 수 있다.
 
 | 대메뉴 | 하위 메뉴 | Admin | DevOps | Developer |
 |--------|-----------|:-----:|:------:|:---------:|
 | 데브섹옵스 스택 | 스택 템플릿 / 목록 / 이력 / 버전 / OSS 기본 리소스 | O | O | - |
 | | 스택 버전 관리 | O | - | - |
 | CI/CD | CI/CD 템플릿 | O | O | **-** |
+| | **CI/CD 골든패스** | O | O | **-** |
 | | CI/CD 목록 / 이력 | O | O | O |
 | 관측성 | 모니터링 대시보드 / 알림 이력 | O | O | O |
 | | 알림 규칙 | O | O | - |
-| 관리 | 조직 / 사용자 / 클러스터 / 알려진 이슈 | O | - | - |
+| 관리 | 조직 / 사용자 / 클러스터 / 알려진 이슈 / **토큰 관리** | O | - | - |
 | 사용자 | 로그아웃 | O | O | O |
 
-> **확인된 불일치** — 홈 화면의 Developer 랜딩 경로는 `/cicd/templates` 인데
-> (`home-page.tsx` 의 `getRoleLandingPath`), 사이드바는 그 메뉴를 Developer 에게 숨긴다.
-> 라우트 자체는 `['admin','devops','developer']` 를 허용하므로 홈에서 들어가는 것은
-> 되지만, **한 번 벗어나면 메뉴로 다시 찾아갈 수 없다.**
+Developer 에게 보이는 항목은 **4개**다 — 모니터링 대시보드, 알림 이력, CI/CD 목록,
+CI/CD 이력.
+
+> **2026-08-11 에 기록한 불일치는 해소됐다.** 그때는 홈의 Developer 랜딩이
+> `/cicd/templates` 인데 사이드바가 그 메뉴를 Developer 에게 숨겨, 한 번 벗어나면 메뉴로
+> 다시 찾아갈 수 없었다. 원인은 로그인 리다이렉트와 홈의 시작 버튼이 **각자 목록을 들고
+> 있었다는** 것이다.
 >
-> 아래 3장의 Developer 시나리오는 "CI/CD 템플릿에서 시작" 을 전제하므로, 사이드바에
-> 노출하든 랜딩을 `/cicd/list` 로 바꾸든 한쪽으로 맞춰야 한다. 문서만으로 정할 문제가
-> 아니라 제품 판단이 필요해 여기 기록만 남긴다.
+> 지금은 두 곳이 `web/src/features/auth/role-landing.ts` 한 곳을 본다.
+>
+> | 역할 | 랜딩 |
+> |------|------|
+> | admin | `/admin/organization` |
+> | devops | `/stack/templates` |
+> | developer | `/cicd/developer-deploy` |
+>
+> Developer 랜딩을 `/cicd/developer-deploy` 로 잡은 것은, 그 화면이 사이드바에는 없지만
+> **역할의 실제 일(앱 배포)에 바로 닿는** 곳이기 때문이다. 아래 3장의 Developer 시나리오도
+> 이 경로를 전제로 읽는다.
 
 ---
 
@@ -256,16 +269,28 @@ DevOps Engineer는 DevSecOps 스택의 전체 라이프사이클(설정, 배포,
    - tool_down, high_cpu, high_memory, storage_warning, pipeline_failure
 3. 알림 채널 연동: Slack / Email
 
+> **⚠️ 이 시나리오는 끝까지 동작하지 않는다 (2026-08-31 확인).** 규칙 저장과 채널 설정
+> 저장까지는 되지만 **알림이 실제로 발송되지 않는다.** 규칙을 메트릭과 견주는 평가
+> 루프가 없고, `SlackNotifier`/`EmailNotifier` 를 만드는 프로덕션 코드도 없다. 화면의
+> 알림 이력 행은 데모 시드가 넣은 것이다.
+>
+> 화면상으로는 설정이 저장되므로 동작하는 것처럼 보인다 — 시연에서 이 시나리오를
+> 쓴다면 그 점을 밝혀야 한다. 상세는
+> `docs/20_아키텍처/Nullus_설계_대비_미구현_항목.md` 3.5 B.
+
 ### D11. 기존 스택에 도구 추가 설치
 
 **관련 기능**: F2, F3  
 **페르소나**: Senior DevOps "민수" 시나리오
 
-> **Note**: 이 시나리오는 Phase 2로 이관되었습니다. Phase 1에서는 새 스택 생성만 지원합니다.
+> **Note (2026-08-31 정정)**: "Phase 2로 이관, Phase 1에서는 새 스택 생성만 지원" 이라고
+> 적혀 있었으나 **이미 구현돼 있다.** 화면은 `/stack/:id/add-tools`
+> (`stack-add-tools-page.tsx`), API 는 `PATCH /api/v1/stacks/:stackId/tools`,
+> 유스케이스는 `internal/stack/usecase/add_tools.go` 다. 스택 상세에서 진입한다.
 
 1. 이미 GitLab을 사용 중이지만 모니터링 스택이 없는 상황
-2. 스택 설치에서 Monitoring 관련 도구만 선택 (Prometheus + Grafana)
-3. 기존 클러스터에 추가 설치
+2. 스택 상세 > 도구 추가에서 Monitoring 관련 도구만 선택 (Prometheus + Grafana)
+3. 기존 스택 네임스페이스에 추가 설치 — 이미 설치된 릴리스는 건드리지 않는다
 4. 모니터링 스택 구축 완료
 
 ### D12. 커스터마이징 배포

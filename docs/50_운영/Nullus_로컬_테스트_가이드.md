@@ -42,7 +42,7 @@
 이 명령은 다음을 순서대로 실행합니다:
 
 1. Docker Compose로 PostgreSQL, Redis, MinIO, Keycloak 컨테이너 기동
-2. `golang-migrate`로 DB 마이그레이션 실행 (현재 `000061` 까지)
+2. `golang-migrate`로 DB 마이그레이션 실행 (현재 `000074` 까지)
 3. Go API 서버 빌드 + 실행 (`:8090`, `ENCRYPTION_KEY` 자동 설정)
 4. React 프론트엔드 개발 서버 실행 (`:5173`)
 

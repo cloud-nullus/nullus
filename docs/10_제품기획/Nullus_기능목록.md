@@ -5,13 +5,14 @@
 **범위**: Phase 1 (DevOps) 전체 기능 + Phase 2-3 예정 기능 요약
 
 ## 변경 이력
+- 2026-08-31: 0장 재대조. Golden Path 9개·매트릭스 8개로 갱신, F7 알림 발송이 실제로는 배선되지 않은 점을 정정, Gitea/Jenkins·SSO·CLI 축 추가
 - 2026-08-11: 구현 상태 대조(0장 추가). 계획 표는 그대로 두고 현재 달성도를 별도로 기록
 - 2026-03-29: Empty Template/Storage 미선택 흐름, Alert Rule DB 동기화 편집, Home/Admin UX 보완사항 반영
 - 2026-03-08: PRD v1.2 기반으로 갱신 (Narwhal 강화 요구사항: known-issues, 3-Phase, OIDC 반영 확인)
 
 ---
 
-## 0. 구현 상태 (2026-08-11)
+## 0. 구현 상태 (2026-08-31)
 
 1장 이하의 표는 **계획**이다. 아래는 코드·DB 와 대조한 현재 상태이며, 계획과 다른
 부분은 사유를 함께 적었다.
@@ -21,14 +22,14 @@
 | F0 | Organization 설정 등록 | 구현 | `/admin/organization`, 리소스 프로파일 API 포함 |
 | F1 | K8S Cluster 등록 | 구현 | 등록·검증·디스커버리·네임스페이스/파드 조회 |
 | F2 | 노코드 스택 설정 UI | 구현 | 설치 위자드(`stack-install-page`), 스토리지·인증 단계 포함 |
-| F3 | Golden Path 템플릿 | **계획 초과** | **6개** — Empty, GitLab All-in-One, GitLab+Argo CD, GitLab+Harbor, GitLab+Nexus, GitHub+Argo CD. Phase 3 목표가 3개였다 |
-| F4 | 자동 설치/배포/이력 | 구현 | 설치·재시도(`/retry`)·이어하기(`/continue`)·이력·롤백 |
-| F5 | CI/CD 파이프라인 템플릿 | 구현 | **4개** (`pipeline_templates`) |
-| F6 | CI/CD 배포/이력 | 구현 | 파이프라인 CRUD·배포·이력. **저장소 프로비저닝까지 확장**(GitLab/GitHub) |
-| F7 | 모니터링/알림 | 구현 | 대시보드·알림 규칙·알림 이력·알림 발송(`notification_configs`/`history`) |
-| F8 | OSS 버전 호환성 | **계획 초과** | 매트릭스 **5개**. 설치 전 게이트로 동작 |
-| F9 | UI 권한 체계 | 구현 | 사이드바·라우트·API 3중 역할 검사 + Keycloak/Authentik OIDC |
-| F10 | 리소스 예상량 계산 | 구현 | 위자드 리소스 단계, 통화 선택 |
+| F3 | Golden Path 템플릿 | **계획 초과** | **9개** — Empty, GitLab All-in-One, GitLab+Argo CD, GitLab+Harbor, GitLab+Nexus, GitLab+Argo CD+OTel, GitHub+Argo CD, Gitea+Jenkins+Argo CD, Gitea+Jenkins+Argo CD (Lite). Phase 3 목표가 3개였다 |
+| F4 | 자동 설치/배포/이력 | 구현 | 설치·재시도(`/retry`)·이어하기(`/continue`)·재시도 이력·롤백. 설치 로그는 **DB 에 남는다**(`stack_deploy_logs`, 마이그레이션 `000074`) |
+| F5 | CI/CD 파이프라인 템플릿 | 구현 | **4개** (`pipeline_templates`). 프런트엔드 템플릿은 nginx 기본 페이지가 아니라 **실제 React 앱을 스캐폴딩**한다 |
+| F6 | CI/CD 배포/이력 | 구현 | 파이프라인 CRUD·배포·이력. **저장소 프로비저닝**(GitLab/GitHub/Gitea) + **CI job 프로비저닝**(Jenkins multibranch) + 삭제 시 이미지·배포 앱·CI job 회수 |
+| F7 | 모니터링/알림 | **부분 구현** | 대시보드·알림 규칙 CRUD·알림 채널 설정은 있다. **알림이 실제로 발송되지는 않는다** — 규칙을 평가하는 루프도, notifier 호출부도 없다. 화면의 이력 행은 데모 시드다. 상세는 아래 0.2 |
+| F8 | OSS 버전 호환성 | **계획 초과** | 매트릭스 **8개**. 설치 전 게이트로 동작. 단 매트릭스 **추가·수정은 마이그레이션 시드로만** 가능하다(관리자 화면 버튼은 미배선 API 를 부른다) |
+| F9 | UI 권한 체계 | 구현 | 사이드바·라우트·API 3중 역할 검사 + Keycloak/Authentik OIDC + **ID/PW 로그인 병행**(IdP 장애 대비) |
+| F10 | 리소스 예상량 계산 | 구현 | 위자드 리소스 단계, 통화 선택. 템플릿마다 설치 규모 프로파일(`planning_profile`)을 갖는다 |
 
 ### 0.1 계획에 없던 확장
 
@@ -36,17 +37,25 @@
 |------|------|
 | 외부 SCM 지원 | GitHub(SaaS)에서 저장소 생성·워크플로 스캐폴딩·GHCR push 까지 지원. 계획은 GitLab 전제였다 |
 | 시크릿 평면 | OpenBao + External Secrets Operator 를 **스택마다** 배포. 계획 문서에 없던 축이다 |
-| 토큰 소스 관리 | 회전·승인·일시중지 API 9개(`/admin/token-sources/*`). **화면이 아직 연결되지 않았다**(메뉴체계 0.3 참고) |
+| 토큰 소스 관리 | 회전·승인·일시중지 API 9개(`/admin/token-sources/*`). **화면도 연결됐다** — `/admin/token-management`, 사이드바 관리 그룹 |
 | 알려진 이슈 | `/admin/known-issues` 메뉴와 API |
 | OSS 기본 리소스 | `/stack/oss-resource-default` 로 도구별 기본 리소스를 조직이 조정 |
+| **Gitea + Jenkins 스택** | SCM/CI 가 GitLab 전용이 아니게 됐다. 설치 스텝·템플릿 2종(표준/Lite)·호환성 매트릭스·파이프라인 렌더러(Jenkinsfile)까지 한 축으로 들어왔다 |
+| **스택 OSS 의 SSO** | 스택이 설치한 도구(Argo CD·Harbor·GitLab·Gitea·Jenkins·Grafana·MinIO)를 Keycloak 인증으로 전환하고, 각 도구에 비밀번호 로그인 우회로(escape hatch)를 남긴다 |
+| **OpenTelemetry 관측 계층** | 스택이 OTel Collector·Agent 를 세우고, 배포되는 앱에 수집기 주소를 넣어 준다 |
+| **와일드카드 TLS** | cert-manager DNS-01 로 `*.<도메인>` 인증서를 발급해 기본 인증서로 지정. 도구 주소가 전부 https 로 확정된다 |
+| **통합 `nullus` CLI + MCP** | `pkg/nullusclient` 를 공유 기반으로 CLI(트랙 A)와 MCP 서버(트랙 B)를 함께 올린다. 현재 `nullus stack ls` 와 OIDC 토큰·버전 스큐 판정까지 완료 |
+| **Lite 템플릿과 제품 둘러보기** | 8Gi 노드 하나에 들어가는 최소 구성(`gitea-jenkins-argocd-lite-v1`)과 제품 투어 |
 
 ### 0.2 아직 계획대로가 아닌 것
 
 | 항목 | 상태 |
 |------|------|
-| 설치 로그 영속화 | 메모리 스트리머만 있어 API 재기동 시 로그가 사라진다 |
-| `/api/v1/auth` REST | 미구현. 인증은 미들웨어와 OIDC 프로바이더로만 처리 |
-| 프론트 OIDC 런타임 | 로컬 기본값이 mock(`VITE_AUTH_MODE=mock`) |
+| **알림 발송(F7)** | 규칙 CRUD·채널 설정 CRUD·notifier 구현체는 다 있는데 **잇는 코드가 없다.** 규칙을 평가하는 루프가 없고, `SlackNotifier`/`EmailNotifier` 를 만드는 프로덕션 코드가 하나도 없으며, `notification_history` 에 쓰는 코드도 없다(읽기만 한다). 설정은 저장되므로 화면상으로는 동작하는 것처럼 보인다 |
+| **호환성 매트릭스 관리 API** | `RegisterAdminRoutes` 가 `main.go` 에서 호출되지 않아 `/admin/stack-versions` 의 생성·수정·삭제 버튼 3개가 404 로 끝난다. 매트릭스 추가는 마이그레이션 시드로만 가능하다 |
+| `/api/v1/auth` 의 `logout`·`me`·`refresh` | 미구현. `login` 은 구현됐다. 나머지는 필요하지 않다고 판단한 결과다(로그아웃은 토큰 폐기, 갱신은 IdP·CLI 가 직접) |
+| 프론트 OIDC 런타임 | **런타임 연결은 해소됐다.** 다만 로컬 기본값은 여전히 mock(`VITE_AUTH_MODE=mock`)이고 배포 차트 기본값이 `oidc` 다 |
+| 설치 상태 `TIMEOUT`·`PARTIAL_SUCCESS` | 없다. 둘 다 `failed` 로 수렴한다 |
 
 상세 근거는 `docs/20_아키텍처/Nullus_설계_대비_미구현_항목.md` 참고.
 
@@ -713,9 +722,9 @@ Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana View
 |---|---|---|
 | Frontend | React 19 + TypeScript | 생태계 최대, Backstage 전환 가능 |
 | 상태 관리 | Zustand | 경량, 보일러플레이트 최소 |
-| 스타일링 | Tailwind CSS + shadcn/ui | 다크 테마, 빠른 UI 개발 |
+| 스타일링 | Tailwind CSS + shadcn/ui | 다크 테마, 빠른 UI 개발 · **현행: Tailwind CSS 4 + 자체 프리미티브(내부 MUI 9). shadcn/ui 는 도입되지 않았다** |
 | YAML 에디터 | Monaco Editor (v1) | VS Code 동일 엔진, YAML 스키마 검증 |
-| Backend | Go 1.24+ | K8s 클라이언트 네이티브, 단일 바이너리 |
+| Backend | Go 1.24+ | K8s 클라이언트 네이티브, 단일 바이너리 · **현행: `go.mod` 는 1.26.1 을 요구한다** |
 | 웹 프레임워크 | Echo v4 | 경량, 고성능 |
 | 실시간 통신 | WebSocket (gorilla/websocket) | 설치 로그 양방향 스트리밍 |
 | Database | PostgreSQL 18+ | 확장성, JSONB 지원, pgvector 활용 가능 |

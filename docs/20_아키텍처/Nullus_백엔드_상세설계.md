@@ -1,7 +1,7 @@
 # Nullus Platform Go 백엔드 상세 설계 — Part 1
 
 **작성일**: 2026-03-14
-**최종 검토**: 2026-08-11
+**최종 검토**: 2026-08-31
 **버전**: 1.0
 **기반 문서**: nullus_PRD_1.3.md, Nullus_기능목록.md, 상세 기능 명세 및 시스템 아키텍처 v1.0
 **대상 독자**: Go 백엔드 엔지니어, 아키텍트
@@ -12,10 +12,11 @@
 >
 > | 알고 싶은 것 | 볼 곳 |
 > |---|---|
-> | 실제 엔드포인트 | `Nullus_API_설계.md` 6.0 (코드에서 추출, 108개) |
-> | 실제 테이블 | `Nullus_DB_스키마.md` 0장 (마이그레이션 000061 기준) |
+> | 실제 엔드포인트 | `Nullus_API_설계.md` 6.0 (코드에서 추출, 116개) |
+> | 실제 테이블 | `Nullus_DB_스키마.md` 0장 (마이그레이션 000074 기준) |
 > | 모듈 구성·외부 연동 | `Nullus_시스템_아키텍처.md` 4.1·4.2 |
-> | 설계안 대비 미구현 | `Nullus_설계_대비_미구현_항목.md` (2026-08-11 재검증) |
+> | 설계안 대비 미구현 | `Nullus_설계_대비_미구현_항목.md` (2026-08-31 재검증) |
+> | CLI·MCP 공유 기반 | `pkg/nullusclient` — `internal/` 밖에 있는 이유는 MCP 서버가 import 해야 해서다 |
 > | 변경 이력 | `CHANGELOG.md` |
 >
 > 특히 아래 세 가지는 설계안과 구조가 다르다.
@@ -23,9 +24,15 @@
 > - **시크릿 평면**: OpenBao 는 전역이 아니라 **스택마다** 배포된다. API 는 Kubernetes
 >   API server proxy 로 접근한다(`internal/shared/secrets/apiserver_proxy.go`).
 >   `authentication.provider` 선택과 무관하게 항상 설치된다.
-> - **SCM 추상화**: `internal/cicd/port/SCMPlatform` 으로 GitLab/GitHub 이 갈린다.
->   설계안에는 GitLab 만 있었다.
-> - **인증**: 세션 방식은 클라이언트 헤더를 믿는 알파 시절 경로이고, 차트 기본값은 `oidc` 다.
+> - **SCM 추상화**: `internal/cicd/port/SCMPlatform` 으로 GitLab/GitHub/**Gitea** 가 갈린다.
+>   설계안에는 GitLab 만 있었다. 파이프라인 렌더러는 **SCM 축과 CI 축을 분리**한다 —
+>   Gitea + Jenkins 조합에서는 `.gitlab-ci.yml` 이 아니라 `Jenkinsfile` 이 나가야 한다.
+> - **인증**: `DualAuthMiddleware` 가 OIDC JWT 와 로컬 발급 토큰을 함께 받는다.
+>   `POST /api/v1/auth/login`(ID/PW)이 OIDC 와 나란히 서고, 자격은 `users.password_hash`
+>   (bcrypt)에 있다. `auth.mode=session` 의 헤더 신뢰 방식은 로컬 개발 전용이고,
+>   차트 기본값은 `oidc` 다.
+> - **설치 로그**: 인메모리가 아니라 `stack_deploy_logs` 에 남는다.
+>   `PersistentStreamer` 가 메모리 스트리머(실시간 구독)를 감싸고 그 뒤에 DB 를 둔다.
 
 ---
 

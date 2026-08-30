@@ -1,7 +1,7 @@
 # Nullus 구현 내역서
 
 **작성일**: 2026-03-22
-**최종 갱신**: 2026-08-11
+**최종 갱신**: 2026-08-31
 **범위**: Phase 1 (갭 해결) + Phase 2 (OIDC 추상화, D11, 컨벤션)
 
 > 2장 이하는 3월 시점의 Phase 1·2 작업 기록이다. 그 뒤의 누적 구현 현황은 아래 0장에
@@ -9,7 +9,7 @@
 
 ---
 
-## 0. 구현 현황 요약 (2026-08-11)
+## 0. 구현 현황 요약 (2026-08-31)
 
 ### 0.1 백엔드 모듈
 
@@ -17,32 +17,59 @@ Clean Architecture 4계층(`domain` / `usecase` / `port` / `adapter`)을 모듈�
 
 | 모듈 | 구현 파일 | 테스트 파일 | 계층 |
 |------|-----------|-------------|------|
-| `internal/stack` | 90 | 70 | adapter, domain, port, usecase |
-| `internal/cicd` | 50 | 33 | adapter, domain, port, usecase |
-| `internal/admin` | 42 | 22 | adapter, domain, port, usecase, rotation, scheduler |
+| `internal/stack` | 116 | 130 | adapter, domain, port, usecase |
+| `internal/cicd` | 69 | 56 | adapter, domain, port, usecase |
+| `internal/admin` | 43 | 23 | adapter, domain, port, usecase, rotation, scheduler |
+| `internal/shared` | 24 | 11 | audit, config, domain, externalsecret, middleware, notification, secrets |
 | `internal/observability` | 23 | 12 | adapter, domain, port, usecase |
-| `internal/shared` | 21 | 8 | audit, config, domain, middleware, notification, secrets |
-| `internal/auth` | 13 | 11 | adapter(keycloak/authentik/middleware), port |
+| `internal/auth` | 21 | 21 | adapter(keycloak/authentik/middleware/token/repository), domain, port, usecase |
+| `internal/cli` | 2 | 1 | 통합 `nullus` CLI 명령 트리 |
 
-프로덕션 Go 코드 약 38,700 라인. 프론트엔드 feature 는 `admin`, `auth`, `cicd`,
-`common`, `home`, `observability`, `stack` 7개다.
+`internal/` 밖의 공유 패키지 — CLI·MCP 가 import 해야 해서 `pkg/` 에 둔다.
+
+| 패키지 | 구현 | 테스트 | 역할 |
+|--------|------|--------|------|
+| `pkg/nullusclient` | 6 | 5 | API 클라이언트, 설정·토큰 해석, OIDC 획득·갱신, 서버 버전 스큐 판정 |
+| `pkg/crypto` | 1 | 1 | AES-256-GCM (kubeconfig) |
+
+프로덕션 Go 코드 약 **52,900 라인**(2026-08-11 약 38,700). 바이너리는 4개다 —
+`cmd/api`, `cmd/nullus`, `cmd/nullus-bootstrap`, `cmd/token-source-sync`.
+
+프론트엔드 feature 는 `admin`, `auth`, `cicd`, `common`, `home`, `observability`,
+`stack`, **`tour`** 8개다.
 
 ### 0.2 외부 연동 현황
 
 | 영역 | 지원 |
 |------|------|
-| 소스 저장소 | GitLab(스택 내 설치), **GitHub(외부 SaaS)** |
-| CI | GitLab CI, **GitHub Actions** |
-| 컨테이너 레지스트리 | Harbor, Nexus, GitLab Container Registry, **GHCR** |
+| 소스 저장소 | GitLab(스택 내 설치), **Gitea(스택 내 설치)**, GitHub(외부 SaaS) |
+| CI | GitLab CI, **Jenkins(스택 내 설치)**, GitHub Actions |
+| 컨테이너 레지스트리 | Harbor, Nexus, GitLab Container Registry, GHCR |
 | CD | Argo CD |
+| 오브젝트 스토리지 | MinIO |
 | 시크릿 | OpenBao(스택마다 배포, Kubernetes Auth) + External Secrets Operator |
-| 인증 | Keycloak / Authentik OIDC |
-| 모니터링 | Prometheus, Grafana |
+| 인증(플랫폼) | Keycloak / Authentik OIDC + **ID/PW 로그인**(IdP 장애 대비) |
+| 인증(스택 OSS) | **Argo CD·Harbor·GitLab·Gitea·Jenkins·Grafana·MinIO → Keycloak SSO**, 도구마다 비밀번호 우회로 유지 |
+| 모니터링 | Prometheus, Grafana, Loki / OpenSearch, Tempo / Jaeger, **OpenTelemetry Collector·Agent** |
+| 게이트웨이 | Envoy Gateway (Gateway API), 스택 네임스페이스 + 브리지 Ingress |
+| TLS | cert-manager. **와일드카드 인증서를 DNS-01 로 발급**해 기본 인증서로 지정 |
 
 ### 0.3 API·스키마 규모
 
-- REST 엔드포인트 **108개** (모듈별 내역은 `Nullus_API_설계.md` 6.0)
-- DB 테이블 **22개**, 마이그레이션 **000061** 까지 (`Nullus_DB_스키마.md` 0장)
+- REST 엔드포인트 **116개** (모듈별 내역은 `Nullus_API_설계.md` 6.0)
+- DB 테이블 **23개**, 마이그레이션 **000074** 까지 (`Nullus_DB_스키마.md` 0장)
+- Golden Path 템플릿 **9개**, 호환성 매트릭스 **8개**, CI/CD 파이프라인 템플릿 **4개**
+- 프론트 화면 **28개**(전부 라우팅됨), 사이드바 항목 18개
+
+### 0.4 알아 둘 제약
+
+- **알림은 발송되지 않는다.** 규칙·채널 CRUD 와 notifier 구현체는 있으나 잇는 코드가 없다.
+- **호환성 매트릭스 관리 API 가 등록되지 않았다.** 관리자 화면의 생성·수정·삭제 버튼이
+  404 로 끝나고, 매트릭스 추가는 마이그레이션 시드로만 가능하다.
+- **한 클러스터에 스택은 하나만 선다.** OpenBao ClusterRoleBinding 이 클러스터 범위라
+  두 번째 설치는 소유권 충돌로 막힌다(의도된 차단).
+
+상세는 `docs/20_아키텍처/Nullus_설계_대비_미구현_항목.md`.
 
 ---
 

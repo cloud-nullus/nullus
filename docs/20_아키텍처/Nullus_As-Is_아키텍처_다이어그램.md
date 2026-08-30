@@ -1,7 +1,8 @@
 # Nullus 현재 As-Is 아키텍처 다이어그램
 
 **작성일**: 2026-03-30
-**버전**: 1.0
+**최종 갱신**: 2026-08-31 (코드 기준 재대조)
+**버전**: 1.1
 **기준 범위**: `draft` 실제 코드/마이그레이션/배포 템플릿 기준
 **대상 독자**: 엔지니어, 아키텍트, 신규 기여자
 
@@ -12,7 +13,7 @@
 현재 `draft`의 Nullus는 다음 특성을 가진다.
 
 - 프런트엔드는 React/Vite SPA이며 역할 기반 라우팅과 Stack/CI-CD/Observability/Admin 기능을 가진다.
-- 백엔드는 단일 Go 바이너리이지만 내부는 `admin`, `auth`, `stack`, `cicd`, `observability`, `shared` 모듈로 분리된 **Modular Monolith + Clean Architecture** 구조다.
+- 백엔드는 단일 Go 바이너리이지만 내부는 `admin`, `auth`, `stack`, `cicd`, `observability`, `shared`, `cli` 모듈로 분리된 **Modular Monolith + Clean Architecture** 구조다. 배포 바이너리는 `cmd/api` 하나이고, `cmd/nullus`(통합 CLI)가 같은 저장소에서 따로 빌드된다.
 - Stack 설치는 Helm 오케스트레이터 중심이며, PostgreSQL에 설정/이력/카탈로그를 저장하고 WebSocket으로 진행 로그를 스트리밍한다.
 - Compatibility, Known Issues, Notification Config는 파일 카탈로그보다 DB 중심으로 운용된다.
 
@@ -91,6 +92,9 @@ flowchart TB
 - `internal/cicd/`
 - `internal/observability/`
 - `internal/shared/`
+- `internal/cli/` — 바운디드 컨텍스트가 아니라 CLI 표면(명령 트리·출력 형식)
+- `pkg/nullusclient/` — `internal/` 밖. CLI·MCP 가 함께 쓰는 공유층이라 외부 import 가 가능해야 한다
+- `pkg/crypto/` — AES-256-GCM
 
 ---
 
@@ -125,8 +129,11 @@ sequenceDiagram
 ### 특징
 
 - 배포는 비동기 goroutine으로 시작된다.
-- Stack 배포 로그는 인메모리 스트리머에서 구독자에게 fan-out 된다.
-- Stack 설정 이력은 버전 테이블에 저장되지만, Stack 배포 로그 자체는 DB 영속화되지 않는다.
+- Stack 배포 로그는 인메모리 스트리머에서 구독자에게 fan-out 되고, **같은 로그가
+  `stack_deploy_logs` 에도 쌓인다**(`PersistentStreamer`, 마이그레이션 `000074`).
+  메모리 계층은 실시간 구독을, DB 는 재기동을 견디는 몫을 맡는다.
+- Stack 설정 이력은 `stack_config_versions` 에 저장된다.
+- 서버가 재시작돼도 끊긴 설치가 `installing` 에 갇히지 않는다 — 기동 시 고아 배포를 회수한다.
 
 ---
 
@@ -177,7 +184,8 @@ flowchart TB
 
 ### 현재 구현 특성
 
-- 설치 단계는 `installPhases`와 Helm 오케스트레이터의 고정 step order를 따른다.
+- 설치 단계는 `domain.InstallStepOrder`(31개)의 고정 순서를 따른다. 진행률도 여기서
+  파생되므로 화면과 서버가 같은 값을 본다.
 - Compatibility는 DB의 `compatibility_matrices`를 조회한다.
 - Known Issues도 YAML 파일이 아니라 DB `known_issues` 테이블을 사용한다.
 - Gateway는 설계 문서의 후반 동기화 내용대로 `Gateway API`를 사용하는 쪽으로 UI와 오케스트레이터가 보강되어 있다.
@@ -257,8 +265,12 @@ erDiagram
 
 - Stack 본문 설정은 `stacks.config JSONB`
 - Stack 버전 이력은 `stack_config_versions`
+- **Stack 설치 로그는 `stack_deploy_logs`** — 정렬 기준은 타임스탬프가 아니라 `seq`
+  (같은 밀리초에 여러 줄이 들어온다)
 - Compatibility는 `compatibility_matrices.tools JSONB`
-- Notification Config와 History는 admin 영역 DB 테이블로 분리
+- **배포 단계는 `pipeline_deployments.steps JSONB`** — 테이블로 쪼개지 않았다
+- Notification Config와 History는 admin 영역 DB 테이블로 분리.
+  다만 History 에 **쓰는 코드는 없다**(읽기 전용, 화면의 행은 데모 시드다)
 - kubeconfig 는 암호화된 상태로 DB에 저장되고 사용 시 복호화된다
 
 ---
@@ -305,13 +317,21 @@ flowchart LR
 
 ### 7.3 대상 클러스터 설치 결과
 
-현재 구현은 설계 문서의 완전한 `nullus-{service}` 다중 네임스페이스보다, 실제 실행 시점에는 단일 Stack 네임스페이스 중심 설치가 더 강하다.
+현재 구현은 설계 문서의 `nullus-{service}` 다중 네임스페이스가 아니라 **"Stack 하나 =
+네임스페이스 하나"** 다.
 
-- 백엔드 `CreateStack` 기본 namespace: `nullus`
-- 오케스트레이터 기본 namespace: `nullus`
-- 프런트 일부 Preview/Gateway 생성 예시: `nullus-stack`
+- 기본 namespace 는 스택 이름에서 파생한 `nullus-<slug>`
+  (`domain.DefaultStackNamespaceFor`, RFC1123 라벨로 정규화 후 63자 절단)
+- 게이트웨이(Gateway API + Envoy 데이터플레인)와 브리지 Ingress 도 같은 네임스페이스에 있다
+- 삭제는 자기 네임스페이스 안에서만 동작한다
 
-즉 현재 As-Is는 "문서상 논리 모델"과 "실행 기본값" 사이에 namespace 표현 차이가 남아 있다.
+> **2026-08-20 이전에는 기본값이 `nullus` 하나였고, 그것은 플랫폼 자신이 사는
+> 네임스페이스와 같았다.** 설치는 릴리스 이름 충돌로 Helm 이 거부했고, 삭제는 스택 정리가
+> 플랫폼 리소스를 지웠다 — 그날 운영 도메인이 통째로 내려갔다. 스택마다 자기
+> 네임스페이스를 갖게 하면 두 경로 모두 애초에 만나지 않는다.
+>
+> 한 클러스터에 스택은 하나만 선다. OpenBao 의 ClusterRoleBinding 이 클러스터 범위라
+> 두 번째 설치는 소유권 충돌로 막힌다(의도된 차단).
 
 ---
 
@@ -335,8 +355,13 @@ flowchart LR
 
 ### 현재 상태
 
-- production 모드에서는 `DualAuthMiddleware`가 session 또는 OIDC JWT middleware 를 선택한다.
-- 하지만 session 모드는 아직 실제 쿠키 세션 저장소가 아니라 `X-User-*` 헤더 기반 단순화 구현이다.
+- production 모드에서는 `DualAuthMiddleware`가 OIDC JWT 와 **로컬 발급 토큰을 함께** 받는다.
+- **ID/PW 로그인이 OIDC 와 나란히 선다** — `POST /api/v1/auth/login`, 자격은
+  `users.password_hash`(bcrypt), 토큰은 HS256 로컬 발급. 쿠키를 쓰지 않는다.
+  IdP 장애가 곧 전면 잠금이 되지 않게 하려고 둔 두 번째 경로다.
+- `auth.mode=session` 의 `X-User-*` 헤더 방식은 여전히 단순화 구현이며 **로컬 개발 전용**이다.
+- 스택이 설치한 OSS(Argo CD·Harbor·GitLab·Gitea·Jenkins·Grafana·MinIO)도 같은 Keycloak 을
+  본다. 도구마다 비밀번호 로그인 우회로를 남긴다.
 - kubeconfig는 AES-256-GCM으로 암복호화된다.
 
 ---
@@ -345,5 +370,9 @@ flowchart LR
 
 - 현재 Nullus는 설계 초안보다 "더 코드 중심적이고 모듈화된 백엔드"를 갖고 있다.
 - 반대로 운영 아키텍처는 설계 초안보다 "더 단순화된 배포 모델"을 택하고 있다.
-- Stack 영역은 가장 구현 진척도가 높고, Auth와 이벤트 연동은 아직 과도기적이다.
-- 문서상 논리 모델과 실제 구현의 차이를 해석할 때는 Stack 동기화 문서와 실제 namespace 기본값 차이를 함께 봐야 한다.
+- Stack 영역은 가장 구현 진척도가 높다. Auth 는 2026-08-19 에 OIDC·ID/PW 두 경로가
+  자리 잡으며 과도기를 벗어났고, **모듈 간 이벤트 연동은 여전히 포트 직접 호출**이다.
+- 알림(Observability)은 조각은 다 있으나 이어져 있지 않다 — 규칙 평가 루프도 notifier
+  호출부도 없어 **알림이 실제로 발송되지 않는다**(`Nullus_설계_대비_미구현_항목.md` 3.5 B).
+- namespace 는 더 이상 "문서상 논리 모델 vs 실행 기본값" 의 차이가 아니다. 스택마다
+  자기 네임스페이스를 갖는 쪽으로 정리됐다(7.3).
