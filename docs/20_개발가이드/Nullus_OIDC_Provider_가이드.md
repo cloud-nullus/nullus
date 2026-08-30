@@ -59,7 +59,11 @@ VITE_AUTH_MODE=mock
 # admin@nullus.dev / devops@nullus.dev / developer@nullus.dev
 ```
 
-> **client_id 주의 (로컬 vs 배포)**: 위 로컬 스니펫의 client는 `scripts/setup-keycloak.sh`가 realm에 만들고 `scripts/runbook_local.sh`가 웹에 주입하는 실제 값 `nullus-app`이다. 프론트 `VITE_OIDC_CLIENT_ID`와 백엔드 `audience`는 반드시 같아야 하며, 다르면 토큰 `aud` 불일치로 모든 API가 401이 된다. 배포 포털의 client는 `nullus-web`(#98, `cd.yml`)이므로 로컬 값과 혼동하지 말 것.
+> **client_id 주의**: 프론트 `VITE_OIDC_CLIENT_ID`와 백엔드 `audience`는 반드시 같아야 하며, 다르면 토큰 `aud` 불일치로 **모든 API가 401**이 된다.
+>
+> **로컬과 배포가 이제 같은 값(`nullus-app`)을 쓴다 (2026-08-31 확인).** 로컬은 `scripts/setup-keycloak.sh`가 realm에 만들고 `scripts/runbook_local.sh`가 웹에 주입하며, 배포는 `cd.yml`의 기본값(`vars.VITE_OIDC_CLIENT_ID || 'nullus-app'`)과 `deploy/csp/zadara/values-zadara.yaml`의 `oidcClientId` 가 같은 값이다. 이 문서에 있던 "배포 포털은 `nullus-web`(#98)" 이라는 단서는 그 뒤 `cd.yml` 기본값이 바뀌면서 더 이상 맞지 않아 걷어냈다.
+>
+> **다만 `web/.env.example` 은 아직 `nullus-web` 이다.** 그 파일을 그대로 복사해 로컬 OIDC 를 켜면 realm 의 client 와 어긋나 401 이 난다. 로컬에서 OIDC 를 쓸 때는 위 스니펫의 값(`nullus-app`)을 쓴다.
 
 ---
 

@@ -1,12 +1,21 @@
 # Nullus 프론트엔드 아키텍처 가이드
 
 **작성일**: 2026-03-22
-**최종 갱신**: 2026-08-11
-**기술 스택**: React 19.2 · TypeScript 5.9 · Vite 8 · Tailwind CSS 4 · shadcn/ui
+**최종 갱신**: 2026-08-31
+**기술 스택**: React 19.2 · TypeScript 5.9 · Vite 8 · Tailwind CSS 4 · **MUI 9 + Emotion**
 **주요 라이브러리**: React Router 7 · Zustand 5 · TanStack Query 5
 
-> 현재 feature 는 `admin`, `auth`, `cicd`, `common`, `home`, `observability`, `stack`
-> 7개다. 페이지는 28개.
+> 현재 feature 는 `admin`, `auth`, `cicd`, `common`, `home`, `observability`, `stack`,
+> **`tour`** 8개다. 페이지는 28개이며 전부 라우팅돼 있다.
+>
+> **shadcn/ui 는 쓰지 않는다 — 사실 한 번도 쓴 적이 없다.** 초기 계획은 shadcn/ui 였으나
+> `components/ui/*` 는 Radix 의존 없이 손수 구현돼 있었다(`@radix-ui/*` 가 `package.json`
+> 에 들어온 적이 없다). 2026-08-11 UI 전면 개편에서 그 프리미티브 6종의 **내부를 MUI 로**
+> 교체했고, 공개 API 는 그대로 유지했으므로 화면 코드는 여전히 `components/ui/*` 를
+> import 한다.
+>
+> 색·간격의 단일 출처는 `web/DESIGN.md` 이고, 거기서 MUI 테마·Tailwind·CSS 변수를
+> 파생시킨다(`web/src/theme/tokens.generated.*`). 색 리터럴을 직접 적는 것은 ESLint 가 막는다.
 
 ---
 
@@ -16,9 +25,10 @@
 |------|------|------|
 | UI 프레임워크 | React 19 + TypeScript | 컴포넌트 기반 UI |
 | 빌드 | Vite | 개발 서버 + 번들링 |
-| 스타일 | Tailwind CSS 4 + CSS Custom Properties | 유틸리티 기반 스타일링 |
-| UI 컴포넌트 | shadcn/ui | 기본 UI 컴포넌트 (Button, Card, Input, Modal) |
-| 라우팅 | React Router v6 | SPA 라우팅 |
+| 스타일 | Tailwind CSS 4 + CSS Custom Properties | 유틸리티 기반 스타일링. 색 리터럴은 ESLint 가 막는다 |
+| 디자인 토큰 | `web/DESIGN.md` → `web/src/theme/tokens.generated.*` | 색·간격의 단일 출처. MUI 테마·Tailwind·CSS 변수를 여기서 파생시킨다 |
+| UI 컴포넌트 | 자체 프리미티브 (`components/ui/*`), 내부는 **MUI 9 + Emotion** | Button, TextInput, Select, Checkbox, Modal, Tabs 등. 공개 API 는 자체 정의라 내부 교체가 화면에 새지 않는다 |
+| 라우팅 | React Router 7 | SPA 라우팅 |
 | 서버 상태 | TanStack React Query | API 캐싱, 자동 refetch |
 | 클라이언트 상태 | Zustand | 경량 상태 관리 |
 | 폼 | React Hook Form + Zod | 타입 안전 폼 검증 |
@@ -36,7 +46,7 @@
 ```
 web/src/
 ├── app/                          # 앱 설정
-│   ├── routes.tsx                # 전체 라우트 정의 (React Router v6)
+│   ├── routes.tsx                # 전체 라우트 정의 (React Router 7, lazy + Suspense)
 │   └── layout.tsx                # AppLayout (Header + Sidebar + Content)
 │
 ├── features/                     # 도메인별 Feature 모듈
@@ -79,7 +89,7 @@ web/src/
 │   │   ├── header.tsx            # 상단 헤더
 │   │   ├── sidebar.tsx           # 역할별 사이드바 메뉴
 │   │   └── page-header.tsx       # 페이지 제목 + 액션 영역
-│   └── ui/                       # shadcn/ui 원시 컴포넌트
+│   └── ui/                       # 프리미티브 (내부 MUI, 공개 API 는 자체)
 │       ├── button.tsx, card.tsx, input.tsx, modal.tsx, toast-provider.tsx
 │
 ├── stores/                       # 글로벌 상태

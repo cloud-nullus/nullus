@@ -13,6 +13,21 @@
 > 로그인하는 단계는 없다. GitLab 경로는 프로젝트 범위 토큰을 발급할 수 있어 문서의
 > 흐름이 그대로 유효하다.
 >
+> **추가 (2026-08-31) — Gitea + Jenkins 경로.** 이 문서는 GitLab(+GitHub 보정)만 다루지만,
+> 2026-08-14 부터 세 번째 조합이 있다. 아래가 다르다.
+>
+> | 항목 | GitLab 경로(본문) | Gitea + Jenkins 경로 |
+> |------|------------------|---------------------|
+> | 파이프라인 정의 | `.gitlab-ci.yml` | `Jenkinsfile` |
+> | job 생성 | GitLab 프로젝트에 CI 가 딸려온다 | **Jenkins multibranch job 을 플랫폼이 프로비저닝**한다(브랜치 탐색 trait, CSRF crumb 세션 유지) |
+> | 자격증명 | GitLab CI/CD Variables | **JCasC 로 선언**하고 OpenBao → ESO 평면으로 나른다 |
+> | 저장소 접근 | 사용자가 GitLab 계정으로 본다 | 조직·저장소가 private 이고 소유자가 자동화 계정이라, **파이프라인을 만든 사람을 `developers` 팀에 넣어야** 보인다 |
+> | 삭제 | 리포를 지우면 CI 정의도 사라진다 | **job 을 따로 지워야** 한다. 남으면 없어진 리포를 계속 스캔하며 실패한다 |
+>
+> 파이프라인 렌더러는 이 때문에 **SCM 축과 CI 축을 분리**한다(`internal/cicd`). 두 축이
+> 한 값에 묶여 있으면 "Gitea + GitLab CI" 같은 조합을 표현할 수 없고, 무엇보다 Gitea
+> 저장소에 `.gitlab-ci.yml` 이 들어가는 사고가 난다.
+>
 > 상세는 `docs/20_아키텍처/Nullus_시스템_아키텍처.md` 4.2 와 `CHANGELOG.md` 참고.
 
 ## 1) 전체 CI/CD 파이프라인 프로세스

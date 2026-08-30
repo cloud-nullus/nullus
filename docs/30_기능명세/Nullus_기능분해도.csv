@@ -428,3 +428,57 @@ NULLUS_CIC_050_040,데브옵스,CI/CD,CIC,외부 SCM 연동,050,Actions 시크�
 NULLUS_CIC_050_050,데브옵스,CI/CD,CIC,외부 SCM 연동,050,GHCR 이미지 저장,050,GitHub Container Registry 를 컨테이너 레지스트리로 사용,"기능: 빌드 이미지를 GHCR 에 push
 구현: ghcr.io/{owner}/{repo} (항상 소문자). 워크플로의 packages:write 내장 토큰 사용
 데이터/포맷: 클러스터 pull 은 조직 PAT 재사용(imagePullSecret)"
+NULLUS_DSS_080_010,데브옵스,DevSecOps 스택,DSS,스택 SSO 프로비저닝,080,OIDC 클라이언트 자동 생성,010,설치 중 도구별 Keycloak OIDC 클라이언트를 만든다,"기능: provisioning_sso 스텝이 Argo CD·Harbor·GitLab·Gitea·Jenkins·Grafana·MinIO 의 클라이언트를 생성
+구현: 스택 삭제 시 클라이언트도 함께 회수(누수 방지). 슬러그 충돌을 검사
+데이터/포맷: issuer 는 access_domain 파생이 아니라 설정값을 쓴다"
+NULLUS_DSS_080_020,데브옵스,DevSecOps 스택,DSS,스택 SSO 프로비저닝,080,비밀번호 로그인 우회로 유지,020,SSO 를 켠 도구에도 비밀번호 로그인 경로를 남긴다,"기능: Argo CD·Jenkins 등에 escape hatch 유지
+구현: IdP 장애가 도구까지 잠그는 것을 막는다
+데이터/포맷: MinIO 는 policy 클레임을 요구하므로 토큰에 함께 싣는다"
+NULLUS_DSS_080_030,데브옵스,DevSecOps 스택,DSS,스택 SSO 프로비저닝,080,도구 접속 주소 확정,030,도구 URL 의 스킴을 서버가 정해 내려준다,"기능: 화면이 규칙을 짐작하지 않게 서버가 https 로 확정
+구현: 스킴은 SSO 활성 여부가 아니라 TLS 설정에서 정한다
+데이터/포맷: access_domain 이 없으면 빈 값 — 없는 주소를 지어내지 않는다"
+NULLUS_DSS_030_090,데브옵스,DevSecOps 스택,DSS,스택 생성/배포,030,설치 로그 영속화,090,설치 로그를 DB 에 남겨 재기동을 견딘다,"기능: 설치는 20~30분짜리라 그 사이 API 파드가 재시작되면 인메모리 로그가 통째로 사라진다
+구현: PersistentStreamer 가 메모리 스트리머(실시간 구독)를 감싸고 뒤에 stack_deploy_logs 를 둔다
+데이터/포맷: seq BIGSERIAL 로 정렬 — 같은 밀리초에 여러 줄이 들어와 타임스탬프로는 순서를 못 잡는다"
+NULLUS_DSS_030_100,데브옵스,DevSecOps 스택,DSS,스택 생성/배포,030,설치 규모 계획,100,템플릿의 planning_profile 로 설치 규모를 서버가 계산한다,"기능: 도구 선택만으로는 스택이 몇 Gi 를 먹을지 정해지지 않는다
+구현: local / startup / standard / enterprise 네 값. 기존 템플릿은 standard
+데이터/포맷: golden_path_templates.planning_profile (마이그레이션 000072)"
+NULLUS_DSS_030_110,데브옵스,DevSecOps 스택,DSS,스택 생성/배포,030,스택 전용 네임스페이스,110,스택마다 nullus-<slug> 네임스페이스를 갖는다,"기능: 예전 기본값은 플랫폼과 같은 nullus 였고, 설치는 릴리스 이름 충돌로, 삭제는 플랫폼 리소스 삭제로 깨졌다
+구현: domain.DefaultStackNamespaceFor — RFC1123 라벨 정규화 후 63자 절단
+데이터/포맷: 삭제는 자기 네임스페이스 안에서만 동작한다"
+NULLUS_CIC_060_010,데브옵스,CI/CD,CIC,스택 내 SCM/CI 연동,060,Gitea 저장소 프로비저닝,010,스택이 설치한 Gitea 에 조직·저장소를 만든다,"기능: 파이프라인 생성 시 조직과 저장소를 만들고 초기 소스를 커밋
+구현: SCMPlatform 어댑터. 조직은 private, 저장소도 기본 private
+데이터/포맷: 자동화 계정(gitea_admin)이 소유자다"
+NULLUS_CIC_060_020,데브옵스,CI/CD,CIC,스택 내 SCM/CI 연동,060,생성자 조직 멤버 편입,020,파이프라인을 만든 사람을 SCM 조직의 write 팀에 넣는다,"기능: 넣지 않으면 SSO 로 들어온 사용자에게 저장소가 보이지 않는다(private + 자동화 계정 소유)
+구현: developers 팀에 추가. 팀이 없으면 만든다. Owners 는 주지 않는다
+데이터/포맷: 되돌리기 어려운 권한을 조용히 퍼뜨리지 않기 위해 write 까지만"
+NULLUS_CIC_060_030,데브옵스,CI/CD,CIC,스택 내 SCM/CI 연동,060,Jenkins job 프로비저닝,030,Jenkins multibranch job 을 자동으로 만든다,"기능: 파이프라인 생성 시 job 과 credential 을 함께 준비
+구현: JCasC 로 credential 선언, 브랜치 탐색 trait 부착, CSRF crumb 세션 유지
+데이터/포맷: CI job 의 SCM 주소는 API 서버 주소와 분리한다(클러스터 내부 주소)"
+NULLUS_CIC_060_040,데브옵스,CI/CD,CIC,스택 내 SCM/CI 연동,060,빌드를 스택 CI 러너에 위임,040,스택 파이프라인의 빌드를 스택이 설치한 CI 서버가 수행한다,"기능: 플랫폼이 직접 빌드하지 않고 스택의 러너에 넘긴다
+구현: CI 단계를 정규화해 OSS(GitLab CI / Jenkins)와 무관하게 표현
+데이터/포맷: 레지스트리 자격증명은 스택 시크릿(registrycreds)에서 풀고 빌드 로그에 평문으로 남기지 않는다"
+NULLUS_CIC_020_090,데브옵스,CI/CD,CIC,파이프라인 관리,020,이미지 저장소 회수,090,파이프라인 삭제 시 레지스트리의 이미지 저장소까지 지운다,"기능: 플랫폼이 프로젝트를 만들고 이미지를 밀어 넣으면서 정리를 못 하면 이미지가 계속 쌓인다
+구현: 포트 하나에 도구별 구현체 — Harbor 는 프로젝트 내 저장소 삭제, Nexus 는 단일 삭제 API 가 없어 컴포넌트를 continuationToken 따라 하나씩
+데이터/포맷: 이름을 가려내지 못하면 지우지 않는다 — 빈 이름 검색은 남의 이미지까지 건다"
+NULLUS_CIC_020_100,데브옵스,CI/CD,CIC,파이프라인 관리,020,CI job 회수,100,파이프라인 삭제 시 CI 서버의 job 까지 지운다,"기능: job 이 남으면 없어진 저장소를 계속 스캔하며 실패한다
+구현: 지우지 못해도 삭제를 멈추지 않고 경고로 남긴다 — 멈추면 클러스터 리소스만 지워진 채 되돌리기 어려운 상태에 갇힌다
+데이터/포맷: GitLab CI·GitHub Actions 는 정의를 리포에서 읽으므로 지울 job 이 없다"
+NULLUS_CIC_020_110,데브옵스,CI/CD,CIC,파이프라인 관리,020,배포된 애플리케이션 회수,110,파이프라인 삭제 시 CD 도구의 애플리케이션까지 지운다,"기능: 애플리케이션은 CD 도구가 사는 네임스페이스에 있는데 배포 대상 네임스페이스를 넘겨 조용히 남았다
+구현: 포트에서 도구 이름을 걷어냈다 — CDApplicationDeleter, SCMBundle.CDNamespace
+데이터/포맷: 지원하지 않는 도구에서는 nil 이고 호출부가 그 사실을 밝힌다 — 조용히 성공으로 처리하면 사용자는 지워진 줄 안다"
+NULLUS_CIC_040_070,개발자,CI/CD,CIC,Developer Self-Service,040,배포 앱 접속 주소 표시,070,배포된 앱의 접속 주소를 목록과 상세에 보여준다,"기능: 앱은 <앱이름>.<스택 도메인> 으로 열리는데 그 주소를 어디에서도 보여주지 않아 사용자가 규칙을 알고 조합해야 했다
+구현: domain.AppAccessURL 한 곳에서 계산. 저장하지 않는다 — 도메인이 바뀌면 저장된 값은 그 순간 거짓이 된다
+데이터/포맷: 접근 도메인이 없으면 빈 값이고 링크를 그리지 않는다. 조회는 스택마다 한 번만"
+NULLUS_CIC_010_060,개발자,CI/CD,CIC,파이프라인 템플릿,010,프론트엔드 앱 스캐폴딩,060,web 앱 타입을 고르면 실제로 도는 React 앱을 커밋한다,"기능: 예전에는 nginx 기본 페이지 Dockerfile 하나만 들어가 배포는 성공하는데 열어 보면 Welcome to nginx 가 떴다
+구현: package.json·tsconfig·vite.config·index.html·src/* 를 함께 커밋. 버전은 플랫폼 자신이 쓰는 조합에 맞춘다
+데이터/포맷: 2단계 Dockerfile(빌드/서빙), nginx try_files 로 SPA 새로고침 404 방지, 포트는 배포 매니페스트와 일치"
+NULLUS_OBS_030_010,데브옵스,관측성,OBS,분산 추적/수집,030,OpenTelemetry 수집기 설치,010,스택의 관측 계층으로 OTel Collector·Agent 를 세운다,"기능: 스택이 설치한 OSS 가 자기 메트릭을 Prometheus 에 내주고, 트레이스는 OTel 로 모은다
+구현: installing_opentelemetry / installing_otel_collector / installing_otel_agent 스텝
+데이터/포맷: 릴리스명이 곧 파드 이름 접두사다 — 차트 이름이 아니라 릴리스명을 써야 실제 파드와 맞는다"
+NULLUS_OBS_030_020,개발자,관측성,OBS,분산 추적/수집,030,배포 앱에 수집기 주소 주입,020,배포되는 애플리케이션에 스택 수집기 주소를 넣어 준다,"기능: 앱이 어디로 보내야 하는지 사람이 적지 않아도 되게 한다
+구현: 배포 매니페스트에 OTEL 엔드포인트 환경변수를 싣는다
+데이터/포맷: 스택에 수집기가 없으면 주입하지 않는다"
+NULLUS_OBS_010_060,데브옵스,관측성,OBS,모니터링,010,스택 컴포넌트 연결 정보,060,모니터링 화면을 실제 설치 목록과 주소로 채운다,"기능: 어떤 OSS 가 화면에 뜨는지는 domain.InstalledToolWorkloads() 하나가 정한다
+구현: 여기에 없는 도구는 파드가 떠 있어도 어느 화면에도 나오지 않는다 — 과거 source_repository 가 gitlab 하드코딩이라 Gitea 를 고르면 0 파드 경고만 났다
+데이터/포맷: 한 스택의 모니터링 탭이 다른 스택에 뜨지 않도록 스택 id 로 가른다"

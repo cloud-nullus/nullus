@@ -1,11 +1,20 @@
 # Nullus 백엔드 모듈 개발 가이드
 
 **작성일**: 2026-03-22
-**최종 갱신**: 2026-08-11
+**최종 갱신**: 2026-08-31
 **기술 스택**: Go 1.26 (`go.mod`) · Echo v4 · PostgreSQL 18+ · Helm SDK
 
-> 현재 모듈 구성은 `stack`, `cicd`, `admin`, `observability`, `auth`, `shared` 6개다.
-> 모듈별 규모와 바운디드 컨텍스트는 `docs/20_아키텍처/Nullus_시스템_아키텍처.md` 4.1 참고.
+> 현재 모듈 구성은 `stack`, `cicd`, `admin`, `observability`, `auth`, `shared`, **`cli`**
+> 7개다. 모듈별 규모와 바운디드 컨텍스트는
+> `docs/20_아키텍처/Nullus_시스템_아키텍처.md` 4.1 참고.
+>
+> **`internal/cli` 는 다른 모듈과 성격이 다르다.** 바운디드 컨텍스트가 아니라 **표면**이다 —
+> cobra 명령 트리와 출력 형식만 들고 있고, 서버와 이야기하는 일은 전부
+> `pkg/nullusclient` 가 한다. `internal/` 안에 두는 이유는 CLI 명령 구조가 외부에 노출할
+> API 가 아니기 때문이고, 클라이언트를 `pkg/` 에 두는 이유는 그 반대다 — MCP 서버가
+> import 해야 한다.
+>
+> PR 컨벤션의 module 목록에도 `cli` 가 들어 있다(`.github/workflows/lint-review.yml`).
 
 ---
 

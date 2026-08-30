@@ -2,7 +2,8 @@
 
 **프로젝트**: Nullus - Kubernetes DevSecOps 플랫폼 빌더
 **작성일**: 2026-03-14
-**버전**: 1.0
+**최종 갱신**: 2026-08-31 (현행 워크플로·Makefile 대조)
+**버전**: 1.1
 **기반 문서**: PRD v1.3, 상세 기능 명세 및 시스템 아키텍처 v1.0, 12주 개발 마스터 플랜, 로컬 개발환경 세팅 가이드, Day 0 착수 체크리스트
 **대상 독자**: DevOps Engineer, 백엔드/풀스택 엔지니어
 
@@ -136,7 +137,7 @@ make kind-down
 
 ### 2.5 전체 Makefile 명령어
 
-> **⚠️ 아래 표는 설계안이며 현재 `Makefile` 과 다르다 (2026-08-11 확인).** 표에 있는
+> **⚠️ 아래 표는 설계안이며 현재 `Makefile` 과 다르다 (2026-08-31 재확인, 변동 없음).** 표에 있는
 > 명령 중 `dev`, `build`, `test`, `lint`, `migrate-up`, `migrate-down` 여섯 개만 실재하고
 > 나머지는 없다. 그대로 실행하면 `No rule to make target` 으로 실패한다.
 >
@@ -552,7 +553,38 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 ## 5. CI/CD 파이프라인 설계
 
-### 5.1 파이프라인 전체 흐름
+> **⚠️ 5.1~5.5 는 2026-03-14 설계안이며 실제 워크플로와 다르다 (2026-08-31 확인).**
+> 아래 5.0 이 현행이다. 5.1 이하는 파일명(`ci.yaml`/`cd-dev.yaml`/`release.yaml`),
+> 브랜치 모델(`develop`), 배포 대상(GKE)까지 실제와 어긋나므로 **그대로 따라 하지 않는다.**
+
+### 5.0 현행 워크플로 (2026-08-31, `.github/workflows/` 기준)
+
+파일은 **5개**다. 설계안의 3분할(`ci`/`cd-dev`/`release`)이 아니라 CI 하나 + CD 하나로
+합쳐졌고, 나머지 셋은 PR 자동화용이다.
+
+| 파일 | 트리거 | 하는 일 |
+|------|--------|---------|
+| `ci.yml` | `main` 으로의 PR, `main` push | `backend`(PostgreSQL 18 서비스 컨테이너 + build·커버리지·vet), `frontend`(Node 22) |
+| `cd.yml` | `main`·`phase1` push, `v*` 태그, 수동 | API·Jenkins·Web 이미지 빌드·push → 차트 게시 → GitHub Release → Zadara 배포 |
+| `lint-review.yml` | PR opened/reopened | **PR 제목·본문 컨벤션 검사**. module 목록에 `cli` 포함 |
+| `pr-automation.yml` | PR 이벤트 | PR 보조 자동화 |
+| `review-bot.yml` | PR 이벤트 | 리뷰 보조 |
+
+알아 둘 점 세 가지.
+
+- **Go 버전을 손으로 적지 않는다.** `go-version-file: go.mod` 로 읽는다 — 손으로 적었을
+  때 실제로 갈라졌다(워크플로 1.24 / `go.mod` 1.26.1).
+- **CD 는 같은 커밋에서 두 번 돌 수 있다.** 릴리즈를 머지하고 곧바로 태그를 밀면 브랜치
+  push 와 태그 push 가 잇따른다. `concurrency: cd-${{ github.sha }}` 로 나중에 시작한
+  쪽(태그 런)을 남기고 앞선 것을 접는다 — 태그 런이 차트·릴리즈·배포까지 더 하기 때문이다.
+- **DB 마이그레이션은 차트가 돌린다.** `deploy/helm/nullus/templates/migration-job.yaml`
+  이 `post-install,pre-upgrade` 훅으로 붙는다. 설치 때 `pre-install` 이 아닌 이유는 아직
+  만들어지지도 않은 DB 에 붙으려 하기 때문이고, 업그레이드 때 `pre-upgrade` 인 이유는
+  새 코드가 옛 스키마 위에서 도는 창을 없애기 위해서다. **2026-08-20(PR #187) 이전에는 CD 가
+  마이그레이션을 아예 돌리지 않아 배포 DB 가 뒤처져 있었다.** 밀린 DB 는 훅이 붙는다고
+  저절로 따라잡히지 않으므로 그때 한 번은 손으로 맞춰야 했다.
+
+### 5.1 파이프라인 전체 흐름 (설계안 — 실제와 다름)
 
 ```
 PR 생성 / develop 푸시
@@ -586,7 +618,7 @@ PR 생성 / develop 푸시
   └─────────────────────────────────────┘
 ```
 
-### 5.2 CI 워크플로우 (.github/workflows/ci.yaml)
+### 5.2 CI 워크플로우 (설계안 — 실제 파일은 `ci.yml`, 5.0 참고)
 
 ```yaml
 name: CI
@@ -731,7 +763,7 @@ jobs:
       - run: helm template nullus charts/nullus --debug > /dev/null
 ```
 
-### 5.3 CD Dev 워크플로우 (.github/workflows/cd-dev.yaml)
+### 5.3 CD Dev 워크플로우 (설계안 — 실제로는 `cd.yml` 하나로 합쳐졌다, 5.0 참고)
 
 ```yaml
 name: CD to Dev
@@ -794,7 +826,7 @@ jobs:
             --wait --timeout=5m
 ```
 
-### 5.4 릴리스 워크플로우 (.github/workflows/release.yaml)
+### 5.4 릴리스 워크플로우 (설계안 — 실제로는 `cd.yml` 의 태그 트리거, 5.0 참고)
 
 ```yaml
 name: Release

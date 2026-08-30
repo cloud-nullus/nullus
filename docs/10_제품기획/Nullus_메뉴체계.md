@@ -1,15 +1,17 @@
 # Nullus 메뉴 체계
 
 **작성일**: 2026-03-08  
-**최종 갱신**: 2026-08-11 (구현 대조)  
+**최종 갱신**: 2026-08-31 (구현 재대조)  
 **용도**: proto3, 기능목록, **기능분해도(Nullus_기능분해도.csv)** 간 메뉴 명칭 통일
 
 ---
 
-## 0. 현행 사이드바 (2026-08-11)
+## 0. 현행 사이드바 (2026-08-31)
 
-`web/src/components/layout/sidebar.tsx` 와 `web/src/i18n/ko.json` 에서 추출했다.
-아래가 실제로 화면에 뜨는 메뉴이며, 1장의 표는 초안이라 일부 다르다.
+`web/src/components/layout/nav-model.tsx` 에서 추출했다(2026-08-11 판에는 `sidebar.tsx` 라고
+적혀 있었으나, 그 뒤 메뉴 정의가 `nav-model.tsx` 로 분리됐다 — 화면 상단 `PageHeader` 도
+같은 정의에서 그룹 이름을 읽는다). 아래가 실제로 화면에 뜨는 메뉴이며, 1장의 표는 초안이라
+일부 다르다.
 
 | 대메뉴 | 하위 메뉴 | 경로 | 노출 역할 |
 |--------|-----------|------|-----------|
@@ -20,6 +22,7 @@
 | | 스택 버전 관리 | `/admin/stack-versions` | **admin** |
 | | OSS 기본 리소스 | `/stack/oss-resource-default` | admin, devops |
 | **CI/CD** | CI/CD 템플릿 | `/cicd/templates` | admin, devops |
+| | **CI/CD 골든패스** | `/cicd/golden-paths` | admin, devops |
 | | CI/CD 목록 | `/cicd/list` | admin, devops, developer |
 | | CI/CD 이력 | `/cicd/history` | admin, devops, developer |
 | **관측성** | 모니터링 대시보드 | `/observability/monitoring` | admin, devops, developer |
@@ -29,45 +32,68 @@
 | | 사용자 관리 | `/admin/users` | **admin** |
 | | 클러스터 관리 | `/admin/clusters` | **admin** |
 | | 알려진 이슈 | `/admin/known-issues` | **admin** |
+| | **토큰 관리** | `/admin/token-management` | **admin** |
+
+> 항목 **18개**. 2026-08-11 대비 2개가 늘었다 — **CI/CD 골든패스**, **토큰 관리**.
+> 둘 다 그때 "도달할 수 없는 화면" 으로 기록됐던 것이 배선된 결과다(0.3 참고).
 
 ### 0.1 1장 초안과 달라진 점
 
 - **스택 설치는 사이드바에 없다.** 스택 템플릿에서 템플릿을 고르면 설치 위자드
   (`/stack/install`)로 들어가는 흐름이라 독립 항목을 두지 않았다.
-- 초안에 없던 메뉴 3개가 늘었다 — **OSS 기본 리소스**, **스택 버전 관리**(admin 전용),
-  **알려진 이슈**(admin 전용).
+- 초안에 없던 메뉴 5개가 늘었다 — **OSS 기본 리소스**, **스택 버전 관리**(admin 전용),
+  **알려진 이슈**(admin 전용), **CI/CD 골든패스**, **토큰 관리**(admin 전용).
 - **초안에는 역할 제한이 없었다.** 실제로는 메뉴마다 노출 역할이 걸려 있고, 라우트에도
-  `allowedRoles` 로 한 번 더 막는다. developer 는 관측성 3개와 CI/CD 목록·이력만 본다.
+  `allowedRoles` 로 한 번 더 막는다.
+- developer 가 보는 것은 **4개**다 — 모니터링 대시보드, 알림 이력, CI/CD 목록, CI/CD 이력.
+  (2026-08-11 판은 "관측성 3개" 라고 적었으나 **알림 규칙은 admin·devops 전용**이라 3개가
+  아니다. 대메뉴가 보여도 그 안의 항목은 역할마다 다르다.)
 
 ### 0.2 메뉴 없이 경로로만 접근하는 화면
 
-| 화면 | 경로 |
+| 화면 | 경로 | 진입 경로 |
+|------|------|-----------|
+| 홈(역할별 요약) | `/` | 로고 클릭 |
+| 스택 설치 위자드 | `/stack/install` | 스택 템플릿에서 템플릿 선택 |
+| 스택 도구 추가 | `/stack/:id/add-tools` | 스택 상세 |
+| 스택 배포 진행 | `/stack/deploy/:id` | 설치 시작 직후 |
+| 스택 설치 로그 | `/stack/logs/:deploymentId` | 배포 진행 화면 |
+| 스택 재시도 이력 | `/stack/deployments/:deploymentId/retry-history` | 배포 진행 화면 |
+| 스택 버전 목록 | `/stack/versions` | `/stack/version` 의 별칭 경로 |
+| 알림 규칙(별칭) | `/observability/alert-rules` | 사이드바의 `/observability/alerts` 와 같은 화면 |
+| 앱 배포(Developer) | `/cicd/developer-deploy` | **developer 로그인 시 기본 랜딩** |
+| 파이프라인 생성 | `/cicd/create` | CI/CD 목록의 생성 버튼 |
+| 파이프라인 로그 | `/cicd/pipelines/:id/logs` | CI/CD 목록·이력 |
+| 조직 목록 | `/admin/organizations` | `/admin/organization` 의 별칭 경로 |
+| 로그인 | `/login` | 미인증 접근 시 리다이렉트 |
+| 404 | `*` | — |
+
+별칭 경로가 3쌍 있다 — `stack/version`↔`stack/versions`,
+`observability/alerts`↔`observability/alert-rules`,
+`admin/organization`↔`admin/organizations`. 같은 컴포넌트를 가리키며 사이드바는 앞쪽만 쓴다.
+
+### 0.3 도달할 수 없던 화면 4개 — **해소됨 (2026-08-11, PR #133)**
+
+2026-08-11 판은 아래 4개가 라우트에도 사이드바에도 연결돼 있지 않다고 기록했다.
+지금은 넷 다 연결됐다.
+
+| 화면 | 현재 |
 |------|------|
-| 홈(역할별 요약) | `/` |
-| 스택 설치 위자드 | `/stack/install` |
-| 스택 도구 추가 | `/stack/:id/add-tools` |
-| 스택 배포 진행 | `/stack/deploy/:id` |
-| 스택 설치 로그 | `/stack/logs/:deploymentId` |
-| 스택 버전 목록 | `/stack/versions` |
-| 알림(규칙 상세) | `/observability/alert-rules` |
-| 앱 배포(Developer) | `/cicd/developer-deploy` |
-| 파이프라인 생성 | `/cicd/create` |
-| 파이프라인 로그 | `/cicd/pipelines/:id/logs` |
-| 조직 목록 | `/admin/organizations` |
-| 로그인 | `/login` |
+| `cicd-golden-path-page.tsx` | `/cicd/golden-paths` — **사이드바 CI/CD 그룹** |
+| `token-management-page.tsx` | `/admin/token-management` — **사이드바 관리 그룹** |
+| `cicd-pipeline-setup-page.tsx` | `/cicd/create` — 라우트만(CI/CD 목록에서 진입) |
+| `stack-deployment-logs-page.tsx` | `/stack/deployments/:deploymentId/retry-history` — 라우트만 |
 
-### 0.3 화면은 있으나 도달할 수 없는 페이지
+함께 기록됐던 **Developer 랜딩 불일치**도 해소됐다. 홈은 `/cicd/templates` 로 보내는데
+사이드바는 그 메뉴를 developer 에게 숨겨, 한 번 벗어나면 메뉴로 다시 찾을 수 없었다.
+지금은 로그인 리다이렉트와 홈의 시작 버튼이 `web/src/features/auth/role-landing.ts`
+한 곳을 보고, developer 는 `/cicd/developer-deploy` 로 간다.
 
-아래 4개는 컴포넌트 파일이 있지만 라우트에도 사이드바에도 연결돼 있지 않다.
-어디에서도 import 되지 않으므로 현재 사용자는 접근할 수 없다.
-
-- `cicd-golden-path-page.tsx`
-- `cicd-pipeline-setup-page.tsx`
-- `stack-deployment-logs-page.tsx`
-- `token-management-page.tsx`
-
-메뉴에 넣을지 지울지 판단이 필요하다. 특히 `token-management-page` 는 토큰 소스 관리
-API(`/api/v1/admin/token-sources`)가 백엔드에 있는데 화면만 끊겨 있는 상태다.
+| 역할 | 로그인 후 랜딩 |
+|------|---------------|
+| admin | `/admin/organization` |
+| devops | `/stack/templates` |
+| developer | `/cicd/developer-deploy` |
 
 ---
 

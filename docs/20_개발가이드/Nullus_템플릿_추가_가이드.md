@@ -1,7 +1,7 @@
 # Nullus 템플릿 추가 가이드
 
 **작성일**: 2026-03-22
-**최종 갱신**: 2026-08-11
+**최종 갱신**: 2026-08-31
 **범위**: Stack Template + CI/CD Template 추가 방법
 
 ---
@@ -58,9 +58,23 @@ touch db/migrations/NNNNNN_seed_template_jenkins.down.sql
 
 **Step 2**: UP 마이그레이션 작성
 
+> **주의 (2026-08-31 정정)** — 이 예제는 오래 `created_by` 컬럼을 함께 넣고 있었는데,
+> **그 컬럼은 실재하지 않는다.** 테이블을 만드는 것은 `000006` 이고 거기에는 `created_by`
+> 가 없다. `000008` 의 `CREATE TABLE IF NOT EXISTS` 에는 있지만 그때는 테이블이 이미
+> 있어 그 정의가 실행되지 않는다. 그대로 따라 하면
+> `column "created_by" of relation "golden_path_templates" does not exist` 로 죽는다.
+>
+> 대신 **`planning_profile` 을 넣어야 한다**(`000072` 에서 추가). 없으면 기본값
+> `standard` 로 들어가는데, 8Gi 노드를 겨냥한 템플릿이 그 값을 가지면 설치가 자원
+> 약속을 지키지 못한다. 값은 `local` / `startup` / `standard` / `enterprise` 넷뿐이며
+> `domain.NormalizePlanningProfile` 이 이 목록을 안다.
+
 ```sql
--- db/migrations/000023_seed_template_jenkins.up.sql
-INSERT INTO golden_path_templates (id, name, description, tools, estimated_install_time, recommended_use_case, min_resources, created_by)
+-- db/migrations/NNNNNN_seed_template_jenkins.up.sql
+INSERT INTO golden_path_templates (
+  id, name, description, tools,
+  estimated_install_time, recommended_use_case, min_resources, planning_profile
+)
 VALUES (
   'jenkins-tekton-v1',
   'Jenkins + Tekton',
@@ -77,23 +91,45 @@ VALUES (
   6480000000000,
   '기존 Jenkins 사용 조직, 엔터프라이즈 CI/CD',
   '10 vCPU / 20Gi RAM / 120Gi Storage',
-  'admin'
+  'standard'
 )
 ON CONFLICT (id) DO NOTHING;
 ```
 
+**Step 2-b (필수)**: 같은 마이그레이션에 **호환성 매트릭스도 함께 시드한다**
+
+템플릿만 넣고 매트릭스를 빠뜨리면 Pre-Deploy Gate 가 판정할 근거가 없어 **설치 직전에
+막힌다.** 매트릭스 `id` 는 템플릿 `id` 와 같은 값을 쓴다.
+
+```sql
+INSERT INTO compatibility_matrices (id, name, status, k8s_min, k8s_max, k8s_recommended, tools)
+VALUES ('jenkins-tekton-v1', 'Jenkins + Tekton', 'verified', '1.26', '1.35', '1.35', $$
+  { "ci_platform": {"Name":"Jenkins","HelmVersion":"5.8.0","AppVersion":"2.492.1",
+                    "MinK8sVersion":"1.26","ArchSupport":["amd64","arm64"],"Tier":"stable"} }
+$$::jsonb)
+ON CONFLICT (id) DO UPDATE SET tools = EXCLUDED.tools, updated_at = NOW();
+```
+
+차트 버전은 **설치 경로가 쓰는 값**(`internal/stack/domain/connection.go`)과 같아야 한다.
+`TestChartVersionsMatchCompatibilityMatrix` 가 이 일치를 고정하므로, 어긋나면 테스트가 깨진다.
+
+> 매트릭스를 화면에서 추가할 수는 **없다.** 관리자 화면 `/admin/stack-versions` 에 생성·
+> 수정·삭제 버튼이 있지만 그 API 가 `main.go` 에 등록되지 않아 404 로 끝난다
+> (`Nullus_설계_대비_미구현_항목.md` 3.7). 지금은 시드가 유일한 경로다.
+
 **Step 3**: DOWN 마이그레이션 작성
 
 ```sql
--- db/migrations/000023_seed_template_jenkins.down.sql
-DELETE FROM golden_path_templates WHERE id = 'jenkins-tekton-v1';
+-- db/migrations/NNNNNN_seed_template_jenkins.down.sql
+DELETE FROM compatibility_matrices   WHERE id = 'jenkins-tekton-v1';
+DELETE FROM golden_path_templates    WHERE id = 'jenkins-tekton-v1';
 ```
 
 **Step 4**: 마이그레이션 적용
 
 ```bash
 # Docker Compose 환경
-docker exec -i draft-postgres-1 psql -U nullus -d nullus < db/migrations/000023_seed_template_jenkins.up.sql
+docker exec -i draft-postgres-1 psql -U nullus -d nullus < db/migrations/NNNNNN_seed_template_jenkins.up.sql
 
 # migrate CLI 사용 시
 migrate -path db/migrations -database "postgres://nullus:nullus_dev@localhost:5433/nullus?sslmode=disable" up
@@ -330,7 +366,10 @@ curl -X DELETE http://localhost:8090/api/v1/cicd/templates/ml-pipeline-v1
 | 자료 | 경로 |
 |------|------|
 | Stack Template 도메인 | `internal/stack/domain/template.go` |
-| Stack Template 시드 | `db/migrations/000008_seed_templates.up.sql` |
+| Stack Template 테이블 | `db/migrations/000006_golden_path_templates.up.sql` (컬럼의 실제 정의는 여기다) |
+| Stack Template 시드 | `db/migrations/000008_seed_templates.up.sql`, 최근 예시는 `000069`·`000072` |
+| 설치 규모 프로파일 | `db/migrations/000072_template_planning_profile.up.sql`, `domain.NormalizePlanningProfile`(`internal/stack/domain/template.go`), 계산은 `internal/stack/domain/planning.go` |
+| 호환성 매트릭스 시드 | `db/migrations/000009_seed_compatibility.up.sql`, `000072` |
 | Stack Template API | `internal/stack/adapter/handler/template_handler.go` |
 | Stack Template 페이지 | `web/src/features/stack/pages/stack-template-page.tsx` |
 | CI/CD Template 도메인 | `internal/cicd/domain/pipeline.go` |

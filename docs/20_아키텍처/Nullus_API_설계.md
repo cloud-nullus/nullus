@@ -1,8 +1,8 @@
 # Nullus Platform REST API 설계
 
 **작성일**: 2026-03-14
-**최종 갱신**: 2026-08-11 (코드 기준 현행화)
-**버전**: 1.1
+**최종 갱신**: 2026-08-31 (코드 기준 재현행화)
+**버전**: 1.2
 **기반 문서**: nullus_PRD_1.3.md, Nullus_기능목록.md, Nullus_시스템_아키텍처.md
 **대상 독자**: Backend 엔지니어, Frontend 엔지니어, API 소비자
 
@@ -254,24 +254,40 @@ GET /api/v1/cicd/deployments?sort=-deployed_at
 > 이 경로는 `auth.mode=oidc` 일 때만 보호된다 — session 모드에서는 자격증명을 실을
 > 방법이 없어 켜면 기능만 죽는다.
 
-### 3.1 Alpha/Beta: 세션 기반 인증
+### 3.1 ID/PW 로그인 (현행 — OIDC 와 나란히)
 
-Alpha/Beta 단계에서는 빠른 구현을 위해 세션 기반 인증을 사용합니다.
+> **2026-08-31 개정.** 이 절은 원래 "Alpha/Beta 세션 쿠키" 설계안이었다. 실제로는
+> **쿠키를 쓰지 않고**, OIDC 를 대체하지도 않는다. IdP 가 죽어도 들어갈 수단이 있어야
+> 하므로 두 경로가 **나란히** 선다.
 
 ```
 POST /api/v1/auth/login
-→ Set-Cookie: nullus_session=abc123; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400
+{ "email": "...", "password": "..." }
+
+→ 200 { "token": "<HS256 JWT>", "user": { id, email, name, role, orgId } }
 
 이후 요청:
-Cookie: nullus_session=abc123
+Authorization: Bearer <token>
 ```
 
-| 항목 | 설정 |
-|------|------|
-| 세션 저장소 | PostgreSQL (gorilla/sessions) |
-| 쿠키 속성 | `HttpOnly`, `Secure`, `SameSite=Strict` |
-| 세션 만료 | 24시간 (슬라이딩 윈도우) |
-| CSRF 보호 | `SameSite=Strict` + Double Submit Cookie |
+| 항목 | 현행 구현 |
+|------|-----------|
+| 자격 저장 | `users.password_hash` (bcrypt, 마이그레이션 `000073`) |
+| 토큰 | 로컬 발급 JWT (HS256, `auth.session.secret` 으로 서명) |
+| 만료 | `auth.session.ttl` (설정값) |
+| 전달 방식 | 쿠키 아님 — 응답 본문의 `token` 을 클라이언트가 `Authorization` 헤더로 실어 보낸다 |
+| 활성 조건 | `auth.session.secret` 이 비어 있으면 라우트 자체가 등록되지 않는다 |
+| 검증 경로 | `DualAuthMiddleware` 가 OIDC JWT 와 로컬 토큰을 함께 받는다 |
+
+응답은 실패 사유를 가른다 — 자격 불일치는 401 `invalid email or password` 하나로 답하고
+(어느 쪽이 틀렸는지 알리면 가입된 이메일을 열거할 수 있다), 저장소 장애는 500 이다
+(401 로 답하면 DB 장애 때 전 사용자가 "비밀번호가 틀렸다" 를 받고 원인을 못 찾는다).
+
+`password_hash` 가 `NULL` 인 계정은 OIDC 전용이며 어떤 비밀번호로도 통과하지 않는다.
+
+> 3.1 은 이제 "Alpha 시절 임시 방편" 이 아니다. 아래 3.2 의 OIDC 가 기본 경로이고,
+> 3.1 은 IdP 장애 시의 우회로다. 다만 `auth.mode=session` 의 **헤더 신뢰 방식**
+> (`X-User-*`)은 여전히 로컬 개발 전용이며 위 경고가 그대로 적용된다.
 
 ### 3.2 v1 GA: Keycloak OIDC
 
@@ -536,7 +552,7 @@ Retry-After: 32
 | `POST` | `/api/v1/admin/token-sources/:id/rotate` | admin |
 | `GET` | `/api/v1/admin/users/search` | admin |
 
-**Stack — 설치·배포·템플릿·호환성·모니터링** (36개)
+**Stack — 설치·배포·템플릿·호환성·모니터링** (40개)
 
 | Method | Path | 접근 권한 |
 |--------|------|-----------|
@@ -548,6 +564,7 @@ Retry-After: 32
 | `GET` | `/api/v1/stacks/:id/export` | 그룹 없음 |
 | `GET` | `/api/v1/stacks/:id/history/diff` | admin·devops |
 | `POST` | `/api/v1/stacks/:id/retry` | admin·devops |
+| `GET` | `/api/v1/stacks/:id/retry-history` | admin·devops |
 | `GET` | `/api/v1/stacks/:id/status` | admin·devops |
 | `DELETE` | `/api/v1/stacks/:stackId` | admin·devops |
 | `GET` | `/api/v1/stacks/:stackId` | admin·devops |
@@ -557,10 +574,15 @@ Retry-After: 32
 | `GET` | `/api/v1/stacks/:stackId/history` | admin·devops |
 | `GET` | `/api/v1/stacks/:stackId/integrations` | admin·devops |
 | `GET` | `/api/v1/stacks/:stackId/monitoring` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/releases` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/releases/:releaseName/values` | admin·devops |
+| `PUT` | `/api/v1/stacks/:stackId/releases/:releaseName/values` | admin·devops |
+| `POST` | `/api/v1/stacks/:stackId/releases/:releaseName/values/preview` | admin·devops |
 | `POST` | `/api/v1/stacks/:stackId/rollback` | admin·devops |
 | `PATCH` | `/api/v1/stacks/:stackId/tools` | admin·devops |
 | `POST` | `/api/v1/stacks/:stackId/validate` | admin·devops |
 | `GET` | `/api/v1/stacks/:stackId/workloads` | admin·devops |
+| `GET` | `/api/v1/stacks/:stackId/workloads/logs` | admin·devops |
 | `GET` | `/api/v1/stacks/compatibility` | admin·devops |
 | `POST` | `/api/v1/stacks/draft` | admin·devops |
 | `POST` | `/api/v1/stacks/estimate` | admin·devops |
@@ -574,10 +596,8 @@ Retry-After: 32
 | `DELETE` | `/api/v1/stacks/templates/:id` | admin·devops |
 | `GET` | `/api/v1/stacks/templates/:id` | admin·devops |
 | `PUT` | `/api/v1/stacks/templates/:id` | admin·devops |
-| `GET` | `/api/v1/stacks/ws/deployments/:id/logs` | admin·devops |
-| `GET` | `/api/v1/stacks/ws/deployments/:id/pods` | admin·devops |
 
-**CI/CD — 파이프라인·골든패스·배포** (19개)
+**CI/CD — 파이프라인·골든패스·배포** (20개)
 
 | Method | Path | 접근 권한 |
 |--------|------|-----------|
@@ -600,6 +620,11 @@ Retry-After: 32
 | `DELETE` | `/api/v1/cicd/templates/:id` | admin·devops·developer |
 | `GET` | `/api/v1/cicd/templates/:id` | admin·devops·developer |
 | `PUT` | `/api/v1/cicd/templates/:id` | admin·devops·developer |
+| `GET` | `/api/v1/stacks/:stackId/pipelines` | admin·devops |
+
+> 마지막 행은 파이프라인 핸들러가 제공하지만 `stacks` 그룹에 붙는다 —
+> 그래서 접근 권한도 `stacks` 그룹의 것(admin·devops)이지 CI/CD 그룹의 것이 아니다.
+> 2026-08-11 기준으로는 `RegisterStackRoutes` 호출이 빠져 404 였고, PR #133 에서 배선됐다.
 
 **Observability — 대시보드·알림** (8개)
 
@@ -614,32 +639,60 @@ Retry-After: 32
 | `GET` | `/api/v1/observability/dashboard` | 인증만 |
 | `GET` | `/api/v1/observability/deployed-apps` | 인증만 |
 
-**공통 — 헬스체크·WebSocket** (2개)
+**Auth — 로그인** (1개)
 
 | Method | Path | 접근 권한 |
 |--------|------|-----------|
-| `GET` | `/debug/pprof/*` | WS 서브프로토콜 인증 |
-| `GET` | `/health` | WS 서브프로토콜 인증 |
+| `POST` | `/api/v1/auth/login` | 인증 전(로그인 전용 레이트리밋) |
 
-> 합계 **108개**.
+> `auth.session.secret` 이 비어 있으면 이 라우트는 **등록되지 않는다**. 비밀번호를
+> 검증할 서명 키가 없으면 발급할 토큰도 없기 때문이다. 그 구성에서는 IdP 만이 인증
+> 수단이므로, IdP 장애가 곧 전면 잠금이 된다 — 기동 시 경고를 남긴다.
 
-**등록되지 않은 핸들러**: `PipelineHandler.RegisterStackRoutes`(`GET /api/v1/stacks/:stackId/pipelines`)
-는 정의되어 있으나 `main.go` 에서 호출되지 않아 서비스되지 않는다. 스택별 파이프라인
-조회는 `GET /api/v1/cicd/pipelines?stack_id=` 로 대체돼 있고 프론트도 그쪽을 쓴다.
+**공통 — 헬스체크·프로파일러·WebSocket** (4개)
+
+| Method | Path | 접근 권한 |
+|--------|------|-----------|
+| `GET` | `/health` | 없음(무인증) |
+| `GET` | `/debug/pprof/*` | 없음. **`server.mode=development` 에서만 등록된다** |
+| `GET` | `/ws/deployments/:id/logs` | WS 서브프로토콜 인증 |
+| `GET` | `/ws/deployments/:id/pods` | WS 서브프로토콜 인증 |
+
+> WebSocket 두 개는 `/api/v1` 아래가 아니라 **루트에 붙는다**(`deploy_handler.go` 가
+> `*echo.Echo` 를 직접 받는다). 그리고 `auth.mode=oidc` 일 때만 인증이 걸린다 —
+> session 모드의 인증은 클라이언트가 보낸 `X-User-*` 헤더를 믿는 방식인데 브라우저
+> WebSocket 은 그 헤더를 붙일 수 없어 무조건 401 이 된다.
+
+> 합계 **116개**(`/debug/pprof/*` 포함, development 모드 기준).
+
+**정의됐지만 등록되지 않은 핸들러**: `CompatibilityHandler.RegisterAdminRoutes`
+(`compatibility/matrices` 생성 / `compatibility/matrices/:id` 수정·삭제 3개)는
+`main.go` 가 `RegisterRoutes` 만 호출하므로 어느 그룹에도 붙지 않는다.
+
+이건 문서만의 문제가 아니다. 관리자 화면 `/admin/stack-versions` 는 "새 매트릭스",
+"수정", "삭제" 를 모두 그려 놓고 `POST`·`PUT`·`DELETE /api/v1/admin/compatibility/matrices`
+를 호출한다(`web/src/features/stack/api/stack-api.ts`). 서버에 그 경로가 없으므로 세
+버튼 모두 404 로 끝난다. **현재 호환성 매트릭스를 늘리는 방법은 마이그레이션 시드뿐이다.**
+등록 위치를 `admin` 으로 정하면 프론트가 이미 부르는 경로와 맞는다.
+
+> 2026-08-11 판에 있던 `PipelineHandler.RegisterStackRoutes` 미등록 항목은 해소됐다
+> (위 CI/CD 표 참고).
 
 ---
 
 ### 6.1 Auth 모듈
 
-인증/인가를 담당합니다. Alpha/Beta는 세션 기반, v1에서 Keycloak OIDC로 전환합니다.
+인증/인가를 담당합니다. **현재 실제로 서비스되는 라우트는 `POST /api/v1/auth/login`
+하나뿐이며**, 나머지(`logout`, `me`)는 초안 상태로 남아 있다 — 아래 각 절의 머리에
+표시했다.
 
-#### POST /api/v1/auth/login
+#### POST /api/v1/auth/login — **구현됨**
 
-세션 기반 로그인 (Alpha/Beta)
+ID/PW 로그인. OIDC 를 대체하지 않고 나란히 선다(3.1 참고).
 
-- **릴리스**: Alpha
-- **인증**: 불필요
-- **Rate Limit**: 10회/분 (IP 기준)
+- **인증**: 불필요 (인증 미들웨어 앞에 등록된다)
+- **Rate Limit**: `middleware.LoginRateLimiter` — 전역 IP 상한과 별개로 이 라우트에만 걸린다
+- **활성 조건**: `auth.session.secret` 이 설정돼 있어야 한다. 없으면 라우트가 등록되지 않는다
 
 **요청**:
 ```json
@@ -649,37 +702,44 @@ Retry-After: 32
 }
 ```
 
-**응답** (`200 OK`):
+**응답** (`200 OK`) — 초안의 `data` 래퍼도, `Set-Cookie` 도 없다. 토큰이 본문에 실린다:
 ```json
 {
-  "data": {
-    "user": {
-      "id": "usr_a1b2c3",
-      "email": "admin@nullus.io",
-      "display_name": "관리자",
-      "role": "admin",
-      "org_id": "org_x1y2z3"
-    }
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "usr_a1b2c3",
+    "email": "admin@nullus.io",
+    "name": "관리자",
+    "role": "admin",
+    "orgId": "org_x1y2z3"
   }
 }
 ```
-```
-Set-Cookie: nullus_session=s%3A...; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400
-```
+
+이후 요청은 `Authorization: Bearer <token>` 을 싣는다.
 
 **에러**:
 | 코드 | 상황 |
 |------|------|
-| `AUTH_LOGIN_INVALID_CREDENTIALS` (401) | 이메일 또는 비밀번호 불일치 |
-| `AUTH_LOGIN_ACCOUNT_LOCKED` (423) | 5회 연속 실패로 계정 잠금 |
+| `401 invalid email or password` | 이메일 미존재·비밀번호 불일치·비밀번호 미설정 계정. **세 경우를 구분하지 않는다** — 구분하면 가입된 이메일을 열거할 수 있다 |
+| `400 invalid request body` | 본문 파싱 실패 |
+| `500 login failed` | 자격 저장소 조회 실패. 401 로 답하지 않는 이유는 DB 장애를 비밀번호 오류로 오인하게 만들기 때문이다 |
+
+> 초안에 있던 `AUTH_LOGIN_ACCOUNT_LOCKED`(5회 실패 잠금)는 **구현되지 않았다.**
+> 무차별 대입 방어는 계정 잠금이 아니라 로그인 전용 레이트리밋이 맡는다 — 잠금은
+> 남의 계정을 이메일만 알면 잠글 수 있는 서비스 거부 경로가 된다.
 
 ---
 
-#### POST /api/v1/auth/logout
+#### POST /api/v1/auth/logout — **미구현 (초안)**
 
 세션 종료
 
-- **릴리스**: Alpha
+> 라우트가 없다. 로그아웃은 클라이언트가 보관한 토큰을 버리는 것으로 끝난다 —
+> 로컬 토큰은 서버가 상태를 들고 있지 않아 무효화할 대상이 없고, OIDC 로그아웃은
+> IdP 의 end-session 엔드포인트가 맡는다.
+
+- **릴리스**: Alpha (초안)
 - **인증**: 세션 필요
 
 **응답** (`204 No Content`):
@@ -689,11 +749,15 @@ Set-Cookie: nullus_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT
 
 ---
 
-#### GET /api/v1/auth/me
+#### GET /api/v1/auth/me — **미구현 (초안)**
 
 현재 로그인 사용자 정보 및 권한 조회
 
-- **릴리스**: Alpha
+> 라우트가 없다. 사용자 정보는 로그인 응답과 토큰 클레임에서 오고, 프런트는 그 값을
+> 보관한다. 아래 `permissions` 배열 형태의 권한 모델도 구현되지 않았다 — 실제 인가는
+> 라우트 그룹에 걸린 `RequireRole` 하나로 판정한다(6.0 표의 접근 권한 열).
+
+- **릴리스**: Alpha (초안)
 - **인증**: 필요
 
 **응답** (`200 OK`):
@@ -724,11 +788,15 @@ Set-Cookie: nullus_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT
 
 ---
 
-#### POST /api/v1/auth/token/refresh
+#### POST /api/v1/auth/token/refresh — **미구현 (초안)**
 
 Keycloak 리프레시 토큰으로 액세스 토큰 갱신 (v1)
 
-- **릴리스**: v1
+> 라우트가 없다. 브라우저는 `oidc-client-ts` 가 IdP 와 직접 갱신하고, CLI·MCP 는
+> `pkg/nullusclient` 의 `EnsureFreshToken` 이 같은 일을 한다 — 둘 다 Nullus API 를
+> 거치지 않는다. 갱신을 API 가 중계하면 refresh token 이 서버를 한 번 더 지나간다.
+
+- **릴리스**: v1 (초안)
 - **인증**: Refresh Token 필요
 
 **요청**:

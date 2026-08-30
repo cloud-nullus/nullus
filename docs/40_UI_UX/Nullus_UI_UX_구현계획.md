@@ -1,14 +1,20 @@
 # Nullus UI/UX 구현 계획
 
 **작성일**: 2026-03-14
-**최종 갱신**: 2026-08-11 (구현 대조)
+**최종 갱신**: 2026-08-31 (구현 재대조)
 **기반 문서**: proto4 화면설계, Nullus PRD v1.2, 기능분해도, 메뉴체계
 **대상 독자**: 프론트엔드 엔지니어, 디자이너
 
-> **구현 현황** — 계획의 15개 페이지를 넘어 현재 **28개 페이지**가 있고 그중 24개가
-> 라우팅돼 있다. 나머지 4개는 만들어졌지만 연결되지 않았다(`cicd-golden-path`,
-> `cicd-pipeline-setup`, `stack-deployment-logs`, `token-management`).
-> 실제 메뉴 구조와 역할별 노출은 `docs/10_제품기획/Nullus_메뉴체계.md` 0장을 본다.
+> **구현 현황 (2026-08-31)** — 계획의 15개 페이지를 넘어 현재 **28개 페이지**가 있고
+> **전부 라우팅돼 있다**. 2026-08-11 판에 "만들어졌지만 연결되지 않았다" 고 적힌 4개
+> (`cicd-golden-path`, `cicd-pipeline-setup`, `stack-deployment-logs`, `token-management`)는
+> PR #133 에서 배선됐다. 라우트 항목은 32개인데, 그중 3쌍이 같은 화면을 가리키는 별칭이고
+> 하나는 404 캐치올이다.
+>
+> 실제 메뉴 구조와 역할별 노출은 `docs/10_제품기획/Nullus_메뉴체계.md` 0장,
+> 화면별 정보 인벤토리는 `docs/40_UI_UX/화면_정보_인벤토리.md`(자동 생성)를 본다.
+>
+> **아래 2장 기술 스택 표는 2026-03-14 선정안이며 일부는 그 뒤 교체됐다.** 현행은 2.1 이다.
 
 ---
 
@@ -19,7 +25,7 @@
 | **제품** | Nullus - Kubernetes 기반 DevSecOps 자동화 플랫폼 |
 | **유형** | Admin Dashboard / SaaS Platform |
 | **사용자** | Admin, DevOps Engineer, Developer (3 역할) |
-| **화면 수** | 15개 페이지 + 공통 레이아웃 + 공통 화면(로그인, 홈) |
+| **화면 수** | 계획 15개 페이지 + 공통 레이아웃 + 공통 화면(로그인, 홈) → **현재 28개** |
 | **기반** | proto4 와이어프레임 (HTML/CSS/JS 프로토타입) |
 | **소스 경로** | `/기획단계/아키텍처/화면설계/proto4/` |
 
@@ -42,6 +48,24 @@
 | **i18n** | react-i18next | proto4의 en/ko 다국어 체계 계승 |
 | **API 통신** | TanStack Query | REST API 캐싱 + WebSocket 실시간 상태 |
 
+### 2.1 현행 기술 스택 (2026-08-31, `web/package.json` 기준)
+
+위 표에서 **바뀐 줄**만 적는다. 나머지는 선정안 그대로 쓰고 있다.
+
+| 레이어 | 선정안(2026-03) | 현행 | 바뀐 이유 |
+|--------|----------------|------|-----------|
+| **컴포넌트** | shadcn/ui | **MUI 9 + Emotion**, Tailwind CSS 4 와 병용 | shadcn/ui 는 **실제로 도입된 적이 없다** — `components/ui/*` 는 Radix 의존 없이 손수 구현돼 있었다(`@radix-ui/*` 가 `package.json` 에 들어온 적이 없다). 2026-08-11 개편에서 그 프리미티브 6종의 **내부만** MUI 로 교체했고 공개 API 는 유지했다. 손수 구현이라 버릴 코드가 적었던 것이 오히려 교체를 쉽게 했다 |
+| **차트** | Recharts (+ Chart.js 혼용) | **Recharts 3 단일** | 두 라이브러리가 섞여 있어 같은 종류의 차트가 화면마다 다르게 보였다. Chart.js 는 제거했고, ESLint 규칙이 라이브러리 중복 도입을 막는다 |
+| **테이블** | TanStack Table | **TanStack Table 유지** (AG Grid 검토 후 기각) | D6 결정 = A안. 상용 라이선스 도입을 막는 ESLint 규칙과 함께 고정했다 |
+| **디자인 토큰** | (없음) | **`web/DESIGN.md` → 토큰 파이프라인** | 색·간격의 단일 출처를 문서 하나로 두고 MUI 테마·Tailwind·CSS 변수를 파생시킨다(`web/src/theme/tokens.generated.*`). 하드코딩 색 리터럴은 ESLint 가 막는다 |
+| **에디터** | (없음) | Monaco + `monaco-yaml` | 스택 설정의 YAML View |
+| **인증** | (없음) | `oidc-client-ts`, `react-oidc-context` | OIDC 리디렉션·토큰 갱신 |
+| **토스트** | (없음) | `sonner` | |
+
+프리미티브는 `web/src/components/ui/` 에 있다 — `badge`, `button`, `card`, `checkbox`,
+`icon-button`, `icon-tile`, `input`, `modal`, `search-input`, `select`, `skeleton`,
+`status-icon`, `tabs`, `text-input`, `toast-provider`.
+
 ---
 
 ## 3. 프로젝트 구조
@@ -52,7 +76,7 @@ src/
     layout.tsx            # AppShell (사이드바 + 헤더 + 메인 영역)
     routes.tsx            # React Router 설정, 역할 기반 가드
   components/
-    ui/                   # shadcn/ui 기반 기본 컴포넌트 (Button, Input, Select 등)
+    ui/                   # 프리미티브 (Button, TextInput, Select 등) — 내부는 MUI, 공개 API 는 자체
     layout/               # Sidebar, Header, PageHeader
     shared/               # DataTable, Modal, StepWizard, CodePreview, StatusBadge
   features/
