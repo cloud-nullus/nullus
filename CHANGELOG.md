@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OIDC 토큰 획득·갱신과 서버 버전 스큐 검사 — 공유 기반 완결** (`pkg/nullusclient/{oidc,session,version}.go` 신규): CLI+MCP 구현 백로그의 S-3·S-4, Phase 1의 마지막 두 조각이다. Authorization Code + PKCE 플로우와 만료/refresh 처리를 라이브러리로 제공한다 — 명령 표면(브라우저 열기·콜백 리슨)은 트랙 A(A-3) 몫이라 여기에는 없다. refresh 재료는 `~/.nullus/session`(0600)에 남기고 토큰 파일(S-2)과 동기로 기록한다. refresh 가 `invalid_grant` 로 거부되면 `ErrLoginRequired` 를 돌려 재로그인을 유도하고, 서버가 refresh token 을 회전하지 않으면 기존 것을 유지한다 — 회전은 서버 재량이라서다. `EnsureFreshToken` 의 우선순위는 env → 세션(만료 임박 시 갱신) → 정적 토큰 → 빈 값 — CI 는 env 만으로 돌고, dev 모드(`auth.mode=session`)는 토큰 없이 통과한다. 버전 스큐는 `/health` 의 version 을 semver 로 비교해 Compatible 여부만 판정한다 — 경고(stderr)·중단(exit 5) 결정은 호출측(CLI/MCP) 몫이다(Automation 계약 §1). `x/oauth2` 와 `blang/semver/v4` 는 direct 의존으로 승격했다.
+
 - **통합 `nullus` CLI 첫 조회 명령** (`cmd/nullus/main.go` 신규, `internal/cli/{root,stack}.go` 신규): `nullus stack ls` 가 동작한다 — 사람용 표와 `-o json`, 그리고 exit code 규약(인증 실패 3, 대상 없음 4, 서버·연결 오류 5, 설정 부재 2). 출력 스키마는 CLI 가 소유한다 — 서버 응답을 그대로 통과시키면 서버 필드 변경이 곧 스크립트 파손이라서다. cobra 는 이번에 direct 의존으로 승격했다.
 
 - **`pkg/nullusclient` — CLI·MCP 공유 기반** (`pkg/nullusclient/{config,client,errors}.go` 신규): 통합 `nullus` CLI(트랙 A)와 MCP 서버(트랙 B)가 함께 쓸 유일한 공유층이다 — API 클라이언트와 설정·토큰 해석(CLI+MCP 구현 백로그 S-1·S-2). 설정 우선순위는 플래그 > `NULLUS_*` env > `~/.nullus/` 파일이라 CI 는 파일 없이 env 만으로 돈다. 토큰 파일은 0600 으로만 쓰고, group/other 가 읽을 수 있으면 **읽기를 거부한다** — 자동으로 고쳐 주지 않는 이유는 이미 노출된 뒤일 수 있어서다(회전 판단은 사용자 몫). API 오류는 `Kind` 하나로 분류되고 그 값이 automation 계약의 exit code(2~5)와 같다 — CLI 는 그대로 종료 코드로 쓰고 재시도는 하지 않는다(재시도 여부는 호출한 자동화가 정한다).
