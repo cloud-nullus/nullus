@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs, navigateToMenu } from "./helpers/auth";
+import { requireConnectedCluster } from "./helpers/preconditions";
 
 test.describe("CI/CD UX 개선 검증", () => {
   let page: Page;
@@ -67,27 +68,29 @@ test.describe("CI/CD UX 개선 검증", () => {
     await expect(page.getByRole("button", { name: "Test" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Security" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Create" })).toBeVisible();
-    await expect(page.getByText("Pipeline Configuration")).toBeVisible();
-    await expect(page.getByText("1. Code Checkout")).toBeVisible();
-    await expect(page.getByText("2. Build")).toBeVisible();
-    await expect(page.getByText("3. Deploy")).toBeVisible();
+    // 섹션 제목은 화면의 것과 같아야 한다. 예전에는 "Pipeline Configuration" 과
+    // "3. Deploy" 로 적혀 있었는데, 실제 화면은 "Pipeline Setup" 과
+    // "3. Image Registry" 다 — 문구가 바뀔 때 테스트가 함께 오지 않았다.
+    await expect(page.getByRole("heading", { name: "Pipeline Setup" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "1. Code Checkout" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "2. Build" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "3. Image Registry" })).toBeVisible();
     await expect(page.getByText("Cluster & Namespace")).toBeVisible();
 
     await page.fill('input[placeholder*="app"]', "verify-test");
     const gitInput = page
       .locator('input[placeholder*="github"], input[placeholder*="repo"]')
       .first();
-    if (await gitInput.isVisible()) {
+    // 보이지만 비활성인 칸이다 — 플랫폼이 만든 저장소 URL 을 되비추는 읽기 전용
+    // 칸이라서다. isVisible() 로 거르면 가드를 통과한 뒤 fill() 이 활성화를 기다리다
+    // 30 초 만에 죽는다. 채울 수 있을 때만 채운다.
+    if (await gitInput.isEditable()) {
       await gitInput.fill("https://github.com/cloud-nullus/sample-go-api");
     }
 
     await expect(page.getByText("Resource Configuration").last()).toBeVisible();
     await expect(page.getByText("Environment Variables").last()).toBeVisible();
     await expect(page.getByText("Manifest Types")).toHaveCount(0);
-    await expect(page.getByText(/Review.*Manifest/).last()).toBeVisible();
-    await expect(page.getByText("verify-test-deployment.yaml")).toBeVisible();
-    await expect(page.getByText("verify-test-service.yaml")).toBeVisible();
-    await expect(page.getByText("verify-test-ingress.yaml")).toBeVisible();
     await expect(page.locator('input[type="range"]')).toHaveCount(0);
     await page.screenshot({
       path: "e2e/screenshots/developer-deploy-steps.png",
@@ -97,7 +100,26 @@ test.describe("CI/CD UX 개선 검증", () => {
     ).toBeVisible();
   });
 
-  test("4. Pipeline Setup — 생성 후 목록에서 배포 실행", async () => {
+  // Review Manifest 는 클러스터를 고른 뒤에만 그려진다(canReview 가 clusterId 를
+  // 요구한다). 위의 레이아웃 검사와 한 테스트에 묶어 두면, 클러스터가 없다는 이유로
+  // 섹션 배치 회귀까지 함께 못 보게 된다.
+  test("3-1. Pipeline Setup — Review Manifest 미리보기", async ({ request }) => {
+    await requireConnectedCluster(request);
+
+    await page.goto("/cicd/developer-deploy");
+    await page.waitForLoadState("networkidle");
+    await page.fill('input[placeholder*="app"]', "verify-test");
+
+    await expect(page.getByText(/Review.*Manifest/).last()).toBeVisible();
+    await expect(page.getByText("verify-test-deployment.yaml")).toBeVisible();
+    await expect(page.getByText("verify-test-service.yaml")).toBeVisible();
+    await expect(page.getByText("verify-test-ingress.yaml")).toBeVisible();
+  });
+
+  test("4. Pipeline Setup — 생성 후 목록에서 배포 실행", async ({ request }) => {
+    // 파이프라인 생성은 대상 클러스터를 고르지 않으면 검증에서 막힌다.
+    await requireConnectedCluster(request);
+
     await page.goto("/cicd/developer-deploy");
     await page.waitForLoadState("networkidle");
 
@@ -105,7 +127,7 @@ test.describe("CI/CD UX 개선 검증", () => {
     const gitInput = page
       .locator('input[placeholder*="github"], input[placeholder*="repo"]')
       .first();
-    if (await gitInput.isVisible()) {
+    if (await gitInput.isEditable()) {
       await gitInput.fill("https://github.com/cloud-nullus/sample-go-api");
     }
     await page

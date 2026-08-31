@@ -1,17 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
-
-// Inline admin login: the login page now navigates to '/' after submit
-// (not '/admin/organization' as helpers/auth.ts expects). We log in here and
-// then page.goto() the specific route under test.
-async function loginAsAdmin(page: Page): Promise<void> {
-  await page.goto('/login')
-  await page.fill('#email', 'admin@nullus.dev')
-  await page.fill('#password', 'admin123')
-  await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 5000 })
-  await page.click('button[type="submit"]')
-  // Login page calls navigate('/') unconditionally after success.
-  await page.waitForURL('**/', { timeout: 10000 })
-}
+import { test, expect } from '@playwright/test'
+import { loginAs } from './helpers/auth'
+import { requireAnyCluster } from './helpers/preconditions'
 
 // F8-F3 UI smoke test: exercise compatibility management and the
 // server-side Pre-Deploy Gate from a real browser against the live dev stack.
@@ -23,7 +12,7 @@ async function loginAsAdmin(page: Page): Promise<void> {
 
 test.describe('F8-F3 compatibility gate UI', () => {
   test('admin stack versions page shows compatibility matrices with arch/tier badges', async ({ page }) => {
-    await loginAsAdmin(page)
+    await loginAs(page, 'admin')
     await page.goto('/admin/stack-versions')
 
     // Page title + list sub-heading confirm the route rendered.
@@ -43,18 +32,30 @@ test.describe('F8-F3 compatibility gate UI', () => {
     await page.getByRole('button', { name: /GitLab All-in-One/i }).click()
     // At least one amd64 arch badge + one stable/beta tier badge visible.
     await expect(page.getByText('amd64').first()).toBeVisible()
-    // Clusters section exists and exposes a Refresh Discovery button per row.
+  })
+
+  // Refresh Discovery 버튼은 클러스터 '행마다' 그려진다. 등록된 클러스터가 없으면
+  // 버튼도 없으므로, 위의 매트릭스 검사와 한 테스트에 묶어 두면 클러스터가 없다는
+  // 이유만으로 매트릭스 회귀까지 함께 못 보게 된다. 그래서 떼어 둔다.
+  test('cluster compatibility section exposes Refresh Discovery per row', async ({ page, request }) => {
+    await requireAnyCluster(request)
+
+    await loginAs(page, 'admin')
+    await page.goto('/admin/stack-versions')
+
     await expect(page.getByText(/Cluster compatibility|클러스터 호환성/i)).toBeVisible()
     await expect(page.getByRole('button', { name: /Refresh Discovery|재판독/i }).first()).toBeVisible()
   })
 
-  test('refresh discovery button responds (connection_failed path is acceptable)', async ({ page }) => {
+  test('refresh discovery button responds (connection_failed path is acceptable)', async ({ page, request }) => {
+    await requireAnyCluster(request)
+
     // Admin Stack Versions page. Clicking Refresh Discovery on any cluster
     // should trigger POST /admin/clusters/:id/refresh-discovery. Without a
     // real kubeconfig the server will return an error, but the button
     // must still round-trip through the React Query mutation without
     // crashing the page.
-    await loginAsAdmin(page)
+    await loginAs(page, 'admin')
     await page.goto('/admin/stack-versions')
 
     const [resp] = await Promise.all([

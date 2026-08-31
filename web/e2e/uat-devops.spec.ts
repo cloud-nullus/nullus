@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { countTemplates, templateCards } from './helpers/templates'
 
 async function loginAsDevOps(page: Page) {
   await page.goto('/login')
@@ -36,12 +37,12 @@ test.describe('UAT: DevOps Engineer 미정', () => {
     await expect(page.locator('aside button').filter({ hasText: 'Observability' }).first()).toBeVisible()
   })
 
-  test('Stack Templates 이동 → 4개 템플릿 카드 확인', async ({ page }) => {
+  test('Stack Templates 이동 → 서버 템플릿 수만큼 카드 확인', async ({ page, request }) => {
+    const expected = await countTemplates(request, 'http://localhost:8090/api/v1')
+
     await loginAsDevOps(page)
     await expect(page.locator('h1')).toContainText('Stack Template', { timeout: 10000 })
-
-    const cards = page.locator('main [class*="card"]').filter({ hasText: /Use Base Template/ })
-    await expect(cards).toHaveCount(4)
+    await expect(templateCards(page)).toHaveCount(expected)
   })
 
   test('Stack Install 이동 → 5개 탭 표시 확인', async ({ page }) => {

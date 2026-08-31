@@ -14,7 +14,9 @@ test.describe('Admin UAT Scenarios', () => {
       await expect(detailName).toBeVisible()
       await expect(page.locator('input[name="slug"]').first()).toBeVisible()
       await expect(page.locator('input[name="domain"]').first()).toBeVisible()
-      await expect(page.locator('select[name="status"]')).toBeVisible()
+      // Select 는 네이티브 <select> 가 아니라 MUI 기반이라 role=combobox 로 뜬다.
+      // select[name="status"] 는 이 화면에서 영원히 0 개다.
+      await expect(page.getByRole('combobox', { name: /status/i })).toBeVisible()
       return
     }
 
@@ -72,8 +74,8 @@ test.describe('Admin UAT Scenarios', () => {
     await linkBtn.click()
 
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('[role="dialog"] select, [role="dialog"] [role="combobox"]').first()).toBeVisible()
-    await expect(page.locator('[role="dialog"] select')).toHaveCount(2)
+    await expect(page.locator('[role="dialog"] [role="combobox"]').first()).toBeVisible()
+    await expect(page.locator('[role="dialog"] [role="combobox"]')).toHaveCount(2)
   })
 
   test('A3: 사용자 관리 멤버 목록 테이블 렌더링', async ({ page }) => {
@@ -103,15 +105,10 @@ test.describe('Admin UAT Scenarios', () => {
   })
 
   test('A6: Organization 상태 드롭다운 존재', async ({ page }) => {
-    const statusSelect = page.locator('select[name="status"]')
-    if (await statusSelect.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await expect(statusSelect).toBeVisible()
-      return
-    }
-
-    await expect(
-      page.getByText(/select an organization|organization/i).first()
-    ).toBeVisible({ timeout: 10000 })
+    // 예전에는 select[name="status"] 를 찾고 못 찾으면 "organization 이라는 글자가
+    // 있는지" 로 넘어갔다. Select 가 MUI 로 바뀌어 앞 조건은 늘 거짓이 됐고,
+    // 뒤 조건은 사이드바만 있어도 통과한다 — 드롭다운이 사라져도 초록불이었다.
+    await expect(page.getByRole('combobox', { name: /status/i })).toBeVisible({ timeout: 10000 })
   })
 
   test('A7: Known Issues 페이지 렌더링', async ({ page }) => {

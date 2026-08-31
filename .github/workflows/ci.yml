@@ -74,10 +74,10 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
-    # 이 잡은 아직 통과가 확인되지 않았다(CI 가 5개월간 꺼져 있었다).
-    # 막지 않되 결과는 남긴다 — 안정적으로 통과하는 것을 확인한 뒤 이 줄을 지운다.
-    # 지금 막게 두면 검증되지 않은 잡 하나가 모든 PR 을 세운다.
-    continue-on-error: true
+    # continue-on-error 를 뗐다. 이 잡이 빨간 상태로 5개월을 지나는 동안 어떤 회귀도
+    # PR 을 막지 못했고, 실패 78 건 중 58 건은 리눅스 시각 회귀 베이스라인이 없어서,
+    # 나머지는 여기 DB 자격증명이 어긋나 API 가 죽어 있어서였다 — 둘 다 아래에서
+    # 고쳤다. 이제 실패는 진짜 실패다.
     services:
       postgres:
         image: postgres:18
@@ -107,13 +107,43 @@ jobs:
         run: go build -o bin/api ./cmd/api
       - name: Run migrations
         run: |
+          # `|| true` 를 뗐다. 마이그레이션이 깨져도 조용히 넘어가면 그 다음의
+          # 모든 실패가 엉뚱한 곳을 가리킨다. ON_ERROR_STOP 으로 파일 안 오류도 잡는다.
           for f in db/migrations/*.up.sql; do
-            PGPASSWORD=nullus_test psql -h localhost -p 5433 -U nullus -d nullus_test -f "$f" || true
+            PGPASSWORD=nullus_test psql -h localhost -p 5433 -U nullus -d nullus_test \
+              -v ON_ERROR_STOP=1 -q -f "$f"
           done
       - name: Start API
+        env:
+          # 이름·계정·비밀번호가 빠져 있었다. 그러면 configs/config.yaml 의 기본값
+          # (nullus / nullus / nullus_dev)으로 붙는데, 위 postgres 서비스가 만든 것은
+          # nullus_test / nullus / nullus_test 다. 그래서 API 는 떠 있지만 DB 에는
+          # 한 번도 붙지 못했고, 데이터를 읽는 E2E 는 전부 30 초 타임아웃으로 죽었다.
+          NULLUS_DATABASE_HOST: localhost
+          NULLUS_DATABASE_PORT: '5433'
+          NULLUS_DATABASE_NAME: nullus_test
+          NULLUS_DATABASE_USER: nullus
+          NULLUS_DATABASE_PASSWORD: nullus_test
+          NULLUS_SERVER_MODE: development
         run: |
-          NULLUS_DATABASE_HOST=localhost NULLUS_DATABASE_PORT=5433 NULLUS_SERVER_MODE=development bin/api &
-          sleep 3
+          nohup bin/api > /tmp/api.log 2>&1 &
+          # sleep 3 은 기동을 보장하지 못한다. 게다가 /health 는 DB 가 끊겨도
+          # status:healthy 를 돌려주므로 db 필드까지 봐야 한다 — 그 구분이 없으면
+          # DB 없이 돌던 이번 상황이 그대로 재현된다.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8090/health | grep -q '"db":"connected"'; then
+              echo "API up with database"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "API failed to reach the database within 60s"
+              curl -s http://localhost:8090/health || true
+              echo '--- api log ---'
+              cat /tmp/api.log || true
+              exit 1
+            fi
+            sleep 2
+          done
       - name: Install frontend deps
         run: cd web && npm ci
       - name: Install Playwright browsers
@@ -121,6 +151,6 @@ jobs:
       - name: Build frontend
         run: cd web && npx vite build
       - name: Run E2E tests
-        run: cd web && npx playwright test --reporter=list
+        run: cd web && npx playwright test --project=chromium --reporter=list
         env:
           VITE_API_URL: http://localhost:8090
