@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-31
+
 ### Added
 
 - **OIDC 토큰 획득·갱신과 서버 버전 스큐 검사 — 공유 기반 완결** (`pkg/nullusclient/{oidc,session,version}.go` 신규): CLI+MCP 구현 백로그의 S-3·S-4, Phase 1의 마지막 두 조각이다. Authorization Code + PKCE 플로우와 만료/refresh 처리를 라이브러리로 제공한다 — 명령 표면(브라우저 열기·콜백 리슨)은 트랙 A(A-3) 몫이라 여기에는 없다. refresh 재료는 `~/.nullus/session`(0600)에 남기고 토큰 파일(S-2)과 동기로 기록한다. refresh 가 `invalid_grant` 로 거부되면 `ErrLoginRequired` 를 돌려 재로그인을 유도하고, 서버가 refresh token 을 회전하지 않으면 기존 것을 유지한다 — 회전은 서버 재량이라서다. `EnsureFreshToken` 의 우선순위는 env → 세션(만료 임박 시 갱신) → 정적 토큰 → 빈 값 — CI 는 env 만으로 돌고, dev 모드(`auth.mode=session`)는 토큰 없이 통과한다. 버전 스큐는 `/health` 의 version 을 semver 로 비교해 Compatible 여부만 판정한다 — 경고(stderr)·중단(exit 5) 결정은 호출측(CLI/MCP) 몫이다(Automation 계약 §1). `x/oauth2` 와 `blang/semver/v4` 는 direct 의존으로 승격했다.
@@ -1261,6 +1263,8 @@ compare 링크는 실제로 발행된 태그만 가리킨다 (릴리즈 정책 �
 0.1.0-alpha / 0.2.0-alpha 는 CHANGELOG 기록만 존재하고 git 태그·GitHub Release 가 발행된 적이 없어
 링크를 두지 않는다. v0.3.0-alpha 태그 push 이후 아래 링크가 유효해진다.
 -->
-[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.4.0-alpha...HEAD
+[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/cloud-nullus/nullus/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/cloud-nullus/nullus/compare/v0.4.0-alpha...v0.4.1
 [0.4.0-alpha]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/cloud-nullus/nullus/releases/tag/v0.3.0-alpha
