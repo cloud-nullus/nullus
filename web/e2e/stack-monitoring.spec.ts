@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test'
+import { loginAs } from './helpers/auth'
 
 const apiBase = 'http://localhost:8090/api/v1'
 
@@ -18,15 +19,9 @@ async function getCompletedStack(request: APIRequestContext): Promise<{ id: stri
 
 test.describe('Stack Monitoring E2E', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login')
-    await page.fill('#email', 'devops@nullus.dev')
-    await page.fill('#password', 'devops123')
-    await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 5000 })
-    await page.click('button[type="submit"]')
-    // Login page now navigates to '/' (Home) regardless of role — F8 Task 5 +
-    // Phase 1 (2026-04-20). Each test explicitly navigates to its target
-    // stack-* route, so beforeEach only needs to confirm auth succeeded.
-    await page.waitForURL('**/')
+    // 각 테스트가 자기 stack-* 경로로 직접 이동하므로 여기서는 인증만 확인한다.
+    // 도착지는 role-landing.ts 가 정하고 helpers/auth.ts 가 그 값을 안다.
+    await loginAs(page, 'devops')
   })
 
   test('@stack-critical completed stack monitoring renders live values', async ({ page, request }) => {

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
+import { loginAs } from './helpers/auth'
 
 // F8 Task 7 — warn-forced Retry/Rollback UI smoke.
 //
@@ -12,18 +13,9 @@ import { test, expect, type Page } from '@playwright/test'
 //
 // Tagged @stack-critical so it's picked up by `pnpm e2e:stack-critical`.
 
-async function loginAsAdmin(page: Page): Promise<void> {
-  await page.goto('/login')
-  await page.fill('#email', 'admin@nullus.dev')
-  await page.fill('#password', 'admin123')
-  await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 5000 })
-  await page.click('button[type="submit"]')
-  await page.waitForURL('**/', { timeout: 10000 })
-}
-
 test.describe('F8 Task 7 — Warn-Forced Retry/Rollback UI', () => {
   test('admin page surfaces the untested matrix (warn-prone) @stack-critical', async ({ page }) => {
-    await loginAsAdmin(page)
+    await loginAs(page, 'admin')
 
     // 1. Admin Stack Version Management page shows the github-argocd-v1
     //    matrix with the `untested` status badge — the same matrix that

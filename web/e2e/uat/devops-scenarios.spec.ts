@@ -1,20 +1,21 @@
 import { test, expect } from '@playwright/test'
 import { loginAs, navigateToMenu } from '../helpers/auth'
+import { openTemplateDetail, templateCards } from '../helpers/templates'
+import { requireAnyStack } from '../helpers/preconditions'
 
 test.describe('DevOps UAT Scenarios', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, 'devops')
   })
 
-  test('D1: 스택 템플릿 3개 카드 렌더링', async ({ page }) => {
+  test('D1: 스택 템플릿 카드 렌더링', async ({ page }) => {
     await expect(page.locator('h1')).toContainText(/template/i, { timeout: 10000 })
-    await expect(page.getByRole('button', { name: /use base template/i }).first()).toBeVisible()
+    await expect(templateCards(page).first()).toBeVisible()
   })
 
   test('D1: 템플릿 상세 모달 열기', async ({ page }) => {
-    const card = page.locator('[role="button"]').filter({ hasText: /gitlab all-in-one|gitlab \+ argo cd|github \+ argo cd/i }).first()
-    await card.click()
-    await expect(page.locator('[role="dialog"]')).toBeVisible()
+    // 카드 자체는 더 이상 role=button 이 아니다. 상세는 카드 안의 버튼으로 연다.
+    await openTemplateDetail(page)
   })
 
   test('D2: 스택 설치 5개 탭 렌더링', async ({ page }) => {
@@ -109,7 +110,10 @@ test.describe('DevOps UAT Scenarios', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible()
   })
 
-  test('D11: 스택 목록에 Add Tools 버튼', async ({ page }) => {
+  test('D11: 스택 목록에 Add Tools 버튼', async ({ page, request }) => {
+    // 버튼은 스택 행마다 그려진다 — 목록이 비면 버튼도 없다.
+    await requireAnyStack(request)
+
     await page.goto('/stack/list')
     await expect(page.getByRole('button', { name: /add tools/i }).first()).toBeVisible({ timeout: 10000 })
   })
