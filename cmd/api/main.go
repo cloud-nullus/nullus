@@ -26,6 +26,11 @@ import (
 	authrepo "github.com/cloud-nullus/draft/internal/auth/adapter/repository"
 	authtoken "github.com/cloud-nullus/draft/internal/auth/adapter/token"
 	authusecase "github.com/cloud-nullus/draft/internal/auth/usecase"
+	"github.com/cloud-nullus/draft/internal/backup"
+	backuphandler "github.com/cloud-nullus/draft/internal/backup/adapter/handler"
+	backupdomain "github.com/cloud-nullus/draft/internal/backup/domain"
+	backupscheduler "github.com/cloud-nullus/draft/internal/backup/scheduler"
+	backupusecase "github.com/cloud-nullus/draft/internal/backup/usecase"
 	cicddocker "github.com/cloud-nullus/draft/internal/cicd/adapter/docker"
 	cicdgitea "github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
 	cicdgithub "github.com/cloud-nullus/draft/internal/cicd/adapter/github"
@@ -573,7 +578,10 @@ func main() {
 			})
 		}))
 
-	go adminscheduler.NewTokenRotationScheduler(
+	// 백업이 정지 창을 여는 동안 회전을 멈춰야 하므로 참조를 보관한다.
+	// 회전은 DB 와 금고를 함께 고쳐써서, 백업 중에 돌면 두 산출물 사이에
+	// 시점 어긋남을 만든다 (docs/11_기능설계/Nullus_백업복구_설계.md §2.1).
+	rotationScheduler := adminscheduler.NewTokenRotationScheduler(
 		pool,
 		secretRouter,
 		tokenRotationInterval(),
@@ -583,7 +591,50 @@ func main() {
 	).WithRestarter(
 		// 회전 후 반영: 소비자가 기동 시점에만 설정을 읽는 경우 rolling restart 한다.
 		adminrepo.NewClusterWorkloadRestarter(kubeconfigProvider),
-	).Start(rotationCtx)
+	)
+	go rotationScheduler.Start(rotationCtx)
+
+	// ── 백업/복구 (nullus-plan#75) ──
+	//
+	// 조립이 실패하면 기동을 멈춘다. 설정이 잘못된 채로 뜨면 "백업이 돌고
+	// 있다" 는 착각만 남고, 그 착각은 복구를 시도할 때에야 깨진다 (§9 F10).
+	backupModule, err := backup.New(backup.Deps{
+		Pool:            pool,
+		Config:          cfg.Backup,
+		PlatformDB:      cfg.Database,
+		SecretRouter:    secretRouter,
+		Kubeconfig:      kubeconfigProvider,
+		TokenSources:    tokenSourceRepo,
+		RotationPausing: rotationScheduler,
+		EncryptionKey:   []byte(os.Getenv("ENCRYPTION_KEY")),
+		PlatformVersion: platformVersion,
+		Logger:          slog.Default(),
+	})
+	if err != nil {
+		slog.Error("백업 모듈 조립 실패", "error", err)
+		os.Exit(1)
+	}
+	if backupModule != nil {
+		backupHandler := backuphandler.NewBackupHandler(
+			backupModule, backupModule.Verify, backupModule.Repo, cfg.Platform.Namespace,
+		)
+		backupHandler.RegisterRoutes(admin)
+
+		if sc := cfg.Backup.Schedule; sc.Enabled {
+			go backupscheduler.New(
+				mustBackupUseCase(rotationCtx, backupModule, sc.StackID),
+				backupModule.Retention,
+				backupscheduler.Config{
+					Interval:  sc.Interval,
+					OrgID:     sc.OrgID,
+					StackID:   sc.StackID,
+					Namespace: sc.Namespace,
+					Mode:      backupdomain.Mode(sc.Mode),
+					Logger:    slog.Default(),
+				},
+			).Start(rotationCtx)
+		}
+	}
 
 	// 끊긴 설치를 주기적으로 실패로 옮긴다.
 	//
@@ -703,4 +754,25 @@ func tokenSourceEnvironment(mode string) string {
 	default:
 		return "dev"
 	}
+}
+
+// platformVersion 은 매니페스트에 남기는 플랫폼 버전이다.
+//
+// 복구 시 "어느 버전이 뜬 백업인가" 를 열어보기 전에 알 수 있어야 한다.
+// 빌드 시 -ldflags 로 주입하고, 없으면 dev 로 둔다.
+var platformVersion = "dev"
+
+// mustBackupUseCase 는 스케줄 백업용 유스케이스를 미리 만든다.
+//
+// 스케줄은 대상 스택이 고정이라 기동 시점에 만들 수 있다. 실패하면 nil 을
+// 돌려주고, 스케줄러는 그때 "구성되지 않았다" 고 남기며 시작하지 않는다 —
+// 조용히 도는 빈 스케줄러가 가장 나쁘다.
+func mustBackupUseCase(ctx context.Context, m *backup.Module, stackID string) *backupusecase.BackupUseCase {
+	uc, err := m.Backup(ctx, stackID)
+	if err != nil {
+		slog.Error("스케줄 백업 유스케이스를 만들 수 없습니다 — 주기 백업이 돌지 않습니다",
+			"stack_id", stackID, "error", err)
+		return nil
+	}
+	return uc
 }

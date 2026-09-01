@@ -151,3 +151,84 @@ func splitKVPath(path string) (string, string, error) {
 	}
 	return parts[0], strings.Join(parts[1:], "/"), nil
 }
+
+// ── KV 전체 순회 (백업/복구용) ────────────────────────────────────────────
+//
+// 백업은 "이 스택의 모든 시크릿" 을 떠야 하는데, PutToken/GetToken 은 경로를
+// 이미 아는 호출자를 위한 것이라 목록을 줄 수 없다. OpenBao 는 단일 replica
+// 라 file 스토리지를 쓰고 raft snapshot API 가 없으므로, 경로를 순회해
+// 논리 export 하는 것이 유일한 방법이다.
+// (설계: docs/11_기능설계/Nullus_백업복구_설계.md §3.2)
+
+// KVBrowser 는 KV 트리를 훑고 값을 통째로 읽고 쓰는 확장 창구다.
+//
+// Store 인터페이스를 넓히지 않고 별도 인터페이스로 둔 이유: 이 능력이
+// 필요한 곳은 백업뿐이고, 토큰만 다루는 대다수 호출자에게 강제할 이유가 없다.
+type KVBrowser interface {
+	ListKeys(ctx context.Context, path string) ([]string, error)
+	GetSecret(ctx context.Context, path string) (map[string]any, error)
+	PutSecret(ctx context.Context, path string, data map[string]any) error
+}
+
+// ListKeys 는 경로 바로 아래의 항목을 돌려준다. 디렉터리는 "/" 로 끝난다.
+func (s *OpenBaoStore) ListKeys(ctx context.Context, path string) ([]string, error) {
+	mount, subpath, err := splitKVPath(path)
+	if err != nil {
+		return nil, err
+	}
+	// KV v2 의 목록은 metadata 엔드포인트에 있다. data 로는 조회되지 않는다.
+	url := "/v1/" + mount + "/metadata/" + subpath
+	raw, err := s.request(ctx, "LIST", url, nil)
+	if err != nil {
+		// 잎 경로이거나 비어 있으면 404 다 — 오류가 아니라 "하위가 없다" 이다.
+		return nil, nil
+	}
+	var out struct {
+		Data struct {
+			Keys []string `json:"keys"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out.Data.Keys, nil
+}
+
+// GetSecret 은 경로의 값 전체를 돌려준다 (token 필드만이 아니라).
+func (s *OpenBaoStore) GetSecret(ctx context.Context, path string) (map[string]any, error) {
+	mount, subpath, err := splitKVPath(path)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := s.request(ctx, http.MethodGet, "/v1/"+mount+"/data/"+subpath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("openbao read failed: %w", err)
+	}
+	var out struct {
+		Data struct {
+			Data map[string]any `json:"data"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out.Data.Data, nil
+}
+
+// PutSecret 은 값 전체를 쓴다.
+func (s *OpenBaoStore) PutSecret(ctx context.Context, path string, data map[string]any) error {
+	mount, subpath, err := splitKVPath(path)
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(map[string]any{"data": data})
+	if err != nil {
+		return fmt.Errorf("시크릿 직렬화: %w", err)
+	}
+	if _, err := s.request(ctx, http.MethodPost, "/v1/"+mount+"/data/"+subpath, body); err != nil {
+		return fmt.Errorf("openbao write failed: %w", err)
+	}
+	return nil
+}
+
+var _ KVBrowser = (*OpenBaoStore)(nil)

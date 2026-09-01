@@ -16,6 +16,69 @@ type Config struct {
 	Prometheus PrometheusConfig `mapstructure:"prometheus"`
 	Log        LogConfig        `mapstructure:"log"`
 	Platform   PlatformConfig   `mapstructure:"platform"`
+	Backup     BackupConfig     `mapstructure:"backup"`
+}
+
+// BackupConfig 는 백업/복구 설정이다.
+//
+// 설계: docs/11_기능설계/Nullus_백업복구_설계.md (nullus-plan#75)
+//
+// 목적지는 **대상 클러스터 밖**의 S3 호환 오브젝트 스토리지다. 클러스터가
+// 통째로 사라져도 백업본은 남아야 하기 때문이다(§4.2).
+//
+// 자격증명이 스택 OpenBao 가 아니라 여기(=컨트롤 플레인 설정)에서 오는 것이
+// 핵심이다. 금고에서 조달하면 스택이 죽을 때 백업본이 멀쩡해도 가져올 수
+// 없는 순환이 생긴다(§4.2.1).
+type BackupConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// SealKey 는 산출물 암호화 키다. 정확히 32바이트여야 한다.
+	// ENCRYPTION_KEY 와 **다른 값**이어야 한다 — 같으면 키 하나를 잃고
+	// 둘 다 잃는다(§5.2).
+	SealKey   string `mapstructure:"seal_key"`
+	SealKeyID string `mapstructure:"seal_key_id"`
+
+	Destination BackupDestinationConfig `mapstructure:"destination"`
+	Schedule    BackupScheduleConfig    `mapstructure:"schedule"`
+	Retention   BackupRetentionConfig   `mapstructure:"retention"`
+
+	// KeycloakDatabase 는 Keycloak 전용 DB 다. 배포 경로에 따라 위치가
+	// 다르므로(차트 서브차트 / 에어갭 독립 릴리스) 설정으로 받는다(§1.2).
+	KeycloakDatabase BackupDatabaseConfig `mapstructure:"keycloak_database"`
+}
+
+type BackupDestinationConfig struct {
+	Endpoint  string `mapstructure:"endpoint"`
+	Bucket    string `mapstructure:"bucket"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	Region    string `mapstructure:"region"`
+	UseSSL    bool   `mapstructure:"use_ssl"`
+	Prefix    string `mapstructure:"prefix"`
+}
+
+type BackupDatabaseConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Name     string `mapstructure:"name"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+}
+
+type BackupScheduleConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// Interval 기본값은 24시간이다 (RPO 24시간, §2).
+	Interval  time.Duration `mapstructure:"interval"`
+	OrgID     string        `mapstructure:"org_id"`
+	StackID   string        `mapstructure:"stack_id"`
+	Namespace string        `mapstructure:"namespace"`
+	Mode      string        `mapstructure:"mode"`
+}
+
+type BackupRetentionConfig struct {
+	Daily         int   `mapstructure:"daily"`
+	Weekly        int   `mapstructure:"weekly"`
+	Monthly       int   `mapstructure:"monthly"`
+	MaxTotalBytes int64 `mapstructure:"max_total_bytes"`
 }
 
 // PlatformConfig 는 플랫폼 자신이 어디에 떠 있는지를 담는다.
