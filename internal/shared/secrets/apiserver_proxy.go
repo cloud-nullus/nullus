@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"k8s.io/client-go/kubernetes"
@@ -31,13 +32,38 @@ func (t *apiServerProxyTransport) resourceName() string {
 	return fmt.Sprintf("http:%s:%s", t.service, t.port)
 }
 
+// splitPathQuery 는 경로에서 쿼리 문자열을 떼어낸다.
+//
+// Suffix() 는 인자를 **경로 조각**으로 다룬다. `?list=true` 가 붙은 채로 넘기면
+// 통째로 이스케이프돼 프록시 URL 이 깨지고, API server 가
+// "unknown (get services http:openbao:8200)" 을 돌려준다 — KV 목록 조회에서
+// 실제로 그랬다. 쿼리는 Param() 으로 따로 실어야 한다.
+func splitPathQuery(path string) (string, url.Values) {
+	raw := strings.TrimPrefix(path, "/")
+	i := strings.Index(raw, "?")
+	if i < 0 {
+		return raw, nil
+	}
+	q, err := url.ParseQuery(raw[i+1:])
+	if err != nil {
+		return raw[:i], nil
+	}
+	return raw[:i], q
+}
+
 func (t *apiServerProxyTransport) get(ctx context.Context, path string, headers map[string]string) ([]byte, error) {
+	suffix, query := splitPathQuery(path)
 	req := t.clientset.CoreV1().RESTClient().Get().
 		Namespace(t.namespace).
 		Resource("services").
 		Name(t.resourceName()).
 		SubResource("proxy").
-		Suffix(strings.TrimPrefix(path, "/"))
+		Suffix(suffix)
+	for k, vs := range query {
+		for _, v := range vs {
+			req = req.Param(k, v)
+		}
+	}
 	for k, v := range headers {
 		req = req.SetHeader(k, v)
 	}

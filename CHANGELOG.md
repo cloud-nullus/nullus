@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **백업/복구가 실제 스택에서 동작하지 않던 결함 3건** — 실환경 리허설(스택 설치 + React 파이프라인 구동 상태에서 백업·복구)에서 드러났다. 셋 다 단위·통합 테스트와 축소 리허설을 전부 통과한 코드에서 나왔다.
+
+  **① `backup_runs.stack_id` 가 UUID 였다** (`db/migrations/000076`). Nullus 스택 ID 는 UUID 가 아니라 `stk_352e9f68db06` 형태의 varchar 다. 그래서 **스택을 대상으로 하는 백업(`full`·`stack_only`)이 행을 만드는 순간 죽었다** — `platform_only` 만 통과해 그동안 드러나지 않았고, 통합 테스트도 `stack_id` 에 uuid 를 넣고 있어 못 잡았다.
+
+  **② KV export 가 운영 경로에서 동작하지 않았다** (두 겹). `ListKeys` 가 HTTP `LIST` 메서드를 쓰는데, **운영 경로인 API server proxy transport 는 GET/POST 만 지원한다** — 로컬 직결에서는 되고 운영에서만 죽는다. `GET ...?list=true` 로 바꾸자 이번엔 그 쿼리가 `Suffix()` 를 통해 **경로 조각으로 이스케이프돼** 프록시 URL 이 깨졌다. transport 가 쿼리를 분리하도록 함께 고쳤다.
+
+  **③ ESO 시크릿 배선이 백업에서 통째로 빠졌다.** ESO 가 만든 Secret 은 `ownerReferences` 때문에 건너뛴다(소유자가 다시 만들 것이므로 옳다). 그런데 그 **소유자인 `ExternalSecret`/`SecretStore` CR 도 `dumpKinds` 에 없었다.** 다시 만들 주체가 사라져, **복구가 `succeeded` 를 반환하고도 Gitea·Harbor·Jenkins 가 `CreateContainerConfigError` 로 멈춘 채 남았다.** 값은 금고(OpenBao)가 SoT 이므로, 되살릴 것은 배선이고 값은 KV import 가 되돌린 금고에서 ESO 가 다시 끌어온다.
+
+  ①은 원래 결함으로 되돌려 회귀 테스트가 실제로 잡는지 확인했다. ②③에도 회귀 테스트를 붙였다.
+
+
 - **에어갭 번들에서 빠져 있던 런타임 이미지 5종** (`internal/shared/domain/runtime_images.go` 신규): 폐쇄망 설치에서 GitLab 버킷 부트스트랩·Harbor/Nexus 프로비저닝·Jenkins 빌드·React 앱 빌드가 각각 `ImagePullBackOff` 로 실패하는 상태였다. 설치가 한참 진행된 뒤에야 드러나는 종류다.
 
   **원인은 사각지대였다.** 에어갭 이미지 목록(`airgap/images/images.txt`)은 `helm template` 렌더 결과에서 자동 생성된다 — 그래서 **차트에 없는 이미지는 목록에 오르지 않는다.** Nullus 는 설치·프로비저닝·파이프라인 과정에서 매니페스트를 Go 코드로 직접 만들어 적용하는데, 그 안의 이미지가 정확히 helm 이 볼 수 없는 자리에 있다. 빠져 있던 것: `minio/mc`(버킷 부트스트랩) · `curlimages/curl`(Harbor·Nexus 프로비저닝) · `node:22-alpine`(생성된 앱 Dockerfile) · `docker:27-cli`/`docker:27-dind`(Jenkins 빌드 파드).

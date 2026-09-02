@@ -192,3 +192,43 @@ func TestSanitize_깨진_입력(t *testing.T) {
 	_, err := sanitize([]byte("not json"))
 	require.Error(t, err)
 }
+
+// ── 결함: ESO 배선이 빠져 복구가 "성공" 하고도 스택이 뜨지 않았다 ────────
+//
+// ESO 가 만든 Secret 은 ownerReferences 때문에 건너뛴다(소유자가 다시 만든다).
+// 그런데 그 소유자인 CR 까지 빠지면 다시 만들 주체가 없어진다. 실환경
+// 리허설에서 Gitea·Harbor·Jenkins 가 CreateContainerConfigError 로 멈췄다.
+
+func TestDumpKinds_ESO_배선을_담는다(t *testing.T) {
+	for _, k := range []string{
+		"externalsecrets.external-secrets.io",
+		"secretstores.external-secrets.io",
+	} {
+		assert.Contains(t, dumpKinds, k,
+			"%s 가 빠지면 ESO 가 만들던 Secret 을 되살릴 주체가 사라진다", k)
+	}
+}
+
+func TestSanitize_ESO_가_만든_Secret_은_건너뛴다(t *testing.T) {
+	// 값은 금고가 SoT 다. 소유자(ExternalSecret)가 복원되면 ESO 가 다시 만든다.
+	// 여기서 되살리면 금고와 어긋난 옛 값이 유효한 것처럼 남는다.
+	items := sanitizedItems(t, rawList(map[string]any{
+		"kind": "Secret",
+		"metadata": map[string]any{
+			"name": "nullus-postgresql-credentials",
+			"ownerReferences": []any{map[string]any{
+				"kind": "ExternalSecret", "name": "nullus-postgresql-credentials",
+			}},
+		},
+	}))
+	assert.Empty(t, items)
+}
+
+func TestSanitize_ExternalSecret_자체는_남긴다(t *testing.T) {
+	items := sanitizedItems(t, rawList(map[string]any{
+		"kind":     "ExternalSecret",
+		"metadata": map[string]any{"name": "nullus-postgresql-credentials"},
+		"spec":     map[string]any{"refreshInterval": "1h"},
+	}))
+	require.Len(t, items, 1, "배선은 되살려야 ESO 가 Secret 을 다시 만든다")
+}

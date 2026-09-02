@@ -46,6 +46,20 @@ var dumpKinds = []string{
 	"secrets", "serviceaccounts", "roles",
 	"rolebindings", "ingresses", "gateways.gateway.networking.k8s.io",
 	"httproutes.gateway.networking.k8s.io",
+
+	// ESO 의 시크릿 배선. **빠뜨리면 복구가 성공했다고 보고하고도 스택이
+	// 뜨지 않는다** — 실환경 리허설에서 실제로 그랬다.
+	//
+	// ESO 가 만든 Secret 은 ownerReferences 때문에 skipResource 가 건너뛴다
+	// (소유자가 다시 만들 것이므로 그게 맞다). 그런데 그 소유자인 CR 까지
+	// 빠지면 다시 만들 주체가 사라진다. 결과는 Gitea·Harbor·Jenkins 가
+	// CreateContainerConfigError 로 멈춘 채 남는 것이다.
+	//
+	// 값 자체는 금고(OpenBao)가 SoT 다(§B1). 여기서 되살리는 것은 **배선**이고,
+	// 값은 KV import 가 되돌린 금고에서 ESO 가 다시 끌어온다.
+	"externalsecrets.external-secrets.io",
+	"secretstores.external-secrets.io",
+	"pushsecrets.external-secrets.io",
 }
 
 func (d *ResourceDumper) writeKubeconfig() (string, error) {
