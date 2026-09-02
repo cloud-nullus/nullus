@@ -7,21 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **에어갭 번들에서 빠져 있던 런타임 이미지 5종** (`internal/shared/domain/runtime_images.go` 신규): 폐쇄망 설치에서 GitLab 버킷 부트스트랩·Harbor/Nexus 프로비저닝·Jenkins 빌드·React 앱 빌드가 각각 `ImagePullBackOff` 로 실패하는 상태였다. 설치가 한참 진행된 뒤에야 드러나는 종류다.
-
-  **원인은 사각지대였다.** 에어갭 이미지 목록(`airgap/images/images.txt`)은 `helm template` 렌더 결과에서 자동 생성된다 — 그래서 **차트에 없는 이미지는 목록에 오르지 않는다.** Nullus 는 설치·프로비저닝·파이프라인 과정에서 매니페스트를 Go 코드로 직접 만들어 적용하는데, 그 안의 이미지가 정확히 helm 이 볼 수 없는 자리에 있다. 빠져 있던 것: `minio/mc`(버킷 부트스트랩) · `curlimages/curl`(Harbor·Nexus 프로비저닝) · `node:22-alpine`(생성된 앱 Dockerfile) · `docker:27-cli`/`docker:27-dind`(Jenkins 빌드 파드).
-
-  같은 문제가 과거에 한 번 있었고, 그때는 Jenkins 이미지 하나를 손으로 `INFRA_IMAGES` 에 덧붙이며 주석까지 남겨 뒀다 — *"helm render 로는 잡히지 않는다… 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다."* **한 건씩 손으로 막는 방식으로는 다음 것을 놓친다.**
-
-  그래서 이미지 상수를 `RuntimeImages()` 한곳으로 모으고, 그 목록이 ① 에어갭 번들과 ② 생성기 스크립트 양쪽에 다 들어 있는지 테스트가 지킨다. **둘 중 하나만 고치면 CI 에서 막힌다.** 실제로 드리프트를 잡는지 이미지를 하나 빼서 확인했고, 다섯 태그가 레지스트리에 실제로 존재하는지도 확인했다.
-
-  **검증했다**(`scripts/verify-airgap-runtime-images.sh`): 6종을 에어갭 경로 그대로 pull → save → `ctr import` 로 kind 노드에 넣고, 노드에 실제로 들어갔는지 containerd 로 확인한 뒤, `mc` 이미지로 **실제 버킷 부트스트랩을 `imagePullPolicy: Never` 로** 돌렸다 — 레지스트리로 나가지 못하는 상태에서 버킷 3개가 만들어졌다. 목록에 이름이 오른 것과 폐쇄망에서 실제로 도는 것은 다른 문제라서다.
-
-  발견 경위: 백업/복구 작업(#241) 중 `mc` 태그 불일치를 부수 발견으로 기록해 뒀던 것을 따라가다 나머지 4종이 함께 드러났다.
-
-- **kind 클러스터 확인이 간헐적으로 실패하던 스크립트 버그** (`scripts/backup-rehearsal-incluster.sh`, `scripts/verify-airgap-runtime-images.sh`): `kind get clusters | grep -qx` 에서 `grep -q` 가 매치 즉시 파이프를 닫으면 `kind` 가 SIGPIPE 로 죽고 `set -o pipefail` 이 그 종료 코드를 전파해, **클러스터가 있는데도 "없다"** 가 됐다. 타이밍에 따라 갈려 간헐적으로 보였다 — 처음 마주쳤을 때 일시적 현상으로 넘겼던 것이 실제 버그였다. 출력을 먼저 받아 두고 검사한다.
 ### Added
 
 - **백업/복구 — 플랫폼 메타데이터와 설치된 OSS 데이터까지 (`internal/backup/**` 신규, nullus-plan#75)**: 백업 기능이 **전무했다.** 저장소 전수 확인 결과 관련 코드 0 건이었고, PoC 환경 문서에는 *"노드 재생성 시 데이터 소실. 백업 없음"* 이 리스크로 이미 적혀 있었다(`deploy/csp/zadara/README.md:286`). 설계(`docs/11_기능설계/Nullus_백업복구_설계.md`)의 Phase 1~3 을 구현한다.
@@ -51,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
 ### Fixed
+
+- **에어갭 번들에서 빠져 있던 런타임 이미지 5종** (`internal/shared/domain/runtime_images.go` 신규): 폐쇄망 설치에서 GitLab 버킷 부트스트랩·Harbor/Nexus 프로비저닝·Jenkins 빌드·React 앱 빌드가 각각 `ImagePullBackOff` 로 실패하는 상태였다. 설치가 한참 진행된 뒤에야 드러나는 종류다.
+
+  **원인은 사각지대였다.** 에어갭 이미지 목록(`airgap/images/images.txt`)은 `helm template` 렌더 결과에서 자동 생성된다 — 그래서 **차트에 없는 이미지는 목록에 오르지 않는다.** Nullus 는 설치·프로비저닝·파이프라인 과정에서 매니페스트를 Go 코드로 직접 만들어 적용하는데, 그 안의 이미지가 정확히 helm 이 볼 수 없는 자리에 있다. 빠져 있던 것: `minio/mc`(버킷 부트스트랩) · `curlimages/curl`(Harbor·Nexus 프로비저닝) · `node:22-alpine`(생성된 앱 Dockerfile) · `docker:27-cli`/`docker:27-dind`(Jenkins 빌드 파드).
+
+  같은 문제가 과거에 한 번 있었고, 그때는 Jenkins 이미지 하나를 손으로 `INFRA_IMAGES` 에 덧붙이며 주석까지 남겨 뒀다 — *"helm render 로는 잡히지 않는다… 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다."* **한 건씩 손으로 막는 방식으로는 다음 것을 놓친다.**
+
+  그래서 이미지 상수를 `RuntimeImages()` 한곳으로 모으고, 그 목록이 ① 에어갭 번들과 ② 생성기 스크립트 양쪽에 다 들어 있는지 테스트가 지킨다. **둘 중 하나만 고치면 CI 에서 막힌다.** 실제로 드리프트를 잡는지 이미지를 하나 빼서 확인했고, 다섯 태그가 레지스트리에 실제로 존재하는지도 확인했다.
+
+  **검증했다**(`scripts/verify-airgap-runtime-images.sh`): 6종을 에어갭 경로 그대로 pull → save → `ctr import` 로 kind 노드에 넣고, 노드에 실제로 들어갔는지 containerd 로 확인한 뒤, `mc` 이미지로 **실제 버킷 부트스트랩을 `imagePullPolicy: Never` 로** 돌렸다 — 레지스트리로 나가지 못하는 상태에서 버킷 3개가 만들어졌다. 목록에 이름이 오른 것과 폐쇄망에서 실제로 도는 것은 다른 문제라서다.
+
+  발견 경위: 백업/복구 작업(#241) 중 `mc` 태그 불일치를 부수 발견으로 기록해 뒀던 것을 따라가다 나머지 4종이 함께 드러났다.
+
+- **kind 클러스터 확인이 간헐적으로 실패하던 스크립트 버그** (`scripts/backup-rehearsal-incluster.sh`, `scripts/verify-airgap-runtime-images.sh`): `kind get clusters | grep -qx` 에서 `grep -q` 가 매치 즉시 파이프를 닫으면 `kind` 가 SIGPIPE 로 죽고 `set -o pipefail` 이 그 종료 코드를 전파해, **클러스터가 있는데도 "없다"** 가 됐다. 타이밍에 따라 갈려 간헐적으로 보였다 — 처음 마주쳤을 때 일시적 현상으로 넘겼던 것이 실제 버그였다. 출력을 먼저 받아 두고 검사한다.
 
 - **CI 가 실패를 초록불로 보고하던 것 — E2E 게이트 복원** (`.github/workflows/ci.yml`, `web/playwright.config.ts`, `web/e2e/**`): `e2e` 잡이 `continue-on-error: true` 로 묶여 있어, 78 건이 실패하는 동안에도 CI 는 초록이었고 **어떤 회귀도 PR 을 막지 못했다.** 그 플래그는 "아직 통과가 확인되지 않았으니 막지는 말자" 는 뜻이었는데, 확인하는 일이 뒤따르지 않아 다섯 달 동안 방치됐다.
 
