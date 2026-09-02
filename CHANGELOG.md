@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **에어갭 번들에서 빠져 있던 런타임 이미지 5종** (`internal/shared/domain/runtime_images.go` 신규): 폐쇄망 설치에서 GitLab 버킷 부트스트랩·Harbor/Nexus 프로비저닝·Jenkins 빌드·React 앱 빌드가 각각 `ImagePullBackOff` 로 실패하는 상태였다. 설치가 한참 진행된 뒤에야 드러나는 종류다.
+
+  **원인은 사각지대였다.** 에어갭 이미지 목록(`airgap/images/images.txt`)은 `helm template` 렌더 결과에서 자동 생성된다 — 그래서 **차트에 없는 이미지는 목록에 오르지 않는다.** Nullus 는 설치·프로비저닝·파이프라인 과정에서 매니페스트를 Go 코드로 직접 만들어 적용하는데, 그 안의 이미지가 정확히 helm 이 볼 수 없는 자리에 있다. 빠져 있던 것: `minio/mc`(버킷 부트스트랩) · `curlimages/curl`(Harbor·Nexus 프로비저닝) · `node:22-alpine`(생성된 앱 Dockerfile) · `docker:27-cli`/`docker:27-dind`(Jenkins 빌드 파드).
+
+  같은 문제가 과거에 한 번 있었고, 그때는 Jenkins 이미지 하나를 손으로 `INFRA_IMAGES` 에 덧붙이며 주석까지 남겨 뒀다 — *"helm render 로는 잡히지 않는다… 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다."* **한 건씩 손으로 막는 방식으로는 다음 것을 놓친다.**
+
+  그래서 이미지 상수를 `RuntimeImages()` 한곳으로 모으고, 그 목록이 ① 에어갭 번들과 ② 생성기 스크립트 양쪽에 다 들어 있는지 테스트가 지킨다. **둘 중 하나만 고치면 CI 에서 막힌다.** 실제로 드리프트를 잡는지 이미지를 하나 빼서 확인했고, 다섯 태그가 레지스트리에 실제로 존재하는지도 확인했다.
+
+  발견 경위: 백업/복구 작업(#241) 중 `mc` 태그 불일치를 부수 발견으로 기록해 뒀던 것을 따라가다 나머지 4종이 함께 드러났다.
 ### Added
 
 - **백업/복구 — 플랫폼 메타데이터와 설치된 OSS 데이터까지 (`internal/backup/**` 신규, nullus-plan#75)**: 백업 기능이 **전무했다.** 저장소 전수 확인 결과 관련 코드 0 건이었고, PoC 환경 문서에는 *"노드 재생성 시 데이터 소실. 백업 없음"* 이 리스크로 이미 적혀 있었다(`deploy/csp/zadara/README.md:286`). 설계(`docs/11_기능설계/Nullus_백업복구_설계.md`)의 Phase 1~3 을 구현한다.

@@ -37,6 +37,29 @@ INFRA_IMAGES=(
   "ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2"
 )
 
+# RUNTIME_IMAGES: Go 코드가 **런타임에 만드는 매니페스트**가 참조하는 이미지.
+#
+# helm render 에 잡히지 않는다는 점에서 위 Jenkins 항목과 같은 부류다. 다만
+# 한 건씩 손으로 덧붙이는 방식으로는 다음 것을 놓친다 — 실제로 5종이 빠져
+# 있었고(2026-09-02) 폐쇄망 설치의 해당 단계가 ImagePullBackOff 로 실패했다.
+#
+# 단일 출처는 internal/shared/domain/runtime_images.go 의 RuntimeImages() 이고,
+# 그 목록과 이 배열이 어긋나면 runtime_images_test.go 가 CI 에서 막는다.
+# **여기만 고치거나 저기만 고치면 실패한다 — 둘 다 고쳐야 한다.**
+RUNTIME_IMAGES=(
+  # GitLab 오브젝트 스토리지 버킷 부트스트랩 Job
+  "minio/mc:RELEASE.2025-05-21T01-59-54Z"
+  # Harbor·Nexus 프로비저닝 Job (REST API 호출)
+  "curlimages/curl:8.11.1"
+  # OpenBao init/bootstrap 사이드카
+  "docker.io/bitnamilegacy/kubectl:1.33.4"
+  # 생성된 React 앱 Dockerfile 의 빌드 단계
+  "node:22-alpine"
+  # Jenkins kubernetes 플러그인이 빌드마다 띄우는 파드
+  "docker:27-cli"
+  "docker:27-dind"
+)
+
 if [[ -t 1 ]]; then
   CL_INFO=$'\033[1;34m'; CL_WARN=$'\033[1;33m'; CL_ERR=$'\033[1;31m'; CL_RST=$'\033[0m'
 else
@@ -171,6 +194,14 @@ trap 'rm -f "$tmp_file"' EXIT
   printf '\n'
   printf '# --- Infra images (not part of helm render) ---\n'
   for img in "${INFRA_IMAGES[@]}"; do printf '%s\n' "$img"; done
+  printf '\n'
+  printf '# --- Runtime manifest images (built by Go code, not by helm) ---\n'
+  printf '# Source of truth: internal/shared/domain/runtime_images.go\n'
+  # 차트 렌더에 이미 잡힌 것은 빼서 중복을 만들지 않는다.
+  RUNTIME_ONLY="$(comm -23 \
+    <(printf '%s\n' "${RUNTIME_IMAGES[@]}" | sort -u) \
+    <(printf '%s\n%s\n' "$CHART_IMAGES" "${CATALOG_IMAGES:-}" | grep -v '^$' | sort -u))"
+  printf '%s\n' "$RUNTIME_ONLY"
 } > "$tmp_file"
 
 case "$MODE" in
