@@ -232,3 +232,56 @@ func TestSanitize_ExternalSecret_자체는_남긴다(t *testing.T) {
 	}))
 	require.Len(t, items, 1, "배선은 되살려야 ESO 가 Secret 을 다시 만든다")
 }
+
+// ── 결함: CRD 가 없는 상태에서 CR 을 apply 해 복구가 죽었다 ──────────────
+//
+// CRD 는 클러스터 범위라 네임스페이스 덤프에 들어가지 않는다. 그래서 복구가
+// ESO 의 SecretStore/ExternalSecret 을 밀 때 "no matches for kind" 로 실패했다.
+
+func TestSanitizeOwnedBy_스택이_소유한_것만_남긴다(t *testing.T) {
+	// 클러스터 범위라 남의 것까지 되돌리면 클러스터 전체에 영향을 준다.
+	raw := rawList(
+		map[string]any{
+			"kind": "CustomResourceDefinition",
+			"metadata": map[string]any{
+				"name":        "externalsecrets.external-secrets.io",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "nullus-app"},
+			},
+		},
+		map[string]any{
+			"kind": "CustomResourceDefinition",
+			"metadata": map[string]any{
+				"name":        "certificates.cert-manager.io",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "other-ns"},
+			},
+		},
+		map[string]any{
+			"kind":     "CustomResourceDefinition",
+			"metadata": map[string]any{"name": "no-owner.example.com"},
+		},
+	)
+	out, err := sanitizeOwnedBy(raw, "nullus-app")
+	require.NoError(t, err)
+
+	var parsed struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(out, &parsed))
+	require.Len(t, parsed.Items, 1)
+	assert.Equal(t, "externalsecrets.external-secrets.io",
+		parsed.Items[0]["metadata"].(map[string]any)["name"])
+}
+
+func TestSanitizeOwnedBy_소유한_것이_없으면_비어_있다(t *testing.T) {
+	out, err := sanitizeOwnedBy(rawList(map[string]any{
+		"kind":     "CustomResourceDefinition",
+		"metadata": map[string]any{"name": "x"},
+	}), "nullus-app")
+	require.NoError(t, err)
+	assert.Nil(t, out)
+}
+
+func TestClusterScopedKinds_CRD_를_담는다(t *testing.T) {
+	assert.Contains(t, clusterScopedKinds, "customresourcedefinitions.apiextensions.k8s.io",
+		"CRD 가 빠지면 그 CR 을 복원할 수 없다")
+}

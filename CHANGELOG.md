@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **③ ESO 시크릿 배선이 백업에서 통째로 빠졌다.** ESO 가 만든 Secret 은 `ownerReferences` 때문에 건너뛴다(소유자가 다시 만들 것이므로 옳다). 그런데 그 **소유자인 `ExternalSecret`/`SecretStore` CR 도 `dumpKinds` 에 없었다.** 다시 만들 주체가 사라져, **복구가 `succeeded` 를 반환하고도 Gitea·Harbor·Jenkins 가 `CreateContainerConfigError` 로 멈춘 채 남았다.** 값은 금고(OpenBao)가 SoT 이므로, 되살릴 것은 배선이고 값은 KV import 가 되돌린 금고에서 ESO 가 다시 끌어온다.
 
-  ①은 원래 결함으로 되돌려 회귀 테스트가 실제로 잡는지 확인했다. ②③에도 회귀 테스트를 붙였다.
+  **④ 클러스터 범위 CRD 가 백업에서 빠졌다.** CRD 는 클러스터 범위라 네임스페이스 덤프에 들어가지 않는다. 그래서 복구가 ESO 의 `SecretStore`/`ExternalSecret` 을 되돌릴 때 **`no matches for kind` 로 죽었다** — CRD 가 등록되기 전에 그 CR 을 밀었기 때문이다. 스택의 Helm 릴리스가 소유한 CRD 를 백업에 넣고, **복원 순서를 CRD → CR 로 강제**했다(등록이 discovery 에 반영될 때까지 기다린다).
+
+  **③④ 는 같은 뿌리다.** 복구 모델이 "네임스페이스 리소스를 apply" 인데 스택 설치는 **Helm 릴리스**로 이루어진다 — Helm 이 만드는 클러스터 범위 리소스(CRD)와 컨트롤러가 재생성하는 리소스(ESO Secret)가 그 사이로 빠진다. 국소적으로는 위 두 수정으로 메웠고, 복구를 Helm 릴리스 재적용으로 바꾸는 근본안은 설계에 남긴다.
+
+  ①은 원래 결함으로 되돌려 회귀 테스트가 실제로 잡는지 확인했다. ②③④ 에도 회귀 테스트를 붙였다.
 
 
 - **에어갭 번들에서 빠져 있던 런타임 이미지 5종** (`internal/shared/domain/runtime_images.go` 신규): 폐쇄망 설치에서 GitLab 버킷 부트스트랩·Harbor/Nexus 프로비저닝·Jenkins 빌드·React 앱 빌드가 각각 `ImagePullBackOff` 로 실패하는 상태였다. 설치가 한참 진행된 뒤에야 드러나는 종류다.
