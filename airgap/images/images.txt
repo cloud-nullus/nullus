@@ -86,8 +86,9 @@ ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2
 
 # --- Runtime manifest images (built by Go code, not by helm) ---
 # Source of truth: internal/shared/domain/runtime_images.go
-minio/mc:RELEASE.2025-05-21T01-59-54Z
 curlimages/curl:8.11.1
-node:22-alpine
+docker.io/bitnamilegacy/kubectl:1.33.4
 docker:27-cli
 docker:27-dind
+minio/mc:RELEASE.2025-05-21T01-59-54Z
+node:22-alpine

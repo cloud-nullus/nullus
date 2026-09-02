@@ -64,7 +64,11 @@ trap cleanup EXIT
 for c in docker kind kubectl helm; do
   command -v "$c" >/dev/null || fail "$c 가 필요하다"
 done
-kind get clusters 2>/dev/null | grep -qx "$CLUSTER" || fail "kind 클러스터 '$CLUSTER' 가 없다"
+# `kind get clusters | grep -q` 는 쓰지 않는다. grep -q 가 매치 즉시 파이프를
+# 닫으면 kind 가 SIGPIPE 로 죽고, set -o pipefail 이 그 종료 코드를 전파한다 —
+# 클러스터가 있는데도 "없다" 가 되고, 타이밍에 따라 갈려 간헐적으로 보인다.
+CLUSTERS="$(kind get clusters 2>/dev/null || true)"
+printf '%s\n' "$CLUSTERS" | grep -qx "$CLUSTER" || fail "kind 클러스터 '$CLUSTER' 가 없다"
 kind get kubeconfig --name "$CLUSTER" > "$KUBECONFIG_FILE"
 ok "클러스터 $CLUSTER"
 

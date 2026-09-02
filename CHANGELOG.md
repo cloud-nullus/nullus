@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   그래서 이미지 상수를 `RuntimeImages()` 한곳으로 모으고, 그 목록이 ① 에어갭 번들과 ② 생성기 스크립트 양쪽에 다 들어 있는지 테스트가 지킨다. **둘 중 하나만 고치면 CI 에서 막힌다.** 실제로 드리프트를 잡는지 이미지를 하나 빼서 확인했고, 다섯 태그가 레지스트리에 실제로 존재하는지도 확인했다.
 
+  **검증했다**(`scripts/verify-airgap-runtime-images.sh`): 6종을 에어갭 경로 그대로 pull → save → `ctr import` 로 kind 노드에 넣고, 노드에 실제로 들어갔는지 containerd 로 확인한 뒤, `mc` 이미지로 **실제 버킷 부트스트랩을 `imagePullPolicy: Never` 로** 돌렸다 — 레지스트리로 나가지 못하는 상태에서 버킷 3개가 만들어졌다. 목록에 이름이 오른 것과 폐쇄망에서 실제로 도는 것은 다른 문제라서다.
+
   발견 경위: 백업/복구 작업(#241) 중 `mc` 태그 불일치를 부수 발견으로 기록해 뒀던 것을 따라가다 나머지 4종이 함께 드러났다.
+
+- **kind 클러스터 확인이 간헐적으로 실패하던 스크립트 버그** (`scripts/backup-rehearsal-incluster.sh`, `scripts/verify-airgap-runtime-images.sh`): `kind get clusters | grep -qx` 에서 `grep -q` 가 매치 즉시 파이프를 닫으면 `kind` 가 SIGPIPE 로 죽고 `set -o pipefail` 이 그 종료 코드를 전파해, **클러스터가 있는데도 "없다"** 가 됐다. 타이밍에 따라 갈려 간헐적으로 보였다 — 처음 마주쳤을 때 일시적 현상으로 넘겼던 것이 실제 버그였다. 출력을 먼저 받아 두고 검사한다.
 ### Added
 
 - **백업/복구 — 플랫폼 메타데이터와 설치된 OSS 데이터까지 (`internal/backup/**` 신규, nullus-plan#75)**: 백업 기능이 **전무했다.** 저장소 전수 확인 결과 관련 코드 0 건이었고, PoC 환경 문서에는 *"노드 재생성 시 데이터 소실. 백업 없음"* 이 리스크로 이미 적혀 있었다(`deploy/csp/zadara/README.md:286`). 설계(`docs/11_기능설계/Nullus_백업복구_설계.md`)의 Phase 1~3 을 구현한다.
