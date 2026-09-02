@@ -98,7 +98,15 @@ func New(d Deps) (*Module, error) {
 	if len(key) != 32 {
 		return nil, fmt.Errorf("backup.seal_key 는 정확히 32바이트여야 합니다 (현재 %d)", len(key))
 	}
-	// 같은 키를 쓰면 하나를 잃을 때 둘 다 잃는다 (§5.2).
+	// 키를 돌려쓰면 하나를 잃을 때 둘 다 잃는다 (§5.2).
+	//
+	// ENCRYPTION_KEY 와 같은 값이 특히 위험하다 — 그 키는 clusters.kubeconfig
+	// 를 여는 키이고, 백업본을 여는 키이기도 해지면 백업본 하나가 새는 순간
+	// 등록된 모든 클러스터가 함께 열린다.
+	if len(d.EncryptionKey) > 0 && d.Config.SealKey == string(d.EncryptionKey) {
+		return nil, fmt.Errorf("backup.seal_key 가 ENCRYPTION_KEY 와 같습니다. " +
+			"백업본이 새면 등록된 모든 클러스터가 함께 열립니다 — 서로 다른 키를 쓰세요")
+	}
 	if d.Config.SealKey == d.PlatformDB.Password {
 		return nil, fmt.Errorf("backup.seal_key 가 DB 비밀번호와 같습니다. 서로 다른 키를 쓰세요")
 	}

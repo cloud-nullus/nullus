@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   리허설을 UI·스케줄보다 앞에 두기로 한 판단이 여기서 값을 했다.
 
+  로컬 검증 절차는 [`docs/50_운영/Nullus_백업복구_로컬_테스트_가이드.md`](docs/50_운영/Nullus_백업복구_로컬_테스트_가이드.md) 에 적었다 — 설치부터 백업·복구까지, 자동 리허설(~90초)·통합 테스트·손으로 하는 전 과정 세 갈래. macOS 에서 `libpq` 가 keg-only 라 `pg_dump` 가 PATH 에 안 잡히는 것, 로컬 Keycloak 이 H2 라 백업 대상 DB 가 없어 대역이 필요한 것처럼 **실제로 걸리는 지점**을 담았고, 로컬로는 확인할 수 없는 것(실제 OSS 정합성·금고·RTO 실측·다중 노드)도 함께 적었다.
+
   **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
 ### Fixed

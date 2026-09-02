@@ -981,4 +981,5 @@ internal/backup/
 
 - EPIC: [nullus-plan#75](https://github.com/cloud-nullus/nullus-plan/issues/75)
 - 연계: [#68 보안 보강(BYOK)](https://github.com/cloud-nullus/nullus-plan/issues/68) · [#63 Alert 채널 1차 확장](https://github.com/cloud-nullus/nullus-plan/issues/63) · [#69 설치 간 용량 제어](https://github.com/cloud-nullus/nullus-plan/issues/69)
+- **로컬 검증**: [`docs/50_운영/Nullus_백업복구_로컬_테스트_가이드.md`](../50_운영/Nullus_백업복구_로컬_테스트_가이드.md) — 설치부터 백업·복구까지, 자동 리허설 포함
 - 관련 문서: `docs/20_아키텍처/OpenBao_시크릿_평면_구축_설계.md` · `docs/20_아키텍처/Nullus_DB_스키마.md` · `docs/70_전략/ROADMAP.md:363` · `deploy/csp/zadara/README.md:286` · `airgap/README.md`
