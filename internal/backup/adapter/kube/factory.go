@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -35,22 +34,5 @@ func NewAdapters(kubeconfig []byte, helperImage string) (*Adapters, error) {
 		Scaler:    NewWorkloadScaler(client),
 		Archiver:  NewVolumeArchiver(client, cfg, helperImage),
 		Resources: NewResourceDumper(kubeconfig),
-	}, nil
-}
-
-// NewInCluster 는 컨트롤 플레인 자신의 클러스터용 어댑터를 만든다.
-func NewInCluster(helperImage string) (*Adapters, error) {
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
-	}
-	client, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return &Adapters{
-		Scaler:    NewWorkloadScaler(client),
-		Archiver:  NewVolumeArchiver(client, cfg, helperImage),
-		Resources: NewResourceDumper(nil),
 	}, nil
 }

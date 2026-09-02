@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os/exec"
 	"regexp"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
@@ -32,14 +34,44 @@ func NewPgDumper(pool *pgxpool.Pool) *PgDumper {
 
 var versionRe = regexp.MustCompile(`(\d+(?:\.\d+)*)`)
 
-// ServerVersion 은 대상 DB 의 서버 버전을 돌려준다.
-func (d *PgDumper) ServerVersion(ctx context.Context, target port.DBTarget) (string, error) {
-	if d.pool == nil {
-		return "", fmt.Errorf("DB 풀이 없습니다")
+// dsn 은 대상 DB 의 접속 문자열을 만든다.
+func dsn(t port.DBTarget) string {
+	port := t.Port
+	if port == 0 {
+		port = 5432
 	}
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		url.QueryEscape(t.User), url.QueryEscape(t.Password), t.Host, port, t.Database)
+}
+
+// queryTarget 은 **대상 DB 에 직접 붙어** 한 줄을 읽는다.
+//
+// 공용 풀(플랫폼 DB)로 대신 읽지 않는 이유: 대상이 Keycloak DB 처럼 다른
+// 호스트·다른 버전일 수 있다. 풀로 읽으면 플랫폼 DB 의 답을 대상의 답인 것처럼
+// 쓰게 되고, 버전 호환성 검사와 매니페스트 기록이 조용히 틀어진다.
+//
+// Host 가 비면(로컬/테스트) 풀로 떨어진다.
+func (d *PgDumper) queryTarget(ctx context.Context, target port.DBTarget, sql string, dest ...any) error {
+	if strings.TrimSpace(target.Host) == "" {
+		if d.pool == nil {
+			return fmt.Errorf("대상 호스트도 DB 풀도 없습니다")
+		}
+		return d.pool.QueryRow(ctx, sql).Scan(dest...)
+	}
+
+	conn, err := pgx.Connect(ctx, dsn(target))
+	if err != nil {
+		return fmt.Errorf("%s 에 연결: %w", target.Database, err)
+	}
+	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
+	return conn.QueryRow(ctx, sql).Scan(dest...)
+}
+
+// ServerVersion 은 **대상 DB** 의 서버 버전을 돌려준다.
+func (d *PgDumper) ServerVersion(ctx context.Context, target port.DBTarget) (string, error) {
 	var v string
-	if err := d.pool.QueryRow(ctx, "SHOW server_version").Scan(&v); err != nil {
-		return "", fmt.Errorf("서버 버전 조회: %w", err)
+	if err := d.queryTarget(ctx, target, "SHOW server_version", &v); err != nil {
+		return "", fmt.Errorf("서버 버전 조회(%s): %w", target.Database, err)
 	}
 	if m := versionRe.FindString(v); m != "" {
 		return m, nil
@@ -158,15 +190,18 @@ func (d *PgDumper) Restore(ctx context.Context, target port.DBTarget, in io.Read
 	return nil
 }
 
-// SchemaState 는 golang-migrate 의 schema_migrations 를 읽는다 (§6.2).
+// SchemaState 는 **대상 DB** 의 golang-migrate schema_migrations 를 읽는다 (§6.2).
+//
+// 이 표는 플랫폼 DB 에만 있다 — Keycloak 은 Liquibase 를 써서 자기 스키마를
+// 관리한다. 그래서 Keycloak 대상으로 부르면 "relation does not exist" 가
+// 나는데, 그것이 옳다. 공용 풀로 대신 읽어 플랫폼의 버전을 돌려주면 **엉뚱한
+// DB 의 답을 대상의 답인 것처럼** 쓰게 된다.
 func (d *PgDumper) SchemaState(ctx context.Context, target port.DBTarget) (domain.SchemaState, error) {
-	if d.pool == nil {
-		return domain.SchemaState{}, fmt.Errorf("DB 풀이 없습니다")
-	}
 	var st domain.SchemaState
-	err := d.pool.QueryRow(ctx, `SELECT version, dirty FROM schema_migrations LIMIT 1`).Scan(&st.Version, &st.Dirty)
+	err := d.queryTarget(ctx, target,
+		`SELECT version, dirty FROM schema_migrations LIMIT 1`, &st.Version, &st.Dirty)
 	if err != nil {
-		return domain.SchemaState{}, fmt.Errorf("schema_migrations 조회: %w", err)
+		return domain.SchemaState{}, fmt.Errorf("schema_migrations 조회(%s): %w", target.Database, err)
 	}
 	return st, nil
 }

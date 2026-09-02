@@ -184,6 +184,11 @@ spec:
             secretKeyRef:
               name: {{ include "nullus.fullname" . }}
               key: backup-destination-secret-key
+        - name: NULLUS_BACKUP_KEYCLOAK_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "nullus.fullname" . }}
+              key: backup-keycloak-db-password
         {{- end }}
         livenessProbe:
           httpGet:

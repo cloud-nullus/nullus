@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,9 +50,29 @@ func (s *OpenBaoStore) request(ctx context.Context, method, path string, body []
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("openbao request failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, &StatusError{Status: resp.StatusCode, Body: strings.TrimSpace(string(raw))}
 	}
 	return raw, nil
+}
+
+// StatusError 는 금고가 돌려준 HTTP 오류다.
+//
+// 상태 코드를 타입으로 노출하는 이유: KV 트리를 훑을 때 404("하위가 없다")와
+// 403/500("읽을 수 없다")를 구분해야 한다. 뭉뚱그리면 권한이 막힌 서브트리가
+// 조용히 백업에서 빠지고, 그 사실은 복구할 때에야 드러난다.
+type StatusError struct {
+	Status int
+	Body   string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("openbao request failed: status=%d body=%s", e.Status, e.Body)
+}
+
+// IsNotFound 는 404 인지 알려준다.
+func IsNotFound(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Status == http.StatusNotFound
 }
 
 // Check 는 금고가 응답하고, 봉인이 풀려 있고, 자격이 유효한지 확인한다.
@@ -180,8 +201,15 @@ func (s *OpenBaoStore) ListKeys(ctx context.Context, path string) ([]string, err
 	url := "/v1/" + mount + "/metadata/" + subpath
 	raw, err := s.request(ctx, "LIST", url, nil)
 	if err != nil {
-		// 잎 경로이거나 비어 있으면 404 다 — 오류가 아니라 "하위가 없다" 이다.
-		return nil, nil
+		// 404 만 "하위가 없다" 이다 — 잎 경로이거나 비어 있는 경우다.
+		//
+		// 403/500/네트워크 오류까지 삼키면 읽지 못한 서브트리가 통째로
+		// 백업에서 빠지고, 그 사실은 복구할 때에야 드러난다. 백업이
+		// 실패했다는 것을 늦게 아는 것이 이 설계가 가장 경계하는 것이다.
+		if IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("금고 경로 목록 조회(%s): %w", path, err)
 	}
 	var out struct {
 		Data struct {

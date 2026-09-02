@@ -195,6 +195,7 @@ func LoadConfig(path string) (*Config, error) {
 func bindBackupSecretEnv(v *viper.Viper) {
 	_ = v.BindEnv("backup.seal_key", "NULLUS_BACKUP_SEAL_KEY")
 	_ = v.BindEnv("backup.destination.secret_key", "NULLUS_BACKUP_DESTINATION_SECRET_KEY")
+	_ = v.BindEnv("backup.keycloak_database.password", "NULLUS_BACKUP_KEYCLOAK_DATABASE_PASSWORD")
 }
 
 // bindKeycloakAdminEnv 는 SSO 프로비저닝용 Keycloak 자격을 환경변수에 묶는다.

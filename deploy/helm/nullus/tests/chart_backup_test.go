@@ -51,6 +51,7 @@ func enabled() []string {
 		"--set", "config.backup.destination.endpoint=minio.internal:9000",
 		"--set", "config.backup.destination.accessKey=ak",
 		"--set", "config.backup.keycloakDatabase.host=nullus-keycloak-postgresql",
+		"--set", "config.backup.keycloakDatabase.password=kc-db-password",
 	}
 }
 
@@ -73,13 +74,29 @@ func TestChart_백업을_켜면_설정이_렌더된다(t *testing.T) {
 func TestChart_비밀값은_ConfigMap_에_담지_않는다(t *testing.T) {
 	out := render(t, enabled()...)
 
-	cm := section(out, "kind: ConfigMap")
-	require.NotEmpty(t, cm, "ConfigMap 을 찾지 못했다")
+	// 차트에는 ConfigMap 이 여럿이다(테마 등). backup 블록이 들어가는
+	// nullus-config 만 집는다.
+	cm := section(out, "backup:")
+	require.NotEmpty(t, cm, "backup 블록이 있는 ConfigMap 을 찾지 못했다")
+	require.Contains(t, cm, "kind: ConfigMap", "backup 블록은 ConfigMap 에 있어야 한다")
 	assert.NotContains(t, cm, "seal-key-32bytes-padding-value!",
 		"봉인 키가 ConfigMap 에 평문으로 들어갔다")
 	assert.NotContains(t, cm, "dest-secret",
 		"목적지 secret key 가 ConfigMap 에 평문으로 들어갔다")
 	assert.NotContains(t, cm, "secret_key:")
+
+	// backup 블록의 주석이 "비밀값은 여기 담지 않는다" 라고 말한다.
+	// 주석과 렌더가 어긋나면 다음 사람이 그 주석을 믿고 비밀값을 더 넣는다.
+	idx := strings.Index(cm, "backup:")
+	require.GreaterOrEqual(t, idx, 0)
+	assert.NotContains(t, cm[idx:], "kc-db-password",
+		"Keycloak DB 비밀번호가 ConfigMap 에 평문으로 들어갔다")
+}
+
+func TestChart_Keycloak_DB_비밀번호도_Secret_으로_간다(t *testing.T) {
+	out := render(t, enabled()...)
+	assert.Contains(t, out, "backup-keycloak-db-password:")
+	assert.Contains(t, out, "NULLUS_BACKUP_KEYCLOAK_DATABASE_PASSWORD")
 }
 
 func TestChart_비밀값은_Secret_에서_환경변수로_주입된다(t *testing.T) {

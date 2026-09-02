@@ -45,10 +45,13 @@ data:
     {{- with .Values.config.backup }}
     # 백업/복구 (docs/11_기능설계/Nullus_백업복구_설계.md)
     #
-    # 여기에는 **비밀값이 아닌 것만** 담는다. 봉인 키와 목적지 secret key 는
-    # Secret 에서 환경변수로 주입한다(deployment.yaml) — ConfigMap 은 RBAC 이
-    # 느슨하고 그대로 로그·백업본에 실려 나가기 쉽다. 설계 §5.2 가 지키려는
-    # 것이 정확히 그 지점이다.
+    # 비밀값은 여기 담지 않는다 — 봉인 키 · 목적지 secret key · Keycloak DB
+    # 비밀번호는 Secret 에서 환경변수로 주입한다(deployment.yaml). ConfigMap 은
+    # RBAC 이 느슨하고 그대로 로그·백업본에 실려 나가기 쉽다. 설계 §5.2 가
+    # 지키려는 것이 정확히 그 지점이다.
+    #
+    # (위 database.password 는 이 기능 이전부터 있던 배선이다. 함께 옮기는 것이
+    #  맞지만 백업과 범위가 달라 건드리지 않았다.)
     backup:
       enabled: {{ .enabled }}
       seal_key_id: {{ .sealKeyId | quote }}
@@ -64,7 +67,6 @@ data:
         port: {{ .keycloakDatabase.port }}
         name: {{ .keycloakDatabase.name | quote }}
         user: {{ .keycloakDatabase.user | quote }}
-        password: {{ .keycloakDatabase.password | quote }}
       schedule:
         enabled: {{ .schedule.enabled }}
         interval: {{ .schedule.interval | quote }}
