@@ -117,6 +117,10 @@ const StackVersionsAdminPage = lazy(() =>
   import('../features/admin/pages/stack-versions-page').then((m) => ({ default: m.StackVersionsAdminPage }))
 )
 
+const BackupPage = lazy(() =>
+  import('../features/admin/pages/backup-page').then((m) => ({ default: m.BackupPage }))
+)
+
 
 function Loading() {
   return (

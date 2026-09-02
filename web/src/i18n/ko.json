@@ -23,7 +23,8 @@
     "knownIssues": "알려진 이슈",
     "logout": "로그아웃",
     "cicdGoldenPath": "골든패스",
-    "tokenManagement": "토큰 관리"
+    "tokenManagement": "토큰 관리",
+    "backup": "백업"
   },
   "common": {
     "save": "저장",
@@ -1851,6 +1852,42 @@
         "title": "축하합니다! 이제 직접 해보세요",
         "body": "여기까지가 전체 흐름입니다. 바로 시작 버튼으로 첫 스택을 올려 보세요 — 8Gi 노드 하나에 들어가는 경량 구성으로 설치됩니다. 하다가 막히면 헤더의 튜토리얼 버튼으로 어디서든 이 투어를 다시 열 수 있습니다."
       }
+    }
+  },
+  "backupPage": {
+    "breadcrumb": {
+      "current": "백업"
+    },
+    "title": "백업",
+    "description": "백업을 실행하고 지난 실행을 확인합니다.",
+    "run": "백업 실행",
+    "empty": "아직 백업이 없습니다.",
+    "table": {
+      "startedAt": "시작",
+      "mode": "모드",
+      "size": "크기",
+      "quiesce": "정지 시간",
+      "status": "상태"
+    },
+    "dialog": {
+      "title": "백업 대상 선택",
+      "description": "이번 백업에 무엇을 담을지 고르세요.",
+      "start": "백업 시작",
+      "nothingSelected": "적어도 하나는 골라야 합니다.",
+      "quiesceWarning": "볼륨을 포함하면 백업이 도는 동안 워크로드가 멈춥니다.",
+      "confirmLabel": "확인을 위해 네임스페이스를 입력하세요"
+    },
+    "target": {
+      "platformDb": "플랫폼 DB",
+      "platformDbDesc": "Nullus 메타데이터 — 스택·파이프라인·클러스터 기록",
+      "keycloakDb": "Keycloak DB",
+      "keycloakDbDesc": "계정과 권한. 빠지면 복구 후 로그인할 수 없습니다",
+      "openbaoKv": "금고 (OpenBao)",
+      "openbaoKvDesc": "토큰과 자격증명. 빠지면 복구 후 도구들이 서로 인증하지 못합니다",
+      "nsResources": "K8s 리소스",
+      "nsResourcesDesc": "배선과 설정 — Deployment·Secret·CRD·Argo CD Application",
+      "volume": "볼륨",
+      "volumeDesc": "OSS 내부 데이터 — Git 저장소·빌드 이력·컨테이너 이미지. 가장 크고, 이것만 서비스를 멈춥니다"
     }
   }
 }

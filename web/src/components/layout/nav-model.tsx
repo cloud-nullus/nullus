@@ -6,7 +6,7 @@
 // 정의하고, 두 화면 요소가 같은 트리를 읽는다.
 
 import { type ReactNode } from 'react'
-import { Bell, BookOpen, Boxes, Bug, Building2, ChartColumn, Database, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Settings, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
+import { Bell, BookOpen, Boxes, Bug, Building2, ChartColumn, Database, DatabaseBackup, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Settings, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
 import { iconProps } from '../ui/icon'
 import type { Role } from '../../types'
 

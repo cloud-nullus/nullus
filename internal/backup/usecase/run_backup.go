@@ -69,6 +69,13 @@ type RunBackupRequest struct {
 	Namespace string
 	Mode      domain.Mode
 	Trigger   domain.Trigger
+
+	// Scope 는 사용자가 고른 백업 대상이다. 비어 있으면 모드에서 파생한다 —
+	// 스케줄 백업과 옛 호출부는 모드만 넘기기 때문이다.
+	//
+	// 골랐다면 그것이 모드보다 우선한다. 모드는 "보통 이만큼" 이라는 preset 이고,
+	// 실제로 무엇을 뜰지는 Scope 가 정한다 (RequiresQuiesce 도 Scope 를 본다).
+	Scope []domain.Component
 }
 
 func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain.BackupRun, error) {
@@ -82,7 +89,10 @@ func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain
 		trigger = domain.TriggerManual
 	}
 
-	scope := domain.ModeComponents(req.Mode)
+	scope := req.Scope
+	if len(scope) == 0 {
+		scope = domain.ModeComponents(req.Mode)
+	}
 	run := domain.NewBackupRun(req.OrgID, req.Mode, trigger, scope)
 	run.StackID = req.StackID
 

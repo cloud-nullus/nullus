@@ -56,6 +56,9 @@ type createBackupRequest struct {
 	StackID   string `json:"stack_id"`
 	Namespace string `json:"namespace"`
 	Mode      string `json:"mode"`
+	// Scope 는 사용자가 고른 백업 대상이다 (platform_db·keycloak_db·openbao_kv·
+	// ns_resources·volume). 비우면 모드에서 파생한다 — 스케줄과 옛 호출부의 경로다.
+	Scope []string `json:"scope,omitempty"`
 	// Confirm 은 대상 식별자 재입력이다.
 	//
 	// 백업이 정지 창을 만든다는 사실을 모르고 누르면 안 된다 — 볼륨을 뜨는
@@ -125,8 +128,21 @@ func (h *BackupHandler) CreateBackup(c echo.Context) error {
 		ns = h.defaultNS
 	}
 
-	// 정지 창이 생기는 모드는 확인을 요구한다.
-	if mode != domain.ModePlatformOnly && req.Confirm != ns {
+	scope, err := domain.ParseComponents(req.Scope)
+	if err != nil {
+		return err
+	}
+	effective := scope
+	if len(effective) == 0 {
+		effective = domain.ModeComponents(mode)
+	}
+
+	// 확인은 **실제로 정지 창이 생길 때만** 요구한다.
+	//
+	// 모드로 판단하면 full 모드에서 볼륨을 뺀 선택까지 확인을 강요하게 된다 —
+	// 멈추지도 않는데 겁을 주면 확인 문구는 의미 없는 절차가 되고, 정작
+	// 진짜 멈추는 백업에서도 사용자가 습관적으로 넘긴다.
+	if requiresQuiesce(effective) && req.Confirm != ns {
 		return &shareddomain.AppError{
 			Code:       "BACKUP_CONFIRM_REQUIRED",
 			HTTPStatus: http.StatusBadRequest,
@@ -141,7 +157,7 @@ func (h *BackupHandler) CreateBackup(c echo.Context) error {
 	}
 	run, err := uc.Run(c.Request().Context(), usecase.RunBackupRequest{
 		OrgID: resolveOrgID(c), StackID: req.StackID, Namespace: ns,
-		Mode: mode, Trigger: domain.TriggerManual,
+		Mode: mode, Trigger: domain.TriggerManual, Scope: scope,
 	})
 	if err != nil {
 		if run != nil {
@@ -276,4 +292,17 @@ func resolveOrgID(c echo.Context) string {
 		return v
 	}
 	return ""
+}
+
+// requiresQuiesce 는 고른 대상이 서비스를 멈추게 하는지 본다.
+//
+// 도메인의 BackupRun.RequiresQuiesce 와 같은 규칙이되, 실행을 만들기 **전에**
+// 확인 문구를 요구할지 정해야 하므로 여기서 한 번 더 본다.
+func requiresQuiesce(scope []domain.Component) bool {
+	for _, c := range scope {
+		if c == domain.ComponentVolume {
+			return true
+		}
+	}
+	return false
 }
