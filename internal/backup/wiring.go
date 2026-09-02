@@ -238,6 +238,7 @@ func (m *Module) Backup(ctx context.Context, stackID string) (*usecase.BackupUse
 	}
 	if a != nil {
 		deps.Scaler, deps.Archiver, deps.Resources = a.Scaler, a.Archiver, a.Resources
+		deps.Releases = a.Releases
 	}
 	return usecase.NewBackupUseCase(deps), nil
 }
@@ -255,6 +256,7 @@ func (m *Module) Restore(ctx context.Context, stackID string) (*usecase.RestoreU
 	}
 	if a != nil {
 		deps.Scaler, deps.Archiver, deps.Resources = a.Scaler, a.Archiver, a.Resources
+		deps.Releases = a.Releases
 	}
 	return usecase.NewRestoreUseCase(deps), nil
 }

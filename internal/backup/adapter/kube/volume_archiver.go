@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/backup/port"
 )
 
@@ -203,15 +204,25 @@ func (a *VolumeArchiver) Restore(ctx context.Context, namespace, pvc string, in 
 }
 
 // EnsurePVC 는 매니페스트에 기록된 크기·StorageClass 대로 PVC 를 만든다.
-func (a *VolumeArchiver) EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec) error {
+func (a *VolumeArchiver) EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec, restoredFromBackupID string) error {
 	if _, err := a.client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, spec.Name, metav1.GetOptions{}); err == nil {
 		return nil // 이미 있다
 	} else if !apierrors.IsNotFound(err) {
 		return fmt.Errorf("PVC 조회(%s): %w", spec.Name, err)
 	}
 
+	meta := metav1.ObjectMeta{Name: spec.Name, Namespace: namespace}
+	// 출처를 볼륨 자체에 남긴다. 설치 preflight 는 남은 볼륨을 보고 설치를
+	// 막는데, 복구가 놓아둔 것과 실패한 설치의 잔여를 구분할 근거가 여기밖에
+	// 없다 — 네임스페이스 밖의 기록은 사라질 수 있다.
+	if restoredFromBackupID != "" {
+		meta.Annotations = map[string]string{
+			shareddomain.RestoredFromBackupAnnotation: restoredFromBackupID,
+		}
+	}
+
 	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: spec.Name, Namespace: namespace},
+		ObjectMeta: meta,
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{

@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 func pvc(name, size, sc string) *corev1.PersistentVolumeClaim {
@@ -66,7 +67,7 @@ func TestEnsurePVC_매니페스트대로_만든다(t *testing.T) {
 	a := NewVolumeArchiver(c, nil, "")
 
 	spec := domain.VolumeSpec{Name: "data-gitlab", SizeBytes: 20 * 1024 * 1024 * 1024, StorageClass: "local-path"}
-	require.NoError(t, a.EnsurePVC(context.Background(), "nullus", spec))
+	require.NoError(t, a.EnsurePVC(context.Background(), "nullus", spec, ""))
 
 	created, err := c.CoreV1().PersistentVolumeClaims("nullus").Get(context.Background(), "data-gitlab", metav1.GetOptions{})
 	require.NoError(t, err)
@@ -82,7 +83,7 @@ func TestEnsurePVC_이미_있으면_건드리지_않는다(t *testing.T) {
 	a := NewVolumeArchiver(c, nil, "")
 
 	require.NoError(t, a.EnsurePVC(context.Background(), "nullus",
-		domain.VolumeSpec{Name: "data-gitlab", SizeBytes: 1, StorageClass: "slow"}))
+		domain.VolumeSpec{Name: "data-gitlab", SizeBytes: 1, StorageClass: "slow"}, ""))
 
 	got, err := c.CoreV1().PersistentVolumeClaims("nullus").Get(context.Background(), "data-gitlab", metav1.GetOptions{})
 	require.NoError(t, err)
@@ -92,7 +93,7 @@ func TestEnsurePVC_이미_있으면_건드리지_않는다(t *testing.T) {
 func TestEnsurePVC_StorageClass_미지정(t *testing.T) {
 	c := fake.NewSimpleClientset()
 	require.NoError(t, NewVolumeArchiver(c, nil, "").EnsurePVC(context.Background(), "nullus",
-		domain.VolumeSpec{Name: "v", SizeBytes: 1024}))
+		domain.VolumeSpec{Name: "v", SizeBytes: 1024}, ""))
 
 	got, err := c.CoreV1().PersistentVolumeClaims("nullus").Get(context.Background(), "v", metav1.GetOptions{})
 	require.NoError(t, err)
@@ -157,4 +158,32 @@ func TestCountingWriter(t *testing.T) {
 	_, _ = c.Write([]byte(" world"))
 	assert.Equal(t, int64(11), c.n)
 	assert.Equal(t, "hello world", sb.String())
+}
+
+func TestEnsurePVC_복구_출처를_남긴다(t *testing.T) {
+	// 이 표시가 없으면 설치 preflight 가 복구된 볼륨을 "실패한 설치의 잔여" 로
+	// 오인해 막는다. 복구 직후 스택을 다시 설치할 수 없게 되는 것이다.
+	c := fake.NewSimpleClientset()
+	require.NoError(t, NewVolumeArchiver(c, nil, "").EnsurePVC(
+		context.Background(), "nullus",
+		domain.VolumeSpec{Name: "gitea-shared-storage", SizeBytes: 1024}, "bk-42"))
+
+	pvc, err := c.CoreV1().PersistentVolumeClaims("nullus").
+		Get(context.Background(), "gitea-shared-storage", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "bk-42",
+		pvc.Annotations[shareddomain.RestoredFromBackupAnnotation])
+}
+
+func TestEnsurePVC_출처가_없으면_표시하지_않는다(t *testing.T) {
+	// 백업 ID 를 모르는 채로 빈 표시를 남기면, preflight 가 "복구본" 과
+	// "출처 불명" 을 구분할 수 없게 된다.
+	c := fake.NewSimpleClientset()
+	require.NoError(t, NewVolumeArchiver(c, nil, "").EnsurePVC(
+		context.Background(), "nullus", domain.VolumeSpec{Name: "v", SizeBytes: 1}, ""))
+
+	pvc, err := c.CoreV1().PersistentVolumeClaims("nullus").
+		Get(context.Background(), "v", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.NotContains(t, pvc.Annotations, shareddomain.RestoredFromBackupAnnotation)
 }

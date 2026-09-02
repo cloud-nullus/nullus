@@ -92,7 +92,16 @@ type VolumeArchiver interface {
 	ListPVCs(ctx context.Context, namespace string) ([]domain.VolumeSpec, error)
 	Archive(ctx context.Context, namespace, pvc string, out io.Writer) (int64, error)
 	Restore(ctx context.Context, namespace, pvc string, in io.Reader) error
-	EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec) error
+	EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec, restoredFromBackupID string) error
+}
+
+// HelmReleaseLister 는 네임스페이스에 설치된 차트의 버전을 읽는다.
+//
+// 복구가 다른 버전으로 재설치하면 도구들이 기동하며 스키마 마이그레이션을
+// 돌린다 — 그러면 데이터는 백업 시점의 모습이 아니게 되고 되돌릴 수 없다.
+// 그래서 "무엇이 이 데이터를 만들었는가" 를 매니페스트에 남긴다.
+type HelmReleaseLister interface {
+	ListHelmReleases(ctx context.Context, namespace string) ([]domain.HelmReleaseSpec, error)
 }
 
 // ResourceDumper 는 네임스페이스 리소스와 Helm 릴리스를 뜬다 (D1).

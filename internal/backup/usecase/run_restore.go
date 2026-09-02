@@ -44,6 +44,10 @@ type RestoreDeps struct {
 	// 존재 여부가 프로세스 수명 동안 바뀔 수 있기 때문이다.
 	Prereq func(context.Context) domain.Prerequisites
 
+	// Releases 는 대상 네임스페이스에 이미 설치된 차트를 읽는다. 없으면
+	// 버전 대조를 건너뛴다 — 대조 없이도 복구는 성립한다.
+	Releases port.HelmReleaseLister
+
 	Logger *slog.Logger
 }
 
@@ -130,6 +134,26 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 		return fmt.Errorf("매니페스트 해석: %w", err)
 	}
 
+	// ── 2b. 차트 버전 대조 ──
+	//
+	// 대상에 이미 다른 버전이 깔려 있으면 복구는 **새 버전 위에 옛 데이터를
+	// 얹는다.** 도구가 기동하며 스키마를 올리면 백업 시점으로 돌아가지 않고,
+	// 그 변형은 되돌릴 수 없다.
+	//
+	// 막지는 않는다 — 사용자가 알고 하는 경우(버전 올린 뒤 데이터만 회수)가
+	// 있고, 여기서 멈추면 그 길이 막힌다. 대신 무엇이 어긋났는지 남긴다.
+	if uc.d.Releases != nil && strings.TrimSpace(req.Namespace) != "" {
+		if now, err := uc.d.Releases.ListHelmReleases(ctx, req.Namespace); err != nil {
+			uc.d.Logger.Warn("대상 차트 버전을 읽지 못해 대조를 건너뜁니다",
+				"namespace", req.Namespace, "error", err)
+		} else if drift := domain.CompareHelmReleases(manifest.HelmReleases, now); len(drift) > 0 {
+			for _, d := range drift {
+				uc.d.Logger.Warn("차트 버전이 백업 시점과 다릅니다 — 기동 시 스키마가 올라가면 되돌릴 수 없습니다",
+					"release", d.Release, "backed_up", d.BackedUp, "current", d.Current)
+			}
+		}
+	}
+
 	touchStack := req.Mode != domain.ModePlatformOnly
 	touchPlatform := req.Mode != domain.ModeStackOnly
 
@@ -176,7 +200,7 @@ func (uc *RestoreUseCase) verifyArtifacts(ctx context.Context, arts []*domain.Ar
 func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRequest, m domain.Manifest, arts []*domain.Artifact) error {
 	// 3. PVC 재생성 — 매니페스트의 크기·StorageClass 대로.
 	for _, v := range m.Volumes {
-		if err := uc.d.Archiver.EnsurePVC(ctx, req.Namespace, v); err != nil {
+		if err := uc.d.Archiver.EnsurePVC(ctx, req.Namespace, v, req.BackupRunID); err != nil {
 			return fmt.Errorf("PVC 재생성(%s): %w", v.Name, err)
 		}
 	}

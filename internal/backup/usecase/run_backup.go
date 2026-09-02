@@ -44,6 +44,9 @@ type BackupDeps struct {
 	Notifier  port.Notifier
 	Pauser    RotationPauser
 	Targets   DBTargets
+	// Releases 는 없어도 백업은 성립한다 — 버전을 모른 채 복구하게 될 뿐이다.
+	// 그래서 nil 이면 건너뛰되, 조회에 실패하면 그 사실을 남긴다.
+	Releases port.HelmReleaseLister
 
 	PlatformVersion string
 	Logger          *slog.Logger
@@ -113,6 +116,7 @@ type executeResult struct {
 	artifacts []domain.Artifact
 	plan      domain.QuiescePlan
 	volumes   []domain.VolumeSpec
+	releases  []domain.HelmReleaseSpec
 	kvPaths   int
 	pgServer  string
 	pgClient  string
@@ -124,6 +128,22 @@ func (uc *BackupUseCase) execute(ctx context.Context, req RunBackupRequest, run 
 	// 스키마 버전은 복구 시 정합성 판단의 기준이다 (§6.2).
 	if st, err := uc.d.Dumper.SchemaState(ctx, uc.d.Targets.Platform); err == nil {
 		run.SchemaVersion = st.Version
+	}
+
+	// 차트 버전은 **정지 전에** 읽는다. 정지 창을 쓰는 작업이 아니고, 뒤로
+	// 미루면 워크로드를 내린 뒤라 릴리스 Secret 이 그대로여도 순서가 헷갈린다.
+	//
+	// 실패해도 백업은 계속한다 — 버전을 모른 채 복구하게 될 뿐, 데이터는
+	// 온전하다. 다만 조용히 넘기지는 않는다: 복구가 임의 버전을 고르는 것이
+	// 이 정보가 없을 때의 결과다.
+	if uc.d.Releases != nil && strings.TrimSpace(req.Namespace) != "" {
+		releases, err := uc.d.Releases.ListHelmReleases(ctx, req.Namespace)
+		if err != nil {
+			uc.d.Logger.Warn("차트 버전을 읽지 못했습니다. 복구가 같은 버전을 고를 수 없습니다",
+				"namespace", req.Namespace, "error", err)
+		} else {
+			out.releases = releases
+		}
 	}
 
 	// ── 목적지 검사. 반드시 정지보다 먼저 (§9 F7b·F8) ──
@@ -367,6 +387,7 @@ func (uc *BackupUseCase) finish(ctx context.Context, run *domain.BackupRun, res 
 			Plan:               res.plan,
 			Volumes:            res.volumes,
 			Artifacts:          res.artifacts,
+			HelmReleases:       res.releases,
 			OpenBaoKVPathCount: res.kvPaths,
 		})
 		run.Manifest = manifestToMap(m)

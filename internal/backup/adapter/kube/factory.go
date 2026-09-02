@@ -15,6 +15,7 @@ type Adapters struct {
 	Scaler    *WorkloadScaler
 	Archiver  *VolumeArchiver
 	Resources *ResourceDumper
+	Releases  *HelmReleaseReader
 }
 
 // NewAdapters 는 kubeconfig 로 어댑터 묶음을 만든다.
@@ -34,5 +35,6 @@ func NewAdapters(kubeconfig []byte, helperImage string) (*Adapters, error) {
 		Scaler:    NewWorkloadScaler(client),
 		Archiver:  NewVolumeArchiver(client, cfg, helperImage),
 		Resources: NewResourceDumper(kubeconfig),
+		Releases:  NewHelmReleaseReader(client),
 	}, nil
 }
