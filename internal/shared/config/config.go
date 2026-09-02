@@ -16,6 +16,69 @@ type Config struct {
 	Prometheus PrometheusConfig `mapstructure:"prometheus"`
 	Log        LogConfig        `mapstructure:"log"`
 	Platform   PlatformConfig   `mapstructure:"platform"`
+	Backup     BackupConfig     `mapstructure:"backup"`
+}
+
+// BackupConfig 는 백업/복구 설정이다.
+//
+// 설계: docs/11_기능설계/Nullus_백업복구_설계.md (nullus-plan#75)
+//
+// 목적지는 **대상 클러스터 밖**의 S3 호환 오브젝트 스토리지다. 클러스터가
+// 통째로 사라져도 백업본은 남아야 하기 때문이다(§4.2).
+//
+// 자격증명이 스택 OpenBao 가 아니라 여기(=컨트롤 플레인 설정)에서 오는 것이
+// 핵심이다. 금고에서 조달하면 스택이 죽을 때 백업본이 멀쩡해도 가져올 수
+// 없는 순환이 생긴다(§4.2.1).
+type BackupConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// SealKey 는 산출물 암호화 키다. 정확히 32바이트여야 한다.
+	// ENCRYPTION_KEY 와 **다른 값**이어야 한다 — 같으면 키 하나를 잃고
+	// 둘 다 잃는다(§5.2).
+	SealKey   string `mapstructure:"seal_key"`
+	SealKeyID string `mapstructure:"seal_key_id"`
+
+	Destination BackupDestinationConfig `mapstructure:"destination"`
+	Schedule    BackupScheduleConfig    `mapstructure:"schedule"`
+	Retention   BackupRetentionConfig   `mapstructure:"retention"`
+
+	// KeycloakDatabase 는 Keycloak 전용 DB 다. 배포 경로에 따라 위치가
+	// 다르므로(차트 서브차트 / 에어갭 독립 릴리스) 설정으로 받는다(§1.2).
+	KeycloakDatabase BackupDatabaseConfig `mapstructure:"keycloak_database"`
+}
+
+type BackupDestinationConfig struct {
+	Endpoint  string `mapstructure:"endpoint"`
+	Bucket    string `mapstructure:"bucket"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	Region    string `mapstructure:"region"`
+	UseSSL    bool   `mapstructure:"use_ssl"`
+	Prefix    string `mapstructure:"prefix"`
+}
+
+type BackupDatabaseConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Name     string `mapstructure:"name"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+}
+
+type BackupScheduleConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// Interval 기본값은 24시간이다 (RPO 24시간, §2).
+	Interval  time.Duration `mapstructure:"interval"`
+	OrgID     string        `mapstructure:"org_id"`
+	StackID   string        `mapstructure:"stack_id"`
+	Namespace string        `mapstructure:"namespace"`
+	Mode      string        `mapstructure:"mode"`
+}
+
+type BackupRetentionConfig struct {
+	Daily         int   `mapstructure:"daily"`
+	Weekly        int   `mapstructure:"weekly"`
+	Monthly       int   `mapstructure:"monthly"`
+	MaxTotalBytes int64 `mapstructure:"max_total_bytes"`
 }
 
 // PlatformConfig 는 플랫폼 자신이 어디에 떠 있는지를 담는다.
@@ -105,6 +168,7 @@ func LoadConfig(path string) (*Config, error) {
 	// 설정 파일에 없는 키는 AutomaticEnv 만으로 잡히지 않는다. 이 값은 차트가
 	// Downward API 로만 넣어 주므로 명시적으로 묶는다.
 	_ = v.BindEnv("platform.namespace", "NULLUS_PLATFORM_NAMESPACE")
+	bindBackupSecretEnv(v)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err
@@ -116,6 +180,22 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// bindBackupSecretEnv 는 백업 비밀값을 환경변수에 묶는다.
+//
+// 이 둘은 **설정 파일에 없다** — 차트가 ConfigMap 이 아니라 Secret 에서
+// 환경변수로 주입하기 때문이다. ConfigMap 은 RBAC 이 느슨하고 그대로 로그나
+// 백업본에 실려 나가기 쉬워서, 봉인 키와 목적지 자격증명은 거기 두지 않는다
+// (설계 §5.2·§4.2.1).
+//
+// 그런데 AutomaticEnv 는 **viper 가 아는 키만** 본다. 설정 파일에 없으면
+// NULLUS_BACKUP_SEAL_KEY 를 넣어도 조용히 무시되고, 백업 모듈은 "키가 32바이트가
+// 아니다" 로 기동을 막는다 — kind 인클러스터 리허설에서 실제로 그렇게 됐다.
+func bindBackupSecretEnv(v *viper.Viper) {
+	_ = v.BindEnv("backup.seal_key", "NULLUS_BACKUP_SEAL_KEY")
+	_ = v.BindEnv("backup.destination.secret_key", "NULLUS_BACKUP_DESTINATION_SECRET_KEY")
+	_ = v.BindEnv("backup.keycloak_database.password", "NULLUS_BACKUP_KEYCLOAK_DATABASE_PASSWORD")
 }
 
 // bindKeycloakAdminEnv 는 SSO 프로비저닝용 Keycloak 자격을 환경변수에 묶는다.

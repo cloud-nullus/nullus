@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,9 +50,29 @@ func (s *OpenBaoStore) request(ctx context.Context, method, path string, body []
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- best-effort body read for error context
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("openbao request failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, &StatusError{Status: resp.StatusCode, Body: strings.TrimSpace(string(raw))}
 	}
 	return raw, nil
+}
+
+// StatusError 는 금고가 돌려준 HTTP 오류다.
+//
+// 상태 코드를 타입으로 노출하는 이유: KV 트리를 훑을 때 404("하위가 없다")와
+// 403/500("읽을 수 없다")를 구분해야 한다. 뭉뚱그리면 권한이 막힌 서브트리가
+// 조용히 백업에서 빠지고, 그 사실은 복구할 때에야 드러난다.
+type StatusError struct {
+	Status int
+	Body   string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("openbao request failed: status=%d body=%s", e.Status, e.Body)
+}
+
+// IsNotFound 는 404 인지 알려준다.
+func IsNotFound(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Status == http.StatusNotFound
 }
 
 // Check 는 금고가 응답하고, 봉인이 풀려 있고, 자격이 유효한지 확인한다.
@@ -151,3 +172,91 @@ func splitKVPath(path string) (string, string, error) {
 	}
 	return parts[0], strings.Join(parts[1:], "/"), nil
 }
+
+// ── KV 전체 순회 (백업/복구용) ────────────────────────────────────────────
+//
+// 백업은 "이 스택의 모든 시크릿" 을 떠야 하는데, PutToken/GetToken 은 경로를
+// 이미 아는 호출자를 위한 것이라 목록을 줄 수 없다. OpenBao 는 단일 replica
+// 라 file 스토리지를 쓰고 raft snapshot API 가 없으므로, 경로를 순회해
+// 논리 export 하는 것이 유일한 방법이다.
+// (설계: docs/11_기능설계/Nullus_백업복구_설계.md §3.2)
+
+// KVBrowser 는 KV 트리를 훑고 값을 통째로 읽고 쓰는 확장 창구다.
+//
+// Store 인터페이스를 넓히지 않고 별도 인터페이스로 둔 이유: 이 능력이
+// 필요한 곳은 백업뿐이고, 토큰만 다루는 대다수 호출자에게 강제할 이유가 없다.
+type KVBrowser interface {
+	ListKeys(ctx context.Context, path string) ([]string, error)
+	GetSecret(ctx context.Context, path string) (map[string]any, error)
+	PutSecret(ctx context.Context, path string, data map[string]any) error
+}
+
+// ListKeys 는 경로 바로 아래의 항목을 돌려준다. 디렉터리는 "/" 로 끝난다.
+func (s *OpenBaoStore) ListKeys(ctx context.Context, path string) ([]string, error) {
+	mount, subpath, err := splitKVPath(path)
+	if err != nil {
+		return nil, err
+	}
+	// KV v2 의 목록은 metadata 엔드포인트에 있다. data 로는 조회되지 않는다.
+	url := "/v1/" + mount + "/metadata/" + subpath
+	raw, err := s.request(ctx, "LIST", url, nil)
+	if err != nil {
+		// 404 만 "하위가 없다" 이다 — 잎 경로이거나 비어 있는 경우다.
+		//
+		// 403/500/네트워크 오류까지 삼키면 읽지 못한 서브트리가 통째로
+		// 백업에서 빠지고, 그 사실은 복구할 때에야 드러난다. 백업이
+		// 실패했다는 것을 늦게 아는 것이 이 설계가 가장 경계하는 것이다.
+		if IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("금고 경로 목록 조회(%s): %w", path, err)
+	}
+	var out struct {
+		Data struct {
+			Keys []string `json:"keys"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out.Data.Keys, nil
+}
+
+// GetSecret 은 경로의 값 전체를 돌려준다 (token 필드만이 아니라).
+func (s *OpenBaoStore) GetSecret(ctx context.Context, path string) (map[string]any, error) {
+	mount, subpath, err := splitKVPath(path)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := s.request(ctx, http.MethodGet, "/v1/"+mount+"/data/"+subpath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("openbao read failed: %w", err)
+	}
+	var out struct {
+		Data struct {
+			Data map[string]any `json:"data"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out.Data.Data, nil
+}
+
+// PutSecret 은 값 전체를 쓴다.
+func (s *OpenBaoStore) PutSecret(ctx context.Context, path string, data map[string]any) error {
+	mount, subpath, err := splitKVPath(path)
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(map[string]any{"data": data})
+	if err != nil {
+		return fmt.Errorf("시크릿 직렬화: %w", err)
+	}
+	if _, err := s.request(ctx, http.MethodPost, "/v1/"+mount+"/data/"+subpath, body); err != nil {
+		return fmt.Errorf("openbao write failed: %w", err)
+	}
+	return nil
+}
+
+var _ KVBrowser = (*OpenBaoStore)(nil)

@@ -24,7 +24,14 @@ type TokenRotationScheduler struct {
 	iterTimout time.Duration
 	logger     *slog.Logger
 	inFlight   atomic.Bool
-	reissuer   rotation.Reissuer
+	// paused 는 백업이 정지 창을 여는 동안 회전을 멈춘다.
+	//
+	// 회전은 DB(token_sources)와 금고(OpenBao)를 함께 고쳐쓴다. 백업 중에
+	// 그것이 돌면 두 산출물 사이에 시점 어긋남이 생기고, 그 불일치는
+	// 복구 후 파이프라인 실행 시점에야 인증 실패로 드러난다.
+	// (docs/11_기능설계/Nullus_백업복구_설계.md §2.1)
+	paused   atomic.Bool
+	reissuer rotation.Reissuer
 	// restarter 는 회전 후 소비자를 rolling restart 한다.
 	// nil 이면 반영 단계를 건너뛴다 (로컬/테스트).
 	restarter RotationRestarter
@@ -85,8 +92,29 @@ type dueTokenSource struct {
 	Metadata         map[string]any
 }
 
+// Pause 는 다음 주기부터 회전을 멈춘다. 진행 중인 주기는 끝까지 돈다.
+func (s *TokenRotationScheduler) Pause() {
+	if s == nil {
+		return
+	}
+	s.paused.Store(true)
+	s.logger.Info("토큰 회전을 일시 정지합니다 (백업 정지 창)")
+}
+
+// Resume 은 회전을 재개한다.
+func (s *TokenRotationScheduler) Resume() {
+	if s == nil {
+		return
+	}
+	s.paused.Store(false)
+	s.logger.Info("토큰 회전을 재개합니다")
+}
+
 func (s *TokenRotationScheduler) runIteration(ctx context.Context) {
 	if s.pool == nil || s.secret == nil || !s.secret.Has("openbao") {
+		return
+	}
+	if s.paused.Load() {
 		return
 	}
 	if !s.inFlight.CompareAndSwap(false, true) {

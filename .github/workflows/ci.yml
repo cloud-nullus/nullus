@@ -24,8 +24,18 @@ jobs:
           # go.mod 에서 읽는다. 손으로 적으면 갈라지고, 실제로 갈라져 있었다 —
           # 워크플로는 1.24 를 설치하는데 go.mod 는 1.26.1 을 요구했다.
           go-version-file: go.mod
+      # 차트 렌더 검사에 필요하다. 백업 기능은 코드 테스트를 전부 통과하고도
+      # 차트로는 켤 방법이 없는 상태로 한동안 있었다 — 배선의 결함은 코드
+      # 테스트로 잡히지 않아서, 차트를 실제로 렌더해 보는 검사가 따로 있다
+      # (deploy/helm/nullus/tests). helm 이 없으면 그 검사가 조용히 skip 된다.
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
       - run: go build ./...
       - run: ./scripts/check-coverage.sh
+      # check-coverage.sh 는 ./internal/... 만 돈다. 차트 검사는 그 밖이라
+      # 여기서 따로 부른다.
+      - run: go test ./deploy/... -count=1
       - run: go vet ./...
 
   frontend:

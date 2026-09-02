@@ -1,6 +1,8 @@
 # Nullus 로컬 테스트 가이드
 
 > **Windows 사용자**: [Windows 전용 가이드](./Nullus_로컬_테스트_가이드_Windows.md)를 참고하세요. WSL2 + Docker Desktop 환경이 필요합니다.
+>
+> **백업/복구를 확인하려면**: [백업/복구 로컬 테스트 가이드](./Nullus_백업복구_로컬_테스트_가이드.md) — `pg_dump` 와 kind 가 추가로 필요하고, 전 과정을 자동으로 도는 리허설이 있다.
 
 ## 1. 사전 요구사항
 
@@ -42,7 +44,7 @@
 이 명령은 다음을 순서대로 실행합니다:
 
 1. Docker Compose로 PostgreSQL, Redis, MinIO, Keycloak 컨테이너 기동
-2. `golang-migrate`로 DB 마이그레이션 실행 (현재 `000074` 까지)
+2. `golang-migrate`로 DB 마이그레이션 실행 (현재 `000075` 까지)
 3. Go API 서버 빌드 + 실행 (`:8090`, `ENCRYPTION_KEY` 자동 설정)
 4. React 프론트엔드 개발 서버 실행 (`:5173`)
 

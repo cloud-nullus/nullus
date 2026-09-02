@@ -53,3 +53,52 @@ prometheus:
 log:
   level: debug
   format: text  # text | json
+
+# 백업/복구 (nullus-plan#75)
+# 설계: docs/11_기능설계/Nullus_백업복구_설계.md
+#
+# 목적지는 **대상 클러스터 밖**의 S3 호환 오브젝트 스토리지다. 클러스터·노드·
+# 스토리지가 통째로 사라져도 백업본은 남아야 하기 때문이다(§4.2).
+#
+# 자격증명이 스택 OpenBao 가 아니라 여기서 오는 것이 핵심이다 — 금고에서
+# 조달하면 스택이 죽을 때 백업본이 멀쩡해도 가져올 수 없다(§4.2.1).
+backup:
+  enabled: false
+  # 산출물 암호화 키. 정확히 32바이트여야 하고, ENCRYPTION_KEY 및 DB
+  # 비밀번호와 **다른 값**이어야 한다 — 같으면 키 하나를 잃고 둘 다 잃는다(§5.2).
+  seal_key: ""
+  seal_key_id: platform-key-v1
+
+  destination:
+    endpoint: ""      # 예: minio.internal:9000 (클러스터 밖)
+    bucket: nullus-backup
+    access_key: ""
+    secret_key: ""
+    region: us-east-1
+    use_ssl: true
+    prefix: ""
+
+  # Keycloak 전용 DB. 배포 경로에 따라 위치가 다르다 —
+  # 차트는 서브차트로, 에어갭 스크립트는 nullus-auth 네임스페이스의
+  # 독립 릴리스로 띄운다(§1.2). 그래서 하드코딩하지 않고 설정으로 받는다.
+  keycloak_database:
+    host: ""
+    port: 5432
+    name: bitnami_keycloak
+    user: bn_keycloak
+    password: ""
+
+  schedule:
+    enabled: false
+    interval: 24h     # RPO 24시간 (§2)
+    org_id: ""
+    stack_id: ""
+    namespace: ""
+    mode: full        # full | platform_only | stack_only
+
+  # 일7/주4/월3 (§4.5). max_total_bytes 가 0 이면 총량 상한을 적용하지 않는다.
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 3
+    max_total_bytes: 0
