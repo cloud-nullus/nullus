@@ -24,7 +24,7 @@ func TestVerify_정상_백업(t *testing.T) {
 			Keycloak: dbTarget(domain.ComponentKeycloakDB, "keycloak"),
 		},
 	})
-	run, err := uc.Run(context.Background(), RunBackupRequest{OrgID: "o", Mode: domain.ModePlatformOnly})
+	run, err := uc.Run(context.Background(), RunBackupRequest{OrgID: "o", StackID: "s1", Mode: domain.ModePlatformOnly})
 	require.NoError(t, err)
 
 	v := NewVerifyUseCase(repo, store, &fakeDumper{tr: tr, schema: domain.SchemaState{Version: 74}},
@@ -49,7 +49,7 @@ func TestVerify_오브젝트가_사라지면_실패(t *testing.T) {
 			Keycloak: dbTarget(domain.ComponentKeycloakDB, "keycloak"),
 		},
 	})
-	run, _ := uc.Run(context.Background(), RunBackupRequest{OrgID: "o", Mode: domain.ModePlatformOnly})
+	run, _ := uc.Run(context.Background(), RunBackupRequest{OrgID: "o", StackID: "s1", Mode: domain.ModePlatformOnly})
 
 	store.objects = map[string][]byte{} // 목적지에서 사라졌다
 

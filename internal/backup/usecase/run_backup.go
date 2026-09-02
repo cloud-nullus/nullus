@@ -167,7 +167,16 @@ func (uc *BackupUseCase) execute(ctx context.Context, req RunBackupRequest, run 
 	//
 	// 순서는 금고 → DB 다. 금고를 먼저 뜨면 "DB 는 아는데 금고엔 없다" 방향의
 	// 불일치만 남고, 그것은 §6.4 검사로 탐지된다 (§2.1).
-	if uc.inScope(run, domain.ComponentOpenBaoKV) {
+	// 금고는 **스택마다** 배포된다. 스택이 없으면 뜰 금고도 없다.
+	//
+	// 그냥 시도하면 "secret provider not configured" 로 실패해 백업이
+	// partial 이 된다 — 스택을 설치하기 전의 플랫폼은 항상 그 상태다.
+	// 실제로 인클러스터 리허설에서 그렇게 됐다. 없는 것을 못 떴다고
+	// 실패로 세면, 정작 진짜 실패를 알아볼 수 없게 된다.
+	if uc.inScope(run, domain.ComponentOpenBaoKV) && strings.TrimSpace(req.StackID) == "" {
+		uc.d.Logger.Info("스택이 지정되지 않아 금고 백업을 건너뜁니다 (백업할 금고가 없습니다)",
+			"run_id", run.ID)
+	} else if uc.inScope(run, domain.ComponentOpenBaoKV) {
 		var count int
 		art, err := uc.putStream(ctx, run, domain.ComponentOpenBaoKV, "",
 			key(run.ID, "openbao-kv.json"),

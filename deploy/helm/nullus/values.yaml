@@ -96,6 +96,47 @@ config:
     level: info
     format: json
 
+  # ---------------------------------------------------------------------------
+  # 백업/복구 (docs/11_기능설계/Nullus_백업복구_설계.md · nullus-plan#75)
+  #
+  # 목적지는 **대상 클러스터 밖**의 S3 호환 오브젝트 스토리지여야 한다.
+  # 클러스터가 통째로 사라져도 백업본은 남아야 하기 때문이다(§4.2).
+  #
+  # 비밀값(봉인 키·목적지 secret key)은 여기가 아니라 secrets 블록에 둔다.
+  # ---------------------------------------------------------------------------
+  backup:
+    enabled: false
+    sealKeyId: platform-key-v1
+    destination:
+      endpoint: ""      # 예: minio.internal:9000 (클러스터 밖)
+      bucket: nullus-backup
+      accessKey: ""
+      region: us-east-1
+      useSsl: true
+      prefix: ""
+    # Keycloak DB. 배포 경로에 따라 위치가 달라(차트 서브차트 / 에어갭 독립
+    # 릴리스) 자동 탐지가 안 되므로 명시한다. 빠뜨리면 복구해도 로그인
+    # 경로가 없어서, 코드가 기동 시점에 막는다(§1.2).
+    keycloakDatabase:
+      host: ""
+      port: 5432
+      name: bitnami_keycloak
+      user: bn_keycloak
+      password: ""
+    schedule:
+      enabled: false
+      interval: 24h     # RPO 24시간 (§2)
+      orgId: ""
+      stackId: ""
+      namespace: ""
+      mode: full        # full | platform_only | stack_only
+    # 일7/주4/월3 (§4.5). maxTotalBytes 가 0 이면 총량 상한을 적용하지 않는다.
+    retention:
+      daily: 7
+      weekly: 4
+      monthly: 3
+      maxTotalBytes: 0
+
 # 사설 CA 번들. API 파드가 사내 CA 로 서명된 엔드포인트를 호출해야 할 때만 쓴다.
 # 시크릿(ca.crt 키)이 없으면 시스템 CA 번들만 사용하고 그대로 기동한다.
 caBundle:
@@ -110,6 +151,13 @@ secrets:
   # AES-256 키라 정확히 32바이트여야 한다. 길이가 다르면 클러스터 등록/조회가
   # "ENCRYPTION_KEY must be 32 bytes" 로 HTTP 500 을 낸다(기동 자체는 된다).
   encryptionKey: change-me-32byte-encryption-key!
+  # 백업 산출물 봉인 키. config.backup.enabled=true 일 때만 필요하며,
+  # 정확히 32바이트에 encryptionKey 와 **다른 값**이어야 한다 —
+  # 같으면 백업본 하나가 새는 순간 등록된 모든 클러스터가 함께 열린다.
+  backupSealKey: ""
+  # 백업 목적지의 secret key. 스택 OpenBao 가 아니라 여기서 온다 —
+  # 금고에서 조달하면 스택이 죽을 때 백업본을 가져올 수 없다.
+  backupDestinationSecretKey: ""
 
 # Bitnami 가 2025년에 카탈로그를 정리하면서 docker.io/bitnami/postgresql 의
 # 구버전 태그가 bitnamilegacy 네임스페이스로 옮겨갔다. 서브차트 기본값

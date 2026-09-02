@@ -121,7 +121,7 @@ func TestRunBackup_platform_only_는_정지하지_않는다(t *testing.T) {
 	uc, tr, repo, _, _, _, _ := newBackupFixture(t)
 
 	run, err := uc.Run(context.Background(), RunBackupRequest{
-		OrgID: "org-1", Namespace: "nullus", Mode: domain.ModePlatformOnly,
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus", Mode: domain.ModePlatformOnly,
 	})
 	require.NoError(t, err)
 
@@ -196,4 +196,32 @@ func TestRunBackup_DB_대상이_설정되지_않으면_명확히_알려준다(t 
 	assert.Equal(t, domain.StatusPartial, run.Status)
 	assert.Contains(t, run.Error, "설정되지 않았습니다")
 	assert.Contains(t, run.Error, string(domain.ComponentKeycloakDB))
+}
+
+// 금고는 스택마다 배포된다. 스택이 없으면 뜰 금고도 없다 — 그것을 실패로
+// 세면 스택 설치 전의 플랫폼 백업이 항상 partial 이 된다. 인클러스터
+// 리허설에서 실제로 그렇게 됐다.
+func TestRunBackup_스택이_없으면_금고를_건너뛴다(t *testing.T) {
+	uc, tr, repo, _, _, _, _ := newBackupFixture(t)
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", Mode: domain.ModePlatformOnly, // StackID 없음
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.StatusSucceeded, run.Status, "없는 것을 못 떴다고 실패가 되면 안 된다")
+	assert.Equal(t, -1, tr.indexOf("kv.export"))
+
+	arts, _ := repo.ListArtifacts(context.Background(), run.ID)
+	assert.Len(t, arts, 2, "platform/keycloak 두 건만")
+}
+
+func TestRunBackup_스택이_있으면_금고를_뜬다(t *testing.T) {
+	uc, tr, _, _, _, _, _ := newBackupFixture(t)
+
+	_, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Mode: domain.ModePlatformOnly,
+	})
+	require.NoError(t, err)
+	assert.NotEqual(t, -1, tr.indexOf("kv.export"))
 }

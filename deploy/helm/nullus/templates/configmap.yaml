@@ -41,3 +41,40 @@ data:
     log:
       level: {{ .Values.config.log.level | quote }}
       format: {{ .Values.config.log.format | quote }}
+
+    {{- with .Values.config.backup }}
+    # 백업/복구 (docs/11_기능설계/Nullus_백업복구_설계.md)
+    #
+    # 여기에는 **비밀값이 아닌 것만** 담는다. 봉인 키와 목적지 secret key 는
+    # Secret 에서 환경변수로 주입한다(deployment.yaml) — ConfigMap 은 RBAC 이
+    # 느슨하고 그대로 로그·백업본에 실려 나가기 쉽다. 설계 §5.2 가 지키려는
+    # 것이 정확히 그 지점이다.
+    backup:
+      enabled: {{ .enabled }}
+      seal_key_id: {{ .sealKeyId | quote }}
+      destination:
+        endpoint: {{ .destination.endpoint | quote }}
+        bucket: {{ .destination.bucket | quote }}
+        access_key: {{ .destination.accessKey | quote }}
+        region: {{ .destination.region | quote }}
+        use_ssl: {{ .destination.useSsl }}
+        prefix: {{ .destination.prefix | quote }}
+      keycloak_database:
+        host: {{ .keycloakDatabase.host | quote }}
+        port: {{ .keycloakDatabase.port }}
+        name: {{ .keycloakDatabase.name | quote }}
+        user: {{ .keycloakDatabase.user | quote }}
+        password: {{ .keycloakDatabase.password | quote }}
+      schedule:
+        enabled: {{ .schedule.enabled }}
+        interval: {{ .schedule.interval | quote }}
+        org_id: {{ .schedule.orgId | quote }}
+        stack_id: {{ .schedule.stackId | quote }}
+        namespace: {{ .schedule.namespace | quote }}
+        mode: {{ .schedule.mode | quote }}
+      retention:
+        daily: {{ .retention.daily }}
+        weekly: {{ .retention.weekly }}
+        monthly: {{ .retention.monthly }}
+        max_total_bytes: {{ .retention.maxTotalBytes }}
+    {{- end }}

@@ -172,6 +172,19 @@ spec:
             secretKeyRef:
               name: {{ include "nullus.fullname" . }}
               key: encryption-key
+        {{- if .Values.config.backup.enabled }}
+        # 백업 비밀값은 ConfigMap 을 거치지 않는다 (configmap.yaml 주석 참고).
+        - name: NULLUS_BACKUP_SEAL_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "nullus.fullname" . }}
+              key: backup-seal-key
+        - name: NULLUS_BACKUP_DESTINATION_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "nullus.fullname" . }}
+              key: backup-destination-secret-key
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /health
