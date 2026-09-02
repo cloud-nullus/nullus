@@ -91,8 +91,18 @@ func (d *ResourceDumper) availableKinds(ctx context.Context) ([]string, error) {
 	if err := d.run(ctx, nil, &buf, "api-resources", "--verbs=list", "--namespaced=true", "-o", "name"); err != nil {
 		return nil, fmt.Errorf("리소스 종류 조회: %w", err)
 	}
+	return filterAvailable(dumpKinds, buf.String()), nil
+}
+
+// filterAvailable 은 `kubectl api-resources -o name` 출력과 대조해 실제로
+// 존재하는 종류만 남긴다.
+//
+// kubectl 호출과 분리해 둔 이유: 이 판정이 틀리면 네임스페이스 덤프가 통째로
+// 실패하거나(없는 종류를 조회) 조용히 빠진다(있는 종류를 누락). 둘 다 비싸고,
+// 클러스터 없이 검증할 수 있어야 한다.
+func filterAvailable(want []string, apiResourcesOutput string) []string {
 	present := map[string]bool{}
-	for _, line := range strings.Split(buf.String(), "\n") {
+	for _, line := range strings.Split(apiResourcesOutput, "\n") {
 		name := strings.TrimSpace(line)
 		if name == "" {
 			continue
@@ -104,8 +114,8 @@ func (d *ResourceDumper) availableKinds(ctx context.Context) ([]string, error) {
 		}
 	}
 
-	out := make([]string, 0, len(dumpKinds))
-	for _, k := range dumpKinds {
+	out := make([]string, 0, len(want))
+	for _, k := range want {
 		if present[k] {
 			out = append(out, k)
 			continue
@@ -114,7 +124,7 @@ func (d *ResourceDumper) availableKinds(ctx context.Context) ([]string, error) {
 			out = append(out, k)
 		}
 	}
-	return out, nil
+	return out
 }
 
 func (d *ResourceDumper) Dump(ctx context.Context, namespace string, out io.Writer) (int64, error) {
