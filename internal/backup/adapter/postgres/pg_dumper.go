@@ -73,14 +73,14 @@ func (d *PgDumper) ensureCompatible(ctx context.Context, target port.DBTarget) (
 		// 서버 버전을 못 읽으면 검사를 건너뛴다 — 백업 자체를 막지는 않는다.
 		return client, nil
 	}
-	cMaj, cMin, err1 := majorMinor(client)
-	sMaj, sMin, err2 := majorMinor(server)
-	if err1 != nil || err2 != nil {
+	ok, err := IsCompatible(client, server)
+	if err != nil {
+		// 버전을 해석하지 못하면 검사를 건너뛴다 — 백업 자체를 막지는 않는다.
 		return client, nil
 	}
-	if cMaj < sMaj || (cMaj == sMaj && cMin < sMin) {
+	if !ok {
 		return "", fmt.Errorf(
-			"pg_dump 버전(%s)이 서버 버전(%s)보다 낮습니다. 이 조합은 백업을 조용히 실패시킵니다", client, server)
+			"pg_dump major 버전(%s)이 서버(%s)보다 낮습니다. 이 조합은 백업을 조용히 실패시킵니다", client, server)
 	}
 	return client, nil
 }

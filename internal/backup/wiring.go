@@ -103,6 +103,15 @@ func New(d Deps) (*Module, error) {
 		return nil, fmt.Errorf("backup.seal_key 가 DB 비밀번호와 같습니다. 서로 다른 키를 쓰세요")
 	}
 
+	// Keycloak DB 를 빠뜨리면 복구해도 아무도 로그인할 수 없다(§1.2).
+	// 배포 경로에 따라 위치가 달라 자동 탐지가 안 되므로, 설정이 비면
+	// 기동 시점에 막는다 — 런타임에 partial 로 드러나면 이미 늦다.
+	if strings.TrimSpace(d.Config.KeycloakDatabase.Host) == "" {
+		return nil, fmt.Errorf("backup.keycloak_database.host 가 비어 있습니다. " +
+			"Keycloak DB 를 빠뜨리면 복구해도 로그인 경로가 없습니다 — " +
+			"외부 IdP 를 쓰는 구성이라면 backup.enabled=false 로 두거나 값을 채우세요")
+	}
+
 	st, err := store.New(store.Config{
 		Endpoint:  d.Config.Destination.Endpoint,
 		AccessKey: d.Config.Destination.AccessKey,

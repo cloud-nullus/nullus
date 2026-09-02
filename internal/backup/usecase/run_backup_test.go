@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
+	"github.com/cloud-nullus/draft/internal/backup/port"
 )
 
 func newBackupFixture(t *testing.T) (*BackupUseCase, *trace, *fakeRepo, *fakeStore, *fakeScaler, *fakeArchiver, *fakeNotifier) {
@@ -179,4 +180,20 @@ func TestRunBackup_스택_대상인데_네임스페이스가_없으면_거부(t 
 	uc, _, _, _, _, _, _ := newBackupFixture(t)
 	_, err := uc.Run(context.Background(), RunBackupRequest{OrgID: "o", Mode: domain.ModeStackOnly})
 	require.Error(t, err)
+}
+
+// 리허설에서 걸린 것이다 — 대상이 비어 있으면 pg_dump 가 로컬 소켓에
+// 붙으려다 "socket ... No such file" 로 죽는다. 무엇이 잘못됐는지 알 수
+// 없는 메시지이고, 기본 설정이 빈 값이라 모든 백업이 partial 이 됐다.
+func TestRunBackup_DB_대상이_설정되지_않으면_명확히_알려준다(t *testing.T) {
+	uc, _, _, _, _, _, _ := newBackupFixture(t)
+	uc.d.Targets.Keycloak = port.DBTarget{Component: domain.ComponentKeycloakDB} // Host 없음
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusPartial, run.Status)
+	assert.Contains(t, run.Error, "설정되지 않았습니다")
+	assert.Contains(t, run.Error, string(domain.ComponentKeycloakDB))
 }

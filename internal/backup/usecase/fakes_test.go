@@ -351,3 +351,12 @@ type failingDeleteStore struct{ *fakeStore }
 func (f *failingDeleteStore) Delete(context.Context, string) error {
 	return errors.New("스토리지 삭제 실패")
 }
+
+// dbTarget 은 테스트용 DB 대상이다.
+//
+// Host 를 반드시 채운다 — 비어 있으면 유스케이스가 "설정되지 않았다" 로
+// 건너뛴다. 그 동작 자체는 TestRunBackup_대상이_설정되지_않으면_알려준다 가
+// 따로 검증한다.
+func dbTarget(comp domain.Component, database string) port.DBTarget {
+	return port.DBTarget{Component: comp, Host: "db.test", Port: 5432, Database: database, User: "u", Password: "p"}
+}

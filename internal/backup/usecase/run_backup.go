@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 	"github.com/cloud-nullus/draft/internal/backup/port"
@@ -193,6 +194,17 @@ func (uc *BackupUseCase) execute(ctx context.Context, req RunBackupRequest, run 
 		if !uc.inScope(run, spec.comp) {
 			continue
 		}
+		// 대상이 설정되지 않았으면 여기서 분명히 말한다.
+		//
+		// 그냥 두면 pg_dump 가 로컬 소켓에 붙으려다 "socket ... No such file"
+		// 로 죽는다 — 무엇이 잘못됐는지 알 수 없는 메시지다. 리허설에서
+		// 실제로 그렇게 됐고, 기본 설정이 빈 값이라 모든 백업이 partial 이
+		// 될 수 있었다.
+		if strings.TrimSpace(spec.target.Host) == "" {
+			out.results[spec.comp] = fmt.Errorf(
+				"%s 대상이 설정되지 않았습니다 (backup 설정의 데이터베이스 항목을 채우세요)", spec.comp)
+			continue
+		}
 		art, err := uc.putStream(ctx, run, spec.comp, "", key(run.ID, spec.file),
 			func(w io.Writer) (int64, error) {
 				r, e := uc.d.Dumper.Dump(ctx, spec.target, w)
@@ -364,7 +376,3 @@ func (uc *BackupUseCase) finish(ctx context.Context, run *domain.BackupRun, res 
 }
 
 func key(runID, name string) string { return "backup-" + runID + "/" + name }
-
-func dbTarget(comp domain.Component, database string) port.DBTarget {
-	return port.DBTarget{Component: comp, Database: database}
-}

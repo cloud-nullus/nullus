@@ -23,7 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   마이그레이션 `000075` (backup_runs / backup_artifacts / restore_runs). API 이미지에 `postgresql17-client` 추가. 백업 중 토큰 회전을 멈추기 위해 `TokenRotationScheduler` 에 `Pause`/`Resume` 을 더했다 — 회전이 DB 와 금고를 5 분마다 함께 고쳐써서 두 산출물 사이에 시점 어긋남을 만들기 때문이다.
 
-  **아직 아닌 것**: 복구 리허설(B4-1)은 실제 환경이 필요해 수행하지 않았다 — **이 EPIC 의 완료 기준이므로 이것을 통과하기 전까지 "완료" 가 아니다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
+  **복구 리허설(B4-1) — 축소 규모로 실행해 통과했다(2026-09-02, 2회 연속).** kind(`rancher.io/local-path`) + PostgreSQL 18 + MinIO 로 정지 → 아카이브 → 네임스페이스 파괴 → PVC 재생성 → 복원 → 재개를 돌렸고, 지문(파일 sha256 · replica 수 · DB 행)이 전부 일치했다. 실제 정지 창 3.1초.
+
+  **그 리허설이 단위 테스트와 CI 를 통과한 코드에서 결함 5건을 잡았다.** ① `pg_dump` 버전 가드를 minor 까지 좁혀 잡아, **서버가 마이너 패치만 받아도 백업이 멈추는** 상태였다(major 기준으로 정정). ② Gateway API CRD 가 없는 클러스터에서 리소스 덤프가 통째로 실패했다 — `--ignore-not-found` 는 없는 *객체*를 다루지 없는 *리소스 타입*은 다루지 못한다. ③ Keycloak DB 미설정 시 `pg_dump` 가 로컬 소켓에 붙으려다 죽었고, **기본 설정이 빈 값이라 모든 백업이 `partial` 이 될 수 있었다.** ④ 덤프에 `resourceVersion`·`uid`·`status` 가 그대로 담겨 복구 apply 가 깨졌다. ⑤ PVC 를 볼륨 경로와 리소스 경로가 이중으로 소유해 `spec.volumeName` 충돌로 복구가 실패했다. **①과 ③은 "조용히 잘못되는" 부류라 특히 비쌌다** — 실패했다는 사실이 늦게 드러나는 형태다.
+
+  리허설을 UI·스케줄보다 앞에 두기로 한 판단이 여기서 값을 했다.
+
+  **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
 ### Fixed
 

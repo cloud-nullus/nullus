@@ -23,11 +23,37 @@ func TestSelectDumpImage_서버보다_낮은_클라이언트를_고르지_않는
 	assert.Equal(t, "17.5.0", got.Version)
 }
 
-func TestSelectDumpImage_충분한_것_중_가장_낮은_것을_고른다(t *testing.T) {
-	// Keycloak DB 는 17.2 다. 17.2 로 충분하므로 17.5 를 쓰지 않는다.
+func TestSelectDumpImage_같은_major_안에서는_높은_minor_를_고른다(t *testing.T) {
+	// Keycloak DB 는 17.2 다. 같은 major 안에서는 어차피 호환이므로,
+	// 버그 수정이 더 들어간 17.5 를 쓴다.
 	got, err := SelectDumpImage("17.2", bundled())
 	require.NoError(t, err)
-	assert.Equal(t, "17.2.0", got.Version)
+	assert.Equal(t, "17.5.0", got.Version)
+}
+
+// 리허설에서 걸린 조합이다 — minor 로 막으면 서버가 패치만 받아도 백업이
+// 멈춘다. 막으려던 것과 정반대 방향의 사고다.
+func TestIsCompatible_minor_차이는_막지_않는다(t *testing.T) {
+	ok, err := IsCompatible("18.3", "18.4")
+	require.NoError(t, err)
+	assert.True(t, ok, "같은 major 안의 minor 차이는 호환이다")
+}
+
+func TestIsCompatible_major_가_낮으면_거부한다(t *testing.T) {
+	ok, err := IsCompatible("16.9", "17.0")
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestIsCompatible_major_가_높으면_허용한다(t *testing.T) {
+	ok, err := IsCompatible("18.0", "17.5")
+	require.NoError(t, err)
+	assert.True(t, ok, "pg_dump 는 자기보다 낮은 major 의 서버를 덤프할 수 있다")
+}
+
+func TestIsCompatible_해석_불가(t *testing.T) {
+	_, err := IsCompatible("latest", "17.5")
+	require.Error(t, err)
 }
 
 func TestSelectDumpImage_구버전_서버(t *testing.T) {
@@ -52,7 +78,7 @@ func TestSelectDumpImage_태그_접미사를_무시한다(t *testing.T) {
 func TestSelectDumpImage_메이저만_있는_버전(t *testing.T) {
 	got, err := SelectDumpImage("17", bundled())
 	require.NoError(t, err)
-	assert.Equal(t, "17.2.0", got.Version, "17.0 이상이면 되므로 17.2 로 충분하다")
+	assert.Equal(t, "17.5.0", got.Version, "major 17 중 가장 높은 minor")
 }
 
 func TestSelectDumpImage_잘못된_서버_버전(t *testing.T) {

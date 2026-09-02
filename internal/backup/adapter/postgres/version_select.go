@@ -49,13 +49,34 @@ func majorMinor(v string) (int, int, error) {
 	return major, minor, nil
 }
 
-// SelectDumpImage 는 서버 버전 이상인 클라이언트 중 가장 낮은 것을 고른다.
+// IsCompatible 은 클라이언트가 서버를 덤프할 수 있는지 판정한다.
 //
-// 가장 높은 것이 아니라 "가장 낮으면서 충분한 것" 을 고르는 이유: 버전 차이가
-// 클수록 산출물이 그 환경 밖에서 열리지 않을 위험이 커진다. 필요한 만큼만
-// 올린다.
+// 기준은 **major 버전**이다. PostgreSQL 은 같은 major 안의 minor 차이를
+// 호환으로 다루고, pg_dump 는 자기보다 낮거나 같은 major 의 서버를 덤프한다.
+//
+// 이 규칙을 minor 까지 좁혀 잡았다가 리허설에서 걸렸다 — 클라이언트 18.3 /
+// 서버 18.4 조합이 막혔다. 서버가 마이너 패치를 받는 것만으로 백업이 멈추면,
+// 막으려던 것과 정반대 방향의 사고가 된다.
+func IsCompatible(clientVersion, serverVersion string) (bool, error) {
+	cMaj, _, err := majorMinor(clientVersion)
+	if err != nil {
+		return false, fmt.Errorf("클라이언트 버전 해석 실패: %w", err)
+	}
+	sMaj, _, err := majorMinor(serverVersion)
+	if err != nil {
+		return false, fmt.Errorf("서버 버전 해석 실패: %w", err)
+	}
+	return cMaj >= sMaj, nil
+}
+
+// SelectDumpImage 는 서버를 덤프할 수 있는 이미지 중 하나를 고른다.
+//
+// 규칙: 서버 major 이상인 것 중 **가장 낮은 major**, 그 안에서 **가장 높은
+// minor**. 낮은 major 를 고르는 것은 산출물이 그 환경 밖에서도 열리게 하기
+// 위해서이고, 높은 minor 를 고르는 것은 같은 major 안에서는 어차피 호환이라
+// 버그 수정이 더 들어간 쪽이 낫기 때문이다.
 func SelectDumpImage(serverVersion string, candidates []DumpImage) (DumpImage, error) {
-	sMaj, sMin, err := majorMinor(serverVersion)
+	sMaj, _, err := majorMinor(serverVersion)
 	if err != nil {
 		return DumpImage{}, fmt.Errorf("서버 버전 해석 실패: %w", err)
 	}
@@ -69,17 +90,18 @@ func SelectDumpImage(serverVersion string, candidates []DumpImage) (DumpImage, e
 		if err != nil {
 			continue
 		}
-		if cMaj < sMaj || (cMaj == sMaj && cMin < sMin) {
-			continue // 서버보다 낮다 — pg_dump 가 거부한다
+		if cMaj < sMaj {
+			continue // major 가 낮으면 pg_dump 가 거부한다
 		}
-		if !found || cMaj < bestMaj || (cMaj == bestMaj && cMin < bestMin) {
+		switch {
+		case !found, cMaj < bestMaj, cMaj == bestMaj && cMin > bestMin:
 			best, bestMaj, bestMin, found = c, cMaj, cMin, true
 		}
 	}
 
 	if !found {
 		return DumpImage{}, fmt.Errorf(
-			"서버 버전 %s 이상의 pg_dump 이미지가 번들에 없습니다. 에어갭 번들에 추가해야 합니다", serverVersion)
+			"서버 major 버전 %d 이상의 pg_dump 이미지가 번들에 없습니다. 에어갭 번들에 추가해야 합니다", sMaj)
 	}
 	return best, nil
 }
