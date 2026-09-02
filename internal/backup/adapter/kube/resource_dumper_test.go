@@ -355,3 +355,25 @@ func TestSanitizeOwnedBy_남의_클러스터_RBAC_은_건드리지_않는다(t *
 	assert.NotContains(t, names, "cluster-admin", "시스템 ClusterRole 을 백업에 담으면 복구가 클러스터를 망친다")
 	assert.NotContains(t, names, "other-stack-controller")
 }
+
+func TestDumpKinds_ArgoCD_애플리케이션을_담는다(t *testing.T) {
+	// 앱의 Deployment 는 **Git 에서 파생된다** — Argo CD 가 매니페스트를 보고
+	// 만든다. 그래서 Deployment 만 되돌리면 백업 시점의 이미지 태그가 그대로
+	// 굳는다. Argo CD 가 다시 맞춰 줘야 하는데, 그러려면 Application CR 이
+	// 있어야 한다.
+	//
+	// 실환경 리허설에서 복구 뒤 Application 이 하나도 없었고, 되살아난
+	// Deployment 는 스캐폴드 초기값 :bootstrap 을 가리킨 채 ImagePullBackOff
+	// 로 남았다 — 그 태그는 레지스트리에 존재하지 않는다. 조정할 주체가 없어
+	// 스스로 회복하지 못한다.
+	//
+	// delete_stack.go 의 argoCDCRDNames 는 이 세 가지를 이미 알고 있었다.
+	// 지우는 쪽만 알고 백업하는 쪽은 몰랐다.
+	for _, kind := range []string{
+		"applications.argoproj.io",
+		"appprojects.argoproj.io",
+	} {
+		assert.Contains(t, dumpKinds, kind,
+			"%s 가 빠지면 복구 후 앱을 배포할 주체가 사라진다", kind)
+	}
+}

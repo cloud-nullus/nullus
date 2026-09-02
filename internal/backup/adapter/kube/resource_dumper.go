@@ -60,6 +60,21 @@ var dumpKinds = []string{
 	"externalsecrets.external-secrets.io",
 	"secretstores.external-secrets.io",
 	"pushsecrets.external-secrets.io",
+
+	// 배포의 주체. 앱의 Deployment 는 **Git 에서 파생된다** — Argo CD 가
+	// 매니페스트를 읽어 만든다. Deployment 만 되돌리면 백업 시점의 이미지
+	// 태그가 그대로 굳고, 그것을 다시 맞춰 줄 주체가 없다.
+	//
+	// 실환경 리허설에서 복구 뒤 Application 이 하나도 없었고, 되살아난 앱
+	// Deployment 는 스캐폴드 초기값 :bootstrap 을 가리킨 채 남았다 — 그 태그는
+	// 레지스트리에 존재한 적이 없다(renderer.go 의 InitialImageTag). CI 가
+	// 다시 돌기 전에는 아무도 고쳐 주지 않는다.
+	//
+	// delete_stack.go 의 argoCDCRDNames 가 이 셋을 이미 알고 있었다 — 지우는
+	// 쪽은 알고 백업하는 쪽은 몰랐다.
+	"applications.argoproj.io",
+	"appprojects.argoproj.io",
+	"applicationsets.argoproj.io",
 }
 
 func (d *ResourceDumper) writeKubeconfig() (string, error) {
