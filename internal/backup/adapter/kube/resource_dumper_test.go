@@ -285,3 +285,73 @@ func TestClusterScopedKinds_CRD_를_담는다(t *testing.T) {
 	assert.Contains(t, clusterScopedKinds, "customresourcedefinitions.apiextensions.k8s.io",
 		"CRD 가 빠지면 그 CR 을 복원할 수 없다")
 }
+
+func TestClusterScopedKinds_RBAC_를_담는다(t *testing.T) {
+	// 컨트롤러의 ClusterRole/ClusterRoleBinding 이 빠지면, CR 과 CRD 를 되돌려도
+	// 컨트롤러가 그것을 **볼 권한이 없어** 조정이 시작되지 않는다. 실환경
+	// 리허설에서 ESO 가 정확히 그렇게 멈췄다:
+	//
+	//   externalsecrets.external-secrets.io is forbidden: User
+	//   "system:serviceaccount:nullus-app:external-secrets" cannot list
+	//   resource "externalsecrets" ... at the cluster scope
+	//
+	// 그 결과는 결함 ③ 과 똑같다 — 복구가 succeeded 를 반환하고도 Gitea·Harbor·
+	// Jenkins 가 CreateContainerConfigError 로 멈춘 채 남는다.
+	for _, kind := range []string{
+		"clusterroles.rbac.authorization.k8s.io",
+		"clusterrolebindings.rbac.authorization.k8s.io",
+	} {
+		assert.Contains(t, clusterScopedKinds, kind,
+			"%s 가 빠지면 컨트롤러가 자기 CR 을 볼 권한을 잃는다", kind)
+	}
+}
+
+func TestSanitizeOwnedBy_남의_클러스터_RBAC_은_건드리지_않는다(t *testing.T) {
+	// ClusterRole/ClusterRoleBinding 은 클러스터 전체에 걸린다. 소유권을 안
+	// 보고 되돌리면 스택 복구가 **다른 스택이나 시스템의 권한을 덮어쓴다** —
+	// CRD 보다 훨씬 비싼 사고다.
+	raw := rawList(
+		map[string]any{
+			"kind": "ClusterRole",
+			"metadata": map[string]any{
+				"name":        "external-secrets-controller",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "nullus-app"},
+			},
+		},
+		map[string]any{
+			"kind": "ClusterRoleBinding",
+			"metadata": map[string]any{
+				"name":        "external-secrets-controller",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "nullus-app"},
+			},
+		},
+		// 다른 스택의 것
+		map[string]any{
+			"kind": "ClusterRole",
+			"metadata": map[string]any{
+				"name":        "other-stack-controller",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "other-ns"},
+			},
+		},
+		// 쿠버네티스 기본 제공 (어노테이션 없음)
+		map[string]any{
+			"kind":     "ClusterRole",
+			"metadata": map[string]any{"name": "cluster-admin"},
+		},
+	)
+	out, err := sanitizeOwnedBy(raw, "nullus-app")
+	require.NoError(t, err)
+
+	var parsed struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(out, &parsed))
+
+	names := make([]string, 0, len(parsed.Items))
+	for _, it := range parsed.Items {
+		names = append(names, it["metadata"].(map[string]any)["name"].(string))
+	}
+	assert.ElementsMatch(t, []string{"external-secrets-controller", "external-secrets-controller"}, names)
+	assert.NotContains(t, names, "cluster-admin", "시스템 ClusterRole 을 백업에 담으면 복구가 클러스터를 망친다")
+	assert.NotContains(t, names, "other-stack-controller")
+}

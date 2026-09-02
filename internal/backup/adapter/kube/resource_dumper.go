@@ -151,6 +151,23 @@ func filterAvailable(want []string, apiResourcesOutput string) []string {
 // 범위라 다른 것까지 건드리면 클러스터 전체에 영향을 준다.
 var clusterScopedKinds = []string{
 	"customresourcedefinitions.apiextensions.k8s.io",
+
+	// 컨트롤러의 권한. **CRD 와 CR 만 되돌리면 모자란다** — 컨트롤러가 자기
+	// CR 을 볼 권한을 잃어 조정이 아예 시작되지 않는다. 실환경 리허설에서
+	// ESO 가 그렇게 멈췄다:
+	//
+	//   externalsecrets.external-secrets.io is forbidden: User
+	//   "system:serviceaccount:nullus-app:external-secrets" cannot list
+	//   resource "externalsecrets" ... at the cluster scope
+	//
+	// ExternalSecret/SecretStore 는 멀쩡히 복원됐는데 status 가 끝내 비어
+	// 있었고, 증상은 결함 ③ 과 구별되지 않았다 — 복구는 succeeded 인데
+	// Gitea·Harbor·Jenkins 가 CreateContainerConfigError 로 멈춘 채 남는다.
+	//
+	// 네임스페이스의 role/rolebinding 만으로는 대체할 수 없다. 컨트롤러가
+	// 클러스터 범위로 list/watch 하기 때문이다.
+	"clusterroles.rbac.authorization.k8s.io",
+	"clusterrolebindings.rbac.authorization.k8s.io",
 }
 
 // dumpClusterScoped 는 대상 네임스페이스의 Helm 릴리스가 소유한 클러스터 범위
