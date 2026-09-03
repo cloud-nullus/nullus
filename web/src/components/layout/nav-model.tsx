@@ -75,6 +75,7 @@ export const navGroups: NavGroup[] = [
       { key: 'clusterManagement', label: 'sidebar.clusterManagement', path: '/admin/clusters', icon: <Network {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'knownIssues', label: 'sidebar.knownIssues', path: '/admin/known-issues', icon: <Bug {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'tokenManagement', label: 'sidebar.tokenManagement', path: '/admin/token-management', icon: <KeyRound {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'backup', label: 'sidebar.backup', path: '/admin/backup', icon: <DatabaseBackup {...iconProps('sm')} />, roles: ['admin'] },
     ],
   },
 ]

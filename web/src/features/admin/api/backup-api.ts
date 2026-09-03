@@ -79,7 +79,9 @@ export function useBackupRuns() {
   return useQuery({
     queryKey: backupQueryKeys.runs(),
     queryFn: backupApiCalls.listRuns,
-    initialData: [] as BackupRun[],
+    // initialData 를 쓰지 않는다. 전역 staleTime 이 5분이라, 빈 배열을 심으면
+    // react-query 가 그것을 신선한 값으로 보고 **5분간 조회하지 않는다** —
+    // 백업이 있어도 화면은 "아직 백업이 없습니다" 로 남는다.
     refetchInterval: (query) => {
       const runs = query.state.data as BackupRun[] | undefined;
       const busy = runs?.some(
