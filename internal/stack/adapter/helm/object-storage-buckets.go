@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
@@ -52,12 +53,12 @@ spec:
       restartPolicy: Never
       containers:
       - name: mc
-        image: minio/mc:RELEASE.2025-05-21T01-59-54Z
+        image: %s
         command: ["/bin/sh", "-c"]
         args:
           - |
 %s
-`, objectStorageBucketJobName, namespace, indentYAML(script, 12))
+`, objectStorageBucketJobName, namespace, shareddomain.MinIOClientImage, indentYAML(script, 12))
 
 	_, _ = o.runKubectl(ctx, "delete", "job", objectStorageBucketJobName, "-n", namespace, "--ignore-not-found=true")
 	if err := o.applyManifest(ctx, namespace, manifest); err != nil {

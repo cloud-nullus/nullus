@@ -83,3 +83,12 @@ openbao/openbao:2.5.5
 docker.io/bitnamilegacy/kubectl:1.33.4
 oci.external-secrets.io/external-secrets/external-secrets:v2.7.0
 ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2
+
+# --- Runtime manifest images (built by Go code, not by helm) ---
+# Source of truth: internal/shared/domain/runtime_images.go
+curlimages/curl:8.11.1
+docker.io/bitnamilegacy/kubectl:1.33.4
+docker:27-cli
+docker:27-dind
+minio/mc:RELEASE.2025-05-21T01-59-54Z
+node:22-alpine

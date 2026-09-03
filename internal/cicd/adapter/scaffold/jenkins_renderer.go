@@ -5,14 +5,15 @@ import (
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // jenkinsAgentImage 는 빌드가 도는 컨테이너다. dind 사이드카에 붙어
 // docker build/push 를 한다 — Jenkins 는 GitLab CI 와 달리 실행기를 별도
 // 차트로 세우지 않고 kubernetes 플러그인이 이 파드를 빌드마다 띄운다.
 const (
-	jenkinsAgentImage = "docker:27-cli"
-	jenkinsDindImage  = "docker:27-dind"
+	jenkinsAgentImage = shareddomain.JenkinsAgentImage
+	jenkinsDindImage  = shareddomain.JenkinsDindImage
 )
 
 // renderJenkinsfile 은 build → deploy 2단계 선언적 파이프라인을 만든다.

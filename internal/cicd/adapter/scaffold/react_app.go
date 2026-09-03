@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // React 스캐폴딩이 쓰는 버전들.
@@ -17,7 +18,7 @@ const (
 	vitePluginVersion = "^6.0.0"
 	typescriptVersion = "~5.9.3"
 	reactTypesVersion = "^19.2.0"
-	nodeBuilderImage  = "node:22-alpine"
+	nodeBuilderImage  = shareddomain.NodeBuilderImage
 )
 
 // reactAppFiles 는 바로 도는 React + Vite + TypeScript 앱을 만든다.

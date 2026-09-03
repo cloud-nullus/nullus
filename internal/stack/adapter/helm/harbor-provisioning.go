@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
@@ -193,7 +194,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: curl
-        image: curlimages/curl:8.11.1
+        image: %s
         env:
         - name: HARBOR_URL
           value: %q
@@ -206,7 +207,7 @@ spec:
         args:
         - |
 %s
-`, harborProvisionJobName, namespace, harborURL,
+`, harborProvisionJobName, namespace, shareddomain.CurlImage, harborURL,
 		domain.HarborAdminSecret, domain.HarborAdminPassKey, oidcEnv,
 		indentYAML(script, 10))
 
