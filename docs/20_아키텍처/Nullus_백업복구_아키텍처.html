@@ -853,9 +853,13 @@
             <strong>복구 볼륨을 통과시키는 preflight</strong>.
           </p>
           <p style="font-size:13.5px;color:var(--muted)">
-            남은 문제는 차트가 <em>자체 생성하는</em> 비밀값이다. 관리자 비밀번호는
-            <code>existingSecret</code> 으로 금고에서 오지만, Harbor 의 <code>secretKey</code> 처럼
-            차트가 만드는 값은 재설치 때 새로 생긴다 — 그러면 복원된 DB 를 복호화하지 못한다.
+            차트가 <em>자체 생성하는</em> 비밀값이 걸림돌로 보였으나, 실측해 보니 그렇지 않다.
+            복원된 DB 를 못 읽게 만드는 것은 Harbor 의 <code>secretKey</code> 하나인데
+            <strong>그 값이 랜덤이 아니다</strong> — 차트 기본값 <code>not-a-secure-key</code> 를
+            그대로 쓰고 있어 재설치해도 같다. 나머지 랜덤 값(<code>CSRF_KEY</code> ·
+            <code>core.secret</code> · <code>JOBSERVICE_SECRET</code> · <code>REGISTRY_HTTP_SECRET</code>)은
+            한 릴리스 안에서 <strong>함께</strong> 재생성되므로 서로 맞고,
+            <code>REGISTRY_HTPASSWD</code> 는 고정 비밀번호의 해시라 새로 만들어도 검증을 통과한다.
           </p>
         </div>
         <div class="card">
@@ -865,6 +869,24 @@
             <strong>모든</strong> 리소스를 훑는다. PVC 를 열거하는 것과 같은 발상이다.
           </p>
         </div>
+      </div>
+
+      <div class="card" style="border-color:var(--danger)">
+        <h3 style="color:var(--danger)">먼저 고쳐야 할 것 — Harbor 가 공개된 기본 키로 돈다</h3>
+        <p style="font-size:14.5px">
+          <code>secretKey</code> 가 재설치에도 같다는 사실은 재적용 방식에는 다행이지만,
+          그 이유가 <strong>차트에 적힌 공개 기본값을 그대로 쓰고 있기 때문</strong>이다.
+          이 키는 Harbor 가 로봇 계정 자격증명과 레플리케이션 엔드포인트 비밀번호를
+          DB 에 암호화해 넣을 때 쓴다 — <strong>우리 백업 산출물(<code>volumes/harbor-database</code>)을
+          손에 넣은 사람은 그 키로 풀 수 있다.</strong>
+        </p>
+        <p style="font-size:14px;color:var(--muted)">
+          고치는 방법은 이미 저장소에 있다. 관리자 비밀번호가 그렇듯
+          <strong>금고를 SoT 로 두고 차트가 참조하게</strong> 하면 된다 —
+          차트는 <code>existingSecretSecretKey</code> 를 받는다. 최초 설치에서 강한 키를 만들어
+          금고에 넣고, 이후 모든 설치가 그것을 참조하면 <strong>보안 결함과 재적용의 전제가
+          한 번에 해결된다</strong>: 복구는 금고를 먼저 되돌리므로 재설치해도 같은 키가 쓰인다.
+        </p>
       </div>
 
       <div class="prose">
