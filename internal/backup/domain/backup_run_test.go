@@ -96,3 +96,43 @@ func TestBackupRun_RequiresQuiesce(t *testing.T) {
 	assert.True(t, NewBackupRun("o", ModeStackOnly, TriggerManual, ModeComponents(ModeStackOnly)).RequiresQuiesce())
 	assert.True(t, NewBackupRun("o", ModeFull, TriggerManual, ModeComponents(ModeFull)).RequiresQuiesce())
 }
+
+func TestParseComponents_알려진_항목만_받는다(t *testing.T) {
+	got, err := ParseComponents([]string{"platform_db", "volume"})
+	require.NoError(t, err)
+	assert.Equal(t, []Component{ComponentPlatformDB, ComponentVolume}, got)
+}
+
+func TestParseComponents_모르는_항목은_거부한다(t *testing.T) {
+	// 조용히 버리면 사용자가 고른 것과 실제로 백업된 것이 달라진다 —
+	// 그 사실은 복구할 때에야 드러난다.
+	_, err := ParseComponents([]string{"platform_db", "그런건없다"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "그런건없다")
+}
+
+func TestParseComponents_중복은_한_번만(t *testing.T) {
+	got, err := ParseComponents([]string{"volume", "volume", "platform_db"})
+	require.NoError(t, err)
+	assert.Equal(t, []Component{ComponentVolume, ComponentPlatformDB}, got)
+}
+
+func TestParseComponents_비어_있으면_nil(t *testing.T) {
+	// 호출부는 이때 모드에서 파생한다 — 빈 선택과 "선택하지 않음" 을 구분한다.
+	got, err := ParseComponents(nil)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestRequiresQuiesce_볼륨을_빼면_무중단이다(t *testing.T) {
+	// 정지 창을 만드는 것은 볼륨뿐이다. 볼륨을 뺀 선택까지 서비스를 멈추면
+	// 사용자가 백업을 피하게 되고, 피해진 백업은 없는 백업이다.
+	withVolume := NewBackupRun("org", ModeFull, TriggerManual,
+		[]Component{ComponentPlatformDB, ComponentVolume})
+	assert.True(t, withVolume.RequiresQuiesce())
+
+	withoutVolume := NewBackupRun("org", ModeFull, TriggerManual,
+		[]Component{ComponentPlatformDB, ComponentKeycloakDB, ComponentNamespaceResources})
+	assert.False(t, withoutVolume.RequiresQuiesce(),
+		"full 모드라도 볼륨을 빼면 멈출 이유가 없다")
+}

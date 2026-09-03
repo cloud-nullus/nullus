@@ -202,3 +202,41 @@ func TestToResponse_정지창_시간을_노출한다(t *testing.T) {
 	assert.GreaterOrEqual(t, res.QuiesceSeconds, float64(0))
 	assert.NotNil(t, res.StartedAt)
 }
+
+func TestCreateBackup_볼륨을_빼면_확인이_필요없다(t *testing.T) {
+	// full 모드라도 고른 대상에 볼륨이 없으면 멈추지 않는다. 멈추지도 않는데
+	// 확인을 강요하면 그 문구는 의미 없는 절차가 되고, 정작 진짜 멈추는
+	// 백업에서도 사용자가 습관적으로 넘긴다.
+	e, _, f := newTestHandler(&stubRepo{})
+
+	rec := post(e, "/api/v1/backups",
+		`{"mode":"full","namespace":"nullus","scope":["platform_db","keycloak_db"]}`)
+
+	assert.True(t, f.backupCalled)
+	assert.Equal(t, http.StatusTeapot, rec.Code)
+}
+
+func TestCreateBackup_볼륨을_고르면_확인을_요구한다(t *testing.T) {
+	// 모드가 stack_only 든 full 이든, 볼륨이 들어가면 서비스가 멈춘다.
+	e, _, f := newTestHandler(&stubRepo{})
+
+	rec := post(e, "/api/v1/backups",
+		`{"mode":"stack_only","namespace":"nullus","scope":["volume"]}`)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "BACKUP_CONFIRM_REQUIRED")
+	assert.False(t, f.backupCalled)
+}
+
+func TestCreateBackup_모르는_대상은_거부한다(t *testing.T) {
+	// 조용히 버리면 고른 것과 백업된 것이 달라지고, 그 사실은 복구할 때
+	// 드러난다 — 그때는 늦다.
+	e, _, f := newTestHandler(&stubRepo{})
+
+	rec := post(e, "/api/v1/backups",
+		`{"mode":"full","namespace":"nullus","confirm":"nullus","scope":["platform_db","없는것"]}`)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "BACKUP_INVALID_COMPONENT")
+	assert.False(t, f.backupCalled)
+}

@@ -290,7 +290,7 @@ func (f *fakeArchiver) Restore(_ context.Context, _, pvc string, in io.Reader) e
 	f.tr.add("vol.restore:" + pvc)
 	return nil
 }
-func (f *fakeArchiver) EnsurePVC(_ context.Context, _ string, spec domain.VolumeSpec) error {
+func (f *fakeArchiver) EnsurePVC(_ context.Context, _ string, spec domain.VolumeSpec, _ string) error {
 	f.tr.add("vol.ensure:" + spec.Name)
 	return nil
 }

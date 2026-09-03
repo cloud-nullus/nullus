@@ -31,8 +31,14 @@ import (
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 )
 
+// stack ID 는 UUID 가 아니다 — stacks.id 는 `stk_<hex>` 형태의 짧은 식별자다.
+// 여기에 uuid 를 넣어 두는 바람에 stack_id 컬럼이 UUID 로 선언된 것을 아무도
+// 잡지 못했고, 실제 스택으로 백업을 돌려 보고서야 드러났다(000076).
+const realisticStackID = "stk_352e9f68db06"
+
 func newRun(orgID string) *domain.BackupRun {
 	run := domain.NewBackupRun(orgID, domain.ModeFull, domain.TriggerManual, domain.ModeComponents(domain.ModeFull))
+	run.StackID = realisticStackID
 	return run
 }
 
@@ -71,6 +77,23 @@ func TestPostgresBackupRepository_실행_왕복(t *testing.T) {
 	require.NotNil(t, got.QuiesceStartedAt)
 	require.NotNil(t, got.QuiesceEndedAt)
 	assert.EqualValues(t, 75, got.Manifest["schema_version"], "JSONB 왕복")
+}
+
+// 실제 스택 ID 형식(stk_*)이 그대로 저장·조회되는지 본다.
+// UUID 컬럼이면 여기서 "invalid input syntax for type uuid" 로 죽는다.
+func TestPostgresBackupRepository_스택_ID_는_UUID_가_아니다(t *testing.T) {
+	pool, cleanup := setupBackupPostgres(t)
+	t.Cleanup(cleanup)
+
+	repo := NewPostgresBackupRepository(pool)
+	ctx := context.Background()
+
+	run := newRun(uuid.NewString())
+	require.NoError(t, repo.CreateRun(ctx, run), "stk_* 형식이 저장돼야 한다")
+
+	got, err := repo.GetRun(ctx, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, realisticStackID, got.StackID, "형식이 보존돼야 한다")
 }
 
 func TestPostgresBackupRepository_stack_id_가_없어도_된다(t *testing.T) {
@@ -295,12 +318,12 @@ func applyBackupMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	var files []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), "000075_") && strings.HasSuffix(e.Name(), ".up.sql") {
+		if !e.IsDir() && (strings.HasPrefix(e.Name(), "000075_") || strings.HasPrefix(e.Name(), "000076_")) && strings.HasSuffix(e.Name(), ".up.sql") {
 			files = append(files, e.Name())
 		}
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("000075 마이그레이션을 찾지 못했습니다")
+		return fmt.Errorf("백업 마이그레이션(000075/000076)을 찾지 못했습니다")
 	}
 	sort.Strings(files)
 

@@ -54,6 +54,19 @@ func ErrDestinationUnavailable(detail string) error {
 	}
 }
 
+// ErrInvalidComponent 는 모르는 백업 대상을 거부한다.
+//
+// 이름을 Detail 에 그대로 담는다 — 어느 값이 문제인지 말해 주지 않으면
+// 사용자는 다섯 개 중 무엇을 고쳐야 할지 알 수 없다.
+func ErrInvalidComponent(component string) error {
+	return &shareddomain.AppError{
+		Code:       "BACKUP_INVALID_COMPONENT",
+		HTTPStatus: http.StatusBadRequest,
+		Message:    "지원하지 않는 백업 대상입니다",
+		Detail:     component,
+	}
+}
+
 func ErrInvalidMode(mode string) error {
 	return &shareddomain.AppError{
 		Code:       "BACKUP_INVALID_MODE",

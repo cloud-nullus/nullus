@@ -225,3 +225,32 @@ func TestRunBackup_스택이_있으면_금고를_뜬다(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, -1, tr.indexOf("kv.export"))
 }
+
+func TestRunBackup_고른_대상만_뜬다(t *testing.T) {
+	// full 모드라도 사용자가 볼륨을 뺐으면 볼륨을 뜨지 않는다 — 그리고
+	// 그러면 서비스를 멈출 이유도 없다. 이유 없이 멈추면 사용자가 백업을
+	// 피하게 되고, 피해진 백업은 없는 백업이다.
+	uc, _, _, _, scaler, _, _ := newBackupFixture(t)
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus",
+		Mode:  domain.ModeFull,
+		Scope: []domain.Component{domain.ComponentPlatformDB},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []domain.Component{domain.ComponentPlatformDB}, run.Scope)
+	assert.False(t, run.RequiresQuiesce(), "볼륨을 빼면 정지 창이 없어야 한다")
+	assert.Empty(t, scaler.scaled, "멈출 이유가 없는데 워크로드를 내렸다")
+}
+
+func TestRunBackup_고르지_않으면_모드에서_파생한다(t *testing.T) {
+	// 스케줄 백업과 옛 호출부는 모드만 넘긴다.
+	uc, _, _, _, _, _, _ := newBackupFixture(t)
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", Namespace: "nullus",
+		Mode: domain.ModePlatformOnly, Trigger: domain.TriggerSchedule,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.ModeComponents(domain.ModePlatformOnly), run.Scope)
+}

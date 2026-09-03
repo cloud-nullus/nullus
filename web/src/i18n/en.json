@@ -23,7 +23,8 @@
     "knownIssues": "Known Issues",
     "logout": "Logout",
     "cicdGoldenPath": "Golden Paths",
-    "tokenManagement": "Token Management"
+    "tokenManagement": "Token Management",
+    "backup": "Backup"
   },
   "common": {
     "save": "Save",
@@ -1851,6 +1852,42 @@
         "title": "Congratulations — now try it yourself!",
         "body": "That is the whole flow, end to end. Press Quick Start and put up your first stack — it installs the lightweight one that fits a single 8Gi node. Stuck later? The tutorial button in the header reopens this tour anywhere."
       }
+    }
+  },
+  "backupPage": {
+    "breadcrumb": {
+      "current": "Backup"
+    },
+    "title": "Backup",
+    "description": "Run a backup and review past runs.",
+    "run": "Run backup",
+    "empty": "No backups yet.",
+    "table": {
+      "startedAt": "Started",
+      "mode": "Mode",
+      "size": "Size",
+      "quiesce": "Downtime",
+      "status": "Status"
+    },
+    "dialog": {
+      "title": "Select backup targets",
+      "description": "Choose what to include in this backup.",
+      "start": "Start backup",
+      "nothingSelected": "Select at least one target.",
+      "quiesceWarning": "Including volumes stops the workloads while the backup runs.",
+      "confirmLabel": "Type the namespace to confirm"
+    },
+    "target": {
+      "platformDb": "Platform DB",
+      "platformDbDesc": "Nullus metadata — stacks, pipelines, cluster records",
+      "keycloakDb": "Keycloak DB",
+      "keycloakDbDesc": "Accounts and roles. Without it you cannot sign in after a restore",
+      "openbaoKv": "Vault (OpenBao)",
+      "openbaoKvDesc": "Tokens and credentials. Without it the tools cannot authenticate to each other",
+      "nsResources": "Kubernetes resources",
+      "nsResourcesDesc": "Wiring and configuration — Deployments, Secrets, CRDs, Argo CD Applications",
+      "volume": "Volumes",
+      "volumeDesc": "Data inside the tools — Git repos, build history, container images. The largest, and the only one that stops the service"
     }
   }
 }

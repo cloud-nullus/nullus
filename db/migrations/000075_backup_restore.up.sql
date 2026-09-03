@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id             UUID        NOT NULL,
     -- E1(워크로드 데이터) 대상 스택. NULL 이면 플랫폼 전용 백업이다.
-    stack_id           UUID,
+    --
+    -- UUID 가 아니라 TEXT 다 — stacks.id 는 `stk_352e9f68db06` 처럼 접두사가
+    -- 붙은 짧은 식별자이고 character varying 이다. (000076 에서 정정)
+    stack_id           TEXT,
     trigger            VARCHAR(20) NOT NULL,
     -- full | platform_only | stack_only (설계 §6.5)
     mode               VARCHAR(20) NOT NULL,
