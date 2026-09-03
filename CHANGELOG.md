@@ -45,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GitLab CI 가 한 건도 돌지 않던 것 — 러너 토큰을 등록 토큰으로 넘긴다** (`internal/stack/adapter/helm/gitlab-runner.go`, `orchestrator.go`): `gitlab-*` 골든패스로 설치한 스택에서 러너가 크래시 루프로 죽어 **파이프라인이 하나도 실행되지 않았다.** 실환경 리허설에서 드러났다.
+
+  **원인은 토큰의 종류를 구분하지 않은 것이다.** 설치기가 rails 로 인스턴스 러너를 만들어 그 **인증 토큰**을 얻고, 그것을 차트의 `runnerToken` 으로 넘겼다. 인증 토큰은 "이미 등록된 러너의 자격증명" 이므로 러너는 등록이 아니라 **검증**을 시도한다. 그 러너가 GitLab 에서 사라지자 `Verifying runner... is removed` 로 30회 재시도 후 죽었고, **복구 경로가 없었다** — 인증 토큰은 일회성이라 다시 등록할 수단이 없다.
+
+  등록 토큰(`runnerRegistrationToken`)을 쓰면 러너가 **스스로 등록**하므로 같은 상황에서 회복한다. 그래서 rails 탐침 한 번으로 `allow_runner_registration_token` 과 두 토큰을 함께 읽고, 등록 토큰을 쓸 수 있으면 그쪽을, 막혀 있으면 인증 토큰을 고른다. 토큰 종류를 타입으로 들고 다녀(`runnerToken{Value, Kind}`) **자리를 잘못 잡는 실수가 컴파일 단계에서 막히게** 했다.
+
+  탐침 출력을 `key=value` 로 고정했다. 예전 파서는 "마지막 공백 없는 줄" 을 토큰으로 집었는데, rails 가 뒤에 경고 한 줄만 찍어도 그것이 토큰이 되는 구조였다.
+
+  **설치 시점 검사만으로는 못 잡는다.** `verifyReleaseRuntimeReadiness` 가 `container.Ready` 까지 보지만, 러너는 설치 직후엔 정상이었고 그 뒤에 무너졌다 — 설치는 `completed` 로 끝났고 CI 는 영영 돌지 않았다. 자가 치유되는 토큰을 쓰는 것이 이 부류에 대한 답이다.
+
 - **Harbor 가 공개된 기본 암호화 키로 돌고 있었다** (`internal/stack/adapter/helm/values.go`, `secret-provisioning.go`, `internal/stack/domain/connection.go`): Harbor 는 로봇 계정 자격증명과 레플리케이션 엔드포인트 비밀번호를 **DB 에 암호화해 저장**하는데, 그 키가 차트 기본값 `not-a-secure-key` 였다. 설치된 클러스터에서 값을 꺼내 확인했다.
 
   **백업이 이 결함을 증폭한다.** 산출물 `volumes/harbor-database.tar` 를 손에 넣은 사람은 Harbor 차트에 공개된 문자열로 그 안의 자격증명을 전부 풀 수 있다. 백업을 잘 만들수록 노출이 커지는 종류다.

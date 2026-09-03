@@ -81,7 +81,7 @@ func wrapRunnerTokenDiscoveryError(err error) error {
 		ErrRunnerTokenDiscovery, err)
 }
 
-func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context, namespace string) (string, error) {
+func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context, namespace string) (runnerToken, error) {
 	const (
 		maxAttempts = 24
 		retryDelay  = 10 * time.Second
@@ -97,7 +97,7 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context
 
 		retryable := isRetryableRunnerTokenDiscoveryError(err)
 		if !retryable || attempt == maxAttempts {
-			return "", err
+			return runnerToken{}, err
 		}
 
 		slog.Warn("gitlab runner token not ready yet; retrying",
@@ -109,7 +109,7 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context
 
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return runnerToken{}, ctx.Err()
 		case <-time.After(retryDelay):
 		}
 	}
@@ -117,35 +117,23 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context
 	if lastErr == nil {
 		lastErr = fmt.Errorf("runner token discovery failed")
 	}
-	return "", lastErr
+	return runnerToken{}, lastErr
 }
 
-func (o *Orchestrator) discoverGitLabRunnerRegistrationTokenOnce(ctx context.Context, namespace string) (string, error) {
-	authTokenScript := `runner = Ci::Runner.where(description: "nullus-shared-runner", runner_type: :instance_type).order(id: :desc).first; runner ||= Ci::Runner.create!(description: "nullus-shared-runner", runner_type: :instance_type, run_untagged: true, locked: false); puts runner.token.to_s`
-	token, authErr := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, authTokenScript)
-	if authErr == nil {
-		return token, nil
+func (o *Orchestrator) discoverGitLabRunnerRegistrationTokenOnce(ctx context.Context, namespace string) (runnerToken, error) {
+	output, err := o.runGitLabRails(ctx, namespace, runnerTokenProbeScript)
+	if err != nil {
+		return runnerToken{}, err
 	}
-
-	legacyRegistrationTokenScript := `puts ApplicationSetting.current.runners_registration_token`
-	token, legacyErr := o.discoverGitLabRunnerTokenFromRailsRunner(ctx, namespace, legacyRegistrationTokenScript)
-	if legacyErr == nil {
-		return token, nil
+	token := parseRunnerTokenProbe(output)
+	if token.Kind == runnerTokenNone {
+		return runnerToken{}, fmt.Errorf("runner token not found in rails output")
 	}
-
-	return "", runnerTokenNotFoundError(authErr, legacyErr)
+	return token, nil
 }
 
-// runnerTokenNotFoundError 는 두 조회 경로의 원인을 모두 보존한다.
-//
-// 원인을 버리고 일반 메시지만 돌려주면 isRetryableRunnerTokenDiscoveryError 가
-// 힌트를 찾지 못해 재시도 루프가 한 번도 돌지 않는다. GitLab 이 아직 마이그레이션
-// 중인 정상 상황에서도 즉시 실패하게 되므로, 원인 문자열을 반드시 남긴다.
-func runnerTokenNotFoundError(authErr, legacyErr error) error {
-	return fmt.Errorf("runner token not found in rails output (auth: %v; legacy: %w)", authErr, legacyErr)
-}
 
-func (o *Orchestrator) discoverGitLabRunnerTokenFromRailsRunner(ctx context.Context, namespace, script string) (string, error) {
+func (o *Orchestrator) runGitLabRails(ctx context.Context, namespace, script string) (string, error) {
 	if !looksLikeKubeconfig(o.kubeconfig) {
 		return "", fmt.Errorf("kubeconfig unavailable")
 	}
@@ -171,12 +159,7 @@ func (o *Orchestrator) discoverGitLabRunnerTokenFromRailsRunner(ctx context.Cont
 		return "", fmt.Errorf("kubectl exec failed: %w (%s)", err, strings.TrimSpace(string(output)))
 	}
 
-	token := parseGitLabRunnerRegistrationTokenOutput(string(output))
-	if token == "" {
-		return "", fmt.Errorf("runner token not found in output")
-	}
-
-	return token, nil
+	return string(output), nil
 }
 
 func isRetryableRunnerTokenDiscoveryError(err error) bool {
@@ -208,15 +191,87 @@ func isRetryableRunnerTokenDiscoveryError(err error) bool {
 	return false
 }
 
-func parseGitLabRunnerRegistrationTokenOutput(output string) string {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	token := ""
-	for _, line := range lines {
-		candidate := strings.TrimSpace(line)
-		if candidate == "" || strings.HasPrefix(candidate, "Defaulted container") || strings.Contains(candidate, " ") {
-			continue
-		}
-		token = candidate
+
+// runnerTokenKind 는 토큰의 종류다. 차트에서 쓰는 자리가 다르므로 값만
+// 들고 다니면 안 된다 — 자리를 잘못 잡으면 러너가 조용히 죽는다.
+type runnerTokenKind int
+
+const (
+	runnerTokenNone runnerTokenKind = iota
+	// runnerTokenRegistration 은 등록 토큰이다. 러너가 이것으로 **스스로
+	// 등록**하므로, 등록된 러너가 사라져도 다시 등록해 회복한다.
+	runnerTokenRegistration
+	// runnerTokenAuthentication 은 이미 등록된 러너의 자격증명이다.
+	// 가리키는 러너가 사라지면 **복구 경로가 없다** — 러너는 등록이 아니라
+	// 검증을 시도하고 "Verifying runner... is removed" 로 영구 실패한다.
+	runnerTokenAuthentication
+)
+
+type runnerToken struct {
+	Value string
+	Kind  runnerTokenKind
+}
+
+// runnerTokenValues 는 토큰을 차트가 읽는 자리에 넣는다.
+//
+// 값이 비어 있으면 아무것도 넣지 않는다. 빈 문자열을 넘기면 차트가 빈 값으로
+// Secret 을 만들고 러너는 그것으로 등록을 시도하다 죽는다 — 호출부가 실패로
+// 다루도록 여기서는 조용히 비워 둔다.
+func runnerTokenValues(t runnerToken) map[string]any {
+	if strings.TrimSpace(t.Value) == "" {
+		return map[string]any{}
 	}
-	return token
+	switch t.Kind {
+	case runnerTokenRegistration:
+		return map[string]any{"runnerRegistrationToken": t.Value}
+	case runnerTokenAuthentication:
+		return map[string]any{"runnerToken": t.Value}
+	default:
+		return map[string]any{}
+	}
+}
+
+// runnerTokenProbeScript 는 등록 토큰 허용 여부와 두 토큰을 한 번에 읽는다.
+//
+// 출력은 key=value 로 고정한다. 예전 파서는 "마지막 공백 없는 줄" 을 토큰으로
+// 집었는데, rails 가 뒤에 경고 한 줄만 찍어도 그것이 토큰이 되는 구조였다.
+//
+// 인증 토큰 쪽은 find-or-create 다. 이미 있으면 그 토큰을, 없으면 새로 만들어
+// 돌려준다 — 등록 토큰을 쓸 수 없는 인스턴스를 위한 대비책이다.
+const runnerTokenProbeScript = `
+s = ApplicationSetting.current
+allowed = s.respond_to?(:allow_runner_registration_token) ? s.allow_runner_registration_token : true
+reg = allowed ? s.runners_registration_token.to_s : ""
+r = Ci::Runner.where(description: "nullus-shared-runner", runner_type: :instance_type).order(id: :desc).first
+r ||= Ci::Runner.create!(description: "nullus-shared-runner", runner_type: :instance_type, run_untagged: true, locked: false)
+puts "registration_allowed=#{allowed}"
+puts "registration_token=#{reg}"
+puts "auth_token=#{r.token}"
+`
+
+// parseRunnerTokenProbe 는 탐침 출력에서 쓸 토큰 하나를 고른다.
+//
+// **등록 토큰을 먼저 고른다.** 러너가 그것으로 스스로 등록하므로, 등록된
+// 러너가 사라져도 다시 등록해 회복한다. 인증 토큰은 가리키는 러너가 사라지면
+// 복구 경로가 없어 CI 가 영구히 멈춘다 — 실환경에서 정확히 그렇게 됐다.
+func parseRunnerTokenProbe(output string) runnerToken {
+	field := func(key string) string {
+		for _, line := range strings.Split(output, "\n") {
+			line = strings.TrimSpace(line)
+			if after, ok := strings.CutPrefix(line, key+"="); ok {
+				return strings.TrimSpace(after)
+			}
+		}
+		return ""
+	}
+
+	if strings.EqualFold(field("registration_allowed"), "true") {
+		if reg := field("registration_token"); reg != "" {
+			return runnerToken{Value: reg, Kind: runnerTokenRegistration}
+		}
+	}
+	if auth := field("auth_token"); auth != "" {
+		return runnerToken{Value: auth, Kind: runnerTokenAuthentication}
+	}
+	return runnerToken{}
 }

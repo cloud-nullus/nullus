@@ -1387,16 +1387,6 @@ metadata:
 	assert.Contains(t, normalized, "kind: ConfigMap")
 }
 
-func TestParseGitLabRunnerRegistrationTokenOutput(t *testing.T) {
-	output := "Defaulted container \"toolbox\" out of: toolbox, certificates (init), configure (init)\n2QEqK1k4dNXwreEMDL9JhXTTNeyG6VK6M2g1U10jRAhMBHwI5HqaCFTeEzby0r0C\n"
-	token := parseGitLabRunnerRegistrationTokenOutput(output)
-	assert.Equal(t, "2QEqK1k4dNXwreEMDL9JhXTTNeyG6VK6M2g1U10jRAhMBHwI5HqaCFTeEzby0r0C", token)
-}
-
-func TestParseGitLabRunnerRegistrationTokenOutput_Empty(t *testing.T) {
-	assert.Equal(t, "", parseGitLabRunnerRegistrationTokenOutput("\nDefaulted container \"toolbox\"\n"))
-}
-
 func TestIsRetryableRunnerTokenDiscoveryError_TrueCases(t *testing.T) {
 	cases := []error{
 		fmt.Errorf("kubectl exec failed: unable to upgrade connection: container not found (\"toolbox\")"),
