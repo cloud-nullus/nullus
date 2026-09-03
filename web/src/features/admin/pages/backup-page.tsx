@@ -46,7 +46,7 @@ function formatBytes(bytes: number): string {
 export function BackupPage() {
   const { t } = useTranslation();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const { data: runs } = useBackupRuns();
+  const { data: runs = [] } = useBackupRuns();
   const createBackup = useCreateBackup();
 
   // 확인 문구로 입력할 대상. 서버 기본값과 같아야 하므로 화면에서 정하지 않고

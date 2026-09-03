@@ -45,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **백업 화면에 갈 방법이 없었다** (`web/src/app/routes.tsx`, `web/src/components/layout/nav-model.tsx`): 화면은 만들어졌는데 **어디서도 열 수 없었다.** `BackupPage` 의 lazy 선언과 사이드바 아이콘 import 는 들어갔지만 정작 라우트 항목(`{ path: 'admin/backup' }`)과 메뉴 항목이 빠져, 주소를 직접 쳐도 404 였고 사이드바에도 나오지 않았다.
+
+  컴포넌트 테스트 10건은 전부 통과하고 있었다 — **페이지를 직접 렌더하므로 라우팅을 지나간다.** 그래서 선언이 아니라 **등록**을 보는 테스트를 넣었다(`routes.backup.test.tsx`): 라우트 항목 · 메뉴 항목 · 두 언어의 번역 키.
+
+- **백업 목록이 5분간 비어 보였다** (`web/src/features/admin/api/backup-api.ts`): `useBackupRuns` 가 `initialData: []` 를 주는데 전역 `staleTime` 이 5분이다(`lib/query-client.ts`). react-query 는 그 빈 배열을 **신선한 값으로 보고 조회하지 않는다** — 백업이 있어도 화면은 "아직 백업이 없습니다" 로 남고, 5분이 지나거나 다른 이유로 무효화될 때까지 그대로다.
+
+  `initialData` 를 빼고 호출부에서 기본값을 준다. 캐시를 빈 값으로 채우지 않는다는 성질을 테스트로 고정했다.
 
 - **복구가 "이전 상태" 를 재현할 수 있게 하는 두 가지** (`internal/backup/**`, `internal/stack/adapter/helm/preflight.go`, `internal/shared/domain/restore_marker.go` 신규): 실환경 리허설에서 지문이 일치하고 파이프라인까지 다시 도는 것을 확인한 뒤, **그 다음 단계에서 막히는 두 지점**이 드러났다.
 
