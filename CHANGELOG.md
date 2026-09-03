@@ -45,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Harbor 가 공개된 기본 암호화 키로 돌고 있었다** (`internal/stack/adapter/helm/values.go`, `secret-provisioning.go`, `internal/stack/domain/connection.go`): Harbor 는 로봇 계정 자격증명과 레플리케이션 엔드포인트 비밀번호를 **DB 에 암호화해 저장**하는데, 그 키가 차트 기본값 `not-a-secure-key` 였다. 설치된 클러스터에서 값을 꺼내 확인했다.
+
+  **백업이 이 결함을 증폭한다.** 산출물 `volumes/harbor-database.tar` 를 손에 넣은 사람은 Harbor 차트에 공개된 문자열로 그 안의 자격증명을 전부 풀 수 있다. 백업을 잘 만들수록 노출이 커지는 종류다.
+
+  관리자 비밀번호가 이미 지나가는 길에 얹었다 — Nullus 가 생성 → OpenBao write → ExternalSecret → K8s Secret → 차트가 `existingSecretSecretKey` 로 참조. 값을 values 에 직접 넣지 않는 이유가 있다: **values 는 Helm 릴리스 Secret 에 그대로 저장되므로** 평문으로 넘기면 키를 한 곳 더 흘린다. Secret 이름만 넘긴다.
+
+  길이를 엔트리별로 지정할 수 있게 `SecretEntry.Length` 를 더했다. Harbor 의 이 키는 AES-128 이라 **정확히 16자**여야 하고, 기본 43자를 넣으면 core 가 기동 시 죽는다.
+
+  **부수 효과로 Helm 재적용 복구의 전제가 설계가 된다.** 지금까지 재설치해도 복원된 Harbor DB 를 읽을 수 있었던 것은 그 키가 우연히 고정 기본값이었기 때문이고, 차트가 버전을 올려 랜덤화하면 조용히 깨질 자리였다. 이제 금고가 SoT 이므로 복구가 금고를 되돌리면 같은 키가 돌아온다.
+
+  **기존 설치에는 자동 적용되지 않는다.** 키를 바꾸면 이미 암호화된 데이터를 읽지 못하므로, 이 변경은 신규 설치부터 유효하다. 기존 스택은 Harbor 의 재암호화 절차가 필요하다.
+
 
 - **복구가 "이전 상태" 를 재현할 수 있게 하는 두 가지** (`internal/backup/**`, `internal/stack/adapter/helm/preflight.go`, `internal/shared/domain/restore_marker.go` 신규): 실환경 리허설에서 지문이 일치하고 파이프라인까지 다시 도는 것을 확인한 뒤, **그 다음 단계에서 막히는 두 지점**이 드러났다.
 

@@ -71,6 +71,21 @@ const (
 	HarborAdminSecret  = "nullus-harbor-credentials" // #nosec G101 -- Secret 리소스 이름
 	HarborAdminPassKey = "HARBOR_ADMIN_PASSWORD"     // 차트의 existingSecretAdminPasswordKey 기본값
 
+	// HarborSecretKeyKey 는 Harbor 가 **DB 에 저장하는 자격증명을 암호화할 때**
+	// 쓰는 키다. 로봇 계정과 레플리케이션 엔드포인트 비밀번호가 이것으로 잠긴다.
+	//
+	// 차트 기본값은 `not-a-secure-key` 라는 공개 문자열이다. 그대로 두면
+	// Harbor DB 를 손에 넣은 사람이 차트에 적힌 키로 전부 풀 수 있다 —
+	// 우리 백업 산출물(volumes/harbor-database)이 곧 평문이 된다는 뜻이다.
+	//
+	// 키 이름은 차트가 정한다(existingSecretSecretKey 가 가리키는 Secret 안에서
+	// `secretKey` 를 찾는다). 임의로 바꿀 수 없다.
+	HarborSecretKeyKey = "secretKey" // #nosec G101 -- Secret 안의 키 이름
+
+	// HarborSecretKeyLength 는 Harbor 가 요구하는 길이다. AES-128 키라
+	// **정확히** 16자여야 하며, 다르면 core 가 기동 시 죽는다.
+	HarborSecretKeyLength = 16
+
 	// NexusServiceName 은 Nexus 진입 Service 다. 차트 기본 이름은
 	// {release}-nexus-repository-manager 라 길어지므로 fullnameOverride 로 맞춘다.
 	NexusReleaseName = "nexus"

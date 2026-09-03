@@ -183,6 +183,21 @@ func DefaultValues(stepName string) map[string]any {
 			// 만든 Secret 을 참조한다.
 			"existingSecretAdminPassword":    domain.HarborAdminSecret,
 			"existingSecretAdminPasswordKey": domain.HarborAdminPassKey,
+			// 저장 자격증명 암호화 키도 금고에서 온다.
+			//
+			// 차트 기본값은 `not-a-secure-key` 라는 **공개 문자열**이다. 그대로
+			// 두면 Harbor DB 를 얻은 사람이 차트에 적힌 키로 로봇 계정과
+			// 레플리케이션 자격증명을 전부 푼다 — 우리 백업 산출물
+			// (volumes/harbor-database)이 곧 평문이 된다.
+			//
+			// 값을 여기 직접 넣지 않는 이유가 있다: values 는 Helm 릴리스
+			// Secret 에 그대로 저장되므로, 평문으로 넣으면 키를 한 곳 더
+			// 흘리게 된다. Secret 이름만 넘긴다.
+			//
+			// 부수 효과로 복구가 쉬워진다. 금고가 SoT 이므로 복구가 금고를
+			// 되돌리면 같은 키가 돌아오고, 그래서 Helm 재설치로 복구해도
+			// 복원된 DB 를 읽을 수 있다.
+			"existingSecretSecretKey": domain.HarborAdminSecret,
 			// Trivy 는 기동 시 취약점 DB를 통째로 내려받는다. 로컬/소규모
 			// 클러스터에서 설치를 가장 자주 실패시키는 지점이라 기본은 끈다.
 			"trivy": map[string]any{
