@@ -939,9 +939,9 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 				// 돌지 않는 스택이 성공으로 보고된다.
 				return wrapRunnerTokenDiscoveryError(tokenErr)
 			}
-			values = mergeMaps(values, map[string]any{
-				"runnerToken": runnerToken,
-			})
+			// 토큰 종류에 따라 차트에서 쓰는 자리가 다르다. 자리를 잘못
+			// 잡으면 러너가 등록 대신 검증을 시도하다 영구 실패한다.
+			values = mergeMaps(values, runnerTokenValues(runnerToken))
 		} else {
 			slog.Warn("kubeconfig unavailable; skipping gitlab runner token discovery", "namespace", namespace)
 		}
