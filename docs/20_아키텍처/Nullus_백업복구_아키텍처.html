@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nullus 백업/복구 아키텍처</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+<style>
+  /* ── 토큰 ──────────────────────────────────────────────────────────
+     중성색은 청록 쪽으로 살짝 기울였다. 저장소의 다른 아키텍처 문서가
+     쓰는 cyan 계열을 잇되, 회색이 "고른 색" 으로 읽히게 한다.
+
+     halt 는 이 문서 전용 의미색이다. 정지 창은 이 아키텍처에서 사용자가
+     실제로 대가를 치르는 유일한 구간이라, 글이 아니라 형태로 드러나야
+     한다 — 어느 단계가 서비스를 멈추는지 훑어서 보이는 것이 요점이다. */
+  :root {
+    --ground:    #f6f9fb;
+    --panel:     #ffffff;
+    --panel-2:   #eef4f8;
+    --line:      #d9e4ec;
+    --line-soft: #e8eff4;
+    --ink:       #0e1b25;
+    --muted:     #52677a;
+    --faint:     #7d8fa0;
+    --accent:    #0e7490;
+    --accent-2:  #e0f4f8;
+    --halt:      #a2570c;
+    --halt-bg:   #fdf6ec;
+    --halt-line: #e6c9a0;
+    --danger:    #a92222;
+    --ok:        #1d6b48;
+    --shadow:    0 1px 2px rgba(14,27,37,.05), 0 12px 32px rgba(14,27,37,.06);
+    --radius:    14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #0c141a;
+      --panel:     #121e26;
+      --panel-2:   #16242e;
+      --line:      #263945;
+      --line-soft: #1d2c36;
+      --ink:       #e4eef4;
+      --muted:     #9db1c0;
+      --faint:     #74899a;
+      --accent:    #4dc4dc;
+      --accent-2:  #10313b;
+      --halt:      #e2a457;
+      --halt-bg:   #241a0e;
+      --halt-line: #4d3719;
+      --danger:    #f08b8b;
+      --ok:        #6fca9f;
+      --shadow:    0 1px 2px rgba(0,0,0,.3), 0 14px 34px rgba(0,0,0,.32);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:    #0c141a;
+    --panel:     #121e26;
+    --panel-2:   #16242e;
+    --line:      #263945;
+    --line-soft: #1d2c36;
+    --ink:       #e4eef4;
+    --muted:     #9db1c0;
+    --faint:     #74899a;
+    --accent:    #4dc4dc;
+    --accent-2:  #10313b;
+    --halt:      #e2a457;
+    --halt-bg:   #241a0e;
+    --halt-line: #4d3719;
+    --danger:    #f08b8b;
+    --ok:        #6fca9f;
+    --shadow:    0 1px 2px rgba(0,0,0,.3), 0 14px 34px rgba(0,0,0,.32);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+                 "Malgun Gothic", "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: "IBM Plex Sans", Inter, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    text-wrap: balance;
+    line-height: 1.25;
+    margin: 0;
+  }
+
+  code, kbd, .mono {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .88em;
+  }
+  code {
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    padding: .08em .38em;
+    white-space: nowrap;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ── 레이아웃 ───────────────────────────────────────────────────── */
+  .layout {
+    max-width: 1420px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 258px minmax(0, 1fr);
+    gap: 40px;
+    padding: 32px 24px 80px;
+    align-items: start;
+  }
+  @media (max-width: 940px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 24px 16px 56px; }
+    .toc { position: static; max-height: none; }
+  }
+
+  .toc {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 16px;
+    font-size: 13.5px;
+  }
+  .toc-label {
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; counter-reset: toc; }
+  .toc a {
+    display: flex;
+    gap: 9px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .toc a::before {
+    counter-increment: toc;
+    content: counter(toc);
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    min-width: 12px;
+  }
+  .toc a:hover { background: var(--panel-2); color: var(--ink); }
+
+  main { min-width: 0; display: flex; flex-direction: column; gap: 34px; }
+  .prose { max-width: 68ch; }
+
+  /* ── 머리말 ─────────────────────────────────────────────────────── */
+  .head {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 30px 32px;
+  }
+  .eyebrow {
+    font-size: 11.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .head h1 { font-size: 30px; font-weight: 700; margin: 10px 0 12px; letter-spacing: -.015em; }
+  .lede { color: var(--muted); max-width: 66ch; margin: 0; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px 20px;
+    margin-top: 20px; padding-top: 16px;
+    border-top: 1px solid var(--line-soft);
+    font-size: 13px; color: var(--faint);
+  }
+  .meta b { color: var(--muted); font-weight: 500; }
+
+  /* ── 섹션 ───────────────────────────────────────────────────────── */
+  section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 24px; }
+  section > h2 {
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  section > h2 .num {
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    margin-right: 10px;
+  }
+  h3 { font-size: 16px; font-weight: 600; margin-top: 6px; }
+  p { margin: 0; }
+  .prose p + p { margin-top: 12px; }
+
+  .card {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  /* 근거 인용 — 왜 이렇게 했는지. 설계 문서의 문장을 옮겨 온다. */
+  .why {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-2);
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px;
+    color: var(--ink);
+    font-size: 14px;
+  }
+  .why b { color: var(--accent); }
+
+  /* ── 표 ─────────────────────────────────────────────────────────── */
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  thead th {
+    font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; background: var(--panel-2);
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ── 순서 레일 ───────────────────────────────────────────────────
+     번호를 쓰는 이유가 있다: 이 문서의 주장이 "순서가 값어치다" 이고,
+     그 순서는 바꾸면 깨진다. 장식이 아니라 내용이다. */
+  .flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .flow > li {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 14px;
+    padding: 13px 16px 13px 12px;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    background: var(--panel);
+  }
+  .flow > li:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+  .flow > li:last-child { border-bottom: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); }
+  .step {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--faint);
+    padding-top: 2px;
+  }
+  .flow h4 { font-size: 14.5px; font-weight: 600; margin-bottom: 3px; }
+  .flow p { font-size: 13.5px; color: var(--muted); }
+
+  /* 정지 창 — 서비스가 멈추는 구간만 호박색으로 묶는다. */
+  .flow > li.halt { background: var(--halt-bg); border-left: 3px solid var(--halt); padding-left: 9px; }
+  .halt-cap {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    background: var(--halt-bg);
+    border: 1px solid var(--halt-line);
+    border-bottom: 0;
+    border-left: 3px solid var(--halt);
+    padding: 9px 16px;
+    font-size: 12.5px;
+    color: var(--halt);
+    font-weight: 600;
+  }
+  .halt-cap span { font-weight: 400; color: var(--muted); }
+
+  .tag {
+    display: inline-block;
+    font-size: 11px; font-weight: 600; letter-spacing: .04em;
+    padding: 1px 7px; border-radius: 999px;
+    border: 1px solid currentColor;
+    vertical-align: 1px;
+  }
+  .tag.halt { color: var(--halt); }
+  .tag.ok   { color: var(--ok); }
+  .tag.bad  { color: var(--danger); }
+
+  /* ── 레이어 다이어그램 ───────────────────────────────────────────── */
+  .layers { display: flex; flex-direction: column; gap: 0; }
+  .layer {
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    background: var(--panel);
+    padding: 14px 18px;
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 16px;
+    align-items: baseline;
+  }
+  .layer:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+  .layer:last-child { border-bottom: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); }
+  .layer-name { font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 14px; }
+  .layer-name em { display: block; font-style: normal; font-size: 11.5px; color: var(--faint); font-weight: 500; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    color: var(--muted);
+  }
+  .arrow { text-align: center; color: var(--faint); font-size: 12px; padding: 5px 0; letter-spacing: .3em; }
+
+  /* ── 산출물 트리 ─────────────────────────────────────────────────── */
+  pre {
+    margin: 0;
+    overflow-x: auto;
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.7px;
+    line-height: 1.75;
+    color: var(--ink);
+  }
+  pre .c { color: var(--faint); }
+
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+
+  footer {
+    color: var(--faint); font-size: 13px;
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <nav class="toc" aria-label="목차">
+    <div class="toc-label">목차</div>
+    <ol>
+      <li><a href="#scope">무엇을 지키는가</a></li>
+      <li><a href="#modules">모듈 구조</a></li>
+      <li><a href="#backup">백업 흐름</a></li>
+      <li><a href="#restore">복구 흐름</a></li>
+      <li><a href="#artifacts">산출물과 암호화</a></li>
+      <li><a href="#data">데이터 모델</a></li>
+      <li><a href="#failure">실패 모드</a></li>
+      <li><a href="#limits">한계와 다음</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <header class="head">
+      <div class="eyebrow">Architecture · internal/backup</div>
+      <h1>Nullus 백업/복구 아키텍처</h1>
+      <p class="lede">
+        플랫폼 메타데이터부터 설치된 OSS 의 내부 데이터까지 한 시점으로 얼려 클러스터 밖에 두고,
+        그 시점으로 되돌리는 구조. <strong>이 모듈의 값어치는 기능이 아니라 순서에 있다</strong> —
+        바꾸면 조용히 깨지는 순서들이 있고, 그것을 코드와 테스트로 고정한 것이 설계의 대부분이다.
+      </p>
+      <div class="meta">
+        <span><b>범위</b> 구조 · 레이어 · 흐름 · 실패 모드</span>
+        <span><b>결정 근거</b> <a href="../11_기능설계/Nullus_백업복구_설계.md">기능설계 문서</a></span>
+        <span><b>검증 절차</b> <a href="../50_운영/Nullus_백업복구_로컬_테스트_가이드.md">로컬 테스트 가이드</a></span>
+        <span><b>개정</b> 2026-09-03</span>
+      </div>
+    </header>
+
+    <!-- 1 ─────────────────────────────────────────────────────────── -->
+    <section id="scope">
+      <h2><span class="num">01</span>무엇을 지키는가</h2>
+
+      <div class="prose">
+        <p>
+          백업 대상은 다섯 갈래다. 갈래마다 저장 위치와 뜨는 방법이 다르고,
+          <strong>빠졌을 때 드러나는 시점도 다르다</strong> — 대부분은 복구를 시도할 때에야 드러난다.
+        </p>
+      </div>
+
+      <div class="tw">
+        <table>
+          <thead>
+            <tr><th>컴포넌트</th><th>무엇</th><th>어떻게</th><th>빠지면</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>platform_db</code></td>
+              <td>Nullus 메타데이터 — 스택 · 파이프라인 · 클러스터</td>
+              <td><code>pg_dump</code></td>
+              <td>복구 후 플랫폼이 자기 스택을 모른다</td>
+            </tr>
+            <tr>
+              <td><code>keycloak_db</code></td>
+              <td>계정과 권한</td>
+              <td><code>pg_dump</code></td>
+              <td>복구 후 로그인할 수 없다</td>
+            </tr>
+            <tr>
+              <td><code>openbao_kv</code></td>
+              <td>토큰 · 자격증명 (스택마다 하나)</td>
+              <td>KV 재귀 순회 논리 export</td>
+              <td>도구들이 서로 인증하지 못한다</td>
+            </tr>
+            <tr>
+              <td><code>ns_resources</code></td>
+              <td>배선 — Deployment · Secret · CRD · ClusterRole · Argo CD Application</td>
+              <td><code>kubectl get -o json</code> + 정리</td>
+              <td><strong>복구가 <code>succeeded</code> 인데 스택이 뜨지 않는다</strong></td>
+            </tr>
+            <tr>
+              <td><code>volume</code></td>
+              <td>OSS 내부 데이터 — Git 저장소 · 빌드 이력 · 이미지 blob</td>
+              <td>PVC 열거 → 헬퍼 파드가 tar</td>
+              <td>도구가 빈 디스크를 보고 재초기화한다</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="why">
+        <b>왜 열거인가.</b> PVC 는 이름을 나열하지 않고 네임스페이스에서 <em>열거</em>한다.
+        카탈로그에 도구가 늘어도 백업이 뒤처지지 않기 때문이다.
+        반대로 <code>ns_resources</code> 의 종류 목록은 아직 손으로 관리하며,
+        <strong>지금까지 나온 결함 대부분이 그 목록에서 빠진 것</strong>이었다 —
+        ESO 배선 · CRD · ClusterRole · Argo CD Application 이 차례로 그랬다.
+        <a href="#limits">§8</a> 이 그 뿌리를 다룬다.
+      </div>
+    </section>
+
+    <!-- 2 ─────────────────────────────────────────────────────────── -->
+    <section id="modules">
+      <h2><span class="num">02</span>모듈 구조</h2>
+
+      <div class="prose">
+        <p>
+          Clean Architecture 를 따른다. 의존은 항상 안쪽을 향하고, 바깥은 포트를 구현할 뿐이다.
+          <strong>도메인과 유스케이스는 클러스터도 DB 도 없이 실행된다</strong> —
+          순서 검증 같은 이 모듈의 핵심 규칙을 인프라 없이 고정하기 위해서다.
+        </p>
+      </div>
+
+      <div class="layers">
+        <div class="layer">
+          <div class="layer-name">domain<em>비즈니스 규칙</em></div>
+          <div class="chips">
+            <span class="chip">backup_run</span><span class="chip">restore</span>
+            <span class="chip">quiesce</span><span class="chip">manifest</span>
+            <span class="chip">artifact</span><span class="chip">retention</span>
+            <span class="chip">errors</span>
+          </div>
+        </div>
+        <div class="arrow">▲ 의존</div>
+        <div class="layer">
+          <div class="layer-name">usecase<em>순서를 강제한다</em></div>
+          <div class="chips">
+            <span class="chip">run_backup</span><span class="chip">run_restore</span>
+            <span class="chip">verify_and_retention</span><span class="chip">manifest_json</span>
+          </div>
+        </div>
+        <div class="arrow">▲ 의존</div>
+        <div class="layer">
+          <div class="layer-name">port<em>인터페이스 11개</em></div>
+          <div class="chips">
+            <span class="chip">BackupRepository</span><span class="chip">DBDumper</span>
+            <span class="chip">KVExporter</span><span class="chip">WorkloadScaler</span>
+            <span class="chip">VolumeArchiver</span><span class="chip">ResourceDumper</span>
+            <span class="chip">HelmReleaseLister</span><span class="chip">Sealer</span>
+            <span class="chip">ArtifactStore</span><span class="chip">TokenSourceLister</span>
+            <span class="chip">Notifier</span>
+          </div>
+        </div>
+        <div class="arrow">▼ 구현</div>
+        <div class="layer">
+          <div class="layer-name">adapter<em>바깥 세계</em></div>
+          <div class="chips">
+            <span class="chip">kube/</span><span class="chip">postgres/</span>
+            <span class="chip">openbao/</span><span class="chip">sealer/</span>
+            <span class="chip">store/</span><span class="chip">repository/</span>
+            <span class="chip">handler/</span><span class="chip">bridge/</span>
+            <span class="chip">notify/</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>어댑터는 요청 시점에 만든다</h3>
+          <p style="font-size:14px;color:var(--muted)">
+            백업 대상 스택은 <strong>등록된 워크로드 클러스터</strong>에 있다. 기동 시점에는 그
+            kubeconfig 를 모르므로, <code>wiring.go</code> 가 스택 ID → 클러스터 ID → kubeconfig 를
+            풀어 그때 어댑터 묶음을 만들고 캐시한다.
+          </p>
+        </div>
+        <div class="card">
+          <h3>모듈 경계를 넘지 않는다</h3>
+          <p style="font-size:14px;color:var(--muted)">
+            토큰 회전 일시정지처럼 <code>admin</code> 모듈이 필요한 일은
+            <code>adapter/bridge/</code> 를 통해서만 닿는다. 회전이 DB 와 금고를 5분마다 함께
+            고쳐 쓰므로, 멈추지 않으면 두 산출물 사이에 시점 어긋남이 생긴다.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 ─────────────────────────────────────────────────────────── -->
+    <section id="backup">
+      <h2><span class="num">03</span>백업 흐름</h2>
+
+      <div class="prose">
+        <p>
+          호박색 구간이 <strong>서비스가 멈춰 있는 동안</strong>이다. 그 바깥은 전부 무중단으로 돈다.
+          이 배치가 이 모듈의 설계 그 자체다 — 무엇을 창 안에 넣지 <em>않을</em> 것인가로 정지 시간이 정해진다.
+        </p>
+      </div>
+
+      <ul class="flow">
+        <li>
+          <span class="step">00</span>
+          <div>
+            <h4>목적지 검사 <span class="tag ok">무중단</span></h4>
+            <p>연결 · 인증 · 쓰기 · 용량. 필요 용량은 정적 계산이 아니라 실행 시점 PVC 조회로 구한다.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step">01</span>
+          <div>
+            <h4>리소스 덤프 <span class="tag ok">무중단</span></h4>
+            <p>워크로드가 <strong>살아 있을 때</strong> 떠야 실제 상태가 담긴다. 정지 뒤에 뜨면 replica 0 인 모습이 담긴다.</p>
+          </div>
+        </li>
+      </ul>
+
+      <div class="halt-cap">정지 창 <span>· 실측 50.6초 (371 MB · 볼륨 9개 기준)</span></div>
+      <ul class="flow" style="margin-top:-1px">
+        <li class="halt">
+          <span class="step">02</span>
+          <div>
+            <h4>워크로드 정지</h4>
+            <p>replica 를 0 으로. 원래 값은 매니페스트에 적어 둔다 — 복구의 필수 입력이다.</p>
+          </div>
+        </li>
+        <li class="halt">
+          <span class="step">03</span>
+          <div>
+            <h4>볼륨 아카이브</h4>
+            <p>헬퍼 파드가 PVC 를 마운트해 tar 로 흘려보낸다. 봉인과 업로드가 스트리밍으로 이어진다.</p>
+          </div>
+        </li>
+        <li class="halt">
+          <span class="step">04</span>
+          <div>
+            <h4>워크로드 재개 <span class="tag halt">defer 보장</span></h4>
+            <p>실패해도 반드시 돈다. <strong>최악은 백업하려다 서비스를 못 살리는 것</strong>이다.</p>
+          </div>
+        </li>
+      </ul>
+
+      <ul class="flow" style="margin-top:14px">
+        <li>
+          <span class="step">05</span>
+          <div>
+            <h4>금고 → DB <span class="tag ok">무중단</span></h4>
+            <p>
+              순서가 금고 먼저다. 그러면 <em>"DB 는 아는데 금고엔 없다"</em> 방향의 불일치만 남고,
+              그것은 복구 9단계의 참조 정합성 검사가 잡는다. 반대 방향은 잡히지 않는다.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="step">06</span>
+          <div>
+            <h4>매니페스트 작성 <span class="tag ok">무중단</span></h4>
+            <p>산출물 목록 · 볼륨 크기 · 원래 replica · 차트 버전 · 암호화 키 ID. <strong>이것만 암호화하지 않는다.</strong></p>
+          </div>
+        </li>
+      </ul>
+
+      <div class="why">
+        <b>왜 목적지 검사가 맨 앞인가.</b> 정지 창을 다 쓰고 나서 산출물을 못 만드는 것이
+        가장 나쁜 조합이다. 사용자는 다운타임만 치르고 백업은 얻지 못한다.
+        그래서 <strong>멈추기 전에</strong> 목적지에 실제로 써 본다.
+      </div>
+    </section>
+
+    <!-- 4 ─────────────────────────────────────────────────────────── -->
+    <section id="restore">
+      <h2><span class="num">04</span>복구 흐름</h2>
+
+      <div class="prose">
+        <p>
+          복구에는 정지 창이 없다 — 대상이 이미 비어 있거나 죽어 있기 때문이다.
+          대신 <strong>순서가 훨씬 엄격하다.</strong> 뒤집으면 복구가 "성공" 을 반환하고도 쓸 수 없는 상태가 된다.
+        </p>
+      </div>
+
+      <ul class="flow">
+        <li>
+          <span class="step">00</span>
+          <div>
+            <h4>전제 확인</h4>
+            <p>암호화 키 · 봉인 키 · 목적지 자격증명. 하나라도 없으면 <strong>아무것도 하지 않고</strong> 멈춘다 — 키 없이 진행하면 "복구된 것처럼 보이는 망가진 상태" 가 남는다.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step">01</span>
+          <div><h4>무결성 검증</h4><p>산출물이 열리는지, 조각이 잘리지 않았는지.</p></div>
+        </li>
+        <li>
+          <span class="step">02</span>
+          <div><h4>스키마 · 차트 버전 대조</h4>
+            <p>대상에 다른 버전이 깔려 있으면 기동 시 마이그레이션이 돌아 되돌릴 수 없다. 버전은 알리되 <strong>막지는 않는다</strong> — 버전을 올린 뒤 데이터만 회수하는 길이 있다.</p></div>
+        </li>
+        <li>
+          <span class="step">03</span>
+          <div><h4>PVC 생성 → 볼륨 복원 → 리소스 적용</h4>
+            <p>PVC 는 <strong>볼륨 경로가 단독으로 소유한다.</strong> 리소스 덤프에도 PVC 가 있으면 같은 객체를 두 경로가 소유해 <code>spec is immutable</code> 로 죽는다.</p></div>
+        </li>
+        <li>
+          <span class="step">04</span>
+          <div><h4>DB → 금고</h4><p>컨트롤 플레인 쪽. 스택 복구와 독립적으로 돈다.</p></div>
+        </li>
+        <li>
+          <span class="step">05</span>
+          <div>
+            <h4>워크로드 기동 <span class="tag bad">반드시 마지막</span></h4>
+            <p>순서를 뒤집으면 도구들이 <strong>빈 디스크를 보고 재초기화한다.</strong> Gitea 가 새 인스턴스가 되는 순간 복원은 무의미해진다.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step">06</span>
+          <div><h4>참조 정합성 검사</h4><p>토큰 소스가 가리키는 금고 경로가 실제로 있는지. 경고하되 중단하지 않는다.</p></div>
+        </li>
+      </ul>
+
+      <div class="why">
+        <b><code>succeeded</code> 는 "단계가 돌았다" 는 뜻이다.</b> "스택이 동작한다" 가 아니다.
+        실제로 <code>RestoreRun.status = succeeded</code> 인데 Gitea · Harbor · Jenkins 가
+        <code>CreateContainerConfigError</code> 로 9분 넘게 멈춰 있던 적이 있다 —
+        ESO 배선과 ClusterRole 이 백업에서 빠져 있었기 때문이다.
+        <strong>자동 복구 경로에는 아직 스모크 검증이 없다.</strong>
+      </div>
+    </section>
+
+    <!-- 5 ─────────────────────────────────────────────────────────── -->
+    <section id="artifacts">
+      <h2><span class="num">05</span>산출물과 암호화</h2>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>목적지 배치</h3>
+          <pre><span class="c">&lt;bucket&gt;/</span>
+  backup-&lt;run-id&gt;/
+    manifest.json      <span class="c">← 유일한 평문</span>
+    platform-db.dump
+    keycloak-db.dump
+    openbao-kv.json
+    namespace-resources.yaml
+    volumes/
+      jenkins.tar
+      gitea-shared-storage.tar
+      harbor-registry.tar
+      <span class="c">… PVC 마다 하나</span></pre>
+          <p style="font-size:13.5px;color:var(--muted)">
+            목적지는 <strong>클러스터 밖</strong> S3 호환 오브젝트 스토리지다. 자격증명은
+            스택 금고가 아니라 컨트롤 플레인 설정에서만 온다 — 금고에서 조달하면
+            스택이 죽을 때 백업본이 멀쩡해도 가져올 수 없는 순환이 생긴다.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>스트리밍 AES-256-GCM</h3>
+          <p style="font-size:14px;color:var(--muted)">
+            공용 <code>pkg/crypto</code> 는 <code>[]byte</code> 전체를 받아 수십 GB 에 쓸 수 없다.
+            같은 알고리즘의 스트리밍 변형을 따로 두었다.
+          </p>
+          <div class="tw" style="box-shadow:none">
+            <table>
+              <tbody>
+                <tr><td>조각 크기</td><td class="num">1 MiB</td></tr>
+                <tr><td>nonce</td><td class="num">랜덤 8B ‖ 조각번호 4B</td></tr>
+                <tr><td>AAD</td><td>조각 번호 + 마지막 조각 여부</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="font-size:13.5px;color:var(--muted)">
+            AAD 에 "마지막 조각인가" 를 넣는 것이 요점이다. 이것이 없으면
+            <strong>뒤가 잘린 백업본이 검증을 통과한다</strong> — 조용히 짧아진 산출물은
+            가장 나쁜 종류의 손상이다.
+          </p>
+        </div>
+      </div>
+
+      <div class="why">
+        <b>매니페스트만 평문인 이유.</b> 키를 잃은 상황에서도 "무엇이 들어 있고 어떤 키가
+        필요한가" 는 읽을 수 있어야 한다. 그 대가로 <strong>비밀값을 한 조각도 담지 않는 것</strong>이
+        불변식이며, 도메인 테스트가 키 이름 패턴으로 이를 고정한다.
+      </div>
+    </section>
+
+    <!-- 6 ─────────────────────────────────────────────────────────── -->
+    <section id="data">
+      <h2><span class="num">06</span>데이터 모델</h2>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>테이블</th><th>역할</th><th>눈여겨볼 칼럼</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>backup_runs</code></td>
+              <td>실행 하나</td>
+              <td><code>scope TEXT[]</code> · <code>quiesce_started_at</code> / <code>_ended_at</code> · <code>manifest JSONB</code></td>
+            </tr>
+            <tr>
+              <td><code>backup_artifacts</code></td>
+              <td>산출물 하나 (실행당 N)</td>
+              <td><code>component</code> · <code>location</code> · <code>checksum</code> · <code>encryption_key_id</code></td>
+            </tr>
+            <tr>
+              <td><code>restore_runs</code></td>
+              <td>복구 시도</td>
+              <td><code>schema_check</code> · <code>integrity_report</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3><code>scope</code> 가 <code>mode</code> 보다 우선한다</h3>
+          <p style="font-size:14px;color:var(--muted)">
+            <code>mode</code> 는 preset 이고 실제로 무엇을 뜰지는 <code>scope</code> 가 정한다.
+            정지 창 여부도 <code>scope</code> 에 <code>volume</code> 이 있는지로 판단한다 —
+            <strong>볼륨을 뺀 <code>full</code> 백업은 무중단</strong>이고 확인 문구를 요구하지 않는다.
+          </p>
+        </div>
+        <div class="card">
+          <h3>보존은 일 7 · 주 4 · 월 3</h3>
+          <p style="font-size:14px;color:var(--muted)">
+            어떤 경우에도 <strong>가장 최근 성공본은 지우지 않는다.</strong>
+            보존 정책이 백업을 0 개로 만들 수 있으면 정책이 아니라 사고다.
+          </p>
+        </div>
+      </div>
+
+      <p class="prose" style="font-size:14px;color:var(--muted)">
+        <code>stack_id</code> 는 <code>TEXT</code> 다. Nullus 스택 ID 는 UUID 가 아니라
+        <code>stk_352e9f68db06</code> 형태이며, 이것을 <code>UUID</code> 로 선언했던 동안
+        <strong>스택을 대상으로 하는 백업이 행을 만드는 순간 죽었다</strong>(마이그레이션 <code>000076</code>).
+      </p>
+    </section>
+
+    <!-- 7 ─────────────────────────────────────────────────────────── -->
+    <section id="failure">
+      <h2><span class="num">07</span>실패 모드</h2>
+
+      <div class="prose">
+        <p>
+          이 모듈에서 가장 비싼 실패는 <strong>조용히 잘못되는 것</strong>이다.
+          실패했다는 사실이 늦게 드러나는 형태들을 골라 방어를 코드에 넣었다.
+        </p>
+      </div>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>실패</th><th>왜 위험한가</th><th>방어</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>정지 후 목적지 실패</td>
+              <td>다운타임만 치르고 백업은 없다</td>
+              <td>정지 <strong>전</strong> 목적지 검사</td>
+            </tr>
+            <tr>
+              <td>재개 실패</td>
+              <td>백업하려다 서비스를 못 살린다</td>
+              <td><code>defer</code> 로 보장</td>
+            </tr>
+            <tr>
+              <td>산출물 뒤가 잘림</td>
+              <td>검증을 통과하는 손상</td>
+              <td>조각 AAD 에 마지막 여부</td>
+            </tr>
+            <tr>
+              <td><code>pg_dump</code> 버전이 낮음</td>
+              <td>조용히 실패한다</td>
+              <td>서버와 <strong>major</strong> 대조 후 이미지 선택</td>
+            </tr>
+            <tr>
+              <td>없는 리소스 타입 조회</td>
+              <td>덤프 <em>전체</em>가 실패한다</td>
+              <td><code>api-resources</code> 로 먼저 물어본다</td>
+            </tr>
+            <tr>
+              <td>배선·권한 누락</td>
+              <td>복구가 <code>succeeded</code> 인데 스택이 죽어 있다</td>
+              <td>ESO CR · CRD · ClusterRole · Argo CD App 을 덤프에 포함</td>
+            </tr>
+            <tr>
+              <td>복구 볼륨을 잔여물로 오인</td>
+              <td>복구 직후 재설치가 막힌다</td>
+              <td>PVC 의 <code>backup.nullus.io/restored-from</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 8 ─────────────────────────────────────────────────────────── -->
+    <section id="limits">
+      <h2><span class="num">08</span>한계와 다음</h2>
+
+      <div class="card" style="border-color:var(--halt-line);background:var(--halt-bg)">
+        <h3 style="color:var(--halt)">뿌리 하나: 복구 모델과 설치 모델이 다르다</h3>
+        <p style="font-size:14.5px">
+          설치는 <strong>Helm 릴리스</strong>로 이루어지는데, 복구는 <strong>네임스페이스 리소스를 apply</strong> 한다.
+          그래서 Helm 이 만드는 클러스터 범위 리소스(CRD · ClusterRole)와 컨트롤러가 재생성하는
+          리소스(ESO Secret · Argo CD 가 만드는 Deployment)가 그 사이로 빠진다.
+        </p>
+        <p style="font-size:14.5px;color:var(--muted)">
+          지금까지 네 번 같은 이유로 결함이 났다. 빠진 것을 하나씩 세는 방식으로는 끝을 알 수 없다 —
+          <strong>다음 OSS 가 들어오면 또 난다.</strong>
+        </p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>후보 ① Helm 릴리스 재적용</h3>
+          <p style="font-size:14px;color:var(--muted)">
+            리소스를 apply 하는 대신 릴리스를 다시 설치하고 데이터만 덮는다.
+            Helm 이 만든 것은 Helm 이 아니까 종류 목록이 사라진다.
+            선행 조건 둘은 이미 갖췄다 — <strong>차트 버전 기록</strong>과
+            <strong>복구 볼륨을 통과시키는 preflight</strong>.
+          </p>
+          <p style="font-size:13.5px;color:var(--muted)">
+            차트가 <em>자체 생성하는</em> 비밀값이 걸림돌로 보였으나, 실측해 보니 그렇지 않다.
+            복원된 DB 를 못 읽게 만드는 것은 Harbor 의 <code>secretKey</code> 하나인데
+            <strong>그 값이 랜덤이 아니다</strong> — 차트 기본값 <code>not-a-secure-key</code> 를
+            그대로 쓰고 있어 재설치해도 같다. 나머지 랜덤 값(<code>CSRF_KEY</code> ·
+            <code>core.secret</code> · <code>JOBSERVICE_SECRET</code> · <code>REGISTRY_HTTP_SECRET</code>)은
+            한 릴리스 안에서 <strong>함께</strong> 재생성되므로 서로 맞고,
+            <code>REGISTRY_HTPASSWD</code> 는 고정 비밀번호의 해시라 새로 만들어도 검증을 통과한다.
+          </p>
+        </div>
+        <div class="card">
+          <h3>후보 ② 소유권 기반 열거</h3>
+          <p style="font-size:14px;color:var(--muted)">
+            종류를 나열하는 대신 <code>meta.helm.sh/release-namespace</code> 나 스택 라벨이 붙은
+            <strong>모든</strong> 리소스를 훑는다. PVC 를 열거하는 것과 같은 발상이다.
+          </p>
+        </div>
+      </div>
+
+      <div class="card" style="border-color:var(--danger)">
+        <h3 style="color:var(--danger)">먼저 고쳐야 할 것 — Harbor 가 공개된 기본 키로 돈다</h3>
+        <p style="font-size:14.5px">
+          <code>secretKey</code> 가 재설치에도 같다는 사실은 재적용 방식에는 다행이지만,
+          그 이유가 <strong>차트에 적힌 공개 기본값을 그대로 쓰고 있기 때문</strong>이다.
+          이 키는 Harbor 가 로봇 계정 자격증명과 레플리케이션 엔드포인트 비밀번호를
+          DB 에 암호화해 넣을 때 쓴다 — <strong>우리 백업 산출물(<code>volumes/harbor-database</code>)을
+          손에 넣은 사람은 그 키로 풀 수 있다.</strong>
+        </p>
+        <p style="font-size:14px;color:var(--muted)">
+          고치는 방법은 이미 저장소에 있다. 관리자 비밀번호가 그렇듯
+          <strong>금고를 SoT 로 두고 차트가 참조하게</strong> 하면 된다 —
+          차트는 <code>existingSecretSecretKey</code> 를 받는다. 최초 설치에서 강한 키를 만들어
+          금고에 넣고, 이후 모든 설치가 그것을 참조하면 <strong>보안 결함과 재적용의 전제가
+          한 번에 해결된다</strong>: 복구는 금고를 먼저 되돌리므로 재설치해도 같은 키가 쓰인다.
+        </p>
+      </div>
+
+      <div class="prose">
+        <h3>아직 재보지 않은 것</h3>
+        <p style="font-size:14px;color:var(--muted)">
+          RTO 실측(371 MB 로 잰 값은 규모의 근거가 아니다) · 다중 노드에서 RWO 볼륨이 흩어질 때 ·
+          Argo CD 의 자동 동기화(리허설에서는 강제로 앞당겼다) ·
+          Service ClusterIP 미보존이 IP 고정 배선에 미치는 영향 ·
+          차트 버전이 어긋난 대상으로의 복구.
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      결정 근거는 <a href="../11_기능설계/Nullus_백업복구_설계.md">기능설계 문서</a>,
+      확인 절차는 <a href="../50_운영/Nullus_백업복구_로컬_테스트_가이드.md">로컬 테스트 가이드</a>.
+      실환경 리허설 실측치는 <a href="https://github.com/cloud-nullus/nullus/pull/243#issuecomment-5518788795">nullus#243 코멘트</a>에 있다.
+      코드는 <code>internal/backup/</code>.
+    </footer>
+
+  </main>
+</div>
+</body>
+</html>

@@ -19,7 +19,8 @@
     "e2e:headed": "playwright test --project=chromium --headed",
     "e2e:report": "playwright show-report",
     "responsive:audit": "node scripts/responsive-audit.mjs",
-    "responsive:audit:check": "node scripts/responsive-audit.mjs --check"
+    "responsive:audit:check": "node scripts/responsive-audit.mjs --check",
+    "e2e:shots": "playwright test --config=playwright.shots.config.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
