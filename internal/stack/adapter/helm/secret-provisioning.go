@@ -31,6 +31,10 @@ type SecretEntry struct {
 	// TargetKey 는 Kubernetes Secret 안의 키 이름이다. 차트가 요구하는 이름과
 	// 정확히 일치해야 한다.
 	TargetKey string
+	// Length 는 생성할 값의 길이다. 0 이면 기본값(secretValueLength)을 쓴다.
+	// 길이를 정하는 이유는 취향이 아니다 — Harbor 의 secretKey 처럼 차트가
+	// **정확한 길이**를 요구하는 값이 있고, 어긋나면 기동 시 죽는다.
+	Length int
 	// Fixed 가 비어 있지 않으면 랜덤 생성 대신 이 값을 쓴다.
 	// 사용자명처럼 비밀이 아니지만 차트가 같은 Secret 안에서 요구하는 값에 쓴다.
 	Fixed string
@@ -190,6 +194,14 @@ func managedSecrets(namespace string) []ManagedSecret {
 			RestartRequired: true,
 			Entries: []SecretEntry{
 				{PathSuffix: "artifacts/harbor/admin-password", TargetKey: domain.HarborAdminPassKey},
+				// 차트의 existingSecretSecretKey 가 이 Secret 안에서 찾는다.
+				// 금고가 SoT 이므로 복구가 금고를 되돌리면 같은 키가 돌아오고,
+				// 그래서 재설치해도 복원된 Harbor DB 를 읽을 수 있다.
+				{
+					PathSuffix: "artifacts/harbor/secret-key",
+					TargetKey:  domain.HarborSecretKeyKey,
+					Length:     domain.HarborSecretKeyLength,
+				},
 			},
 		},
 		{
@@ -254,9 +266,19 @@ const secretAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 
 // secretValueLength 는 생성 비밀번호의 길이다.
 // 62^43 ≈ 2^256 으로 기존 base64(32바이트)와 같은 수준의 엔트로피를 유지한다.
-const secretValueLength = 43
+const defaultSecretValueLength = 43
 
-func generateSecretValue() (string, error) {
+// secretValueLength 는 기본 길이의 별칭이다. 기존 호출부와 테스트가 쓴다.
+const secretValueLength = defaultSecretValueLength
+
+func generateSecretValue() (string, error) { return generateSecretValueN(secretValueLength) }
+
+// generateSecretValueN 은 길이를 지정해 생성한다. 0 이하면 기본 길이를 쓴다.
+func generateSecretValueN(n int) (string, error) {
+	secretValueLength := n
+	if secretValueLength <= 0 {
+		secretValueLength = defaultSecretValueLength
+	}
 	// 나머지 연산으로 문자를 고르면 알파벳 크기가 256 의 약수가 아니라 앞쪽
 	// 문자가 더 자주 나온다. 남는 구간을 버려(rejection sampling) 편향을 없앤다.
 	const maxByte = 255 - (256 % len(secretAlphabet))
@@ -382,7 +404,7 @@ func (o *Orchestrator) ProvisionSecrets(
 				}
 				continue
 			}
-			if err := ensureSecretValue(ctx, writer, path, entry.Fixed); err != nil {
+			if err := ensureSecretValue(ctx, writer, path, entry.Fixed, entry.Length); err != nil {
 				return err
 			}
 		}
@@ -395,13 +417,13 @@ func (o *Orchestrator) ProvisionSecrets(
 }
 
 // ensureSecretValue 는 값이 없을 때만 생성해 기록한다 (멱등).
-func ensureSecretValue(ctx context.Context, writer SecretWriter, path, fixed string) error {
+func ensureSecretValue(ctx context.Context, writer SecretWriter, path, fixed string, length int) error {
 	if existing, err := writer.GetToken(ctx, path); err == nil && strings.TrimSpace(existing) != "" {
 		return nil
 	}
 	value := fixed
 	if value == "" {
-		generated, err := generateSecretValue()
+		generated, err := generateSecretValueN(length)
 		if err != nil {
 			return err
 		}
