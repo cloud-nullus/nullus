@@ -2,6 +2,7 @@
 
 - **작성일**: 2026-08-23
 - **상태**: v1 설계 확정 기준 선행 작성 — **구현 진행 중** ([EPIC nullus-plan#59](https://github.com/cloud-nullus/nullus-plan/issues/59)). 릴리스 시점에 실제 동작과 대조해 현행화한다
+- **구현 범위 (2026-09-03 결정)**: **1급 명령만 구현한다.** 2급·`api` passthrough 는 보류 — 명령별 구현 현황은 §9
 - **설계 근거**: [CLI 컨셉](../11_기능설계/Nullus_CLI_컨셉.md) · [Automation 계약](../11_기능설계/Nullus_CLI_Automation_계약.md) · [stack.yaml 스키마](../11_기능설계/Nullus_Stack_YAML_스키마.md) · [MCP 설계](../11_기능설계/Nullus_MCP_설계.md)
 
 `nullus`는 Nullus 플랫폼의 통합 CLI다. 웹 UI가 "탐색·설정 마법사(노코드)"라면 CLI는 **반복·자동화·헤드리스**를 맡는다 — 두 표면은 같은 `/api/v1/*` REST를 쓰므로 웹에서 만든 것을 CLI로 조작할 수 있고 그 반대도 된다.
@@ -25,7 +26,7 @@ nullus stack deploy -f stack.yaml
 | 배포 상태·로그를 터미널에서 바로 확인 | `nullus stack status`, `nullus stack logs -f` |
 | AI 어시스턴트(Claude Code 등)에게 플랫폼 조작을 위임 | `nullus mcp serve` (§8) |
 
-설치 마법사(대화형 탐색)·조직/멤버 관리·감사 로그 열람은 웹 UI가 1차 표면이다 — CLI 전용 명령은 없고 필요하면 `nullus api`(§7)로 접근한다.
+설치 마법사(대화형 탐색)·조직/멤버 관리·감사 로그 열람은 웹 UI가 1차 표면이다 — CLI 전용 명령은 없고 필요하면 `nullus api`(§7, 보류)로 접근한다.
 
 ---
 
@@ -134,7 +135,9 @@ nullus stack status "$STACK_ID" --wait --timeout 40m
 # exit code 가 그대로 잡의 성패가 된다
 ```
 
-## 6. 조회·운영 명령 (2급)
+## 6. 조회·운영 명령 (2급) — 보류
+
+> 구현 범위 결정(2026-09-03)에 따라 2급 전체가 **보류**다(§9.2). 아래는 편입 시의 명령 설계다.
 
 ```bash
 nullus stack template ls | get <id>      # Golden Path 카탈로그
@@ -144,7 +147,9 @@ nullus token-source ls | rotate          # 토큰소스 운영 (reveal 은 기�
 nullus alert ls | create | rm            # 알림 규칙
 ```
 
-## 7. 전용 명령이 없는 API — `nullus api`
+## 7. 전용 명령이 없는 API — `nullus api` — 보류
+
+> 구현 범위 결정(2026-09-03)에 따라 passthrough 도 **보류**다(§9.3). 전용 명령이 없는 API 는 웹 UI 또는 REST 직접 호출로 접근한다. 아래는 편입 시의 설계다.
 
 위 명령으로 커버되지 않는 REST(조직/멤버, 감사 로그 등)는 passthrough로 접근한다 — `gh api`와 같은 방식이다. 인증 헤더가 자동으로 붙고, 응답은 가공 없이 그대로 출력된다:
 
@@ -177,16 +182,50 @@ exit code 규약(§5)은 동일하게 적용된다. WebSocket 엔드포인트는
 
 세부 tool 목록과 정책은 [MCP 설계](../11_기능설계/Nullus_MCP_설계.md), 클라이언트별 설정은 MCP 사용 가이드(트랙 B-4, 작성 예정) 참조.
 
-## 9. 명령 요약
+## 9. 명령 목록·구현 현황
 
-| 영역 | 명령 |
+서버에 실제 등록된 REST 전 표면(`/api/v1/*` 4그룹, ~119개)을 [CLI 컨셉](../11_기능설계/Nullus_CLI_컨셉.md) §3 분류와 대조해 도출한 목록이다 (2026-09-03 기준). **구현 범위는 1급만이다** — 2급·passthrough 는 보류하고, 해당 API 는 웹 UI(또는 REST 직접 호출)가 표면이다.
+
+### 9.1 1급 — 구현 대상 (automation 핵심)
+
+| 명령 | 대응 API | 상태 |
+|------|----------|------|
+| `version` | — (로컬) | ✅ 구현 ([#231](https://github.com/cloud-nullus/nullus/pull/231)) |
+| `stack ls` | `GET /stacks` | ✅ 구현 ([#231](https://github.com/cloud-nullus/nullus/pull/231)) |
+| `login` | OIDC 직행(Keycloak — 서버 API 아님) | 미구현 — A-3 (토큰 로직은 S-3 완료, [#232](https://github.com/cloud-nullus/nullus/pull/232)) |
+| `auth bootstrap issue\|revoke` | Keycloak admin API | 미구현 — A-3 (`cmd/nullus-bootstrap` 흡수) |
+| `cluster register -f` | `POST /admin/clusters` | 미구현 — A-4 |
+| `cluster verify [<id>]` | `POST /admin/clusters/verify`(등록 전) · `POST /admin/clusters/:id/verify` | 미구현 — A-4 |
+| `cluster ls` / `get` / `rm` | `GET /admin/clusters` · `GET /admin/clusters/:id` · `DELETE /admin/clusters/:id` | 미구현 — A-4 |
+| `stack deploy -f` | `POST /stacks` + `POST /stacks/:id/deploy` (생성+배포 2단 호출) | 미구현 — A-5 |
+| `stack status [--wait]` | `GET /stacks/:id/status` | 미구현 — A-6 (exit 6·7 도 여기서) |
+| `stack rm` / `rollback` / `retry` | `DELETE /stacks/:id` · `POST /stacks/:id/rollback` · `POST /stacks/:id/retry` | 미구현 — A-6 |
+| `stack logs -f` | `GET /ws/deployments/:id/logs` (WebSocket 래핑) | 미구현 — A-7 |
+| `pipeline deploy <id>` | `POST /cicd/pipelines/:id/deploy` | 미구현 — A-8 |
+| `app deploy -f` | `POST /cicd/deploy-app` | 미구현 — A-8 |
+
+(API 경로는 `/api/v1` 프리픽스 생략. RBAC 은 서버 그룹 그대로 — `admin/*`=admin, `stacks/*`=admin·devops, `cicd/*`=+developer)
+
+### 9.2 2급 — 보류
+
+| 명령 | 대응 API |
+|------|----------|
+| `stack template ls\|get` | `GET /stacks/templates[/:id]` |
+| `compat ls` | `GET /stacks/compatibility` |
+| `stack config get\|set\|preview` | `GET·PUT /stacks/:id/releases/:name/values` · `POST …/values/preview` · `POST /stacks/:id/config` |
+| `token-source ls\|rotate\|reveal` | `GET /admin/token-sources` · `POST /admin/token-sources/:id/rotate\|reveal` |
+| `alert ls\|create\|rm` | `GET·POST /observability/alert-rules` · `DELETE /observability/alert-rules/:id` |
+
+### 9.3 그 외 표면
+
+| 표면 | 상태 |
 |------|------|
-| 인증 | `login` · `auth bootstrap issue\|revoke` |
-| 클러스터 | `cluster register -f \| verify \| ls \| get \| rm` |
-| 스택 | `stack deploy -f \| status [--wait] \| logs -f \| ls \| rm \| rollback \| retry` |
-| 파이프라인·앱 | `pipeline deploy <id>` · `app deploy -f` |
-| 카탈로그·운영 | `stack template` · `stack config` · `compat` · `token-source` · `alert` |
-| 범용 | `api <METHOD> <path>` · `mcp serve [--allow-write]` · `version` |
+| `api <METHOD> <path>` passthrough — 전용 명령 없는 나머지 REST ~85개 (조직/멤버·마법사 계열·스택 상세 조회·notifications·audit-logs 등) | 보류 (A-9) |
+| `mcp serve [--allow-write]` | 미구현 — 트랙 B (B-1~B-4). 1·2급 결정과 별개로 진행 |
+| backup/restore — `/admin/backups*` · `/admin/restores*` 6개 ([#241](https://github.com/cloud-nullus/nullus/pull/241)로 분류 확정 이후 추가) | 미분류 — 편입 여부 미정 |
+| `stack export` — `GET /stacks/:id/export` (`stack deploy -f` 와 왕복 관계) | 미분류 — 편입 여부 미정 |
+| `POST /admin/clusters/self-register` | CLI 대상 아님 (에이전트 자동 등록 플로우) |
+| WebSocket `…/pods` | v1 범위 밖 (logs 만 A-7 이 커버) |
 
 ## 문제 해결
 
