@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **문서용 화면 캡처를 재생성할 수 있게 했다** (`web/e2e/shots/`, `playwright.shots.config.ts`, `npm run e2e:shots`): 백업 사용 가이드의 그림 3장을 손으로 찍으면 화면이 바뀔 때 조용히 낡는다. 스크립트로 만들어 다시 찍을 수 있게 한다.
+
+  **검증이 아니라 산출물 생성이므로 CI 게이트에서 뺐다**(chromium 프로젝트의 `testIgnore`). 전용 설정을 따로 둔 이유가 둘 있다: 기본 설정은 5173 을 `reuseExistingServer` 로 재사용하는데 **그 포트에 다른 프로젝트가 떠 있으면 엉뚱한 화면을 찍고**(실제로 그렇게 됐다), 로컬 개발 설정이 OIDC 모드면 Keycloak 으로 튕겨 찍을 화면이 없다. 세션 모드로 띄우고 API 응답을 고정해, 어떤 환경에서도 같은 그림이 나온다.
+
 - **백업 대상 선택 화면** (`web/src/features/admin/pages/backup-page.tsx`, `components/backup-target-dialog.tsx` 신규, `/admin/backup`): 백업은 API 로만 실행할 수 있었고, 무엇을 담을지는 `mode` 세 가지(full·platform_only·stack_only) 중에서만 고를 수 있었다.
 
   **도메인은 이미 항목별 선택을 지원하고 있었다.** `BackupRun.Scope []Component` 가 있고 `RequiresQuiesce()` 도 모드가 아니라 Scope 를 본다 — API 만 그것을 열지 않아 모드에서 파생하고 있었다. `scope` 를 요청에 받아 다섯 항목(플랫폼 DB · Keycloak DB · 금고 · K8s 리소스 · 볼륨)을 개별로 고르게 한다. 모르는 이름은 **거부한다**(`BACKUP_INVALID_COMPONENT`): 조용히 버리면 고른 것과 백업된 것이 달라지고, 그 사실은 복구할 때에야 드러난다.
