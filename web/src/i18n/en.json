@@ -1889,5 +1889,37 @@
       "volume": "Volumes",
       "volumeDesc": "Data inside the tools — Git repos, build history, container images. The largest, and the only one that stops the service"
     }
+  },
+  "jobNotifications": {
+    "trigger": "Background jobs",
+    "triggerBusy": "Background jobs — {{running}} in progress",
+    "title": "Background jobs",
+    "empty": "Nothing is running right now.",
+    "summaryRunning": "{{running}} in progress",
+    "summaryIdle": "All done",
+    "kind": {
+      "stack": "Stack install",
+      "deployment": "Pipeline deploy"
+    },
+    "phase": {
+      "running": "In progress",
+      "succeeded": "Completed",
+      "failed": "Failed"
+    },
+    "stage": {
+      "pending": "Queued",
+      "validating": "Validating",
+      "installing": "Installing",
+      "configuring": "Configuring",
+      "health_check": "Health check",
+      "rolling_back": "Rolling back",
+      "running": "Running",
+      "terminating": "Removing",
+      "completed": "Completed",
+      "success": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "rolled_back": "Rolled back"
+    }
   }
 }
