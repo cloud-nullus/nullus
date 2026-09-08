@@ -86,6 +86,9 @@ export interface CICDGoldenPath {
   created_at?: string;
 }
 
+// 아직 끝나지 않은 배포 상태. 상단 작업 알림이 폴링을 켤지 정할 때 쓴다.
+const ACTIVE_DEPLOYMENT_STATES = new Set(["pending", "running"]);
+
 // --- Query keys ---
 
 const queryKeys = {
@@ -538,13 +541,37 @@ export function useDeployPipeline() {
   });
 }
 
-export function useDeployments(filters?: {
-  pipelineId?: string;
-  status?: string;
-}) {
+/**
+ * 도는 배포가 하나라도 있으면 pollMs 간격으로, 아니면 폴링하지 않는다.
+ *
+ * 기본값 0 은 "폴링 없음" 이라 기존 호출부의 동작이 바뀌지 않는다. 상단 작업
+ * 알림(features/common)만 값을 넘겨 켠다 — 스택 쪽 stackListRefetchInterval 과
+ * 같은 규칙이다.
+ */
+export function deploymentListRefetchInterval(
+  data: { items?: Array<{ status?: string }> } | undefined,
+  pollMs = 0,
+): number | false {
+  if (pollMs <= 0) return false;
+  return data?.items?.some((deployment) =>
+    ACTIVE_DEPLOYMENT_STATES.has(deployment.status ?? ""),
+  )
+    ? pollMs
+    : false;
+}
+
+export function useDeployments(
+  filters?: {
+    pipelineId?: string;
+    status?: string;
+  },
+  options?: { pollWhileActiveMs?: number },
+) {
   return useQuery({
     queryKey: queryKeys.deployments(filters),
     queryFn: () => cicdApiCalls.getDeployments(filters),
+    refetchInterval: (query) =>
+      deploymentListRefetchInterval(query.state.data, options?.pollWhileActiveMs),
   });
 }
 

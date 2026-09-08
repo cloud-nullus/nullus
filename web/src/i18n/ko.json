@@ -1889,5 +1889,37 @@
       "volume": "볼륨",
       "volumeDesc": "OSS 내부 데이터 — Git 저장소·빌드 이력·컨테이너 이미지. 가장 크고, 이것만 서비스를 멈춥니다"
     }
+  },
+  "jobNotifications": {
+    "trigger": "진행 중 작업",
+    "triggerBusy": "진행 중 작업 — {{running}}건 진행 중",
+    "title": "진행 중 작업",
+    "empty": "지금 도는 작업이 없습니다.",
+    "summaryRunning": "{{running}}건 진행 중",
+    "summaryIdle": "모두 끝났습니다",
+    "kind": {
+      "stack": "스택 설치",
+      "deployment": "파이프라인 배포"
+    },
+    "phase": {
+      "running": "진행 중",
+      "succeeded": "완료",
+      "failed": "실패"
+    },
+    "stage": {
+      "pending": "대기 중",
+      "validating": "검증 중",
+      "installing": "설치 중",
+      "configuring": "설정 중",
+      "health_check": "상태 확인 중",
+      "rolling_back": "되돌리는 중",
+      "running": "실행 중",
+      "terminating": "삭제 중",
+      "completed": "완료",
+      "success": "완료",
+      "failed": "실패",
+      "cancelled": "취소됨",
+      "rolled_back": "되돌림"
+    }
   }
 }
