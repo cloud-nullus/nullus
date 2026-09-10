@@ -41,6 +41,7 @@ var releaseStepNames = map[string]string{
 	domain.HarborReleaseName:   "installing_harbor",
 	domain.NexusReleaseName:    "installing_nexus",
 	"argo-cd":                  "installing_argocd",
+	domain.TrivyReleaseName:    "installing_trivy",
 	"kube-prometheus-stack":    "installing_prometheus",
 	"grafana":                  "installing_grafana",
 	"loki":                     "installing_logging",

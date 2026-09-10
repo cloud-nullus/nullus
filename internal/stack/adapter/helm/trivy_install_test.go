@@ -73,3 +73,17 @@ func TestTrivyDefaultValues_RunsAsServerWithMirroredDB(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, domain.TrivyServicePort, service["port"])
 }
+
+// 스캐너는 명시적으로 골라야만 서는 단계다.
+//
+// 설정을 모를 때 켜진 것으로 보면 아무도 고르지 않은 스캐너를 설치하게 되고,
+// 배포 검증(VerifyDeployment)이 없는 릴리스의 상태를 물어 실패한다.
+func TestTrivyStep_IsOptIn(t *testing.T) {
+	assert.True(t, isOptInStep("installing_trivy"),
+		"설정을 모를 때 켜 두면 아무도 고르지 않은 스캐너가 선다")
+}
+
+// 릴리스 편집이 재배포에서 유실되지 않으려면 릴리스와 단계가 이어져 있어야 한다.
+func TestTrivyRelease_MapsToInstallStep(t *testing.T) {
+	assert.Equal(t, "installing_trivy", releaseStepNames[domain.TrivyReleaseName])
+}

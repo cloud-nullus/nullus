@@ -1145,6 +1145,10 @@ func isOptInStep(step string) bool {
 	switch step {
 	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "provisioning_gitea", "installing_nexus", "provisioning_nexus":
 		return true
+	// 이미지 스캐너는 선택 항목이다. 설정을 모를 때 켜 두면 아무도 고르지 않은
+	// 스캐너가 서고, 배포 검증이 없는 릴리스의 상태를 물어 실패한다.
+	case "installing_trivy":
+		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
 	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
