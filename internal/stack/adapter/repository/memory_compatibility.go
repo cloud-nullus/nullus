@@ -153,6 +153,8 @@ const (
 	baselineHarborAppVersion  = domain.HarborAppVersion
 	baselineNexusHelmVersion  = domain.NexusChartVersion
 	baselineNexusAppVersion   = domain.NexusAppVersion
+	baselineTrivyHelmVersion  = domain.TrivyChartVersion
+	baselineTrivyAppVersion   = domain.TrivyAppVersion
 
 	baselineGiteaHelmVersion = domain.GiteaChartVersion
 	baselineGiteaAppVersion  = domain.GiteaAppVersion
@@ -292,6 +294,7 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"image_scanner":            {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
 		},
 		{
@@ -312,6 +315,7 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"image_scanner":            {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
 		},
 		{
@@ -334,6 +338,7 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				"log_search":               {Name: "Loki", HelmVersion: baselineLokiHelmVersion, AppVersion: baselineLokiAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"trace_layer":              {Name: "Tempo", HelmVersion: baselineTempoHelmVersion, AppVersion: baselineTempoAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"agent":                    {Name: "OpenTelemetry Collector", HelmVersion: baselineOTelCollectorHelmVersion, AppVersion: baselineOTelCollectorAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"image_scanner":            {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
 		},
 		{

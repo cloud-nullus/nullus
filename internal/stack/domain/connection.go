@@ -94,7 +94,13 @@ const (
 	TrivyReleaseName = "trivy"
 	TrivyServiceName = TrivyReleaseName
 	// TrivyServicePort 는 client 가 CVE 매칭을 요청하는 포트다.
+	// 차트 기본 service.port 와 같아야 한다.
 	TrivyServicePort = 4954
+	// 호환성 매트릭스가 선언한 버전과 같아야 한다. 화면은 매트릭스 값을
+	// 보여주고 설치는 차트 스펙을 쓰므로, 갈라지면 안내와 실제가 어긋난다.
+	// (고정: TestChartVersionsMatchCompatibilityMatrix)
+	TrivyChartVersion = "0.26.0"
+	TrivyAppVersion   = "0.74.0"
 
 	// NexusServiceName 은 Nexus 진입 Service 다. 차트 기본 이름은
 	// {release}-nexus-repository-manager 라 길어지므로 fullnameOverride 로 맞춘다.
